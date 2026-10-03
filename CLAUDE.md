@@ -4483,7 +4483,7 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
 - **Rollback:** `update app_settings set value='[]' where key='parcel_check_shared_gms';` →
   the worker falls back to each seller's own saved link (only sellers who saved one get checked).
 
-## 2026-10-03 — PARCEL CHECKER 1.15.0: TWO-MACHINE FAILOVER (lease, sql/71 v2)
+## 2026-10-03 — PARCEL CHECKER 1.15.0: TWO-MACHINE FAILOVER (lease, sql/71 v3)
 - The extension can run on TWO machines (Windows laptop + Mac). Exactly one is on duty
   ("LEADER") and does all the work; the other ("STANDBY") only keeps its tabs ready
   (tab healing, E-Map pick + keepalive, local status) and takes over automatically when the
@@ -4492,8 +4492,18 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   outside 01:00–05:00) while a ready standby waits — the SERVER decides that yield. No
   preferred machine: a returning machine stays standby while the other is alive. The
   standby still syncs Pickup Status from its own open 賣貨便 pages (not duty work).
-- Lease unreachable for 3+ min → BOTH machines act as leader until it answers (a double
-  check is safe — the verdict RPC never lets 'unknown' overwrite a real verdict).
+- Lease unreachable for 3+ min of CONTINUOUS failure (attempts ≤ 60 s apart; a longer gap —
+  sleep, pause — restarts the clock) → BOTH machines act as leader until it answers. In the
+  multi-seller lane a double check is safe (the verdict RPC never lets 'unknown' overwrite a
+  real verdict).
+- **Lone leader = exactly 1.14.9:** a leader whose last successful answer saw no other machine
+  as standby for > 120 s (`standby_age_s` null or > 120, sql/71 v3) keeps working through a
+  lease outage — no 60 s cutoff. With another machine seen within 120 s, a leader stops 60 s
+  after its last answer (until the answer comes back or the 3-min fail-open). A hung lease
+  RPC costs at most one 8 s wait per 10 s (throttle) + 8 s at each pass start.
+- The last confirmed role is stored next to the worker id (`pc_worker.role`): a restarted
+  standby boots as STANDBY (silent); a stored leader / nothing keeps the boot rule (no answer
+  yet → works, pre-1.15 behaviour).
 - Popup "Duty" row; Admin check-queue card shows who is on duty (seen N ago, DEGRADED) +
   the standby (ready / NOT READY with the cause; red if not seen for 3 min).
 - **Operating rules:**
@@ -4508,3 +4518,14 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
 - **Rollback:** 1.14.9 on ONE machine **AND the extension disabled on the other** (1.14.9
   never calls the lease RPC; the v2 legacy guard makes a 1.15 machine stand down while the
   1.14.9 heartbeat is fresh, but disabling the other one is the clean rollback).
+- **Known and ACCEPTED (re-audit LOWs, not fixed by design):**
+  - A row already in progress may still write its verdict after the machine learns it is
+    standby (the lease is re-checked before each row, not before each write).
+  - A backwards clock jump on a machine lengthens how long a failing leader keeps acting.
+  - `degraded` does not cover a tab that is alive but whose checks always fail (e.g. 7-11
+    blocking that machine) — such a leader never yields.
+  - The legacy single-seller lane is not protected against a double check (it PATCHes
+    parcel_scans directly, 'unknown' included) — only the multi-seller lane is.
+  - A lone leader whose lease RPC fails right after a second machine first appears (before
+    its next successful answer) keeps working while the server may hand the lease to the
+    newcomer → double work until its lease answers again.

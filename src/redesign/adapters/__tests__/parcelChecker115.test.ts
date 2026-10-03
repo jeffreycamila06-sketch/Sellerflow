@@ -12,7 +12,7 @@ const S = 1000, MIN = 60 * S;
 const T0 = Date.UTC(2026, 0, 15, 2, 0, 0); // 10:00 Taipei — outside the maintenance window
 
 type Body = { p_worker_id: string; p_label: string; p_state: Record<string, unknown> };
-// sql/71 v2 on a shared test clock.
+// sql/71 v3 on a shared test clock (v3 = the answer also carries standby_age_s).
 function leaseServer(clock: { t: number }) {
   const st = {
     leaderId: null as string | null, leaderLabel: null as string | null, leaderAt: 0,
@@ -25,6 +25,8 @@ function leaseServer(clock: { t: number }) {
     const fresh = st.leaderId !== null && now - st.leaderAt < 120 * S;
     const legacy = st.legacyAt > 0 && now - st.legacyAt < 150 * S;            // ALWAYS evaluated (M3)
     const sb = st.standbyState;
+    // seconds since ANOTHER machine last called as standby (the record BEFORE this call)
+    const sbAge = st.standbyId && st.standbyId !== b.p_worker_id ? Math.round((now - st.standbyAt) / S) : null;
     const sbReady = !!st.standbyId && st.standbyId !== b.p_worker_id && now - st.standbyAt < 30 * S && !!sb
       && sb.sfl === "connected" && sb.emap === "ok" && (sb.myship === "ok" || sb.myship === "stale") && sb.multi === true && sb.degraded !== true;
     let leader = false, reason: string, asStandby = false;
@@ -42,7 +44,7 @@ function leaseServer(clock: { t: number }) {
     }
     if (asStandby) { st.standbyId = b.p_worker_id; st.standbyAt = now; st.standbyState = b.p_state; }
     return { json: { leader, reason, leader_id: legacy ? null : st.leaderId, leader_label: legacy ? "pre-1.15 worker" : st.leaderLabel,
-      leader_age_s: st.leaderAt ? Math.round((now - st.leaderAt) / S) : null, standby_ready: sbReady, ttl_s: 120 } };
+      leader_age_s: st.leaderAt ? Math.round((now - st.leaderAt) / S) : null, standby_ready: sbReady, standby_age_s: sbAge, ttl_s: 120 } };
   };
   return { st, handler };
 }
@@ -286,15 +288,94 @@ describe("long passes, lease failures, M1", () => {
     expect(a.calls.logs.filter((l) => /lease call failed/.test(l)).length).toBe(1);
   });
 
-  it("…but never acts on a lease older than 60 s (until the 3-min fail-open)", async () => {
-    const { clock, a, lease } = await twoWorkers();
-    await a.sb.pcTick();
+  // REWRITTEN for the re-audit (MEDIUM-2): this used to pin a 60–180 s blackout for a SINGLE
+  // machine. The 60 s cutoff now applies only when another machine was seen within 120 s.
+  it("a leader that saw a standby 10 s ago stops at 60 s of lease failure (until the 3-min fail-open)", async () => {
+    const { clock, a, b, lease } = await twoWorkers();
+    await a.sb.pcTick(); clock.t += 5 * S; await b.sb.pcTick(); clock.t += 10 * S;
+    await a.sb.pcTick();                                   // A's last answer: standby_age_s 10
+    expect(a.status().leaseLone).toBe(false);
     lease.st.down = true;
-    clock.t += 61 * S;
+    clock.t += 30 * S;
+    const p = pendingReads(a.calls);
+    await a.sb.pcTick();                                   // 30 s since the last answer → still working
+    expect(pendingReads(a.calls)).toBe(p + 1);
+    clock.t += 31 * S;
     const before = forbiddenFetches(a.calls).length;
-    await a.sb.pcTick();
+    await a.sb.pcTick();                                   // 61 s → stops
     expect(forbiddenFetches(a.calls).length).toBe(before);
-    expect(a.status().leaseRole).toBe("leader"); // the role is kept — it just may not act on it
+    expect(a.status().leaseRole).toBe("leader");
+    expect(a.status().leaseWorking).toBe(false);
+  });
+
+  it("MEDIUM-2: a LONE leader keeps reading pending / checking / writing through a long lease outage (= 1.14.9)", async () => {
+    const clock = { t: T0 };
+    const lease = leaseServer(clock);
+    const w = bootWorker({ now: () => clock.t, lease: lease.handler });
+    await w.booted; await w.sb.pcTick();
+    expect(w.status().leaseLone).toBe(true);
+    lease.st.down = true;
+    for (let i = 0; i < 20; i++) {                        // 10 minutes, including 60–180 s
+      clock.t += 30 * S;
+      const p = pendingReads(w.calls), v = verdicts(w.calls);
+      await w.sb.pcTick();
+      expect(pendingReads(w.calls)).toBe(p + 1);
+      expect(verdicts(w.calls)).toBeGreaterThan(v);
+    }
+    expect(w.status().leaseRole).toBe("leader");
+    expect(w.status().leaseWorking).toBe(true);
+  });
+
+  for (const [age, lone] of [[121, true], [120, false], [null, true], ["absent", false]] as const) {
+    it(`standby_age_s ${age} → lone=${lone} (a lone leader works past 60 s of failure; otherwise it stops)`, async () => {
+      const clock = { t: T0 };
+      let n = 0;
+      const first = { leader: true, reason: "leader", leader_id: "me", leader_label: "L", leader_age_s: 0, standby_ready: false, ttl_s: 120,
+        ...(age === "absent" ? {} : { standby_age_s: age }) };
+      const w = bootWorker({ now: () => clock.t, lease: () => (n++ === 0 ? { json: first } : "throw") });
+      await w.booted; await w.sb.pcTick();
+      expect(w.status().leaseLone).toBe(lone);
+      clock.t += 30 * S; await w.sb.pcTick();
+      clock.t += 31 * S;
+      const p = pendingReads(w.calls);
+      await w.sb.pcTick();
+      expect(pendingReads(w.calls)).toBe(p + (lone ? 1 : 0));
+    });
+  }
+
+  it("the lease is re-tried at most once per 10 s during a failure (throttle)", async () => {
+    const clock = { t: T0 };
+    const lease = leaseServer(clock);
+    const times: number[] = [];
+    const rows = ["r1", "r2", "r3", "r4", "r5"].map((id) => ({ ...PENDING_ROW, id, need_store: false }));
+    const w = bootWorker({ now: () => clock.t, rows, lease: (b) => { times.push(clock.t); return lease.handler(b); },
+      phoneReply: () => { clock.t += 5 * S; return { status: "ok" }; } });
+    await w.booted; await w.sb.pcTick();                   // lone leader, 5 rows × 5 s
+    lease.st.down = true;
+    clock.t += 31 * S;
+    const P = clock.t;
+    await w.sb.pcTick();                                   // the pass start + per-row re-checks (last answer > 30 s old)
+    const outage = times.filter((t) => t >= P);
+    expect(outage.length).toBe(3);                         // P, P+10, P+20 — not one per row
+    for (let i = 1; i < outage.length; i++) expect(outage[i] - outage[i - 1]).toBeGreaterThanOrEqual(10 * S);
+  });
+
+  it("MEDIUM-1: two failures separated by a gap do NOT fail open; 3 min of back-to-back failures do", async () => {
+    const { clock, a, b, lease } = await twoWorkers();
+    await a.sb.pcTick(); await b.sb.pcTick();
+    lease.st.down = true;
+    clock.t += 5 * S; await b.sb.pcTick();               // failure 1
+    clock.t += 4 * MIN;                                   // asleep / paused: no lease attempt
+    const before = forbiddenFetches(b.calls).length;
+    await b.sb.pcTick();                                  // failure 2, after the gap
+    expect(forbiddenFetches(b.calls).length).toBe(before);
+    expect(b.calls.logs.some((l) => /failure clock restarted/.test(l))).toBe(true);
+    for (let i = 0; i < 5; i++) { clock.t += 30 * S; await b.sb.pcTick(); }   // 2.5 min back-to-back
+    expect(forbiddenFetches(b.calls).length).toBe(before);
+    expect(b.status().leaseFailOpen).toBe(false);
+    clock.t += 30 * S; await b.sb.pcTick();                                   // 3 min back-to-back → fail-open
+    expect(pendingReads(b.calls)).toBeGreaterThan(0);
+    expect(b.status().leaseFailOpen).toBe(true);
   });
 
   it("M2: lease unreachable 3+ min → BOTH act as leader (logged once); back to one leader when it answers", async () => {
@@ -355,6 +436,52 @@ describe("long passes, lease failures, M1", () => {
     expect(w.calls.logs.some((l) => /lease call failed \(timeout 8s\)/.test(l))).toBe(true);
     expect(pendingReads(w.calls)).toBe(1);   // no answer since boot → pre-1.15 behaviour, the pass still worked
     expect(w.calls.scheduled).toContain(5000);
+  });
+});
+
+describe("persisted role (a restarted standby stays standby)", () => {
+  it("a stored 'standby' boots as standby: a failing lease makes NO duty call; fail-open after 3 continuous min still applies", async () => {
+    const clock = { t: T0 };
+    const w = bootWorker({ now: () => clock.t, initialStorage: { pc_worker: { id: "w-sb-1", role: "standby" } }, lease: () => "throw" });
+    await w.booted; await w.sb.pcTick();
+    expect(w.status().leaseRole).toBe("standby");
+    expect(forbiddenFetches(w.calls)).toEqual([]);
+    expect(rowChecks(w.calls)).toEqual([]);
+    for (let i = 0; i < 5; i++) { clock.t += 30 * S; await w.sb.pcTick(); }
+    expect(forbiddenFetches(w.calls)).toEqual([]);
+    clock.t += 30 * S; await w.sb.pcTick();
+    expect(pendingReads(w.calls)).toBe(1);
+  });
+
+  it("a stored 'leader' or nothing keeps the boot rule (a failing first call → works, pre-1.15 behaviour)", async () => {
+    for (const initialStorage of [{ pc_worker: { id: "w-ld-1", role: "leader" } }, { pc_worker: { id: "w-none-1" } }, {}]) {
+      const w = bootWorker({ initialStorage, lease: () => "throw" });
+      await w.booted; await w.sb.pcTick();
+      expect(w.status().leaseRole).toBe(null);
+      expect(pendingReads(w.calls)).toBe(1);
+    }
+  });
+
+  it("a stored 'standby' that the server now makes leader leads at once", async () => {
+    const lease = leaseServer({ t: T0 });
+    const w = bootWorker({ now: () => T0, initialStorage: { pc_worker: { id: "w-sb-2", role: "standby" } }, lease: lease.handler });
+    await w.booted; await w.sb.pcTick();
+    expect(w.status().leaseRole).toBe("leader");
+    expect(pendingReads(w.calls)).toBe(1);
+    expect(w.storage.pc_worker).toEqual({ id: "w-sb-2", role: "leader" });
+  });
+
+  it("the confirmed role is stored next to the id — written only when it changes", async () => {
+    const { clock, a, b } = await twoWorkers();
+    const writes: unknown[] = [];
+    const orig = b.sb.chrome.storage.local.set;
+    b.sb.chrome.storage.local.set = (o: Record<string, unknown>, cb?: () => void) => { if ("pc_worker" in o) writes.push(o.pc_worker); return orig(o, cb); };
+    await a.sb.pcTick();
+    for (let i = 0; i < 5; i++) { await b.sb.pcTick(); clock.t += 5 * S; }
+    const id = (b.storage.pc_worker as { id: string }).id;
+    expect(writes).toEqual([{ id }, { id, role: "standby" }]);    // new id, then the first role — no per-tick rewrites
+    clock.t += 121 * S; await b.sb.pcTick();                      // A silent → B takes over
+    expect(writes).toEqual([{ id }, { id, role: "standby" }, { id, role: "leader" }]);
   });
 });
 

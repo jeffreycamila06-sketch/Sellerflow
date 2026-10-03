@@ -739,15 +739,17 @@ function pcAdoptRemintedTab(pick) {
 // DEGRADED while a ready standby waits (the server decides the yield — sql/71 v2).
 // Calling admin_parcel_worker_lease IS the renewal. The check logic itself is
 // untouched; this only decides whether the leader-only side effects may run.
-const PC_WORKER_KEY = "pc_worker";          // { id } — random, generated once, survives restarts
+const PC_WORKER_KEY = "pc_worker";          // { id, role } — id random, generated once; role = last confirmed (survives restarts)
 const PC_LEASE_RENEW_MS = 30 * 1000;        // re-call the lease when the last confirmed answer is older than this
 const PC_LEASE_RETRY_MS = 10 * 1000;        // …but at most one attempt per 10 s (a failing call is up to 8 s)
-const PC_LEASE_MAX_AGE_MS = 60 * 1000;      // never do leader work on a lease older than this
+const PC_LEASE_MAX_AGE_MS = 60 * 1000;      // never do leader work on a lease older than this (unless a LONE leader)
+const PC_LEASE_LONE_AFTER_S = 120;          // no other machine seen as standby for longer than this → lone leader
+const PC_LEASE_FAIL_GAP_MS = 60 * 1000;     // attempts further apart than this are not "continuous" failure (MEDIUM-1)
 const PC_LEASE_FAILOPEN_MS = 3 * 60 * 1000; // lease unreachable this long → act as leader (M2)
 const PC_LEASE_TIMEOUT_MS = 8 * 1000;       // a hung lease call must not stall the loop (L3)
 const PC_DEGRADED_AFTER_MS = 10 * 60 * 1000;   // duty tabs dead this long (outside maintenance) → degraded
 const PC_DEGRADED_STEP_CAP_MS = 60 * 1000;     // one pass counts at most 60 s (a sleeping machine doesn't count)
-const pcLease = { role: null, lastOkAt: 0, lastAttemptAt: 0, failSince: 0, failOpenLogged: false,
+const pcLease = { role: null, lastOkAt: 0, lastAttemptAt: 0, failSince: 0, failOpenLogged: false, lone: false, storedRole: null,
   leaderLabel: null, leaderAgeS: null, reason: "", failing: false, id: null, label: "" };
 function pcRandomId() {
   try { if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") return globalThis.crypto.randomUUID(); } catch { /* fall through */ }
@@ -765,11 +767,17 @@ function pcPlatformName() {
   });
 }
 // Worker id (persisted) + label (popup Device name, else "<platform> <first 4 of id>").
+// First load in this worker life also restores the last confirmed role: a stored
+// 'standby' starts as standby (a restarted standby stays silent); a stored 'leader' or
+// nothing keeps the boot rule (no answer yet → act as leader, pre-1.15 behaviour).
 async function pcWorkerIdentity(cfg) {
   if (!pcLease.id) {
     const w = (await pcGet(PC_WORKER_KEY, null)) || null;
-    if (w && typeof w.id === "string" && w.id) pcLease.id = w.id;
-    else { pcLease.id = pcRandomId(); await pcSet(PC_WORKER_KEY, { id: pcLease.id }); }
+    if (w && typeof w.id === "string" && w.id) {
+      pcLease.id = w.id;
+      pcLease.storedRole = w.role === "leader" || w.role === "standby" ? w.role : null;
+      if (pcLease.storedRole === "standby" && pcLease.role === null) pcLease.role = "standby";
+    } else { pcLease.id = pcRandomId(); await pcSet(PC_WORKER_KEY, { id: pcLease.id }); }
   }
   const name = String((cfg && cfg.deviceName) || "").trim();
   pcLease.label = name || `${await pcPlatformName()} ${pcLease.id.slice(0, 4)}`;
@@ -780,14 +788,24 @@ async function pcWorkerIdentity(cfg) {
 //    let BOTH machines sit idle on a broken RPC; a double check is safe — the verdict RPC
 //    locks the row and never lets 'unknown' overwrite a real verdict)
 //  · no answer yet since boot → yes (pre-1.15 behaviour)
-//  · standby → no;  leader → only while its last confirmed lease is ≤ 60 s old.
-function pcLeaderNow(role, lastOkAt, now, failSince) {
+//  · standby → no
+//  · LONE leader (its last successful answer saw no other machine for > 120 s) → yes,
+//    whatever the lease age — exactly 1.14.9 (MEDIUM-2: no blackout on a lease outage)
+//  · leader with another machine around → only while its last confirmed lease is ≤ 60 s old.
+function pcLeaderNow(role, lastOkAt, now, failSince, lone) {
   if (failSince && now - failSince >= PC_LEASE_FAILOPEN_MS) return true;
   if (role === null) return true;
   if (role !== "leader") return false;
+  if (lone) return true;
   return now - lastOkAt <= PC_LEASE_MAX_AGE_MS;
 }
-function pcLeaderNowCur() { return pcLeaderNow(pcLease.role, pcLease.lastOkAt, Date.now(), pcLease.failSince); }
+function pcLeaderNowCur() { return pcLeaderNow(pcLease.role, pcLease.lastOkAt, Date.now(), pcLease.failSince, pcLease.lone); }
+// PURE: lone = no other machine called as standby within 120 s (standby_age_s null or > 120).
+// An answer without the field (pre-v3 server) is NOT lone — the safe side.
+function pcLeaseLone(j) {
+  if (!j || !("standby_age_s" in j)) return false;
+  return j.standby_age_s === null || (typeof j.standby_age_s === "number" && j.standby_age_s > PC_LEASE_LONE_AFTER_S);
+}
 // H1 — DEGRADED = this machine's duty tabs have been dead for 10+ minutes: E-Map status in
 // {no_tab, expired, dead} OR the myship tab health in {no_tab, dead_script}. Rule: dead time
 // accumulates only OUTSIDE the 01:00–05:00 maintenance window; inside it the counter is
@@ -842,7 +860,9 @@ async function pcLeaseFetch(cfg, token) {
 // streak + one when the fail-open starts; never throws.
 async function pcLeaseRenew(cfg, token) {
   let res;
-  pcLease.lastAttemptAt = Date.now();
+  const prevAttemptAt = pcLease.lastAttemptAt;
+  const attemptAt = Date.now();
+  pcLease.lastAttemptAt = attemptAt;
   try { res = await pcLeaseFetch(cfg, token); } catch (e) { res = { ok: false, why: `network${e && e.message ? `: ${e.message}` : ""}` }; }
   const now = Date.now();
   if (res.ok) {
@@ -852,11 +872,19 @@ async function pcLeaseRenew(cfg, token) {
     }
     if (pcLease.failOpenLogged) console.log(`[PC-LEASE] ${pcLease.label}: lease reachable again — role ${role.toUpperCase()}`);
     pcLease.role = role; pcLease.lastOkAt = now; pcLease.failing = false; pcLease.failSince = 0; pcLease.failOpenLogged = false;
+    pcLease.lone = role === "leader" && pcLeaseLone(j);
+    if (role !== pcLease.storedRole && pcLease.id) {   // persist the last confirmed role — only when it changes
+      pcLease.storedRole = role;
+      try { await pcSet(PC_WORKER_KEY, { id: pcLease.id, role }); } catch { /* best-effort */ }
+    }
     pcLease.leaderLabel = j.leader_label ?? null; pcLease.leaderAgeS = typeof j.leader_age_s === "number" ? j.leader_age_s : null; pcLease.reason = String(j.reason ?? "");
   } else {
-    if (!pcLease.failing) {
-      pcLease.failing = true; pcLease.failSince = now;
-      console.log(`[PC-LEASE] ${pcLease.label || "worker"}: lease call failed (${res.why}) — keeping role ${pcLease.role ?? "none yet → acting as leader (pre-1.15 behaviour)"}`);
+    // MEDIUM-1: the fail-open clock means CONTINUOUS failure — a previous attempt more than
+    // 60 s before this one (sleep, pause, passes that never reached the lease) restarts it.
+    const gap = Boolean(pcLease.failing && prevAttemptAt && attemptAt - prevAttemptAt > PC_LEASE_FAIL_GAP_MS);
+    if (!pcLease.failing || gap) {
+      pcLease.failing = true; pcLease.failSince = attemptAt; pcLease.failOpenLogged = false;
+      console.log(`[PC-LEASE] ${pcLease.label || "worker"}: lease call failed (${res.why})${gap ? " after a gap — failure clock restarted" : ""} — keeping role ${pcLease.role ?? "none yet → acting as leader (pre-1.15 behaviour)"}${pcLease.role === "leader" && pcLease.lone ? " (lone leader — still working)" : ""}`);
     }
     if (!pcLease.failOpenLogged && now - pcLease.failSince >= PC_LEASE_FAILOPEN_MS) {
       pcLease.failOpenLogged = true;
@@ -865,7 +893,7 @@ async function pcLeaseRenew(cfg, token) {
   }
   try {
     await pcStatus({ leaseRole: pcLease.role, leaseLeaderLabel: pcLease.leaderLabel, leaseLeaderAgeS: pcLease.leaderAgeS, leaseReason: pcLease.reason, leaseAt: pcLease.lastOkAt || null,
-      leaseFailing: pcLease.failing, leaseFailOpen: pcLease.failOpenLogged, workerLabel: pcLease.label || null });
+      leaseFailing: pcLease.failing, leaseFailOpen: pcLease.failOpenLogged, leaseLone: pcLease.lone, leaseWorking: pcLeaderNowCur(), workerLabel: pcLease.label || null });
   } catch { /* status is display-only */ }
   return res.ok;
 }
@@ -1195,7 +1223,7 @@ try {
       lastStoreReason: "", lastPhoneReason: "", lastStoreAt: null, lastPhoneAt: null,
       lastCheckAt: null, lastCount: 0, lastError: "", lastStoreVerdictAt: null, lastPhoneVerdictAt: null,
       inMaintenanceWindow: false, lastGiveUpAt: null,
-      leaseRole: null, leaseLeaderLabel: null, leaseLeaderAgeS: null, leaseReason: "", leaseAt: null, leaseFailing: false, leaseFailOpen: false, workerLabel: null, degraded: false,
+      leaseRole: null, leaseLeaderLabel: null, leaseLeaderAgeS: null, leaseReason: "", leaseAt: null, leaseFailing: false, leaseFailOpen: false, leaseLone: false, leaseWorking: null, workerLabel: null, degraded: false,
     });
     console.log(`[PC-BOOT] parcel-checker worker started v${v} — status reset`);
   } catch (e) { console.log(`[PC-BOOT] parcel-checker worker started v${v} (status reset skipped: ${e && e.message ? e.message : e})`); }

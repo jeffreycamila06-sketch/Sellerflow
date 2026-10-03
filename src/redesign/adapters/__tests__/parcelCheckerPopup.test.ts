@@ -38,13 +38,24 @@ describe("popup Duty row", () => {
     expect(r.dot).toBe("dot bad");
   });
 
-  it("a lease failure is shown BEFORE the role", async () => {
-    expect((await duty({ leaseRole: "standby", leaseFailing: true, leaseLeaderLabel: "Mac" })).text).toBe("Lease not reachable — keeping STANDBY for now");
-    expect((await duty({ leaseRole: "leader", leaseFailing: true })).text).toBe("Lease not reachable — keeping LEADER for now");
-    expect((await duty({ leaseRole: null, leaseFailing: true })).text).toBe("Lease not reachable — acting as leader");
+  it("a lease failure is shown BEFORE the role, and says what the machine is actually doing", async () => {
+    const lone = await duty({ leaseRole: "leader", leaseFailing: true, leaseLone: true, leaseWorking: true });
+    expect(lone.text).toBe("Lease not reachable — lone leader, still working");
+    expect((await duty({ leaseRole: "leader", leaseFailing: true, leaseLone: false, leaseWorking: true })).text)
+      .toBe("Lease not reachable — still working (pauses 60 s after the last answer)");
+    const paused = await duty({ leaseRole: "leader", leaseFailing: true, leaseLone: false, leaseWorking: false });
+    expect(paused.text).toBe("Lease not reachable — PAUSED (another machine was seen) until the lease answers or 3 min of failure");
+    expect(paused.dot).toBe("dot bad");
+    expect((await duty({ leaseRole: "standby", leaseFailing: true, leaseLeaderLabel: "Mac" })).text).toBe("Lease not reachable — staying STANDBY (works after 3 min of failure)");
+    expect((await duty({ leaseRole: null, leaseFailing: true })).text).toBe("Lease not reachable — working (no answer since start)");
     const open = await duty({ leaseRole: "standby", leaseFailing: true, leaseFailOpen: true });
-    expect(open.text).toBe("Lease unreachable 3+ min — acting as leader (may double-check)");
+    expect(open.text).toBe("Lease unreachable 3+ min — working (may double-check)");
     expect(open.dot).toBe("dot warn");
+  });
+
+  it("never says LEADER while no work is done", async () => {
+    const r = await duty({ leaseRole: "leader", leaseFailing: true, leaseLone: false, leaseWorking: false });
+    expect(r.text).not.toMatch(/LEADER|keeping/);
   });
 
   it("then the role: leader (+ DEGRADED), standby with the leader's label", async () => {

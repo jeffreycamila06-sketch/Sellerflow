@@ -61,8 +61,14 @@ function pcRenderRole(st, cfg) {
   const me = st.workerLabel ? ` · this: ${st.workerLabel}` : "";
   let cls = "off", text = `Starting…${me}`;
   if (cfg && cfg.multiSeller !== true) { cls = "bad"; text = `Multi-seller mode is OFF — this machine cannot serve the sellers${me}`; }
-  else if (st.leaseFailing && st.leaseFailOpen) { cls = "warn"; text = `Lease unreachable 3+ min — acting as leader (may double-check)${me}`; }
-  else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — ${st.leaseRole ? `keeping ${String(st.leaseRole).toUpperCase()} for now` : "acting as leader"}${me}`; }
+  else if (st.leaseFailing && st.leaseFailOpen) { cls = "warn"; text = `Lease unreachable 3+ min — working (may double-check)${me}`; }
+  // While the lease fails the text says what this machine is ACTUALLY doing (leaseWorking
+  // is decided by the worker on every attempt) — never "leader" while no work is done.
+  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseLone) { cls = "warn"; text = `Lease not reachable — lone leader, still working${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseWorking !== false) { cls = "warn"; text = `Lease not reachable — still working (pauses 60 s after the last answer)${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "leader") { cls = "bad"; text = `Lease not reachable — PAUSED (another machine was seen) until the lease answers or 3 min of failure${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "standby") { cls = "warn"; text = `Lease not reachable — staying STANDBY (works after 3 min of failure)${me}`; }
+  else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — working (no answer since start)${me}`; }
   else if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${st.degraded ? " — DEGRADED (7-11 tabs dead 10+ min)" : ""}${me}`; }
   else if (st.leaseRole === "standby") {
     const age = typeof st.leaseLeaderAgeS === "number"

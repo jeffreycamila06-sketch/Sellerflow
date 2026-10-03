@@ -1,5 +1,6 @@
 -- 71 — Parcel Checker automatic backup worker (extension 1.15.0) — APPLIED via MCP 2026-10-03
--- (v2 after the adversarial audit: H1 yield, M3 legacy guard always, L1/L2 hardening).
+-- (v2 after the adversarial audit: H1 yield, M3 legacy guard always, L1/L2 hardening;
+--  v3 after the re-audit: the answer also carries standby_age_s).
 -- Two machines may run the extension; only the one holding this lease does checks.
 -- The other waits and takes over when the leader has been silent for 120 s, or when the
 -- leader reports itself degraded while a READY standby is waiting (yield).
@@ -32,7 +33,7 @@ declare
   v_raw text; v jsonb; w_raw text; w jsonb; v_sb jsonb;
   v_leader_id text; v_leader_at timestamptz; v_w_at timestamptz; v_sb_at timestamptz; v_block_until timestamptz;
   v_fresh boolean; v_legacy boolean := false; v_sb_ready boolean := false;
-  v_is_leader boolean; v_reason text; v_as_standby boolean := false;
+  v_is_leader boolean; v_reason text; v_as_standby boolean := false; v_pre_sb_id text;
 begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   if v_id = '' then raise exception 'worker_id_required'; end if;
@@ -44,6 +45,7 @@ begin
   end;
   if jsonb_typeof(v) is distinct from 'object' then v := '{}'::jsonb; end if;
   v_leader_id := nullif(v->>'leader_id', '');
+  v_pre_sb_id := v->>'standby_id';
   begin v_leader_at := (v->>'leader_at')::timestamptz; exception when others then v_leader_at := null; end;
   begin v_sb_at := (v->>'standby_at')::timestamptz; exception when others then v_sb_at := null; end;
   begin v_block_until := (v->>'yield_block_until')::timestamptz; exception when others then v_block_until := null; end;
@@ -123,6 +125,10 @@ begin
                          when (v->>'leader_at') is null then null
                          else round(extract(epoch from (v_now - (v->>'leader_at')::timestamptz))) end,
     'standby_ready', v_sb_ready,
+    -- seconds since ANOTHER machine last called as standby (null = no other machine seen).
+    -- The extension uses it to know it is a lone leader (v3, re-audit MEDIUM-2).
+    'standby_age_s', case when coalesce(v_pre_sb_id, '') <> '' and v_pre_sb_id <> v_id and v_sb_at is not null
+                          then round(extract(epoch from (v_now - v_sb_at))) else null end,
     'ttl_s', 120);
 end $function$;
 revoke all on function public.admin_parcel_worker_lease(text, text, jsonb) from public, anon;
