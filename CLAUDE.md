@@ -4483,7 +4483,7 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
 - **Rollback:** `update app_settings set value='[]' where key='parcel_check_shared_gms';` →
   the worker falls back to each seller's own saved link (only sellers who saved one get checked).
 
-## 2026-10-03 — PARCEL CHECKER 1.15.0: TWO-MACHINE FAILOVER (lease, sql/71 v3)
+## 2026-10-03 — PARCEL CHECKER 1.15.0: TWO-MACHINE FAILOVER (lease, sql/71 v4)
 - The extension can run on TWO machines (Windows laptop + Mac). Exactly one is on duty
   ("LEADER") and does all the work; the other ("STANDBY") only keeps its tabs ready
   (tab healing, E-Map pick + keepalive, local status) and takes over automatically when the
@@ -4497,10 +4497,14 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   multi-seller lane a double check is safe (the verdict RPC never lets 'unknown' overwrite a
   real verdict).
 - **Lone leader = exactly 1.14.9:** a leader whose last successful answer saw no other machine
-  as standby for > 120 s (`standby_age_s` null or > 120, sql/71 v3) keeps working through a
+  for > 120 s (`standby_age_s` null or > 120) keeps working through a
   lease outage — no 60 s cutoff. With another machine seen within 120 s, a leader stops 60 s
   after its last answer (until the answer comes back or the 3-min fail-open). A hung lease
   RPC costs at most one 8 s wait per 10 s (throttle) + 8 s at each pass start.
+  sql/71 v4: the lease row keeps a `seen` map (worker id → last call) and `standby_age_s` =
+  seconds since ANY other machine last called, in any role (null = none in 24 h). This FIXES
+  the re-audit MEDIUM-A server-side: a machine that just yielded, or was just taken over
+  from, still counts as present, so the new leader is not "lone".
 - The last confirmed role is stored next to the worker id (`pc_worker.role`): a restarted
   standby boots as STANDBY (silent); a stored leader / nothing keeps the boot rule (no answer
   yet → works, pre-1.15 behaviour).
@@ -4529,3 +4533,10 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   - A lone leader whose lease RPC fails right after a second machine first appears (before
     its next successful answer) keeps working while the server may hand the lease to the
     newcomer → double work until its lease answers again.
+  - MEDIUM-B: a lone leader is 55–66% slower while the lease RPC HANGS (8 s timeout on the
+    pass-start call + one 8 s re-check per 10 s). Accepted: the pending RPC on the same
+    server would hang too. A lease call that fails fast costs nothing.
+  - LOW-C: a stored standby that is now alone with the lease down waits 3 min before working
+    (the failure clock is in memory only — a worker restart starts it again).
+  - LOW-D: a failed write of the stored role is silent (and not retried) → after a reboot the
+    machine falls back to the boot rule.

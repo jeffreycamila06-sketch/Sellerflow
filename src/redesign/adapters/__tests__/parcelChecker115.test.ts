@@ -12,21 +12,26 @@ const S = 1000, MIN = 60 * S;
 const T0 = Date.UTC(2026, 0, 15, 2, 0, 0); // 10:00 Taipei — outside the maintenance window
 
 type Body = { p_worker_id: string; p_label: string; p_state: Record<string, unknown> };
-// sql/71 v3 on a shared test clock (v3 = the answer also carries standby_age_s).
+// sql/71 v4 on a shared test clock. v4: the row keeps a `seen` map (worker id → last call)
+// and standby_age_s = seconds since ANY other machine last called, in any role (null = none
+// in 24 h). `downFor` = callers whose calls never reach the server (they are not seen).
 function leaseServer(clock: { t: number }) {
   const st = {
     leaderId: null as string | null, leaderLabel: null as string | null, leaderAt: 0,
     standbyId: null as string | null, standbyAt: 0, standbyState: null as Record<string, unknown> | null,
     yieldBlockId: null as string | null, yieldBlockUntil: 0, takeovers: 0, yields: 0, down: false, legacyAt: 0,
+    seen: new Map<string, number>(), downFor: new Set<string>(),
   };
   const handler = (b: Body) => {
-    if (st.down) return "throw" as const;
+    if (st.down || st.downFor.has(b.p_worker_id)) return "throw" as const;
     const now = clock.t;
+    let lastOther = 0;
+    for (const [id, at] of st.seen) if (id !== b.p_worker_id && now - at < 24 * 3600 * S && at > lastOther) lastOther = at;
+    const sbAge = lastOther ? Math.round((now - lastOther) / S) : null;
+    st.seen.set(b.p_worker_id, now);
     const fresh = st.leaderId !== null && now - st.leaderAt < 120 * S;
     const legacy = st.legacyAt > 0 && now - st.legacyAt < 150 * S;            // ALWAYS evaluated (M3)
     const sb = st.standbyState;
-    // seconds since ANOTHER machine last called as standby (the record BEFORE this call)
-    const sbAge = st.standbyId && st.standbyId !== b.p_worker_id ? Math.round((now - st.standbyAt) / S) : null;
     const sbReady = !!st.standbyId && st.standbyId !== b.p_worker_id && now - st.standbyAt < 30 * S && !!sb
       && sb.sfl === "connected" && sb.emap === "ok" && (sb.myship === "ok" || sb.myship === "stale") && sb.multi === true && sb.degraded !== true;
     let leader = false, reason: string, asStandby = false;
@@ -436,6 +441,70 @@ describe("long passes, lease failures, M1", () => {
     expect(w.calls.logs.some((l) => /lease call failed \(timeout 8s\)/.test(l))).toBe(true);
     expect(pendingReads(w.calls)).toBe(1);   // no answer since boot → pre-1.15 behaviour, the pass still worked
     expect(w.calls.scheduled).toContain(5000);
+  });
+});
+
+describe("sql/71 v4 + LOW-E pins (no extension change)", () => {
+  it("MEDIUM-A (fixed server-side): A yields, B takes over, B's lease fails → B is NOT lone, stops at 60 s, never leads alongside A before fail-open", async () => {
+    const { clock, a, b, lease } = await twoWorkers([], { emapTab: false, cartDetailTab: false });
+    await a.sb.pcTick(); await b.sb.pcTick();
+    for (let i = 0; i < 30 && lease.st.yields === 0; i++) { clock.t += 30 * S; await b.sb.pcTick(); await a.sb.pcTick(); }
+    expect(lease.st.yields).toBe(1);
+    clock.t += 5 * S; await b.sb.pcTick();                       // B takes over (K)
+    expect(b.status().leaseRole).toBe("leader");
+    expect(b.status().leaseLone).toBe(false);                   // v4: A was seen 5 s ago, in any role
+    const K = clock.t;
+    lease.st.downFor.add((b.storage.pc_worker as { id: string }).id);   // only B's lease calls fail
+    const bWorks: Record<number, boolean> = {}, aLeads: Record<number, boolean> = {};
+    for (let i = 1; i <= 8; i++) {                               // K+30 … K+240, both machines every 30 s
+      clock.t = K + 30 * i * S;
+      const pa = pendingReads(a.calls), pb = pendingReads(b.calls);
+      await a.sb.pcTick(); await b.sb.pcTick();
+      aLeads[30 * i] = pendingReads(a.calls) > pa; bWorks[30 * i] = pendingReads(b.calls) > pb;
+    }
+    // B: works while its last answer is ≤ 60 s old, then stops until 3 min of continuous failure
+    expect([bWorks[30], bWorks[60], bWorks[90], bWorks[120], bWorks[150], bWorks[180]]).toEqual([true, true, false, false, false, false]);
+    expect(bWorks[210]).toBe(true);                              // the deliberate fail-open (failSince = K+30)
+    // A retakes once B is silent 120 s (yield cooldown long over)
+    expect([aLeads[90], aLeads[120], aLeads[150], aLeads[180]]).toEqual([false, true, true, true]);
+    for (const t of [90, 120, 150, 180]) expect(aLeads[t] && bWorks[t]).toBe(false);   // never both before fail-open
+  });
+
+  // standby B, lease down; one attempt per tick (a standby never re-checks mid-pass)
+  const standbyFailing = async () => {
+    const { clock, a, b, lease } = await twoWorkers();
+    await a.sb.pcTick(); await b.sb.pcTick();
+    lease.st.down = true;
+    return { clock, b };
+  };
+  it("LOW-E: a 59 s gap between failed attempts keeps the failure clock; 3 min of such attempts fail open", async () => {
+    const { clock, b } = await standbyFailing();
+    for (let i = 0; i < 4; i++) { clock.t += 59 * S; await b.sb.pcTick(); }   // failSince F, then F+59 … F+177
+    expect(b.calls.logs.some((l) => /failure clock restarted/.test(l))).toBe(false);
+    expect(pendingReads(b.calls)).toBe(0);
+    clock.t += 5 * S; await b.sb.pcTick();                                    // F+182
+    expect(b.status().leaseFailOpen).toBe(true);
+    expect(pendingReads(b.calls)).toBe(1);
+  });
+  it("LOW-E: a 61 s gap restarts the failure clock (no fail-open at the same point)", async () => {
+    const { clock, b } = await standbyFailing();
+    clock.t += 59 * S; await b.sb.pcTick();                                   // F
+    for (let i = 0; i < 3; i++) { clock.t += 61 * S; await b.sb.pcTick(); }   // each gap restarts
+    clock.t += 5 * S; await b.sb.pcTick();                                    // F+188, but only 5 s of continuous failure
+    expect(b.calls.logs.filter((l) => /failure clock restarted/.test(l)).length).toBe(3);
+    expect(b.status().leaseFailOpen).toBe(false);
+    expect(pendingReads(b.calls)).toBe(0);
+  });
+  it("LOW-E: a gap after a fail-open resets the fail-open flag (the popup must not say 'working')", async () => {
+    const { clock, b } = await standbyFailing();
+    for (let i = 0; i < 7; i++) { clock.t += 30 * S; await b.sb.pcTick(); }   // 3 min back-to-back
+    expect(b.status().leaseFailOpen).toBe(true);
+    clock.t += 4 * MIN;
+    const before = forbiddenFetches(b.calls).length;
+    await b.sb.pcTick();
+    expect(b.status().leaseFailOpen).toBe(false);
+    expect(b.status().leaseWorking).toBe(false);
+    expect(forbiddenFetches(b.calls).length).toBe(before);
   });
 });
 

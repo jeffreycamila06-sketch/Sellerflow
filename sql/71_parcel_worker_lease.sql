@@ -1,13 +1,16 @@
 -- 71 — Parcel Checker automatic backup worker (extension 1.15.0) — APPLIED via MCP 2026-10-03
 -- (v2 after the adversarial audit: H1 yield, M3 legacy guard always, L1/L2 hardening;
---  v3 after the re-audit: the answer also carries standby_age_s).
+--  v3 after the re-audit: the answer also carries standby_age_s;
+--  v4: standby_age_s now means "seconds since ANY other machine last called, in any role"
+--  — the lease row keeps a small 'seen' map — so a machine that just yielded, or was just
+--  taken over from, still counts as present).
 -- Two machines may run the extension; only the one holding this lease does checks.
 -- The other waits and takes over when the leader has been silent for 120 s, or when the
 -- leader reports itself degraded while a READY standby is waiting (yield).
 -- Additive: nothing calls the lease RPC until extension 1.15.0 is installed.
 -- Lease lives in app_settings key 'parcel_check_worker_lease' (JSON): leader_id, leader_label,
 -- leader_at, leader_since, leader_state, takeovers, prev_leader_*, standby_id, standby_label,
--- standby_at, standby_state, yield_block_id, yield_block_until, last_yield_at, yields.
+-- standby_at, standby_state, yield_block_id, yield_block_until, last_yield_at, yields, seen.
 -- All times are SERVER time (clock_timestamp), except the legacy guard, which reads the
 -- pre-1.15 heartbeat's client 'at'.
 -- p_state (the caller's compact state) is expected to carry: sfl, myship, emap, multi (boolean),
@@ -34,6 +37,7 @@ declare
   v_leader_id text; v_leader_at timestamptz; v_w_at timestamptz; v_sb_at timestamptz; v_block_until timestamptz;
   v_fresh boolean; v_legacy boolean := false; v_sb_ready boolean := false;
   v_is_leader boolean; v_reason text; v_as_standby boolean := false; v_pre_sb_id text;
+  v_seen jsonb := '{}'::jsonb; v_other_at timestamptz;
 begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   if v_id = '' then raise exception 'worker_id_required'; end if;
@@ -50,6 +54,25 @@ begin
   begin v_sb_at := (v->>'standby_at')::timestamptz; exception when others then v_sb_at := null; end;
   begin v_block_until := (v->>'yield_block_until')::timestamptz; exception when others then v_block_until := null; end;
   v_fresh := v_leader_id is not null and v_leader_at is not null and v_leader_at > v_now - v_ttl;
+
+  -- v4: when did ANY other machine last call (any role)? 'seen' = { worker_id: last call time }.
+  begin
+    v_seen := case when jsonb_typeof(v->'seen') = 'object' then v->'seen' else '{}'::jsonb end;
+    select max((e.value)::timestamptz) into v_other_at from jsonb_each_text(v_seen) e where e.key <> v_id;
+  exception when others then v_seen := '{}'::jsonb; v_other_at := null;
+  end;
+  -- rows written before 'seen' existed: fall back to the recorded standby / leader
+  v_other_at := greatest(v_other_at,
+    case when coalesce(v_pre_sb_id, '') <> '' and v_pre_sb_id <> v_id then v_sb_at end,
+    case when v_leader_id is not null and v_leader_id <> v_id then v_leader_at end);
+  begin
+    v_seen := v_seen || jsonb_build_object(v_id, v_now);
+    select coalesce(jsonb_object_agg(q.k, q.val), '{}'::jsonb) into v_seen from (
+      select e.key k, e.value val from jsonb_each_text(v_seen) e
+       where (e.value)::timestamptz > v_now - interval '24 hours'
+       order by (e.value)::timestamptz desc limit 8) q;
+  exception when others then v_seen := jsonb_build_object(v_id, v_now);
+  end;
 
   -- Legacy guard (ALWAYS evaluated): an extension older than 1.15 never takes the lease, but
   -- it pushes parcel_check_worker_state without a "wid". While that heartbeat is fresh it IS
@@ -116,6 +139,7 @@ begin
     v_is_leader := false;
   end if;
 
+  v := v || jsonb_build_object('seen', v_seen);
   update app_settings set value = v::text where key = 'parcel_check_worker_lease';
   return jsonb_build_object(
     'leader', v_is_leader, 'reason', v_reason,
@@ -125,10 +149,10 @@ begin
                          when (v->>'leader_at') is null then null
                          else round(extract(epoch from (v_now - (v->>'leader_at')::timestamptz))) end,
     'standby_ready', v_sb_ready,
-    -- seconds since ANOTHER machine last called as standby (null = no other machine seen).
-    -- The extension uses it to know it is a lone leader (v3, re-audit MEDIUM-2).
-    'standby_age_s', case when coalesce(v_pre_sb_id, '') <> '' and v_pre_sb_id <> v_id and v_sb_at is not null
-                          then round(extract(epoch from (v_now - v_sb_at))) else null end,
+    -- seconds since ANY other machine last called, in any role (null = none seen in 24 h).
+    -- The extension uses it to know it is a lone leader (v3 MEDIUM-2; v4 MEDIUM-A).
+    'standby_age_s', case when v_other_at is not null
+                          then greatest(0, round(extract(epoch from (v_now - v_other_at)))) else null end,
     'ttl_s', 120);
 end $function$;
 revoke all on function public.admin_parcel_worker_lease(text, text, jsonb) from public, anon;
