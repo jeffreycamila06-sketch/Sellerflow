@@ -597,7 +597,7 @@ export default function Landing({
       </section>
 
       {/* ── FOOTER ── */}
-      <footer style={{ borderTop: `1px solid ${C.line}`, background: "#fff", padding: "52px 0 34px" }}>
+      <footer style={{ borderTop: `1px solid ${C.line}`, background: "#fff", padding: "52px 0 88px" }}>
         <div style={wrap}>
           <div className="sfl-l2-fgrid">
             <div>
