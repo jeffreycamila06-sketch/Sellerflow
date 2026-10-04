@@ -10,7 +10,7 @@ vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rp
 
 import {
   BUYER_ALERT_DATA_OWNER_EMAIL, BUYER_ALERT_PUBLIC, BUYER_ALERT_REFRESH_MS,
-  buildViews, buyerAlertAllowed, daysLeft, normHandle, parseLookup, taipeiDate, useBuyerAlert, viewFor,
+  buildViews, buyerAlertGate, daysLeft, loadBuyerAlertAccess, normHandle, parseLookup, taipeiDate, useBuyerAlert, viewFor,
   type BuyerRecord,
 } from "../buyerAlert";
 
@@ -83,15 +83,37 @@ describe("Taipei deadline math (UTC+8) at day boundaries", () => {
   });
 });
 
-describe("gate — admin + budgetukay* only; everyone else sees nothing", () => {
-  it("is not public in this phase", () => { expect(BUYER_ALERT_PUBLIC).toBe(false); });
-  it("allows admin and budgetukay* only", () => {
-    expect(buyerAlertAllowed("x@y.com", "admin")).toBe(true);
-    expect(buyerAlertAllowed("BudgetUkay7@gmail.com", "seller")).toBe(true);
-    expect(buyerAlertAllowed("googletest@gmail.com", "seller")).toBe(false);
-    expect(buyerAlertAllowed("seller@gmail.com", "seller")).toBe(false);
-    expect(buyerAlertAllowed("", null)).toBe(false);
-    expect(buyerAlertAllowed(undefined, undefined)).toBe(false);
+describe("gate — the server access list only (buyer_alert_can_use), fail-closed", () => {
+  it("is not public in this phase; the gate is PUBLIC || serverAccess", () => {
+    expect(BUYER_ALERT_PUBLIC).toBe(false);
+    expect(buyerAlertGate(true)).toBe(true);
+    expect(buyerAlertGate(false)).toBe(false);
+  });
+  it("loadBuyerAlertAccess calls the access RPC and opens only on a literal true", async () => {
+    rpc.mockResolvedValue({ data: true, error: null });
+    expect(await loadBuyerAlertAccess()).toBe(true);
+    expect(rpc).toHaveBeenCalledWith("buyer_alert_can_use");
+    for (const data of [false, null, "true", 1, {}]) {
+      rpc.mockResolvedValue({ data, error: null });
+      expect(await loadBuyerAlertAccess(), String(data)).toBe(false);
+    }
+  });
+  it("an RPC error or a thrown call → false", async () => {
+    rpc.mockResolvedValue({ data: true, error: { message: "boom" } });
+    expect(await loadBuyerAlertAccess()).toBe(false);
+    rpc.mockImplementation(() => { throw new Error("network"); });
+    expect(await loadBuyerAlertAccess()).toBe(false);
+  });
+  it("no email rule anywhere on the client", () => {
+    const src = readFileSync("src/redesign/adapters/buyerAlert.ts", "utf8");
+    expect(src).not.toMatch(/startsWith\(|budgetukay/);
+  });
+  it("RedesignApp loads access once per signed-in user (keyed, fail-closed) and gates on it — no email", () => {
+    const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    expect(src).toContain("void loadBuyerAlertAccess().then((on) => { if (alive) setBaAccess({ uid: pcUserId, on }); });");
+    expect(src).toContain("const buyerAlertAccess = authed && !!pcUserId && baAccess?.uid === pcUserId && baAccess.on;");
+    expect(src).toContain("useBuyerAlert(buyerAlertGate(buyerAlertAccess), ");
+    expect(src).not.toMatch(/buyerAlertAllowed|buyerAlertGate\([^)]*email/);
   });
 });
 
@@ -167,10 +189,24 @@ describe("sql/72 contract", () => {
     expect(code).toContain("revoke all on function public.buyer_alert_lookup() from public, anon");
     expect(code).toContain("grant execute on function public.buyer_alert_lookup() to authenticated");
   });
-  it("server-side gate: admin or budgetukay*, otherwise {}", () => {
-    expect(code).toContain("public.is_admin() or coalesce(v_email, '') like 'budgetukay%'");
+  it("server-side gate = the access list via buyer_alert_can_use(), otherwise {}", () => {
+    expect(code).toContain("if not public.buyer_alert_can_use() then");
     expect(code).toMatch(/v_public\s+constant boolean := false/);
   });
+  it("the email-prefix gate is gone (seller_profiles.email is user-chosen)", () => {
+    expect(code).not.toContain("budgetukay");
+    expect(code).not.toContain("v_email");
+    expect(code).not.toMatch(/email[^\n]*like/);
+  });
+  it("access table: RLS on, revoked from anon + authenticated; can_use = admin or an enabled own row", () => {
+    expect(code).toContain("user_id    uuid primary key references auth.users(id) on delete cascade");
+    expect(code).toContain("alter table public.buyer_alert_access enable row level security");
+    expect(code).toContain("revoke all on public.buyer_alert_access from anon, authenticated");
+    expect(code).toMatch(/select public\.is_admin\(\)\s+or exists \(select 1 from public\.buyer_alert_access a\s+where a\.user_id = auth\.uid\(\) and a\.enabled\)/);
+    expect(code).toContain("revoke all on function public.buyer_alert_can_use() from public, anon");
+    expect(code).toContain("grant execute on function public.buyer_alert_can_use() to authenticated");
+  });
+  it("no DROP statements", () => { expect(code).not.toMatch(/\bdrop\b/); });
   it("data owner email matches the client constant; explicit owner filter", () => {
     expect(code).toContain(`'${BUYER_ALERT_DATA_OWNER_EMAIL}'`);
     expect(code).toContain("where t.user_id = v_owner");

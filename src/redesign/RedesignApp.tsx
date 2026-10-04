@@ -47,7 +47,7 @@ import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isF
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
-import { buyerAlertAllowed, useBuyerAlert } from "./adapters/buyerAlert";
+import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import type { ConnectTab } from "./screens/ConnectModal";
@@ -222,6 +222,16 @@ export default function RedesignApp() {
     return () => { alive = false; };
   }, [authed, pcUserId]);
   const dbParcelCheckAccess = authed && !!pcUserId && pcAccess?.uid === pcUserId && pcAccess.on;
+  // BUYER ALERT access — same shape: the server list (buyer_alert_can_use), loaded once per
+  // signed-in user, keyed by authUserId, false until it loads true (fail-closed).
+  const [baAccess, setBaAccess] = useState<{ uid: string; on: boolean } | null>(null);
+  useEffect(() => {
+    if (!authed || !pcUserId) return;
+    let alive = true;
+    void loadBuyerAlertAccess().then((on) => { if (alive) setBaAccess({ uid: pcUserId, on }); });
+    return () => { alive = false; };
+  }, [authed, pcUserId]);
+  const buyerAlertAccess = authed && !!pcUserId && baAccess?.uid === pcUserId && baAccess.on;
   const parcelCheckOn = parcelCheckGate(auth.profile?.email, auth.profile?.role, dbParcelCheckAccess, hideParcelScan);
   // Parcel Scan pending-batch cap: 50 for admin + googletest, 40 for everyone else.
   const parcelPendingCap = maxPendingParcels(auth.profile?.email, auth.profile?.role);
@@ -1038,9 +1048,9 @@ export default function RedesignApp() {
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
-  // BUYER ALERT (Phase 1, gated: admin + budgetukay*) — ONE RPC when a live source connects,
-  // refreshed every 10 min; rows do an O(1) map lookup. Non-gated → no RPC, no map, no change.
-  const buyerAlert = useBuyerAlert(buyerAlertAllowed(auth.profile?.email, auth.profile?.role), ttEff || fbEff || shopeeEff);
+  // BUYER ALERT (Phase 1, gated by the server access list) — ONE RPC when a live source
+  // connects, refreshed every 10 min; rows do an O(1) map lookup. No access → no RPC, no change.
+  const buyerAlert = useBuyerAlert(buyerAlertGate(buyerAlertAccess), ttEff || fbEff || shopeeEff);
   const [buyerAlertHandle, setBuyerAlertHandle] = useState<string | null>(null);
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never

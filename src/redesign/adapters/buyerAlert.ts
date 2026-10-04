@@ -8,9 +8,10 @@
 // normalised buyer handle. Loaded when the live starts, refreshed every 10 min. Each comment
 // row is an O(1) Map lookup — never a query per comment.
 //
-// GATE: admin + emails starting with "budgetukay" (the pinToPrint rule). The RPC enforces the
-// same rule server-side. Everyone else: the hook never calls the RPC and the Dashboard gets no
-// map → byte-identical rows.
+// GATE: a SERVER-SIDE access list (the Parcel Check pattern): buyer_alert_can_use() = admin OR an
+// enabled buyer_alert_access row. Never an email rule (seller_profiles.email is user-chosen).
+// buyer_alert_lookup() checks the same list itself. Not allowed / still loading / any error →
+// the hook never calls the lookup and the Dashboard gets no map → byte-identical rows.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 
@@ -23,11 +24,19 @@ export const BUYER_ALERT_RED_AT = 3;          // returns (after forgive) for the
 export const BUYER_ALERT_NEAR_DAYS = 3;       // amber: 0..3 days to the pickup deadline
 export const BUYER_ALERT_REFRESH_MS = 10 * 60 * 1000;
 
-export function buyerAlertAllowed(email: string | undefined | null, role?: string | null): boolean {
-  if (BUYER_ALERT_PUBLIC) return true;
-  if (String(role || "").trim().toLowerCase() === "admin") return true;
-  return String(email || "").trim().toLowerCase().startsWith("budgetukay");
+// Own access (SECURITY DEFINER RPC). FAIL-CLOSED: no client, an error, a throw or anything
+// but a literal `true` → false. Loaded once per signed-in user (RedesignApp).
+export async function loadBuyerAlertAccess(): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  try {
+    const { data, error } = await supabase.rpc("buyer_alert_can_use");
+    return !error && data === true;
+  } catch {
+    return false;
+  }
 }
+
+export const buyerAlertGate = (serverAccess: boolean): boolean => BUYER_ALERT_PUBLIC || serverAccess;
 
 // trim → strip ONE leading "@" → lowercase. Same as sql/72. Exact match only.
 export const normHandle = (h: string | null | undefined): string =>

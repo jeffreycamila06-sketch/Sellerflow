@@ -5,9 +5,11 @@
 //   • the name opens the sheet; Forgive / Undo call through.
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
-import { render, fireEvent } from "@testing-library/react";
+import { render, fireEvent, act } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 
+const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
+vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rpc, from: vi.fn() } }));
 vi.mock("../../adapters/useRaffleConfig", () => ({
   useRaffleConfig: () => ({ enabled: false, enabledAt: null, loading: false, toggle: vi.fn() }),
 }));
@@ -16,7 +18,7 @@ beforeAll(() => { Element.prototype.scrollTo = (() => {}) as typeof Element.prot
 import Dashboard from "../Dashboard";
 import BuyerAlertSheet from "../../components/BuyerAlertSheet";
 import type { Comment } from "../../data";
-import type { BuyerAlertView, BuyerRecord } from "../../adapters/buyerAlert";
+import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert, type BuyerAlertView, type BuyerRecord } from "../../adapters/buyerAlert";
 
 const comment = (name: string, handle: string): Comment =>
   ({ id: `c-${name}`, name, handle, text: "mine", mine: true, time: "9:41:00 PM", platform: "TikTok" });
@@ -129,5 +131,53 @@ describe("BuyerAlertSheet", () => {
     const { container } = render(
       <TProvider lang="en"><BuyerAlertSheet handle="ann" record={record} overrides={{}} cur="NT$" onForgive={vi.fn()} onClose={noop} /></TProvider>);
     expect(container.ownerDocument.body.textContent).not.toMatch(/09\d{8}/);
+  });
+});
+
+// The RedesignApp composition: access answer → gate → hook → Dashboard rows.
+describe("server access gate → rows", () => {
+  function Feed({ access }: { access: boolean }) {
+    const ba = useBuyerAlert(buyerAlertGate(access), true);
+    return <Dashboard {...props(FEED)} buyerAlerts={ba.views} onBuyerTap={ba.views ? noop : undefined} />;
+  }
+  const LOOKUP = { data: { red_buyer: { returned: [{ id: "a" }, { id: "b" }, { id: "c" }] } }, error: null };
+  const plain = () => render(<TProvider lang="en"><Dashboard {...props(FEED)} /></TProvider>).container.innerHTML;
+  const settle = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
+  const lookups = () => rpc.mock.calls.filter((c) => c[0] === "buyer_alert_lookup").length;
+
+  it("access true → one lookup, alerts on", async () => {
+    rpc.mockReset();
+    rpc.mockImplementation((name: string) => Promise.resolve(name === "buyer_alert_can_use" ? { data: true, error: null } : LOOKUP));
+    const access = await loadBuyerAlertAccess();
+    const { container } = render(<TProvider lang="en"><Feed access={access} /></TProvider>);
+    await settle();
+    expect(lookups()).toBe(1);
+    expect(container.querySelector("[data-buyer-alert='red']")).not.toBeNull();
+  });
+
+  for (const [label, answer] of [
+    ["access false", { data: false, error: null }],
+    ["access RPC error", { data: true, error: { message: "boom" } }],
+  ] as const) {
+    it(`${label} → no lookup RPC and identical row HTML`, async () => {
+      rpc.mockReset();
+      rpc.mockImplementation((name: string) => Promise.resolve(name === "buyer_alert_can_use" ? answer : LOOKUP));
+      const access = await loadBuyerAlertAccess();
+      expect(access).toBe(false);
+      const { container } = render(<TProvider lang="en"><Feed access={access} /></TProvider>);
+      await settle();
+      expect(lookups()).toBe(0);
+      expect(container.innerHTML).toBe(plain());
+    });
+  }
+
+  it("still loading (answer not back yet = false) → no lookup RPC and identical row HTML", async () => {
+    rpc.mockReset();
+    rpc.mockImplementation((name: string) => (name === "buyer_alert_can_use" ? new Promise(() => {}) : Promise.resolve(LOOKUP)));
+    void loadBuyerAlertAccess();                 // never resolves
+    const { container } = render(<TProvider lang="en"><Feed access={false} /></TProvider>);
+    await settle();
+    expect(lookups()).toBe(0);
+    expect(container.innerHTML).toBe(plain());
   });
 });
