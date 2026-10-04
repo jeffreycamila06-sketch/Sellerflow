@@ -176,12 +176,26 @@ describe("parseFbReturn — pure", () => {
   it("does NOT match the shopee param (no cross-parse)", () => { expect(parseFbReturn("?shopee=connected")).toBeNull(); });
 });
 
-describe("isFbEligible — active-paid gate", () => {
+describe("isFbEligible — every ACTIVE plan (free or paid); expired/pending blocked", () => {
   const future = new Date(Date.now() + 30 * 864e5).toISOString();
   const past = new Date(Date.now() - 864e5).toISOString();
   it("active paid → true", () => { expect(isFbEligible({ plan: "pro", planStatus: "active", planExpiry: future, role: "seller" })).toBe(true); });
   it("expired paid → false", () => { expect(isFbEligible({ plan: "pro", planStatus: "active", planExpiry: past, role: "seller" })).toBe(false); });
-  it("free → false", () => { expect(isFbEligible({ plan: "free", planStatus: "active", planExpiry: future, role: "seller" })).toBe(false); });
+  it("free + active → true (no expiry on free)", () => {
+    expect(isFbEligible({ email: "seller@x.com", plan: "free", planStatus: "active", role: "seller" })).toBe(true);
+    expect(isFbEligible({ email: "seller@x.com", plan: "Free", planStatus: "active", planExpiry: past, role: "seller" })).toBe(true); // free is never time-blocked; case-insensitive
+  });
+  it("free + expired → false; free + pending → false", () => {
+    expect(isFbEligible({ email: "seller@x.com", plan: "free", planStatus: "expired", role: "seller" })).toBe(false);
+    expect(isFbEligible({ email: "seller@x.com", plan: "free", planStatus: "pending", role: "seller" })).toBe(false);
+  });
+  it("paid + expired status → false; paid + pending → false", () => {
+    expect(isFbEligible({ email: "seller@x.com", plan: "basic", planStatus: "expired", planExpiry: future, role: "seller" })).toBe(false);
+    expect(isFbEligible({ email: "seller@x.com", plan: "basic", planStatus: "pending", planExpiry: future, role: "seller" })).toBe(false);
+  });
+  it("every paid tier active → true", () => {
+    for (const plan of ["basic", "plus", "pro", "master"]) expect(isFbEligible({ email: "seller@x.com", plan, planStatus: "active", planExpiry: future, role: "seller" }), plan).toBe(true);
+  });
   it("admin → true regardless of plan", () => { expect(isFbEligible({ plan: "free", planStatus: "expired", planExpiry: past, role: "admin" })).toBe(true); });
   it("null → false", () => { expect(isFbEligible(null)).toBe(false); });
   it("allowlisted Meta App Review account on the FREE plan → true (permanent bypass)", () => {
@@ -191,7 +205,7 @@ describe("isFbEligible — active-paid gate", () => {
   it("allowlisted account with an EXPIRED paid plan → still true (bypass can't lapse)", () => {
     expect(isFbEligible({ email: "googletest@gmail.com", plan: "plus", planStatus: "active", planExpiry: past, role: "seller" })).toBe(true);
   });
-  it("NON-allowlisted free seller → still false (fleet unchanged)", () => {
-    expect(isFbEligible({ email: "random@seller.com", plan: "free", planStatus: "active", planExpiry: future, role: "seller" })).toBe(false);
+  it("NON-allowlisted free seller with an ACTIVE plan → true (FB open to every plan)", () => {
+    expect(isFbEligible({ email: "random@seller.com", plan: "free", planStatus: "active", planExpiry: future, role: "seller" })).toBe(true);
   });
 });
