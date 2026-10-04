@@ -47,6 +47,7 @@ import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isF
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
+import ReceiptFormat from "./screens/ReceiptFormat";
 import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
@@ -116,10 +117,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages" | "receiptformat";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages", "receiptformat"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -1865,7 +1866,7 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
+            initialQuery={ordersInitialQuery} fbReceipt={fbPreview} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
@@ -1886,6 +1887,7 @@ export default function RedesignApp() {
               onParcelTracking={parcelTrackingAllowed ? () => setScreen("parceltracking") : undefined}
               parcelLocked={parcelLocked}
               onParcelUpsell={() => setUpsellOpen(true)}
+              onReceiptFormat={fbPreview ? () => setScreen("receiptformat") : undefined}
             />
           )}
           {screen === "settings" && (
@@ -1955,6 +1957,7 @@ export default function RedesignApp() {
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
+          {screen === "receiptformat" && fbPreview && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings
