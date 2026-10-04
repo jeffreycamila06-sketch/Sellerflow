@@ -148,40 +148,86 @@ describe("two workers, one lease (sql/71 v2)", () => {
 });
 
 describe("H1 — degraded + yield", () => {
-  it("degraded = duty tabs dead for 10 continuous minutes (emap no_tab), reported in p_state", async () => {
+  it("degraded = a duty tab absent for 60 continuous seconds (emap no_tab), reported in p_state", async () => {
     const clock = { t: T0 };
     const lease = leaseServer(clock);
     const w = bootWorker({ now: () => clock.t, rows: [], lease: lease.handler, emapTab: false, cartDetailTab: false });
     await w.booted;
-    for (let i = 0; i < 20; i++) { await w.sb.pcTick(); clock.t += 30 * S; }   // 9.5 min of dead tabs counted
+    for (let i = 0; i < 2; i++) { await w.sb.pcTick(); clock.t += 30 * S; }    // 30 s of absent tab counted
     expect(leaseBodies(w.calls).pop()!.p_state.degraded).toBe(false);
     expect(w.status().degraded).toBe(false);
-    await w.sb.pcTick(); clock.t += 30 * S;                                       // 10 min → degraded
+    await w.sb.pcTick(); clock.t += 30 * S;                                       // 60 s → degraded
     expect(w.status().degraded).toBe(true);
     await w.sb.pcTick();                                                          // the next lease call carries it
     expect(leaseBodies(w.calls).pop()!.p_state.degraded).toBe(true);
-    expect(w.calls.logs.filter((l) => /DEGRADED — duty tabs dead 10\+ min/.test(l)).length).toBe(1);
+    expect(w.calls.logs.filter((l) => /DEGRADED — duty tab absent 60\+ s \(no_tab threshold\)/.test(l)).length).toBe(1);
+  });
+
+  it("1.15.1 thresholds (pure): no_tab 60 s, expired/dead/dead_script 120 s, kind switch, reset, freeze, cap", async () => {
+    const w = bootWorker({ now: () => T0, rows: [] });
+    await w.booted;
+    type D = { ms: number; lastAt: number; on: boolean };
+    const step = w.sb.pcDegradedStep as unknown as (d: D, n: number, kind: string | null, m: boolean) => D;
+    const absent = w.sb.pcDutyTabsAbsent as unknown as (e: string, m: string | null) => boolean;
+    const dead = w.sb.pcDutyTabsDead as unknown as (e: string, m: string | null) => boolean;
+    const kindOf = (e: string, m: string | null) => (absent(e, m) ? "no_tab" : dead(e, m) ? "dead" : null);
+    const run = (d: D, kind: string | null, secs: number, inMaint = false) => {   // 10 s passes
+      for (let i = 0; i < secs / 10; i++) d = step(d, d.lastAt + 10 * S, kind, inMaint);
+      return d;
+    };
+    const start = (): D => step({ ms: 0, lastAt: 0, on: false }, 1000, "dead", false);   // first evaluation counts nothing
+    expect(start().ms).toBe(0);
+    // kind
+    expect([absent("no_tab", "ok"), absent("ok", "no_tab"), absent("expired", "ok"), absent("dead", "ok"), absent("ok", "dead_script")]).toEqual([true, true, false, false, false]);
+    expect(["expired", "dead"].map((e) => kindOf(e, "ok"))).toEqual(["dead", "dead"]);
+    expect([kindOf("ok", "dead_script"), kindOf("expired", "no_tab"), kindOf("ok", "ok"), kindOf("reminting", "ok")]).toEqual(["dead", "no_tab", null, null]);
+    // a) no_tab → on at 60 s, not before
+    expect(run(start(), "no_tab", 50).on).toBe(false);
+    expect(run(start(), "no_tab", 60)).toMatchObject({ ms: 60 * S, on: true });
+    // b) expired / dead / dead_script → on at 120 s, not before
+    for (const [e, m] of [["expired", "ok"], ["dead", "ok"], ["ok", "dead_script"]]) {
+      expect(run(start(), kindOf(e, m), 110).on).toBe(false);
+      expect(run(start(), kindOf(e, m), 120)).toMatchObject({ ms: 120 * S, on: true });
+    }
+    // c) 90 s of "expired" then "no_tab" → on immediately
+    const d90 = run(start(), kindOf("expired", "ok"), 90);
+    expect(d90.on).toBe(false);
+    expect(step(d90, d90.lastAt + 10 * S, kindOf("no_tab", "ok"), false).on).toBe(true);
+    expect(step(d90, d90.lastAt, kindOf("no_tab", "ok"), false).on).toBe(true);           // even a zero-length pass
+    // d) recovery resets to 0
+    const on = run(start(), "dead", 150);
+    expect(step(on, on.lastAt + 10 * S, kindOf("ok", "ok"), false)).toMatchObject({ ms: 0, on: false });
+    expect(step(on, on.lastAt + 10 * S, kindOf("reminting", "ok"), false)).toMatchObject({ ms: 0, on: false });
+    // e) the maintenance window freezes the counter for both kinds (and recovery still resets there)
+    for (const kind of ["no_tab", "dead"]) {
+      const d = run(start(), kind, 40);
+      expect(run(d, kind, 600, true)).toMatchObject({ ms: 40 * S, on: false });
+      expect(step(d, d.lastAt + 10 * S, null, true).ms).toBe(0);
+    }
+    // f) a single pass after a long gap adds at most 60 s
+    for (const kind of ["no_tab", "dead"]) expect(step({ ms: 0, lastAt: 1000, on: false }, 1000 + 30 * MIN, kind, false).ms).toBe(60 * S);
+    expect(step({ ms: 0, lastAt: 1000, on: false }, 1000 + 30 * MIN, "dead", false).on).toBe(false);   // 120 s still needs two passes
   });
 
   it("time inside 01:00–05:00 does not count (frozen, not reset); recovering resets; a sleep counts ≤ 60 s", async () => {
-    const T_0055 = Date.UTC(2026, 0, 14, 16, 55, 0);  // 00:55 Taipei
-    const clock = { t: T_0055 };
+    const clock = { t: Date.UTC(2026, 0, 14, 16, 59, 20) };                                        // 00:59:20 Taipei
     const lease = leaseServer(clock);
     const w = bootWorker({ now: () => clock.t, rows: [], lease: lease.handler, emapTab: false, cartDetailTab: false, maintenance: true });
     await w.booted;
-    for (let i = 0; i < 10; i++) { await w.sb.pcTick(); clock.t += 30 * S; }                       // 00:55 → 01:00: 4.5 min counted
+    for (let i = 0; i < 4; i++) { await w.sb.pcTick(); clock.t += 10 * S; }                        // 00:59:20 → :50: 30 s counted
+    clock.t += 10 * S;                                                                             // 01:00:10
     while (clock.t < Date.UTC(2026, 0, 14, 21, 0, 0)) { await w.sb.pcTick(); clock.t += 30 * MIN; } // the window: frozen
+    clock.t = Date.UTC(2026, 0, 14, 20, 59, 55); await w.sb.pcTick();                              // 04:59:55, still frozen
     expect(w.status().degraded).toBe(false);
-    clock.t = Date.UTC(2026, 0, 14, 21, 0, 10);                                                    // 05:00:10
-    for (let i = 0; i < 9; i++) { await w.sb.pcTick(); clock.t += 30 * S; }                        // +5 min → 9.5 min
+    for (let i = 0; i < 2; i++) { clock.t += 10 * S; await w.sb.pcTick(); }                        // 05:00:05, :15 → 50 s
     expect(w.status().degraded).toBe(false);
-    await w.sb.pcTick();                                                                           // 10 min outside the window
+    clock.t += 10 * S; await w.sb.pcTick();                                                        // 05:00:25 → 60 s (a reset would be 30 s)
     expect(w.status().degraded).toBe(true);
-    const step = w.sb.pcDegradedStep as unknown as (d: unknown, n: number, dead: boolean, m: boolean) => { ms: number; on: boolean };
-    expect(step({ ms: 9 * MIN, lastAt: 1000, on: false }, 1000 + 30 * S, true, true).ms).toBe(9 * MIN);   // frozen in the window
-    expect(step({ ms: 9 * MIN, lastAt: 1000, on: false }, 1000 + 30 * S, false, true).ms).toBe(0);        // recovered → reset
-    expect(step({ ms: 0, lastAt: 1000, on: false }, 1000 + 10 * MIN, true, false).ms).toBe(60 * S);       // a sleep counts ≤ 60 s
-    expect(step({ ms: 0, lastAt: 0, on: false }, 1000, true, false).ms).toBe(0);                          // first evaluation counts nothing
+    const step = w.sb.pcDegradedStep as unknown as (d: unknown, n: number, kind: string | null, m: boolean) => { ms: number; on: boolean };
+    expect(step({ ms: 9 * MIN, lastAt: 1000, on: false }, 1000 + 30 * S, "dead", true).ms).toBe(9 * MIN);   // frozen in the window
+    expect(step({ ms: 9 * MIN, lastAt: 1000, on: false }, 1000 + 30 * S, null, true).ms).toBe(0);           // recovered → reset
+    expect(step({ ms: 0, lastAt: 1000, on: false }, 1000 + 10 * MIN, "dead", false).ms).toBe(60 * S);       // a sleep counts ≤ 60 s
+    expect(step({ ms: 0, lastAt: 0, on: false }, 1000, "dead", false).ms).toBe(0);                          // first evaluation counts nothing
     const dead = w.sb.pcDutyTabsDead as unknown as (e: string, m: string | null) => boolean;
     expect(["no_tab", "expired", "dead"].map((e) => dead(e, "ok"))).toEqual([true, true, true]);
     expect(["no_tab", "dead_script"].map((m) => dead("ok", m))).toEqual([true, true]);
@@ -643,7 +689,7 @@ describe("identity, worker-state blob, writes outside a pass", () => {
     expect(leaseLogs(b.calls).length).toBe(1);
   });
 
-  it("version pin: manifest 1.15.0", () => {
-    expect(JSON.parse(readFileSync("chrome-extension/manifest.json", "utf8")).version).toBe("1.15.0");
+  it("version pin: manifest 1.15.1", () => {
+    expect(JSON.parse(readFileSync("chrome-extension/manifest.json", "utf8")).version).toBe("1.15.1");
   });
 });

@@ -69,7 +69,7 @@ function pcRenderRole(st, cfg) {
   else if (st.leaseFailing && st.leaseRole === "leader") { cls = "bad"; text = `Lease not reachable — PAUSED (another machine was seen) until the lease answers or 3 min of failure${me}`; }
   else if (st.leaseFailing && st.leaseRole === "standby") { cls = "warn"; text = `Lease not reachable — staying STANDBY (works after 3 min of failure)${me}`; }
   else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — working (no answer since start)${me}`; }
-  else if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${st.degraded ? " — DEGRADED (7-11 tabs dead 10+ min)" : ""}${me}`; }
+  else if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${st.degraded ? " — DEGRADED (7-11 tab missing 1+ min / dead 2+ min)" : ""}${me}`; }
   else if (st.leaseRole === "standby") {
     const age = typeof st.leaseLeaderAgeS === "number"
       ? st.leaseLeaderAgeS + (st.leaseAt ? Math.max(0, Math.round((Date.now() - st.leaseAt) / 1000)) : 0) : null;

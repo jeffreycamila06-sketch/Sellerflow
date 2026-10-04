@@ -690,11 +690,12 @@ async function pcRefreshTabStatus(pass) {
   if (!pcEv.inMaint && inMaint) console.log("[PC-BACKOFF] 7-ELEVEN maintenance window (01:00–05:00 Taipei) — misses uncounted, retries every 10 min");
   pcEv.inMaint = inMaint;
   e.state = emapState; pcEv.myship.state = myshipState;
-  // 1.15.0 H1: degraded = duty tabs dead 10+ min outside the maintenance window (see pcDegradedStep)
+  // 1.15.1 H1: degraded = a duty tab absent 60 s / dead 120 s outside the maintenance window (see pcDegradedStep)
   const wasDegraded = pcEv.deg.on;
   const myshipHealth = pcEv.health && pcEv.health.myship ? pcEv.health.myship.state : null;
-  pcEv.deg = pcDegradedStep(pcEv.deg, now, pcDutyTabsDead(emapState, myshipHealth), inMaint);
-  if (pcEv.deg.on !== wasDegraded) console.log(`[PC-LEASE] ${pcLease.label || "worker"}: ${pcEv.deg.on ? `DEGRADED — duty tabs dead 10+ min (emap=${emapState}, myship=${myshipHealth ?? "?"})` : "no longer degraded"}`);
+  const degKind = pcDutyTabsAbsent(emapState, myshipHealth) ? "no_tab" : pcDutyTabsDead(emapState, myshipHealth) ? "dead" : null;
+  pcEv.deg = pcDegradedStep(pcEv.deg, now, degKind, inMaint);
+  if (pcEv.deg.on !== wasDegraded) console.log(`[PC-LEASE] ${pcLease.label || "worker"}: ${pcEv.deg.on ? `DEGRADED — ${degKind === "no_tab" ? `duty tab absent ${PC_DEGRADED_NO_TAB_MS / 1000}+ s (no_tab threshold)` : `duty tabs dead ${PC_DEGRADED_DEAD_MS / 1000}+ s (dead threshold)`} (emap=${emapState}, myship=${myshipHealth ?? "?"})` : "no longer degraded"}`);
   let emapDomain = null; try { emapDomain = e.url ? new URL(e.url).hostname : null; } catch { emapDomain = null; }
   await pcStatus({
     emap: emapState, myship: myshipState, emapSession: emapState, emapDomain, emapTabId: e.tabId, emapDeadReason: (e.remint && e.remint.result) || "",
@@ -747,7 +748,8 @@ const PC_LEASE_LONE_AFTER_S = 120;          // no other machine seen as standby 
 const PC_LEASE_FAIL_GAP_MS = 60 * 1000;     // attempts further apart than this are not "continuous" failure (MEDIUM-1)
 const PC_LEASE_FAILOPEN_MS = 3 * 60 * 1000; // lease unreachable this long → act as leader (M2)
 const PC_LEASE_TIMEOUT_MS = 8 * 1000;       // a hung lease call must not stall the loop (L3)
-const PC_DEGRADED_AFTER_MS = 10 * 60 * 1000;   // duty tabs dead this long (outside maintenance) → degraded
+const PC_DEGRADED_NO_TAB_MS = 60 * 1000;       // 1.15.1: a duty tab ABSENT (emap / myship "no_tab") this long → degraded
+const PC_DEGRADED_DEAD_MS = 2 * 60 * 1000;     // 1.15.1: duty tabs otherwise dead (expired / dead / dead_script) this long → degraded
 const PC_DEGRADED_STEP_CAP_MS = 60 * 1000;     // one pass counts at most 60 s (a sleeping machine doesn't count)
 const pcLease = { role: null, lastOkAt: 0, lastAttemptAt: 0, failSince: 0, failOpenLogged: false, lone: false, storedRole: null,
   leaderLabel: null, leaderAgeS: null, reason: "", failing: false, id: null, label: "" };
@@ -806,18 +808,23 @@ function pcLeaseLone(j) {
   if (!j || !("standby_age_s" in j)) return false;
   return j.standby_age_s === null || (typeof j.standby_age_s === "number" && j.standby_age_s > PC_LEASE_LONE_AFTER_S);
 }
-// H1 — DEGRADED = this machine's duty tabs have been dead for 10+ minutes: E-Map status in
-// {no_tab, expired, dead} OR the myship tab health in {no_tab, dead_script}. Rule: dead time
+// H1 — DEGRADED = this machine's duty tabs have been dead: E-Map status in {no_tab, expired,
+// dead} OR the myship tab health in {no_tab, dead_script}. 1.15.1: the threshold follows the
+// CURRENT kind — a tab ABSENT (either "no_tab") → 60 s, otherwise → 120 s. Rule: dead time
 // accumulates only OUTSIDE the 01:00–05:00 maintenance window; inside it the counter is
 // frozen (neither counts nor resets) unless the tabs recover (→ 0). One pass adds at most
 // 60 s, so a machine that slept doesn't come back "degraded". The server decides any yield.
 function pcDutyTabsDead(emapState, myshipHealthState) {
   return ["no_tab", "expired", "dead"].includes(emapState) || ["no_tab", "dead_script"].includes(myshipHealthState);
 }
-function pcDegradedStep(d, now, dead, inMaint) {   // PURE
+function pcDutyTabsAbsent(emapState, myshipHealthState) {
+  return emapState === "no_tab" || myshipHealthState === "no_tab";
+}
+// kind: "no_tab" (pcDutyTabsAbsent) | "dead" (pcDutyTabsDead, not absent) | null (alive)
+function pcDegradedStep(d, now, kind, inMaint) {   // PURE
   const step = d.lastAt ? Math.min(Math.max(0, now - d.lastAt), PC_DEGRADED_STEP_CAP_MS) : 0;
-  const ms = !dead ? 0 : inMaint ? d.ms : d.ms + step;
-  return { ms, lastAt: now, on: ms >= PC_DEGRADED_AFTER_MS };
+  const ms = !kind ? 0 : inMaint ? d.ms : d.ms + step;
+  return { ms, lastAt: now, on: !!kind && ms >= (kind === "no_tab" ? PC_DEGRADED_NO_TAB_MS : PC_DEGRADED_DEAD_MS) };
 }
 // The compact worker state (the Admin-card mirror shape) + multi / degraded / leaseFailing,
 // sent as p_state on every lease call AND in the worker-state blob.
