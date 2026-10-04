@@ -93,15 +93,19 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
   } satisfies LiveSessionOrderInput;
 }
 
-// Facebook comments carry pageId + liveVideoId (server/fbComment.js, relayed untouched by
-// emitCommentScoped + useLiveFeed). Returns { page_id, live_video_id? } or undefined.
+// Facebook comments carry pageId + liveVideoId + commenterId (server/fbComment.js, relayed
+// untouched by emitCommentScoped + useLiveFeed). Returns { page_id, live_video_id?,
+// commenter_id? } or undefined; commenter_id only when it is a non-empty string.
 function fbPlatformMeta(c: ProdComment): Record<string, string> | undefined {
   if (c.platform !== "Facebook") return undefined;
-  const x = c as ProdComment & { pageId?: unknown; liveVideoId?: unknown };
+  const x = c as ProdComment & { pageId?: unknown; liveVideoId?: unknown; commenterId?: unknown };
   const pageId = String(x.pageId ?? "").trim();
   if (!pageId) return undefined;
   const liveVideoId = String(x.liveVideoId ?? "").trim();
-  return liveVideoId ? { page_id: pageId, live_video_id: liveVideoId } : { page_id: pageId };
+  const meta: Record<string, string> = liveVideoId ? { page_id: pageId, live_video_id: liveVideoId } : { page_id: pageId };
+  const commenterId = typeof x.commenterId === "string" ? x.commenterId.trim() : "";
+  if (commenterId) meta.commenter_id = commenterId;
+  return meta;
 }
 
 // Shopee comments carry shopId + shopeeSessionId (server/shopeeComment.js, relayed untouched
