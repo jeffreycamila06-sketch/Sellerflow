@@ -10,7 +10,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  signState, verifyState, pickNewComments, nextPollDelay, createFbRuntime, fetchComments,
+  signState, verifyState, pickNewComments, nextPollDelay, createFbRuntime, fetchComments, fetchMessagingGranted,
   POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES, MAX_FETCH_ERRORS, IDLE_STOP_MS, MAX_SESSION_MS,
 } from "../../../../server/fbLive.js";
 import { encryptToken, decryptToken } from "../../../../server/fbTokens.js";
@@ -748,5 +748,127 @@ describe("fetchComments — asks Graph for the commenter picture", () => {
     expect(url.pathname).toBe(`/${GRAPH_VERSION}/LV1/comments`);
     expect(url.searchParams.get("fields")).toBe("id,message,from{id,name,picture},created_time");
     expect(url.searchParams.get("access_token")).toBe("PT");
+  });
+});
+
+describe("Messenger permission phase — scope only for fb_receipt_access users; can_message recorded", () => {
+  const scopes = (url: string) => String(new URLSearchParams(url.split("?")[1]).get("scope")).split(",");
+  const routeApp = () => {
+    const handlers: Record<string, unknown[]> = {};
+    const rec = (m: string) => (p: string, ...h: unknown[]) => { handlers[`${m} ${p}`] = h; };
+    return { app: { get: rec("GET"), post: rec("POST") }, handlers };
+  };
+  const pass = (_req: unknown, _res: unknown, next: () => void) => next();
+  async function startUrl(hasReceiptAccess?: () => Promise<boolean>) {
+    const store = makeStore() as ReturnType<typeof makeStore> & { hasReceiptAccess?: () => Promise<boolean> };
+    if (hasReceiptAccess) store.hasReceiptAccess = hasReceiptAccess;
+    const { rt } = runtime({ store });
+    const { app, handlers } = routeApp();
+    rt.registerRoutes(app as never, pass as never);
+    const chain = handlers["GET /fb/oauth/start"] as ((req: unknown, res: unknown) => Promise<void>)[];
+    let body: Record<string, unknown> = {};
+    const res = { status() { return this; }, json(b: Record<string, unknown>) { body = b; return this; } };
+    await chain[chain.length - 1]({ authUserId: "user-1" }, res);
+    return String(body.url);
+  }
+
+  it("buildAuthUrl: 3 scopes by default, 4 with messaging; OAUTH_SCOPE itself unchanged", () => {
+    const { rt } = runtime();
+    expect(scopes(rt.buildAuthUrl("user-1"))).toEqual(["pages_show_list", "pages_read_engagement", "pages_read_user_content"]);
+    expect(scopes(rt.buildAuthUrl("user-1", { messaging: true }))).toEqual(["pages_show_list", "pages_read_engagement", "pages_read_user_content", "pages_messaging"]);
+  });
+
+  it("GET /fb/oauth/start: 4 scopes only when hasReceiptAccess is true; false / throws / missing → 3", async () => {
+    expect(scopes(await startUrl(async () => true))).toHaveLength(4);
+    expect(scopes(await startUrl(async () => true))).toContain("pages_messaging");
+    for (const fn of [async () => false, async () => { throw new Error("db down"); }, async () => "yes" as unknown as boolean, undefined]) {
+      const sc = scopes(await startUrl(fn));
+      expect(sc).toHaveLength(3);
+      expect(sc).not.toContain("pages_messaging");
+    }
+  });
+
+  const chainWith = (perms: unknown) => vi.fn()
+    .mockResolvedValueOnce(mkRes(200, { access_token: "SHORT" }))
+    .mockResolvedValueOnce(mkRes(200, { access_token: "LONGUSER", expires_in: 5184000 }))
+    .mockResolvedValueOnce(mkRes(200, { data: [{ id: "P1", name: "My Page", username: "mypage", access_token: "PAGETOK" }, { id: "P2", name: "Two", access_token: "TOK2" }] }))
+    .mockImplementationOnce(async () => { if (perms instanceof Error) throw perms; return perms; });
+  async function callback(perms: unknown) {
+    const store = makeStore([], "master");
+    const f = chainWith(perms);
+    const { rt } = runtime({ store, fetchImpl: f });
+    const state = signState({ userId: "user-1", key: CONFIG.appSecret, nowMs: 1_000_000 });
+    const out = await rt.handleCallback({ code: "CODE", state });
+    return { out, store, f };
+  }
+
+  it("granted → can_message true on EVERY page upserted; permissions read with the long-lived user token", async () => {
+    const { out, store, f } = await callback(mkRes(200, { data: [{ permission: "pages_show_list", status: "granted" }, { permission: "pages_messaging", status: "granted" }] }));
+    expect(out.redirect).toBe("https://app.test/?fb=connected");
+    expect(store.calls.upsert).toHaveLength(2);
+    for (const row of store.calls.upsert as Record<string, unknown>[]) expect(row.can_message).toBe(true);
+    const permUrl = new URL(String(f.mock.calls[3][0]));
+    expect(permUrl.pathname).toMatch(/\/me\/permissions$/);
+    expect(permUrl.searchParams.get("access_token")).toBe("LONGUSER");
+  });
+
+  for (const [label, perms] of [
+    ["declined", mkRes(200, { data: [{ permission: "pages_messaging", status: "declined" }] })],
+    ["missing", mkRes(200, { data: [{ permission: "pages_show_list", status: "granted" }] })],
+    ["HTTP error", mkRes(400, { error: { code: 190, message: "bad token" } })],
+    ["no data array", mkRes(200, {})],
+    ["fetch throws", new Error("network")],
+  ] as const) {
+    it(`${label} → can_message false; redirect, page rows and active flag otherwise unchanged; nothing set inactive`, async () => {
+      const { out, store } = await callback(perms);
+      expect(out.redirect).toBe("https://app.test/?fb=connected");
+      expect(store.calls.upsert).toHaveLength(2);
+      const row = store.calls.upsert[0] as Record<string, unknown>;
+      expect(row.can_message).toBe(false);
+      expect(row).toMatchObject({ user_id: "user-1", page_id: "P1", page_name: "My Page", page_username: "mypage", active: true });
+      expect(decryptToken(String(row.access_token), CONFIG.tokenKey)).toBe("PAGETOK");
+      expect(store.calls.setActive).toHaveLength(0);
+    });
+  }
+
+  it("fetchMessagingGranted never throws on odd shapes", async () => {
+    for (const r of [undefined, null, mkRes(200, { data: [null, 1, "x"] }), mkRes(200, { data: "no" })]) {
+      await expect(fetchMessagingGranted({ fetchImpl: vi.fn().mockResolvedValue(r), userToken: "T" })).resolves.toBe(false);
+    }
+  });
+
+  it("GET /fb/pages still never serializes a token (can_message on the row does not change that)", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", page_name: "My Page", page_username: "mypage", active: true, can_message: true, access_token: "SECRET_CIPHERTEXT" }]);
+    const { rt } = runtime({ store });
+    const { app, handlers } = routeApp();
+    rt.registerRoutes(app as never, pass as never);
+    const chain = handlers["GET /fb/pages"] as ((req: unknown, res: unknown) => Promise<void>)[];
+    let body: Record<string, unknown> = {};
+    const res = { status() { return this; }, json(b: Record<string, unknown>) { body = b; return this; } };
+    await chain[chain.length - 1]({ authUserId: "u1" }, res);
+    expect(JSON.stringify(body)).not.toContain("SECRET_CIPHERTEXT");
+    expect(JSON.stringify(body)).not.toContain("access_token");
+  });
+});
+
+describe("sql/73 mirror", () => {
+  const sql = readFileSync("sql/73_fb_receipt_access.sql", "utf8");
+  const code = sql.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n").toLowerCase();
+  it("access table with RLS on and revoked from anon/authenticated; can_message default false; kill switch seeded 'false'; idempotent; no drop", () => {
+    expect(code).toContain("create table if not exists public.fb_receipt_access");
+    expect(code).toContain("user_id    uuid primary key references auth.users(id) on delete cascade");
+    expect(code).toContain("alter table public.fb_receipt_access enable row level security");
+    expect(code).toContain("revoke all on public.fb_receipt_access from anon, authenticated");
+    expect(code).toContain("alter table public.fb_pages add column if not exists can_message boolean not null default false");
+    expect(code).toMatch(/values \('fb_receipts_enabled', 'false'\)\s+on conflict \(key\) do nothing/);
+    expect(code).not.toMatch(/\bdrop\b/);
+  });
+  it("server store reads fb_receipt_access with enabled = true and fails closed", () => {
+    const src = readFileSync("server.js", "utf8");
+    const fn = src.slice(src.indexOf("async hasReceiptAccess(userId)"), src.indexOf("async listPages(userId)"));
+    expect(fn).toContain('.from("fb_receipt_access")');
+    expect(fn).toContain('.eq("enabled", true)');
+    expect(fn).toContain("return !error && !!data;");
+    expect(fn).toContain("catch { return false; }");
   });
 });
