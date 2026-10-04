@@ -57,9 +57,49 @@ describe("liveSessionPayload — Facebook platform_meta", () => {
   });
 });
 
+describe("liveSessionPayload — Facebook commenter_id (receipt grouping key)", () => {
+  it("commenter_id is written only when commenterId is a non-empty string", () => {
+    expect(liveSessionPayload(fb({ commenterId: "u77" }), order, "2026-09-23").platform_meta)
+      .toEqual({ page_id: "106797184700669", live_video_id: "1551613923647732", commenter_id: "u77" });
+    for (const commenterId of [undefined, "", "   ", null, 77, {}]) {
+      expect(liveSessionPayload(fb({ commenterId }), order, "2026-09-23").platform_meta, String(commenterId))
+        .toEqual({ page_id: "106797184700669", live_video_id: "1551613923647732" }); // exactly today's shape
+    }
+  });
+  it("commenter_id rides with a page-only meta too, and never on a page-less or non-FB comment", () => {
+    expect(liveSessionPayload(fb({ liveVideoId: "", commenterId: "u77" }), order, "2026-09-23").platform_meta).toEqual({ page_id: "106797184700669", commenter_id: "u77" });
+    expect(liveSessionPayload(fb({ pageId: "", commenterId: "u77" }), order, "2026-09-23").platform_meta).toBeUndefined();
+    expect(liveSessionPayload(fb({ platform: "TikTok", commenterId: "u77" }), order, "2026-09-23").platform_meta).toBeUndefined();
+  });
+  it("nothing else in the session row changes because of commenterId", () => {
+    const a = liveSessionPayload(fb(), order, "2026-09-23");
+    const b = liveSessionPayload(fb({ commenterId: "u77" }), order, "2026-09-23");
+    expect({ ...b, platform_meta: a.platform_meta }).toEqual(a);
+  });
+});
+
+describe("createOrder — FB order with vs without commenterId: same buyer number and item", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("buyer number, item, price and handle are identical either way", () => {
+    const run = (c: ProdComment) => {
+      const { result } = renderHook(() => useOrders({ getBuyers: () => [], applyOrder: () => {}, sessionDate: "2026-09-23" }));
+      return result.current.createOrder(c, 0)!;
+    };
+    const withId = run(fromServer());
+    const withoutId = run({ ...fromServer(), commenterId: "" } as unknown as ProdComment);
+    expect(withId.bNum).toBe(withoutId.bNum);
+    expect(withId.item).toBe(withoutId.item);
+    expect(withId.price).toBe(withoutId.price);
+    expect(withId.handle).toBe(withoutId.handle);
+    expect(withId.item).toBe("mine");     // price 0 → the comment text, as before
+    expect(withId.handle).toBe("Maria");  // display name, not the id
+  });
+});
+
 describe("createOrder — FB order persists page_id end to end (server mapper → session write)", () => {
   beforeEach(() => vi.clearAllMocks());
-  const expected = { page_id: "106797184700669", live_video_id: "1551613923647732" };
+  // from.id "u77" on the server mapper's input → commenter_id rides along (receipt grouping key)
+  const expected = { page_id: "106797184700669", live_video_id: "1551613923647732", commenter_id: "u77" };
 
   it("direct path: saveLiveSessionOrder receives platform_meta + comment_msg_id; numbering unchanged", async () => {
     const { result } = renderHook(() => useOrders({ getBuyers: () => [], applyOrder: () => {}, sessionDate: "2026-09-23" }));

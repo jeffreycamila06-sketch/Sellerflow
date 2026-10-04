@@ -95,5 +95,8 @@ export function fbToPayload(raw, ctx = {}) {
     // ── additive receipt-plumbing keys (pass through emitCommentScoped untouched) ──
     pageId: pageId == null ? null : String(pageId),
     liveVideoId: liveVideoId == null ? null : String(liveVideoId),
+    // The commenter's Facebook user id (from.id), "" when Graph omits `from`. Lets a later
+    // Messenger receipt group orders by the real person, not the display name.
+    commenterId: fromId,
   };
 }

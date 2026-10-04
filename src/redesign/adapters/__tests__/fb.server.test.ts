@@ -4,6 +4,7 @@
 // shape (input names defensive, from-absent case, msgId=comment.id, pageId/liveVideoId
 // additive) · token AES round-trip + tamper + 7-day expiry margin. Nothing here touches
 // server.js / emitCommentScoped / the feed.
+import { sanitizeCommentPayload } from "../../../../server/sanitize.js";
 import { describe, it, expect } from "vitest";
 import { fbConfig, GRAPH_VERSION } from "../../../../server/fbConfig.js";
 import { fbToPayload, parseFbTimeMs } from "../../../../server/fbComment.js";
@@ -50,6 +51,21 @@ describe("fbToPayload — OUTPUT shape pinned; INPUT names defensive; from may b
     expect(p.avatar).toBe(""); // no from.picture returned → "" (client shows initials); no tokenless URL
     expect(typeof p.time).toBe("string");
     expect(p.timestamp).toBe(new Date(Date.parse("2026-09-16T00:00:00+0000")).toISOString());
+  });
+
+  it("commenterId = from.id (additive); \"\" when from or from.id is absent; handle/name unchanged", () => {
+    const p = fbToPayload({ id: "LV42_c1", from: { name: "Maria", id: "u77" }, message: "mine" }, ctx);
+    expect(p.commenterId).toBe("u77");
+    expect(p.handle).toBe("Maria");
+    expect(p.name).toBe("Maria");
+    expect(fbToPayload({ id: "x", message: "hi" }, ctx).commenterId).toBe("");
+    expect(fbToPayload({ id: "x", from: { name: "Ann" } }, ctx).commenterId).toBe("");
+    expect(fbToPayload(null, ctx).commenterId).toBe("");
+  });
+
+  it("the emitCommentScoped sanitizer passes commenterId through unchanged", () => {
+    const p = fbToPayload({ id: "LV42_c1", from: { name: "Maria", id: "u77" }, message: "mine" }, ctx);
+    expect(sanitizeCommentPayload(p).commenterId).toBe("u77");
   });
 
   it("msgId = comment.id (stable), NOT a timestamp", () => {
