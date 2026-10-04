@@ -1945,7 +1945,7 @@ try {
       liveKey,
       renderUrl: RENDER_URL,
       // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
-      emitComment: (sellerId, shopUsername, payload) => { void emitCommentScoped(sellerId, "Shopee", shopUsername, payload); },
+      emitComment: (sellerId, shopUsername, payload) => { void emitCommentScoped(sellerId, "Shopee", shopUsername, { ...payload, sellerId: emailIdOf(sellerId) }); },
       // platform_status for the Shopee pill (username = shop id, the scoping key).
       statusEmit: (sellerId, { connected, shopId, sessionId }) => {
         io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Shopee", connected, sellerId: emailIdOf(sellerId), username: String(shopId), sessionId: String(sessionId || "") });
@@ -2015,7 +2015,7 @@ try {
       liveKey,
       renderUrl: RENDER_URL,
       // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
-      emitComment: (sellerId, scopeKey, payload) => { void emitCommentScoped(sellerId, "Facebook", scopeKey, payload); },
+      emitComment: (sellerId, scopeKey, payload) => { void emitCommentScoped(sellerId, "Facebook", scopeKey, { ...payload, sellerId: emailIdOf(sellerId) }); },
       // platform_status for the Facebook pill (username = the scoping key = page
       // username || page id, matching the emitComment sourceUsername).
       // sessionId = the CONNECTING browser's session (from the /fb/connect body), NOT the
