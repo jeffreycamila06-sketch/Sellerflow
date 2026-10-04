@@ -1,5 +1,5 @@
 -- 72 — BUYER ALERT, Phase 1 (alerts only). NOT APPLIED — written for review; apply separately.
--- Additive: one new table + one new RPC. Nothing existing is altered.
+-- Additive: two new tables + two new RPCs. Nothing existing is altered.
 --
 -- During a live the Dashboard warns the seller on comment rows about:
 --   red   — a buyer with 3+ RETURNED parcels (minus the ones this seller forgave)
