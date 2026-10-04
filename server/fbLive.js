@@ -39,7 +39,7 @@ import { maxAccountsForPlan } from "./accountCap.js";
 export const GRAPH_HOST = "https://graph.facebook.com";
 export const FB_DIALOG_HOST = "https://www.facebook.com";
 export const APP_REDIRECT_URL = "https://www.sellerflowlive.com"; // where the callback bounces the browser back to
-export const OAUTH_SCOPE = "pages_show_list,pages_read_engagement";
+export const OAUTH_SCOPE = "pages_show_list,pages_read_engagement,pages_read_user_content";
 export const POLL_ACTIVE_MS = 2000;   // cadence while comments are flowing
 export const POLL_QUIET_MS = 5000;    // cadence when a poll returned nothing new
 export const MAX_AUTH_FAILURES = 3;   // consecutive auth failures → mark inactive + stop

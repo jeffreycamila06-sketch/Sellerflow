@@ -98,7 +98,7 @@ describe("buildAuthUrl — versioned dialog + scope + bound state", () => {
     expect(url.startsWith(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?`)).toBe(true);
     const qs = new URLSearchParams(url.split("?")[1]);
     expect(qs.get("client_id")).toBe("app123");
-    expect(qs.get("scope")).toBe("pages_show_list,pages_read_engagement");
+    expect(qs.get("scope")).toBe("pages_show_list,pages_read_engagement,pages_read_user_content");
     expect(qs.get("redirect_uri")).toBe("https://srv.test/fb/oauth/callback");
     expect(verifyState(String(qs.get("state")), CONFIG.appSecret, 1_000_000)).toBe("user-1");
   });
