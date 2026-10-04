@@ -54,6 +54,7 @@
   /* U10 — danger tint (danger @ 10%): screens referenced var(--danger-soft, …)
      with divergent inline fallbacks; defining it makes the tint theme-consistent. */
   --danger-soft: rgba(225,29,72,.1);
+  --warn-soft: rgba(217,119,6,.1); /* Buyer Alert amber row tint (warn @ 10%) */
   /* Miner-risk chips (theme-adaptive FILL tokens; a filled chip needs a
      saturated background that keeps its ink legible — the --danger/--warn TEXT
      tokens are tuned for text-on-surface, not fills, so risk chips get their
@@ -99,6 +100,7 @@
   --warn: #fbbf24;
   --danger: #fb7185;
   --danger-soft: rgba(251,113,133,.16);
+  --warn-soft: rgba(251,191,36,.14);
   /* Miner-risk chips — dark theme. The FILL stays SATURATED (crimson/deep amber,
      NOT the lightened --danger/--warn text tokens) so white ink reads AND the
      chip pops against the near-black base; unknown = subtle light-on-dark tint. */

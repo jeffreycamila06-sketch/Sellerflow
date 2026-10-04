@@ -46,6 +46,8 @@ import FbChannels from "./screens/FbChannels";
 import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
+import BuyerAlertSheet from "./components/BuyerAlertSheet";
+import { buyerAlertAllowed, useBuyerAlert } from "./adapters/buyerAlert";
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import type { ConnectTab } from "./screens/ConnectModal";
@@ -1036,6 +1038,10 @@ export default function RedesignApp() {
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
+  // BUYER ALERT (Phase 1, gated: admin + budgetukay*) — ONE RPC when a live source connects,
+  // refreshed every 10 min; rows do an O(1) map lookup. Non-gated → no RPC, no map, no change.
+  const buyerAlert = useBuyerAlert(buyerAlertAllowed(auth.profile?.email, auth.profile?.role), ttEff || fbEff || shopeeEff);
+  const [buyerAlertHandle, setBuyerAlertHandle] = useState<string | null>(null);
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never
   // modified). Connected → today's behavior ("Session continues …").
@@ -1828,6 +1834,8 @@ export default function RedesignApp() {
               autoSoldOut={autoDetect ? autoSoldOutVisible : []}
               onDismissSoldOut={(code) => setAutoDismissedSoldOut((s) => { const n = new Set(s); n.add(code); return n; })}
               autoBadges={autoBadges}
+              buyerAlerts={buyerAlert.views}
+              onBuyerTap={buyerAlert.views ? setBuyerAlertHandle : undefined}
               /* "Same price for all items" — persistent chip while ON; ✕ = same as turning it
                  OFF in Settings: instant off + toast, the price stays remembered. */
               samePrice={samePriceCfg.active}
@@ -1835,6 +1843,13 @@ export default function RedesignApp() {
                 void samePriceCfg.setEnabled(false);
                 setToast({ msg: tpl(tApp.rd_lss_off_sp, { price: `${cur}${(samePriceCfg.price ?? 0).toLocaleString("en-US")}` }), kind: "ok" });
               }}
+            />
+          )}
+          {screen === "dashboard" && buyerAlertHandle && buyerAlert.data?.get(buyerAlertHandle) && (
+            <BuyerAlertSheet
+              handle={buyerAlertHandle} record={buyerAlert.data.get(buyerAlertHandle)!}
+              overrides={buyerAlert.overrides} cur={cur}
+              onForgive={buyerAlert.setForgiven} onClose={() => setBuyerAlertHandle(null)}
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
