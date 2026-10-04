@@ -1990,6 +1990,13 @@ try {
         const { data } = await serviceSb.from("fb_pages").select("*").eq("user_id", userId).eq("page_id", String(pageId)).maybeSingle();
         return data || null;
       },
+      // fb_receipt_access (sql/73): may this user grant pages_messaging? Any error → false.
+      async hasReceiptAccess(userId) {
+        try {
+          const { data, error } = await serviceSb.from("fb_receipt_access").select("user_id").eq("user_id", String(userId || "")).eq("enabled", true).maybeSingle();
+          return !error && !!data;
+        } catch { return false; }
+      },
       async listPages(userId) {
         // NEVER select access_token — the /fb/pages response must not carry tokens.
         const { data } = await serviceSb.from("fb_pages").select("page_id, page_name, page_username, active").eq("user_id", userId);

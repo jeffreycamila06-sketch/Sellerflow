@@ -163,6 +163,16 @@ export async function fetchPages({ config, fetchImpl, userToken }) {
     return list.map((p) => ({ id: String(p.id || ""), name: String(p.name || ""), username: p.username ? String(p.username) : "", access_token: String(p.access_token || "") })).filter((p) => p.id && p.access_token);
   } catch { return []; }
 }
+// Did this user grant pages_messaging? GET /me/permissions with the long-lived USER token
+// → true only when an entry { permission: "pages_messaging", status: "granted" } exists.
+// Declined / missing / non-200 / any error → false. Never throws.
+export async function fetchMessagingGranted({ fetchImpl, userToken }) {
+  try {
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl("/me/permissions", { access_token: userToken }) });
+    if (status !== 200 || !Array.isArray(body.data)) return false;
+    return body.data.some((p) => p && p.permission === "pages_messaging" && p.status === "granted");
+  } catch { return false; }
+}
 // Is this page currently live? Returns { liveVideoId } (the first status=LIVE video, most
 // recent first) or { liveVideoId: "" }. status is uppercase-compared so only an ACTIVE
 // broadcast matches — an ended one (VOD / LIVE_STOPPED / PROCESSING) is excluded, so we
@@ -251,13 +261,15 @@ export function createFbRuntime(deps) {
   const redirectUri = `${String(renderUrl).replace(/\/+$/, "")}/fb/oauth/callback`;
 
   // ---- OAuth ----
-  function buildAuthUrl(userId) {
+  // messaging = the user is on fb_receipt_access → also ask for pages_messaging. Everyone
+  // else gets exactly OAUTH_SCOPE (unchanged).
+  function buildAuthUrl(userId, { messaging = false } = {}) {
     const state = signState({ userId, key: config.appSecret, nowMs: now() });
     const q = new URLSearchParams({
       client_id: config.appId,
       redirect_uri: redirectUri,
       state,
-      scope: OAUTH_SCOPE,
+      scope: messaging ? `${OAUTH_SCOPE},pages_messaging` : OAUTH_SCOPE,
       response_type: "code",
     });
     return `${FB_DIALOG_HOST}/${GRAPH_VERSION}/dialog/oauth?${q.toString()}`;
@@ -274,6 +286,8 @@ export function createFbRuntime(deps) {
       if (!longTok.ok) return { redirect: `${appUrl}/?fb=error&code=token_exchange` };
       const pages = await fetchPages({ config, fetchImpl, userToken: longTok.access });
       if (pages.length === 0) return { redirect: `${appUrl}/?fb=error&code=no_pages` };
+      // Recorded per page for a later Messenger receipt. Never throws; any doubt → false.
+      const canMessage = await fetchMessagingGranted({ fetchImpl, userToken: longTok.access });
 
       // Per-plan cap (Option A: fb_pages rows vs maxAccountsForPlan) — re-auth of an
       // EXISTING page is always allowed; each NEW page counts against the cap.
@@ -292,7 +306,7 @@ export function createFbRuntime(deps) {
         await store.upsertPage({
           user_id: userId, page_id: p.id, page_name: p.name || null, page_username: p.username || null,
           access_token: encryptToken(p.access_token, config.tokenKey),
-          token_expires_at: expiresAtIso, active: true,
+          token_expires_at: expiresAtIso, active: true, can_message: canMessage,
         });
         upserted++;
         if (!existing) count++;
@@ -499,8 +513,10 @@ export function createFbRuntime(deps) {
     const requireConnectRate = extra.requireConnectRate || passThrough;
     const requirePlanActive = extra.requirePlanActive || passThrough;
 
-    app.get("/fb/oauth/start", requireAuth, (req, res) => {
-      try { return res.json({ url: buildAuthUrl(req.authUserId) }); }
+    app.get("/fb/oauth/start", requireAuth, async (req, res) => {
+      let messaging = false;
+      try { messaging = typeof store.hasReceiptAccess === "function" && (await store.hasReceiptAccess(req.authUserId)) === true; } catch { messaging = false; }
+      try { return res.json({ url: buildAuthUrl(req.authUserId, { messaging }) }); }
       catch { return res.status(500).json({ ok: false, error: "fb_start_failed" }); }
     });
 
