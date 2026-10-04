@@ -47,7 +47,7 @@ describe("fbToPayload — OUTPUT shape pinned; INPUT names defensive; from may b
       roomId: "LV42", isBuy: false, buyerNum: null, buyerData: null,
       msgId: "LV42_c1", pageId: "PAGE9", liveVideoId: "LV42",
     });
-    expect(p.avatar).toBe(`https://graph.facebook.com/${GRAPH_VERSION}/u77/picture`); // versioned URL for from.id
+    expect(p.avatar).toBe(""); // no from.picture returned → "" (client shows initials); no tokenless URL
     expect(typeof p.time).toBe("string");
     expect(p.timestamp).toBe(new Date(Date.parse("2026-09-16T00:00:00+0000")).toISOString());
   });
@@ -66,16 +66,28 @@ describe("fbToPayload — OUTPUT shape pinned; INPUT names defensive; from may b
     expect(p.msgId).toBe("LV42_c2");
   });
 
-  it("from.id but no from.name → handle falls back to id; name 'Unknown'; avatar from id", () => {
+  it("from.id but no from.name → handle falls back to id; name 'Unknown'; no picture → avatar ''", () => {
     const p = fbToPayload({ id: "x", from: { id: "u9" }, message: "y" }, ctx);
     expect(p.handle).toBe("u9");
     expect(p.name).toBe("Unknown");
-    expect(p.avatar).toBe(`https://graph.facebook.com/${GRAPH_VERSION}/u9/picture`);
+    expect(p.avatar).toBe("");
   });
 
-  it("expanded from.picture.data.url is used verbatim over the constructed URL", () => {
-    const p = fbToPayload({ id: "x", from: { id: "u9", picture: { data: { url: "http://cdn/pic.jpg" } } } }, ctx);
-    expect(p.avatar).toBe("http://cdn/pic.jpg");
+  it("from.picture.data.url → avatar is exactly that URL", () => {
+    const url = "https://platform-lookaside.fbsbx.com/platform/profilepic/?asid=u9&height=50&width=50&ext=1&hash=abc";
+    const p = fbToPayload({ id: "x", from: { id: "u9", name: "Ann", picture: { data: { url } } } }, ctx);
+    expect(p.avatar).toBe(url);
+  });
+
+  it("no picture → avatar '' (never a graph.facebook.com/{id}/picture URL); odd picture shapes never throw", () => {
+    for (const from of [{ id: "u9", name: "Ann" }, { id: "u9", picture: null }, { id: "u9", picture: {} }, { id: "u9", picture: { data: null } }, { id: "u9", picture: "x" }]) {
+      let p: { avatar: string } | undefined;
+      expect(() => { p = fbToPayload({ id: "x", from }, ctx); }).not.toThrow();
+      expect(p!.avatar, JSON.stringify(from)).toBe("");
+    }
+    expect(() => fbToPayload({ id: "x", from: { id: "u9", picture: { data: { url: 42 } } } }, ctx)).not.toThrow();
+    expect(fbToPayload(null, ctx).avatar).toBe("");
+    expect(fbToPayload({ id: "x", from: "garbage" }, ctx).avatar).toBe("");
   });
 
   it("additive pageId/liveVideoId are String-coerced; null when absent from ctx", () => {

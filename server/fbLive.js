@@ -200,7 +200,7 @@ export async function fetchLiveStatus({ config, fetchImpl, liveVideoId, pageToke
 export async function fetchComments({ config, fetchImpl, liveVideoId, pageToken }) {
   void config;
   const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${liveVideoId}/comments`, {
-    fields: "id,message,from,created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", access_token: pageToken,
+    fields: "id,message,from{id,name,picture},created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", access_token: pageToken,
   }) });
   const hasData = Array.isArray(body.data);
   const list = hasData ? body.data : [];

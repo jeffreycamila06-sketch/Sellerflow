@@ -10,7 +10,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  signState, verifyState, pickNewComments, nextPollDelay, createFbRuntime,
+  signState, verifyState, pickNewComments, nextPollDelay, createFbRuntime, fetchComments,
   POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES, MAX_FETCH_ERRORS, IDLE_STOP_MS, MAX_SESSION_MS,
 } from "../../../../server/fbLive.js";
 import { encryptToken, decryptToken } from "../../../../server/fbTokens.js";
@@ -737,5 +737,16 @@ describe("session-ID contract — FB events carry the CONNECTING browser session
     const line = srv.slice(i, srv.indexOf("\n", i));
     expect(line).toContain('sessionId: String(sessionId || "")');
     expect(line).not.toContain("liveVideoId");
+  });
+});
+
+describe("fetchComments — asks Graph for the commenter picture", () => {
+  it("requests fields id,message,from{id,name,picture},created_time on the live video's comments", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ status: 200, json: async () => ({ data: [] }) });
+    await fetchComments({ config: {}, fetchImpl, liveVideoId: "LV1", pageToken: "PT" });
+    const url = new URL(String(fetchImpl.mock.calls[0][0]));
+    expect(url.pathname).toBe(`/${GRAPH_VERSION}/LV1/comments`);
+    expect(url.searchParams.get("fields")).toBe("id,message,from{id,name,picture},created_time");
+    expect(url.searchParams.get("access_token")).toBe("PT");
   });
 });

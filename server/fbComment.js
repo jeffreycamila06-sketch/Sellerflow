@@ -13,9 +13,9 @@
 // emitCommentScoped choke-point via server/sanitize.js (covers live + initial + reuse
 // relays in one place). Doubling it here would be redundant. Do not add sanitize here.
 //
-// ⚠️ GRAPH VERSION: the avatar picture URL is built from the SINGLE GRAPH_VERSION pin
-// in server/fbConfig.js — never an unversioned graph.facebook.com URL.
-import { GRAPH_VERSION } from "./fbConfig.js";
+// Avatar = from.picture.data.url (fetchComments asks for from{id,name,picture}). No
+// fallback URL: a tokenless graph.facebook.com/{id}/picture does not load, so a
+// missing picture → "" and the client shows initials.
 
 // Graph `created_time` is an ISO-8601 string (e.g. "2026-09-16T12:00:00+0000"); be
 // tolerant of a numeric epoch too. Returns ms, or null when unparseable (caller falls
@@ -63,10 +63,8 @@ export function fbToPayload(raw, ctx = {}) {
   const name = firstStr(fromName, "Unknown");
   const comment = firstStr(r.message, r.text, r.comment);
   const commentId = firstStr(r.id, r.comment_id, r.msg_id);
-  // Avatar: an expanded from.picture.data.url if present, else the versioned Graph
-  // picture endpoint for the commenter id, else "" (no id / anonymous).
-  const avatar = firstStr(from?.picture?.data?.url, r.avatar)
-    || (fromId ? `https://graph.facebook.com/${GRAPH_VERSION}/${fromId}/picture` : "");
+  // Avatar: the expanded from.picture.data.url when Graph returns it, else "" (initials).
+  const avatar = firstStr(from?.picture?.data?.url, r.avatar);
 
   // Prefer the comment's real create time; when absent, derive a STABLE ms from a
   // numeric comment id BEFORE falling back to nowMs (a stable timestamp keeps the
