@@ -23,6 +23,7 @@ import { dayStamp } from "../adapters/csv";
 import type { Buyer } from "../../lib/orderTypes";
 import type { HistoryState } from "../adapters/ordersSearch";
 import { useT, tpl } from "../i18n";
+import ReceiptSheet from "../components/ReceiptSheet";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -31,7 +32,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "", topTabs,
+  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -45,6 +46,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   seller?: { name?: string; email?: string }; // branded export header (optional)
   initialQuery?: string; // Sales tab → tap a buyer → open Orders pre-filtered by name
   topTabs?: ReactNode;   // the "Orders | Miners" segment, rendered in the header
+  // Messenger receipt step 1 — FB preview accounts only (RedesignApp passes the gate).
+  // false/absent → the receipt box renders exactly as before.
+  fbReceipt?: boolean;
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
@@ -56,6 +60,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const [customTo, setCustomTo] = useState("");
   const [rangeOpen, setRangeOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [receiptSheetOpen, setReceiptSheetOpen] = useState(false);
   const live = state === "live";
   const searching = query.trim().length > 0;
   // A pure-digit query that EXACTLY matches a buyer# → show the receipt box ONLY
@@ -291,6 +296,15 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
                 <span style={{ fontFamily: mono, fontSize: 20, fontWeight: 500, color: "var(--text)" }}>{cur}{fmt(receipt.total)}</span>
               </span>
             </div>
+            {fbReceipt && receipt.platform === "Facebook" && (
+              <button type="button" data-testid="messenger-receipt-btn" onClick={() => setReceiptSheetOpen(true)}
+                style={{ marginTop: 12, width: "100%", padding: "10px 0", borderRadius: 11, border: "1.3px solid var(--accent)", background: "var(--accent-soft)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                {t.rd_rc_button}
+              </button>
+            )}
+            {fbReceipt && receipt.platform === "Facebook" && receiptSheetOpen && (
+              <ReceiptSheet key={receipt.num} receipt={receipt} cur={cur} onClose={() => setReceiptSheetOpen(false)} />
+            )}
           </div>
         ) : (
           <>
