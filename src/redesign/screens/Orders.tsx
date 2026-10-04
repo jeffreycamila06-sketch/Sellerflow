@@ -11,7 +11,7 @@
 // display-only, the session state/TODAY bar/window semantics are unreachable
 // from here. Every result row gets ↻ Reprint (the audited zero-write path) so
 // the workflow is type → find → reprint → stick.
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { ORDERS, avColor, initials, fmt, statusColor, type Order } from "../data";
 import { filterOrders, buyerReceipt, type ReadState } from "../adapters/useReadData";
 import {
@@ -24,6 +24,7 @@ import type { Buyer } from "../../lib/orderTypes";
 import type { HistoryState } from "../adapters/ordersSearch";
 import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
+import { fbReceiptInfo } from "../adapters/fbReceipt";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -32,7 +33,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false,
+  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -49,6 +50,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // Messenger receipt step 1 — FB preview accounts only (RedesignApp passes the gate).
   // false/absent → the receipt box renders exactly as before.
   fbReceipt?: boolean;
+  sessionId?: string | null; // the current session (Messenger receipt Send + "Receipt sent ✓")
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
@@ -67,6 +69,17 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // (Option A). EXACT `num ===`, so "1" is buyer #1, never #10/#11 (contains).
   const trimmed = query.trim();
   const receipt = /^\d+$/.test(trimmed) ? buyerReceipt(buyers, Number(trimmed)) : null;
+  // "Receipt sent ✓" — ONE info call when a Facebook buyer's box appears (no polling).
+  const tagKey = fbReceipt && receipt && receipt.platform === "Facebook" && sessionId ? `${sessionId}:${receipt.num}` : "";
+  const [sentTag, setSentTag] = useState<{ key: string; sent: boolean } | null>(null);
+  useEffect(() => {
+    if (!tagKey) return;
+    let alive = true;
+    const [sid, n] = [tagKey.slice(0, tagKey.lastIndexOf(":")), Number(tagKey.slice(tagKey.lastIndexOf(":") + 1))];
+    void fbReceiptInfo(sid, n).then((r) => { if (alive && r.ok) setSentTag({ key: tagKey, sent: r.sentCount > 0 }); });
+    return () => { alive = false; };
+  }, [tagKey]);
+  const showSentTag = !!tagKey && sentTag?.key === tagKey && sentTag.sent;
 
   // F4 base set by date range. "session" (default) = the loaded window as-is
   // (identical to today's behavior); "today" = window rows dated today; 7days /
@@ -290,7 +303,10 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               ))}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginTop: 4, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>{tpl(t.rd_ord_receipt_items, { n: receipt.count })}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>
+                {tpl(t.rd_ord_receipt_items, { n: receipt.count })}
+                {showSentTag && <span data-testid="receipt-sent-tag" style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, color: "var(--ok)" }}>{t.rd_rs_tag_sent}</span>}
+              </span>
               <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_ord_receipt_total}</span>
                 <span style={{ fontFamily: mono, fontSize: 20, fontWeight: 500, color: "var(--text)" }}>{cur}{fmt(receipt.total)}</span>
@@ -303,7 +319,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               </button>
             )}
             {fbReceipt && receipt.platform === "Facebook" && receiptSheetOpen && (
-              <ReceiptSheet key={receipt.num} receipt={receipt} cur={cur} onClose={() => setReceiptSheetOpen(false)} />
+              <ReceiptSheet key={receipt.num} receipt={receipt} cur={cur} onClose={() => setReceiptSheetOpen(false)}
+                sessionId={sessionId} onSent={(n) => { if (tagKey) setSentTag({ key: tagKey, sent: n > 0 }); }} />
             )}
           </div>
         ) : (

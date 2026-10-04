@@ -24,6 +24,7 @@ import { shopeeConfig } from "./server/shopeeConfig.js";
 import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime } from "./server/fbLive.js";
+import { createFbReceipt } from "./server/fbReceipt.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -122,7 +123,9 @@ const defaultJsonParser = express.json();
 // /admin/parcel-tracking-poll is cron-triggered with no meaningful body and gates
 // on a shared-secret token BEFORE doing anything — skip the global parser so the
 // token check runs before any body handling (the B1 auth-before-parser discipline).
-app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" ? next() : defaultJsonParser(req, res, next)));
+// /fb/receipt/send carries a base64 receipt picture (≤ 4 MB) — it parses its own body with a
+// 6mb limit AFTER auth + its rate limit (server/fbReceipt.js), same discipline as parcel-scan.
+app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)));
 
 function bearerToken(req) {
   const h = String(req.get("authorization") || "");
@@ -1997,6 +2000,33 @@ try {
           return !error && !!data;
         } catch { return false; }
       },
+      // ── Messenger receipt (server/fbReceipt.js, sql/75) — service role, explicit user_id ──
+      async listReceiptOrders(userId, sessionId, buyerNumber, sinceIso) {
+        const { data, error } = await serviceSb.from("live_session_orders")
+          .select("comment_msg_id, platform_meta, handle, created_at")
+          .eq("user_id", userId).eq("session_id", sessionId).eq("buyer_number", buyerNumber)
+          .eq("platform", "Facebook").not("comment_msg_id", "is", null).gte("created_at", sinceIso);
+        if (error) throw new Error("receipt_orders_read");
+        return data || [];
+      },
+      async listReceiptRows(commentIds) {
+        const { data, error } = await serviceSb.from("fb_receipts").select("user_id, comment_id, status, sent_at").in("comment_id", commentIds);
+        if (error) throw new Error("receipt_rows_read");
+        return data || [];
+      },
+      async insertReceipt(row) {
+        const { data, error } = await serviceSb.from("fb_receipts").insert(row).select("id").single();
+        if (error) return error.code === "23505" ? { conflict: true } : { error: "insert_failed" };
+        return { id: data.id };
+      },
+      async updateReceipt(id, patch) {
+        await serviceSb.from("fb_receipts").update(patch).eq("id", id);
+      },
+      async uploadReceiptImage(path, buf) {
+        const { error } = await serviceSb.storage.from("fb-receipts").upload(path, buf, { contentType: "image/png", upsert: false });
+        if (error) throw new Error("upload_failed");
+        return serviceSb.storage.from("fb-receipts").getPublicUrl(path).data.publicUrl;
+      },
       async listPages(userId) {
         // NEVER select access_token — the /fb/pages response must not carry tokens.
         const { data } = await serviceSb.from("fb_pages").select("page_id, page_name, page_username, active").eq("user_id", userId);
@@ -2036,6 +2066,8 @@ try {
     // F3 — pass the SAME connect middlewares TikTok uses so /fb/connect enforces the
     // paywall (requirePlanActive) + rate limit (requireConnectRate).
     fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive });
+    // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
+    createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);
     fbRuntime.startRefreshTimer();
     console.log("[FB] enabled — OAuth + poller routes registered");
   }
