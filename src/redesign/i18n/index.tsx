@@ -1630,6 +1630,22 @@ const RAW: Record<string, Row> = {
   rd_prd_quick_stock: { en: "Adjust stock", fil: "I-adjust ang stock", zh: "调整库存", "zh-TW": "調整庫存", vi: "Điều chỉnh tồn kho", th: "ปรับสต๊อก", id: "Sesuaikan stok", bg: "Коригирай наличността" },
   rd_prd_stock_minus: { en: "Decrease stock", fil: "Bawasan ang stock", zh: "减少库存", "zh-TW": "減少庫存", vi: "Giảm tồn kho", th: "ลดสต๊อก", id: "Kurangi stok", bg: "Намали наличността" },
   rd_prd_stock_plus: { en: "Increase stock", fil: "Dagdagan ang stock", zh: "增加库存", "zh-TW": "增加庫存", vi: "Tăng tồn kho", th: "เพิ่มสต๊อก", id: "Tambah stok", bg: "Увеличи наличността" },
+
+  // ── Buyer Alert Phase 1 (2026-10-04): returns / near-return reminders on live comment rows ──
+  rd_ba_chip_returns: { en: "{n} returns", fil: "{n} returns", zh: "退件 {n}", "zh-TW": "退件 {n}", vi: "{n} lần hoàn", th: "ตีกลับ {n}", id: "{n} retur", bg: "{n} върнати" },
+  rd_ba_chip_days: { en: "{n} days left", fil: "{n} days left", zh: "剩 {n} 天", "zh-TW": "剩 {n} 天", vi: "còn {n} ngày", th: "เหลือ {n} วัน", id: "sisa {n} hari", bg: "остават {n} дни" },
+  rd_ba_near_line: { en: "May parcel sa 7-11 {store} — {n} days na lang bago ma-return", fil: "May parcel sa 7-11 {store} — {n} days na lang bago ma-return", zh: "7-11 {store} 有包裹 — 还剩 {n} 天就会退回", "zh-TW": "7-11 {store} 有包裹 — 再 {n} 天就會退回", vi: "Có bưu kiện ở 7-11 {store} — còn {n} ngày trước khi bị hoàn", th: "มีพัสดุที่ 7-11 {store} — อีก {n} วันจะถูกตีกลับ", id: "Ada paket di 7-11 {store} — tinggal {n} hari sebelum diretur", bg: "Има пратка в 7-11 {store} — остават {n} дни до връщане" },
+  rd_ba_tap_title: { en: "Buyer parcel history", fil: "Parcel history ng buyer", zh: "买家包裹记录", "zh-TW": "買家包裹紀錄", vi: "Lịch sử bưu kiện của người mua", th: "ประวัติพัสดุของผู้ซื้อ", id: "Riwayat paket pembeli", bg: "История на пратките на купувача" },
+  rd_ba_returned: { en: "Returned", fil: "Returned", zh: "退件", "zh-TW": "退件", vi: "Bị hoàn", th: "ตีกลับ", id: "Diretur", bg: "Върнати" },
+  rd_ba_at_store: { en: "Nasa 7-11", fil: "Nasa 7-11", zh: "在 7-11", "zh-TW": "在 7-11", vi: "Ở 7-11", th: "อยู่ที่ 7-11", id: "Di 7-11", bg: "В 7-11" },
+  rd_ba_picked_up: { en: "Nakuha (7 days)", fil: "Nakuha (7 days)", zh: "已取件（7天）", "zh-TW": "已取件（7天）", vi: "Đã nhận (7 ngày)", th: "รับแล้ว (7 วัน)", id: "Diambil (7 hari)", bg: "Взети (7 дни)" },
+  rd_ba_returns_list: { en: "Returned parcels", fil: "Mga na-return na parcel", zh: "退件包裹", "zh-TW": "退件包裹", vi: "Bưu kiện bị hoàn", th: "พัสดุที่ตีกลับ", id: "Paket yang diretur", bg: "Върнати пратки" },
+  rd_ba_no_returns: { en: "No returned parcels", fil: "Walang na-return na parcel", zh: "没有退件", "zh-TW": "沒有退件", vi: "Không có bưu kiện bị hoàn", th: "ไม่มีพัสดุตีกลับ", id: "Tidak ada paket diretur", bg: "Няма върнати пратки" },
+  rd_ba_forgive: { en: "Forgive", fil: "Patawarin", zh: "原谅", "zh-TW": "原諒", vi: "Bỏ qua", th: "ยกโทษ", id: "Maafkan", bg: "Прости" },
+  rd_ba_undo: { en: "Undo", fil: "Ibalik", zh: "撤销", "zh-TW": "復原", vi: "Hoàn tác", th: "เลิกทำ", id: "Batalkan", bg: "Отмени" },
+  rd_ba_forgiven: { en: "Forgiven — not counted", fil: "Pinatawad — hindi bilang", zh: "已原谅 — 不计入", "zh-TW": "已原諒 — 不計入", vi: "Đã bỏ qua — không tính", th: "ยกโทษแล้ว — ไม่นับ", id: "Dimaafkan — tidak dihitung", bg: "Простено — не се брои" },
+  rd_ba_save_failed: { en: "Couldn't save. Try again.", fil: "Hindi na-save. Subukan ulit.", zh: "保存失败，请重试。", "zh-TW": "儲存失敗，請重試。", vi: "Không lưu được. Thử lại.", th: "บันทึกไม่สำเร็จ ลองอีกครั้ง", id: "Gagal menyimpan. Coba lagi.", bg: "Не се запази. Опитай пак." },
+  rd_ba_close: { en: "Close", fil: "Isara", zh: "关闭", "zh-TW": "關閉", vi: "Đóng", th: "ปิด", id: "Tutup", bg: "Затвори" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).

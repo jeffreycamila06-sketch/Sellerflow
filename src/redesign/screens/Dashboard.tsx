@@ -7,6 +7,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSPropert
 import { avColor, initials, type Comment } from "../data";
 import { basketCountFor } from "../adapters/basketCounts";
 import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
+import { normHandle, type BuyerAlertView } from "../adapters/buyerAlert";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
 import { computeRaffleEntries, type RaffleEntry } from "../adapters/raffle";
@@ -148,6 +149,7 @@ export default function Dashboard({
   onPrintWinner,
   basketCounts,
   minerRisk,
+  buyerAlerts, onBuyerTap,
 }: {
   comments: Comment[]; cur: string;
   // 🛒 per-buyer order count for the current session window (key: "handle platform").
@@ -156,6 +158,10 @@ export default function Dashboard({
   // Real-time miner-risk badge level per miner (key: "handle platform"). Display-
   // only; built upstream from the comment event's followerCount/createTime. O(1)/row.
   minerRisk?: Map<string, RiskLevel>;
+  // BUYER ALERT (gated) — per-buyer view keyed by normHandle(handle); undefined for every
+  // non-gated seller → rows render exactly as before. O(1) lookup per row, no query.
+  buyerAlerts?: Map<string, BuyerAlertView>;
+  onBuyerTap?: (handle: string) => void;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
   announcement?: Announcement | null; annDismissedId?: string; onDismissAnn?: (id: string) => void;
@@ -700,6 +706,9 @@ export default function Dashboard({
             // Miner-risk badge — O(1) lookup; null = no badge (verified-safe miner,
             // keeps the feed clean). Additive (a new element beside the handle).
             const risk = minerRiskFor(minerRisk, c.handle, c.platform);
+            // Buyer Alert — O(1) lookup; undefined = not gated / no parcels for this handle.
+            const ba = buyerAlerts?.get(normHandle(c.handle));
+            const baRed = !!ba?.red, baNear = ba?.near ?? null;
             return (
               <Fragment key={c.id}>
               {firstRestored && (
@@ -710,17 +719,27 @@ export default function Dashboard({
               <div className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11, ...(isRestored && !rowActionable && !orderedPrior ? { opacity: 0.62 } : null),
                   // risky rows get a glanceable faint tint + inset left accent
                   // (boxShadow inset = ZERO layout shift; row layout untouched).
-                  ...(risk === "risky" ? { background: "var(--danger-soft)", boxShadow: "inset 3px 0 0 var(--risk-risky-bg)" } : null) }}>
+                  ...(risk === "risky" ? { background: "var(--danger-soft)", boxShadow: "inset 3px 0 0 var(--risk-risky-bg)" } : null),
+                  // Buyer Alert tint (same language): red = returns, amber = parcel near return.
+                  ...(baRed ? { background: "var(--danger-soft)", boxShadow: "inset 3px 0 0 var(--risk-risky-bg)" }
+                    : baNear && risk !== "risky" ? { background: "var(--warn-soft)", boxShadow: "inset 3px 0 0 var(--risk-watch-bg)" } : null) }}
+                  {...(ba ? { "data-buyer-alert": baRed ? "red" : baNear ? "amber" : "none" } : null)}>
                 <CommentAvatar name={c.name} avatar={c.avatar} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
+                    {ba && onBuyerTap ? (
+                      <button onClick={() => onBuyerTap(normHandle(c.handle))} title={t.rd_ba_tap_title} data-testid="ba-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", lineHeight: "inherit", textDecoration: "underline dotted", textUnderlineOffset: 3 }}>{c.name}</button>
+                    ) : (
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
+                    )}
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>
                     {risk && (
                       <span data-testid="miner-risk" data-level={risk} title={RISK_TIP[risk](t)} aria-label={RISK_TIP[risk](t)} style={RISK_CHIP[risk]}>
                         {risk === "risky" ? "⚠ " : ""}{RISK_TAG[risk](t)}
                       </span>
                     )}
+                    {baRed && <span data-testid="ba-chip-red" style={RISK_CHIP.risky}>⚠ {tpl(t.rd_ba_chip_returns, { n: ba!.returns })}</span>}
+                    {baNear && <span data-testid="ba-chip-amber" style={RISK_CHIP.watch}>📦 {tpl(t.rd_ba_chip_days, { n: baNear.days })}</span>}
                     <span style={{ fontSize: 10.5, color: "var(--text-muted)", marginLeft: "auto", flexShrink: 0 }}>{c.time}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>
@@ -736,6 +755,11 @@ export default function Dashboard({
                       </span>
                     )}
                   </div>
+                  {baNear && (
+                    <div data-testid="ba-near-line" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--warn)", marginTop: 3, lineHeight: 1.3 }}>
+                      {tpl(t.rd_ba_near_line, { store: baNear.store, n: baNear.days })}
+                    </div>
+                  )}
                   {/* Order flow (dc.html v3 L210–227): printed badge · Enterprise
                       price-entry · 1-Click / Enterprise actions. History rows show
                       the full action row when actionable, the "Ordered ✓" chip when
