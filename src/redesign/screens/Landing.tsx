@@ -631,8 +631,12 @@ export default function Landing({
           </div>
           <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 40, paddingTop: 22, display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: C.inkSoft }}>
             <span>{t.rd_l2_foot_bottom}</span>
-            <a href="/privacy/" style={{ color: C.inkSoft }}>{t.rd_l2_privacy}</a>
+            <span style={{ display: "flex", gap: 14 }}>
+              <a href="/privacy/" style={{ color: C.inkSoft }}>{t.rd_l2_privacy}</a>
+              <a href="/terms/" style={{ color: C.inkSoft }}>Terms</a>
+            </span>
           </div>
+          <div style={{ marginTop: 10, fontSize: 12, color: C.inkSoft }}>Operated by SELLERFLOWLIVE PRINTER TRADING · Orani, Bataan, Philippines · jeffreycamila06@gmail.com</div>
         </div>
       </footer>
 
