@@ -1,6 +1,8 @@
 // FACEBOOK LIVE — server-side lock, mirroring the client gate (src/redesign/adapters/fbPreview.ts
-// + loadFbEnabled): Facebook is available when app_settings.fb_enabled is 'true' OR the caller is
-// one of the preview accounts. Applied after requireAuth to GET /fb/oauth/start, GET /fb/pages and
+// + loadFbEnabled + GET /fb/access): Facebook is available when app_settings.fb_enabled is 'true'
+// OR the caller is one of the preview accounts OR has an enabled row in fb_tester_access (sql/77,
+// service role only). DB testers do NOT skip any plan check (only the hard-coded preview list
+// does). Applied after requireAuth to GET /fb/oauth/start, GET /fb/pages and
 // POST /fb/connect. NOT to /fb/disconnect (stopping must always work) and not to the OAuth
 // callback (its signed state can only come from a locked /fb/oauth/start). The /fb/receipt/*
 // routes keep their own fb_receipt_access gate.
@@ -43,15 +45,69 @@ export function createFbFlagReader({ readFlag, now = () => Date.now(), ttlMs = F
   };
 }
 
+export const FB_TESTER_CACHE_MAX = 1000; // emails kept in the tester cache (oldest dropped)
+
+// fb_tester_access reader, per email: the same rules as createFbFlagReader — a successful read is
+// cached 60 s; on a read error the last value read successfully for THAT email is used (false if
+// there never was one) and the next read is again 60 s later; concurrent callers for one email
+// share one in-flight read. readTester(emailLowerCase) resolves true (enabled row) / false, or
+// throws. Empty email → false, no read.
+export function createFbTesterReader({ readTester, now = () => Date.now(), ttlMs = FB_FLAG_TTL_MS, max = FB_TESTER_CACHE_MAX }) {
+  const cache = new Map(); // email → { lastGood: boolean|null, checkedAt, inFlight }
+  return async function isFbTester(email) {
+    const e = String(email || "").trim().toLowerCase();
+    if (!e) return false;
+    let c = cache.get(e);
+    if (!c) {
+      c = { lastGood: null, checkedAt: -Infinity, inFlight: null };
+      cache.set(e, c);
+      while (cache.size > max) cache.delete(cache.keys().next().value);
+    }
+    if (now() - c.checkedAt < ttlMs) return c.lastGood === true;
+    if (!c.inFlight) {
+      const entry = c;
+      entry.inFlight = (async () => {
+        try {
+          entry.lastGood = (await readTester(e)) === true;
+        } catch {
+          /* keep lastGood */
+        } finally {
+          entry.checkedAt = now();
+          entry.inFlight = null;
+        }
+      })();
+    }
+    await c.inFlight;
+    return c.lastGood === true;
+  };
+}
+
+// The Facebook decision shared by the lock and GET /fb/access: preview (no read) → flag → tester.
+// Never throws; any failure counts as "no".
+export async function fbFacebookAllowed({ email, fbEnabled, isFbTester = null }) {
+  if (fbPreviewEmail(email)) return true;
+  try { if ((await fbEnabled()) === true) return true; } catch { /* flag unreadable → not on */ }
+  try { return typeof isFbTester === "function" && (await isFbTester(email)) === true; } catch { return false; }
+}
+
 // Express middleware: allowed → next(); else 403 { ok:false, error:"fb_not_available" } and nothing
 // else runs. The preview check needs no database read.
-export function createFbLock({ fbEnabled }) {
+export function createFbLock({ fbEnabled, isFbTester = null }) {
   return async function requireFbAvailable(req, res, next) {
-    if (fbPreviewEmail(req.userEmail)) return next();
-    let on = false;
-    try { on = (await fbEnabled()) === true; } catch { on = false; }
-    if (on) return next();
+    if (await fbFacebookAllowed({ email: req.userEmail, fbEnabled, isFbTester })) return next();
     return res.status(403).json({ ok: false, error: "fb_not_available" });
+  };
+}
+
+// GET /fb/access (after requireAuth) → { ok:true, facebook, receipt }. facebook = the lock's
+// decision; receipt = hasReceiptAccess (fb_receipt_access) for this user. Never 500s — any
+// failure answers false for that part.
+export function createFbAccessHandler({ fbEnabled, isFbTester = null, hasReceiptAccess = null }) {
+  return async function fbAccess(req, res) {
+    const facebook = await fbFacebookAllowed({ email: req.userEmail, fbEnabled, isFbTester });
+    let receipt = false;
+    try { receipt = typeof hasReceiptAccess === "function" && (await hasReceiptAccess(req.authUserId)) === true; } catch { receipt = false; }
+    return res.json({ ok: true, facebook, receipt });
   };
 }
 

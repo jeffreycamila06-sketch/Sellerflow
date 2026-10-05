@@ -34,7 +34,7 @@ describe("Dashboard — FB dropdown: byte-identical gate off, real picker on", (
 
 describe("RedesignApp — FB visibility gate = flag OR owner preview", () => {
   it("fbEnabled = fbFlag || fbPreview (mirror shopeeEnabled); preview from FB_PREVIEW_EMAILS", () => {
-    expect(app).toMatch(/const fbEnabled = fbFlag \|\| fbPreview;/);
+    expect(app).toMatch(/const \{ fbEnabled, receiptUi: fbReceiptUi \} = fbUiGates\(\{ fbFlag, fbPreview, access: fbAccess \}\);/);
     expect(app).toMatch(/const fbPreview = fbPreviewEnabled\(auth\.profile\?\.email\);/);
   });
   it("the FB dropdown's fbConnectEnabled is wired to fbEnabled", () => {
@@ -103,7 +103,7 @@ describe("FB preview allowlist routes to the REAL connect (no preview-note short
   it("non-allowlisted stays inert: the FB Connect button only renders when fbConnectEnabled=fbEnabled", () => {
     // (Dashboard gate pinned above.) fbEnabled = flag OR preview → false for the fleet →
     // onConnectFacebook/doFbConnect are unreachable for non-allowlisted sellers.
-    expect(app).toMatch(/const fbEnabled = fbFlag \|\| fbPreview;/);
+    expect(app).toMatch(/const \{ fbEnabled, receiptUi: fbReceiptUi \} = fbUiGates\(\{ fbFlag, fbPreview, access: fbAccess \}\);/);
     expect(dash).toMatch(/fbConnectEnabled = false/);
   });
 });

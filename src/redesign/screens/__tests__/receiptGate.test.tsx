@@ -101,11 +101,13 @@ describe("SettingsHub tile gate", () => {
     fireEvent.click(container.querySelector("[data-testid='tile-receipt-format']")!);
     expect(open).toHaveBeenCalledTimes(1);
   });
-  it("RedesignApp passes the tile, the screen and the Orders button only for FB preview accounts", () => {
+  it("RedesignApp passes the tile, the screen and the Orders button only for FB preview accounts or /fb/access receipt", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(src).toContain('onReceiptFormat={fbPreview ? () => setScreen("receiptformat") : undefined}');
-    expect(src).toContain('{screen === "receiptformat" && fbPreview && <ReceiptFormat');
-    expect(src).toContain("fbReceipt={fbPreview}");
+    expect(src).toContain('onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}');
+    expect(src).toContain('{screen === "receiptformat" && fbReceiptUi && <ReceiptFormat');
+    expect(src).toContain("fbReceipt={fbReceiptUi}");
     expect(src).toContain("const fbPreview = fbPreviewEnabled(auth.profile?.email);");
+    // fbReceiptUi = fbPreview || /fb/access receipt (fbUiGates, pinned in fbAccessClient.test.tsx)
+    expect(src).toContain("receiptUi: fbReceiptUi } = fbUiGates({ fbFlag, fbPreview, access: fbAccess })");
   });
 });
