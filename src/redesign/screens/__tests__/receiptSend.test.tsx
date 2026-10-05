@@ -191,3 +191,20 @@ describe("Orders 'Receipt sent ✓' tag", () => {
     expect(m.info).not.toHaveBeenCalled();
   });
 });
+
+describe("failed send shows Facebook's code", () => {
+  it("send_failed with fb_code → the text + (FB code/subcode), connect-toast style", async () => {
+    m.info.mockResolvedValue(info());
+    m.send.mockResolvedValueOnce({ ok: false, error: "send_failed", code: 100, fbCode: "100/1893060" });
+    sheet(); await flush();
+    fireEvent.click(q("rs-send")!); await flush();
+    expect(q("rs-send-note")!.textContent).toBe("Couldn't send the receipt. Try again. (FB 100/1893060)");
+  });
+  it("code 10903 → the clear 'no private message' text instead of 'Try again'", async () => {
+    m.info.mockResolvedValue(info());
+    m.send.mockResolvedValueOnce({ ok: false, error: "send_failed", code: 10903, fbCode: "10903/0" });
+    sheet(); await flush();
+    fireEvent.click(q("rs-send")!); await flush();
+    expect(q("rs-send-note")!.textContent).toBe("Facebook doesn't allow a private message to this commenter (they commented as a Page, or their settings block it). (FB 10903/0)");
+  });
+});

@@ -177,14 +177,14 @@ describe("Graph error / unknown result", () => {
     const store = makeStore({ orders: [order()] });
     const f = vi.fn(async () => ({ status: 400, json: async () => ({ error: { code: 10, error_subcode: 2018108, message: "x" } }) }));
     const { r } = rt(store, f);
-    expect(await r.send(U, body())).toEqual({ status: 502, json: { ok: false, error: "send_failed", code: 10 } });
+    expect(await r.send(U, body())).toEqual({ status: 502, json: { ok: false, error: "send_failed", code: 10, fb_code: "10/2018108" } });
     expect(store.rows[0]).toMatchObject({ status: "failed", error_code: "10/2018108" });
     expect(store.setActive).not.toHaveBeenCalled();
   });
   it("code 190 → needs_reauth (still never setActive)", async () => {
     const store = makeStore({ orders: [order()] });
     const { r } = rt(store, vi.fn(async () => ({ status: 400, json: async () => ({ error: { code: 190 } }) })));
-    expect((await r.send(U, body())).json).toEqual({ ok: false, error: "needs_reauth", code: 190 });
+    expect((await r.send(U, body())).json).toEqual({ ok: false, error: "needs_reauth", code: 190, fb_code: "190/0" });
     expect(store.setActive).not.toHaveBeenCalled();
   });
   it("failed rows allow a retry until 2 failures, then the comment is used up", async () => {

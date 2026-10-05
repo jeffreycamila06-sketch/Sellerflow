@@ -2,6 +2,7 @@
 // (server/fbReceipt.js). Same fetch + Supabase bearer pattern as fbConnect. The server picks
 // the comment and the page from the database; the client only names the buyer of the
 // session and sends the picture.
+import type { RedesignT } from "../i18n";
 import { supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
 
@@ -11,7 +12,7 @@ export type FbReceiptReason = "no_access" | "no_orders" | "needs_messaging" | "n
 export interface FbReceiptInfo { ok: true; canSend: boolean; reason?: FbReceiptReason; sentCount: number; lastSentAt: string | null; remaining: number }
 export type FbReceiptSendResult =
   | { ok: true; sentCount: number; remaining: number; lastSentAt: string | null }
-  | { ok: false; error: string; code?: number };
+  | { ok: false; error: string; code?: number; fbCode?: string }; // fbCode = Facebook "code/subcode", e.g. "100/1893060"
 
 async function bearer(): Promise<string> {
   try {
@@ -56,7 +57,11 @@ export async function fbReceiptSend(sessionId: string, buyerNumber: number, imag
   try {
     const { json } = await post("/fb/receipt/send", { sessionId, buyerNumber, imagePngBase64 });
     if (json.ok === true) return { ok: true, sentCount: num(json.sentCount), remaining: num(json.remaining), lastSentAt: typeof json.lastSentAt === "string" ? json.lastSentAt : null };
-    return { ok: false, error: String(json.error || "send_failed"), ...(typeof json.code === "number" ? { code: json.code } : {}) };
+    return {
+      ok: false, error: String(json.error || "send_failed"),
+      ...(typeof json.code === "number" ? { code: json.code } : {}),
+      ...(typeof json.fb_code === "string" && /^\d+\/\d+$/.test(json.fb_code) ? { fbCode: json.fb_code } : {}),
+    };
   } catch {
     return { ok: false, error: "unreachable" };
   }
@@ -69,4 +74,15 @@ export function blobToBase64(blob: Blob): Promise<string> {
     r.onerror = () => reject(new Error("read_failed"));
     r.readAsDataURL(blob);
   });
+}
+
+// Facebook code 10903: a private reply to this commenter is not allowed (they commented as a
+// Page, or their settings block it). Retrying cannot help, so the sheet says so instead.
+export const FB_NO_PRIVATE_REPLY_CODE = 10903;
+// The failed-send note: the generic text, or the 10903 text, + "(FB code/subcode)" when the server sent it —
+// the same style as the connect toast.
+export function receiptFailText(r: { code?: number; fbCode?: string }, t: RedesignT): string {
+  const code = typeof r.code === "number" ? r.code : r.fbCode ? Number(r.fbCode.split("/")[0]) : NaN;
+  const base = code === FB_NO_PRIVATE_REPLY_CODE ? t.rd_rs_no_private_reply : t.rd_rs_failed;
+  return r.fbCode ? `${base} (FB ${r.fbCode})` : base; // no fb_code (old server / no Graph answer) → text only
 }

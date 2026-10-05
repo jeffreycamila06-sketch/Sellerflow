@@ -2034,8 +2034,11 @@ try {
         if (error) return error.code === "23505" ? { conflict: true } : { error: "insert_failed" };
         return { id: data.id };
       },
+      // Returns { error } when the update is refused (fbReceipt retries a failed-send update
+      // without error_detail if that column is missing); callers that ignore it are unchanged.
       async updateReceipt(id, patch) {
-        await serviceSb.from("fb_receipts").update(patch).eq("id", id);
+        const { error } = await serviceSb.from("fb_receipts").update(patch).eq("id", id);
+        return error ? { error } : {};
       },
       // Own pending claim only (upload failed → nothing reached Facebook). true when deleted.
       async deleteReceipt(id, userId) {
