@@ -25,6 +25,7 @@ import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime } from "./server/fbLive.js";
 import { createFbReceipt } from "./server/fbReceipt.js";
+import { createFbFlagReader, createFbLock } from "./server/fbAccess.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -2037,8 +2038,11 @@ try {
         const { data } = await serviceSb.from("fb_pages").select("page_id, page_name, page_username, active").eq("user_id", userId);
         return data || [];
       },
+      // Throws on a database error so the OAuth callback never reports a page as saved when it
+      // was not (handleCallback counts it as failed → ?fb=error&code=save_failed).
       async upsertPage(row) {
-        await serviceSb.from("fb_pages").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,page_id" });
+        const { error } = await serviceSb.from("fb_pages").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,page_id" });
+        if (error) throw new Error("fb_page_save_failed");
       },
       async listActivePages() {
         const { data } = await serviceSb.from("fb_pages").select("*").eq("active", true);
@@ -2070,7 +2074,17 @@ try {
     });
     // F3 — pass the SAME connect middlewares TikTok uses so /fb/connect enforces the
     // paywall (requirePlanActive) + rate limit (requireConnectRate).
-    fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive });
+    // Server-side lock (server/fbAccess.js): app_settings.fb_enabled (service role, cached 60 s)
+    // OR a preview account — the same rule as the client gate.
+    const fbEnabled = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_enabled").maybeSingle();
+        if (error) throw new Error("fb_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
+    const requireFbAvailable = createFbLock({ fbEnabled });
+    fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable });
     // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
     // Isolated: a throw here must never null fbRuntime or skip the refresh timer below.
     try {

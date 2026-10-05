@@ -4,7 +4,8 @@
 // (a REAL <a> to the pre-fetched OAuth URL — iOS-safe, never window.open), and a
 // per-page Remove (confirm). Origin-aware Back. Mirror of ShopeeChannels.
 //
-// ⚠️ GATES: Authorize needs an ACTIVE PAID plan (server also enforces it on connect) AND
+// ⚠️ GATES: Authorize needs an ACTIVE plan — free or paid (isFbEligible; the server enforces
+// requirePlanActive on connect) AND
 // room under the plan cap (maxAcc, OWN page count — same numbers as TikTok; the fb_pages
 // cap is SEPARATE from tiktok/facebook usernames, like Shopee). A cap hit shows a
 // message; not-eligible routes to the neutral contact-support upsell.
@@ -27,7 +28,7 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   const t = useT();
   const plan = account?.plan || "free";
   const limit = maxAcc(plan);
-  const eligible = isFbEligible(account); // active-paid (admin bypass); Date.now lives in the module helper
+  const eligible = isFbEligible(account); // any active plan, free or paid (admin bypass); Date.now lives in the module helper
   const atCap = pages.length >= limit;
 
   const [authUrl, setAuthUrl] = useState<string | null>(null);

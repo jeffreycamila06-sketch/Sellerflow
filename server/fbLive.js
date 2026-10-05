@@ -296,23 +296,33 @@ export function createFbRuntime(deps) {
       const max = plan ? maxAccountsForPlan(plan) : Infinity;
       // ~60d reminder from the long-lived user-token window (see the deviation note).
       const expiresAtIso = new Date(now() + longTok.expireInSec * 1000).toISOString();
-      let upserted = 0, capped = 0;
+      let upserted = 0, capped = 0, failed = 0;
       for (const p of pages) {
         let existing = null;
         try { existing = await store.getPage(userId, p.id); } catch { existing = null; }
         // F6-class TOCTOU (ACCEPTED, LOW — same as shopeeLive): two concurrent
         // callbacks could both pass the cap for two NEW pages. Soft business cap only.
         if (!existing && count >= max) { capped++; continue; }
-        await store.upsertPage({
-          user_id: userId, page_id: p.id, page_name: p.name || null, page_username: p.username || null,
-          access_token: encryptToken(p.access_token, config.tokenKey),
-          token_expires_at: expiresAtIso, active: true, can_message: canMessage,
-        });
+        // A failed save is counted separately: it is not "saved" and does not use the cap.
+        try {
+          await store.upsertPage({
+            user_id: userId, page_id: p.id, page_name: p.name || null, page_username: p.username || null,
+            access_token: encryptToken(p.access_token, config.tokenKey),
+            token_expires_at: expiresAtIso, active: true, can_message: canMessage,
+          });
+        } catch {
+          failed++;
+          continue;
+        }
         upserted++;
         if (!existing) count++;
       }
+      if (upserted === 0 && failed > 0) {
+        log(`[FB] callback save_failed user=${userId} failed=${failed}`);
+        return { redirect: `${appUrl}/?fb=error&code=save_failed` };
+      }
       if (upserted === 0) return { redirect: `${appUrl}/?fb=error&code=cap` };
-      log(`[FB] callback ok user=${userId} pages=${upserted} capped=${capped}`);
+      log(`[FB] callback ok user=${userId} pages=${upserted} capped=${capped} failed=${failed}`);
       return { redirect: `${appUrl}/?fb=connected` };
     } catch (e) {
       log(`[FB] callback error: ${e && e.message}`);
@@ -512,8 +522,11 @@ export function createFbRuntime(deps) {
   function registerRoutes(app, requireAuth, extra = {}) {
     const requireConnectRate = extra.requireConnectRate || passThrough;
     const requirePlanActive = extra.requirePlanActive || passThrough;
+    // Server-side Facebook lock (server/fbAccess.js): fb_enabled OR a preview account. On
+    // start, pages and connect only — never on disconnect or the OAuth callback.
+    const requireFbAvailable = extra.requireFbAvailable || passThrough;
 
-    app.get("/fb/oauth/start", requireAuth, async (req, res) => {
+    app.get("/fb/oauth/start", requireAuth, requireFbAvailable, async (req, res) => {
       let messaging = false;
       try { messaging = typeof store.hasReceiptAccess === "function" && (await store.hasReceiptAccess(req.authUserId)) === true; } catch { messaging = false; }
       try { return res.json({ url: buildAuthUrl(req.authUserId, { messaging }) }); }
@@ -526,17 +539,18 @@ export function createFbRuntime(deps) {
     });
 
     // List own pages — id, name, username, active. NEVER the token column.
-    app.get("/fb/pages", requireAuth, async (req, res) => {
+    app.get("/fb/pages", requireAuth, requireFbAvailable, async (req, res) => {
       try {
         const pages = await store.listPages(req.authUserId);
         return res.json({ ok: true, pages: (pages || []).map((p) => ({ page_id: String(p.page_id), name: p.page_name || "", username: p.page_username || "", active: !!p.active })) });
       } catch { return res.status(500).json({ ok: false, error: "fb_pages_failed" }); }
     });
 
-    // F3 — requireAuth → requireConnectRate → requirePlanActive, MIRRORING
+    // F3 — requireAuth → requireFbAvailable → requireConnectRate → requirePlanActive, MIRRORING
     // /connect/tiktok + /shopee/connect: an expired/inactive plan is 403'd here (no
-    // poller starts), and the connect rate limit applies.
-    app.post("/fb/connect", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
+    // poller starts), and the connect rate limit applies. The lock runs first, so a locked
+    // caller makes no rate-limit entry and no plan read.
+    app.post("/fb/connect", requireAuth, requireFbAvailable, requireConnectRate, requirePlanActive, async (req, res) => {
       const userId = req.authUserId;
       const sellerId = req.sellerId;
       const pageId = String(req.body.page_id || "");
