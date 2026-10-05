@@ -54,3 +54,37 @@ export function createFbLock({ fbEnabled }) {
     return res.status(403).json({ ok: false, error: "fb_not_available" });
   };
 }
+
+// ── Facebook-only plan check on POST /fb/connect (mirrors the client's isFbEligible) ──────────
+// The shared checkPlanActive (TikTok/Shopee too) lets plan "free" through whatever its status;
+// the client allows a free plan only when plan_status is "active". This check closes that gap
+// for Facebook only. Admin and preview accounts pass; a paid plan keeps requirePlanActive's
+// decision (not re-decided here). Plan name compared case-insensitively, like isFreePlan.
+export const isFreePlanName = (plan) => String(plan || "").trim().toLowerCase() === "free";
+export const isAdminRoleName = (role) => String(role || "").trim().toLowerCase() === "admin";
+
+export function fbPlanAllowed({ email, role, plan, planStatus }) {
+  if (fbPreviewEmail(email)) return true;
+  if (isAdminRoleName(role)) return true;
+  if (isFreePlanName(plan)) return planStatus === "active";
+  return true; // paid: requirePlanActive already decided
+}
+
+// Runs AFTER requirePlanActive, which attaches req.sellerPlan / req.sellerRole (but not
+// plan_status). No extra read for preview, admin or a known paid plan. For a free plan — or an
+// unknown plan, when requirePlanActive failed open — ONE read of { plan, plan_status, role }.
+// If that read fails: unknown plan → allow (stay consistent with requirePlanActive's fail-open);
+// known free plan → refuse. Refused → 403 { ok:false, error:"plan_expired" }.
+export function createFbPlanCheck({ readProfile }) {
+  return async function requireFbPlan(req, res, next) {
+    const deny = () => res.status(403).json({ ok: false, error: "plan_expired" });
+    if (fbPreviewEmail(req.userEmail) || isAdminRoleName(req.sellerRole)) return next();
+    const knownPlan = typeof req.sellerPlan === "string" ? req.sellerPlan : null;
+    if (knownPlan !== null && !isFreePlanName(knownPlan)) return next();
+    let row;
+    try { row = await readProfile(req.authUserId); } catch { row = undefined; }
+    if (row === undefined) return knownPlan === null ? next() : deny();
+    if (!row) return deny();
+    return fbPlanAllowed({ email: req.userEmail, role: row.role, plan: row.plan, planStatus: row.plan_status }) ? next() : deny();
+  };
+}

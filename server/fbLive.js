@@ -525,6 +525,9 @@ export function createFbRuntime(deps) {
     // Server-side Facebook lock (server/fbAccess.js): fb_enabled OR a preview account. On
     // start, pages and connect only — never on disconnect or the OAuth callback.
     const requireFbAvailable = extra.requireFbAvailable || passThrough;
+    // Facebook-only plan check (server/fbAccess.js): a free plan must be "active" (mirrors the
+    // client's isFbEligible). After requirePlanActive, on connect only.
+    const requireFbPlan = extra.requireFbPlan || passThrough;
 
     app.get("/fb/oauth/start", requireAuth, requireFbAvailable, async (req, res) => {
       let messaging = false;
@@ -546,11 +549,11 @@ export function createFbRuntime(deps) {
       } catch { return res.status(500).json({ ok: false, error: "fb_pages_failed" }); }
     });
 
-    // F3 — requireAuth → requireFbAvailable → requireConnectRate → requirePlanActive, MIRRORING
+    // F3 — requireAuth → requireFbAvailable → requireConnectRate → requirePlanActive → requireFbPlan, MIRRORING
     // /connect/tiktok + /shopee/connect: an expired/inactive plan is 403'd here (no
     // poller starts), and the connect rate limit applies. The lock runs first, so a locked
     // caller makes no rate-limit entry and no plan read.
-    app.post("/fb/connect", requireAuth, requireFbAvailable, requireConnectRate, requirePlanActive, async (req, res) => {
+    app.post("/fb/connect", requireAuth, requireFbAvailable, requireConnectRate, requirePlanActive, requireFbPlan, async (req, res) => {
       const userId = req.authUserId;
       const sellerId = req.sellerId;
       const pageId = String(req.body.page_id || "");
