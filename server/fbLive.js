@@ -37,7 +37,6 @@ import { fbToPayload } from "./fbComment.js";
 import { encryptToken, decryptToken, isExpiringSoon } from "./fbTokens.js";
 import { maxAccountsForPlan } from "./accountCap.js";
 import { fbPreviewEmail } from "./fbAccess.js";
-import { createFbAltProbe, PROBE_TRIGGER_CODE } from "./fbProbe.js";
 
 export const GRAPH_HOST = "https://graph.facebook.com";
 export const FB_DIALOG_HOST = "https://www.facebook.com";
@@ -336,6 +335,41 @@ export async function fetchLiveStatus({ config, fetchImpl, liveVideoId, pageToke
     return String(body.status || "").toUpperCase();
   } catch { return ""; }
 }
+// ── Video path (no Live Video API) ────────────────────────────────────────────
+// For people who are not admins / developers / testers of our Meta app, GET /{page}/live_videos
+// answers (#10). The SAME Page token with the approved permissions can still read the Page's
+// videos: the current broadcast appears there with live_status "LIVE" (a finished one "VOD"),
+// and /{video}/comments returns the live comments (proven in production, Oct 6 2026).
+export const FB_LIVE_API_REFUSED_CODE = 10;
+export const VIDEO_LOOKUP_LIMIT = 10;
+// The newest video whose live_status is LIVE. Same answer shape as fetchLiveVideos:
+// { liveVideoId, failed, authFail, detail? } (liveVideoId = the VIDEO id). Never throws.
+export async function fetchLiveVideoFromVideos({ fetchImpl, pageId, pageToken }) {
+  try {
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${pageId}/videos`, { fields: "id,created_time,live_status", limit: VIDEO_LOOKUP_LIMIT, access_token: pageToken }) });
+    const cls = classifyGraphError(status, body);
+    if (status !== 200 || cls.code > 0 || !Array.isArray(body.data)) {
+      const detail = { httpStatus: status, code: cls.code > 0 ? cls.code : null, subcode: cls.subcode, type: cls.type, timedOut: false, message: cls.message };
+      return { liveVideoId: "", failed: true, authFail: cls.authFail, detail };
+    }
+    const list = body.data.filter((v) => v && v.id && String(v.live_status || "").toUpperCase() === "LIVE");
+    list.sort((a, b) => (Date.parse(b.created_time || 0) || 0) - (Date.parse(a.created_time || 0) || 0)); // newest LIVE first
+    return { liveVideoId: list[0] ? String(list[0].id) : "", failed: false, authFail: false };
+  } catch (e) {
+    const timedOut = !!e && (e.name === "AbortError" || e.message === "graph_timeout");
+    return { liveVideoId: "", failed: true, authFail: false, detail: { httpStatus: null, code: null, subcode: null, type: null, timedOut, message: "" } };
+  }
+}
+// fetchLiveStatus for the video path: GET /{video}?fields=live_status → uppercased value
+// ("LIVE" | "VOD" | …) or "" when unreadable — the same contract as fetchLiveStatus.
+export async function fetchVideoLiveStatus({ fetchImpl, videoId, pageToken }) {
+  try {
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${videoId}`, { fields: "live_status", access_token: pageToken }) });
+    if (status !== 200) return "";
+    return String(body.live_status || "").toUpperCase();
+  } catch { return ""; }
+}
+
 // comments for a live video. Correct params per Meta v25.0 Live Video Comments reference:
 //   filter=stream          (ALL comments incl. the live stream, not just toplevel)
 //   live_filter=no_filter  (do NOT drop "low quality" comments — we want every buyer)
@@ -399,19 +433,11 @@ export function createFbRuntime(deps) {
     renderUrl, appUrl = APP_REDIRECT_URL,
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
     makeFormParser = (limit) => express.urlencoded({ extended: false, limit }),
-    altProbe = null, // tests may inject; default below (server/fbProbe.js)
     setLoop = (fn, ms) => setTimeout(fn, ms), clearLoop = (h) => clearTimeout(h),
     setTimer = (fn, ms) => setInterval(fn, ms), clearTimer = (h) => clearInterval(h),
   } = deps;
 
   const pollers = new Map();   // liveKey → entry
-  // Read-only alt probe after a code-10 live check (server/fbProbe.js). Rows go to fb_probe_log
-  // through store.insertProbeRow when the store has it; otherwise only the log lines.
-  const probe = altProbe || createFbAltProbe({
-    get: (path, params, token) => graphGet({ fetchImpl, url: graphUrl(path, { ...params, access_token: token }) }),
-    insertRow: typeof store.insertProbeRow === "function" ? (row) => store.insertProbeRow(row) : null,
-    log, now,
-  });
   let refreshHandle = null;
 
   const redirectUri = `${String(renderUrl).replace(/\/+$/, "")}/fb/oauth/callback`;
@@ -558,6 +584,13 @@ export function createFbRuntime(deps) {
   }
 
   // ---- Poller ----
+  // The one thing the two modes do differently: where "is it still LIVE?" is read.
+  // live_videos mode → /{live_video}?fields=status; video mode → /{video}?fields=live_status.
+  // Same answer contract ("LIVE" | other status | "" unreadable).
+  const readLiveStatus = (entry) => (entry.videoMode
+    ? fetchVideoLiveStatus({ fetchImpl, videoId: entry.liveVideoId, pageToken: entry.accessToken })
+    : fetchLiveStatus({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken }));
+
   async function pollOnce(entry) {
     const nowMs = now();
     // F2 — orphan/idle caps.
@@ -586,7 +619,7 @@ export function createFbRuntime(deps) {
     // after the next IDLE_STOP_MS of quiet; any other status → the live ended; unreadable →
     // keep polling, ask again in IDLE_RECHECK_MS, and stop(idle) after MAX_IDLE_UNREADABLE in a row.
     if (idleDue && nowMs >= (entry.idleRecheckAtMs || 0)) {
-      const liveStatus = await fetchLiveStatus({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
+      const liveStatus = await readLiveStatus(entry);
       if (entry.stopped) return { hadNew: false, stop: false };
       if (liveStatus === "LIVE") {
         entry.lastActivityMs = nowMs;
@@ -653,7 +686,7 @@ export function createFbRuntime(deps) {
       entry.fetchErrors = (entry.fetchErrors || 0) + 1;
       log(`[FB] comments error page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"}${res.shapeAnomaly ? ` shape=no-data-array keys=${res.bodyKeys}` : ""} (${entry.fetchErrors}/${MAX_FETCH_ERRORS})`);
       if (entry.fetchErrors >= MAX_FETCH_ERRORS) {
-        const liveStatus = await fetchLiveStatus({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
+        const liveStatus = await readLiveStatus(entry);
         if (liveStatus && liveStatus !== "LIVE") return { hadNew: false, stop: true, reason: "session_end" };
         return { hadNew: false, stop: true, reason: "fetch_error" };
       }
@@ -715,7 +748,10 @@ export function createFbRuntime(deps) {
   // sessionId = the browser session of the device that tapped Connect (POST body), stamped
   // on every comment + platform_status — mirrors TikTok's relay (server.js /connect/tiktok).
   // "" (old client / missing) → the client's `c.sessionId && …` filter passes it through.
-  function startPoller({ sellerId, userId, pageId, pageUsername, liveVideoId, sessionId = "" }) {
+  // videoMode = the Live Video API was refused (code 10) and liveVideoId is a VIDEO id from
+  // /{page}/videos: comments come from /{video}/comments (same request) and the live status from
+  // /{video}?fields=live_status. Everything else is identical to the live_videos mode.
+  function startPoller({ sellerId, userId, pageId, pageUsername, liveVideoId, sessionId = "", videoMode = false }) {
     const scopeKey = String(pageUsername || pageId); // the select_account scoping key
     const key = liveKey(sellerId, "Facebook", pageId);
     stopPoller(key, "restart"); // single poller per page
@@ -727,9 +763,11 @@ export function createFbRuntime(deps) {
       firstPollDone: false,                 // F1
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2
       accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4
+      videoMode: videoMode === true,
     };
     pollers.set(key, entry);
     log(`[FB] poller start page=${String(pageId)} lv=${String(liveVideoId)} status=LIVE`);
+    if (entry.videoMode) log(`[FB] video path user=${String(userId || "").slice(0, 8)} page=${String(pageId)} video=${String(liveVideoId)}`);
     statusEmit(sellerId, { connected: true, pageId: String(pageId), liveVideoId: String(liveVideoId), scopeKey, sessionId: entry.sessionId });
     scheduleNext(entry, 0);
     return entry;
@@ -856,20 +894,26 @@ export function createFbRuntime(deps) {
       let live;
       try { live = await fetchLiveVideos({ config, fetchImpl, pageId, pageToken: token }); }
       catch { live = { liveVideoId: "", failed: true, authFail: false }; }
+      // Live Video API refused (code 10: not an admin / developer / tester of our app) → the
+      // video path: find the LIVE broadcast among the Page's videos. Its answer then goes
+      // through exactly the same rules below (auth → 409, failed → 502, none → not_live).
+      // Any other answer (including success) is today's path, untouched.
+      let videoMode = false;
+      if (live.failed && !live.authFail && live.detail && live.detail.code === FB_LIVE_API_REFUSED_CODE) {
+        try { live = await fetchLiveVideoFromVideos({ fetchImpl, pageId, pageToken: token }); }
+        catch { live = { liveVideoId: "", failed: true, authFail: false }; }
+        videoMode = true;
+      }
       // Invalid token → re-authorize (the page row is left as it is). Any other unanswered
       // check → 502. Only a clean answer without a LIVE video is "not live".
       if (live.authFail || live.failed) logConnectCheckFailed(userId, pageId, live.detail, token);
       if (live.authFail) return res.status(409).json({ ok: false, error: "needs_reauth" });
       if (live.failed) {
         const d = live.detail || {};
-        res.status(502).json({ ok: false, error: "fb_check_failed", fb_code: Number.isFinite(d.code) ? d.code : null, fb_http: Number.isFinite(d.httpStatus) ? d.httpStatus : null, fb_timeout: d.timedOut === true });
-        // Response first; then (code 10 only) the read-only alt probe in the background — never
-        // awaited, never throws, at most once per page every 30 s.
-        if (d.code === PROBE_TRIGGER_CODE) { try { void probe.start({ userId, pageId, token }); } catch { /* never */ } }
-        return;
+        return res.status(502).json({ ok: false, error: "fb_check_failed", fb_code: Number.isFinite(d.code) ? d.code : null, fb_http: Number.isFinite(d.httpStatus) ? d.httpStatus : null, fb_timeout: d.timedOut === true });
       }
       if (!live.liveVideoId) return res.json({ ok: false, reason: "not_live" });
-      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || "") });
+      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || ""), videoMode });
       return res.json({ ok: true, live_video_id: live.liveVideoId });
     });
 
@@ -881,5 +925,5 @@ export function createFbRuntime(deps) {
     });
   }
 
-  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers, _completeDone: completeDone, _completeInFlight: completeInFlight, _probe: probe };
+  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers, _completeDone: completeDone, _completeInFlight: completeInFlight };
 }
