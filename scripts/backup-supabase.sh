@@ -76,12 +76,14 @@ ERR="$(mktemp)"
 trap 'rm -f "$TMP" "$ERR"' EXIT
 
 echo "→ Dumping public schema + auth.users (pg_dump $PG_MAJOR)…"
+# Each step is chained: a failure of EITHER pg_dump fails the whole group (and, with pipefail,
+# the pipeline) — a group's status alone would only be its LAST command's.
 if ! {
-  pg_dump --dbname="$DB_URL" --schema=public --no-owner --no-privileges
-  echo ""
-  echo "-- ─────────────────────────────────────────────────────────────"
-  echo "-- auth.users (data-only INSERTs, appended by backup-supabase.sh)"
-  echo "-- ─────────────────────────────────────────────────────────────"
+  pg_dump --dbname="$DB_URL" --schema=public --no-owner --no-privileges &&
+  echo "" &&
+  echo "-- ─────────────────────────────────────────────────────────────" &&
+  echo "-- auth.users (data-only INSERTs, appended by backup-supabase.sh)" &&
+  echo "-- ─────────────────────────────────────────────────────────────" &&
   pg_dump --dbname="$DB_URL" --data-only --column-inserts --table=auth.users
 } 2>"$ERR" | gzip -9 > "$TMP"; then
   redact < "$ERR" | tail -3 >&2
@@ -99,13 +101,17 @@ CHECKS="$(gzip -dc "$TMP" | awk '
   /^CREATE TABLE public\.live_session_orders \(/ { l = 1 }
   /^-- auth\.users \(data-only INSERTs, appended by backup-supabase\.sh\)/ { h = 1 }
   /^INSERT INTO auth\.users / { u++ }
-  END { printf "seller_profiles=%d orders=%d live_session_orders=%d auth_header=%d auth_users_rows=%d", s, o, l, h, u }')"
+  /^-- PostgreSQL database dump complete$/ { c++ }
+  END { printf "seller_profiles=%d orders=%d live_session_orders=%d auth_header=%d auth_users_rows=%d dumps_complete=%d", s, o, l, h, u, c }')"
 echo "  checks: $CHECKS"
 case "$CHECKS" in
   *seller_profiles=1*orders=1*live_session_orders=1*auth_header=1*) ;;
   *) fail "content_check($(echo "$CHECKS" | tr ' ' ','))" ;;
 esac
-case "$CHECKS" in *auth_users_rows=0) fail "auth_users_empty" ;; esac
+case "$CHECKS" in *auth_users_rows=0\ *) fail "auth_users_empty" ;; esac
+# Completeness: pg_dump writes "-- PostgreSQL database dump complete" as its LAST line, so each of
+# the two dumps must have finished: exactly 2 such lines.
+case "$CHECKS" in *dumps_complete=2) ;; *) fail "incomplete_dump($(echo "$CHECKS" | sed -E 's/.*(dumps_complete=[0-9]+).*/\1/'))" ;; esac
 
 mv "$TMP" "$FINAL"
 chmod 600 "$FINAL"
