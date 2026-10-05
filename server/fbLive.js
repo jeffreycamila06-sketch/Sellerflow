@@ -527,7 +527,7 @@ export function createFbRuntime(deps) {
     // start, pages and connect only — never on disconnect or the OAuth callback.
     const requireFbAvailable = extra.requireFbAvailable || passThrough;
     // Facebook-only plan check (server/fbAccess.js): a free plan must be "active" (mirrors the
-    // client's isFbEligible). After requirePlanActive, on connect only.
+    // client's isFbEligible). After requirePlanActive, on Authorize (start) and connect.
     const requireFbPlan = extra.requireFbPlan || passThrough;
     // Authorize runs the same plan checks as connect (requirePlanActive → requireFbPlan), except
     // that preview accounts skip requirePlanActive here so they always get their auth URL (the
