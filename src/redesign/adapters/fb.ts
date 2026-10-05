@@ -154,11 +154,48 @@ export function fbConnectFailText(r: FbConnectResult, t: RedesignT): string {
 }
 
 // The toast for the OAuth return (?fb=connected | ?fb=error&code=…): code "cap" = the plan's
-// page limit was hit → the cap text (with the plan's limit), any other error → the generic one.
-export function fbReturnText(ret: { status: "connected" | "error"; code?: string }, t: RedesignT, maxPages: number): string {
+// page limit was hit → the cap text (with the plan's limit); code "cancelled" = the seller
+// tapped Cancel on the confirm page on purpose → null (no toast); any other error → generic.
+export function fbReturnText(ret: { status: "connected" | "error"; code?: string }, t: RedesignT, maxPages: number): string | null {
   if (ret.status === "connected") return t.rd_fb_authorized_toast;
+  if (ret.code === "cancelled") return null;
   if (ret.code === "cap") return tpl(t.rd_fb_cap, { max: maxPages });
   return t.rd_fb_auth_error_toast;
+}
+
+// ── Page picker with 2+ Pages ────────────────────────────────────────────────
+// The server scopes FB status by page username || page id (the platform_status username).
+const pageKey = (s: string) => String(s || "").trim().replace(/^@+/, "").toLowerCase();
+export const fbPageScopeKey = (p: Pick<FbPage, "username" | "pageId">): string => p.username || p.pageId;
+
+// The Page that is really connected: the one whose scope key the server last reported as
+// connected (liveFeed.activeAccounts.Facebook). null when none is connected or the key
+// matches no listed page.
+export function fbLivePageOf(connected: boolean, liveKey: string, pages: FbPage[]): FbPage | null {
+  const k = pageKey(liveKey);
+  if (!connected || !k) return null;
+  return pages.find((p) => pageKey(fbPageScopeKey(p)) === k) || null;
+}
+
+// What the Facebook chip shows and does. connected = the platform is connected (and not
+// locally disconnected). The pill is green only for the Page that is really connected (a
+// connection we cannot attribute to a listed page keeps today's behaviour). Disconnect always
+// stops the connected Page; connecting a different Page first stops the connected one.
+export type FbChipAction =
+  | { kind: "disconnect"; pageId: string }
+  | { kind: "switch"; stopPageId: string; page: FbPage }
+  | { kind: "connect"; page: FbPage }
+  | { kind: "none" };
+export function fbChipState(a: { connected: boolean; livePage: FbPage | null; selected: FbPage | null }): { chipConnected: boolean; action: FbChipAction } {
+  const { connected, livePage, selected } = a;
+  const selectedIsLive = !livePage || !selected || livePage.pageId === selected.pageId;
+  if (connected && selectedIsLive) {
+    const stop = livePage || selected;
+    return { chipConnected: true, action: stop ? { kind: "disconnect", pageId: stop.pageId } : { kind: "none" } };
+  }
+  if (!selected) return { chipConnected: false, action: { kind: "none" } };
+  if (connected && livePage) return { chipConnected: false, action: { kind: "switch", stopPageId: livePage.pageId, page: selected } };
+  return { chipConnected: false, action: { kind: "connect", page: selected } };
 }
 
 // POST /fb/disconnect { page_id } → stops the poller. Best-effort.

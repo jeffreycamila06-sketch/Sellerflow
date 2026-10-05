@@ -31,6 +31,7 @@
 // re-runs OAuth. It never mints a token it cannot mint. A future schema column
 // (user_token) would enable silent re-exchange — out of F-P2 scope.
 import { createHmac } from "node:crypto";
+import express from "express";
 import { GRAPH_VERSION } from "./fbConfig.js";
 import { fbToPayload } from "./fbComment.js";
 import { encryptToken, decryptToken, isExpiringSoon } from "./fbTokens.js";
@@ -89,6 +90,72 @@ export function verifyState(state, key, nowMs = Date.now()) {
   const exp = Number(expStr);
   if (!Number.isFinite(exp) || exp < nowMs) return null; // expired
   try { return Buffer.from(uidB64, "base64url").toString("utf8") || null; } catch { return null; }
+}
+
+// ── OAuth confirm page (the person finishing the flow sees which account gets the Page) ──
+// The state names the seller who STARTED the flow, so an Authorize link sent to another Page
+// admin would save that person's Page under the sender's account. The callback therefore
+// shows the receiving SellerFlowLive account and only a POST from this page saves anything.
+export const COMPLETE_FORM_LIMIT = "8kb";
+export const CONFIRM_PAGE_HEADERS_BASE = { "Cache-Control": "no-store", "X-Frame-Options": "DENY" };
+
+export function escapeHtml(v) {
+  return String(v ?? "").replace(/[&<>"'`]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" })[c]);
+}
+
+// first 2 characters + "•••" + the last character before "@" + the full domain; a 1–3 character
+// local part shows only its first character + "•••". No "@" → the same rule on the whole value.
+export function maskEmail(email) {
+  const e = String(email || "").trim();
+  const at = e.lastIndexOf("@");
+  const local = at >= 0 ? e.slice(0, at) : e;
+  const domain = at >= 0 ? e.slice(at) : "";
+  const chars = [...local];
+  if (chars.length === 0) return `•••${domain}`;
+  const masked = chars.length <= 3 ? `${chars[0]}•••` : `${chars.slice(0, 2).join("")}•••${chars[chars.length - 1]}`;
+  return masked + domain;
+}
+
+// The form posts back to this server; after the POST the browser is redirected (303) to the
+// app, and browsers apply form-action to that redirect too — so the app origin is allowed.
+export function confirmPageCsp(appUrl) {
+  let appOrigin = "";
+  try { appOrigin = new URL(appUrl).origin; } catch { appOrigin = ""; }
+  return `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${appOrigin ? ` ${appOrigin}` : ""}`;
+}
+
+export function buildConfirmPage({ code, state, email, storeName, appUrl }) {
+  const cancel = `${appUrl}/?fb=error&code=cancelled`;
+  const store = String(storeName || "").trim();
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect your Facebook Page</title>
+<style>
+body{margin:0;background:#f4f3fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1d1b2e}
+main{max-width:420px;margin:0 auto;padding:32px 20px}
+.card{background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 6px 24px rgba(30,20,80,.08)}
+h1{font-size:20px;margin:0 0 12px}
+p{font-size:15px;line-height:1.5;margin:0 0 12px}
+.acct{background:#f0eefc;border-radius:10px;padding:12px 14px;margin:0 0 12px;font-size:15px;word-break:break-all}
+.acct b{display:block}
+.warn{color:#8a5a00;font-weight:600}
+form{margin:20px 0 0}
+button,a.btn{display:block;width:100%;box-sizing:border-box;text-align:center;font-size:16px;font-weight:700;padding:14px 0;border-radius:12px;text-decoration:none}
+button{border:none;background:#4f46e5;color:#fff;cursor:pointer}
+a.btn{margin-top:10px;background:#fff;color:#4f46e5;border:1px solid #c9c4f2}
+</style></head>
+<body><main><div class="card">
+<h1>Connect your Facebook Page</h1>
+<p>Your Facebook Page will be connected to this SellerFlowLive account:</p>
+<div class="acct"><b>${escapeHtml(maskEmail(email))}</b>${store ? `${escapeHtml(store)}` : ""}</div>
+<p class="warn">Only continue if this is your own SellerFlowLive account.</p>
+<form method="post" action="/fb/oauth/complete">
+<input type="hidden" name="code" value="${escapeHtml(code)}">
+<input type="hidden" name="state" value="${escapeHtml(state)}">
+<button type="submit">Connect</button>
+</form>
+<a class="btn" href="${escapeHtml(cancel)}">Cancel</a>
+</div></main></body></html>`;
 }
 
 // ── Pure comment diffing + cadence ───────────────────────────────────────────
@@ -285,6 +352,7 @@ export function createFbRuntime(deps) {
     config, store, emitComment, statusEmit, liveKey,
     renderUrl, appUrl = APP_REDIRECT_URL,
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
+    makeFormParser = (limit) => express.urlencoded({ extended: false, limit }),
     setLoop = (fn, ms) => setTimeout(fn, ms), clearLoop = (h) => clearTimeout(h),
     setTimer = (fn, ms) => setInterval(fn, ms), clearTimer = (h) => clearInterval(h),
   } = deps;
@@ -362,6 +430,19 @@ export function createFbRuntime(deps) {
       log(`[FB] callback error: ${e && e.message}`);
       return { redirect: `${appUrl}/?fb=error&code=exception` };
     }
+  }
+
+  // GET /fb/oauth/callback: verify state + code exactly like handleCallback (same error
+  // redirects), then read the receiving account and answer the confirm page. The code is NOT
+  // exchanged here. → { redirect } or { html }.
+  async function confirmCallback({ code, state }) {
+    const userId = verifyState(state, config.appSecret, now());
+    if (!userId) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
+    if (!code) return { redirect: `${appUrl}/?fb=error&code=missing_params` };
+    let label = null;
+    try { label = typeof store.getAccountLabel === "function" ? await store.getAccountLabel(userId) : null; } catch { label = null; }
+    if (!label || !String(label.email || "").trim()) return { redirect: `${appUrl}/?fb=error&code=exception` };
+    return { html: buildConfirmPage({ code, state, email: label.email, storeName: label.storeName, appUrl }) };
   }
 
   // ---- Token re-validation timer (see the deviation note) ----
@@ -617,9 +698,23 @@ export function createFbRuntime(deps) {
       catch { return res.status(500).json({ ok: false, error: "fb_start_failed" }); }
     });
 
+    // Facebook redirects here. Nothing is saved yet: the confirm page shows which account
+    // receives the Page, and only its "Connect" POST (below) runs the exchange.
     app.get("/fb/oauth/callback", async (req, res) => {
-      const out = await handleCallback({ code: String(req.query.code || ""), state: String(req.query.state || "") });
-      return res.redirect(out.redirect);
+      const out = await confirmCallback({ code: String(req.query.code || ""), state: String(req.query.state || "") });
+      if (out.redirect) return res.redirect(out.redirect);
+      res.set({ ...CONFIRM_PAGE_HEADERS_BASE, "Content-Security-Policy": confirmPageCsp(appUrl), "Content-Type": "text/html; charset=utf-8" });
+      return res.status(200).send(out.html);
+    });
+
+    // The confirm page's form. Its own small urlencoded parser (this route only); a body the
+    // parser rejects counts as missing fields → the same error redirects as handleCallback.
+    const formParser = makeFormParser(COMPLETE_FORM_LIMIT);
+    const parseForm = (req, res, next) => formParser(req, res, (err) => { if (err) req.body = {}; next(); });
+    app.post("/fb/oauth/complete", parseForm, async (req, res) => {
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const out = await handleCallback({ code: typeof body.code === "string" ? body.code : "", state: typeof body.state === "string" ? body.state : "" });
+      return res.redirect(303, out.redirect);
     });
 
     // List own pages — id, name, username, active. NEVER the token column.
@@ -666,5 +761,5 @@ export function createFbRuntime(deps) {
     });
   }
 
-  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, buildAuthUrl, _pollers: pollers };
+  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers };
 }

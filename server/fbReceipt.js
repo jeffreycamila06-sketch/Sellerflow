@@ -122,6 +122,44 @@ function parseTarget(body) {
   return { sessionId, buyerNumber };
 }
 
+// ── Receipt picture cleanup: the bucket keeps a picture 24 hours (Messenger has copied it by
+// then). Hourly, plus once ~1 minute after start. Pages of 100, at most 1000 per run. Never
+// throws; one log line with the number deleted (no paths). fb_receipts rows are not touched.
+export const RECEIPT_IMAGE_TTL_MS = 24 * 60 * 60 * 1000;
+export const RECEIPT_CLEANUP_EVERY_MS = 60 * 60 * 1000;
+export const RECEIPT_CLEANUP_FIRST_MS = 60 * 1000;
+export const RECEIPT_CLEANUP_PAGE = 100;
+export const RECEIPT_CLEANUP_MAX = 1000;
+
+// store.listOldReceiptImages(beforeIso, limit) → [path] (oldest first);
+// store.removeReceiptImages(paths) → number removed (throws on error).
+export async function cleanupReceiptImages({ store, now = () => Date.now(), log = () => {} }) {
+  let deleted = 0;
+  try {
+    const before = new Date(now() - RECEIPT_IMAGE_TTL_MS).toISOString();
+    while (deleted < RECEIPT_CLEANUP_MAX) {
+      const want = Math.min(RECEIPT_CLEANUP_PAGE, RECEIPT_CLEANUP_MAX - deleted);
+      const paths = ((await store.listOldReceiptImages(before, want)) || []).slice(0, want);
+      if (paths.length === 0) break;
+      const removed = Number(await store.removeReceiptImages(paths)) || 0;
+      deleted += removed;
+      if (removed < paths.length || paths.length < want) break; // partial remove / last page → stop (no busy loop)
+    }
+  } catch { /* never throws — the next run tries again */ }
+  log(`[FB] receipt images cleanup deleted=${deleted}`);
+  return deleted;
+}
+
+// Starts the hourly cleanup (+ one run ~1 minute after start). Timers are unref'd; the
+// returned stop() clears both.
+export function startReceiptImageCleanup({ store, now = () => Date.now(), log = () => {}, setTimer = (fn, ms) => setInterval(fn, ms), clearTimer = (h) => clearInterval(h), setOnce = (fn, ms) => setTimeout(fn, ms), clearOnce = (h) => clearTimeout(h) }) {
+  const run = () => { void cleanupReceiptImages({ store, now, log }); };
+  const first = setOnce(run, RECEIPT_CLEANUP_FIRST_MS);
+  const every = setTimer(run, RECEIPT_CLEANUP_EVERY_MS);
+  for (const h of [first, every]) if (h && typeof h.unref === "function") h.unref();
+  return function stop() { clearOnce(first); clearTimer(every); };
+}
+
 export function createFbReceipt(deps) {
   const {
     config, store, fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},

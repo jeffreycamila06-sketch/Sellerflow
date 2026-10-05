@@ -4574,3 +4574,19 @@ fb_receipt_access and the plan checks unchanged.
   while Send is offered. New i18n: `rd_fb_reauth_toast`, `rd_fb_too_many`,
   `rd_rc_sheet_hint_live`, `rd_rs_mixed_buyer` (8 langs).
 - sql/73, 74, 75 headers now say "APPLIED in production, Oct 5 2026" (comments only).
+
+## 2026-10-05 — FACEBOOK BEFORE OPEN (branch `claude/fb-before-open`, NOT merged)
+- **OAuth confirm step:** GET /fb/oauth/callback no longer exchanges the code — it shows a
+  no-script confirm page with the receiving account (masked email + store name). Only its
+  POST /fb/oauth/complete (own 8kb urlencoded parser) runs the unchanged handleCallback → 303.
+  Cancel → `?fb=error&code=cancelled` (no toast). CSP form-action allows the app origin too
+  (browsers apply form-action to the 303 after the POST).
+- **Receipt pictures:** fb-receipts bucket objects older than 24 h deleted hourly (+1 min after
+  start), ≤1000/run (`startReceiptImageCleanup`). Rows untouched.
+- **sql/76 (applied BY HAND by Jeff):** fb_pages column grants (no access_token for browser
+  roles) + pg_cron `purge-old-fb-receipts` (90 days, 01:20 Taipei). Client reads only
+  id/page_id/page_name/page_username/active + delete by id.
+- **Sticker QR:** none for Facebook buyers (`stickerQrAllowedFor`) — layout = QR off.
+- **FB page picker (2+ Pages):** the really-connected Page (server scope key) drives the chip
+  (`fbChipState`): Disconnect stops it; another Page → stop it first, then connect.
+- Privacy/Terms/Legal screen texts: Oct 5, 2026.
