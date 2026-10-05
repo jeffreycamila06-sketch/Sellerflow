@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Sellerflow nightly Supabase backup (see scripts/BACKUP-README.md). No secret in here:
+     the script reads the database URL from the macOS Keychain (service sfl-db-backup).
+     Install: cp scripts/com.sellerflow.dbbackup.plist ~/Library/LaunchAgents/ -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.sellerflow.dbbackup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <!-- caffeinate -i keeps the Mac from idle-sleeping while the backup runs -->
+    <string>/usr/bin/caffeinate</string>
+    <string>-i</string>
+    <string>/bin/bash</string>
+    <string>/Users/USER/Sellerflow/scripts/backup-supabase.sh</string>
+    <string>--if-due</string>
+  </array>
+  <!-- Every day at 05:30 local time (this Mac is set to Asia/Taipei). If the Mac was asleep at
+       05:30, launchd runs it once when it wakes. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <!-- Also at login / load: catches up after the Mac was switched off. --if-due skips it when
+       the newest good backup is younger than 20 hours. -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/USER/Sellerflow-backups/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/USER/Sellerflow-backups/launchd.err.log</string>
+</dict>
+</plist>
