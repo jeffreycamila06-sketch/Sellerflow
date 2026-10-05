@@ -33,7 +33,7 @@ vi.mock("../../../supabase", () => {
   };
 });
 
-import { parseFrozenSettings, frozenAllowed, loadFrozenState, saveParcelMode, xlsOptsForRow, feeForLayer, minTotalForLayer, FROZEN_OFF, TEMP_FROZEN, TEMP_DRY, type FrozenConfig } from "../parcelFrozen";
+import { parseFrozenSettings, frozenAllowed, loadFrozenState, saveParcelMode, xlsOptsForRow, feeForLayer, minTotalForLayer, readFrozenHint, writeFrozenHint, FROZEN_HINT_PREFIX, FrozenSettingsMissing, TEMP_FROZEN, TEMP_DRY, type FrozenConfig } from "../parcelFrozen";
 import { scanToXlsRow, splitScansForExport, validAmount, formErrors, minParcelAmount, loadParcelScans, saveParcelScan, updateParcelScan, type ParcelScanRow } from "../parcelScan";
 
 const SETTINGS = { parcel_frozen_public: "false", parcel_frozen_fee: "129", parcel_frozen_min_total: "150", parcel_frozen_fee_column_max: "" };
@@ -45,7 +45,13 @@ const row = (over: Partial<ParcelScanRow> = {}): ParcelScanRow => ({
 });
 const BASE = { storeName: "Shop", fee: 38 };
 
-beforeEach(() => { db.me = "me-uuid"; db.res = {}; db.calls = []; });
+// In-memory localStorage (Node 26 here has none; CI's jsdom does — this works for both).
+const memStorage = () => {
+  const m = new Map<string, string>();
+  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, String(v)); }, removeItem: (k: string) => { m.delete(k); }, clear: () => m.clear() };
+};
+beforeEach(() => { db.me = "me-uuid"; db.res = {}; db.calls = []; vi.unstubAllGlobals(); vi.stubGlobal("localStorage", memStorage()); });
+const HINT = FROZEN_HINT_PREFIX + "me-uuid";
 
 describe("who gets the control", () => {
   it("public flag must be exactly 'true'", () => {
@@ -74,19 +80,22 @@ describe("who gets the control", () => {
   it("public 'true' → allowed for a seller with NO access row; mode from the own prefs row", async () => {
     db.res.app_settings = settingsRows({ ...SETTINGS, parcel_frozen_public: "true" });
     db.res.parcel_scan_prefs = { data: { temp_layer: "冷凍" }, error: null };
-    expect(await loadFrozenState()).toEqual({ allowed: true, sqlReady: true, mode: TEMP_FROZEN, cfg: CFG });
+    expect(await loadFrozenState()).toEqual({ status: "ok", blocked: false, allowed: true, mode: TEMP_FROZEN, cfg: CFG });
+    expect(localStorage.getItem(HINT)).toBe("1"); // allowed → hint set
     expect(db.calls).toContainEqual({ table: "parcel_scan_prefs", op: "eq", args: ["user_id", "me-uuid"] });
   });
   it("early access row (enabled) → allowed; default mode Dry when no prefs row", async () => {
     db.res.app_settings = settingsRows(SETTINGS);
     db.res.parcel_frozen_access = { data: { user_id: "me-uuid", enabled: true }, error: null };
-    expect(await loadFrozenState()).toEqual({ allowed: true, sqlReady: true, mode: TEMP_DRY, cfg: CFG });
+    expect(await loadFrozenState()).toEqual({ status: "ok", blocked: false, allowed: true, mode: TEMP_DRY, cfg: CFG });
     expect(db.calls).toContainEqual({ table: "parcel_frozen_access", op: "eq", args: ["user_id", "me-uuid"] });
   });
-  it("public 'false' and no access row → off (no prefs read)", async () => {
+  it("public 'false' and no access row → a clean 'no access' (status ok) that CLEARS the hint", async () => {
     db.res.app_settings = settingsRows(SETTINGS);
+    writeFrozenHint("me-uuid", true);
     const st = await loadFrozenState();
-    expect(st.allowed).toBe(false);
+    expect(st).toMatchObject({ status: "ok", blocked: false, allowed: false });
+    expect(localStorage.getItem(HINT)).toBeNull();
     expect(st.mode).toBe(TEMP_DRY);
     expect(db.calls.some((c) => c.table === "parcel_scan_prefs")).toBe(false);
   });
@@ -95,15 +104,49 @@ describe("who gets the control", () => {
     db.res.parcel_frozen_access = { data: { user_id: "someone-else", enabled: true }, error: null };
     expect((await loadFrozenState()).allowed).toBe(false);
   });
-  it("any read error → off: settings error, access error (sql not applied), not signed in, throw", async () => {
+  it("a failed read is status 'error': blocked only when this account's hint is set; the hint is kept", async () => {
     db.res.app_settings = { data: null, error: { message: "boom" } };
-    db.res.parcel_frozen_access = { data: { user_id: "me-uuid", enabled: true }, error: null };
-    expect((await loadFrozenState()).allowed).toBe(false);
+    expect(await loadFrozenState()).toMatchObject({ status: "error", blocked: false, allowed: false });
+    writeFrozenHint("me-uuid", true);
+    expect(await loadFrozenState()).toMatchObject({ status: "error", blocked: true, allowed: false });
     db.res.app_settings = settingsRows({ ...SETTINGS, parcel_frozen_public: "true" });
-    db.res.parcel_frozen_access = { data: null, error: { message: 'relation "parcel_frozen_access" does not exist' } };
-    expect(await loadFrozenState()).toMatchObject({ allowed: false, sqlReady: false });
+    db.res.parcel_frozen_access = { data: null, error: { message: "network" } };
+    expect(await loadFrozenState()).toMatchObject({ status: "error", blocked: true });
+    expect(localStorage.getItem(HINT)).toBe("1");
+  });
+  it("allowed but the MODE row can't be read → status 'error' (blocked with the hint), never Dry", async () => {
+    db.res.app_settings = settingsRows({ ...SETTINGS, parcel_frozen_public: "true" });
+    db.res.parcel_scan_prefs = { data: null, error: { message: "timeout" } };
+    writeFrozenHint("me-uuid", true);
+    expect(await loadFrozenState()).toMatchObject({ status: "error", blocked: true, allowed: false });
+  });
+  it("access granted but the frozen settings are unusable → status 'error' (not a clean 'no access')", async () => {
+    db.res.app_settings = settingsRows({ ...SETTINGS, parcel_frozen_public: "true", parcel_frozen_fee: "x" });
+    writeFrozenHint("me-uuid", true);
+    expect(await loadFrozenState()).toMatchObject({ status: "error", blocked: true });
+    expect(localStorage.getItem(HINT)).toBe("1");
+  });
+  it("hint is per account; another user's hint never blocks", async () => {
+    writeFrozenHint("someone-else", true);
+    db.res.app_settings = { data: null, error: { message: "boom" } };
+    expect((await loadFrozenState()).blocked).toBe(false);
+  });
+  it("localStorage unavailable → treated as no hint (never throws)", async () => {
+    const deny = () => { throw new Error("denied"); };
+    vi.stubGlobal("localStorage", { getItem: deny, setItem: deny, removeItem: deny, clear: deny });
+    expect(readFrozenHint("me-uuid")).toBe(false);
+    expect(() => writeFrozenHint("me-uuid", true)).not.toThrow();
+    db.res.app_settings = { data: null, error: { message: "boom" } };
+    expect(await loadFrozenState()).toMatchObject({ status: "error", blocked: false });
+  });
+  it("not signed in → status 'error', not blocked", async () => {
     db.me = null;
-    expect(await loadFrozenState()).toEqual(FROZEN_OFF);
+    expect(await loadFrozenState()).toMatchObject({ status: "error", blocked: false, allowed: false });
+  });
+  it("another seller's access row can never turn it on", async () => {
+    db.res.app_settings = settingsRows(SETTINGS);
+    db.res.parcel_frozen_access = { data: { user_id: "x", enabled: true }, error: null };
+    expect((await loadFrozenState()).allowed).toBe(false);
   });
   it("saveParcelMode upserts the own row only", async () => {
     expect(await saveParcelMode(TEMP_FROZEN)).toEqual({ ok: true });
@@ -120,6 +163,11 @@ describe("export per row", () => {
     expect(scanToXlsRow(row({ tempLayer: TEMP_DRY }), xlsOptsForRow(row({ tempLayer: TEMP_DRY }), BASE, CFG))).toEqual(today);
     expect(xlsOptsForRow(row(), BASE, CFG)).toBe(BASE);
     expect(today).toEqual(["王小明", "0912345678", "266402", "常溫", "Shop", "500", "38", "2026/10/6", "", "@buyer"]);
+  });
+  it("a 冷凍 row with NO frozen settings can never get the dry options — it throws", () => {
+    const r = row({ id: "f1", tempLayer: TEMP_FROZEN });
+    expect(() => xlsOptsForRow(r, BASE, null)).toThrow(FrozenSettingsMissing);
+    expect(xlsOptsForRow(row(), BASE, null)).toBe(BASE); // dry rows unaffected
   });
   it("mixed batch → each row carries its own layer and fee", () => {
     const rows = [row({ id: "d" }), row({ id: "f", tempLayer: TEMP_FROZEN, amount: 300 })];
@@ -155,19 +203,19 @@ describe("validation per row", () => {
     expect(validAmount("19", 38)).toBe(false);
     expect(splitScansForExport([row({ amount: 20 })], 38, CFG).ready).toHaveLength(1);
     expect(splitScansForExport([row({ amount: 20 })], 38).ready).toHaveLength(1);
-    expect(splitScansForExport([row({ tempLayer: TEMP_FROZEN })], 38, null).attention[0].reason).toBe("bad_amount");
+    const noCfg = splitScansForExport([row({ id: "d" }), row({ id: "f", tempLayer: TEMP_FROZEN })], 38, null);
+    expect(noCfg.ready.map((r) => r.id)).toEqual(["d"]);
+    expect(noCfg.attention.map((a) => [a.row.id, a.reason])).toEqual([["f", "frozen_settings"]]); // own reason, not bad_amount
   });
 });
 
 describe("parcel_scans reads / writes", () => {
   const selectArgs = () => db.calls.filter((c) => c.table === "parcel_scans" && c.op === "select").map((c) => String(c.args[0]));
-  it("temp_layer is selected only when asked", async () => {
+  it("temp_layer is ALWAYS selected (both the open and the exported read)", async () => {
     db.res.parcel_scans = { data: [{ id: "x", temp_layer: "冷凍", created_at: "2026-10-06T00:00:00Z" }], error: null };
-    await loadParcelScans();
-    expect(selectArgs().every((s) => !s.includes("temp_layer"))).toBe(true);
-    db.calls = [];
-    const r = await loadParcelScans({ withTempLayer: true });
-    expect(selectArgs().every((s) => s.endsWith(", temp_layer"))).toBe(true);
+    const r = await loadParcelScans();
+    expect(selectArgs()).toHaveLength(2);
+    expect(selectArgs().every((s) => s.includes("temp_layer"))).toBe(true);
     expect(r.rows[0].tempLayer).toBe("冷凍");
   });
   it("save / update send temp_layer only when given", async () => {

@@ -393,37 +393,35 @@ export function rowToScan(row: Record<string, unknown>): ParcelScanRow {
 }
 
 export const SCANS_PAGE = 50; // latest EXPORTED rows shown on screen open (history tail)
-const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, created_at";
-const SCANS_COLS_FROZEN = `${SCANS_COLS}, temp_layer`;
+const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, temp_layer, created_at";
 
 // M4 (Oct 1 audit): EVERY not-yet-exported row (the working queue — a flat
 // newest-50 used to push older unexported parcels off screen, so they were
 // never shown, polled or exported) + the latest SCANS_PAGE exported rows,
 // merged newest-first. The unexported read is paged (never partial).
-// withTempLayer: also read temp_layer (only once sql/79 is applied — FrozenState.sqlReady);
-// absent → the exact pre-frozen column list.
-export async function loadParcelScans(opts: { withTempLayer?: boolean } = {}): Promise<{ ok: boolean; rows: ParcelScanRow[]; error?: string }> {
+// temp_layer is ALWAYS read (sql/79 is applied before this ships): a 冷凍 row is frozen no matter
+// what the frozen-state read returned.
+export async function loadParcelScans(): Promise<{ ok: boolean; rows: ParcelScanRow[]; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   const sb = supabase;
-  const cols: string = opts.withTempLayer ? SCANS_COLS_FROZEN : SCANS_COLS;
   let pageErr = "";
   const open = await fetchAllPages<Record<string, unknown>>(async (page) => {
-    const { data, error } = await sb.from("parcel_scans").select(cols)
+    const { data, error } = await sb.from("parcel_scans").select(SCANS_COLS)
       .eq("user_id", me).neq("status", "exported")
       .order("created_at", { ascending: false }).order("id", { ascending: true })
       .range(page * 1000, page * 1000 + 999);
     if (error) { pageErr = error.message; return null; }
-    return (data ?? []) as unknown as Record<string, unknown>[];
+    return (data ?? []) as Record<string, unknown>[];
   }, 1000);
   if (open === null) return { ok: false, rows: [], error: pageErr || "load failed" };
-  const { data, error } = await sb.from("parcel_scans").select(cols)
+  const { data, error } = await sb.from("parcel_scans").select(SCANS_COLS)
     .eq("user_id", me).eq("status", "exported")
     .order("created_at", { ascending: false })
     .limit(SCANS_PAGE);
   if (error) return { ok: false, rows: [], error: error.message };
-  return { ok: true, rows: mergeScanLists(open, (data ?? []) as unknown as Record<string, unknown>[]) };
+  return { ok: true, rows: mergeScanLists(open, (data ?? []) as Record<string, unknown>[]) };
 }
 
 // Pure: both lists → one newest-first list, de-duplicated by id (a row that
@@ -550,7 +548,7 @@ export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
 // shipping export, PLUS store_check_status. Rows already 'exported' are skipped
 // (neither bucket). store_check_status 'unknown'/null → READY (soft-warned in
 // the UI, never excluded: E-Map may be down / the confirmed-gate off). Pure.
-export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount";
+export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount" | "frozen_settings";
 export interface ScanExportSplit {
   ready: ParcelScanRow[];
   attention: { row: ParcelScanRow; reason: ExportReason }[];
@@ -565,14 +563,17 @@ export const wrongStoreCode = (r: { storeCheckStatus?: string | null; storeFullS
   r.storeCheckStatus === "not_found" || r.storeFullStatus === "not_found";
 
 // frozenCfg: the frozen settings (sql/79). Dry rows → validateAmounts(fee) exactly as before; a
-// frozen row → customAmountError with the frozen fee / min total / cap (no settings → blocked).
+// frozen row → customAmountError with the frozen fee / min total / cap (no settings → excluded
+// with "frozen_settings").
 export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCfg: FrozenConfig | null = null): ScanExportSplit {
   const ready: ParcelScanRow[] = [];
   const attention: { row: ParcelScanRow; reason: ExportReason }[] = [];
   for (const row of rows) {
     if (row.status === "exported") continue; // already done — don't re-include
     let reason: ExportReason | null = null;
-    if (wrongStoreCode(row)) reason = "wrong_store";                            // E-Map: wrong code (either check)
+    // A 冷凍 row without the frozen settings is NEVER exported (never as 常溫) — its own reason.
+    if (row.tempLayer === TEMP_FROZEN && !frozenCfg) reason = "frozen_settings";
+    else if (wrongStoreCode(row)) reason = "wrong_store";                            // E-Map: wrong code (either check)
     // Extension checks (sql/33) — EXPLICIT problem verdicts only exclude. null/
     // 'unknown' (unchecked / can't verify) do NOT exclude (unchecked ≠ problem),
     // matching store_check_status's own unknown/null → READY behaviour.
@@ -581,8 +582,8 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCf
     else if (validateRecipientName(row.customerName) !== "") reason = "bad_name";
     else if (!validPhone(row.phone)) reason = "bad_phone";
     else if (!validStore(row.storeId)) reason = "bad_store";
-    else if ((row.tempLayer === TEMP_FROZEN
-      ? (frozenCfg ? customAmountError(row.amount == null ? NaN : row.amount, frozenCfg.fee, frozenCfg.feeColumnMax, frozenCfg.minTotal) : "fee_range")
+    else if ((row.tempLayer === TEMP_FROZEN && frozenCfg
+      ? customAmountError(row.amount == null ? NaN : row.amount, frozenCfg.fee, frozenCfg.feeColumnMax, frozenCfg.minTotal)
       : validateAmounts(row.amount == null ? NaN : row.amount, fee)) !== "") reason = "bad_amount"; // null amount → excluded
     if (reason) attention.push({ row, reason });
     else ready.push(row);

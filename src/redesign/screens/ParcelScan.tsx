@@ -19,7 +19,7 @@ import {
 import { newlyFlagged, attentionCount, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobile, exportFilename } from "../adapters/shippingExport";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
-import { loadFrozenState, saveParcelMode, FROZEN_OFF, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, isFrozenLayer, xlsOptsForRow, type FrozenState, type TempLayer } from "../adapters/parcelFrozen";
+import { loadFrozenState, saveParcelMode, FROZEN_LOADING, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, isFrozenLayer, xlsOptsForRow, type FrozenState, type TempLayer } from "../adapters/parcelFrozen";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
@@ -96,9 +96,10 @@ const formToFields = (f: FormState): ScanFields => ({
 });
 
 // Export attention reason → i18n key.
-type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount";
+type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
 const reasonKey = (r: ExportReason): ReasonKey =>
-  r === "wrong_store" ? "rd_ps2_x_wrong_store"
+  r === "frozen_settings" ? "rd_ps2_x_frozen_settings"
+  : r === "wrong_store" ? "rd_ps2_x_wrong_store"
     : r === "store_full" ? "rd_ps2_x_store_full"
       : r === "restricted_number" ? "rd_ps2_x_restricted"
         : r === "bad_name" ? "rd_ps2_x_bad_name"
@@ -160,11 +161,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
 
   // 賣貨便 export: default fee (one settings read on open) + busy + last summary.
   const [fee, setFee] = useState(SHIP_DEFAULT_FEE);
-  // Dry / Frozen (sql/79). FROZEN_OFF until (and unless) the access read says otherwise → today's
-  // screen. frozenRef mirrors it for the load race below. editLayer = the layer of the parcel
-  // being edited (new parcels always use the current mode).
-  const [frozen, setFrozen] = useState<FrozenState>(FROZEN_OFF);
-  const frozenRef = useRef<FrozenState>(FROZEN_OFF);
+  // Dry / Frozen (sql/79). "loading" until the read lands; every save / import first WAITS for it
+  // (waitFrozen) so a frozen seller's parcel is never saved as dry because the read was slow.
+  // blocked (read failed + this account used frozen) → no save / import / export until Retry works.
+  // frozenRef mirrors the state (incl. a mode switch) for those awaited paths. editLayer = the
+  // layer of the parcel being edited (new parcels always use the current mode).
+  const [frozen, setFrozen] = useState<FrozenState>(FROZEN_LOADING);
+  const frozenRef = useRef<FrozenState>(FROZEN_LOADING);
+  const frozenLoadRef = useRef<Promise<unknown>>(Promise.resolve());
   const [editLayer, setEditLayer] = useState<TempLayer>(TEMP_DRY);
   const [modeBusy, setModeBusy] = useState(false);
   const [modeErr, setModeErr] = useState(false);
@@ -279,6 +283,16 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Alive across the whole screen — guards fire-and-forget store-check verdicts
   // (runStoreCheck) that can land after unmount, not just the initial load.
   const aliveRef = useRef(true);
+  const runFrozenLoad = () => {
+    const p = loadFrozenState().then((st) => {
+      if (!aliveRef.current) return;
+      frozenRef.current = st;
+      setFrozen(st);
+    });
+    frozenLoadRef.current = p;
+    return p;
+  };
+  const waitFrozen = async (): Promise<FrozenState> => { await frozenLoadRef.current; return frozenRef.current; };
   useEffect(() => () => {
     aliveRef.current = false;
     // Leaving mid-export-dialog: release the claimed-but-unshared rows (2a).
@@ -288,15 +302,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (p?.batchId) void unmarkScansExported(p.batchId);
   }, []);
   useEffect(() => {
-    // Frozen access first-come: when it says allowed, the list is re-read WITH temp_layer and the
-    // plain read below no longer overwrites it (whichever lands second).
-    loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok && !frozenRef.current.allowed) setRows(r.rows); if (!frozenRef.current.allowed) setListLoaded(true); } });
-    loadFrozenState().then((st) => {
-      if (!aliveRef.current) return;
-      frozenRef.current = st;
-      setFrozen(st);
-      if (st.allowed) loadParcelScans({ withTempLayer: true }).then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
-    });
+    loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
+    runFrozenLoad();
     // 2b: offer Undo for the newest batch even if another device exported it. Never
     // overrides a batch this screen already exported in the meantime.
     loadLastExportBatch().then((r) => { if (aliveRef.current && r.ok && r.batch) { const b = r.batch; setLastExportBatch((prev) => prev ?? b); } });
@@ -306,7 +313,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Customer Details overlay Import so the new pending parcel appears immediately
   // and the Batch pill (pendingCount) climbs. Guarded against a late unmount.
   const reloadSaved = () => {
-    loadParcelScans({ withTempLayer: frozenRef.current.sqlReady }).then((r) => { if (aliveRef.current && r.ok) setRows(r.rows); });
+    loadParcelScans().then((r) => { if (aliveRef.current && r.ok) setRows(r.rows); });
   };
   // One read on open → the GLOBAL 運費 fee for the export col G (admin-owned,
   // app_settings). Fail-safe to SHIP_DEFAULT_FEE (38) on any read failure, never 0.
@@ -348,7 +355,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (pollMs === null || !pageVisible) return;
     let live = true;
     const id = setInterval(() => {
-      loadParcelScans({ withTempLayer: frozenRef.current.sqlReady }).then((res) => {
+      loadParcelScans().then((res) => {
         if (!live || !aliveRef.current || !res.ok) return;
         const fresh: VerdictLite[] = res.rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus }));
         const nf = newlyFlagged(verdictSnapRef.current, fresh);
@@ -556,7 +563,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // ok. `rawExtraction` is null for manual entries (nullable column).
   const commitNewParcel = async (fields: ScanFields): Promise<boolean> => {
     unlockAudio(); // encode/Save is the user gesture that unlocks the alert chime (mobile autoplay policy)
-    const layer = frozen.allowed ? frozen.mode : undefined; // no control → no temp_layer sent (DB default 常溫)
+    const st = await waitFrozen(); // never save before the frozen state is known
+    if (st.blocked) { setSaveErr(t.rd_ps2_frozen_blocked); return false; }
+    const layer = st.allowed ? st.mode : undefined; // no control → no temp_layer sent (DB default 常溫)
     const r = await saveParcelScan(fields, rawExtraction, layer);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return false; }
     const rowId = r.id || `local-${Date.now()}`;
@@ -629,7 +638,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const claimFreshExport = async (): Promise<ExportClaim> => {
     const shownReady = readyRows.map((r) => r.id); // what this screen showed
     await releaseRef.current; // a just-released claim must land before we re-read
-    const fresh = await loadParcelScans({ withTempLayer: frozen.sqlReady });
+    const fresh = await loadParcelScans();
     if (!fresh.ok) throw new Error(fresh.error || "load_failed");
     const { ready, attention } = splitScansForExport(fresh.rows, fee, frozen.cfg);
     const c = await markScansExported(ready.map((r) => r.id));
@@ -814,6 +823,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // stop being checked once exported. Ask first — "Wait" (default) or "Export anyway".
   // NEVER a hard block (the checker may be down); only while the checks feature is on.
   const askExport = () => {
+    if (frozen.blocked) return; // unknown Dry / Frozen state → no export until Retry works
     const pending = checkOn ? readyRows.filter(rowCheckUnresolved).length : 0;
     if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
     openExportDialog();
@@ -907,7 +917,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     // Changed store/phone → null the extension verdict for that field IN THE SAME
     // update, so the extension re-checks (a stale 'full'/'restricted' from the old
     // store/phone must not linger). The app never calls 賣貨便 itself.
-    const layer = frozen.allowed ? editLayer : undefined; // only sellers with the control can change it
+    const st = await waitFrozen();
+    if (st.blocked) { setSaving(false); setSaveErr(t.rd_ps2_frozen_blocked); return; }
+    const layer = st.allowed ? editLayer : undefined; // only sellers with the control can change it (else the row keeps its own)
     const r = await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer); // own-scoped UPDATE, NO credit
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
@@ -943,13 +955,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // pre-existing row is not newly gated (only new saves are — old handle-less rows stay
   // editable). requireHandle = editing === null.
   // The form's layer: the edited parcel's own layer, else the current mode (Dry without the control).
-  const formLayer: TempLayer = !frozen.allowed ? TEMP_DRY : editing ? editLayer : frozen.mode;
+  // An edited parcel always validates with its OWN layer (a 冷凍 row stays frozen even without the control).
+  const formLayer: TempLayer = editing ? editLayer : frozen.allowed ? frozen.mode : TEMP_DRY;
   const formFee = feeForLayer(formLayer, fee, frozen.cfg);
   const formMinTotal = minTotalForLayer(formLayer, frozen.cfg);
   const errs = formErrors(form, formFee, requireStore, editing === null, noHandle, formMinTotal); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
-  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing);
+  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing) || frozen.blocked;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
 
@@ -1017,6 +1030,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {banner}
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="ps-toast">{toast}</div>}
+
+        {/* Dry / Frozen read failed for an account that uses frozen → block until Retry works. */}
+        {frozen.blocked && (
+          <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="ps-frozen-blocked">
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)", lineHeight: 1.5 }}>{t.rd_ps2_frozen_blocked}</div>
+            <button onClick={() => void runFrozenLoad()} style={{ marginTop: 10, padding: "9px 14px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }} data-testid="ps-frozen-retry">{t.rd_ps2_frozen_retry}</button>
+          </div>
+        )}
 
         {/* Dry / Frozen (sql/79) — only for sellers with access. Shows the current mode; the
             other option asks for confirmation first. New parcels use the mode; saved ones don't change. */}
@@ -1308,8 +1329,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_ps2_x_hint}</div>
           <button
             onClick={askExport}
-            disabled={exportBusy || readyCount === 0}
-            style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 ? "default" : "pointer" }}
+            disabled={exportBusy || readyCount === 0 || frozen.blocked}
+            style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 || frozen.blocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 || frozen.blocked ? "default" : "pointer" }}
             data-testid="ps-export-btn"
           >📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
           {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-export-err">{t.rd_ps2_x_failed} <span style={{ fontFamily: mono }}>{exportErr}</span></div>}
@@ -1534,7 +1555,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="ps-customers-close"
             >✕</button>
-            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} onImported={() => { setCustOpen(false); reloadSaved(); }} />
+            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} onImported={() => { setCustOpen(false); reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,

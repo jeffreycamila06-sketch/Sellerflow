@@ -2,8 +2,10 @@
 //
 // Who sees the control: app_settings parcel_frozen_public = 'true' exactly, OR an enabled
 // parcel_frozen_access row for the signed-in seller — and the frozen settings must read cleanly.
-// Anyone else, and ANY read error, gets FROZEN_OFF: today's Parcel Scan, no control, every parcel
-// saved without a temp_layer (the column default 常溫) → byte-identical export.
+// Anyone else gets today's Parcel Scan: no control, every parcel saved without a temp_layer (the
+// column default 常溫) → byte-identical export. A failed read is "error": today's behaviour for a
+// dry seller, but BLOCKED for an account whose local hint says it uses frozen (see FrozenState).
+// A 冷凍 row is frozen no matter what this read returned (parcel_scans.temp_layer is always read).
 //
 // One read set per screen open (no poll): the 4 settings in ONE app_settings query + the own
 // access row (+ the own mode row when allowed).
@@ -19,13 +21,32 @@ export interface FrozenConfig {
   minTotal: number;            // amount + fee must be at least this
   feeColumnMax: number | null; // null = no cap (G = the whole fee)
 }
+// status: "loading" until the first read lands; "ok" = every read answered (allowed or a clean
+// "no access"); "error" = a read failed (settings, access row or mode row), or access was granted
+// but the frozen settings are unusable. blocked = "error" for a seller whose local hint says they
+// use frozen → Parcel Scan must not save / import / export until a load succeeds (unknown is not
+// Dry for a frozen user). "error" without the hint = today's behaviour (dry seller).
+export type FrozenStatus = "loading" | "ok" | "error";
 export interface FrozenState {
+  status: FrozenStatus;
+  blocked: boolean;
   allowed: boolean;            // show the Dry / Frozen control + save temp_layer
-  sqlReady: boolean;           // sql/79 is applied (parcel_frozen_access answered) → temp_layer is selectable
   mode: TempLayer;             // the seller's current mode (parcel_scan_prefs), default Dry
   cfg: FrozenConfig | null;    // null = settings missing / unreadable / invalid
 }
-export const FROZEN_OFF: FrozenState = { allowed: false, sqlReady: false, mode: TEMP_DRY, cfg: null };
+export const FROZEN_LOADING: FrozenState = { status: "loading", blocked: false, allowed: false, mode: TEMP_DRY, cfg: null };
+export const FROZEN_OFF: FrozenState = { status: "ok", blocked: false, allowed: false, mode: TEMP_DRY, cfg: null };
+
+// Per-account local hint "this seller uses frozen" (localStorage, keyed by user id). Set when a
+// load returns allowed, cleared when a load cleanly returns not allowed. Storage unavailable →
+// no hint (never throws).
+export const FROZEN_HINT_PREFIX = "sfl_parcel_frozen_hint_";
+export function readFrozenHint(uid: string): boolean {
+  try { return localStorage.getItem(FROZEN_HINT_PREFIX + uid) === "1"; } catch { return false; }
+}
+export function writeFrozenHint(uid: string, on: boolean): void {
+  try { if (on) localStorage.setItem(FROZEN_HINT_PREFIX + uid, "1"); else localStorage.removeItem(FROZEN_HINT_PREFIX + uid); } catch { /* no storage → no hint */ }
+}
 
 export const FROZEN_KEYS = ["parcel_frozen_public", "parcel_frozen_fee", "parcel_frozen_min_total", "parcel_frozen_fee_column_max"] as const;
 export const FROZEN_FEE_MAX = 500;
@@ -62,9 +83,15 @@ export const minTotalForLayer = (layer: string | null | undefined, cfg: FrozenCo
 
 // The export options for ONE row: a frozen row (temp_layer 冷凍) gets the frozen fee, D=冷凍 and
 // the column cap; every other row gets `base` unchanged (today's export, byte for byte).
+// A 冷凍 row WITHOUT frozen settings can never fall back to the dry options: it throws.
+// (splitScansForExport already excludes such rows with "frozen_settings", so this is a backstop.)
+export class FrozenSettingsMissing extends Error {
+  constructor(id: string) { super(`frozen_settings_missing:${id}`); this.name = "FrozenSettingsMissing"; }
+}
 export function xlsOptsForRow(row: ParcelScanRow, base: ScanXlsOpts, cfg: FrozenConfig | null): ScanXlsOpts {
-  if (isFrozenLayer(row.tempLayer) && cfg) return { ...base, fee: cfg.fee, tempLayer: TEMP_FROZEN, feeColumnMax: cfg.feeColumnMax };
-  return base;
+  if (!isFrozenLayer(row.tempLayer)) return base;
+  if (!cfg) throw new FrozenSettingsMissing(row.id);
+  return { ...base, fee: cfg.fee, tempLayer: TEMP_FROZEN, feeColumnMax: cfg.feeColumnMax };
 }
 
 async function me(): Promise<string | null> {
@@ -74,27 +101,33 @@ async function me(): Promise<string | null> {
 }
 
 export async function loadFrozenState(): Promise<FrozenState> {
-  if (!isSupabaseConfigured || !supabase) return FROZEN_OFF;
+  const failed = (uid: string | null, cfg: FrozenConfig | null = null): FrozenState =>
+    ({ status: "error", blocked: uid ? readFrozenHint(uid) : false, allowed: false, mode: TEMP_DRY, cfg });
+  if (!isSupabaseConfigured || !supabase) return failed(null);
   const sb = supabase;
+  let uid: string | null = null;
   try {
-    const uid = await me();
-    if (!uid) return FROZEN_OFF;
+    uid = await me();
+    if (!uid) return failed(null);
     const [settings, access] = await Promise.all([
       sb.from("app_settings").select("key, value").in("key", [...FROZEN_KEYS]),
       sb.from("parcel_frozen_access").select("user_id, enabled").eq("user_id", uid).maybeSingle(),
     ]);
-    const sqlReady = !access.error;
+    if (settings.error || access.error) return failed(uid);
     const map: Record<string, string | null> = {};
-    if (!settings.error) for (const r of (settings.data ?? []) as { key: string; value: unknown }[]) map[r.key] = r.value == null ? null : String(r.value);
-    const { isPublic, cfg } = settings.error ? { isPublic: false, cfg: null } : parseFrozenSettings(map);
-    const row = !access.error && access.data && String((access.data as { user_id?: unknown }).user_id ?? "") === uid ? (access.data as { enabled?: unknown }) : null;
-    const allowed = sqlReady && frozenAllowed(isPublic, row, cfg);
-    if (!allowed) return { allowed: false, sqlReady, mode: TEMP_DRY, cfg };
+    for (const r of (settings.data ?? []) as { key: string; value: unknown }[]) map[r.key] = r.value == null ? null : String(r.value);
+    const { isPublic, cfg } = parseFrozenSettings(map);
+    const row = access.data && String((access.data as { user_id?: unknown }).user_id ?? "") === uid ? (access.data as { enabled?: unknown }) : null;
+    const granted = isPublic || row?.enabled === true;
+    if (!granted) { writeFrozenHint(uid, false); return { ...FROZEN_OFF, cfg }; } // clean "no access"
+    if (!cfg) return failed(uid);                                                   // granted but settings unusable
     const pref = await sb.from("parcel_scan_prefs").select("temp_layer").eq("user_id", uid).maybeSingle();
-    const mode: TempLayer = !pref.error && pref.data && (pref.data as { temp_layer?: unknown }).temp_layer === TEMP_FROZEN ? TEMP_FROZEN : TEMP_DRY;
-    return { allowed: true, sqlReady, mode, cfg };
+    if (pref.error) return failed(uid, cfg);                                        // mode unknown → never default to Dry
+    const mode: TempLayer = pref.data && (pref.data as { temp_layer?: unknown }).temp_layer === TEMP_FROZEN ? TEMP_FROZEN : TEMP_DRY;
+    writeFrozenHint(uid, true);
+    return { status: "ok", blocked: false, allowed: true, mode, cfg };
   } catch {
-    return FROZEN_OFF;
+    return failed(uid);
   }
 }
 
