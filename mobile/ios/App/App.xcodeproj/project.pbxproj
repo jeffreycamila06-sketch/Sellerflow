@@ -17,6 +17,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9F00001000000000000000A1 /* SellerFlowPrinterPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F00002000000000000000A1 /* SellerFlowPrinterPlugin.swift */; };
 		9F00001000000000000000A2 /* SellerFlowBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F00002000000000000000A2 /* SellerFlowBridgeViewController.swift */; };
+		9F00001000000000000000A3 /* SellerFlowAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F00002000000000000000A3 /* SellerFlowAuthPlugin.swift */; };
 		9FA000000000000000000011 /* AppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000001 /* AppTests.swift */; };
 		9FA000000000000000000012 /* MobileTsplBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000002 /* MobileTsplBuilderTests.swift */; };
 		9FA000000000000000000013 /* CjkEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000003 /* CjkEncodingTests.swift */; };
@@ -45,6 +46,7 @@
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		9F00002000000000000000A1 /* SellerFlowPrinterPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerFlowPrinterPlugin.swift; sourceTree = "<group>"; };
 		9F00002000000000000000A2 /* SellerFlowBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerFlowBridgeViewController.swift; sourceTree = "<group>"; };
+		9F00002000000000000000A3 /* SellerFlowAuthPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerFlowAuthPlugin.swift; sourceTree = "<group>"; };
 		9FA000000000000000000001 /* AppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTests.swift; sourceTree = "<group>"; };
 		9FA000000000000000000002 /* MobileTsplBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTsplBuilderTests.swift; sourceTree = "<group>"; };
 		9FA000000000000000000003 /* CjkEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CjkEncodingTests.swift; sourceTree = "<group>"; };
@@ -106,6 +108,7 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				9F00002000000000000000A1 /* SellerFlowPrinterPlugin.swift */,
 				9F00002000000000000000A2 /* SellerFlowBridgeViewController.swift */,
+				9F00002000000000000000A3 /* SellerFlowAuthPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -230,6 +233,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9F00001000000000000000A1 /* SellerFlowPrinterPlugin.swift in Sources */,
 				9F00001000000000000000A2 /* SellerFlowBridgeViewController.swift in Sources */,
+				9F00001000000000000000A3 /* SellerFlowAuthPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

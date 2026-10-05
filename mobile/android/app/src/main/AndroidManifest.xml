@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- In-app Facebook sign-in (SellerFlowAuthPlugin): the confirm page's 303 to
+                 com.sellerflow.live://fb-auth?fb=… returns here; singleTask closes the Custom Tab.
+                 Carries only a status word, never a code or token. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.sellerflow.live" android:host="fb-auth" />
+            </intent-filter>
+
         </activity>
 
         <provider

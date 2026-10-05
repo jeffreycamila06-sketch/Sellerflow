@@ -97,9 +97,12 @@ async function bearer(): Promise<string> {
 // a direct anchor tap, never window.open — the SLIDE→BUTTON lesson). Pre-fetch on
 // screen mount so the href is present before the tap. The signed state inside the URL
 // has a ~10-min TTL (STATE_TTL_MS).
-export async function startFbAuth(): Promise<{ ok: boolean; url?: string; error?: string }> {
+// opts.app = the phone app's in-app sign-in sheet (SellerFlowAuth plugin): the flow then ends on
+// the app's callback scheme instead of the website. Without it the request is byte-identical to
+// before (normal browsers + old app builds).
+export async function startFbAuth(opts: { app?: boolean } = {}): Promise<{ ok: boolean; url?: string; error?: string }> {
   try {
-    const r = await fetch(`${SERVER}/fb/oauth/start`, {
+    const r = await fetch(`${SERVER}/fb/oauth/start${opts.app ? "?client=app" : ""}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${await bearer()}` },
     });
@@ -109,6 +112,18 @@ export async function startFbAuth(): Promise<{ ok: boolean; url?: string; error?
   } catch {
     return { ok: false, error: "unreachable" };
   }
+}
+
+// ── In-app sign-in sheet (native SellerFlowAuth plugin, app builds 1.8+) ─────────
+// iOS ASWebAuthenticationSession / Android Custom Tab. Present only in new app builds; old builds
+// and normal browsers → null → today's <a target="_blank"> flow, unchanged.
+export interface FbAuthSessionResult { status: "connected" | "error" | "cancelled" | "busy"; code?: string }
+type AuthSessionFn = (o: { url: string }) => Promise<FbAuthSessionResult>;
+export function nativeAuthSession(): AuthSessionFn | null {
+  if (typeof window === "undefined") return null;
+  const p = (window as unknown as { Capacitor?: { Plugins?: { SellerFlowAuth?: { openAuthSession?: unknown } } } }).Capacitor?.Plugins?.SellerFlowAuth;
+  const fn = p?.openAuthSession;
+  return typeof fn === "function" ? (o) => (fn as AuthSessionFn).call(p, o) : null;
 }
 
 // fbCode / fbTimeout: what Facebook answered when the server's live check failed (502
