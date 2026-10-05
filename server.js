@@ -2054,6 +2054,11 @@ try {
         if (error) throw new Error("receipt_images_remove");
         return (data || []).length;
       },
+      // Read-only Facebook alt probe (server/fbProbe.js, sql/78): metadata only, service role.
+      async insertProbeRow(row) {
+        const { error } = await serviceSb.from("fb_probe_log").insert(row);
+        if (error) throw new Error("fb_probe_log_insert_failed");
+      },
       async uploadReceiptImage(path, buf) {
         const { error } = await serviceSb.storage.from("fb-receipts").upload(path, buf, { contentType: "image/png", upsert: false });
         if (error) throw new Error("upload_failed");
