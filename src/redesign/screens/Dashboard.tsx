@@ -705,7 +705,9 @@ export default function Dashboard({
             const basketN = basketCounts ? basketCountFor(basketCounts, c.handle, c.platform) : 0;
             // Miner-risk badge — O(1) lookup; null = no badge (verified-safe miner,
             // keeps the feed clean). Additive (a new element beside the handle).
-            const risk = minerRiskFor(minerRisk, c.handle, c.platform);
+            // Never for Facebook: Facebook gives no follower count, so every FB comment
+            // would show "?". TikTok unchanged.
+            const risk = String(c.platform || "").toLowerCase() === "facebook" ? null : minerRiskFor(minerRisk, c.handle, c.platform);
             // Buyer Alert — O(1) lookup; undefined = not gated / no parcels for this handle.
             const ba = buyerAlerts?.get(normHandle(c.handle));
             const baRed = !!ba?.red, baNear = ba?.near ?? null;
