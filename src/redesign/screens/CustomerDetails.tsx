@@ -15,7 +15,8 @@ import {
   searchParcelCustomers, loadRecentParcelCustomers, updateParcelCustomer,
   deleteParcelCustomer, countPendingParcels, countParcelCustomers, type ParcelCustomer,
 } from "../adapters/parcelCustomers";
-import { saveParcelScan, validAmount, amountTooHigh, validHandle, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
+import { saveParcelScan, validAmount, amountTooHigh, validHandle, minParcelAmount, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
+import { loadFrozenState, FROZEN_OFF, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, type FrozenState } from "../adapters/parcelFrozen";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE, validStore } from "../adapters/shipping";
 
@@ -31,7 +32,9 @@ type EditForm = { name: string; phone: string; store: string; notes: string };
 // as an overlay it passes onImported so a successful import can close the overlay
 // and refresh the parent's Saved list + Batch count. Absent → byte-identical.
 // pendingCap = maxPendingParcels(email, role) from RedesignApp / ParcelScan; default 40.
-export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; onImported?: () => void; pendingCap?: number }) {
+// frozenState: Parcel Scan passes its Dry / Frozen state (sql/79); standalone → read once here.
+// An import is saved with the seller's CURRENT mode (no control → no temp_layer, DB default 常溫).
+export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS, frozenState }: { cur?: string; onImported?: () => void; pendingCap?: number; frozenState?: FrozenState }) {
   const t = useT();
 
   const [query, setQuery] = useState("");
@@ -40,6 +43,11 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
   const [loading, setLoading] = useState(true);   // initial recent load / active search
   const [listErr, setListErr] = useState("");
   const [fee, setFee] = useState<number>(SHIP_DEFAULT_FEE);
+  const [ownFrozen, setOwnFrozen] = useState<FrozenState>(FROZEN_OFF);
+  const frozen = frozenState ?? ownFrozen;
+  const layer = frozen.allowed ? frozen.mode : TEMP_DRY;
+  const layerFee = feeForLayer(layer, fee, frozen.cfg);
+  const layerMinTotal = minTotalForLayer(layer, frozen.cfg);
   // FULL phonebook total (never the searched subset) — its own head-only count
   // query. null = unknown/failed (line hidden).
   const [total, setTotal] = useState<number | null>(null);
@@ -79,6 +87,12 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
     void countParcelCustomers().then((c) => { if (live) setTotal(c.ok ? c.count : null); });
     return () => { live = false; };
   }, []);
+  useEffect(() => {
+    if (frozenState) return; // embedded: the parent already read it
+    let live = true;
+    void loadFrozenState().then((st) => { if (live) setOwnFrozen(st); });
+    return () => { live = false; };
+  }, [frozenState]);
 
   // ── Debounced search; blank query falls back to the recent list (also the
   // initial mount load). All state updates happen inside the scheduled async
@@ -121,10 +135,10 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
   async function doImport(c: ParcelCustomer) {
     setImportErr("");
     // SAME rules as a fresh encode — no bypass of min/max or the batch cap.
-    if (!validAmount(price, fee)) {
-      setImportErr(amountTooHigh(price, fee)
-        ? tpl(t.rd_ps2_err_amount_max, { max: `${cur}${MAX_PARCEL_TOTAL - fee}` })
-        : tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` }));
+    if (!validAmount(price, layerFee, layerMinTotal)) {
+      setImportErr(amountTooHigh(price, layerFee)
+        ? tpl(t.rd_ps2_err_amount_max, { max: `${cur}${MAX_PARCEL_TOTAL - layerFee}` })
+        : tpl(t.rd_ps2_err_amount, { amt: `${cur}${minParcelAmount(layerFee, layerMinTotal)}` }));
       return;
     }
     // A valid 6-digit 7-11 store code is REQUIRED (same gate as the manual encode).
@@ -144,6 +158,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
       const r = await saveParcelScan(
         { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: noHandle ? "" : handle.trim() },
         null,
+        frozen.allowed ? layer : undefined,
       );
       if (!r.ok) { setImportErr(t.rd_cd_import_err); return; }
       setToast(t.rd_cd_imported_toast);
@@ -279,6 +294,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
               {open && (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12, display: "grid", gap: 8 }} data-testid="cd-import-panel">
                   {!c.storeId && <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--warn, #b45309)" }} data-testid="cd-no-store">{t.rd_cd_no_store}</div>}
+                  {layer === TEMP_FROZEN && <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1d4ed8", background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.45)", borderRadius: 7, padding: "1px 6px", justifySelf: "start" }} data-testid="cd-frozen">❄ 冷凍 · {cur}{layerFee}</div>}
                   <div>
                     <label style={lbl}>{t.rd_cd_price_ph}</label>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
