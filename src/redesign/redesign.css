@@ -144,6 +144,10 @@
   [data-redesign] img { transition: transform .25s cubic-bezier(.34,1.56,.64,1); }
   [data-redesign] img:hover { transform: scale(1.06) rotate(-2deg); }
 }
+/* receipt previews (ReceiptSheet + Receipt format): a large picture must never tilt or grow on
+   hover (it covered the Send button and added a horizontal scrollbar). Other images unchanged. */
+[data-redesign] img.sfl-no-hover,
+[data-redesign] img.sfl-no-hover:hover { transition: none; transform: none; }
 
 /* kill switch — in-app motion toggle disables LOOPS only (one-shots stay) */
 [data-redesign][data-motion="off"] .sfl-anim-beat,
