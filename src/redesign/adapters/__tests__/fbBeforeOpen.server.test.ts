@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import { createFbRuntime, signState, maskEmail, escapeHtml, confirmPageCsp } from "../../../../server/fbLive.js";
+import { createFbRuntime, signState, maskEmail, escapeHtml, confirmPageCsp, CONFIRM_SCRIPT, CONFIRM_SCRIPT_HASH } from "../../../../server/fbLive.js";
 import {
   cleanupReceiptImages, startReceiptImageCleanup,
   RECEIPT_IMAGE_TTL_MS, RECEIPT_CLEANUP_EVERY_MS, RECEIPT_CLEANUP_FIRST_MS, RECEIPT_CLEANUP_MAX,
@@ -85,15 +85,18 @@ describe("A — GET /fb/oauth/callback shows the confirm page, nothing is exchan
     expect(html).not.toContain("maria.santos");
     expect(html).toContain("Maria &lt;Shop&gt;");                       // escaped store name
     expect(html).toContain("Only continue if this is your own SellerFlowLive account.");
-    expect(html).toContain('<form method="post" action="/fb/oauth/complete">');
+    expect(html).toContain('<form id="c" method="post" action="/fb/oauth/complete">');
     expect(html).toContain('<input type="hidden" name="code" value="CODE&quot;&gt;">'); // escaped
     expect(html).toContain(`<input type="hidden" name="state" value="${escapeHtml(st)}">`);
     expect(html).toContain(`href="${APP}/?fb=error&amp;code=cancelled"`);
     expect(html).toContain('<meta name="viewport"');
-    expect(html).not.toMatch(/<script|src=|<link|https?:\/\/(?!app\.test)/i); // no scripts / external assets
+    // no external assets; the only script is the hashed inline CONFIRM_SCRIPT
+    expect(html).not.toMatch(/src=|<link|https?:\/\/(?!app\.test)/i);
+    expect(html.match(/<script>/g)).toHaveLength(1);
+    expect(html).toContain(`<script>${CONFIRM_SCRIPT}</script>`);
     expect(r.headers.get("cache-control")).toBe("no-store");
     expect(r.headers.get("x-frame-options")).toBe("DENY");
-    expect(r.headers.get("content-security-policy")).toBe(`default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${APP}`);
+    expect(r.headers.get("content-security-policy")).toBe(`default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self' ${APP}`);
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(store.upserts).toEqual([]);
     expect(store.getAccountLabel).toHaveBeenCalledWith("user-1");
@@ -122,7 +125,7 @@ describe("A — GET /fb/oauth/callback shows the confirm page, nothing is exchan
     }
   });
   it("the CSP allows the form back to this server and the app origin only", () => {
-    expect(confirmPageCsp("https://www.sellerflowlive.com")).toBe("default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://www.sellerflowlive.com");
+    expect(confirmPageCsp("https://www.sellerflowlive.com")).toBe(`default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self' https://www.sellerflowlive.com`);
   });
 });
 

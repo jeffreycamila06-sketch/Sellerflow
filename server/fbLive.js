@@ -30,7 +30,7 @@
 // auth failure (token revoked / de-authorized) it marks the row inactive so the seller
 // re-runs OAuth. It never mints a token it cannot mint. A future schema column
 // (user_token) would enable silent re-exchange — out of F-P2 scope.
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import express from "express";
 import { GRAPH_VERSION } from "./fbConfig.js";
 import { fbToPayload } from "./fbComment.js";
@@ -97,6 +97,8 @@ export function verifyState(state, key, nowMs = Date.now()) {
 // admin would save that person's Page under the sender's account. The callback therefore
 // shows the receiving SellerFlowLive account and only a POST from this page saves anything.
 export const COMPLETE_FORM_LIMIT = "8kb";
+export const COMPLETE_REMEMBER_MS = 10 * 60 * 1000; // a finished connected / cap answer is repeated this long
+export const COMPLETE_REMEMBER_MAX = 500;           // remembered answers kept (oldest dropped)
 export const CONFIRM_PAGE_HEADERS_BASE = { "Cache-Control": "no-store", "X-Frame-Options": "DENY" };
 
 export function escapeHtml(v) {
@@ -116,12 +118,18 @@ export function maskEmail(email) {
   return masked + domain;
 }
 
+// The one inline script on the confirm page: the first submit disables the button and shows
+// "Connecting…"; any further submit is ignored. Allowed in the CSP by its sha256 hash only.
+// Without scripts the page still works — /fb/oauth/complete answers repeats the same way.
+export const CONFIRM_SCRIPT = 'var f=document.getElementById("c"),s=false;f.addEventListener("submit",function(e){if(s){e.preventDefault();return;}s=true;var b=f.querySelector("button");b.disabled=true;b.textContent="Connecting\u2026";});';
+export const CONFIRM_SCRIPT_HASH = `sha256-${createHash("sha256").update(CONFIRM_SCRIPT, "utf8").digest("base64")}`;
+
 // The form posts back to this server; after the POST the browser is redirected (303) to the
 // app, and browsers apply form-action to that redirect too — so the app origin is allowed.
 export function confirmPageCsp(appUrl) {
   let appOrigin = "";
   try { appOrigin = new URL(appUrl).origin; } catch { appOrigin = ""; }
-  return `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${appOrigin ? ` ${appOrigin}` : ""}`;
+  return `default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self'${appOrigin ? ` ${appOrigin}` : ""}`;
 }
 
 export function buildConfirmPage({ code, state, email, storeName, appUrl }) {
@@ -143,19 +151,22 @@ form{margin:20px 0 0}
 button,a.btn{display:block;width:100%;box-sizing:border-box;text-align:center;font-size:16px;font-weight:700;padding:14px 0;border-radius:12px;text-decoration:none}
 button{border:none;background:#4f46e5;color:#fff;cursor:pointer}
 a.btn{margin-top:10px;background:#fff;color:#4f46e5;border:1px solid #c9c4f2}
+button:disabled{opacity:.7;cursor:default}
+.note{margin:12px 0 0;font-size:13px;color:#6b6880;text-align:center}
 </style></head>
 <body><main><div class="card">
 <h1>Connect your Facebook Page</h1>
 <p>Your Facebook Page will be connected to this SellerFlowLive account:</p>
 <div class="acct"><b>${escapeHtml(maskEmail(email))}</b>${store ? `${escapeHtml(store)}` : ""}</div>
 <p class="warn">Only continue if this is your own SellerFlowLive account.</p>
-<form method="post" action="/fb/oauth/complete">
+<form id="c" method="post" action="/fb/oauth/complete">
 <input type="hidden" name="code" value="${escapeHtml(code)}">
 <input type="hidden" name="state" value="${escapeHtml(state)}">
 <button type="submit">Connect</button>
 </form>
 <a class="btn" href="${escapeHtml(cancel)}">Cancel</a>
-</div></main></body></html>`;
+<p class="note">This can take a few seconds.</p>
+</div></main><script>${CONFIRM_SCRIPT}</script></body></html>`;
 }
 
 // ── Pure comment diffing + cadence ───────────────────────────────────────────
@@ -429,6 +440,30 @@ export function createFbRuntime(deps) {
     } catch (e) {
       log(`[FB] callback error: ${e && e.message}`);
       return { redirect: `${appUrl}/?fb=error&code=exception` };
+    }
+  }
+
+  // POST /fb/oauth/complete bookkeeping (see the route). Only hashed keys and redirect URLs.
+  const completeInFlight = new Map(); // key → Promise<redirect>
+  const completeDone = new Map();     // key → { redirect, at } (insertion order = age)
+  async function runComplete(code, state, key) {
+    try {
+      const { redirect } = await handleCallback({ code, state });
+      let reason = "";
+      try { const u = new URL(redirect); if (u.searchParams.get("fb") === "error") reason = u.searchParams.get("code") || "unknown"; } catch { reason = ""; }
+      if (reason) {
+        const uid = verifyState(state, config.appSecret, now());
+        log(`[FB] callback failed user=${uid ? String(uid).slice(0, 8) : "-"} reason=${reason}`);
+      }
+      if (!reason || reason === "cap") {
+        const nowMs = now();
+        for (const [k, v] of completeDone) { if (nowMs - v.at >= COMPLETE_REMEMBER_MS) completeDone.delete(k); else break; }
+        completeDone.set(key, { redirect, at: nowMs });
+        while (completeDone.size > COMPLETE_REMEMBER_MAX) completeDone.delete(completeDone.keys().next().value);
+      }
+      return redirect;
+    } finally {
+      completeInFlight.delete(key);
     }
   }
 
@@ -709,12 +744,30 @@ export function createFbRuntime(deps) {
 
     // The confirm page's form. Its own small urlencoded parser (this route only); a body the
     // parser rejects counts as missing fields → the same error redirects as handleCallback.
+    // Idempotent per code: a Facebook code can be exchanged once, so a double tap must not
+    // run a second exchange (it would fail and end on ?fb=error although the Page was saved).
+    // Key = sha256(code|state) — the raw code/state are never kept. In flight → a repeat waits
+    // for the same result. Finished ?fb=connected / ?fb=error&code=cap → repeated for
+    // COMPLETE_REMEMBER_MS (max COMPLETE_REMEMBER_MAX). Other errors are not remembered, so a
+    // later retry runs again. Missing fields → handleCallback as before (no key).
     const formParser = makeFormParser(COMPLETE_FORM_LIMIT);
     const parseForm = (req, res, next) => formParser(req, res, (err) => { if (err) req.body = {}; next(); });
     app.post("/fb/oauth/complete", parseForm, async (req, res) => {
       const body = req.body && typeof req.body === "object" ? req.body : {};
-      const out = await handleCallback({ code: typeof body.code === "string" ? body.code : "", state: typeof body.state === "string" ? body.state : "" });
-      return res.redirect(303, out.redirect);
+      const code = typeof body.code === "string" ? body.code : "";
+      const state = typeof body.state === "string" ? body.state : "";
+      if (!code || !state) return res.redirect(303, (await handleCallback({ code, state })).redirect);
+      const key = createHash("sha256").update(`${code}|${state}`, "utf8").digest("hex");
+      const nowMs = now();
+      const kept = completeDone.get(key);
+      if (kept && nowMs - kept.at < COMPLETE_REMEMBER_MS) return res.redirect(303, kept.redirect);
+      if (kept) completeDone.delete(key);
+      let flight = completeInFlight.get(key);
+      if (!flight) {
+        flight = runComplete(code, state, key);
+        completeInFlight.set(key, flight);
+      }
+      return res.redirect(303, await flight);
     });
 
     // List own pages — id, name, username, active. NEVER the token column.
@@ -761,5 +814,5 @@ export function createFbRuntime(deps) {
     });
   }
 
-  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers };
+  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers, _completeDone: completeDone, _completeInFlight: completeInFlight };
 }
