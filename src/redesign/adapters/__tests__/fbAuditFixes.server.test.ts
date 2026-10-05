@@ -247,7 +247,7 @@ describe("A4 every Graph GET has a 10 s timeout", () => {
     const poll = rt.pollOnce(mkEntry());
     await vi.advanceTimersByTimeAsync(GRAPH_TIMEOUT_MS);
     expect(await status).toBe("");
-    expect(await videos).toEqual({ liveVideoId: "", failed: true, authFail: false });
+    expect(await videos).toEqual({ liveVideoId: "", failed: true, authFail: false, detail: { httpStatus: null, code: null, subcode: null, type: null, timedOut: true, message: "" } });
     expect(await poll).toMatchObject({ stop: false });
   });
   it("the OAuth callback redirects with its existing error code (exception)", async () => {
@@ -290,11 +290,11 @@ describe("A5 POST /fb/connect answers", () => {
     const answers = [mkRes(500, {}), mkRes(400, { error: { code: 100 } }), mkRes(200, {}), mkRes(403, { error: { code: 10 } }), mkRes(400, { error: { code: 4 } })];
     for (const a of answers) {
       const { rt } = runtime({ fetchImpl: vi.fn().mockResolvedValue(a) });
-      expect(await connectRoute(rt)("POST /fb/connect", { page_id: "P1" })).toEqual({ status: 502, json: { ok: false, error: "fb_check_failed" } });
+      expect(await connectRoute(rt)("POST /fb/connect", { page_id: "P1" })).toMatchObject({ status: 502, json: { ok: false, error: "fb_check_failed" } });
       expect(rt._pollers.size).toBe(0);
     }
     const { rt } = runtime({ fetchImpl: vi.fn().mockRejectedValue(new Error("net")) });
-    expect(await connectRoute(rt)("POST /fb/connect", { page_id: "P1" })).toEqual({ status: 502, json: { ok: false, error: "fb_check_failed" } });
+    expect(await connectRoute(rt)("POST /fb/connect", { page_id: "P1" })).toMatchObject({ status: 502, json: { ok: false, error: "fb_check_failed" } });
   });
   it("a clean answer with no LIVE video → not_live as today", async () => {
     const { rt } = runtime({ fetchImpl: vi.fn().mockResolvedValue(mkRes(200, { data: [{ id: "LVx", status: "VOD" }] })) });

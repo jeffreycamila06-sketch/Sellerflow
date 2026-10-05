@@ -222,7 +222,13 @@ export async function graphGet({ fetchImpl, url, timeoutMs = GRAPH_TIMEOUT_MS })
   const ac = typeof AbortController === "function" ? new AbortController() : null;
   const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null;
   try {
-    const r = await fetchImpl(url, { method: "GET", ...(ac ? { signal: ac.signal } : {}) });
+    let r;
+    try {
+      r = await fetchImpl(url, { method: "GET", ...(ac ? { signal: ac.signal } : {}) });
+    } catch (e) {
+      if (ac && ac.signal.aborted) throw new Error("graph_timeout"); // our timeout fired → name it
+      throw e;
+    }
     const status = r.status;
     const j = await r.json().catch(() => ({}));
     if (ac && ac.signal.aborted) throw new Error("graph_timeout"); // body cut off by the timeout
@@ -250,7 +256,7 @@ export function classifyGraphError(status, body) {
   const featureGate = code === FB_FEATURE_GATE_CODE;
   const rateLimited = status === 429 || FB_RATE_LIMIT_CODES.has(code);
   const authFail = !featureGate && !rateLimited && (code === FB_AUTH_ERROR_CODE || status === 401);
-  return { authFail, featureGate, rateLimited, code, subcode: Number(err.error_subcode) || null, message: String(err.message || "") };
+  return { authFail, featureGate, rateLimited, code, subcode: Number(err.error_subcode) || null, type: err.type ? String(err.type) : null, message: String(err.message || "") };
 }
 
 // code → short-lived user token. UNVERIFIED path.
@@ -296,17 +302,26 @@ export async function fetchMessagingGranted({ fetchImpl, userToken }) {
 // excluded, so we never attach to a stale broadcast. broadcast_start_time desc prefers the
 // newest LIVE. failed = the question was not answered (Graph error, non-200, no data array,
 // timeout / network); authFail = that failure was an invalid token (classifyGraphError).
+// A failure also carries detail { httpStatus, code, subcode, type, timedOut, message } for the
+// connect log — Facebook's own error fields only, never the token or the request URL.
 // UNVERIFIED shape; never throws.
 export async function fetchLiveVideos({ config, fetchImpl, pageId, pageToken }) {
   void config;
   try {
     const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${pageId}/live_videos`, { fields: "status,id,broadcast_start_time", access_token: pageToken }) });
     const cls = classifyGraphError(status, body);
-    if (status !== 200 || cls.code > 0 || !Array.isArray(body.data)) return { liveVideoId: "", failed: true, authFail: cls.authFail };
+    if (status !== 200 || cls.code > 0 || !Array.isArray(body.data)) {
+      const detail = { httpStatus: status, code: cls.code > 0 ? cls.code : null, subcode: cls.subcode, type: cls.type, timedOut: false, message: cls.message };
+      return { liveVideoId: "", failed: true, authFail: cls.authFail, detail };
+    }
     const list = body.data.filter((v) => String(v.status || "").toUpperCase() === "LIVE");
     list.sort((a, b) => Date.parse(b.broadcast_start_time || 0) - Date.parse(a.broadcast_start_time || 0)); // newest LIVE first
     return { liveVideoId: list[0] ? String(list[0].id || "") : "", failed: false, authFail: false };
-  } catch { return { liveVideoId: "", failed: true, authFail: false }; }
+  } catch (e) {
+    // AbortError = graphGet's 10 s timeout fired during the request; "graph_timeout" = during the body.
+    const timedOut = !!e && (e.name === "AbortError" || e.message === "graph_timeout");
+    return { liveVideoId: "", failed: true, authFail: false, detail: { httpStatus: null, code: null, subcode: null, type: null, timedOut, message: "" } };
+  }
 }
 // Authoritative "is this SPECIFIC live video still LIVE?" — GET /{lv}?fields=status.
 // Returns the uppercased status string ("LIVE" | "LIVE_STOPPED" | "VOD" | …) or "" when
@@ -734,6 +749,15 @@ export function createFbRuntime(deps) {
     if (refreshHandle) { clearTimer(refreshHandle); refreshHandle = null; }
   }
 
+  // One line per failed live check on /fb/connect: Facebook's own error fields, never the token or
+  // the request URL. The message is cut to 120 chars and any copy of the token is masked.
+  function logConnectCheckFailed(userId, pageId, detail, token) {
+    const d = detail || {};
+    let msg = String(d.message || "").replace(/\s+/g, " ").slice(0, 120);
+    if (token) msg = msg.split(String(token)).join("[redacted]");
+    log(`[FB] connect check failed user=${String(userId || "").slice(0, 8)} page=${pageId} http=${d.httpStatus ?? "-"} code=${d.code ?? "-"} subcode=${d.subcode ?? "-"} type=${d.type ?? "-"} timeout=${d.timedOut === true} msg=${msg || "-"}`);
+  }
+
   // ---- Routes ----
   const passThrough = (_req, _res, next) => next();
   function registerRoutes(app, requireAuth, extra = {}) {
@@ -825,8 +849,12 @@ export function createFbRuntime(deps) {
       catch { live = { liveVideoId: "", failed: true, authFail: false }; }
       // Invalid token → re-authorize (the page row is left as it is). Any other unanswered
       // check → 502. Only a clean answer without a LIVE video is "not live".
+      if (live.authFail || live.failed) logConnectCheckFailed(userId, pageId, live.detail, token);
       if (live.authFail) return res.status(409).json({ ok: false, error: "needs_reauth" });
-      if (live.failed) return res.status(502).json({ ok: false, error: "fb_check_failed" });
+      if (live.failed) {
+        const d = live.detail || {};
+        return res.status(502).json({ ok: false, error: "fb_check_failed", fb_code: Number.isFinite(d.code) ? d.code : null, fb_http: Number.isFinite(d.httpStatus) ? d.httpStatus : null, fb_timeout: d.timedOut === true });
+      }
       if (!live.liveVideoId) return res.json({ ok: false, reason: "not_live" });
       startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || "") });
       return res.json({ ok: true, live_video_id: live.liveVideoId });
