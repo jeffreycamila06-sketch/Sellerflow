@@ -1449,8 +1449,17 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       Phone ok but store null/unknown → an AMBER pending line — it must
                       never read as all-clear. (Red restricted / orange full still surface
                       immediately above, independent of the other half.) */}
-                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && (
+                  {/* FROZEN (冷凍): the checker's store verdict is about normal-temperature service, so a
+                      frozen row never shows the green all-clear. Phone OK still shows (muted, not the
+                      all-clear) + an amber note that 賣貨便 confirms the store on upload. Dry rows: as before. */}
+                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && !isFrozenLayer(r.tempLayer) && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
+                  )}
+                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && isFrozenLayer(r.tempLayer) && (
+                    <>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--text-dim)" }} data-testid="ps-frozen-phone-ok">✓ {t.rd_ps2_phone_ok}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)", overflowWrap: "anywhere" }} data-testid="ps-frozen-store-note">{t.rd_ps2_frozen_store_note}</div>
+                    </>
                   )}
                   {/* ONE pending line: ⏳ Checking (animated dots) until BOTH halves resolve,
                       unless the row is already red (restricted / wrong code) or orange

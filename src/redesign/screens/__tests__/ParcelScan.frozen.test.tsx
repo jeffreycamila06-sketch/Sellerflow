@@ -336,3 +336,55 @@ describe("Customer Details Import uses the current mode", () => {
     expect(h.saveParcelScan.mock.calls[0][2]).toBe("冷凍");
   });
 });
+
+describe("frozen rows: store verdict is not a frozen check (display only)", () => {
+  const ok = { phoneCheckStatus: "ok", storeFullStatus: "open" } as const;
+  it("frozen + phone ok + store open → amber frozen note + muted Buyer OK, never the green all-clear", async () => {
+    h.rows = [mk({ id: "f", tempLayer: "冷凍", ...ok }), mk({ id: "d", ...ok })];
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("ps-row")).toHaveLength(2));
+    const [frozenRow, dryRow] = r.getAllByTestId("ps-row");
+    expect(frozenRow.querySelector('[data-testid="ps-ext-clear"]')).toBeNull();
+    expect(frozenRow.querySelector('[data-testid="ps-frozen-store-note"]')?.textContent).toBe("❄ Store not checked for frozen — 賣貨便 confirms on upload");
+    expect(frozenRow.querySelector('[data-testid="ps-frozen-phone-ok"]')?.textContent).toContain("Buyer OK");
+    expect(frozenRow.getAttribute("data-flag")).toBe("");
+    // the dry row is exactly today's: green all-clear, no frozen note
+    expect(dryRow.querySelector('[data-testid="ps-ext-clear"]')?.textContent).toBe("✅ Buyer OK");
+    expect(dryRow.querySelector('[data-testid="ps-frozen-store-note"]')).toBeNull();
+    expect(dryRow.querySelector('[data-testid="ps-frozen-phone-ok"]')).toBeNull();
+  });
+  it("frozen + company (also a clear store verdict) → the frozen note, no green", async () => {
+    h.rows = [mk({ id: "f", tempLayer: "冷凍", phoneCheckStatus: "ok", storeFullStatus: "company" })];
+    const r = view();
+    await r.findByTestId("ps-frozen-store-note");
+    expect(r.queryByTestId("ps-ext-clear")).toBeNull();
+  });
+  it("frozen + restricted buyer → red as today (no frozen note)", async () => {
+    h.rows = [mk({ id: "f", tempLayer: "冷凍", phoneCheckStatus: "restricted", storeFullStatus: "open", phoneRestrictedUntil: "2026-12-04" })];
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("ps-row").getAttribute("data-flag")).toBe("red"));
+    expect(r.getByTestId("ps-ext-badge-restricted")).toBeTruthy();
+    expect(r.queryByTestId("ps-frozen-store-note")).toBeNull();
+    expect(r.queryByTestId("ps-ext-clear")).toBeNull();
+  });
+  it("frozen + wrong store code → red badge and excluded from export as today", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "f", tempLayer: "冷凍", phoneCheckStatus: "ok", storeFullStatus: "not_found" }), mk({ id: "d" })];
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("ps-row")[0].getAttribute("data-flag")).toBe("red"));
+    expect(r.getAllByTestId("ps-store-badge")[0].getAttribute("data-status")).toBe("not_found");
+    expect(r.queryByTestId("ps-frozen-store-note")).toBeNull();
+    expect(r.getByTestId("ps-export-btn").textContent).toContain("1"); // only the dry row is ready
+  });
+  it("frozen + store full → orange as today (no frozen note); export still includes clean frozen rows", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "full", tempLayer: "冷凍", phoneCheckStatus: "ok", storeFullStatus: "full" }), mk({ id: "f", customerName: "Cold", tempLayer: "冷凍", ...ok })];
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("ps-row")[0].getAttribute("data-flag")).toBe("orange"));
+    expect(r.getAllByTestId("ps-frozen-store-note")).toHaveLength(1);
+    fireEvent.click(r.getByTestId("ps-export-btn"));
+    fireEvent.click(r.getByTestId("ps-confirm-export"));
+    await waitFor(() => expect(h.build).toHaveBeenCalled());
+    expect((h.build.mock.calls[0][1] as string[][]).map((x) => [x[0], x[3]])).toEqual([["Cold", "冷凍"]]);
+  });
+});
