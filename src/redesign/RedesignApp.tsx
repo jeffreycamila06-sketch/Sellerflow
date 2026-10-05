@@ -45,6 +45,7 @@ import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePrevie
 import FbChannels from "./screens/FbChannels";
 import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
+import { useFbAccess, fbUiGates } from "./adapters/fbAccess";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
 import ReceiptFormat from "./screens/ReceiptFormat";
@@ -439,7 +440,11 @@ export default function RedesignApp() {
   // tiktok/facebook USERNAME lists (fb_pages row count, Option A).
   const [fbFlag, setFbFlag] = useState(false);
   const fbPreview = fbPreviewEnabled(auth.profile?.email);
-  const fbEnabled = fbFlag || fbPreview;
+  // Per-seller access from the server (GET /fb/access): DB testers (fb_tester_access, no code
+  // change) + Messenger receipt access (fb_receipt_access). Fail closed: false until answered
+  // and on any error. DB testers do NOT skip the plan checks (isFbEligible / the server).
+  const fbAccess = useFbAccess(authed, String(auth.profile?.email || ""));
+  const { fbEnabled, receiptUi: fbReceiptUi } = fbUiGates({ fbFlag, fbPreview, access: fbAccess }); // fbEnabled = fbFlag || fbPreview || fbAccess.facebook
   const [fbPages, setFbPages] = useState<FbPage[]>([]);
   const [fbPageIdx, setFbPageIdx] = useState(0);
   const selectedPage = fbPages[fbPageIdx] || fbPages[0] || null;
@@ -1896,7 +1901,7 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} fbReceipt={fbPreview} sessionId={sessionInstance.currentSessionId} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
+            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
@@ -1917,7 +1922,7 @@ export default function RedesignApp() {
               onParcelTracking={parcelTrackingAllowed ? () => setScreen("parceltracking") : undefined}
               parcelLocked={parcelLocked}
               onParcelUpsell={() => setUpsellOpen(true)}
-              onReceiptFormat={fbPreview ? () => setScreen("receiptformat") : undefined}
+              onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
             />
           )}
           {screen === "settings" && (
@@ -1987,7 +1992,7 @@ export default function RedesignApp() {
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
-          {screen === "receiptformat" && fbPreview && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} />}
+          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings

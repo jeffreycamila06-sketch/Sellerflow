@@ -185,7 +185,7 @@ describe("server-side Facebook lock on /fb/* routes", () => {
   it("server.js wires the lock: service-role read of app_settings fb_enabled, passed to registerRoutes", () => {
     const src = readFileSync("server.js", "utf8");
     expect(src).toContain('serviceSb.from("app_settings").select("value").eq("key", "fb_enabled").maybeSingle()');
-    expect(src).toContain("const requireFbAvailable = createFbLock({ fbEnabled });");
+    expect(src).toContain("const requireFbAvailable = createFbLock({ fbEnabled, isFbTester });");
     expect(src).toContain("fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan });");
   });
 });

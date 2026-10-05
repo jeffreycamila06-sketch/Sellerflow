@@ -25,7 +25,7 @@ import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
-import { createFbFlagReader, createFbLock, createFbPlanCheck } from "./server/fbAccess.js";
+import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -2109,7 +2109,18 @@ try {
         return data ? data.value : null;
       },
     });
-    const requireFbAvailable = createFbLock({ fbEnabled });
+    // Testers without a code change (sql/77): an enabled fb_tester_access row (service role,
+    // cached 60 s per email like fb_enabled). They still go through the plan checks.
+    const isFbTester = createFbTesterReader({
+      readTester: async (email) => {
+        const { data, error } = await serviceSb.from("fb_tester_access").select("email").eq("email", email).eq("enabled", true).maybeSingle();
+        if (error) throw new Error("fb_tester_read_failed");
+        return !!data;
+      },
+    });
+    const requireFbAvailable = createFbLock({ fbEnabled, isFbTester });
+    // What the app may show: Facebook (the lock's decision) + Messenger receipts (fb_receipt_access).
+    app.get("/fb/access", requireAuth, createFbAccessHandler({ fbEnabled, isFbTester, hasReceiptAccess: (uid) => store.hasReceiptAccess(uid) }));
     // Facebook-only plan check on /fb/connect: a free plan must be "active" (the shared
     // checkPlanActive lets "free" through whatever its status). plan_status is not on the
     // request, so a free (or unknown) plan costs one service-role read here.
