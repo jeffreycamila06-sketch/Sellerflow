@@ -29,7 +29,10 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   onSent?: (sentCount: number) => void;   // lets the Orders box show "Receipt sent ✓"
 }) {
   const t = useT();
-  const [lines, setLines] = useState(() => receipt.lines.map((l) => ({ item: l.item, price: String(l.total) })));
+  // Lines carry a stable id (React key) so removing one never shifts the other inputs.
+  const nextLineId = useRef(receipt.lines.length);   // ids 0..n-1 are the starting lines
+  const [lines, setLines] = useState(() => receipt.lines.map((l, i) => ({ id: i, item: l.item, price: String(l.total) })));
+  const focusLineId = useRef<number | null>(null);   // the line "Add line" just created → focus its item field
   const [opening, setOpening] = useState("");
   const [note, setNote] = useState("");
   const [qrImage, setQrImage] = useState<string | null>(null);
@@ -44,9 +47,12 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
     return () => { alive = false; };
   }, []);
 
+  const shownLines = lines.filter((l) => l.item.trim() !== "");
   const pictureInput: ReceiptInput = {
     opening, note, qrImage, currency: cur, buyerNum: receipt.num, buyerName: receipt.name,
-    lines: lines.map((l) => ({ item: l.item, total: Number(l.price) > 0 ? Number(l.price) : 0 })),
+    // Only lines with an item (after trim) are on the picture and in the total; the picture numbers
+    // them 1..n with no gaps. Preview and the sent picture both use this same input.
+    lines: shownLines.map((l) => ({ item: l.item.trim(), total: Number(l.price) > 0 ? Number(l.price) : 0 })),
     labels: { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc },
   };
   const picture = useReceiptPicture(pictureInput);
@@ -68,7 +74,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   }, [sessionId, receipt.num]);
 
   const send = async () => {
-    if (!sessionId || sendingRef.current) return;
+    if (!sessionId || sendingRef.current || shownLines.length === 0) return;
     sendingRef.current = true;
     setSending(true);
     setSendNote(null);
@@ -101,15 +107,25 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
       setSending(false);
     }
   };
-  const showSend = !!info && info.canSend && info.remaining > 0;
+  const canOfferSend = !!info && info.canSend && info.remaining > 0;
+  const showSend = canOfferSend && shownLines.length > 0;
+  const showNoLines = canOfferSend && shownLines.length === 0;
   const noneLeft = !!info && (info.reason === "none_left" || (info.sentCount > 0 && info.remaining === 0));
   const noteText: Record<SendNote, string> = {
     needs_messaging: t.rd_rs_needs_messaging, unknown: t.rd_rs_unknown, failed: t.rd_rs_failed,
     too_big: t.rd_rs_too_big, info_failed: t.rd_rs_info_failed,
   };
 
-  const setLine = (i: number, patch: Partial<{ item: string; price: string }>) =>
-    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const setLine = (id: number, patch: Partial<{ item: string; price: string }>) =>
+    setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const removeLine = (id: number) => setLines((ls) => ls.filter((l) => l.id !== id));
+  const addLine = () => {
+    const id = nextLineId.current++;
+    focusLineId.current = id;
+    setLines((ls) => [...ls, { id, item: "", price: "" }]);
+  };
+  // Number shown next to each editing row = its position on the picture ("–" when it is left out).
+  const shownIndex = new Map(shownLines.map((l, i) => [l.id, i + 1]));
 
   const node = (
     <div onClick={onClose} data-testid="receipt-sheet-overlay" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
@@ -127,13 +143,21 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
         <textarea data-testid="rs-opening" value={opening} maxLength={300} onChange={(e) => setOpening(e.target.value)} style={{ ...input, width: "100%", minHeight: 56, resize: "vertical" }} />
 
         <span style={label}>{t.rd_rc_lines}</span>
-        {lines.map((l, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)", width: 24, textAlign: "right", flexShrink: 0 }}>{i + 1}.</span>
-            <input data-testid="rs-item" aria-label={t.rd_rc_item_ph} placeholder={t.rd_rc_item_ph} value={l.item} onChange={(e) => setLine(i, { item: e.target.value })} style={{ ...input, flex: 1, minWidth: 0 }} />
-            <input data-testid="rs-price" aria-label={t.rd_rc_price_ph} placeholder={t.rd_rc_price_ph} inputMode="decimal" value={l.price} onChange={(e) => setLine(i, { price: e.target.value.replace(/[^0-9.]/g, "") })} style={{ ...input, width: 96, textAlign: "right" }} />
+        {lines.map((l) => (
+          <div key={l.id} data-testid="rs-line" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, minHeight: 40 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)", width: 24, textAlign: "right", flexShrink: 0 }}>{shownIndex.has(l.id) ? `${shownIndex.get(l.id)}.` : "–"}</span>
+            <input data-testid="rs-item" aria-label={t.rd_rc_item_ph} placeholder={t.rd_rc_item_ph} value={l.item}
+              ref={(el) => { if (el && focusLineId.current === l.id) { focusLineId.current = null; el.focus(); } }}
+              onChange={(e) => setLine(l.id, { item: e.target.value })} style={{ ...input, flex: 1, minWidth: 0 }} />
+            <input data-testid="rs-price" aria-label={t.rd_rc_price_ph} placeholder={t.rd_rc_price_ph} inputMode="decimal" value={l.price} onChange={(e) => setLine(l.id, { price: e.target.value.replace(/[^0-9.]/g, "") })} style={{ ...input, width: 96, textAlign: "right" }} />
+            <button type="button" data-testid="rs-remove-line" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => removeLine(l.id)}
+              style={{ width: 40, height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text-muted)", fontSize: 18, lineHeight: 1, cursor: "pointer", fontFamily: "var(--font-ui)" }}>×</button>
           </div>
         ))}
+        <button type="button" data-testid="rs-add-line" onClick={addLine}
+          style={{ marginTop: 2, minHeight: 40, padding: "0 14px", border: "1px dashed var(--border-strong)", borderRadius: 10, background: "transparent", color: "var(--accent-fg)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+          + {t.rd_rs_add_line}
+        </button>
 
         <span style={label}>{t.rd_rc_note}</span>
         <textarea data-testid="rs-note" value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} style={{ ...input, width: "100%", minHeight: 80, resize: "vertical" }} />
@@ -153,6 +177,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
             {sending ? t.rd_rs_sending : info!.sentCount > 0 ? tpl(t.rd_rs_send_again, { n: info!.remaining }) : t.rd_rs_send}
           </button>
         )}
+        {showNoLines && <div data-testid="rs-no-lines" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_no_lines}</div>}
         {noneLeft && <div data-testid="rs-none-left" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_none_left}</div>}
         {sendNote && <div role="alert" data-testid="rs-send-note" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: sendNote === "needs_messaging" ? "var(--warn)" : "var(--danger)", lineHeight: 1.45 }}>{noteText[sendNote]}</div>}
       </div>
