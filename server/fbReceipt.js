@@ -25,6 +25,10 @@ export const RECEIPT_SEND_RATE_WINDOW_MS = 60 * 1000;
 export const RECEIPT_MAX_FAILS = 2;
 export const RECEIPT_GRAPH_TIMEOUT_MS = 15 * 1000;
 export const RECEIPT_BUCKET = "fb-receipts";
+// Graph errors that prove nothing was delivered and are not this comment's fault (unknown /
+// service errors, throttling, invalid token). They do not use up the comment: the claim is
+// deleted like an upload failure. 190 → the seller must re-authorize; the rest → try later.
+export const RECEIPT_RETRYABLE_CODES = new Set([1, 2, 4, 17, 32, 190, 613, 80001, 80006]);
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 // base64 (optionally a data:image/png;base64, URL) → Buffer, only when it really is a PNG
@@ -40,9 +44,26 @@ export function decodeReceiptPng(input, maxBytes = RECEIPT_MAX_IMAGE_BYTES) {
   return buf;
 }
 
+// A row whose handle is empty or "unknown" (any case) is never a recipient.
+const knownHandle = (h) => { const v = String(h ?? "").trim(); return v !== "" && v.toLowerCase() !== "unknown"; };
+
+// More than one distinct non-empty platform_meta.commenter_id among a buyer number's Facebook
+// rows = the number holds comments from different Facebook accounts → not sendable. Rows
+// without commenter_id (older orders) do not count.
+export function isMixedBuyer(orders) {
+  const ids = new Set();
+  for (const o of orders || []) {
+    const meta = o && o.platform_meta && typeof o.platform_meta === "object" ? o.platform_meta : {};
+    const id = typeof meta.commenter_id === "string" ? meta.commenter_id.trim() : "";
+    if (id) ids.add(id);
+  }
+  return ids.size > 1;
+}
+
 // orders: [{ comment_msg_id, platform_meta, handle, created_at }]; rows: fb_receipts rows for those
 // comment ids (any user). → candidates [{ commentId, pageId, createdAt, fails }]: no
-// pending/sent row, fewer than RECEIPT_MAX_FAILS failed rows; never-failed first, then newest.
+// pending/sent row, fewer than RECEIPT_MAX_FAILS failed rows, a known handle; never-failed
+// first, then newest.
 export function pickReceiptCandidates(orders, rows) {
   const busy = new Set();
   const fails = new Map();
@@ -55,7 +76,7 @@ export function pickReceiptCandidates(orders, rows) {
   const out = [];
   for (const o of orders || []) {
     const commentId = String(o.comment_msg_id || "").trim();
-    if (!commentId || seen.has(commentId)) continue;
+    if (!commentId || seen.has(commentId) || !knownHandle(o.handle)) continue;
     seen.add(commentId);
     const f = fails.get(commentId) || 0;
     if (busy.has(commentId) || f >= RECEIPT_MAX_FAILS) continue;
@@ -109,6 +130,7 @@ export function createFbReceipt(deps) {
     graphTimeoutMs = RECEIPT_GRAPH_TIMEOUT_MS,
   } = deps;
   const sendAttempts = new Map(); // userId → timestamps (in memory; a restart clears it)
+  const sending = new Set();      // user|session|buyer — one send at a time per buyer (in memory)
 
   async function gather(userId, sessionId, buyerNumber) {
     const since = new Date(now() - RECEIPT_WINDOW_MS).toISOString();
@@ -117,7 +139,7 @@ export function createFbReceipt(deps) {
     const rows = ids.length ? await store.listReceiptRows(ids) : [];
     const mine = (rows || []).filter((r) => r.user_id === userId && r.status === "sent");
     const lastSentAt = mine.map((r) => String(r.sent_at || "")).filter(Boolean).sort().pop() || null;
-    return { orders: orders || [], candidates: pickReceiptCandidates(orders, rows), sentCount: mine.length, lastSentAt };
+    return { orders: orders || [], candidates: pickReceiptCandidates(orders, rows), mixed: isMixedBuyer(orders), sentCount: mine.length, lastSentAt };
   }
 
   // A page that can send: exists, active, can_message, token decrypts. Else null.
@@ -137,6 +159,7 @@ export function createFbReceipt(deps) {
     const g = await gather(userId, target.sessionId, target.buyerNumber);
     const base = { sentCount: g.sentCount, lastSentAt: g.lastSentAt, remaining: g.candidates.length };
     if (g.orders.length === 0) return { status: 200, json: { ok: true, canSend: false, reason: "no_orders", ...base } };
+    if (g.mixed) return { status: 200, json: { ok: true, canSend: false, reason: "mixed_buyer", ...base } };
     if (g.candidates.length === 0) return { status: 200, json: { ok: true, canSend: false, reason: "none_left", ...base } };
     const page = await sendablePage(userId, g.candidates[0].pageId);
     if (!page) return { status: 200, json: { ok: true, canSend: false, reason: "needs_messaging", ...base } };
@@ -158,7 +181,20 @@ export function createFbReceipt(deps) {
     const target = parseTarget(body);
     if (!target) return { status: 400, json: { ok: false, error: "bad_request" } };
 
+    // One send at a time per buyer: a second tap while one is running is refused.
+    const lockKey = `${userId}|${target.sessionId}|${target.buyerNumber}`;
+    if (sending.has(lockKey)) return { status: 409, json: { ok: false, error: "busy" } };
+    sending.add(lockKey);
+    try {
+      return await sendLocked(userId, target, png);
+    } finally {
+      sending.delete(lockKey);
+    }
+  }
+
+  async function sendLocked(userId, target, png) {
     const g = await gather(userId, target.sessionId, target.buyerNumber);
+    if (g.mixed) return { status: 409, json: { ok: false, error: "mixed_buyer" } };
     if (g.candidates.length === 0) return { status: 409, json: { ok: false, error: "none_left" } };
 
     // Claim the first candidate the database lets us have (page checked per candidate).
@@ -216,10 +252,19 @@ export function createFbReceipt(deps) {
       const after = await gather(userId, target.sessionId, target.buyerNumber);
       return { status: 200, json: { ok: true, sentCount: after.sentCount, remaining: after.candidates.length, lastSentAt: after.lastSentAt } };
     }
+    if (answer.kind === "failed" && RECEIPT_RETRYABLE_CODES.has(answer.code)) {
+      // Nothing was delivered and the comment is not at fault → give the comment back (same
+      // path as an upload failure; only if the delete fails is the claim marked failed).
+      let deleted = false;
+      try { deleted = (await store.deleteReceipt(claim.id, userId)) === true; } catch { deleted = false; }
+      if (!deleted) await store.updateReceipt(claim.id, { status: "failed", error_code: `${answer.code}/${answer.subcode}`, image_path: imagePath });
+      logAttempt(userId, claim.page.pageId, "failed", answer.code, answer.subcode);
+      return { status: 502, json: { ok: false, error: answer.code === 190 ? "needs_reauth" : "try_later", code: answer.code } };
+    }
     if (answer.kind === "failed") {
       await store.updateReceipt(claim.id, { status: "failed", error_code: `${answer.code}/${answer.subcode}`, image_path: imagePath });
       logAttempt(userId, claim.page.pageId, "failed", answer.code, answer.subcode);
-      return { status: 502, json: { ok: false, error: answer.code === 190 ? "needs_reauth" : "send_failed", code: answer.code } };
+      return { status: 502, json: { ok: false, error: "send_failed", code: answer.code } };
     }
     // Delivery unknown: leave the row 'pending' so this comment is never reused.
     await store.updateReceipt(claim.id, { image_path: imagePath });
@@ -258,5 +303,5 @@ export function createFbReceipt(deps) {
     app.post("/fb/receipt/send", requireAuth, sendAccessGate, sendRateLimit, makeJsonParser(RECEIPT_BODY_LIMIT), wrap(send));
   }
 
-  return { info, send, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts };
+  return { info, send, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts, _sending: sending };
 }

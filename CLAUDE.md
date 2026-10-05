@@ -4544,3 +4544,33 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
     (the failure clock is in memory only — a worker restart starts it again).
   - LOW-D: a failed write of the stored role is silent (and not retried) → after a reboot the
     machine falls back to the boot rule.
+
+## 2026-10-05 — FACEBOOK AUDIT FIXES (branch `claude/fb-audit-fixes`, NOT merged)
+Server (`server/fbLive.js`, `server/fbReceipt.js`, small wiring in `server.js`) = MANUAL Render
+deploy. Client = Vercel after merge. No SQL/schema change; FB_PREVIEW_EMAILS, fb_enabled,
+fb_receipt_access and the plan checks unchanged.
+- **Error classes (`classifyGraphError`):** rate limit = HTTP 429 or code 4/17/32/613/80001/80006;
+  auth failure = code 190 or HTTP 401 ONLY (a plain 403 is no longer one). A page is set inactive
+  only for a real invalid token (poller + refreshDuePages). Rate-limited poll → waits 30 s
+  (`POLL_RATE_LIMIT_MS`), logged once per streak.
+- **Idle limit:** 10 quiet minutes no longer stop a healthy live — the poller asks the live status:
+  LIVE → keep polling; ended → `session_end`; unreadable → re-check in 60 s, 3 in a row → `idle`.
+  Feature-gated sessions still stop with `feature_gate`. MAX_SESSION_MS unchanged.
+- Comments request asks `limit=100`. Every Graph GET has a 10 s timeout (`GRAPH_TIMEOUT_MS`).
+- **POST /fb/connect:** invalid token on the live check → 409 `needs_reauth` (page row untouched);
+  any other unanswered check, or a DB error reading the page (`store.getPage` now throws) → 502
+  `fb_check_failed`; clean "no LIVE video" → `not_live` as before.
+- **Socket reconnect:** `join_live_room` replays one Facebook `platform_status` per running poller
+  (`replayFbStatus` / `listPollers`).
+- **Receipt send:** one send at a time per buyer (409 `busy`); Graph codes 1/2/4/17/32/190/613/
+  80001/80006 give the comment back (claim deleted; 190 → `needs_reauth`, others → `try_later`);
+  a buyer number with comments from 2+ Facebook accounts (`platform_meta.commenter_id`) →
+  `mixed_buyer` (info + send); handles "unknown"/empty are never recipients.
+- **Client:** fbConnect = success only on 2xx + `ok:true`; 429 → `too_many_requests`; connect
+  toasts never show a raw code (`fbConnectFailText`); `?fb=error&code=cap` → cap text; FbChannels
+  reloads pages + refreshes the Authorize link on return (visible/focus) and every 8 min,
+  Authorize stays enabled at the cap, Remove calls fbDisconnect first; ReceiptSheet Send waits
+  for the saved format, handles busy / try_later / mixed_buyer, and drops "Nothing is sent yet"
+  while Send is offered. New i18n: `rd_fb_reauth_toast`, `rd_fb_too_many`,
+  `rd_rc_sheet_hint_live`, `rd_rs_mixed_buyer` (8 langs).
+- sql/73, 74, 75 headers now say "APPLIED in production, Oct 5 2026" (comments only).

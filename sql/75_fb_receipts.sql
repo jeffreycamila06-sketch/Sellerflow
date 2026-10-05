@@ -1,5 +1,5 @@
--- 75 — FACEBOOK RECEIPTS, send phase. NOT APPLIED — mirror for review; apply by hand BEFORE
--- the Render deploy that carries server/fbReceipt.js. Additive and idempotent.
+-- 75 — FACEBOOK RECEIPTS, send phase. APPLIED in production, Oct 5 2026. (Was applied BEFORE
+-- the Render deploy that carries server/fbReceipt.js.) Additive and idempotent.
 --
 -- fb_receipts: one row per Messenger receipt attempt (a Private Reply to ONE live comment).
 -- The partial unique index lets each comment carry at most ONE pending-or-sent row, so the

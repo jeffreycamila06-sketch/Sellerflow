@@ -11,6 +11,7 @@ import { getAppSetting } from "./appSettings";
 import { isActivePaid, isFreePlan, planDaysLeft } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
 import { fbPreviewEnabled } from "./fbPreview";
+import { tpl, type RedesignT } from "../i18n";
 
 // Authorize + Connect are open to EVERY plan while it is active: an ACTIVE free plan
 // (planStatus "active"; free has no expiry) or an ACTIVE PAID plan (status "active" and
@@ -114,7 +115,8 @@ export interface FbConnectResult { ok: boolean; reason?: string; error?: string;
 
 // POST /fb/connect { page_id, sessionId }. Server: requireAuth → requireConnectRate →
 // requirePlanActive (403 on expired plan) → live-detect → starts the poller.
-// { ok:false, reason:"not_live" } when the page has no LIVE video.
+// { ok:false, reason:"not_live" } when the page has no LIVE video. Success needs BOTH a 2xx
+// status AND ok === true in the body; HTTP 429 → error "too_many_requests".
 // ⚠️ sessionId = THIS browser's session id (the same value connect.ts sends for TikTok).
 // The server stamps it on every relayed FB comment + platform_status, and useLiveFeed
 // drops any event whose sessionId ≠ its own — so only the device that tapped Connect
@@ -128,14 +130,35 @@ export async function fbConnect(pageId: string): Promise<FbConnectResult> {
       body: JSON.stringify({ page_id: String(pageId), sessionId: browserSessionId() }),
     });
     const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; live_video_id?: string }));
+    if (r.status === 429) return { ok: false, error: "too_many_requests" };
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized" };
     if (r.status === 403) return { ok: false, error: j.error || "plan_expired" };
     if (r.status >= 500) return { ok: false, error: j.error || "Server error" };
+    if (r.status >= 200 && r.status < 300 && j.ok === true) return { ok: true, liveVideoId: j.live_video_id ? String(j.live_video_id) : undefined };
     if (j.ok === false) return { ok: false, reason: j.reason, error: j.error };
-    return { ok: true, liveVideoId: j.live_video_id ? String(j.live_video_id) : undefined };
+    return { ok: false, error: j.error || `HTTP ${r.status}` };
   } catch {
     return { ok: false, unreachable: true, error: "Can't reach the live server." };
   }
+}
+
+// The toast for a failed Facebook Connect — never a raw server code. (The iOS plan_expired
+// popup is handled by the caller before this.)
+export function fbConnectFailText(r: FbConnectResult, t: RedesignT): string {
+  if (r.reason === "not_live") return t.rd_fb_not_live;
+  if (r.unreachable) return t.rd_cm_cant_reach;
+  const e = r.error || "";
+  if (e === "needs_reauth" || e === "page_not_found") return t.rd_fb_reauth_toast;
+  if (e === "too_many_requests") return t.rd_fb_too_many;
+  return t.rd_cm_conn_failed;
+}
+
+// The toast for the OAuth return (?fb=connected | ?fb=error&code=…): code "cap" = the plan's
+// page limit was hit → the cap text (with the plan's limit), any other error → the generic one.
+export function fbReturnText(ret: { status: "connected" | "error"; code?: string }, t: RedesignT, maxPages: number): string {
+  if (ret.status === "connected") return t.rd_fb_authorized_toast;
+  if (ret.code === "cap") return tpl(t.rd_fb_cap, { max: maxPages });
+  return t.rd_fb_auth_error_toast;
 }
 
 // POST /fb/disconnect { page_id } → stops the poller. Best-effort.

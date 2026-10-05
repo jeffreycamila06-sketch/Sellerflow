@@ -43,7 +43,7 @@ import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import FbChannels from "./screens/FbChannels";
-import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, type FbPage } from "./adapters/fb";
+import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
@@ -737,18 +737,23 @@ export default function RedesignApp() {
 
   // F-P3 — Facebook OAuth return (?fb=connected|error&code=…): mirror the Shopee handler.
   // Toast + strip the query + reload the page list so a freshly-authorized page appears.
+  // code=cap (the plan's page limit) shows the cap text with the plan's limit — so it waits
+  // until the profile is loaded (the query stays until then).
+  const fbReturnPlan = auth.profile ? auth.profile.plan || "free" : null;
   useEffect(() => {
     if (typeof window === "undefined") return;
     const ret = parseFbReturn(window.location.search);
     if (!ret) return;
-    if (ret.status === "connected") { setToast({ msg: tApp.rd_fb_authorized_toast, kind: "ok" }); void reloadFbPages(); }
-    else setToast({ msg: tApp.rd_fb_auth_error_toast, kind: "err" });
+    if (ret.status === "error" && ret.code === "cap" && fbReturnPlan === null) return;
+    const msg = fbReturnText(ret, tApp, maxAcc(fbReturnPlan || "free"));
+    if (ret.status === "connected") { setToast({ msg, kind: "ok" }); void reloadFbPages(); }
+    else setToast({ msg, kind: "err" });
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("fb"); url.searchParams.delete("code");
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
-  }, [reloadFbPages, tApp]);
+  }, [reloadFbPages, tApp, fbReturnPlan]);
 
   // "No printer connected" modal — an order printed but the native bridge said no
   // printer is set up yet (BT_NOT_SET / PRINTER_NOT_SET). The order is ALREADY
@@ -1143,9 +1148,7 @@ export default function RedesignApp() {
       else {
         track("connect_failed", { platform: "Facebook", reason: r.reason || r.error || "unknown" });
         if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
-        else if (r.reason === "not_live") setToast({ msg: tApp.rd_fb_not_live, kind: "err" });
-        else if (r.unreachable) setToast({ msg: tApp.rd_cm_cant_reach, kind: "err" });
-        else setToast({ msg: r.error || tApp.rd_cm_conn_failed, kind: "err" });
+        else setToast({ msg: fbConnectFailText(r, tApp), kind: "err" }); // never a raw server code
       }
       return r;
     } finally { setFbConnecting(false); }

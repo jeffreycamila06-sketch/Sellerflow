@@ -410,13 +410,15 @@ describe("poller — #200 feature gate is NOT an auth failure", () => {
     expect(log.mock.calls.filter((c) => String(c[0]).includes("comments auth-fail"))).toHaveLength(MAX_AUTH_FAILURES);
   });
 
-  it("a non-#200 403 is still an auth failure (only code 200 is carved out)", async () => {
+  // Audit fix A1: a plain HTTP 403 is no longer an auth failure (only 190 / HTTP 401 are).
+  it("a plain 403 (code 10) is NOT an auth failure: no strike, page stays active", async () => {
     const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
     const f = vi.fn().mockResolvedValue(mkRes(403, { error: { code: 10, message: "Permission denied" } }));
     const { rt } = runtime({ store, fetchImpl: f });
     const entry = mkEntry();
-    await rt.pollOnce(entry);
-    expect(entry.authFails).toBe(1);
+    for (let i = 0; i < MAX_AUTH_FAILURES; i++) await rt.pollOnce(entry);
+    expect(entry.authFails).toBe(0);
+    expect(store.calls.setActive).toEqual([]);
   });
 });
 
@@ -491,9 +493,13 @@ describe("poller F1 — first-poll comments are DISPLAY-ONLY (initial:true), nev
 });
 
 describe("poller F2 — idle + max-session caps stop the poller", () => {
-  it("no NEW comments for IDLE_STOP_MS → stop(idle)", async () => {
-    const { rt } = runtime({ fetchImpl: vi.fn() });
-    expect(await rt.pollOnce(mkEntry({ lastActivityMs: 1_000_000 - IDLE_STOP_MS }))).toMatchObject({ stop: true, reason: "idle" });
+  // Audit fix A2: the idle limit asks the live status first (fbAuditFixes.server.test.ts has
+  // the full matrix). An already-ended live still stops at the idle limit.
+  it("no NEW comments for IDLE_STOP_MS + the live has ended → stop(session_end)", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const f = vi.fn().mockResolvedValue(mkRes(200, { status: "VOD" }));
+    const { rt } = runtime({ store, fetchImpl: f });
+    expect(await rt.pollOnce(mkEntry({ lastActivityMs: 1_000_000 - IDLE_STOP_MS }))).toMatchObject({ stop: true, reason: "session_end" });
   });
   it("session older than MAX_SESSION_MS → stop(max_session)", async () => {
     const { rt } = runtime({ fetchImpl: vi.fn() });
