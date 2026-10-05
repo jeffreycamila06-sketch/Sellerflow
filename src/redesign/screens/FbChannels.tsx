@@ -8,12 +8,20 @@
 // requirePlanActive on connect) AND
 // room under the plan cap (maxAcc, OWN page count — same numbers as TikTok; the fb_pages
 // cap is SEPARATE from tiktok/facebook usernames, like Shopee). A cap hit shows a
-// message; not-eligible routes to the neutral contact-support upsell.
-import { useEffect, useState, type CSSProperties } from "react";
+// message but Authorize stays enabled: re-authorizing an existing page is always allowed
+// (the server refuses only a NEW page over the cap → ?fb=error&code=cap).
+// not-eligible routes to the neutral contact-support upsell.
+// While this screen is open, coming back to the app (tab visible / window focused — the
+// seller returns from Facebook in another tab or the system browser) reloads the page list
+// and refreshes the Authorize link; the link is also refreshed every 8 minutes (the signed
+// state lasts 10).
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { maxAcc } from "../adapters/connect";
-import { startFbAuth, removeFbPage, isFbEligible, type FbPage } from "../adapters/fb";
+import { startFbAuth, removeFbPage, fbDisconnect, isFbEligible, type FbPage } from "../adapters/fb";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+
+export const FB_AUTH_REFRESH_MS = 8 * 60 * 1000;
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 
@@ -32,31 +40,60 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   const atCap = pages.length >= limit;
 
   const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [authTick, setAuthTick] = useState(0);   // bump → fetch a fresh Authorize link
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Pre-fetch the signed OAuth URL on mount so "Authorize" is a REAL anchor the seller
-  // taps directly (the signed state has a ~10-min TTL). Fail → the button stays disabled.
+  // Pre-fetch the signed OAuth URL so "Authorize" is a REAL anchor the seller taps directly
+  // (the signed state has a ~10-min TTL). A refresh keeps the current link until the new one
+  // arrives; a failed fetch clears it (never hand out an expired link) → the button disables.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     let alive = true;
-    setAuthUrl(null);
-    if (!eligible) return;
-    void startFbAuth().then((r) => { if (alive && r.ok && r.url) setAuthUrl(r.url); });
+    if (authTick === 0) setAuthUrl(null);
+    if (!eligible) { setAuthUrl(null); return; }
+    void startFbAuth().then((r) => { if (alive) setAuthUrl(r.ok && r.url ? r.url : null); });
     return () => { alive = false; };
-  }, [eligible]);
+  }, [eligible, authTick]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const remove = async (id: string) => {
+  // Back in the app (visible / focused) → reload the page list + a fresh link. Both events fire
+  // on one return, so a second call within 1 s is skipped. Plus a fresh link every 8 minutes.
+  const onReloadRef = useRef(onReload);
+  useEffect(() => { onReloadRef.current = onReload; }, [onReload]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let last = 0;
+    const back = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - last < 1000) return;
+      last = now;
+      void onReloadRef.current();
+      setAuthTick((n) => n + 1);
+    };
+    const interval = window.setInterval(() => setAuthTick((n) => n + 1), FB_AUTH_REFRESH_MS);
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("focus", back);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", back);
+      window.removeEventListener("focus", back);
+    };
+  }, []);
+
+  const remove = async (p: FbPage) => {
+    const id = p.id;
     if (busyId) return;
     if (typeof window !== "undefined" && !window.confirm(t.rd_fb_remove_confirm)) return;
     setBusyId(id);
+    await fbDisconnect(p.pageId).catch(() => null); // stop its poller first — best effort
     const r = await removeFbPage(id);
     setBusyId(null);
     if (r.ok) { onToast?.(t.rd_fb_removed_toast, "ok"); await onReload(); }
     else onToast?.(t.rd_fb_remove_err, "err");
   };
 
-  const canAuthorize = eligible && !atCap && !!authUrl;
+  const canAuthorize = eligible && !!authUrl;
 
   return (
     <div>
@@ -82,7 +119,7 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_fb_page_name_fallback}</div>
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{p.username ? `@${p.username}` : `${t.rd_fb_page_id}: ${p.pageId}`}</div>
               </div>
-              <button onClick={() => void remove(p.id)} disabled={busyId === p.id} style={{ padding: "8px 13px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--danger)", fontSize: 12.5, fontWeight: 700, cursor: busyId === p.id ? "default" : "pointer", opacity: busyId === p.id ? 0.6 : 1, fontFamily: "var(--font-ui)", flexShrink: 0 }}>{t.rd_fb_remove}</button>
+              <button onClick={() => void remove(p)} disabled={busyId === p.id} style={{ padding: "8px 13px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--danger)", fontSize: 12.5, fontWeight: 700, cursor: busyId === p.id ? "default" : "pointer", opacity: busyId === p.id ? 0.6 : 1, fontFamily: "var(--font-ui)", flexShrink: 0 }}>{t.rd_fb_remove}</button>
             </div>
           ))
         )}
@@ -90,15 +127,16 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
         {/* Cap message (own FB page count vs plan) */}
         {atCap && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--warn)", background: "rgba(217,119,6,.1)", border: "1px solid var(--warn)", borderRadius: 10, padding: "9px 11px", margin: "4px 2px 12px" }}>{tpl(t.rd_fb_cap, { max: limit })}</div>}
 
-        {/* Authorize — REAL anchor (pre-fetched signed URL); disabled at cap / while
-            preparing / when not eligible (routes to the neutral upsell). */}
+        {/* Authorize — REAL anchor (pre-fetched signed URL); stays enabled at the cap
+            (re-authorizing an existing page); disabled only while preparing; not eligible
+            routes to the neutral upsell. */}
         <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: "6px 2px 10px" }}>{t.rd_fb_authorize_help}</div>
         {!eligible ? (
           <button onClick={onUpsell} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>{t.rd_fb_authorize}</button>
         ) : canAuthorize ? (
           <a href={authUrl!} target="_blank" rel="noreferrer noopener" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", padding: "15px 0", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, textDecoration: "none", boxShadow: "0 6px 18px var(--accent-soft)" }}>{t.rd_fb_authorize}</a>
         ) : (
-          <button disabled style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--surface-3)", color: "var(--text-muted)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "default" }}>{atCap ? t.rd_fb_authorize : t.rd_fb_authorize_preparing}</button>
+          <button disabled style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--surface-3)", color: "var(--text-muted)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "default" }}>{t.rd_fb_authorize_preparing}</button>
         )}
       </div>
     </div>

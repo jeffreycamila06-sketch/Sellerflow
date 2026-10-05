@@ -23,7 +23,7 @@ import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY
 import { shopeeConfig } from "./server/shopeeConfig.js";
 import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
-import { createFbRuntime } from "./server/fbLive.js";
+import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
 import { createFbReceipt } from "./server/fbReceipt.js";
 import { createFbFlagReader, createFbLock, createFbPlanCheck } from "./server/fbAccess.js";
 
@@ -685,6 +685,9 @@ io.on("connection", (socket) => {
         sessionId: active.sessionId,
       });
     }
+    // Facebook pollers (server/fbLive.js) that are running for this seller: replay their
+    // status to this socket so the FB pill is right again after a socket reconnect.
+    replayFbStatus(fbRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
   });
 
   // Per-socket comment scoping. The client tells the server which account it is
@@ -1990,8 +1993,11 @@ try {
         const { count } = await serviceSb.from("fb_pages").select("id", { count: "exact", head: true }).eq("user_id", userId);
         return count || 0;
       },
+      // Throws on a database error (null only when there really is no row): the poller keeps
+      // looping, /fb/connect answers 502 fb_check_failed, the receipt treats it as no page.
       async getPage(userId, pageId) {
-        const { data } = await serviceSb.from("fb_pages").select("*").eq("user_id", userId).eq("page_id", String(pageId)).maybeSingle();
+        const { data, error } = await serviceSb.from("fb_pages").select("*").eq("user_id", userId).eq("page_id", String(pageId)).maybeSingle();
+        if (error) throw new Error("fb_page_read_failed");
         return data || null;
       },
       // fb_receipt_access (sql/73): may this user grant pages_messaging? Any error → false.

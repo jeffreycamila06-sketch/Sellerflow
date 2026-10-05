@@ -43,11 +43,16 @@ export const APP_REDIRECT_URL = "https://www.sellerflowlive.com"; // where the c
 export const OAUTH_SCOPE = "pages_show_list,pages_read_engagement,pages_read_user_content";
 export const POLL_ACTIVE_MS = 2000;   // cadence while comments are flowing
 export const POLL_QUIET_MS = 5000;    // cadence when a poll returned nothing new
+export const POLL_RATE_LIMIT_MS = 30 * 1000; // wait after a rate-limited comments poll
+export const COMMENTS_PAGE_LIMIT = 100; // comments per poll request
+export const GRAPH_TIMEOUT_MS = 10 * 1000; // every Graph GET gives up after this
 export const MAX_AUTH_FAILURES = 3;   // consecutive auth failures → mark inactive + stop
 export const MAX_FETCH_ERRORS = 3;    // consecutive hard comments-fetch errors → confirm-via-live-status then stop (fetch_error, NOT a session_end guess)
 export const STATE_TTL_MS = 10 * 60 * 1000; // OAuth state nonce validity
 export const REFRESH_SCAN_MS = 60 * 60 * 1000; // token re-validation timer cadence (page tokens live ~60d)
-export const IDLE_STOP_MS = 10 * 60 * 1000; // F2: stop after this long with no NEW comments (orphan cap)
+export const IDLE_STOP_MS = 10 * 60 * 1000; // F2: check the live status after this long with no NEW comments
+export const IDLE_RECHECK_MS = 60 * 1000;   // unreadable live status at the idle limit → ask again after this
+export const MAX_IDLE_UNREADABLE = 3;       // unreadable checks in a row at the idle limit → stop(idle)
 export const MAX_SESSION_MS = 12 * 60 * 60 * 1000; // F2: hard ceiling
 export const TOKEN_REREAD_MARGIN_MS = 10 * 60 * 1000; // F4: re-read the cached token this long before it expires
 export const EMITTED_CAP = 500;       // per-poller bounded set of emitted comment ids
@@ -58,6 +63,8 @@ export const FB_AUTH_ERROR_CODE = 190; // Graph OAuthException (invalid/expired/
 // reads /me/accounts + /{page}/live_videos. Arrives as HTTP 403, so it MUST be classified
 // before the generic 401/403 → auth rule, else it deactivates a perfectly valid page.
 export const FB_FEATURE_GATE_CODE = 200;
+// Graph throttling codes (app / user / page / custom limits). HTTP 429 counts too.
+export const FB_RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80001, 80006]);
 
 // ── OAuth state nonce (bind the page authorization to the RIGHT seller) ──────
 // Identical construction to shopeeLive.signState — state = base64url(userId).exp.HMAC.
@@ -111,11 +118,21 @@ function rememberEmitted(emitted, ids, cap = EMITTED_CAP) {
 }
 
 // ── Thin Graph API wrappers (UNVERIFIED shapes — isolated here) ──────────────
-async function graphGet({ fetchImpl, url }) {
-  const r = await fetchImpl(url, { method: "GET" });
-  const status = r.status;
-  const j = await r.json().catch(() => ({}));
-  return { status, body: j || {} };
+// Every Graph GET is cut off after timeoutMs (the abort makes it throw). Callers already treat
+// a throw as their failure case: the poller keeps looping, the OAuth callback redirects with
+// code=exception, and the helpers that never throw return their empty answer.
+export async function graphGet({ fetchImpl, url, timeoutMs = GRAPH_TIMEOUT_MS }) {
+  const ac = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null;
+  try {
+    const r = await fetchImpl(url, { method: "GET", ...(ac ? { signal: ac.signal } : {}) });
+    const status = r.status;
+    const j = await r.json().catch(() => ({}));
+    if (ac && ac.signal.aborted) throw new Error("graph_timeout"); // body cut off by the timeout
+    return { status, body: j || {} };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 const graphUrl = (path, params) => {
   const q = new URLSearchParams();
@@ -127,13 +144,15 @@ const graphUrl = (path, params) => {
 // parameter") is DELIBERATELY NOT treated as an end-of-live signal — an invalid request
 // param returns 100, and misreading that as "session ended" is exactly the bug this fix
 // closes. True "ended" is confirmed against live_videos status, never guessed from 100.
-function classifyGraphError(status, body) {
+// Only a real invalid token (code 190 or HTTP 401) is an auth failure. A plain HTTP 403 is not:
+// it also carries permission and throttling errors, and an auth failure sets the page inactive.
+export function classifyGraphError(status, body) {
   const err = (body && body.error) || {};
   const code = Number(err.code);
   // Feature gate FIRST (code 200 arrives as HTTP 403): never an auth failure.
   const featureGate = code === FB_FEATURE_GATE_CODE;
-  const authFail = !featureGate && (status === 401 || status === 403 || code === FB_AUTH_ERROR_CODE);
-  const rateLimited = status === 429 || code === 4 || code === 17 || code === 32 || code === 613;
+  const rateLimited = status === 429 || FB_RATE_LIMIT_CODES.has(code);
+  const authFail = !featureGate && !rateLimited && (code === FB_AUTH_ERROR_CODE || status === 401);
   return { authFail, featureGate, rateLimited, code, subcode: Number(err.error_subcode) || null, message: String(err.message || "") };
 }
 
@@ -174,19 +193,23 @@ export async function fetchMessagingGranted({ fetchImpl, userToken }) {
     return body.data.some((p) => p && p.permission === "pages_messaging" && p.status === "granted");
   } catch { return false; }
 }
-// Is this page currently live? Returns { liveVideoId } (the first status=LIVE video, most
-// recent first) or { liveVideoId: "" }. status is uppercase-compared so only an ACTIVE
-// broadcast matches — an ended one (VOD / LIVE_STOPPED / PROCESSING) is excluded, so we
-// never attach to a stale broadcast. broadcast_start_time desc prefers the newest LIVE.
+// Is this page currently live? Returns { liveVideoId, failed, authFail }: liveVideoId = the
+// first status=LIVE video, most recent first ("" when none). status is uppercase-compared so
+// only an ACTIVE broadcast matches — an ended one (VOD / LIVE_STOPPED / PROCESSING) is
+// excluded, so we never attach to a stale broadcast. broadcast_start_time desc prefers the
+// newest LIVE. failed = the question was not answered (Graph error, non-200, no data array,
+// timeout / network); authFail = that failure was an invalid token (classifyGraphError).
 // UNVERIFIED shape; never throws.
 export async function fetchLiveVideos({ config, fetchImpl, pageId, pageToken }) {
   void config;
   try {
-    const { body } = await graphGet({ fetchImpl, url: graphUrl(`/${pageId}/live_videos`, { fields: "status,id,broadcast_start_time", access_token: pageToken }) });
-    const list = (Array.isArray(body.data) ? body.data : []).filter((v) => String(v.status || "").toUpperCase() === "LIVE");
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${pageId}/live_videos`, { fields: "status,id,broadcast_start_time", access_token: pageToken }) });
+    const cls = classifyGraphError(status, body);
+    if (status !== 200 || cls.code > 0 || !Array.isArray(body.data)) return { liveVideoId: "", failed: true, authFail: cls.authFail };
+    const list = body.data.filter((v) => String(v.status || "").toUpperCase() === "LIVE");
     list.sort((a, b) => Date.parse(b.broadcast_start_time || 0) - Date.parse(a.broadcast_start_time || 0)); // newest LIVE first
-    return { liveVideoId: list[0] ? String(list[0].id || "") : "" };
-  } catch { return { liveVideoId: "" }; }
+    return { liveVideoId: list[0] ? String(list[0].id || "") : "", failed: false, authFail: false };
+  } catch { return { liveVideoId: "", failed: true, authFail: false }; }
 }
 // Authoritative "is this SPECIFIC live video still LIVE?" — GET /{lv}?fields=status.
 // Returns the uppercased status string ("LIVE" | "LIVE_STOPPED" | "VOD" | …) or "" when
@@ -211,7 +234,7 @@ export async function fetchLiveStatus({ config, fetchImpl, liveVideoId, pageToke
 export async function fetchComments({ config, fetchImpl, liveVideoId, pageToken }) {
   void config;
   const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${liveVideoId}/comments`, {
-    fields: "id,message,from{id,name,picture},created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", access_token: pageToken,
+    fields: "id,message,from{id,name,picture},created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", limit: COMMENTS_PAGE_LIMIT, access_token: pageToken,
   }) });
   const hasData = Array.isArray(body.data);
   const list = hasData ? body.data : [];
@@ -236,6 +259,16 @@ export async function revalidatePageToken({ config, fetchImpl, pageId, pageToken
     const cls = classifyGraphError(status, body);
     return { ok: status === 200 && !cls.authFail, authFail: cls.authFail };
   } catch { return { ok: false, authFail: false }; } // transient → leave for the next scan
+}
+
+// After a socket (re)joins the seller room: one platform_status per running Facebook poller of
+// that seller, to that socket only. runtime may be null (Facebook off). Never throws.
+export function replayFbStatus(runtime, sellerId, emailId, emit) {
+  try {
+    for (const p of runtime ? runtime.listPollers(sellerId) : []) {
+      emit({ platform: "Facebook", connected: true, sellerId: emailId, username: p.scopeKey, sessionId: p.sessionId });
+    }
+  } catch { /* best effort — never break the room join */ }
 }
 
 // ── Runtime factory (routes + timers + poller registry) ──────────────────────
@@ -365,8 +398,10 @@ export function createFbRuntime(deps) {
     const nowMs = now();
     // F2 — orphan/idle caps.
     if (nowMs - entry.startedAtMs >= MAX_SESSION_MS) return { hadNew: false, stop: true, reason: "max_session" };
-    // A session that was only ever feature-gated ends with the honest reason, not "idle".
-    if (nowMs - entry.lastActivityMs >= IDLE_STOP_MS) return { hadNew: false, stop: true, reason: entry.featureGated ? "feature_gate" : "idle" };
+    // Idle limit. A session that was only ever feature-gated ends here with the honest reason.
+    // Any other session asks Facebook whether the live is still on (below, after the token).
+    const idleDue = nowMs - entry.lastActivityMs >= IDLE_STOP_MS;
+    if (idleDue && entry.featureGated) return { hadNew: false, stop: true, reason: "feature_gate" };
 
     // F4 — cache the decrypted page token; re-read only when unset, near expiry, or
     // after an auth failure (entry.reauth) — NOT every tick (egress discipline).
@@ -383,13 +418,33 @@ export function createFbRuntime(deps) {
       entry.reauth = false;
     }
 
+    // Idle limit reached: a quiet room is not a finished live. LIVE → keep polling and look again
+    // after the next IDLE_STOP_MS of quiet; any other status → the live ended; unreadable →
+    // keep polling, ask again in IDLE_RECHECK_MS, and stop(idle) after MAX_IDLE_UNREADABLE in a row.
+    if (idleDue && nowMs >= (entry.idleRecheckAtMs || 0)) {
+      const liveStatus = await fetchLiveStatus({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
+      if (entry.stopped) return { hadNew: false, stop: false };
+      if (liveStatus === "LIVE") {
+        entry.lastActivityMs = nowMs;
+        entry.idleUnreadable = 0;
+        entry.idleRecheckAtMs = 0;
+      } else if (liveStatus) {
+        return { hadNew: false, stop: true, reason: "session_end" };
+      } else {
+        entry.idleUnreadable = (entry.idleUnreadable || 0) + 1;
+        if (entry.idleUnreadable >= MAX_IDLE_UNREADABLE) return { hadNew: false, stop: true, reason: "idle" };
+        entry.idleRecheckAtMs = nowMs + IDLE_RECHECK_MS;
+      }
+    }
+
     let res;
     try {
       res = await fetchComments({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
-    } catch { return { hadNew: false, stop: false }; } // transient network → keep looping
+    } catch { return { hadNew: false, stop: false }; } // transient network / timeout → keep looping
+    if (entry.stopped) return { hadNew: false, stop: false }; // stopped while the request was out: emit nothing
 
-    // Order: feature-gate (#200) → auth-fail (190 / non-#200 401-403) → transient backoff
-    // (429/5xx) → other HARD error. NOTHING here concludes "ended" from a comments error —
+    // Order: feature-gate (#200) → rate limit / 5xx (wait) → auth-fail (190 / HTTP 401) →
+    // other HARD error. NOTHING here concludes "ended" from a comments error —
     // that is confirmed ONLY against live_videos status below.
     //
     // FEATURE GATE (#200 Missing Permissions = Live Video API feature not approved yet):
@@ -404,6 +459,16 @@ export function createFbRuntime(deps) {
       }
       return { hadNew: false, stop: false, backoff: true };
     }
+    // Rate limited: wait POLL_RATE_LIMIT_MS before the next poll. Logged once per streak.
+    if (res.rateLimited) {
+      if (!entry.rateLimited) {
+        entry.rateLimited = true;
+        log(`[FB] comments rate-limited page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} — waiting ${POLL_RATE_LIMIT_MS / 1000}s between polls`);
+      }
+      return { hadNew: false, stop: false, backoff: true, delayMs: POLL_RATE_LIMIT_MS };
+    }
+    entry.rateLimited = false;
+    if (res.status >= 500) return { hadNew: false, stop: false, backoff: true };
     if (res.authFail) {
       entry.authFails = (entry.authFails || 0) + 1;
       entry.reauth = true; // F4 — force a fresh token read + one retry on the next poll
@@ -414,7 +479,6 @@ export function createFbRuntime(deps) {
       }
       return { hadNew: false, stop: false };
     }
-    if (res.rateLimited || res.status >= 500) return { hadNew: false, stop: false, backoff: true };
     // HARD ERROR (e.g. code 100 invalid-param, a transient 400): NEVER conclude ended
     // from the comments error alone (that was the bug). Log the full Graph error
     // (token-free), retry with backoff; after MAX_FETCH_ERRORS consecutive, CONFIRM
@@ -463,7 +527,11 @@ export function createFbRuntime(deps) {
     }
     rememberEmitted(entry.emitted, fresh.map(commentIdOf));
     entry.firstPollDone = true;
-    if (fresh.length > 0) entry.lastActivityMs = nowMs; // F2 — reset the idle clock on real activity
+    if (fresh.length > 0) { // F2 — reset the idle clock on real activity
+      entry.lastActivityMs = nowMs;
+      entry.idleUnreadable = 0;
+      entry.idleRecheckAtMs = 0;
+    }
     return { hadNew: fresh.length > 0, stop: false, initialBatch: asInitial };
   }
 
@@ -475,7 +543,7 @@ export function createFbRuntime(deps) {
       try { r = await pollOnce(entry); } catch { r = { hadNew: false, stop: false }; }
       if (entry.stopped) return;
       if (r.stop) { stopPoller(entry.key, r.reason || "stopped"); return; }
-      const delay = r.backoff ? POLL_QUIET_MS : nextPollDelay(r.hadNew);
+      const delay = r.delayMs || (r.backoff ? POLL_QUIET_MS : nextPollDelay(r.hadNew));
       scheduleNext(entry, delay);
     }, delayMs);
   }
@@ -490,7 +558,8 @@ export function createFbRuntime(deps) {
     const nowMs = now();
     const entry = {
       key, sellerId, userId, pageId: String(pageId), scopeKey, liveVideoId: String(liveVideoId), sessionId: String(sessionId || ""),
-      emitted: new Set(), authFails: 0, fetchErrors: 0, featureGated: false, timer: null, stopped: false,
+      emitted: new Set(), authFails: 0, fetchErrors: 0, featureGated: false, rateLimited: false, timer: null, stopped: false,
+      idleUnreadable: 0, idleRecheckAtMs: 0,
       firstPollDone: false,                 // F1
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2
       accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4
@@ -511,6 +580,13 @@ export function createFbRuntime(deps) {
     try { statusEmit(entry.sellerId, { connected: false, pageId: entry.pageId, liveVideoId: entry.liveVideoId, scopeKey: entry.scopeKey, sessionId: entry.sessionId }); } catch { /* best effort */ }
     log(`[FB] poller stop page=${entry.pageId} reason=${reason}`);
     return true;
+  }
+
+  // Running pollers of one seller (socket reconnect → status replay in server.js).
+  function listPollers(sellerId) {
+    const out = [];
+    for (const e of pollers.values()) if (e.sellerId === sellerId && !e.stopped) out.push({ scopeKey: e.scopeKey, sessionId: e.sessionId, pageId: e.pageId });
+    return out;
   }
 
   function stopAll() {
@@ -561,28 +637,34 @@ export function createFbRuntime(deps) {
     app.post("/fb/connect", requireAuth, requireFbAvailable, requireConnectRate, requirePlanActive, requireFbPlan, async (req, res) => {
       const userId = req.authUserId;
       const sellerId = req.sellerId;
-      const pageId = String(req.body.page_id || "");
+      const body = req.body || {};
+      const pageId = String(body.page_id || "");
       if (!pageId) return res.status(400).json({ ok: false, error: "page_id required" });
       let page;
-      try { page = await store.getPage(userId, pageId); } catch { page = null; }
+      try { page = await store.getPage(userId, pageId); }
+      catch { return res.status(502).json({ ok: false, error: "fb_check_failed" }); } // database error ≠ no page
       if (!page || !page.active) return res.status(404).json({ ok: false, error: "page_not_found" });
       const token = decryptToken(page.access_token, config.tokenKey);
       if (!token) return res.status(409).json({ ok: false, error: "needs_reauth" });
       let live;
       try { live = await fetchLiveVideos({ config, fetchImpl, pageId, pageToken: token }); }
-      catch { live = { liveVideoId: "" }; }
+      catch { live = { liveVideoId: "", failed: true, authFail: false }; }
+      // Invalid token → re-authorize (the page row is left as it is). Any other unanswered
+      // check → 502. Only a clean answer without a LIVE video is "not live".
+      if (live.authFail) return res.status(409).json({ ok: false, error: "needs_reauth" });
+      if (live.failed) return res.status(502).json({ ok: false, error: "fb_check_failed" });
       if (!live.liveVideoId) return res.json({ ok: false, reason: "not_live" });
-      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(req.body.sessionId || "") });
+      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || "") });
       return res.json({ ok: true, live_video_id: live.liveVideoId });
     });
 
     app.post("/fb/disconnect", requireAuth, (req, res) => {
-      const pageId = String(req.body.page_id || "");
+      const pageId = String((req.body || {}).page_id || "");
       const key = liveKey(req.sellerId, "Facebook", pageId);
       const stopped = stopPoller(key, "disconnect");
       return res.json({ ok: true, stopped });
     });
   }
 
-  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, pollOnce, refreshDuePages, handleCallback, buildAuthUrl, _pollers: pollers };
+  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, buildAuthUrl, _pollers: pollers };
 }

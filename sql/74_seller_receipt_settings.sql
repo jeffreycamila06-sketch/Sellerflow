@@ -1,4 +1,4 @@
--- 74 — FACEBOOK RECEIPTS, format phase. NOT APPLIED — mirror for review; apply by hand.
+-- 74 — FACEBOOK RECEIPTS, format phase. APPLIED in production, Oct 5 2026.
 -- Additive and idempotent. Nothing is sent to anyone; this only stores what the seller types.
 --
 -- seller_receipt_settings: one row per seller with the receipt's opening text, note (how to

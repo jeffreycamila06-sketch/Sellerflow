@@ -4,7 +4,9 @@
 // settings.
 // Step 2 — Send (fb_receipt_access accounts; the server decides via /fb/receipt/info): a FRESH
 // PNG is rendered from the sheet's current state on tap and posted; single-flight. The
-// server picks the comment and the page; this sheet never sends ids.
+// server picks the comment and the page; this sheet never sends ids. Send stays disabled until
+// the saved receipt format (opening / note / QR) has finished loading — loaded or failed — so a
+// receipt can never go out without the seller's note or QR by accident.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useT, tpl } from "../i18n";
@@ -14,7 +16,7 @@ import { renderReceiptPng, type ReceiptInput } from "../adapters/receiptImage";
 import { fbReceiptInfo, fbReceiptSend, blobToBase64, RECEIPT_CLIENT_MAX_BYTES, type FbReceiptInfo } from "../adapters/fbReceipt";
 import type { BuyerReceipt } from "../adapters/useReadData";
 
-type SendNote = "needs_messaging" | "unknown" | "failed" | "too_big" | "info_failed";
+type SendNote = "needs_messaging" | "unknown" | "failed" | "too_big" | "info_failed" | "mixed_buyer";
 const timeOf = (iso: string | null) => {
   const ms = iso ? Date.parse(iso) : NaN;
   return Number.isFinite(ms) ? new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
@@ -36,6 +38,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   const [opening, setOpening] = useState("");
   const [note, setNote] = useState("");
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [formatLoaded, setFormatLoaded] = useState(false); // saved format finished loading (ok or failed)
 
   // Prefill opening / note / QR from the saved settings (read-only here).
   useEffect(() => {
@@ -43,7 +46,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
     void loadReceiptSettings().then((r) => {
       if (!alive || !r.ok) return;
       setOpening(r.settings.opening); setNote(r.settings.note); setQrImage(r.settings.qrImage);
-    });
+    }).catch(() => null).finally(() => { if (alive) setFormatLoaded(true); });
     return () => { alive = false; };
   }, []);
 
@@ -67,14 +70,18 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
     let alive = true;
     void fbReceiptInfo(sessionId, receipt.num).then((r) => {
       if (!alive) return;
-      if (r.ok) { setInfo(r); if (r.reason === "needs_messaging") setSendNote("needs_messaging"); }
+      if (r.ok) {
+        setInfo(r);
+        if (r.reason === "needs_messaging") setSendNote("needs_messaging");
+        else if (r.reason === "mixed_buyer") setSendNote("mixed_buyer");
+      }
       else setSendNote("info_failed");
     });
     return () => { alive = false; };
   }, [sessionId, receipt.num]);
 
   const send = async () => {
-    if (!sessionId || sendingRef.current || shownLines.length === 0) return;
+    if (!sessionId || sendingRef.current || !formatLoaded || shownLines.length === 0) return;
     sendingRef.current = true;
     setSending(true);
     setSendNote(null);
@@ -88,7 +95,12 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
         return;
       }
       const err = "error" in r ? r.error : "";
-      if (err === "needs_messaging" || err === "needs_reauth") {
+      if (err === "busy") {
+        // A send for this buyer is already running (another tap / device) — nothing to show.
+      } else if (err === "mixed_buyer") {
+        setInfo((i) => (i ? { ...i, canSend: false, reason: "mixed_buyer" } : i));
+        setSendNote("mixed_buyer");
+      } else if (err === "needs_messaging" || err === "needs_reauth") {
         setInfo((i) => (i ? { ...i, canSend: false, reason: "needs_messaging" } : i));
         setSendNote("needs_messaging");
       } else if (err === "none_left") {
@@ -98,7 +110,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
         const again = await fbReceiptInfo(sessionId, receipt.num);   // that comment is now used up
         if (again.ok) setInfo(again);
       } else {
-        setSendNote("failed");
+        setSendNote("failed"); // incl. try_later: nothing was delivered and the comment is still usable
       }
     } catch {
       setSendNote("failed");
@@ -113,7 +125,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   const noneLeft = !!info && (info.reason === "none_left" || (info.sentCount > 0 && info.remaining === 0));
   const noteText: Record<SendNote, string> = {
     needs_messaging: t.rd_rs_needs_messaging, unknown: t.rd_rs_unknown, failed: t.rd_rs_failed,
-    too_big: t.rd_rs_too_big, info_failed: t.rd_rs_info_failed,
+    too_big: t.rd_rs_too_big, info_failed: t.rd_rs_info_failed, mixed_buyer: t.rd_rs_mixed_buyer,
   };
 
   const setLine = (id: number, patch: Partial<{ item: string; price: string }>) =>
@@ -137,7 +149,8 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>#{receipt.num} {receipt.name}</span>
           <button type="button" data-testid="receipt-sheet-close" onClick={onClose} style={{ marginLeft: "auto", border: "none", background: "transparent", color: "var(--accent-fg)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
         </div>
-        <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 2px 0" }}>{t.rd_rc_sheet_hint}</div>
+        {/* "Nothing is sent yet" is not true once Send is offered — then only the first sentence. */}
+        <div data-testid="rs-hint" style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 2px 0" }}>{showSend ? t.rd_rc_sheet_hint_live : t.rd_rc_sheet_hint}</div>
 
         <span style={label}>{t.rd_rc_opening}</span>
         <textarea data-testid="rs-opening" value={opening} maxLength={300} onChange={(e) => setOpening(e.target.value)} style={{ ...input, width: "100%", minHeight: 56, resize: "vertical" }} />
@@ -172,14 +185,14 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
           <div data-testid="rs-sent" style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: "var(--ok)" }}>{tpl(t.rd_rs_sent_at, { time: timeOf(info.lastSentAt) })}</div>
         )}
         {showSend && (
-          <button type="button" data-testid="rs-send" disabled={sending} onClick={() => void send()}
-            style={{ marginTop: 10, width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 14, fontWeight: 800, cursor: sending ? "default" : "pointer", opacity: sending ? 0.6 : 1, fontFamily: "var(--font-ui)" }}>
+          <button type="button" data-testid="rs-send" disabled={sending || !formatLoaded} onClick={() => void send()}
+            style={{ marginTop: 10, width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 14, fontWeight: 800, cursor: sending || !formatLoaded ? "default" : "pointer", opacity: sending || !formatLoaded ? 0.6 : 1, fontFamily: "var(--font-ui)" }}>
             {sending ? t.rd_rs_sending : info!.sentCount > 0 ? tpl(t.rd_rs_send_again, { n: info!.remaining }) : t.rd_rs_send}
           </button>
         )}
         {showNoLines && <div data-testid="rs-no-lines" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_no_lines}</div>}
         {noneLeft && <div data-testid="rs-none-left" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_none_left}</div>}
-        {sendNote && <div role="alert" data-testid="rs-send-note" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: sendNote === "needs_messaging" ? "var(--warn)" : "var(--danger)", lineHeight: 1.45 }}>{noteText[sendNote]}</div>}
+        {sendNote && <div role="alert" data-testid="rs-send-note" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: sendNote === "needs_messaging" || sendNote === "mixed_buyer" ? "var(--warn)" : "var(--danger)", lineHeight: 1.45 }}>{noteText[sendNote]}</div>}
       </div>
     </div>
   );

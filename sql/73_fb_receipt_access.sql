@@ -1,4 +1,4 @@
--- 73 — FACEBOOK RECEIPTS, permission phase. NOT APPLIED — mirror for review; apply by hand.
+-- 73 — FACEBOOK RECEIPTS, permission phase. APPLIED in production, Oct 5 2026.
 -- Additive and idempotent. Nothing reads fb_receipts_enabled yet and nothing is sent.
 --
 -- fb_receipt_access: accounts allowed to grant pages_messaging when authorizing a Page

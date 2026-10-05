@@ -7,7 +7,7 @@ import { SERVER } from "./serverIdentity";
 
 export const RECEIPT_CLIENT_MAX_BYTES = 3 * 1024 * 1024;
 
-export type FbReceiptReason = "no_access" | "no_orders" | "needs_messaging" | "none_left";
+export type FbReceiptReason = "no_access" | "no_orders" | "needs_messaging" | "none_left" | "mixed_buyer";
 export interface FbReceiptInfo { ok: true; canSend: boolean; reason?: FbReceiptReason; sentCount: number; lastSentAt: string | null; remaining: number }
 export type FbReceiptSendResult =
   | { ok: true; sentCount: number; remaining: number; lastSentAt: string | null }
