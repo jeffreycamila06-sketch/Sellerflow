@@ -111,7 +111,9 @@ export async function startFbAuth(): Promise<{ ok: boolean; url?: string; error?
   }
 }
 
-export interface FbConnectResult { ok: boolean; reason?: string; error?: string; unreachable?: boolean; liveVideoId?: string }
+// fbCode / fbTimeout: what Facebook answered when the server's live check failed (502
+// fb_check_failed) — shown after the generic text so a tester can report it.
+export interface FbConnectResult { ok: boolean; reason?: string; error?: string; unreachable?: boolean; liveVideoId?: string; fbCode?: number; fbTimeout?: boolean }
 
 // POST /fb/connect { page_id, sessionId }. Server: requireAuth → requireConnectRate →
 // requirePlanActive (403 on expired plan) → live-detect → starts the poller.
@@ -129,11 +131,17 @@ export async function fbConnect(pageId: string): Promise<FbConnectResult> {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ page_id: String(pageId), sessionId: browserSessionId() }),
     });
-    const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; live_video_id?: string }));
+    const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; live_video_id?: string; fb_code?: unknown; fb_timeout?: unknown }));
     if (r.status === 429) return { ok: false, error: "too_many_requests" };
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized" };
     if (r.status === 403) return { ok: false, error: j.error || "plan_expired" };
-    if (r.status >= 500) return { ok: false, error: j.error || "Server error" };
+    if (r.status >= 500) {
+      return {
+        ok: false, error: j.error || "Server error",
+        ...(typeof j.fb_code === "number" && Number.isFinite(j.fb_code) ? { fbCode: j.fb_code } : {}),
+        ...(j.fb_timeout === true ? { fbTimeout: true } : {}),
+      };
+    }
     if (r.status >= 200 && r.status < 300 && j.ok === true) return { ok: true, liveVideoId: j.live_video_id ? String(j.live_video_id) : undefined };
     if (j.ok === false) return { ok: false, reason: j.reason, error: j.error };
     return { ok: false, error: j.error || `HTTP ${r.status}` };
@@ -150,6 +158,8 @@ export function fbConnectFailText(r: FbConnectResult, t: RedesignT): string {
   const e = r.error || "";
   if (e === "needs_reauth" || e === "page_not_found") return t.rd_fb_reauth_toast;
   if (e === "too_many_requests") return t.rd_fb_too_many;
+  if (typeof r.fbCode === "number") return `${t.rd_cm_conn_failed} (FB ${r.fbCode})`;
+  if (r.fbTimeout) return `${t.rd_cm_conn_failed} (FB timeout)`;
   return t.rd_cm_conn_failed;
 }
 
