@@ -19,9 +19,12 @@ export const PROBE_MIN_INTERVAL_MS = 30 * 1000;
 export const PROBE_MESSAGE_MAX = 160;
 export const PROBE_TRIGGER_CODE = 10;
 export const PROBE_STEPS = [
-  "videos_min", "videos_live", "posts_min", "posts_attach",
-  "video_node", "vcomments_min", "vcomments_from", "vcomments_stream", "pcomments_stream",
+  "page_node", "videos_min", "videos_live", "posts_min", "posts_attach",
+  "video_node", "vcomments_min", "vcomments_from", "vcomments_stream",
+  "vcomments_full", "vcomments_live_filter", "vcomments_since", "pcomments_stream",
 ];
+export const PROBE_SINCE_SECONDS = 120; // vcomments_since asks for comments of the last 2 minutes
+const VIDEO_STEPS = ["video_node", "vcomments_min", "vcomments_from", "vcomments_stream", "vcomments_full", "vcomments_live_filter", "vcomments_since"];
 
 const isoMs = (v) => { const t = Date.parse(String(v || "")); return Number.isFinite(t) ? t : null; };
 const str = (v) => (v == null ? null : String(v));
@@ -37,8 +40,11 @@ export function newestId(items) {
   return best;
 }
 
-// One Graph answer → the row fields. kind "objects" (videos/posts/video node) keeps ids, live_status
-// and created_time; kind "comments" keeps only counts and the newest comment's age.
+// One Graph answer → the row fields. kind "objects" (page/videos/posts/video node) keeps ids,
+// live_status, created_time, status_type and — for posts — a compact attachment list per item
+// ({ media_type, type, target_id }: type words and ids only, never titles, descriptions or URLs).
+// kind "comments" keeps only counts (with from / from.name / from.picture / message), the newest
+// comment's age and paging_has_next — never names, picture URLs, messages, cursors or URLs.
 export function summarize({ status = null, body = null, error = null, kind = "objects", nowMs = Date.now(), token = "" }) {
   if (error) {
     return { http: null, fb_code: null, fb_subcode: null, fb_type: null, items: null,
@@ -52,19 +58,41 @@ export function summarize({ status = null, body = null, error = null, kind = "ob
   const detail = {};
   if (list) {
     if (kind === "comments") {
-      let newest = null; let withFrom = 0;
+      let newest = null; let withFrom = 0; let withName = 0; let withPicture = 0; let withMessage = 0;
       for (const c of list) {
         const t = isoMs(c && c.created_time);
         if (t != null && (newest == null || t > newest)) newest = t;
-        if (c && c.from && c.from.id) withFrom += 1;
+        const from = c && c.from && typeof c.from === "object" ? c.from : null;
+        if (from && from.id) withFrom += 1;
+        if (from && from.name) withName += 1;
+        if (from && from.picture) withPicture += 1;
+        if (c && typeof c.message === "string" && c.message !== "") withMessage += 1;
       }
       detail.newest_comment_age_seconds = newest == null ? null : Math.max(0, Math.round((nowMs - newest) / 1000));
       detail.comments_with_from = withFrom;
+      detail.comments_with_from_name = withName;
+      detail.comments_with_from_picture = withPicture;
+      detail.comments_with_message = withMessage;
+      const paging = b.paging && typeof b.paging === "object" ? b.paging : null;
+      detail.paging_has_next = !!(paging && (paging.next || (paging.cursors && paging.cursors.after)));
     } else {
-      detail.ids = list.map((x) => str(x && x.id)).filter(Boolean);
+      const withId = list.filter((x) => x && x.id);
+      detail.ids = withId.map((x) => String(x.id));
       const live = list.map((x) => (x && x.live_status != null ? String(x.live_status) : null)).filter((x) => x != null);
       if (live.length) detail.live_status = live;
       detail.created_time = list.map((x) => str(x && x.created_time)).filter(Boolean);
+      // Per item, in the same order as ids (null when Facebook gave none).
+      if (withId.some((x) => x.status_type != null)) detail.status_type = withId.map((x) => (x.status_type != null ? String(x.status_type) : null));
+      if (withId.some((x) => x.attachments)) {
+        detail.attachments = withId.map((x) => {
+          const att = x.attachments && Array.isArray(x.attachments.data) ? x.attachments.data : [];
+          return att.map((a) => ({
+            media_type: a && a.media_type != null ? String(a.media_type) : null,
+            type: a && a.type != null ? String(a.type) : null,
+            target_id: a && a.target && a.target.id != null ? String(a.target.id) : null,
+          }));
+        });
+      }
     }
   }
   if (message) detail.error_message = message;
@@ -107,6 +135,8 @@ export function createFbAltProbe({ get, insertRow = null, log = () => {}, now = 
     };
     const skip = (step, reason) => record(step, { http: null, fb_code: null, fb_subcode: null, fb_type: null, items: null, detail: { skipped: true, reason } });
 
+    // Does the Page token itself work?
+    await call("page_node", `/${page}`, { fields: "id" }, "objects");
     // a–d: what the Page itself lists (approved permissions only).
     const vMin = await call("videos_min", `/${page}/videos`, { fields: "id,created_time", limit: 5 }, "objects");
     const vLive = await call("videos_live", `/${page}/videos`, { fields: "id,created_time,live_status", limit: 5 }, "objects");
@@ -123,9 +153,15 @@ export function createFbAltProbe({ get, insertRow = null, log = () => {}, now = 
       await call("video_node", `/${videoId}`, { fields: "id,created_time,live_status" }, "objects");
       await call("vcomments_min", `/${videoId}/comments`, { fields: "id,created_time", limit: 5 }, "comments");
       await call("vcomments_from", `/${videoId}/comments`, { fields: "id,created_time,from{id}", limit: 5 }, "comments");
-      await call("vcomments_stream", `/${videoId}/comments`, { filter: "stream", order: "reverse_chronological", fields: "id,created_time,from{id}", limit: 5 }, "comments");
+      const stream = { filter: "stream", order: "reverse_chronological", fields: "id,created_time,from{id}", limit: 5 };
+      await call("vcomments_stream", `/${videoId}/comments`, stream, "comments");
+      // Counts only: from / from.name / from.picture / message are requested to learn whether
+      // Facebook returns them — the values are never stored or logged.
+      await call("vcomments_full", `/${videoId}/comments`, { ...stream, fields: "id,created_time,from{id,name,picture},message" }, "comments");
+      await call("vcomments_live_filter", `/${videoId}/comments`, { ...stream, live_filter: "no_filter" }, "comments");
+      await call("vcomments_since", `/${videoId}/comments`, { ...stream, since: Math.floor((now() - PROBE_SINCE_SECONDS * 1000) / 1000) }, "comments");
     } else {
-      for (const s of ["video_node", "vcomments_min", "vcomments_from", "vcomments_stream"]) await skip(s, "no_video_id");
+      for (const s of VIDEO_STEPS) await skip(s, "no_video_id");
     }
     // i: the newest post's comments.
     if (postId) await call("pcomments_stream", `/${postId}/comments`, { filter: "stream", order: "reverse_chronological", fields: "id,created_time,from{id}", limit: 5 }, "comments");

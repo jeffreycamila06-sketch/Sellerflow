@@ -17,10 +17,15 @@ const NOW = Date.parse("2026-10-05T12:00:00Z");
 const mkRes = (status: number, body: unknown) => ({ status, json: async () => body });
 const CODE10 = mkRes(400, { error: { code: 10, type: "OAuthException", message: "(#10) To use 'live-video-api' on behalf of people who are not admins, developers and testers of your app…" } });
 const ago = (s: number) => new Date(NOW - s * 1000).toISOString().replace(".000Z", "+0000");
-const COMMENTS = { data: [
-  { id: "V9_c1", created_time: ago(30), from: { id: "COMMENTER-ID-777", name: "Secret Buyer" }, message: "SECRET COMMENT TEXT" },
-  { id: "V9_c2", created_time: ago(90), message: "SECRET COMMENT TEXT 2" },
-] };
+const PIC = "https://scontent.xx.fbcdn.net/SECRET-PICTURE.jpg";
+const CURSOR = "QVFIUSECRETCURSOR";
+const COMMENTS = {
+  data: [
+    { id: "V9_c1", created_time: ago(30), from: { id: "COMMENTER-ID-777", name: "Secret Buyer", picture: { data: { url: PIC } } }, message: "SECRET COMMENT TEXT" },
+    { id: "V9_c2", created_time: ago(90), message: "SECRET COMMENT TEXT 2" },
+  ],
+  paging: { cursors: { before: CURSOR, after: CURSOR }, next: `https://graph.facebook.com/v25.0/V9/comments?after=${CURSOR}&access_token=${TOKEN}` },
+};
 afterEach(() => { vi.useRealTimers(); });
 
 // Graph fake by path. live_videos → code 10 (the connect check); the probe paths answer by step.
@@ -33,7 +38,13 @@ function graph(over: Record<string, unknown> = {}, seq?: string[]) {
       { id: "V8", created_time: ago(3600), ...(fields.includes("live_status") ? { live_status: "VOD" } : {}) },
       { id: "V9", created_time: ago(60), ...(fields.includes("live_status") ? { live_status: "LIVE" } : {}) },
     ] });
-    if (path === "/P1/posts") return (over.posts as never) || mkRes(200, { data: [{ id: "P1_old", created_time: ago(7200), status_type: "added_video" }, { id: "P1_new", created_time: ago(120), status_type: "added_video" }] });
+    if (path === "/P1") return (over.page as never) || mkRes(200, { id: "P1" });
+    if (path === "/P1/posts") return (over.posts as never) || mkRes(200, { data: [
+      { id: "P1_old", created_time: ago(7200), status_type: "added_video" },
+      { id: "P1_new", created_time: ago(120), status_type: "added_video", ...(fields.includes("attachments") ? { attachments: { data: [
+        { media_type: "video", type: "video_inline", target: { id: "V9", url: "https://www.facebook.com/SECRET-TARGET-URL" }, title: "SECRET ATTACHMENT TITLE", description: "SECRET ATTACHMENT DESCRIPTION", url: "https://www.facebook.com/SECRET-ATTACHMENT-URL" },
+      ] } } : {}) },
+    ] });
     if (path === "/V9") return mkRes(200, { id: "V9", created_time: ago(60), live_status: "LIVE" });
     if (path.endsWith("/comments")) return (over.comments as never) || mkRes(200, COMMENTS);
     return mkRes(404, {});
@@ -108,13 +119,25 @@ describe("the 9 steps, metadata only", () => {
     const s = setup(f);
     await s.run();
     await s.probeDone();
-    await vi.waitFor(() => expect(s.rows).toHaveLength(9));
+    await vi.waitFor(() => expect(s.rows).toHaveLength(PROBE_STEPS.length));
     expect(s.rows.map((r) => r.step)).toEqual(PROBE_STEPS);
+    expect(PROBE_STEPS[0]).toBe("page_node");
     const paths = f.mock.calls.map((c) => new URL(String(c[0])).pathname.replace(/^\/v[\d.]+/, ""));
-    expect(paths).toEqual(["/P1/live_videos", "/P1/videos", "/P1/videos", "/P1/posts", "/P1/posts", "/V9", "/V9/comments", "/V9/comments", "/V9/comments", "/P1_new/comments"]);
+    expect(paths).toEqual(["/P1/live_videos", "/P1", "/P1/videos", "/P1/videos", "/P1/posts", "/P1/posts", "/V9", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/P1_new/comments"]);
     const byStep = Object.fromEntries(s.rows.map((r) => [r.step, r]));
     expect(byStep.videos_live).toMatchObject({ user_id: USER, page_id: "P1", http: 200, items: 2, detail: { ids: ["V8", "V9"], live_status: ["VOD", "LIVE"] } });
-    expect(byStep.vcomments_from).toMatchObject({ http: 200, items: 2, detail: { newest_comment_age_seconds: 30, comments_with_from: 1 } });
+    expect(byStep.vcomments_from).toMatchObject({ http: 200, items: 2, detail: { newest_comment_age_seconds: 30, comments_with_from: 1, paging_has_next: true } });
+    expect(byStep.page_node).toMatchObject({ http: 200, items: 1, detail: { ids: ["P1"] } });
+    expect(byStep.posts_min.detail).toMatchObject({ ids: ["P1_old", "P1_new"], status_type: ["added_video", "added_video"] });
+    expect(byStep.posts_attach.detail).toMatchObject({ attachments: [[], [{ media_type: "video", type: "video_inline", target_id: "V9" }]] });
+    expect(byStep.vcomments_full.detail).toEqual({ newest_comment_age_seconds: 30, comments_with_from: 1, comments_with_from_name: 1, comments_with_from_picture: 1, comments_with_message: 2, paging_has_next: true });
+    // The new comment requests: the full field list, live_filter, and since = now − 120 s (unix).
+    const q = (i: number) => new URL(String(f.mock.calls[i][0])).searchParams;
+    expect(q(10).get("fields")).toBe("id,created_time,from{id,name,picture},message");
+    expect(q(10).get("filter")).toBe("stream");
+    expect(q(11).get("live_filter")).toBe("no_filter");
+    expect(q(12).get("since")).toBe(String(Math.floor((NOW - 120_000) / 1000)));
+    expect(q(12).get("order")).toBe("reverse_chronological");
     expect(s.logs).toContain(`[FB] alt probe user=${USER.slice(0, 8)} page=P1 step=videos_min http=200 code=- items=2`);
   });
   it("rows and logs never hold the token, a request URL, comment text, commenter names or ids", async () => {
@@ -122,9 +145,9 @@ describe("the 9 steps, metadata only", () => {
     const s = setup(f);
     await s.run();
     await s.probeDone();
-    await vi.waitFor(() => expect(s.rows).toHaveLength(9));
+    await vi.waitFor(() => expect(s.rows).toHaveLength(PROBE_STEPS.length));
     const all = JSON.stringify(s.rows) + "\n" + s.logs.join("\n");
-    for (const bad of [TOKEN, "access_token", "graph.facebook.com", "https://", "SECRET COMMENT TEXT", "Secret Buyer", "COMMENTER-ID-777", "V9_c1"]) expect(all, bad).not.toContain(bad);
+    for (const bad of [TOKEN, "access_token", "graph.facebook.com", "https://", "fbcdn", "SECRET-PICTURE", CURSOR, "after=", "SECRET COMMENT TEXT", "Secret Buyer", "COMMENTER-ID-777", "V9_c1", "SECRET ATTACHMENT", "SECRET-TARGET-URL"]) expect(all, bad).not.toContain(bad);
     const posts = s.rows.find((r) => r.step === "posts_min")!;
     expect(posts).toMatchObject({ http: 400, fb_code: 10, fb_type: "OAuthException", items: null });
     expect((posts.detail as { error_message: string }).error_message).toBe("token [redacted] denied");
@@ -138,10 +161,18 @@ describe("the 9 steps, metadata only", () => {
     const s = setup(graph({ videos: empty, posts: empty }));
     await s.run();
     await s.probeDone();
-    await vi.waitFor(() => expect(s.rows).toHaveLength(9));
-    for (const step of ["video_node", "vcomments_min", "vcomments_from", "vcomments_stream"]) expect(s.rows.find((r) => r.step === step)).toMatchObject({ http: null, items: null, detail: { skipped: true, reason: "no_video_id" } });
+    await vi.waitFor(() => expect(s.rows).toHaveLength(PROBE_STEPS.length));
+    for (const step of ["video_node", "vcomments_min", "vcomments_from", "vcomments_stream", "vcomments_full", "vcomments_live_filter", "vcomments_since"]) expect(s.rows.find((r) => r.step === step)).toMatchObject({ http: null, items: null, detail: { skipped: true, reason: "no_video_id" } });
     expect(s.rows.find((r) => r.step === "pcomments_stream")).toMatchObject({ detail: { skipped: true, reason: "no_post_id" } });
     expect(s.logs).toContain(`[FB] alt probe user=${USER.slice(0, 8)} page=P1 step=pcomments_stream http=- code=- items=- skipped`);
+  });
+  it("paging_has_next is a boolean only: next or cursors.after → true; none → false; never the cursor", () => {
+    const c = (paging: unknown) => summarize({ status: 200, body: { data: [], paging }, kind: "comments", nowMs: NOW, token: TOKEN }).detail as Record<string, unknown>;
+    expect(c({ next: "https://x" }).paging_has_next).toBe(true);
+    expect(c({ cursors: { after: CURSOR } }).paging_has_next).toBe(true);
+    expect(c({ cursors: { before: CURSOR } }).paging_has_next).toBe(false);
+    expect(c(undefined).paging_has_next).toBe(false);
+    expect(JSON.stringify(c({ next: `https://x?after=${CURSOR}`, cursors: { after: CURSOR } }))).not.toContain(CURSOR);
   });
   it("without a LIVE video the newest one is used", () => {
     expect(newestId([{ id: "A", created_time: ago(500) }, { id: "B", created_time: ago(5) }])).toBe("B");
@@ -158,9 +189,9 @@ describe("a probe failure never affects the response", () => {
     const s = setup(f);
     const out = await s.run();
     expect(out).toEqual({ status: 502, json: BODY_502 });
-    for (let i = 0; i < 9; i++) await vi.advanceTimersByTimeAsync(GRAPH_TIMEOUT_MS);
-    await vi.waitFor(() => expect(s.rows).toHaveLength(9));
-    expect(s.rows[0]).toMatchObject({ step: "videos_min", http: null, detail: { timed_out: true } });
+    for (let i = 0; i < PROBE_STEPS.length; i++) await vi.advanceTimersByTimeAsync(GRAPH_TIMEOUT_MS);
+    await vi.waitFor(() => expect(s.rows).toHaveLength(PROBE_STEPS.length));
+    expect(s.rows[0]).toMatchObject({ step: "page_node", http: null, detail: { timed_out: true } });
   });
   it("a failing row insert never breaks the probe or the response", async () => {
     const s = setup(graph(), { insertRow: async () => { throw new Error("db"); } });
