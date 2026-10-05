@@ -24,7 +24,7 @@ import { shopeeConfig } from "./server/shopeeConfig.js";
 import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
-import { createFbReceipt } from "./server/fbReceipt.js";
+import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
 import { createFbFlagReader, createFbLock, createFbPlanCheck } from "./server/fbAccess.js";
 
 const app = express();
@@ -1978,6 +1978,7 @@ try {
 // SEPARATE from the /connect/facebook stopgap + server/fbLiveness.js (the 6h-green
 // pill) — different routes (/fb/*), untouched here.
 let fbRuntime = null;
+let stopReceiptCleanup = null;
 // F5 — an FB init failure must NEVER take down the server (or the live TikTok/Shopee
 // relays). The whole gated block is wrapped so any throw is logged and leaves
 // fbRuntime null; TikTok/Shopee routes/relays are unaffected.
@@ -1995,6 +1996,13 @@ try {
       },
       // Throws on a database error (null only when there really is no row): the poller keeps
       // looping, /fb/connect answers 502 fb_check_failed, the receipt treats it as no page.
+      // The OAuth confirm page: which SellerFlowLive account receives the Page. Throws on a
+      // database error; null when there is no profile row.
+      async getAccountLabel(userId) {
+        const { data, error } = await serviceSb.from("seller_profiles").select("email, store_name").eq("auth_user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("fb_account_read_failed");
+        return data ? { email: data.email || "", storeName: data.store_name || "" } : null;
+      },
       async getPage(userId, pageId) {
         const { data, error } = await serviceSb.from("fb_pages").select("*").eq("user_id", userId).eq("page_id", String(pageId)).maybeSingle();
         if (error) throw new Error("fb_page_read_failed");
@@ -2033,6 +2041,18 @@ try {
       async deleteReceipt(id, userId) {
         const { error } = await serviceSb.from("fb_receipts").delete().eq("id", id).eq("user_id", userId).eq("status", "pending");
         return !error;
+      },
+      // Receipt picture cleanup (startReceiptImageCleanup): the oldest objects first, only those
+      // created before beforeIso. Folder placeholders (no id) are skipped.
+      async listOldReceiptImages(beforeIso, limit) {
+        const { data, error } = await serviceSb.storage.from("fb-receipts").list("", { limit, offset: 0, sortBy: { column: "created_at", order: "asc" } });
+        if (error) throw new Error("receipt_images_list");
+        return (data || []).filter((o) => o && o.id && o.created_at && o.created_at < beforeIso).map((o) => o.name);
+      },
+      async removeReceiptImages(paths) {
+        const { data, error } = await serviceSb.storage.from("fb-receipts").remove(paths);
+        if (error) throw new Error("receipt_images_remove");
+        return (data || []).length;
       },
       async uploadReceiptImage(path, buf) {
         const { error } = await serviceSb.storage.from("fb-receipts").upload(path, buf, { contentType: "image/png", upsert: false });
@@ -2108,6 +2128,12 @@ try {
     } catch {
       console.log("[FB] receipt routes not registered");
     }
+    // Receipt pictures older than 24 hours are deleted from the bucket (hourly).
+    try {
+      stopReceiptCleanup = startReceiptImageCleanup({ store, log: (line) => console.log(line) });
+    } catch {
+      console.log("[FB] receipt image cleanup not started");
+    }
     fbRuntime.startRefreshTimer();
     console.log("[FB] enabled — OAuth + poller routes registered");
   }
@@ -2171,6 +2197,7 @@ process.on("SIGTERM", () => {
   clearInterval(memoryLogTimer);
   if (shopeeRuntime) { try { shopeeRuntime.stopAll(); } catch { /* best effort */ } }
   if (fbRuntime) { try { fbRuntime.stopAll(); } catch { /* best effort */ } }
+  if (stopReceiptCleanup) { try { stopReceiptCleanup(); } catch { /* best effort */ } }
   const forceExit = setTimeout(() => process.exit(0), 5000);
   if (typeof forceExit.unref === "function") forceExit.unref();
   try { io.close(); } catch { /* best effort */ }

@@ -43,7 +43,7 @@ import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import FbChannels from "./screens/FbChannels";
-import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, type FbPage } from "./adapters/fb";
+import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
@@ -746,8 +746,8 @@ export default function RedesignApp() {
     if (!ret) return;
     if (ret.status === "error" && ret.code === "cap" && fbReturnPlan === null) return;
     const msg = fbReturnText(ret, tApp, maxAcc(fbReturnPlan || "free"));
-    if (ret.status === "connected") { setToast({ msg, kind: "ok" }); void reloadFbPages(); }
-    else setToast({ msg, kind: "err" });
+    if (ret.status === "connected") { if (msg) setToast({ msg, kind: "ok" }); void reloadFbPages(); }
+    else if (msg) setToast({ msg, kind: "err" }); // null = cancelled on purpose → no toast
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("fb"); url.searchParams.delete("code");
@@ -1053,6 +1053,25 @@ export default function RedesignApp() {
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
+  // Facebook Pages (2+): the Page that is REALLY connected (server-reported scope key) drives
+  // the chip — green only for that Page, Disconnect stops that Page, and connecting another
+  // Page first stops it (fbChipState). One Page → unchanged.
+  const fbLivePage = fbEnabled ? fbLivePageOf(fbConnected, liveFeed.activeAccounts.Facebook, fbPages) : null;
+  const fbChip = fbChipState({ connected: fbEff, livePage: fbLivePage, selected: fbEnabled ? selectedPage : null });
+  // The selection follows the Page that becomes connected (a connect, or the status replay
+  // after a socket reconnect). Only on a CHANGE of the connected Page, so the seller can still
+  // pick another Page while one is live.
+  const fbSyncedLiveRef = useRef("");
+  const fbLivePageId = fbLivePage ? fbLivePage.pageId : "";
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (fbLivePageId === fbSyncedLiveRef.current) return;
+    fbSyncedLiveRef.current = fbLivePageId;
+    if (!fbLivePageId) return;
+    const i = fbPages.findIndex((p) => p.pageId === fbLivePageId);
+    if (i >= 0) setFbPageIdx(i);
+  }, [fbLivePageId, fbPages]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
   // BUYER ALERT (Phase 1, gated by the server access list) — ONE RPC when a live source
   // connects, refreshed every 10 min; rows do an O(1) map lookup. No access → no RPC, no change.
@@ -1121,7 +1140,9 @@ export default function RedesignApp() {
   // → fresh #1, and vice-versa via doConnect's guard). No page → the authorize screen.
   const onConnectFacebook = () => {
     setFbOpen(false);
-    if (fbEff) { setFbOff(true); if (selectedPage) void fbDisconnect(selectedPage.pageId); return; }
+    // Disconnect stops the Page that is really connected (not merely the selected one).
+    if (fbChip.action.kind === "disconnect") { setFbOff(true); void fbDisconnect(fbChip.action.pageId); return; }
+    if (fbEff && fbChip.action.kind !== "switch") { setFbOff(true); return; } // connected, nothing attributable to stop
     // NOTE: fbPreview is NOT short-circuited here — allowlisted FB_PREVIEW_EMAILS users
     // route to the REAL connect flow (authorize-if-no-page → doFbConnect) even while the
     // GLOBAL fb_enabled flag is off (the flag is the FLEET switch only). Non-allowlisted
@@ -1129,6 +1150,12 @@ export default function RedesignApp() {
     // fbConnectEnabled = fbEnabled).
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
     if (!selectedPage) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }
+    // A different Page than the connected one: stop the connected Page first, then connect.
+    if (fbChip.action.kind === "switch") {
+      const { stopPageId, page } = fbChip.action;
+      void fbDisconnect(stopPageId).catch(() => null).then(() => commitLiveConnect({ platform: "Facebook", pageId: page.pageId, scopeKey: fbPageScopeKey(page) }));
+      return;
+    }
     commitLiveConnect({ platform: "Facebook", pageId: selectedPage.pageId, scopeKey: fbScopeKey });
   };
   // The socket-side FB connect (mirror doShopeeConnect): ensureJoined so a FB-only seller's
@@ -1807,7 +1834,7 @@ export default function RedesignApp() {
                  the existing amber pulsing "Connecting…" instead of a solid green; a
                  real connected:true clears recovering → green. The hook-level state
                  machine (grace timers, honest gray) is untouched — display-only. */
-              ttConnected={ttEff && !liveFeed.ttRecovering} fbConnected={fbEff && !liveFeed.fbRecovering}
+              ttConnected={ttEff && !liveFeed.ttRecovering} fbConnected={(fbEnabled ? fbChip.chipConnected : fbEff) && !liveFeed.fbRecovering}
               ttConnecting={ttConnecting || liveFeed.ttRecovering} fbConnecting={fbConnecting || liveFeed.fbRecovering}
               /* Viewer chip: GREEN-only (exact same booleans as ttConnected above) —
                  amber/gray → null → hidden. Data-side resets live in useLiveFeed. */

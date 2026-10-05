@@ -18,14 +18,22 @@ describe("public privacy pages", () => {
   });
 
   it("privacy policy keeps the Meta sentences, operator and contact", () => {
-    expect(privacy).toContain("Data from Facebook is the list of Pages you manage and the comments on your Page's live video, including each commenter's public name, profile ID and profile picture. It is used only to show those comments in your dashboard and create orders. It is never sold or used for advertising.");
+    expect(privacy).toContain("Data from Facebook is the list of Pages you manage and the comments on your Page's live video, including each commenter's public name, profile ID and profile picture. It is used only to show those comments in your dashboard and create orders. If you send a Messenger receipt, your Page sends that commenter one message with the receipt picture. It is never sold or used for advertising.");
+    expect(privacy).toContain("Last updated: October 5, 2026");
     expect(privacy).toContain("Meta Platform Terms</a>. You can remove our access in Facebook Settings &rarr; Apps and Websites.");
     expect(privacy).toContain("We do not sell your data.");
     expect(privacy).toContain("SELLERFLOWLIVE PRINTER TRADING &middot; <a href=\"mailto:jeffreycamila06@gmail.com\">");
   });
 
   it("states the retention the database enforces", () => {
-    expect(privacy).toContain("Live comments: 10 days. Order history: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account, which you can do anytime in the app.");
+    expect(privacy).toContain("Live comments: 10 days. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account, which you can do anytime in the app.");
+  });
+
+  it("terms (Oct 5, 2026): disconnecting deletes the stored token", () => {
+    const terms = readFileSync("public/terms/index.html", "utf8");
+    expect(terms).toContain("You may disconnect an integration at any time, which deletes the stored access token.");
+    expect(terms).not.toContain("revokes and deletes");
+    expect(terms).toContain("Last updated: October 5, 2026");
   });
 
   it("data deletion keeps the seller + Facebook-user steps and the 30-day promise, without the backups line", () => {

@@ -114,6 +114,12 @@ export function isStickerQrEntitled(): boolean { return stickerQrEntitled; }
 // The print-time truth: a QR stamps ONLY when the per-device toggle is on AND the account
 // is entitled (Plus/Pro/Master+admin). This is the single gate the sticker path reads.
 export function stickerQrEffective(): boolean { return isStickerQrOn() && stickerQrEntitled; }
+// The QR is a TikTok profile link. A Facebook buyer's "handle" is a display name, so a Facebook
+// order gets NO QR — the sticker is laid out exactly as with the toggle off. TikTok and legacy
+// orders with no platform are unchanged.
+export function stickerQrAllowedFor(platform: string | undefined | null): boolean {
+  return String(platform ?? "").trim().toLowerCase() !== "facebook";
+}
 
 // ── LIVE sticker layout v2 (order time up top, full-width comment) ───────────
 // Bitmap sticker path only (stickerRaster.ts). PUBLIC since 2026-10-02 — every seller gets
@@ -369,7 +375,7 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
 // -> the no-printer wording) while inheriting the bitmap-default routing.
 export interface BtRouteResult { ok: boolean; code: string; message: string }
 
-async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas): Promise<BtRouteResult> {
+async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string): Promise<BtRouteResult> {
   const t0 = nowMs();
   // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
   // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
@@ -379,7 +385,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // only when the payload actually contains CJK).
   // QR is a bitmap-only concern (the native TSPL text builders can't render it), so
   // the "Print QR on sticker" toggle enters HERE, not in the byte-parity native payload.
-  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective(), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}) } };
+  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}) } };
   const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
@@ -433,7 +439,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
       try { cjk = await loadCjkAtlas(); } catch { cjk = null; cjkUnavailable = true; }
     }
     if (cjk) {
-      const r = await printStickerViaBitmap(bmpFn, payload, cjk);
+      const r = await printStickerViaBitmap(bmpFn, payload, cjk, buyer.platform);
       // AUDIT F2: native says the SPP-transport bitmap send failed at the
       // socket level → retry THIS print through the unchanged TEXT path below.
       // Every other outcome (success, or a real print failure) returns as-is.
@@ -797,10 +803,10 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   // price string for manual — rendered LARGE at the bottom, mirroring native.
   const codeItem = buyer.orders?.[0]?.item;
   const codeTime = buyer.orders?.[0]?.time;
-  // QR (same content rules as the phone): toggle on (+ entitled), @username line on,
+  // QR (same content rules as the phone): toggle on (+ entitled), not a Facebook buyer, @username line on,
   // handle not blank. Bottom-right; the lines that can reach that corner (name,
   // @handle, time + big code) get right padding so text never runs under it.
-  const qr = stickerQrEffective() && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
+  const qr = stickerQrEffective() && stickerQrAllowedFor(buyer.platform) && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
   const qrCss = qr
     ? `body{position:relative}` +
       `.qr{position:absolute;right:clamp(1mm,2.5vw,2.5mm);bottom:clamp(1mm,2.5vh,2mm);width:${qr.sizeMm}mm;height:${qr.sizeMm}mm}` +
