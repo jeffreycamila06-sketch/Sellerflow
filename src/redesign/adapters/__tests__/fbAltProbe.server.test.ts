@@ -1,16 +1,15 @@
-// Facebook alt probe (server/fbProbe.js) — read-only research after a code-10 live check.
-// Pins: the /fb/connect 502 status + body are byte-identical; the probe runs only on code 10,
-// after the response, never starts a poller, never affects the response (failure / timeout /
-// row write error); at most once per page every 30 s; rows and logs hold metadata only (no token,
-// URL, comment text or commenter id); skipped steps are recorded; the sql/78 mirror.
+// Facebook alt probe (server/fbProbe.js) — read-only research. Since the video path (Oct 2026)
+// /fb/connect no longer starts it (pinned in fbVideoPath.server.test.ts); the module and its
+// table stay in place, unused, and are tested directly here: never throws / rejects (failure,
+// timeout, row write error); at most once per page every 30 s; rows and logs hold metadata only
+// (no token, URL, comment text or commenter id); skipped steps are recorded; the sql/78 mirror.
 // @vitest-environment node
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
-import { createFbRuntime, GRAPH_TIMEOUT_MS } from "../../../../server/fbLive.js";
+import { graphGet, GRAPH_HOST, GRAPH_TIMEOUT_MS } from "../../../../server/fbLive.js";
+import { GRAPH_VERSION } from "../../../../server/fbConfig.js";
 import { createFbAltProbe, PROBE_STEPS, PROBE_MIN_INTERVAL_MS, summarize, newestId } from "../../../../server/fbProbe.js";
-import { encryptToken } from "../../../../server/fbTokens.js";
 
-const CONFIG = { enabled: true, appId: "app123", appSecret: "sekret", tokenKey: "tk" };
 const TOKEN = "EAAB-PAGE-TOKEN-SECRET";
 const USER = "user-1234567890";
 const NOW = Date.parse("2026-10-05T12:00:00Z");
@@ -51,67 +50,22 @@ function graph(over: Record<string, unknown> = {}, seq?: string[]) {
   });
 }
 
+// The probe exactly as the runtime used to build it (graphGet + the Graph URL with the token as a
+// query param), started directly — /fb/connect no longer starts it.
 function setup(fetchImpl: ReturnType<typeof vi.fn>, opts: { insertRow?: (r: unknown) => unknown; now?: () => number } = {}) {
   const logs: string[] = [];
   const rows: Record<string, unknown>[] = [];
-  const page = { user_id: USER, page_id: "P1", page_username: "mypage", active: true, access_token: encryptToken(TOKEN, CONFIG.tokenKey) };
-  const store = {
-    async getPage() { return { ...page }; }, async getPlan() { return "pro"; }, async countPages() { return 1; }, async listPages() { return []; },
-    async upsertPage() {}, async listActivePages() { return []; }, async setActive() {}, async updateExpiry() {},
-    insertProbeRow: vi.fn(opts.insertRow || (async (r: Record<string, unknown>) => { rows.push(r); })),
+  const insertRow = vi.fn(opts.insertRow || (async (r: Record<string, unknown>) => { rows.push(r); }));
+  const get = (path: string, params: Record<string, unknown>, token: string) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries({ ...params, access_token: token })) if (v != null && v !== "") q.set(k, String(v));
+    return graphGet({ fetchImpl, url: `${GRAPH_HOST}/${GRAPH_VERSION}${path}?${q.toString()}` });
   };
-  const setLoop = vi.fn(() => 1);
-  const rt = createFbRuntime({ config: CONFIG, store, emitComment: vi.fn(), statusEmit: vi.fn(), liveKey: (a: string, b: string, c: string) => `${a}:${b}:${c}`,
-    renderUrl: "https://srv.test", appUrl: "https://app.test", fetchImpl, now: opts.now || (() => NOW), log: (l: string) => logs.push(l), setLoop, clearLoop: () => {}, setTimer: () => 2, clearTimer: () => {} });
-  const handlers: Record<string, ((q: unknown, s: unknown, n: () => void) => unknown)[]> = {};
-  const rec = (m: string) => (p: string, ...h: never[]) => { handlers[`${m} ${p}`] = h; };
-  rt.registerRoutes({ get: rec("GET"), post: rec("POST") } as never, ((_q: unknown, _s: unknown, n: () => void) => n()) as never);
-  const run = async (seq?: string[]) => {
-    let status = 200; let json: Record<string, unknown> = {};
-    const res = { status(c: number) { status = c; return this; }, json(b: Record<string, unknown>) { json = b; seq?.push("response"); return this; } };
-    const chain = handlers["POST /fb/connect"];
-    await chain[chain.length - 1]({ authUserId: USER, sellerId: "s1", body: { page_id: "P1" } }, res, () => {});
-    return { status, json };
-  };
+  const probe = createFbAltProbe({ get, insertRow, log: ((l: string) => { logs.push(l); }) as never, now: opts.now || (() => NOW) });
+  const run = () => probe.start({ userId: USER, pageId: "P1", token: TOKEN });
   const probeDone = async () => { await vi.waitFor(() => expect(logs.filter((l) => l.includes("alt probe")).length).toBe(PROBE_STEPS.length)); };
-  return { rt, run, logs, rows, store, setLoop, probeDone };
+  return { run, logs, rows, store: { insertProbeRow: insertRow }, probeDone };
 }
-const BODY_502 = { ok: false, error: "fb_check_failed", fb_code: 10, fb_http: 400, fb_timeout: false };
-
-describe("/fb/connect response is unchanged", () => {
-  it("code 10 → the same 502 status and byte-identical body; the response goes out BEFORE any probe call", async () => {
-    const seq: string[] = [];
-    const s = setup(graph({}, seq));
-    const out = await s.run(seq);
-    expect(out.status).toBe(502);
-    expect(JSON.stringify(out.json)).toBe(JSON.stringify(BODY_502));
-    await s.probeDone();
-    const firstProbe = seq.findIndex((x) => x.startsWith("fetch /P1/videos"));
-    expect(seq.indexOf("response")).toBeLessThan(firstProbe);
-    expect(seq[0]).toBe("fetch /P1/live_videos");
-  });
-  it("never starts a poller", async () => {
-    const s = setup(graph());
-    await s.run();
-    await s.probeDone();
-    expect(s.rt._pollers.size).toBe(0);
-    expect(s.setLoop).not.toHaveBeenCalled();
-  });
-});
-
-describe("runs only on code 10", () => {
-  it("other failures (code 100, 5xx, timeout), not_live and success → no probe", async () => {
-    for (const live of [mkRes(400, { error: { code: 100 } }), mkRes(500, {}), mkRes(200, { data: [{ id: "LV", status: "VOD" }] }), mkRes(200, { data: [{ id: "LV", status: "LIVE" }] })]) {
-      const f = graph({ live });
-      const s = setup(f);
-      await s.run();
-      await new Promise((r) => setTimeout(r, 20));
-      expect(s.logs.some((l) => l.includes("alt probe"))).toBe(false);
-      expect(f.mock.calls.some((c) => String(c[0]).includes("/videos?") || String(c[0]).includes("/posts?"))).toBe(false);
-      expect(s.store.insertProbeRow).not.toHaveBeenCalled();
-    }
-  });
-});
 
 describe("the 9 steps, metadata only", () => {
   it("one row + one log line per step, in order; picks the LIVE video and the newest post", async () => {
@@ -123,7 +77,7 @@ describe("the 9 steps, metadata only", () => {
     expect(s.rows.map((r) => r.step)).toEqual(PROBE_STEPS);
     expect(PROBE_STEPS[0]).toBe("page_node");
     const paths = f.mock.calls.map((c) => new URL(String(c[0])).pathname.replace(/^\/v[\d.]+/, ""));
-    expect(paths).toEqual(["/P1/live_videos", "/P1", "/P1/videos", "/P1/videos", "/P1/posts", "/P1/posts", "/V9", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/P1_new/comments"]);
+    expect(paths).toEqual(["/P1", "/P1/videos", "/P1/videos", "/P1/posts", "/P1/posts", "/V9", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/V9/comments", "/P1_new/comments"]);
     const byStep = Object.fromEntries(s.rows.map((r) => [r.step, r]));
     expect(byStep.videos_live).toMatchObject({ user_id: USER, page_id: "P1", http: 200, items: 2, detail: { ids: ["V8", "V9"], live_status: ["VOD", "LIVE"] } });
     expect(byStep.vcomments_from).toMatchObject({ http: 200, items: 2, detail: { newest_comment_age_seconds: 30, comments_with_from: 1, paging_has_next: true } });
@@ -132,7 +86,7 @@ describe("the 9 steps, metadata only", () => {
     expect(byStep.posts_attach.detail).toMatchObject({ attachments: [[], [{ media_type: "video", type: "video_inline", target_id: "V9" }]] });
     expect(byStep.vcomments_full.detail).toEqual({ newest_comment_age_seconds: 30, comments_with_from: 1, comments_with_from_name: 1, comments_with_from_picture: 1, comments_with_message: 2, paging_has_next: true });
     // The new comment requests: the full field list, live_filter, and since = now − 120 s (unix).
-    const q = (i: number) => new URL(String(f.mock.calls[i][0])).searchParams;
+    const q = (i: number) => new URL(String(f.mock.calls[i - 1][0])).searchParams; // −1: indexes kept from when live_videos was call 0
     expect(q(10).get("fields")).toBe("id,created_time,from{id,name,picture},message");
     expect(q(10).get("filter")).toBe("stream");
     expect(q(11).get("live_filter")).toBe("no_filter");
@@ -179,36 +133,32 @@ describe("the 9 steps, metadata only", () => {
   });
 });
 
-describe("a probe failure never affects the response", () => {
-  it("every probe call throwing / timing out → same 502, steps recorded as failed, no unhandled rejection", async () => {
+describe("a probe failure never throws", () => {
+  it("every probe call timing out → steps recorded as failed, the run resolves (no unhandled rejection)", async () => {
     vi.useFakeTimers();
-    const f = vi.fn((url: string, init?: { signal?: AbortSignal }) => {
-      if (String(url).includes("/live_videos")) return Promise.resolve(CODE10);
-      return new Promise((_r, rej) => { init?.signal?.addEventListener("abort", () => rej(new Error("aborted"))); });
-    });
+    const f = vi.fn((_url: string, init?: { signal?: AbortSignal }) => new Promise((_r, rej) => { init?.signal?.addEventListener("abort", () => rej(new Error("aborted"))); }));
     const s = setup(f);
-    const out = await s.run();
-    expect(out).toEqual({ status: 502, json: BODY_502 });
+    const p = s.run();
     for (let i = 0; i < PROBE_STEPS.length; i++) await vi.advanceTimersByTimeAsync(GRAPH_TIMEOUT_MS);
+    await expect(p).resolves.toBeUndefined();
     await vi.waitFor(() => expect(s.rows).toHaveLength(PROBE_STEPS.length));
     expect(s.rows[0]).toMatchObject({ step: "page_node", http: null, detail: { timed_out: true } });
   });
-  it("a failing row insert never breaks the probe or the response", async () => {
+  it("a failing row insert never breaks the probe", async () => {
     const s = setup(graph(), { insertRow: async () => { throw new Error("db"); } });
-    expect(await s.run()).toEqual({ status: 502, json: BODY_502 });
+    await expect(s.run()).resolves.toBeUndefined();
     await s.probeDone();
   });
 });
 
 describe("at most one probe per page every 30 s", () => {
-  it("a second code-10 connect within 30 s gets the 502 but no probe; after 30 s it probes again", async () => {
+  it("a second start within 30 s is skipped (null); after 30 s it probes again", async () => {
     let t = NOW;
     const s = setup(graph(), { now: () => t });
     await s.run();
     await s.probeDone();
     t = NOW + PROBE_MIN_INTERVAL_MS - 1;
-    expect(await s.run()).toEqual({ status: 502, json: BODY_502 });
-    await new Promise((r) => setTimeout(r, 20));
+    expect(s.run()).toBeNull();
     expect(s.logs.filter((l) => l.includes("step=videos_min"))).toHaveLength(1);
     t = NOW + PROBE_MIN_INTERVAL_MS;
     await s.run();
