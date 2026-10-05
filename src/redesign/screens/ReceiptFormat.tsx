@@ -105,7 +105,7 @@ export default function ReceiptFormat({ cur, onBack }: { cur: string; onBack: ()
           <div style={card}>
             <span style={label}>{t.rd_rc_sample}</span>
             {picture.url
-              ? <img src={picture.url} alt={t.rd_rc_sample} data-testid="rc-sample-img" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--border)" }} />
+              ? <img src={picture.url} alt={t.rd_rc_sample} data-testid="rc-sample-img" className="sfl-no-hover" style={{ display: "block", width: "100%", maxWidth: 360, margin: "0 auto", boxSizing: "border-box", borderRadius: 10, border: "1px solid var(--border)" }} />
               : picture.failed && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_rc_no_preview}</div>}
           </div>
         )}

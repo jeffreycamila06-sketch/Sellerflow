@@ -141,8 +141,11 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
 
   const node = (
     <div onClick={onClose} data-testid="receipt-sheet-overlay" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.5)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+      {/* Full width on a phone; centered, at most 560px wide on a wide screen. The fields scroll;
+          the Send area below them is pinned to the bottom of the sheet. Never scrolls sideways. */}
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t.rd_rc_button} data-testid="receipt-sheet"
-        style={{ background: "var(--surface-2)", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "10px 14px calc(18px + env(safe-area-inset-bottom))", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -14px 40px rgba(0,0,0,.35)" }}>
+        style={{ background: "var(--surface-2)", borderTopLeftRadius: 20, borderTopRightRadius: 20, width: "100%", maxWidth: 560, margin: "0 auto", boxSizing: "border-box", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 -14px 40px rgba(0,0,0,.35)" }}>
+        <div data-testid="rs-scroll" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "10px 14px 6px" }}>
         <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border-strong)", margin: "0 auto 12px" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{t.rd_rc_button}</span>
@@ -177,9 +180,13 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
 
         <div style={{ marginTop: 12 }}>
           {picture.url
-            ? <img src={picture.url} alt={t.rd_rc_button} data-testid="rs-picture" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--border)", background: "#fff" }} />
+            ? <img src={picture.url} alt={t.rd_rc_button} data-testid="rs-picture" className="sfl-no-hover" style={{ display: "block", width: "100%", maxWidth: 360, margin: "0 auto", boxSizing: "border-box", borderRadius: 10, border: "1px solid var(--border)", background: "#fff" }} />
             : picture.failed && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_rc_no_preview}</div>}
         </div>
+        </div>
+
+        {/* Send area — pinned below the scrolling fields, always visible. */}
+        <div data-testid="rs-footer" style={{ flex: "0 0 auto", padding: "0 14px calc(18px + env(safe-area-inset-bottom))", overflowX: "hidden" }}>
 
         {info && info.lastSentAt && info.sentCount > 0 && (
           <div data-testid="rs-sent" style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: "var(--ok)" }}>{tpl(t.rd_rs_sent_at, { time: timeOf(info.lastSentAt) })}</div>
@@ -193,6 +200,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
         {showNoLines && <div data-testid="rs-no-lines" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_no_lines}</div>}
         {noneLeft && <div data-testid="rs-none-left" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_none_left}</div>}
         {sendNote && <div role="alert" data-testid="rs-send-note" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: sendNote === "needs_messaging" || sendNote === "mixed_buyer" ? "var(--warn)" : "var(--danger)", lineHeight: 1.45 }}>{noteText[sendNote]}</div>}
+        </div>
       </div>
     </div>
   );
