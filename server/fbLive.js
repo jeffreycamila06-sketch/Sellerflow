@@ -35,6 +35,7 @@ import { GRAPH_VERSION } from "./fbConfig.js";
 import { fbToPayload } from "./fbComment.js";
 import { encryptToken, decryptToken, isExpiringSoon } from "./fbTokens.js";
 import { maxAccountsForPlan } from "./accountCap.js";
+import { fbPreviewEmail } from "./fbAccess.js";
 
 export const GRAPH_HOST = "https://graph.facebook.com";
 export const FB_DIALOG_HOST = "https://www.facebook.com";
@@ -528,8 +529,12 @@ export function createFbRuntime(deps) {
     // Facebook-only plan check (server/fbAccess.js): a free plan must be "active" (mirrors the
     // client's isFbEligible). After requirePlanActive, on connect only.
     const requireFbPlan = extra.requireFbPlan || passThrough;
+    // Authorize runs the same plan checks as connect (requirePlanActive → requireFbPlan), except
+    // that preview accounts skip requirePlanActive here so they always get their auth URL (the
+    // client's isFbEligible bypasses the plan for them too). requireFbPlan already passes them.
+    const startPlanActive = (req, res, next) => (fbPreviewEmail(req.userEmail) ? next() : requirePlanActive(req, res, next));
 
-    app.get("/fb/oauth/start", requireAuth, requireFbAvailable, async (req, res) => {
+    app.get("/fb/oauth/start", requireAuth, requireFbAvailable, startPlanActive, requireFbPlan, async (req, res) => {
       let messaging = false;
       try { messaging = typeof store.hasReceiptAccess === "function" && (await store.hasReceiptAccess(req.authUserId)) === true; } catch { messaging = false; }
       try { return res.json({ url: buildAuthUrl(req.authUserId, { messaging }) }); }
