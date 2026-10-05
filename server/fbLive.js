@@ -37,6 +37,7 @@ import { fbToPayload } from "./fbComment.js";
 import { encryptToken, decryptToken, isExpiringSoon } from "./fbTokens.js";
 import { maxAccountsForPlan } from "./accountCap.js";
 import { fbPreviewEmail } from "./fbAccess.js";
+import { createFbAltProbe, PROBE_TRIGGER_CODE } from "./fbProbe.js";
 
 export const GRAPH_HOST = "https://graph.facebook.com";
 export const FB_DIALOG_HOST = "https://www.facebook.com";
@@ -398,11 +399,19 @@ export function createFbRuntime(deps) {
     renderUrl, appUrl = APP_REDIRECT_URL,
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
     makeFormParser = (limit) => express.urlencoded({ extended: false, limit }),
+    altProbe = null, // tests may inject; default below (server/fbProbe.js)
     setLoop = (fn, ms) => setTimeout(fn, ms), clearLoop = (h) => clearTimeout(h),
     setTimer = (fn, ms) => setInterval(fn, ms), clearTimer = (h) => clearInterval(h),
   } = deps;
 
   const pollers = new Map();   // liveKey → entry
+  // Read-only alt probe after a code-10 live check (server/fbProbe.js). Rows go to fb_probe_log
+  // through store.insertProbeRow when the store has it; otherwise only the log lines.
+  const probe = altProbe || createFbAltProbe({
+    get: (path, params, token) => graphGet({ fetchImpl, url: graphUrl(path, { ...params, access_token: token }) }),
+    insertRow: typeof store.insertProbeRow === "function" ? (row) => store.insertProbeRow(row) : null,
+    log, now,
+  });
   let refreshHandle = null;
 
   const redirectUri = `${String(renderUrl).replace(/\/+$/, "")}/fb/oauth/callback`;
@@ -853,7 +862,11 @@ export function createFbRuntime(deps) {
       if (live.authFail) return res.status(409).json({ ok: false, error: "needs_reauth" });
       if (live.failed) {
         const d = live.detail || {};
-        return res.status(502).json({ ok: false, error: "fb_check_failed", fb_code: Number.isFinite(d.code) ? d.code : null, fb_http: Number.isFinite(d.httpStatus) ? d.httpStatus : null, fb_timeout: d.timedOut === true });
+        res.status(502).json({ ok: false, error: "fb_check_failed", fb_code: Number.isFinite(d.code) ? d.code : null, fb_http: Number.isFinite(d.httpStatus) ? d.httpStatus : null, fb_timeout: d.timedOut === true });
+        // Response first; then (code 10 only) the read-only alt probe in the background — never
+        // awaited, never throws, at most once per page every 30 s.
+        if (d.code === PROBE_TRIGGER_CODE) { try { void probe.start({ userId, pageId, token }); } catch { /* never */ } }
+        return;
       }
       if (!live.liveVideoId) return res.json({ ok: false, reason: "not_live" });
       startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || "") });
@@ -868,5 +881,5 @@ export function createFbRuntime(deps) {
     });
   }
 
-  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers, _completeDone: completeDone, _completeInFlight: completeInFlight };
+  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers, _completeDone: completeDone, _completeInFlight: completeInFlight, _probe: probe };
 }
