@@ -95,12 +95,15 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
     setAuthTick((n) => n + 1);
     if (r.status === "connected") {
       onToast?.(fbReturnText({ status: "connected" }, t, limit) || "", "ok");
-      await onReloadRef.current();
     } else if (r.status === "error") {
       const msg = fbReturnText({ status: "error", code: r.code }, t, limit);
       if (msg) onToast?.(msg, "err");
     }
-    // cancelled / busy → nothing to show
+    // cancelled / busy → nothing to show.
+    // Reload the list after EVERY result: the Page may already be saved when the seller closes
+    // the sheet by hand (flow finished on the web page inside the sheet, or the callback was not
+    // caught), and on iOS no focus / visible event fires when an in-app sheet closes.
+    await onReloadRef.current();
   };
 
   const remove = async (p: FbPage) => {

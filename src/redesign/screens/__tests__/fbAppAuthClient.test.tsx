@@ -80,14 +80,26 @@ describe("FbChannels with the in-app sheet", () => {
     expect(onReload).toHaveBeenCalled();
     expect(m.startAuth).toHaveBeenCalledTimes(2);
   });
-  it("cancelled → no toast, no reload", async () => {
+  it("cancelled → the list is reloaded (the Page may already be saved) and no toast is shown", async () => {
     plugin({ status: "cancelled" });
     const onReload = vi.fn(); const onToast = vi.fn();
     screen({ onReload, onToast }); await flush();
     await act(async () => { fireEvent.click(inApp()!); });
     await flush();
     expect(onToast).not.toHaveBeenCalled();
-    expect(onReload).not.toHaveBeenCalled();
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+  it("every result reloads the list once; only connected / error toast", async () => {
+    for (const [result, toasts] of [[{ status: "busy" }, 0], [{ status: "error", code: "no_pages" }, 1], [{ status: "connected" }, 1]] as const) {
+      plugin(result);
+      const onReload = vi.fn(); const onToast = vi.fn();
+      const r = screen({ onReload, onToast }); await flush();
+      await act(async () => { fireEvent.click(inApp()!); });
+      await flush();
+      expect(onReload, result.status).toHaveBeenCalledTimes(1);
+      expect(onToast, result.status).toHaveBeenCalledTimes(toasts);
+      r.unmount();
+    }
   });
   it("error → the same texts as the web return (cap → cap text; other → generic)", async () => {
     plugin({ status: "error", code: "cap" });
