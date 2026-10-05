@@ -17,7 +17,7 @@
 // state lasts 10).
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { maxAcc } from "../adapters/connect";
-import { startFbAuth, removeFbPage, fbDisconnect, isFbEligible, type FbPage } from "../adapters/fb";
+import { startFbAuth, removeFbPage, fbDisconnect, isFbEligible, nativeAuthSession, fbReturnText, type FbPage } from "../adapters/fb";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 
@@ -42,6 +42,10 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [authTick, setAuthTick] = useState(0);   // bump → fetch a fresh Authorize link
   const [busyId, setBusyId] = useState<string | null>(null);
+  // New app builds: Authorize opens Facebook in the in-app sign-in sheet, which closes by itself
+  // after "Connect". Old builds / normal browsers: null → the unchanged <a target="_blank">.
+  const [authSession] = useState(() => nativeAuthSession());
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Pre-fetch the signed OAuth URL so "Authorize" is a REAL anchor the seller taps directly
   // (the signed state has a ~10-min TTL). A refresh keeps the current link until the new one
@@ -51,9 +55,9 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
     let alive = true;
     if (authTick === 0) setAuthUrl(null);
     if (!eligible) { setAuthUrl(null); return; }
-    void startFbAuth().then((r) => { if (alive) setAuthUrl(r.ok && r.url ? r.url : null); });
+    void startFbAuth(authSession ? { app: true } : {}).then((r) => { if (alive) setAuthUrl(r.ok && r.url ? r.url : null); });
     return () => { alive = false; };
-  }, [eligible, authTick]);
+  }, [eligible, authTick, authSession]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Back in the app (visible / focused) → reload the page list + a fresh link. Both events fire
@@ -80,6 +84,24 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
       window.removeEventListener("focus", back);
     };
   }, []);
+
+  // In-app sheet: one at a time. The signed link is used up either way → fetch a fresh one.
+  const authorizeInApp = async () => {
+    if (!authSession || !authUrl || sheetOpen) return;
+    setSheetOpen(true);
+    let r: { status: string; code?: string };
+    try { r = await authSession({ url: authUrl }); } catch { r = { status: "error" }; }
+    setSheetOpen(false);
+    setAuthTick((n) => n + 1);
+    if (r.status === "connected") {
+      onToast?.(fbReturnText({ status: "connected" }, t, limit) || "", "ok");
+      await onReloadRef.current();
+    } else if (r.status === "error") {
+      const msg = fbReturnText({ status: "error", code: r.code }, t, limit);
+      if (msg) onToast?.(msg, "err");
+    }
+    // cancelled / busy → nothing to show
+  };
 
   const remove = async (p: FbPage) => {
     const id = p.id;
@@ -133,6 +155,8 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
         <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: "6px 2px 10px" }}>{t.rd_fb_authorize_help}</div>
         {!eligible ? (
           <button onClick={onUpsell} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>{t.rd_fb_authorize}</button>
+        ) : canAuthorize && authSession ? (
+          <button type="button" data-testid="fb-authorize-inapp" onClick={() => void authorizeInApp()} disabled={sheetOpen} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: sheetOpen ? "default" : "pointer", opacity: sheetOpen ? 0.6 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{t.rd_fb_authorize}</button>
         ) : canAuthorize ? (
           <a href={authUrl!} target="_blank" rel="noreferrer noopener" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", padding: "15px 0", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, textDecoration: "none", boxShadow: "0 6px 18px var(--accent-soft)" }}>{t.rd_fb_authorize}</a>
         ) : (

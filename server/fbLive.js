@@ -41,6 +41,11 @@ import { fbPreviewEmail } from "./fbAccess.js";
 export const GRAPH_HOST = "https://graph.facebook.com";
 export const FB_DIALOG_HOST = "https://www.facebook.com";
 export const APP_REDIRECT_URL = "https://www.sellerflowlive.com"; // where the callback bounces the browser back to
+// App flows (started from the phone app's sign-in sheet) end on this custom-scheme URL: the
+// sheet (iOS ASWebAuthenticationSession / Android Custom Tab + intent filter) catches it and
+// closes. Carries ONLY ?fb=connected | ?fb=error&code=<reason> — never a code, state or token.
+export const APP_AUTH_SCHEME = "com.sellerflow.live";
+export const APP_AUTH_CALLBACK = `${APP_AUTH_SCHEME}://fb-auth`;
 export const OAUTH_SCOPE = "pages_show_list,pages_read_engagement,pages_read_user_content";
 export const POLL_ACTIVE_MS = 2000;   // cadence while comments are flowing
 export const POLL_QUIET_MS = 5000;    // cadence when a poll returned nothing new
@@ -71,17 +76,23 @@ export const FB_RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80001, 80006]);
 // Identical construction to shopeeLive.signState — state = base64url(userId).exp.HMAC.
 // verifyState returns the userId only when the signature matches AND it has not
 // expired, so a page can never be bound to a different seller by tampering.
-export function signState({ userId, key, nowMs = Date.now(), ttlMs = STATE_TTL_MS }) {
+// app = the flow was started from the phone app (the in-app sign-in sheet): a 4th segment "a"
+// INSIDE the HMAC'd body, so nobody can switch a flow between web and app. Web flows keep the
+// exact 3-part format (byte-identical to before).
+export function signState({ userId, key, nowMs = Date.now(), ttlMs = STATE_TTL_MS, app = false }) {
   const exp = nowMs + ttlMs;
-  const body = `${Buffer.from(String(userId)).toString("base64url")}.${exp}`;
+  const body = `${Buffer.from(String(userId)).toString("base64url")}.${exp}${app ? ".a" : ""}`;
   const mac = createHmac("sha256", String(key)).update(body).digest("hex");
   return `${body}.${mac}`;
 }
-export function verifyState(state, key, nowMs = Date.now()) {
+// → { userId, app } when the signature matches and the state has not expired, else null.
+// Accepts the 3-part web form and the 4-part app form ("a" only).
+export function verifyStateDetail(state, key, nowMs = Date.now()) {
   const parts = String(state || "").split(".");
-  if (parts.length !== 3) return null;
-  const [uidB64, expStr, mac] = parts;
-  const body = `${uidB64}.${expStr}`;
+  if (parts.length !== 3 && !(parts.length === 4 && parts[2] === "a")) return null;
+  const mac = parts[parts.length - 1];
+  const body = parts.slice(0, -1).join(".");
+  const [uidB64, expStr] = parts;
   const expect = createHmac("sha256", String(key)).update(body).digest("hex");
   if (mac.length !== expect.length) return null;
   let diff = 0;
@@ -89,7 +100,13 @@ export function verifyState(state, key, nowMs = Date.now()) {
   if (diff !== 0) return null;
   const exp = Number(expStr);
   if (!Number.isFinite(exp) || exp < nowMs) return null; // expired
-  try { return Buffer.from(uidB64, "base64url").toString("utf8") || null; } catch { return null; }
+  let userId = null;
+  try { userId = Buffer.from(uidB64, "base64url").toString("utf8") || null; } catch { userId = null; }
+  return userId ? { userId, app: parts.length === 4 } : null;
+}
+export function verifyState(state, key, nowMs = Date.now()) {
+  const d = verifyStateDetail(state, key, nowMs);
+  return d ? d.userId : null;
 }
 
 // ── OAuth confirm page (the person finishing the flow sees which account gets the Page) ──
@@ -126,14 +143,16 @@ export const CONFIRM_SCRIPT_HASH = `sha256-${createHash("sha256").update(CONFIRM
 
 // The form posts back to this server; after the POST the browser is redirected (303) to the
 // app, and browsers apply form-action to that redirect too — so the app origin is allowed.
-export function confirmPageCsp(appUrl) {
+// App flows also allow the app's callback scheme (the 303 after "Connect" goes there); web
+// flows keep exactly today's policy.
+export function confirmPageCsp(appUrl, { app = false } = {}) {
   let appOrigin = "";
   try { appOrigin = new URL(appUrl).origin; } catch { appOrigin = ""; }
-  return `default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self'${appOrigin ? ` ${appOrigin}` : ""}`;
+  return `default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self'${appOrigin ? ` ${appOrigin}` : ""}${app ? ` ${APP_AUTH_SCHEME}:` : ""}`;
 }
 
-export function buildConfirmPage({ code, state, email, storeName, appUrl }) {
-  const cancel = `${appUrl}/?fb=error&code=cancelled`;
+export function buildConfirmPage({ code, state, email, storeName, appUrl, app = false }) {
+  const cancel = app ? `${APP_AUTH_CALLBACK}?fb=error&code=cancelled` : `${appUrl}/?fb=error&code=cancelled`;
   const store = String(storeName || "").trim();
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -376,8 +395,8 @@ export function createFbRuntime(deps) {
   // ---- OAuth ----
   // messaging = the user is on fb_receipt_access → also ask for pages_messaging. Everyone
   // else gets exactly OAUTH_SCOPE (unchanged).
-  function buildAuthUrl(userId, { messaging = false } = {}) {
-    const state = signState({ userId, key: config.appSecret, nowMs: now() });
+  function buildAuthUrl(userId, { messaging = false, app = false } = {}) {
+    const state = signState({ userId, key: config.appSecret, nowMs: now(), app });
     const q = new URLSearchParams({
       client_id: config.appId,
       redirect_uri: redirectUri,
@@ -389,16 +408,19 @@ export function createFbRuntime(deps) {
   }
 
   async function handleCallback({ code, state }) {
-    const userId = verifyState(state, config.appSecret, now());
-    if (!userId) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
-    if (!code) return { redirect: `${appUrl}/?fb=error&code=missing_params` };
+    const st = verifyStateDetail(state, config.appSecret, now());
+    // An unverified state cannot be trusted to say "app" → bad_state always goes to the web.
+    if (!st) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
+    const userId = st.userId;
+    const back = (q) => (st.app ? `${APP_AUTH_CALLBACK}?${q}` : `${appUrl}/?${q}`);
+    if (!code) return { redirect: back("fb=error&code=missing_params") };
     try {
       const shortTok = await exchangeCodeForToken({ config, fetchImpl, code, redirectUri });
-      if (!shortTok.ok) return { redirect: `${appUrl}/?fb=error&code=token_exchange` };
+      if (!shortTok.ok) return { redirect: back("fb=error&code=token_exchange") };
       const longTok = await exchangeForLongLivedUserToken({ config, fetchImpl, shortToken: shortTok.access });
-      if (!longTok.ok) return { redirect: `${appUrl}/?fb=error&code=token_exchange` };
+      if (!longTok.ok) return { redirect: back("fb=error&code=token_exchange") };
       const pages = await fetchPages({ config, fetchImpl, userToken: longTok.access });
-      if (pages.length === 0) return { redirect: `${appUrl}/?fb=error&code=no_pages` };
+      if (pages.length === 0) return { redirect: back("fb=error&code=no_pages") };
       // Recorded per page for a later Messenger receipt. Never throws; any doubt → false.
       const canMessage = await fetchMessagingGranted({ fetchImpl, userToken: longTok.access });
 
@@ -432,14 +454,14 @@ export function createFbRuntime(deps) {
       }
       if (upserted === 0 && failed > 0) {
         log(`[FB] callback save_failed user=${userId} failed=${failed}`);
-        return { redirect: `${appUrl}/?fb=error&code=save_failed` };
+        return { redirect: back("fb=error&code=save_failed") };
       }
-      if (upserted === 0) return { redirect: `${appUrl}/?fb=error&code=cap` };
+      if (upserted === 0) return { redirect: back("fb=error&code=cap") };
       log(`[FB] callback ok user=${userId} pages=${upserted} capped=${capped} failed=${failed}`);
-      return { redirect: `${appUrl}/?fb=connected` };
+      return { redirect: back("fb=connected") };
     } catch (e) {
       log(`[FB] callback error: ${e && e.message}`);
-      return { redirect: `${appUrl}/?fb=error&code=exception` };
+      return { redirect: back("fb=error&code=exception") };
     }
   }
 
@@ -471,13 +493,15 @@ export function createFbRuntime(deps) {
   // redirects), then read the receiving account and answer the confirm page. The code is NOT
   // exchanged here. → { redirect } or { html }.
   async function confirmCallback({ code, state }) {
-    const userId = verifyState(state, config.appSecret, now());
-    if (!userId) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
-    if (!code) return { redirect: `${appUrl}/?fb=error&code=missing_params` };
+    const st = verifyStateDetail(state, config.appSecret, now());
+    if (!st) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
+    const userId = st.userId;
+    const back = (q) => (st.app ? `${APP_AUTH_CALLBACK}?${q}` : `${appUrl}/?${q}`);
+    if (!code) return { redirect: back("fb=error&code=missing_params") };
     let label = null;
     try { label = typeof store.getAccountLabel === "function" ? await store.getAccountLabel(userId) : null; } catch { label = null; }
-    if (!label || !String(label.email || "").trim()) return { redirect: `${appUrl}/?fb=error&code=exception` };
-    return { html: buildConfirmPage({ code, state, email: label.email, storeName: label.storeName, appUrl }) };
+    if (!label || !String(label.email || "").trim()) return { redirect: back("fb=error&code=exception") };
+    return { app: st.app, html: buildConfirmPage({ code, state, email: label.email, storeName: label.storeName, appUrl, app: st.app }) };
   }
 
   // ---- Token re-validation timer (see the deviation note) ----
@@ -729,7 +753,9 @@ export function createFbRuntime(deps) {
     app.get("/fb/oauth/start", requireAuth, requireFbAvailable, startPlanActive, requireFbPlan, async (req, res) => {
       let messaging = false;
       try { messaging = typeof store.hasReceiptAccess === "function" && (await store.hasReceiptAccess(req.authUserId)) === true; } catch { messaging = false; }
-      try { return res.json({ url: buildAuthUrl(req.authUserId, { messaging }) }); }
+      // ?client=app → the phone app's sign-in sheet (the flow ends on the app scheme).
+      const app = String((req.query && req.query.client) || "") === "app";
+      try { return res.json({ url: buildAuthUrl(req.authUserId, { messaging, app }) }); }
       catch { return res.status(500).json({ ok: false, error: "fb_start_failed" }); }
     });
 
@@ -738,7 +764,7 @@ export function createFbRuntime(deps) {
     app.get("/fb/oauth/callback", async (req, res) => {
       const out = await confirmCallback({ code: String(req.query.code || ""), state: String(req.query.state || "") });
       if (out.redirect) return res.redirect(out.redirect);
-      res.set({ ...CONFIRM_PAGE_HEADERS_BASE, "Content-Security-Policy": confirmPageCsp(appUrl), "Content-Type": "text/html; charset=utf-8" });
+      res.set({ ...CONFIRM_PAGE_HEADERS_BASE, "Content-Security-Policy": confirmPageCsp(appUrl, { app: out.app === true }), "Content-Type": "text/html; charset=utf-8" });
       return res.status(200).send(out.html);
     });
 

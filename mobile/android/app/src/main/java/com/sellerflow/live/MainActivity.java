@@ -52,6 +52,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SellerFlowPrinterPlugin.class);
+        registerPlugin(SellerFlowAuthPlugin.class); // in-app Facebook sign-in sheet (Custom Tab)
         super.onCreate(savedInstanceState);
         printerBridge = new SellerFlowPrinterBridge();
         if (bridge != null && bridge.getWebView() != null) {
