@@ -91,7 +91,7 @@ describe("B2 Graph errors that prove nothing was delivered give the comment back
     for (const code of RECEIPT_RETRYABLE_CODES) {
       const store = makeStore([order()]);
       const r = mk(store, graphErr(code));
-      expect(await r.send(U, body())).toEqual({ status: 502, json: { ok: false, error: code === 190 ? "needs_reauth" : "try_later", code } });
+      expect(await r.send(U, body())).toEqual({ status: 502, json: { ok: false, error: code === 190 ? "needs_reauth" : "try_later", code, fb_code: `${code}/0` } });
       expect(store.rows).toEqual([]);
       expect(store.setActive).not.toHaveBeenCalled();
       // the comment is still usable: the next send takes it
@@ -114,7 +114,7 @@ describe("B2 Graph errors that prove nothing was delivered give the comment back
   it("any other Graph error keeps today's behaviour: row failed, counts toward the cap", async () => {
     const store = makeStore([order()]);
     const r = mk(store, graphErr(10));
-    expect(await r.send(U, body())).toEqual({ status: 502, json: { ok: false, error: "send_failed", code: 10 } });
+    expect(await r.send(U, body())).toEqual({ status: 502, json: { ok: false, error: "send_failed", code: 10, fb_code: "10/0" } });
     expect(store.rows[0]).toMatchObject({ status: "failed", error_code: "10/0" });
     await r.send(U, body());
     expect((await r.send(U, body())).json).toEqual({ ok: false, error: "none_left" }); // 2 failures → used up

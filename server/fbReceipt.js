@@ -95,12 +95,29 @@ export function buildReceiptRequest({ pageId, commentId, imageUrl, pageToken }) 
   };
 }
 
-// Graph answer → sent (message_id) | failed (Graph error object) | unknown (anything else:
-// delivery cannot be ruled out, so the comment must not be reused).
-export function classifyReceiptAnswer(status, body) {
+// Facebook's own words for a failed send, so we can see WHY: message, type, error_user_title,
+// error_user_msg — joined with " | ", whitespace collapsed, max RECEIPT_ERROR_DETAIL_MAX chars.
+// Nothing else from the answer. Any URL is replaced by "[url]" and the page token (when given)
+// by "[redacted]", so the request / image URL and the token can never end up in it.
+export const RECEIPT_ERROR_DETAIL_MAX = 300;
+export function receiptErrorDetail(err, token = "") {
+  const e = err && typeof err === "object" ? err : {};
+  const parts = [e.message, e.type, e.error_user_title, e.error_user_msg]
+    .filter((v) => typeof v === "string")
+    .map((v) => v.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  let out = parts.join(" | ");
+  if (token) out = out.split(String(token)).join("[redacted]");
+  out = out.replace(/\bhttps?:\/\/\S+/gi, "[url]");
+  return out.slice(0, RECEIPT_ERROR_DETAIL_MAX).trim();
+}
+
+// Graph answer → sent (message_id) | failed (Graph error object + detail) | unknown (anything
+// else: delivery cannot be ruled out, so the comment must not be reused).
+export function classifyReceiptAnswer(status, body, token = "") {
   const b = body && typeof body === "object" ? body : null;
   if (b && b.error && typeof b.error === "object") {
-    return { kind: "failed", code: Number(b.error.code) || 0, subcode: Number(b.error.error_subcode) || 0 };
+    return { kind: "failed", code: Number(b.error.code) || 0, subcode: Number(b.error.error_subcode) || 0, detail: receiptErrorDetail(b.error, token) };
   }
   if (status === 200 && b && b.message_id) return { kind: "sent", messageId: String(b.message_id) };
   return { kind: "unknown" };
@@ -208,8 +225,19 @@ export function createFbReceipt(deps) {
     try { return typeof store.hasReceiptAccess === "function" && (await store.hasReceiptAccess(userId)) === true; } catch { return false; }
   }
 
-  function logAttempt(userId, pageId, result, code = 0, subcode = 0) {
-    log(`[FB] receipt user=${String(userId).slice(0, 8)} page=${pageId} result=${result} code=${code}/${subcode}`);
+  function logAttempt(userId, pageId, result, code = 0, subcode = 0, detail = "") {
+    log(`[FB] receipt user=${String(userId).slice(0, 8)} page=${pageId} result=${result} code=${code}/${subcode}${detail ? ` detail=${detail}` : ""}`);
+  }
+
+  // A failed-send row update WITH error_detail (sql/80). If that update is refused (e.g. the
+  // column is not there yet) → the exact update of today, without error_detail.
+  async function updateFailed(id, patch, detail) {
+    if (!detail) return store.updateReceipt(id, patch);
+    let r;
+    try { r = await store.updateReceipt(id, { ...patch, error_detail: detail }); }
+    catch (e) { r = { error: e }; }
+    if (r && r.error) return store.updateReceipt(id, patch);
+    return r;
   }
 
   async function send(userId, body) {
@@ -277,7 +305,7 @@ export function createFbReceipt(deps) {
     try {
       const r = await fetchImpl(req.url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req.body), ...(ac ? { signal: ac.signal } : {}) });
       const j = await r.json().catch(() => null);
-      answer = classifyReceiptAnswer(r.status, j);
+      answer = classifyReceiptAnswer(r.status, j, claim.page.token);
     } catch {
       answer = { kind: "unknown" };
     } finally {
@@ -295,14 +323,14 @@ export function createFbReceipt(deps) {
       // path as an upload failure; only if the delete fails is the claim marked failed).
       let deleted = false;
       try { deleted = (await store.deleteReceipt(claim.id, userId)) === true; } catch { deleted = false; }
-      if (!deleted) await store.updateReceipt(claim.id, { status: "failed", error_code: `${answer.code}/${answer.subcode}`, image_path: imagePath });
-      logAttempt(userId, claim.page.pageId, "failed", answer.code, answer.subcode);
-      return { status: 502, json: { ok: false, error: answer.code === 190 ? "needs_reauth" : "try_later", code: answer.code } };
+      if (!deleted) await updateFailed(claim.id, { status: "failed", error_code: `${answer.code}/${answer.subcode}`, image_path: imagePath }, answer.detail);
+      logAttempt(userId, claim.page.pageId, "failed", answer.code, answer.subcode, answer.detail);
+      return { status: 502, json: { ok: false, error: answer.code === 190 ? "needs_reauth" : "try_later", code: answer.code, fb_code: `${answer.code}/${answer.subcode}` } };
     }
     if (answer.kind === "failed") {
-      await store.updateReceipt(claim.id, { status: "failed", error_code: `${answer.code}/${answer.subcode}`, image_path: imagePath });
-      logAttempt(userId, claim.page.pageId, "failed", answer.code, answer.subcode);
-      return { status: 502, json: { ok: false, error: "send_failed", code: answer.code } };
+      await updateFailed(claim.id, { status: "failed", error_code: `${answer.code}/${answer.subcode}`, image_path: imagePath }, answer.detail);
+      logAttempt(userId, claim.page.pageId, "failed", answer.code, answer.subcode, answer.detail);
+      return { status: 502, json: { ok: false, error: "send_failed", code: answer.code, fb_code: `${answer.code}/${answer.subcode}` } };
     }
     // Delivery unknown: leave the row 'pending' so this comment is never reused.
     await store.updateReceipt(claim.id, { image_path: imagePath });

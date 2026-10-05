@@ -13,7 +13,7 @@ import { useT, tpl } from "../i18n";
 import { loadReceiptSettings } from "../adapters/receiptSettings";
 import { useReceiptPicture } from "../adapters/useReceiptPicture";
 import { renderReceiptPng, type ReceiptInput } from "../adapters/receiptImage";
-import { fbReceiptInfo, fbReceiptSend, blobToBase64, RECEIPT_CLIENT_MAX_BYTES, type FbReceiptInfo } from "../adapters/fbReceipt";
+import { fbReceiptInfo, fbReceiptSend, blobToBase64, receiptFailText, RECEIPT_CLIENT_MAX_BYTES, type FbReceiptInfo } from "../adapters/fbReceipt";
 import type { BuyerReceipt } from "../adapters/useReadData";
 
 type SendNote = "needs_messaging" | "unknown" | "failed" | "too_big" | "info_failed" | "mixed_buyer";
@@ -64,6 +64,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   const [info, setInfo] = useState<FbReceiptInfo | null>(null);
   const [sending, setSending] = useState(false);
   const [sendNote, setSendNote] = useState<SendNote | null>(null);
+  const [failInfo, setFailInfo] = useState<{ code?: number; fbCode?: string }>({}); // Facebook's code for a "failed" note
   const sendingRef = useRef(false);
   useEffect(() => {
     if (!sessionId) return;
@@ -85,6 +86,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
     sendingRef.current = true;
     setSending(true);
     setSendNote(null);
+    setFailInfo({});
     try {
       const blob = await renderReceiptPng(pictureInput);           // fresh render, not the preview URL
       if (blob.size > RECEIPT_CLIENT_MAX_BYTES) { setSendNote("too_big"); return; }
@@ -110,6 +112,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
         const again = await fbReceiptInfo(sessionId, receipt.num);   // that comment is now used up
         if (again.ok) setInfo(again);
       } else {
+        setFailInfo("code" in r || "fbCode" in r ? { code: (r as { code?: number }).code, fbCode: (r as { fbCode?: string }).fbCode } : {});
         setSendNote("failed"); // incl. try_later: nothing was delivered and the comment is still usable
       }
     } catch {
@@ -124,7 +127,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   const showNoLines = canOfferSend && shownLines.length === 0;
   const noneLeft = !!info && (info.reason === "none_left" || (info.sentCount > 0 && info.remaining === 0));
   const noteText: Record<SendNote, string> = {
-    needs_messaging: t.rd_rs_needs_messaging, unknown: t.rd_rs_unknown, failed: t.rd_rs_failed,
+    needs_messaging: t.rd_rs_needs_messaging, unknown: t.rd_rs_unknown, failed: receiptFailText(failInfo, t),
     too_big: t.rd_rs_too_big, info_failed: t.rd_rs_info_failed, mixed_buyer: t.rd_rs_mixed_buyer,
   };
 
