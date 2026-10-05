@@ -15,7 +15,8 @@ import {
   searchParcelCustomers, loadRecentParcelCustomers, updateParcelCustomer,
   deleteParcelCustomer, countPendingParcels, countParcelCustomers, type ParcelCustomer,
 } from "../adapters/parcelCustomers";
-import { saveParcelScan, validAmount, amountTooHigh, validHandle, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
+import { saveParcelScan, validAmount, amountTooHigh, validHandle, minParcelAmount, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
+import { loadFrozenState, FROZEN_LOADING, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, type FrozenState } from "../adapters/parcelFrozen";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE, validStore } from "../adapters/shipping";
 
@@ -31,7 +32,10 @@ type EditForm = { name: string; phone: string; store: string; notes: string };
 // as an overlay it passes onImported so a successful import can close the overlay
 // and refresh the parent's Saved list + Batch count. Absent → byte-identical.
 // pendingCap = maxPendingParcels(email, role) from RedesignApp / ParcelScan; default 40.
-export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; onImported?: () => void; pendingCap?: number }) {
+// frozenState / waitFrozen: Parcel Scan passes its Dry / Frozen state (sql/79) and a way to wait
+// for it; standalone → read once here. An import WAITS for that state, then saves with the
+// seller's CURRENT mode (no control → no temp_layer, DB default 常溫). blocked → no import.
+export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS, frozenState, waitFrozen }: { cur?: string; onImported?: () => void; pendingCap?: number; frozenState?: FrozenState; waitFrozen?: () => Promise<FrozenState> }) {
   const t = useT();
 
   const [query, setQuery] = useState("");
@@ -40,6 +44,12 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
   const [loading, setLoading] = useState(true);   // initial recent load / active search
   const [listErr, setListErr] = useState("");
   const [fee, setFee] = useState<number>(SHIP_DEFAULT_FEE);
+  const [ownFrozen, setOwnFrozen] = useState<FrozenState>(FROZEN_LOADING);
+  const ownFrozenRef = useRef<FrozenState>(FROZEN_LOADING);
+  const ownLoadRef = useRef<Promise<unknown>>(Promise.resolve());
+  const frozen = frozenState ?? ownFrozen;
+  const layer = frozen.allowed ? frozen.mode : TEMP_DRY;
+  const layerFee = feeForLayer(layer, fee, frozen.cfg);
   // FULL phonebook total (never the searched subset) — its own head-only count
   // query. null = unknown/failed (line hidden).
   const [total, setTotal] = useState<number | null>(null);
@@ -79,6 +89,24 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
     void countParcelCustomers().then((c) => { if (live) setTotal(c.ok ? c.count : null); });
     return () => { live = false; };
   }, []);
+  const ownAlive = useRef(true);
+  useEffect(() => { ownAlive.current = true; return () => { ownAlive.current = false; }; }, []);
+  const runOwnFrozenLoad = () => {
+    const p = loadFrozenState().then((st) => { ownFrozenRef.current = st; if (ownAlive.current) setOwnFrozen(st); });
+    ownLoadRef.current = p;
+    return p;
+  };
+  const embedded = frozenState !== undefined;
+  useEffect(() => {
+    if (embedded) return; // embedded: the parent already read it
+    runOwnFrozenLoad();
+  }, [embedded]);
+  const currentFrozen = async (): Promise<FrozenState> => {
+    if (waitFrozen) return waitFrozen();
+    if (frozenState) return frozenState;
+    await ownLoadRef.current;
+    return ownFrozenRef.current;
+  };
 
   // ── Debounced search; blank query falls back to the recent list (also the
   // initial mount load). All state updates happen inside the scheduled async
@@ -120,11 +148,17 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
 
   async function doImport(c: ParcelCustomer) {
     setImportErr("");
+    // Never import before the Dry / Frozen state is known; blocked → no import.
+    const st = await currentFrozen();
+    if (st.blocked) { setImportErr(t.rd_ps2_frozen_blocked); return; }
+    const stLayer = st.allowed ? st.mode : TEMP_DRY;
+    const stFee = feeForLayer(stLayer, fee, st.cfg);
+    const stMin = minTotalForLayer(stLayer, st.cfg);
     // SAME rules as a fresh encode — no bypass of min/max or the batch cap.
-    if (!validAmount(price, fee)) {
-      setImportErr(amountTooHigh(price, fee)
-        ? tpl(t.rd_ps2_err_amount_max, { max: `${cur}${MAX_PARCEL_TOTAL - fee}` })
-        : tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` }));
+    if (!validAmount(price, stFee, stMin)) {
+      setImportErr(amountTooHigh(price, stFee)
+        ? tpl(t.rd_ps2_err_amount_max, { max: `${cur}${MAX_PARCEL_TOTAL - stFee}` })
+        : tpl(t.rd_ps2_err_amount, { amt: `${cur}${minParcelAmount(stFee, stMin)}` }));
       return;
     }
     // A valid 6-digit 7-11 store code is REQUIRED (same gate as the manual encode).
@@ -144,6 +178,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
       const r = await saveParcelScan(
         { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: noHandle ? "" : handle.trim() },
         null,
+        st.allowed ? stLayer : undefined,
       );
       if (!r.ok) { setImportErr(t.rd_cd_import_err); return; }
       setToast(t.rd_cd_imported_toast);
@@ -210,6 +245,14 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
       </div>
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="cd-toast">{toast}</div>}
+        {/* Dry / Frozen read failed for an account that uses frozen → no import until it loads.
+            Embedded: Parcel Scan shows the Retry; standalone: Retry here. */}
+        {frozen.blocked && (
+          <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="cd-frozen-blocked">
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)", lineHeight: 1.5 }}>{t.rd_ps2_frozen_blocked}</div>
+            {!embedded && <button onClick={() => void runOwnFrozenLoad()} style={{ marginTop: 10, padding: "9px 14px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }} data-testid="cd-frozen-retry">{t.rd_ps2_frozen_retry}</button>}
+          </div>
+        )}
 
         {/* Search */}
         <div style={{ position: "relative" }}>
@@ -279,6 +322,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
               {open && (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12, display: "grid", gap: 8 }} data-testid="cd-import-panel">
                   {!c.storeId && <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--warn, #b45309)" }} data-testid="cd-no-store">{t.rd_cd_no_store}</div>}
+                  {layer === TEMP_FROZEN && <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1d4ed8", background: "rgba(37,99,235,.10)", border: "1px solid rgba(37,99,235,.45)", borderRadius: 7, padding: "1px 6px", justifySelf: "start" }} data-testid="cd-frozen">❄ 冷凍 · {cur}{layerFee}</div>}
                   <div>
                     <label style={lbl}>{t.rd_cd_price_ph}</label>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -318,8 +362,8 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
                     <button onClick={() => { setDelErr(""); setConfirmDel(c); }} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--danger)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="cd-delete" aria-label={t.rd_cd_delete_aria}>🗑</button>
                     <button
                       onClick={() => void doImport(c)}
-                      disabled={importing}
-                      style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "none", background: importing ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: importing ? "default" : "pointer" }}
+                      disabled={importing || frozen.blocked}
+                      style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "none", background: importing || frozen.blocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: importing || frozen.blocked ? "default" : "pointer" }}
                       data-testid="cd-import"
                     >{importing ? t.rd_cd_importing : t.rd_cd_import}</button>
                   </div>

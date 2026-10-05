@@ -15,7 +15,8 @@ import { fetchAllPages } from "../../lib/fetchAllPages";
 import { getAppSetting, setAppSetting } from "./appSettings";
 import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
-import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_DEFAULT_FEE } from "./shipping";
+import { TEMP_FROZEN, type FrozenConfig } from "./parcelFrozen";
+import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_MAX_ORDER, SHIP_DEFAULT_FEE, type AmountError } from "./shipping";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
 // ADMIN ROLE ONLY — deliberately NO googletest allowlist (diverges from
@@ -163,6 +164,9 @@ export interface ParcelScanRow {
   storeFullStatus?: string | null;     // 'open' | 'full' | 'unknown' | null
   phoneCheckStatus?: string | null;    // 'ok' | 'restricted' | 'unknown' | null
   phoneRestrictedUntil?: string | null; // 'YYYY-MM-DD' date | null (restricted only)
+  // sql/79 — 常溫 | 冷凍. Only read/written for sellers with the Dry / Frozen control (or once
+  // sql/79 is applied); absent = 常溫, exactly today's export.
+  tempLayer?: string;
   createdAt: string;
 }
 
@@ -234,6 +238,35 @@ export const MIN_PARCEL_AMOUNT = 20;
 // source of truth: this aliases SHIP_MAX_TOTAL (no new magic number).
 export const MAX_PARCEL_TOTAL = SHIP_MAX_TOTAL;
 
+// ── Frozen (冷凍) parcels (sql/79, adapters/parcelFrozen) ──────────────────────
+// minTotal (frozen) replaces the 55 minimum for amount + fee, so the lowest saveable amount is
+// max(MIN_PARCEL_AMOUNT, minTotal − fee). null (dry) → MIN_PARCEL_AMOUNT (today).
+export const minParcelAmount = (fee: number, minTotal: number | null = null): number =>
+  minTotal == null ? MIN_PARCEL_AMOUNT : Math.max(MIN_PARCEL_AMOUNT, minTotal - fee);
+
+// F / G for the export row. feeColumnMax null (default) → G = fee, F = amount (today's shape).
+// Set and fee above it → G = feeColumnMax, F = amount + (fee − feeColumnMax): the buyer still pays
+// amount + fee in total.
+export function feeColumns(amount: number, fee: number, feeColumnMax: number | null = null): { amount: number; fee: number } {
+  if (feeColumnMax != null && fee > feeColumnMax) return { amount: amount + (fee - feeColumnMax), fee: feeColumnMax };
+  return { amount, fee };
+}
+
+// Export check for a FROZEN row: the fee may be above the usual 0–100 (NT$129), the total minimum
+// is the frozen minTotal, the 20,000 maximum still applies, and the F column must stay within
+// 0..20,000. Dry rows keep validateAmounts exactly.
+export const PARCEL_CUSTOM_FEE_MAX = 500; // = FROZEN_FEE_MAX
+export function customAmountError(amount: number, fee: number, feeColumnMax: number | null, minTotal: number | null): AmountError {
+  if (!Number.isFinite(fee) || fee < 0 || fee > PARCEL_CUSTOM_FEE_MAX) return "fee_range";
+  if (!Number.isFinite(amount) || amount < 0) return "order_range";
+  const cols = feeColumns(amount, fee, feeColumnMax);
+  if (cols.amount > SHIP_MAX_ORDER) return "order_range";
+  const total = amount + fee;
+  if (total < (minTotal ?? SHIP_MIN_TOTAL)) return "total_low";
+  if (total > SHIP_MAX_TOTAL) return "total_high";
+  return "";
+}
+
 // Max PENDING (not-yet-exported) parcels per batch (Jeff's call 2026-09-11; raised
 // 30 → 40; may change — the ONE place the number lives, shared by the Parcel Scan
 // save gate AND the Customer Details Import cap). At the cap, NEW entries are
@@ -257,11 +290,11 @@ export interface ScanFormState { name: string; phone: string; store: string; amo
 // exactly with the export gate — no hole). Blank / 0 / below-min / over-max /
 // non-numeric → invalid (mirrors validStore/validPhone shape). fee defaults to
 // SHIP_DEFAULT_FEE for standalone callers; the screen passes the live global fee.
-export const validAmount = (amount: string, fee: number = SHIP_DEFAULT_FEE): boolean => {
+export const validAmount = (amount: string, fee: number = SHIP_DEFAULT_FEE, minTotal: number | null = null): boolean => {
   const t = amount.trim();
   if (t === "") return false;
   const n = Number(t);
-  return Number.isFinite(n) && n >= MIN_PARCEL_AMOUNT && n + fee <= MAX_PARCEL_TOTAL;
+  return Number.isFinite(n) && n >= minParcelAmount(fee, minTotal) && n + fee <= MAX_PARCEL_TOTAL;
 };
 
 // True only when the amount is a finite number ABOVE the ceiling (amount + fee >
@@ -293,12 +326,12 @@ export const validHandle = (s: string): boolean => s.trim() !== "";
 // noHandle: the deliberate per-parcel escape hatch ("Buyer has no social handle"). When
 // true, the handle requirement is waived and the parcel saves with a BLANK handle (col J
 // stays empty — never a placeholder). Resets per parcel (the screen never persists it).
-export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE, requireStore = false, requireHandle = false, noHandle = false): { name: boolean; phone: boolean; store: boolean; amount: boolean; handle: boolean; empty: boolean } {
+export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE, requireStore = false, requireHandle = false, noHandle = false, minTotal: number | null = null): { name: boolean; phone: boolean; store: boolean; amount: boolean; handle: boolean; empty: boolean } {
   const name = f.name.trim();
   const nameBad = name !== "" && validateRecipientName(name) !== "";
   const phoneBad = f.phone.trim() !== "" && !validPhone(f.phone);
   const storeBad = requireStore ? !validStore(f.store) : (f.store.trim() !== "" && !validStore(f.store));
-  const amountBad = !validAmount(f.amount, fee); // required now: blank/0/<min/>max all block Save
+  const amountBad = !validAmount(f.amount, fee, minTotal); // required now: blank/0/<min/>max all block Save
   const handleBad = requireHandle && !noHandle && !validHandle(f.notes); // buyer @username required unless "no handle" ticked
   const empty = name === "" && f.phone.trim() === "" && f.store.trim() === "" && f.amount.trim() === "" && f.notes.trim() === "";
   return { name: nameBad, phone: phoneBad, store: storeBad, amount: amountBad, handle: handleBad, empty };
@@ -354,17 +387,20 @@ export function rowToScan(row: Record<string, unknown>): ParcelScanRow {
     storeFullStatus: row.store_full_status ? String(row.store_full_status) : null,
     phoneCheckStatus: row.phone_check_status ? String(row.phone_check_status) : null,
     phoneRestrictedUntil: row.phone_restricted_until ? String(row.phone_restricted_until) : null,
+    ...(row.temp_layer != null ? { tempLayer: String(row.temp_layer) } : {}),
     createdAt: String(row.created_at ?? ""),
   };
 }
 
 export const SCANS_PAGE = 50; // latest EXPORTED rows shown on screen open (history tail)
-const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, created_at";
+const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, temp_layer, created_at";
 
 // M4 (Oct 1 audit): EVERY not-yet-exported row (the working queue — a flat
 // newest-50 used to push older unexported parcels off screen, so they were
 // never shown, polled or exported) + the latest SCANS_PAGE exported rows,
 // merged newest-first. The unexported read is paged (never partial).
+// temp_layer is ALWAYS read (sql/79 is applied before this ships): a 冷凍 row is frozen no matter
+// what the frozen-state read returned.
 export async function loadParcelScans(): Promise<{ ok: boolean; rows: ParcelScanRow[]; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
@@ -422,6 +458,7 @@ const newParcelId = (): string =>
 export async function saveParcelScan(
   fields: ScanFields,
   rawExtraction: { fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null,
+  tempLayer?: string, // sql/79 — only passed for sellers with the Dry / Frozen control
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   const me = await uid();
@@ -437,6 +474,7 @@ export async function saveParcelScan(
     notes: fields.notes,
     status: "confirmed",
     raw_extraction: rawExtraction,
+    ...(tempLayer ? { temp_layer: tempLayer } : {}),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id };
@@ -482,21 +520,23 @@ export function scanOrderDate(createdAtIso: string): string {
   return `${g("year")}/${Number(g("month"))}/${Number(g("day"))}`;
 }
 
-export interface ScanXlsOpts { storeName: string; fee: number; tempLayer?: string }
+// tempLayer / feeColumnMax are set for FROZEN rows only (xlsOptsForRow); absent → today's row.
+export interface ScanXlsOpts { storeName: string; fee: number; tempLayer?: string; feeColumnMax?: number | null }
 
 // parcel_scans row → 賣貨便 A–J string[] (all strings; required cols are Text @).
 // Gap columns (owner-decided): D 溫層 = 常溫 (clothing is ambient), E 商品 =
 // the seller's shop name (same for every row; no new DB field), G 運費 =
 // the GLOBAL admin shipping fee (app_settings 'shipping_default_fee'), I/J = blank.
 export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
+  const cols = row.amount == null ? null : feeColumns(row.amount, opts.fee, opts.feeColumnMax ?? null);
   return [
     row.customerName.trim(),                          // A ＊取件人姓名
     row.phone.trim(),                                 // B ＊取件人手機 (leading 0 kept)
     row.storeId.trim(),                               // C ＊取件門市
     opts.tempLayer ?? SHIP_TEMP_AMBIENT,              // D ＊溫層 = 常溫
     String(opts.storeName || "").trim(),              // E ＊商品 = shop name (e.g. Budgetukay)
-    row.amount == null ? "" : String(row.amount),     // F ＊訂單金額
-    String(opts.fee),                                 // G ＊運費金額 = global admin shipping fee
+    cols == null ? "" : String(cols.amount),          // F ＊訂單金額 (+ fee above feeColumnMax, when set)
+    String(cols == null ? feeColumns(0, opts.fee, opts.feeColumnMax ?? null).fee : cols.fee), // G ＊運費金額 = the fee (capped at feeColumnMax when set)
     scanOrderDate(row.createdAt),                     // H 買家下訂日期 (optional)
     "",                                               // I 商品備註 (blank)
     (row.notes || "").trim(),                         // J 其他資訊 = manual notes (blank if none — never "undefined"/"null")
@@ -508,7 +548,7 @@ export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
 // shipping export, PLUS store_check_status. Rows already 'exported' are skipped
 // (neither bucket). store_check_status 'unknown'/null → READY (soft-warned in
 // the UI, never excluded: E-Map may be down / the confirmed-gate off). Pure.
-export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount";
+export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount" | "frozen_settings";
 export interface ScanExportSplit {
   ready: ParcelScanRow[];
   attention: { row: ParcelScanRow; reason: ExportReason }[];
@@ -522,13 +562,18 @@ export const storeClear = (s: string | null | undefined): boolean => s === "open
 export const wrongStoreCode = (r: { storeCheckStatus?: string | null; storeFullStatus?: string | null }): boolean =>
   r.storeCheckStatus === "not_found" || r.storeFullStatus === "not_found";
 
-export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExportSplit {
+// frozenCfg: the frozen settings (sql/79). Dry rows → validateAmounts(fee) exactly as before; a
+// frozen row → customAmountError with the frozen fee / min total / cap (no settings → excluded
+// with "frozen_settings").
+export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCfg: FrozenConfig | null = null): ScanExportSplit {
   const ready: ParcelScanRow[] = [];
   const attention: { row: ParcelScanRow; reason: ExportReason }[] = [];
   for (const row of rows) {
     if (row.status === "exported") continue; // already done — don't re-include
     let reason: ExportReason | null = null;
-    if (wrongStoreCode(row)) reason = "wrong_store";                            // E-Map: wrong code (either check)
+    // A 冷凍 row without the frozen settings is NEVER exported (never as 常溫) — its own reason.
+    if (row.tempLayer === TEMP_FROZEN && !frozenCfg) reason = "frozen_settings";
+    else if (wrongStoreCode(row)) reason = "wrong_store";                            // E-Map: wrong code (either check)
     // Extension checks (sql/33) — EXPLICIT problem verdicts only exclude. null/
     // 'unknown' (unchecked / can't verify) do NOT exclude (unchecked ≠ problem),
     // matching store_check_status's own unknown/null → READY behaviour.
@@ -537,7 +582,9 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExp
     else if (validateRecipientName(row.customerName) !== "") reason = "bad_name";
     else if (!validPhone(row.phone)) reason = "bad_phone";
     else if (!validStore(row.storeId)) reason = "bad_store";
-    else if (validateAmounts(row.amount == null ? NaN : row.amount, fee) !== "") reason = "bad_amount"; // null amount → excluded
+    else if ((row.tempLayer === TEMP_FROZEN && frozenCfg
+      ? customAmountError(row.amount == null ? NaN : row.amount, frozenCfg.fee, frozenCfg.feeColumnMax, frozenCfg.minTotal)
+      : validateAmounts(row.amount == null ? NaN : row.amount, fee)) !== "") reason = "bad_amount"; // null amount → excluded
     if (reason) attention.push({ row, reason });
     else ready.push(row);
   }
@@ -796,6 +843,7 @@ export async function updateParcelScan(
   id: string,
   fields: ScanFields,
   resetChecks?: { storeFull?: boolean; phoneCheck?: boolean },
+  tempLayer?: string, // sql/79 — only passed for sellers with the Dry / Frozen control
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!id) return { ok: false, error: "no id" };
@@ -808,6 +856,7 @@ export async function updateParcelScan(
     amount: fields.amount,
     notes: fields.notes,
   };
+  if (tempLayer) patch.temp_layer = tempLayer;
   if (resetChecks?.storeFull) { patch.store_full_status = null; patch.store_full_at = null; }
   if (resetChecks?.phoneCheck) {
     patch.phone_check_status = null; patch.phone_check_at = null;
