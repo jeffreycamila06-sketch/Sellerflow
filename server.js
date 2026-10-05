@@ -25,7 +25,7 @@ import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime } from "./server/fbLive.js";
 import { createFbReceipt } from "./server/fbReceipt.js";
-import { createFbFlagReader, createFbLock } from "./server/fbAccess.js";
+import { createFbFlagReader, createFbLock, createFbPlanCheck } from "./server/fbAccess.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -2084,7 +2084,17 @@ try {
       },
     });
     const requireFbAvailable = createFbLock({ fbEnabled });
-    fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable });
+    // Facebook-only plan check on /fb/connect: a free plan must be "active" (the shared
+    // checkPlanActive lets "free" through whatever its status). plan_status is not on the
+    // request, so a free (or unknown) plan costs one service-role read here.
+    const requireFbPlan = createFbPlanCheck({
+      readProfile: async (userId) => {
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan, plan_status, role").eq("auth_user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("fb_plan_read_failed");
+        return data || null;
+      },
+    });
+    fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan });
     // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
     // Isolated: a throw here must never null fbRuntime or skip the refresh timer below.
     try {
