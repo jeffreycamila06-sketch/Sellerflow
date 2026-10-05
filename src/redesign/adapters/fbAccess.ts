@@ -10,6 +10,8 @@ import { SERVER } from "./serverIdentity";
 export interface FbAccess { facebook: boolean; receipt: boolean }
 export const FB_ACCESS_NONE: FbAccess = { facebook: false, receipt: false };
 export const FB_ACCESS_REFRESH_MIN_MS = 5000; // focus/visible refreshes closer than this are skipped
+export const FB_ACCESS_RETRY_FIRST_MS = 10_000;  // first automatic retry after a failed call
+export const FB_ACCESS_RETRY_EVERY_MS = 30_000;  // further retries, until one succeeds
 
 // The app's two Facebook UI gates. fbEnabled = Facebook screens / connect; receiptUi = the
 // Messenger receipt button + the Receipt format screen. Non-testers (all false) see neither.
@@ -40,8 +42,12 @@ export async function loadFbAccess(): Promise<FbAccess | null> {
 }
 
 // Asks once per signed-in account (userKey) and again when the app regains focus / becomes
-// visible. Until the first answer, and after a failed ask, both are false. A refresh keeps the
-// last answer while it is in flight (no flicker on every focus); its failure → both false.
+// visible (at most every FB_ACCESS_REFRESH_MIN_MS). Only a SUCCESSFUL answer changes access, in
+// either direction: a failed call keeps this account's last successful answer (a short network
+// drop or a server restart mid-live must not switch Facebook off), and before the first
+// successful answer access is false. After any failed call it retries by itself — after 10 s,
+// then every 30 s — until one succeeds; a success cancels the pending retry. Everything stops on
+// unmount, sign-out and an account change.
 export function useFbAccess(enabled: boolean, userKey: string): FbAccess {
   const [state, setState] = useState<{ key: string; access: FbAccess }>({ key: "", access: FB_ACCESS_NONE });
   const key = enabled ? userKey : "";
@@ -49,19 +55,39 @@ export function useFbAccess(enabled: boolean, userKey: string): FbAccess {
     if (!key) return;
     let alive = true;
     let last = 0;
-    const ask = () => {
+    let inFlight = false;
+    let fails = 0;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const clearRetry = () => { if (retry != null) { clearTimeout(retry); retry = null; } };
+    const ask = (force = false) => {
+      if (inFlight) return;
       const t = Date.now();
-      if (t - last < FB_ACCESS_REFRESH_MIN_MS) return;
+      if (!force && t - last < FB_ACCESS_REFRESH_MIN_MS) return;
       last = t;
-      void loadFbAccess().then((a) => { if (alive) setState({ key, access: a || FB_ACCESS_NONE }); });
+      inFlight = true;
+      void loadFbAccess().then((a) => {
+        inFlight = false;
+        if (!alive) return;
+        clearRetry();
+        if (a) {
+          fails = 0;
+          setState({ key, access: a });
+          return;
+        }
+        // Failed: keep the last successful answer; try again by itself.
+        const wait = fails === 0 ? FB_ACCESS_RETRY_FIRST_MS : FB_ACCESS_RETRY_EVERY_MS;
+        fails += 1;
+        retry = setTimeout(() => { retry = null; ask(true); }, wait);
+      });
     };
-    ask();
+    ask(true);
     const onFocus = () => ask();
     const onVisible = () => { if (typeof document === "undefined" || document.visibilityState !== "hidden") ask(); };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
+      clearRetry();
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
     };

@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 vi.mock("../../../supabase", () => ({ supabase: { auth: { getSession: async () => ({ data: { session: { access_token: "JWT" } } }) } } }));
-import { loadFbAccess, useFbAccess, fbUiGates, FB_ACCESS_NONE, FB_ACCESS_REFRESH_MIN_MS } from "../fbAccess";
+import { loadFbAccess, useFbAccess, fbUiGates, FB_ACCESS_NONE, FB_ACCESS_REFRESH_MIN_MS, FB_ACCESS_RETRY_FIRST_MS, FB_ACCESS_RETRY_EVERY_MS } from "../fbAccess";
 import { fbPreviewEnabled } from "../fbPreview";
 
 const res = (status: number, body: unknown) => ({ status, json: async () => body });
@@ -49,19 +49,98 @@ describe("useFbAccess", () => {
     await flush();
     expect(result.current).toEqual(FB_ACCESS_NONE);
   });
-  it("asks again when the app regains focus (throttled); a later failure → false", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    fetchMock.mockResolvedValueOnce(res(200, { ok: true, facebook: true, receipt: false })).mockResolvedValueOnce(res(500, {}));
+  it("asks again when the app regains focus (5 s minimum gap)", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(res(200, { ok: true, facebook: true, receipt: false }));
     const { result } = renderHook(() => useFbAccess(true, "tester@x.co"));
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(result.current.facebook).toBe(true);
     await act(async () => { window.dispatchEvent(new Event("focus")); });
     expect(fetchMock).toHaveBeenCalledTimes(1); // too soon after the first ask
-    vi.setSystemTime(Date.now() + FB_ACCESS_REFRESH_MIN_MS);
-    await act(async () => { window.dispatchEvent(new Event("focus")); });
-    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_REFRESH_MIN_MS); });
+    await act(async () => { window.dispatchEvent(new Event("focus")); await vi.advanceTimersByTimeAsync(0); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it("success then a failed refresh → access unchanged (the last successful answer stays)", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(res(200, { ok: true, facebook: true, receipt: true })).mockResolvedValue(res(503, {}));
+    const { result } = renderHook(() => useFbAccess(true, "tester@x.co"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current).toEqual({ facebook: true, receipt: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_REFRESH_MIN_MS); window.dispatchEvent(new Event("focus")); await vi.advanceTimersByTimeAsync(0); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current).toEqual({ facebook: true, receipt: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_RETRY_FIRST_MS + 2 * FB_ACCESS_RETRY_EVERY_MS); }); // retries keep failing
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(result.current).toEqual({ facebook: true, receipt: true });
+  });
+  it("first call fails → false; the automatic retry succeeds → access granted with no focus event", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(res(500, {})).mockResolvedValueOnce(res(500, {})).mockResolvedValue(res(200, { ok: true, facebook: true, receipt: false }));
+    const { result } = renderHook(() => useFbAccess(true, "tester@x.co"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(result.current).toEqual(FB_ACCESS_NONE);
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_RETRY_FIRST_MS - 1); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);               // not before 10 s
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);               // retry at 10 s (fails again)
+    expect(result.current).toEqual(FB_ACCESS_NONE);
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_RETRY_EVERY_MS - 1); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);               // then every 30 s
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.current).toEqual({ facebook: true, receipt: false });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * FB_ACCESS_RETRY_EVERY_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);               // a success stops the retries
+  });
+  it("success(true) then success(false) → access removed", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(res(200, { ok: true, facebook: true, receipt: true })).mockResolvedValueOnce(res(200, { ok: true, facebook: false, receipt: false }));
+    const { result } = renderHook(() => useFbAccess(true, "tester@x.co"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.facebook).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_REFRESH_MIN_MS); window.dispatchEvent(new Event("focus")); await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current).toEqual(FB_ACCESS_NONE);
+  });
+  it("a focus success cancels the pending retry", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(res(500, {})).mockResolvedValue(res(200, { ok: true, facebook: true, receipt: false }));
+    const { result } = renderHook(() => useFbAccess(true, "tester@x.co"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_REFRESH_MIN_MS); window.dispatchEvent(new Event("focus")); await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.facebook).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_RETRY_FIRST_MS + FB_ACCESS_RETRY_EVERY_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it("retry timers are cleared on unmount, on sign-out and on an account change", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(res(500, {}));
+    const a = renderHook(() => useFbAccess(true, "tester@x.co"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    a.unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_RETRY_FIRST_MS + 3 * FB_ACCESS_RETRY_EVERY_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    fetchMock.mockClear();
+    const b = renderHook(({ on, k }) => useFbAccess(on, k), { initialProps: { on: true, k: "tester@x.co" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    b.rerender({ on: false, k: "tester@x.co" });                 // sign-out
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_RETRY_FIRST_MS + 3 * FB_ACCESS_RETRY_EVERY_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockClear();
+    b.rerender({ on: true, k: "first@x.co" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockResolvedValue(res(200, { ok: true, facebook: true, receipt: true }));
+    b.rerender({ on: true, k: "second@x.co" });                // account change: first's retry is dropped
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(FB_ACCESS_RETRY_FIRST_MS + 3 * FB_ACCESS_RETRY_EVERY_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);                 // no retry left from first@x.co
+    expect(b.result.current).toEqual({ facebook: true, receipt: true });
+    b.unmount();
   });
   it("signed out → no call, false; another account never inherits an answer", async () => {
     const off = renderHook(() => useFbAccess(false, "tester@x.co"));
