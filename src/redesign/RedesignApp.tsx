@@ -1107,8 +1107,8 @@ export default function RedesignApp() {
       return r;
     } finally { setShopeeConnecting(false); }
   };
-  // F-P3 — Facebook connect eligibility (active-paid; admin bypass; server also enforces
-  // requirePlanActive on /fb/connect). Mirror shopeeEligible.
+  // F-P3 — Facebook connect eligibility (any active plan, free or paid; admin bypass; server
+  // also enforces requirePlanActive on /fb/connect). Shaped like shopeeEligible.
   const fbEligible = isFbEligible(auth.profile);
   // FB chip handler (mirror onConnectShopee). Disconnect = local UI + best-effort server
   // stop. Connect routes through commitLiveConnect → runSessionAware so the SERVER-ANCHORED

@@ -5,8 +5,11 @@
 // is OFF unless FB_ENABLED is the literal "true" AND all three secrets are present
 // (FB_APP_ID, FB_APP_SECRET, FB_TOKEN_KEY). Missing ANY → the whole path stays
 // disabled. app_secret / token_key are read here ONLY (they never leave the server;
-// never sent to the client). Nothing wires this in P1 — P2 will gate its OAuth /
-// live-comment routes on fbConfig().enabled (AND the app_settings 'fb_enabled' row).
+// never sent to the client). server.js registers the /fb/* routes only when
+// fbConfig().enabled. Per request, GET /fb/oauth/start, GET /fb/pages and POST /fb/connect
+// are additionally locked by server/fbAccess.js: app_settings 'fb_enabled' = 'true' OR a
+// preview account (the same rule as the client gate). /fb/disconnect and the OAuth callback
+// are not locked.
 //
 // ⚠️ SINGLE SOURCE for the Graph API version — never build an unversioned Graph URL.
 // GRAPH_VERSION is the ONE pin; server/fbComment.js imports it for the picture URL,
