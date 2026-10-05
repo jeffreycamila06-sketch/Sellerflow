@@ -53,6 +53,10 @@ npm run agent:check # lint + typecheck + test + build
 **The APK is a THIN SHELL.** `mobile/capacitor.config.ts` hard-codes
 `server.url = https://www.sellerflowlive.com/...`, so the running app = whatever
 **production** (Vercel `main`) serves.
+- 🔀 **Vercel builds ONLY `main` and `preview/*` branches** (`vercel.json`
+  `git.deploymentEnabled`, 2026-10-05 — keeps Deployment Storage down). `claude/*` and
+  every other branch get NO Vercel deployment. Push a `preview/...` branch only when a
+  browser check before merge is needed. CI (GitHub Actions) still runs on every push.
 - ✅ **FRONTEND changes** (`src/redesign/*` = ang production UI; `src/db.ts`,
   `src/lib/*`, timezone strings) → merge to `main` → Vercel deploy → **live on
   web AND APK instantly, NO APK rebuild.** (`src/App.tsx` = rollback app lang —
