@@ -2022,6 +2022,11 @@ try {
       async updateReceipt(id, patch) {
         await serviceSb.from("fb_receipts").update(patch).eq("id", id);
       },
+      // Own pending claim only (upload failed → nothing reached Facebook). true when deleted.
+      async deleteReceipt(id, userId) {
+        const { error } = await serviceSb.from("fb_receipts").delete().eq("id", id).eq("user_id", userId).eq("status", "pending");
+        return !error;
+      },
       async uploadReceiptImage(path, buf) {
         const { error } = await serviceSb.storage.from("fb-receipts").upload(path, buf, { contentType: "image/png", upsert: false });
         if (error) throw new Error("upload_failed");
@@ -2067,7 +2072,12 @@ try {
     // paywall (requirePlanActive) + rate limit (requireConnectRate).
     fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive });
     // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
-    createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);
+    // Isolated: a throw here must never null fbRuntime or skip the refresh timer below.
+    try {
+      createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);
+    } catch {
+      console.log("[FB] receipt routes not registered");
+    }
     fbRuntime.startRefreshTimer();
     console.log("[FB] enabled — OAuth + poller routes registered");
   }

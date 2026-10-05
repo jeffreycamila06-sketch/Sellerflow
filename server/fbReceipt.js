@@ -179,14 +179,18 @@ export function createFbReceipt(deps) {
     }
     if (!claim) return { status: 409, json: { ok: false, error: "none_left" } };
 
-    // Upload. If this fails nothing reached Facebook → mark the claim failed ("upload").
+    // Upload. If this fails nothing reached Facebook → delete the claim so the comment stays
+    // usable (an upload failure must not count toward the failure cap). Only if the delete
+    // itself fails is the claim marked failed ("upload/0") so it never blocks the comment.
     const imagePath = `${randomHex()}.png`;
     let imageUrl;
     try {
       imageUrl = await store.uploadReceiptImage(imagePath, png);
       if (!imageUrl) throw new Error("no_url");
     } catch {
-      await store.updateReceipt(claim.id, { status: "failed", error_code: "upload/0", image_path: imagePath });
+      let deleted = false;
+      try { deleted = (await store.deleteReceipt(claim.id, userId)) === true; } catch { deleted = false; }
+      if (!deleted) await store.updateReceipt(claim.id, { status: "failed", error_code: "upload/0", image_path: imagePath });
       logAttempt(userId, claim.page.pageId, "failed", "upload", 0);
       return { status: 502, json: { ok: false, error: "upload_failed" } };
     }
@@ -223,6 +227,13 @@ export function createFbReceipt(deps) {
     return { status: 502, json: { ok: false, error: "unknown_result" } };
   }
 
+  // Access BEFORE the rate limit and the 6mb parser: an account without fb_receipt_access is
+  // refused with nothing parsed and no rate-limit entry. send() checks access again.
+  async function sendAccessGate(req, res, next) {
+    if (!(await hasAccess(req.authUserId))) return res.status(403).json({ ok: false, error: "no_access" });
+    return next();
+  }
+
   function sendRateLimit(req, res, next) {
     const uid = req.authUserId;
     if (!uid) return res.status(401).json({ ok: false, error: "Unauthorized" });
@@ -243,9 +254,9 @@ export function createFbReceipt(deps) {
 
   function registerRoutes(app, requireAuth) {
     app.post("/fb/receipt/info", requireAuth, wrap(info));
-    // auth → rate limit → the raised-limit parser (the global parser skips this path).
-    app.post("/fb/receipt/send", requireAuth, sendRateLimit, makeJsonParser(RECEIPT_BODY_LIMIT), wrap(send));
+    // auth → access → rate limit → the raised-limit parser (the global parser skips this path).
+    app.post("/fb/receipt/send", requireAuth, sendAccessGate, sendRateLimit, makeJsonParser(RECEIPT_BODY_LIMIT), wrap(send));
   }
 
-  return { info, send, registerRoutes, sendRateLimit, _sendAttempts: sendAttempts };
+  return { info, send, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts };
 }

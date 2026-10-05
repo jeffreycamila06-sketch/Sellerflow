@@ -46,6 +46,11 @@ function makeStore(opts: { orders?: Order[]; rows?: Row[]; access?: boolean; pag
       return { id: r.id };
     }),
     updateReceipt: vi.fn(async (id: number, patch: Record<string, unknown>) => { Object.assign(rows.find((r) => r.id === id)!, patch); }),
+    deleteReceipt: vi.fn(async (id: number, uid: string) => {
+      const i = rows.findIndex((r) => r.id === id && r.user_id === uid && r.status === "pending");
+      if (i >= 0) rows.splice(i, 1);
+      return true;
+    }),
     uploadReceiptImage: vi.fn(async (path: string, buf: Buffer) => { store.uploads.push({ path, size: buf.length }); return `https://cdn.test/storage/v1/object/public/fb-receipts/${path}`; }),
     getPage: vi.fn(async (uid: string, pid: string) => (page && uid === page.user_id && pid === page.page_id ? { ...page } : null)),
     setActive: vi.fn(),
@@ -204,14 +209,39 @@ describe("Graph error / unknown result", () => {
       expect((await r.send(U, body())).json).toEqual({ ok: false, error: "none_left" });
     });
   }
-  it("upload failure → claim marked failed ('upload/0'); Graph is never called", async () => {
+  it("upload failure → the claim is deleted (own row id); the comment stays a candidate; Graph never called", async () => {
     const store = makeStore({ orders: [order()] });
     store.uploadReceiptImage.mockRejectedValueOnce(new Error("bucket missing"));
     const f = graphOk();
     const { r } = rt(store, f);
-    expect((await r.send(U, body())).json).toEqual({ ok: false, error: "upload_failed" });
-    expect(store.rows[0]).toMatchObject({ status: "failed", error_code: "upload/0" });
+    expect(await r.send(U, body())).toEqual({ status: 502, json: { ok: false, error: "upload_failed" } });
+    expect(store.deleteReceipt).toHaveBeenCalledWith(100, U);
+    expect(store.rows).toHaveLength(0);
+    expect((await r.info(U, body())).json).toMatchObject({ canSend: true, remaining: 1 });
     expect(f).not.toHaveBeenCalled();
+  });
+  it("three upload failures in a row → still a candidate every time; Graph never called; then a send works", async () => {
+    const store = makeStore({ orders: [order()] });
+    store.uploadReceiptImage.mockRejectedValueOnce(new Error("x")).mockRejectedValueOnce(new Error("x")).mockRejectedValueOnce(new Error("x"));
+    const f = graphOk();
+    const { r } = rt(store, f);
+    for (let i = 0; i < 3; i++) {
+      expect((await r.send(U, body())).json).toEqual({ ok: false, error: "upload_failed" });
+      expect(pickReceiptCandidates([order()], store.rows).map((c: { commentId: string }) => c.commentId)).toEqual(["c1"]);
+    }
+    expect(f).not.toHaveBeenCalled();
+    expect((await r.send(U, body())).json).toMatchObject({ ok: true, sentCount: 1 });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it("delete fails → fall back to marking the claim failed ('upload/0')", async () => {
+    for (const del of [vi.fn(async () => false), vi.fn(async () => { throw new Error("db"); })]) {
+      const store = makeStore({ orders: [order()] });
+      store.uploadReceiptImage.mockRejectedValueOnce(new Error("x"));
+      store.deleteReceipt = del as never;
+      const { r } = rt(store);
+      expect((await r.send(U, body())).json).toEqual({ ok: false, error: "upload_failed" });
+      expect(store.rows[0]).toMatchObject({ status: "failed", error_code: "upload/0" });
+    }
   });
 });
 
@@ -265,7 +295,7 @@ describe("image validation", () => {
 });
 
 describe("routes: middleware order, body limit, rate limit", () => {
-  it("send = requireAuth → rate limit → 6mb parser → handler; info = requireAuth → handler", () => {
+  it("send = requireAuth → access gate → rate limit → 6mb parser → handler; info = requireAuth → handler", () => {
     const makeJsonParser = vi.fn((limit: string) => Object.assign(() => {}, { limit }));
     const { r } = rt(makeStore(), graphOk(), { makeJsonParser });
     const routes: Record<string, unknown[]> = {};
@@ -274,18 +304,58 @@ describe("routes: middleware order, body limit, rate limit", () => {
     expect(makeJsonParser).toHaveBeenCalledWith(RECEIPT_BODY_LIMIT);
     expect(RECEIPT_BODY_LIMIT).toBe("6mb");
     const send = routes["/fb/receipt/send"];
-    expect(send).toHaveLength(4);
+    expect(send).toHaveLength(5);
     expect(send[0]).toBe(requireAuth);
-    expect(send[1]).toBe(r.sendRateLimit);
-    expect((send[2] as { limit: string }).limit).toBe("6mb");
+    expect(send[1]).toBe(r.sendAccessGate);
+    expect(send[2]).toBe(r.sendRateLimit);
+    expect((send[3] as { limit: string }).limit).toBe("6mb");
     expect(routes["/fb/receipt/info"]).toHaveLength(2);
     expect(routes["/fb/receipt/info"][0]).toBe(requireAuth);
+  });
+  it("no-access account → 403 at the gate: the parser never runs and no rate-limit entry is made", async () => {
+    const parser = vi.fn((_q: unknown, _s: unknown, next: () => void) => next());
+    const store = makeStore({ orders: [order()] });
+    const f = graphOk();
+    const { r } = rt(store, f, { makeJsonParser: () => parser });
+    const routes: Record<string, ((req: unknown, res: unknown, next: () => void) => unknown)[]> = {};
+    r.registerRoutes({ post: (p: string, ...h: never[]) => { routes[p] = h; } }, (_q: unknown, _s: unknown, next: () => void) => next());
+    const run = async (uid: string) => {
+      let status = 0; let json: unknown = null;
+      const res = { status(c: number) { status = c; return this; }, json(b: unknown) { json = b; return this; } };
+      const req = { authUserId: uid, body: body() };
+      for (const h of routes["/fb/receipt/send"]) {
+        let advanced = false;
+        await h(req, res, () => { advanced = true; });
+        if (!advanced) break;
+      }
+      return { status, json };
+    };
+    expect(await run(OTHER)).toEqual({ status: 403, json: { ok: false, error: "no_access" } });
+    expect(parser).not.toHaveBeenCalled();
+    expect(r._sendAttempts.has(OTHER)).toBe(false);
+    expect(f).not.toHaveBeenCalled();
+    // an account WITH access passes the gate, gets a rate-limit entry and is parsed
+    expect((await run(U)).status).toBe(200);
+    expect(parser).toHaveBeenCalledTimes(1);
+    expect(r._sendAttempts.get(U)).toHaveLength(1);
   });
   it("the global JSON parser skips /fb/receipt/send (auth before parser); routes registered in the FB block", () => {
     const src = readFileSync("server.js", "utf8");
     expect(src).toContain('req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)');
     expect(src).toContain("createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);");
     expect(src.indexOf("createFbReceipt({")).toBeGreaterThan(src.indexOf("fbRuntime.registerRoutes(app"));
+  });
+  it("a throwing receipt registration can never null fbRuntime or skip the refresh timer", () => {
+    const src = readFileSync("server.js", "utf8");
+    const at = src.indexOf("createFbReceipt({ config: fbCfg");
+    const tryAt = src.lastIndexOf("try {", at);
+    const block = src.slice(tryAt, src.indexOf("fbRuntime.startRefreshTimer();", at));
+    expect(src.slice(src.indexOf("fbRuntime.registerRoutes(app"), at)).toMatch(/try \{\s*$/);
+    expect(block).toMatch(/\} catch \{\s*console\.log\("\[FB\] receipt routes not registered"\);\s*\}/);
+    expect(block).not.toContain("fbRuntime = null");
+    expect(src.indexOf("fbRuntime.startRefreshTimer();", at)).toBeGreaterThan(at);
+    const outer = src.slice(src.indexOf("fbRuntime = createFbRuntime({"), src.indexOf("fbRuntime.startRefreshTimer();"));
+    expect((outer.match(/try \{/g) || []).length).toBe((outer.match(/\} catch \{/g) || []).length); // the new try is closed before the timer
   });
   it(`at most ${RECEIPT_SEND_RATE_MAX} sends per minute per user`, () => {
     const { r } = rt(makeStore());
