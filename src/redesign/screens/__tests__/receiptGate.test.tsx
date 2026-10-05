@@ -81,7 +81,8 @@ describe("Receipt sheet — edits write nothing", () => {
     expect(saveCustomerToDatabase).not.toHaveBeenCalled();
     expect(from).not.toHaveBeenCalled();                  // no direct table write either
     const sheet = document.querySelector("[data-testid='receipt-sheet']")!;  // portaled outside the container
-    expect([...sheet.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Close"]);
+    // Close + the line controls (one remove per line, Add line) — still no Send without a session.
+    expect([...sheet.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Close", "×", "×", "+ Add line"]);
     expect(sheet.textContent).not.toMatch(/\bSend\b/);
     fireEvent.click(getByTestId("receipt-sheet-close"));
     expect(document.querySelector("[data-testid='receipt-sheet']")).toBeNull();
