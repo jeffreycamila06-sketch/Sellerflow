@@ -54,6 +54,9 @@ describe("sql/81 forward", () => {
     expect(F).toMatch(/admin_parcel_check_requeue_frozen\(\)[\s\S]*?if not public\.is_admin\(\) then raise exception 'forbidden'; end if;/);
     expect(rb).toContain("drop function if exists public.admin_parcel_check_requeue_frozen();");
   });
+  it("fix 6: a frozen 'unknown' takes a newer frozen cache answer (only 'unknown', only newer)", () => {
+    expect(norm(F)).toContain(norm("or (ps.store_full_status = 'unknown' and ps.store_full_at < c.checked_at));"));
+  });
   it("pending: no hourly 'full' recheck for frozen rows; frozen cache open 10 min / unavailable 1 h / company+not_found 24 h", () => {
     expect(F).toMatch(/and ps\.store_full_status = 'full'\s+and not \(v_frozen_on and ps\.temp_layer = '冷凍'\)/);
     expect(F).toContain("(c.status = 'open' and c.checked_at > now() - v_store_open_ttl)");

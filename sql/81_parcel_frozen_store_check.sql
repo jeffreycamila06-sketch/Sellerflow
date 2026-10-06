@@ -230,7 +230,9 @@ begin
        and ( (c.status = 'open' and c.checked_at > now() - v_store_open_ttl)
           or (c.status = 'frozen_unavailable' and c.checked_at > now() - v_store_full_ttl)
           or (c.status in ('company','not_found') and c.checked_at > now() - v_store_fixed_ttl) )
-       and (ps.store_full_status is null or ps.store_check_layer is distinct from '冷凍');
+       and (ps.store_full_status is null or ps.store_check_layer is distinct from '冷凍'
+            -- fix 6: a frozen 'unknown' (gave up) takes a NEWER frozen answer for its store
+            or (ps.store_full_status = 'unknown' and ps.store_full_at < c.checked_at));
   end if;
   return query
   with recheck as (
