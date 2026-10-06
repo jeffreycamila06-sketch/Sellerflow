@@ -384,6 +384,26 @@ describe("review fix 2 — a Dry ↔ Frozen edit resets the store check (same up
     expect(h.updateParcelScan.mock.calls[0][3]).toBe("常溫");
     await waitFor(() => expect(r.queryByTestId("ps-ext-badge-frozen-unavailable")).toBeNull());
   });
+  it("fix 7: a wrong store code ('not_found') is kept on a layer change (it is the same in both modes)", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "n", tempLayer: "常溫", amount: 500, storeFullStatus: "not_found" })];
+    const r = view();
+    await editTo(r, "ps-edit-layer-frozen");
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: false, phoneCheck: false });
+    expect(h.updateParcelScan.mock.calls[0][3]).toBe("冷凍");
+  });
+  it("fix 7: a store CODE change still resets a 'not_found' (the new code must be checked)", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "n", tempLayer: "常溫", amount: 500, storeId: "111111", storeFullStatus: "not_found" })];
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("ps-row-edit")).toBeTruthy());
+    fireEvent.click(r.getByTestId("ps-row-edit"));
+    fireEvent.click(r.getByTestId("ps-edit-layer-frozen"));
+    fireEvent.change(r.getByTestId("ps-store"), { target: { value: "195965" } });
+    fireEvent.click(save(r));
+    await waitFor(() => expect(h.updateParcelScan).toHaveBeenCalled());
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: true, phoneCheck: false });
+  });
   it("layer unchanged → no reset (today)", async () => {
     h.state = ACCESS();
     h.rows = [mk({ id: "c", tempLayer: "冷凍", amount: 500, storeFullStatus: "open" })];

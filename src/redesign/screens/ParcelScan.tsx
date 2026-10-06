@@ -927,7 +927,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     // clean (and exportable) until a frozen answer arrives.
     const prevLayer = isFrozenLayer(prev?.tempLayer) ? TEMP_FROZEN : TEMP_DRY;
     const layerChanged = layer !== undefined && layer !== prevLayer;
-    const resetStore = storeChanged || layerChanged;
+    // a 'not_found' (no such store code) is the same answer in both modes → a layer change keeps it
+    const resetStore = storeChanged || (layerChanged && prev?.storeFullStatus !== "not_found");
     const r = await updateParcelScan(id, fields, { storeFull: resetStore, phoneCheck: phoneChanged }, layer); // own-scoped UPDATE, NO credit
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
