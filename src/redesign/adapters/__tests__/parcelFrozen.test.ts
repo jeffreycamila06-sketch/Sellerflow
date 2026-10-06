@@ -258,3 +258,11 @@ describe("sql/79 mirror", () => {
     expect(code.indexOf("add column if not exists temp_layer")).toBeLessThan(code.indexOf("create table if not exists public.parcel_frozen_access"));
   });
 });
+
+describe("export: a frozen_unavailable verdict keeps the parcel out (extension 1.16.0)", () => {
+  it("excluded with its own reason; other rows unaffected", () => {
+    const split = splitScansForExport([row({ id: "f", tempLayer: TEMP_FROZEN, storeFullStatus: "frozen_unavailable" }), row({ id: "d" })], 38, CFG);
+    expect(split.attention.map((a) => [a.row.id, a.reason])).toEqual([["f", "frozen_unavailable"]]);
+    expect(split.ready.map((r) => r.id)).toEqual(["d"]);
+  });
+});

@@ -71,7 +71,7 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
 // wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
 // only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
 const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null }): boolean =>
-  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted";
+  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.storeFullStatus === "frozen_unavailable" || r.phoneCheckStatus === "restricted";
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
 function untilDate(iso: string | null): string {
   if (!iso) return "";
@@ -96,11 +96,12 @@ const formToFields = (f: FormState): ScanFields => ({
 });
 
 // Export attention reason → i18n key.
-type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
+type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings" | "rd_ps2_x_frozen_unavailable";
 const reasonKey = (r: ExportReason): ReasonKey =>
   r === "frozen_settings" ? "rd_ps2_x_frozen_settings"
   : r === "wrong_store" ? "rd_ps2_x_wrong_store"
     : r === "store_full" ? "rd_ps2_x_store_full"
+    : r === "frozen_unavailable" ? "rd_ps2_x_frozen_unavailable"
       : r === "restricted_number" ? "rd_ps2_x_restricted"
         : r === "bad_name" ? "rd_ps2_x_bad_name"
           : r === "bad_phone" ? "rd_ps2_x_bad_phone"
@@ -1415,7 +1416,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             // a problem shows as a glowing border. RED (more serious, wins) = restricted
             // buyer OR wrong/invalid store code; ORANGE = store full. Clean = no border.
             const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r);
-            const rowOrange = !rowRed && r.storeFullStatus === "full";
+            const rowOrange = !rowRed && (r.storeFullStatus === "full" || r.storeFullStatus === "frozen_unavailable");
             const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
               <div key={r.id} data-testid="ps-row" data-flag={rowRed ? "red" : rowOrange ? "orange" : ""} style={{ padding: rowFlag ? "9px 8px" : "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", ...(rowFlag ? { border: `1.5px solid ${rowFlag}`, borderRadius: 10, boxShadow: `0 0 6px -1px ${rowFlag}`, margin: "4px 0" } : {}) }}>
@@ -1439,6 +1440,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       explicit 'full'/'restricted'/'ok' render; null/'unknown' stay quiet. */}
                   {r.storeFullStatus === "full" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-badge-full">⚠️ {t.rd_ps2_full}</div>
+                  )}
+                  {/* 1.16.0 frozen check: 7-11 says this store can't take a frozen parcel right now
+                      (it lists five possible reasons and doesn't say which) — kept out of the export. */}
+                  {r.storeFullStatus === "frozen_unavailable" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-badge-frozen-unavailable">{t.rd_ps2_frozen_unavailable}</div>
                   )}
                   {r.phoneCheckStatus === "restricted" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-badge-restricted">

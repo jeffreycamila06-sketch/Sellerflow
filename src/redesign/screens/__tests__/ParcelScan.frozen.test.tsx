@@ -336,3 +336,24 @@ describe("Customer Details Import uses the current mode", () => {
     expect(h.saveParcelScan.mock.calls[0][2]).toBe("冷凍");
   });
 });
+
+describe("frozen check result: 'Not available for frozen right now' (extension 1.16.0, sql/81)", () => {
+  it("shows the label with an orange flag, no green, a Recheck button; kept out of the export with its reason", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "f", customerName: "Cold", tempLayer: "冷凍", phoneCheckStatus: "ok", storeFullStatus: "frozen_unavailable" }), mk({ id: "d", customerName: "Dry" })];
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("ps-row")).toHaveLength(2));
+    const row = r.getAllByTestId("ps-row")[0];
+    expect(row.getAttribute("data-flag")).toBe("orange");
+    expect(row.querySelector('[data-testid="ps-ext-badge-frozen-unavailable"]')?.textContent).toBe("❄ Not available for frozen right now");
+    expect(row.querySelector('[data-testid="ps-ext-clear"]')).toBeNull();
+    expect(row.querySelector('[data-testid="ps-ext-checking"]')).toBeNull();
+    expect(row.querySelector('[data-testid="ps-ext-recheck"]')).not.toBeNull();
+    fireEvent.click(r.getByTestId("ps-export-btn"));
+    fireEvent.click(r.getByTestId("ps-confirm-export"));
+    await waitFor(() => expect(h.build).toHaveBeenCalled());
+    expect((h.build.mock.calls[0][1] as string[][]).map((x) => x[0])).toEqual(["Dry"]);
+    await waitFor(() => expect(r.getByTestId("ps-export-summary")).toBeTruthy());
+    expect(r.getAllByTestId("ps-export-attn-row").map((e) => e.textContent).join(" ")).toContain("not available for frozen right now");
+  });
+});
