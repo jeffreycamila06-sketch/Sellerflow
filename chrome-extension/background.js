@@ -479,13 +479,29 @@ const PC_FROZEN_IDLE_CLOSE_MS = 10 * 60 * 1000; // close the tab we opened after
 const PC_FROZEN_OPEN_WAIT_MS = 60 * 1000;       // give a just-opened tab 1 min to land before another open
 const PC_FROZEN_MAX_OPENS = 2;                  // opens per episode (a frozen verdict ends the episode)
 const PC_FROZEN_DEAD_PAUSE_MS = 30 * 60 * 1000; // after that, wait 30 min before trying again
-const PC_BUSY_BACKOFF_MS = 60 * 1000;           // E0014: wait 1 min, never counted toward a give-up
+// 1.16.1: ONE 7-11 busy answer (E0014) pauses ALL store requests (normal + frozen): 1 min, then
+// 2, 5, 10 min (cap) while it keeps happening; the first clean store answer resets it. Busy
+// never makes a row OK or 'unknown' and never counts toward a give-up or the recovery ladder.
+const PC_BUSY_PAUSE_MS = [60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000, 10 * 60 * 1000];
+const pcBusy = { until: 0, streak: 0 };
+function pcBusyPauseMs(streak) { // PURE
+  return PC_BUSY_PAUSE_MS[Math.min(Math.max(1, streak), PC_BUSY_PAUSE_MS.length) - 1];
+}
+function pcBusyPaused(now) { return now < pcBusy.until; }
+function pcBusyHit(now, where) {
+  pcBusy.streak += 1; pcBusy.until = now + pcBusyPauseMs(pcBusy.streak);
+  console.log(`[PC-BUSY] 7-11 busy (E0014) on the ${where} check — ALL store requests paused ${pcBusyPauseMs(pcBusy.streak) / 1000}s (busy #${pcBusy.streak})`);
+}
+function pcBusyClear() {
+  if (pcBusy.streak) console.log(`[PC-BUSY] 7-11 answered cleanly — store requests resume (after ${pcBusy.streak} busy)`);
+  pcBusy.streak = 0; pcBusy.until = 0;
+}
 const PC_FROZEN_VERDICTS = ["open", "frozen_unavailable", "company", "not_found"];
 // ownedTabId = the tab WE opened: kept while it is still landing (on the 7-11 picker /
 // redirect, not yet an E-Map page) and forgotten only when the tab itself is gone
 // (tabs.onRemoved) or we replace / close it. bad = frozen tabs dropped after 2 unclean
 // answers — never picked again until they are closed.
-const pcFrz = { tabId: null, ownedTabId: null, opens: 0, lastOpenAt: 0, lastReqAt: 0, lastNeededAt: 0, misses: 0, state: "off", bad: new Set(), known: new Set() };
+const pcFrz = { tabId: null, ownedTabId: null, opens: 0, lastOpenAt: 0, lastReqAt: 0, lastNeededAt: 0, misses: 0, state: "off", bad: new Set(), known: new Set(), unknownWritten: false };
 // Every tab currently known to be frozen (its page said so on the last pick, or we opened it).
 function pcFrozenTabIds() {
   const ids = new Set(pcFrz.known);
@@ -678,6 +694,25 @@ function pcFrozenEnsureOpen(now, inMaint) {
   } catch { /* next pass retries */ }
   console.log(`[PC-FROZEN] opening the 7-11 frozen picker (attempt ${pcFrz.opens}/${PC_FROZEN_MAX_OPENS})`);
 }
+// 1.16.1: frozen rows given up because the lane was dead go back in the queue once the lane can
+// work again — a usable frozen tab appeared, the lane is no longer 'dead' (e.g. the idle close
+// ended the episode), or the 30-min pause is over (the next frozen row then opens the picker again). PURE decision; the RPC (sql/81 admin_parcel_check_requeue_frozen)
+// clears only frozen 'unknown' rows.
+function pcFrozenRequeueDue(now, f) {
+  if (!f.unknownWritten) return false;
+  return f.tabId != null || f.state !== "dead" || now - f.lastOpenAt >= PC_FROZEN_DEAD_PAUSE_MS;
+}
+async function pcFrozenRequeue(now) {
+  if (!pcFrozenRequeueDue(now, pcFrz) || !pcEv.rpc) return;
+  const { cfg, rpcHeaders } = pcEv.rpc;
+  let r = null;
+  try { r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_check_requeue_frozen`, { method: "POST", headers: rpcHeaders, body: "{}" }); } catch { r = null; }
+  if (!r || !r.ok) { console.log(`[PC-FROZEN] requeue failed (${r ? `http ${r.status}` : "network"}) — next pass retries`); return; }
+  const n = await r.json().catch(() => null);
+  pcFrz.unknownWritten = false;
+  if (pcFrz.state === "dead") { pcFrz.state = "off"; pcFrz.opens = 0; } // a fresh episode: the next frozen row may open the picker
+  console.log(`[PC-FROZEN] lane can work again: ${n ?? "?"} frozen row(s) back in the queue`);
+}
 // PURE: the frozen lane's status value (pc_status.frozen) — off | opening | ok | busy | dead.
 function pcFrozenStatusValue(f) {
   if (f.state === "busy" || f.state === "dead") return f.state;
@@ -750,13 +785,16 @@ async function pcEmapKeepalive() {
   if (!pcKeepaliveDue(now, pcLastKeepaliveAt, pcEv.lastAnyNeedStore)) return;
   const e = pcEv.emap;
   if (!e.tabId || e.error) return;
+  if (pcBusyPaused(now)) return; // 1.16.1: 7-11 said busy — no store request at all until the pause ends
   pcLastKeepaliveAt = now;
   const resp = await pcSendTab(e.tabId, { type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE } });
   const verdict = resp && resp.store_full_status;
   // 1.14.8: the keepalive store is known to EXIST, so "NO2"/not_found for it says the
   // session is answering wrongly — a miss, never proof of life. company would be alive.
   const alive = pcIsStoreVerdict(verdict) && verdict !== "not_found";
-  if (alive) pcEmapVerdict(now); else pcEmapMiss(now, `keepalive: ${(resp && resp.store_reason) || "no response"}`, Boolean(resp && resp.transient));
+  if (alive) { pcEmapVerdict(now); pcBusyClear(); }
+  else if (resp && resp.busy && !pcInMaintenance(now)) pcBusyHit(now, "keepalive");
+  else pcEmapMiss(now, `keepalive: ${(resp && resp.store_reason) || "no response"}`, Boolean(resp && resp.transient));
   console.log(`[PC-KEEPALIVE] tab=${e.tabId} store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive} endpoint=${(resp && resp.endpoint) || "none"}${resp && resp.store_reason ? ` reason="${resp.store_reason}"` : ""}`);
 }
 // SINGLE WRITER of the per-tab status keys + the auto-recovery trigger: a present
@@ -1159,11 +1197,15 @@ async function pcPollMulti(pass) {
     // 1.16.0: a frozen row is NEVER asked the normal question — only the frozen tab answers it
     const isFrozen = row.frozen === true;
     if (isFrozen && row.need_store && !pcFrz.tabId) pcFrozenEnsureOpen(now, inMaint);
-    const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);
-    const doFrozenStore = isFrozen && Boolean(row.need_store) && Boolean(pcFrz.tabId) && !inMaint && (!bo || now >= bo.storeNextAt);
+    const busy = pcBusyPaused(Date.now()); // 1.16.1: one E0014 pauses every store request (normal + frozen)
+    const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && !busy && (!bo || now >= bo.storeNextAt);
+    const doFrozenStore = isFrozen && Boolean(row.need_store) && Boolean(pcFrz.tabId) && !inMaint && !busy && (!bo || now >= bo.storeNextAt);
+    // 1.16.1: the frozen lane is dead (its two opens failed, 30-min pause) → a waiting frozen row
+    // ends as 'unknown' (never OK) instead of sitting in the queue; re-queued when the lane recovers.
+    const frozenGiveUp = isFrozen && Boolean(row.need_store) && !pcFrz.tabId && pcFrz.state === "dead" && !inMaint;
     const phoneStalled = stalledGms.size >= 2 || stalledGms.has(String(row.gm_id || ""));
     const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && !phoneStalled && (!bo || Date.now() >= bo.phoneNextAt);
-    if (!doStore && !doFrozenStore && !doPhone) continue;
+    if (!doStore && !doFrozenStore && !doPhone && !frozenGiveUp) continue;
     processed += 1;
     pcInFlight.add(row.id);
     try {
@@ -1184,21 +1226,21 @@ async function pcPollMulti(pass) {
         if (sResp && pcIsStoreVerdict(sResp.store_full_status)) storeStatus = sResp.store_full_status;
         // evidence for the per-tab status (single writer in pcTick) + the exact reason
         if (storeStatus !== null) {
-          pcEmapVerdict(Date.now()); pcEv.lastStoreReason = "";
+          pcEmapVerdict(Date.now()); pcEv.lastStoreReason = ""; pcBusyClear();
           const b = pcBackoff.get(row.id);
           if (b && b.storeFails) { b.storeFails = 0; b.storeNextAt = 0; console.log(`[PC-BACKOFF] row=${row.id} store resolved`); }
         } else {
           pcEv.lastStoreReason = (sResp && sResp.store_reason) || "emap tab not responding";
           const transient = Boolean(sResp && sResp.transient);
           const b = pcBackoffEntry(row.id, now);
-          if (sResp && sResp.busy) {
-            // 1.16.0: 7-11 busy (E0014) — back off 1 min; never a miss, never toward a give-up
-            b.storeNextAt = now + PC_BUSY_BACKOFF_MS;
-            console.log(`[PC-BACKOFF] row=${row.id} store busy (E0014), next=${PC_BUSY_BACKOFF_MS / 1000}s`);
-          } else if (inMaint) {
-            // maintenance window: not counted toward the ladder or the give-up; slow retry
+          if (inMaint) {
+            // maintenance window FIRST (1.16.1): not counted toward the ladder or the give-up; slow
+            // retry — a busy answer at 01:00–05:00 is maintenance, not a reason for 1-min retries
             b.storeNextAt = now + PC_MAINT_RETRY_MS;
             console.log(`[PC-BACKOFF] row=${row.id} store attempt=${b.storeFails} maintenance, next=${PC_MAINT_RETRY_MS / 1000}s`);
+          } else if (sResp && sResp.busy) {
+            // 7-11 busy (E0014) — pause EVERY store request (pcBusy); never a miss, never toward a give-up
+            pcBusyHit(Date.now(), "normal");
           } else {
             // one row counts toward the recovery ladder at most once until another store id resolves
             if (!transient && b.countedGen !== pcEv.verdictGen) { pcEmapMiss(Date.now(), pcEv.lastStoreReason, false); b.countedGen = pcEv.verdictGen; }
@@ -1228,12 +1270,11 @@ async function pcPollMulti(pass) {
         const b = pcBackoffEntry(row.id, now);
         if (fResp && PC_FROZEN_VERDICTS.includes(fResp.store_full_status)) {
           storeStatus = fResp.store_full_status;
-          pcFrz.misses = 0; pcFrz.opens = 0; pcFrz.state = "ok";
+          pcFrz.misses = 0; pcFrz.opens = 0; pcFrz.state = "ok"; pcBusyClear();
           if (b.storeFails) { b.storeFails = 0; b.storeNextAt = 0; }
           console.log(`[PC-FROZEN] row=${row.id} store=${row.store_id} verdict=${storeStatus}`);
         } else if (fResp && fResp.busy) {
-          b.storeNextAt = Date.now() + PC_BUSY_BACKOFF_MS; pcFrz.state = "busy";
-          console.log(`[PC-FROZEN] row=${row.id} 7-11 busy (E0014), next=${PC_BUSY_BACKOFF_MS / 1000}s`);
+          pcFrz.state = "busy"; pcBusyHit(Date.now(), "frozen"); // pauses every store request; never a miss
         } else {
           const reason = (fResp && fResp.store_reason) || "frozen tab not responding";
           const transient = !fResp || Boolean(fResp.transient);
@@ -1250,6 +1291,10 @@ async function pcPollMulti(pass) {
             console.log(`[PC-FROZEN] row=${row.id} store attempt=${b.storeFails} next=${pcBackoffDelay(b.storeFails) / 1000}s (${reason})`);
           }
         }
+      }
+      if (frozenGiveUp) {
+        storeStatus = "unknown"; pcFrz.unknownWritten = true; // re-queued by pcFrozenRequeue when the lane recovers
+        console.log(`[PC-FROZEN] row=${row.id} frozen lane dead → unknown (re-queued when it recovers)`);
       }
       // phone half — the ROW OWNER's GM + phone, never the global config.
       // anon:true → the check runs credential-less so the body ordMobile is the
@@ -1351,6 +1396,7 @@ async function pcRunOnce() {
   // Leader-only: re-queue (DB write) and the worker-state mirror (DB write). M1: each is
   // gated on the CURRENT lease state, not the role the pass started with.
   if (pcPassLeader(pass)) { try { await pcRequeueUnknown(Date.now()); } catch (e) { console.log(`[PC-BACKOFF] requeue skipped: ${e && e.message ? e.message : e}`); } }
+  if (pcPassLeader(pass)) { try { await pcFrozenRequeue(Date.now()); } catch (e) { console.log(`[PC-FROZEN] requeue skipped: ${e && e.message ? e.message : e}`); } }
   if (pcPassLeader(pass)) { try { if (pcEv.rpc) await pcPushWorkerState(pcEv.rpc.cfg, pcEv.rpc.rpcHeaders); } catch { /* mirror is best-effort */ } }
   if (pcEv.tick % PC_HEARTBEAT_EVERY === 1) {                     // heartbeat ~every 60s — never silent, never spam
     try { const st = (await pcGet(PC_STATUS_KEY, {})) || {}; console.log(`[PC-TICK] #${pcEv.tick} role=${pcLease.role ?? "none"} sfl=${st.sfl} myship=${st.myship} emap=${st.emap} queue=${st.multiQueueDepth ?? "-"} emapTab=${pcEv.emap.tabId ?? "none"}`); } catch { /* */ }

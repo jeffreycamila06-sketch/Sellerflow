@@ -28,6 +28,7 @@
 --    row only takes a frozen answer and a normal row only a normal one — an old 1.15.1 machine
 --    can never mark a frozen parcel OK. Old 7-argument calls keep working (default NULL).
 -- 6. The ⟳ Recheck trigger clears the frozen cache for a frozen verdict.
+-- 7. admin_parcel_check_requeue_frozen(): frozen 'unknown' rows (frozen lane was dead) back in the queue.
 
 insert into public.app_settings (key, value) values ('parcel_check_frozen_enabled', 'false')
 on conflict (key) do nothing;
@@ -275,6 +276,25 @@ begin
    order by p.seller_rank asc, p.created_at asc
    limit greatest(1, least(coalesce(p_limit, 5), 25));
 end $function$;
+
+-- fix 3c: re-queue frozen parcels the worker gave up on while the frozen lane was dead
+-- ('unknown' with layer 冷凍), once the lane can work again. Frozen rows only, any age, never
+-- exported ones. unknown → NULL never touches a cache (the Recheck trigger ignores 'unknown').
+create or replace function public.admin_parcel_check_requeue_frozen()
+returns integer language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  if not public.is_admin() then raise exception 'forbidden'; end if;
+  update public.parcel_scans
+     set store_full_status = null, store_full_at = null
+   where store_full_status = 'unknown' and store_check_layer = '冷凍'
+     and temp_layer = '冷凍' and status <> 'exported';
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke all on function public.admin_parcel_check_requeue_frozen() from public, anon;
+grant execute on function public.admin_parcel_check_requeue_frozen() to authenticated;
 
 -- ⟳ Recheck clears the cache of the layer that produced the verdict (from sql/68).
 create or replace function public.parcel_scans_recheck_clears_store_cache()

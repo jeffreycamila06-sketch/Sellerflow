@@ -35,7 +35,7 @@ export type BootOpts = {
   onPickStoreClick?: (emapTabs: EmapTab[]) => { clicked: boolean; reason?: string } | void; // what the click does to the tab set
   maintenance?: boolean;          // 1.14.6: honour the 01:00–05:00 Taipei window (default OFF so suites are clock-independent)
   storeTransient?: boolean;       // PC_CHECK_STORE misses are flagged transient (timeout / network)
-  storeBusy?: boolean;            // 1.16.0: PC_CHECK_STORE answers 7-11 busy (E0014)
+  storeBusy?: boolean | (() => boolean); // 1.16.0: PC_CHECK_STORE answers 7-11 busy (E0014) (a function = per call)
   requeueOk?: boolean;            // admin_parcel_check_requeue answers 200 (default true)
   // 1.15.0: the lease RPC (admin_parcel_worker_lease). Gets the parsed body; returns the
   // JSON to answer with (+ optional HTTP status), or "throw" for a network error.
@@ -96,7 +96,7 @@ export function bootWorker(opts: BootOpts = {}) {
         }
         if (msg.type === "PC_CHECK_STORE") {
           if (emap && emap.frozen) return cb({ ok: true, store_full_status: "unknown", store_reason: "frozen E-Map page — normal check refused", transient: true });
-          if (opts.storeBusy) return cb({ ok: true, store_full_status: "unknown", store_reason: "/ecmap/byIDData.aspx busy (E0014)", transient: true, busy: true, guidFound: true });
+          if (typeof opts.storeBusy === "function" ? opts.storeBusy() : opts.storeBusy) return cb({ ok: true, store_full_status: "unknown", store_reason: "/ecmap/byIDData.aspx busy (E0014)", transient: true, busy: true, guidFound: true });
           const v = emap && emap.guid ? (opts.storeVerdict ? opts.storeVerdict(msg.row) : "open") : "unknown";
           return cb({ ok: true, store_full_status: v, store_reason: v === "unknown" ? "eshopGuid not found on emap page" : "", guidFound: Boolean(emap && emap.guid), transient: Boolean(opts.storeTransient) && v === "unknown" });
         }

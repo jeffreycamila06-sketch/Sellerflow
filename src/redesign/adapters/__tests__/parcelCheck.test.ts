@@ -206,7 +206,7 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     // 1.14.6: each half runs only when needed AND not in per-row backoff;
     // 1.14.7 (H2): AND only when its tab exists (a missing tab never eats a slot)
     // 1.16.0: a frozen row never takes the normal question; for every normal row the condition is unchanged
-    expect(multi).toContain("const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);");
+    expect(multi).toContain("const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && !busy && (!bo || now >= bo.storeNextAt);"); // 1.16.1: + the global E0014 pause
     expect(multi).toContain("const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && !phoneStalled && (!bo || Date.now() >= bo.phoneNextAt);");
     expect(multi).toContain("if (doStore && emapTabId)");
     expect(multi).toContain("if (doPhone && myshipTabId)");
@@ -221,7 +221,9 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     // attempts, inside the branch that ran with a live E-Map tab; the phone half never.
     // 1.16.0: two give-ups now — the normal E-Map tab's and the frozen tab's — each ONLY inside
     // the branch that ran with that live tab, after PC_STORE_GIVE_UP real attempts.
-    expect(multi.split('storeStatus = "unknown"').length - 1).toBe(2);
+    // 1.16.1: + a third — a frozen row while the frozen lane is DEAD (no request possible; written
+    // with the frozen layer, re-queued when the lane recovers) — never because of our own missing tab.
+    expect(multi.split('storeStatus = "unknown"').length - 1).toBe(3);
     const tabBranch = multi.indexOf("if (doStore && emapTabId)");
     const giveUp = multi.indexOf('storeStatus = "unknown"');
     expect(tabBranch).toBeGreaterThan(-1);

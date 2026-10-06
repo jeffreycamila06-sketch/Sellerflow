@@ -47,6 +47,13 @@ describe("sql/81 forward", () => {
   it("pending (fix 2): switch on → a waiting frozen parcel keeps only a FROZEN store result (not_found kept), inside the switch block", () => {
     expect(norm(F)).toMatch(/if v_frozen_on then .*update parcel_scans ps set store_full_status = null, store_full_at = null where ps\.status <> 'exported' and ps\.temp_layer = '冷凍' and ps\.store_full_status is not null and ps\.store_full_status <> 'not_found' and ps\.store_check_layer is distinct from '冷凍'; update parcel_scans ps set store_full_status = c\.status/);
   });
+  it("fix 3c: admin-only frozen requeue (frozen 'unknown' only, never exported), authenticated-only execute; rollback drops it", () => {
+    expect(F).toContain("create or replace function public.admin_parcel_check_requeue_frozen()");
+    expect(F).toContain("revoke all on function public.admin_parcel_check_requeue_frozen() from public, anon;");
+    expect(F).toContain("grant execute on function public.admin_parcel_check_requeue_frozen() to authenticated;");
+    expect(F).toMatch(/admin_parcel_check_requeue_frozen\(\)[\s\S]*?if not public\.is_admin\(\) then raise exception 'forbidden'; end if;/);
+    expect(rb).toContain("drop function if exists public.admin_parcel_check_requeue_frozen();");
+  });
   it("pending: no hourly 'full' recheck for frozen rows; frozen cache open 10 min / unavailable 1 h / company+not_found 24 h", () => {
     expect(F).toMatch(/and ps\.store_full_status = 'full'\s+and not \(v_frozen_on and ps\.temp_layer = '冷凍'\)/);
     expect(F).toContain("(c.status = 'open' and c.checked_at > now() - v_store_open_ttl)");
@@ -64,7 +71,11 @@ describe("sql/81 forward", () => {
     expect(F).toContain("drop function if exists public.admin_parcel_check_verdict(uuid, text, text, text, date, text, text);");
   });
   it("with the switch off every frozen branch is inert (gated on v_frozen_on / a frozen answer)", () => {
-    const outsideFrozenBlock = F.replace(/if v_frozen_on then[\s\S]*?end if;/, ""); // the frozen-cache block is itself gated
+    const outsideFrozenBlock = F.replace(/if v_frozen_on then[\s\S]*?end if;/, "") // the frozen-cache block is itself gated
+      // fix 3c: the frozen requeue touches ONLY rows that carry a frozen answer (store_check_layer 冷凍),
+      // which exist only after the switch was on — inert while it is off (pinned below)
+      .replace(/create or replace function public\.admin_parcel_check_requeue_frozen\(\)[\s\S]*?\$\$;/, "");
+    expect(norm(F)).toContain(norm("where store_full_status = 'unknown' and store_check_layer = '冷凍'\n     and temp_layer = '冷凍' and status <> 'exported';"));
     expect(F).toMatch(/if v_frozen_on then[\s\S]*?store_check_cache_frozen[\s\S]*?end if;/);
     const frozenUses = outsideFrozenBlock.split("\n").filter((l) => /temp_layer = '冷凍'/.test(l));
     for (const l of frozenUses) expect(l, l).toMatch(/v_frozen_on|v_cur_layer/);

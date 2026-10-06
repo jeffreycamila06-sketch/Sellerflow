@@ -6,7 +6,7 @@
 // 10 min idle; ≥ 3 s between frozen requests; E0014 = back off, never a give-up; a give-up
 // writes 'unknown' (never OK); the maintenance window; no session value / full address logged.
 import { describe, it, expect } from "vitest";
-import { bootWorker, PENDING_ROW, type EmapTab } from "./parcelCheckerHarness";
+import { bootWorker, PENDING_ROW, fakeJwt, type EmapTab } from "./parcelCheckerHarness";
 
 const NORMAL: EmapTab = { id: 3, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true };
 const FROZEN: EmapTab = { id: 40, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true, frozen: true };
@@ -65,28 +65,92 @@ describe("frozen rows go to the frozen tab only", () => {
   });
 });
 
-describe("7-11 busy (E0014) → back off, never a give-up, never OK", () => {
-  it("frozen tab: 20 busy answers in a row → no verdict written at all, 1-min back-off", async () => {
+describe("7-11 busy (E0014) → ONE pause for every store request (1.16.1), never a give-up, never OK", () => {
+  it("frozen tab: busy for 20 min → no verdict, no give-up; the frozen requests follow the 1/2/5/10-min pause, not one per row per minute", async () => {
     let t = Date.parse("2026-10-06T06:00:00Z");
     const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL, FROZEN], rows: [frozenRow()], frozenReply: () => ({ status: "unknown", busy: true, transient: true }) });
     await booted;
     for (let i = 0; i < 20; i++) { await sb.pcTick(); t += 61 * 1000; }
-    expect(sent(calls, "PC_CHECK_STORE_FROZEN").length).toBeGreaterThanOrEqual(15);
+    expect(sent(calls, "PC_CHECK_STORE_FROZEN").length).toBeLessThanOrEqual(5); // was ≥ 15 in 1.16.0
     expect(verdictBodies(calls)).toHaveLength(0);
-    expect(calls.logs.some((l) => /\[PC-FROZEN\] row=frz-1 7-11 busy \(E0014\), next=60s/.test(l))).toBe(true);
+    expect(calls.logs.some((l) => /gave up/.test(l))).toBe(false);
+    expect(calls.logs.some((l) => /\[PC-BUSY\] 7-11 busy \(E0014\) on the frozen check — ALL store requests paused 60s \(busy #1\)/.test(l))).toBe(true);
   });
 });
 
 describe("E0014 on the NORMAL tab too", () => {
-  it("20 busy answers → no give-up, no verdict, no miss counted (the E-Map stays not-dead)", async () => {
+  it("20 min busy → no give-up, no verdict, no miss counted (the E-Map stays not-dead); requests follow the pause", async () => {
     let t = Date.parse("2026-10-06T06:00:00Z");
     const { sb, calls, booted } = bootWorker({ now: () => t, storeBusy: true, emapTabs: [NORMAL], rows: [{ ...PENDING_ROW, need_phone: false }] });
     await booted;
     for (let i = 0; i < 20; i++) { await sb.pcTick(); t += 61 * 1000; }
-    expect(sent(calls, "PC_CHECK_STORE").filter((m) => m.rowId === "row-1").length).toBeGreaterThanOrEqual(15);
+    expect(sent(calls, "PC_CHECK_STORE").length).toBeLessThanOrEqual(5);
     expect(verdictBodies(calls)).toHaveLength(0);
     expect(calls.logs.some((l) => /gave up/.test(l))).toBe(false);
-    expect(calls.logs.some((l) => /\[PC-BACKOFF\] row=row-1 store busy \(E0014\), next=60s/.test(l))).toBe(true);
+    expect(calls.logs.some((l) => /\[PC-EMAP\] recover/.test(l))).toBe(false);
+  });
+});
+
+describe("1.16.1 fix 3 — E0014", () => {
+  const storeReqs = (calls: { sendMessage: { type: string }[] }) => calls.sendMessage.filter((m) => m.type === "PC_CHECK_STORE" || m.type === "PC_CHECK_STORE_FROZEN").length;
+  it("a. inside the maintenance window a busy answer is maintenance: 10-min row retry, no pause", async () => {
+    const t = Date.parse("2026-10-06T18:30:00Z"); // 02:30 Taipei
+    const { sb, calls, booted } = bootWorker({ now: () => t, maintenance: true, storeBusy: true, sflToken: () => fakeJwt(48 * 3600), emapTabs: [NORMAL], rows: [{ ...PENDING_ROW, need_phone: false }] });
+    await booted; await sb.pcTick();
+    expect(calls.logs.some((l) => /row=row-1 store attempt=0 maintenance, next=600s/.test(l))).toBe(true);
+    expect(calls.logs.some((l) => /\[PC-BUSY\]/.test(l))).toBe(false);
+  });
+  it("b. one busy answer pauses ALL store requests (other rows, frozen rows, the keepalive) — 1, 2, 5, 10, 10 min; the phone half keeps going", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const rows = [{ ...PENDING_ROW, id: "n1", need_phone: true }, { ...PENDING_ROW, id: "n2", store_id: "167765", need_phone: true }, frozenRow()];
+    const { sb, calls, booted } = bootWorker({ now: () => t, storeBusy: true, emapTabs: [NORMAL, FROZEN], rows, frozenReply: () => ({ status: "unknown", busy: true, transient: true }) });
+    await booted;
+    await sb.pcTick();
+    expect(storeReqs(calls)).toBe(1);                                  // the first busy answer stops the rest of the pass
+    expect(sent(calls, "PC_CHECK_PHONE").length).toBeGreaterThan(0);   // phone checks are not 7-11 store requests
+    const at: number[] = [];
+    const start = t;
+    for (let i = 0; i < 40 * 12; i++) { t += 5000; const before = storeReqs(calls); await sb.pcTick(); if (storeReqs(calls) > before) at.push(Math.round((t - start) / 1000)); }
+    // pauses: 60 → 120 → 300 → 600 → 600 s (each new request lands on the first tick after the pause)
+    const gaps = [at[0], ...at.slice(1).map((v, i) => v - at[i])];
+    expect(gaps.slice(0, 5)).toEqual([60, 120, 300, 600, 600]);
+    expect(verdictBodies(calls).filter((b) => b.p_store_full_status != null)).toHaveLength(0);
+  });
+  it("b. the first clean answer resets the pause to 1 min", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    let busy = true;
+    const { sb, calls, booted } = bootWorker({ now: () => t, storeBusy: () => busy, emapTabs: [NORMAL], rows: [{ ...PENDING_ROW, need_phone: false }] });
+    await booted;
+    await sb.pcTick(); t += 61 * 1000; await sb.pcTick();               // busy #1, then busy #2 (2 min)
+    t += 121 * 1000; busy = false; await sb.pcTick();                   // clean → reset
+    expect(calls.logs.some((l) => /store requests resume \(after 2 busy\)/.test(l))).toBe(true);
+    busy = true; t += 5000; await sb.pcTick();
+    expect(calls.logs.filter((l) => /paused 60s \(busy #1\)/.test(l))).toHaveLength(2);
+  });
+  it("c. the frozen lane dead → waiting frozen rows end 'unknown' (frozen layer, no 7-11 request, never OK); back in the queue when the lane can work again", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const rows: unknown[] = [frozenRow()];
+    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL], rows }); // the picker never lands
+    await booted;
+    for (let i = 0; i < 4; i++) { await sb.pcTick(); t += 2 * MIN; }   // 2 opens fail → dead
+    const bodies = verdictBodies(calls);
+    expect(bodies.some((b) => b.p_id === "frz-1" && b.p_store_full_status === "unknown" && b.p_store_layer === "冷凍")).toBe(true);
+    expect(bodies.some((b) => b.p_store_full_status === "open")).toBe(false);
+    expect(sent(calls, "PC_CHECK_STORE_FROZEN")).toHaveLength(0);
+    expect(calls.fetch.some((u) => /admin_parcel_check_requeue_frozen/.test(u))).toBe(false); // not yet: the lane is still dead
+    rows.length = 0;                                                    // (the server no longer lists it: it is 'unknown')
+    t += 31 * MIN; await sb.pcTick();
+    expect(calls.fetch.some((u) => /admin_parcel_check_requeue_frozen/.test(u))).toBe(true);
+    expect(calls.logs.some((l) => /lane can work again/.test(l))).toBe(true);
+  });
+  it("c. a frozen tab appearing while dead also re-queues", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const { sb, calls, booted, emapTabs } = bootWorker({ now: () => t, emapTabs: [NORMAL], rows: [frozenRow()] });
+    await booted;
+    for (let i = 0; i < 4; i++) { await sb.pcTick(); t += 2 * MIN; }
+    emapTabs.push({ ...FROZEN, id: 55 });
+    await sb.pcTick();
+    expect(calls.fetch.some((u) => /admin_parcel_check_requeue_frozen/.test(u))).toBe(true);
   });
 });
 
@@ -140,8 +204,9 @@ describe("the frozen tab opens by itself and closes when idle", () => {
   });
   it("never opens during the 01:00–05:00 Taipei maintenance window", async () => {
     const t = Date.parse("2026-10-06T18:30:00Z"); // 02:30 Taipei
-    const { sb, calls, booted } = bootWorker({ now: () => t, maintenance: true, emapTabs: [NORMAL], rows: [frozenRow()] });
+    const { sb, calls, booted } = bootWorker({ now: () => t, maintenance: true, sflToken: () => fakeJwt(48 * 3600), emapTabs: [NORMAL], rows: [frozenRow()] }); // a token valid at this clock (else the lane never runs → vacuous)
     await booted; await sb.pcTick();
+    expect(calls.fetch.some((u) => /admin_parcel_checks_pending/.test(u))).toBe(true); // the lane really ran
     expect(calls.created).toHaveLength(0);
     expect(sent(calls, "PC_CHECK_STORE_FROZEN")).toHaveLength(0);
   });

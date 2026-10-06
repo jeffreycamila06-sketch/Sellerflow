@@ -332,7 +332,7 @@ describe("safety rules", () => {
     expect(bg).toContain("const PC_BACKOFF_MS = [15 * 1000, 30 * 1000, 60 * 1000, 2 * 60 * 1000];");
     expect(bg).toContain("b.storeNextAt = now + pcBackoffDelay(b.storeFails);");
     // 1.16.0: frozen rows are routed to the frozen tab; for every normal row (isFrozen false) the condition is unchanged
-    expect(bg).toContain("const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);");
+    expect(bg).toContain("const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && !busy && (!bo || now >= bo.storeNextAt);"); // 1.16.1: + the global E0014 pause
     expect(bg).toContain("const PC_STORE_GIVE_UP = 5;");
     expect(bg).toContain("const PC_POLL_MS = 5000;");
     expect(bg).toContain("const PC_ROW_GAP_MS = 2000;");

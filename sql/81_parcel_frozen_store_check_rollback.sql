@@ -175,6 +175,7 @@ $$;
 update public.parcel_scans set store_full_status = null, store_full_at = null
  where store_check_layer = '冷凍' and status <> 'exported';
 
+drop function if exists public.admin_parcel_check_requeue_frozen();
 drop table if exists public.store_check_cache_frozen;
 alter table public.parcel_scans drop constraint if exists parcel_scans_store_check_layer_check;
 alter table public.parcel_scans drop column if exists store_check_layer;
