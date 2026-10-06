@@ -193,11 +193,13 @@ async function loadSessionPageById(userId: string, sessionId: string, page: numb
 
 // Returns null when the READ FAILED (never partial — a partial set would recreate
 // the duplicate-buyer# bug), [] when there are genuinely no rows (a fresh session).
-export async function loadLiveSessionBySessionId(sessionId: string): Promise<LiveSessionRow[] | null> {
+// strict (session-numbering fix): a missing user id is a FAILED read (null), never "no
+// rows" ([]) — an empty board would restart numbering at #1. Default false = today.
+export async function loadLiveSessionBySessionId(sessionId: string, strict = false): Promise<LiveSessionRow[] | null> {
   if (!isSupabaseConfigured || !supabase) return [];
   const { data: { session } } = await supabase.auth.getSession();
   const id = session?.user?.id;
-  if (!id) return [];
+  if (!id) return strict ? null : [];
   return fetchAllSessionPages((page) => loadSessionPageById(id, sessionId, page));
 }
 
@@ -248,7 +250,12 @@ export interface UseSessionWindow {
   windowDays: WindowDays;
   windowStart: string | null;
   state: WindowState;                       // computed for today (pinned dayId, like 5c)
-  loaded: boolean;
+  loaded: boolean;                          // config read resolved for the CURRENT enabled value
+  // true only when the window config was DEFINITIVELY read (a row or no row). A failed read
+  // or a missing user id is unknown — the live-session load waits instead of guessing a
+  // 1-day window (which loaded a day-only board for multi-day sellers).
+  known: boolean;
+  retry: () => void;                        // re-read now (also automatic on focus / visible while unknown)
   setWindowDays: (n: WindowDays) => Promise<void>; // decision 3: opens a FRESH window from today
   ensureWindowOpen: () => Promise<string>;          // open a window today if none active; returns active start
   reload: () => Promise<void>;
@@ -260,10 +267,18 @@ export interface UseSessionWindow {
   persistErrors: number;
 }
 
-export function useSessionWindow(enabled: boolean): UseSessionWindow {
+// fix = the session-numbering fix is on for this account (sessionNumberingGate). false =
+// today's code path, unchanged.
+export function useSessionWindow(enabled: boolean, fix = false): UseSessionWindow {
   const [windowDays, setDays] = useState<WindowDays>(1);
   const [windowStart, setStart] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // Read state TAGGED with the enabled value it belongs to (see useSessionInstance): the
+  // enabled=false pass before sign-in must not leave loaded=true for the signed-in pass.
+  const [loadedOld, setLoaded] = useState(false); // fix off: today's plain flag
+  // Read result TAGGED with the enabled value (see useSessionInstance); reset when signed out.
+  const [read, setRead] = useState<{ forEnabled: boolean; status: "pending" | "known" | "unknown" }>({ forEnabled: !enabled, status: "pending" });
+  const loaded = fix ? read.forEnabled === enabled && read.status !== "pending" : loadedOld;
+  const known = fix ? read.forEnabled === enabled && read.status === "known" : true;
   const [persistErrors, setPersistErrors] = useState(0); // Batch D #9 — see UseSessionWindow
   const dayId = useTaipeiDayId(); // advances live on focus/visibility + Taipei midnight (was pinned)
   // Synchronous mirrors so ensureWindowOpen sees the just-opened window even on
@@ -280,22 +295,63 @@ export function useSessionWindow(enabled: boolean): UseSessionWindow {
   }, []);
 
   const load = useCallback(async () => {
-    if (!enabled || !isSupabaseConfigured || !supabase) { setDays(1); setStart(null); setLoaded(true); return; }
-    const id = await uid();
-    if (!id) { setLoaded(true); return; }
-    const { data, error } = await supabase
-      .from("seller_session_config")
-      .select("window_days,window_start")
-      .eq("user_id", id)
-      .maybeSingle();
-    if (!error) {
-      setDays(clampWindowDays(Number(data?.window_days ?? 1)));
-      setStart((data?.window_start as string) || null);
+    if (!fix) {
+      // fix OFF: today's config read, verbatim.
+      if (!enabled || !isSupabaseConfigured || !supabase) { setDays(1); setStart(null); setLoaded(true); return; }
+      const id = await uid();
+      if (!id) { setLoaded(true); return; }
+      const { data, error } = await supabase
+        .from("seller_session_config")
+        .select("window_days,window_start")
+        .eq("user_id", id)
+        .maybeSingle();
+      if (!error) {
+        setDays(clampWindowDays(Number(data?.window_days ?? 1)));
+        setStart((data?.window_start as string) || null);
+      }
+      setLoaded(true);
+      return;
     }
-    setLoaded(true);
-  }, [enabled, uid]);
+    if (!enabled || !isSupabaseConfigured || !supabase) { setDays(1); setStart(null); setRead({ forEnabled: enabled, status: "known" }); return; }
+    let id: string | null;
+    try { id = await uid(); } catch { id = null; }
+    if (!id) { setRead({ forEnabled: enabled, status: "unknown" }); return; }
+    let res: { data: Record<string, unknown> | null; error: unknown };
+    try {
+      res = await supabase
+        .from("seller_session_config")
+        .select("window_days,window_start")
+        .eq("user_id", id)
+        .maybeSingle() as unknown as { data: Record<string, unknown> | null; error: unknown };
+    } catch (e) { res = { data: null, error: e }; }
+    if (!res.error) {
+      setDays(clampWindowDays(Number(res.data?.window_days ?? 1)));
+      setStart((res.data?.window_start as string) || null);
+      setRead({ forEnabled: enabled, status: "known" });
+    } else {
+      setRead({ forEnabled: enabled, status: "unknown" });
+    }
+  }, [enabled, uid, fix]);
 
   useEffect(() => { void load(); }, [load]); // READ-ON-LOAD ONLY — no interval/poll
+  // Signed out → reset the tag (both modes; only the fix reads it), so the next sign-in waits
+  // for its own read (see useSessionInstance).
+  useEffect(() => {
+    if (enabled) return;
+    let on = true;
+    void Promise.resolve().then(() => { if (on) setRead((r) => (r.forEnabled === false && r.status === "known" ? r : { forEnabled: false, status: "known" })); });
+    return () => { on = false; };
+  }, [enabled]);
+  const retry = useCallback(() => { void load(); }, [load]);
+  // Unknown → re-read when the app comes back to the foreground (no interval poll).
+  const unknownNow = fix && enabled && read.forEnabled === enabled && read.status === "unknown";
+  useEffect(() => {
+    if (!unknownNow || typeof window === "undefined") return;
+    const again = () => { if (typeof document === "undefined" || document.visibilityState !== "hidden") retry(); };
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => { window.removeEventListener("focus", again); document.removeEventListener("visibilitychange", again); };
+  }, [unknownNow, retry]);
 
   // Batch D (#9): the upsert result is now CHECKED — true = written, false =
   // failed (the callers revert their optimistic state and bump persistErrors).
@@ -345,5 +401,5 @@ export function useSessionWindow(enabled: boolean): UseSessionWindow {
   }, [dayId, persist]);
 
   const state = computeWindowState(dayId, windowStart, windowDays);
-  return { windowDays, windowStart, state, loaded, setWindowDays, ensureWindowOpen, reload: load, persistErrors };
+  return { windowDays, windowStart, state, loaded, known, retry, setWindowDays, ensureWindowOpen, reload: load, persistErrors };
 }

@@ -165,6 +165,11 @@ export interface UseOrdersDeps {
   // window (liveSession.orderedMsgIds). Complements the in-hook synchronous
   // same-tick guard; covers restored/cross-load rows.
   isMsgIdOrdered?: (msgId: string) => boolean;
+  // Session-numbering fix (staged): false while the live-session board is pending / failed /
+  // unknown → NO order is built (it would be numbered from a wrong or empty buyer list).
+  // Absent (fix off) → no gate, today's behaviour.
+  canOrder?: () => boolean;
+  onOrderBlocked?: () => void;
 }
 
 // Auto Mode (Step 4): an order created from a code carries its product's local_id so
@@ -185,7 +190,7 @@ export interface UseOrders {
   createOrder: (c: ProdComment, price: number, opts?: CreateOrderOpts) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered, canOrder, onOrderBlocked }: UseOrdersDeps): UseOrders {
   // FAMILY A (#7): synchronous same-tick dedup by stable TikTok msgId. Two relays
   // of the SAME comment carry DIFFERENT commentKeys (server-stamped timestamp),
   // so the printed/autoProcessed guards (keyed on commentKey) can't stop the
@@ -194,6 +199,11 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
   // idempotent, safe direction). The DB unique index is the cross-device backstop.
   const processedMsgIdsRef = useRef<Set<string>>(new Set());
   const createOrder = useCallback((c: ProdComment, price: number, opts?: CreateOrderOpts): LiveOrder | null => {
+    // 00) Session-numbering gate (fix on only): the board is not loaded from a definite
+    //     answer yet → build NOTHING (no numbering, no print, no write, msgId NOT marked —
+    //     so the same comment can be ordered once the board is ready). Callers already
+    //     treat null as a soft block (Auto refunds its claim; Enterprise allows a retry).
+    if (canOrder && !canOrder()) { onOrderBlocked?.(); return null; }
     // 0) #7 DEDUP FIRST — an already-ordered msgId creates NOTHING (returns null
     //    WITHOUT the cap popup; the seams treat null exactly like a soft block →
     //    Auto Mode refunds its synchronous stock claim, so no stock leaks).
@@ -315,7 +325,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     //      write's .finally() above (NEAR-CAP TIMING FIX), not synchronously here, so
     //      the refetch reads the incremented count. Nothing to do on the sync path.
     return order;
-  }, [getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered]);
+  }, [getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered, canOrder, onOrderBlocked]);
 
   return { createOrder };
 }

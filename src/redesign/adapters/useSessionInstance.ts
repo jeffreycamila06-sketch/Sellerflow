@@ -44,7 +44,12 @@ export interface UseSessionInstance {
   // Refreshed at Connect + on each Taipei-day rollover (reuses useTaipeiDayId's
   // existing day signal to RE-ASK the server; the server decides, not the clock).
   ended: boolean;
-  loaded: boolean;                          // mount read resolved
+  loaded: boolean;                          // mount read resolved (for the CURRENT enabled value)
+  // true only when current_session_id is DEFINITIVELY known: the read answered (a row or
+  // no row), or a checkStatus succeeded. A failed read or a missing user id is UNKNOWN —
+  // never "no session" (that is what let a day-only board renumber a running session).
+  known: boolean;
+  retry: () => void;                        // re-run the read now (also automatic on focus / visible while unknown)
   // Resolves once the mount read (current_session_id) has completed. Connect awaits
   // this BEFORE deciding running-vs-not, so a tap during a still-pending mount read
   // can't fall back to a null id → wrongful new session (audit LOW #2). Always
@@ -61,12 +66,34 @@ export interface UseSessionInstance {
   endSession: () => Promise<boolean>;
 }
 
-export function useSessionInstance(enabled: boolean): UseSessionInstance {
+// Read state TAGGED with the enabled value it belongs to. Before sign-in finishes the hook
+// runs with enabled=false; a plain `loaded` flag set then stayed true when enabled turned
+// true, so the live-session load ran before the real read had answered (the numbering race).
+// Deriving loaded/known from the tag makes them false IN THE SAME RENDER enabled turns true.
+type ReadStatus = "pending" | "known" | "unknown";
+type ReadState = { forEnabled: boolean; status: ReadStatus };
+
+// fix = the session-numbering fix is on for this account (sessionNumberingGate). false =
+// today's code path, unchanged (plain loaded flag, a failed read counts as resolved).
+export function useSessionInstance(enabled: boolean, fix = false): UseSessionInstance {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessionStartedAt, setStartedAt] = useState<string | null>(null);
   const [sessionWindowDays, setWinDays] = useState<number | null>(null);
   const [ended, setEnded] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loadedOld, setLoaded] = useState(false); // fix off: today's plain flag
+  // The read result is TAGGED with the enabled value it belongs to, so loaded/known are false
+  // in the very render enabled turns true. Signing out resets the tag (in the read effect), so
+  // a result from an earlier sign-in never counts for the next one.
+  const [read, setRead] = useState<ReadState>({ forEnabled: !enabled, status: "pending" });
+  const loaded = fix ? read.forEnabled === enabled && read.status !== "pending" : loadedOld;
+  const known = fix ? read.forEnabled === enabled && read.status === "known" : true;
+  // Mirrors for checkStatus (updated in an effect, never during render).
+  const knownRef = useRef(known);
+  const enabledRef = useRef(enabled);
+  useEffect(() => { knownRef.current = known; enabledRef.current = enabled; }, [known, enabled]);
+  const lastEnabledRef = useRef(false); // enabled value of the previous read run (effects only)
+  const [retryTick, setRetryTick] = useState(0);
+  const retry = useCallback(() => setRetryTick((n) => n + 1), []);
   // Synchronous mirror so checkStatus/startSession see the latest id without
   // waiting for a re-render (mirrors the useSessionWindow ref pattern).
   const idRef = useRef<string | null>(null);
@@ -86,9 +113,13 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
 
   // Mount read: current_session_id only (one tiny row). No status/ended compute
   // here — that needs server "today", which we fetch on Connect via checkStatus.
+  // Disabled / unconfigured = nothing to read → known (no session), as before.
+  // Missing user id or a failed read → UNKNOWN (loaded, but not known): retried on focus /
+  // visible and by retry(); a successful checkStatus also resolves it.
   useEffect(() => {
     let active = true;
-    const p = (async () => {
+    // fix OFF: today's mount read, verbatim.
+    const old = async () => {
       if (!enabled || !isSupabaseConfigured || !supabase) { if (active) setLoaded(true); return; }
       const id = await uid();
       if (!id) { if (active) setLoaded(true); return; }
@@ -104,10 +135,57 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
         setWinDays(data?.session_window_days != null ? Number(data.session_window_days) : null);
       }
       setLoaded(true);
+    };
+    const firstRunOfSignIn = enabled && !lastEnabledRef.current;
+    lastEnabledRef.current = enabled;
+    const p = !fix ? old() : (async () => {
+      if (firstRunOfSignIn) { setId(null); setStartedAt(null); setWinDays(null); } // new sign-in: never keep the previous user's session id
+      if (!enabled || !isSupabaseConfigured || !supabase) { if (active) setRead({ forEnabled: enabled, status: "known" }); return; }
+      let id: string | null;
+      try { id = await uid(); } catch { id = null; }
+      if (!active) return;
+      if (!id) { setRead((r) => (r.forEnabled === enabled && r.status === "known" ? r : { forEnabled: enabled, status: "unknown" })); return; }
+      let res: { data: Record<string, unknown> | null; error: unknown };
+      try {
+        res = await supabase
+          .from("seller_session_config")
+          .select("current_session_id,session_started_at,session_window_days")
+          .eq("user_id", id)
+          .maybeSingle() as unknown as { data: Record<string, unknown> | null; error: unknown };
+      } catch (e) { res = { data: null, error: e }; }
+      if (!active) return;
+      const { data, error } = res;
+      if (!error) {
+        setId((data?.current_session_id as string) || null);
+        setStartedAt((data?.session_started_at as string) || null);
+        setWinDays(data?.session_window_days != null ? Number(data.session_window_days) : null);
+        setRead({ forEnabled: enabled, status: "known" });
+      } else {
+        // Keep "known" if a checkStatus already resolved it meanwhile; else unknown.
+        setRead((r) => (r.forEnabled === enabled && r.status === "known" ? r : { forEnabled: enabled, status: "unknown" }));
+      }
     })();
     mountDoneRef.current = p;
     return () => { active = false; };
-  }, [enabled, uid, setId]);
+  }, [enabled, uid, setId, fix, retryTick]);
+  // Signed out → reset the tag (both modes; only the fix reads it), so the next sign-in waits
+  // for its own read.
+  useEffect(() => {
+    if (enabled) return;
+    let on = true;
+    void Promise.resolve().then(() => { if (on) setRead((r) => (r.forEnabled === false && r.status === "known" ? r : { forEnabled: false, status: "known" })); });
+    return () => { on = false; };
+  }, [enabled]);
+
+  // Unknown → re-read when the app comes back to the foreground (no interval poll).
+  const unknownNow = fix && enabled && read.forEnabled === enabled && read.status === "unknown";
+  useEffect(() => {
+    if (!unknownNow || typeof window === "undefined") return;
+    const again = () => { if (typeof document === "undefined" || document.visibilityState !== "hidden") retry(); };
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => { window.removeEventListener("focus", again); document.removeEventListener("visibilitychange", again); };
+  }, [unknownNow, retry]);
 
   // Await the mount read (idRef populated) before Connect decides. Resolves
   // immediately once done; if the effect hasn't assigned the promise yet (should
@@ -132,7 +210,14 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
       // H1: the running session's OWN platform (sql/46). Drives server-anchored
       // switch-detection in RedesignApp. NULL = legacy/unknown → treated as continue.
       const platform = (row?.session_platform as string) || null;
-      if (running && sessionId) setId(sessionId);
+      // A successful answer makes the id KNOWN. If the mount read had failed (unknown), take
+      // the server's current_session_id as-is (running or not), like the mount read would;
+      // otherwise keep the existing rule (sync only a running id).
+      if (!knownRef.current) {
+        setId(sessionId);
+        knownRef.current = true;
+        setRead({ forEnabled: enabledRef.current, status: "known" });
+      } else if (running && sessionId) setId(sessionId);
       // Server-authoritative ended flag: session exists AND server says not running
       // → its Taipei window has passed (drives the "continues" animation). session_id
       // is returned regardless of running (it's current_session_id).
@@ -214,5 +299,5 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
   // keeps ended=false (statusFallback) → nothing is hidden on a failed read.
   useEffect(() => { if (loaded && idRef.current) void checkStatus(); }, [loaded, checkStatus]);
 
-  return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, ensureLoaded, checkStatus, startSession, endSession };
+  return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, known, retry, ensureLoaded, checkStatus, startSession, endSession };
 }
