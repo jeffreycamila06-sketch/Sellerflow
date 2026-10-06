@@ -17,6 +17,7 @@ import type { Announcement } from "../adapters/useAnnouncements";
 import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
+import { fbNameOnly } from "../adapters/fbName";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "12px 16px 13px" };
 const pickerBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", padding: "6px 9px", border: "none", borderRadius: 9, fontSize: 11.5, fontWeight: 600, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" };
@@ -734,7 +735,7 @@ export default function Dashboard({
                     ) : (
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     )}
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>
+                    {!fbNameOnly(c.platform, c.name) && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>}
                     {risk && (
                       <span data-testid="miner-risk" data-level={risk} title={RISK_TIP[risk](t)} aria-label={RISK_TIP[risk](t)} style={RISK_CHIP[risk]}>
                         {risk === "risky" ? "⚠ " : ""}{RISK_TAG[risk](t)}

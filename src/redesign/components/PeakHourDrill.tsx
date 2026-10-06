@@ -13,6 +13,7 @@ import { mono } from "../ui";
 import { fmt } from "../data";
 import { useT, tpl } from "../i18n";
 import { weekdayLabel, hourLabel, type UsePeakHourOrders } from "../adapters/peakHours";
+import { fbNameOnly } from "../adapters/fbName";
 
 function localTime(iso: string): string {
   if (!iso) return "";
@@ -93,7 +94,7 @@ export default function PeakHourDrill({ cur, drill }: { cur: string; drill: UseP
                 <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 800, color: "var(--accent-fg)", minWidth: 40, textAlign: "right" }}>#{r.buyerNumber}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name || "—"}</div>
-                  {r.handle && <div style={{ fontSize: 14, fontWeight: 700, color: "var(--handle)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.handle}</div>}
+                  {r.handle && !fbNameOnly(r.platform, r.name) && <div style={{ fontSize: 14, fontWeight: 700, color: "var(--handle)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.handle}</div>}
                   {r.product && <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.product}</div>}
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>

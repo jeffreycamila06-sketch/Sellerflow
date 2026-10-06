@@ -58,7 +58,33 @@ describe("phone (bitmap) sticker", () => {
     const fbOff = await print("Facebook", false);
     const ttOff = await print("TikTok", false);
     expect(fbOn).toBe(fbOff);
-    expect(fbOn).toBe(ttOff); // platform is not on the sticker: exactly the QR-off sticker
+    expect(fbOn).not.toBe(ttOff); // Facebook name only (fbName.ts): no "@name" line → differs from TikTok
+  });
+  // ── Replacement pins for the old "Facebook label = TikTok label" check, where it still applies ──
+  async function printWith(b: Buyer, cfg: Settings): Promise<string> {
+    setStickerQrOn(false);
+    const before = bitmap.mock.calls.length;
+    printSlip(b, "NT$", "My Shop", cfg);
+    await vi.waitFor(() => expect(bitmap.mock.calls.length).toBe(before + 1));
+    return (bitmap.mock.calls[before][0] as { data: string }).data;
+  }
+  it("username line OFF: a Facebook label is byte-identical to the TikTok label for the same buyer (nothing changes)", async () => {
+    const off: Settings = { ...btCfg, printBuyerUsername: false };
+    expect(await printWith(buyer("Facebook"), off)).toBe(await printWith(buyer("TikTok"), off));
+  });
+  it("Facebook comment with no name (\"Unknown\", handle = the id): byte-identical to main's output before this change", async () => {
+    // sha256 captured by running this exact print on origin/main 711bc20 (clock pinned to 2026-10-06T04:00Z)
+    const MAIN_SHA256 = "544aa261c1e7cde12f351eab493ab776fe85f7d575aea355e10d1364aacee39c";
+    vi.useFakeTimers({ now: new Date("2026-10-06T04:00:00Z"), toFake: ["Date"] });
+    try {
+      const ID = "1029384756473829";
+      const o = { ...order("Facebook"), handle: ID, name: "Unknown" };
+      const b = { handle: ID, name: "Unknown", platform: "Facebook", num: 12, orders: [o], totalOrders: 1, totalSpent: 320 } as unknown as Buyer;
+      const data = await printWith(b, btCfg);
+      expect(data).toHaveLength(4192);
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data)));
+      expect([...digest].map((x) => x.toString(16).padStart(2, "0")).join("")).toBe(MAIN_SHA256);
+    } finally { vi.useRealTimers(); }
   });
 });
 

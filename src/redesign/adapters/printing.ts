@@ -18,6 +18,7 @@ import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODU
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
+import { fbNameOnly } from "./fbName";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
@@ -375,7 +376,7 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
 // -> the no-printer wording) while inheriting the bitmap-default routing.
 export interface BtRouteResult { ok: boolean; code: string; message: string }
 
-async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string): Promise<BtRouteResult> {
+async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string, fbName = false): Promise<BtRouteResult> {
   const t0 = nowMs();
   // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
   // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
@@ -385,7 +386,10 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // only when the payload actually contains CJK).
   // QR is a bitmap-only concern (the native TSPL text builders can't render it), so
   // the "Print QR on sticker" toggle enters HERE, not in the byte-parity native payload.
-  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}) } };
+  // fbName: a Facebook buyer's name is printed ONCE (no @name line), with half-letter word gaps and,
+  // when it is too long, continued on the freed line (stickerRaster). Absent for every other buyer →
+  // the raster settings are byte-identical to before.
+  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}) } };
   const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
@@ -413,7 +417,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   }
 }
 
-async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<BtRouteResult> {
+async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName = false): Promise<BtRouteResult> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
   // BITMAP default: fires only when the new native passthrough exists AND the
@@ -439,7 +443,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
       try { cjk = await loadCjkAtlas(); } catch { cjk = null; cjkUnavailable = true; }
     }
     if (cjk) {
-      const r = await printStickerViaBitmap(bmpFn, payload, cjk, buyer.platform);
+      const r = await printStickerViaBitmap(bmpFn, payload, cjk, buyer.platform, fbName);
       // AUDIT F2: native says the SPP-transport bitmap send failed at the
       // socket level → retry THIS print through the unchanged TEXT path below.
       // Every other outcome (success, or a real print failure) returns as-is.
@@ -675,7 +679,7 @@ export function __resetWebPrintQueue(): void {
 // intentionally NOT queued here. Payload bytes + the Capacitor plugin are UNTOUCHED
 // — only WHEN JS calls the existing bridge changes.
 type NativeStickerVia = "bluetooth" | "lan";
-interface NativeStickerJob { via: NativeStickerVia; buyer: Buyer; cur: string; storeName: string; cfg: Settings; jobId: string; }
+interface NativeStickerJob { via: NativeStickerVia; buyer: Buyer; cur: string; storeName: string; cfg: Settings; jobId: string; fbName?: boolean; }
 // ABOVE the native BLE overall cap (~30s) so a genuinely wedged bridge (a promise
 // that never settles) can't freeze the queue — on timeout we mark not-printed and
 // advance. The native side self-bounds well under this in every normal case, so the
@@ -719,7 +723,7 @@ async function pumpNativeQueue(): Promise<void> {
 async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
   try {
     const run: Promise<BtRouteResult | boolean> = job.via === "bluetooth"
-      ? printStickerViaBluetooth(job.buyer, job.cur, job.storeName, job.cfg)
+      ? printStickerViaBluetooth(job.buyer, job.cur, job.storeName, job.cfg, job.fbName === true)
       : printStickerViaLan(job.buyer, job.cur, job.storeName, job.cfg);
     // WATCHDOG: race the print against a timer ABOVE the native cap. The winner is
     // almost always the print (BT resolves {ok}; LAN resolves boolean); a genuine
@@ -764,14 +768,20 @@ export function webStickerQrSvg(handle: string | undefined | null): { svg: strin
 }
 
 export function printSlip(buyer: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
-  const cfg: Settings = typeof printSettings === "string" ? { ...DEF_SETTINGS, stickerSize: printSettings } : printSettings;
+  const base: Settings = typeof printSettings === "string" ? { ...DEF_SETTINGS, stickerSize: printSettings } : printSettings;
+  // FACEBOOK NAME ONLY (fbName.ts): a Facebook buyer's handle IS the display name, so the
+  // "@name" line is dropped on every print path (the name line stays). Only when the seller has
+  // the username line on (off = no change). TikTok and every other buyer: `cfg` IS the caller's
+  // settings object, untouched → byte-identical output.
+  const fbName = fbNameOnly(buyer.platform, buyer.name) && base.printBuyerUsername !== false;
+  const cfg: Settings = fbName ? { ...base, printBuyerUsername: false } : base;
   const nativePrinter = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (shouldUseBluetoothSticker(cfg.printerType, !!nativePrinter?.printStickerNative)) {
     // SERIALIZED (AIMO burst fix): enqueue instead of firing concurrently. The queue
     // awaits each print to native completion before the next → no BT_BUSY overlap
     // drops. Return contract unchanged (enqueue succeeded). Failure/not-printed is
     // surfaced by the queue (no-printer modal + the not-printed reprint channel).
-    enqueueNativeSticker({ via: "bluetooth", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer) });
+    enqueueNativeSticker({ via: "bluetooth", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer), ...(fbName ? { fbName } : {}) });
     return { ok: true, via: "bluetooth" };
   }
   if (shouldUseLanSticker(cfg.printerType, cfg.lanFormat, !!nativePrinter?.printStickerLan)) {
@@ -839,12 +849,14 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
     `.ftime{font-size:clamp(2mm,5vh,2.8mm);font-weight:600}` +
     `.code{font-size:clamp(5.5mm,17vh,12mm);font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
     qrCss +
+    // Facebook name only: up to 2 lines at the same size instead of one line cut with "…"
+    (fbName ? `.fbname{white-space:normal;text-overflow:clip;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}` : "") +
     `</style></head><body>` +
     `<div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>` +
     `<div class="bar"></div>` +
     (cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : "") +
     (cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : "") +
-    (buyer.name ? `<div class="name">${esc(trunc(buyer.name, 30))}</div>` : "") +
+    (buyer.name ? (fbName ? `<div class="name fbname">${esc(trunc(buyer.name, 60))}</div>` : `<div class="name">${esc(trunc(buyer.name, 30))}</div>`) : "") +
     (cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : "") +
     (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
     (qr ? qr.svg : "") +
