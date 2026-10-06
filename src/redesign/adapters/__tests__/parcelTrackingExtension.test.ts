@@ -156,7 +156,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   it("the SFL tab is NEVER auto-reloaded (live-session safety), myship/emap are", () => {
     expect(bg).toContain('"sellerflow-bridge.js", false');                       // allowReload=false
     expect(bg).toContain('pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true)');
-    expect(bg).toContain('"emap-711.js", true)');
+    expect(bg).toContain('"emap-711.js", true, pcFrozenTabIds())'); // 1.16: heal skips the frozen tab
     // exactly ONE reload site (pcHealTab, behind the allowReload gate, discarded tabs
     // only). The 1.14.2 emap session recovery is a GET re-navigation (tabs.update
     // {url}) — tabs.reload on the POST-opened E-Map tab pops Chrome's "Confirm Form
