@@ -471,7 +471,11 @@ const PC_FROZEN_MAX_OPENS = 2;                  // opens per episode (a frozen v
 const PC_FROZEN_DEAD_PAUSE_MS = 30 * 60 * 1000; // after that, wait 30 min before trying again
 const PC_BUSY_BACKOFF_MS = 60 * 1000;           // E0014: wait 1 min, never counted toward a give-up
 const PC_FROZEN_VERDICTS = ["open", "frozen_unavailable", "company", "not_found"];
-const pcFrz = { tabId: null, ownedTabId: null, opens: 0, lastOpenAt: 0, lastReqAt: 0, lastNeededAt: 0, misses: 0, state: "off" };
+// ownedTabId = the tab WE opened: kept while it is still landing (on the 7-11 picker /
+// redirect, not yet an E-Map page) and forgotten only when the tab itself is gone
+// (tabs.onRemoved) or we replace / close it. bad = frozen tabs dropped after 2 unclean
+// answers — never picked again until they are closed.
+const pcFrz = { tabId: null, ownedTabId: null, opens: 0, lastOpenAt: 0, lastReqAt: 0, lastNeededAt: 0, misses: 0, state: "off", bad: new Set() };
 const PC_SFL_PATTERNS = ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"];
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
@@ -617,12 +621,11 @@ async function pcPickEmapTab() {
 // 1.16.0: the usable frozen tab = a live tab whose page says frozen AND has a session value
 // (prefer the one we opened). Read by pcPollMulti; never used for the normal check.
 function pcFrozenNoteTabs(cands) {
-  const ok = cands.filter((c) => c.frozen && !c.error && c.guid && c.probe && c.probe.frozen);
+  const ok = cands.filter((c) => c.frozen && !c.error && c.guid && c.probe && c.probe.frozen && !pcFrz.bad.has(c.id));
   const pick = ok.find((c) => c.id === pcFrz.ownedTabId) || ok.find((c) => c.id === pcFrz.tabId) || ok[0] || null;
   const next = pick ? pick.id : null;
   if (next !== pcFrz.tabId) console.log(`[PC-FROZEN] frozen tab ${next ?? "none"}${pick && pick.probe ? ` cate=${pick.probe.cate} eshopparid=${pick.probe.eshopparid} eshopid=${pick.probe.eshopid}` : ""}`);
   pcFrz.tabId = next;
-  if (pcFrz.ownedTabId != null && !cands.some((c) => c.id === pcFrz.ownedTabId)) pcFrz.ownedTabId = null; // our tab was closed
   if (pcFrz.tabId != null) pcNoDiscard(pcFrz.tabId);
 }
 // Open the frozen picker (leader-only, while frozen rows wait). PURE decision split out for tests.
@@ -1195,7 +1198,7 @@ async function pcPollMulti(pass) {
           const transient = !fResp || Boolean(fResp.transient);
           if (!transient) {
             pcFrz.misses += 1; // the frozen session is not answering cleanly → after 2, replace the tab
-            if (pcFrz.misses >= 2) { pcFrz.tabId = null; pcFrz.misses = 0; pcFrozenEnsureOpen(Date.now(), inMaint); }
+            if (pcFrz.misses >= 2) { pcFrz.bad.add(pcFrz.tabId); pcFrz.tabId = null; pcFrz.misses = 0; pcFrozenEnsureOpen(Date.now(), inMaint); } // never pick this tab again
           }
           b.storeFails += 1;
           if (b.storeFails >= PC_STORE_GIVE_UP) {
@@ -1318,6 +1321,15 @@ function pcScheduleLoop(delayMs) {
 // loop drives the cadence; this never runs a second concurrent poll.
 chrome.alarms.create(PC_ALARM, { periodInMinutes: PC_KEEPALIVE_MIN });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === PC_ALARM) pcScheduleLoop(0); });
+// 1.16.0: a frozen tab is forgotten only when the TAB itself is gone (never because it is
+// not on an E-Map page yet — the tab we opened is still on the 7-11 picker while it lands).
+try {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    if (tabId === pcFrz.ownedTabId) pcFrz.ownedTabId = null;
+    if (tabId === pcFrz.tabId) pcFrz.tabId = null;
+    pcFrz.bad.delete(tabId);
+  });
+} catch { /* no tabs.onRemoved (tests) — the idle close / replace paths still clear ownership */ }
 // 1.14.3: while a re-mint is pending, a finished navigation on any E-Map tab
 // triggers an immediate pick + status refresh (no need to wait for the 5 s tick).
 try {

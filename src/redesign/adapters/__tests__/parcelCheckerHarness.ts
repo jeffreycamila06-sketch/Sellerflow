@@ -46,7 +46,7 @@ export type BootOpts = {
   config?: Record<string, unknown>;         // extra pc_config fields (e.g. deviceName)
   // 1.16.0 frozen check: the PC_CHECK_STORE_FROZEN reply (default "open"), and what opening the
   // 7-11 frozen picker does (e.g. push a frozen E-Map tab). Absent → the tab never lands.
-  frozenReply?: (row?: { id?: string; store_id?: string }) => { status: string; busy?: boolean; transient?: boolean; reason?: string } | null;
+  frozenReply?: (row?: { id?: string; store_id?: string }, tabId?: number) => { status: string; busy?: boolean; transient?: boolean; reason?: string } | null;
   onCreate?: (url: string, emapTabs: EmapTab[]) => EmapTab | void;
 };
 
@@ -58,6 +58,7 @@ export function bootWorker(opts: BootOpts = {}) {
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
     ...(opts.initialStorage ?? {}),
   };
+  const removedListeners: ((id: number) => void)[] = []; // chrome.tabs.onRemoved (fired by tabs.remove)
   const emapTabs: EmapTab[] = opts.emapTabs ?? (opts.emapTab === false ? [] : [{ id: 3, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true }]);
   const tabFor = (patterns: string[] | string) => {
     const p = (Array.isArray(patterns) ? patterns[0] : patterns) || ""; // chrome.tabs.query accepts a string or an array
@@ -84,7 +85,7 @@ export function bootWorker(opts: BootOpts = {}) {
         if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, script: "emap", guidFound: Boolean(emap && emap.guid), url: emap ? emap.url : "", ...(emap && emap.frozen ? { frozen: true, cate: "27", eshopparid: "870", eshopid: "870" } : { frozen: false }) });
         if (msg.type === "PC_CHECK_STORE_FROZEN") {
           if (!emap || !emap.frozen) return cb({ ok: true, store_full_status: "unknown", store_reason: "not a frozen E-Map page (mode values missing)", transient: false, busy: false });
-          const r = opts.frozenReply ? opts.frozenReply(msg.row) : { status: "open" };
+          const r = opts.frozenReply ? opts.frozenReply(msg.row, id) : { status: "open" };
           if (!r) return cb(null);
           return cb({ ok: true, store_full_status: r.status, store_reason: r.reason || "", transient: Boolean(r.transient), busy: Boolean(r.busy), guidFound: true, frozenPage: true });
         }
@@ -118,7 +119,8 @@ export function bootWorker(opts: BootOpts = {}) {
         if (t) emapTabs.push(t);
         cb?.({ id });
       },
-      remove: (id: number, cb?: () => void) => { calls.removed.push(id); const i = emapTabs.findIndex((t) => t.id === id); if (i >= 0) emapTabs.splice(i, 1); cb?.(); },
+      remove: (id: number, cb?: () => void) => { calls.removed.push(id); const i = emapTabs.findIndex((t) => t.id === id); if (i >= 0) emapTabs.splice(i, 1); for (const l of removedListeners) l(id); cb?.(); },
+      onRemoved: { addListener: (l: (id: number) => void) => { removedListeners.push(l); } },
       onUpdated: { addListener: vi.fn() }, onCreated: { addListener: vi.fn() },
     },
   };

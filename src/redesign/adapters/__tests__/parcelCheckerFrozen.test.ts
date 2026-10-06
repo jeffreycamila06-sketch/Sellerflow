@@ -52,7 +52,9 @@ describe("frozen rows go to the frozen tab only", () => {
   });
   it("only a clean frozen answer is written; anything else leaves the half unwritten until the give-up writes 'unknown' (never OK)", async () => {
     let t = Date.parse("2026-10-06T06:00:00Z");
-    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL, FROZEN], rows: [frozenRow()], frozenReply: () => ({ status: "unknown", reason: "frozen check: not a clean answer for 968551 (13 chars)" }) });
+    let next = 500; // each replacement frozen tab lands (and also answers uncleanly)
+    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL, FROZEN], rows: [frozenRow()], frozenReply: () => ({ status: "unknown", reason: "frozen check: not a clean answer for 968551 (13 chars)" }),
+      onCreate: () => ({ id: next++, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true, frozen: true }) });
     await booted;
     for (let i = 0; i < 12; i++) { await sb.pcTick(); t += 3 * MIN; }
     const bodies = verdictBodies(calls);
@@ -154,3 +156,47 @@ describe("logs", () => {
     for (const bad of ["FreezeStoreLookup", "customType=", "eshopid=8Q7", "eshopGuid"]) expect(all.includes(bad), bad).toBe(false);
   });
 });
+
+describe("review fix 1 — the tab we opened is kept while it lands, and a stale frozen tab is never re-picked", () => {
+  it("the opened tab lands one pass late → still closed after 10 min idle (reviewer's reproduction)", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const rows: unknown[] = [frozenRow()];
+    const { sb, calls, booted, emapTabs } = bootWorker({ now: () => t, emapTabs: [NORMAL], rows });
+    await booted;
+    await sb.pcTick();                                   // opens tab 901 (still on the 7-11 picker)
+    expect(calls.created).toHaveLength(1);
+    t += 5000; await sb.pcTick();                        // one pass BEFORE it lands
+    emapTabs.push({ id: 901, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true, frozen: true });
+    await sb.pcTick(); await sb.pcTick();                // the frozen check runs on 901
+    expect(sent(calls, "PC_CHECK_STORE_FROZEN").map((m) => m.tabId)).toContain(901);
+    rows.length = 0;
+    for (let i = 0; i < 5; i++) { t += 4 * MIN; await sb.pcTick(); }
+    expect(calls.removed).toContain(901);
+  });
+  it("zero passes before landing → also closed (unchanged)", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const rows: unknown[] = [frozenRow()];
+    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL], rows, onCreate: () => ({ id: 901, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true, frozen: true }) });
+    await booted; await sb.pcTick(); await sb.pcTick();
+    rows.length = 0;
+    for (let i = 0; i < 5; i++) { t += 4 * MIN; await sb.pcTick(); }
+    expect(calls.removed).toContain(901);
+  });
+  it("a frozen tab dropped after 2 unclean answers is never picked again — the fresh one is used", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const STALE: EmapTab = { id: 40, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true, frozen: true };
+    const FRESH: EmapTab = { id: 41, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true, frozen: true };
+    const { sb, calls, booted } = bootWorker({
+      now: () => t, emapTabs: [NORMAL, STALE, FRESH], rows: [frozenRow()],
+      frozenReply: (_row, tabId) => (tabId === 40 ? { status: "unknown", reason: "frozen session bounced to error.aspx" } : { status: "frozen_unavailable" }),
+    });
+    await booted;
+    for (let i = 0; i < 6; i++) { await sb.pcTick(); t += MIN; }
+    const tabs = sent(calls, "PC_CHECK_STORE_FROZEN").map((m) => m.tabId);
+    expect(tabs.slice(0, 2)).toEqual([40, 40]);          // two unclean answers on the stale tab
+    expect(tabs.slice(2).every((id) => id === 41)).toBe(true); // never 40 again
+    expect(tabs).toContain(41);
+    expect(verdictBodies(calls).some((b) => b.p_store_full_status === "frozen_unavailable")).toBe(true);
+  });
+});
+
