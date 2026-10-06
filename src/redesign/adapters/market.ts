@@ -18,17 +18,19 @@ export interface Market {
   features: { parcelScan: boolean; pickupStatus: boolean; stickerQr: boolean; shopee: boolean };
 }
 
-const ALL_OFF = { parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false } as const;
+// Off-market features: the TW-only ones stay hidden. stickerQr is NOT TW-only (2026-10-06): the
+// QR is a TikTok profile link, so "Print QR on sticker" is available in every market.
+const OFF_MARKET = { parcelScan: false, pickupStatus: false, stickerQr: true, shopee: false } as const;
 const TW: Market = { country: "TW", currency: "TWD", shippingModule: "tw-711", features: { parcelScan: true, pickupStatus: true, stickerQr: true, shopee: true } };
-// Non-TW markets: TW-only features hidden. PH has a (future) shipping slot; the rest have
+// Non-TW markets: TW-only features hidden (sticker QR stays available — see OFF_MARKET). PH has a (future) shipping slot; the rest have
 // none yet. Currencies must exist in data.ts CURRENCIES (curSymbol) — TWD/PHP/VND/THB/IDR/MYR/EUR.
-const PH: Market = { country: "PH", currency: "PHP", shippingModule: "ph", features: ALL_OFF };
-const VN: Market = { country: "VN", currency: "VND", shippingModule: "none", features: ALL_OFF };
-const TH: Market = { country: "TH", currency: "THB", shippingModule: "none", features: ALL_OFF };
-const ID: Market = { country: "ID", currency: "IDR", shippingModule: "none", features: ALL_OFF };
-const MY: Market = { country: "MY", currency: "MYR", shippingModule: "none", features: ALL_OFF };
+const PH: Market = { country: "PH", currency: "PHP", shippingModule: "ph", features: OFF_MARKET };
+const VN: Market = { country: "VN", currency: "VND", shippingModule: "none", features: OFF_MARKET };
+const TH: Market = { country: "TH", currency: "THB", shippingModule: "none", features: OFF_MARKET };
+const ID: Market = { country: "ID", currency: "IDR", shippingModule: "none", features: OFF_MARKET };
+const MY: Market = { country: "MY", currency: "MYR", shippingModule: "none", features: OFF_MARKET };
 // BG (Bulgaria) — Eurozone since Jan 2026 → EUR. TW-only features off, no shipping module.
-const BG: Market = { country: "BG", currency: "EUR", shippingModule: "none", features: ALL_OFF };
+const BG: Market = { country: "BG", currency: "EUR", shippingModule: "none", features: OFF_MARKET };
 export const MARKETS: Record<string, Market> = { TW, PH, VN, TH, ID, MY, BG };
 export const DEFAULT_MARKET = TW;
 
@@ -39,7 +41,7 @@ export const DEFAULT_MARKET = TW;
 export function marketFor(country: string | null | undefined): Market {
   const c = String(country || "").trim().toUpperCase();
   if (!c || c === "TW") return TW;
-  return MARKETS[c] ?? { country: c, currency: "", shippingModule: "none", features: ALL_OFF };
+  return MARKETS[c] ?? { country: c, currency: "", shippingModule: "none", features: OFF_MARKET };
 }
 
 export type ViewAs = "all" | "TW" | "PH" | "VN" | "TH" | "ID" | "MY" | "BG";
