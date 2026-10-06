@@ -1,7 +1,7 @@
 // LIVE print pattern — the exact raster payload for the admin sticker preview: the same
 // native payload + bitmap-only flags the phone bitmap path builds, for a sample buyer.
 import { buildNativeStickerPayload, type Settings } from "./printing";
-import type { RasterPayload } from "./stickerRaster";
+import type { RasterPayload, RasterSettings } from "./stickerRaster";
 import type { Buyer } from "../../lib/orderTypes";
 
 // The sample comment v2 users see in the LIVE print pattern preview and on their test
@@ -20,3 +20,10 @@ export function previewPayload(settings: Settings, cur: string, shopName: string
   return { payload, w: np.labelWidthMm, h: np.labelHeightMm };
 }
 
+
+// Sticker spacing preview: the SAME image payload the print builds for this seller — the real
+// image-only flags (QR only when it would really print, spacing choice), not a forced QR.
+export function exactPreviewPayload(settings: Settings, cur: string, shopName: string, flags: RasterSettings, buyer: Buyer = previewBuyer()): { payload: RasterPayload; w: number; h: number } {
+  const np = buildNativeStickerPayload(buyer, cur, shopName, settings);
+  return { payload: { ...np, settings: { ...np.settings, ...flags } }, w: np.labelWidthMm, h: np.labelHeightMm };
+}

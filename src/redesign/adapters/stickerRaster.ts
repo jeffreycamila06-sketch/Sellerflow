@@ -223,6 +223,14 @@ export const STICKER_LAYOUTS: Record<string, SizeConfig> = {
   "70x50":  { wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 170, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
   "60x40":  { wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6,  sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, showTotal: false, totalY: 0, totalAmountX: 0, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
 };
+// Sticker spacing "compact" (printSpacing): smaller white gaps between the store name, "Buyer N",
+// the name and the @ line. Only these keys change; 60×40 is unchanged.
+export const COMPACT_GAPS: Record<string, Partial<SizeConfig>> = {
+  "100x60": { storeGap: 33, buyerNumGap: 80, nameGap: 44, usernameGap: 40 },
+  "80x60": { storeGap: 29, buyerNumGap: 80 },
+  "80x50": { storeGap: 29, buyerNumGap: 80 },
+  "70x50": { storeGap: 29, buyerNumGap: 80 },
+};
 function stickerConfig(wMm: number, hMm: number): SizeConfig {
   return STICKER_LAYOUTS[`${wMm}x${hMm}`] ?? STICKER_LAYOUTS["100x60"];
 }
@@ -236,6 +244,9 @@ export interface RasterSettings {
   printOrderScale?: number; printCommentScale?: number; printTotalScale?: number;
   printStickerQr?: boolean; // per-device "Print QR on sticker" toggle (default OFF)
   printCommentFullWidth?: boolean; // LIVE layout v2 (full-width comment) — bitmap/extended only, default OFF
+  // Sticker spacing (bitmap/extended only, default absent = today): half-letter word gaps in the
+  // name + v2 comment and never a zero-line comment; "compact" = smaller vertical gaps (R1).
+  printHalfWordGap?: boolean; printSpacing?: "compact" | "normal";
   printFacebookName?: boolean; // Facebook buyer: name once, half-letter word gaps, 2nd line when needed — bitmap/extended only, default OFF
 }
 export interface RasterPayload { storeName?: string; sessionDate?: string; currency?: string; buyer?: RasterBuyer; settings?: RasterSettings | null }
@@ -274,6 +285,12 @@ export function lowestOpBottom(ops: DrawOp[]): number {
   }
   return max;
 }
+// The right-most dot any op paints (txt/cjk: x + letters × cell × xm; bars: x + w). PURE.
+export function rightmostOpEdge(ops: DrawOp[]): number {
+  let max = 0;
+  for (const o of ops) { const b = opBox(o); if (b.x + b.w > max) max = b.x + b.w; }
+  return max;
+}
 // The label's text EXCEPT the name pieces (font + text, positions ignored).
 function restKey(r: { result: DrawResult; nameIdx: Set<number> }): string {
   return r.result.ops.map((o, i) => (r.nameIdx.has(i) || o.k === "bar" ? "" : `${o.k === "txt" ? o.font : "cjk"}:${o.s}`)).filter(Boolean).join("\n");
@@ -282,8 +299,11 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   const ops: DrawOp[] = [];
   const nameIdx = new Set<number>();
   let nameLines = 0;
-  const c = stickerConfig(labelWidthMm, labelHeightMm);
   const legacy = mode === "legacy";
+  const baseCfg = stickerConfig(labelWidthMm, labelHeightMm);
+  const c: SizeConfig = !legacy && payload.settings?.printSpacing === "compact"
+    ? { ...baseCfg, ...(COMPACT_GAPS[`${labelWidthMm}x${labelHeightMm}`] ?? {}) } : baseCfg;
+  const halfGap = !legacy && payload.settings?.printHalfWordGap === true;
   const narrow = legacy ? (s: string) => stripUnrenderable(transliterateLatin(s)) : stripUnrenderableExt;
   const classify = legacy ? classifyScript : classifyScriptExt;
 
@@ -414,7 +434,16 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
     const cjkName = nameTier === SCRIPT_CJK;
     const asciiX = cmul(lvlName), asciiY = cmul(lvlName);
     const cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
-    textSmart(16, y, "4", safe(truncate(nameOut, 30)), asciiX, asciiY, cjkX, cjkY);
+    const halfContent = halfGap ? narrow(safe(truncate(nameOut, 30))) : "";
+    if (halfContent && !hasCjkChar(halfContent)) {
+      // printHalfWordGap: one line, words a HALF letter apart, cut at a whole letter at the margin
+      const cell = 24 * asciiX;
+      let x = 16;
+      for (const w of fbNameLines(halfContent, cell, cell / 2, c.rightEdge - 16, 1)[0] ?? []) {
+        ops.push({ k: "txt", x, y, font: "4", s: w, xm: asciiX, ym: asciiY });
+        x += [...w].length * cell + cell / 2;
+      }
+    } else textSmart(16, y, "4", safe(truncate(nameOut, 30)), asciiX, asciiY, cjkX, cjkY);
     const usedY = cjkName ? cjkY : asciiY;
     const refBaseY = cjkName ? c.nameCjkYMul : 1;
     const d = (usedY - refBaseY) * F4;
@@ -431,7 +460,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   // layout). Absent/false flag → the original branch below runs, byte-identical.
   const layoutV2 = !legacy && settings?.printCommentFullWidth === true && printOrderItems && orders.length === 1;
   if (layoutV2) {
-    layoutV2Order(ops, c, orders[0], y, extra, labelHeightMm * 8, lvlOrder, lvlComment, qr, narrow,
+    layoutV2Order(ops, c, orders[0], y, extra, labelHeightMm * 8, lvlOrder, lvlComment, qr, narrow, halfGap,
       printTotal && totalSpent > 0 && c.showTotal);
   } else if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard + extra) {
     ops.push({ k: "bar", x: 16, y, w: c.sepWidth, h: 2 });
@@ -560,10 +589,11 @@ export function wrapCommentV2(text: string, lineWidth: (lineIndex: number) => nu
 
 function layoutV2Order(
   ops: DrawOp[], c: SizeConfig, order: RasterOrder, yStart: number, extra: number, hDots: number,
-  lvlOrder: number, lvlComment: number, qr: QrPlacement | null, narrow: (s: string) => string, totalShown: boolean,
+  lvlOrder: number, lvlComment: number, qr: QrPlacement | null, narrow: (s: string) => string, halfGap: boolean, totalShown: boolean,
 ): void {
   const cmul = (m: number) => Math.max(1, Math.min(8, m));
-  const tm = cmul(lvlOrder), pm = cmul(lvlComment);
+  const tm = cmul(lvlOrder);
+  let pm = cmul(lvlComment);
   const timeStr = order.time ? safe(truncate(order.time, 10)) : "";
   const timeOp: DrawOp | null = timeStr ? { k: "txt", x: V2_TIME_X, y: V2_TIME_Y, font: "2", s: timeStr, xm: tm, ym: tm } : null;
   const timeUp = !!timeOp && opBox(timeOp).x + opBox(timeOp).w <= c.wDots && !ops.some((op) => boxesOverlap(opBox(op), opBox(timeOp)));
@@ -572,10 +602,12 @@ function layoutV2Order(
   const content = narrow(safe(stripEmoji(order.item ?? ""))).replace(/\s+/g, " ").trim();
   ops.push({ k: "bar", x: 16, y: yStart, w: c.sepWidth, h: 2 }); // the separator, exactly as today
   const top = yStart + c.sepGap;
+  // printHalfWordGap: never a zero-line comment — step the comment scale down until one line fits.
+  if (halfGap) while (pm > 1 && yStart + c.sepGap + 48 * pm > hDots - V2_BOTTOM_MARGIN) pm--;
   const m = 2 * pm;                          // both scripts at 2×pm in BOTH directions (normal shape)
   const glyphH = 24 * m;                     // CJK 24-cell and font "3" 24-row cell → 48×pm tall
   const step = glyphH + 6;
-  const charW = (ch: string) => (isCjkIdeograph(ch.codePointAt(0) ?? 0) ? 24 * m : 16 * m); // 48×pm / 32×pm
+  const charW = (ch: string) => (halfGap && ch === " " ? 8 * m : isCjkIdeograph(ch.codePointAt(0) ?? 0) ? 24 * m : 16 * m); // 48×pm / 32×pm
   let bottom = hDots - V2_BOTTOM_MARGIN;
   if (totalShown) bottom = Math.min(bottom, c.totalY + extra - V2_BOTTOM_MARGIN); // never run into "Total:"
   const inlineTimeX = timeOp && !timeUp ? 16 + (truncate(order.time ?? "", 10).length + 2) * 12 * tm : 16;
@@ -594,6 +626,7 @@ function layoutV2Order(
       run = "";
     };
     for (const ch of line) {
+      if (halfGap && ch === " ") { flush(); x += charW(ch); continue; } // a half-letter gap, no space glyph
       const cjk = isCjkIdeograph(ch.codePointAt(0) ?? 0);
       if (run && cjk !== runCjk) flush();
       if (!run) { runCjk = cjk; runX = x; }

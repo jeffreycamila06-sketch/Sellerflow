@@ -6,16 +6,20 @@
 import { useEffect, useRef } from "react";
 import type { Settings } from "../adapters/printing";
 import { renderStickerBitmap } from "../adapters/stickerRaster";
-import { previewPayload } from "../adapters/stickerPreview";
+import { previewPayload, exactPreviewPayload } from "../adapters/stickerPreview";
+import type { RasterSettings } from "../adapters/stickerRaster";
 import { LATIN_ATLAS } from "../adapters/glyphAtlas.latin";
 import { loadCjkAtlas } from "../adapters/cjkAtlasLoader";
 
-export default function ExactStickerPreview({ settings, cur, shopName, v2 }: { settings: Settings; cur: string; shopName: string; v2: boolean }) {
+// `flags` (sticker spacing sellers): the real image-only flags this seller prints with (QR only
+// when it really prints, spacing choice) instead of the admin view's forced QR.
+export default function ExactStickerPreview({ settings, cur, shopName, v2, flags }: { settings: Settings; cur: string; shopName: string; v2: boolean; flags?: RasterSettings }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const key = JSON.stringify(settings); // redraw only when the settings actually change
+  const flagsKey = flags ? JSON.stringify(flags) : "";
   useEffect(() => {
     let live = true;
-    const { payload, w, h } = previewPayload(JSON.parse(key) as Settings, cur, shopName, v2);
+    const { payload, w, h } = flagsKey ? exactPreviewPayload(JSON.parse(key) as Settings, cur, shopName, JSON.parse(flagsKey) as RasterSettings) : previewPayload(JSON.parse(key) as Settings, cur, shopName, v2);
     void loadCjkAtlas().catch(() => undefined).then((cjk) => {
       const c = ref.current;
       if (!live || !c) return;
@@ -32,6 +36,6 @@ export default function ExactStickerPreview({ settings, cur, shopName, v2 }: { s
       ctx.putImageData(data, 0, 0);
     });
     return () => { live = false; };
-  }, [key, cur, shopName, v2]);
+  }, [key, flagsKey, cur, shopName, v2]);
   return <canvas ref={ref} data-testid="pp-exact-preview" style={{ width: "100%", imageRendering: "pixelated", display: "block", border: "1px dashed #c9c7d9", borderRadius: 4 }} />;
 }
