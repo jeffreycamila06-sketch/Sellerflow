@@ -357,3 +357,38 @@ describe("frozen check result: 'Not available for frozen right now' (extension 1
     expect(r.getAllByTestId("ps-export-attn-row").map((e) => e.textContent).join(" ")).toContain("not available for frozen right now");
   });
 });
+
+describe("review fix 2 — a Dry ↔ Frozen edit resets the store check (same update)", () => {
+  const editTo = async (r: ReturnType<typeof view>, target: "ps-edit-layer-dry" | "ps-edit-layer-frozen" | null) => {
+    await waitFor(() => expect(r.getByTestId("ps-row-edit")).toBeTruthy());
+    fireEvent.click(r.getByTestId("ps-row-edit"));
+    if (target) fireEvent.click(r.getByTestId(target));
+    fireEvent.click(save(r));
+    await waitFor(() => expect(h.updateParcelScan).toHaveBeenCalled());
+  };
+  it("常溫 checked OK → switched to 冷凍: store check reset (storeFull) in the same update; the row loses its result", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "a", tempLayer: "常溫", amount: 500, phoneCheckStatus: "ok", storeFullStatus: "open" })];
+    const r = view();
+    await editTo(r, "ps-edit-layer-frozen");
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: true, phoneCheck: false });
+    expect(h.updateParcelScan.mock.calls[0][3]).toBe("冷凍");
+    await waitFor(() => expect(r.queryByTestId("ps-ext-clear")).toBeNull());
+  });
+  it("冷凍 → 常溫: reset too", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "b", tempLayer: "冷凍", amount: 500, storeFullStatus: "frozen_unavailable" })];
+    const r = view();
+    await editTo(r, "ps-edit-layer-dry");
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: true, phoneCheck: false });
+    expect(h.updateParcelScan.mock.calls[0][3]).toBe("常溫");
+    await waitFor(() => expect(r.queryByTestId("ps-ext-badge-frozen-unavailable")).toBeNull());
+  });
+  it("layer unchanged → no reset (today)", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "c", tempLayer: "冷凍", amount: 500, storeFullStatus: "open" })];
+    const r = view();
+    await editTo(r, null);
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: false, phoneCheck: false });
+  });
+});

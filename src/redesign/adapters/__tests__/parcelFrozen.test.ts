@@ -266,3 +266,13 @@ describe("export: a frozen_unavailable verdict keeps the parcel out (extension 1
     expect(split.ready.map((r) => r.id)).toEqual(["d"]);
   });
 });
+
+describe("updateParcelScan: layer change + store reset are ONE update (atomic)", () => {
+  it("temp_layer and the cleared store result travel in the same patch", async () => {
+    const fields = { name: "A", phone: "0912345678", store_id: "266402", amount: 100, notes: "@a" };
+    await updateParcelScan("id1", fields, { storeFull: true }, TEMP_FROZEN);
+    const ups = db.calls.filter((c) => c.op === "update");
+    expect(ups).toHaveLength(1);
+    expect(ups[0].args[0]).toMatchObject({ temp_layer: "冷凍", store_full_status: null, store_full_at: null });
+  });
+});

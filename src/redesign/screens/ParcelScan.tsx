@@ -921,7 +921,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     const st = await waitFrozen();
     if (st.blocked) { setSaving(false); setSaveErr(t.rd_ps2_frozen_blocked); return; }
     const layer = st.allowed ? editLayer : undefined; // only sellers with the control can change it (else the row keeps its own)
-    const r = await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer); // own-scoped UPDATE, NO credit
+    // Dry ↔ Frozen changes WHICH store question applies (normal vs frozen), so the old store
+    // result no longer says anything → reset it in the SAME update (both directions), like a
+    // store-code change. Otherwise a parcel checked OK as 常溫 and switched to 冷凍 would stay
+    // clean (and exportable) until a frozen answer arrives.
+    const prevLayer = isFrozenLayer(prev?.tempLayer) ? TEMP_FROZEN : TEMP_DRY;
+    const layerChanged = layer !== undefined && layer !== prevLayer;
+    const resetStore = storeChanged || layerChanged;
+    const r = await updateParcelScan(id, fields, { storeFull: resetStore, phoneCheck: phoneChanged }, layer); // own-scoped UPDATE, NO credit
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
     if (aliveRef.current) {
@@ -935,7 +942,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         // Store code changed → clear the stale ❌/verdict now; re-check below if valid.
         storeCheckStatus: storeChanged ? null : x.storeCheckStatus,
         // Extension verdicts reset locally to match the DB nulling above.
-        storeFullStatus: storeChanged ? null : x.storeFullStatus,
+        storeFullStatus: resetStore ? null : x.storeFullStatus,
         phoneCheckStatus: phoneChanged ? null : x.phoneCheckStatus,
         phoneRestrictedUntil: phoneChanged ? null : x.phoneRestrictedUntil,
         ...(layer ? { tempLayer: layer } : {}),
