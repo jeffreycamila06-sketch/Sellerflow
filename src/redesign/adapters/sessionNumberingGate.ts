@@ -23,6 +23,17 @@ export const SESSION_NUMBERING_FIX_EMAILS = [
   "juvieho0725@gmail.com",
   "clarabhie@gmail.com",
   "mersteve17@gmail.com",
+  // sellers who started a multi-day session on Oct 5
+  "jinkyrosepenana@gmail.com",
+  "basaomenchie6@gmail.com",
+  "jaszhu127@gmail.com",
+  "leinapan@gmail.com",
+  "jobelleolivas80@gmail.com",
+  "merriamalmirante194@gmail.com",
+  "apzelejorde@yahoo.com",
+  "s076561908@hotmail.com",
+  "ailun09291990@gmail.com",
+  "ganggang0958@yahoo.com",
 ];
 
 export type SessionNumberingGate = "on" | "off" | "wait";
