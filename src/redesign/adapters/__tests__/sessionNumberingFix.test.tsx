@@ -90,7 +90,10 @@ afterEach(() => { vi.useRealTimers(); });
 describe("the gate decision (email only)", () => {
   it("on for the listed emails (any case), off for others, wait while signed in without an email, off when signed out", () => {
     expect(SESSION_NUMBERING_FIX_PUBLIC).toBe(false);
-    for (const e of ["camilajeffrey1@gmail.com", "googletest@gmail.com", "googletest@sellerflowlive.com", "cristycabanas34@gmail.com", "tincabanas13@gmail.com", "ronaldgantiga77@gmail.com"]) {
+    const LIST = ["camilajeffrey1@gmail.com", "googletest@gmail.com", "googletest@sellerflowlive.com", "cristycabanas34@gmail.com", "tincabanas13@gmail.com", "ronaldgantiga77@gmail.com",
+      "aubreylucero15@yahoo.com", "716030huan@gmail.com", "bardagulanjavier@gmail.com", "zandracruz@icloud.com", "chungmaychilleann@gmail.com"];
+    expect(SESSION_NUMBERING_FIX_EMAILS).toEqual(LIST); // the exact staged list
+    for (const e of LIST) {
       expect(SESSION_NUMBERING_FIX_EMAILS).toContain(e);
       expect(sessionNumberingGate(true, e.toUpperCase())).toBe("on");
     }
