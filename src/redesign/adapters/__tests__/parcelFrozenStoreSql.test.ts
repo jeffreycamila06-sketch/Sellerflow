@@ -28,7 +28,7 @@ describe("sql/81 forward", () => {
   });
   it("pending: normal cache never into a frozen row; frozen cache only when the switch is on; frozen column returned", () => {
     expect(F).toContain("and not (v_frozen_on and ps.temp_layer = '冷凍');");
-    expect(F).toMatch(/if v_frozen_on then\s+update parcel_scans ps\s+set store_full_status = c\.status, store_full_at = c\.checked_at, store_check_layer = '冷凍'\s+from store_check_cache_frozen c/);
+    expect(F).toMatch(/if v_frozen_on then[\s\S]*?update parcel_scans ps\s+set store_full_status = c\.status, store_full_at = c\.checked_at, store_check_layer = '冷凍'\s+from store_check_cache_frozen c[\s\S]*?end if;/);
     expect(F).toContain("(v_frozen_on and ps.temp_layer = '冷凍') as frozen,");
     expect(F).toContain("(select count(*) from pending) as queue_depth, p.created_at, p.frozen");
     expect(F).toMatch(/RETURNS TABLE\(.*created_at timestamp with time zone, frozen boolean\)/);
@@ -43,6 +43,9 @@ describe("sql/81 forward", () => {
                      and (ps.store_full_status is null or ps.store_check_layer is distinct from '冷凍')`));
     expect(norm(F)).toContain(norm("where c.need_phone or c.need_store"));
     expect(rb).toContain("drop function if exists public.admin_parcel_checks_pending(integer, boolean);");
+  });
+  it("pending (fix 2): switch on → a waiting frozen parcel keeps only a FROZEN store result (not_found kept), inside the switch block", () => {
+    expect(norm(F)).toMatch(/if v_frozen_on then .*update parcel_scans ps set store_full_status = null, store_full_at = null where ps\.status <> 'exported' and ps\.temp_layer = '冷凍' and ps\.store_full_status is not null and ps\.store_full_status <> 'not_found' and ps\.store_check_layer is distinct from '冷凍'; update parcel_scans ps set store_full_status = c\.status/);
   });
   it("pending: no hourly 'full' recheck for frozen rows; frozen cache open 10 min / unavailable 1 h / company+not_found 24 h", () => {
     expect(F).toMatch(/and ps\.store_full_status = 'full'\s+and not \(v_frozen_on and ps\.temp_layer = '冷凍'\)/);

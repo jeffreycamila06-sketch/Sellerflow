@@ -203,6 +203,19 @@ begin
   -- the frozen way (no hourly recheck: a 'not available' store is asked again only when a
   -- frozen parcel for it is waiting and its cached answer is older than 1 hour).
   if v_frozen_on then
+    -- fix 2: a waiting frozen parcel keeps ONLY a store result that came from the frozen check.
+    -- Anything else (a normal open / company / full / unknown from before the switch went on or
+    -- from a normal machine) is cleared, so it shows as "checking" instead of OK and waits for
+    -- the frozen answer. Automatic and idempotent (a cleared row never matches again).
+    -- 'not_found' (no such store code) is the same answer in both modes → kept.
+    -- Side effect: the ⟳ Recheck trigger sees open/full/company → NULL on the same store and
+    -- deletes that store's NORMAL cache entry (once per such parcel) — the next normal parcel
+    -- for that store is asked 7-11 again instead of reusing the cache.
+    update parcel_scans ps
+       set store_full_status = null, store_full_at = null
+     where ps.status <> 'exported' and ps.temp_layer = '冷凍'
+       and ps.store_full_status is not null and ps.store_full_status <> 'not_found'
+       and ps.store_check_layer is distinct from '冷凍';
     update parcel_scans ps
        set store_full_status = c.status, store_full_at = c.checked_at, store_check_layer = '冷凍'
       from store_check_cache_frozen c
