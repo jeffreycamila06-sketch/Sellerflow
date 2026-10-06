@@ -649,6 +649,12 @@ function pcFrozenEnsureOpen(now, inMaint) {
   } catch { /* next pass retries */ }
   console.log(`[PC-FROZEN] opening the 7-11 frozen picker (attempt ${pcFrz.opens}/${PC_FROZEN_MAX_OPENS})`);
 }
+// PURE: the frozen lane's status value (pc_status.frozen) — off | opening | ok | busy | dead.
+function pcFrozenStatusValue(f) {
+  if (f.state === "busy" || f.state === "dead") return f.state;
+  if (f.tabId != null) return f.state === "opening" ? "opening" : "ok";
+  return f.state || "off";
+}
 // Close the frozen tab WE opened after 10 min with no frozen row waiting (both roles).
 function pcFrozenIdleClose(now) {
   if (pcFrz.ownedTabId == null) return;
@@ -1301,7 +1307,11 @@ async function pcRunOnce() {
   try { await pcPickEmapTab(); } catch (e) { console.log(`[PC-EMAP] skipped: pick ${e && e.message ? e.message : e}`); }
   try { await pcPollMulti(pass); } catch { /* keep looping */ }                       // leader-only inside
   try { await pcEmapKeepalive(); } catch (e) { console.log(`[PC-KEEPALIVE] skipped: ${e && e.message ? e.message : e}`); }
-  try { pcFrozenIdleClose(Date.now()); await pcStatus({ frozen: pcFrz.tabId != null && pcFrz.state !== "busy" && pcFrz.state !== "dead" ? (pcFrz.state === "opening" ? "opening" : "ok") : pcFrz.state }); } catch (e) { console.log(`[PC-FROZEN] skipped: ${e && e.message ? e.message : e}`); }
+  try {
+    pcFrozenIdleClose(Date.now());
+    const v = pcFrozenStatusValue(pcFrz);
+    if (v !== pcFrz.lastStatus) { pcFrz.lastStatus = v; await pcStatus({ frozen: v }); } // write only on change
+  } catch (e) { console.log(`[PC-FROZEN] skipped: ${e && e.message ? e.message : e}`); }
   try { await pcRefreshTabStatus(pass); } catch (e) { console.log(`[PC-STATUS] skipped: ${e && e.message ? e.message : e}`); }
   // Leader-only: re-queue (DB write) and the worker-state mirror (DB write). M1: each is
   // gated on the CURRENT lease state, not the role the pass started with.

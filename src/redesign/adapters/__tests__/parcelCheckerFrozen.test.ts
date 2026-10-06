@@ -200,3 +200,20 @@ describe("review fix 1 — the tab we opened is kept while it lands, and a stale
   });
 });
 
+
+describe("review fix 3 — pc_status.frozen is written only when it changes", () => {
+  it("10 quiet passes → one write; a change → one more", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const rows: unknown[] = [];
+    const { sb, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL], rows });
+    await booted;
+    const patches: Record<string, unknown>[] = [];
+    const real = sb.pcStatus;
+    (sb as unknown as Record<string, unknown>).pcStatus = (p: Record<string, unknown>) => { patches.push(p); return real(p); };
+    for (let i = 0; i < 10; i++) { await sb.pcTick(); t += 5000; }
+    expect(patches.filter((p) => "frozen" in p)).toEqual([{ frozen: "off" }]);
+    rows.push(frozenRow());                         // frozen work → the lane opens a tab
+    await sb.pcTick(); t += 5000; await sb.pcTick();
+    expect(patches.filter((p) => "frozen" in p)).toEqual([{ frozen: "off" }, { frozen: "opening" }]);
+  });
+});
