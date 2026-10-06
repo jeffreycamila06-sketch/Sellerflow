@@ -350,3 +350,23 @@ describe("1.16.1 fix 5 — only a SESSION failure retires the frozen tab", () =>
     expect(calls.created.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("1.16.1 fix 10 — \"Check now\" never runs a second pass beside the loop", () => {
+  it("Check now during a running pass joins it: ONE frozen request, one pending read", async () => {
+    const t = Date.parse("2026-10-06T06:00:00Z");
+    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL, FROZEN], rows: [frozenRow()] });
+    await booted;
+    const a = sb.pcTick();                                  // the loop's pass
+    const b = sb.pcRunOnce();                               // "Check now" while it runs
+    await Promise.all([a, b]);
+    expect(sent(calls, "PC_CHECK_STORE_FROZEN")).toHaveLength(1);
+    expect(calls.fetch.filter((u) => /admin_parcel_checks_pending/.test(u))).toHaveLength(1);
+  });
+  it("after the pass ends, Check now runs a fresh pass", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL], rows: [] });
+    await booted;
+    await sb.pcTick(); t += 5000; await sb.pcRunOnce();
+    expect(calls.fetch.filter((u) => /admin_parcel_checks_pending/.test(u))).toHaveLength(2);
+  });
+});

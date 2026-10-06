@@ -1376,7 +1376,16 @@ async function pcTick() {
 }
 // One full pass (both lanes + pick + keepalive + status + mirror + heartbeat),
 // WITHOUT re-arming — shared by the loop and the popup's "Check now".
-async function pcRunOnce() {
+// 1.16.1: single-flight — "Check now" while a pass is running joins THAT pass instead of
+// starting a second one beside it (two passes could send two frozen requests at once and
+// race the E0014 pause).
+let pcRunning = null;
+function pcRunOnce() {
+  if (pcRunning) return pcRunning;
+  pcRunning = pcRunOnceBody().finally(() => { pcRunning = null; });
+  return pcRunning;
+}
+async function pcRunOnceBody() {
   pcEv.tick += 1;
   // 1.15.0: this pass's role — set by pcPoll's lease call (stays false when the pass
   // never reached it: paused / no config / SFL tab not ready / no token).
