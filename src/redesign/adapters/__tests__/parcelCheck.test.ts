@@ -169,7 +169,7 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(bg).toContain("chrome.tabs.update(tabId, { autoDiscardable: false }");
     const heal = bg.slice(bg.indexOf("async function pcHealTab"), bg.indexOf("function pcTokenExpired"));
     expect(heal).toContain("pcNoDiscard(tab.id);");
-    expect(bg).toContain('"emap-711.js", true)'); // Layer-1 mistake NOT repeated
+    expect(bg).toContain('"emap-711.js", true, pcFrozenTabIds())'); // Layer-1 mistake NOT repeated (reload still allowed; 1.16.0: frozen tabs skipped)
   });
 
   it("ACCURATE emap session popup — DISPLAY-ONLY: red only when a reload landed on error.aspx, amber only when no tab; never writes app_settings / never gates the RPC", () => {

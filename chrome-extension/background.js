@@ -77,9 +77,13 @@ function pcFindTab(patterns) {
 // auto-reload there could kill a live session; clicking the tab un-discards
 // it, which is what the popup now says); alive-but-dead script → re-inject
 // via chrome.scripting (double-injection guarded in each content script).
-function pcFindTabInfo(patterns) {
+// skipIds (1.16.0): tab ids never to return (the frozen E-Map tabs) — the first OTHER match wins.
+function pcFindTabInfo(patterns, skipIds) {
   return new Promise((resolve) => {
-    chrome.tabs.query({ url: patterns }, (tabs) => resolve(tabs && tabs.length ? tabs[0] : null));
+    chrome.tabs.query({ url: patterns }, (tabs) => {
+      const list = (tabs || []).filter((t) => !(skipIds && skipIds.has(t.id)));
+      resolve(list.length ? list[0] : null);
+    });
   });
 }
 async function pcPing(tabId) {
@@ -107,8 +111,8 @@ function pcNoDiscard(tabId) {
 
 // → { state, tabId }: 'ok' | 'no_tab' | 'asleep' (discarded SFL — click it) |
 //   'healing' (reload/inject fired; next poll confirms) | 'dead_script'.
-async function pcHealTab(patterns, file, allowReload) {
-  const tab = await pcFindTabInfo(patterns);
+async function pcHealTab(patterns, file, allowReload, skipIds) {
+  const tab = await pcFindTabInfo(patterns, skipIds);
   if (!tab) return { state: "no_tab", tabId: null };
   pcNoDiscard(tab.id);
   if (await pcPing(tab.id)) return { state: "ok", tabId: tab.id };
@@ -308,9 +312,11 @@ async function pcPoll(pass) {
   // (same /ecmap/default.aspx page + byIDData.aspx endpoint, verified live —
   // the content script's RELATIVE fetch follows whichever origin it runs on).
   // The old domain still serves, so BOTH are matched.
-  const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true);
+  // 1.16.0: the health check heals / pins the NORMAL E-Map tab — never a frozen one (else the
+  // normal tab could lose its no-discard pin while the frozen tab took its place here).
+  const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true, pcFrozenTabIds());
   const myshipTabId = myshipHealth.tabId;
-  const emapTabId = emapHealth.tabId;
+  let emapTabId = emapHealth.tabId;
   // 1.14.0: the per-tab status keys (myship / emap / emapSession) have ONE writer
   // — pcRefreshTabStatus in pcTick, evidence-based. Here we only record health.
   pcEv.health = { myship: myshipHealth, emap: emapHealth };
@@ -356,6 +362,10 @@ async function pcPoll(pass) {
 
   const rows = res.rows.filter((row) => row && row.id && !pcInFlight.has(row.id));
   if (!rows.length) { await pcStatus({ lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
+  // 1.16.0: the legacy lane never asks the normal question on a frozen tab. The pick learns which
+  // tabs are frozen (their own page says so); if the healed tab is one, use the normal pick.
+  try { await pcPickEmapTab(); } catch { /* keep the healed tab */ }
+  if (emapTabId != null && pcFrozenTabIds().has(emapTabId)) emapTabId = (pcEv.emap.tabId != null && !pcEv.emap.error) ? pcEv.emap.tabId : null;
 
   // TWO different origins: the FULL-STORE lookup runs in the emap tab
   // (byIDData + eshopGuid live there), the RESTRICTED-PHONE check in the myship tab.
@@ -475,7 +485,14 @@ const PC_FROZEN_VERDICTS = ["open", "frozen_unavailable", "company", "not_found"
 // redirect, not yet an E-Map page) and forgotten only when the tab itself is gone
 // (tabs.onRemoved) or we replace / close it. bad = frozen tabs dropped after 2 unclean
 // answers — never picked again until they are closed.
-const pcFrz = { tabId: null, ownedTabId: null, opens: 0, lastOpenAt: 0, lastReqAt: 0, lastNeededAt: 0, misses: 0, state: "off", bad: new Set() };
+const pcFrz = { tabId: null, ownedTabId: null, opens: 0, lastOpenAt: 0, lastReqAt: 0, lastNeededAt: 0, misses: 0, state: "off", bad: new Set(), known: new Set() };
+// Every tab currently known to be frozen (its page said so on the last pick, or we opened it).
+function pcFrozenTabIds() {
+  const ids = new Set(pcFrz.known);
+  if (pcFrz.ownedTabId != null) ids.add(pcFrz.ownedTabId);
+  if (pcFrz.tabId != null) ids.add(pcFrz.tabId);
+  return ids;
+}
 const PC_SFL_PATTERNS = ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"];
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
@@ -621,6 +638,7 @@ async function pcPickEmapTab() {
 // 1.16.0: the usable frozen tab = a live tab whose page says frozen AND has a session value
 // (prefer the one we opened). Read by pcPollMulti; never used for the normal check.
 function pcFrozenNoteTabs(cands) {
+  pcFrz.known = new Set(cands.filter((c) => c.frozen).map((c) => c.id));
   const ok = cands.filter((c) => c.frozen && !c.error && c.guid && c.probe && c.probe.frozen && !pcFrz.bad.has(c.id));
   const pick = ok.find((c) => c.id === pcFrz.ownedTabId) || ok.find((c) => c.id === pcFrz.tabId) || ok[0] || null;
   const next = pick ? pick.id : null;

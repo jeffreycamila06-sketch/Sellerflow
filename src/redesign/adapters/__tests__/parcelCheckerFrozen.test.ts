@@ -217,3 +217,29 @@ describe("review fix 3 — pc_status.frozen is written only when it changes", ()
     expect(patches.filter((p) => "frozen" in p)).toEqual([{ frozen: "off" }, { frozen: "opening" }]);
   });
 });
+
+describe("review question 4 — the E-Map health check and the legacy lane skip frozen tabs", () => {
+  const pinned = (calls: { update: unknown[] }, id: number) => calls.update.some((u) => (u as { id: number; props: { autoDiscardable?: boolean } }).id === id && (u as { props: { autoDiscardable?: boolean } }).props.autoDiscardable === false);
+  it("multi-seller: with the frozen tab listed FIRST, the health check heals / pins the NORMAL tab", async () => {
+    const { sb, calls, booted } = bootWorker({ emapTabs: [FROZEN, NORMAL], rows: [] });
+    await booted;
+    await sb.pcTick();                                   // learns that tab 40 is frozen
+    calls.update.length = 0; calls.sendMessage.length = 0;
+    await sb.pcTick();
+    expect(pinned(calls, 3)).toBe(true);
+    expect(calls.sendMessage.some((m) => m.type === "PC_PING" && m.tabId === 3)).toBe(true);
+    expect(calls.sendMessage.some((m) => m.type === "PC_PING" && m.tabId === 40)).toBe(false);
+  });
+  it("legacy lane (multi-seller off): the normal question goes to the normal tab, never the frozen one — even on the first pass", async () => {
+    const { sb, calls, booted } = bootWorker({ multiSeller: false, emapTabs: [FROZEN, NORMAL], legacyRows: [{ id: "L1", phone: "0912345678", store_id: "195965", customer_name: "測試" }] });
+    await booted; await sb.pcTick();
+    const store = sent(calls, "PC_CHECK_STORE").filter((m) => m.rowId === "L1");
+    expect(store.map((m) => m.tabId)).toEqual([3]);
+  });
+  it("no frozen tab → the health check behaves exactly as before (first E-Map tab)", async () => {
+    const OTHER: EmapTab = { id: 5, url: "https://emap.pcsc.com.tw/ecmap/default.aspx", guid: true };
+    const { sb, calls, booted } = bootWorker({ emapTabs: [OTHER, NORMAL], rows: [] });
+    await booted; await sb.pcTick();
+    expect(calls.sendMessage.find((m) => m.type === "PC_PING" && (m.tabId === 5 || m.tabId === 3))?.tabId).toBe(5);
+  });
+});
