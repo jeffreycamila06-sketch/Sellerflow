@@ -70,7 +70,7 @@ describe("page mode — read from the page itself", () => {
   it("a value missing → not a frozen page → 'unknown', no request sent", async () => {
     const { send, calls } = load(FROZEN_NO_ESHOP_HTML);
     const r = await send({ type: "PC_CHECK_STORE_FROZEN", row: { store_id: "968551" } });
-    expect(r).toMatchObject({ store_full_status: "unknown", transient: false });
+    expect(r).toMatchObject({ store_full_status: "unknown", transient: false, session: true }); // 1.16.1: this tab can't serve the frozen check
     expect(calls.fetch).toHaveLength(0);
   });
   it("the frozen question on a NORMAL page is refused ('unknown', no request)", async () => {
@@ -97,11 +97,11 @@ describe("the frozen request + the captured answers", () => {
     expect((await frozenCheck("167765", "OK;167765+某門市+地址+enable+0++門市")).store_full_status).toBe("open");
   });
   it("the nearest-store answer (a DIFFERENT store, 264141 enable) for 968551 → unknown, never OK", async () => {
-    expect(await frozenCheck("968551", ANS_NEAREST)).toMatchObject({ store_full_status: "unknown", transient: false });
+    expect(await frozenCheck("968551", ANS_NEAREST)).toMatchObject({ store_full_status: "unknown", transient: false, session: false }); // 1.16.1: an odd answer, not a session failure
   });
-  it("the 'I0100' answer (13 characters) → unknown", async () => {
+  it("the 'I0100' answer (13 characters) → unknown, flagged as a SESSION failure (1.16.1)", async () => {
     expect(ANS_I0100).toHaveLength(13);
-    expect(await frozenCheck("968551", ANS_I0100)).toMatchObject({ store_full_status: "unknown", transient: false });
+    expect(await frozenCheck("968551", ANS_I0100)).toMatchObject({ store_full_status: "unknown", transient: false, session: true });
   });
   it("E0014 → unknown + busy (transient)", async () => {
     expect(await frozenCheck("968551", ANS_E0014)).toMatchObject({ store_full_status: "unknown", busy: true, transient: true });

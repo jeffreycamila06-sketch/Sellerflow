@@ -236,8 +236,10 @@
   }
   async function checkFrozenStore(storeId, guid, m) {
     if (!/^\d{6}$/.test(String(storeId || ""))) return { store_full_status: "unknown", store_reason: "store id not 6 digits", transient: false };
-    if (!isFrozenMode(m)) return { store_full_status: "unknown", store_reason: "not a frozen E-Map page (mode values missing)", transient: false };
-    if (!guid) return { store_full_status: "unknown", store_reason: "session value not found on the frozen page", transient: false };
+    // session: true = the frozen SESSION itself is not usable (1.16.1) — only these count toward
+    // retiring the frozen tab; an odd answer about one store does not.
+    if (!isFrozenMode(m)) return { store_full_status: "unknown", store_reason: "not a frozen E-Map page (mode values missing)", transient: false, session: true };
+    if (!guid) return { store_full_status: "unknown", store_reason: "session value not found on the frozen page", transient: false, session: true };
     const endpoint = `/${sectionOf(location.pathname)}/byIDData.aspx`;
     // same field order as the normal question; cate / eshopparid / eshopid exactly as the page says
     const body = new URLSearchParams({
@@ -250,10 +252,12 @@
         headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" },
         body,
       });
-      if (/\/error\.aspx/i.test(String(r.url || ""))) return { store_full_status: "unknown", store_reason: "frozen session bounced to error.aspx", transient: false };
+      if (/\/error\.aspx/i.test(String(r.url || ""))) return { store_full_status: "unknown", store_reason: "frozen session bounced to error.aspx", transient: false, session: true };
       if (!r.ok) return { store_full_status: "unknown", store_reason: `frozen check HTTP ${r.status}`, transient: r.status >= 500 };
       const text = await r.text();
       if (/E0014/.test(String(text))) return { store_full_status: "unknown", store_reason: "7-11 busy (E0014)", transient: true, busy: true };
+      // "I0100" = 7-11 says this session is not a valid (frozen) session
+      if (/I0100/.test(String(text))) return { store_full_status: "unknown", store_reason: "frozen session not valid (I0100)", transient: false, session: true };
       const v = parseFrozenByIdData(text, storeId);
       if (v) return { ...v, transient: false };
       return { store_full_status: "unknown", store_reason: `frozen check: not a clean answer for ${storeId} (${String(text).trim().length} chars)`, transient: false };
@@ -283,7 +287,7 @@
         const g = await getEshopGuid();
         const m = pageMode();
         const res = await checkFrozenStore(message.row.store_id, g.guid, m);
-        sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, transient: Boolean(res.transient), busy: Boolean(res.busy), guidFound: g.guid !== null, frozenPage: isFrozenMode(m), section: sectionOf(location.pathname) });
+        sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, transient: Boolean(res.transient), busy: Boolean(res.busy), session: Boolean(res.session), guidFound: g.guid !== null, frozenPage: isFrozenMode(m), section: sectionOf(location.pathname) });
       })().catch(() => sendResponse({ ok: true, store_full_status: "unknown", store_reason: "frozen check threw", transient: true, busy: false, guidFound: false, frozenPage: false, section: sectionOf(location.pathname) }));
       return true;
     }

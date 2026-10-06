@@ -1277,9 +1277,10 @@ async function pcPollMulti(pass) {
           pcFrz.state = "busy"; pcBusyHit(Date.now(), "frozen"); // pauses every store request; never a miss
         } else {
           const reason = (fResp && fResp.store_reason) || "frozen tab not responding";
-          const transient = !fResp || Boolean(fResp.transient);
-          if (!transient) {
-            pcFrz.misses += 1; // the frozen session is not answering cleanly → after 2, replace the tab
+          // 1.16.1: only a SESSION failure (error page, I0100, no session value / not a frozen page)
+          // counts toward retiring the tab — an odd answer about one store only backs that row off
+          if (fResp && fResp.session) {
+            pcFrz.misses += 1; // the frozen session itself is not usable → after 2, replace the tab
             if (pcFrz.misses >= 2) { pcFrz.bad.add(pcFrz.tabId); pcFrz.tabId = null; pcFrz.misses = 0; pcFrozenEnsureOpen(Date.now(), inMaint); } // never pick this tab again
           }
           b.storeFails += 1;

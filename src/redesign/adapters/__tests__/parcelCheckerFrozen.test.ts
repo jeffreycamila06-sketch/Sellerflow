@@ -253,7 +253,7 @@ describe("review fix 1 — the tab we opened is kept while it lands, and a stale
     const FRESH: EmapTab = { id: 41, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true, frozen: true };
     const { sb, calls, booted } = bootWorker({
       now: () => t, emapTabs: [NORMAL, STALE, FRESH], rows: [frozenRow()],
-      frozenReply: (_row, tabId) => (tabId === 40 ? { status: "unknown", reason: "frozen session bounced to error.aspx" } : { status: "frozen_unavailable" }),
+      frozenReply: (_row, tabId) => (tabId === 40 ? { status: "unknown", reason: "frozen session bounced to error.aspx", session: true } : { status: "frozen_unavailable" }),
     });
     await booted;
     for (let i = 0; i < 6; i++) { await sb.pcTick(); t += MIN; }
@@ -329,5 +329,24 @@ describe("1.16.1 fix 1 — the machine tells the server it can do the frozen che
     calls.fetch.length = 0; calls.fetchBodies.length = 0;
     t += 6 * MIN; await sb.pcTick();
     expect(pendingBodies(calls)[0]).toBe(JSON.stringify({ p_limit: 25, p_frozen_capable: true }));
+  });
+});
+
+describe("1.16.1 fix 5 — only a SESSION failure retires the frozen tab", () => {
+  it("an odd answer about one store (e.g. the nearest-store reply) 5× → the row gives up 'unknown', the tab is kept (no new open)", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL, FROZEN], rows: [frozenRow()], frozenReply: () => ({ status: "unknown", reason: "frozen check: not a clean answer for 968551 (39 chars)" }) });
+    await booted;
+    for (let i = 0; i < 12; i++) { await sb.pcTick(); t += 3 * MIN; }
+    expect(calls.created).toHaveLength(0);
+    expect(sent(calls, "PC_CHECK_STORE_FROZEN").every((m) => m.tabId === 40)).toBe(true);
+    expect(verdictBodies(calls).some((b) => b.p_store_full_status === "unknown" && b.p_store_layer === "冷凍")).toBe(true);
+  });
+  it("two session failures (I0100) → the tab is retired and a new one opened", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const { sb, calls, booted } = bootWorker({ now: () => t, emapTabs: [NORMAL, FROZEN], rows: [frozenRow()], frozenReply: () => ({ status: "unknown", reason: "frozen session not valid (I0100)", session: true }) });
+    await booted;
+    for (let i = 0; i < 4; i++) { await sb.pcTick(); t += MIN; }
+    expect(calls.created.length).toBeGreaterThanOrEqual(1);
   });
 });

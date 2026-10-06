@@ -46,7 +46,7 @@ export type BootOpts = {
   config?: Record<string, unknown>;         // extra pc_config fields (e.g. deviceName)
   // 1.16.0 frozen check: the PC_CHECK_STORE_FROZEN reply (default "open"), and what opening the
   // 7-11 frozen picker does (e.g. push a frozen E-Map tab). Absent → the tab never lands.
-  frozenReply?: (row?: { id?: string; store_id?: string }, tabId?: number) => { status: string; busy?: boolean; transient?: boolean; reason?: string } | null;
+  frozenReply?: (row?: { id?: string; store_id?: string }, tabId?: number) => { status: string; busy?: boolean; transient?: boolean; reason?: string; session?: boolean } | null;
   onCreate?: (url: string, emapTabs: EmapTab[]) => EmapTab | void;
   pendingNoCapable?: boolean;     // 1.16.1: the pending RPC has no p_frozen_capable (sql/81 not applied) → 404 when it is sent
 };
@@ -85,10 +85,10 @@ export function bootWorker(opts: BootOpts = {}) {
         if (msg.type === "PC_PING") return cb({ ok: true, script: "x" });
         if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, script: "emap", guidFound: Boolean(emap && emap.guid), url: emap ? emap.url : "", ...(emap && emap.frozen ? { frozen: true, cate: "27", eshopparid: "870", eshopid: "870" } : { frozen: false }) });
         if (msg.type === "PC_CHECK_STORE_FROZEN") {
-          if (!emap || !emap.frozen) return cb({ ok: true, store_full_status: "unknown", store_reason: "not a frozen E-Map page (mode values missing)", transient: false, busy: false });
+          if (!emap || !emap.frozen) return cb({ ok: true, store_full_status: "unknown", store_reason: "not a frozen E-Map page (mode values missing)", transient: false, busy: false, session: true });
           const r = opts.frozenReply ? opts.frozenReply(msg.row, id) : { status: "open" };
           if (!r) return cb(null);
-          return cb({ ok: true, store_full_status: r.status, store_reason: r.reason || "", transient: Boolean(r.transient), busy: Boolean(r.busy), guidFound: true, frozenPage: true });
+          return cb({ ok: true, store_full_status: r.status, store_reason: r.reason || "", transient: Boolean(r.transient), busy: Boolean(r.busy), session: Boolean(r.session), guidFound: true, frozenPage: true });
         }
         if (msg.type === "PC_CLICK_PICK_STORE") {
           const r = opts.onPickStoreClick ? opts.onPickStoreClick(emapTabs) : undefined;
