@@ -39,9 +39,9 @@ describe("PrintPattern — sticker spacing", () => {
     const v = view({ spacingAllowed: true, imagePath: true, pp, previewSettings: settings(pp) });
     expect(v.getByTestId("pp-fit-warning").textContent).toContain("it will print at 2×");
   });
-  it("name 2× on 70x50: the warning says part of the name/comment will not print", () => {
+  it("name 2× on 70x50: the information note (less of the name or comment fits)", () => {
     const pp = { ...DEFAULT_PP, tiktokNameSize: 2 };
     const v = view({ spacingAllowed: true, imagePath: true, pp, previewSettings: settings(pp, "70x50mm") });
-    expect(v.getByTestId("pp-fit-warning").textContent).toContain("part of the name or comment will not print");
+    expect(v.getByTestId("pp-fit-warning").textContent).toContain("At these sizes less of the name or comment fits. Long ones will be cut.");
   });
 });

@@ -293,7 +293,8 @@ export function rightmostOpEdge(ops: DrawOp[]): number {
 }
 // The label's text EXCEPT the name pieces (font + text, positions ignored).
 function restKey(r: { result: DrawResult; nameIdx: Set<number> }): string {
-  return r.result.ops.map((o, i) => (r.nameIdx.has(i) || o.k === "bar" ? "" : `${o.k === "txt" ? o.font : "cjk"}:${o.s}`)).filter(Boolean).join("\n");
+  // + each op's xm/ym: a 2nd name line that makes the comment print SMALLER (R4 step-down) is a change
+  return r.result.ops.map((o, i) => (r.nameIdx.has(i) || o.k === "bar" ? "" : `${o.k === "txt" ? o.font : "cjk"}:${o.xm}x${o.ym}:${o.s}`)).filter(Boolean).join("\n");
 }
 function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode, qr: QrPlacement | null, fbMaxLines: number): { result: DrawResult; nameLines: number; nameIdx: Set<number> } {
   const ops: DrawOp[] = [];
@@ -301,7 +302,12 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   let nameLines = 0;
   const legacy = mode === "legacy";
   const baseCfg = stickerConfig(labelWidthMm, labelHeightMm);
-  const c: SizeConfig = !legacy && payload.settings?.printSpacing === "compact"
+  // Compact never applies to a label that prints order ROWS (two-order / non-v2): those rows — and the
+  // QR wrap of the first one — must sit exactly where they do today (audit F1).
+  const sOrders = payload.buyer?.orders ?? [];
+  const sItems = payload.settings == null || payload.settings.printOrderItems !== false;
+  const usesOrderRows = sItems && sOrders.length > 0 && !(payload.settings?.printCommentFullWidth === true && sOrders.length === 1);
+  const c: SizeConfig = !legacy && payload.settings?.printSpacing === "compact" && !usesOrderRows
     ? { ...baseCfg, ...(COMPACT_GAPS[`${labelWidthMm}x${labelHeightMm}`] ?? {}) } : baseCfg;
   const halfGap = !legacy && payload.settings?.printHalfWordGap === true;
   const narrow = legacy ? (s: string) => stripUnrenderable(transliterateLatin(s)) : stripUnrenderableExt;
