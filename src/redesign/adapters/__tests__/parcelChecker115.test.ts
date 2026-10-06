@@ -689,7 +689,7 @@ describe("identity, worker-state blob, writes outside a pass", () => {
     expect(leaseLogs(b.calls).length).toBe(1);
   });
 
-  it("version pin: manifest 1.15.1", () => {
-    expect(JSON.parse(readFileSync("chrome-extension/manifest.json", "utf8")).version).toBe("1.15.1");
+  it("version pin: manifest 1.16.0", () => {
+    expect(JSON.parse(readFileSync("chrome-extension/manifest.json", "utf8")).version).toBe("1.16.0");
   });
 });
