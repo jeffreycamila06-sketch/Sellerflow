@@ -91,6 +91,19 @@ describe("sql/81 rollback", () => {
     const v68 = s68.slice(s68.indexOf("create or replace function public.admin_parcel_check_verdict("), s68.indexOf("end $$;", s68.indexOf("create or replace function public.admin_parcel_check_verdict(")) + 7);
     expect(norm(rb)).toContain(norm(v68.replace("create or replace function", "create function")));
     expect(rb).toContain("drop table if exists public.store_check_cache_frozen;");
+  });
+  it("fix 4: both files are one transaction with lock_timeout 3 s; the rollback is safe when sql/81 was never applied", () => {
+    for (const f of [fwd, rb]) {
+      const c = code(f).trim();
+      expect(c.indexOf("begin;\nset local lock_timeout = '3s';")).toBeGreaterThan(-1);
+      expect(c.endsWith("commit;")).toBe(true);
+      expect(c.match(/^begin;$/gm)).toHaveLength(1);
+      expect(c.match(/^commit;$/gm)).toHaveLength(1);
+    }
+    // the re-check runs only if the column exists, and BEFORE the old trigger comes back
+    expect(norm(rb)).toContain(norm(`if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'parcel_scans' and column_name = 'store_check_layer') then`));
+    expect(rb.indexOf("where store_check_layer = '冷凍' and status <> 'exported'")).toBeLessThan(rb.indexOf("create or replace function public.parcel_scans_recheck_clears_store_cache()"));
     expect(rb).toContain("drop column if exists store_check_layer;");
   });
 });

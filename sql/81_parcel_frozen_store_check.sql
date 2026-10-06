@@ -30,6 +30,12 @@
 -- 6. The ⟳ Recheck trigger clears the frozen cache for a frozen verdict.
 -- 7. admin_parcel_check_requeue_frozen(): frozen 'unknown' rows (frozen lane was dead) back in the queue.
 
+-- One transaction (fix 4): all of it or nothing. lock_timeout 3 s: if another session holds
+-- parcel_scans, the file stops with an error after 3 s instead of making every check and app
+-- read wait behind it — nothing is changed then; run it again in a quiet moment.
+begin;
+set local lock_timeout = '3s';
+
 insert into public.app_settings (key, value) values ('parcel_check_frozen_enabled', 'false')
 on conflict (key) do nothing;
 
@@ -311,3 +317,5 @@ begin
   return null;
 end;
 $$;
+
+commit;

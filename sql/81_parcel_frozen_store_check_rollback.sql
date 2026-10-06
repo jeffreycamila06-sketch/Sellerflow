@@ -1,10 +1,27 @@
 -- 81 ROLLBACK — back to the sql/68 verdict RPC, the sql/70 pending RPC and the sql/68 Recheck
 -- trigger, and remove the frozen cache + switch. NOT APPLIED — the owner applies it.
--- Run only after every machine is back on extension 1.15.1 (a 1.16.0 machine would call the
--- 8-argument verdict RPC). Frozen verdicts already written stay on their parcels; to have them
--- re-checked the normal way, clear them (last statement).
+-- Best run after every machine is back on 1.15.x: a 1.16.x frozen verdict in flight at that moment
+-- fails once (no 8-argument verdict RPC any more) and is retried the normal way.
+-- Waiting parcels that carry a frozen answer are cleared (first step) and re-checked the normal
+-- way; exported parcels keep what they had (e.g. 'frozen_unavailable', which the app still shows).
+
+-- One transaction (fix 4), lock_timeout 3 s (see sql/81). Safe to run when sql/81 was never
+-- applied: every step is "if exists", and the re-check below runs only if the column exists.
+begin;
+set local lock_timeout = '3s';
 
 update public.app_settings set value = 'false', updated_at = now() where key = 'parcel_check_frozen_enabled';
+
+-- re-check (the normal way) every waiting parcel that got a frozen answer. Runs FIRST, while the
+-- sql/81 Recheck trigger is still in place: it clears the FROZEN cache entry (dropped below
+-- anyway) and leaves the normal cache alone.
+do $$ begin
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'parcel_scans' and column_name = 'store_check_layer') then
+    update public.parcel_scans set store_full_status = null, store_full_at = null
+     where store_check_layer = '冷凍' and status <> 'exported';
+  end if;
+end $$;
 
 drop function if exists public.admin_parcel_check_verdict(uuid, text, text, text, date, text, text, text);
 drop function if exists public.admin_parcel_check_verdict(uuid, text, text, text, date, text, text);
@@ -171,12 +188,11 @@ begin
 end;
 $$;
 
--- re-check (the normal way) every waiting parcel that got a frozen answer
-update public.parcel_scans set store_full_status = null, store_full_at = null
- where store_check_layer = '冷凍' and status <> 'exported';
 
 drop function if exists public.admin_parcel_check_requeue_frozen();
 drop table if exists public.store_check_cache_frozen;
 alter table public.parcel_scans drop constraint if exists parcel_scans_store_check_layer_check;
 alter table public.parcel_scans drop column if exists store_check_layer;
 delete from public.app_settings where key = 'parcel_check_frozen_enabled';
+
+commit;
