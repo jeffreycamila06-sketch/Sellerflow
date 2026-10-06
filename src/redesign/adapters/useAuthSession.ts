@@ -30,6 +30,10 @@ export interface RegisterResult { ok: boolean; error?: string; needsConfirm?: bo
 export interface UseAuthSession {
   status: AuthStatus;
   profile: AccountUser | null;
+  // The signed-in email: the profile's, else the local auth session's (present even when
+  // the profile read failed). Used by gates that must decide from the email alone
+  // (sessionNumberingGate). null when signed out.
+  email: string | null;
   configured: boolean;
   signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
@@ -47,6 +51,7 @@ const AUTH_STORAGE_KEY = "sf_supabase_auth"; // mirror of supabase.ts storageKey
 export function useAuthSession(): UseAuthSession {
   const [status, setStatus] = useState<AuthStatus>(isSupabaseConfigured ? "loading" : "anon");
   const [profile, setProfile] = useState<AccountUser | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const activeRef = useRef(true);
   // The user id whose profile is currently AUTHED (null until then). Backs the
   // same-user guard below — audit finding #1: supabase fires TOKEN_REFRESHED
@@ -57,7 +62,7 @@ export function useAuthSession(): UseAuthSession {
   const authedUserIdRef = useRef<string | null>(null);
 
   // Resolve a session's user id to a real profile (or anon).
-  const loadProfile = useCallback(async (userId: string | null | undefined) => {
+  const loadProfile = useCallback(async (userId: string | null | undefined, email?: string | null) => {
     if (!userId) {
       authedUserIdRef.current = null;
       if (activeRef.current) { setProfile(null); setStatus("anon"); }
@@ -66,6 +71,7 @@ export function useAuthSession(): UseAuthSession {
     const p = await getMyProfile(userId);
     if (!activeRef.current) return;
     authedUserIdRef.current = userId;
+    setSessionEmail(email ?? null);
     setProfile(p);
     setStatus("authed");
   }, []);
@@ -78,7 +84,7 @@ export function useAuthSession(): UseAuthSession {
     // (a) restore the persisted session on load
     void client.auth.getSession().then(({ data }) => {
       if (!activeRef.current) return;
-      void loadProfile(data.session?.user?.id);
+      void loadProfile(data.session?.user?.id, data.session?.user?.email);
     });
 
     // (b) same-tab auth events
@@ -92,7 +98,7 @@ export function useAuthSession(): UseAuthSession {
       // goes through the full loading→loadProfile path below.
       if (session.user.id === authedUserIdRef.current) return;
       setStatus("loading");
-      void loadProfile(session.user.id);
+      void loadProfile(session.user.id, session.user.email);
     });
 
     // (c) cross-tab sync (zone-6): production tab login/logout rewrites the
@@ -101,7 +107,7 @@ export function useAuthSession(): UseAuthSession {
       if (e.key !== AUTH_STORAGE_KEY) return;
       void client.auth.getSession().then(({ data }) => {
         if (!activeRef.current) return;
-        void loadProfile(data.session?.user?.id);
+        void loadProfile(data.session?.user?.id, data.session?.user?.email);
       });
     };
     window.addEventListener("storage", onStorage);
@@ -145,7 +151,7 @@ export function useAuthSession(): UseAuthSession {
   const reloadProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
     const { data } = await supabase.auth.getSession();
-    await loadProfile(data.session?.user?.id);
+    await loadProfile(data.session?.user?.id, data.session?.user?.email);
   }, [loadProfile]);
 
   // Self-serve registration — same path as App.tsx PublicAuth `reg` (738-758).
@@ -196,7 +202,8 @@ export function useAuthSession(): UseAuthSession {
     return { ok: true };
   }, [profile]);
 
-  return { status, profile, configured: isSupabaseConfigured, signIn, signOut, reloadProfile, register, deleteAccount };
+  const email = status === "authed" ? (profile?.email || sessionEmail || null) : null;
+  return { status, profile, email, configured: isSupabaseConfigured, signIn, signOut, reloadProfile, register, deleteAccount };
 }
 
 // ── Pure registration helpers (no Supabase / React — unit-tested) ─────────────

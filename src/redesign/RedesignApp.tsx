@@ -65,6 +65,7 @@ import SessionPickerModal from "./components/SessionPickerModal";
 import OwnerSessionModal from "./components/OwnerSessionModal";
 import EndSessionConfirm from "./components/EndSessionConfirm";
 import { sessionV2Enabled, SESSION_V2_DAYS } from "./adapters/sessionV2";
+import { sessionNumberingGate } from "./adapters/sessionNumberingGate";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { buildMinerRiskMap } from "./adapters/minerRisk";
 import { useMinersReport } from "./adapters/minersReport";
@@ -333,14 +334,20 @@ export default function RedesignApp() {
   // Multi-day live session — window config (read-on-load) still feeds the LEGACY
   // (null-session_id) load path. The session-length pill was removed (sub-step 4);
   // session length is now chosen only in the required picker modal on Connect.
-  const sessionWindow = useSessionWindow(authed);
+  // Session-numbering fix — STAGED (sessionNumberingGate): decided from the signed-in email
+  // only. "on" → the fixed hooks + order gate; "off" → today's path, byte-for-byte;
+  // "wait" (signed in, email not known yet) → the session hooks stay off until it is.
+  const sessionGate = sessionNumberingGate(authed, auth.email);
+  const sessionFix = sessionGate === "on";
+  const sessionHooksOn = authed && sessionGate !== "wait";
+  const sessionWindow = useSessionWindow(sessionHooksOn, sessionFix);
   // Explicit session model — declared BEFORE useLiveSession so its currentSessionId
   // + loaded gate the feed load. Sub-step 3: when a session instance exists, the
   // live feed loads by session_id (stability fix); legacy sellers (null) keep the
   // window/session_date path. `ready` waits for BOTH config reads so the first load
   // picks the correct path once (no legacy-then-session double load).
-  const sessionInstance = useSessionInstance(authed);
-  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId });
+  const sessionInstance = useSessionInstance(sessionHooksOn, sessionFix);
+  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded && sessionGate !== "wait", windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId, fix: sessionFix, sessionKnown: sessionInstance.known, windowKnown: sessionWindow.known });
   // "Same price for all items" — per-seller fixed unit price (DB-backed, cross-device,
   // no auto-clear on new session). Applied at the order call sites below (1-Click / Pin /
   // Auto override the price INPUT; Enterprise pre-fills but the seller-typed price wins).
@@ -601,6 +608,7 @@ export default function RedesignApp() {
   // fan-out. A toast effect below (after tApp exists) converts bumps into the
   // localized "cloud save failed" toast — the local order is kept (see useOrders).
   const [orderWriteErrs, setOrderWriteErrs] = useState(0);
+  const [orderBlocked, setOrderBlocked] = useState(0); // session-numbering gate: an order was refused (toast below)
   const [stockErrs, setStockErrs] = useState(0); // M1 — stock-decrement RPC failure (Auto Mode oversell risk)
   // FAMILY A (#1 durability): the retry outbox for the live_session_orders write.
   // Drains on mount / return-to-visible / a connection rise; idempotent via the
@@ -630,6 +638,9 @@ export default function RedesignApp() {
     onEnsureWindow: () => { void sessionWindow.ensureWindowOpen(); }, // multi-day; N=1 no-op
     enqueueLiveSession: outbox.enqueue,                  // FAMILY A #1 — durable retry (msgId writes)
     isMsgIdOrdered: (m) => liveSession.orderedMsgIds.has(m), // FAMILY A #7 — restored/loaded dedup
+    // Session-numbering fix (gate on only): no order while the board is pending / failed /
+    // unknown. Off → not passed → no gate (today's behaviour).
+    ...(sessionFix ? { canOrder: liveSession.canOrder, onOrderBlocked: () => setOrderBlocked((c) => c + 1) } : {}),
   });
   // Orders tab + Dashboard summary now share ONE source (the live session), so a
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
@@ -928,6 +939,13 @@ export default function RedesignApp() {
     prevOrderWriteErrs.current = orderWriteErrs;
     setToast({ msg: tApp.rd_ord_save_failed, kind: "err" });
   }, [orderWriteErrs, tApp]);
+  // Session-numbering gate (fix on only): an order was refused while the board was not ready.
+  const prevOrderBlocked = useRef(0);
+  useEffect(() => {
+    if (orderBlocked <= prevOrderBlocked.current) return;
+    prevOrderBlocked.current = orderBlocked;
+    setToast({ msg: tApp.rd_sess_order_blocked, kind: "err" });
+  }, [orderBlocked, tApp]);
   const prevStockErrs = useRef(0); // M1 — stock-decrement RPC failure (Auto Mode oversell risk)
   useEffect(() => {
     if (stockErrs <= prevStockErrs.current) return;
@@ -1807,6 +1825,16 @@ export default function RedesignApp() {
           )}
           {screen === "signup" && (
             <Signup onBack={() => setScreen("login")} onLegal={() => setScreen("legal")} onRegister={auth.register} />
+          )}
+          {screen === "dashboard" && sessionFix && (liveSession.loadStatus === "failed" || liveSession.loadStatus === "unknown") && (
+            <div role="alert" data-testid="sess-gate-notice" style={{ position: "fixed", left: 12, right: 12, bottom: "calc(84px + env(safe-area-inset-bottom))", zIndex: 1200, background: "var(--danger)", color: "#fff", borderRadius: 14, padding: "12px 14px", boxShadow: "0 8px 24px rgba(0,0,0,.3)", display: "flex", alignItems: "center", gap: 10, maxWidth: 520, margin: "0 auto" }}>
+              <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{tApp.rd_sess_gate_notice}</div>
+              <button
+                onClick={() => { sessionInstance.retry(); sessionWindow.retry(); liveSession.retry(); }}
+                style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 10, border: "none", background: "#fff", color: "var(--danger)", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                data-testid="sess-gate-retry"
+              >{tApp.rd_sess_gate_retry}</button>
+            </div>
           )}
           {screen === "dashboard" && (
             <Dashboard
