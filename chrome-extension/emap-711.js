@@ -86,11 +86,9 @@
   // MAIN-world value (runtime `window.eshopGuid`) via emap-guid-main.js — the
   // helper replies to a request event; also caches its unsolicited load-time reply.
   let mainGuid = { guid: null, source: null };
-  let mainMode = null; // 1.16.0: the page's mode globals as the MAIN-world helper saw them
   document.addEventListener("__sfl_emap_guid", (e) => {
     const d = e && e.detail;
     if (d && typeof d.guid === "string" && d.guid.length >= 8) mainGuid = { guid: d.guid, source: d.source || "main" };
-    if (d && d.mode && typeof d.mode === "object") mainMode = d.mode;
   });
   function mainWorldGuid() {
     if (mainGuid.guid) return Promise.resolve(mainGuid);
@@ -116,41 +114,12 @@
     return { guid: m.guid, source: m.source, candidates: m.guid ? 1 : 0 };
   }
 
-  // ── 1.16.0 page MODE: normal vs FROZEN ─────────────────────────────────────
-  // Read ONLY from the page itself (text first, the MAIN-world globals as the fallback):
-  //   normal 賣貨便 map:     storecategory "" · eshopparid "7M0" · eshopid "7M0"
-  //   7-11 frozen picker:   storecategory 27 · eshopparid 870  · eshopid 870
-  // A tab is FROZEN only when its own page says storecategory = 27 (7-11's frozen category)
-  // and carries both eshop values. The frozen question then sends exactly what the page says.
-  const FROZEN_CATEGORY = "27";
-  const MODE_NAMES = ["storecategory", "eshopparid", "eshopid"];
-  function modeFromText(doc) {
-    const out = { storecategory: null, eshopparid: null, eshopid: null };
-    let text = "";
-    try { const scripts = doc.scripts || doc.querySelectorAll("script"); for (let i = 0; i < scripts.length; i++) text += String(scripts[i].textContent || "") + "\n"; } catch { /* no scripts */ }
-    for (const name of MODE_NAMES) {
-      const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_-]+))`).exec(text);
-      if (m) out[name] = m[1] ?? m[2] ?? m[3] ?? null;
-    }
-    return out;
-  }
-  function pageMode() {
-    const t = modeFromText(document);
-    const out = {};
-    for (const name of MODE_NAMES) {
-      const v = t[name] != null ? t[name] : (mainMode && mainMode[name] != null ? String(mainMode[name]) : null);
-      out[name] = v == null ? null : String(v).trim();
-    }
-    return out;
-  }
-  const isFrozenMode = (m) => Boolean(m && m.storecategory === FROZEN_CATEGORY && m.eshopparid && m.eshopid);
-
   // One diagnostic line per page life (the owner reads it in the tab console).
   let diagLogged = false;
   function diag(g, endpoint) {
     if (diagLogged) return;
     diagLogged = true;
-    console.log(`[PC-EMAP] ${sectionOf(location.pathname)}: guid candidates=${g.candidates} source=${g.source || "none"} endpoint=${endpoint || "none"} path=${location.pathname}`); // never the full address (its query can hold the session value)
+    console.log(`[PC-EMAP] ${sectionOf(location.pathname)}: guid candidates=${g.candidates} source=${g.source || "none"} endpoint=${endpoint || "none"} url=${location.href}`);
   }
 
   // ── byIDData ───────────────────────────────────────────────────────────────
@@ -187,8 +156,6 @@
       if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false };
       if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500 };
       const text = await r.text();
-      // 1.16.0: 7-11 "系統忙碌中 E0014" (busy) is transient — back off, never a give-up, never OK
-      if (/E0014/.test(String(text))) return { verdict: null, reason: `${endpoint} busy (E0014)`, transient: true, busy: true };
       const v = parseByIdData(text);
       if (v) return { verdict: v, reason: "", transient: false };
       const head = String(text).replace(/\s+/g, " ").slice(0, 60);
@@ -206,61 +173,13 @@
     if (!/^\d{6}$/.test(String(storeId || ""))) return { store_full_status: "unknown", store_reason: "store id not 6 digits", endpoint: knownEndpoint, transient: false };
     if (!guid) return { store_full_status: "unknown", store_reason: "eshopGuid not found on emap page", endpoint: knownEndpoint, transient: false };
     const order = knownEndpoint ? [knownEndpoint, ...endpointCandidates(location.pathname).filter((p) => p !== knownEndpoint)] : endpointCandidates(location.pathname);
-    const reasons = []; let allTransient = true; let busy = false;
+    const reasons = []; let allTransient = true;
     for (const endpoint of order) {
       const r = await postByIdData(endpoint, storeId, guid);
       if (r.verdict) { knownEndpoint = endpoint; return { ...r.verdict, endpoint, transient: false }; }
       reasons.push(r.reason); if (!r.transient) allTransient = false;
-      if (r.busy) { busy = true; break; } // 7-11 is busy — don't hit the other endpoint
     }
-    return { store_full_status: "unknown", store_reason: reasons.join(" · "), endpoint: knownEndpoint, transient: allTransient, busy };
-  }
-
-  // ── 1.16.0 FROZEN check ───────────────────────────────────────────────────
-  // STRICT: only "OK;<the store we asked>+…+enable|disable|close+…" or the bare "NO2" is an
-  // answer. A different store number (7-11's "nearest store" reply), "I0100" (a session that
-  // is not in frozen mode), anything else → null → 'unknown'. E0014 → busy (transient).
-  //   enable → 'open' (OK for frozen) · disable → 'frozen_unavailable' · close → 'company'
-  //   NO2 → 'not_found'
-  function parseFrozenByIdData(text, storeId) {
-    const raw = String(text).trim();
-    if (raw === "NO2") return { store_full_status: "not_found", store_reason: "" };
-    if (!raw.startsWith("OK;")) return null;
-    const rec = raw.slice(3).split(";")[0];
-    const f = rec.split("+");
-    if (f[0] !== String(storeId)) return null; // an answer about ANOTHER store is never this store's answer
-    if (f[3] === "enable") return { store_full_status: "open", store_reason: "" };
-    if (f[3] === "disable") return { store_full_status: "frozen_unavailable", store_reason: "" };
-    if (f[3] === "close") return { store_full_status: "company", store_reason: "" };
-    return null;
-  }
-  async function checkFrozenStore(storeId, guid, m) {
-    if (!/^\d{6}$/.test(String(storeId || ""))) return { store_full_status: "unknown", store_reason: "store id not 6 digits", transient: false };
-    if (!isFrozenMode(m)) return { store_full_status: "unknown", store_reason: "not a frozen E-Map page (mode values missing)", transient: false };
-    if (!guid) return { store_full_status: "unknown", store_reason: "session value not found on the frozen page", transient: false };
-    const endpoint = `/${sectionOf(location.pathname)}/byIDData.aspx`;
-    // same field order as the normal question; cate / eshopparid / eshopid exactly as the page says
-    const body = new URLSearchParams({
-      mode: "", k: String(storeId), cate: m.storecategory, eshopparid: m.eshopparid, eshopid: m.eshopid,
-      multiple_type: "", Guid: guid, Nan4AjaxTrickNumber: String(Date.now()),
-    }).toString();
-    try {
-      const r = await fetchWithTimeout(`${endpoint}?rnd=${Math.random()}`, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" },
-        body,
-      });
-      if (/\/error\.aspx/i.test(String(r.url || ""))) return { store_full_status: "unknown", store_reason: "frozen session bounced to error.aspx", transient: false };
-      if (!r.ok) return { store_full_status: "unknown", store_reason: `frozen check HTTP ${r.status}`, transient: r.status >= 500 };
-      const text = await r.text();
-      if (/E0014/.test(String(text))) return { store_full_status: "unknown", store_reason: "7-11 busy (E0014)", transient: true, busy: true };
-      const v = parseFrozenByIdData(text, storeId);
-      if (v) return { ...v, transient: false };
-      return { store_full_status: "unknown", store_reason: `frozen check: not a clean answer for ${storeId} (${String(text).trim().length} chars)`, transient: false };
-    } catch (e) {
-      const aborted = e && e.name === "AbortError";
-      return { store_full_status: "unknown", store_reason: aborted ? "frozen check timeout (10s)" : "frozen check network error", transient: true };
-    }
+    return { store_full_status: "unknown", store_reason: reasons.join(" · "), endpoint: knownEndpoint, transient: allTransient };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -273,30 +192,16 @@
         let g = { guid: null, source: null, candidates: 0 };
         try { g = await getEshopGuid(); } catch { /* fail-safe below */ }
         diag(g, knownEndpoint);
-        const m = pageMode();
-        sendResponse({ ok: true, script: "emap", guidFound: g.guid !== null, guidSource: g.source, guidCandidates: g.candidates, section: sectionOf(location.pathname), endpoint: knownEndpoint, path: location.pathname, frozen: isFrozenMode(m), cate: m.storecategory, eshopparid: m.eshopparid, eshopid: m.eshopid });
-      })().catch(() => sendResponse({ ok: true, script: "emap", guidFound: false, guidSource: null, guidCandidates: 0, section: sectionOf(location.pathname), endpoint: knownEndpoint, path: location.pathname }));
-      return true;
-    }
-    if (message?.type === "PC_CHECK_STORE_FROZEN" && message.row) {
-      (async () => {
-        const g = await getEshopGuid();
-        const m = pageMode();
-        const res = await checkFrozenStore(message.row.store_id, g.guid, m);
-        sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, transient: Boolean(res.transient), busy: Boolean(res.busy), guidFound: g.guid !== null, frozenPage: isFrozenMode(m), section: sectionOf(location.pathname) });
-      })().catch(() => sendResponse({ ok: true, store_full_status: "unknown", store_reason: "frozen check threw", transient: true, busy: false, guidFound: false, frozenPage: false, section: sectionOf(location.pathname) }));
+        sendResponse({ ok: true, script: "emap", guidFound: g.guid !== null, guidSource: g.source, guidCandidates: g.candidates, section: sectionOf(location.pathname), endpoint: knownEndpoint, url: location.href });
+      })().catch(() => sendResponse({ ok: true, script: "emap", guidFound: false, guidSource: null, guidCandidates: 0, section: sectionOf(location.pathname), endpoint: knownEndpoint, url: location.href }));
       return true;
     }
     if (message?.type !== "PC_CHECK_STORE" || !message.row) return false;
-    if (isFrozenMode(pageMode())) { // 1.16.0: the normal question is never asked on a frozen page
-      sendResponse({ ok: true, store_full_status: "unknown", store_reason: "frozen E-Map page — normal check refused", transient: true, guidFound: false, guidSource: null, endpoint: knownEndpoint, section: sectionOf(location.pathname) });
-      return true;
-    }
     (async () => {
       const g = await getEshopGuid();
       const res = await checkFullStore(message.row.store_id, g.guid);
       diag(g, res.endpoint);
-      sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, transient: Boolean(res.transient), busy: Boolean(res.busy), guidFound: g.guid !== null, guidSource: g.source, endpoint: res.endpoint, section: sectionOf(location.pathname) });
+      sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, transient: Boolean(res.transient), guidFound: g.guid !== null, guidSource: g.source, endpoint: res.endpoint, section: sectionOf(location.pathname) });
     })().catch(() => sendResponse({ ok: true, store_full_status: "unknown", store_reason: "emap check threw", transient: true, guidFound: false, guidSource: null, endpoint: knownEndpoint, section: sectionOf(location.pathname) }));
     return true;
   });

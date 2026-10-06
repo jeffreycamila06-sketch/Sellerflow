@@ -4606,3 +4606,19 @@ branch when the extension reloaded.
 - Before any merge, check `git -C ~/Sellerflow status -sb` shows `## main`.
 - If Chrome's "Loaded from" (chrome://extensions → Details) is ever not
   `~/Sellerflow/chrome-extension`, tell Jeff.
+
+## ⏸ PARKED (2026-10-06) — automated FROZEN (冷凍) store check
+Parked until the owner is back from his trip. `main` = exactly what ran before the frozen merge
+(revert of merge `5ed43c1` on `claude/park-frozen-check`; extension **1.15.1**; sql/81 was NEVER
+applied — nothing to undo in the DB). Do NOT delete the two branches:
+- **`claude/frozen-store-check`** — the original build (extension 1.16.0, sql/81 + rollback, Parcel
+  Scan "Not available for frozen right now" label/export exclusion, review fixes).
+- **`claude/frozen-store-check-2`** — the audit fix batch on top (extension 1.16.1): frozen work only
+  for machines that send `p_frozen_capable`, server-side reset of non-frozen results at switch-on,
+  one E0014 pause for all store requests, dead-lane → 'unknown' + `admin_parcel_check_requeue_frozen`,
+  sql/81 + rollback in one transaction with lock_timeout, session-only tab retirement, etc.
+- **OPEN BLOCKER:** the single-flight `pcRunOnce` (fix 10 on `-2`) can FREEZE THE LOOP — if one pass
+  never settles (a hung await), every later tick and "Check now" joins that same promise forever.
+  Needs a timeout / watchdog before anything ships.
+- **Re-merging requires a REVERT OF THE PARK REVERT first** (git treats `5ed43c1`'s changes as already
+  merged; merging the branches again without reverting the revert brings back nothing of it).

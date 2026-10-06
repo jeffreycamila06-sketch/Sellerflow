@@ -258,21 +258,3 @@ describe("sql/79 mirror", () => {
     expect(code.indexOf("add column if not exists temp_layer")).toBeLessThan(code.indexOf("create table if not exists public.parcel_frozen_access"));
   });
 });
-
-describe("export: a frozen_unavailable verdict keeps the parcel out (extension 1.16.0)", () => {
-  it("excluded with its own reason; other rows unaffected", () => {
-    const split = splitScansForExport([row({ id: "f", tempLayer: TEMP_FROZEN, storeFullStatus: "frozen_unavailable" }), row({ id: "d" })], 38, CFG);
-    expect(split.attention.map((a) => [a.row.id, a.reason])).toEqual([["f", "frozen_unavailable"]]);
-    expect(split.ready.map((r) => r.id)).toEqual(["d"]);
-  });
-});
-
-describe("updateParcelScan: layer change + store reset are ONE update (atomic)", () => {
-  it("temp_layer and the cleared store result travel in the same patch", async () => {
-    const fields = { name: "A", phone: "0912345678", store_id: "266402", amount: 100, notes: "@a" };
-    await updateParcelScan("id1", fields, { storeFull: true }, TEMP_FROZEN);
-    const ups = db.calls.filter((c) => c.op === "update");
-    expect(ups).toHaveLength(1);
-    expect(ups[0].args[0]).toMatchObject({ temp_layer: "冷凍", store_full_status: null, store_full_at: null });
-  });
-});

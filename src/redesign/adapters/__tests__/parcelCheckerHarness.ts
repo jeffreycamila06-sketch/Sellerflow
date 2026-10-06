@@ -16,7 +16,7 @@ export const PENDING_ROW = {
   queue_depth: 1, created_at: new Date(Date.now() - 4000).toISOString(),
 };
 
-export type EmapTab = { id: number; url: string; guid: boolean; discarded?: boolean; frozen?: boolean }; // frozen = the page says 27 / 870 / 870 (1.16.0)
+export type EmapTab = { id: number; url: string; guid: boolean; discarded?: boolean };
 export type BootOpts = {
   multiSeller?: boolean;
   rows?: unknown[];
@@ -35,7 +35,6 @@ export type BootOpts = {
   onPickStoreClick?: (emapTabs: EmapTab[]) => { clicked: boolean; reason?: string } | void; // what the click does to the tab set
   maintenance?: boolean;          // 1.14.6: honour the 01:00–05:00 Taipei window (default OFF so suites are clock-independent)
   storeTransient?: boolean;       // PC_CHECK_STORE misses are flagged transient (timeout / network)
-  storeBusy?: boolean;            // 1.16.0: PC_CHECK_STORE answers 7-11 busy (E0014)
   requeueOk?: boolean;            // admin_parcel_check_requeue answers 200 (default true)
   // 1.15.0: the lease RPC (admin_parcel_worker_lease). Gets the parsed body; returns the
   // JSON to answer with (+ optional HTTP status), or "throw" for a network error.
@@ -44,21 +43,16 @@ export type BootOpts = {
   legacyRows?: unknown[];                   // rows the legacy lane's GET parcel_scans returns (default [])
   initialStorage?: Record<string, unknown>; // extra chrome.storage.local keys (e.g. a persisted pc_worker)
   config?: Record<string, unknown>;         // extra pc_config fields (e.g. deviceName)
-  // 1.16.0 frozen check: the PC_CHECK_STORE_FROZEN reply (default "open"), and what opening the
-  // 7-11 frozen picker does (e.g. push a frozen E-Map tab). Absent → the tab never lands.
-  frozenReply?: (row?: { id?: string; store_id?: string }, tabId?: number) => { status: string; busy?: boolean; transient?: boolean; reason?: string } | null;
-  onCreate?: (url: string, emapTabs: EmapTab[]) => EmapTab | void;
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const src = readFileSync("chrome-extension/background.js", "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[], created: [] as { url: string; active?: boolean }[], sleeps: [] as number[] };
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
     ...(opts.initialStorage ?? {}),
   };
-  const removedListeners: ((id: number) => void)[] = []; // chrome.tabs.onRemoved (fired by tabs.remove)
   const emapTabs: EmapTab[] = opts.emapTabs ?? (opts.emapTab === false ? [] : [{ id: 3, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true }]);
   const tabFor = (patterns: string[] | string) => {
     const p = (Array.isArray(patterns) ? patterns[0] : patterns) || ""; // chrome.tabs.query accepts a string or an array
@@ -82,20 +76,12 @@ export function bootWorker(opts: BootOpts = {}) {
         if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: opts.sflToken ? opts.sflToken() : fakeJwt() });
         if (msg.type === "SFL_REFRESH_TOKEN") { const r = opts.onSflRefresh ? opts.onSflRefresh() : { token: fakeJwt(), hadSession: true }; return cb({ ok: true, token: r.token ?? null, hadSession: r.hadSession === undefined ? null : r.hadSession }); }
         if (msg.type === "PC_PING") return cb({ ok: true, script: "x" });
-        if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, script: "emap", guidFound: Boolean(emap && emap.guid), url: emap ? emap.url : "", ...(emap && emap.frozen ? { frozen: true, cate: "27", eshopparid: "870", eshopid: "870" } : { frozen: false }) });
-        if (msg.type === "PC_CHECK_STORE_FROZEN") {
-          if (!emap || !emap.frozen) return cb({ ok: true, store_full_status: "unknown", store_reason: "not a frozen E-Map page (mode values missing)", transient: false, busy: false });
-          const r = opts.frozenReply ? opts.frozenReply(msg.row, id) : { status: "open" };
-          if (!r) return cb(null);
-          return cb({ ok: true, store_full_status: r.status, store_reason: r.reason || "", transient: Boolean(r.transient), busy: Boolean(r.busy), guidFound: true, frozenPage: true });
-        }
+        if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, script: "emap", guidFound: Boolean(emap && emap.guid), url: emap ? emap.url : "" });
         if (msg.type === "PC_CLICK_PICK_STORE") {
           const r = opts.onPickStoreClick ? opts.onPickStoreClick(emapTabs) : undefined;
           return cb(r ? { ok: true, clicked: r.clicked, reason: r.reason || "", text: "選擇取貨門市" } : { ok: true, clicked: true, reason: "", text: "選擇取貨門市" });
         }
         if (msg.type === "PC_CHECK_STORE") {
-          if (emap && emap.frozen) return cb({ ok: true, store_full_status: "unknown", store_reason: "frozen E-Map page — normal check refused", transient: true });
-          if (opts.storeBusy) return cb({ ok: true, store_full_status: "unknown", store_reason: "/ecmap/byIDData.aspx busy (E0014)", transient: true, busy: true, guidFound: true });
           const v = emap && emap.guid ? (opts.storeVerdict ? opts.storeVerdict(msg.row) : "open") : "unknown";
           return cb({ ok: true, store_full_status: v, store_reason: v === "unknown" ? "eshopGuid not found on emap page" : "", guidFound: Boolean(emap && emap.guid), transient: Boolean(opts.storeTransient) && v === "unknown" });
         }
@@ -112,15 +98,7 @@ export function bootWorker(opts: BootOpts = {}) {
       },
       update: (id: number, props: unknown, cb?: () => void) => { calls.update.push({ id, props }); cb?.(); },
       reload: (id: number) => { calls.reload.push(id); },
-      create: (props: { url: string; active?: boolean }, cb?: (t: { id: number }) => void) => {
-        calls.created.push({ url: props.url, active: props.active });
-        const t = opts.onCreate ? opts.onCreate(props.url, emapTabs) : undefined;
-        const id = t ? t.id : 900 + calls.created.length;
-        if (t) emapTabs.push(t);
-        cb?.({ id });
-      },
-      remove: (id: number, cb?: () => void) => { calls.removed.push(id); const i = emapTabs.findIndex((t) => t.id === id); if (i >= 0) emapTabs.splice(i, 1); for (const l of removedListeners) l(id); cb?.(); },
-      onRemoved: { addListener: (l: (id: number) => void) => { removedListeners.push(l); } },
+      remove: (id: number, cb?: () => void) => { calls.removed.push(id); const i = emapTabs.findIndex((t) => t.id === id); if (i >= 0) emapTabs.splice(i, 1); cb?.(); },
       onUpdated: { addListener: vi.fn() }, onCreated: { addListener: vi.fn() },
     },
   };
@@ -144,7 +122,7 @@ export function bootWorker(opts: BootOpts = {}) {
   };
   // setTimeout: the row-gap/health sleeps (<=2s) resolve immediately; the boot
   // schedule (0) and the ~5s re-arm are recorded, NOT run — the test drives ticks.
-  const setTimeout = (fn: () => void, ms: number) => { if (ms > 0 && ms <= 2000) { calls.sleeps.push(ms); fn(); } else { calls.scheduled.push(ms); calls.timers.push({ ms, fn }); } return 1; };
+  const setTimeout = (fn: () => void, ms: number) => { if (ms > 0 && ms <= 2000) fn(); else { calls.scheduled.push(ms); calls.timers.push({ ms, fn }); } return 1; };
   const now = opts.now;
   const DateCtor = now
     ? new Proxy(Date, { get: (t, k) => (k === "now" ? now : Reflect.get(t, k)), construct: (t, args) => new t(...(args.length ? (args as [number]) : [now()] as [number])) })
