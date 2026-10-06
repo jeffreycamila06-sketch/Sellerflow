@@ -155,7 +155,8 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     // 1.14.0: the keepalive runs from pcRunOnce (the tick) — independent of the
     // lane, the SFL token and the pending RPC; the lane only records the idle flag
     // BEFORE its empty-rows return (an empty queue IS the idle case).
-    const flag = multi.indexOf("pcEv.lastAnyNeedStore = rows.some((r) => r && r.need_store);");
+    // 1.16.0: frozen rows are served by the frozen tab — only NORMAL rows hold off the normal keepalive
+    const flag = multi.indexOf("pcEv.lastAnyNeedStore = rows.some((r) => r && r.need_store && !r.frozen);");
     const emptyReturn = multi.indexOf("if (!rows.length) return;");
     expect(flag).toBeGreaterThan(-1);
     expect(flag).toBeLessThan(emptyReturn);
@@ -168,7 +169,7 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(bg).toContain("chrome.tabs.update(tabId, { autoDiscardable: false }");
     const heal = bg.slice(bg.indexOf("async function pcHealTab"), bg.indexOf("function pcTokenExpired"));
     expect(heal).toContain("pcNoDiscard(tab.id);");
-    expect(bg).toContain('"emap-711.js", true)'); // Layer-1 mistake NOT repeated
+    expect(bg).toContain('"emap-711.js", true, pcFrozenTabIds())'); // Layer-1 mistake NOT repeated (reload still allowed; 1.16.0: frozen tabs skipped)
   });
 
   it("ACCURATE emap session popup — DISPLAY-ONLY: red only when a reload landed on error.aspx, amber only when no tab; never writes app_settings / never gates the RPC", () => {
@@ -204,7 +205,8 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_check_verdict");
     // 1.14.6: each half runs only when needed AND not in per-row backoff;
     // 1.14.7 (H2): AND only when its tab exists (a missing tab never eats a slot)
-    expect(multi).toContain("const doStore = Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);");
+    // 1.16.0: a frozen row never takes the normal question; for every normal row the condition is unchanged
+    expect(multi).toContain("const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);");
     expect(multi).toContain("const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && !phoneStalled && (!bo || Date.now() >= bo.phoneNextAt);");
     expect(multi).toContain("if (doStore && emapTabId)");
     expect(multi).toContain("if (doPhone && myshipTabId)");
@@ -217,12 +219,19 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     // may only come from a content-script RESPONSE, never our own tab absence.
     // 1.14.6: the ONLY store 'unknown' is the give-up after PC_STORE_GIVE_UP real
     // attempts, inside the branch that ran with a live E-Map tab; the phone half never.
-    expect(multi.split('storeStatus = "unknown"').length - 1).toBe(1);
+    // 1.16.0: two give-ups now — the normal E-Map tab's and the frozen tab's — each ONLY inside
+    // the branch that ran with that live tab, after PC_STORE_GIVE_UP real attempts.
+    expect(multi.split('storeStatus = "unknown"').length - 1).toBe(2);
     const tabBranch = multi.indexOf("if (doStore && emapTabId)");
     const giveUp = multi.indexOf('storeStatus = "unknown"');
     expect(tabBranch).toBeGreaterThan(-1);
     expect(giveUp).toBeGreaterThan(tabBranch);
     expect(multi.slice(tabBranch, giveUp)).toContain("if (b.storeFails >= PC_STORE_GIVE_UP) {");
+    const frozenBranch = multi.indexOf("if (doFrozenStore && pcFrz.tabId)");
+    const frozenGiveUp = multi.indexOf('storeStatus = "unknown"', giveUp + 1);
+    expect(frozenBranch).toBeGreaterThan(giveUp);
+    expect(frozenGiveUp).toBeGreaterThan(frozenBranch);
+    expect(multi.slice(frozenBranch, frozenGiveUp)).toContain("if (b.storeFails >= PC_STORE_GIVE_UP) {");
     expect(multi).not.toContain('phoneStatus = "unknown"');
     expect(multi).toContain("if (storeStatus !== null || phoneStatus !== null)");
   });

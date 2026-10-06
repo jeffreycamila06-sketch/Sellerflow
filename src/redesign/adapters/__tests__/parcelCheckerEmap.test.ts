@@ -235,3 +235,17 @@ describe("emap-711 1.14.8 — byIDData 'close' and 'NO2'", () => {
     }
   });
 });
+
+describe("1.16.0 logging fix — never the full address (its query can carry the session value)", () => {
+  it("the page log and the probe reply carry the path only, no query", async () => {
+    const SECRET = "SECRET-GUID-IN-QUERY-0001";
+    const { send, calls } = loadEmap(ECMAP_HTML, `https://emap.unipcsc.com.tw/ecmap/default.aspx?eshopGuid=${SECRET}&x=1`);
+    const probe = await send({ type: "PC_EMAP_PROBE" });
+    await send({ type: "PC_CHECK_STORE", row: { store_id: "198002" } });
+    expect(probe).not.toHaveProperty("url");
+    expect(probe.path).toBe("/ecmap/default.aspx");
+    const all = calls.logs.join("\n") + JSON.stringify(probe);
+    for (const bad of [SECRET, "?", "eshopGuid=", "c4e1b2a0-1111-2222-3333-444455556666"]) expect(all, bad).not.toContain(bad);
+    expect(calls.logs.some((l) => /path=\/ecmap\/default\.aspx/.test(l))).toBe(true);
+  });
+});

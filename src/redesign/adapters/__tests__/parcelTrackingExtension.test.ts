@@ -130,7 +130,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.15.1"); // 1.15.1 = faster degraded (no_tab 60 s / dead 120 s); 1.15.0 = two-machine failover (lease, sql/71); 1.14.9 = faster phone retry on token-GET timeouts; 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
+    expect(manifest.version).toBe("1.16.0"); // 1.16.0 = frozen (冷凍) store check in a separate frozen E-Map tab; 1.15.1 = faster degraded (no_tab 60 s / dead 120 s); 1.15.0 = two-machine failover (lease, sql/71); 1.14.9 = faster phone retry on token-GET timeouts; 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
     expect(manifest.permissions).toContain("scripting");
   });
 
@@ -156,7 +156,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   it("the SFL tab is NEVER auto-reloaded (live-session safety), myship/emap are", () => {
     expect(bg).toContain('"sellerflow-bridge.js", false');                       // allowReload=false
     expect(bg).toContain('pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true)');
-    expect(bg).toContain('"emap-711.js", true)');
+    expect(bg).toContain('"emap-711.js", true, pcFrozenTabIds())'); // 1.16: heal skips the frozen tab
     // exactly ONE reload site (pcHealTab, behind the allowReload gate, discarded tabs
     // only). The 1.14.2 emap session recovery is a GET re-navigation (tabs.update
     // {url}) — tabs.reload on the POST-opened E-Map tab pops Chrome's "Confirm Form

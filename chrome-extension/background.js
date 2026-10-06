@@ -54,6 +54,13 @@ async function pcStatus(patch) {
   await pcSet(PC_STATUS_KEY, { ...cur, ...patch });
 }
 
+// A tab address for LOG LINES: origin + path only. The query string can carry the E-Map
+// session value (eshopGuid) — never log or store it (1.16.0 logging fix).
+function pcSafeUrl(u) {
+  if (!u) return "";
+  try { const x = new URL(String(u)); return `${x.origin}${x.pathname}`; } catch { return String(u).split(/[?#]/)[0]; }
+}
+
 // Find a tab by URL prefix list; returns the first tab id or null.
 function pcFindTab(patterns) {
   return new Promise((resolve) => {
@@ -70,9 +77,13 @@ function pcFindTab(patterns) {
 // auto-reload there could kill a live session; clicking the tab un-discards
 // it, which is what the popup now says); alive-but-dead script → re-inject
 // via chrome.scripting (double-injection guarded in each content script).
-function pcFindTabInfo(patterns) {
+// skipIds (1.16.0): tab ids never to return (the frozen E-Map tabs) — the first OTHER match wins.
+function pcFindTabInfo(patterns, skipIds) {
   return new Promise((resolve) => {
-    chrome.tabs.query({ url: patterns }, (tabs) => resolve(tabs && tabs.length ? tabs[0] : null));
+    chrome.tabs.query({ url: patterns }, (tabs) => {
+      const list = (tabs || []).filter((t) => !(skipIds && skipIds.has(t.id)));
+      resolve(list.length ? list[0] : null);
+    });
   });
 }
 async function pcPing(tabId) {
@@ -100,8 +111,8 @@ function pcNoDiscard(tabId) {
 
 // → { state, tabId }: 'ok' | 'no_tab' | 'asleep' (discarded SFL — click it) |
 //   'healing' (reload/inject fired; next poll confirms) | 'dead_script'.
-async function pcHealTab(patterns, file, allowReload) {
-  const tab = await pcFindTabInfo(patterns);
+async function pcHealTab(patterns, file, allowReload, skipIds) {
+  const tab = await pcFindTabInfo(patterns, skipIds);
   if (!tab) return { state: "no_tab", tabId: null };
   pcNoDiscard(tab.id);
   if (await pcPing(tab.id)) return { state: "ok", tabId: tab.id };
@@ -301,9 +312,11 @@ async function pcPoll(pass) {
   // (same /ecmap/default.aspx page + byIDData.aspx endpoint, verified live —
   // the content script's RELATIVE fetch follows whichever origin it runs on).
   // The old domain still serves, so BOTH are matched.
-  const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true);
+  // 1.16.0: the health check heals / pins the NORMAL E-Map tab — never a frozen one (else the
+  // normal tab could lose its no-discard pin while the frozen tab took its place here).
+  const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true, pcFrozenTabIds());
   const myshipTabId = myshipHealth.tabId;
-  const emapTabId = emapHealth.tabId;
+  let emapTabId = emapHealth.tabId;
   // 1.14.0: the per-tab status keys (myship / emap / emapSession) have ONE writer
   // — pcRefreshTabStatus in pcTick, evidence-based. Here we only record health.
   pcEv.health = { myship: myshipHealth, emap: emapHealth };
@@ -349,6 +362,10 @@ async function pcPoll(pass) {
 
   const rows = res.rows.filter((row) => row && row.id && !pcInFlight.has(row.id));
   if (!rows.length) { await pcStatus({ lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
+  // 1.16.0: the legacy lane never asks the normal question on a frozen tab. The pick learns which
+  // tabs are frozen (their own page says so); if the healed tab is one, use the normal pick.
+  try { await pcPickEmapTab(); } catch { /* keep the healed tab */ }
+  if (emapTabId != null && pcFrozenTabIds().has(emapTabId)) emapTabId = (pcEv.emap.tabId != null && !pcEv.emap.error) ? pcEv.emap.tabId : null;
 
   // TWO different origins: the FULL-STORE lookup runs in the emap tab
   // (byIDData + eshopGuid live there), the RESTRICTED-PHONE check in the myship tab.
@@ -449,6 +466,33 @@ const PC_RECOVER_MIN_SPAN_MS = 2 * 60 * 1000;
 const PC_HEARTBEAT_EVERY = 12;                // ~60s at the 5s cadence
 const PC_WORKER_STATE_PUSH_MS = 60 * 1000;    // Admin-card mirror cadence (also on change)
 let pcLastKeepaliveAt = 0;
+// ── 1.16.0 FROZEN (冷凍) store check ─────────────────────────────────────────
+// 7-11 answers the store question per MODE, so a frozen parcel is asked in a SEPARATE
+// frozen E-Map tab, opened from 7-11's public frozen picker ONLY while frozen rows wait
+// (the server switch app_settings parcel_check_frozen_enabled decides — rows arrive with
+// frozen=true only when it is on). No frozen keepalive; the tab we opened is closed after
+// 10 min with no frozen row waiting. One frozen request at a time, ≥ 3 s apart. E0014
+// (7-11 busy) on either tab is transient: back off, never a give-up, never OK.
+const PC_FROZEN_PICKER_URL = "https://myship2.7-11.com.tw/Home/FreezeStoreLookup/?customType=Receiver&eshopid=8Q7";
+const PC_FROZEN_GAP_MS = 3000;                 // ≥ 3 s between frozen requests
+const PC_FROZEN_IDLE_CLOSE_MS = 10 * 60 * 1000; // close the tab we opened after 10 min unused
+const PC_FROZEN_OPEN_WAIT_MS = 60 * 1000;       // give a just-opened tab 1 min to land before another open
+const PC_FROZEN_MAX_OPENS = 2;                  // opens per episode (a frozen verdict ends the episode)
+const PC_FROZEN_DEAD_PAUSE_MS = 30 * 60 * 1000; // after that, wait 30 min before trying again
+const PC_BUSY_BACKOFF_MS = 60 * 1000;           // E0014: wait 1 min, never counted toward a give-up
+const PC_FROZEN_VERDICTS = ["open", "frozen_unavailable", "company", "not_found"];
+// ownedTabId = the tab WE opened: kept while it is still landing (on the 7-11 picker /
+// redirect, not yet an E-Map page) and forgotten only when the tab itself is gone
+// (tabs.onRemoved) or we replace / close it. bad = frozen tabs dropped after 2 unclean
+// answers — never picked again until they are closed.
+const pcFrz = { tabId: null, ownedTabId: null, opens: 0, lastOpenAt: 0, lastReqAt: 0, lastNeededAt: 0, misses: 0, state: "off", bad: new Set(), known: new Set() };
+// Every tab currently known to be frozen (its page said so on the last pick, or we opened it).
+function pcFrozenTabIds() {
+  const ids = new Set(pcFrz.known);
+  if (pcFrz.ownedTabId != null) ids.add(pcFrz.ownedTabId);
+  if (pcFrz.tabId != null) ids.add(pcFrz.tabId);
+  return ids;
+}
 const PC_SFL_PATTERNS = ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"];
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
@@ -572,9 +616,12 @@ async function pcPickEmapTab() {
     const url = String(t.url || ""); const error = /\/(ecmap|mobilemap)\/error\.aspx/i.test(url);
     let guid = false, probe = null;
     if (!error) { probe = await pcSendTab(t.id, { type: "PC_EMAP_PROBE" }); guid = Boolean(probe && probe.guidFound); }
-    cands.push({ id: t.id, url, guid, error, probe });
+    // 1.16.0: a tab whose own page says frozen (or the frozen tab we opened) never serves the normal check
+    const frozen = Boolean(probe && probe.frozen) || (pcFrz.ownedTabId != null && t.id === pcFrz.ownedTabId);
+    cands.push({ id: t.id, url, guid, error, probe, frozen });
   }
-  const pick = pcChooseEmap(cands, pcEv.emap.tabId);
+  pcFrozenNoteTabs(cands);
+  const pick = pcChooseEmap(cands.filter((c) => !c.frozen), pcEv.emap.tabId);
   const e = pcEv.emap;
   if (pick && pick.guid && e.remint && e.remint.until) pcAdoptRemintedTab(pick); // the click yielded a fresh session
   const nextId = pick ? pick.id : null, nextGuid = Boolean(pick && pick.guid), nextErr = Boolean(pick && pick.error);
@@ -584,10 +631,58 @@ async function pcPickEmapTab() {
   if (changed) {
     const p = pick && pick.probe;
     const diag = p ? ` section=${p.section ?? "?"} guidSource=${p.guidSource ?? "none"} guidCandidates=${p.guidCandidates ?? 0} endpoint=${p.endpoint ?? "none"}` : "";
-    console.log(`[PC-EMAP] using tab ${e.tabId ?? "none"} ${e.url ?? ""} guid=${e.guid} error=${e.error} (candidates=${cands.length})${diag}`);
+    console.log(`[PC-EMAP] using tab ${e.tabId ?? "none"} ${pcSafeUrl(e.url)} guid=${e.guid} error=${e.error} (candidates=${cands.length})${diag}`);
   }
   return pick;
 }
+// 1.16.0: the usable frozen tab = a live tab whose page says frozen AND has a session value
+// (prefer the one we opened). Read by pcPollMulti; never used for the normal check.
+function pcFrozenNoteTabs(cands) {
+  pcFrz.known = new Set(cands.filter((c) => c.frozen).map((c) => c.id));
+  const ok = cands.filter((c) => c.frozen && !c.error && c.guid && c.probe && c.probe.frozen && !pcFrz.bad.has(c.id));
+  const pick = ok.find((c) => c.id === pcFrz.ownedTabId) || ok.find((c) => c.id === pcFrz.tabId) || ok[0] || null;
+  const next = pick ? pick.id : null;
+  if (next !== pcFrz.tabId) console.log(`[PC-FROZEN] frozen tab ${next ?? "none"}${pick && pick.probe ? ` cate=${pick.probe.cate} eshopparid=${pick.probe.eshopparid} eshopid=${pick.probe.eshopid}` : ""}`);
+  pcFrz.tabId = next;
+  if (pcFrz.tabId != null) pcNoDiscard(pcFrz.tabId);
+}
+// Open the frozen picker (leader-only, while frozen rows wait). PURE decision split out for tests.
+function pcFrozenOpenDecision(now, f, inMaint) {
+  if (f.tabId != null) return "have";
+  if (inMaint) return "maintenance";
+  if (f.lastOpenAt && now - f.lastOpenAt < PC_FROZEN_OPEN_WAIT_MS) return "waiting";
+  if (f.opens >= PC_FROZEN_MAX_OPENS) return now - f.lastOpenAt < PC_FROZEN_DEAD_PAUSE_MS ? "dead" : "retry";
+  return "open";
+}
+function pcFrozenEnsureOpen(now, inMaint) {
+  const d = pcFrozenOpenDecision(now, pcFrz, inMaint);
+  if (d === "retry") { pcFrz.opens = 0; }
+  if (d === "dead") { pcFrz.state = "dead"; return; }
+  if (d !== "open" && d !== "retry") { if (d === "waiting") pcFrz.state = "opening"; return; }
+  // our previous tab (session gone / not frozen) is replaced, never left behind
+  if (pcFrz.ownedTabId != null) { try { chrome.tabs.remove(pcFrz.ownedTabId, () => { void chrome.runtime.lastError; }); } catch { /* gone */ } pcFrz.ownedTabId = null; }
+  pcFrz.opens += 1; pcFrz.lastOpenAt = now; pcFrz.state = "opening";
+  try {
+    chrome.tabs.create({ url: PC_FROZEN_PICKER_URL, active: false }, (tab) => { void chrome.runtime.lastError; if (tab && tab.id != null) { pcFrz.ownedTabId = tab.id; pcNoDiscard(tab.id); } });
+  } catch { /* next pass retries */ }
+  console.log(`[PC-FROZEN] opening the 7-11 frozen picker (attempt ${pcFrz.opens}/${PC_FROZEN_MAX_OPENS})`);
+}
+// PURE: the frozen lane's status value (pc_status.frozen) — off | opening | ok | busy | dead.
+function pcFrozenStatusValue(f) {
+  if (f.state === "busy" || f.state === "dead") return f.state;
+  if (f.tabId != null) return f.state === "opening" ? "opening" : "ok";
+  return f.state || "off";
+}
+// Close the frozen tab WE opened after 10 min with no frozen row waiting (both roles).
+function pcFrozenIdleClose(now) {
+  if (pcFrz.ownedTabId == null) return;
+  if (now - (pcFrz.lastNeededAt || pcFrz.lastOpenAt) < PC_FROZEN_IDLE_CLOSE_MS) return;
+  const id = pcFrz.ownedTabId;
+  try { chrome.tabs.remove(id, () => { void chrome.runtime.lastError; }); } catch { /* gone */ }
+  pcFrz.ownedTabId = null; if (pcFrz.tabId === id) pcFrz.tabId = null; pcFrz.opens = 0; pcFrz.lastOpenAt = 0; pcFrz.misses = 0; pcFrz.state = "off";
+  console.log(`[PC-FROZEN] closed frozen tab ${id} (no frozen parcel waiting for 10 min)`);
+}
+
 // Evidence recorders — the ONLY writers of the miss ladder.
 function pcEmapVerdict(now) {
   const e = pcEv.emap;
@@ -666,7 +761,7 @@ async function pcRefreshTabStatus(pass) {
     // page re-mints the guid; a dead session lands on error.aspx → 'expired' (red).
     try { chrome.tabs.update(e.tabId, { url: e.url }); } catch { /* next tick retries */ }
     e.reloadAt = now; e.reloads += 1; pcLastKeepaliveAt = 0;     // verify as soon as it lands
-    console.log(`[PC-EMAP] recover reason=${JSON.stringify(e.lastMissReason || "no guid")} misses=${e.misses} lastVerdictAgo=${e.lastVerdictAt ? Math.round((now - e.lastVerdictAt) / 1000) : "never"}s attempt=${e.reloads}/${PC_MAX_RELOADS} tab=${e.tabId} via=GET ${e.url}`);
+    console.log(`[PC-EMAP] recover reason=${JSON.stringify(e.lastMissReason || "no guid")} misses=${e.misses} lastVerdictAgo=${e.lastVerdictAt ? Math.round((now - e.lastVerdictAt) / 1000) : "never"}s attempt=${e.reloads}/${PC_MAX_RELOADS} tab=${e.tabId} via=GET ${pcSafeUrl(e.url)}`);
     emapState = "recovering";
   }
   // 1.14.3: the GET re-opens didn't help → ONE unattended re-mint per episode via the
@@ -731,7 +826,7 @@ function pcAdoptRemintedTab(pick) {
   pcEv.requeueDue = "recovery";                                   // 1.14.6: the tab was re-opened with a live session
   if (old != null && old !== pick.id) { try { chrome.tabs.remove(old); } catch { /* already gone */ } }
   try { pcNoDiscard(pick.id); } catch { /* best-effort */ }
-  console.log(`[PC-EMAP] re-mint via 選擇取貨門市 → tab ${pick.id} ${pick.url} guid=${pick.guid}${old != null && old !== pick.id ? ` (closed old tab ${old})` : ""}`);
+  console.log(`[PC-EMAP] re-mint via 選擇取貨門市 → tab ${pick.id} ${pcSafeUrl(pick.url)} guid=${pick.guid}${old != null && old !== pick.id ? ` (closed old tab ${old})` : ""}`);
 }
 // ══ 1.15.0 — TWO-MACHINE FAILOVER (lease, sql/71 v2) ═════════════════════════
 // The extension may run on two machines. Exactly ONE holds the lease ("leader") and
@@ -1019,7 +1114,8 @@ async function pcPollMulti(pass) {
   // 1.14.0: the keepalive runs from pcTick (independent of this lane, the token
   // and the RPC); here we only record whether any pending row needs the store
   // half, and stash the admin RPC context for the Admin-card mirror.
-  pcEv.lastAnyNeedStore = rows.some((r) => r && r.need_store);
+  pcEv.lastAnyNeedStore = rows.some((r) => r && r.need_store && !r.frozen); // the normal keepalive only cares about normal rows
+  if (rows.some((r) => r && r.frozen && r.need_store)) pcFrz.lastNeededAt = Date.now(); // 1.16.0: frozen work waiting
   pcEv.rpc = { cfg, rpcHeaders };
   if (!rows.length) return;
 
@@ -1043,10 +1139,14 @@ async function pcPollMulti(pass) {
     if (bo) bo.seenAt = now;
     // 1.14.7: a half runs only when its tab exists — a missing/expired E-Map or myship
     // tab must not let untouchable rows use up every slot (that froze all sellers)
-    const doStore = Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);
+    // 1.16.0: a frozen row is NEVER asked the normal question — only the frozen tab answers it
+    const isFrozen = row.frozen === true;
+    if (isFrozen && row.need_store && !pcFrz.tabId) pcFrozenEnsureOpen(now, inMaint);
+    const doStore = !isFrozen && Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);
+    const doFrozenStore = isFrozen && Boolean(row.need_store) && Boolean(pcFrz.tabId) && !inMaint && (!bo || now >= bo.storeNextAt);
     const phoneStalled = stalledGms.size >= 2 || stalledGms.has(String(row.gm_id || ""));
     const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && !phoneStalled && (!bo || Date.now() >= bo.phoneNextAt);
-    if (!doStore && !doPhone) continue;
+    if (!doStore && !doFrozenStore && !doPhone) continue;
     processed += 1;
     pcInFlight.add(row.id);
     try {
@@ -1074,7 +1174,11 @@ async function pcPollMulti(pass) {
           pcEv.lastStoreReason = (sResp && sResp.store_reason) || "emap tab not responding";
           const transient = Boolean(sResp && sResp.transient);
           const b = pcBackoffEntry(row.id, now);
-          if (inMaint) {
+          if (sResp && sResp.busy) {
+            // 1.16.0: 7-11 busy (E0014) — back off 1 min; never a miss, never toward a give-up
+            b.storeNextAt = now + PC_BUSY_BACKOFF_MS;
+            console.log(`[PC-BACKOFF] row=${row.id} store busy (E0014), next=${PC_BUSY_BACKOFF_MS / 1000}s`);
+          } else if (inMaint) {
             // maintenance window: not counted toward the ladder or the give-up; slow retry
             b.storeNextAt = now + PC_MAINT_RETRY_MS;
             console.log(`[PC-BACKOFF] row=${row.id} store attempt=${b.storeFails} maintenance, next=${PC_MAINT_RETRY_MS / 1000}s`);
@@ -1093,6 +1197,40 @@ async function pcPollMulti(pass) {
               b.storeNextAt = now + pcBackoffDelay(b.storeFails);
               console.log(`[PC-BACKOFF] row=${row.id} store attempt=${b.storeFails} next=${pcBackoffDelay(b.storeFails) / 1000}s`);
             }
+          }
+        }
+      }
+      // 1.16.0 FROZEN store half — the frozen tab, one request at a time, ≥ 3 s apart.
+      // Only a clean answer for THIS store counts; anything else leaves the half NULL (retried),
+      // and a give-up writes 'unknown' — never OK on doubt.
+      if (doFrozenStore && pcFrz.tabId) {
+        let wait = pcFrz.lastReqAt ? PC_FROZEN_GAP_MS - (Date.now() - pcFrz.lastReqAt) : 0;
+        while (wait > 0) { const step = Math.min(wait, 2000); await pcSleep(step); wait -= step; } // ≥ 3 s since the last frozen request
+        pcFrz.lastReqAt = Date.now();
+        const fResp = await pcSendTab(pcFrz.tabId, { type: "PC_CHECK_STORE_FROZEN", row });
+        const b = pcBackoffEntry(row.id, now);
+        if (fResp && PC_FROZEN_VERDICTS.includes(fResp.store_full_status)) {
+          storeStatus = fResp.store_full_status;
+          pcFrz.misses = 0; pcFrz.opens = 0; pcFrz.state = "ok";
+          if (b.storeFails) { b.storeFails = 0; b.storeNextAt = 0; }
+          console.log(`[PC-FROZEN] row=${row.id} store=${row.store_id} verdict=${storeStatus}`);
+        } else if (fResp && fResp.busy) {
+          b.storeNextAt = Date.now() + PC_BUSY_BACKOFF_MS; pcFrz.state = "busy";
+          console.log(`[PC-FROZEN] row=${row.id} 7-11 busy (E0014), next=${PC_BUSY_BACKOFF_MS / 1000}s`);
+        } else {
+          const reason = (fResp && fResp.store_reason) || "frozen tab not responding";
+          const transient = !fResp || Boolean(fResp.transient);
+          if (!transient) {
+            pcFrz.misses += 1; // the frozen session is not answering cleanly → after 2, replace the tab
+            if (pcFrz.misses >= 2) { pcFrz.bad.add(pcFrz.tabId); pcFrz.tabId = null; pcFrz.misses = 0; pcFrozenEnsureOpen(Date.now(), inMaint); } // never pick this tab again
+          }
+          b.storeFails += 1;
+          if (b.storeFails >= PC_STORE_GIVE_UP) {
+            storeStatus = "unknown"; b.storeNextAt = Date.now() + PC_BACKOFF_MS[PC_BACKOFF_MS.length - 1];
+            console.log(`[PC-FROZEN] row=${row.id} store attempt=${b.storeFails} gave up → unknown (${reason})`);
+          } else {
+            b.storeNextAt = Date.now() + pcBackoffDelay(b.storeFails);
+            console.log(`[PC-FROZEN] row=${row.id} store attempt=${b.storeFails} next=${pcBackoffDelay(b.storeFails) / 1000}s (${reason})`);
           }
         }
       }
@@ -1146,6 +1284,8 @@ async function pcPollMulti(pass) {
             p_phone_check_status: phoneStatus,
             p_phone_check_message: phoneMessage,
             p_phone_restricted_until: phoneUntil,
+            // 1.16.0: frozen rows only — a normal row's body is byte-for-byte as before
+            ...(isFrozen ? { p_store_layer: "冷凍" } : {}),
           }),
         });
         // Latency instrumentation (dogfood): encode→verdict + the anon phone
@@ -1185,6 +1325,11 @@ async function pcRunOnce() {
   try { await pcPickEmapTab(); } catch (e) { console.log(`[PC-EMAP] skipped: pick ${e && e.message ? e.message : e}`); }
   try { await pcPollMulti(pass); } catch { /* keep looping */ }                       // leader-only inside
   try { await pcEmapKeepalive(); } catch (e) { console.log(`[PC-KEEPALIVE] skipped: ${e && e.message ? e.message : e}`); }
+  try {
+    pcFrozenIdleClose(Date.now());
+    const v = pcFrozenStatusValue(pcFrz);
+    if (v !== pcFrz.lastStatus) { pcFrz.lastStatus = v; await pcStatus({ frozen: v }); } // write only on change
+  } catch (e) { console.log(`[PC-FROZEN] skipped: ${e && e.message ? e.message : e}`); }
   try { await pcRefreshTabStatus(pass); } catch (e) { console.log(`[PC-STATUS] skipped: ${e && e.message ? e.message : e}`); }
   // Leader-only: re-queue (DB write) and the worker-state mirror (DB write). M1: each is
   // gated on the CURRENT lease state, not the role the pass started with.
@@ -1204,6 +1349,15 @@ function pcScheduleLoop(delayMs) {
 // loop drives the cadence; this never runs a second concurrent poll.
 chrome.alarms.create(PC_ALARM, { periodInMinutes: PC_KEEPALIVE_MIN });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === PC_ALARM) pcScheduleLoop(0); });
+// 1.16.0: a frozen tab is forgotten only when the TAB itself is gone (never because it is
+// not on an E-Map page yet — the tab we opened is still on the 7-11 picker while it lands).
+try {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    if (tabId === pcFrz.ownedTabId) pcFrz.ownedTabId = null;
+    if (tabId === pcFrz.tabId) pcFrz.tabId = null;
+    pcFrz.bad.delete(tabId);
+  });
+} catch { /* no tabs.onRemoved (tests) — the idle close / replace paths still clear ownership */ }
 // 1.14.3: while a re-mint is pending, a finished navigation on any E-Map tab
 // triggers an immediate pick + status refresh (no need to wait for the 5 s tick).
 try {
