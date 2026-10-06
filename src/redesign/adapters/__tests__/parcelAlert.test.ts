@@ -36,3 +36,14 @@ describe("attentionCount — current problem rows", () => {
     ])).toBe(2);
   });
 });
+
+describe("fix 8 — frozen_unavailable counts like 'full' (chime, banner)", () => {
+  it("null → frozen_unavailable fires the store chime; already flagged does not re-fire; full ↔ frozen_unavailable is not new", () => {
+    expect(newlyFlagged([{ id: "a" }], [{ id: "a", storeFullStatus: "frozen_unavailable" }])).toEqual({ restricted: 0, full: 1 });
+    expect(newlyFlagged([{ id: "a", storeFullStatus: "frozen_unavailable" }], [{ id: "a", storeFullStatus: "frozen_unavailable" }])).toEqual({ restricted: 0, full: 0 });
+    expect(newlyFlagged([{ id: "a", storeFullStatus: "full" }], [{ id: "a", storeFullStatus: "frozen_unavailable" }])).toEqual({ restricted: 0, full: 0 });
+  });
+  it("attentionCount includes frozen_unavailable", () => {
+    expect(attentionCount([{ id: "a", storeFullStatus: "frozen_unavailable" }, { id: "b", storeFullStatus: "full" }, { id: "c", storeFullStatus: "open" }])).toBe(2);
+  });
+});

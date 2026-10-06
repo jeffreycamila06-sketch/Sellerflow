@@ -412,3 +412,15 @@ describe("review fix 2 — a Dry ↔ Frozen edit resets the store check (same up
     expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: false, phoneCheck: false });
   });
 });
+
+describe("fix 8 — frozen_unavailable is counted on the Full tab (like 'full')", () => {
+  it("the Full tab shows it and lists it", async () => {
+    h.state = ACCESS();
+    h.rows = [mk({ id: "f", customerName: "Cold", tempLayer: "冷凍", phoneCheckStatus: "ok", storeFullStatus: "frozen_unavailable" }), mk({ id: "d", customerName: "Dry" })];
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("ps-tab-full").textContent).toContain("1"));
+    fireEvent.click(r.getByTestId("ps-tab-full"));
+    await waitFor(() => expect(r.getAllByTestId("ps-row")).toHaveLength(1));
+    expect(r.getByTestId("ps-row").querySelector('[data-testid="ps-ext-badge-frozen-unavailable"]')).toBeTruthy();
+  });
+});

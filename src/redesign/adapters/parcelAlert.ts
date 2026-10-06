@@ -7,6 +7,10 @@
 
 export interface VerdictLite { id: string; storeFullStatus?: string | null; phoneCheckStatus?: string | null }
 
+// A store that can't take the parcel now: 'full', or (1.16 frozen check) 'frozen_unavailable' —
+// counted the same way everywhere 'full' is (chime, banner, the Full tab).
+export const storeUnavailable = (s: string | null | undefined): boolean => s === "full" || s === "frozen_unavailable";
+
 // Rows that TRANSITIONED into a problem verdict between prev and fresh (by id):
 // restricted is the more urgent (buyer can't pick up at all); full = store
 // full. A row already flagged in prev does NOT re-fire (only genuine
@@ -17,7 +21,7 @@ export function newlyFlagged(prev: VerdictLite[], fresh: VerdictLite[]): { restr
   for (const f of fresh) {
     const p = was.get(f.id);
     if (f.phoneCheckStatus === "restricted" && p?.phoneCheckStatus !== "restricted") restricted++;
-    else if (f.storeFullStatus === "full" && p?.storeFullStatus !== "full") full++;
+    else if (storeUnavailable(f.storeFullStatus) && !storeUnavailable(p?.storeFullStatus)) full++;
   }
   return { restricted, full };
 }
@@ -25,7 +29,7 @@ export function newlyFlagged(prev: VerdictLite[], fresh: VerdictLite[]): { restr
 // How many loaded rows currently need attention (explicit problem verdicts only
 // — null/'unknown' never count). Drives the banner's count.
 export function attentionCount(rows: VerdictLite[]): number {
-  return rows.filter((r) => r.phoneCheckStatus === "restricted" || r.storeFullStatus === "full").length;
+  return rows.filter((r) => r.phoneCheckStatus === "restricted" || storeUnavailable(r.storeFullStatus)).length;
 }
 
 // ── audio ── a single lazily-created context, resumed on a user gesture

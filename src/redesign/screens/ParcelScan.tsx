@@ -16,7 +16,7 @@ import {
   rowCheckUnresolved, verdictPollMs, mergeExtensionVerdicts, storeClear, wrongStoreCode, minParcelAmount,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
-import { newlyFlagged, attentionCount, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
+import { newlyFlagged, attentionCount, playChime, unlockAudio, storeUnavailable, type VerdictLite } from "../adapters/parcelAlert";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobile, exportFilename } from "../adapters/shippingExport";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { loadFrozenState, saveParcelMode, FROZEN_LOADING, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, isFrozenLayer, xlsOptsForRow, type FrozenState, type TempLayer } from "../adapters/parcelFrozen";
@@ -1004,7 +1004,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // disabled button when out of credits).
   const useCameraUI = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !outOfCredits;
   const flaggedCount = rows.filter(wrongStoreCode).length;
-  const fullCount = rows.filter((r) => r.storeFullStatus === "full").length;
+  const fullCount = rows.filter((r) => storeUnavailable(r.storeFullStatus)).length; // full + frozen_unavailable
   const restrictedCount = rows.filter((r) => r.phoneCheckStatus === "restricted").length;
   // Tab set: All + Wrong code always; Full / Restricted ONLY when they have rows
   // (a seller with no extension never sees an always-zero tab). Existing pill UI.
@@ -1020,7 +1020,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Change 2: the saved list re-renders by active tab (in-memory filter of the
   // already-loaded rows — zero-poll, no refetch/timers).
   const shown = activeTab === "wrong" ? rows.filter(wrongStoreCode)
-    : activeTab === "full" ? rows.filter((r) => r.storeFullStatus === "full")
+    : activeTab === "full" ? rows.filter((r) => storeUnavailable(r.storeFullStatus))
       : activeTab === "restricted" ? rows.filter((r) => r.phoneCheckStatus === "restricted")
         : rows;
   const progress = files.length > 1 ? { i: String(idx + 1), n: String(files.length) } : { i: "1", n: "1" };
