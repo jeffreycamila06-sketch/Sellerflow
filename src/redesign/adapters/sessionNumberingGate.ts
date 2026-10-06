@@ -45,6 +45,7 @@ export const SESSION_NUMBERING_FIX_EMAILS = [
   "sanggalanglhea@gmail.com",
   "ukaydaily1@gmail.com",
   "lheyukay@gmail.com",
+  "angelicasu08@gmail.com",
 ];
 
 export type SessionNumberingGate = "on" | "off" | "wait";
