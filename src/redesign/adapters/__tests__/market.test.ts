@@ -2,7 +2,7 @@
 // market-hide flag. Pins: NULL/TW = TW (unchanged); non-TW = PH (features off, ₱);
 // admin sees the union UNLESS previewing a market; each gate hides only when told.
 import { describe, it, expect } from "vitest";
-import { marketFor, effectiveMarket, marketHides, marketHidesShipping, MARKETS } from "../market";
+import { marketFor, effectiveMarket, marketHides, marketHidesShipping, MARKETS, VIEW_AS_OPTIONS } from "../market";
 import { parcelScanVisible, canUseStickerQr } from "../parcelScan";
 import { parcelTrackingVisible } from "../parcelTracking";
 import { curSymbol } from "../../data";
@@ -35,7 +35,7 @@ describe("marketFor", () => {
       const m = marketFor(c);
       expect(m.currency).toBe(e.currency);
       expect(curSymbol(m.currency)).toBe(e.symbol);
-      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false });
+      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: true, shopee: false }); // sticker QR is not TW-only
       expect(m.shippingModule).toBe(e.ship);
     }
     expect(Object.keys(MARKETS).sort()).toEqual(["BG", "ID", "MY", "PH", "TH", "TW", "VN"]);
@@ -48,7 +48,7 @@ describe("marketFor", () => {
     for (const c of ["SG", "US", "ZZ"]) {
       const m = marketFor(c);
       expect(m.currency).toBe("");
-      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false });
+      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: true, shopee: false }); // sticker QR is not TW-only
       expect(m.shippingModule).toBe("none");
       expect(m.country).toBe(c);
     }
@@ -68,7 +68,8 @@ describe("effectiveMarket — admin bypass + view-as", () => {
   it("admin + view-as PH → previews AS a PH seller (union OFF, PH hides)", () => {
     const eff = effectiveMarket({ role: "admin", country: "TW", viewAs: "PH" });
     expect(eff.adminUnion).toBe(false);
-    expect(marketHides("stickerQr", eff)).toBe(true);
+    expect(marketHides("stickerQr", eff)).toBe(false); // sticker QR is available in every market
+    expect(marketHides("parcelScan", eff)).toBe(true);  // the TW-only ones still hide in the preview
   });
   it("admin + view-as TW → TW features visible", () => {
     expect(marketHides("pickupStatus", effectiveMarket({ role: "admin", country: "PH", viewAs: "TW" }))).toBe(false);
@@ -121,5 +122,30 @@ describe("marketHidesShipping — the Shipping screen is the TW 7-11 module", ()
     expect(app).toContain('screen === "shipping" && !hideShipping && <Shipping');
     const hub = readFileSync("src/redesign/screens/SettingsHub.tsx", "utf8");
     expect(hub).toContain("{onShipping && <Tile icon={ic.truck}");
+  });
+});
+
+describe("sticker QR is available in every market (2026-10-06)", () => {
+  it("every known market + unknown countries allow sticker QR; Parcel Scan / Pickup Status / Shopee / Shipping stay hidden off-market", () => {
+    for (const c of ["TW", "PH", "VN", "TH", "ID", "MY", "BG", "SG", "US", "ZZ", "", null]) {
+      const eff = effectiveMarket({ role: "seller", country: c });
+      expect(marketHides("stickerQr", eff), String(c)).toBe(false);
+      expect(canUseStickerQr(marketHides("stickerQr", eff)), String(c)).toBe(true); // the toggle + print-time entitlement input
+      const tw = !c || c === "TW";
+      expect(marketHides("parcelScan", eff), String(c)).toBe(!tw);
+      expect(marketHides("pickupStatus", eff), String(c)).toBe(!tw);
+      expect(marketHides("shopee", eff), String(c)).toBe(!tw);
+      expect(marketHidesShipping(eff), String(c)).toBe(!tw);
+    }
+  });
+  it("admin 'View as' still hides the TW-only features per market; sticker QR shows in every preview", () => {
+    for (const va of VIEW_AS_OPTIONS.filter((v) => v !== "all" && v !== "TW")) {
+      const eff = effectiveMarket({ role: "admin", country: "TW", viewAs: va });
+      expect(marketHides("stickerQr", eff), va).toBe(false);
+      expect(marketHides("parcelScan", eff), va).toBe(true);
+      expect(marketHides("pickupStatus", eff), va).toBe(true);
+      expect(marketHides("shopee", eff), va).toBe(true);
+      expect(marketHidesShipping(eff), va).toBe(true);
+    }
   });
 });
