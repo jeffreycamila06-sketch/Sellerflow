@@ -119,7 +119,7 @@
   function diag(g, endpoint) {
     if (diagLogged) return;
     diagLogged = true;
-    console.log(`[PC-EMAP] ${sectionOf(location.pathname)}: guid candidates=${g.candidates} source=${g.source || "none"} endpoint=${endpoint || "none"} url=${location.href}`);
+    console.log(`[PC-EMAP] ${sectionOf(location.pathname)}: guid candidates=${g.candidates} source=${g.source || "none"} endpoint=${endpoint || "none"} path=${location.pathname}`); // never the full address (its query can hold the session value)
   }
 
   // ── byIDData ───────────────────────────────────────────────────────────────
@@ -192,8 +192,8 @@
         let g = { guid: null, source: null, candidates: 0 };
         try { g = await getEshopGuid(); } catch { /* fail-safe below */ }
         diag(g, knownEndpoint);
-        sendResponse({ ok: true, script: "emap", guidFound: g.guid !== null, guidSource: g.source, guidCandidates: g.candidates, section: sectionOf(location.pathname), endpoint: knownEndpoint, url: location.href });
-      })().catch(() => sendResponse({ ok: true, script: "emap", guidFound: false, guidSource: null, guidCandidates: 0, section: sectionOf(location.pathname), endpoint: knownEndpoint, url: location.href }));
+        sendResponse({ ok: true, script: "emap", guidFound: g.guid !== null, guidSource: g.source, guidCandidates: g.candidates, section: sectionOf(location.pathname), endpoint: knownEndpoint, path: location.pathname });
+      })().catch(() => sendResponse({ ok: true, script: "emap", guidFound: false, guidSource: null, guidCandidates: 0, section: sectionOf(location.pathname), endpoint: knownEndpoint, path: location.pathname }));
       return true;
     }
     if (message?.type !== "PC_CHECK_STORE" || !message.row) return false;

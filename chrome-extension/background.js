@@ -54,6 +54,13 @@ async function pcStatus(patch) {
   await pcSet(PC_STATUS_KEY, { ...cur, ...patch });
 }
 
+// A tab address for LOG LINES: origin + path only. The query string can carry the E-Map
+// session value (eshopGuid) — never log or store it (1.16.0 logging fix).
+function pcSafeUrl(u) {
+  if (!u) return "";
+  try { const x = new URL(String(u)); return `${x.origin}${x.pathname}`; } catch { return String(u).split(/[?#]/)[0]; }
+}
+
 // Find a tab by URL prefix list; returns the first tab id or null.
 function pcFindTab(patterns) {
   return new Promise((resolve) => {
@@ -584,7 +591,7 @@ async function pcPickEmapTab() {
   if (changed) {
     const p = pick && pick.probe;
     const diag = p ? ` section=${p.section ?? "?"} guidSource=${p.guidSource ?? "none"} guidCandidates=${p.guidCandidates ?? 0} endpoint=${p.endpoint ?? "none"}` : "";
-    console.log(`[PC-EMAP] using tab ${e.tabId ?? "none"} ${e.url ?? ""} guid=${e.guid} error=${e.error} (candidates=${cands.length})${diag}`);
+    console.log(`[PC-EMAP] using tab ${e.tabId ?? "none"} ${pcSafeUrl(e.url)} guid=${e.guid} error=${e.error} (candidates=${cands.length})${diag}`);
   }
   return pick;
 }
@@ -666,7 +673,7 @@ async function pcRefreshTabStatus(pass) {
     // page re-mints the guid; a dead session lands on error.aspx → 'expired' (red).
     try { chrome.tabs.update(e.tabId, { url: e.url }); } catch { /* next tick retries */ }
     e.reloadAt = now; e.reloads += 1; pcLastKeepaliveAt = 0;     // verify as soon as it lands
-    console.log(`[PC-EMAP] recover reason=${JSON.stringify(e.lastMissReason || "no guid")} misses=${e.misses} lastVerdictAgo=${e.lastVerdictAt ? Math.round((now - e.lastVerdictAt) / 1000) : "never"}s attempt=${e.reloads}/${PC_MAX_RELOADS} tab=${e.tabId} via=GET ${e.url}`);
+    console.log(`[PC-EMAP] recover reason=${JSON.stringify(e.lastMissReason || "no guid")} misses=${e.misses} lastVerdictAgo=${e.lastVerdictAt ? Math.round((now - e.lastVerdictAt) / 1000) : "never"}s attempt=${e.reloads}/${PC_MAX_RELOADS} tab=${e.tabId} via=GET ${pcSafeUrl(e.url)}`);
     emapState = "recovering";
   }
   // 1.14.3: the GET re-opens didn't help → ONE unattended re-mint per episode via the
@@ -731,7 +738,7 @@ function pcAdoptRemintedTab(pick) {
   pcEv.requeueDue = "recovery";                                   // 1.14.6: the tab was re-opened with a live session
   if (old != null && old !== pick.id) { try { chrome.tabs.remove(old); } catch { /* already gone */ } }
   try { pcNoDiscard(pick.id); } catch { /* best-effort */ }
-  console.log(`[PC-EMAP] re-mint via 選擇取貨門市 → tab ${pick.id} ${pick.url} guid=${pick.guid}${old != null && old !== pick.id ? ` (closed old tab ${old})` : ""}`);
+  console.log(`[PC-EMAP] re-mint via 選擇取貨門市 → tab ${pick.id} ${pcSafeUrl(pick.url)} guid=${pick.guid}${old != null && old !== pick.id ? ` (closed old tab ${old})` : ""}`);
 }
 // ══ 1.15.0 — TWO-MACHINE FAILOVER (lease, sql/71 v2) ═════════════════════════
 // The extension may run on two machines. Exactly ONE holds the lease ("leader") and
