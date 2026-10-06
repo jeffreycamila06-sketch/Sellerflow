@@ -17,6 +17,12 @@ export const SESSION_NUMBERING_FIX_EMAILS = [
   "bardagulanjavier@gmail.com",
   "zandracruz@icloud.com",
   "chungmaychilleann@gmail.com",
+  // sellers who started a multi-day session on Oct 6
+  "gee383838@icloud.com",
+  "rominamagat@gmail.com",
+  "juvieho0725@gmail.com",
+  "clarabhie@gmail.com",
+  "mersteve17@gmail.com",
 ];
 
 export type SessionNumberingGate = "on" | "off" | "wait";
