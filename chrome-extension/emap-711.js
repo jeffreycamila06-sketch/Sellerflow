@@ -107,6 +107,21 @@
     });
   }
 
+  // 1.16.1: ask the MAIN-world helper for the page's mode values NOW (its load-time reply fires
+  // before this script listens, and mainWorldGuid() is skipped when the session value is in the
+  // page text — so without this a page that sets the mode at runtime was never seen as frozen).
+  // The shared listener above stores the reply's mode; resolves on the reply or after MAIN_WAIT_MS.
+  function refreshMainMode() {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (done) return; done = true; document.removeEventListener("__sfl_emap_guid", onMsg); resolve(); };
+      const onMsg = (e) => { const d = e && e.detail; if (d && d.mode && typeof d.mode === "object") finish(); };
+      document.addEventListener("__sfl_emap_guid", onMsg);
+      try { document.dispatchEvent(new CustomEvent("__sfl_emap_guid_req")); } catch { /* helper absent — the timeout resolves */ }
+      setTimeout(finish, MAIN_WAIT_MS);
+    });
+  }
+
   // Returns { guid, source, candidates } — text candidates first (free, sync),
   // the MAIN-world var as the fallback.
   async function getEshopGuid() {
@@ -277,6 +292,7 @@
         let g = { guid: null, source: null, candidates: 0 };
         try { g = await getEshopGuid(); } catch { /* fail-safe below */ }
         diag(g, knownEndpoint);
+        await refreshMainMode(); // 1.16.1: fresh mode values on every probe
         const m = pageMode();
         sendResponse({ ok: true, script: "emap", guidFound: g.guid !== null, guidSource: g.source, guidCandidates: g.candidates, section: sectionOf(location.pathname), endpoint: knownEndpoint, path: location.pathname, frozen: isFrozenMode(m), cate: m.storecategory, eshopparid: m.eshopparid, eshopid: m.eshopid });
       })().catch(() => sendResponse({ ok: true, script: "emap", guidFound: false, guidSource: null, guidCandidates: 0, section: sectionOf(location.pathname), endpoint: knownEndpoint, path: location.pathname }));
@@ -285,6 +301,7 @@
     if (message?.type === "PC_CHECK_STORE_FROZEN" && message.row) {
       (async () => {
         const g = await getEshopGuid();
+        await refreshMainMode(); // 1.16.1
         const m = pageMode();
         const res = await checkFrozenStore(message.row.store_id, g.guid, m);
         sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, transient: Boolean(res.transient), busy: Boolean(res.busy), session: Boolean(res.session), guidFound: g.guid !== null, frozenPage: isFrozenMode(m), section: sectionOf(location.pathname) });
@@ -292,11 +309,12 @@
       return true;
     }
     if (message?.type !== "PC_CHECK_STORE" || !message.row) return false;
-    if (isFrozenMode(pageMode())) { // 1.16.0: the normal question is never asked on a frozen page
-      sendResponse({ ok: true, store_full_status: "unknown", store_reason: "frozen E-Map page — normal check refused", transient: true, guidFound: false, guidSource: null, endpoint: knownEndpoint, section: sectionOf(location.pathname) });
-      return true;
-    }
     (async () => {
+      await refreshMainMode(); // 1.16.1: fresh mode values before deciding normal vs frozen
+      if (isFrozenMode(pageMode())) { // 1.16.0: the normal question is never asked on a frozen page
+        sendResponse({ ok: true, store_full_status: "unknown", store_reason: "frozen E-Map page — normal check refused", transient: true, guidFound: false, guidSource: null, endpoint: knownEndpoint, section: sectionOf(location.pathname) });
+        return;
+      }
       const g = await getEshopGuid();
       const res = await checkFullStore(message.row.store_id, g.guid);
       diag(g, res.endpoint);

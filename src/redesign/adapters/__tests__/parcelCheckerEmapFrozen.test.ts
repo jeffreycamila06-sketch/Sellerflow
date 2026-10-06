@@ -16,6 +16,8 @@ const NORMAL_HTML = `<!DOCTYPE html><html><body><script>var isSelectSeven="N";va
 const FROZEN_HTML = `<!DOCTYPE html><html><body><script>var storecategory = 27; var storeid=""; var eshopparid = "870"; var eshopid = "870"; var eshopGuid = "${GUID_F}";</script></body></html>`;
 const FROZEN_NO_ESHOP_HTML = `<!DOCTYPE html><html><body><script>var storecategory = 27; var eshopGuid = "${GUID_F}";</script></body></html>`;
 const FROZEN_RUNTIME_ONLY_HTML = `<!DOCTYPE html><html><body><script src="/ecmap/js/default.js"></script></body></html>`;
+// 1.16.1 (audit Medium 6): the session value IS in the script text, the mode values are only runtime globals
+const FROZEN_GUID_TEXT_MODE_RUNTIME_HTML = `<!DOCTYPE html><html><body><script>var eshopGuid = "${GUID_F}";</script><script src="/ecmap/js/default.js"></script></body></html>`;
 
 // exact strings captured on 2026-10-06
 const ANS_968551 = "OK;968551+新蓮盈+花蓮縣吉安鄉建國路二段285號1F+disable+0++門市";
@@ -66,6 +68,19 @@ describe("page mode — read from the page itself", () => {
   it("the values may come from the runtime globals (MAIN-world helper) when the script text has none", async () => {
     const r = await load(FROZEN_RUNTIME_ONLY_HTML, { globals: { storecategory: 27, eshopparid: "870", eshopid: "870", eshopGuid: GUID_F } }).send({ type: "PC_EMAP_PROBE" });
     expect(r).toMatchObject({ frozen: true, cate: "27", eshopparid: "870", eshopid: "870" });
+  });
+  it("fix 9: session value in the page text + mode values only at runtime → still seen as frozen (the helper is asked on every probe)", async () => {
+    const globals = { storecategory: 27, eshopparid: "870", eshopid: "870", eshopGuid: GUID_F };
+    const p = await load(FROZEN_GUID_TEXT_MODE_RUNTIME_HTML, { globals }).send({ type: "PC_EMAP_PROBE" });
+    expect(p).toMatchObject({ frozen: true, cate: "27", eshopparid: "870", eshopid: "870", guidFound: true });
+    const { send, calls } = load(FROZEN_GUID_TEXT_MODE_RUNTIME_HTML, { globals, answer: () => ANS_968551 });
+    expect(await send({ type: "PC_CHECK_STORE_FROZEN", row: { store_id: "968551" } })).toMatchObject({ store_full_status: "frozen_unavailable" });
+    expect(new URLSearchParams(calls.fetch[0].body).get("cate")).toBe("27");
+  });
+  it("fix 9: the normal question is refused on such a page too", async () => {
+    const { send, calls } = load(FROZEN_GUID_TEXT_MODE_RUNTIME_HTML, { globals: { storecategory: 27, eshopparid: "870", eshopid: "870", eshopGuid: GUID_F } });
+    expect(await send({ type: "PC_CHECK_STORE", row: { store_id: "198002" } })).toMatchObject({ store_full_status: "unknown", store_reason: "frozen E-Map page — normal check refused" });
+    expect(calls.fetch).toHaveLength(0);
   });
   it("a value missing → not a frozen page → 'unknown', no request sent", async () => {
     const { send, calls } = load(FROZEN_NO_ESHOP_HTML);
