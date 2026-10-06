@@ -11,6 +11,12 @@ export const SESSION_NUMBERING_FIX_EMAILS = [
   "cristycabanas34@gmail.com",
   "tincabanas13@gmail.com",
   "ronaldgantiga77@gmail.com",
+  // multi-day sellers — the fix is exercised where the bug is
+  "aubreylucero15@yahoo.com",
+  "716030huan@gmail.com",
+  "bardagulanjavier@gmail.com",
+  "zandracruz@icloud.com",
+  "chungmaychilleann@gmail.com",
 ];
 
 export type SessionNumberingGate = "on" | "off" | "wait";
