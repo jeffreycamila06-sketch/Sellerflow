@@ -161,7 +161,7 @@ export interface ParcelScanRow {
   // Optional so existing row builders (and any pre-column reader) stay valid;
   // undefined behaves EXACTLY like null everywhere (no badge, not excluded, not
   // clear) — the fail-safe. rowToScan always sets them explicitly (null when absent).
-  storeFullStatus?: string | null;     // 'open' | 'full' | 'company' | 'not_found' | 'frozen_unavailable' (frozen check) | 'unknown' | null
+  storeFullStatus?: string | null;     // 'open' | 'full' | 'unknown' | null
   phoneCheckStatus?: string | null;    // 'ok' | 'restricted' | 'unknown' | null
   phoneRestrictedUntil?: string | null; // 'YYYY-MM-DD' date | null (restricted only)
   // sql/79 — 常溫 | 冷凍. Only read/written for sellers with the Dry / Frozen control (or once
@@ -548,7 +548,7 @@ export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
 // shipping export, PLUS store_check_status. Rows already 'exported' are skipped
 // (neither bucket). store_check_status 'unknown'/null → READY (soft-warned in
 // the UI, never excluded: E-Map may be down / the confirmed-gate off). Pure.
-export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount" | "frozen_settings" | "frozen_unavailable";
+export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount" | "frozen_settings";
 export interface ScanExportSplit {
   ready: ParcelScanRow[];
   attention: { row: ParcelScanRow; reason: ExportReason }[];
@@ -578,8 +578,6 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCf
     // 'unknown' (unchecked / can't verify) do NOT exclude (unchecked ≠ problem),
     // matching store_check_status's own unknown/null → READY behaviour.
     else if (row.storeFullStatus === "full") reason = "store_full";             // 交貨便: store full
-    // 1.16.0 frozen check (sql/81): 7-11 says this store can't take a FROZEN parcel right now
-    else if (row.storeFullStatus === "frozen_unavailable") reason = "frozen_unavailable";
     else if (row.phoneCheckStatus === "restricted") reason = "restricted_number"; // buyer phone restricted
     else if (validateRecipientName(row.customerName) !== "") reason = "bad_name";
     else if (!validPhone(row.phone)) reason = "bad_phone";
