@@ -14,6 +14,7 @@ import {
 } from "../adapters/minersReport";
 import { exportBrandedXlsx, exportBrandedPdf, type ExportColumn } from "../adapters/brandedExport";
 import { useT } from "../i18n";
+import { fbNameOnly } from "../adapters/fbName";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const statCard: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: 14, boxShadow: "var(--shadow)" };
@@ -189,7 +190,7 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
                     <span title={t.rd_min_repeat_note} style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 800, letterSpacing: ".03em", color: "var(--accent-text)", background: "var(--accent)", padding: "2px 6px", borderRadius: 5 }}>★ {t.rd_min_repeat}</span>
                   )}
                 </div>
-                {m.handle && <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{m.handle}</div>}
+                {m.handle && !fbNameOnly(m.platform, m.name) && <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{m.handle}</div>}
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
                 <div style={{ fontFamily: mono, fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(m.spent)}</div>

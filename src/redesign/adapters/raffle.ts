@@ -6,6 +6,7 @@
 // injected for testability), THEN the wheel animates deterministically onto the
 // winner's slice (spinTarget). All unit-tested.
 import type { LiveOrder, Buyer } from "../../lib/orderTypes";
+import { fbNameOnly } from "./fbName";
 
 export interface RaffleEntry {
   key: string;         // stable buyer identity (handle+platform, fallback #bNum)
@@ -81,6 +82,9 @@ export function wheelGradient(pool: RaffleEntry[]): string {
 // Winner display: "Name (@handle)" when both exist. When there is no handle the
 // label already IS the name (or #bNum), so the label alone avoids "Name (Name)".
 export function entryDisplay(e: RaffleEntry): string {
+  // Facebook buyer: the handle IS the name → show the name once (fbName.ts)
+  const platform = e.key.includes("|") ? e.key.split("|")[1] : "";
+  if (fbNameOnly(platform, e.displayName)) return e.displayName;
   return e.displayName && e.label.startsWith("@") ? `${e.displayName} (${e.label})` : e.label;
 }
 

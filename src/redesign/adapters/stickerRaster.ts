@@ -72,6 +72,37 @@ export function wrapWords(text: string, maxChars: number, maxLines: number): str
   kept[lim - 1] = last + "…";
   return kept;
 }
+// Facebook buyer name (printFacebookName): lay the words out with a HALF-letter gap (gapW) instead
+// of the font's full-cell space, on up to `maxLines` lines of `width` dots, every letter one fixed
+// cell (cellW). Greedy: a word that does not fit goes to the next line; a word longer than a whole
+// line is broken by letters; on the LAST line a word that does not fit is cut at the edge (as today).
+// Returns the lines as lists of word pieces (code points kept whole). PURE.
+export function fbNameLines(text: string, cellW: number, gapW: number, width: number, maxLines: number): string[][] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[][] = [];
+  let cur: string[] = [];
+  let used = 0;
+  const done = () => lines.length >= maxLines;
+  const close = () => { if (cur.length) lines.push(cur); cur = []; used = 0; };
+  for (const word of words) {
+    let chars = [...word];
+    while (chars.length && !done()) {
+      const gap = cur.length ? gapW : 0;
+      if (used + gap + chars.length * cellW <= width) { cur.push(chars.join("")); used += gap + chars.length * cellW; break; }
+      const last = lines.length === maxLines - 1;
+      if (cur.length && !last) { close(); continue; }       // next line
+      const fit = Math.floor((width - used - gap) / cellW);  // letters that still fit here
+      if (fit <= 0) { close(); continue; }
+      cur.push(chars.slice(0, fit).join("")); used += gap + fit * cellW; chars = chars.slice(fit);
+      close();
+      if (last) chars = [];                                  // last line: the rest is cut at the edge
+    }
+    if (done()) break;
+  }
+  if (!done()) close();
+  return lines.slice(0, maxLines);
+}
+
 function hasNonAscii(s: string): boolean { for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) return true; return false; }
 function isStrippable(cp: number): boolean {
   return cp >= 0x1f000 || (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0xfe00 && cp <= 0xfe0f) || cp === 0x200d || cp === 0x20e3;
@@ -205,6 +236,7 @@ export interface RasterSettings {
   printOrderScale?: number; printCommentScale?: number; printTotalScale?: number;
   printStickerQr?: boolean; // per-device "Print QR on sticker" toggle (default OFF)
   printCommentFullWidth?: boolean; // LIVE layout v2 (full-width comment) — bitmap/extended only, default OFF
+  printFacebookName?: boolean; // Facebook buyer: name once, half-letter word gaps, 2nd line when needed — bitmap/extended only, default OFF
 }
 export interface RasterPayload { storeName?: string; sessionDate?: string; currency?: string; buyer?: RasterBuyer; settings?: RasterSettings | null }
 
@@ -222,7 +254,22 @@ export interface DrawResult { ops: DrawOp[]; wDots: number; hDots: number; wMm: 
 // the bitmap-production mode (see ScriptMode above): same geometry, wider
 // character retention.
 export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode = "extended", qr: QrPlacement | null = null): DrawResult {
+  const two = drawOpsInner(payload, labelWidthMm, labelHeightMm, mode, qr, 2);
+  if (two.nameLines < 2) return two.result;
+  // Facebook name on 2 lines: kept ONLY when everything else on the label (time, comment, price
+  // code…) prints exactly as with the name on one line — the 2nd line must never push the price
+  // code or the comment off the label (e.g. 60×40 at name size 2×). Otherwise: one line, cut.
+  const one = drawOpsInner(payload, labelWidthMm, labelHeightMm, mode, qr, 1);
+  return restKey(two) === restKey(one) ? two.result : one.result;
+}
+// The label's text EXCEPT the name pieces (font + text, positions ignored).
+function restKey(r: { result: DrawResult; nameIdx: Set<number> }): string {
+  return r.result.ops.map((o, i) => (r.nameIdx.has(i) || o.k === "bar" ? "" : `${o.k === "txt" ? o.font : "cjk"}:${o.s}`)).filter(Boolean).join("\n");
+}
+function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode, qr: QrPlacement | null, fbMaxLines: number): { result: DrawResult; nameLines: number; nameIdx: Set<number> } {
   const ops: DrawOp[] = [];
+  const nameIdx = new Set<number>();
+  let nameLines = 0;
   const c = stickerConfig(labelWidthMm, labelHeightMm);
   const legacy = mode === "legacy";
   const narrow = legacy ? (s: string) => stripUnrenderable(transliterateLatin(s)) : stripUnrenderableExt;
@@ -306,7 +353,52 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
     ops.push({ k: "txt", x: 280, y, font: "4", s: String(buyerNum), xm: 2, ym });
     const d = (ym - c.buyerNumYMul) * F4; y += c.buyerNumGap + d; extra += d;
   }
-  if (nameOut) {
+  // Facebook buyer (printFacebookName, bitmap/extended only): the name is printed ONCE — words a
+  // HALF letter apart, and a name too long for one line continues on a second line at the same size
+  // (the line the "@name" used to take; printing.ts already turned that line off). Absent flag →
+  // the original single-line branch below, byte-identical.
+  const fbName = !legacy && settings?.printFacebookName === true;
+  if (nameOut && fbName) {
+    const cjkName = nameTier === SCRIPT_CJK;
+    const asciiX = cmul(lvlName), asciiY = cmul(lvlName);
+    const cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
+    const usedY = cjkName ? cjkY : asciiY;
+    const refBaseY = cjkName ? c.nameCjkYMul : 1;
+    const d = (usedY - refBaseY) * F4;
+    const step = (cjkName ? c.nameCjkGap : c.nameGap) + d;
+    const width = c.rightEdge - 16;
+    const content = narrow(safe(nameOut));
+    let lineCount = 0;
+    if (content && hasCjkChar(content)) {
+      // CJK atlas text: one fixed cell per character (no word gaps), continued by characters
+      const per = Math.max(1, Math.floor(width / (24 * cjkX)));
+      const chars = [...content];
+      for (let i = 0; i < fbMaxLines && i * per < chars.length; i++) {
+        nameIdx.add(ops.length);
+        ops.push({ k: "cjk", x: 16, y: y + i * step, s: chars.slice(i * per, (i + 1) * per).join(""), xm: cjkX, ym: cjkY });
+        lineCount++;
+      }
+    } else if (content) {
+      const cell = CELL_OF["4"][0] * asciiX;
+      const lines = fbNameLines(content, cell, cell / 2, width, fbMaxLines);
+      lines.forEach((words, i) => {
+        let x = 16;
+        for (const w of words) {
+          nameIdx.add(ops.length);
+          ops.push({ k: "txt", x, y: y + i * step, font: "4", s: w, xm: asciiX, ym: asciiY });
+          x += [...w].length * cell + cell / 2;
+        }
+      });
+      lineCount = lines.length;
+    }
+    nameLines = lineCount;
+    if (lineCount > 0) {
+      y += step * lineCount;
+      extra += (cjkName ? c.nameCjkGap - c.nameGap : 0) + d;
+      // the 2nd name line takes the place of the "@name" line it replaces
+      if (lineCount > 1) extra += step - c.usernameGap;
+    }
+  } else if (nameOut) {
     const cjkName = nameTier === SCRIPT_CJK;
     const asciiX = cmul(lvlName), asciiY = cmul(lvlName);
     const cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
@@ -386,7 +478,7 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
     ops.push({ k: "txt", x: c.totalAmountX, y: totalY, font: "4", s: safe(truncate(totalStr, 18)), xm: 2, ym: am });
   }
 
-  return { ops, wDots: c.wDots, hDots: labelHeightMm * 8, wMm: labelWidthMm, hMm: labelHeightMm };
+  return { result: { ops, wDots: c.wDots, hDots: labelHeightMm * 8, wMm: labelWidthMm, hMm: labelHeightMm }, nameLines, nameIdx };
 }
 
 // ── LIVE layout v2 — order time up top, comment full width (bitmap only) ────────

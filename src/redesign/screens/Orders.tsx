@@ -25,6 +25,7 @@ import type { HistoryState } from "../adapters/ordersSearch";
 import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
 import { fbReceiptInfo } from "../adapters/fbReceipt";
+import { fbNameOnly } from "../adapters/fbName";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -160,7 +161,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
             <span style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{o.buyer}</span>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.handle}</span>
+            {!fbNameOnly(o.platform, o.buyer) && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.handle}</span>}
             {/* Date chip — any row not from today (history results + earlier
                 days of a multi-day window) is unambiguous at a glance. */}
             {o.date && todayId && o.date !== todayId && (
@@ -290,7 +291,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               <div style={{ width: 40, height: 40, borderRadius: 12, background: avColor(receipt.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: mono }}>#{receipt.num}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{receipt.name}</div>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{receipt.handle}</div>
+                {!fbNameOnly(receipt.platform, receipt.name) && <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{receipt.handle}</div>}
               </div>
             </div>
             <div style={{ maxHeight: 340, overflowY: "auto", padding: "4px 0" }}>

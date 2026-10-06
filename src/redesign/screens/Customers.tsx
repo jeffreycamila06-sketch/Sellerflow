@@ -9,6 +9,7 @@ import { CUSTOMERS, avColor, initials, fmt, type Customer } from "../data";
 import { headerBar, headerTitle, mono } from "../ui";
 import { filterCustomers, type ReadState } from "../adapters/useReadData";
 import { useT } from "../i18n";
+import { fbNameOnly } from "../adapters/fbName";
 
 export default function Customers({ cur, customers = CUSTOMERS, state = "sample", onExport, hasMore = false, loadingMore = false, onLoadMore }: { cur: string; customers?: Customer[]; state?: ReadState; onExport?: () => void; hasMore?: boolean; loadingMore?: boolean; onLoadMore?: () => void }) {
   const t = useT();
@@ -48,7 +49,7 @@ export default function Customers({ cur, customers = CUSTOMERS, state = "sample"
               <div style={{ width: 40, height: 40, borderRadius: "50%", background: avColor(c.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(c.name)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{c.name}</div>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle} · {c.platform}</div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{fbNameOnly(c.platform, c.name) ? c.platform : <>{c.handle} · {c.platform}</>}</div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
                 <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(c.spent)}</div>
