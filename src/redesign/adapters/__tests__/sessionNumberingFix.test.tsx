@@ -92,7 +92,8 @@ describe("the gate decision (email only)", () => {
     expect(SESSION_NUMBERING_FIX_PUBLIC).toBe(false);
     const LIST = ["camilajeffrey1@gmail.com", "googletest@gmail.com", "googletest@sellerflowlive.com", "cristycabanas34@gmail.com", "tincabanas13@gmail.com", "ronaldgantiga77@gmail.com",
       "aubreylucero15@yahoo.com", "716030huan@gmail.com", "bardagulanjavier@gmail.com", "zandracruz@icloud.com", "chungmaychilleann@gmail.com",
-      "gee383838@icloud.com", "rominamagat@gmail.com", "juvieho0725@gmail.com", "clarabhie@gmail.com", "mersteve17@gmail.com"];
+      "gee383838@icloud.com", "rominamagat@gmail.com", "juvieho0725@gmail.com", "clarabhie@gmail.com", "mersteve17@gmail.com",
+      "jinkyrosepenana@gmail.com", "basaomenchie6@gmail.com", "jaszhu127@gmail.com", "leinapan@gmail.com", "jobelleolivas80@gmail.com", "merriamalmirante194@gmail.com", "apzelejorde@yahoo.com", "s076561908@hotmail.com", "ailun09291990@gmail.com", "ganggang0958@yahoo.com"];
     expect(SESSION_NUMBERING_FIX_EMAILS).toEqual(LIST); // the exact staged list
     for (const e of LIST) {
       expect(SESSION_NUMBERING_FIX_EMAILS).toContain(e);
