@@ -87,7 +87,7 @@ import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { sessionKeyFor } from "./adapters/shipping";
-import { setStickerLayoutV2Allowed, stickerV2Allowed } from "./adapters/printing";
+import { setStickerLayoutV2Allowed, stickerV2Allowed, stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, printsStickerViaImage } from "./adapters/printing";
 import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
@@ -197,6 +197,9 @@ export default function RedesignApp() {
   // flips (printing.ts). The long-comment test buttons stay admin-only.
   const stickerV2On = stickerV2Allowed(auth.profile?.email, auth.profile?.role);
   useEffect(() => { setStickerLayoutV2Allowed(stickerV2On); }, [stickerV2On]);
+  // Sticker spacing (allowlist; STICKER_SPACING_PUBLIC). Not allowed → no flag ever reaches the image.
+  const stickerSpacingOn = stickerSpacingAllowed(auth.profile?.email, auth.profile?.role);
+  useEffect(() => { setStickerSpacingAllowed(stickerSpacingOn); }, [stickerSpacingOn]);
   // MARKET (PH/TW split). Effective market for THIS user: non-admin → their profile
   // country's market (NULL = TW = unchanged); admin → the UNION (sees everything) UNLESS
   // previewing a market via the Admin "View as" switch (per-session, never writes the
@@ -1472,6 +1475,7 @@ export default function RedesignApp() {
   // quantize them identically; no load-time rewrite → zero migration risk).
   const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: stepScaleLevel(p[k], dir) }));
   useEffect(() => { try { localStorage.setItem(LS.pp, JSON.stringify(pp)); } catch { /* ignore */ } }, [pp]);
+  useEffect(() => { setStickerSpacingChoice(pp.spacing); }, [pp.spacing]);
 
   // The shop name every print path puts in the CENTER of the slip (bitmap + classic
   // TSPL sticker, ESC/POS slip, web print) AND the Live print pattern preview — ONE
@@ -2040,7 +2044,9 @@ export default function RedesignApp() {
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}
               layoutV2={stickerV2On} onTestPrintSample={stickerV2On && isAdmin ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
               stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur}
-              previewSettings={stickerV2On ? buildSettingsFromRedesign({ pp, psType, psOut, psSize }) : undefined} />
+              previewSettings={stickerV2On ? buildSettingsFromRedesign({ pp, psType, psOut, psSize }) : undefined}
+              spacingAllowed={stickerSpacingOn} onSpacing={(v) => setPp((p) => ({ ...p, spacing: v }))}
+              imagePath={stickerSpacingOn && printsStickerViaImage(buildSettingsFromRedesign({ pp, psType, psOut, psSize }))} />
           )}
         </div>
 

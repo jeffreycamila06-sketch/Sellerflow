@@ -26,11 +26,13 @@
 // everything. The false branch is behaviorally tested against the verbatim
 // old formulas. Print output is identical either way (printing.ts quantizes).
 import { Fragment, useState, type CSSProperties } from "react";
-import { printScaleLevel, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { printScaleLevel, isStickerQrOn, setStickerQrOn, isStickerQrEntitled, spacingFlagsFor, type Settings, type StickerSpacing } from "../adapters/printing";
+import { stickerFit } from "../adapters/stickerFit";
+import type { RasterSettings } from "../adapters/stickerRaster";
 import { stickerQrSupported } from "../adapters/stickerRaster";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { PREVIEW_COMMENT } from "../adapters/stickerPreview";
-import { useT, type RedesignT } from "../i18n";
+import { useT, tpl, type RedesignT } from "../i18n";
 
 // ⚠️ ROLLBACK = flip to false (one-line change, Vercel-only). Do not delete
 // the legacy branches while this switch exists.
@@ -43,6 +45,7 @@ export interface PrintPatternState {
   tiktokName: boolean; tiktokNameSize: number;
   tiktokUser: boolean; tiktokUserSize: number;
   comment: boolean; commentSize: number;
+  spacing?: StickerSpacing; // sticker spacing sellers only (per device); absent = Normal
 }
 export type PpBoolKey = "shopName" | "dateTime" | "buyerNum" | "tiktokName" | "tiktokUser" | "comment";
 export type PpSizeKey = "shopNameSize" | "dateTimeSize" | "buyerNumSize" | "tiktokNameSize" | "tiktokUserSize" | "commentSize";
@@ -99,6 +102,7 @@ export const V2_SAMPLE_CJK = "+1 我要這件黑色 size M 2件 pls reserve 老�
 export default function PrintPattern({
   onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop", layoutV2 = false, onTestPrintSample,
   stickerQrAllowed = false, psSize = "100x60mm (Standard)", appShell = false, previewSettings, cur = "NT$",
+  spacingAllowed = false, onSpacing, imagePath = false,
 }: {
   onBack: () => void;
   pp: PrintPatternState;
@@ -121,6 +125,11 @@ export default function PrintPattern({
   appShell?: boolean;        // phone app: QR is not available on 60×40 (same rule as Printer settings)
   previewSettings?: Settings; // the print settings the exact preview renders with
   cur?: string;
+  // Sticker spacing (allowlist): Normal/Compact choice, the exact preview with the seller's real
+  // image flags when this device prints images (imagePath), else the mock marked approximate.
+  spacingAllowed?: boolean;
+  onSpacing?: (s: StickerSpacing) => void;
+  imagePath?: boolean;
 }) {
   const t = useT();
   const ROWS = rowsFor(t);
@@ -131,6 +140,11 @@ export default function PrintPattern({
   // exact preview: QR on, a size that prints a QR (50 mm+ tall), and the @username on (QR follows it)
   const hMm = Number(psSize.match(/\d+x(\d+)/)?.[1] ?? 60);
   const showExact = showQrRow && stickerQr && !qrSizeBlocked && stickerQrSupported(hMm) && pp.tiktokUser && !!previewSettings;
+  // Sticker spacing sellers: the image flags exactly as their print builds them.
+  const spacing: StickerSpacing = pp.spacing === "compact" ? "compact" : "normal";
+  const imageFlags: RasterSettings = { printStickerQr: stickerQr && isStickerQrEntitled(), ...(layoutV2 ? { printCommentFullWidth: true } : {}), ...spacingFlagsFor(true, spacing) };
+  const spacingExact = spacingAllowed && imagePath && !!previewSettings;
+  const fit = spacingExact && previewSettings ? stickerFit(previewSettings, cur, shopName, imageFlags) : null;
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -141,7 +155,11 @@ export default function PrintPattern({
       <div style={{ padding: "12px 14px 16px" }}>
         {/* Live slip preview (paper — literal colors) */}
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
-          {showExact && previewSettings ? (
+          {spacingExact && previewSettings ? (
+            <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
+              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} flags={imageFlags} />
+            </div>
+          ) : !spacingAllowed && showExact && previewSettings ? (
             <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
               <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} />
             </div>
@@ -166,6 +184,27 @@ export default function PrintPattern({
           </div>
           )}
         </div>
+        {spacingAllowed && !spacingExact && (
+          <div style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", textAlign: "center" }} data-testid="pp-approx">{t.rd_pp_approx}</div>
+        )}
+        {fit && (fit.overflow || fit.commentScale != null || fit.cut) && (
+          <div style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12, lineHeight: 1.45 }} data-testid="pp-fit-warning">
+            {fit.overflow && <div>{t.rd_pp_fit_overflow}</div>}
+            {fit.commentScale != null && <div>{tpl(t.rd_pp_fit_scale, { n: String(fit.commentScale) })}</div>}
+            {fit.cut && <div>{t.rd_pp_fit_cut}</div>}
+          </div>
+        )}
+        {spacingAllowed && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 11 }} data-testid="pp-spacing">
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", flex: 1 }}>{t.rd_pp_spacing}</span>
+            {(["normal", "compact"] as const).map((v) => (
+              <button key={v} onClick={() => onSpacing?.(v)} aria-pressed={spacing === v} data-testid={`pp-spacing-${v}`}
+                style={{ padding: "7px 13px", borderRadius: 9, border: "1px solid var(--border-strong)", background: spacing === v ? "var(--accent)" : "var(--surface)", color: spacing === v ? "var(--accent-text)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                {v === "normal" ? t.rd_pp_spacing_normal : t.rd_pp_spacing_compact}
+              </button>
+            ))}
+          </div>
+        )}
 
         <button onClick={onTestPrint} style={{ width: "100%", marginTop: 11, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.8" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.8" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.8" /></svg>

@@ -14,7 +14,7 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas, type RasterSettings } from "./stickerRaster";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
@@ -146,6 +146,33 @@ export function stickerV2Allowed(email: string | undefined | null, role: string 
   const e = String(email || "").trim().toLowerCase();
   return e !== "" && STICKER_V2_PREVIEW_EMAILS.includes(e);
 }
+
+// ── Sticker spacing (half-letter word gaps + Normal/Compact) — bitmap path only ──────────
+// ⚠️ ROLLOUT SWITCH: false = only the allowlist (admin role + the two googletest accounts) gets
+// it. Not allowed → neither flag reaches the image settings → byte-identical to before. The
+// native payload, text fallback, WiFi sticker, slip and web print never see these flags.
+export const STICKER_SPACING_PUBLIC = false;
+export const STICKER_SPACING_EMAILS: string[] = ["googletest@gmail.com", "googletest@sellerflowlive.com"];
+export function stickerSpacingAllowed(email: string | undefined | null, role: string | undefined | null, publicFlag: boolean = STICKER_SPACING_PUBLIC): boolean {
+  if (publicFlag) return true;
+  if (isAdminRole(role)) return true;
+  const e = String(email || "").trim().toLowerCase();
+  return e !== "" && STICKER_SPACING_EMAILS.includes(e);
+}
+export type StickerSpacing = "normal" | "compact";
+// Synced by RedesignApp: who may use it (auth) and the seller's choice (per device, sfl_rd_pp).
+// DEFAULT not allowed / normal (fail-closed: before the profile loads nothing changes).
+let stickerSpacingOn = false;
+let stickerSpacingChoice: StickerSpacing = "normal";
+export function setStickerSpacingAllowed(on: boolean): void { stickerSpacingOn = on === true; }
+export function setStickerSpacingChoice(choice: StickerSpacing | undefined | null): void { stickerSpacingChoice = choice === "compact" ? "compact" : "normal"; }
+// The image-only flags for the current seller: {} when not allowed (byte-identical); otherwise
+// half gaps always on + "compact" only when chosen. ONE source for the print and the preview.
+export function spacingFlagsFor(allowed: boolean, choice: StickerSpacing | undefined | null): Pick<RasterSettings, "printHalfWordGap" | "printSpacing"> {
+  if (!allowed) return {};
+  return { printHalfWordGap: true, ...(choice === "compact" ? { printSpacing: "compact" as const } : {}) };
+}
+export function stickerSpacingFlags(): Pick<RasterSettings, "printHalfWordGap" | "printSpacing"> { return spacingFlagsFor(stickerSpacingOn, stickerSpacingChoice); }
 
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
 export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings): NativePrinterPayload {
@@ -362,6 +389,15 @@ export function hasBitmapStickerMethod(): boolean {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   return !!bridge && !!bitmapBridgeFn(bridge);
 }
+// True when THIS device's sticker prints go through the image (bitmap) path: phone app with the
+// bitmap method, a Bluetooth sticker printer, and Classic text mode not in force. (A single print
+// can still fall back to text — CJK atlas offline / SPP send failure.)
+export function printsStickerViaImage(cfg: Settings): boolean {
+  const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
+  if (!bridge || !shouldUseBluetoothSticker(cfg.printerType, !!bridge.printStickerNative)) return false;
+  if (!bitmapBridgeFn(bridge)) return false;
+  return !(classicTextAllowed && isClassicTextSticker());
+}
 function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): BitmapBridgeFn | undefined {
   const fn = (bridge as unknown as { printStickerBitmap?: unknown }).printStickerBitmap;
   if (typeof fn === "function") return fn as BitmapBridgeFn;
@@ -389,7 +425,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // fbName: a Facebook buyer's name is printed ONCE (no @name line), with half-letter word gaps and,
   // when it is too long, continued on the freed line (stickerRaster). Absent for every other buyer →
   // the raster settings are byte-identical to before.
-  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}) } };
+  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags() } };
   const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
