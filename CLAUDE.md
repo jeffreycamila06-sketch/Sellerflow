@@ -4590,3 +4590,19 @@ fb_receipt_access and the plan checks unchanged.
 - **FB page picker (2+ Pages):** the really-connected Page (server scope key) drives the chip
   (`fbChipState`): Disconnect stops it; another Page → stop it first, then connect.
 - Privacy/Terms/Legal screen texts: Oct 5, 2026.
+
+## 🔒 STANDING RULE (2026-10-06) — ~/Sellerflow STAYS ON `main`; extension branches use a WORKTREE
+The Mac's Chrome loads the Parcel Checker **straight from `~/Sellerflow/chrome-extension`**
+(Default profile, unpacked; verified in Chrome's Preferences 2026-10-06). Whatever branch
+`~/Sellerflow` is on is what Chrome runs at the next extension reload or Chrome restart.
+On 2026-10-06 the standby machine ran an UNMERGED 1.16.0 because the repo was on a feature
+branch when the extension reloaded.
+- **Any branch that changes `chrome-extension/` is built in a separate git worktree OUTSIDE
+  `~/Sellerflow`**, e.g.
+  `git -C ~/Sellerflow worktree add ~/sfl-wt/<name> -b claude/<name> origin/main`
+  → work, test, commit and push from `~/sfl-wt/<name>` → `git worktree remove` after merge.
+- **`~/Sellerflow` always stays on `main`**: never `git checkout` a feature branch there.
+  Merges into main are done in `~/Sellerflow` (on main), then pushed.
+- Before any merge, check `git -C ~/Sellerflow status -sb` shows `## main`.
+- If Chrome's "Loaded from" (chrome://extensions → Details) is ever not
+  `~/Sellerflow/chrome-extension`, tell Jeff.
