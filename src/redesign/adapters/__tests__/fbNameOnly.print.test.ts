@@ -13,7 +13,7 @@ vi.mock("../stickerRaster", async (importOriginal) => {
 });
 
 import { fbNameOnly, isFacebookPlatform } from "../fbName";
-import { fbNameLines, stickerDrawOps, STICKER_LAYOUTS, type DrawOp, type RasterPayload } from "../stickerRaster";
+import { fbNameLines, lowestOpBottom, stickerDrawOps, STICKER_LAYOUTS, type DrawOp, type RasterPayload } from "../stickerRaster";
 import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __resetNativePrintQueue, type Settings } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -78,6 +78,67 @@ const linesOf = (ops: NameOp[]) => {
   const ys = [...new Set(ops.map((o) => o.y))].sort((a, b) => a - b);
   return ys.map((y) => ops.filter((o) => o.y === y).sort((a, b) => a.x - b.x).map((o) => o.s));
 };
+
+// ── bottom edge: a 2nd name line must never push anything past the label's bottom ───────────
+// Matrix: 5 sizes × name 1/2/3× × comment 1/2× × layout v2 on/off × Total on/off × 7 names ×
+// 4 comments × 1–2 orders = 6,720 labels. Each Facebook label either fits (lowest op bottom ≤
+// hDots) or uses ONE name line (the one-line fallback).
+const M_NAMES = [FB, "Joy M", "陳小美的店很好很好很好好", "Maria Cristina Dela Cruz Villanueva Santos",
+  "Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "Nguyễn Thị Minh Khai", "李美玲 Lily Chen"];
+const M_COMMENTS = ["Mine", "A01", "D2 red dress size M", "藍色外套 2件"];
+type MCase = { w: number; h: number; scale: number; cs: number; v2: boolean; total: boolean; name: string; comment: string; n: number };
+const mPayload = (m: MCase): RasterPayload => ({
+  storeName: "My Shop", sessionDate: "10/06/2026", currency: "NT$",
+  buyer: { num: 7, name: m.name, handle: m.name, totalSpent: 640,
+    orders: Array.from({ length: m.n }, (_, i) => ({ time: i ? "21:42" : "21:41", item: m.comment })) },
+  settings: {
+    printStoreName: true, printBuyerNumber: true, printOrderItems: true, printTotal: m.total,
+    printBuyerUsername: false, printBuyerNameScale: m.scale, printCommentScale: m.cs,
+    ...(m.v2 ? { printCommentFullWidth: true } : {}), printFacebookName: true,
+  },
+});
+const mNameLines = (ops: DrawOp[], name: string) => {
+  const buyerY = (ops.find((o) => o.k === "txt" && o.s === "Buyer") as NameOp).y;
+  const items = new Set(M_COMMENTS);
+  return new Set(ops.filter((o): o is NameOp => (o.k === "txt" || o.k === "cjk") && o.y > buyerY && o.s !== "" && !items.has(o.s) && name.includes(o.s)).map((o) => o.y)).size;
+};
+const mCases = (): MCase[] => {
+  const out: MCase[] = [];
+  for (const [w, h] of SIZES) for (const scale of [1, 2, 3]) for (const cs of [1, 2]) for (const v2 of [true, false])
+    for (const total of [false, true]) for (const name of M_NAMES) for (const comment of M_COMMENTS) for (const n of [1, 2])
+      out.push({ w, h, scale, cs, v2, total, name, comment, n });
+  return out;
+};
+const mCheck = (m: MCase) => {
+  const r = stickerDrawOps(mPayload(m), m.w, m.h);
+  return { bottom: lowestOpBottom(r.ops), hDots: r.hDots, lines: mNameLines(r.ops, m.name) };
+};
+
+describe("phone label: a 2nd Facebook name line never pushes anything past the bottom edge", () => {
+  it("6,720 combinations: lowest op bottom ≤ label height, OR the name uses one line", () => {
+    const cases = mCases();
+    expect(cases).toHaveLength(6720);
+    const bad = cases.map((m) => ({ m, ...mCheck(m) })).filter((x) => x.bottom > x.hDots && x.lines !== 1);
+    expect(bad.map((x) => `${x.m.w}x${x.m.h} n${x.m.scale} c${x.m.cs} v2=${x.m.v2} T=${x.m.total} ${x.m.name}|${x.m.comment}|${x.m.n} bottom=${x.bottom}`)).toEqual([]);
+  });
+  const base = { cs: 1, v2: true, total: false, comment: "Mine" };
+  it("review example 1 — 100×60, name 2×, 2 orders, FB name: one line (2 lines would end at 485 > 480)", () => {
+    const r = mCheck({ ...base, w: 100, h: 60, scale: 2, name: FB, n: 2 });
+    expect(r.lines).toBe(1); expect(r.bottom).toBeLessThanOrEqual(480);
+  });
+  it("review example 2 — 100×60, name 2×, Total on: one line (2 lines would end at 541)", () => {
+    const r = mCheck({ ...base, w: 100, h: 60, scale: 2, name: FB, n: 1, total: true });
+    expect(r.lines).toBe(1);
+  });
+  it("review example 3 — 60×40, name 1×, long Chinese name, 2 orders: one line (2 lines would end at 328 > 320)", () => {
+    const r = mCheck({ ...base, w: 60, h: 40, scale: 1, name: "陳小美的店很好很好很好好", n: 2 });
+    expect(r.lines).toBe(1); expect(r.bottom).toBeLessThanOrEqual(320);
+  });
+  it("main case kept: \"Caren Kay Ragasa Chao\" on 60×40 at 1× with comment \"Mine\" still prints on two lines", () => {
+    const r = mCheck({ ...base, w: 60, h: 40, scale: 1, name: FB, n: 1 });
+    expect(r.lines).toBe(2); expect(r.bottom).toBeLessThanOrEqual(r.hDots);
+  });
+});
 
 describe("phone label: Facebook name only — all 5 sizes, name scale 1× and 2×", () => {
   for (const [w, h] of SIZES) for (const scale of [1, 2]) {

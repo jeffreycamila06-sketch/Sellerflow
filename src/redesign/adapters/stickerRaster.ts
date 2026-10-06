@@ -259,8 +259,20 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
   // Facebook name on 2 lines: kept ONLY when everything else on the label (time, comment, price
   // code…) prints exactly as with the name on one line — the 2nd line must never push the price
   // code or the comment off the label (e.g. 60×40 at name size 2×). Otherwise: one line, cut.
+  // Also: the 2nd line must not push anything (comment, order rows, Total…) past the bottom edge.
   const one = drawOpsInner(payload, labelWidthMm, labelHeightMm, mode, qr, 1);
-  return restKey(two) === restKey(one) ? two.result : one.result;
+  return restKey(two) === restKey(one) && lowestOpBottom(two.result.ops) <= two.result.hDots ? two.result : one.result;
+}
+// Glyph cell heights (glyphAtlas.latin.ts cells; CJK atlas = 24-cell).
+const OP_GLYPH_H: Record<"2" | "3" | "4", number> = { "2": 20, "3": 24, "4": 32 };
+// The lowest dot any op paints (bottom edge = y + glyph height × ym; bars = y + h). PURE.
+export function lowestOpBottom(ops: DrawOp[]): number {
+  let max = 0;
+  for (const o of ops) {
+    const b = o.k === "bar" ? o.y + o.h : o.y + (o.k === "txt" ? OP_GLYPH_H[o.font] : 24) * o.ym;
+    if (b > max) max = b;
+  }
+  return max;
 }
 // The label's text EXCEPT the name pieces (font + text, positions ignored).
 function restKey(r: { result: DrawResult; nameIdx: Set<number> }): string {
