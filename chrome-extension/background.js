@@ -535,6 +535,17 @@ const PC_MAINT_START_H = 1, PC_MAINT_END_H = 5;           // Asia/Taipei hours [
 const PC_REQUEUE_SINCE_MS = 6 * 60 * 60 * 1000;
 const PC_REQUEUE_RETRY_MS = 60 * 1000;
 const PC_FETCH_LIMIT = 25;                                 // look past rows in backoff; still ≤ PC_LIMIT checks per poll
+// 1.16.1: tell the pending RPC this machine can ask the frozen question (sql/81
+// p_frozen_capable) — only then is it handed a frozen row's store half. A server without
+// that parameter (sql/81 not applied) answers 404 → ask the old way, and try the new way
+// again after 10 min (sql/81 may be applied by then). Until then frozen rows simply wait.
+const PC_CAPABLE_RETRY_MS = 10 * 60 * 1000;
+let pcCapableUnsupportedAt = 0;
+function pcPendingBody(now) {
+  return pcCapableUnsupportedAt && now - pcCapableUnsupportedAt < PC_CAPABLE_RETRY_MS
+    ? { p_limit: PC_FETCH_LIMIT }
+    : { p_limit: PC_FETCH_LIMIT, p_frozen_capable: true };
+}
 const pcBackoff = new Map(); // parcel_scans id → { storeFails, storeNextAt, phoneFails, phoneNextAt, countedGen, seenAt }
 // PURE: wait after the Nth consecutive failure (N ≥ 1).
 function pcBackoffDelay(fails) {
@@ -1100,9 +1111,15 @@ async function pcPollMulti(pass) {
   try { await pcSenderHealthCheck(cfg, rpcHeaders); } catch { /* health check best-effort */ }
   let rows = [];
   try {
-    const r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_checks_pending`, {
-      method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_limit: PC_FETCH_LIMIT }),
-    });
+    const pendingUrl = `${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_checks_pending`;
+    const body = pcPendingBody(Date.now());
+    let r = await fetch(pendingUrl, { method: "POST", headers: rpcHeaders, body: JSON.stringify(body) });
+    if (r.status === 404 && body.p_frozen_capable) {
+      // the server has no p_frozen_capable yet (sql/81 not applied) → the old call
+      pcCapableUnsupportedAt = Date.now();
+      console.log("[PC-FROZEN] the server does not take p_frozen_capable yet — asking the old way (frozen rows wait)");
+      r = await fetch(pendingUrl, { method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_limit: PC_FETCH_LIMIT }) });
+    }
     if (!r.ok) { pcEv.sfl.fetchInFlight = false; await pcStatus({ multi: `rpc_${r.status}` }); return; }
     rows = await r.json();
     if (!Array.isArray(rows)) rows = [];

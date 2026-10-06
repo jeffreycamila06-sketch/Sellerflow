@@ -20,7 +20,10 @@
 --    parcel for it is waiting and the cached answer is older than 1 hour.
 -- 3. New store status 'frozen_unavailable' ("not available for frozen right now" — 7-11 lists five
 --    possible reasons and does not say which; NOT 'full').
--- 4. admin_parcel_checks_pending: returns a new `frozen` column (switch on AND temp_layer 冷凍).
+-- 4. admin_parcel_checks_pending: returns a new `frozen` column (switch on AND temp_layer 冷凍) and
+--    takes an optional p_frozen_capable (default false). Only a caller that sends true (1.16.1+)
+--    is handed a frozen row's store half; any other caller never sees it as store work, so a
+--    frozen row never takes a normal answer and simply waits.
 -- 5. admin_parcel_check_verdict: new optional p_store_layer ('冷凍' = a frozen answer). A frozen
 --    row only takes a frozen answer and a normal row only a normal one — an old 1.15.1 machine
 --    can never mark a frozen parcel OK. Old 7-argument calls keep working (default NULL).
@@ -136,8 +139,11 @@ begin
 end $$;
 
 -- Worker queue (from sql/70) + the frozen flag and frozen cache. Return type changed → drop first.
+-- p_frozen_capable (1.16.1+ sends true): only such a caller is handed a frozen row's store half.
+-- An old caller (1.15.x / 1.16.0) sends only p_limit → default false → frozen rows wait.
 drop function if exists public.admin_parcel_checks_pending(integer);
-CREATE FUNCTION public.admin_parcel_checks_pending(p_limit integer DEFAULT 5)
+drop function if exists public.admin_parcel_checks_pending(integer, boolean);
+CREATE FUNCTION public.admin_parcel_checks_pending(p_limit integer DEFAULT 5, p_frozen_capable boolean DEFAULT false)
  RETURNS TABLE(id uuid, phone text, store_id text, customer_name text, gm_id text, sender_phone text, need_phone boolean, need_store boolean, queue_depth bigint, created_at timestamp with time zone, frozen boolean)
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -153,6 +159,7 @@ declare
   v_n integer := 0;
   v_bucket bigint := floor(extract(epoch from clock_timestamp()) / 20)::bigint;
   v_frozen_on boolean := false;
+  v_frozen_capable boolean := coalesce(p_frozen_capable, false);
 begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   select s.value into v_enabled from app_settings s where s.key = 'parcel_check_multi_enabled';
@@ -220,16 +227,22 @@ begin
        and (c.checked_at is null or c.checked_at < now() - v_store_full_ttl)
      order by ps.store_id, ps.created_at asc
   ),
-  pending as (
-    select ps.id, ps.phone, ps.store_id, ps.customer_name,
+  candidates as (
+    select ps.id, ps.user_id, ps.phone, ps.store_id, ps.customer_name,
            case when v_n > 0
                 then v_pool[1 + (((hashtext(ps.id::text)::bigint & 2147483647) + v_bucket) % v_n)::int]
                 else cfg.gm_id end as gm_id,
            (ps.phone_check_status is null) as need_phone,
-           (ps.store_full_status is null or r.id is not null
-            or ps.store_check_layer is distinct from (case when v_frozen_on and ps.temp_layer = '冷凍' then '冷凍' end)) as need_store,
+           -- a frozen row's store half is work ONLY for a machine that can ask the frozen
+           -- question (p_frozen_capable). For any other caller it is not work at all: the row
+           -- waits (it still comes back for its phone half), so an old machine can never loop
+           -- on it and never fill the queue with it.
+           case when v_frozen_on and ps.temp_layer = '冷凍'
+                then v_frozen_capable
+                     and (ps.store_full_status is null or ps.store_check_layer is distinct from '冷凍')
+                else (ps.store_full_status is null or r.id is not null or ps.store_check_layer is not null)
+           end as need_store,
            (v_frozen_on and ps.temp_layer = '冷凍') as frozen,
-           row_number() over (partition by ps.user_id order by ps.created_at asc) as seller_rank,
            ps.created_at
       from parcel_scans ps
       join parcel_check_access acc on acc.user_id = ps.user_id and acc.enabled
@@ -237,8 +250,11 @@ begin
       left join recheck r on r.id = ps.id
      where ps.status <> 'exported'
        and (v_n > 0 or cfg.gm_id is not null)
-       and (ps.store_full_status is null or ps.phone_check_status is null or r.id is not null
-            or ps.store_check_layer is distinct from (case when v_frozen_on and ps.temp_layer = '冷凍' then '冷凍' end))
+  ),
+  pending as (
+    select c.*, row_number() over (partition by c.user_id order by c.created_at asc) as seller_rank
+      from candidates c
+     where c.need_phone or c.need_store
   )
   select p.id, p.phone, p.store_id, p.customer_name, p.gm_id, v_sender as sender_phone,
          p.need_phone, p.need_store, (select count(*) from pending) as queue_depth, p.created_at, p.frozen

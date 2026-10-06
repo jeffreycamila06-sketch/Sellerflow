@@ -62,7 +62,7 @@ describe("rows in backoff are skipped so the rows behind them get checked", () =
     await sb.pcTick();                         // tick 2: all five in backoff → skipped, the good row gets its turn
     expect(storeChecks(calls, "good")).toBe(1);
     for (const r of bad) expect(storeChecks(calls, r.id)).toBe(1);
-    expect(calls.fetchBodies.some((b) => b === JSON.stringify({ p_limit: 25 }))).toBe(true);
+    expect(calls.fetchBodies.some((b) => b === JSON.stringify({ p_limit: 25, p_frozen_capable: true }))).toBe(true); // 1.16.1: + p_frozen_capable
   });
 });
 

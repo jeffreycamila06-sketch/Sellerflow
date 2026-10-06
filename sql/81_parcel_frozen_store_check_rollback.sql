@@ -71,6 +71,7 @@ begin
   end if;
 end $$;
 
+drop function if exists public.admin_parcel_checks_pending(integer, boolean);
 drop function if exists public.admin_parcel_checks_pending(integer);
 CREATE FUNCTION public.admin_parcel_checks_pending(p_limit integer DEFAULT 5)
  RETURNS TABLE(id uuid, phone text, store_id text, customer_name text, gm_id text, sender_phone text, need_phone boolean, need_store boolean, queue_depth bigint, created_at timestamp with time zone)

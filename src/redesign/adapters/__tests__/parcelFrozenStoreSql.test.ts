@@ -33,6 +33,17 @@ describe("sql/81 forward", () => {
     expect(F).toContain("(select count(*) from pending) as queue_depth, p.created_at, p.frozen");
     expect(F).toMatch(/RETURNS TABLE\(.*created_at timestamp with time zone, frozen boolean\)/);
   });
+  it("pending (fix 1): a frozen row's store half is work ONLY for a caller that sends p_frozen_capable (default false)", () => {
+    expect(F).toContain("CREATE FUNCTION public.admin_parcel_checks_pending(p_limit integer DEFAULT 5, p_frozen_capable boolean DEFAULT false)");
+    expect(F).toContain("drop function if exists public.admin_parcel_checks_pending(integer);");
+    expect(F).toContain("drop function if exists public.admin_parcel_checks_pending(integer, boolean);");
+    expect(F).toContain("v_frozen_capable boolean := coalesce(p_frozen_capable, false);");
+    expect(norm(F)).toContain(norm(`case when v_frozen_on and ps.temp_layer = '冷凍'
+                then v_frozen_capable
+                     and (ps.store_full_status is null or ps.store_check_layer is distinct from '冷凍')`));
+    expect(norm(F)).toContain(norm("where c.need_phone or c.need_store"));
+    expect(rb).toContain("drop function if exists public.admin_parcel_checks_pending(integer, boolean);");
+  });
   it("pending: no hourly 'full' recheck for frozen rows; frozen cache open 10 min / unavailable 1 h / company+not_found 24 h", () => {
     expect(F).toMatch(/and ps\.store_full_status = 'full'\s+and not \(v_frozen_on and ps\.temp_layer = '冷凍'\)/);
     expect(F).toContain("(c.status = 'open' and c.checked_at > now() - v_store_open_ttl)");

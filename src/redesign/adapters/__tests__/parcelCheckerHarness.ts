@@ -48,6 +48,7 @@ export type BootOpts = {
   // 7-11 frozen picker does (e.g. push a frozen E-Map tab). Absent → the tab never lands.
   frozenReply?: (row?: { id?: string; store_id?: string }, tabId?: number) => { status: string; busy?: boolean; transient?: boolean; reason?: string } | null;
   onCreate?: (url: string, emapTabs: EmapTab[]) => EmapTab | void;
+  pendingNoCapable?: boolean;     // 1.16.1: the pending RPC has no p_frozen_capable (sql/81 not applied) → 404 when it is sent
 };
 
 export function bootWorker(opts: BootOpts = {}) {
@@ -134,6 +135,7 @@ export function bootWorker(opts: BootOpts = {}) {
       const st = r.status ?? 200;
       return { ok: st >= 200 && st < 300, status: st, json: async () => r.json, text: async () => JSON.stringify(r.json), headers: { get: () => "application/json" } };
     }
+    if (/admin_parcel_checks_pending/.test(url) && opts.pendingNoCapable && /p_frozen_capable/.test(String(init?.body ?? ""))) return { ok: false, status: 404, json: async () => ({ code: "PGRST202" }), text: async () => "", headers: { get: () => "application/json" } };
     if (/admin_parcel_check_requeue/.test(url) && opts.requeueOk === false) return { ok: false, status: 404, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
     const body = /admin_parcel_checks_pending/.test(url) ? rows
       : /admin_parcel_check_requeue/.test(url) ? 2

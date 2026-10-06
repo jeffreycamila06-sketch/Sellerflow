@@ -243,3 +243,26 @@ describe("review question 4 — the E-Map health check and the legacy lane skip 
     expect(calls.sendMessage.find((m) => m.type === "PC_PING" && (m.tabId === 5 || m.tabId === 3))?.tabId).toBe(5);
   });
 });
+
+describe("1.16.1 fix 1 — the machine tells the server it can do the frozen check", () => {
+  const pendingBodies = (calls: { fetch: string[]; fetchBodies: string[] }) =>
+    calls.fetch.map((u, i) => (/admin_parcel_checks_pending/.test(u) ? calls.fetchBodies[i] : null)).filter(Boolean);
+  it("the pending call sends p_frozen_capable:true", async () => {
+    const { sb, calls, booted } = bootWorker({ emapTabs: [NORMAL], rows: [{ ...PENDING_ROW, need_phone: false }] });
+    await booted; await sb.pcTick();
+    expect(pendingBodies(calls)[0]).toBe(JSON.stringify({ p_limit: 25, p_frozen_capable: true }));
+  });
+  it("a server without the parameter (sql/81 not applied, 404) → the old call in the same pass, rows still checked; the new call again only after 10 min", async () => {
+    let t = Date.parse("2026-10-06T06:00:00Z");
+    const { sb, calls, booted } = bootWorker({ now: () => t, pendingNoCapable: true, emapTabs: [NORMAL], rows: [{ ...PENDING_ROW, need_phone: false }] });
+    await booted; await sb.pcTick();
+    expect(pendingBodies(calls)).toEqual([JSON.stringify({ p_limit: 25, p_frozen_capable: true }), JSON.stringify({ p_limit: 25 })]);
+    expect(sent(calls, "PC_CHECK_STORE").map((m) => m.rowId)).toContain("row-1");
+    calls.fetch.length = 0; calls.fetchBodies.length = 0;
+    t += 5 * MIN; await sb.pcTick();
+    expect(pendingBodies(calls)).toEqual([JSON.stringify({ p_limit: 25 })]);
+    calls.fetch.length = 0; calls.fetchBodies.length = 0;
+    t += 6 * MIN; await sb.pcTick();
+    expect(pendingBodies(calls)[0]).toBe(JSON.stringify({ p_limit: 25, p_frozen_capable: true }));
+  });
+});
