@@ -93,7 +93,8 @@ describe("the gate decision (email only)", () => {
     const LIST = ["camilajeffrey1@gmail.com", "googletest@gmail.com", "googletest@sellerflowlive.com", "cristycabanas34@gmail.com", "tincabanas13@gmail.com", "ronaldgantiga77@gmail.com",
       "aubreylucero15@yahoo.com", "716030huan@gmail.com", "bardagulanjavier@gmail.com", "zandracruz@icloud.com", "chungmaychilleann@gmail.com",
       "gee383838@icloud.com", "rominamagat@gmail.com", "juvieho0725@gmail.com", "clarabhie@gmail.com", "mersteve17@gmail.com",
-      "jinkyrosepenana@gmail.com", "basaomenchie6@gmail.com", "jaszhu127@gmail.com", "leinapan@gmail.com", "jobelleolivas80@gmail.com", "merriamalmirante194@gmail.com", "apzelejorde@yahoo.com", "s076561908@hotmail.com", "ailun09291990@gmail.com", "ganggang0958@yahoo.com"];
+      "jinkyrosepenana@gmail.com", "basaomenchie6@gmail.com", "jaszhu127@gmail.com", "leinapan@gmail.com", "jobelleolivas80@gmail.com", "merriamalmirante194@gmail.com", "apzelejorde@yahoo.com", "s076561908@hotmail.com", "ailun09291990@gmail.com", "ganggang0958@yahoo.com",
+      "abeyverdera@yahoo.com", "christinechen769@gmail.com", "z30983359299@gmail.com", "vans0814@gmail.com", "rodelio.martinjr@gmail.com", "michellesebios86@gmail.com", "nashtex@abv.bg", "leahsangalang1215@gmail.com", "sanggalanglhea@gmail.com", "ukaydaily1@gmail.com", "lheyukay@gmail.com"];
     expect(SESSION_NUMBERING_FIX_EMAILS).toEqual(LIST); // the exact staged list
     for (const e of LIST) {
       expect(SESSION_NUMBERING_FIX_EMAILS).toContain(e);

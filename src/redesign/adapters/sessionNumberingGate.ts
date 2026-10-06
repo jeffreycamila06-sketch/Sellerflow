@@ -34,6 +34,17 @@ export const SESSION_NUMBERING_FIX_EMAILS = [
   "s076561908@hotmail.com",
   "ailun09291990@gmail.com",
   "ganggang0958@yahoo.com",
+  "abeyverdera@yahoo.com",
+  "christinechen769@gmail.com",
+  "z30983359299@gmail.com",
+  "vans0814@gmail.com",
+  "rodelio.martinjr@gmail.com",
+  "michellesebios86@gmail.com",
+  "nashtex@abv.bg",
+  "leahsangalang1215@gmail.com",
+  "sanggalanglhea@gmail.com",
+  "ukaydaily1@gmail.com",
+  "lheyukay@gmail.com",
 ];
 
 export type SessionNumberingGate = "on" | "off" | "wait";
