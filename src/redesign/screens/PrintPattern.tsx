@@ -26,7 +26,7 @@
 // everything. The false branch is behaviorally tested against the verbatim
 // old formulas. Print output is identical either way (printing.ts quantizes).
 import { Fragment, useState, type CSSProperties } from "react";
-import { printScaleLevel, isStickerQrOn, setStickerQrOn, isStickerQrEntitled, spacingFlagsFor, type Settings, type StickerSpacing } from "../adapters/printing";
+import { printScaleLevel, isStickerQrOn, setStickerQrOn, isStickerQrEntitled, spacingFlagsFor, effectiveSpacing, STICKER_SPACING_CHOICE_VISIBLE, type Settings, type StickerSpacing } from "../adapters/printing";
 import { stickerFit } from "../adapters/stickerFit";
 import type { RasterSettings } from "../adapters/stickerRaster";
 import { stickerQrSupported } from "../adapters/stickerRaster";
@@ -102,7 +102,7 @@ export const V2_SAMPLE_CJK = "+1 我要這件黑色 size M 2件 pls reserve 老�
 export default function PrintPattern({
   onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop", layoutV2 = false, onTestPrintSample,
   stickerQrAllowed = false, psSize = "100x60mm (Standard)", appShell = false, previewSettings, cur = "NT$",
-  spacingAllowed = false, onSpacing, imagePath = false,
+  spacingAllowed = false, onSpacing, imagePath = false, spacingChoiceVisible = STICKER_SPACING_CHOICE_VISIBLE,
 }: {
   onBack: () => void;
   pp: PrintPatternState;
@@ -130,6 +130,7 @@ export default function PrintPattern({
   spacingAllowed?: boolean;
   onSpacing?: (s: StickerSpacing) => void;
   imagePath?: boolean;
+  spacingChoiceVisible?: boolean; // the Normal/Compact row (STICKER_SPACING_CHOICE_VISIBLE; tests pass true)
 }) {
   const t = useT();
   const ROWS = rowsFor(t);
@@ -141,7 +142,7 @@ export default function PrintPattern({
   const hMm = Number(psSize.match(/\d+x(\d+)/)?.[1] ?? 60);
   const showExact = showQrRow && stickerQr && !qrSizeBlocked && stickerQrSupported(hMm) && pp.tiktokUser && !!previewSettings;
   // Sticker spacing sellers: the image flags exactly as their print builds them.
-  const spacing: StickerSpacing = pp.spacing === "compact" ? "compact" : "normal";
+  const spacing: StickerSpacing = effectiveSpacing(pp.spacing, spacingChoiceVisible); // row hidden → the fixed spacing
   const imageFlags: RasterSettings = { printStickerQr: stickerQr && isStickerQrEntitled(), ...(layoutV2 ? { printCommentFullWidth: true } : {}), ...spacingFlagsFor(true, spacing) };
   const spacingExact = spacingAllowed && imagePath && !!previewSettings;
   const fit = spacingExact && previewSettings ? stickerFit(previewSettings, cur, shopName, imageFlags) : null;
@@ -194,7 +195,7 @@ export default function PrintPattern({
             {fit.cut && <div>{t.rd_pp_fit_cut}</div>}
           </div>
         )}
-        {spacingAllowed && (
+        {spacingAllowed && spacingChoiceVisible && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 11 }} data-testid="pp-spacing">
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", flex: 1 }}>{t.rd_pp_spacing}</span>
             {(["normal", "compact"] as const).map((v) => (

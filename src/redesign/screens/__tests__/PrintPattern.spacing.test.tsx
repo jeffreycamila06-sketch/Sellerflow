@@ -20,7 +20,7 @@ describe("PrintPattern — sticker spacing", () => {
   });
   it("allowed + image path: exact preview, Normal selected by default, Compact pick reported", () => {
     const onSpacing = vi.fn();
-    const v = view({ spacingAllowed: true, imagePath: true, onSpacing });
+    const v = view({ spacingAllowed: true, imagePath: true, onSpacing, spacingChoiceVisible: true }); // the row as it was (visible)
     expect(v.getByTestId("pp-exact-preview")).toBeTruthy();
     expect(v.queryByTestId("pp-approx")).toBeNull();
     expect(v.getByTestId("pp-spacing-normal").getAttribute("aria-pressed")).toBe("true");
