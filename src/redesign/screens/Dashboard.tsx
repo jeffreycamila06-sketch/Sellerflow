@@ -355,6 +355,11 @@ export default function Dashboard({
   const fbChipName = fbConnectEnabled ? (fbPages.length ? (fbPages[fbPageIdx]?.name || fbPages[0]?.name || t.rd_dash_connect_facebook) : t.rd_dash_connect_facebook) : (fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook);
   const shChipName = shName ? (shName.shopName || t.rd_shp_shop_name_fallback) : t.rd_shp_connect_shopee;
   const [chosen, setChosen] = useState<PickerPlatform | null>(null);
+  // The chosen slot's height at the tap — it is held exactly there until the collapse
+  // starts (no flex re-size → the four tiles don't move), then shrinks (CSS animation).
+  const [chosenH, setChosenH] = useState<number | null>(null);
+  // The panel returns WITHOUT the pop delay after a connect attempt (e.g. a failed one).
+  const [panelNow, setPanelNow] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const lp = livePickerView({
     enabled: livePicker && !liveSourceMode,
@@ -393,29 +398,25 @@ export default function Dashboard({
     p === "TikTok" ? ttConnecting && !ttConnected
     : p === "Facebook" ? fbConnecting && !fbConnected
     : p === "Shopee" ? shopeeConnecting && !shopeeConnected : false;
+  if (chosen && lpkConnecting(chosen) && !panelNow) setPanelNow(true); // adjust-during-render
+  const pickTile = (p: PickerPlatform, slot: HTMLElement | null) => {
+    if (chosen === p) { setChosen(null); return; }                       // Back
+    setChosenH(slot ? slot.getBoundingClientRect().height : null);
+    setPanelNow(false);
+    setChosen(p);
+  };
   const lpkMenu = (p: PickerPlatform) =>
     p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : shMenu();
   // Emblems: the chips' own letter marks + brand colours, one shape per platform.
+  // Emblems: the chips' own letter marks + brand colours, one shape per platform. All
+  // sizes come from redesign.css (.sfl-lpk-shape--*), scaled to the tile height.
   const lpkEmblem = (p: PickerPlatform) => {
-    const letter: CSSProperties = { color: "#fff", fontWeight: 800, lineHeight: 1 };
-    if (p === "TikTok") return (
-      <span style={{ width: 66, height: 66, borderRadius: "50%", background: "#000", backgroundClip: "padding-box", border: "6px double #000", display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
-        <span style={{ ...letter, fontSize: 30 }}>t</span>
-      </span>
-    );
-    if (p === "Facebook") return (
-      <span style={{ width: 62, height: 62, borderRadius: 24, background: "#1877f2", boxShadow: "0 0 0 3px var(--surface), 0 0 0 7px #1877f2", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ ...letter, fontSize: 32, fontFamily: "var(--font-display)" }}>f</span>
-      </span>
-    );
-    if (p === "Instagram") return (
-      <span style={{ width: 62, height: 62, borderRadius: "50% 50% 50% 14%", background: "#c13584", boxShadow: "0 0 0 3px var(--surface), 0 0 0 7px #c13584", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ ...letter, fontSize: 20 }}>IG</span>
-      </span>
-    );
+    const slug = lpkSlug[p];
+    const bg = p === "TikTok" ? "#000" : p === "Facebook" ? "#1877f2" : p === "Instagram" ? "#c13584" : "#ee4d2d";
+    const ch = p === "TikTok" ? "t" : p === "Facebook" ? "f" : p === "Instagram" ? "IG" : "S";
     return (
-      <span style={{ width: 60, height: 60, background: "#ee4d2d", transform: "rotate(45deg)", borderRadius: 6, boxShadow: "0 0 0 3px var(--surface), 0 0 0 7px #ee4d2d", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ ...letter, fontSize: 26, transform: "rotate(-45deg)" }}>S</span>
+      <span className={`sfl-lpk-shape sfl-lpk-shape--${slug}`} style={{ background: bg, "--lpk-brand": bg } as CSSProperties}>
+        <span className="sfl-lpk-letter">{ch}</span>
       </span>
     );
   };
@@ -432,22 +433,22 @@ export default function Dashboard({
         const connecting = isChosen && lpkConnecting(p);
         const sub = !enabled ? t.rd_ls_soon : connecting ? t.rd_dash_connecting : isChosen ? t.rd_lpk_choose_acct : t.rd_lpk_tap;
         return (
-          <div key={p} data-testid={`lpk-slot-${slug}`} className={`sfl-lpk-slot${hidden ? " is-hidden" : ""}${isChosen ? " is-chosen" : ""}`}
-            aria-hidden={hidden || undefined} style={{ marginTop: i === 0 || isChosen ? 0 : 12 }}>
+          <Fragment key={p}>
+          <div data-testid={`lpk-slot-${slug}`} className={`sfl-lpk-slot${hidden ? " is-hidden" : ""}${isChosen ? " is-chosen" : ""}`}
+            aria-hidden={hidden || undefined}
+            style={{ marginTop: i === 0 ? 0 : 12, ...(isChosen && chosenH != null ? { flex: "0 0 auto", height: chosenH, "--lpk-chosen-to": `${Math.min(104, chosenH)}px` } as CSSProperties : null) }}>
             <button
               data-testid={`lpk-tile-${slug}`}
               className={`sfl-lpk-tile sfl-lpk-tile--${slug}`}
               disabled={!enabled}
               tabIndex={hidden ? -1 : undefined}
               aria-expanded={enabled ? isChosen : undefined}
-              onClick={() => setChosen(isChosen ? null : p)}
-              style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", textAlign: "left", padding: "12px 18px", background: "var(--surface)", color: "var(--text)", border: `2px solid ${isChosen ? "var(--accent)" : "var(--border)"}`, borderRadius: 22, boxShadow: "var(--shadow)", cursor: enabled ? "pointer" : "default", opacity: enabled ? 1 : 0.5, fontFamily: "var(--font-ui)" }}
+              onClick={(e) => pickTile(p, e.currentTarget.parentElement)}
+              style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", textAlign: "left", padding: "8px 18px", background: "var(--surface)", color: "var(--text)", border: `2px solid ${isChosen ? "var(--accent)" : "var(--border)"}`, borderRadius: 22, boxShadow: "var(--shadow)", cursor: enabled ? "pointer" : "default", opacity: enabled ? 1 : 0.5, fontFamily: "var(--font-ui)" }}
             >
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0, width: 78 }}>
-                <span className={`sfl-lpk-emb sfl-lpk-emb--${slug}`} style={{ width: 78, height: p === "Shopee" ? 100 : 70, display: "flex", alignItems: "center", justifyContent: "center" }}>{lpkEmblem(p)}</span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#000", color: "#fff", fontSize: 9, fontWeight: 800, letterSpacing: ".08em", padding: "2px 6px", borderRadius: 5 }}>
-                  <span className="sfl-lpk-blink" style={{ width: 5, height: 5, borderRadius: "50%", background: "#e11d48" }} />LIVE
-                </span>
+              <span data-testid={`lpk-col-${slug}`} className="sfl-lpk-col">
+                <span className={`sfl-lpk-emb sfl-lpk-emb--${slug}`}>{lpkEmblem(p)}</span>
+                <span className="sfl-lpk-tag"><span className="sfl-lpk-blink" />LIVE</span>
               </span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                 <span><span className={`sfl-lpk-name sfl-lpk-name--${slug}`} style={{ display: "inline-block", transformOrigin: "left center", fontSize: 23, fontWeight: 800, color: "var(--text)" }}>{p}</span></span>
@@ -458,12 +459,15 @@ export default function Dashboard({
               </span>
               {isChosen && !connecting && <span style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-fg)", flexShrink: 0 }}>{t.rd_lpk_back}</span>}
             </button>
-            {isChosen && !connecting && (
-              <div data-testid={`lpk-panel-${slug}`} className="sfl-lpk-panel" style={{ marginTop: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, boxShadow: "0 16px 38px rgba(0,0,0,.3)", padding: 6 }}>
-                {lpkMenu(p)}
-              </div>
-            )}
           </div>
+          {/* The panel is the chosen slot's SIBLING: it takes no space and can't be
+              tapped until its pop delay (sflLpkHold), so the tiles never move early. */}
+          {isChosen && !connecting && (
+            <div data-testid={`lpk-panel-${slug}`} className={`sfl-lpk-panel${panelNow ? " sfl-lpk-panel--now" : ""}`} style={{ flex: "0 0 auto", marginTop: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, boxShadow: "0 16px 38px rgba(0,0,0,.3)", padding: 6 }}>
+              {lpkMenu(p)}
+            </div>
+          )}
+          </Fragment>
         );
       })}
     </div>

@@ -673,10 +673,51 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
     max-height var(--lpk-collapse) ease var(--lpk-collapse-delay), min-height var(--lpk-collapse) ease var(--lpk-collapse-delay),
     margin var(--lpk-collapse) ease var(--lpk-collapse-delay);
 }
-[data-redesign] .sfl-lpk-slot.is-chosen { flex: 0 0 auto; max-height: none; }
-[data-redesign] .sfl-lpk-slot.is-chosen > .sfl-lpk-tile { flex: 0 0 auto; transform: scale(.98); transition: transform var(--lpk-collapse) ease; }
+/* Chosen slot: held at its tap-time height (inline height, flex 0 0 auto) until the
+   collapse starts, then shrinks to --lpk-chosen-to together with the others' collapse. */
+@keyframes sflLpkChosen{to{height:var(--lpk-chosen-to);margin-top:0}}
+@keyframes sflLpkHold{from{max-height:0;margin-top:0;padding-top:0;padding-bottom:0;border-width:0;overflow:hidden;pointer-events:none}to{max-height:1200px}}
+[data-redesign] .sfl-lpk-slot.is-chosen { max-height: none; transition: none; animation: sflLpkChosen var(--lpk-collapse) ease var(--lpk-collapse-delay) forwards; }
+[data-redesign] .sfl-lpk-slot.is-chosen > .sfl-lpk-tile { transform: scale(.98); transition: transform var(--lpk-collapse) ease var(--lpk-collapse-delay); }
 [data-redesign] .sfl-lpk-tile:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-[data-redesign] .sfl-lpk-panel { animation: sflLpkPop var(--lpk-pop) ease-out var(--lpk-pop-delay) both; }
+[data-redesign] .sfl-lpk-panel { animation: sflLpkPop var(--lpk-pop) ease-out var(--lpk-pop-delay) both, sflLpkHold 1ms linear var(--lpk-pop-delay) both; }
+[data-redesign] .sfl-lpk-panel.sfl-lpk-panel--now { animation: sflLpkPop var(--lpk-pop) ease-out both; }
+
+/* Emblem column: one scale unit (--lpk-u = 1px at full size) tied to the tile's height
+   (container query), so emblem + LIVE tag always sit inside the tile. Full size =
+   78×82 (emblem area 74, tag overlapping its bottom edge). Shapes incl. ring ≤ 74. */
+[data-redesign] .sfl-lpk-col { --lpk-u: 1px; position: relative; flex-shrink: 0; width: calc(var(--lpk-u) * 78); height: calc(var(--lpk-u) * 82); }
+@supports (container-type: size) {
+  [data-redesign] .sfl-lpk-tile { container-type: size; }
+  [data-redesign] .sfl-lpk-col { --lpk-u: calc(min(82px, 100cqh) / 82); }
+}
+[data-redesign] .sfl-lpk-emb { position: absolute; top: 0; left: 0; width: 100%; height: calc(var(--lpk-u) * 74); display: flex; align-items: center; justify-content: center; }
+[data-redesign] .sfl-lpk-tag {
+  position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 1;
+  display: inline-flex; align-items: center; gap: calc(var(--lpk-u) * 4); white-space: nowrap;
+  background: #000; color: #fff; border: 2px solid var(--surface); border-radius: calc(var(--lpk-u) * 6);
+  font-size: calc(var(--lpk-u) * 9); font-weight: 800; letter-spacing: .08em; line-height: 1;
+  padding: calc(var(--lpk-u) * 2.5) calc(var(--lpk-u) * 6);
+}
+[data-redesign] .sfl-lpk-blink { width: calc(var(--lpk-u) * 5); height: calc(var(--lpk-u) * 5); border-radius: 50%; background: #e11d48; }
+[data-redesign] .sfl-lpk-shape { display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+[data-redesign] .sfl-lpk-letter { color: #fff; font-weight: 800; line-height: 1; }
+[data-redesign] .sfl-lpk-shape--tt { width: calc(var(--lpk-u) * 64); height: calc(var(--lpk-u) * 64); border-radius: 50%; background-clip: padding-box !important; border: calc(var(--lpk-u) * 6) double var(--text); }
+[data-redesign] .sfl-lpk-shape--tt .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 28); }
+[data-redesign] .sfl-lpk-shape--fb, [data-redesign] .sfl-lpk-shape--ig {
+  width: calc(var(--lpk-u) * 58); height: calc(var(--lpk-u) * 58);
+  box-shadow: 0 0 0 calc(var(--lpk-u) * 3) var(--surface), 0 0 0 calc(var(--lpk-u) * 7) var(--lpk-brand);
+}
+[data-redesign] .sfl-lpk-shape--fb { border-radius: calc(var(--lpk-u) * 22); }
+[data-redesign] .sfl-lpk-shape--fb .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 30); font-family: var(--font-display); }
+[data-redesign] .sfl-lpk-shape--ig { border-radius: 50% 50% 50% 14%; }
+[data-redesign] .sfl-lpk-shape--ig .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 19); }
+/* diamond: (38 + 2×7) × √2 ≈ 73.5 ≤ 74 incl. the ring */
+[data-redesign] .sfl-lpk-shape--sh {
+  width: calc(var(--lpk-u) * 38); height: calc(var(--lpk-u) * 38); transform: rotate(45deg); border-radius: calc(var(--lpk-u) * 4);
+  box-shadow: 0 0 0 calc(var(--lpk-u) * 3) var(--surface), 0 0 0 calc(var(--lpk-u) * 7) var(--lpk-brand);
+}
+[data-redesign] .sfl-lpk-shape--sh .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 19); transform: rotate(-45deg); }
 [data-redesign] .sfl-lpk-fly { animation: sflLpkFly var(--lpk-fly) cubic-bezier(.2,.8,.2,1); }
 
 [data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-emb--tt { animation: sflLpkBeat var(--lpk-tt) ease-in-out var(--lpk-iter); }

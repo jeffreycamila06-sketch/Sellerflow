@@ -150,6 +150,25 @@ describe("State B — chosen tile + the platform's own menu (same callbacks)", (
     expect(screen.getByTestId("lpk-panel-tt")).toBeTruthy();
   });
 
+  it("the panel sits after the chosen slot (not inside it), held until its pop delay", () => {
+    renderDash({ livePicker: true });
+    fireEvent.click(screen.getByTestId("lpk-tile-tt"));
+    const slot = screen.getByTestId("lpk-slot-tt"), panel = screen.getByTestId("lpk-panel-tt");
+    expect(slot.contains(panel)).toBe(false);
+    expect(slot.nextElementSibling).toBe(panel);
+    expect(panel.className).not.toContain("sfl-lpk-panel--now");
+    expect(slot.style.flex).toBe("0 0 auto");           // held at its tap-time height (inline)
+    expect(slot.style.height).not.toBe("");
+  });
+
+  it("after a connect attempt the panel comes back without the pop delay", () => {
+    const r = renderDash({ livePicker: true });
+    fireEvent.click(screen.getByTestId("lpk-tile-tt"));
+    r.rerender(ui({ livePicker: true, ttConnecting: true }));
+    r.rerender(ui({ livePicker: true, ttConnecting: false }));
+    expect(screen.getByTestId("lpk-panel-tt").className).toContain("sfl-lpk-panel--now");
+  });
+
   it("Facebook honest gate: same text + Telegram link; the link closes the panel locally", () => {
     const onToggleFB = vi.fn();
     renderDash({ livePicker: true, onToggleFB });
@@ -249,6 +268,15 @@ describe("motion + text", () => {
     expect(css).toContain("@keyframes sflLpkFlip{0%,55%{transform:rotateY(0deg)}85%,100%{transform:rotateY(360deg)}}");
     expect(css).toContain(".sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-emb--sh { animation: sflLpkFlip");
     expect(css).toMatch(/prefers-reduced-motion: reduce\) \{\n\s+\[data-redesign\] \.sfl-lpk, \[data-redesign\] \.sfl-lpk \*, \[data-redesign\] \.sfl-lpk-fly \{ animation: none !important; transition: none !important; \}/);
+  });
+  it("tap timing: chosen slot frozen then shrunk after the collapse delay; panel held; emblems sized to fit", () => {
+    expect(css).toContain("@keyframes sflLpkHold{from{max-height:0;margin-top:0;padding-top:0;padding-bottom:0;border-width:0;overflow:hidden;pointer-events:none}to{max-height:1200px}}");
+    expect(css).toContain(".sfl-lpk-panel { animation: sflLpkPop var(--lpk-pop) ease-out var(--lpk-pop-delay) both, sflLpkHold 1ms linear var(--lpk-pop-delay) both; }");
+    expect(css).toContain(".sfl-lpk-slot.is-chosen { max-height: none; transition: none; animation: sflLpkChosen var(--lpk-collapse) ease var(--lpk-collapse-delay) forwards; }");
+    expect(css).toContain("transform: scale(.98); transition: transform var(--lpk-collapse) ease var(--lpk-collapse-delay);");
+    expect(css).toContain("--lpk-u: calc(min(82px, 100cqh) / 82);");                 // scales with the tile height
+    expect(css).toContain("border: calc(var(--lpk-u) * 6) double var(--text);");     // TikTok ring visible in both themes
+    expect(css).toMatch(/\.sfl-lpk-shape--sh \{\n\s+width: calc\(var\(--lpk-u\) \* 38\)/);   // (38+14)·√2 ≈ 73.5 ≤ 74
   });
   it("new text is translated in every app language", () => {
     const src = readFileSync("src/redesign/i18n/index.tsx", "utf8");
