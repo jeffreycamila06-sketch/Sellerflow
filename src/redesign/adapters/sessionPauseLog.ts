@@ -107,7 +107,7 @@ export function useSessionPauseLog(opts: {
         if (shouldLogPause(t - s.start, s.comments) || s.stillWritten) writePauseRow(rowOf(s, t, false), live.current.insert);
       }
     } catch { /* never surfaces */ }
-  }, [reason]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reason]);
 
   useEffect(() => { if (autoOn && st.current) st.current.autoOn = true; }, [autoOn]);
 

@@ -126,7 +126,7 @@ describe("pure helpers", () => {
 });
 
 describe("the hook (timers)", () => {
-  const run = (initial: { reason: null | "load_failed"; feed: Feed }) => {
+  const run = (initial: { reason: null | "load_failed"; feed: Feed; autoOn?: boolean }) => {
     let t = 0; const rows: SessionPauseRow[] = [];
     const h = renderHook((p: { reason: null | "load_failed"; feed: Feed; autoOn?: boolean }) => useSessionPauseLog({ reason: p.reason, autoOn: !!p.autoOn, feed: p.feed, wouldBeOrder: (x) => x === "A1", insert: async (r) => { rows.push(r); }, now: () => t }), { initialProps: initial });
     return { h, rows, at: (ms: number) => { t = ms; } };
