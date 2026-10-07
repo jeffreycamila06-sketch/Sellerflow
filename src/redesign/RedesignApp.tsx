@@ -31,7 +31,7 @@ import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr, maxPending
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
-import { parcelTrackingVisible, loadParcelTrackingAccess } from "./adapters/parcelTracking";
+import { parcelTrackingVisible, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -287,6 +287,9 @@ export default function RedesignApp() {
   const parcelTrackingAllowed = parcelTrackingVisible({
     role: auth.profile?.role, plan: auth.profile?.plan, access: authed && parcelTrackingAccess, marketHidden: hidePickup,
   });
+  // Automatic Pickup Status check: on app open and every return to the app. Throttled to
+  // once per 30 min per account inside requestAutoCheck; the database makes every decision.
+  useAutoPickupCheck(authed && parcelTrackingAllowed, authUserId);
   // Locked-tile upsell popup (basic/free): a NEUTRAL contact-support popup — no
   // price/plan wording (Apple 2.1b-safe), same on iOS and Android/web. It never
   // grants access; the screen render below stays gated on parcelAllowed ONLY.
@@ -2029,7 +2032,7 @@ export default function RedesignApp() {
             <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} />}
-          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
+          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
           {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} />}

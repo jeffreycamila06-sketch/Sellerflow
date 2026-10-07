@@ -11,6 +11,7 @@
 // server poller polls — one list, no email constants in the bundle. The poll
 // endpoint is independently gated by a server secret; this is a UI gate, not the
 // security boundary.
+import { useEffect } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
 
@@ -520,6 +521,67 @@ export async function requestCheck(kind: "manual" | "urgent"): Promise<CheckResu
 // PURE — the Check now button: busy while a job is queued/running, locked until
 // next_available_at, otherwise ready. Unknown status (RPC failed) → ready: the server
 // still enforces every rule and answers with a plain reason.
+// ── Automatic check (sql/83) ──────────────────────────────────────────────────
+// The app asks at most once per 30 min per account (app open, return to the app,
+// entering Pickup Status). The DATABASE decides whether a check is queued; this is
+// only a throttle so we don't call it on every tab switch. Never throws.
+export const AUTO_CHECK_THROTTLE_MS = 30 * 60 * 1000;
+const autoCheckMemory = new Map<string, number>(); // fallback when localStorage is unavailable
+
+// PURE — may we ask again?
+export function autoCheckDue(lastMs: number | null | undefined, nowMs: number): boolean {
+  const last = Number(lastMs);
+  if (!Number.isFinite(last) || last <= 0) return true;
+  return nowMs - last >= AUTO_CHECK_THROTTLE_MS || nowMs < last; // a clock set back never blocks for long
+}
+
+const autoKey = (uid: string) => `sfl_pt_auto_${uid}`;
+function readAutoLast(uid: string): number | null {
+  try {
+    const v = localStorage.getItem(autoKey(uid));
+    if (v != null) return Number(v);
+  } catch { /* storage blocked → memory */ }
+  return autoCheckMemory.get(uid) ?? null;
+}
+function writeAutoLast(uid: string, ms: number): void {
+  autoCheckMemory.set(uid, ms);
+  try { localStorage.setItem(autoKey(uid), String(ms)); } catch { /* memory only */ }
+}
+
+export type AutoCheckReason = "throttled" | "queued" | "error" | string;
+export async function requestAutoCheck(
+  uid: string | null | undefined,
+  nowMs: number = Date.now(),
+  rpc?: (fn: string) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<AutoCheckReason> {
+  if (!uid) return "error";
+  if (!autoCheckDue(readAutoLast(uid), nowMs)) return "throttled";
+  writeAutoLast(uid, nowMs); // before the call: a slow or failed call still counts
+  const sb = isSupabaseConfigured ? supabase : null;
+  const call = rpc ?? (sb ? (fn: string) => sb.rpc(fn) : null);
+  if (!call) return "error";
+  try {
+    const { data, error } = await call("parcel_tracking_auto_check");
+    if (error) return "error";
+    const reason = (data as { reason?: unknown } | null)?.reason;
+    return typeof reason === "string" ? reason : "error";
+  } catch {
+    return "error";
+  }
+}
+
+// App open + every return to the app (visibilitychange → visible). requestAutoCheck
+// throttles; the database decides.
+export function useAutoPickupCheck(enabled: boolean, uid: string | null | undefined): void {
+  useEffect(() => {
+    if (!enabled || !uid) return;
+    void requestAutoCheck(uid);
+    const onVisible = () => { if (document.visibilityState === "visible") void requestAutoCheck(uid); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [enabled, uid]);
+}
+
 export type CheckButton = { kind: "ready" } | { kind: "busy" } | { kind: "locked"; nextAt: string };
 export function checkButtonState(status: TrackingStatus | null, nowMs: number): CheckButton {
   if (!status) return { kind: "ready" };
