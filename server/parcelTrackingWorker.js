@@ -15,6 +15,9 @@ import {
   checkRows, readPollGate, readDailyRequests, writePollHealth, purgeRetention,
   selectLiveRows, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP,
 } from "./parcelTrackingRunner.js";
+import { monitorEventLoopDelay } from "node:perf_hooks";
+import { MEMORY_LIMIT_MB } from "./observability.js";
+import { AUTO_SETTING_KEYS, autoSettingsFrom, autoTier, autoScope, overMemoryLimit } from "./parcelTrackingAuto.js";
 
 export const WORKER_TICK_MS = 20 * 1000;
 export const JOB_MAX_MS = 30 * 60 * 1000;
@@ -22,6 +25,7 @@ export const REST_MS = 10 * 60 * 1000;
 export const HEALTH_HOUR = 9;                          // Taipei — daily health job after 09:00
 export const NEW_PARCEL_SLACK_MS = 5 * 60 * 1000;      // new_parcels scope reaches 5 min before the request
 export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // manual skips in_transit rows checked < 24h ago
+export const AUTO_STALE_MS = 60 * 60 * 1000;           // an auto job queued > 1h ago (e.g. worker was off) is dropped
 const TAG = "[PARCEL-JOB]";
 
 // PURE — per-job parcel cap and per-seller daily request budget by plan.
@@ -79,12 +83,20 @@ export function taipeiHour(nowDate) {
 
 const taipeiMidnightIso = (nowDate) => new Date(`${taipeiDay(nowDate)}T00:00:00+08:00`).toISOString();
 
+// Event-loop delay over one job (ms, p99/max) — numbers only, for the auto "done" line.
+function startLoopDelay() {
+  const h = monitorEventLoopDelay({ resolution: 20 });
+  h.enable();
+  return () => { h.disable(); return { p99: Math.round(h.percentile(99) / 1e6), max: Math.round(h.max / 1e6) }; };
+}
+
 // opts: { serviceSb, fetchImpl?, makeOcr?, now?, logger?, emit?(userId, payload),
-//         healthUserId?, limits?, checkRowsImpl? }
+//         healthUserId?, limits?, checkRowsImpl?, memoryUsage?, loopDelay? }
 export function createWorker(opts) {
   const {
     serviceSb, fetchImpl = fetch, makeOcr = null, now = () => new Date(), logger = console,
     emit = () => {}, healthUserId = "", limits = {}, checkRowsImpl = checkRows,
+    memoryUsage = () => process.memoryUsage(), loopDelay = startLoopDelay,
   } = opts;
   let running = false, busyMs = 0, restUntil = 0, healthDay = "", timer = null;
 
@@ -102,7 +114,7 @@ export function createWorker(opts) {
     healthDay = day;
   }
 
-  async function finishJob(job, { status, error = null, checked = 0, total = 0, requests = 0, batches = 0, failures = 0, retired = 0, startedMs }) {
+  async function finishJob(job, { status, error = null, checked = 0, total = 0, requests = 0, batches = 0, failures = 0, retired = 0, startedMs, stats = "" }) {
     const t = now();
     const durationMs = t.getTime() - startedMs;
     const { error: jErr } = await serviceSb.from("parcel_tracking_jobs").update({
@@ -116,8 +128,9 @@ export function createWorker(opts) {
       if (rErr) logger.error(`${TAG} press refund failed user=${job.user_id}:`, rErr.code || "error");
       else logger.log(`${TAG} press refunded user=${job.user_id}`);
     }
-    // "Last checked" = a FINISHED manual check that actually checked something.
-    if (job.kind === "manual" && checked > 0) {
+    // "Last checked" = a FINISHED manual or automatic check that actually checked
+    // something (the manual press bookkeeping is separate, so auto never uses it up).
+    if ((job.kind === "manual" || job.kind === "auto") && checked > 0) {
       const { error: aErr } = await serviceSb.from("parcel_tracking_access").update({ last_completed_at: t.toISOString() }).eq("user_id", job.user_id);
       if (aErr) logger.error(`${TAG} last_completed_at write failed user=${job.user_id}:`, aErr.code || "error");
     }
@@ -139,14 +152,36 @@ export function createWorker(opts) {
       }
     }
     try { emit(job.user_id, { user_id: job.user_id, job_id: job.id, kind: job.kind, checked, total }); } catch { /* socket down — the client polls */ }
-    logger.log(`${TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} status=${status}${error ? ` error=${error}` : ""} checked=${checked}/${total} requests=${requests} ${durationMs}ms`);
+    logger.log(`${TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} status=${status}${error ? ` error=${error}` : ""} checked=${checked}/${total} requests=${requests} ${durationMs}ms${stats}`);
     return { job: job.id, status, error, checked, total, durationMs };
   }
 
   async function runJob(job) {
     const startedMs = now().getTime();
     logger.log(`${TAG} start job=${job.id} user=${job.user_id} kind=${job.kind}`);
+    const isAuto = job.kind === "auto";
+    let stopDelay = null;
+    const autoStats = () => {
+      if (!isAuto) return "";
+      const d = stopDelay ? stopDelay() : null;
+      stopDelay = null;
+      const rssMb = Math.round((Number(memoryUsage().rss) || 0) / (1024 * 1024));
+      return ` rss=${rssMb}MB${d ? ` loop_p99=${d.p99}ms loop_max=${d.max}ms` : ""}`;
+    };
     try {
+      // Automatic check: settings, staleness and the memory guard come before any work.
+      let auto = null;
+      if (isAuto) {
+        if (startedMs - Date.parse(job.requested_at) > AUTO_STALE_MS) return finishJob(job, { status: "skipped", error: "auto_stale", startedMs });
+        const { data: sets, error: sErr } = await serviceSb.from("app_settings").select("key,value").in("key", AUTO_SETTING_KEYS);
+        if (sErr) return finishJob(job, { status: "failed", error: "settings_read_failed", startedMs });
+        auto = autoSettingsFrom(Object.fromEntries((sets || []).map((r) => [r.key, r.value])));
+        if (auto.mode === "off") return finishJob(job, { status: "skipped", error: "auto_off", startedMs });
+        if (overMemoryLimit(memoryUsage().rss, MEMORY_LIMIT_MB, auto.memPct)) {
+          return finishJob(job, { status: "skipped", error: "memory", startedMs, stats: autoStats() });
+        }
+      }
+
       const { data: prof } = await serviceSb.from("seller_profiles").select("plan,role").eq("auth_user_id", job.user_id).maybeSingle();
       const caps = planCaps(prof?.plan, String(prof?.role || "").toLowerCase() === "admin");
 
@@ -161,25 +196,36 @@ export function createWorker(opts) {
       const d = await readDailyRequests(serviceSb, daily.day);
       if (d.error) return finishJob(job, { status: "failed", error: "daily_read_failed", startedMs });
       daily.requests = d.requests;
-      if (!underRequestCap(daily.requests, limits.dailyRequestCap ?? DAILY_REQUEST_CAP)) return finishJob(job, { status: "skipped", error: "daily_cap", startedMs });
+      let dailyCap = limits.dailyRequestCap ?? DAILY_REQUEST_CAP;
+      let tier = "normal";
+      if (auto) {
+        tier = autoTier(daily.requests, auto);
+        if (tier === "skip") return finishJob(job, { status: "skipped", error: "auto_budget", startedMs });
+        dailyCap = Math.min(dailyCap, auto.budgetUrgent); // an auto job never pushes the day past the urgent tier
+      }
+      if (!underRequestCap(daily.requests, dailyCap)) return finishJob(job, { status: "skipped", error: isAuto ? "auto_budget" : "daily_cap", startedMs });
 
       const sel = await selectLiveRows(serviceSb, [job.user_id]);
       if (sel.error) return finishJob(job, { status: "failed", error: "select_failed", startedMs });
-      const scope = scopeForJob(job, sel.rows.filter((r) => r && r.tracking_no), now(), caps);
-      if (!scope.rows.length) return finishJob(job, { status: "done", error: null, startedMs });
+      const live = sel.rows.filter((r) => r && r.tracking_no);
+      const scope = auto
+        ? autoScope(live, now(), { ...auto, maxParcels: Math.min(auto.maxParcels, caps.parcels) }, tier)
+        : scopeForJob(job, live, now(), caps);
+      if (!scope.rows.length) return finishJob(job, { status: "done", error: null, startedMs, stats: autoStats() });
 
+      if (isAuto) stopDelay = loopDelay();
       const r = await checkRowsImpl({
-        serviceSb, rows: scope.rows, daily, fetchImpl, makeOcr, now, logger, limits, tag: TAG,
+        serviceSb, rows: scope.rows, daily, fetchImpl, makeOcr, now, logger, limits: { ...limits, dailyRequestCap: dailyCap }, tag: TAG,
         deadlineAt: startedMs + JOB_MAX_MS, requestBudget: budget,
       });
       const out = jobOutcome({ stopReason: r.stopReason, tripped: r.tripped, checked: r.updated, capped: scope.capped });
       return finishJob(job, {
         ...out, checked: r.updated, total: scope.rows.length, requests: r.sent, batches: r.batchesRun,
-        failures: r.failures, retired: r.retired, startedMs,
+        failures: r.failures, retired: r.retired, startedMs, stats: autoStats(),
       });
     } catch (e) {
       logger.error(`${TAG} job threw job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");
-      return finishJob(job, { status: "failed", error: "threw", startedMs });
+      return finishJob(job, { status: "failed", error: "threw", startedMs, stats: autoStats() });
     }
   }
 

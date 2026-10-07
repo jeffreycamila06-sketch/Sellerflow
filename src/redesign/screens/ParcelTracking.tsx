@@ -25,7 +25,7 @@ import {
   loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, isUnchecked, tabRows, tabCounts,
   PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
-  loadTrackingStatus, requestCheck, checkButtonState, isStale, urgentEligible, formatTaipei, CHECK_POLL_MS,
+  loadTrackingStatus, requestAutoCheck, requestCheck, checkButtonState, isStale, urgentEligible, formatTaipei, CHECK_POLL_MS,
   type TrackingStatus, type TrackingJob, type CheckResult,
   loadBuyerNamesByHandle, normHandle,
 } from "../adapters/parcelTracking";
@@ -302,7 +302,7 @@ function jobDoneText(job: TrackingJob | null, t: T): string {
   return t.rd_pt_job_failed;
 }
 
-export default function ParcelTracking() {
+export default function ParcelTracking({ userId }: { userId?: string | null } = {}) {
   const t = useT();
   const today = taipeiDayId();
   const narrow = useNarrowLayout();
@@ -376,6 +376,17 @@ export default function ParcelTracking() {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Entering Pickup Status asks for an automatic check (throttled to once per 30 min;
+  // the database decides). If one was queued, re-read the status so the busy state shows.
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    void requestAutoCheck(userId).then((r) => {
+      if (live && r === "queued") void loadTrackingStatus().then((st) => { if (live && st) setStatus(st); });
+    });
+    return () => { live = false; };
+  }, [userId]);
 
   // While a check is queued/running: re-read the small status every 15 s. When the job
   // is gone, show its real result and re-read the parcels. Nothing polls otherwise.
