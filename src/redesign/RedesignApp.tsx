@@ -53,6 +53,7 @@ import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import { livePickerEnabled } from "./adapters/livePicker";
+import { settingsChannelScreen } from "./adapters/channelRoute";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -1976,7 +1977,7 @@ export default function RedesignApp() {
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
               auto={autoControls} account={auth.profile} onSaveProfile={saveProfile}
-              onManageChannel={(p) => { setChanBack("settings"); setScreen(p === "tiktok" ? "ttchannels" : "fbchannels"); }}
+              onManageChannel={(p) => { setChanBack("settings"); setScreen(settingsChannelScreen(p, fbEnabled)); }}
               /* Owner-gated (LIVE_SOURCE_EMAILS) compact Channels list → LiveConnectModal
                  in manage mode. Non-owners fall back to the classic channelRow screens. */
               channelsV2={liveSourceMode}
