@@ -89,7 +89,11 @@ afterEach(() => { vi.useRealTimers(); });
 
 describe("the gate decision (email only)", () => {
   it("on for the listed emails (any case), off for others, wait while signed in without an email, off when signed out", () => {
-    expect(SESSION_NUMBERING_FIX_PUBLIC).toBe(false);
+    expect(SESSION_NUMBERING_FIX_PUBLIC).toBe(true);
+    // public: on for every signed-in account, even before the email is known; off when signed out
+    expect(sessionNumberingGate(true, "someone@else.com")).toBe("on");
+    expect(sessionNumberingGate(true, null)).toBe("on");
+    expect(sessionNumberingGate(false, "someone@else.com")).toBe("off");
     const LIST = ["camilajeffrey1@gmail.com", "googletest@gmail.com", "googletest@sellerflowlive.com", "cristycabanas34@gmail.com", "tincabanas13@gmail.com", "ronaldgantiga77@gmail.com",
       "aubreylucero15@yahoo.com", "716030huan@gmail.com", "bardagulanjavier@gmail.com", "zandracruz@icloud.com", "chungmaychilleann@gmail.com",
       "gee383838@icloud.com", "rominamagat@gmail.com", "juvieho0725@gmail.com", "clarabhie@gmail.com", "mersteve17@gmail.com",
@@ -98,12 +102,13 @@ describe("the gate decision (email only)", () => {
     expect(SESSION_NUMBERING_FIX_EMAILS).toEqual(LIST); // the exact staged list
     for (const e of LIST) {
       expect(SESSION_NUMBERING_FIX_EMAILS).toContain(e);
-      expect(sessionNumberingGate(true, e.toUpperCase())).toBe("on");
+      expect(sessionNumberingGate(true, e.toUpperCase(), false)).toBe("on");
     }
-    expect(sessionNumberingGate(true, "someone@else.com")).toBe("off");
-    expect(sessionNumberingGate(true, null)).toBe("wait");
-    expect(sessionNumberingGate(true, "  ")).toBe("wait");
-    expect(sessionNumberingGate(false, "camilajeffrey1@gmail.com")).toBe("off");
+    // the staged path (publicFlag false = the constant flipped back): list only
+    expect(sessionNumberingGate(true, "someone@else.com", false)).toBe("off");
+    expect(sessionNumberingGate(true, null, false)).toBe("wait");
+    expect(sessionNumberingGate(true, "  ", false)).toBe("wait");
+    expect(sessionNumberingGate(false, "camilajeffrey1@gmail.com", false)).toBe("off");
   });
   it("RedesignApp: hooks get sessionHooksOn (= authed unless 'wait') + sessionFix; the order gate only when on", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
