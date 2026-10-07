@@ -52,6 +52,7 @@ import ReceiptFormat from "./screens/ReceiptFormat";
 import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
+import { livePickerEnabled } from "./adapters/livePicker";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -1905,6 +1906,9 @@ export default function RedesignApp() {
               liveSourceConnected={activeSource === "Shopee" ? shopeeEff : (ttEff && !liveFeed.ttRecovering)}
               liveSourceConnecting={activeSource === "Shopee" ? shopeeConnecting : (ttConnecting || liveFeed.ttRecovering)}
               onOpenSourceSheet={() => setSourceSheetOpen(true)}
+              /* Live platform picker — admin-only preview (presentation only; same
+                 callbacks as the classic chips). Non-admins: false → classic, unchanged. */
+              livePicker={livePickerEnabled(isAdmin)}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               printed={printed} entId={entId} entPrice={entPrice}
               historyReady={liveSession.orderedLoaded}

@@ -3,7 +3,7 @@
 // TikTok/Facebook account pickers with connect flow. Each comment row carries
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { avColor, initials, type Comment } from "../data";
 import { basketCountFor } from "../adapters/basketCounts";
 import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
@@ -18,6 +18,9 @@ import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { fbNameOnly } from "../adapters/fbName";
+import {
+  livePickerView, LIVE_PICKER_MOTION, LIVE_PICKER_ONCE_ITERATIONS, LIVE_PICKER_TIMING, PICKER_ORDER, type PickerPlatform,
+} from "../adapters/livePicker";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "12px 16px 13px" };
 const pickerBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", padding: "6px 9px", border: "none", borderRadius: 9, fontSize: 11.5, fontWeight: 600, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" };
@@ -133,6 +136,8 @@ export default function Dashboard({
   // the classic 3-chip header, byte-for-byte unchanged.
   liveSourceMode = false, liveSourcePlatform = "TikTok", liveSourceName = "",
   liveSourceConnected = false, liveSourceConnecting = false, onOpenSourceSheet,
+  // Live platform picker (admin preview, presentation only). false = classic, unchanged.
+  livePicker = false,
   // Rule 3 — Auto Mode live inventory indicators (empty when Auto Mode is off).
   autoLowStock = [], autoSoldOut = [], onDismissSoldOut,
   autoBadges = {},
@@ -204,6 +209,7 @@ export default function Dashboard({
   liveSourceName?: string;
   liveSourceConnected?: boolean; liveSourceConnecting?: boolean;
   onOpenSourceSheet?: () => void;
+  livePicker?: boolean;
   // Rule 3 — low-stock chips + persistent (dismissible) sold-out banner. Auto codes
   // whose live stock is ≤ threshold / at 0; RedesignApp gates these on Auto Mode ON.
   autoLowStock?: { code: string; productName: string; stock: number }[];
@@ -258,6 +264,214 @@ export default function Dashboard({
   const ttTitle = ttConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const fbTitle = fbConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const summary = sessionSummary(session); // Phase 5c — today's hydrated session
+  // The three source menus — the SAME content the classic chip dropdowns show; the
+  // live platform picker (admin preview) renders these very functions, so every row
+  // calls exactly the same callbacks. Classic output is unchanged (Dashboard.livePicker
+  // test). dismissFB = what the honest-gate Telegram link does to close its menu.
+  const ttMenu = () => (
+    <>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_dash_tiktok_account}</div>
+                {ttAccounts.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_dash_no_accounts}</div>}
+                {ttAccounts.map((a, i) => (
+                  <button key={a} onClick={() => onPickTT(i)} style={ddRow(i === ttIdx)}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(a)}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a}</span><span style={ddMeta}>TikTok · {t.rd_dash_tap_go_live}</span></span>
+                    <span style={ddCheck}>{i === ttIdx ? "✓" : ""}</span>
+                  </button>
+                ))}
+                {/* Manage / add accounts — action row (NOT an account), separated by a
+                    top hairline. Navigates to the manage screen (back → Live). Always
+                    shown; the manage screen self-gates by plan + funnels over-cap to
+                    Telegram. onClick navigation unmounts this dropdown cleanly. */}
+                <button onClick={onManageTT} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
+                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_dash_manage_accounts}</span></span>
+                </button>
+                <div style={connFooterWrap}>
+                  <button onClick={onRefreshTT} disabled={refreshing} title={t.rd_dash_refresh} style={{ ...refreshBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? "default" : "pointer" }}>{refreshIcon}{refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
+                  <button onClick={onConnectTT} disabled={ttConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: ttConnecting ? "default" : "pointer", opacity: ttConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ttConnected, ttConnecting)}</button>
+                </div>
+    </>
+  );
+  const fbMenu = (dismissFB: () => void) => (
+    <>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_dash_fb_page_group}</div>
+                {fbConnectEnabled ? (
+                  /* F-P3 — REAL Facebook connect (owner-gated): page picker + Connect,
+                     mirror of the TikTok dropdown. Reached only when fbConnectEnabled. */
+                  <>
+                    {fbPages.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_fb_no_page_yet}</div>}
+                    {fbPages.map((p, i) => (
+                      <button key={p.pageId} onClick={() => onPickFB?.(i)} style={ddRow(i === fbPageIdx)}>
+                        <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(p.name || p.username || "f")}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{p.name || (p.username ? `@${p.username}` : p.pageId)}</span><span style={ddMeta}>Facebook · {t.rd_dash_tap_go_live}</span></span>
+                        <span style={ddCheck}>{i === fbPageIdx ? "✓" : ""}</span>
+                      </button>
+                    ))}
+                    <button onClick={onManageFB} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
+                      <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
+                      <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_fb_manage}</span></span>
+                    </button>
+                    <div style={connFooterWrap}>
+                      <button onClick={onConnectFB} disabled={fbConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: fbConnecting ? "default" : "pointer", opacity: fbConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(fbConnected, fbConnecting)}</button>
+                    </div>
+                  </>
+                ) : (
+                  /* HONEST GATE (Change 2, 2026-07-23): Facebook multi-account is
+                     non-functional (blocked on Meta Business Verification). NO
+                     green-able Connect here — an "activation required" notice + a
+                     real Telegram anchor. iOS-safe: a real <a> (never window.open),
+                     and onClick closes the dropdown as the tab opens. */
+                  <>
+                    <div style={{ padding: "2px 10px 11px", fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_dash_fb_activation}</div>
+                    <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={dismissFB} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", margin: "0 4px 3px", background: "#0088cc", color: "#fff", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>{t.rd_dash_fb_contact}<span style={{ fontSize: 14 }}>→</span></a>
+                  </>
+                )}
+    </>
+  );
+  const shMenu = () => (
+    <>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_shp_section}</div>
+                  {shopeeShops.map((s, i) => (
+                    <button key={s.shopId} onClick={() => onPickShopee?.(i)} style={ddRow(i === shopeeIdx)}>
+                      <span style={{ width: 30, height: 30, borderRadius: 8, background: "#ee4d2d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>S</span>
+                      <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{s.shopName || t.rd_shp_shop_name_fallback}</span><span style={ddMeta}>Shopee · {t.rd_shp_tap_go_live}</span></span>
+                      <span style={ddCheck}>{i === shopeeIdx ? "✓" : ""}</span>
+                    </button>
+                  ))}
+                  <button onClick={onManageShopee} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_shp_channels_title}</span></span>
+                  </button>
+                  <div style={connFooterWrap}>
+                    <button onClick={onConnectShopee} disabled={shopeeConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: sh.border, borderRadius: 9, background: sh.bg, color: sh.fg, fontSize: 11.5, fontWeight: 700, cursor: shopeeConnecting ? "default" : "pointer", opacity: shopeeConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{shopeeConnecting ? t.rd_shp_connecting : shopeeConnected ? t.rd_shp_disconnect : t.rd_shp_connect}</button>
+                  </div>
+    </>
+  );
+  // ── Live platform picker (admin preview) — presentation only ──────────────────
+  // chosen / overlayOpen / fly are local UI state; every connect, refresh, account
+  // and manage action goes through the menus above (the classic callbacks).
+  const ttChipName = ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : t.rd_dash_connect_tiktok;
+  const fbChipName = fbConnectEnabled ? (fbPages.length ? (fbPages[fbPageIdx]?.name || fbPages[0]?.name || t.rd_dash_connect_facebook) : t.rd_dash_connect_facebook) : (fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook);
+  const shChipName = shName ? (shName.shopName || t.rd_shp_shop_name_fallback) : t.rd_shp_connect_shopee;
+  const [chosen, setChosen] = useState<PickerPlatform | null>(null);
+  // The chosen slot's height at the tap — it is held exactly there until the collapse
+  // starts (no flex re-size → the four tiles don't move), then shrinks (CSS animation).
+  const [chosenH, setChosenH] = useState<number | null>(null);
+  // The panel returns WITHOUT the pop delay after a connect attempt (e.g. a failed one).
+  const [panelNow, setPanelNow] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const lp = livePickerView({
+    enabled: livePicker && !liveSourceMode,
+    tt: { connected: ttConnected, connecting: ttConnecting },
+    fb: { connected: fbConnected, connecting: fbConnecting },
+    sh: { connected: shopeeConnected, connecting: shopeeConnecting },
+    hasComments: comments.length > 0,
+    chosen,
+  });
+  const [prevView, setPrevView] = useState(lp.view);
+  const [fly, setFly] = useState(false);
+  if (lp.view !== prevView) {
+    // adjust-during-render (no effect): a source went live → leave the picker; the
+    // fly-up plays only when the seller got here through a chosen tile.
+    setPrevView(lp.view);
+    setFly(lp.view === "connected" && chosen !== null);
+    if (lp.view === "connected" || lp.view === "classic") { setChosen(null); setOverlayOpen(false); }
+  }
+  const lpkVars = {
+    "--lpk-fade": `${LIVE_PICKER_TIMING.fadeMs}ms`,
+    "--lpk-collapse": `${LIVE_PICKER_TIMING.collapseMs}ms`,
+    "--lpk-collapse-delay": `${LIVE_PICKER_TIMING.collapseDelayMs}ms`,
+    "--lpk-pop": `${LIVE_PICKER_TIMING.popMs}ms`,
+    "--lpk-pop-delay": `${LIVE_PICKER_TIMING.popDelayMs}ms`,
+    "--lpk-fly": `${LIVE_PICKER_TIMING.flyMs}ms`,
+    "--lpk-blink": `${LIVE_PICKER_TIMING.blinkMs}ms`,
+    "--lpk-tt": `${LIVE_PICKER_TIMING.idle.TikTok}ms`,
+    "--lpk-fb": `${LIVE_PICKER_TIMING.idle.Facebook}ms`,
+    "--lpk-ig": `${LIVE_PICKER_TIMING.idle.Instagram}ms`,
+    "--lpk-sh": `${LIVE_PICKER_TIMING.idle.Shopee}ms`,
+    "--lpk-iter": LIVE_PICKER_MOTION === "once" ? String(LIVE_PICKER_ONCE_ITERATIONS) : "infinite",
+  } as CSSProperties;
+  const lpkSlug: Record<PickerPlatform, string> = { TikTok: "tt", Facebook: "fb", Instagram: "ig", Shopee: "sh" };
+  const lpkEnabled = (p: PickerPlatform) => p === "TikTok" || p === "Facebook" || (p === "Shopee" && shShow);
+  const lpkConnecting = (p: PickerPlatform) =>
+    p === "TikTok" ? ttConnecting && !ttConnected
+    : p === "Facebook" ? fbConnecting && !fbConnected
+    : p === "Shopee" ? shopeeConnecting && !shopeeConnected : false;
+  if (chosen && lpkConnecting(chosen) && !panelNow) setPanelNow(true); // adjust-during-render
+  const pickTile = (p: PickerPlatform, slot: HTMLElement | null) => {
+    if (chosen === p) { setChosen(null); return; }                       // Back
+    setChosenH(slot ? slot.getBoundingClientRect().height : null);
+    setPanelNow(false);
+    setChosen(p);
+  };
+  const lpkMenu = (p: PickerPlatform) =>
+    p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : shMenu();
+  // Emblems: the chips' own letter marks + brand colours, one shape per platform.
+  // Emblems: the chips' own letter marks + brand colours, one shape per platform. All
+  // sizes come from redesign.css (.sfl-lpk-shape--*), scaled to the tile height.
+  const lpkEmblem = (p: PickerPlatform) => {
+    const slug = lpkSlug[p];
+    const bg = p === "TikTok" ? "#000" : p === "Facebook" ? "#1877f2" : p === "Instagram" ? "#c13584" : "#ee4d2d";
+    const ch = p === "TikTok" ? "t" : p === "Facebook" ? "f" : p === "Instagram" ? "IG" : "S";
+    return (
+      <span className={`sfl-lpk-shape sfl-lpk-shape--${slug}`} style={{ background: bg, "--lpk-brand": bg } as CSSProperties}>
+        <span className="sfl-lpk-letter">{ch}</span>
+      </span>
+    );
+  };
+  // The four tiles (State A) → chosen tile + its account panel (State B).
+  const lpkPicker = (top?: ReactNode) => (
+    <div data-testid="lpk-picker" className={`sfl-lpk sfl-lpk--m-${LIVE_PICKER_MOTION}${chosen ? " sfl-lpk--chosen" : ""}`}
+      style={{ ...lpkVars, flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", width: "100%", maxWidth: 480, margin: "0 auto" }}>
+      {top}
+      {PICKER_ORDER.map((p, i) => {
+        const slug = lpkSlug[p];
+        const enabled = lpkEnabled(p);
+        const isChosen = chosen === p;
+        const hidden = chosen !== null && !isChosen;
+        const connecting = isChosen && lpkConnecting(p);
+        const sub = !enabled ? t.rd_ls_soon : connecting ? t.rd_dash_connecting : isChosen ? t.rd_lpk_choose_acct : t.rd_lpk_tap;
+        return (
+          <Fragment key={p}>
+          <div data-testid={`lpk-slot-${slug}`} className={`sfl-lpk-slot${hidden ? " is-hidden" : ""}${isChosen ? " is-chosen" : ""}`}
+            aria-hidden={hidden || undefined}
+            style={{ marginTop: i === 0 ? 0 : 12, ...(isChosen && chosenH != null ? { flex: "0 0 auto", height: chosenH, "--lpk-chosen-to": `${Math.min(104, chosenH)}px` } as CSSProperties : null) }}>
+            <button
+              data-testid={`lpk-tile-${slug}`}
+              className={`sfl-lpk-tile sfl-lpk-tile--${slug}`}
+              disabled={!enabled}
+              tabIndex={hidden ? -1 : undefined}
+              aria-expanded={enabled ? isChosen : undefined}
+              onClick={(e) => pickTile(p, e.currentTarget.parentElement)}
+              style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", textAlign: "left", padding: "8px 18px", background: "var(--surface)", color: "var(--text)", border: `2px solid ${isChosen ? "var(--accent)" : "var(--border)"}`, borderRadius: 22, boxShadow: "var(--shadow)", cursor: enabled ? "pointer" : "default", opacity: enabled ? 1 : 0.5, fontFamily: "var(--font-ui)" }}
+            >
+              <span data-testid={`lpk-col-${slug}`} className="sfl-lpk-col">
+                <span className={`sfl-lpk-emb sfl-lpk-emb--${slug}`}>{lpkEmblem(p)}</span>
+                <span className="sfl-lpk-tag"><span className="sfl-lpk-blink" />LIVE</span>
+              </span>
+              <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                <span><span className={`sfl-lpk-name sfl-lpk-name--${slug}`} style={{ display: "inline-block", transformOrigin: "left center", fontSize: 23, fontWeight: 800, color: "var(--text)" }}>{p}</span></span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>
+                  {connecting && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#fbbf24", flexShrink: 0 }} />}
+                  {sub}
+                </span>
+              </span>
+              {isChosen && !connecting && <span style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-fg)", flexShrink: 0 }}>{t.rd_lpk_back}</span>}
+            </button>
+          </div>
+          {/* The panel is the chosen slot's SIBLING: it takes no space and can't be
+              tapped until its pop delay (sflLpkHold), so the tiles never move early. */}
+          {isChosen && !connecting && (
+            <div data-testid={`lpk-panel-${slug}`} className={`sfl-lpk-panel${panelNow ? " sfl-lpk-panel--now" : ""}`} style={{ flex: "0 0 auto", marginTop: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, boxShadow: "0 16px 38px rgba(0,0,0,.3)", padding: 6 }}>
+              {lpkMenu(p)}
+            </div>
+          )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
   // Dropdown dismiss (Jeff bug, 2026-07-12): the header dropdowns (TikTok/FB
   // account pickers + session pill) only closed via their own toggles — a tap
   // anywhere else left the panel hanging (sellers reached for Disconnect just
@@ -423,7 +637,42 @@ export default function Dashboard({
               </button>
             </div>
           );
-        })() : (
+        })() : lp.view === "connected" ? (() => {
+          // State C — the live source as ONE full-width button (today's chip, wider).
+          // Tap = the chip's own toggle → today's dropdown (Disconnect stays inside it).
+          const p = lp.platform;
+          const st = p === "TikTok" ? tt : p === "Facebook" ? fb : sh;
+          const ic = p === "Facebook" ? { bg: "#1877f2", ch: "f" } : p === "Shopee" ? { bg: "#ee4d2d", ch: "S" } : { bg: "#000", ch: "t" };
+          const isConn = p === "TikTok" ? ttConnected : p === "Facebook" ? fbConnected : shopeeConnected;
+          return (
+            <div style={{ marginTop: 11, position: "relative", zIndex: 6 }}>
+              <div ref={p === "TikTok" ? ttWrapRef : p === "Facebook" ? fbWrapRef : shopeeWrapRef} className={fly ? "sfl-lpk-fly" : undefined} style={{ position: "relative", ...lpkVars }}>
+                <button data-testid="lpk-source-button" onClick={p === "TikTok" ? onToggleTT : p === "Facebook" ? onToggleFB : onToggleShopee}
+                  title={isConn ? t.rd_dash_conn_title : t.rd_dash_not_conn_title} style={{ ...pickerBtn, background: st.chipBg, boxShadow: st.chipShadow }}>
+                  <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: ic.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{ic.ch}</span>
+                  <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p === "TikTok" ? ttChipName : p === "Facebook" ? fbChipName : shChipName}</span>
+                  <span className={st.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: st.dotBg, flexShrink: 0, boxShadow: st.dotGlow }} />
+                  <span style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 700 }}>{t.rd_ls_change}</span>
+                </button>
+                {p === "TikTok" && ttOpen && <div style={dropdown("left")}>{ttMenu()}</div>}
+                {p === "Facebook" && fbOpen && <div style={dropdown("right")}>{fbMenu(onToggleFB)}</div>}
+                {p === "Shopee" && shopeeOpen && <div style={dropdown("right")}>{shMenu()}</div>}
+              </div>
+            </div>
+          );
+        })() : lp.view === "body" ? (() => {
+          // Nothing live but the board still has comments → keep the body; this button
+          // opens the four-tile picker as an overlay over it.
+          const off = conn(false, false);
+          return (
+            <div style={{ marginTop: 11, position: "relative", zIndex: 6 }}>
+              <button data-testid="lpk-choose-button" onClick={() => setOverlayOpen(true)} style={{ ...pickerBtn, background: off.chipBg, boxShadow: off.chipShadow }}>
+                <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ls_choose}</span>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: off.dotBg, flexShrink: 0 }} />
+              </button>
+            </div>
+          );
+        })() : lp.view === "picker" ? null : (
         <div style={{ display: "flex", gap: 8, marginTop: 11, position: "relative", zIndex: 6 }}>
           <div ref={ttWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleTT} title={ttTitle} style={{ ...pickerBtn, background: tt.chipBg, boxShadow: tt.chipShadow }}>
@@ -433,29 +682,7 @@ export default function Dashboard({
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
             </button>
             {ttOpen && (
-              <div style={dropdown("left")}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_dash_tiktok_account}</div>
-                {ttAccounts.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_dash_no_accounts}</div>}
-                {ttAccounts.map((a, i) => (
-                  <button key={a} onClick={() => onPickTT(i)} style={ddRow(i === ttIdx)}>
-                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(a)}</span>
-                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a}</span><span style={ddMeta}>TikTok · {t.rd_dash_tap_go_live}</span></span>
-                    <span style={ddCheck}>{i === ttIdx ? "✓" : ""}</span>
-                  </button>
-                ))}
-                {/* Manage / add accounts — action row (NOT an account), separated by a
-                    top hairline. Navigates to the manage screen (back → Live). Always
-                    shown; the manage screen self-gates by plan + funnels over-cap to
-                    Telegram. onClick navigation unmounts this dropdown cleanly. */}
-                <button onClick={onManageTT} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
-                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
-                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_dash_manage_accounts}</span></span>
-                </button>
-                <div style={connFooterWrap}>
-                  <button onClick={onRefreshTT} disabled={refreshing} title={t.rd_dash_refresh} style={{ ...refreshBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? "default" : "pointer" }}>{refreshIcon}{refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
-                  <button onClick={onConnectTT} disabled={ttConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: ttConnecting ? "default" : "pointer", opacity: ttConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ttConnected, ttConnecting)}</button>
-                </div>
-              </div>
+              <div style={dropdown("left")}>{ttMenu()}</div>
             )}
           </div>
           <div ref={fbWrapRef} style={{ position: "relative", flex: 1 }}>
@@ -466,40 +693,7 @@ export default function Dashboard({
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
             </button>
             {fbOpen && (
-              <div style={dropdown("right")}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_dash_fb_page_group}</div>
-                {fbConnectEnabled ? (
-                  /* F-P3 — REAL Facebook connect (owner-gated): page picker + Connect,
-                     mirror of the TikTok dropdown. Reached only when fbConnectEnabled. */
-                  <>
-                    {fbPages.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_fb_no_page_yet}</div>}
-                    {fbPages.map((p, i) => (
-                      <button key={p.pageId} onClick={() => onPickFB?.(i)} style={ddRow(i === fbPageIdx)}>
-                        <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(p.name || p.username || "f")}</span>
-                        <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{p.name || (p.username ? `@${p.username}` : p.pageId)}</span><span style={ddMeta}>Facebook · {t.rd_dash_tap_go_live}</span></span>
-                        <span style={ddCheck}>{i === fbPageIdx ? "✓" : ""}</span>
-                      </button>
-                    ))}
-                    <button onClick={onManageFB} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
-                      <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
-                      <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_fb_manage}</span></span>
-                    </button>
-                    <div style={connFooterWrap}>
-                      <button onClick={onConnectFB} disabled={fbConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: fbConnecting ? "default" : "pointer", opacity: fbConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(fbConnected, fbConnecting)}</button>
-                    </div>
-                  </>
-                ) : (
-                  /* HONEST GATE (Change 2, 2026-07-23): Facebook multi-account is
-                     non-functional (blocked on Meta Business Verification). NO
-                     green-able Connect here — an "activation required" notice + a
-                     real Telegram anchor. iOS-safe: a real <a> (never window.open),
-                     and onClick closes the dropdown as the tab opens. */
-                  <>
-                    <div style={{ padding: "2px 10px 11px", fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_dash_fb_activation}</div>
-                    <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={onToggleFB} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", margin: "0 4px 3px", background: "#0088cc", color: "#fff", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>{t.rd_dash_fb_contact}<span style={{ fontSize: 14 }}>→</span></a>
-                  </>
-                )}
-              </div>
+              <div style={dropdown("right")}>{fbMenu(onToggleFB)}</div>
             )}
           </div>
           {/* P3 — Shopee source chip (flag ON + ≥1 authorized shop). Mirrors the
@@ -514,23 +708,7 @@ export default function Dashboard({
                 <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
               </button>
               {shopeeOpen && (
-                <div style={dropdown("right")}>
-                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_shp_section}</div>
-                  {shopeeShops.map((s, i) => (
-                    <button key={s.shopId} onClick={() => onPickShopee?.(i)} style={ddRow(i === shopeeIdx)}>
-                      <span style={{ width: 30, height: 30, borderRadius: 8, background: "#ee4d2d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>S</span>
-                      <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{s.shopName || t.rd_shp_shop_name_fallback}</span><span style={ddMeta}>Shopee · {t.rd_shp_tap_go_live}</span></span>
-                      <span style={ddCheck}>{i === shopeeIdx ? "✓" : ""}</span>
-                    </button>
-                  ))}
-                  <button onClick={onManageShopee} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
-                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
-                    <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_shp_channels_title}</span></span>
-                  </button>
-                  <div style={connFooterWrap}>
-                    <button onClick={onConnectShopee} disabled={shopeeConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: sh.border, borderRadius: 9, background: sh.bg, color: sh.fg, fontSize: 11.5, fontWeight: 700, cursor: shopeeConnecting ? "default" : "pointer", opacity: shopeeConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{shopeeConnecting ? t.rd_shp_connecting : shopeeConnected ? t.rd_shp_disconnect : t.rd_shp_connect}</button>
-                  </div>
-                </div>
+                <div style={dropdown("right")}>{shMenu()}</div>
               )}
             </div>
           )}
@@ -538,7 +716,7 @@ export default function Dashboard({
         )}
       </div>
 
-      <div style={{ padding: "14px 14px 18px", flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "14px 14px 18px", flex: 1, display: "flex", flexDirection: "column", ...(lp.view === "body" ? { position: "relative" as const } : null) }}>
         {/* SAME PRICE FOR ALL ITEMS — persistent chip while set (accent). ✕ clears
             with a confirm; kept first so it's visible without scrolling. */}
         {samePrice != null && samePrice > 0 && (
@@ -669,6 +847,7 @@ export default function Dashboard({
           />
         )}
 
+        {lp.view === "picker" ? lpkPicker() : (
         <div ref={feedRef} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 7, boxShadow: "var(--shadow)", flex: 1, minHeight: 0, overflowY: "auto" }}>
           {comments.length === 0 && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, height: "100%", minHeight: 160, color: "var(--text-muted)", textAlign: "center", padding: "0 24px" }}>
@@ -834,6 +1013,18 @@ export default function Dashboard({
             </div>
           )}
         </div>
+        )}
+        {/* Live platform picker as an overlay over a board that still has comments. */}
+        {lp.view === "body" && overlayOpen && (
+          <div data-testid="lpk-overlay" style={{ position: "absolute", inset: 0, zIndex: 4, background: "var(--app-bg)", padding: "14px 14px 18px", display: "flex", flexDirection: "column" }}>
+            {lpkPicker(
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <button data-testid="lpk-overlay-close" onClick={() => { setOverlayOpen(false); setChosen(null); }} aria-label={t.rd_close} title={t.rd_close}
+                  style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 18, lineHeight: 1, cursor: "pointer" }}>×</button>
+              </div>,
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

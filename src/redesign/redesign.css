@@ -643,3 +643,95 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
   [data-redesign] .rd-pt-hg,
   [data-redesign] .rd-pt-hg-dots > i { animation: none; opacity: 1; }
 }
+
+/* ── LIVE PLATFORM PICKER (admin preview; Dashboard lpkPicker) ─────────────────────
+ * Durations + mode come from adapters/livePicker.ts as CSS variables (--lpk-*).
+ * Keyframes are the owner-approved ones, prefixed sflLpk* so they never replace the
+ * app's existing sflBeat. Idle emblem/name/blink loops run only while the four tiles
+ * are shown, no tile is chosen, the tile is enabled and the mode isn't "off". */
+@keyframes sflLpkBeat{0%,100%{transform:scale(1)}10%{transform:scale(1.1)}20%{transform:scale(1)}30%{transform:scale(1.06)}40%{transform:scale(1)}}
+@keyframes sflLpkBob{0%,100%{transform:translateY(2px)}50%{transform:translateY(-6px)}}
+@keyframes sflLpkSway{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
+@keyframes sflLpkFlip{0%,55%{transform:rotateY(0deg)}85%,100%{transform:rotateY(360deg)}}
+@keyframes sflLpkWordBeat{0%,100%{transform:scale(1);letter-spacing:0}10%{transform:scale(1.06);letter-spacing:.03em}20%{transform:scale(1);letter-spacing:0}30%{transform:scale(1.03)}40%{transform:scale(1)}}
+@keyframes sflLpkWordSlide{0%,100%{transform:translateX(0)}50%{transform:translateX(7px)}}
+@keyframes sflLpkWordLean{0%,100%{transform:skewX(0deg)}50%{transform:skewX(-12deg)}}
+@keyframes sflLpkWordHop{0%,55%,100%{transform:translateY(0)}65%{transform:translateY(-6px)}75%{transform:translateY(0)}85%{transform:translateY(-3px)}}
+@keyframes sflLpkBlink{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes sflLpkPop{0%{opacity:0;transform:translateY(-10px) scale(.96)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes sflLpkFly{0%{opacity:.35;transform:translateY(120px) scale(1.06)}70%{opacity:1}100%{opacity:1;transform:translateY(0) scale(1)}}
+
+[data-redesign] .sfl-lpk-slot {
+  display: flex; flex-direction: column; flex: 1 1 0; min-height: 64px; max-height: 170px; opacity: 1;
+  transition: opacity var(--lpk-fade) ease, flex-grow var(--lpk-collapse) ease, max-height var(--lpk-collapse) ease,
+    min-height var(--lpk-collapse) ease, margin var(--lpk-collapse) ease;
+}
+[data-redesign] .sfl-lpk-slot > .sfl-lpk-tile { flex: 1; min-height: 0; }
+[data-redesign] .sfl-lpk-slot.is-hidden {
+  opacity: 0; flex-grow: 0; max-height: 0; min-height: 0; margin-top: 0 !important; overflow: hidden; pointer-events: none;
+  transition: opacity var(--lpk-fade) ease, flex-grow var(--lpk-collapse) ease var(--lpk-collapse-delay),
+    max-height var(--lpk-collapse) ease var(--lpk-collapse-delay), min-height var(--lpk-collapse) ease var(--lpk-collapse-delay),
+    margin var(--lpk-collapse) ease var(--lpk-collapse-delay);
+}
+/* Chosen slot: held at its tap-time height (inline height, flex 0 0 auto) until the
+   collapse starts, then shrinks to --lpk-chosen-to together with the others' collapse. */
+@keyframes sflLpkChosen{to{height:var(--lpk-chosen-to);margin-top:0}}
+@keyframes sflLpkHold{from{max-height:0;margin-top:0;padding-top:0;padding-bottom:0;border-width:0;overflow:hidden;pointer-events:none}to{max-height:1200px}}
+[data-redesign] .sfl-lpk-slot.is-chosen { max-height: none; transition: none; animation: sflLpkChosen var(--lpk-collapse) ease var(--lpk-collapse-delay) forwards; }
+[data-redesign] .sfl-lpk-slot.is-chosen > .sfl-lpk-tile { transform: scale(.98); transition: transform var(--lpk-collapse) ease var(--lpk-collapse-delay); }
+[data-redesign] .sfl-lpk-tile:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+[data-redesign] .sfl-lpk-panel { animation: sflLpkPop var(--lpk-pop) ease-out var(--lpk-pop-delay) both, sflLpkHold 1ms linear var(--lpk-pop-delay) both; }
+[data-redesign] .sfl-lpk-panel.sfl-lpk-panel--now { animation: sflLpkPop var(--lpk-pop) ease-out both; }
+
+/* Emblem column: one scale unit (--lpk-u = 1px at full size) tied to the tile's height
+   (container query), so emblem + LIVE tag always sit inside the tile. Full size =
+   78×82 (emblem area 74, tag overlapping its bottom edge). Shapes incl. ring ≤ 74. */
+[data-redesign] .sfl-lpk-col { --lpk-u: 1px; position: relative; flex-shrink: 0; width: calc(var(--lpk-u) * 78); height: calc(var(--lpk-u) * 82); }
+@supports (container-type: size) {
+  [data-redesign] .sfl-lpk-tile { container-type: size; }
+  [data-redesign] .sfl-lpk-col { --lpk-u: calc(min(82px, 100cqh) / 82); }
+}
+[data-redesign] .sfl-lpk-emb { position: absolute; top: 0; left: 0; width: 100%; height: calc(var(--lpk-u) * 74); display: flex; align-items: center; justify-content: center; }
+[data-redesign] .sfl-lpk-tag {
+  position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 1;
+  display: inline-flex; align-items: center; gap: calc(var(--lpk-u) * 4); white-space: nowrap;
+  background: #000; color: #fff; border: 2px solid var(--surface); border-radius: calc(var(--lpk-u) * 6);
+  font-size: calc(var(--lpk-u) * 9); font-weight: 800; letter-spacing: .08em; line-height: 1;
+  padding: calc(var(--lpk-u) * 2.5) calc(var(--lpk-u) * 6);
+}
+[data-redesign] .sfl-lpk-blink { width: calc(var(--lpk-u) * 5); height: calc(var(--lpk-u) * 5); border-radius: 50%; background: #e11d48; }
+[data-redesign] .sfl-lpk-shape { display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+[data-redesign] .sfl-lpk-letter { color: #fff; font-weight: 800; line-height: 1; }
+[data-redesign] .sfl-lpk-shape--tt { width: calc(var(--lpk-u) * 64); height: calc(var(--lpk-u) * 64); border-radius: 50%; background-clip: padding-box !important; border: calc(var(--lpk-u) * 6) double var(--text); }
+[data-redesign] .sfl-lpk-shape--tt .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 28); }
+[data-redesign] .sfl-lpk-shape--fb, [data-redesign] .sfl-lpk-shape--ig {
+  width: calc(var(--lpk-u) * 58); height: calc(var(--lpk-u) * 58);
+  box-shadow: 0 0 0 calc(var(--lpk-u) * 3) var(--surface), 0 0 0 calc(var(--lpk-u) * 7) var(--lpk-brand);
+}
+[data-redesign] .sfl-lpk-shape--fb { border-radius: calc(var(--lpk-u) * 22); }
+[data-redesign] .sfl-lpk-shape--fb .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 30); font-family: var(--font-display); }
+[data-redesign] .sfl-lpk-shape--ig { border-radius: 50% 50% 50% 14%; }
+[data-redesign] .sfl-lpk-shape--ig .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 19); }
+/* diamond: (38 + 2×7) × √2 ≈ 73.5 ≤ 74 incl. the ring */
+[data-redesign] .sfl-lpk-shape--sh {
+  width: calc(var(--lpk-u) * 38); height: calc(var(--lpk-u) * 38); transform: rotate(45deg); border-radius: calc(var(--lpk-u) * 4);
+  box-shadow: 0 0 0 calc(var(--lpk-u) * 3) var(--surface), 0 0 0 calc(var(--lpk-u) * 7) var(--lpk-brand);
+}
+[data-redesign] .sfl-lpk-shape--sh .sfl-lpk-letter { font-size: calc(var(--lpk-u) * 19); transform: rotate(-45deg); }
+[data-redesign] .sfl-lpk-fly { animation: sflLpkFly var(--lpk-fly) cubic-bezier(.2,.8,.2,1); }
+
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-emb--tt { animation: sflLpkBeat var(--lpk-tt) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-emb--fb { animation: sflLpkBob var(--lpk-fb) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-emb--ig { animation: sflLpkSway var(--lpk-ig) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-emb--sh { animation: sflLpkFlip var(--lpk-sh) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-name--tt { animation: sflLpkWordBeat var(--lpk-tt) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-name--fb { animation: sflLpkWordSlide var(--lpk-fb) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-name--ig { animation: sflLpkWordLean var(--lpk-ig) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-name--sh { animation: sflLpkWordHop var(--lpk-sh) ease-in-out var(--lpk-iter); }
+[data-redesign] .sfl-lpk:not(.sfl-lpk--m-off):not(.sfl-lpk--chosen) .sfl-lpk-tile:not(:disabled) .sfl-lpk-blink { animation: sflLpkBlink var(--lpk-blink) ease-in-out var(--lpk-iter); }
+
+[data-redesign][data-motion="off"] .sfl-lpk, [data-redesign][data-motion="off"] .sfl-lpk *,
+[data-redesign][data-motion="off"] .sfl-lpk-fly { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  [data-redesign] .sfl-lpk, [data-redesign] .sfl-lpk *, [data-redesign] .sfl-lpk-fly { animation: none !important; transition: none !important; }
+}
