@@ -187,10 +187,11 @@ describe("routing: the flags reach the image ONLY for an allowed seller", () => 
     }
     expect(stickerSpacingFlags()).toEqual({});
   });
-  it("allowed → half gaps; + compact when chosen", async () => {
+  it("allowed → half gaps; + compact when chosen (row hidden: compact with no stored choice; row visible: Normal)", async () => {
     setStickerSpacingAllowed(true);
     const n = await rasterSettingsFor(mk("TikTok"), bt);
-    expect(n.printHalfWordGap).toBe(true); expect("printSpacing" in n).toBe(false);
+    expect(n).toMatchObject({ printHalfWordGap: true, printSpacing: "compact" }); // row hidden → STICKER_SPACING_FIXED
+    expect(stickerSpacingFlags(true)).toEqual({ printHalfWordGap: true });     // row visible → absent = Normal (as before)
     setStickerSpacingChoice("compact");
     const c = await rasterSettingsFor(mk("Facebook"), bt);
     expect(c).toMatchObject({ printHalfWordGap: true, printSpacing: "compact", printFacebookName: true });

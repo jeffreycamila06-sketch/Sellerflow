@@ -162,6 +162,17 @@ export function stickerSpacingAllowed(email: string | undefined | null, role: st
   return e !== "" && STICKER_SPACING_EMAILS.includes(e);
 }
 export type StickerSpacing = "normal" | "compact";
+// Normal/Compact CHOICE (2026-10-07): the row in Live print pattern is HIDDEN and every seller with
+// sticker spacing prints with STICKER_SPACING_FIXED, whatever pp.spacing holds on the device (a
+// stored "normal" is ignored, not deleted). ⚠️ REVERT = flip STICKER_SPACING_CHOICE_VISIBLE back to
+// true: the row returns and the stored choice applies again (absent = Normal), exactly as before.
+export const STICKER_SPACING_CHOICE_VISIBLE = false;
+export const STICKER_SPACING_FIXED: StickerSpacing = "compact";
+// The spacing that actually prints for a stored device choice. PURE.
+export function effectiveSpacing(stored: StickerSpacing | undefined | null, choiceVisible: boolean = STICKER_SPACING_CHOICE_VISIBLE): StickerSpacing {
+  if (!choiceVisible) return STICKER_SPACING_FIXED;
+  return stored === "compact" ? "compact" : "normal";
+}
 // Synced by RedesignApp: who may use it (auth) and the seller's choice (per device, sfl_rd_pp).
 // DEFAULT not allowed / normal (fail-closed: before the profile loads nothing changes).
 let stickerSpacingOn = false;
@@ -174,7 +185,9 @@ export function spacingFlagsFor(allowed: boolean, choice: StickerSpacing | undef
   if (!allowed) return {};
   return { printHalfWordGap: true, ...(choice === "compact" ? { printSpacing: "compact" as const } : {}) };
 }
-export function stickerSpacingFlags(): Pick<RasterSettings, "printHalfWordGap" | "printSpacing"> { return spacingFlagsFor(stickerSpacingOn, stickerSpacingChoice); }
+export function stickerSpacingFlags(choiceVisible: boolean = STICKER_SPACING_CHOICE_VISIBLE): Pick<RasterSettings, "printHalfWordGap" | "printSpacing"> {
+  return spacingFlagsFor(stickerSpacingOn, effectiveSpacing(stickerSpacingChoice, choiceVisible));
+}
 
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
 export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings): NativePrinterPayload {
