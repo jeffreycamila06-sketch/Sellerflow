@@ -143,13 +143,14 @@ describe("two-order rows (Print screen) stay exactly as today", () => {
 });
 
 // ── the switch / allowlist / routing ─────────────────────────────────────────
-describe("the allowlist (STICKER_SPACING_PUBLIC = false)", () => {
+describe("the allowlist (applies when STICKER_SPACING_PUBLIC is false)", () => {
   it("admin role + the two googletest accounts only — not the other sticker-v2 accounts", () => {
-    expect(STICKER_SPACING_PUBLIC).toBe(false);
-    expect(stickerSpacingAllowed("x@y.com", "admin")).toBe(true);
-    expect(stickerSpacingAllowed("googletest@gmail.com", "seller")).toBe(true);
-    expect(stickerSpacingAllowed(" GoogleTest@SellerFlowLive.com ", "seller")).toBe(true);
-    for (const e of ["cristycabanas34@gmail.com", "ronaldgantiga77@gmail.com", "tincabanas13@gmail.com", "someone@gmail.com", ""]) expect(stickerSpacingAllowed(e, "seller")).toBe(false);
+    expect(STICKER_SPACING_PUBLIC).toBe(true);
+    expect(stickerSpacingAllowed("someone@gmail.com", "seller")).toBe(true);
+    expect(stickerSpacingAllowed("x@y.com", "admin", false)).toBe(true);
+    expect(stickerSpacingAllowed("googletest@gmail.com", "seller", false)).toBe(true);
+    expect(stickerSpacingAllowed(" GoogleTest@SellerFlowLive.com ", "seller", false)).toBe(true);
+    for (const e of ["cristycabanas34@gmail.com", "ronaldgantiga77@gmail.com", "tincabanas13@gmail.com", "someone@gmail.com", ""]) expect(stickerSpacingAllowed(e, "seller", false)).toBe(false);
     expect(stickerSpacingAllowed("someone@gmail.com", "seller", true)).toBe(true);
   });
   it("flags: none when not allowed; half gaps always + compact only when chosen", () => {

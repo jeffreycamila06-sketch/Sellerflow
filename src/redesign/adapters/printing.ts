@@ -148,10 +148,12 @@ export function stickerV2Allowed(email: string | undefined | null, role: string 
 }
 
 // ── Sticker spacing (half-letter word gaps + Normal/Compact) — bitmap path only ──────────
-// ⚠️ ROLLOUT SWITCH: false = only the allowlist (admin role + the two googletest accounts) gets
-// it. Not allowed → neither flag reaches the image settings → byte-identical to before. The
-// native payload, text fallback, WiFi sticker, slip and web print never see these flags.
-export const STICKER_SPACING_PUBLIC = false;
+// PUBLIC since 2026-10-07 — every seller gets it (the allowlist below only matters when this is
+// false). ⚠️ REVERT = flip this one line back to false: only the allowlist (admin role + the two
+// googletest accounts) keeps it, and for everyone else neither flag reaches the image settings →
+// byte-identical to before. The native payload, text fallback, WiFi sticker, slip and web print
+// never see these flags.
+export const STICKER_SPACING_PUBLIC = true;
 export const STICKER_SPACING_EMAILS: string[] = ["googletest@gmail.com", "googletest@sellerflowlive.com"];
 export function stickerSpacingAllowed(email: string | undefined | null, role: string | undefined | null, publicFlag: boolean = STICKER_SPACING_PUBLIC): boolean {
   if (publicFlag) return true;
