@@ -1920,12 +1920,15 @@ try {
   const shopeeCfg = shopeeConfig();
   if (shopeeCfg.enabled && serviceSb && RENDER_URL) {
     const store = {
+      // Throws on a database error: the authorize callback shows an error, never "no limit".
       async getPlan(userId) {
-        const { data } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
+        if (error) throw new Error("plan_read_failed");
         return data?.plan || "";
       },
       async countShops(userId) {
-        const { count } = await serviceSb.from("shopee_shops").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        const { count, error } = await serviceSb.from("shopee_shops").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        if (error) throw new Error("count_read_failed");
         return count || 0;
       },
       async getShop(userId, shopId) {
@@ -1933,7 +1936,9 @@ try {
         return data || null;
       },
       async upsertShop(row) {
-        await serviceSb.from("shopee_shops").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,shop_id" });
+        // Throws on a database error; the combined account limit (sql/84) → "account_limit".
+        const { error } = await serviceSb.from("shopee_shops").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,shop_id" });
+        if (error) throw new Error(/account_limit/.test(String(error.message || "")) ? "account_limit" : "shop_save_failed");
       },
       async listActiveShops() {
         const { data } = await serviceSb.from("shopee_shops").select("*").eq("active", true);
@@ -1986,12 +1991,15 @@ try {
   const fbCfg = fbConfig();
   if (fbCfg.enabled && serviceSb && RENDER_URL) {
     const store = {
+      // Throws on a database error: the authorize callback shows an error, never "no limit".
       async getPlan(userId) {
-        const { data } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
+        if (error) throw new Error("plan_read_failed");
         return data?.plan || "";
       },
       async countPages(userId) {
-        const { count } = await serviceSb.from("fb_pages").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        const { count, error } = await serviceSb.from("fb_pages").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        if (error) throw new Error("count_read_failed");
         return count || 0;
       },
       // Throws on a database error (null only when there really is no row): the poller keeps
@@ -2076,7 +2084,7 @@ try {
       // was not (handleCallback counts it as failed → ?fb=error&code=save_failed).
       async upsertPage(row) {
         const { error } = await serviceSb.from("fb_pages").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,page_id" });
-        if (error) throw new Error("fb_page_save_failed");
+        if (error) throw new Error(/account_limit/.test(String(error.message || "")) ? "account_limit" : "fb_page_save_failed");
       },
       async listActivePages() {
         const { data } = await serviceSb.from("fb_pages").select("*").eq("active", true);

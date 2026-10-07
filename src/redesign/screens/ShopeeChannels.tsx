@@ -13,6 +13,7 @@ import { maxAcc } from "../adapters/connect";
 import { startShopeeAuth, removeShopeeShop, isShopeeEligible, type ShopeeShop } from "../adapters/shopee";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+import AccountQuotaLine from "../components/AccountQuotaLine";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 
@@ -74,6 +75,7 @@ export default function ShopeeChannels({ account = null, shops, preview = false,
 
       <div style={{ padding: "16px 14px 24px" }}>
         <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 2px 14px" }}>{t.rd_shp_section_sub}</div>
+        <AccountQuotaLine reloadKey={shops.map((s) => s.id).join(",")} />
 
         {/* Authorized shops */}
         {shops.length === 0 ? (

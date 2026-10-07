@@ -20,15 +20,20 @@ import { fetchSlotCooldowns, touchSlot, slotLockState, slotKey, type SlotCooldow
 import { isAdminRole } from "../../lib/roles";
 import type { AccountUser } from "../../accountDb";
 import { useT } from "../i18n";
+import { useLang } from "../i18n/langContext";
+import { accountLimitMessage } from "./accountQuota";
+import { planLabel } from "./useAuthSession";
+import { isIOS } from "./platform";
 
 // note: "cooling" = locked with an "Unlock in Xh Ym" countdown (<4h); "locked" = locked,
 // show a "Change" button when canChange (≥4h / never changed, cooldown loaded), else a
 // bare 🔒 (admin-bypassed OR fail-closed); "unlocked" = editable input now.
 export type SavedSlotView = { editable: boolean; note: "cooling" | "locked" | "unlocked"; unlockMs: number; canChange: boolean };
-export type ChannelSaveFn = (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string }>;
+export type ChannelSaveFn = (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string; accountLimit?: boolean }>;
 
 export function useChannelEditor(account: AccountUser | null | undefined, platform: "tiktok" | "facebook", onSaveChannels?: ChannelSaveFn) {
   const t = useT();
+  const lang = useLang();
   const isTT = platform === "tiktok";
   const field = platform; // "tiktok" | "facebook"
   const other: "tiktok" | "facebook" = isTT ? "facebook" : "tiktok";
@@ -126,7 +131,11 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
       : { tiktok: account?.profile.tiktok || "", facebook: accountText(slots) };
     const unlocked = isTT ? { tiktok: changed } : { facebook: changed };
     const r = await onSaveChannels(lists, { unlocked });
-    if (r.ok) setState("saved"); else { setState("error"); setErr(r.error || t.rd_set_err_save_failed); }
+    if (r.ok) { setState("saved"); return; }
+    // Combined account limit (sql/84): the database refused a NEW username. Show the
+    // localized reason; `slots` is untouched, so the typed value stays.
+    const msg = r.accountLimit ? await accountLimitMessage(t, { ios: isIOS(), planName: planLabel(account?.plan), lang }) : r.error;
+    setState("error"); setErr(msg || t.rd_set_err_save_failed);
   };
 
   return { isTT, isAdmin, limit, planBadge, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err };

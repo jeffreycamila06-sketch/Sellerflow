@@ -476,12 +476,19 @@ export function createFbRuntime(deps) {
 
       // Per-plan cap (Option A: fb_pages rows vs maxAccountsForPlan) — re-auth of an
       // EXISTING page is always allowed; each NEW page counts against the cap.
-      const plan = await store.getPlan(userId);
-      let count = await store.countPages(userId);
+      // A failed plan/count read is a shown error (read_failed), never "no limit".
+      let plan, count;
+      try {
+        plan = await store.getPlan(userId);
+        count = await store.countPages(userId);
+      } catch (e) {
+        log(`[FB] callback read_failed user=${userId}: ${e && e.message}`);
+        return { redirect: back("fb=error&code=read_failed") };
+      }
       const max = plan ? maxAccountsForPlan(plan) : Infinity;
       // ~60d reminder from the long-lived user-token window (see the deviation note).
       const expiresAtIso = new Date(now() + longTok.expireInSec * 1000).toISOString();
-      let upserted = 0, capped = 0, failed = 0;
+      let upserted = 0, capped = 0, failed = 0, limited = 0;
       for (const p of pages) {
         let existing = null;
         try { existing = await store.getPage(userId, p.id); } catch { existing = null; }
@@ -495,13 +502,16 @@ export function createFbRuntime(deps) {
             access_token: encryptToken(p.access_token, config.tokenKey),
             token_expires_at: expiresAtIso, active: true, can_message: canMessage,
           });
-        } catch {
-          failed++;
+        } catch (e) {
+          // The database's combined account limit (sql/84) refused this NEW page.
+          if (e && e.message === "account_limit") limited++;
+          else failed++;
           continue;
         }
         upserted++;
         if (!existing) count++;
       }
+      if (upserted === 0 && limited > 0) return { redirect: back("fb=error&code=account_limit") };
       if (upserted === 0 && failed > 0) {
         log(`[FB] callback save_failed user=${userId} failed=${failed}`);
         return { redirect: back("fb=error&code=save_failed") };

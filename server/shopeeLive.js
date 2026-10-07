@@ -196,8 +196,15 @@ export function createShopeeRuntime(deps) {
       // this shop already exists for the user (re-auth), else enforce the count.
       const existing = await store.getShop(userId, shopId);
       if (!existing) {
-        const plan = await store.getPlan(userId);
-        const count = await store.countShops(userId);
+        // A failed plan/count read is a shown error (read_failed), never "no limit".
+        let plan, count;
+        try {
+          plan = await store.getPlan(userId);
+          count = await store.countShops(userId);
+        } catch (e) {
+          log(`[SHOPEE] callback read_failed user=${userId}: ${e && e.message}`);
+          return { redirect: `${appUrl}/?shopee=error&code=read_failed` };
+        }
         // F6 (ACCEPTED, LOW): read-then-upsert is a TOCTOU — two concurrent OAuth
         // completions for two NEW shops by the same seller could both pass the cap
         // and land count+1. Impact is a soft business cap only (one extra shop),
@@ -217,6 +224,8 @@ export function createShopeeRuntime(deps) {
       });
       return { redirect: `${appUrl}/?shopee=connected` };
     } catch (e) {
+      // The database's combined account limit (sql/84) refused this NEW shop.
+      if (e && e.message === "account_limit") return { redirect: `${appUrl}/?shopee=error&code=account_limit` };
       log(`[SHOPEE] callback error: ${e && e.message}`);
       return { redirect: `${appUrl}/?shopee=error&code=exception` };
     }
