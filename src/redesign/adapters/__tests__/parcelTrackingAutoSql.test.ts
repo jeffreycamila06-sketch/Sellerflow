@@ -49,8 +49,24 @@ describe("sql/83 automatic check", () => {
     expect(f).toContain("on conflict (user_id) where status in ('queued', 'running') do nothing");
     expect(f).not.toContain("last_manual_check"); // never touches the Check now allowance
     const g = fn(sql, "parcel_tracking_setting_int");
-    expect(g).toContain("return greatest(p_min, least(p_max, round(v::numeric)::int));");
     expect(g).toContain("then return p_def;");
+  });
+
+  it("setting_int clamps BEFORE the int cast; any overflow falls back to the default", () => {
+    const g = fn(sql, "parcel_tracking_setting_int");
+    expect(g).toContain("return greatest(p_min, least(p_max, round(v::numeric)))::int;");
+    expect(g).not.toMatch(/round\(v::numeric\)::int/);         // no cast before the clamp
+    expect(g).toMatch(/exception when others then\s+return p_def;/);
+    // Behaviour of the expression (numeric clamp, then cast), mirrored with BigInt:
+    const clamp = (v: string, min: number, max: number) => {
+      const n = BigInt(v);
+      const c = n < BigInt(min) ? BigInt(min) : n > BigInt(max) ? BigInt(max) : n;
+      return Number(c); // the ::int cast only ever sees a value inside [min, max]
+    };
+    expect(clamp("99999999999", 4, 48)).toBe(48);
+    expect(clamp("9".repeat(60), 4, 48)).toBe(48);
+    expect(clamp("-99999999999", 4, 48)).toBe(4);
+    expect(clamp("-" + "9".repeat(60), 1, 7)).toBe(1);
   });
 
   it("claim: auto jobs wait behind every other kind", () => {

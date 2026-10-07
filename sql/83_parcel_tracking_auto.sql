@@ -34,7 +34,13 @@ declare v text;
 begin
   select btrim(value) into v from public.app_settings where key = p_key;
   if v is null or v !~ '^-?[0-9]+(\.[0-9]+)?$' then return p_def; end if;
-  return greatest(p_min, least(p_max, round(v::numeric)::int));
+  -- Clamp while still numeric, THEN cast (a huge value never hits "integer out of range");
+  -- anything else that could raise (e.g. a numeric overflow) falls back to the default.
+  begin
+    return greatest(p_min, least(p_max, round(v::numeric)))::int;
+  exception when others then
+    return p_def;
+  end;
 end;
 $$;
 revoke all on function public.parcel_tracking_setting_int(text, int, int, int) from public, anon, authenticated;
