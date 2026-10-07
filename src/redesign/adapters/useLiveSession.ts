@@ -70,9 +70,25 @@ export interface UseLiveSession {
   // Without win.fix this is always "ok" (today's behaviour).
   loadStatus: SessionLoadStatus;
   canOrder: () => boolean;   // loadStatus === "ok", read synchronously (the order gate)
+  // Why orders are paused right now (null = not paused). Read-only, for the pause log.
+  pauseReason: SessionPauseReason | null;
   retry: () => void;         // re-run a failed load now (also automatic, see below)
 }
 export type SessionLoadStatus = "pending" | "ok" | "failed" | "unknown";
+// The condition that pauses orders (fix on, loadStatus not "ok"), named plainly for the pause log:
+// settings_loading = the session / window settings are still being read; session_unknown = the
+// session id could not be read; window_unknown = no session and the window settings could not be
+// read; board_loading = the board (orders so far) is loading; correcting = the board is being
+// reloaded by the real session id (correction reload); load_failed = the board load failed and
+// is being retried. PURE.
+export type SessionPauseReason = "settings_loading" | "session_unknown" | "window_unknown" | "board_loading" | "correcting" | "load_failed";
+export function pauseReasonOf(loadStatus: SessionLoadStatus, winReady: boolean, sessionKnown: boolean | undefined, loadKind: "load" | "correction"): SessionPauseReason | null {
+  if (loadStatus === "ok") return null;
+  if (loadStatus === "failed") return "load_failed";
+  if (loadStatus === "unknown") return sessionKnown === false ? "session_unknown" : "window_unknown";
+  if (!winReady) return "settings_loading";
+  return loadKind === "correction" ? "correcting" : "board_loading";
+}
 // fix: a failed board load is retried after these delays (then on focus / visible / Retry).
 export const SESSION_LOAD_RETRY_MS = [3000, 10000, 30000];
 
@@ -164,6 +180,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   // known → load NOTHING (never a day-only guess). Always false without fix.
   const unknown = fix && (win?.sessionKnown === false || (!winSessionId && win?.windowKnown === false));
   const [fetchStatus, setFetchStatus] = useState<"pending" | "ok" | "failed">("pending");
+  const [loadKind, setLoadKind] = useState<"load" | "correction">("load"); // pause log only
   const loadStatus: SessionLoadStatus = !fix || !enabled || !isSupabaseConfigured ? "ok"
     : !winReady ? "pending" : unknown ? "unknown" : fetchStatus;
   // Synchronous mirrors for canOrder()/reset() (synced after each commit; reset() also sets
@@ -198,7 +215,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     // window_start can't hide rows and numbering never resets per calendar day.
     // LEGACY (winSessionId null → seller never picked a session): the OLD
     // window/session_date path runs BYTE-UNCHANGED (both coexist per-seller).
-    if (fix) setFetchStatus("pending");
+    if (fix) { setFetchStatus("pending"); setLoadKind(correcting ? "correction" : "load"); }
     let loader;
     if (winSessionId) {
       loader = fix ? loadLiveSessionBySessionId(winSessionId, true) : loadLiveSessionBySessionId(winSessionId); // fix: a missing user id is a failed read (null), not "no rows"
@@ -265,7 +282,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   const reset = useCallback(() => {
     // fix: close the order gate SYNCHRONOUSLY — between this reset and the reload an order
     // must not be built on the now-empty board (it would get #1). No-op without fix.
-    if (loadStatusRef.current === "ok" && fixRef.current) { loadStatusRef.current = "pending"; setFetchStatus("pending"); }
+    if (loadStatusRef.current === "ok" && fixRef.current) { loadStatusRef.current = "pending"; setFetchStatus("pending"); setLoadKind("load"); }
     hydratedFromRef.current = null; localNewRef.current = [];
     setSession(EMPTY); setOrderedMsgIds(new Map()); setReloadKey((k) => k + 1);
   }, []);
@@ -326,5 +343,6 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     if (shouldResetOnDayChange(prev, dayId, winStart, winDays)) reset();
   }, [dayId, winStart, winDays, winSessionId, reset, unknown]);
 
-  return { session, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId, loadStatus, canOrder, retry };
+  const pauseReason = pauseReasonOf(loadStatus, winReady, win?.sessionKnown, loadKind);
+  return { session, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId, loadStatus, canOrder, retry, pauseReason };
 }
