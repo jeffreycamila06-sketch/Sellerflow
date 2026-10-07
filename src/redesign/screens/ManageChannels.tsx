@@ -119,8 +119,9 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
         )}
 
         {/* F-P3 — Facebook Pages section (fbEnabled-gated). Separate live source with its
-            own authorize/remove OAuth screen; NOT part of the tiktok/facebook cap. */}
-        {fbPagesEnabled && onFbPages && (
+            own authorize/remove OAuth screen; NOT part of the tiktok/facebook cap.
+            Facebook screen only — never on the TikTok screen. */}
+        {platform === "facebook" && fbPagesEnabled && onFbPages && (
           <button onClick={onFbPages} style={{ width: "100%", marginTop: 12, padding: "14px 15px", border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface)", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "var(--shadow)" }}>
             <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", flexShrink: 0 }}>f</span>
             <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_fb_channels_title}</span><span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{t.rd_fb_section_sub}</span></span>
