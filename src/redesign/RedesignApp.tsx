@@ -66,6 +66,7 @@ import OwnerSessionModal from "./components/OwnerSessionModal";
 import EndSessionConfirm from "./components/EndSessionConfirm";
 import { sessionV2Enabled, SESSION_V2_DAYS } from "./adapters/sessionV2";
 import { sessionNumberingGate } from "./adapters/sessionNumberingGate";
+import { useSessionPauseLog } from "./adapters/sessionPauseLog";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { buildMinerRiskMap } from "./adapters/minerRisk";
 import { useMinersReport } from "./adapters/minersReport";
@@ -1716,6 +1717,13 @@ export default function RedesignApp() {
   useEffect(() => { try { localStorage.setItem(LS.lang, lang); } catch { /* ignore */ } }, [lang]);
   useEffect(() => { try { localStorage.setItem(LS.currency, currency); } catch { /* ignore */ } }, [currency]);
   useEffect(() => { try { localStorage.setItem(LS.automode, autoDetect ? "1" : "0"); } catch { /* ignore */ } }, [autoDetect]);
+  // Session-numbering fix — PAUSE LOG (measurement only). One row per pause in
+  // session_pause_log; fire-and-forget, observes the feed after render — never on the
+  // comment / order / numbering / print path. pauseReason is null unless the fix is on.
+  useSessionPauseLog({
+    reason: liveSession.pauseReason, autoOn: autoDetect, feed: liveFeed.comments,
+    wouldBeOrder: (text) => planAutoOrder(text, autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0).kind === "order",
+  });
 
   // Phase 5a — auth-driven navigation + currency pin. Authed: leave the auth
   // screens. Anon (incl. after logout): force the login screen. On first real
