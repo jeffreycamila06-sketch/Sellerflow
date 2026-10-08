@@ -51,7 +51,7 @@ import BuyerAlertSheet from "./components/BuyerAlertSheet";
 import ReceiptFormat from "./screens/ReceiptFormat";
 import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
 import LiveConnectModal from "./components/LiveConnectModal";
-import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
+import { liveSourcePreviewEnabled, connectIsSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import { livePickerEnabled } from "./adapters/livePicker";
 import { settingsChannelScreen } from "./adapters/channelRoute";
 import type { ConnectTab } from "./screens/ConnectModal";
@@ -61,7 +61,7 @@ import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBucke
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
-import { useSessionInstance } from "./adapters/useSessionInstance";
+import { useSessionInstance, SESSION_SWITCH_NEEDED } from "./adapters/useSessionInstance";
 import { sessionEndLabel, sessionEndedIdle } from "./adapters/sessionEnd";
 import type { RebuiltSession } from "../lib/orderLogic";
 import SessionPickerModal from "./components/SessionPickerModal";
@@ -157,6 +157,9 @@ type LiveConnectTarget =
 // The platform a pending/target connect is FOR — passed to start_session so the new
 // session records its platform (H1). Kind "tt" carries platform (TikTok today).
 const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.kind === "fb" ? "Facebook" : p.platform);
+// sql/86 — a first-connect start_session answered "switch needed" (another device started a
+// session on a different platform meanwhile) → route the same connect through the switch confirm.
+const targetOfPending = (p: PendingConnect): LiveConnectTarget => (p.kind === "shopee" ? { platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId } : p.kind === "fb" ? { platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey } : { platform: "TikTok", username: p.acct, register: p.register });
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -1260,8 +1263,8 @@ export default function RedesignApp() {
     // force-fresh #1 (confirmSwitch). Same platform / NULL-legacy → continue. This
     // replaces the old in-memory livePlatformOf(ttEff/shopeeEff) anchor (stale-flag hole).
     if (status.running) {
-      if (isServerPlatformSwitch(status.platform, target.platform)) { setSwitchConfirm(target); return; }
-      runTargetConnect(target); return; // same platform (or NULL-legacy) → continue same session
+      if (connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff })) { setSwitchConfirm(target); return; }
+      runTargetConnect(target); return; // same platform → continue same session (NULL → in-app check, sql/86)
     }
     const pending: PendingConnect = target.platform === "Shopee"
       ? { kind: "shopee", shopId: target.shopId, sessionId: target.sessionId }
@@ -1271,7 +1274,7 @@ export default function RedesignApp() {
     if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);
   };
   // The SINGLE commit from the modal (Connect / Use / Shopee connect). Switch detection is
-  // now SERVER-ANCHORED inside runSessionAware (checkStatus → isServerPlatformSwitch), not
+  // now SERVER-ANCHORED inside runSessionAware (checkStatus → connectIsSwitch), not
   // the in-memory client flags — so a stale/recovering ttEff can never mis-route a switch.
   const commitLiveConnect = (target: LiveConnectTarget) => {
     setLiveConnectPlatform(null);
@@ -1405,7 +1408,7 @@ export default function RedesignApp() {
       // (never mix platforms in one numbering). TikTok-only here (the only reachable dropdown
       // connect); NULL-legacy / same-platform → continue. No new startSession site — it
       // funnels to confirmSwitch (site #3).
-      if (platform === "TikTok" && isServerPlatformSwitch(status.platform, "TikTok")) {
+      if (platform === "TikTok" && connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff })) {
         setTtOpen(false); setSwitchConfirm({ platform: "TikTok", username: acct }); return;
       }
       void performConnect(platform, acct); return;
@@ -1432,6 +1435,7 @@ export default function RedesignApp() {
     // First-connect (owner Start): stamp the connecting platform; force=false (default) →
     // reuse-if-running converges a two-device race onto one session.
     const sid = await sessionInstance.startSession(SESSION_V2_DAYS, platformOfPending(pending), false);
+    if (sid === SESSION_SWITCH_NEEDED) { setSwitchConfirm(targetOfPending(pending)); return; }
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     liveSession.reset();
     connectPending(pending);
@@ -1454,6 +1458,7 @@ export default function RedesignApp() {
     if (!pending) return;
     // First-connect (legacy picker): stamp the connecting platform; force=false (default).
     const sid = await sessionInstance.startSession(days, platformOfPending(pending), false);
+    if (sid === SESSION_SWITCH_NEEDED) { setSwitchConfirm(targetOfPending(pending)); return; }
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     // New session_id → clear + reload the live session so it loads by the NEW id
     // (empty → buyer# restarts at #1). The load effect re-runs on the sessionId

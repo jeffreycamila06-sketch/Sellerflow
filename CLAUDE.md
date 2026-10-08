@@ -4196,45 +4196,32 @@ concurrent lives than their plan by using different devices/accounts or scriptin
   on the Render restart → every seller's count begins clean; single-account reconnects and
   within-cap multi-account reconnects are always allowed).
 
-### 🔴 PENDING — SESSION-RPC v2 (H1 + H2 bundle) — BUILD BEFORE SHOPEE/FB GO FUNCTIONAL
-An adversarial audit of buyer# integrity in the new connect flow (Sep 22) found two
-session holes that are **not reachable while TikTok is the only functional live
-platform** but MUST be closed before a 2nd live platform (Shopee/FB) is enabled or the
-new connect flow is widened. Plan is READY; **no code yet** (deliberate — latent).
-- **H1 (load-bearing, latent):** the platform-switch reset (→ buyer #1) is decided by
-  the CLIENT `ttEff`/`shopeeEff` flags via `isPlatformSwitch(livePlatformOf(...), target)`
-  ([liveSource.ts](src/redesign/adapters/liveSource.ts)). When the outgoing platform is
-  locally Disconnected (`ttOff`) or in the 60s recovering-amber window, `livePlatformOf`
-  returns null → the switch is MISSED → the new platform's connect falls through to
-  `runSessionAware` → `checkStatus` running → **CONTINUE the old session_id** → two
-  platforms' buyers share one numbering (mixed). The code's own comment ("a missed reset
-  never corrupts numbering") is true for same-platform continue but FALSE cross-platform.
-  Unreachable today: TikTok is the only functional platform (Shopee connect = owner-preview
-  no-op at [RedesignApp.tsx:937](src/redesign/RedesignApp.tsx:937), FB = design-only gate).
-- **H2 (pre-existing, self-correcting):** `start_session()` ([sql/21](sql/21_session_rpcs.sql))
-  ALWAYS mints a new uuid + overwrites `current_session_id`. Two devices both seeing
-  "not running" → two mints → last-writer wins → orphaned session_id on the first device
-  → divergent boards / double #1. Narrow race (two first-connects within ~1s at a session's
-  very start); the "buyer# is local per device" caveat already documents concurrent-order
-  divergence.
-- **THE ONE AUDITED MIGRATION (session-RPC v2):** (a) add nullable `session_platform text`
-  to `seller_session_config`, stamped by `start_session(p_days, p_platform text default null)`;
-  `session_status()` returns it too. (b) **Anchor switch-detection to the SERVER session's
-  platform** — move the check out of the synchronous `commitLiveConnect` client-flag test
-  into `runSessionAware` (which already awaits `checkStatus`): `running && platform &&
-  platform !== target` → switch (force-fresh); `platform === target` → continue; not running
-  → first-connect. Deletes the `ttEff`/`shopeeEff` dependency for the reset. NULL platform
-  (legacy/in-flight) → fall back to the current client-flag check for that case only. (c)
-  `start_session` first-connect path becomes **reuse-if-running (atomic)**; the switch/owner
-  path stays **force-mint** (born-ended-safe) — the two callers have OPPOSITE intent, so a
-  blanket idempotency would break the switch reset (this is the trap).
-- **Rules:** SECURITY INVOKER + own-row `auth.uid()` (like sql/21); MCP apply + doc-mirror;
-  **NO Render deploy** (DB RPCs). **MANDATORY adversarial audit before merge** (touches the
-  sacred session gate + the buyer#-reset authority). Update the "EXACTLY 3 startSession sites"
-  + session-safety contract tests. Effort ≈ half a day. **H3** (ttIdx→account remap) was
-  audited as purely cosmetic (orders are commenter-keyed; the seller's account isn't stored
-  on an order or in buyer#) → **deferred, no fix needed**. **H4** (confirmSwitch double-fire)
-  was FIXED (merge `bb4366a`, frontend-only).
+### ✅ SESSION-RPC v2 (H1 + H2) — BUILT + LIVE FOR EVERYONE (sql/46, commit `4d86b20`, Sep 23) · sql/86 hardening on branch `claude/session-rpc-v2`
+The plan that used to sit here ("no code yet") was built on Sep 23 and is live for every seller
+(no gate — owner decision 2026-10-08: keep it that way).
+- **sql/46 (`46_session_platform.sql`, APPLIED in production):** `seller_session_config.session_platform`
+  (nullable) stamped by `start_session(p_days, p_platform default null, p_force default false)`;
+  `session_status()` returns it. `p_force=false` = reuse-if-running (H2; advisory lock per user),
+  `p_force=true` = always mint (the switch). Both RPCs SECURITY INVOKER, own row.
+- **Client (H1):** switch detection uses the SERVER session's platform inside `runSessionAware` and on
+  the TikTok dropdown path (`doConnect`); the 3 `startSession` sites stamp the platform — first-connect
+  sites `force=false` (`onPickSessionLength`, `onOwnerStart`), `confirmSwitch` `force=true`.
+- **sql/86 hardening (branch `claude/session-rpc-v2`, NOT applied, NOT merged):**
+  (1) unknown server platform (NULL: pre-sql/46 session or a failed status read) → today's in-app
+  check (`connectIsSwitch` in liveSource.ts = `isPlatformSwitch(livePlatformOf({ttEff, shopeeEff}))`);
+  (2) `start_session` (`sql/86_session_rpc_v2.sql` + rollback, same signature, no drop) reuses a running
+  session only when its platform is the same or either side is NULL; two different known platforms →
+  raises `session_switch_needed` (nothing written) → `startSession` returns `SESSION_SWITCH_NEEDED` → the
+  first-connect sites open the switch confirm. A TikTok-only seller is identical in every path (proved
+  by `scripts/sql46-behaviour.mjs` comparing sql/46 vs sql/86 traces, and `sessionRpcV2.test.ts`).
+  NO Render deploy (database RPC + web only). Either order is safe: web without sql/86 → item (2) never
+  fires (item (1) works on its own); sql/86 before the web → an old bundle hitting the race shows the
+  "start failed" toast instead of silently mixing.
+- **Still open:** `livePlatformOf` has no Facebook flag (the NULL fallback cannot see a live Facebook in
+  the app); after a "switch needed" the confirm uses this device's `sessionWindowDays` (may be stale or
+  null → `SESSION_V2_DAYS`), not the length the seller just picked; the old-client case (a bundle from
+  before Sep 23 sends no platform → plain reuse, no switch) ends when those bundles are gone.
+  **H3** (ttIdx→account remap) = cosmetic, deferred. **H4** fixed (`bb4366a`).
 
 ### ⏳ STILL PENDING (carry-over)
 - **Session V2 born-ended fix (`267ac50`)** — LIVE but **owner-gated** (`SESSION_V2_EMAILS`).

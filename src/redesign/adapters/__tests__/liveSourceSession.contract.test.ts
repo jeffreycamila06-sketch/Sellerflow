@@ -77,13 +77,13 @@ describe("Session-safety contract — routing", () => {
 // H1/H2 — session-RPC v2. Switch detection is SERVER-anchored (session_status platform),
 // the 3 sites stamp the connecting platform, and only confirmSwitch forces a mint.
 describe("Session-safety contract — H1/H2 platform anchor", () => {
-  it("switch detection is SERVER-anchored (isServerPlatformSwitch on status.platform), NOT the client eff flags", () => {
+  it("switch detection is SERVER-anchored (connectIsSwitch on status.platform; flags only when it is NULL)", () => {
     // runSessionAware (new flow) decides via the server platform + routes a switch to the confirm.
     const rsa = body("runSessionAware");
-    expect(rsa).toContain("isServerPlatformSwitch(status.platform");
+    expect(rsa).toContain("connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff })");
     expect(rsa).toContain("setSwitchConfirm(");
     // doConnect (active old-dropdown path) applies the same server anchor for TikTok.
-    expect(src).toContain('isServerPlatformSwitch(status.platform, "TikTok")');
+    expect(src).toContain('connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff })');
     // commitLiveConnect no longer uses the in-memory client-flag anchor.
     const clc = body("commitLiveConnect");
     expect(clc).not.toContain("livePlatformOf");
@@ -97,5 +97,29 @@ describe("Session-safety contract — H1/H2 platform anchor", () => {
     // first-connect sites pass force=false (reuse-if-running); never true.
     expect(body("onPickSessionLength")).toContain(", false)");
     expect(body("onOwnerStart")).toContain(", false)");
+  });
+});
+
+// sql/86 — a first-connect start_session can answer "switch needed" (another device started a
+// session on another platform). Both first-connect sites route it to the switch confirm BEFORE
+// the generic failure toast; the switch site never gets it (force=true never raises).
+describe("Session-safety contract — sql/86 switch needed", () => {
+  for (const site of ["onPickSessionLength", "onOwnerStart"]) {
+    it(`${site}: SESSION_SWITCH_NEEDED → setSwitchConfirm(targetOfPending(pending)), checked before !sid`, () => {
+      const b = body(site);
+      const sw = b.indexOf("if (sid === SESSION_SWITCH_NEEDED) { setSwitchConfirm(targetOfPending(pending)); return; }");
+      expect(sw).toBeGreaterThan(-1);
+      expect(sw).toBeLessThan(b.indexOf("if (!sid)"));
+      expect(sw).toBeLessThan(b.indexOf("liveSession.reset()"));
+    });
+  }
+  it("confirmSwitch is unchanged (force mint; no switch-needed branch)", () => {
+    expect(body("confirmSwitch")).not.toContain("SESSION_SWITCH_NEEDED");
+  });
+  it("targetOfPending maps every pending kind back to its connect target", () => {
+    const t = src.slice(src.indexOf("const targetOfPending"), src.indexOf("\n", src.indexOf("const targetOfPending")));
+    expect(t).toContain('{ platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId }');
+    expect(t).toContain('{ platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey }');
+    expect(t).toContain('{ platform: "TikTok", username: p.acct, register: p.register }');
   });
 });

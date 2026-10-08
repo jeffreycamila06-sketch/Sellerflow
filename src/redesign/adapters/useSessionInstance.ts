@@ -31,6 +31,13 @@ export function statusFallback(knownSessionId: string | null): SessionStatus {
   return knownSessionId ? { running: true, sessionId: knownSessionId, platform: null } : { running: false, sessionId: null, platform: null };
 }
 
+// sql/86 — start_session's first-connect path raises this when a session is already running
+// on a DIFFERENT known platform (another device started it meanwhile). startSession returns
+// SESSION_SWITCH_NEEDED instead of an id; the caller routes to the switch confirm.
+export const SESSION_SWITCH_NEEDED = "session_switch_needed";
+export const isSwitchNeeded = (err: unknown): boolean =>
+  String((err as { message?: unknown } | null)?.message ?? "").includes(SESSION_SWITCH_NEEDED);
+
 export interface UseSessionInstance {
   currentSessionId: string | null;         // for stamping new orders (sql/20)
   // Sub-step 5 (UI-only): the running session's server start + length, for the
@@ -234,6 +241,7 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
     if (!isSupabaseConfigured || !supabase) return null;
     try {
       const { data, error } = await supabase.rpc("start_session", { p_days: days, p_platform: platform, p_force: force });
+      if (error && isSwitchNeeded(error)) return SESSION_SWITCH_NEEDED; // nothing changed on the server
       if (error || !data) return null;
       const id = String(data);
       setId(id);
