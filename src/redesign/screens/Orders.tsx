@@ -27,6 +27,7 @@ import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
 import { fbReceiptInfo } from "../adapters/fbReceipt";
 import { fbNameOnly } from "../adapters/fbName";
+import { usePaidFlags, isPaidExpired, orderKey } from "../adapters/ordersPaid";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -35,7 +36,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist,
+  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -56,6 +57,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // F3 Facebook waitlist (fb_waitlist_enabled + Messenger access + Facebook world). Absent = no section.
   waitlist?: WaitlistUi;
   sessionId?: string | null; // the current session (Messenger receipt Send + "Receipt sent ✓")
+  // B2 (orders_paid_flag_enabled): Mark paid / Unpaid per order, the "Unpaid" pill, "Expired"
+  // after 24 h unpaid. false/absent = the screen exactly as before (no extra read).
+  paidFlag?: boolean;
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
@@ -71,6 +75,12 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const [exportOpen, setExportOpen] = useState(false);
   const [receiptSheetOpen, setReceiptSheetOpen] = useState(false);
   const live = state === "live";
+  const paid = usePaidFlags(paidFlag, orders);
+  const [unpaidOnly, setUnpaidOnly] = useState(false);
+  const [paidBusy, setPaidBusy] = useState("");
+  const [paidErr, setPaidErr] = useState(false);
+  const [openedAt] = useState(() => Date.now()); // "Expired" is judged at screen open (Orders remounts per visit)
+  const unpaidPick = (o: Order) => { const r = paid.map.get(orderKey(o)); return !!r && !r.paidAt; };
   const searching = query.trim().length > 0;
   // A pure-digit query that EXACTLY matches a buyer# → show the receipt box ONLY
   // (Option A). EXACT `num ===`, so "1" is buyer #1, never #10/#11 (contains).
@@ -100,13 +110,15 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   }, [orders, historyOrders, range, todayId, customFrom, customTo]);
   // F2 platform filter, then search — search composes WITHIN the dated+platform view.
   const byPlatform = useMemo(() => filterByPlatform(base, platformFilter), [base, platformFilter]);
-  const shown = filterOrders(byPlatform, query);
+  const shownAll = filterOrders(byPlatform, query);
+  const shown = paidFlag && unpaidOnly ? shownAll.filter(unpaidPick) : shownAll;
   // Torn-sticker 7-day search reach — ONLY in the default "session" range (this is
   // exactly today's behavior; 7days/custom already fold history into `base`, and
   // "today" is intentionally today-scoped). Platform filter composes here too.
-  const shownHist = (searching && range === "session")
+  const shownHistAll = (searching && range === "session")
     ? filterOrders(filterByPlatform(historyOrders, platformFilter), query)
     : [];
+  const shownHist = paidFlag && unpaidOnly ? shownHistAll.filter(unpaidPick) : shownHistAll;
   const matchCount = shown.length + shownHist.length;
   const summary = orderSummary([...shown, ...shownHist]); // F3 — over the visible set
   // Legacy header count chip — shown ONLY in the default view (session + all), where
@@ -200,9 +212,35 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             ↻ {reprintingKey === `${o.orderNum}` ? t.rd_dash_reprinting : t.rd_dash_reprint}
           </button>
         )}
+        {paidFlag && paidControls(o)}
       </div>
     </div>
   );
+
+  // B2 — "Expired" (unpaid > 24 h, display only) + the Mark paid / Paid toggle. Only for an order
+  // whose database row was found; one write per tap, nothing is sent to the buyer.
+  const paidControls = (o: Order) => {
+    const r = paid.map.get(orderKey(o));
+    if (!r) return null;
+    const k = String(r.id);
+    const toggle = async () => {
+      if (paidBusy) return;
+      setPaidBusy(k); setPaidErr(false);
+      const ok = await paid.setPaid(r, !r.paidAt);
+      setPaidBusy("");
+      if (!ok) setPaidErr(true);
+    };
+    return (
+      <>
+        {isPaidExpired(r, openedAt) && <span data-testid="ord-expired" style={{ fontSize: 10.5, fontWeight: 800, color: "var(--danger)", border: "1px solid var(--danger)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_ord_expired}</span>}
+        <button type="button" data-testid="ord-paid-btn" aria-pressed={!!r.paidAt} disabled={!!paidBusy}
+          onClick={(e) => { e.stopPropagation(); void toggle(); }}
+          style={{ fontSize: 11.5, fontWeight: 800, padding: "4px 10px", borderRadius: 8, fontFamily: "var(--font-ui)", cursor: paidBusy ? "default" : "pointer", border: r.paidAt ? "1.5px solid var(--ok)" : "1.5px solid var(--border)", background: r.paidAt ? "var(--ok)" : "transparent", color: r.paidAt ? "#fff" : "var(--text-dim)", opacity: paidBusy && paidBusy !== k ? 0.55 : 1 }}>
+          {r.paidAt ? `✓ ${t.rd_ord_paid}` : t.rd_ord_mark_paid}
+        </button>
+      </>
+    );
+  };
 
   return (
     <div>
@@ -249,6 +287,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               <button key={pf} onClick={() => setPlatformFilter(pf)} data-testid={`ord-pf-${pf}`} aria-pressed={on} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: on ? "1px solid #fff" : "1px solid rgba(255,255,255,.35)", background: on ? "#fff" : "rgba(255,255,255,.14)", color: on ? "var(--accent)" : "var(--on-header)" }}>{label}</button>
             );
           })}
+          {paidFlag && (
+            <button onClick={() => setUnpaidOnly((v) => !v)} data-testid="ord-unpaid-pill" aria-pressed={unpaidOnly} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: unpaidOnly ? "1px solid #fff" : "1px solid rgba(255,255,255,.35)", background: unpaidOnly ? "#fff" : "rgba(255,255,255,.14)", color: unpaidOnly ? "var(--accent)" : "var(--on-header)" }}>{t.rd_ord_unpaid}</button>
+          )}
           {/* date-range selector — pill button → menu (custom reveals two date inputs) */}
           <div style={{ position: "relative", marginLeft: "auto" }}>
             <button onClick={() => setRangeOpen((o) => !o)} data-testid="ord-range" aria-haspopup="menu" aria-expanded={rangeOpen} style={{ fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.14)", color: "var(--on-header)" }}>🗓 {rangeLabel} ▾</button>
@@ -333,6 +374,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </div>
         ) : (
           <>
+            {paidFlag && paidErr && <div role="alert" data-testid="ord-paid-error" style={{ ...noteStyle, color: "var(--danger)" }}>{t.rd_ord_paid_failed}</div>}
             {state === "loading" && <div style={noteStyle}>{t.rd_ord_loading}</div>}
             {state === "empty" && !searching && <div style={noteStyle}>{t.rd_ord_empty}</div>}
             {shown.map((o, idx) => row(o, idx, false))}

@@ -11,7 +11,7 @@
 // sold-out) at the database. Errors never touch the page row and never the poller.
 import { GRAPH_VERSION } from "./fbConfig.js";
 import { GRAPH_HOST } from "./fbLive.js";
-import { classifyReceiptAnswer, checkReceiptRate, makeSendablePage, RECEIPT_RETRYABLE_CODES, RECEIPT_GRAPH_TIMEOUT_MS } from "./fbReceipt.js";
+import { classifyReceiptAnswer, checkReceiptRate, makeSendablePage, updateSentReceipt, RECEIPT_RETRYABLE_CODES, RECEIPT_GRAPH_TIMEOUT_MS } from "./fbReceipt.js";
 
 export const SOLDOUT_RATE_MAX = 30;                 // its own bucket (separate from receipts)
 export const SOLDOUT_RATE_WINDOW_MS = 60 * 1000;
@@ -115,7 +115,7 @@ export function createFbSoldout(deps) {
     }
 
     if (answer.kind === "sent") {
-      await store.updateReceipt(ins.id, { status: "sent", message_id: answer.messageId, sent_at: new Date(now()).toISOString() });
+      await updateSentReceipt(store, ins.id, { status: "sent", message_id: answer.messageId, sent_at: new Date(now()).toISOString() }, answer.recipientId);
       logAttempt(userId, page.pageId, "sent");
       return { status: 200, json: { ok: true } };
     }

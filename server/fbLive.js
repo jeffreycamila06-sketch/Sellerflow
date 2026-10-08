@@ -795,6 +795,8 @@ export function createFbRuntime(deps) {
     pollers.delete(key);
     try { statusEmit(entry.sellerId, { connected: false, pageId: entry.pageId, liveVideoId: entry.liveVideoId, scopeKey: entry.scopeKey, sessionId: entry.sessionId }); } catch { /* best effort */ }
     log(`[FB] poller stop page=${entry.pageId} reason=${reason}`);
+    // B1 automatic receipt: the live ended → the store queues a job (only when its switch is on). Fire-and-forget, never blocks or throws.
+    try { if ((reason === "session_end" || reason === "idle" || reason === "max_session") && typeof store.insertAutoReceiptJob === "function") Promise.resolve(store.insertAutoReceiptJob({ userId: entry.userId, pageId: entry.pageId, liveVideoId: entry.liveVideoId })).catch(() => {}); } catch { /* best effort */ }
     return true;
   }
 

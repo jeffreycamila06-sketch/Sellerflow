@@ -342,12 +342,13 @@ describe("routes: middleware order, body limit, rate limit", () => {
   it("the global JSON parser skips /fb/receipt/send (auth before parser); routes registered in the FB block", () => {
     const src = readFileSync("server.js", "utf8");
     expect(src).toContain('req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)');
-    expect(src).toContain("createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);");
+    // B1: one instance, shared with the automatic receipt (same buyer lock).
+    expect(src).toContain("fbReceiptApi = createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) });\n      fbReceiptApi.registerRoutes(app, requireAuth);");
     expect(src.indexOf("createFbReceipt({")).toBeGreaterThan(src.indexOf("fbRuntime.registerRoutes(app"));
   });
   it("a throwing receipt registration can never null fbRuntime or skip the refresh timer", () => {
     const src = readFileSync("server.js", "utf8");
-    const at = src.indexOf("createFbReceipt({ config: fbCfg");
+    const at = src.indexOf("fbReceiptApi = createFbReceipt({ config: fbCfg");
     const tryAt = src.lastIndexOf("try {", at);
     const block = src.slice(tryAt, src.indexOf("fbRuntime.startRefreshTimer();", at));
     expect(src.slice(src.indexOf("fbRuntime.registerRoutes(app"), at)).toMatch(/try \{\s*$/);

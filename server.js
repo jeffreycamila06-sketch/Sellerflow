@@ -29,6 +29,7 @@ import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
 import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
+import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 
@@ -2062,12 +2063,20 @@ try {
 // pill) — different routes (/fb/*), untouched here.
 let fbRuntime = null;
 let stopReceiptCleanup = null;
+let autoReceiptRunner = null; // B1 — set inside the Facebook block; the timer below is a no-op while null
 // F5 — an FB init failure must NEVER take down the server (or the live TikTok/Shopee
 // relays). The whole gated block is wrapped so any throw is logged and leaves
 // fbRuntime null; TikTok/Shopee routes/relays are unaffected.
 try {
   const fbCfg = fbConfig();
   if (fbCfg.enabled && serviceSb && RENDER_URL) {
+    const autoReceiptFlag = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_auto_receipt_enabled").maybeSingle();
+        if (error) throw new Error("fb_auto_receipt_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
     const store = {
       // Throws on a database error: the authorize callback shows an error, never "no limit".
       async getPlan(userId) {
@@ -2111,7 +2120,7 @@ try {
         return data || [];
       },
       async listReceiptRows(commentIds) {
-        const { data, error } = await serviceSb.from("fb_receipts").select("user_id, comment_id, status, sent_at").in("comment_id", commentIds);
+        const { data, error } = await serviceSb.from("fb_receipts").select("user_id, comment_id, status, sent_at, kind, error_code").in("comment_id", commentIds);
         if (error) throw new Error("receipt_rows_read");
         return data || [];
       },
@@ -2159,6 +2168,50 @@ try {
         const { error } = await serviceSb.storage.from("fb-receipts").upload(path, buf, { contentType: "image/png", upsert: false });
         if (error) throw new Error("upload_failed");
         return serviceSb.storage.from("fb-receipts").getPublicUrl(path).data.publicUrl;
+      },
+      // ── B1 automatic receipt (sql/100) — service role, explicit user_id ──
+      // Queues a job 10 minutes after the live ended, only while fb_auto_receipt_enabled is on.
+      async insertAutoReceiptJob({ userId, pageId, liveVideoId }) {
+        if (!userId || !pageId || !liveVideoId || !(await autoReceiptFlag())) return;
+        await serviceSb.from("fb_auto_receipt_jobs").insert({
+          user_id: String(userId), page_id: String(pageId), live_video_id: String(liveVideoId),
+          due_at: new Date(Date.now() + AUTO_RECEIPT_DELAY_MS).toISOString(),
+        });
+      },
+      async claimJobs(limit) {
+        const { data, error } = await serviceSb.rpc("claim_auto_receipt_jobs", { p_limit: limit });
+        if (error) throw new Error("auto_receipt_claim");
+        return data || [];
+      },
+      async finishJob(id, patch) {
+        const { error } = await serviceSb.from("fb_auto_receipt_jobs").update(patch).eq("id", id).eq("status", "running");
+        if (error) throw new Error("auto_receipt_finish");
+      },
+      async readProfile(userId) {
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan, plan_status").eq("auth_user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("auto_receipt_profile");
+        return data || null;
+      },
+      async getAutoReceiptSettings(userId) {
+        const { data, error } = await serviceSb.from("seller_receipt_settings")
+          .select("opening, note, qr_image, auto_receipt_enabled, auto_receipt_lang, auto_receipt_currency")
+          .eq("user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("auto_receipt_settings");
+        if (!data) return null;
+        return { enabled: data.auto_receipt_enabled === true, opening: data.opening || "", note: data.note || "", qrImage: data.qr_image || null, lang: data.auto_receipt_lang || "en", currency: data.auto_receipt_currency || "NT$" };
+      },
+      // That live's Facebook orders (platform_meta.live_video_id), oldest first, all pages.
+      async listLiveRows(userId, liveVideoId) {
+        const out = [];
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await serviceSb.from("live_session_orders")
+            .select("id, session_id, buyer_number, handle, customer_name, product, price, qty, created_at")
+            .eq("user_id", String(userId)).eq("platform", "Facebook").eq("platform_meta->>live_video_id", String(liveVideoId))
+            .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + 999);
+          if (error) throw new Error("auto_receipt_rows");
+          out.push(...(data || []));
+          if (!data || data.length < 1000) return out;
+        }
       },
       async listPages(userId) {
         // NEVER select access_token — the /fb/pages response must not carry tokens.
@@ -2235,8 +2288,10 @@ try {
     fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan, accountLiveCheck });
     // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
     // Isolated: a throw here must never null fbRuntime or skip the refresh timer below.
+    let fbReceiptApi = null; // one instance: the manual send and the automatic receipt share its buyer lock
     try {
-      createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);
+      fbReceiptApi = createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) });
+      fbReceiptApi.registerRoutes(app, requireAuth);
     } catch {
       console.log("[FB] receipt routes not registered");
     }
@@ -2258,6 +2313,17 @@ try {
     } catch {
       console.log("[FB] sold-out route not registered");
     }
+    // B1 — automatic receipt after a live (switch fb_auto_receipt_enabled, read like fb_enabled;
+    // plan plus/pro/master; fb_receipt_access; the seller's toggle). Isolated.
+    try {
+      if (fbReceiptApi) autoReceiptRunner = createAutoReceiptRunner({
+        store, flag: autoReceiptFlag, hasAccess: (uid) => store.hasReceiptAccess(uid),
+        receipt: fbReceiptApi, log: (line) => console.log(line),
+      });
+    } catch {
+      autoReceiptRunner = null;
+      console.log("[FB] auto-receipt not started");
+    }
     // Receipt pictures older than 24 hours are deleted from the bucket (hourly).
     try {
       stopReceiptCleanup = startReceiptImageCleanup({ store, log: (line) => console.log(line) });
@@ -2270,6 +2336,12 @@ try {
 } catch (e) {
   fbRuntime = null;
   console.error("[FB] init failed — Facebook disabled, TikTok/Shopee unaffected:", e && e.message);
+}
+// B1 automatic receipt: one small job claim per minute (no-op while the Facebook block did not
+// create the runner). Never throws; unref'd.
+{
+  const autoReceiptTimer = setInterval(() => { if (autoReceiptRunner) void autoReceiptRunner.tick().catch(() => {}); }, AUTO_RECEIPT_TICK_MS);
+  if (typeof autoReceiptTimer.unref === "function") autoReceiptTimer.unref();
 }
 
 // ── INSTAGRAM LIVE (phase 1, admin / preview only) — server/igLive.js ─────────

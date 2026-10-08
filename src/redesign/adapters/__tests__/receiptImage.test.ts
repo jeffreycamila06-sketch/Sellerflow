@@ -99,7 +99,9 @@ describe("block order and QR", () => {
 describe("independent of sticker / print code", () => {
   it("receiptImage imports nothing from the sticker or print modules", () => {
     const src = readFileSync("src/redesign/adapters/receiptImage.ts", "utf8");
-    expect(src).not.toMatch(/^import /m);
+    // its only import is the shared, import-free layout module
+    expect(src.match(/^import .*$/gm)).toEqual(['import { layoutReceipt, RECEIPT_PAD, RECEIPT_RULE_COLOR, type Measure, type ReceiptInput } from "../../lib/receiptLayout.js";']);
+    expect(readFileSync("src/lib/receiptLayout.js", "utf8")).not.toMatch(/^\s*import /m);
     expect(src).not.toMatch(/stickerRaster|stickerPreview|printerBridge|PrintPattern|\/Print"/);
   });
 });
