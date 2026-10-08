@@ -24,6 +24,7 @@ import { useLang } from "../i18n/langContext";
 import { accountLimitMessage } from "./accountQuota";
 import { planLabel } from "./useAuthSession";
 import { isIOS } from "./platform";
+import { useAccountCoverage, overLimitView, isCovered } from "./accountLive";
 
 // note: "cooling" = locked with an "Unlock in Xh Ym" countdown (<4h); "locked" = locked,
 // show a "Change" button when canChange (≥4h / never changed, cooldown loaded), else a
@@ -40,7 +41,13 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
   const isAdmin = isAdminRole(account?.role);
   const limit = maxAcc(account?.plan || "free");
   const planBadge = (account?.plan || "free").toUpperCase();
-  const orig = accountSlots(account?.profile[field] || "", limit);
+  // Account total, Build 2 (sql/85): ONLY while enforcing, a seller with more registered
+  // accounts than the plan sees ALL their TikTok names (no empty slot) with a "not covered"
+  // label. Otherwise (log-only, within plan, coverage unreadable) slots = today's `limit`.
+  const coverage = useAccountCoverage(account?.profile.tiktok);
+  const showAll = isTT && overLimitView(coverage);
+  const slotCount = showAll ? accountList(account?.profile[field] || "").length : limit;
+  const orig = accountSlots(account?.profile[field] || "", slotCount);
   const [slots, setSlots] = useState<string[]>(orig);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [err, setErr] = useState("");
@@ -51,9 +58,9 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
   const [, setTick] = useState(0); // 1s re-render for the live "Unlock in Xh Ym" countdown
 
   useEffect(() => {
-    setSlots(accountSlots(account?.profile[field] || "", limit));
+    setSlots(accountSlots(account?.profile[field] || "", slotCount));
     setUnlockedSlots(new Set()); setState("idle"); setErr("");
-  }, [account, limit, field]);
+  }, [account, slotCount, field]);
 
   // Read server-authoritative cooldowns once on mount / account change (admins skip).
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -99,7 +106,9 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
 
   // Combined cap across BOTH platforms (this platform's drafts + the other's saved).
   const otherCount = accountList(account?.profile[other] || "").length;
-  const atCap = otherCount + accountList(slots.join("\n")).length >= limit;
+  const atCap = showAll || otherCount + accountList(slots.join("\n")).length >= limit;
+  // Saved slot i is outside the plan (over-limit view only) → the "not covered" label.
+  const notCovered = (i: number) => showAll && !!orig[i] && isCovered(coverage, "tiktok", orig[i]) === false;
   const setSlot = (i: number, v: string) => { setSlots((s) => s.map((x, idx) => (idx === i ? v : x))); setState("idle"); };
 
   // There is a pending, saveable change: an add to an empty slot, or a changed value in an
@@ -138,5 +147,5 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
     setState("error"); setErr(msg || t.rd_set_err_save_failed);
   };
 
-  return { isTT, isAdmin, limit, planBadge, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err };
+  return { isTT, isAdmin, limit, planBadge, orig, slots, setSlot, savedSlotView, unlock, atCap, notCovered, dirty, save, state, err };
 }

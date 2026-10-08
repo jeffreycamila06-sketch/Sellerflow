@@ -386,6 +386,9 @@ export function createShopeeRuntime(deps) {
   function registerRoutes(app, requireAuth, extra = {}) {
     const requireConnectRate = extra.requireConnectRate || passThrough;
     const requirePlanActive = extra.requirePlanActive || passThrough;
+    // Account total, Build 2 (sql/85): which accounts may go live. Default (tests / no
+    // wiring) = allow. Asked only for a NEW connect (no poller running for it).
+    const accountLiveCheck = extra.accountLiveCheck || (async () => ({ allow: true }));
     app.get("/shopee/oauth/start", requireAuth, (req, res) => {
       try { return res.json({ url: buildAuthUrl(req.authUserId) }); }
       catch { return res.status(500).json({ ok: false, error: "shopee_start_failed" }); }
@@ -415,6 +418,10 @@ export function createShopeeRuntime(deps) {
       let shop;
       try { shop = await store.getShop(userId, shopId); } catch { shop = null; }
       if (!shop || !shop.active) return res.status(404).json({ ok: false, error: "shop_not_found" });
+      if (!pollers.has(liveKey(sellerId, "Shopee", shopId))) {
+        const v = await accountLiveCheck(req, "shopee", shopId);
+        if (!v.allow) return res.status(403).json({ ok: false, error: "account_not_covered" });
+      }
       if (!shopSessionId) return res.json({ ok: false, reason: "not_live" });
       startPoller({ sellerId, userId, shopId, shopUsername: String(shopId), shopSessionId, sessionId: String(req.body.sessionId || "") });
       return res.json({ ok: true, session_id: shopSessionId });

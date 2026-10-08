@@ -22,6 +22,7 @@ import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { useLang } from "../i18n/langContext";
 import AccountQuotaLine from "../components/AccountQuotaLine";
+import { useAccountCoverage, isCovered, notCoveredLabel } from "../adapters/accountLive";
 import { accountLimitMessage } from "../adapters/accountQuota";
 import { planLabel } from "../adapters/useAuthSession";
 import { isIOS } from "../adapters/platform";
@@ -39,6 +40,7 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   onUpsell: () => void;
 }) {
   const t = useT();
+  const coverage = useAccountCoverage(pages.map((p) => p.pageId).join(",")); // Build 2: "not covered" labels (enforcing + over-limit only)
   const lang = useLang();
   const plan = account?.plan || "free";
   const limit = maxAcc(plan);
@@ -152,6 +154,7 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_fb_page_name_fallback}</div>
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{p.username ? `@${p.username}` : `${t.rd_fb_page_id}: ${p.pageId}`}</div>
+                {isCovered(coverage, "facebook", String(p.pageId)) === false && <div data-testid="not-covered" style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", marginTop: 2 }}>{notCoveredLabel(t, isIOS())}</div>}
               </div>
               <button onClick={() => void remove(p)} disabled={busyId === p.id} style={{ padding: "8px 13px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--danger)", fontSize: 12.5, fontWeight: 700, cursor: busyId === p.id ? "default" : "pointer", opacity: busyId === p.id ? 0.6 : 1, fontFamily: "var(--font-ui)", flexShrink: 0 }}>{t.rd_fb_remove}</button>
             </div>

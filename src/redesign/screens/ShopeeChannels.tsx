@@ -14,6 +14,8 @@ import { startShopeeAuth, removeShopeeShop, isShopeeEligible, type ShopeeShop } 
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import AccountQuotaLine from "../components/AccountQuotaLine";
+import { useAccountCoverage, isCovered, notCoveredLabel } from "../adapters/accountLive";
+import { isIOS } from "../adapters/platform";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 
@@ -29,6 +31,7 @@ export default function ShopeeChannels({ account = null, shops, preview = false,
   onUpsell: () => void;
 }) {
   const t = useT();
+  const coverage = useAccountCoverage(shops.map((s) => s.shopId).join(",")); // Build 2: "not covered" labels (enforcing + over-limit only)
   const plan = account?.plan || "free";
   const limit = maxAcc(plan);
   const eligible = isShopeeEligible(account); // active-paid (admin bypass); Date.now lives in the module helper
@@ -87,6 +90,7 @@ export default function ShopeeChannels({ account = null, shops, preview = false,
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.shopName || t.rd_shp_shop_name_fallback}</div>
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_shp_shop_id}: {s.shopId}</div>
+                {isCovered(coverage, "shopee", String(s.shopId)) === false && <div data-testid="not-covered" style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", marginTop: 2 }}>{notCoveredLabel(t, isIOS())}</div>}
               </div>
               <button onClick={() => void remove(s.id)} disabled={busyId === s.id} style={{ padding: "8px 13px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--danger)", fontSize: 12.5, fontWeight: 700, cursor: busyId === s.id ? "default" : "pointer", opacity: busyId === s.id ? 0.6 : 1, fontFamily: "var(--font-ui)", flexShrink: 0 }}>{t.rd_shp_remove}</button>
             </div>

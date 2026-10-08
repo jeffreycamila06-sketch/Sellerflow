@@ -17,6 +17,7 @@ import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs } from "./server/pinRelay.js";
 import { validGmShape, parseGmPage } from "./server/myshipValidate.js";
 import { accountCapVerdict } from "./server/accountCap.js";
+import { checkAccountLive, createLiveAdmissions } from "./server/accountLive.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
 import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
@@ -324,11 +325,13 @@ async function requirePlanActive(req, res, next) {
 // cap (Option B: must be a REGISTERED account within maxAccountsForPlan), else
 // null. Reuses the plan/role/tiktok/facebook attached by requirePlanActive — no
 // extra query. Fail-open on unknown plan / admin / broken registered list.
-function accountCapReject(req, platform, username) {
+function accountCapReject(req, platform, username, opts = {}) {
   const v = accountCapVerdict({
     plan: req.sellerPlan, role: req.sellerRole,
     tiktok: req.sellerTiktok, facebook: req.sellerFacebook,
     platform, username,
+    ignoreListOrder: opts.ignoreListOrder === true,
+    refuseUnregistered: opts.refuseUnregistered === true,
   });
   if (v.allowed) return null;
   console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} email=${req.userEmail} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
@@ -338,6 +341,33 @@ function accountCapReject(req, platform, username) {
     message: `Your ${v.plan} plan allows ${v.max} live account(s). Contact support to add more.`,
   };
 }
+
+// Account total, Build 2 (sql/85) — asks the database which accounts may go live, as the
+// seller (their own JWT; account_live_check uses auth.uid() only). ~1.5 s timeout; any
+// failure → allow exactly as today (server/accountLive.js). Called only for a NEW connect.
+function accountLiveCheck(req, platform, key) {
+  if (!SUPABASE_URL || !SUPABASE_KEY || !req.authToken) {
+    console.log("[ACCOUNT-LIVE] ERROR → FAIL-OPEN");
+    return Promise.resolve({ allow: true, failOpen: true, ignoreListOrder: false, refuseUnregistered: false });
+  }
+  const userSb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${req.authToken}` } },
+  });
+  return checkAccountLive(() => userSb.rpc("account_live_check", { p_platform: platform, p_key: String(key == null ? "" : key) })).then((v) => {
+    if (!v.allow) console.log(`[ACCOUNT-LIVE] refuse platform=${platform} rank=${v.rank} limit=${v.limit}`);
+    return v;
+  });
+}
+// The options each NEW TikTok connect was admitted with, reused on the reuse path (a tap on
+// an already-running live) so enforcing never flips back to list order there.
+const liveAdmissions = createLiveAdmissions();
+const ACCOUNT_LIVE_REFUSAL = {
+  success: false,
+  ok: false,
+  error: "account_not_covered",
+  message: "Only your oldest accounts within the plan can go live. Remove an account or upgrade.",
+};
 
 // #5a — per-seller /connect rate limit (defense-in-depth for the shared Euler
 // quota + the checkPlanActive read). Runs AFTER requireAuth (req.authUserId
@@ -772,8 +802,17 @@ app.get("/health/tiktok", (_req, res) => {
 
 
 app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
-  const reject = accountCapReject(req, "TikTok", req.body.username);
+  // Build 2 — only a NEW connect is checked: a live already running for this account (the
+  // reuse path) is never asked about; health reconnects never come through this route.
+  const tkKey = liveKey(req.sellerId, "TikTok", req.body.username);
+  const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(tkKey);
+  if (isNew) liveAdmissions.forget(tkKey);
+  const live = isNew ? await accountLiveCheck(req, "tiktok", req.body.username) : null;
+  // Reuse path (live already running): the options it was admitted with, no database call.
+  const reject = accountCapReject(req, "TikTok", req.body.username, live || liveAdmissions.optionsFor(tkKey));
   if (reject) return res.status(403).json(reject);
+  if (live && !live.allow) return res.status(403).json(ACCOUNT_LIVE_REFUSAL);
+  if (live) liveAdmissions.remember(tkKey, live, (k) => tiktokConnections.has(k));
   return connectTikTok(req.body.username, res, {
     sellerId: req.sellerId,
     sessionId: req.body.sessionId,
@@ -1966,7 +2005,7 @@ try {
     });
     // F3 — pass the SAME connect middlewares TikTok uses so /shopee/connect
     // enforces the paywall (requirePlanActive) + rate limit (requireConnectRate).
-    shopeeRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive });
+    shopeeRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, accountLiveCheck });
     shopeeRuntime.startRefreshTimer();
     console.log("[SHOPEE] enabled — OAuth + poller routes registered");
   }
@@ -2147,7 +2186,7 @@ try {
         return data || null;
       },
     });
-    fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan });
+    fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan, accountLiveCheck });
     // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
     // Isolated: a throw here must never null fbRuntime or skip the refresh timer below.
     try {

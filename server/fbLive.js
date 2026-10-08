@@ -826,6 +826,9 @@ export function createFbRuntime(deps) {
     // Facebook-only plan check (server/fbAccess.js): a free plan must be "active" (mirrors the
     // client's isFbEligible). After requirePlanActive, on Authorize (start) and connect.
     const requireFbPlan = extra.requireFbPlan || passThrough;
+    // Account total, Build 2 (sql/85): which accounts may go live. Default (tests / no
+    // wiring) = allow. Asked only for a NEW connect (no poller running for it).
+    const accountLiveCheck = extra.accountLiveCheck || (async () => ({ allow: true }));
     // Authorize runs the same plan checks as connect (requirePlanActive → requireFbPlan), except
     // that preview accounts skip requirePlanActive here so they always get their auth URL (the
     // client's isFbEligible bypasses the plan for them too). requireFbPlan already passes them.
@@ -899,6 +902,10 @@ export function createFbRuntime(deps) {
       try { page = await store.getPage(userId, pageId); }
       catch { return res.status(502).json({ ok: false, error: "fb_check_failed" }); } // database error ≠ no page
       if (!page || !page.active) return res.status(404).json({ ok: false, error: "page_not_found" });
+      if (!pollers.has(liveKey(sellerId, "Facebook", pageId))) {
+        const v = await accountLiveCheck(req, "facebook", pageId);
+        if (!v.allow) return res.status(403).json({ ok: false, error: "account_not_covered" });
+      }
       const token = decryptToken(page.access_token, config.tokenKey);
       if (!token) return res.status(409).json({ ok: false, error: "needs_reauth" });
       let live;

@@ -2,10 +2,12 @@
 // account (capped to the plan) or add a new one (when slots remain), then connect.
 // ⚠️ PREVIEW-UNVERIFIABLE: connect POSTs to the Render live server (see connect.ts).
 import { useState, type CSSProperties } from "react";
-import { registeredAccountsFor, canConnectMore, type Platform, type ConnectResult } from "../adapters/connect";
+import { registeredAccountsFor, canConnectMore, maxAcc, type Platform, type ConnectResult } from "../adapters/connect";
+import { planLabel } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { isIOS } from "../adapters/platform";
+import { liveRefusedText, ACCOUNT_NOT_COVERED } from "../adapters/accountLive";
 import { TELEGRAM_URL } from "../../lib/telegram";
 
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -121,7 +123,7 @@ export default function ConnectModal({ profile, initialTab = "TikTok", onClose, 
                       setBusy(true); setErr("");
                       const r = await onShopeeConnect(shShopId, shSession.trim());
                       setBusy(false);
-                      if (!r.ok) { setErr(r.reason === "not_live" ? t.rd_shp_not_live : r.unreachable ? t.rd_cm_cant_reach : (r.error || t.rd_shp_connect_failed)); return; }
+                      if (!r.ok) { setErr(r.reason === "not_live" ? t.rd_shp_not_live : r.unreachable ? t.rd_cm_cant_reach : r.error === ACCOUNT_NOT_COVERED ? liveRefusedText(t, { ios: isIOS(), planName: planLabel(profile.plan), max: maxAcc(profile.plan || "free") }) : (r.error || t.rd_shp_connect_failed)); return; }
                       onClose();
                     }}
                     disabled={busy || shopeeShops.length === 0 || !shShopId || !shSession.trim()}

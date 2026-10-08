@@ -3,12 +3,14 @@
 // not a dependency). Run from a scratch folder:
 //   mkdir /tmp/pg84 && cd /tmp/pg84 && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/scripts/sql84-behaviour.mjs . && node sql84-behaviour.mjs <repo>/sql/84_account_total.sql <repo>/sql/84_account_total_rollback.sql
+// Optional 3rd/4th args: a later file loaded right after sql/84 (e.g. sql/85) and its
+// rollback (run before sql/84's) — proves sql/84's checks still pass with it in place.
 // Time is simulated by moving a seller's account_seats timestamps back. Not covered: two separate
 // connections racing (PGlite has one connection) — the advisory lock is pinned by the
 // vitest contract test instead.
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
-const [,, fwd, back] = process.argv;
+const [,, fwd, back, extraFwd, extraBack] = process.argv;
 const db = new PGlite();
 const q = (s, p) => db.query(s, p);
 const ex = (s) => db.exec(s);
@@ -21,15 +23,15 @@ create role anon; create role authenticated;
 create schema auth;
 create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
-create table public.seller_profiles(auth_user_id uuid primary key references auth.users(id) on delete cascade, email text, plan text, role text default 'seller', tiktok text, facebook text, store_name text);
+create table public.seller_profiles(auth_user_id uuid primary key references auth.users(id) on delete cascade, email text, plan text, role text default 'seller', tiktok text, facebook text, store_name text, created_at timestamptz not null default now());
 create function public.is_admin() returns boolean language sql stable security definer set search_path=public as $$
   select exists(select 1 from public.seller_profiles where auth_user_id = auth.uid() and role='admin') $$;
 create function public.seller_profiles_on_update() returns trigger language plpgsql as $$ begin new.plan := old.plan; return new; end $$;
 create function public.seller_profiles_on_insert() returns trigger language plpgsql as $$ begin new.plan := coalesce(new.plan, 'free'); return new; end $$;
 create trigger trg_seller_profiles_insert before insert on public.seller_profiles for each row execute function public.seller_profiles_on_insert();
 create trigger trg_seller_profiles_update before update on public.seller_profiles for each row execute function public.seller_profiles_on_update();
-create table public.fb_pages(id bigserial primary key, user_id uuid not null references auth.users(id) on delete cascade, page_id text not null, page_name text, access_token text, unique(user_id,page_id));
-create table public.shopee_shops(id bigserial primary key, user_id uuid not null references auth.users(id) on delete cascade, shop_id bigint not null, shop_name text, unique(user_id,shop_id));
+create table public.fb_pages(id bigserial primary key, user_id uuid not null references auth.users(id) on delete cascade, page_id text not null, page_name text, access_token text, created_at timestamptz not null default now(), unique(user_id,page_id));
+create table public.shopee_shops(id bigserial primary key, user_id uuid not null references auth.users(id) on delete cascade, shop_id bigint not null, shop_name text, created_at timestamptz not null default now(), unique(user_id,shop_id));
 create table public.app_settings(key text primary key, value text not null);
 create table public.tiktok_account_changes(user_id uuid, platform text, slot_index smallint, last_changed_at timestamptz, primary key(user_id,platform,slot_index));
 grant all on public.tiktok_account_changes to authenticated, anon;
@@ -49,6 +51,7 @@ await q("insert into auth.users values ($1)", [EXEMPT]);
 await q("insert into public.seller_profiles(auth_user_id, plan, tiktok) values ($1,'basic','x')", [EXEMPT]);
 
 await ex(readFileSync(fwd, "utf8"));
+if (extraFwd) await ex(readFileSync(extraFwd, "utf8"));
 
 // A seller whose accounts existed BEFORE sql/84 (no seat rows).
 async function oldUser(plan, tiktok) {
@@ -305,6 +308,7 @@ await enforce("true");
 }
 // ── rollback restores everything
 if (back) {
+  if (extraBack) await ex(readFileSync(extraBack, "utf8"));
   await ex(readFileSync(back, "utf8"));
   const v = async (s) => (await q(s)).rows[0].v;
   ok(await v("select count(*)::int v from pg_proc where proname like 'account_%'") === 0, "rollback: functions gone");

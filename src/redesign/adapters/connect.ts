@@ -78,14 +78,21 @@ export function composeChannelSave<P extends { tiktok: string; facebook: string 
   if (isAdmin) return { tiktok: lists.tiktok, facebook: lists.facebook };
   const ttU = unlocked.tiktok ?? [];
   const fbU = unlocked.facebook ?? [];
-  const tiktok = keepLockedAccounts(original.tiktok, lists.tiktok, limit, ttU);
-  const facebook = keepLockedAccounts(original.facebook, lists.facebook, limit, fbU);
+  // Account total, Build 2: a seller with MORE saved names than the plan (e.g. after a
+  // downgrade) must never lose the ones beyond the plan size on save. Slot handling and
+  // the combined cap widen to what is already saved; within the plan (saved ≤ limit) both
+  // equal `limit` → byte-identical to before.
+  const ttCap = Math.max(limit, accountList(original.tiktok).length);
+  const fbCap = Math.max(limit, accountList(original.facebook).length);
+  const totalCap = Math.max(limit, accountList(original.tiktok).length + accountList(original.facebook).length);
+  const tiktok = keepLockedAccounts(original.tiktok, lists.tiktok, ttCap, ttU);
+  const facebook = keepLockedAccounts(original.facebook, lists.facebook, fbCap, fbU);
   // For the COMBINED-cap step, the "locked-first" originals must DROP the unlocked
   // slots' old values (they are being replaced) so a replacement neither resurrects the
   // old handle nor counts twice against the cap. Still-locked slots stay in the original
   // → preserved-first → protected.
-  const capOriginal = { ...original, tiktok: blankUnlockedSlots(original.tiktok, limit, ttU), facebook: blankUnlockedSlots(original.facebook, limit, fbU) };
-  const fitted = fitProfileAccounts(capOriginal, { tiktok, facebook }, limit);
+  const capOriginal = { ...original, tiktok: blankUnlockedSlots(original.tiktok, ttCap, ttU), facebook: blankUnlockedSlots(original.facebook, fbCap, fbU) };
+  const fitted = fitProfileAccounts(capOriginal, { tiktok, facebook }, totalCap);
   return { tiktok: fitted.tiktok, facebook: fitted.facebook };
 }
 

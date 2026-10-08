@@ -13,6 +13,7 @@ import { isAdminRole } from "../../lib/roles";
 import { fbPreviewEnabled } from "./fbPreview";
 import { tpl, type RedesignT } from "../i18n";
 import { isIOS } from "./platform";
+import { liveRefusedText, ACCOUNT_NOT_COVERED } from "./accountLive";
 
 // Authorize + Connect are open to EVERY plan while it is active: an ACTIVE free plan
 // (planStatus "active"; free has no expiry) or an ACTIVE PAID plan (status "active" and
@@ -168,10 +169,12 @@ export async function fbConnect(pageId: string): Promise<FbConnectResult> {
 
 // The toast for a failed Facebook Connect — never a raw server code. (The iOS plan_expired
 // popup is handled by the caller before this.)
-export function fbConnectFailText(r: FbConnectResult, t: RedesignT): string {
+export function fbConnectFailText(r: FbConnectResult, t: RedesignT, live?: { ios: boolean; planName: string; max: number }): string {
   if (r.reason === "not_live") return t.rd_fb_not_live;
   if (r.unreachable) return t.rd_cm_cant_reach;
   const e = r.error || "";
+  // Account total, Build 2: this Page is outside the plan (oldest-N rule, enforcing).
+  if (e === ACCOUNT_NOT_COVERED && live) return liveRefusedText(t, live);
   if (e === "needs_reauth" || e === "page_not_found") return t.rd_fb_reauth_toast;
   if (e === "too_many_requests") return t.rd_fb_too_many;
   if (typeof r.fbCode === "number") return `${t.rd_cm_conn_failed} (FB ${r.fbCode})`;
