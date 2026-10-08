@@ -219,7 +219,7 @@ describe("RedesignApp wiring (source contract)", () => {
   });
   it("access = the existing gates; quota only read with the switch on, never for admins", () => {
     expect(src).toContain("access: { facebook: fbEnabled, instagram: igEnabled, shopee: shopeeEnabled }");
-    expect(src).toContain("PLATFORM_WORLDS_PUBLIC && authed && !isAdmin");
+    expect(src).toContain("authed && ((PLATFORM_WORLDS_PUBLIC && !isAdmin) || featureSw.salesPlatform)");
     expect(src).toContain("platformViewAs={platformViewAs} onSetPlatformViewAs={setPlatformViewAs}");
     expect(src).toContain('livePicker={livePickerEnabled(isAdmin) && platformViewAs === "all"}');
   });

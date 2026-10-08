@@ -60,6 +60,8 @@ import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthSession";
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
+import { useFeatureSwitches } from "./adapters/featureSwitches";
+import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
@@ -734,6 +736,9 @@ export default function RedesignApp() {
   // the range/N pickers + Export; this hook is the fetch/cache (zero poll).
   const minersRep = useMinersReport(authed);
   const salesTab = useSalesTab(authed);
+  // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
+  const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
   const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
@@ -1674,8 +1679,10 @@ export default function RedesignApp() {
   const [platformViewAs, setPlatformViewAs] = useState<PlatformViewAs>("all");
   const worldQuota = useAccountQuota(
     [auth.profile?.profile.tiktok ?? "", fbPages.length, shopeeShops.length, igAccounts.length].join("|"),
-    PLATFORM_WORLDS_PUBLIC && authed && !isAdmin,
+    authed && ((PLATFORM_WORLDS_PUBLIC && !isAdmin) || featureSw.salesPlatform),
   );
+  // F1: per-platform Sales choices — only with the switch on and 2+ platforms with an account.
+  const salesPlatformOptions = featureSw.salesPlatform ? platformOptions(worldQuota?.platforms) : [];
   const world = effectiveWorld({
     role: auth.profile?.role, counts: worldQuota?.platforms,
     access: { facebook: fbEnabled, instagram: igEnabled, shopee: shopeeEnabled }, viewAs: platformViewAs,
@@ -2074,7 +2081,7 @@ export default function RedesignApp() {
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
-          {screen === "salestab" && <SalesTab cur={cur} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
+          {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
