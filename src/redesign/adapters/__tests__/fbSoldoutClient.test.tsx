@@ -99,6 +99,7 @@ describe("RedesignApp wiring (source contract)", () => {
     const b = src.slice(i, src.indexOf("\n  };", i));
     expect(b).toContain("if (!soldoutBase || !soldoutOn) return;");
     expect(b).toContain("soldoutSentRef.current.has(target.commentId)");
+    expect(b.indexOf("loadProductStock(")).toBeGreaterThan(-1);
     expect(b.indexOf("loadProductStock(")).toBeLessThan(b.indexOf("sendSoldOut("));
     expect(b).toContain("if (stock == null) return;");
     expect(b).toContain("if (stock > 0) {");

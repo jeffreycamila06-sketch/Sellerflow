@@ -43,9 +43,9 @@ describe("useOrders order gate", () => {
     expect(result.current.createOrder(comment(), 100)?.bNum).toBe(1);
     expect(applyOrder).toHaveBeenCalledTimes(1);
   });
-  it("every order entry point goes through orders.createOrder (1-Click, Enterprise, Pin, Auto)", () => {
+  it("every order entry point goes through orders.createOrder (1-Click, Enterprise, Pin, Auto, Waitlist Give)", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect((src.match(/orders\.createOrder\(/g) || []).length).toBe(4);
+    expect((src.match(/orders\.createOrder\(/g) || []).length).toBe(5);
     expect(src).not.toMatch(/buildOrderFromComment\(/); // no second order builder bypassing the gate
   });
 });

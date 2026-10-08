@@ -97,7 +97,9 @@ describe("RedesignApp wiring (source contract)", () => {
   });
   it("Give: sync guard BEFORE createOrder, no autoCode / productLocalId, failure keeps waiting, 'waitlist' log, no message", () => {
     const b = body("onWaitlistGive");
-    expect(b.indexOf("wlGiveRef.current.add(r.id)")).toBeLessThan(b.indexOf("orders.createOrder("));
+    const guard = b.indexOf("wlGiveRef.current.add(r.id)"), create = b.indexOf("orders.createOrder(");
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(create);
     expect(b).toContain("orders.createOrder(c, effectiveOrderPrice(code ? code.price : 0, samePriceCfg.active), { itemOverride: code ? code.code : r.code });");
     expect(b).not.toMatch(/autoCode:|productLocalId:/);
     expect(b).toContain("if (!order) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return; }");
@@ -108,8 +110,10 @@ describe("RedesignApp wiring (source contract)", () => {
   });
   it("joins the line after the DB stock check and BEFORE the sold-out message (position)", () => {
     const b = body("onSoldOutFacebook");
-    expect(b.indexOf("loadProductStock(")).toBeLessThan(b.indexOf("joinWaitlist("));
-    expect(b.indexOf("joinWaitlist(")).toBeLessThan(b.indexOf("sendSoldOut("));
+    const [st, jn, sd] = ["loadProductStock(", "joinWaitlist(", "sendSoldOut("].map((x) => b.indexOf(x));
+    expect(st).toBeGreaterThan(-1);
+    expect(jn).toBeGreaterThan(st);
+    expect(sd).toBeGreaterThan(jn);
     expect(b).toContain("await sendSoldOut({ ...target, code: code.code, lang, position });");
   });
 });
