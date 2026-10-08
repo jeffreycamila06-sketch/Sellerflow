@@ -28,6 +28,7 @@ import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
 import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
+import { createFbSoldout } from "./server/fbSoldout.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 
 const app = express();
@@ -2092,6 +2093,13 @@ try {
         const { error } = await serviceSb.from("fb_receipts").update(patch).eq("id", id);
         return error ? { error } : {};
       },
+      // F2 sold-out message (sql/91): the seller's own toggle + text. Throws on a read error
+      // (fbSoldout treats that as off).
+      async getSoldoutSettings(userId) {
+        const { data, error } = await serviceSb.from("seller_receipt_settings").select("soldout_enabled, soldout_text").eq("user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("soldout_settings_read");
+        return { enabled: data?.soldout_enabled === true, text: String(data?.soldout_text || "") };
+      },
       // Own pending claim only (upload failed → nothing reached Facebook). true when deleted.
       async deleteReceipt(id, userId) {
         const { error } = await serviceSb.from("fb_receipts").delete().eq("id", id).eq("user_id", userId).eq("status", "pending");
@@ -2198,6 +2206,24 @@ try {
       createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);
     } catch {
       console.log("[FB] receipt routes not registered");
+    }
+    // F2 — sold-out text reply (switch fb_soldout_enabled, read like fb_enabled; fb_receipt_access;
+    // the seller's toggle; page owned; comment emitted by this seller's poller). Isolated.
+    try {
+      const soldoutEnabled = createFbFlagReader({
+        readFlag: async () => {
+          const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_soldout_enabled").maybeSingle();
+          if (error) throw new Error("fb_soldout_enabled_read_failed");
+          return data ? data.value : null;
+        },
+      });
+      createFbSoldout({
+        config: fbCfg, store, soldoutEnabled,
+        isOwnedComment: (userId, commentId, pageId) => fbRuntime ? fbRuntime.wasEmitted(userId, commentId, pageId) : false,
+        log: (line) => console.log(line),
+      }).registerRoutes(app, requireAuth);
+    } catch {
+      console.log("[FB] sold-out route not registered");
     }
     // Receipt pictures older than 24 hours are deleted from the bucket (hourly).
     try {

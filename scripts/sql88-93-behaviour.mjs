@@ -145,7 +145,29 @@ async function t90() {
   ok((await db.query(`select stock from public.products where user_id='${A}' and local_id=1`)).rows[0].stock === 4, "90 rollback keeps stock values");
 }
 
-const runs = { t88, t89, t90 };
+async function t91() {
+  const db = await fresh();
+  await db.exec(`insert into public.seller_receipt_settings(user_id, opening) values ('${A}', 'hi');`);
+  await db.exec(`insert into public.fb_receipts(user_id,page_id,comment_id,status) values ('${A}','P','c1','sent');`);
+  await db.exec(src("91_fb_soldout.sql"));
+  const st = (await db.query(`select soldout_enabled, soldout_text, opening from public.seller_receipt_settings where user_id='${A}'`)).rows[0];
+  ok(st.soldout_enabled === false && st.soldout_text === "" && st.opening === "hi", "91 existing settings row: defaults, data kept");
+  ok((await db.query(`select kind from public.fb_receipts where comment_id='c1'`)).rows[0].kind === "receipt", "91 existing receipt row = 'receipt'");
+  ok(await raises(db.query(`insert into public.fb_receipts(user_id,page_id,comment_id,status,kind) values ('${A}','P','c1','pending','soldout')`), "fb_receipts_one_live_per_comment"), "91 one reply per comment across kinds");
+  ok((await db.query(`insert into public.fb_receipts(user_id,page_id,comment_id,status,kind) values ('${A}','P','c2','pending','soldout') returning id`)).rows.length === 1, "91 soldout row ok");
+  ok(await raises(db.query(`insert into public.fb_receipts(user_id,page_id,comment_id,status,kind) values ('${A}','P','c3','pending','other')`), "fb_receipts_kind"), "91 bad kind refused");
+  ok(await raises(as(db, A, () => db.query(`update public.seller_receipt_settings set soldout_text = repeat('x', 501) where user_id='${A}'`)), "soldout_len"), "91 text > 500 refused");
+  ok((await as(db, A, () => db.query(`update public.seller_receipt_settings set soldout_enabled = true, soldout_text = 'x {code}' where user_id='${A}' returning soldout_enabled`))).rows[0].soldout_enabled === true, "91 owner updates own toggle");
+  ok((await as(db, B, () => db.query(`select count(*)::int c from public.seller_receipt_settings`))).rows[0].c === 0, "91 B cannot read A's settings");
+  ok(await raises(as(db, A, () => db.query(`select * from public.fb_receipts`))), "91 fb_receipts stays server-only");
+  await db.exec(src("91_fb_soldout.sql"));
+  ok(true, "91 twice ok");
+  await db.exec(src("91_fb_soldout_rollback.sql"));
+  ok(await raises(db.query(`select kind from public.fb_receipts`)) && await raises(db.query(`select soldout_text from public.seller_receipt_settings`)), "91 rollback drops the columns");
+  ok((await db.query(`select count(*)::int c from public.fb_receipts`)).rows[0].c === 2, "91 rollback keeps rows");
+}
+
+const runs = { t88, t89, t90, t91 };
 for (const [n, f] of Object.entries(runs)) {
   try { await f(); } catch (e) { fail++; console.log("CRASH", n, e.message); }
 }

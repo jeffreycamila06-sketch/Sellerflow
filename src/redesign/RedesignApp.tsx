@@ -85,7 +85,8 @@ import { useOrders } from "./adapters/useOrders";
 import { useOutbox } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
-import { adjustStockLogged, logStockMovement } from "./adapters/productsDb";
+import { adjustStockLogged, logStockMovement, loadProductStock } from "./adapters/productsDb";
+import { soldoutGate, soldoutTarget, loadSoldoutSettings, sendSoldOut, type SoldoutComment } from "./adapters/fbSoldout";
 import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts } from "./adapters/productsDb";
@@ -1715,6 +1716,31 @@ export default function RedesignApp() {
   const hidePinPrint = platformHides("pinPrint", world);
   const hideFbPill = platformHides("fbPill", world);
   const hideMinersSplit = platformHides("minersSplit", world);
+  // F2 sold-out Messenger message: switch AND Messenger access (server answer, never the preview
+  // list) AND Facebook open AND the Facebook world. The seller's own toggle comes on top.
+  const soldoutBase = soldoutGate({ flag: featureSw.fbSoldout, receiptAccess: fbAccess.receipt, fbEnabled, hidden: platformHides("fbSoldout", world) });
+  const [soldoutOn, setSoldoutOn] = useState(false);
+  useEffect(() => {
+    if (!soldoutBase) return;
+    let alive = true;
+    void loadSoldoutSettings().then((r) => { if (alive) setSoldoutOn(r.ok && r.settings.enabled); });
+    return () => { alive = false; };
+  }, [soldoutBase, authUserId]);
+  const soldoutSentRef = useRef<Set<string>>(new Set());   // comment ids already handled (one try per comment)
+  // Fire-and-forget, after the existing sold-out badge. Re-checks the DATABASE stock first: a
+  // restock on another device must never produce a wrong "sold out" message.
+  const onSoldOutFacebook = (c: ProdComment, code: AutoCode) => {
+    if (!soldoutBase || !soldoutOn) return;
+    const target = soldoutTarget(c as ProdComment & SoldoutComment);
+    if (!target || soldoutSentRef.current.has(target.commentId)) return;
+    soldoutSentRef.current.add(target.commentId);
+    void (async () => {
+      const stock = await loadProductStock(code.productLocalId);
+      if (stock == null) return;                                // could not verify → no message
+      if (stock > 0) { autoStockRef.current.set(code.productLocalId, stock); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0)); return; }
+      await sendSoldOut({ ...target, code: code.code, lang });
+    })();
+  };
   const handlePinned = (p: PinPayload) => {
     if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
     if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
@@ -1833,7 +1859,7 @@ export default function RedesignApp() {
     if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) { setAutoBadges((b) => ({ ...b, [key]: "duplicate" })); return; }
     // Rule 3 — a sold-out code: no order, no print (the banner is DERIVED from the
     // stock mirror). The feed row gets a "sold out" badge.
-    if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); return; }
+    if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); onSoldOutFacebook(c, plan.code); return; }
     // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
     autoProcessedRef.current.add(key);
     autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
@@ -2199,7 +2225,7 @@ export default function RedesignApp() {
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
-          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} />}
+          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings

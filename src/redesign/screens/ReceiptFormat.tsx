@@ -10,6 +10,7 @@ import {
   OPENING_MAX, NOTE_MAX, EMPTY_RECEIPT_SETTINGS, type ReceiptSettings,
 } from "../adapters/receiptSettings";
 import { useReceiptPicture } from "../adapters/useReceiptPicture";
+import { loadSoldoutSettings, saveSoldoutSettings, SOLDOUT_TEXT_MAX } from "../adapters/fbSoldout";
 import type { ReceiptInput } from "../adapters/receiptImage";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
@@ -25,7 +26,12 @@ function sampleReceiptInput(s: ReceiptSettings, cur: string, buyerName: string, 
   };
 }
 
-export default function ReceiptFormat({ cur, onBack }: { cur: string; onBack: () => void }) {
+export default function ReceiptFormat({ cur, onBack, soldout }: {
+  cur: string; onBack: () => void;
+  // F2 (fb_soldout_enabled + Messenger access + Facebook world): the "Sold-out message" section.
+  // Absent = the screen exactly as before. onChanged → the app's live toggle after a save.
+  soldout?: { onChanged: (enabled: boolean) => void };
+}) {
   const t = useT();
   const [s, setS] = useState<ReceiptSettings>(EMPTY_RECEIPT_SETTINGS);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -101,6 +107,7 @@ export default function ReceiptFormat({ cur, onBack }: { cur: string; onBack: ()
             </div>
           </>
         )}
+        {soldout && <SoldoutSection onChanged={soldout.onChanged} />}
         {status !== "loading" && (
           <div style={card}>
             <span style={label}>{t.rd_rc_sample}</span>
@@ -110,6 +117,55 @@ export default function ReceiptFormat({ cur, onBack }: { cur: string; onBack: ()
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// F2 — the seller's sold-out message: own toggle (default OFF) + own text (empty = the built-in
+// text, shown as the placeholder). Saved on its own; the receipt fields above are untouched.
+function SoldoutSection({ onChanged }: { onChanged: (enabled: boolean) => void }) {
+  const t = useT();
+  const [st, setSt] = useState<"loading" | "ready" | "error">("loading");
+  const [on, setOn] = useState(false);
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadSoldoutSettings().then((r) => {
+      if (!alive) return;
+      if (r.ok) { setOn(r.settings.enabled); setText(r.settings.text); setSt("ready"); } else setSt("error");
+    });
+    return () => { alive = false; };
+  }, []);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true); setMsg(null);
+    const ok = await saveSoldoutSettings({ enabled: on, text });
+    setSaving(false);
+    setMsg({ text: ok ? t.rd_rc_saved : t.rd_rc_save_failed, ok });
+    if (ok) onChanged(on);
+  };
+  return (
+    <div style={card} data-testid="rc-soldout">
+      <span style={label}>{t.rd_rc_so_title}</span>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }}>{t.rd_rc_so_hint}</div>
+      {st === "error" && <div role="alert" data-testid="rc-soldout-error" style={{ color: "var(--danger)", fontSize: 13, fontWeight: 600 }}>{t.rd_rc_load_failed}</div>}
+      {st === "ready" && (
+        <>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
+            <input type="checkbox" data-testid="rc-soldout-on" checked={on} onChange={(e) => setOn(e.target.checked)} />
+            {t.rd_rc_so_toggle}
+          </label>
+          <textarea data-testid="rc-soldout-text" style={area} maxLength={SOLDOUT_TEXT_MAX} value={text} placeholder={t.rd_rc_so_default}
+            onChange={(e) => setText(e.target.value.slice(0, SOLDOUT_TEXT_MAX))} />
+          <div style={counter}>{tpl("{n}/{max}", { n: text.length, max: SOLDOUT_TEXT_MAX })}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+            <button type="button" data-testid="rc-soldout-save" style={{ ...btn(true), opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={() => void save()}>{saving ? t.rd_rc_saving : t.rd_rc_save}</button>
+            {msg && <span role="status" style={{ fontSize: 12.5, fontWeight: 600, color: msg.ok ? "var(--ok)" : "var(--danger)" }}>{msg.text}</span>}
+          </div>
+        </>
+      )}
     </div>
   );
 }

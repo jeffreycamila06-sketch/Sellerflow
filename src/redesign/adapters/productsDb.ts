@@ -258,3 +258,17 @@ export async function loadStockMovements(localId: number): Promise<StockMovement
     orderRef: r.order_ref == null ? null : String(r.order_ref), createdAt: String(r.created_at ?? ""),
   }));
 }
+
+// One product's current stock from the database (F2: re-check before telling a buyer "sold
+// out"). null = could not read.
+export async function loadProductStock(localId: number): Promise<number | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const id = await uid();
+  if (!id) return null;
+  try {
+    const { data, error } = await supabase.from("products").select("stock").eq("user_id", id).eq("local_id", localId).maybeSingle();
+    if (error || !data) return null;
+    const n = Number((data as { stock?: unknown }).stock);
+    return Number.isFinite(n) ? n : null;
+  } catch { return null; }
+}
