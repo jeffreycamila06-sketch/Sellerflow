@@ -574,14 +574,14 @@ describe("routes register + /fb/pages token safety + F3 chain", () => {
   }
   const pass = (_req: unknown, _res: unknown, next: () => void) => next();
 
-  it("registerRoutes wires exactly the 6 FB endpoints", () => {
+  it("registerRoutes wires exactly the 7 FB endpoints", () => {
     const { rt } = runtime();
     const routes: string[] = [];
     const app = { get: (p: string) => routes.push(`GET ${p}`), post: (p: string) => routes.push(`POST ${p}`) };
     rt.registerRoutes(app as never, pass as never);
     expect(routes.sort()).toEqual([
       "GET /fb/oauth/callback", "GET /fb/oauth/start", "GET /fb/pages",
-      "POST /fb/connect", "POST /fb/disconnect", "POST /fb/oauth/complete",
+      "POST /fb/connect", "POST /fb/disconnect", "POST /fb/live-check", "POST /fb/oauth/complete",
     ]);
   });
 

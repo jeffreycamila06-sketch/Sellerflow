@@ -64,8 +64,8 @@ describe("CARRY-FORWARD #2 — server-anchored platform switch, BOTH directions"
     expect(app).toContain("sessionInstance.startSession(days, target.platform, true)");
   });
   it("runTargetConnect + connectPending route a Facebook/fb target to doFbConnect", () => {
-    expect(app).toMatch(/target\.platform === "Facebook"\) void doFbConnect\(target\.pageId\)/);
-    expect(app).toMatch(/p\.kind === "fb"\) void doFbConnect\(p\.pageId\)/);
+    expect(app).toMatch(/target\.platform === "Facebook"\) void doFbConnect\(target\.pageId, target\.scopeKey\)/);
+    expect(app).toMatch(/p\.kind === "fb"\) void doFbConnect\(p\.pageId, p\.scopeKey\)/);
   });
 });
 
