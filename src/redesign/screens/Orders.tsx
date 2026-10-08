@@ -79,6 +79,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [paidBusy, setPaidBusy] = useState("");
   const [paidErr, setPaidErr] = useState(false);
+  const [openedAt] = useState(() => Date.now()); // "Expired" is judged at screen open (Orders remounts per visit)
   const unpaidPick = (o: Order) => { const r = paid.map.get(orderKey(o)); return !!r && !r.paidAt; };
   const searching = query.trim().length > 0;
   // A pure-digit query that EXACTLY matches a buyer# → show the receipt box ONLY
@@ -231,7 +232,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
     };
     return (
       <>
-        {isPaidExpired(r, Date.now()) && <span data-testid="ord-expired" style={{ fontSize: 10.5, fontWeight: 800, color: "var(--danger)", border: "1px solid var(--danger)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_ord_expired}</span>}
+        {isPaidExpired(r, openedAt) && <span data-testid="ord-expired" style={{ fontSize: 10.5, fontWeight: 800, color: "var(--danger)", border: "1px solid var(--danger)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_ord_expired}</span>}
         <button type="button" data-testid="ord-paid-btn" aria-pressed={!!r.paidAt} disabled={!!paidBusy}
           onClick={(e) => { e.stopPropagation(); void toggle(); }}
           style={{ fontSize: 11.5, fontWeight: 800, padding: "4px 10px", borderRadius: 8, fontFamily: "var(--font-ui)", cursor: paidBusy ? "default" : "pointer", border: r.paidAt ? "1.5px solid var(--ok)" : "1.5px solid var(--border)", background: r.paidAt ? "var(--ok)" : "transparent", color: r.paidAt ? "#fff" : "var(--text-dim)", opacity: paidBusy && paidBusy !== k ? 0.55 : 1 }}>
