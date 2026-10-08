@@ -80,10 +80,10 @@ describe("Session-safety contract — H1/H2 platform anchor", () => {
   it("switch detection is SERVER-anchored (connectIsSwitch on status.platform; flags only when it is NULL)", () => {
     // runSessionAware (new flow) decides via the server platform + routes a switch to the confirm.
     const rsa = body("runSessionAware");
-    expect(rsa).toContain("connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff })");
-    expect(rsa).toContain("setSwitchConfirm(");
+    expect(rsa).toContain("connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff, fbEff, igEff })");
+    expect(rsa).toContain("askSwitch(target)"); // askSwitch = setSwitchConfirm + the picked-length slot (follow-up a)
     // doConnect (active old-dropdown path) applies the same server anchor for TikTok.
-    expect(src).toContain('connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff })');
+    expect(src).toContain('connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff, fbEff, igEff })');
     // commitLiveConnect no longer uses the in-memory client-flag anchor.
     const clc = body("commitLiveConnect");
     expect(clc).not.toContain("livePlatformOf");
@@ -104,10 +104,10 @@ describe("Session-safety contract — H1/H2 platform anchor", () => {
 // session on another platform). Both first-connect sites route it to the switch confirm BEFORE
 // the generic failure toast; the switch site never gets it (force=true never raises).
 describe("Session-safety contract — sql/86 switch needed", () => {
-  for (const site of ["onPickSessionLength", "onOwnerStart"]) {
-    it(`${site}: SESSION_SWITCH_NEEDED → setSwitchConfirm(targetOfPending(pending)), checked before !sid`, () => {
+  for (const [site, days] of [["onPickSessionLength", "days"], ["onOwnerStart", "SESSION_V2_DAYS"]]) {
+    it(`${site}: SESSION_SWITCH_NEEDED → askSwitch(targetOfPending(pending), ${days}) (the picked length), checked before !sid`, () => {
       const b = body(site);
-      const sw = b.indexOf("if (sid === SESSION_SWITCH_NEEDED) { setSwitchConfirm(targetOfPending(pending)); return; }");
+      const sw = b.indexOf(`if (sid === SESSION_SWITCH_NEEDED) { askSwitch(targetOfPending(pending), ${days}); return; }`);
       expect(sw).toBeGreaterThan(-1);
       expect(sw).toBeLessThan(b.indexOf("if (!sid)"));
       expect(sw).toBeLessThan(b.indexOf("liveSession.reset()"));

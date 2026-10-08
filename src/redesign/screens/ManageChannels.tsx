@@ -23,7 +23,7 @@ const input: CSSProperties = { flex: 1, minWidth: 0, border: "none", background:
 const inputWrap = (invalid: boolean): CSSProperties => ({ flex: 1, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${invalid ? "var(--warn)" : "var(--border-strong)"}`, borderRadius: 12, background: "var(--surface-2)", padding: "0 13px" });
 const badge = (locked: boolean): CSSProperties => ({ display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, background: locked ? "var(--surface-3)" : "var(--accent-soft)", color: locked ? "var(--text-muted)" : "var(--accent-fg)", fontSize: 12, fontWeight: 800, letterSpacing: ".04em", flexShrink: 0 });
 
-export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages }: {
+export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages, onInstagram }: {
   platform: "tiktok" | "facebook";
   account?: AccountUser | null;
   onBack: () => void;
@@ -39,6 +39,8 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   // fb_pages live source, SEPARATE from the tiktok/facebook username cap above.
   fbPagesEnabled?: boolean;
   onFbPages?: () => void;
+  // Instagram (phase 1): passed ONLY while igEnabled → absent = zero Instagram UI here.
+  onInstagram?: () => void;
 }) {
   const t = useT();
   // Editor state + save/cooldown logic = the shared hook (single source; see its header).
@@ -133,6 +135,13 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
           <button onClick={onFbPages} style={{ width: "100%", marginTop: 12, padding: "14px 15px", border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface)", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "var(--shadow)" }}>
             <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", flexShrink: 0 }}>f</span>
             <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_fb_channels_title}</span><span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{t.rd_fb_section_sub}</span></span>
+            <span style={{ fontSize: 15, color: "var(--text-muted)" }}>›</span>
+          </button>
+        )}
+        {onInstagram && (
+          <button data-testid="ig-entry" onClick={onInstagram} style={{ width: "100%", marginTop: 12, padding: "14px 15px", border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface)", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "var(--shadow)" }}>
+            <span style={{ width: 30, height: 30, borderRadius: 8, background: "#c13584", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>IG</span>
+            <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ig_channels_title}</span><span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{t.rd_ig_section_sub}</span></span>
             <span style={{ fontSize: 15, color: "var(--text-muted)" }}>›</span>
           </button>
         )}

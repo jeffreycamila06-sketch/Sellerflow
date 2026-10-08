@@ -86,7 +86,7 @@ describe("Dashboard session pill + board", () => {
 describe("RedesignApp wiring (display-only, no order writes)", () => {
   const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
   it("idle-ended = server ended flag AND no live connection; the dashboard gets an empty session", () => {
-    expect(app).toContain("const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff);");
+    expect(app).toContain("const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff || igEff);");
     expect(app).toContain("session={sessionIdleEnded ? ENDED_EMPTY_SESSION : liveSession.session}");
     expect(app).toContain("sessionEndedIdle={sessionIdleEnded}");
   });

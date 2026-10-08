@@ -109,13 +109,13 @@ describe("Shopee callback", () => {
 
 describe("server.js stores never hide a read or save error", () => {
   const src = readFileSync("server.js", "utf8");
-  it("getPlan throws plan_read_failed in both stores", () => {
-    expect(src.match(/if \(error\) throw new Error\("plan_read_failed"\)/g)?.length).toBe(2);
+  it("getPlan throws plan_read_failed in all three stores (Shopee, Facebook, Instagram)", () => {
+    expect(src.match(/if \(error\) throw new Error\("plan_read_failed"\)/g)?.length).toBe(3);
   });
-  it("countShops / countPages throw on error", () => {
-    expect(src.match(/if \(error\) throw new Error\("count_read_failed"\)/g)?.length).toBe(2);
+  it("countShops / countPages / countAccounts throw on error", () => {
+    expect(src.match(/if \(error\) throw new Error\("count_read_failed"\)/g)?.length).toBe(3);
   });
-  it("upsertShop / upsertPage carry account_limit", () => {
-    expect(src.match(/\/account_limit\/\.test\(String\(error\.message/g)?.length).toBe(2);
+  it("upsertShop / upsertPage / upsertAccount carry account_limit", () => {
+    expect(src.match(/\/account_limit\/\.test\(String\(error\.message/g)?.length).toBe(3);
   });
 });

@@ -138,6 +138,9 @@ export default function Dashboard({
   liveSourceConnected = false, liveSourceConnecting = false, onOpenSourceSheet,
   // Live platform picker (admin preview, presentation only). false = classic, unchanged.
   livePicker = false,
+  // Instagram (phase 1): present ONLY while igEnabled → the picker's Instagram tile works; absent =
+  // the tile shows "soon" exactly as before.
+  ig,
   // Rule 3 — Auto Mode live inventory indicators (empty when Auto Mode is off).
   autoLowStock = [], autoSoldOut = [], onDismissSoldOut,
   autoBadges = {},
@@ -210,6 +213,7 @@ export default function Dashboard({
   liveSourceConnected?: boolean; liveSourceConnecting?: boolean;
   onOpenSourceSheet?: () => void;
   livePicker?: boolean;
+  ig?: { accounts: { igUserId: string; name: string }[]; idx: number; onPick: (i: number) => void; connected: boolean; connecting: boolean; onConnect: () => void; onManage: () => void };
   // Rule 3 — low-stock chips + persistent (dismissible) sold-out banner. Auto codes
   // whose live stock is ≤ threshold / at 0; RedesignApp gates these on Auto Mode ON.
   autoLowStock?: { code: string; productName: string; stock: number }[];
@@ -348,6 +352,29 @@ export default function Dashboard({
                   </div>
     </>
   );
+  // Instagram menu (phase 1) — the Facebook menu's shape: account rows, Manage, Connect.
+  const igSt = conn(!!ig?.connected, !!ig?.connecting);
+  const igMenu = () => ig ? (
+    <>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>INSTAGRAM</div>
+                {ig.accounts.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_ig_no_account_yet}</div>}
+                {ig.accounts.map((a, i) => (
+                  <button key={a.igUserId} onClick={() => ig.onPick(i)} style={ddRow(i === ig.idx)}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#c13584", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>IG</span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a.name}</span><span style={ddMeta}>Instagram · {t.rd_dash_tap_go_live}</span></span>
+                    <span style={ddCheck}>{i === ig.idx ? "✓" : ""}</span>
+                  </button>
+                ))}
+                <button onClick={ig.onManage} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
+                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_dash_manage_accounts}</span></span>
+                </button>
+                <div style={connFooterWrap}>
+                  <button onClick={ig.onConnect} disabled={ig.connecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: igSt.border, borderRadius: 9, background: igSt.bg, color: igSt.fg, fontSize: 11.5, fontWeight: 700, cursor: ig.connecting ? "default" : "pointer", opacity: ig.connecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ig.connected, ig.connecting)}</button>
+                </div>
+    </>
+  ) : null;
+  const [igOpen, setIgOpen] = useState(false);
   // ── Live platform picker (admin preview) — presentation only ──────────────────
   // chosen / overlayOpen / fly are local UI state; every connect, refresh, account
   // and manage action goes through the menus above (the classic callbacks).
@@ -366,6 +393,7 @@ export default function Dashboard({
     tt: { connected: ttConnected, connecting: ttConnecting },
     fb: { connected: fbConnected, connecting: fbConnecting },
     sh: { connected: shopeeConnected, connecting: shopeeConnecting },
+    ...(ig ? { ig: { connected: ig.connected, connecting: ig.connecting } } : {}),
     hasComments: comments.length > 0,
     chosen,
   });
@@ -393,11 +421,12 @@ export default function Dashboard({
     "--lpk-iter": LIVE_PICKER_MOTION === "once" ? String(LIVE_PICKER_ONCE_ITERATIONS) : "infinite",
   } as CSSProperties;
   const lpkSlug: Record<PickerPlatform, string> = { TikTok: "tt", Facebook: "fb", Instagram: "ig", Shopee: "sh" };
-  const lpkEnabled = (p: PickerPlatform) => p === "TikTok" || p === "Facebook" || (p === "Shopee" && shShow);
+  const lpkEnabled = (p: PickerPlatform) => p === "TikTok" || p === "Facebook" || (p === "Shopee" && shShow) || (p === "Instagram" && !!ig);
   const lpkConnecting = (p: PickerPlatform) =>
     p === "TikTok" ? ttConnecting && !ttConnected
     : p === "Facebook" ? fbConnecting && !fbConnected
-    : p === "Shopee" ? shopeeConnecting && !shopeeConnected : false;
+    : p === "Shopee" ? shopeeConnecting && !shopeeConnected
+    : p === "Instagram" ? !!ig && ig.connecting && !ig.connected : false;
   if (chosen && lpkConnecting(chosen) && !panelNow) setPanelNow(true); // adjust-during-render
   const pickTile = (p: PickerPlatform, slot: HTMLElement | null) => {
     if (chosen === p) { setChosen(null); return; }                       // Back
@@ -406,7 +435,7 @@ export default function Dashboard({
     setChosen(p);
   };
   const lpkMenu = (p: PickerPlatform) =>
-    p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : shMenu();
+    p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : p === "Instagram" ? igMenu() : shMenu();
   // Emblems: the chips' own letter marks + brand colours, one shape per platform.
   // Emblems: the chips' own letter marks + brand colours, one shape per platform. All
   // sizes come from redesign.css (.sfl-lpk-shape--*), scaled to the tile height.
@@ -637,7 +666,20 @@ export default function Dashboard({
               </button>
             </div>
           );
-        })() : lp.view === "connected" ? (() => {
+        })() : lp.view === "connected" && lp.platform === "Instagram" && ig ? (
+          // State C for Instagram (phase 1) — same button, its own dropdown.
+          <div style={{ marginTop: 11, position: "relative", zIndex: 6 }}>
+            <div className={fly ? "sfl-lpk-fly" : undefined} style={{ position: "relative", ...lpkVars }}>
+              <button data-testid="lpk-source-button" onClick={() => setIgOpen((v) => !v)} title={ig.connected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title} style={{ ...pickerBtn, background: igSt.chipBg, boxShadow: igSt.chipShadow }}>
+                <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: "#c13584", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: "#fff", flexShrink: 0 }}>IG</span>
+                <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ig.accounts[ig.idx]?.name || ig.accounts[0]?.name || "Instagram"}</span>
+                <span className={igSt.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: igSt.dotBg, flexShrink: 0, boxShadow: igSt.dotGlow }} />
+                <span style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 700 }}>{t.rd_ls_change}</span>
+              </button>
+              {igOpen && <div style={dropdown("right")}>{igMenu()}</div>}
+            </div>
+          </div>
+        ) : lp.view === "connected" && lp.platform !== "Instagram" ? (() => {
           // State C — the live source as ONE full-width button (today's chip, wider).
           // Tap = the chip's own toggle → today's dropdown (Disconnect stays inside it).
           const p = lp.platform;
@@ -887,7 +929,7 @@ export default function Dashboard({
             // keeps the feed clean). Additive (a new element beside the handle).
             // Never for Facebook: Facebook gives no follower count, so every FB comment
             // would show "?". TikTok unchanged.
-            const risk = String(c.platform || "").toLowerCase() === "facebook" ? null : minerRiskFor(minerRisk, c.handle, c.platform);
+            const risk = ["facebook", "instagram"].includes(String(c.platform || "").toLowerCase()) ? null : minerRiskFor(minerRisk, c.handle, c.platform);
             // Buyer Alert — O(1) lookup; undefined = not gated / no parcels for this handle.
             const ba = buyerAlerts?.get(normHandle(c.handle));
             const baRed = !!ba?.red, baNear = ba?.near ?? null;

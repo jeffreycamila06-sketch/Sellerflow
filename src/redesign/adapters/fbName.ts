@@ -15,9 +15,15 @@ export function isFacebookPlatform(platform: string | null | undefined): boolean
   return String(platform ?? "").trim().toLowerCase() === "facebook";
 }
 
+// Instagram (phase 1): the comment's name and handle are BOTH the username → the same
+// name-once rule (owner decision). Only an "Instagram" platform reaches this branch.
+export function isInstagramPlatform(platform: string | null | undefined): boolean {
+  return String(platform ?? "").trim().toLowerCase() === "instagram";
+}
+
 // true = show/print the name only (no "@handle" line) for this buyer.
 export function fbNameOnly(platform: string | null | undefined, name: string | null | undefined): boolean {
-  if (!isFacebookPlatform(platform)) return false;
+  if (!isFacebookPlatform(platform) && !isInstagramPlatform(platform)) return false;
   const n = String(name ?? "").trim();
   return n !== "" && n !== FB_UNKNOWN_NAME;
 }

@@ -41,17 +41,18 @@ export type LivePickerView =
   | { view: "classic" }
   | { view: "picker" }
   | { view: "body" }
-  | { view: "connected"; platform: "TikTok" | "Facebook" | "Shopee" };
+  | { view: "connected"; platform: "TikTok" | "Facebook" | "Shopee" | "Instagram" };
 
 type Flags = { connected: boolean; connecting: boolean };
 export function livePickerView(o: {
   enabled: boolean;
   tt: Flags; fb: Flags; sh: Flags;
+  ig?: Flags; // Instagram (phase 1) — absent = not live, so every other answer is unchanged
   hasComments: boolean;
   chosen: PickerPlatform | null;
 }): LivePickerView {
   if (!o.enabled) return { view: "classic" };
-  const active = ([["TikTok", o.tt], ["Facebook", o.fb], ["Shopee", o.sh]] as const)
+  const active = ([["TikTok", o.tt], ["Facebook", o.fb], ["Shopee", o.sh], ["Instagram", o.ig ?? { connected: false, connecting: false }]] as const)
     .filter(([, f]) => f.connected || f.connecting);
   if (active.length > 1) return { view: "classic" };
   const idle = o.hasComments ? { view: "body" as const } : { view: "picker" as const };
