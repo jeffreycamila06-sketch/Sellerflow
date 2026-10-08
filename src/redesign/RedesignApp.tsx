@@ -52,6 +52,7 @@ import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
 import ReceiptFormat from "./screens/ReceiptFormat";
 import { buyerAlertGate, loadBuyerAlertAccess, useBuyerAlert } from "./adapters/buyerAlert";
+import { useBuyerTags } from "./adapters/buyerTag";
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, connectIsSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import { livePickerEnabled } from "./adapters/livePicker";
@@ -1175,6 +1176,8 @@ export default function RedesignApp() {
   // BUYER ALERT (Phase 1, gated by the server access list) — ONE RPC when a live source
   // connects, refreshed every 10 min; rows do an O(1) map lookup. No access → no RPC, no change.
   const buyerAlert = useBuyerAlert(buyerAlertGate(buyerAlertAccess), ttEff || fbEff || shopeeEff || igEff);
+  // OLD / NEW buyer tag (no gate): one RPC at live start + every 10 min (adapters/buyerTag.ts).
+  const buyerTags = useBuyerTags(ttEff || fbEff || shopeeEff || igEff);
   const [buyerAlertHandle, setBuyerAlertHandle] = useState<string | null>(null);
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never
@@ -2162,6 +2165,7 @@ export default function RedesignApp() {
               onDismissSoldOut={(code) => setAutoDismissedSoldOut((s) => { const n = new Set(s); n.add(code); return n; })}
               autoBadges={autoBadges}
               buyerAlerts={buyerAlert.views}
+              buyerTags={buyerTags}
               onBuyerTap={buyerAlert.views ? setBuyerAlertHandle : undefined}
               /* "Same price for all items" — persistent chip while ON; ✕ = same as turning it
                  OFF in Settings: instant off + toast, the price stays remembered. */
@@ -2182,7 +2186,7 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string) => { const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
+            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}

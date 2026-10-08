@@ -27,6 +27,8 @@ import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
 import { fbReceiptInfo } from "../adapters/fbReceipt";
 import { fbNameOnly } from "../adapters/fbName";
+import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
+import BuyerTagPill from "../components/BuyerTagPill";
 import { usePaidFlags, isPaidExpired, orderKey } from "../adapters/ordersPaid";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
@@ -36,7 +38,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false,
+  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -60,6 +62,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // B2 (orders_paid_flag_enabled): Mark paid / Unpaid per order, the "Unpaid" pill, "Expired"
   // after 24 h unpaid. false/absent = the screen exactly as before (no extra read).
   paidFlag?: boolean;
+  buyerTags?: BuyerTagMap | null; // OLD / NEW pill next to the buyer (null = not loaded → no pill)
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
@@ -180,6 +183,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
             <span style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{o.buyer}</span>
             {!fbNameOnly(o.platform, o.buyer) && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.handle}</span>}
+            {(() => { const bt = buyerTagFor(buyerTags, o.handle, o.buyer, o.platform); return bt && <BuyerTagPill tag={bt} />; })()}
             {/* Date chip — any row not from today (history results + earlier
                 days of a multi-day window) is unambiguous at a glance. */}
             {o.date && todayId && o.date !== todayId && (

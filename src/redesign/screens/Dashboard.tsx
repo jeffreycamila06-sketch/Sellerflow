@@ -8,6 +8,8 @@ import { avColor, initials, type Comment } from "../data";
 import { basketCountFor } from "../adapters/basketCounts";
 import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
 import { normHandle, type BuyerAlertView } from "../adapters/buyerAlert";
+import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
+import BuyerTagPill from "../components/BuyerTagPill";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
 import { computeRaffleEntries, type RaffleEntry } from "../adapters/raffle";
@@ -159,7 +161,7 @@ export default function Dashboard({
   onPrintWinner,
   basketCounts,
   minerRisk,
-  buyerAlerts, onBuyerTap,
+  buyerAlerts, onBuyerTap, buyerTags,
 }: {
   comments: Comment[]; cur: string;
   // 🛒 per-buyer order count for the current session window (key: "handle platform").
@@ -171,6 +173,8 @@ export default function Dashboard({
   // BUYER ALERT (gated) — per-buyer view keyed by normHandle(handle); undefined for every
   // non-gated seller → rows render exactly as before. O(1) lookup per row, no query.
   buyerAlerts?: Map<string, BuyerAlertView>;
+  // BUYER TAG — OLD / NEW pill; null/absent = not loaded → no pill (rows exactly as before).
+  buyerTags?: BuyerTagMap | null;
   onBuyerTap?: (handle: string) => void;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
@@ -937,6 +941,7 @@ export default function Dashboard({
             // Buyer Alert — O(1) lookup; undefined = not gated / no parcels for this handle.
             const ba = buyerAlerts?.get(normHandle(c.handle));
             const baRed = !!ba?.red, baNear = ba?.near ?? null;
+            const bt = buyerTagFor(buyerTags, c.handle, c.name, c.platform); // O(1); null → no pill
             return (
               <Fragment key={c.id}>
               {firstRestored && (
@@ -961,6 +966,7 @@ export default function Dashboard({
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     )}
                     {!fbNameOnly(c.platform, c.name) && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>}
+                    {bt && <BuyerTagPill tag={bt} />}
                     {risk && (
                       <span data-testid="miner-risk" data-level={risk} title={RISK_TIP[risk](t)} aria-label={RISK_TIP[risk](t)} style={RISK_CHIP[risk]}>
                         {risk === "risky" ? "⚠ " : ""}{RISK_TAG[risk](t)}
