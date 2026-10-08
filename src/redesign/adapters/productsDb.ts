@@ -204,3 +204,57 @@ export async function resolveInitialProducts(local: Product[]): Promise<ResolveR
   }
   return { products: local, source: "local" };                     // empty/seed local, nothing to migrate
 }
+
+// ── Inventory v2 (sql/90; switch inventory_v2_enabled) ────────────────────────────────────
+// Every stock change writes one stock_movements row. The logged RPCs do the SAME atomic
+// arithmetic as adjust_product_stock (own row, clamp at 0) and log what was really applied.
+// Return: the NEW stock, -1 when not the caller's product, null when the call couldn't run.
+export type StockReason = "auto_order" | "oneclick" | "restock" | "manual_edit" | "waitlist";
+export interface StockMovement { delta: number; reason: StockReason; orderRef: string | null; createdAt: string }
+
+export async function adjustStockLogged(localId: number, delta: number, reason: StockReason, orderRef?: string | null): Promise<number | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const id = await uid();
+  if (!id) return null;
+  const { data, error } = await supabase.rpc("adjust_product_stock_logged", { p_local_id: localId, p_delta: delta, p_reason: reason, p_order_ref: orderRef ?? null });
+  if (error) { console.error("Adjust stock (logged) error:", error.message); return null; }
+  return data == null ? null : Number(data);
+}
+
+export async function restockProduct(localId: number, qty: number): Promise<number | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const id = await uid();
+  if (!id) return null;
+  const { data, error } = await supabase.rpc("restock_product", { p_local_id: localId, p_qty: qty });
+  if (error) { console.error("Restock error:", error.message); return null; }
+  return data == null ? null : Number(data);
+}
+
+// A log row only (no stock change) — for a stock change that already happened elsewhere:
+// the Auto-mode decrement inside the order hub, or a new product's starting stock.
+// Fire-and-forget: a failed log never affects the order or the stock.
+export async function logStockMovement(localId: number, delta: number, reason: StockReason, orderRef?: string | null): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  const id = await uid();
+  if (!id || !delta) return false;
+  try {
+    const { error } = await supabase.from("stock_movements").insert({ user_id: id, product_local_id: localId, delta, reason, order_ref: orderRef ?? null });
+    return !error;
+  } catch { return false; }
+}
+
+// Newest first, one product, last 50. null = could not read.
+export async function loadStockMovements(localId: number): Promise<StockMovement[] | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const id = await uid();
+  if (!id) return null;
+  const { data, error } = await supabase.from("stock_movements")
+    .select("delta,reason,order_ref,created_at")
+    .eq("user_id", id).eq("product_local_id", localId)
+    .order("created_at", { ascending: false }).limit(50);
+  if (error || !Array.isArray(data)) return null;
+  return (data as { delta: unknown; reason: unknown; order_ref: unknown; created_at: unknown }[]).map((r) => ({
+    delta: Number(r.delta) || 0, reason: String(r.reason) as StockReason,
+    orderRef: r.order_ref == null ? null : String(r.order_ref), createdAt: String(r.created_at ?? ""),
+  }));
+}

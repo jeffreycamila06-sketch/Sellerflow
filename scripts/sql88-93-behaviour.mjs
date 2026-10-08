@@ -110,7 +110,42 @@ async function t89() {
   ok(await raises(db.query(`select public.sales_by_platform('2026-10-08','2026-10-08','TikTok')`)), "89 rollback removes it");
 }
 
-const runs = { t88, t89 };
+
+async function t90() {
+  const db = await fresh();
+  await db.exec(src("90_stock_movements.sql"));
+  await db.exec(`insert into public.products(user_id,local_id,name,stock) values ('${A}',1,'a',5),('${A}',2,'b',0),('${B}',1,'z',9);`);
+  const adj = (uid, id, d, r, ref) => as(db, uid, () => db.query(`select public.adjust_product_stock_logged($1,$2,$3,$4) n`, [id, d, r, ref ?? null])).then((x) => x.rows[0].n);
+  ok(await adj(A, 1, -2, "manual_edit") === 3, "90 adjust -2 → 3");
+  ok(await adj(A, 1, -10, "oneclick", "m1") === 0, "90 clamp at 0");
+  ok(await adj(A, 2, -1, "oneclick") === 0, "90 already 0 stays 0");
+  ok(await adj(A, 9, 1, "restock") === -1, "90 unknown product → -1");
+  ok(await adj(A, 1, 999999, "restock") === -1, "90 delta bound");
+  const rows = (await as(db, A, () => db.query(`select product_local_id, delta, reason, order_ref from public.stock_movements order by id`))).rows;
+  ok(rows.length === 2 && rows[0].delta === -2 && rows[1].delta === -3 && rows[1].order_ref === "m1", "90 logs the APPLIED delta, nothing for no-change " + JSON.stringify(rows));
+  ok(await raises(adj(A, 1, 1, "bogus"), "stock_movements_reason"), "90 bad reason refused");
+  ok((await as(db, A, () => db.query(`select stock from public.products where local_id=1`))).rows[0].stock === 0, "90 refused reason rolled the stock back");
+  ok((await as(db, A, () => db.query(`select public.restock_product(1, 4) n`))).rows[0].n === 4, "90 restock +4");
+  ok((await as(db, A, () => db.query(`select public.restock_product(1, 0) n`))).rows[0].n === -1, "90 restock qty 0 refused");
+  ok((await as(db, B, () => db.query(`select public.adjust_product_stock_logged(1, -1, 'manual_edit') n`))).rows[0].n === 8, "90 B adjusts own row only");
+  await db.exec(`insert into public.products(user_id,local_id,name,stock) values ('${B}',7,'bonly',3);`);
+  ok(await adj(A, 7, -1, "manual_edit") === -1, "90 A cannot adjust B's product");
+  ok((await db.query(`select stock from public.products where user_id='${B}' and local_id=7`)).rows[0].stock === 3, "90 B's stock untouched");
+  ok((await as(db, B, () => db.query(`select count(*)::int c from public.stock_movements`))).rows[0].c === 1, "90 B sees only own log rows");
+  ok(await raises(as(db, B, () => db.query(`insert into public.stock_movements(user_id,product_local_id,delta,reason) values ('${A}',1,1,'restock')`))), "90 insert as someone else refused");
+  ok(await raises(as(db, A, () => db.query(`update public.stock_movements set delta = 100`))), "90 no update grant");
+  ok(await raises(as(db, A, () => db.query(`delete from public.stock_movements`))), "90 no delete grant");
+  ok((await as(db, A, () => db.query(`insert into public.stock_movements(user_id,product_local_id,delta,reason,order_ref) values ('${A}',1,-1,'auto_order','x') returning id`))).rows.length === 1, "90 own log insert (auto_order) ok");
+  ok((await db.query(`select command from cron.job where jobname='purge-old-stock-movements'`)).rows[0].command.includes("90 days"), "90 purge job");
+  await db.exec(src("90_stock_movements.sql"));
+  ok(true, "90 twice ok");
+  await db.exec(src("90_stock_movements_rollback.sql"));
+  ok((await db.query(`select count(*)::int c from cron.job where jobname='purge-old-stock-movements'`)).rows[0].c === 0, "90 rollback unschedules");
+  ok(await raises(db.query(`select 1 from public.stock_movements`)), "90 rollback drops table");
+  ok((await db.query(`select stock from public.products where user_id='${A}' and local_id=1`)).rows[0].stock === 4, "90 rollback keeps stock values");
+}
+
+const runs = { t88, t89, t90 };
 for (const [n, f] of Object.entries(runs)) {
   try { await f(); } catch (e) { fail++; console.log("CRASH", n, e.message); }
 }

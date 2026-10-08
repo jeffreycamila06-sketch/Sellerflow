@@ -84,7 +84,8 @@ import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useOutbox } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
-import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
+import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
+import { adjustStockLogged, logStockMovement } from "./adapters/productsDb";
 import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts } from "./adapters/productsDb";
@@ -175,7 +176,7 @@ const autoDupKeyOf = (handle: string, code: string): string =>
   `${String(handle || "").trim().toLowerCase()}|${String(code || "").trim().toLowerCase()}`;
 
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion", pinPrint: "sfl_rd_pin_print" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion", pinPrint: "sfl_rd_pin_print", deductOneClick: "sfl_rd_deduct_oneclick" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -1383,6 +1384,14 @@ export default function RedesignApp() {
   // (default ON, sfl_rd_keepawake). iOS <16.4 = graceful no-op (feature-detect
   // sa hook). Client-side ang order capture — sleeping phone = nawawalang mines.
   const [keepAwake, setKeepAwake] = useState<boolean>(() => readLS(LS.keepAwake, "1") !== "0");
+  // Inventory v2 — "Deduct stock on 1-Click", per device like the other Live-session toggles,
+  // default OFF; only used while inventory_v2_enabled is on.
+  const [deductOneClick, setDeductOneClick] = useState<boolean>(() => readLS(LS.deductOneClick, "0") === "1");
+  const toggleDeductOneClick = () => setDeductOneClick((v) => {
+    const next = !v;
+    try { localStorage.setItem(LS.deductOneClick, next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
   // PIN-TO-PRINT — per-device, DEFAULT OFF (only the printer-holding device
   // should react to pins; on web an auto-pin pops the browser print dialog).
   const [pinPrint, setPinPrint] = useState<boolean>(() => readLS(LS.pinPrint, "0") === "1");
@@ -1646,6 +1655,19 @@ export default function RedesignApp() {
     const plan = planAutoOrder(text || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
     return plan.kind === "soldout" ? plan.code.code : null;
   };
+  // Inventory v2: after a MANUAL order (1-Click / pin, never Enterprise, never Auto) whose
+  // comment is exactly a known code, take one piece off with a logged, post-hoc RPC. Order
+  // creation is untouched; a failed write leaves the order as it is.
+  const deductOneClickStock = (text: string, orderRef: string) => {
+    if (!featureSw.inventoryV2 || !deductOneClick) return;
+    const code = matchCode(text || "", autoCodesRef.current);
+    if (!code) return;
+    void adjustStockLogged(code.productLocalId, -1, "oneclick", orderRef).then((s) => {
+      if (s == null || s < 0) return;
+      autoStockRef.current.set(code.productLocalId, s);
+      setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0)); // = refreshAutoStock (declared below)
+    });
+  };
   const onOneClick = (id: string) => {
     if (printed[id]) return; // already ordered — no duplicate
     const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
@@ -1660,6 +1682,7 @@ export default function RedesignApp() {
       reprintByIdRef.current.set(id, snap);
       jobToCommentRef.current.set(String(order.orderNum), { cid: id, msgId: (prod as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
+      deductOneClickStock(prod.comment, (prod as ProdComment & { msgId?: string }).msgId || String(order.orderNum));
     }
   };
   // PIN-TO-PRINT (Phase 2, Option A): a relayed pin = 1-Click on that comment.
@@ -1711,6 +1734,7 @@ export default function RedesignApp() {
     reprintByIdRef.current.set(pid, snap);
     jobToCommentRef.current.set(String(order.orderNum), { cid: pid, msgId: c.msgId });
     liveSession.addOrderedMsgId(c.msgId, snap);
+    deductOneClickStock(c.comment, c.msgId || String(order.orderNum));
     // Cosmetic: if the pinned comment is in the visible feed, flip its row to
     // the ordered/Reprint state like a manual tap would (event-handler context,
     // not an effect — no cascading-render lint class).
@@ -1827,6 +1851,8 @@ export default function RedesignApp() {
       jobToCommentRef.current.set(String(order.orderNum), { cid: key, msgId: (c as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
       liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
       refreshAutoStock(); // Rule 3 — the decrement may cross the low-stock threshold or hit 0
+      // Inventory v2: a log row next to the order hub's own decrement (fire-and-forget).
+      if (featureSw.inventoryV2) void logStockMovement(plan.code.productLocalId, -1, "auto_order", (c as ProdComment & { msgId?: string }).msgId || String(order.orderNum));
     } else {
       // free-cap soft block / msgId-dedup prevented creation → refund the claim so it
       // can retry (Rule 1 dup claim too — this buyer never got an order).
@@ -2080,7 +2106,7 @@ export default function RedesignApp() {
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
-          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
+          {screen === "products" && <Products cur={cur} inventoryV2={featureSw.inventoryV2} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub
@@ -2130,6 +2156,7 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
               pinPrint={pinPrint} onTogglePinPrint={pinAllowed && !hidePinPrint ? togglePinPrint : undefined}
+              deductOneClick={deductOneClick} onToggleDeductOneClick={featureSw.inventoryV2 ? toggleDeductOneClick : undefined}
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
               /* "Same price for all items" — Live-session row (toggle + remembered price, set via the sheet). */
               cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
