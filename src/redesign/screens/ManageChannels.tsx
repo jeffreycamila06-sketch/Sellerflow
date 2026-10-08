@@ -13,6 +13,8 @@ import { unlockInHM } from "../adapters/tiktokCooldown";
 import { useChannelEditor } from "../adapters/useChannelEditor";
 import MultiAccountPopup from "../components/MultiAccountPopup";
 import AccountQuotaLine from "../components/AccountQuotaLine";
+import { notCoveredLabel } from "../adapters/accountLive";
+import { isIOS } from "../adapters/platform";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 const USERNAME_RE = /^[a-z0-9._]*$/; // SOFT guidance only — never hard-blocks (matches main's accept-then-clean).
@@ -40,7 +42,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
 }) {
   const t = useT();
   // Editor state + save/cooldown logic = the shared hook (single source; see its header).
-  const { isTT, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err } = useChannelEditor(account, platform, onSaveChannels);
+  const { isTT, orig, slots, setSlot, savedSlotView, unlock, atCap, notCovered, dirty, save, state, err } = useChannelEditor(account, platform, onSaveChannels);
   const changeBtn: CSSProperties = { display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 };
   const [addOpen, setAddOpen] = useState(false);
 
@@ -89,6 +91,10 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
                   ? <button onClick={() => unlock(i)} style={changeBtn} data-testid="mc-change">{t.rd_ch_change}</button>
                   : locked ? <span style={badge(true)}>{t.rd_ch_locked_badge}</span> : null}
               </div>
+              {/* Account total, Build 2: outside the plan (over-limit view, enforcing only). */}
+              {notCovered(i) && (
+                <div data-testid="mc-not-covered" style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", marginTop: 5 }}>{notCoveredLabel(t, isIOS())}</div>
+              )}
               {/* Cooling (<4h): live "Unlock in Xh Ym". */}
               {savedSlot && view!.note === "cooling" && (
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>{tpl(t.rd_ch_unlock_in, unlockInHM(view!.unlockMs))}</div>

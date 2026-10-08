@@ -88,7 +88,7 @@ describe("C2 connect-failure toast never shows a raw code", () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     const fn = src.slice(src.indexOf("const doFbConnect = async"), src.indexOf("const openLiveConnect"));
-    expect(fn).toContain("fbConnectFailText(r, tApp)");
+    expect(fn).toContain("fbConnectFailText(r, tApp, {");
     expect(fn).not.toMatch(/msg:\s*r\.error/);
   });
 });

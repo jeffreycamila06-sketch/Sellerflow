@@ -10,6 +10,9 @@
 // (owner + googletest included) → the old 3-chip header + old dropdown render; the
 // LiveSourceSheet / LiveConnectModal / ChannelsList / compact button never mount (inert
 // dead code). Re-add an email here to re-enable the new flow for that account.
+// ⚠️ Account total, Build 2 (sql/85): this flow's "type a name, connect, then save it" path
+// connects to a name that is NOT yet registered. It needs app_settings
+// account_live_unregistered_enforce OFF (missing / not 'true'), or that connect is refused.
 export const LIVE_SOURCE_EMAILS: string[] = [];
 
 export function liveSourcePreviewEnabled(email: string | undefined | null): boolean {

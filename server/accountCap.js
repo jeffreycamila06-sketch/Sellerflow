@@ -47,13 +47,24 @@ export function parseRegisteredList(raw) {
 // fail-open upstream. Otherwise the requested account must be in the registered
 // list for that platform, capped to maxAccountsForPlan (mirrors the client
 // accountSlots cap). Blocked -> { allowed:false, reason, max, plan }.
-export function accountCapVerdict({ plan, role, tiktok, facebook, platform, username }) {
+//
+// Account total, Build 2 (sql/85) — two options, BOTH false by default (= byte-for-byte
+// today), set only from the database switches:
+//   ignoreListOrder     (account_live_enforce on): any registered name passes here; WHICH
+//                       ones may go live is decided by age in account_live_check instead
+//                       of by list order.
+//   refuseUnregistered  (account_live_unregistered_enforce on): an empty registered list
+//                       no longer lets any name through.
+export function accountCapVerdict({ plan, role, tiktok, facebook, platform, username, ignoreListOrder = false, refuseUnregistered = false }) {
   if (String(role == null ? "" : role).trim().toLowerCase() === "admin") return { allowed: true };
   const req = normalizeAccount(username);
   if (!req) return { allowed: true };                                    // empty requested -> let downstream 400
   const registered = parseRegisteredList(platform === "Facebook" ? facebook : tiktok);
-  if (!registered.length) return { allowed: true };                      // Addition 1: broken/new/empty row -> fail-open
   const max = maxAccountsForPlan(plan);
+  if (!registered.length) {                                              // Addition 1: broken/new/empty row -> fail-open
+    return refuseUnregistered ? { allowed: false, reason: "account_limit", max, plan: String(plan) } : { allowed: true };
+  }
+  if (ignoreListOrder) return registered.includes(req) ? { allowed: true } : { allowed: false, reason: "account_limit", max, plan: String(plan) };
   if (new Set(registered.slice(0, max)).has(req)) return { allowed: true };
   return { allowed: false, reason: "account_limit", max, plan: String(plan) };
 }

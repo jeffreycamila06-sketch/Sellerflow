@@ -113,12 +113,12 @@ describe("only Facebook connect changes", () => {
   it("checkPlanActive still lets plan 'free' through before the status (TikTok/Shopee unchanged)", () => {
     expect(src).toContain('if (plan === "free") {');
     expect(src).toMatch(/app\.post\("\/connect\/tiktok", requireAuth, requireConnectRate, requirePlanActive, async/);
-    expect(src).toContain("shopeeRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive });");
+    expect(src).toContain("shopeeRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, accountLiveCheck });");
     expect(src.match(/requireFbPlan/g)!.length).toBe(2); // defined + passed to the FB runtime only
   });
   it("server.js reads plan, plan_status and role with the service role for the check", () => {
     expect(src).toContain('serviceSb.from("seller_profiles").select("plan, plan_status, role").eq("auth_user_id", String(userId || "")).maybeSingle()');
-    expect(src).toContain("fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan });");
+    expect(src).toContain("fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan, accountLiveCheck });");
   });
   it("/fb/connect runs the plan check after requirePlanActive", () => {
     const live = readFileSync("server/fbLive.js", "utf8");

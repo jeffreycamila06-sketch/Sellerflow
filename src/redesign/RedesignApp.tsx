@@ -98,7 +98,8 @@ import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, buildTestBuyer } from "./adapters/printerBridge";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
-import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, type Platform } from "./adapters/connect";
+import { useAccountCoverage, coveredTikTokNames, liveRefusedText, ACCOUNT_NOT_COVERED } from "./adapters/accountLive";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
@@ -415,7 +416,13 @@ export default function RedesignApp() {
   // scope comments to the chosen account). registeredAccountsFor is pure.
   const [ttIdx, setTtIdx] = useState(0);
   const [fbIdx, setFbIdx] = useState(0);
-  const ttAccounts = auth.profile ? registeredAccountsFor(auth.profile, "TikTok") : [];
+  // Account total, Build 2 (sql/85): ONLY while enforcing, an over-limit seller's picker
+  // offers their oldest-N (covered) TikTok accounts instead of the first N in the list.
+  // Log-only / within plan / coverage unreadable → coveredTikTokNames is null → today's list.
+  const liveCoverage = useAccountCoverage(auth.profile?.profile.tiktok);
+  const ttAccounts = auth.profile
+    ? coveredTikTokNames(accountList(auth.profile.profile.tiktok), liveCoverage) ?? registeredAccountsFor(auth.profile, "TikTok")
+    : [];
   const fbAccounts = auth.profile ? registeredAccountsFor(auth.profile, "Facebook") : [];
   // P3 — Shopee source (gated on app_settings shopee_enabled; loaded below). Own
   // authorized-shop list + picker index; SEPARATE cap from tiktok/facebook (Option A).
@@ -1215,7 +1222,7 @@ export default function RedesignApp() {
       else {
         track("connect_failed", { platform: "Facebook", reason: r.reason || r.error || "unknown" });
         if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
-        else setToast({ msg: fbConnectFailText(r, tApp), kind: "err" }); // never a raw server code
+        else setToast({ msg: fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" }); // never a raw server code
       }
       return r;
     } finally { setFbConnecting(false); }
@@ -1356,6 +1363,8 @@ export default function RedesignApp() {
       // F-batch i18n: a CLIENT-side network failure (fetch threw — no server reason)
       // gets its own localized toast instead of the hardcoded English fallback.
       if (!r.ok && r.unreachable) { setToast({ msg: tApp.rd_cm_cant_reach, kind: "err" }); return; }
+      // Account total, Build 2: this account is outside the plan (oldest-N rule, enforcing).
+      if (!r.ok && r.error === ACCOUNT_NOT_COVERED) { setToast({ msg: liveRefusedText(tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" }); return; }
       // CONNECT-TRUTH Item A: the old r.ok "Connected!" toast is GONE (the same
       // POST-ok-as-truth lie the branch removes) — success now toasts via the
       // gated ttConnected rise above. Failures keep the honest r-based toast.
