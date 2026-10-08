@@ -12,6 +12,7 @@ import { useState, type CSSProperties } from "react";
 import { unlockInHM } from "../adapters/tiktokCooldown";
 import { useChannelEditor } from "../adapters/useChannelEditor";
 import MultiAccountPopup from "../components/MultiAccountPopup";
+import AccountQuotaLine from "../components/AccountQuotaLine";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 const USERNAME_RE = /^[a-z0-9._]*$/; // SOFT guidance only — never hard-blocks (matches main's accept-then-clean).
@@ -60,6 +61,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
       </div>
 
       <div style={{ padding: "16px 14px 24px" }}>
+        {isTT && <AccountQuotaLine reloadKey={orig.join(",")} />}
         {slots.map((val, i) => {
           const savedSlot = Boolean(orig[i]);
           const view = savedSlot ? savedSlotView(i) : null;

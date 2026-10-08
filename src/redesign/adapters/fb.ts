@@ -12,6 +12,7 @@ import { isActivePaid, isFreePlan, planDaysLeft } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
 import { fbPreviewEnabled } from "./fbPreview";
 import { tpl, type RedesignT } from "../i18n";
+import { isIOS } from "./platform";
 
 // Authorize + Connect are open to EVERY plan while it is active: an ACTIVE free plan
 // (planStatus "active"; free has no expiry) or an ACTIVE PAID plan (status "active" and
@@ -185,6 +186,8 @@ export function fbReturnText(ret: { status: "connected" | "error"; code?: string
   if (ret.status === "connected") return t.rd_fb_authorized_toast;
   if (ret.code === "cancelled") return null;
   if (ret.code === "cap") return tpl(t.rd_fb_cap, { max: maxPages });
+  // Combined account limit (sql/84). Callers with the seller's numbers use accountLimitMessage.
+  if (ret.code === "account_limit") return isIOS() ? t.rd_acct_limit_generic_ios : t.rd_acct_limit_generic;
   return t.rd_fb_auth_error_toast;
 }
 

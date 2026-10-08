@@ -55,7 +55,8 @@ import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, 
 import { livePickerEnabled } from "./adapters/livePicker";
 import { settingsChannelScreen } from "./adapters/channelRoute";
 import type { ConnectTab } from "./screens/ConnectModal";
-import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
+import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthSession";
+import { accountLimitMessage, isAccountLimitError } from "./adapters/accountQuota";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
@@ -337,7 +338,12 @@ export default function RedesignApp() {
       await upsertUser(updated);
       await auth.reloadProfile();
       return { ok: true };
-    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Save failed" }; }
+    } catch (e) {
+      // The database refused a NEW username (combined account limit, sql/84): the editor
+      // shows the localized reason and keeps the typed value.
+      if (isAccountLimitError(e)) return { ok: false, accountLimit: true };
+      return { ok: false, error: e instanceof Error ? e.message : "Save failed" };
+    }
   };
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
   // Multi-day live session — window config (read-on-load) still feeds the LEGACY
@@ -752,13 +758,14 @@ export default function RedesignApp() {
     const ret = parseShopeeReturn(window.location.search);
     if (!ret) return;
     if (ret.status === "connected") { setToast({ msg: tApp.rd_shp_authorized_toast, kind: "ok" }); void reloadShopeeShops(); }
+    else if (ret.code === "account_limit") void accountLimitMessage(tApp, { ios, planName: planLabel(auth.profile?.plan), lang }).then((msg) => setToast({ msg, kind: "err" }));
     else setToast({ msg: tApp.rd_shp_auth_error_toast, kind: "err" });
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("shopee"); url.searchParams.delete("code");
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
-  }, [reloadShopeeShops, tApp]);
+  }, [reloadShopeeShops, tApp, ios, lang, auth.profile?.plan]);
 
   // F-P3 — Facebook OAuth return (?fb=connected|error&code=…): mirror the Shopee handler.
   // Toast + strip the query + reload the page list so a freshly-authorized page appears.
@@ -771,14 +778,15 @@ export default function RedesignApp() {
     if (!ret) return;
     if (ret.status === "error" && ret.code === "cap" && fbReturnPlan === null) return;
     const msg = fbReturnText(ret, tApp, maxAcc(fbReturnPlan || "free"));
-    if (ret.status === "connected") { if (msg) setToast({ msg, kind: "ok" }); void reloadFbPages(); }
+    if (ret.status === "error" && ret.code === "account_limit") void accountLimitMessage(tApp, { ios, planName: planLabel(fbReturnPlan), lang }).then((m) => setToast({ msg: m, kind: "err" }));
+    else if (ret.status === "connected") { if (msg) setToast({ msg, kind: "ok" }); void reloadFbPages(); }
     else if (msg) setToast({ msg, kind: "err" }); // null = cancelled on purpose → no toast
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("fb"); url.searchParams.delete("code");
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
-  }, [reloadFbPages, tApp, fbReturnPlan]);
+  }, [reloadFbPages, tApp, fbReturnPlan, ios, lang]);
 
   // "No printer connected" modal — an order printed but the native bridge said no
   // printer is set up yet (BT_NOT_SET / PRINTER_NOT_SET). The order is ALREADY

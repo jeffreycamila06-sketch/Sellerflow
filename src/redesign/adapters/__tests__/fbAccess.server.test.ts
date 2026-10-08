@@ -84,7 +84,7 @@ describe("handleCallback — save accounting", () => {
     const src = readFileSync("server.js", "utf8");
     const fn = src.slice(src.indexOf("async upsertPage(row)"), src.indexOf("async listActivePages()"));
     expect(fn).toContain("const { error } = await serviceSb.from(\"fb_pages\").upsert(");
-    expect(fn).toContain('if (error) throw new Error("fb_page_save_failed");');
+    expect(fn).toContain('if (error) throw new Error(/account_limit/.test(String(error.message || "")) ? "account_limit" : "fb_page_save_failed");');
   });
 });
 

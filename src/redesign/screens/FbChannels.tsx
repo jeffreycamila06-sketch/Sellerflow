@@ -20,6 +20,11 @@ import { maxAcc } from "../adapters/connect";
 import { startFbAuth, removeFbPage, fbDisconnect, isFbEligible, nativeAuthSession, fbReturnText, type FbPage } from "../adapters/fb";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+import { useLang } from "../i18n/langContext";
+import AccountQuotaLine from "../components/AccountQuotaLine";
+import { accountLimitMessage } from "../adapters/accountQuota";
+import { planLabel } from "../adapters/useAuthSession";
+import { isIOS } from "../adapters/platform";
 
 export const FB_AUTH_REFRESH_MS = 8 * 60 * 1000;
 
@@ -34,6 +39,7 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   onUpsell: () => void;
 }) {
   const t = useT();
+  const lang = useLang();
   const plan = account?.plan || "free";
   const limit = maxAcc(plan);
   const eligible = isFbEligible(account); // any active plan, free or paid (admin bypass); Date.now lives in the module helper
@@ -95,6 +101,8 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
     setAuthTick((n) => n + 1);
     if (r.status === "connected") {
       onToast?.(fbReturnText({ status: "connected" }, t, limit) || "", "ok");
+    } else if (r.status === "error" && r.code === "account_limit") {
+      onToast?.(await accountLimitMessage(t, { ios: isIOS(), planName: planLabel(plan), lang }), "err");
     } else if (r.status === "error") {
       const msg = fbReturnText({ status: "error", code: r.code }, t, limit);
       if (msg) onToast?.(msg, "err");
@@ -132,6 +140,7 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
 
       <div style={{ padding: "16px 14px 24px" }}>
         <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 2px 14px" }}>{t.rd_fb_section_sub}</div>
+        <AccountQuotaLine reloadKey={pages.map((p) => p.id).join(",")} />
 
         {/* Authorized pages */}
         {pages.length === 0 ? (
