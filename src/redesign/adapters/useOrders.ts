@@ -60,6 +60,7 @@ export function orderDbPayload(c: ProdComment, order: LiveOrder) {
     product: order.item,
     total_amount: order.total,
     status: "Pending",
+    platform: order.platform, // sql/96 (db.ts sends it only when it is a known platform)
   };
 }
 
