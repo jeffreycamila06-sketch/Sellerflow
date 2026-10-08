@@ -137,7 +137,7 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(seg).toContain('if (featureSw.inventoryV2) void logStockMovement(plan.code.productLocalId, -1, "auto_order"');
   });
   it("Products / Settings get the switch; the order hub is untouched", () => {
-    expect(src).toMatch(/<Products cur=\{cur\} [^\n]* inventoryV2=\{featureSw\.inventoryV2\} \/>\}/);
+    expect(src).toMatch(/<Products cur=\{cur\} [^\n]* inventoryV2=\{featureSw\.inventoryV2\}[^\n]* \/>\}/);
     expect(src).toContain("onToggleDeductOneClick={featureSw.inventoryV2 ? toggleDeductOneClick : undefined}");
     const hub = readFileSync("src/redesign/adapters/useOrders.ts", "utf8");
     expect(hub).not.toMatch(/stock_movements|adjust_product_stock_logged|logStockMovement/);
