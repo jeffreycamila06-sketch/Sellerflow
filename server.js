@@ -17,7 +17,7 @@ import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs } from "./server/pinRelay.js";
 import { validGmShape, parseGmPage } from "./server/myshipValidate.js";
 import { accountCapVerdict } from "./server/accountCap.js";
-import { checkAccountLive } from "./server/accountLive.js";
+import { checkAccountLive, createLiveAdmissions } from "./server/accountLive.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
 import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
@@ -359,6 +359,9 @@ function accountLiveCheck(req, platform, key) {
     return v;
   });
 }
+// The options each NEW TikTok connect was admitted with, reused on the reuse path (a tap on
+// an already-running live) so enforcing never flips back to list order there.
+const liveAdmissions = createLiveAdmissions();
 const ACCOUNT_LIVE_REFUSAL = {
   success: false,
   ok: false,
@@ -801,11 +804,15 @@ app.get("/health/tiktok", (_req, res) => {
 app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
   // Build 2 — only a NEW connect is checked: a live already running for this account (the
   // reuse path) is never asked about; health reconnects never come through this route.
-  const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(liveKey(req.sellerId, "TikTok", req.body.username));
+  const tkKey = liveKey(req.sellerId, "TikTok", req.body.username);
+  const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(tkKey);
+  if (isNew) liveAdmissions.forget(tkKey);
   const live = isNew ? await accountLiveCheck(req, "tiktok", req.body.username) : null;
-  const reject = accountCapReject(req, "TikTok", req.body.username, live || {});
+  // Reuse path (live already running): the options it was admitted with, no database call.
+  const reject = accountCapReject(req, "TikTok", req.body.username, live || liveAdmissions.optionsFor(tkKey));
   if (reject) return res.status(403).json(reject);
   if (live && !live.allow) return res.status(403).json(ACCOUNT_LIVE_REFUSAL);
+  if (live) liveAdmissions.remember(tkKey, live, (k) => tiktokConnections.has(k));
   return connectTikTok(req.body.username, res, {
     sellerId: req.sellerId,
     sessionId: req.body.sessionId,

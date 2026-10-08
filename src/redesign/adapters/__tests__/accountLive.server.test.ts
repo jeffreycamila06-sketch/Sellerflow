@@ -3,7 +3,7 @@
 // (TikTok / Facebook / Shopee): checked only for a NEW connect, refused as account_not_covered.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { liveCoverageVerdict, checkAccountLive, ACCOUNT_LIVE_TIMEOUT_MS } from "../../../../server/accountLive.js";
+import { liveCoverageVerdict, checkAccountLive, ACCOUNT_LIVE_TIMEOUT_MS, createLiveAdmissions } from "../../../../server/accountLive.js";
 import { accountCapVerdict, maxAccountsForPlan, parseRegisteredList, normalizeAccount } from "../../../../server/accountCap.js";
 import { createFbRuntime } from "../../../../server/fbLive.js";
 import { createShopeeRuntime } from "../../../../server/shopeeLive.js";
@@ -98,14 +98,24 @@ describe("TikTok /connect route (server.js source contract)", () => {
   const src = readFileSync("server.js", "utf8");
   const route = src.slice(src.indexOf('app.post("/connect/tiktok"'), src.indexOf('app.post("/connect/facebook"'));
   it("asks only for a NEW connect (no running connection, non-empty name)", () => {
-    expect(route).toContain('const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(liveKey(req.sellerId, "TikTok", req.body.username));');
+    expect(route).toContain('const tkKey = liveKey(req.sellerId, "TikTok", req.body.username);');
+    expect(route).toContain("const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(tkKey);");
     expect(route).toContain('const live = isNew ? await accountLiveCheck(req, "tiktok", req.body.username) : null;');
+  });
+  it("reuse path: the remembered options, no database call; a new connect forgets then remembers", () => {
+    const i = (x: string) => route.indexOf(x);
+    expect(route).toContain("if (isNew) liveAdmissions.forget(tkKey);");
+    expect(route).toContain('accountCapReject(req, "TikTok", req.body.username, live || liveAdmissions.optionsFor(tkKey))');
+    expect(route).toContain("if (live) liveAdmissions.remember(tkKey, live, (k) => tiktokConnections.has(k));");
+    expect(i("liveAdmissions.forget(")).toBeLessThan(i("accountLiveCheck("));
+    expect(i("if (live && !live.allow)")).toBeLessThan(i("liveAdmissions.remember("));
+    expect(i("liveAdmissions.remember(")).toBeLessThan(i("return connectTikTok("));
+    expect(src.match(/accountLiveCheck\(req, "tiktok"/g)).toHaveLength(1);
   });
   it("order: plan middleware → check → accountCapReject (with the flags) → refusal → connectTikTok", () => {
     expect(route).toMatch(/^app\.post\("\/connect\/tiktok", requireAuth, requireConnectRate, requirePlanActive, async/);
     const i = (s: string) => route.indexOf(s);
     expect(i("accountLiveCheck(")).toBeLessThan(i("accountCapReject("));
-    expect(route).toContain('accountCapReject(req, "TikTok", req.body.username, live || {})');
     expect(i("accountCapReject(")).toBeLessThan(i("if (live && !live.allow) return res.status(403).json(ACCOUNT_LIVE_REFUSAL);"));
     expect(i("ACCOUNT_LIVE_REFUSAL)")).toBeLessThan(i("return connectTikTok("));
   });
@@ -202,5 +212,53 @@ describe("Shopee /shopee/connect", () => {
     expect((await call(handlers, "POST /shopee/connect", { shop_id: "7", session_id: "S" })).json).toEqual({ ok: true, session_id: "S" });
     expect(check).not.toHaveBeenCalled();
     rt.stopAll();
+  });
+});
+
+describe("reuse path keeps the admitted options (FIX 1)", () => {
+  // Basic seller, list [b, a]; a is older → covered by age, but NOT in the first N of the list.
+  const base = { plan: "basic", role: "seller", tiktok: "b,a", facebook: "", platform: "TikTok", username: "a" };
+  const answer = (enforce: boolean) => ({ allowed: true, registered: true, covered: true, rank: 1, limit: 1, enforce, unregistered_enforce: false });
+  function connect(adm: ReturnType<typeof createLiveAdmissions>, running: Set<string>, key: string, enforce: boolean, username = "a") {
+    const isNew = !running.has(key);
+    if (isNew) adm.forget(key);
+    const live = isNew ? liveCoverageVerdict(answer(enforce)) : null;
+    const v = accountCapVerdict({ ...base, username, ...(live || adm.optionsFor(key)) } as never);
+    if (v.allowed && live) { adm.remember(key, live, (k) => running.has(k)); running.add(key); }
+    return v;
+  }
+  it("enforce on: first connect allowed, a Connect tap on the running live allowed too", () => {
+    const adm = createLiveAdmissions(); const running = new Set<string>();
+    expect(connect(adm, running, "s:TikTok:a", true)).toEqual({ allowed: true });
+    expect(connect(adm, running, "s:TikTok:a", true)).toEqual({ allowed: true });
+    expect(accountCapVerdict(base as never)).toMatchObject({ allowed: false });   // without the fix: list order refuses
+  });
+  it("log-only: both paths byte-identical to today", () => {
+    const adm = createLiveAdmissions(); const running = new Set<string>();
+    const first = connect(adm, running, "s:TikTok:b", false, "b");
+    expect(first).toEqual(oldVerdict({ ...base, username: "b" }));
+    const reuse = accountCapVerdict({ ...base, username: "b", ...adm.optionsFor("s:TikTok:b") } as never);
+    expect(reuse).toEqual(oldVerdict({ ...base, username: "b" }));
+    expect(adm.optionsFor("s:TikTok:b")).toEqual({ ignoreListOrder: false, refuseUnregistered: false });
+    for (const u of ["a", "b", "zz"]) expect(accountCapVerdict({ ...base, username: u, ...adm.optionsFor("nothing") } as never)).toEqual(oldVerdict({ ...base, username: u }));
+  });
+  it("nothing remembered (connection from before the deploy) → today's behaviour", () => {
+    expect(createLiveAdmissions().optionsFor("k")).toEqual({});
+  });
+  it("a NEW connect forgets the old options before deciding again", () => {
+    const adm = createLiveAdmissions();
+    adm.remember("k", { ignoreListOrder: true }, () => true);
+    adm.forget("k");
+    expect(adm.optionsFor("k")).toEqual({});
+  });
+  it("bounded: past the limit, keys whose connection is gone are dropped", () => {
+    const adm = createLiveAdmissions({ max: 3 });
+    const running = new Set(["k1", "k2"]);
+    for (const k of ["k1", "k2", "k3", "k4", "k5"]) adm.remember(k, { ignoreListOrder: true }, (x) => running.has(x));
+    expect(adm.size()).toBeLessThanOrEqual(3);
+    expect(adm.optionsFor("k1")).toEqual({ ignoreListOrder: true, refuseUnregistered: false });
+    expect(adm.optionsFor("k2")).toEqual({ ignoreListOrder: true, refuseUnregistered: false });
+    expect(adm.optionsFor("k5")).toEqual({ ignoreListOrder: true, refuseUnregistered: false });
+    expect(adm.optionsFor("k3")).toEqual({});
   });
 });

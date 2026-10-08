@@ -110,6 +110,8 @@ describe("coverage helpers", () => {
   it("RedesignApp: the picker falls back to today's list (source pin)", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain('? coveredTikTokNames(accountList(auth.profile.profile.tiktok), liveCoverage) ?? registeredAccountsFor(auth.profile, "TikTok")');
+    // FIX 2: re-read when the TikTok list, the plan, the Pages or the shops change.
+    expect(src).toContain('useAccountCoverage([auth.profile?.profile.tiktok ?? "", auth.profile?.plan ?? "", fbPages.map((p) => p.pageId).join(","), shopeeShops.map((s) => s.shopId).join(",")].join("|"))');
   });
 });
 
@@ -162,7 +164,8 @@ describe("TikTok and Shopee: only the new code is mapped (source pins)", () => {
   const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
   it("TikTok: account_not_covered → readable text; every other error falls through unchanged", () => {
     const body = app.slice(app.indexOf("const performConnect = async"), app.indexOf("const doConnect = async"));
-    expect(body).toContain("if (!r.ok && r.error === ACCOUNT_NOT_COVERED) { setToast({ msg: liveRefusedText(tApp,");
+    expect(body).toContain('if (!r.ok && (r.error === ACCOUNT_NOT_COVERED || (platform === "TikTok" && r.error === "account_limit"))) { setToast({ msg: liveRefusedText(tApp,');
+    expect(body.match(/account_limit/g)).toHaveLength(2);   // the mapping + its comment only
     expect(body).toContain("if (!r.ok) setToast({ msg: r.error || tApp.rd_cm_conn_failed, kind: \"err\" });");
     expect(body.indexOf("ACCOUNT_NOT_COVERED")).toBeLessThan(body.indexOf("if (!r.ok) setToast({ msg: r.error ||"));
   });

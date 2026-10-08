@@ -40,3 +40,22 @@ export async function checkAccountLive(call, { timeoutMs = ACCOUNT_LIVE_TIMEOUT_
     clearTimeout(timer);
   }
 }
+
+// What a NEW TikTok connect was admitted with, per liveKey, so a later Connect tap on the
+// SAME running live (reuse path, no database call) uses the same accountCapVerdict options
+// instead of list order. Nothing remembered (connection from before the deploy / the
+// switch) → {} = today's behaviour. Bounded: past `max` entries, keys whose connection is
+// gone are dropped.
+export const LIVE_ADMISSIONS_MAX = 5000;
+export function createLiveAdmissions({ max = LIVE_ADMISSIONS_MAX } = {}) {
+  const map = new Map();
+  return {
+    forget(key) { map.delete(key); },
+    optionsFor(key) { return map.get(key) || {}; },
+    remember(key, opts, isRunning) {
+      map.set(key, { ignoreListOrder: opts.ignoreListOrder === true, refuseUnregistered: opts.refuseUnregistered === true });
+      if (map.size > max) for (const k of [...map.keys()]) if (k !== key && !isRunning(k)) map.delete(k);
+    },
+    size() { return map.size; },
+  };
+}
