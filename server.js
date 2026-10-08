@@ -2261,10 +2261,20 @@ try {
         return data ? data.value : null;
       },
     });
+    // fb_comment_paging (sql/105): same cached reader (60 s); off on any error. Asked only when a
+    // poll's first page is full and all new (a code drop), never on a normal tick.
+    const fbCommentPagingFlag = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_comment_paging").maybeSingle();
+        if (error) throw new Error("fb_comment_paging_read_failed");
+        return data ? data.value : null;
+      },
+    });
     fbRuntime = createFbRuntime({
       config: fbCfg,
       store,
       stopReasonsEnabled: fbStopReasonsFlag,
+      commentPagingEnabled: fbCommentPagingFlag,
       liveKey,
       renderUrl: RENDER_URL,
       // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
