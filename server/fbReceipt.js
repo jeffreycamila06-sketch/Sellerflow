@@ -119,8 +119,23 @@ export function classifyReceiptAnswer(status, body, token = "") {
   if (b && b.error && typeof b.error === "object") {
     return { kind: "failed", code: Number(b.error.code) || 0, subcode: Number(b.error.error_subcode) || 0, detail: receiptErrorDetail(b.error, token) };
   }
-  if (status === 200 && b && b.message_id) return { kind: "sent", messageId: String(b.message_id) };
+  if (status === 200 && b && b.message_id) {
+    // recipient_id = the buyer's Page-scoped ID (PSID), kept for later messages (sql/99).
+    const rid = typeof b.recipient_id === "string" || typeof b.recipient_id === "number" ? String(b.recipient_id).trim() : "";
+    return { kind: "sent", messageId: String(b.message_id), ...(rid ? { recipientId: rid } : {}) };
+  }
   return { kind: "unknown" };
+}
+
+// The 'sent' row update, with recipient_psid (sql/99) when Facebook returned one. If that
+// update is refused (e.g. the column is not there yet) → the exact update without it. Never
+// logged.
+export async function updateSentReceipt(store, id, patch, recipientId) {
+  if (!recipientId) return store.updateReceipt(id, patch);
+  let r;
+  try { r = await store.updateReceipt(id, { ...patch, recipient_psid: recipientId }); } catch (e) { r = { error: e }; }
+  if (r && r.error) return store.updateReceipt(id, patch);
+  return r;
 }
 
 // Sliding-window per-user send limit. Returns { allowed, kept }.
@@ -319,7 +334,7 @@ export function createFbReceipt(deps) {
     }
 
     if (answer.kind === "sent") {
-      await store.updateReceipt(claim.id, { status: "sent", message_id: answer.messageId, sent_at: new Date(now()).toISOString(), image_path: imagePath });
+      await updateSentReceipt(store, claim.id, { status: "sent", message_id: answer.messageId, sent_at: new Date(now()).toISOString(), image_path: imagePath }, answer.recipientId);
       logAttempt(userId, claim.page.pageId, "sent");
       const after = await gather(userId, target.sessionId, target.buyerNumber);
       return { status: 200, json: { ok: true, sentCount: after.sentCount, remaining: after.candidates.length, lastSentAt: after.lastSentAt } };
