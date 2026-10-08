@@ -811,6 +811,24 @@ app.get("/health/tiktok", (_req, res) => {
 });
 
 
+// fb_connect_v2 — a CONFIRMED platform switch stops the caller's own TikTok live on the server
+// (the plain Disconnect button stays local). Same clean teardown as the concurrency kick:
+// disconnectTikTokConnection(manual) also clears a scheduled reconnect, then one terminal gray.
+app.post("/disconnect/tiktok", requireAuth, async (req, res) => {
+  const key = liveKey(req.sellerId, "TikTok", (req.body || {}).username);
+  const existing = tiktokConnections.get(key);
+  if (!existing) {
+    clearTikTokReconnect(key);
+    return res.json({ ok: true, stopped: false });
+  }
+  const username = existing.username || cleanAccountKey((req.body || {}).username);
+  const sessionId = existing.sessionId || "";
+  await disconnectTikTokConnection(key, { manual: true });
+  emitTikTokStatus({ sellerId: req.sellerId, username, sessionId, connected: false, reconnecting: false, reason: "disconnect" });
+  console.log(`[DISCONNECT] tiktok seller=${req.sellerId} account=${username} (platform switch)`);
+  return res.json({ ok: true, stopped: true });
+});
+
 app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
   // Build 2 — only a NEW connect is checked: a live already running for this account (the
   // reuse path) is never asked about; health reconnects never come through this route.
