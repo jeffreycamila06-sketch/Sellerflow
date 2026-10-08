@@ -58,7 +58,8 @@ import { livePickerEnabled } from "./adapters/livePicker";
 import { settingsChannelScreen } from "./adapters/channelRoute";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthSession";
-import { accountLimitMessage, isAccountLimitError } from "./adapters/accountQuota";
+import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
+import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
@@ -1667,6 +1668,23 @@ export default function RedesignApp() {
   // seen-set + the sessionId single-consumer scoping in useLiveFeed.
   // DOGFOOD GATE — allowlist + admin only until the public flip (pinToPrint.ts).
   const pinAllowed = pinPrintAllowed(auth.profile?.email, auth.profile?.role);
+  // PLATFORM WORLDS — a seller sees only the functions of the platforms they use (adapters/
+  // platformWorld.ts). Only HIDES: each gate below is `existingGate && !platformHides(…)`.
+  // Switch off → only an admin previewing via "View as platform" gets a world; no new RPC.
+  const [platformViewAs, setPlatformViewAs] = useState<PlatformViewAs>("all");
+  const worldQuota = useAccountQuota(
+    [auth.profile?.profile.tiktok ?? "", fbPages.length, shopeeShops.length, igAccounts.length].join("|"),
+    PLATFORM_WORLDS_PUBLIC && authed && !isAdmin,
+  );
+  const world = effectiveWorld({
+    role: auth.profile?.role, counts: worldQuota?.platforms,
+    access: { facebook: fbEnabled, instagram: igEnabled, shopee: shopeeEnabled }, viewAs: platformViewAs,
+  });
+  const hideTtChip = platformHides("ttChip", world);
+  const hideFbChip = platformHides("fbChip", world);
+  const hidePinPrint = platformHides("pinPrint", world);
+  const hideFbPill = platformHides("fbPill", world);
+  const hideFbSplit = platformHides("fbSplit", world);
   const handlePinned = (p: PinPayload) => {
     if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
     if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
@@ -2005,7 +2023,9 @@ export default function RedesignApp() {
               onOpenSourceSheet={() => setSourceSheetOpen(true)}
               /* Live platform picker — admin-only preview (presentation only; same
                  callbacks as the classic chips). Non-admins: false → classic, unchanged. */
-              livePicker={livePickerEnabled(isAdmin)}
+              /* An admin previewing a platform world sees the classic header a seller sees. */
+              livePicker={livePickerEnabled(isAdmin) && platformViewAs === "all"}
+              hideTtChip={hideTtChip} hideFbChip={hideFbChip}
               {...(igEnabled ? { ig: {
                 accounts: igAccounts.map((a) => ({ igUserId: a.igUserId, name: a.username ? `@${a.username}` : a.igUserId })),
                 idx: igIdx, onPick: setIgIdx, connected: igEff, connecting: igConnecting,
@@ -2048,11 +2068,11 @@ export default function RedesignApp() {
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
-          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
+          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
-          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
+          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideFbSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "salestab" && <SalesTab cur={cur} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
@@ -2102,7 +2122,7 @@ export default function RedesignApp() {
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
-              pinPrint={pinPrint} onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}
+              pinPrint={pinPrint} onTogglePinPrint={pinAllowed && !hidePinPrint ? togglePinPrint : undefined}
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
               /* "Same price for all items" — Live-session row (toggle + remembered price, set via the sheet). */
               cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
@@ -2135,7 +2155,7 @@ export default function RedesignApp() {
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={customersData.state === "live" ? exportCustomers : undefined} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}
           {screen === "subscription" && !ios && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
-          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} />}
+          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} platformViewAs={platformViewAs} onSetPlatformViewAs={setPlatformViewAs} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (

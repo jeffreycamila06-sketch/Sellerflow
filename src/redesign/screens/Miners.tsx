@@ -25,13 +25,14 @@ const hdrBtn: CSSProperties = { display: "flex", alignItems: "center", gap: 5, f
 
 const RANGES: MinersRange[] = ["session", "today", "7days", "month", "custom"];
 
-export default function Miners({ cur, rep, todayId = "", sessionStartId = "", seller, topTabs }: {
+export default function Miners({ cur, rep, todayId = "", sessionStartId = "", seller, topTabs, hidePlatformSplit = false }: {
   cur: string;
   rep: UseMinersReport;                 // owned by RedesignApp (useMinersReport)
   todayId?: string;                     // Taipei day id (today)
   sessionStartId?: string;              // current session window start (windowStart || today)
   seller?: { name?: string; email?: string };
   topTabs?: ReactNode;                  // the "Orders | Miners" segment (rendered inside Orders tab)
+  hidePlatformSplit?: boolean;          // PLATFORM WORLDS: no Facebook world → no TikTok/Facebook card
 }) {
   const t = useT();
   const [range, setRange] = useState<MinersRange>("session");
@@ -154,7 +155,7 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
             <div style={{ ...bigNum, fontSize: 22 }}>{cur}{fmt(data?.spent ?? 0)}</div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{cur}{fmt(data?.avg ?? 0)} {t.rd_min_avg_order}</div>
           </div>
-          <div style={statCard}>
+          {!hidePlatformSplit && <div style={statCard}>
             <div style={statLbl}>{t.rd_min_platforms} <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>· {t.rd_min_alltime}</span></div>
             <div style={{ display: "flex", gap: 7, marginTop: 9 }}>
               <div style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", borderRadius: 9, padding: "7px 0" }}>
@@ -166,7 +167,7 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
                 <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>Facebook</div>
               </div>
             </div>
-          </div>
+          </div>}
         </div>
 
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "4px 2px 10px" }}>

@@ -120,7 +120,8 @@ describe("DOGFOOD GATE — pinPrintAllowed (allowlist + admin; NOT plan-gated)",
     expect(block).toContain("if (!liveSession.orderedLoaded) return;"); // audit F2 — the E1 gate for unattended orders
     expect(block.indexOf("if (!pinAllowed) return;")).toBeGreaterThan(-1);
     expect(block.indexOf("if (!pinAllowed) return;")).toBeLessThan(block.indexOf("if (!pinPrint) return;")); // gate before toggle
-    expect(app).toContain("onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}");
+    // Platform worlds (adapters/platformWorld.ts) may only AND-hide the row on top of this gate.
+    expect(app).toContain("onTogglePinPrint={pinAllowed && !hidePinPrint ? togglePinPrint : undefined}");
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("{onTogglePinPrint && <div");
   });

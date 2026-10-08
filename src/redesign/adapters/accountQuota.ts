@@ -11,6 +11,8 @@ export interface AccountQuota {
   unlimited: boolean;
   locked: number;
   nextFreeAt: string | null;
+  // Per-platform registered-account counts (sql/87). Absent on an older response → undefined.
+  platforms?: { tiktok: number; facebook: number; shopee: number; instagram: number };
 }
 
 export function parseQuota(raw: unknown): AccountQuota | null {
@@ -23,7 +25,15 @@ export function parseQuota(raw: unknown): AccountQuota | null {
     unlimited: r.unlimited === true,
     locked: Number(r.locked) || 0,
     nextFreeAt: typeof r.next_free_at === "string" ? r.next_free_at : null,
+    platforms: parsePlatformCounts(r),
   };
+}
+
+function parsePlatformCounts(r: Record<string, unknown>): AccountQuota["platforms"] {
+  const keys = ["tiktok", "facebook", "shopee", "instagram"] as const;
+  const n = keys.map((k) => (typeof r[k] === "number" ? (r[k] as number) : NaN));
+  if (n.some((v) => !Number.isFinite(v))) return undefined;
+  return { tiktok: n[0], facebook: n[1], shopee: n[2], instagram: n[3] };
 }
 
 export async function loadAccountQuota(): Promise<AccountQuota | null> {
@@ -37,13 +47,15 @@ export async function loadAccountQuota(): Promise<AccountQuota | null> {
 }
 
 // reloadKey: change it (e.g. the account count) to re-read after an add/remove.
-export function useAccountQuota(reloadKey: unknown = 0): AccountQuota | null {
+// enabled=false → no call at all (stays null).
+export function useAccountQuota(reloadKey: unknown = 0, enabled = true): AccountQuota | null {
   const [q, setQ] = useState<AccountQuota | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     void loadAccountQuota().then((r) => { if (live) setQ(r); });
     return () => { live = false; };
-  }, [reloadKey]);
+  }, [reloadKey, enabled]);
   return q;
 }
 

@@ -34,7 +34,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null,
+  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -51,13 +51,16 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // Messenger receipt step 1 — FB preview accounts only (RedesignApp passes the gate).
   // false/absent → the receipt box renders exactly as before.
   fbReceipt?: boolean;
+  hideFbPill?: boolean; // PLATFORM WORLDS: no Facebook world → no "Facebook" pill (default false = unchanged)
   sessionId?: string | null; // the current session (Messenger receipt Send + "Receipt sent ✓")
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
   const [reprintingKey, setReprintingKey] = useState("");
   // Batch 1 — TOP-OF-SCREEN view controls (all additive; rows/Reprint untouched).
-  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all"); // F2
+  const [platformFilterRaw, setPlatformFilter] = useState<PlatformFilter>("all"); // F2
+  // A hidden Facebook pill can never stay selected (an admin switching "View as platform").
+  const platformFilter: PlatformFilter = hideFbPill && platformFilterRaw === "Facebook" ? "all" : platformFilterRaw;
   const [range, setRange] = useState<DateRange>("session");                    // F4 (default = today's behavior)
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -236,7 +239,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         </div>
         {/* F2 platform pills + F4 date range — additive controls; default = All + This session. */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
-          {(["all", "TikTok", "Facebook"] as PlatformFilter[]).map((pf) => {
+          {((hideFbPill ? ["all", "TikTok"] : ["all", "TikTok", "Facebook"]) as PlatformFilter[]).map((pf) => {
             const on = platformFilter === pf;
             const label = pf === "all" ? t.rd_ord_pf_all : pf;
             return (
