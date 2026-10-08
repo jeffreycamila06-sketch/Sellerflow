@@ -47,6 +47,17 @@ export function decodeReceiptPng(input, maxBytes = RECEIPT_MAX_IMAGE_BYTES) {
 // A row whose handle is empty or "unknown" (any case) is never a recipient.
 const knownHandle = (h) => { const v = String(h ?? "").trim(); return v !== "" && v.toLowerCase() !== "unknown"; };
 
+// Automatic receipt: error_code of a claim whose comment cannot take a private reply.
+export const AUTO_NO_PRIVATE_REPLY = "no_private_reply/0";
+
+// One receipt per buyer per session (automatic path): a receipt row of this user that is sent,
+// pending (delivery unknown), or refused for "no private reply" blocks the buyer. Sold-out rows
+// (kind 'soldout') do not. A row without kind is a receipt (sql/91 default).
+export function hasAutoBlockingRow(rows, userId) {
+  return (rows || []).some((r) => r && r.user_id === userId && (r.kind == null || r.kind === "receipt")
+    && (r.status === "sent" || r.status === "pending" || r.error_code === AUTO_NO_PRIVATE_REPLY));
+}
+
 // More than one distinct non-empty platform_meta.commenter_id among a buyer number's Facebook
 // rows = the number holds comments from different Facebook accounts → not sendable. Rows
 // without commenter_id (older orders) do not count.
@@ -222,7 +233,7 @@ export function createFbReceipt(deps) {
     const rows = ids.length ? await store.listReceiptRows(ids) : [];
     const mine = (rows || []).filter((r) => r.user_id === userId && r.status === "sent");
     const lastSentAt = mine.map((r) => String(r.sent_at || "")).filter(Boolean).sort().pop() || null;
-    return { orders: orders || [], candidates: pickReceiptCandidates(orders, rows), mixed: isMixedBuyer(orders), sentCount: mine.length, lastSentAt };
+    return { orders: orders || [], rows: rows || [], candidates: pickReceiptCandidates(orders, rows), mixed: isMixedBuyer(orders), sentCount: mine.length, lastSentAt };
   }
 
   // A page that can send: exists, active, can_message, token decrypts. Else null.
@@ -279,7 +290,10 @@ export function createFbReceipt(deps) {
     }
   }
 
-  async function sendLocked(userId, target, png) {
+  // opts.preflight (automatic receipt only): async (commentId, pageToken) → false when Facebook
+  // says the comment cannot take a private reply; the claim is then marked failed with
+  // AUTO_NO_PRIVATE_REPLY and nothing is uploaded or sent. The manual send passes no opts.
+  async function sendLocked(userId, target, png, opts = {}) {
     const g = await gather(userId, target.sessionId, target.buyerNumber);
     if (g.mixed) return { status: 409, json: { ok: false, error: "mixed_buyer" } };
     if (g.candidates.length === 0) return { status: 409, json: { ok: false, error: "none_left" } };
@@ -301,6 +315,16 @@ export function createFbReceipt(deps) {
       break;
     }
     if (!claim) return { status: 409, json: { ok: false, error: "none_left" } };
+
+    if (typeof opts.preflight === "function") {
+      let can = null;
+      try { can = await opts.preflight(claim.commentId, claim.page.token); } catch { can = null; }
+      if (can === false) {
+        await store.updateReceipt(claim.id, { status: "failed", error_code: AUTO_NO_PRIVATE_REPLY });
+        logAttempt(userId, claim.page.pageId, "skipped", "no_private_reply", 0);
+        return { status: 409, json: { ok: false, error: "cannot_reply_privately" } };
+      }
+    }
 
     // Upload. If this fails nothing reached Facebook → delete the claim so the comment stays
     // usable (an upload failure must not count toward the failure cap). Only if the delete
@@ -390,5 +414,28 @@ export function createFbReceipt(deps) {
     app.post("/fb/receipt/send", requireAuth, sendAccessGate, sendRateLimit, makeJsonParser(RECEIPT_BODY_LIMIT), wrap(send));
   }
 
-  return { info, send, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts, _sending: sending };
+  // Automatic receipt (server/fbAutoReceipt.js): the SAME lock, claim, upload and Graph call as
+  // the manual send. Inside the buyer lock: a buyer who already has a receipt (sent, pending, or
+  // a comment that cannot take a private reply) is skipped; else makePng() draws the picture and
+  // sendLocked sends it with the preflight. → { status, json } like send(); skips are 200
+  // { ok:false, skipped:<reason> }.
+  async function autoSend(userId, target, makePng, preflight) {
+    if (!(await hasAccess(userId))) return { status: 403, json: { ok: false, error: "no_access" } };
+    const lockKey = `${userId}|${target.sessionId}|${target.buyerNumber}`;
+    if (sending.has(lockKey)) return { status: 409, json: { ok: false, error: "busy" } };
+    sending.add(lockKey);
+    try {
+      const g = await gather(userId, target.sessionId, target.buyerNumber);
+      if (hasAutoBlockingRow(g.rows, userId)) return { status: 200, json: { ok: false, skipped: "has_receipt" } };
+      if (g.orders.length === 0) return { status: 200, json: { ok: false, skipped: "no_orders" } };
+      if (g.mixed) return { status: 200, json: { ok: false, skipped: "mixed_buyer" } };
+      if (g.candidates.length === 0) return { status: 200, json: { ok: false, skipped: "none_left" } };
+      const png = await makePng();
+      return await sendLocked(userId, target, png, { preflight });
+    } finally {
+      sending.delete(lockKey);
+    }
+  }
+
+  return { info, send, autoSend, registerRoutes, sendAccessGate, sendRateLimit, _sendAttempts: sendAttempts, _sending: sending };
 }
