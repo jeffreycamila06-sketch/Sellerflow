@@ -45,7 +45,7 @@ import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePrevie
 import FbChannels from "./screens/FbChannels";
 import IgChannels from "./screens/IgChannels";
 import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
-import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
+import { loadFbEnabled, listFbPages, fbConnect, fbLiveCheck, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import { useFbAccess, fbUiGates } from "./adapters/fbAccess";
 import LiveSourceSheet from "./components/LiveSourceSheet";
@@ -108,7 +108,8 @@ import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, buildTestBuyer } from "./adapters/printerBridge";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
-import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, type Platform } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, type Platform, ttDisconnect } from "./adapters/connect";
+import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useAccountCoverage, coveredTikTokNames, liveRefusedText, ACCOUNT_NOT_COVERED } from "./adapters/accountLive";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
@@ -1267,7 +1268,7 @@ export default function RedesignApp() {
   // The socket-side FB connect (mirror doShopeeConnect): ensureJoined so a FB-only seller's
   // socket is in the room before the poller relays, POST /fb/connect, toast the outcome.
   // Reached only via runTargetConnect / connectPending AFTER a session is guaranteed.
-  const doFbConnect = async (pageId: string) => {
+  const doFbConnect = async (pageId: string, scopeKey = "") => {
     // fbPreview is NOT short-circuited — allowlisted preview users hit the REAL POST
     // /fb/connect (the fb_enabled flag stays the fleet switch only). Non-allowlisted
     // sellers can never reach this (no reachable Facebook connect target for them).
@@ -1275,8 +1276,10 @@ export default function RedesignApp() {
     setFbConnecting(true);
     track("connect_attempt", { platform: "Facebook" });
     try {
-      liveFeed.ensureJoined();
-      const r = await fbConnect(pageId);
+      let r;
+      // fb_connect_v2 — through the feed's in-flight window (the TikTok gap buffer); off = today.
+      if (featureSw.fbConnectV2) r = await liveFeed.connectFacebook(pageId, scopeKey || pageId);
+      else { liveFeed.ensureJoined(); r = await fbConnect(pageId); }
       if (r.ok) { track("connect_success", { platform: "Facebook" }); setToast({ msg: tApp.rd_fb_connected_toast, kind: "ok" }); }
       else {
         track("connect_failed", { platform: "Facebook", reason: r.reason || r.error || "unknown" });
@@ -1328,13 +1331,44 @@ export default function RedesignApp() {
   // Run a target's socket connect once its session is guaranteed (running or just-started).
   const runTargetConnect = (target: LiveConnectTarget) => {
     if (target.platform === "Shopee") void doShopeeConnect(target.shopId, target.sessionId);
-    else if (target.platform === "Facebook") void doFbConnect(target.pageId); // F-P3
+    else if (target.platform === "Facebook") void doFbConnect(target.pageId, target.scopeKey); // F-P3
     else if (target.platform === "Instagram") void doIgConnect(target.igUserId);
     else void performConnect("TikTok", target.username, { register: target.register });
   };
   // Session-aware connect for the new modal: running → connect (CONTINUE, same session_id
   // — reconnect / account switch); NOT running → the SAME owner-Start / picker path that
   // owns startSession (first connect / Shopee-first → #1). No new startSession site.
+  // fb_connect_v2 — Facebook only: is the Page live BEFORE any session start / switch dialog?
+  // false = a toast was shown and the caller STOPS (no session, no reset, no stop, no dialog).
+  // The server's own check inside /fb/connect stays the second guard.
+  const fbLiveGate = async (pageId: string): Promise<boolean> => {
+    const r = await fbLiveCheck(pageId);
+    const g = liveGateOf(r);
+    if (g.go === true) return true;
+    track("connect_failed", { platform: "Facebook", reason: `live_check:${r.reason || r.error || "unknown"}` });
+    if (ios && g.why === "plan_expired") setIosExpired(true);
+    else setToast({ msg: g.why === "not_live" ? tApp.rd_fb_live_first : fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" });
+    return false;
+  };
+  // fb_connect_v2 — a CONFIRMED switch stops every OTHER platform that is connected (server
+  // truth, even if this device tapped the local Disconnect) and sets its local off-latch.
+  // Bounded (4 s); a failed stop is logged and never blocks the switch.
+  const stopOtherPlatforms = async (keep: LiveConnectTarget["platform"]) => {
+    const targets = switchStopTargets(keep, {
+      TikTok: { connected: ttConnected, id: liveFeed.activeAccounts.TikTok || ttAccounts[ttIdx] || "" },
+      Facebook: { connected: fbConnected, id: fbLivePageId || selectedPage?.pageId || "" },
+      Shopee: { connected: liveFeed.shopeeConnected, id: selectedShop ? String(selectedShop.shopId) : "" },
+      Instagram: { connected: liveFeed.igConnected, id: selectedIg ? selectedIg.igUserId : "" },
+    });
+    const stops: { name: string; p: Promise<unknown> }[] = [];
+    for (const { platform, id } of targets) {
+      if (platform === "TikTok") { setTtOff(true); if (id) stops.push({ name: platform, p: ttDisconnect(id) }); }
+      else if (platform === "Facebook") { setFbOff(true); if (id) stops.push({ name: platform, p: fbDisconnect(id).then((x) => x.ok) }); }
+      else if (platform === "Shopee") { setShopeeOff(true); if (id) stops.push({ name: platform, p: shopeeDisconnect(id).then((x) => x.ok) }); }
+      else { setIgOff(true); if (id) stops.push({ name: platform, p: igDisconnect(id) }); }
+    }
+    await settleStops(stops, (name) => console.warn("[switch] stop not confirmed:", name));
+  };
   const runSessionAware = async (target: LiveConnectTarget) => {
     await sessionInstance.ensureLoaded();
     const status = await sessionInstance.checkStatus();
@@ -1343,7 +1377,10 @@ export default function RedesignApp() {
     // force-fresh #1 (confirmSwitch). Same platform / NULL-legacy → continue. This
     // replaces the old in-memory livePlatformOf(ttEff/shopeeEff) anchor (stale-flag hole).
     if (status.running) {
-      if (connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff, fbEff, igEff })) { askSwitch(target); return; }
+      if (connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff, fbEff, igEff })) {
+        if (featureSw.fbConnectV2 && target.platform === "Facebook" && !(await fbLiveGate(target.pageId))) return;
+        askSwitch(target); return;
+      }
       runTargetConnect(target); return; // same platform → continue same session (NULL → in-app check, sql/86)
     }
     const pending: PendingConnect = target.platform === "Shopee"
@@ -1353,6 +1390,7 @@ export default function RedesignApp() {
       : target.platform === "Instagram"
       ? { kind: "ig", igUserId: target.igUserId, scopeKey: target.scopeKey }
       : { kind: "tt", platform: "TikTok", acct: target.username, register: target.register };
+    if (featureSw.fbConnectV2 && target.platform === "Facebook" && !(await fbLiveGate(target.pageId))) return;
     if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);
   };
   // The SINGLE commit from the modal (Connect / Use / Shopee connect). Switch detection is
@@ -1376,11 +1414,16 @@ export default function RedesignApp() {
       const picked = switchDaysRef.current;
       switchDaysRef.current = null;
       const days = picked ?? sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
-      // Cross-platform switch → FORCE a fresh session stamped with the new platform (H1/H2).
-      const sid = await sessionInstance.startSession(days, target.platform, true);
-      if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
-      liveSession.reset();
-      runTargetConnect(target);
+      // fb_connect_v2 ON: stop the old platform(s) first ("this ends your current capture").
+      // Then: FORCE a fresh session stamped with the new platform (H1/H2) → reset → connect.
+      await runConfirmedSwitch({
+        v2: featureSw.fbConnectV2,
+        stopOld: () => stopOtherPlatforms(target.platform),
+        start: () => sessionInstance.startSession(days, target.platform, true),
+        reset: () => liveSession.reset(),
+        connect: () => runTargetConnect(target),
+        startFailed: () => setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }),
+      });
     } finally { switchingRef.current = false; }
   };
   // KEEP-AWAKE habang naka-live (FLive/Chotdon parity) — web Screen Wake Lock,
@@ -1514,7 +1557,7 @@ export default function RedesignApp() {
   // the union so a Shopee-first connect gets a real session, same as TikTok.
   const connectPending = (p: PendingConnect) => {
     if (p.kind === "shopee") void doShopeeConnect(p.shopId, p.sessionId);
-    else if (p.kind === "fb") void doFbConnect(p.pageId); // F-P3
+    else if (p.kind === "fb") void doFbConnect(p.pageId, p.scopeKey); // F-P3
     else if (p.kind === "ig") void doIgConnect(p.igUserId);
     else void performConnect(p.platform, p.acct, { register: p.register });
   };

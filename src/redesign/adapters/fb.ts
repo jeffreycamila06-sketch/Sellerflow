@@ -142,11 +142,22 @@ export interface FbConnectResult { ok: boolean; reason?: string; error?: string;
 // receives the live flow (the duplicate-auto-order safeguard on multi-device sellers).
 // Without it the server stamped the live-video id → the client dropped EVERY FB event.
 export async function fbConnect(pageId: string): Promise<FbConnectResult> {
+  return postFbLive("/fb/connect", { page_id: String(pageId), sessionId: browserSessionId() });
+}
+
+// fb_connect_v2 — POST /fb/live-check { page_id }: the same live answer as /fb/connect
+// (not_live / needs_reauth / fb_check_failed / 429) WITHOUT starting anything on the server.
+// Asked before the app starts or switches a session. Same result shape and error mapping.
+export async function fbLiveCheck(pageId: string): Promise<FbConnectResult> {
+  return postFbLive("/fb/live-check", { page_id: String(pageId) });
+}
+
+async function postFbLive(path: string, body: Record<string, string>): Promise<FbConnectResult> {
   try {
-    const r = await fetch(`${SERVER}/fb/connect`, {
+    const r = await fetch(`${SERVER}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
-      body: JSON.stringify({ page_id: String(pageId), sessionId: browserSessionId() }),
+      body: JSON.stringify(body),
     });
     const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; live_video_id?: string; fb_code?: unknown; fb_timeout?: unknown }));
     if (r.status === 429) return { ok: false, error: "too_many_requests" };

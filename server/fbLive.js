@@ -912,22 +912,11 @@ export function createFbRuntime(deps) {
     // /connect/tiktok + /shopee/connect: an expired/inactive plan is 403'd here (no
     // poller starts), and the connect rate limit applies. The lock runs first, so a locked
     // caller makes no rate-limit entry and no plan read.
-    app.post("/fb/connect", requireAuth, requireFbAvailable, requireConnectRate, requirePlanActive, requireFbPlan, async (req, res) => {
-      const userId = req.authUserId;
-      const sellerId = req.sellerId;
-      const body = req.body || {};
-      const pageId = String(body.page_id || "");
-      if (!pageId) return res.status(400).json({ ok: false, error: "page_id required" });
-      let page;
-      try { page = await store.getPage(userId, pageId); }
-      catch { return res.status(502).json({ ok: false, error: "fb_check_failed" }); } // database error ≠ no page
-      if (!page || !page.active) return res.status(404).json({ ok: false, error: "page_not_found" });
-      if (!pollers.has(liveKey(sellerId, "Facebook", pageId))) {
-        const v = await accountLiveCheck(req, "facebook", pageId);
-        if (!v.allow) return res.status(403).json({ ok: false, error: "account_not_covered" });
-      }
+    // Shared by /fb/connect and /fb/live-check (fb_connect_v2): the page's live video, or the
+    // exact answer /fb/connect has always given ({ status, json }). Never starts a poller.
+    async function resolvePageLive(userId, pageId, page) {
       const token = decryptToken(page.access_token, config.tokenKey);
-      if (!token) return res.status(409).json({ ok: false, error: "needs_reauth" });
+      if (!token) return { answer: { status: 409, json: { ok: false, error: "needs_reauth" } } };
       let live;
       try { live = await fetchLiveVideos({ config, fetchImpl, pageId, pageToken: token }); }
       catch { live = { liveVideoId: "", failed: true, authFail: false }; }
@@ -944,13 +933,47 @@ export function createFbRuntime(deps) {
       // Invalid token → re-authorize (the page row is left as it is). Any other unanswered
       // check → 502. Only a clean answer without a LIVE video is "not live".
       if (live.authFail || live.failed) logConnectCheckFailed(userId, pageId, live.detail, token);
-      if (live.authFail) return res.status(409).json({ ok: false, error: "needs_reauth" });
+      if (live.authFail) return { answer: { status: 409, json: { ok: false, error: "needs_reauth" } } };
       if (live.failed) {
         const d = live.detail || {};
-        return res.status(502).json({ ok: false, error: "fb_check_failed", fb_code: Number.isFinite(d.code) ? d.code : null, fb_http: Number.isFinite(d.httpStatus) ? d.httpStatus : null, fb_timeout: d.timedOut === true });
+        return { answer: { status: 502, json: { ok: false, error: "fb_check_failed", fb_code: Number.isFinite(d.code) ? d.code : null, fb_http: Number.isFinite(d.httpStatus) ? d.httpStatus : null, fb_timeout: d.timedOut === true } } };
       }
-      if (!live.liveVideoId) return res.json({ ok: false, reason: "not_live" });
-      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || ""), videoMode });
+      if (!live.liveVideoId) return { answer: { status: 200, json: { ok: false, reason: "not_live" } } };
+      return { liveVideoId: live.liveVideoId, videoMode };
+    }
+
+    // fb_connect_v2 — "is this Page live right now?" BEFORE the app starts or switches a
+    // session. Same ownership / active / token / live-video rules and answers as /fb/connect,
+    // but it never starts a poller and never runs the account admission check.
+    app.post("/fb/live-check", requireAuth, requireFbAvailable, requireConnectRate, async (req, res) => {
+      const pageId = String((req.body || {}).page_id || "");
+      if (!pageId) return res.status(400).json({ ok: false, error: "page_id required" });
+      let page;
+      try { page = await store.getPage(req.authUserId, pageId); }
+      catch { return res.status(502).json({ ok: false, error: "fb_check_failed" }); }
+      if (!page || !page.active) return res.status(404).json({ ok: false, error: "page_not_found" });
+      const r = await resolvePageLive(req.authUserId, pageId, page);
+      if (r.answer) return res.status(r.answer.status).json(r.answer.json);
+      return res.json({ ok: true, live_video_id: r.liveVideoId });
+    });
+
+    app.post("/fb/connect", requireAuth, requireFbAvailable, requireConnectRate, requirePlanActive, requireFbPlan, async (req, res) => {
+      const userId = req.authUserId;
+      const sellerId = req.sellerId;
+      const body = req.body || {};
+      const pageId = String(body.page_id || "");
+      if (!pageId) return res.status(400).json({ ok: false, error: "page_id required" });
+      let page;
+      try { page = await store.getPage(userId, pageId); }
+      catch { return res.status(502).json({ ok: false, error: "fb_check_failed" }); } // database error ≠ no page
+      if (!page || !page.active) return res.status(404).json({ ok: false, error: "page_not_found" });
+      if (!pollers.has(liveKey(sellerId, "Facebook", pageId))) {
+        const v = await accountLiveCheck(req, "facebook", pageId);
+        if (!v.allow) return res.status(403).json({ ok: false, error: "account_not_covered" });
+      }
+      const live = await resolvePageLive(userId, pageId, page);
+      if (live.answer) return res.status(live.answer.status).json(live.answer.json);
+      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || ""), videoMode: live.videoMode });
       return res.json({ ok: true, live_video_id: live.liveVideoId });
     });
 

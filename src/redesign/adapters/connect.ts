@@ -156,3 +156,25 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     return { ok: false, error: "Can't reach the live server. Check your connection.", account, unreachable: true };
   }
 }
+
+// fb_connect_v2 — a CONFIRMED platform switch stops the caller's own TikTok live on the server
+// (POST /disconnect/tiktok). Best-effort: 3 s timeout, never throws; false = not confirmed.
+export async function ttDisconnect(username: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  const ac = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ac ? setTimeout(() => ac.abort(), 3000) : null;
+  try {
+    const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+    const r = await fetchImpl(`${SERVER}/disconnect/tiktok`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+      body: JSON.stringify({ username: cleanLiveAccount(username) }),
+      ...(ac ? { signal: ac.signal } : {}),
+    });
+    const j = await r.json().catch(() => null) as { ok?: unknown } | null;
+    return r.ok && !!j && j.ok === true;
+  } catch {
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
