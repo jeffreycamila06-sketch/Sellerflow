@@ -9,9 +9,10 @@
 --    save never writes this column; only the picture actions do.
 -- 2. Storage bucket product-images: public read, max 400 KB per file, JPEG / PNG / WEBP only
 --    (re-running this file re-applies the limits).
--- 3. storage.objects policies for this bucket only: anyone may read; a signed-in seller may
---    insert / update / delete ONLY objects inside their own folder (first path segment =
---    their auth.uid()). No other bucket is affected.
+-- 3. storage.objects policies for this bucket only: a signed-in seller may list / insert /
+--    update / delete ONLY objects inside their own folder (first path segment = their
+--    auth.uid()). Nobody can list the whole bucket; pictures are still downloadable by URL
+--    because the bucket is public. No other bucket is affected.
 -- 4. app_settings product_images_enabled = 'false' (an existing row is left as it is).
 --
 -- ⚠️ WHAT IS NOT CLEANED AUTOMATICALLY: deleting a products row (from the app, by the
@@ -41,8 +42,8 @@ on conflict (id) do update
 
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'product_images_read') then
-    create policy product_images_read on storage.objects for select
-      using (bucket_id = 'product-images');
+    create policy product_images_read on storage.objects for select to authenticated
+      using (bucket_id = 'product-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
   end if;
   if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'product_images_insert_own') then
     create policy product_images_insert_own on storage.objects for insert to authenticated

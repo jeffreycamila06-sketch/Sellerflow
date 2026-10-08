@@ -73,8 +73,13 @@ ok(await raises(ins(db, A, "product-images", `7.jpg`)), "no folder → refused")
 ok(await raises(ins(db, null, "product-images", `${A}/8.jpg`)), "anon cannot upload");
 ok(await raises(ins(db, A, "other", `${A}/7.jpg`)), "other bucket gets no new write access");
 ok(!(await raises(ins(db, B, "product-images", `${B}/9.jpg`))), "B uploads into own folder");
-const anonSee = (await as(db, null, () => db.query(`select name from storage.objects where bucket_id='product-images' order by name`))).rows.map((r) => r.name);
-ok(anonSee.length === 2, "public read of product-images");
+const list = async (uid) => (await as(db, uid, () => db.query(`select name from storage.objects where bucket_id='product-images' order by name`))).rows.map((r) => r.name);
+ok((await list(null)).length === 0, "anon cannot list the bucket");
+ok(JSON.stringify(await list(A)) === JSON.stringify([`${A}/7.jpg`]), "A lists only own folder");
+ok(JSON.stringify(await list(B)) === JSON.stringify([`${B}/9.jpg`]), "B lists only own folder");
+const C = "00000000-0000-0000-0000-00000000000c";
+ok((await list(C)).length === 0, "a third signed-in user sees none");
+ok((await db.query(`select public from storage.buckets where id='product-images'`)).rows[0].public === true, "bucket stays public (download by URL)");
 
 const up = async (uid, target, newName) => (await as(db, uid, () => db.query(`update storage.objects set name = $2 where name = $1`, [target, newName]))).affectedRows;
 ok((await up(A, `${A}/7.jpg`, `${A}/7.jpg`)) === 1, "A replaces own object");

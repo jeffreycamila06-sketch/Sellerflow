@@ -288,11 +288,12 @@ describe("adapter + wiring", () => {
 describe("sql/95 contract", () => {
   const sql = readFileSync("sql/95_product_images.sql", "utf8");
   const rb = readFileSync("sql/95_product_images_rollback.sql", "utf8");
-  it("column, bucket limits, owner-only writes, switch seeded off", () => {
+  it("column, bucket limits, owner-only list and writes, switch seeded off", () => {
+    expect(sql).toMatch(/product_images_read on storage\.objects for select to authenticated\s+using \(bucket_id = 'product-images' and \(storage\.foldername\(name\)\)\[1\] = \(select auth\.uid\(\)\)::text\)/);
     expect(sql).toMatch(/add column if not exists image_path text/i);
     expect(sql).toContain("'product-images', 'product-images', true, 409600, array[");
     expect(sql).toMatch(/array\['image\/jpeg',\s*'image\/png',\s*'image\/webp'\]/);
-    expect((sql.match(/\(storage\.foldername\(name\)\)\[1\] = \(select auth\.uid\(\)\)::text/g) ?? []).length).toBe(4);
+    expect((sql.match(/\(storage\.foldername\(name\)\)\[1\] = \(select auth\.uid\(\)\)::text/g) ?? []).length).toBe(5);
     expect(sql).toContain("('product_images_enabled', 'false')");
   });
   it("no 'drop … if exists' and no backslash-u anywhere", () => {
