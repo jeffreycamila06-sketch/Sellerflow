@@ -199,7 +199,35 @@ async function t92() {
   ok(await raises(as(db, A, () => db.query(`select public.adjust_product_stock_logged(7,-1,'waitlist',null) n`))), "92 rollback: new 'waitlist' rows refused again");
 }
 
-const runs = { t88, t89, t90, t91, t92 };
+async function t93() {
+  const db = await fresh();
+  await db.exec(`insert into public.app_settings(key,value) values ('fb_waitlist_enabled','true');`);
+  await db.exec(src("93_feature_switches.sql"));
+  const m = Object.fromEntries((await db.query(`select key, value from public.app_settings`)).rows.map((r) => [r.key, r.value]));
+  ok(m.sales_platform_enabled === "false" && m.fb_soldout_enabled === "false" && m.inventory_v2_enabled === "false", "93 seeds 'false'");
+  ok(m.fb_waitlist_enabled === "true", "93 never overwrites an existing row");
+  await db.exec(src("93_feature_switches.sql"));
+  ok(true, "93 twice ok");
+  await db.exec(src("93_feature_switches_rollback.sql"));
+  ok((await db.query(`select count(*)::int c from public.app_settings`)).rows[0].c === 0, "93 rollback removes the rows");
+}
+
+// Apply order end to end: 88 → 89 → 90 → 91 → 92 → 93 on one database, then every rollback
+// in reverse order.
+async function tAll() {
+  const db = await fresh();
+  await db.exec(src("42_miners_report.sql"));
+  for (const f of ["88_miners_platform_split", "89_sales_by_platform", "90_stock_movements", "91_fb_soldout", "92_fb_waitlist", "93_feature_switches"]) await db.exec(src(f + ".sql"));
+  ok(true, "88..93 in order");
+  for (const f of ["93_feature_switches", "92_fb_waitlist", "91_fb_soldout", "90_stock_movements", "89_sales_by_platform", "88_miners_platform_split"]) await db.exec(src(f + "_rollback.sql"));
+  ok(true, "rollbacks 93..88 in reverse order");
+  for (const f of ["88", "89", "90", "91", "92", "93"]) {
+    const both = [src(`${f === "88" ? "88_miners_platform_split" : f === "89" ? "89_sales_by_platform" : f === "90" ? "90_stock_movements" : f === "91" ? "91_fb_soldout" : f === "92" ? "92_fb_waitlist" : "93_feature_switches"}.sql`)];
+    ok(!/drop\s+\w+\s+if\s+exists/i.test(both[0]) && !/\\u[0-9a-f]{4}/i.test(both[0]), `${f}: no 'drop … if exists', no backslash-u`);
+  }
+}
+
+const runs = { t88, t89, t90, t91, t92, t93, tAll };
 for (const [n, f] of Object.entries(runs)) {
   try { await f(); } catch (e) { fail++; console.log("CRASH", n, e.message); }
 }

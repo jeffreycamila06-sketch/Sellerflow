@@ -14,6 +14,9 @@ import Miners from "../../screens/Miners";
 import PrinterSettings from "../../screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP } from "../../screens/PrintPattern";
 import { DEF_SETTINGS } from "../printing";
+import SalesTab from "../../screens/SalesTab";
+import Products from "../../screens/Products";
+import ReceiptFormat from "../../screens/ReceiptFormat";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls, Order } from "../../data";
 import type { UseMinersReport } from "../minersReport";
@@ -47,7 +50,20 @@ export interface WorldProps {
   orders?: Record<string, unknown>;
   miners?: Record<string, unknown>;
   pinVisible?: boolean; // RedesignApp passes onTogglePinPrint only when this is true
+  sales?: Record<string, unknown>;
+  products?: Record<string, unknown>;
+  receipt?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
 }
+
+const SALES = {
+  data: {
+    revenue: 1000, orders: 5, buyers: 3, aov: 200, trendUnit: "day", dRevenue: null, dOrders: null, dBuyers: null, dAov: null, repeatPct: null,
+    days: [{ d: "2026-10-08", rev: 1000, orders: 5 }], bestDay: { d: "2026-10-08", rev: 1000, orders: 5 },
+    topProducts: [], topBuyers: [{ name: "Ann", handle: "ann", spent: 1000, orders: 5 }], start: "2026-10-08", end: "2026-10-08",
+  },
+  state: "live", range: "today", load: () => {}, reload: () => {},
+} as never;
 
 const html = (ui: React.ReactElement): string => {
   const { container } = render(<TProvider lang="en">{ui}</TProvider>);
@@ -83,7 +99,7 @@ export function renderScreens(p: WorldProps = {}): Record<string, string> {
         onSubscription={noop} onSupport={noop} onDelete={noop}
         account={account} onSaveProfile={async () => ({ ok: true })} onManageChannel={noop}
         keepAwake onToggleKeepAwake={noop} pinPrint={false} onTogglePinPrint={pinVisible ? noop : undefined}
-        liveSessionOpen onToggleLiveSession={noop} />,
+        liveSessionOpen onToggleLiveSession={noop} {...(p.settings ?? {})} />,
     ),
     settingsHub: html(
       <SettingsHub onGeneral={noop} onCustomers={noop} onAdmin={noop} onShipping={noop}
@@ -101,5 +117,8 @@ export function renderScreens(p: WorldProps = {}): Record<string, string> {
         onTogglePsSize={noop} onPickPsSize={noop} settings={DEF_SETTINGS} stickerQrAllowed />,
     ),
     printPattern: html(<PrintPattern onBack={noop} pp={DEFAULT_PP} onToggle={noop} onStep={noop} stickerQrAllowed />),
+    salesTab: html(<SalesTab cur="NT$" sessionStart="2026-10-06" today="2026-10-08" sales={SALES} {...(p.sales ?? {})} />),
+    products: html(<Products cur="NT$" {...(p.products ?? {})} />),
+    receiptFormat: html(<ReceiptFormat cur="NT$" onBack={noop} {...(p.receipt ?? {})} />),
   };
 }

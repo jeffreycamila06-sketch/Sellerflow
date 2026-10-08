@@ -17,7 +17,7 @@ vi.mock("../useRaffleConfig", () => ({
   useRaffleConfig: () => ({ enabled: false, enabledAt: null, loading: false, toggle: vi.fn(), toggleErrors: 0 }),
 }));
 const rpc = vi.hoisted(() => vi.fn(async () => ({ data: null, error: null })));
-vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rpc } }));
+vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rpc, auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
 import {
   effectiveWorld, platformHides, FEATURE_PLATFORM, PLATFORM_WORLDS_PUBLIC, PLATFORM_VIEW_AS_OPTIONS,
