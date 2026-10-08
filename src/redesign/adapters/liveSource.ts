@@ -51,6 +51,13 @@ export function isServerPlatformSwitch(serverPlatform: string | null | undefined
   return !!serverPlatform && serverPlatform !== next;
 }
 
+// sql/86 — the connect-time switch rule. A known server platform decides (H1). Unknown
+// (NULL: a session from before sql/46, or a failed status read) → today's in-app check
+// on the live flags, for that case only (the pre-v2 rule).
+export function connectIsSwitch(serverPlatform: string | null | undefined, next: SourcePlatform, f: { ttEff: boolean; shopeeEff: boolean }): boolean {
+  return serverPlatform ? isServerPlatformSwitch(serverPlatform, next) : isPlatformSwitch(livePlatformOf(f), next);
+}
+
 // Only TikTok and Shopee are connectable today (Facebook = activation gate, Instagram =
 // coming soon). switchSource is called only for these; this guards the orchestration.
 export function isConnectableSource(p: SourcePlatform): p is "TikTok" | "Shopee" {
