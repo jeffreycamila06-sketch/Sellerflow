@@ -604,6 +604,7 @@ const RAW: Record<string, Row> = {
   rd_min_other: { en: "Other", fil: "Iba pa", zh: "其他", "zh-TW": "其他", vi: "Khác", th: "อื่นๆ", id: "Lainnya", bg: "Други" },
   rd_sal_plat_all: { en: "All platforms", fil: "Lahat ng platform", zh: "所有平台", "zh-TW": "所有平台", vi: "Tất cả nền tảng", th: "ทุกแพลตฟอร์ม", id: "Semua platform", bg: "Всички платформи" },
   rd_sal_plat_note: { en: "Per-platform sales cover the last 7 days only.", fil: "Ang benta kada platform ay para lang sa huling 7 araw.", zh: "分平台销售只涵盖最近 7 天。", "zh-TW": "分平台銷售只涵蓋最近 7 天。", vi: "Doanh số theo nền tảng chỉ gồm 7 ngày gần nhất.", th: "ยอดขายแยกแพลตฟอร์มครอบคลุมเพียง 7 วันล่าสุด", id: "Penjualan per platform hanya mencakup 7 hari terakhir.", bg: "Продажбите по платформа обхващат само последните 7 дни." },
+  rd_sal_plat_note_2m: { en: "Per-platform counts new orders only.", fil: "Mga bagong order lang ang bilang kada platform.", zh: "按平台统计只包含新订单。", "zh-TW": "按平台統計只包含新訂單。", vi: "Số liệu theo nền tảng chỉ tính đơn mới.", th: "ยอดแยกตามแพลตฟอร์มนับเฉพาะออเดอร์ใหม่", id: "Per platform hanya menghitung pesanan baru.", bg: "По платформи се броят само новите поръчки." },
   rd_sal_best_sellers: { en: "Best sellers", fil: "Pinakamabenta", zh: "畅销商品", "zh-TW": "暢銷商品", vi: "Bán chạy nhất", th: "สินค้าขายดี", id: "Terlaris", bg: "Най-продавани" },
   rd_sal_pcs: { en: "pcs", fil: "piraso", zh: "件", "zh-TW": "件", vi: "cái", th: "ชิ้น", id: "pcs", bg: "бр." },
   rd_prd_restock: { en: "Restock", fil: "Mag-restock", zh: "补货", "zh-TW": "補貨", vi: "Nhập thêm", th: "เติมสต็อก", id: "Restok", bg: "Зареди" },

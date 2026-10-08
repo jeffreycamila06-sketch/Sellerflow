@@ -23,7 +23,7 @@ import { exportBrandedXlsx, exportBrandedPdf } from "../adapters/brandedExport";
 import { dayStamp } from "../adapters/csv";
 import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
 import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
-import { platformRange, type SalesPlatform, type UsePlatformSales } from "../adapters/salesByPlatform";
+import { platformRange, platformRangeFor, platformRpcFor, type SalesPlatform, type UsePlatformSales } from "../adapters/salesByPlatform";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
@@ -71,15 +71,21 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   const loadRef = useRef(sales.load);
   useEffect(() => { loadRef.current = sales.load; });
   useEffect(() => { loadRef.current(range, bounds); }, [range, bounds]);
-  // Per-platform view: Today / This session / 7 days only (live_session_orders keeps 10 days).
+  // Per-platform view: Today / This session / 7 days (live_session_orders keeps 10 days) and
+  // 2 months (orders ledger, sql/96–97). Any other range loads nothing — never "session".
   const platLoadRef = useRef(platformSales?.load);
   useEffect(() => { platLoadRef.current = platformSales?.load; });
   useEffect(() => {
-    if (!platOn || range === "custom") return;
-    const b = platformRange(range === "today" ? "today" : range === "7d" ? "7d" : "session", today, sessionStart);
-    platLoadRef.current?.(plat as SalesPlatform, b.from, b.to);
+    const pr = platformRangeFor(range);
+    if (!platOn || !pr) return;
+    const b = platformRange(pr, today, sessionStart);
+    platLoadRef.current?.(plat as SalesPlatform, b.from, b.to, platformRpcFor(pr));
   }, [platOn, plat, range, today, sessionStart]);
-  const pickPlat = (p: "all" | SalesPlatform) => { setPlat(p); if (p !== "all" && range === "custom") setRange("session"); };
+  const pickPlat = (p: "all" | SalesPlatform) => {
+    setPlat(p);
+    if (p !== "all" && range === "custom") setRange("session");
+    if (p === "all" && range === "2months") setRange("session"); // "All" shows no 2-months pill
+  };
 
   // Keep the latest bar in view (hourly Today can be up to 24 bars → scroll).
   const trackRef = useRef<HTMLDivElement>(null);
@@ -99,7 +105,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   const capBar = selBar ?? d?.bestDay ?? null;
 
   const RANGES: [SalesTabRange, string][] = [["today", t.rd_ord_today], ["session", t.rd_ord_range_session], ["7d", t.rd_ord_range_7d], ["custom", t.rd_ord_range_custom]];
-  const shownRanges = platOn ? RANGES.filter(([r]) => r !== "custom") : RANGES;
+  const shownRanges: [SalesTabRange, string][] = platOn ? [...RANGES.filter(([r]) => r !== "custom"), ["2months", t.rd_sal_2months]] : RANGES;
   const pill = (active: boolean): CSSProperties => ({ padding: "7px 13px", borderRadius: 999, border: "1px solid " + (active ? "var(--accent)" : "var(--border)"), background: active ? "var(--accent)" : "var(--surface)", color: active ? "#fff" : "var(--text-dim)", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" });
 
   const doExport = (kind: "xlsx" | "pdf") => {
@@ -154,7 +160,9 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
             ))}
           </div>
         )}
-        {platOn && <div style={{ fontSize: 11, color: "var(--on-header)", opacity: 0.85, marginTop: 6 }} data-testid="sales-plat-note">{t.rd_sal_plat_note}</div>}
+        {platOn && (range === "2months"
+          ? <div style={{ fontSize: 11, color: "var(--on-header)", opacity: 0.85, marginTop: 6 }} data-testid="sales-plat-note-2m">{t.rd_sal_plat_note_2m}</div>
+          : <div style={{ fontSize: 11, color: "var(--on-header)", opacity: 0.85, marginTop: 6 }} data-testid="sales-plat-note">{t.rd_sal_plat_note}</div>)}
         {range === "custom" && (
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <label style={{ flex: 1, fontSize: 11, color: "var(--on-header)", opacity: 0.9 }}>{t.rd_ord_range_from}<input type="date" value={customFrom} max={customTo || today} onChange={(e) => setCustomFrom(e.target.value)} data-testid="sales-custom-from" style={dateInput} /></label>

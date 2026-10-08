@@ -114,11 +114,11 @@ describe("Sales tab", () => {
     fireEvent.click(r.getByTestId("sales-plat-TikTok"));
     expect(r.queryByTestId("sales-range-custom")).toBeNull();
     expect(r.getByTestId("sales-plat-note").textContent).toMatch(/7 days/);
-    expect(ps.load).toHaveBeenLastCalledWith("TikTok", "2026-10-06", "2026-10-08"); // custom → This session
+    expect(ps.load).toHaveBeenLastCalledWith("TikTok", "2026-10-06", "2026-10-08", "sales_by_platform"); // custom → This session
     expect(r.getByTestId("sales-plat-best-0").textContent).toContain("A1");
     expect(r.getByTestId("sales-plat-best-1").textContent).toContain("NT$150");
     fireEvent.click(r.getByTestId("sales-range-7d"));
-    expect(ps.load).toHaveBeenLastCalledWith("TikTok", "2026-10-02", "2026-10-08");
+    expect(ps.load).toHaveBeenLastCalledWith("TikTok", "2026-10-02", "2026-10-08", "sales_by_platform");
     fireEvent.click(r.getByTestId("sales-plat-all"));
     expect(r.getByTestId("sales-summary")).toBeTruthy();
   });
