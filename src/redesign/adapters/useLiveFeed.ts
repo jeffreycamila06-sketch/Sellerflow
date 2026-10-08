@@ -122,7 +122,7 @@ const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | 
 // { TikTok, Facebook } call site + test stays byte-unchanged; defaults to "" in
 // use). TikTok/Facebook handling is byte-unchanged; the Shopee key rides the SAME
 // platform_status / select_account wire, populated by a dedicated early-return branch.
-export interface ActiveAccounts { TikTok: string; Facebook: string; Shopee?: string }
+export interface ActiveAccounts { TikTok: string; Facebook: string; Shopee?: string; Instagram?: string } // Instagram: phase 1, additive like Shopee
 
 export interface UseLiveFeed {
   comments: RDComment[];
@@ -158,6 +158,8 @@ export interface UseLiveFeed {
   // never taps the TikTok Connect that normally arms the room join).
   shopeeConnected: boolean;
   ensureJoined: () => void;
+  // Instagram (phase 1, admin / preview only): platform_status platform:"Instagram".
+  igConnected: boolean;
 }
 
 export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts, onPinned?: (p: PinPayload) => void): UseLiveFeed {
@@ -221,6 +223,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // from the tt/fb grace machine (Shopee has no reconnect concept): connected:true =
   // poller running, false = stopped. No amber/recovering state.
   const [shopeeConnected, setShopeeConnected] = useState(false);
+  const [igConnected, setIgConnected] = useState(false); // Instagram (phase 1)
   // F3 — TRUE while a fall-to-gray grace window is armed (server health-cycle
   // reconnect or socket-down grace): the stream's health is IN DOUBT. Display
   // layer maps this to the existing amber "Connecting…" visuals instead of
@@ -244,8 +247,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   const ttSel = selected?.TikTok || "";
   const fbSel = selected?.Facebook || "";
   const shSel = selected?.Shopee || ""; // P3 — selected Shopee shop id (scoping key)
-  const selectedRef = useRef<ActiveAccounts>({ TikTok: ttSel, Facebook: fbSel, Shopee: shSel });
-  selectedRef.current = { TikTok: ttSel, Facebook: fbSel, Shopee: shSel };
+  const igSel = selected?.Instagram || ""; // Instagram (phase 1) — "" for everyone without IG
+  const selectedRef = useRef<ActiveAccounts>({ TikTok: ttSel, Facebook: fbSel, Shopee: shSel, Instagram: igSel });
+  selectedRef.current = { TikTok: ttSel, Facebook: fbSel, Shopee: shSel, Instagram: igSel };
   const socketRef = useRef<Socket | null>(null);
   // MANUAL-CONNECT-ONLY (Jeff decision, 2026-07-12): the Fix B client
   // auto-reconnect (re-POST /connect after a socket reconnect — the app-open /
@@ -349,6 +353,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       s.emit("select_account", { platform: "TikTok", username: selectedRef.current.TikTok });
       s.emit("select_account", { platform: "Facebook", username: selectedRef.current.Facebook });
       s.emit("select_account", { platform: "Shopee", username: selectedRef.current.Shopee }); // P3 — per-shop scoping
+      // Instagram: sent ONLY when an IG account is selected — no extra emit for anyone else (an
+      // older server would map an unknown platform onto the TikTok selection).
+      if (selectedRef.current.Instagram) s.emit("select_account", { platform: "Instagram", username: selectedRef.current.Instagram });
     };
     // Exposed to connect() (the tap handler) — join at connect INITIATION so
     // the socket is in the room BEFORE the server relays the initial batch.
@@ -406,7 +413,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       // is deferred with the real socket (F2 — preview can't connect).
       const c: ProdComment = {
         ...d,
-        platform: d.platform === "Facebook" ? "Facebook" : d.platform === "Shopee" ? "Shopee" : "TikTok", // P3 — retain Shopee (was TikTok/FB only)
+        platform: d.platform === "Facebook" ? "Facebook" : d.platform === "Shopee" ? "Shopee" : d.platform === "Instagram" ? "Instagram" : "TikTok", // P3 — retain Shopee; Instagram (phase 1)
         handle: String(d.handle || d.name || "").trim(),
         name: String(d.name || d.handle || "").trim(),
         comment: String(d.comment || "").trim(),
@@ -422,7 +429,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       // first line of defense; this is the client-side guarantee.
       if (c.sourceUsername) {
         // P3 — scope against the platform's OWN selection (Shopee → the selected shop id).
-        const selKey = c.platform === "Facebook" ? "Facebook" : c.platform === "Shopee" ? "Shopee" : "TikTok";
+        const selKey = c.platform === "Facebook" ? "Facebook" : c.platform === "Shopee" ? "Shopee" : c.platform === "Instagram" ? "Instagram" : "TikTok";
         const sel = cleanLiveAccount(selectedRef.current[selKey]);
         if (sel && cleanLiveAccount(c.sourceUsername) !== sel) return;
       }
@@ -477,6 +484,18 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         } else {
           setShopeeConnected(false);
           setActiveAccounts((a) => ({ ...a, Shopee: "" }));
+        }
+        return;
+      }
+      // Instagram (phase 1) — same shape as Shopee: connected = poller running, else gray.
+      // Returns before the TikTok/Facebook code (unchanged).
+      if (p.platform === "Instagram") {
+        if (p.connected && !p.reconnecting) {
+          setIgConnected(true);
+          setActiveAccounts((a) => ({ ...a, Instagram: p.username || "" }));
+        } else {
+          setIgConnected(false);
+          setActiveAccounts((a) => ({ ...a, Instagram: "" }));
         }
         return;
       }
@@ -602,7 +621,8 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     s.emit("select_account", { platform: "TikTok", username: ttSel });
     s.emit("select_account", { platform: "Facebook", username: fbSel });
     s.emit("select_account", { platform: "Shopee", username: shSel }); // P3 — re-scope on shop switch
-  }, [ttSel, fbSel, shSel, connected]);
+    if (igSel) s.emit("select_account", { platform: "Instagram", username: igSel }); // Instagram users only
+  }, [ttSel, fbSel, shSel, igSel, connected]);
 
   // #6 — real connect: POST to the live server, then optimistically set the active
   // account (the authoritative value still arrives via platform_status). Clears the
@@ -728,5 +748,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — history block mapped with restored:true so the Dashboard's
   // muted zero-action display branch handles it (duplicate-order layer 3).
   const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
-  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect, shopeeConnected, ensureJoined };
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect, shopeeConnected, ensureJoined, igConnected };
 }

@@ -25,9 +25,14 @@ export type SourcePlatform = "TikTok" | "Facebook" | "Shopee" | "Instagram";
 // The platform the CURRENTLY-LIVE session belongs to, derived from the effective
 // connected flags (in-memory — no DB). Facebook never connects (design-only gate);
 // Instagram is a placeholder. null = nothing live right now (fresh open / ended).
-export function livePlatformOf(f: { ttEff: boolean; shopeeEff: boolean }): SourcePlatform | null {
+// fbEff / igEff (optional, Session-RPC v2 follow-up b): a live Facebook / Instagram counts too.
+// Checked AFTER TikTok and Shopee, so a seller with neither (every TikTok-only seller) gets
+// exactly today's answer.
+export function livePlatformOf(f: { ttEff: boolean; shopeeEff: boolean; fbEff?: boolean; igEff?: boolean }): SourcePlatform | null {
   if (f.ttEff) return "TikTok";
   if (f.shopeeEff) return "Shopee";
+  if (f.fbEff) return "Facebook";
+  if (f.igEff) return "Instagram";
   return null;
 }
 
@@ -54,7 +59,7 @@ export function isServerPlatformSwitch(serverPlatform: string | null | undefined
 // sql/86 — the connect-time switch rule. A known server platform decides (H1). Unknown
 // (NULL: a session from before sql/46, or a failed status read) → today's in-app check
 // on the live flags, for that case only (the pre-v2 rule).
-export function connectIsSwitch(serverPlatform: string | null | undefined, next: SourcePlatform, f: { ttEff: boolean; shopeeEff: boolean }): boolean {
+export function connectIsSwitch(serverPlatform: string | null | undefined, next: SourcePlatform, f: { ttEff: boolean; shopeeEff: boolean; fbEff?: boolean; igEff?: boolean }): boolean {
   return serverPlatform ? isServerPlatformSwitch(serverPlatform, next) : isPlatformSwitch(livePlatformOf(f), next);
 }
 

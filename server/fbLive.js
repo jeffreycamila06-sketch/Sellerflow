@@ -151,12 +151,16 @@ export function confirmPageCsp(appUrl, { app = false } = {}) {
   return `default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self'${appOrigin ? ` ${appOrigin}` : ""}${app ? ` ${APP_AUTH_SCHEME}:` : ""}`;
 }
 
-export function buildConfirmPage({ code, state, email, storeName, appUrl, app = false }) {
-  const cancel = app ? `${APP_AUTH_CALLBACK}?fb=error&code=cancelled` : `${appUrl}/?fb=error&code=cancelled`;
+// labels (optional, Instagram reuses this page): the defaults are Facebook's exact strings, so
+// every Facebook call is byte-identical to before. param = the web return query key.
+export const FB_CONFIRM_LABELS = { title: "Connect your Facebook Page", lead: "Your Facebook Page will be connected to this SellerFlowLive account:", action: "/fb/oauth/complete", param: "fb" };
+export function buildConfirmPage({ code, state, email, storeName, appUrl, app = false, labels = FB_CONFIRM_LABELS }) {
+  const L = { ...FB_CONFIRM_LABELS, ...labels };
+  const cancel = app ? `${APP_AUTH_CALLBACK}?fb=error&code=cancelled` : `${appUrl}/?${L.param}=error&code=cancelled`;
   const store = String(storeName || "").trim();
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Connect your Facebook Page</title>
+<title>${escapeHtml(L.title)}</title>
 <style>
 body{margin:0;background:#f4f3fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1d1b2e}
 main{max-width:420px;margin:0 auto;padding:32px 20px}
@@ -174,11 +178,11 @@ button:disabled{opacity:.7;cursor:default}
 .note{margin:12px 0 0;font-size:13px;color:#6b6880;text-align:center}
 </style></head>
 <body><main><div class="card">
-<h1>Connect your Facebook Page</h1>
-<p>Your Facebook Page will be connected to this SellerFlowLive account:</p>
+<h1>${escapeHtml(L.title)}</h1>
+<p>${escapeHtml(L.lead)}</p>
 <div class="acct"><b>${escapeHtml(maskEmail(email))}</b>${store ? `${escapeHtml(store)}` : ""}</div>
 <p class="warn">Only continue if this is your own SellerFlowLive account.</p>
-<form id="c" method="post" action="/fb/oauth/complete">
+<form id="c" method="post" action="${escapeHtml(L.action)}">
 <input type="hidden" name="code" value="${escapeHtml(code)}">
 <input type="hidden" name="state" value="${escapeHtml(state)}">
 <button type="submit">Connect</button>

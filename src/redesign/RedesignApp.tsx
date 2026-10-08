@@ -43,6 +43,8 @@ import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import FbChannels from "./screens/FbChannels";
+import IgChannels from "./screens/IgChannels";
+import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
 import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import { useFbAccess, fbUiGates } from "./adapters/fbAccess";
@@ -124,10 +126,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages" | "receiptformat";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages", "receiptformat"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages", "receiptformat", "igaccounts"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -148,18 +150,20 @@ function OrdersMinersTabs({ tab, onTab, ordersLabel }: { tab: "orders" | "miners
 type PendingConnect =
   | { kind: "tt"; platform: Platform; acct: string; register?: boolean }
   | { kind: "shopee"; shopId: number; sessionId: string }
-  | { kind: "fb"; pageId: string; scopeKey: string }; // F-P3 — Facebook page connect
+  | { kind: "fb"; pageId: string; scopeKey: string } // F-P3 — Facebook page connect
+  | { kind: "ig"; igUserId: string; scopeKey: string }; // Instagram (phase 1)
 // The Live Source connect target the new modal commits (before the session gate).
 type LiveConnectTarget =
   | { platform: "TikTok"; username: string; register?: boolean }
   | { platform: "Shopee"; shopId: number; sessionId: string }
-  | { platform: "Facebook"; pageId: string; scopeKey: string }; // F-P3
+  | { platform: "Facebook"; pageId: string; scopeKey: string } // F-P3
+  | { platform: "Instagram"; igUserId: string; scopeKey: string }; // Instagram (phase 1)
 // The platform a pending/target connect is FOR — passed to start_session so the new
 // session records its platform (H1). Kind "tt" carries platform (TikTok today).
-const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.kind === "fb" ? "Facebook" : p.platform);
+const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.kind === "fb" ? "Facebook" : p.kind === "ig" ? "Instagram" : p.platform);
 // sql/86 — a first-connect start_session answered "switch needed" (another device started a
 // session on a different platform meanwhile) → route the same connect through the switch confirm.
-const targetOfPending = (p: PendingConnect): LiveConnectTarget => (p.kind === "shopee" ? { platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId } : p.kind === "fb" ? { platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey } : { platform: "TikTok", username: p.acct, register: p.register });
+const targetOfPending = (p: PendingConnect): LiveConnectTarget => (p.kind === "shopee" ? { platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId } : p.kind === "fb" ? { platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey } : p.kind === "ig" ? { platform: "Instagram", igUserId: p.igUserId, scopeKey: p.scopeKey } : { platform: "TikTok", username: p.acct, register: p.register });
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -477,6 +481,21 @@ export default function RedesignApp() {
   // sourceUsername + platform_status username). The client's Facebook selection MUST be
   // this same key for the useLiveFeed scoping filter to match.
   const fbScopeKey = selectedPage ? (selectedPage.username || selectedPage.pageId) : "";
+  // Instagram (phase 1, admin / preview only). igEnabled = the server's own lock (GET /ig/access,
+  // fail closed — false for everyone while the server runtime is off). Everyone else: no IG UI.
+  const igEnabled = useIgAccess(authed, String(auth.profile?.email || ""));
+  const [igAccounts, setIgAccounts] = useState<IgAccount[]>([]);
+  const [igIdx, setIgIdx] = useState(0);
+  const selectedIg = igAccounts[igIdx] || igAccounts[0] || null;
+  const reloadIgAccounts = useCallback(async () => { setIgAccounts(await listIgAccounts()); }, []);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!authed || !igEnabled) { setIgAccounts([]); return; }
+    let alive = true;
+    void listIgAccounts().then((list) => { if (alive) { setIgAccounts(list); setIgIdx((i) => (i < list.length ? i : 0)); } });
+    return () => { alive = false; };
+  }, [authed, igEnabled]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!authed) return;
     let alive = true;
@@ -513,7 +532,7 @@ export default function RedesignApp() {
   const ttAccounts = auth.profile
     ? coveredTikTokNames(accountList(auth.profile.profile.tiktok), liveCoverage) ?? registeredAccountsFor(auth.profile, "TikTok")
     : [];
-  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbEnabled ? fbScopeKey : (fbAccounts[fbIdx] || ""), Shopee: selectedShop ? String(selectedShop.shopId) : "" };
+  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbEnabled ? fbScopeKey : (fbAccounts[fbIdx] || ""), Shopee: selectedShop ? String(selectedShop.shopId) : "", ...(igEnabled && selectedIg ? { Instagram: igScopeKey(selectedIg) } : {}) };
 
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e). The 3rd arg is the
@@ -798,6 +817,21 @@ export default function RedesignApp() {
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
   }, [reloadFbPages, tApp, fbReturnPlan, ios, lang]);
+
+  // Instagram (phase 1) OAuth return (?ig=connected|error&code=…): toast + strip the query.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ret = parseIgReturn(window.location.search);
+    if (!ret) return;
+    const msg = igReturnText(ret, tApp, maxAcc(auth.profile?.plan || "free"));
+    if (msg) setToast({ msg, kind: ret.status === "connected" ? "ok" : "err" });
+    if (ret.status === "connected") void reloadIgAccounts();
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("ig"); url.searchParams.delete("code");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch { /* ignore */ }
+  }, [reloadIgAccounts, tApp, auth.profile?.plan]);
 
   // "No printer connected" modal — an order printed but the native bridge said no
   // printer is set up yet (BT_NOT_SET / PRINTER_NOT_SET). The order is ALREADY
@@ -1097,10 +1131,13 @@ export default function RedesignApp() {
   // Disconnect gesture cleared by server truth). shopeeConnected = liveFeed truth.
   const [shopeeConnecting, setShopeeConnecting] = useState(false);
   const [shopeeOff, setShopeeOff] = useState(false);
+  const [igConnecting, setIgConnecting] = useState(false); // Instagram (phase 1)
+  const [igOff, setIgOff] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { setTtOff(false); }, [ttConnected]); // server status wins over a local disconnect
   useEffect(() => { setFbOff(false); }, [fbConnected]);
   useEffect(() => { setShopeeOff(false); }, [liveFeed.shopeeConnected]); // server truth wins
+  useEffect(() => { setIgOff(false); }, [liveFeed.igConnected]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
@@ -1124,14 +1161,15 @@ export default function RedesignApp() {
   }, [fbLivePageId, fbPages]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
+  const igEff = liveFeed.igConnected && !igOff; // false for everyone without Instagram
   // BUYER ALERT (Phase 1, gated by the server access list) — ONE RPC when a live source
   // connects, refreshed every 10 min; rows do an O(1) map lookup. No access → no RPC, no change.
-  const buyerAlert = useBuyerAlert(buyerAlertGate(buyerAlertAccess), ttEff || fbEff || shopeeEff);
+  const buyerAlert = useBuyerAlert(buyerAlertGate(buyerAlertAccess), ttEff || fbEff || shopeeEff || igEff);
   const [buyerAlertHandle, setBuyerAlertHandle] = useState<string | null>(null);
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never
   // modified). Connected → today's behavior ("Session continues …").
-  const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff);
+  const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff || igEff);
   // ── Option E — Live Source (owner-gated). ONE active source at a time. The new
   // single "Live source" button + sheet REPLACE the 3 chips for the owner only;
   // everyone else keeps the classic 3-chip header (liveSourceMode false → unchanged).
@@ -1145,6 +1183,10 @@ export default function RedesignApp() {
   const [liveConnectMode, setLiveConnectMode] = useState<"connect" | "manage">("connect");
   // Platform-switch confirm — carries the full target so Confirm can connect after reset.
   const [switchConfirm, setSwitchConfirm] = useState<LiveConnectTarget | null>(null);
+  // Session-RPC v2 follow-up (a): after a "switch needed", the confirm starts the session with the
+  // length the seller JUST picked; every other switch keeps today's length rule (null).
+  const switchDaysRef = useRef<number | null>(null);
+  const askSwitch = (target: LiveConnectTarget, pickedDays: number | null = null) => { switchDaysRef.current = pickedDays; setSwitchConfirm(target); };
   // H4 — single start_session per confirm. A same-tick double-tap of "Switch" (before
   // setSwitchConfirm(null) unmounts the modal) must NOT fire two start_session → two
   // buyer# resets. Synchronous ref latch = the only reliable guard for a same-tick race.
@@ -1231,6 +1273,30 @@ export default function RedesignApp() {
       return r;
     } finally { setFbConnecting(false); }
   };
+  // Instagram (phase 1) — mirror of the Facebook chip handler + socket connect. Reached only
+  // through the picker's Instagram tile, which exists only while igEnabled.
+  const onConnectInstagram = () => {
+    if (igEff) { setIgOff(true); if (selectedIg) void igDisconnect(selectedIg.igUserId); return; }
+    if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
+    if (!selectedIg) { setChanBack("dashboard"); setScreen("igaccounts"); return; }
+    commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
+  };
+  const doIgConnect = async (igUserId: string) => {
+    if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
+    setIgConnecting(true);
+    track("connect_attempt", { platform: "Instagram" });
+    try {
+      liveFeed.ensureJoined();
+      const r = await igConnect(igUserId);
+      if (r.ok) { track("connect_success", { platform: "Instagram" }); setToast({ msg: tApp.rd_ig_connected_toast, kind: "ok" }); }
+      else {
+        track("connect_failed", { platform: "Instagram", reason: r.reason || r.error || "unknown" });
+        if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
+        else setToast({ msg: igConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" });
+      }
+      return r;
+    } finally { setIgConnecting(false); }
+  };
   // ── Option E — Live Source orchestration (owner-gated). Presentation + session GATE
   // only; the socket connect (performConnect / doShopeeConnect / useLiveFeed) is reused,
   // UNTOUCHED. All session-start funnels into the existing picker/owner handlers →
@@ -1250,6 +1316,7 @@ export default function RedesignApp() {
   const runTargetConnect = (target: LiveConnectTarget) => {
     if (target.platform === "Shopee") void doShopeeConnect(target.shopId, target.sessionId);
     else if (target.platform === "Facebook") void doFbConnect(target.pageId); // F-P3
+    else if (target.platform === "Instagram") void doIgConnect(target.igUserId);
     else void performConnect("TikTok", target.username, { register: target.register });
   };
   // Session-aware connect for the new modal: running → connect (CONTINUE, same session_id
@@ -1263,13 +1330,15 @@ export default function RedesignApp() {
     // force-fresh #1 (confirmSwitch). Same platform / NULL-legacy → continue. This
     // replaces the old in-memory livePlatformOf(ttEff/shopeeEff) anchor (stale-flag hole).
     if (status.running) {
-      if (connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff })) { setSwitchConfirm(target); return; }
+      if (connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff, fbEff, igEff })) { askSwitch(target); return; }
       runTargetConnect(target); return; // same platform → continue same session (NULL → in-app check, sql/86)
     }
     const pending: PendingConnect = target.platform === "Shopee"
       ? { kind: "shopee", shopId: target.shopId, sessionId: target.sessionId }
       : target.platform === "Facebook"
       ? { kind: "fb", pageId: target.pageId, scopeKey: target.scopeKey } // F-P3
+      : target.platform === "Instagram"
+      ? { kind: "ig", igUserId: target.igUserId, scopeKey: target.scopeKey }
       : { kind: "tt", platform: "TikTok", acct: target.username, register: target.register };
     if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);
   };
@@ -1291,7 +1360,9 @@ export default function RedesignApp() {
     if (!target) return;
     switchingRef.current = true;
     try {
-      const days = sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
+      const picked = switchDaysRef.current;
+      switchDaysRef.current = null;
+      const days = picked ?? sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
       // Cross-platform switch → FORCE a fresh session stamped with the new platform (H1/H2).
       const sid = await sessionInstance.startSession(days, target.platform, true);
       if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
@@ -1332,8 +1403,8 @@ export default function RedesignApp() {
     });
   };
   useWakeLock(shouldHoldWakeLock(keepAwake, {
-    ttEff, fbEff,
-    ttConnecting, fbConnecting,
+    ttEff, fbEff: fbEff || igEff, // a live Instagram keeps the screen on too (igEff false without IG)
+    ttConnecting, fbConnecting: fbConnecting || igConnecting,
     ttRecovering: liveFeed.ttRecovering, fbRecovering: liveFeed.fbRecovering,
   }));
   // The actual socket connect (unchanged) — extracted so BOTH the "session already
@@ -1408,8 +1479,8 @@ export default function RedesignApp() {
       // (never mix platforms in one numbering). TikTok-only here (the only reachable dropdown
       // connect); NULL-legacy / same-platform → continue. No new startSession site — it
       // funnels to confirmSwitch (site #3).
-      if (platform === "TikTok" && connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff })) {
-        setTtOpen(false); setSwitchConfirm({ platform: "TikTok", username: acct }); return;
+      if (platform === "TikTok" && connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff, fbEff, igEff })) {
+        setTtOpen(false); askSwitch({ platform: "TikTok", username: acct }); return;
       }
       void performConnect(platform, acct); return;
     }
@@ -1423,6 +1494,7 @@ export default function RedesignApp() {
   const connectPending = (p: PendingConnect) => {
     if (p.kind === "shopee") void doShopeeConnect(p.shopId, p.sessionId);
     else if (p.kind === "fb") void doFbConnect(p.pageId); // F-P3
+    else if (p.kind === "ig") void doIgConnect(p.igUserId);
     else void performConnect(p.platform, p.acct, { register: p.register });
   };
   // Owner "Start Session" → fixed 5-day session_id, then connect. Mirrors
@@ -1435,7 +1507,7 @@ export default function RedesignApp() {
     // First-connect (owner Start): stamp the connecting platform; force=false (default) →
     // reuse-if-running converges a two-device race onto one session.
     const sid = await sessionInstance.startSession(SESSION_V2_DAYS, platformOfPending(pending), false);
-    if (sid === SESSION_SWITCH_NEEDED) { setSwitchConfirm(targetOfPending(pending)); return; }
+    if (sid === SESSION_SWITCH_NEEDED) { askSwitch(targetOfPending(pending), SESSION_V2_DAYS); return; }
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     liveSession.reset();
     connectPending(pending);
@@ -1458,7 +1530,7 @@ export default function RedesignApp() {
     if (!pending) return;
     // First-connect (legacy picker): stamp the connecting platform; force=false (default).
     const sid = await sessionInstance.startSession(days, platformOfPending(pending), false);
-    if (sid === SESSION_SWITCH_NEEDED) { setSwitchConfirm(targetOfPending(pending)); return; }
+    if (sid === SESSION_SWITCH_NEEDED) { askSwitch(targetOfPending(pending), days); return; }
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     // New session_id → clear + reload the live session so it loads by the NEW id
     // (empty → buyer# restarts at #1). The load effect re-runs on the sessionId
@@ -1934,6 +2006,11 @@ export default function RedesignApp() {
               /* Live platform picker — admin-only preview (presentation only; same
                  callbacks as the classic chips). Non-admins: false → classic, unchanged. */
               livePicker={livePickerEnabled(isAdmin)}
+              {...(igEnabled ? { ig: {
+                accounts: igAccounts.map((a) => ({ igUserId: a.igUserId, name: a.username ? `@${a.username}` : a.igUserId })),
+                idx: igIdx, onPick: setIgIdx, connected: igEff, connecting: igConnecting,
+                onConnect: onConnectInstagram, onManage: () => { setChanBack("dashboard"); setScreen("igaccounts"); },
+              } } : {})}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               printed={printed} entId={entId} entPrice={entPrice}
               historyReady={liveSession.orderedLoaded}
@@ -2037,7 +2114,8 @@ export default function RedesignApp() {
           {(screen === "ttchannels" || screen === "fbchannels") && (
             <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen(chanBack)} onSaveChannels={saveChannels}
               shopeeEnabled={shopeeEnabled} onShopee={() => { setChanBack("settings"); setScreen("shopeechannels"); }}
-              fbPagesEnabled={fbEnabled} onFbPages={() => { setChanBack("settings"); setScreen("fbpages"); }} />
+              fbPagesEnabled={fbEnabled} onFbPages={() => { setChanBack("settings"); setScreen("fbpages"); }}
+              {...(igEnabled ? { onInstagram: () => { setChanBack("settings"); setScreen("igaccounts"); } } : {})} />
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
               Shopee chip's Manage row). Origin-aware Back via chanBack. */}
@@ -2048,6 +2126,9 @@ export default function RedesignApp() {
               Live FB chip's Manage row / no-page authorize). Origin-aware Back via chanBack. */}
           {screen === "fbpages" && (
             <FbChannels account={auth.profile} pages={fbPages} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+          )}
+          {screen === "igaccounts" && igEnabled && (
+            <IgChannels account={auth.profile} accounts={igAccounts} onReload={reloadIgAccounts} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}

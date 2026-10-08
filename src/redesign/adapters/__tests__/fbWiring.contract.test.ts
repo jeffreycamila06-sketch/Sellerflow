@@ -55,10 +55,10 @@ describe("CARRY-FORWARD #2 — server-anchored platform switch, BOTH directions"
     expect(app).toMatch(/commitLiveConnect\(\{ platform: "Facebook", pageId: selectedPage\.pageId, scopeKey: fbScopeKey \}\)/);
   });
   it("runSessionAware anchors the switch generically on target.platform (FB while TikTok runs → confirm)", () => {
-    expect(app).toContain("connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff })");
+    expect(app).toContain("connectIsSwitch(status.platform, target.platform, { ttEff, shopeeEff, fbEff, igEff })");
   });
   it("doConnect's TikTok guard anchors on status.platform (TikTok while FB runs → confirm)", () => {
-    expect(app).toContain('connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff })');
+    expect(app).toContain('connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff, fbEff, igEff })');
   });
   it("confirmSwitch force-mints stamped with the target platform (Facebook included)", () => {
     expect(app).toContain("sessionInstance.startSession(days, target.platform, true)");

@@ -119,7 +119,8 @@ export function stickerQrEffective(): boolean { return isStickerQrOn() && sticke
 // order gets NO QR — the sticker is laid out exactly as with the toggle off. TikTok and legacy
 // orders with no platform are unchanged.
 export function stickerQrAllowedFor(platform: string | undefined | null): boolean {
-  return String(platform ?? "").trim().toLowerCase() !== "facebook";
+  const p = String(platform ?? "").trim().toLowerCase();
+  return p !== "facebook" && p !== "instagram"; // Instagram (phase 1): the QR is a TikTok link → none
 }
 
 // ── LIVE sticker layout v2 (order time up top, full-width comment) ───────────

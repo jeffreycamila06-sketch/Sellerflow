@@ -276,6 +276,30 @@ describe("printSlip: Facebook drops the @ line on every path; TikTok untouched",
   });
 });
 
+// Instagram (phase 1, owner decision 3): the username prints ONCE and there is no QR — the same
+// name-once rule as Facebook, reached only by platform "Instagram".
+describe("printSlip: Instagram prints the username once, no QR; TikTok unchanged", () => {
+  beforeEach(() => { localStorage.removeItem(LS_CLASSIC_TEXT); setStickerQrEntitled(true); setStickerQrOn(true); });
+  afterEach(() => { setStickerQrEntitled(false); setStickerQrOn(false); });
+  it("phone bitmap: Instagram → name-once flag, no @ line, no QR; TikTok → @ line + QR", async () => {
+    const ig = await rasterSettingsFor(mk("Instagram", "buyer.one", "buyer.one"), { ...bt, stickerSize: "80x60" });
+    expect(ig.printFacebookName).toBe(true);
+    expect(ig.printBuyerUsername).toBe(false);
+    expect(ig.printStickerQr).toBe(false);
+    const tt = await rasterSettingsFor(mk("TikTok", "buyer.one", "buyer.one"), { ...bt, stickerSize: "80x60" });
+    expect("printFacebookName" in tt).toBe(false);
+    expect(tt.printBuyerUsername).toBe(true);
+    expect(tt.printStickerQr).toBe(true);
+  });
+  it("text, WiFi/LAN sticker and slip: Instagram → printBuyerUsername false, the username kept as the name", async () => {
+    for (const [cfg, mkBridge, key] of [[bt, textBridge, "printStickerNative"], [lan, lanBridge, "printStickerLan"], [slip, slipBridge, "printSlip"]] as const) {
+      const ig = await viaBridge(mk("Instagram", "buyer.one", "buyer.one"), cfg, mkBridge(), key);
+      expect(ig.settings.printBuyerUsername, key).toBe(false);
+      expect(ig.buyer.name, key).toBe("buyer.one");
+    }
+  });
+});
+
 describe("web/laptop print", () => {
   let frame: HTMLIFrameElement | null = null;
   beforeEach(() => {

@@ -25,6 +25,8 @@ import { shopeeConfig } from "./server/shopeeConfig.js";
 import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
+import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
+import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 
@@ -718,6 +720,8 @@ io.on("connection", (socket) => {
     // Facebook pollers (server/fbLive.js) that are running for this seller: replay their
     // status to this socket so the FB pill is right again after a socket reconnect.
     replayFbStatus(fbRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
+    // Instagram pollers (server/igLive.js) — same replay; igRuntime is null while IG is off.
+    replayIgStatus(igRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
   });
 
   // Per-socket comment scoping. The client tells the server which account it is
@@ -734,7 +738,8 @@ io.on("connection", (socket) => {
     // ONLY sacred-zone edit — emitCommentScoped is already platform-generic and
     // sanitizes every payload, so Shopee needs no change there.
     const ps = String(platform);
-    const p = ps === "Facebook" ? "Facebook" : ps === "Shopee" ? "Shopee" : "TikTok";
+    // "Instagram" (phase 1): its own key — only the IG runtime emits that platform.
+    const p = ps === "Facebook" ? "Facebook" : ps === "Shopee" ? "Shopee" : ps === "Instagram" ? "Instagram" : "TikTok";
     socket.data.selected[p] = cleanAccountKey(username || "");
   });
 });
@@ -2208,6 +2213,91 @@ try {
   console.error("[FB] init failed — Facebook disabled, TikTok/Shopee unaffected:", e && e.message);
 }
 
+// ── INSTAGRAM LIVE (phase 1, admin / preview only) — server/igLive.js ─────────
+// OFF unless IG_ENABLED is "true" on Render (plus the Facebook secrets). Per request also
+// locked by server/igAccess.js (ig_enabled / preview list / ig_tester_access). Any init
+// failure leaves igRuntime null; nothing else is affected.
+let igRuntime = null;
+try {
+  const igCfg = igConfig();
+  if (igCfg.enabled && serviceSb && RENDER_URL) {
+    const igStore = {
+      async getPlan(userId) {
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
+        if (error) throw new Error("plan_read_failed");
+        return data?.plan || "";
+      },
+      async countAccounts(userId) {
+        const { count, error } = await serviceSb.from("ig_accounts").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        if (error) throw new Error("count_read_failed");
+        return count || 0;
+      },
+      async getAccountLabel(userId) {
+        const { data, error } = await serviceSb.from("seller_profiles").select("email, store_name").eq("auth_user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("ig_account_label_failed");
+        return data ? { email: data.email || "", storeName: data.store_name || "" } : null;
+      },
+      async getAccount(userId, igUserId) {
+        const { data, error } = await serviceSb.from("ig_accounts").select("*").eq("user_id", userId).eq("ig_user_id", String(igUserId)).maybeSingle();
+        if (error) throw new Error("ig_account_read_failed");
+        return data || null;
+      },
+      async listAccounts(userId) {
+        // NEVER the token column.
+        const { data } = await serviceSb.from("ig_accounts").select("ig_user_id, ig_username, page_name, active").eq("user_id", userId);
+        return data || [];
+      },
+      async upsertAccount(row) {
+        const { error } = await serviceSb.from("ig_accounts").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,ig_user_id" });
+        if (error) throw new Error(/account_limit/.test(String(error.message || "")) ? "account_limit" : "ig_account_save_failed");
+      },
+      async setActive(userId, igUserId, active) {
+        await serviceSb.from("ig_accounts").update({ active, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("ig_user_id", String(igUserId));
+      },
+    };
+    igRuntime = createIgRuntime({
+      config: igCfg,
+      store: igStore,
+      liveKey,
+      renderUrl: RENDER_URL,
+      // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
+      emitComment: (sellerId, scopeKey, payload) => { void emitCommentScoped(sellerId, "Instagram", scopeKey, { ...payload, sellerId: emailIdOf(sellerId) }); },
+      statusEmit: (sellerId, { connected, scopeKey, sessionId }) => {
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Instagram", connected, sellerId: emailIdOf(sellerId), username: String(scopeKey || ""), sessionId: String(sessionId || "") });
+      },
+      log: (line) => console.log(line),
+    });
+    const igEnabled = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "ig_enabled").maybeSingle();
+        if (error) throw new Error("ig_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
+    const isIgTester = createFbTesterReader({
+      readTester: async (email) => {
+        const { data, error } = await serviceSb.from("ig_tester_access").select("email").eq("email", email).eq("enabled", true).maybeSingle();
+        if (error) throw new Error("ig_tester_read_failed");
+        return !!data;
+      },
+    });
+    app.get("/ig/access", requireAuth, createIgAccessHandler({ igEnabled, isIgTester }));
+    // The Facebook-only free-plan rule applies to Instagram too (same helper, its own reader).
+    const requireIgPlan = createFbPlanCheck({
+      readProfile: async (userId) => {
+        const { data, error } = await serviceSb.from("seller_profiles").select("plan, plan_status, role").eq("auth_user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("ig_plan_read_failed");
+        return data || null;
+      },
+    });
+    igRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireIgAvailable: createIgLock({ igEnabled, isIgTester }), requireIgPlan, accountLiveCheck });
+    console.log("[IG] enabled — OAuth + poller routes registered");
+  }
+} catch (e) {
+  igRuntime = null;
+  console.error("[IG] init failed — Instagram disabled, TikTok/Facebook/Shopee unaffected:", e && e.message);
+}
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
@@ -2263,6 +2353,7 @@ process.on("SIGTERM", () => {
   clearInterval(memoryLogTimer);
   if (shopeeRuntime) { try { shopeeRuntime.stopAll(); } catch { /* best effort */ } }
   if (fbRuntime) { try { fbRuntime.stopAll(); } catch { /* best effort */ } }
+  if (igRuntime) { try { igRuntime.stopAll(); } catch { /* best effort */ } }
   if (stopReceiptCleanup) { try { stopReceiptCleanup(); } catch { /* best effort */ } }
   const forceExit = setTimeout(() => process.exit(0), 5000);
   if (typeof forceExit.unref === "function") forceExit.unref();

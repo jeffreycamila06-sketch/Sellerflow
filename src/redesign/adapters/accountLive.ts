@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { tpl, type RedesignT } from "../i18n";
 
-export type LivePlatform = "tiktok" | "facebook" | "shopee";
+export type LivePlatform = "tiktok" | "facebook" | "shopee" | "instagram";
 export interface CoverageAccount { platform: LivePlatform; key: string; rank: number; covered: boolean }
 export interface Coverage { enforce: boolean; limit: number; unlimited: boolean; total: number; accounts: CoverageAccount[] }
 
@@ -18,7 +18,7 @@ export function parseCoverage(raw: unknown): Coverage | null {
   const accounts: CoverageAccount[] = [];
   for (const a of r.accounts as unknown[]) {
     const x = (a || {}) as Record<string, unknown>;
-    if ((x.platform === "tiktok" || x.platform === "facebook" || x.platform === "shopee") && typeof x.key === "string") {
+    if ((x.platform === "tiktok" || x.platform === "facebook" || x.platform === "shopee" || x.platform === "instagram") && typeof x.key === "string") {
       accounts.push({ platform: x.platform, key: x.key, rank: Number(x.rank) || 0, covered: x.covered === true });
     }
   }
