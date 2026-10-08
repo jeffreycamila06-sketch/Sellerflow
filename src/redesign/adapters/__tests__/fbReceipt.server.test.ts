@@ -341,7 +341,7 @@ describe("routes: middleware order, body limit, rate limit", () => {
   });
   it("the global JSON parser skips /fb/receipt/send (auth before parser); routes registered in the FB block", () => {
     const src = readFileSync("server.js", "utf8");
-    expect(src).toContain('req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)');
+    expect(src).toContain('req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)');
     expect(src).toContain("createFbReceipt({ config: fbCfg, store, log: (line) => console.log(line) }).registerRoutes(app, requireAuth);");
     expect(src.indexOf("createFbReceipt({")).toBeGreaterThan(src.indexOf("fbRuntime.registerRoutes(app"));
   });
