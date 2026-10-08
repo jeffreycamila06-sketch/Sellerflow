@@ -13,6 +13,7 @@ import { createWorker as createParcelWorker } from "./server/parcelTrackingWorke
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
+import { sweepProductImages, makeSweepStore, readSweepSwitch } from "./server/productImagesSweep.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs } from "./server/pinRelay.js";
 import { validGmShape, parseGmPage } from "./server/myshipValidate.js";
@@ -50,6 +51,8 @@ const PARCEL_SCAN_MODEL = process.env.PARCEL_SCAN_MODEL || "";
 // PARCEL_HEALTH_USER_ID = optional: one health-check job for that user per Taipei day.
 // On/off = app_settings.parcel_tracking_enabled (read every worker tick).
 const PARCEL_POLL_TOKEN = process.env.PARCEL_POLL_TOKEN || "";
+// Product-picture cleanup (server/productImagesSweep.js), its own cron secret.
+const PRODUCT_IMAGES_SWEEP_TOKEN = process.env.PRODUCT_IMAGES_SWEEP_TOKEN || "";
 const PARCEL_POLL_USER_ID = process.env.PARCEL_POLL_USER_ID || "";
 const PARCEL_HEALTH_USER_ID = process.env.PARCEL_HEALTH_USER_ID || "";
 const sb = (SUPABASE_URL && SUPABASE_KEY)
@@ -130,7 +133,7 @@ const defaultJsonParser = express.json();
 // token check runs before any body handling (the B1 auth-before-parser discipline).
 // /fb/receipt/send carries a base64 receipt picture (≤ 4 MB) — it parses its own body with a
 // 6mb limit AFTER auth + its rate limit (server/fbReceipt.js), same discipline as parcel-scan.
-app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)));
+app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)));
 
 function bearerToken(req) {
   const h = String(req.get("authorization") || "");
@@ -1104,6 +1107,36 @@ app.post("/admin/parcel-tracking-poll", async (req, res) => {
   console.log(`[PARCEL-JOB] cron enqueued ${enqueued}/${ids.length} manual job(s)`);
   // 202 Accepted: queued, not done — the worker runs them one at a time.
   return res.status(202).json({ ok: true, scheduled: true, enqueued });
+});
+
+// ── Product-picture cleanup: cron route (cron-job.org, daily) ─────────────────
+// Same discipline as /admin/parcel-tracking-poll: PRODUCT_IMAGES_SWEEP_TOKEN via the
+// X-Poll-Token HEADER only, timing-safe, lockout after repeated bad tokens, all BEFORE any
+// work. Off (app_settings.product_images_sweep_enabled != 'true') → 204, nothing done.
+// On → 202 and the sweep runs in the background (one at a time). Logs counts only.
+const productImagesSweepAuthThrottle = makeFailureThrottle({ max: 5, windowMs: 15 * 60 * 1000 });
+let productImagesSweepRunning = false;
+
+app.post("/admin/product-images-sweep", async (req, res) => {
+  if (!PRODUCT_IMAGES_SWEEP_TOKEN) return res.status(503).json({ ok: false, error: "sweep_not_configured" });
+  if (productImagesSweepAuthThrottle.blocked()) return res.status(429).json({ ok: false, error: "too_many_attempts" });
+  if (!timingSafeTokenEqual(req.headers["x-poll-token"], PRODUCT_IMAGES_SWEEP_TOKEN)) {
+    productImagesSweepAuthThrottle.fail();
+    return res.status(403).json({ ok: false, error: "forbidden" });
+  }
+  productImagesSweepAuthThrottle.ok();
+  if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
+  if (!(await readSweepSwitch(serviceSb))) return res.status(204).end();
+  if (productImagesSweepRunning) return res.status(409).json({ ok: false, error: "already_running" });
+  productImagesSweepRunning = true;
+  res.status(202).json({ ok: true, scheduled: true });
+  try {
+    await sweepProductImages({ store: makeSweepStore(serviceSb), log: (m) => console.log(m) });
+  } catch (e) {
+    console.log(`[PRODUCT-IMG-SWEEP] failed: ${e && e.message ? e.message : "error"}`);
+  } finally {
+    productImagesSweepRunning = false;
+  }
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {
