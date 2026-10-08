@@ -24,6 +24,7 @@ import type { Comment as ProdComment } from "../../lib/orderTypes";
 import type { PinPayload } from "./pinToPrint";
 import type { Comment as RDComment } from "../data";
 import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "./connect";
+import { fbConnect, type FbConnectResult } from "./fb";
 import { isPreviewEnv } from "./previewEnv";
 // Batch E (#13): server URL + seller/browser identity now come from the ONE
 // shared module (was a local copy identical to connect.ts's — parity-tested;
@@ -151,6 +152,8 @@ export interface UseLiveFeed {
   // this never feeds the status machine or the comment pipeline.
   ttViewers: number | null;
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
+  // fb_connect_v2 — the Facebook Connect through the same in-flight window as connect().
+  connectFacebook: (pageId: string, scopeKey: string) => Promise<FbConnectResult>;
   // P3 (additive) — Shopee live status. shopeeConnected mirrors tt/fbConnected
   // (server platform_status platform:"Shopee"); ensureJoined lets the Shopee
   // connect path (RedesignApp → shopee.ts POST) put this socket in the seller
@@ -627,8 +630,10 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // #6 — real connect: POST to the live server, then optimistically set the active
   // account (the authoritative value still arrives via platform_status). Clears the
   // feed like production's clearLiveCommentMemory.
-  const connect = useCallback(async (platform: Platform, data: Record<string, string>): Promise<ConnectResult> => {
-    if (!email) return { ok: false, error: "Not signed in", account: "" };
+  // connectWith — the ONE in-flight window shared by connect() (TikTok, behaviour unchanged)
+  // and connectFacebook() (fb_connect_v2): intent + honest-false + room join at initiation,
+  // the initial batch buffered while the POST runs, flushed on ok, discarded on failure.
+  const connectWith = useCallback(async <R extends { ok: boolean }>(platform: Platform, intent: string, post: () => Promise<R>): Promise<R> => {
     // Audit F2, ORDERING FIX (clientfix RC1): clear the history block at connect
     // INITIATION — never on the response. The server relays the initial batch
     // WHILE it processes the POST, so those socket events land BEFORE r.ok; a
@@ -661,14 +666,14 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     // recovering (F3 amber) are cleared too — the old platform state is void;
     // the pill is amber via the caller's connecting flag for the POST's
     // lifetime, then gray until the server asserts the new account.
-    trackedAcctRef.current[platform] = cleanLiveAccount(data.username || ""); // intent — synchronous (H1-safe)
+    trackedAcctRef.current[platform] = intent; // intent — synchronous (H1-safe)
     if (platform === "TikTok") { setTtConnected(false); setTtRecovering(false); setTtViewers(null); } // no stale count for even one frame across an account switch
     else { setFbConnected(false); setFbRecovering(false); }
     setActiveAccounts((a) => ({ ...a, [platform]: "" })); // stale server-truth voided too (same rule as setPlatformGray)
     const pendingGray = grayTimersRef.current[platform];
     if (pendingGray) { clearTimeout(pendingGray); grayTimersRef.current[platform] = null; }
     try {
-      const r = await connectPlatform(platform, data, email);
+      const r = await post();
       if (r.ok) {
         setFeed([]);
         // CONNECT-TRUTH: the optimistic setActiveAccounts + trackedAcctRef
@@ -691,7 +696,20 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       connectInFlightRef.current = false;
       pendingInitialRef.current = [];
     }
-  }, [email, pushInitial]);
+  }, [pushInitial]);
+
+  const connect = useCallback(async (platform: Platform, data: Record<string, string>): Promise<ConnectResult> => {
+    if (!email) return { ok: false, error: "Not signed in", account: "" };
+    return connectWith(platform, cleanLiveAccount(data.username || ""), () => connectPlatform(platform, data, email));
+  }, [email, connectWith]);
+
+  // fb_connect_v2 — the Facebook Connect through the same window: a Facebook initial batch
+  // that arrives while POST /fb/connect runs on a NON-empty feed is buffered and flushed on
+  // ok instead of dropped. scopeKey = the page's status key (username || page id).
+  const connectFacebook = useCallback(
+    (pageId: string, scopeKey: string): Promise<FbConnectResult> => connectWith("Facebook", cleanLiveAccount(scopeKey), () => fbConnect(pageId)),
+    [connectWith],
+  );
 
   // P3 — arm the seller-room join for a Shopee connect (which POSTs to the server
   // from RedesignApp/shopee.ts, NOT through connect() above). A Shopee-only seller
@@ -748,5 +766,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — history block mapped with restored:true so the Dashboard's
   // muted zero-action display branch handles it (duplicate-order layer 3).
   const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
-  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect, shopeeConnected, ensureJoined, igConnected };
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect, connectFacebook, shopeeConnected, ensureJoined, igConnected };
 }

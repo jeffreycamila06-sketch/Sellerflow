@@ -12,10 +12,11 @@ export const FEATURE_SWITCH_KEYS = {
   productImages: "product_images_enabled",
   fbAutoReceipt: "fb_auto_receipt_enabled", // B1 automatic receipt after a Facebook live (sql/100)
   ordersPaidFlag: "orders_paid_flag_enabled", // B2 paid flag on an order (sql/101)
+  fbConnectV2: "fb_connect_v2", // Build 1 Facebook connect safety (sql/103)
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {
