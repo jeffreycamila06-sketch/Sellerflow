@@ -31,13 +31,16 @@ export const FB_AUTH_REFRESH_MS = 8 * 60 * 1000;
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 
-export default function FbChannels({ account = null, pages, onReload, onBack, onToast, onUpsell }: {
+export default function FbChannels({ account = null, pages, onReload, onBack, onToast, onUpsell, needsReconnectIds = [] }: {
   account?: AccountUser | null;
   pages: FbPage[]; // REAL authorized pages only (no placeholder) — Remove always acts on a real row
   onReload: () => void | Promise<void>;
   onBack: () => void;
   onToast?: (msg: string, kind: "ok" | "err") => void;
   onUpsell: () => void;
+  // fb_stop_reasons (switch ON): Pages whose access ended → "Needs reconnect" + Reconnect
+  // (the same Authorize flow as the button below). Absent / empty = the rows as before.
+  needsReconnectIds?: string[];
 }) {
   const t = useT();
   const coverage = useAccountCoverage(pages.map((p) => p.pageId).join(",")); // Build 2: "not covered" labels (enforcing + over-limit only)
@@ -129,6 +132,18 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   };
 
   const canAuthorize = eligible && !!authUrl;
+  // fb_stop_reasons — the warn "Connect again" badge IS the tap target: the Authorize flow below,
+  // same four forms (upsell / in-app sheet / real anchor, iOS-safe / plain while preparing).
+  const reconnectStyle: CSSProperties = { display: "inline-block", fontSize: 11, fontWeight: 800, color: "var(--warn)", background: "none", border: "1px solid var(--warn)", borderRadius: 6, padding: "2px 7px", textDecoration: "none", cursor: "pointer", fontFamily: "var(--font-ui)" };
+  const reconnectControl = !eligible ? (
+    <button type="button" data-testid="fb-needs-reconnect" onClick={onUpsell} style={reconnectStyle}>{t.rd_fb_needs_reconnect}</button>
+  ) : canAuthorize && authSession ? (
+    <button type="button" data-testid="fb-needs-reconnect" onClick={() => void authorizeInApp()} disabled={sheetOpen} style={reconnectStyle}>{t.rd_fb_needs_reconnect}</button>
+  ) : canAuthorize ? (
+    <a data-testid="fb-needs-reconnect" href={authUrl!} target="_blank" rel="noreferrer noopener" style={reconnectStyle}>{t.rd_fb_needs_reconnect}</a>
+  ) : (
+    <span data-testid="fb-needs-reconnect" style={{ ...reconnectStyle, cursor: "default", opacity: 0.6 }}>{t.rd_fb_needs_reconnect}</span>
+  );
 
   return (
     <div>
@@ -155,6 +170,7 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_fb_page_name_fallback}</div>
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{p.username ? `@${p.username}` : `${t.rd_fb_page_id}: ${p.pageId}`}</div>
                 {isCovered(coverage, "facebook", String(p.pageId)) === false && <div data-testid="not-covered" style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", marginTop: 2 }}>{notCoveredLabel(t, isIOS())}</div>}
+                {needsReconnectIds.includes(p.pageId) && <div style={{ marginTop: 4 }}>{reconnectControl}</div>}
               </div>
               <button onClick={() => void remove(p)} disabled={busyId === p.id} style={{ padding: "8px 13px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--danger)", fontSize: 12.5, fontWeight: 700, cursor: busyId === p.id ? "default" : "pointer", opacity: busyId === p.id ? 0.6 : 1, fontFamily: "var(--font-ui)", flexShrink: 0 }}>{t.rd_fb_remove}</button>
             </div>

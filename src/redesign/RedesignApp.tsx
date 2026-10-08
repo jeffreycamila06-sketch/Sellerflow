@@ -110,6 +110,7 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer } from "./adapters/printe
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, type Platform, ttDisconnect } from "./adapters/connect";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
+import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
 import { useAccountCoverage, coveredTikTokNames, liveRefusedText, ACCOUNT_NOT_COVERED } from "./adapters/accountLive";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
@@ -1153,6 +1154,9 @@ export default function RedesignApp() {
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
+  // fb_stop_reasons (switch ON) — one plain-words toast when the Facebook pill falls from green
+  // for a reason the server sent; never after this device's own Disconnect (fbOff).
+  useFbStopToast({ connected: fbConnected, liveKey: liveFeed.activeAccounts.Facebook, stop: liveFeed.fbLastStop, offByThisDevice: fbOff, on: featureSw.fbStopReasons, t: tApp, onToast: setToast });
   // Facebook Pages (2+): the Page that is REALLY connected (server-reported scope key) drives
   // the chip — green only for that Page, Disconnect stops that Page, and connecting another
   // Page first stops it (fbChipState). One Page → unchanged.
@@ -1163,6 +1167,22 @@ export default function RedesignApp() {
   // pick another Page while one is live.
   const fbSyncedLiveRef = useRef("");
   const fbLivePageId = fbLivePage ? fbLivePage.pageId : "";
+  // fb_stop_reasons — the last Page seen live, so Disconnect can still stop it on the server
+  // after Facebook access was removed (the Page list is then empty).
+  const fbLastLivePageRef = useRef("");
+  useEffect(() => { if (fbLivePageId) fbLastLivePageRef.current = fbLivePageId; }, [fbLivePageId]);
+  // fb_stop_reasons — Pages that need a reconnect (inactive, or token expired). Switch OFF:
+  // nothing read, empty list.
+  const [fbExpiry, setFbExpiry] = useState<{ map: Record<string, string | null>; at: number }>({ map: {}, at: 0 });
+  useEffect(() => {
+    if (!featureSw.fbStopReasons || fbPages.length === 0) return;
+    let alive = true;
+    void loadFbPageExpiries().then((map) => { if (alive) setFbExpiry({ map, at: Date.now() }); });
+    return () => { alive = false; };
+  }, [featureSw.fbStopReasons, fbPages]);
+  const fbReconnectIds = featureSw.fbStopReasons
+    ? fbPages.filter((p) => needsReconnect({ active: p.active, tokenExpiresAt: fbExpiry.at ? fbExpiry.map[p.pageId] : null }, fbExpiry.at)).map((p) => p.pageId)
+    : [];
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (fbLivePageId === fbSyncedLiveRef.current) return;
@@ -1249,7 +1269,12 @@ export default function RedesignApp() {
     setFbOpen(false);
     // Disconnect stops the Page that is really connected (not merely the selected one).
     if (fbChip.action.kind === "disconnect") { setFbOff(true); void fbDisconnect(fbChip.action.pageId); return; }
-    if (fbEff && fbChip.action.kind !== "switch") { setFbOff(true); return; } // connected, nothing attributable to stop
+    if (fbEff && fbChip.action.kind !== "switch") { // connected, nothing attributable to stop
+      setFbOff(true);
+      // fb_stop_reasons — e.g. Facebook access was removed mid-live: still stop the last live Page.
+      if (featureSw.fbStopReasons && fbLastLivePageRef.current) void fbDisconnect(fbLastLivePageRef.current);
+      return;
+    }
     // NOTE: fbPreview is NOT short-circuited here — allowlisted FB_PREVIEW_EMAILS users
     // route to the REAL connect flow (authorize-if-no-page → doFbConnect) even while the
     // GLOBAL fb_enabled flag is off (the flag is the FLEET switch only). Non-allowlisted
@@ -1257,6 +1282,8 @@ export default function RedesignApp() {
     // fbConnectEnabled = fbEnabled).
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
     if (!selectedPage) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }
+    // fb_stop_reasons — a Page that needs a reconnect goes to Authorize, not /fb/connect.
+    if (featureSw.fbStopReasons && fbReconnectIds.includes(selectedPage.pageId)) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }
     // A different Page than the connected one: stop the connected Page first, then connect.
     if (fbChip.action.kind === "switch") {
       const { stopPageId, page } = fbChip.action;
@@ -2139,6 +2166,7 @@ export default function RedesignApp() {
               fbPages={fbPages.map((p) => ({ pageId: p.pageId, name: p.name, username: p.username }))}
               fbPageIdx={fbPageIdx} onPickFB={(i) => setFbPageIdx(i)}
               onConnectFB={onConnectFacebook}
+              fbReconnectIds={fbReconnectIds} fbKeepDisconnect={featureSw.fbStopReasons}
               onManageFB={() => { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); }}
               /* P3 — Shopee source chip (renders only when shopeeEnabled + ≥1 shop). */
               shopeeEnabled={shopeeEnabled}
@@ -2305,7 +2333,7 @@ export default function RedesignApp() {
           {/* F-P3 — Facebook pages (fbEnabled-gated; reachable from ManageChannels + the
               Live FB chip's Manage row / no-page authorize). Origin-aware Back via chanBack. */}
           {screen === "fbpages" && (
-            <FbChannels account={auth.profile} pages={fbPages} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+            <FbChannels account={auth.profile} pages={fbPages} needsReconnectIds={fbReconnectIds} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {screen === "igaccounts" && igEnabled && (
             <IgChannels account={auth.profile} accounts={igAccounts} onReload={reloadIgAccounts} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />

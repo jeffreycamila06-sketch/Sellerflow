@@ -127,7 +127,7 @@ export default function Dashboard({
   // F-P3 — Facebook REAL connect (owner-gated). When fbConnectEnabled is false (default)
   // the FB dropdown is the byte-identical HONEST GATE below; when true it renders the
   // real page picker + Connect (mirror of the TikTok dropdown).
-  fbConnectEnabled = false, fbPages = [], fbPageIdx = 0, onPickFB, onConnectFB, onManageFB,
+  fbConnectEnabled = false, fbPages = [], fbPageIdx = 0, onPickFB, onConnectFB, onManageFB, fbReconnectIds = [], fbKeepDisconnect = false,
   // P3 — Shopee source chip (all optional; chip renders only when shopeeEnabled AND
   // ≥1 authorized shop → zero Shopee UI otherwise = byte-unchanged TT/FB header).
   shopeeEnabled = false, shopeeShops = [], shopeeOpen = false, onToggleShopee,
@@ -202,6 +202,10 @@ export default function Dashboard({
   onPickFB?: (i: number) => void;
   onConnectFB?: () => void;
   onManageFB?: () => void;
+  // fb_stop_reasons (switch ON): Pages showing "Needs reconnect" in the picker, and keep a
+  // Disconnect while connected even when Facebook access is gone. Defaults = today.
+  fbReconnectIds?: string[];
+  fbKeepDisconnect?: boolean;
   // P3 — Shopee source chip. onConnectShopee opens the Shopee connect modal (shop
   // + session-ID). onManageShopee → the ShopeeChannels screen (authorize/remove).
   shopeeEnabled?: boolean;
@@ -316,7 +320,7 @@ export default function Dashboard({
                     {fbPages.map((p, i) => (
                       <button key={p.pageId} onClick={() => onPickFB?.(i)} style={ddRow(i === fbPageIdx)}>
                         <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(p.name || p.username || "f")}</span>
-                        <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{p.name || (p.username ? `@${p.username}` : p.pageId)}</span><span style={ddMeta}>Facebook · {t.rd_dash_tap_go_live}</span></span>
+                        <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{p.name || (p.username ? `@${p.username}` : p.pageId)}</span>{fbReconnectIds.includes(p.pageId) ? <span data-testid="fb-needs-reconnect" style={{ ...ddMeta, color: "var(--warn)", fontWeight: 700 }}>{t.rd_fb_needs_reconnect}</span> : <span style={ddMeta}>Facebook · {t.rd_dash_tap_go_live}</span>}</span>
                         <span style={ddCheck}>{i === fbPageIdx ? "✓" : ""}</span>
                       </button>
                     ))}
@@ -335,6 +339,11 @@ export default function Dashboard({
                      real Telegram anchor. iOS-safe: a real <a> (never window.open),
                      and onClick closes the dropdown as the tab opens. */
                   <>
+                    {fbKeepDisconnect && fbConnected && (
+                      <div style={{ ...connFooterWrap, marginBottom: 8 }}>
+                        <button data-testid="fb-keep-disconnect" onClick={onConnectFB} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_dash_disconnect}</button>
+                      </div>
+                    )}
                     <div style={{ padding: "2px 10px 11px", fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_dash_fb_activation}</div>
                     <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={dismissFB} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", margin: "0 4px 3px", background: "#0088cc", color: "#fff", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>{t.rd_dash_fb_contact}<span style={{ fontSize: 14 }}>→</span></a>
                   </>
