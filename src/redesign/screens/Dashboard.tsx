@@ -138,6 +138,7 @@ export default function Dashboard({
   liveSourceConnected = false, liveSourceConnecting = false, onOpenSourceSheet,
   // Live platform picker (admin preview, presentation only). false = classic, unchanged.
   livePicker = false,
+  hideTtChip = false, hideFbChip = false,
   // Instagram (phase 1): present ONLY while igEnabled → the picker's Instagram tile works; absent =
   // the tile shows "soon" exactly as before.
   ig,
@@ -213,6 +214,9 @@ export default function Dashboard({
   liveSourceConnected?: boolean; liveSourceConnecting?: boolean;
   onOpenSourceSheet?: () => void;
   livePicker?: boolean;
+  // PLATFORM WORLDS (adapters/platformWorld.ts): hide the classic header chip of a platform
+  // the seller does not use. Default false = unchanged.
+  hideTtChip?: boolean; hideFbChip?: boolean;
   ig?: { accounts: { igUserId: string; name: string }[]; idx: number; onPick: (i: number) => void; connected: boolean; connecting: boolean; onConnect: () => void; onManage: () => void };
   // Rule 3 — low-stock chips + persistent (dismissible) sold-out banner. Auto codes
   // whose live stock is ≤ threshold / at 0; RedesignApp gates these on Auto Mode ON.
@@ -716,7 +720,7 @@ export default function Dashboard({
           );
         })() : lp.view === "picker" ? null : (
         <div style={{ display: "flex", gap: 8, marginTop: 11, position: "relative", zIndex: 6 }}>
-          <div ref={ttWrapRef} style={{ position: "relative", flex: 1 }}>
+          {!hideTtChip && <div ref={ttWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleTT} title={ttTitle} style={{ ...pickerBtn, background: tt.chipBg, boxShadow: tt.chipShadow }}>
               <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>t</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : t.rd_dash_connect_tiktok}</span>
@@ -726,8 +730,8 @@ export default function Dashboard({
             {ttOpen && (
               <div style={dropdown("left")}>{ttMenu()}</div>
             )}
-          </div>
-          <div ref={fbWrapRef} style={{ position: "relative", flex: 1 }}>
+          </div>}
+          {!hideFbChip && <div ref={fbWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleFB} title={fbTitle} style={{ ...pickerBtn, background: fb.chipBg, boxShadow: fb.chipShadow }}>
               <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbConnectEnabled ? (fbPages.length ? (fbPages[fbPageIdx]?.name || fbPages[0]?.name || t.rd_dash_connect_facebook) : t.rd_dash_connect_facebook) : (fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook)}</span>
@@ -737,7 +741,7 @@ export default function Dashboard({
             {fbOpen && (
               <div style={dropdown("right")}>{fbMenu(onToggleFB)}</div>
             )}
-          </div>
+          </div>}
           {/* P3 — Shopee source chip (flag ON + ≥1 authorized shop). Mirrors the
               TikTok chip: select a shop (checkmark, no connect) + Connect opens the
               Shopee connect modal (session-ID paste); Disconnect when live. */}

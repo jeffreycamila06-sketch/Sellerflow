@@ -11,6 +11,7 @@ import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersS
 import { getParcelScanOverview, revenueNT, costNT, profitNT, SCAN_COST_NT, type AdminActions, type Plan, type ParcelScanOverview } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import { VIEW_AS_OPTIONS, type ViewAs } from "../adapters/market";
+import { PLATFORM_VIEW_AS_OPTIONS, PLATFORM_VIEW_AS_LABEL, type PlatformViewAs } from "../adapters/platformWorld";
 import { loadGlobalShippingFeeMeta, saveGlobalShippingFee, validGlobalFee } from "../adapters/shippingSettings";
 import { loadParcelManualEnabledMeta, saveParcelManualEnabled } from "../adapters/parcelScan";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
@@ -63,7 +64,7 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: ViewAs; onSetViewAs?: (v: ViewAs) => void }) {
+export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs, platformViewAs = "all", onSetPlatformViewAs }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: ViewAs; onSetViewAs?: (v: ViewAs) => void; platformViewAs?: PlatformViewAs; onSetPlatformViewAs?: (v: PlatformViewAs) => void }) {
   const t = useT();
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   // Batch B #2 — the owner card shows the REAL signed-in admin (was the
@@ -116,6 +117,18 @@ export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr
             <div style={{ display: "flex", gap: 4, background: "var(--surface-2)", borderRadius: 10, padding: 3, flexWrap: "wrap" }}>
               {VIEW_AS_OPTIONS.map((v) => (
                 <button key={v} data-testid={`admin-view-as-${v}`} onClick={() => onSetViewAs(v)} style={{ padding: "5px 11px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", background: viewAs === v ? "var(--accent)" : "transparent", color: viewAs === v ? "var(--accent-text)" : "var(--text-dim)" }}>{v === "all" ? t.rd_adm_view_all : v}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* "View as platform" — per-session admin PREVIEW of a platform world (adapters/
+            platformWorld.ts). Never writes anything. All = the admin union (see everything). */}
+        {onSetPlatformViewAs && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 2px 12px" }} data-testid="admin-platform-view-as">
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_adm_view_as}</span>
+            <div style={{ display: "flex", gap: 4, background: "var(--surface-2)", borderRadius: 10, padding: 3, flexWrap: "wrap" }}>
+              {PLATFORM_VIEW_AS_OPTIONS.map((v) => (
+                <button key={v} data-testid={`admin-platform-view-as-${v}`} onClick={() => onSetPlatformViewAs(v)} style={{ padding: "5px 11px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", background: platformViewAs === v ? "var(--accent)" : "transparent", color: platformViewAs === v ? "var(--accent-text)" : "var(--text-dim)" }}>{v === "all" ? t.rd_adm_view_all : PLATFORM_VIEW_AS_LABEL[v]}</button>
               ))}
             </div>
           </div>
