@@ -108,7 +108,8 @@ export async function loadProductImagePaths(): Promise<Map<number, string> | nul
   } catch { return null; }
 }
 
-// Upload (overwrite) then store the path. Returns the path, or null on any failure.
+// Upload (overwrite) then store the path. Returns the path, or null on any failure — including
+// an update that matched no product row (then the uploaded file is removed again, best effort).
 export async function uploadProductImage(localId: number, blob: Blob): Promise<string | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   const uid = await ownUserId();
@@ -117,8 +118,11 @@ export async function uploadProductImage(localId: number, blob: Blob): Promise<s
   try {
     const up = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, blob, { upsert: true, contentType: "image/jpeg", cacheControl: PRODUCT_IMAGE_CACHE_SECONDS });
     if (up.error) return null;
-    const { error } = await supabase.from("products").update({ image_path: path }).eq("user_id", uid).eq("local_id", localId);
-    return error ? null : path;
+    const { data, error } = await supabase.from("products").update({ image_path: path }).eq("user_id", uid).eq("local_id", localId).select("local_id");
+    if (!error && Array.isArray(data) && data.length > 0) return path;
+    // No product row matched (e.g. it never reached the database): the file would be an orphan.
+    try { await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([path]); } catch { /* best effort */ }
+    return null;
   } catch { return null; }
 }
 

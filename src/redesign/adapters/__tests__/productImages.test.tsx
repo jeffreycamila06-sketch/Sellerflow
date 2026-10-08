@@ -10,11 +10,12 @@ import { readFileSync } from "node:fs";
 
 const h = vi.hoisted(() => {
   const log: { op: string; args: unknown[] }[] = [];
-  const state = { rows: [] as unknown[], uploadError: null as unknown, removeError: null as unknown, updateError: null as unknown };
+  const state = { rows: [] as unknown[], updateRows: null as unknown[] | null, uploadError: null as unknown, removeError: null as unknown, updateError: null as unknown };
   const chain = (result: () => unknown) => {
     const c: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "not", "update"]) c[m] = (...a: unknown[]) => { log.push({ op: m, args: a }); return c; };
-    c.then = (r: (v: unknown) => unknown) => r(result());
+    let isUpdate = false;
+    for (const m of ["select", "eq", "not", "update"]) c[m] = (...a: unknown[]) => { log.push({ op: m, args: a }); if (m === "update") isUpdate = true; return c; };
+    c.then = (r: (v: unknown) => unknown) => r(isUpdate && state.updateRows ? { data: state.updateRows, error: state.updateError } : result());
     return c;
   };
   const bucket = {
@@ -57,7 +58,7 @@ const PRODS = [
 beforeEach(() => {
   localStorage.clear(); localStorage.setItem("sf_prods", JSON.stringify(PRODS));
   vi.clearAllMocks(); h.log.length = 0;
-  h.state.rows = [{ local_id: 7, image_path: "u1/7.jpg" }]; h.state.uploadError = null; h.state.removeError = null; h.state.updateError = null;
+  h.state.rows = [{ local_id: 7, image_path: "u1/7.jpg" }]; h.state.updateRows = null; h.state.uploadError = null; h.state.removeError = null; h.state.updateError = null;
 });
 const view = (extra: Record<string, unknown> = {}) => render(<TProvider lang="en"><Products cur="NT$" {...extra} /></TProvider>);
 const touchedStorage = () => h.log.some((c) => c.op === "bucket" || c.op === "upload" || c.op === "remove" || (c.op === "select" && String(c.args[0]).includes("image_path")));
@@ -159,6 +160,18 @@ describe("switch ON", () => {
     fireEvent.change(screen.getByTestId("prd-pic-input"), { target: { files: [new File(["p"], "p.jpg")] } });
     expect((await screen.findByTestId("prd-pic-err")).textContent).toBe("Couldn't save the picture. Try again.");
     expect(screen.getByTestId("prd-pic-add").textContent).toBe("Add picture");
+  });
+  it("an update that matched no product row fails, and the uploaded file is removed again", async () => {
+    compressMock.mockResolvedValue({ ok: true, blob: new Blob(["x"]), width: 1, height: 1 });
+    h.state.updateRows = [];
+    view({ productImages: true });
+    await screen.findByTestId("prd-thumb-7");
+    fireEvent.click(screen.getAllByText("Edit")[1]);
+    fireEvent.change(screen.getByTestId("prd-pic-input"), { target: { files: [new File(["p"], "p.jpg")] } });
+    expect((await screen.findByTestId("prd-pic-err")).textContent).toBe("Couldn't save the picture. Try again.");
+    expect(h.bucket.remove).toHaveBeenCalledWith(["u1/8.jpg"]);
+    expect(screen.getByTestId("prd-pic-add").textContent).toBe("Add picture");
+    expect(h.log.some((c) => c.op === "select" && c.args[0] === "local_id")).toBe(true);
   });
   it("a new product must be saved first", async () => {
     view({ productImages: true });
