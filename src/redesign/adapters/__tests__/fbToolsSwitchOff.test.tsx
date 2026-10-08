@@ -20,7 +20,7 @@ describe("switch OFF props = no props", () => {
     const base = renderScreens();
     const off = renderScreens({
       sales: { platformOptions: [], platformSales: { data: null, state: "idle", load: () => {} } },
-      products: { inventoryV2: false },
+      products: { inventoryV2: false, productImages: false },
       receipt: {},                                   // soldout prop absent (gate off)
       orders: { waitlist: undefined },
       settings: { deductOneClick: false, onToggleDeductOneClick: undefined },
@@ -34,7 +34,7 @@ describe("RedesignApp hands the screens the OFF props when the switches are off"
   const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
   it("every new prop is derived from a switch (fail closed)", () => {
     expect(src).toContain("const salesPlatformOptions = featureSw.salesPlatform ? platformOptions(worldQuota?.platforms) : [];");
-    expect(src).toContain(" inventoryV2={featureSw.inventoryV2} />}");
+    expect(src).toContain(" inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}");
     expect(src).toContain("onToggleDeductOneClick={featureSw.inventoryV2 ? toggleDeductOneClick : undefined}");
     expect(src).toContain("{...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})}");
     expect(src).toContain("{...(waitlistBase ? { waitlist: ");

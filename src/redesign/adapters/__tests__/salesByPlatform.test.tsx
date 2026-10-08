@@ -32,8 +32,8 @@ describe("feature switches — fail closed", () => {
     expect(parseSwitches(null)).toEqual(SWITCHES_OFF);
     expect(parseSwitches([{ key: "other", value: "true" }])).toEqual(SWITCHES_OFF);
   });
-  it("the four keys are the sql/93 names", () => {
-    expect(Object.values(FEATURE_SWITCH_KEYS).sort()).toEqual(["fb_soldout_enabled", "fb_waitlist_enabled", "inventory_v2_enabled", "sales_platform_enabled"]);
+  it("the keys are the sql/93 + sql/95 names", () => {
+    expect(Object.values(FEATURE_SWITCH_KEYS).sort()).toEqual(["fb_soldout_enabled", "fb_waitlist_enabled", "inventory_v2_enabled", "product_images_enabled", "sales_platform_enabled"]);
   });
   it("signed out → no read, all off; error → all off", async () => {
     renderHook(() => useFeatureSwitches(""));

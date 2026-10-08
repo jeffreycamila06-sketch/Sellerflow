@@ -11,6 +11,7 @@ import { resolveInitialProducts, saveProductDbResult, deleteProductDb, adjustPro
 import { dayStamp } from "../adapters/csv";
 import { exportBrandedXlsx, exportBrandedPdf, type ExportColumn } from "../adapters/brandedExport";
 import { useT } from "../i18n";
+import { loadProductImagePaths, compressProductImage, uploadProductImage, removeProductImage, forgetProductImage, productImageUrl } from "../adapters/productImages";
 
 const nowMs = () => Date.now(); // module-level (keeps the impure call out of the component's render-purity analysis)
 const STOCK_ADJUST_DEBOUNCE_MS = 600; // coalesce rapid ±taps into ONE atomic write
@@ -30,7 +31,7 @@ const sheetBtn = (primary: boolean): CSSProperties => (primary
 const stockColor = (s: number) => (s === 0 ? "var(--danger)" : s <= 5 ? "var(--warn)" : "var(--ok)");
 const stepBtn = (disabled: boolean): CSSProperties => ({ width: 26, height: 26, flexShrink: 0, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: disabled ? "var(--text-muted)" : "var(--text)", fontSize: 15, fontWeight: 800, lineHeight: 1, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "var(--font-ui)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 });
 
-export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold, inventoryV2 = false }: {
+export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold, inventoryV2 = false, productImages = false }: {
   cur: string;
   // Inventory v2 (switch inventory_v2_enabled): every stock change is logged (sql/90), plus
   // Restock + History on each card. false = the screen exactly as before.
@@ -47,6 +48,9 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   // mount reconcile (RedesignApp loads the catalog itself on auth).
   onProductsChanged?: (products: Product[], changedId?: number, action?: "stock" | "meta" | "delete") => void;
   seller?: { name?: string; email?: string }; // branded export header (optional)
+  // Product pictures (switch product_images_enabled, sql/95): one picture per product, shown on
+  // the card and in the edit form. false = the screen exactly as before (no storage call).
+  productImages?: boolean;
 }) {
   const t = useT();
   const [prods, setProds] = useState<Product[]>(() => loadProducts());
@@ -69,6 +73,47 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     noteTimer.current = setTimeout(() => setNote(null), 3200);
   };
   useEffect(() => () => { if (noteTimer.current) clearTimeout(noteTimer.current); }, []);
+  // Product pictures: local_id → stored path (read once when the switch is on), a version per
+  // id so a replaced picture skips the browser cache, and the URLs that failed to load.
+  const [imgPaths, setImgPaths] = useState<Map<number, string>>(() => new Map());
+  const [imgVer, setImgVer] = useState<Map<number, number>>(() => new Map());
+  const [imgBroken, setImgBroken] = useState<Set<string>>(() => new Set());
+  const [picBusy, setPicBusy] = useState<"" | "up" | "rm">("");
+  const [picErr, setPicErr] = useState("");
+  const picInput = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!productImages) return;
+    let live = true;
+    void loadProductImagePaths().then((m) => { if (live && m) setImgPaths(m); });
+    return () => { live = false; };
+  }, [productImages]);
+  const imgUrl = (id: number): string => {
+    const path = imgPaths.get(id);
+    const url = path ? productImageUrl(path, imgVer.get(id)) : "";
+    return url && !imgBroken.has(url) ? url : "";
+  };
+  const markBroken = (url: string) => setImgBroken((b) => new Set(b).add(url));
+  const dropPath = (id: number) => setImgPaths((m) => { const n = new Map(m); n.delete(id); return n; });
+  const onPickPic = async (file: File | null | undefined) => {
+    const id = eid;
+    if (id === null || !file || picBusy) return;
+    setPicErr(""); setPicBusy("up");
+    const c = await compressProductImage(file);
+    if (c.ok === false) { setPicBusy(""); setPicErr(c.reason === "too_big" ? t.rd_prd_pic_too_big : t.rd_prd_pic_unreadable); return; }
+    const path = await uploadProductImage(id, c.blob);
+    setPicBusy("");
+    if (!path) { setPicErr(t.rd_prd_pic_failed); return; }
+    setImgPaths((m) => new Map(m).set(id, path));
+    setImgVer((m) => new Map(m).set(id, nowMs()));
+  };
+  const onRemovePic = async () => {
+    const id = eid;
+    if (id === null || picBusy) return;
+    setPicErr(""); setPicBusy("rm");
+    const ok = await removeProductImage(id);
+    setPicBusy("");
+    if (ok) dropPath(id); else setPicErr(t.rd_prd_pic_remove_failed);
+  };
   const save = (p: Product[]) => { setProds(p); saveProducts(p); };
   // Latest list for the async stock-flush closures (avoids stale-closure bugs).
   const prodsRef = useRef(prods); useEffect(() => { prodsRef.current = prods; }, [prods]);
@@ -150,8 +195,8 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     });
     return () => { active = false; };
   }, []);
-  const openAdd = () => { setForm(EMPTY); setEid(null); setFormErr(""); setShow(true); };
-  const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform, liveCode: p.liveCode || "" }); setEid(p.id); setFormErr(""); setShow(true); };
+  const openAdd = () => { setForm(EMPTY); setEid(null); setFormErr(""); setPicErr(""); setShow(true); };
+  const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform, liveCode: p.liveCode || "" }); setEid(p.id); setFormErr(""); setPicErr(""); setShow(true); };
   // Delete: if the CLOUD delete fails, the local delete is REVERTED (the DB row
   // survived and the DB-wins reconcile would resurrect it on next load anyway —
   // showing it gone now would be a lie) + the failure pill explains.
@@ -163,7 +208,10 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     onProductsChanged?.(after, id, "delete"); // drop the code + its stock entry
     // Delete failed → restore the product AND re-seed its stock (its entry was
     // dropped above), so the code isn't stuck reading 0 (sold-out).
-    void deleteProductDb(id).then((ok) => { if (ok === false) { save(before); onProductsChanged?.(before, id, "stock"); showNote(t.rd_prd_delete_failed); } });
+    void deleteProductDb(id).then((ok) => {
+      if (ok === false) { save(before); onProductsChanged?.(before, id, "stock"); showNote(t.rd_prd_delete_failed); return; }
+      if (productImages) { forgetProductImage(id); dropPath(id); } // its picture goes too (never blocks the delete)
+    });
   };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,6 +383,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
         {filtered.map((p) => (
           <div key={p.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, overflow: "hidden", boxShadow: "var(--shadow)" }}>
             <div style={{ height: 70, background: avColor(p.name), display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+              {productImages && imgUrl(p.id) && <img src={imgUrl(p.id)} alt={p.name} loading="lazy" data-testid={`prd-thumb-${p.id}`} onError={() => markBroken(imgUrl(p.id))} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
               <span style={{ fontSize: 22, fontWeight: 800, color: "rgba(255,255,255,.9)", fontFamily: "var(--font-display)" }}>{initials(p.name)}</span>
               <span style={{ position: "absolute", top: 8, right: 8, fontSize: 9.5, fontWeight: 700, color: "#fff", background: "rgba(0,0,0,.3)", padding: "3px 7px", borderRadius: 6 }}>{p.platform}</span>
             </div>
@@ -427,6 +476,27 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
               <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_stock}</label><input type="number" min="0" value={form.stock} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} required style={input} /></div>
             </div>
             <div><label style={lbl}>{t.rd_prd_platform}</label><select value={form.platform} onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value }))} style={input}><option>TikTok</option><option>Facebook</option><option>TikTok / FB</option></select></div>
+            {productImages && (
+              <div data-testid="prd-pic-section">
+                <label style={lbl}>{t.rd_prd_pic}</label>
+                {eid === null ? <div data-testid="prd-pic-save-first" style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.4 }}>{t.rd_prd_pic_save_first}</div> : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 10, overflow: "hidden", background: avColor(form.name), display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: "rgba(255,255,255,.9)", fontFamily: "var(--font-display)" }}>{initials(form.name)}</span>
+                      {imgUrl(eid) && <img src={imgUrl(eid)} alt={form.name} data-testid="prd-pic-preview" onError={() => markBroken(imgUrl(eid))} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+                    </div>
+                    <input ref={picInput} type="file" accept="image/*" data-testid="prd-pic-input" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void onPickPic(f); }} />
+                    {picBusy ? <span data-testid="prd-pic-busy" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{picBusy === "up" ? t.rd_prd_pic_uploading : t.rd_prd_pic_removing}</span> : (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => picInput.current?.click()} data-testid="prd-pic-add" style={sheetBtn(false)}>{imgPaths.has(eid) ? t.rd_prd_pic_replace : t.rd_prd_pic_add}</button>
+                        {imgPaths.has(eid) && <button type="button" onClick={() => void onRemovePic()} data-testid="prd-pic-remove" style={{ ...sheetBtn(false), color: "var(--danger)" }}>{t.rd_prd_pic_remove}</button>}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {picErr && <div data-testid="prd-pic-err" style={{ fontSize: 10.5, color: "var(--danger)", marginTop: 4, lineHeight: 1.4 }}>{picErr}</div>}
+              </div>
+            )}
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.rd_prd_status_will}<b style={{ color: stockColor(parseInt(form.stock, 10) || 0) }}>{statusLabel(statusForStock(parseInt(form.stock, 10) || 0))}</b></div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 2 }}>
               <button type="button" onClick={() => setShow(false)} style={{ padding: "9px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_cancel}</button>

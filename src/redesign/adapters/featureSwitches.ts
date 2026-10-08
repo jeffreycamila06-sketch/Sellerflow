@@ -9,10 +9,11 @@ export const FEATURE_SWITCH_KEYS = {
   fbSoldout: "fb_soldout_enabled",
   fbWaitlist: "fb_waitlist_enabled",
   inventoryV2: "inventory_v2_enabled",
+  productImages: "product_images_enabled",
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {
