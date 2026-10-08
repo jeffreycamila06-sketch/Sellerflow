@@ -78,7 +78,11 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const [imgPaths, setImgPaths] = useState<Map<number, string>>(() => new Map());
   const [imgVer, setImgVer] = useState<Map<number, number>>(() => new Map());
   const [imgBroken, setImgBroken] = useState<Set<string>>(() => new Set());
-  const [picBusy, setPicBusy] = useState<"" | "up" | "rm">("");
+  const [picBusy, setPicBusy] = useState<"" | "up" | "rm" | "prep">("");
+  // A picture picked in the ADD form: compressed at once, held here (with a preview URL) and
+  // uploaded only after the new product saved (see submit).
+  const [newPic, setNewPic] = useState<{ blob: Blob; url: string } | null>(null);
+  const clearNewPic = () => setNewPic((p) => { if (p?.url) { try { URL.revokeObjectURL(p.url); } catch { /* ignore */ } } return null; });
   const [picErr, setPicErr] = useState("");
   const picInput = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -96,10 +100,18 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const dropPath = (id: number) => setImgPaths((m) => { const n = new Map(m); n.delete(id); return n; });
   const onPickPic = async (file: File | null | undefined) => {
     const id = eid;
-    if (id === null || !file || picBusy) return;
-    setPicErr(""); setPicBusy("up");
+    if (!file || picBusy) return;
+    setPicErr(""); setPicBusy(id === null ? "prep" : "up");
     const c = await compressProductImage(file);
     if (c.ok === false) { setPicBusy(""); setPicErr(c.reason === "too_big" ? t.rd_prd_pic_too_big : t.rd_prd_pic_unreadable); return; }
+    if (id === null) { // add form: keep it until the product is saved
+      const blob = c.blob;
+      let url = "";
+      try { url = typeof URL.createObjectURL === "function" ? URL.createObjectURL(blob) : ""; } catch { url = ""; }
+      setNewPic((p) => { if (p?.url) { try { URL.revokeObjectURL(p.url); } catch { /* ignore */ } } return { blob, url }; });
+      setPicBusy("");
+      return;
+    }
     const path = await uploadProductImage(id, c.blob);
     setPicBusy("");
     if (!path) { setPicErr(t.rd_prd_pic_failed); return; }
@@ -195,8 +207,9 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     });
     return () => { active = false; };
   }, []);
-  const openAdd = () => { setForm(EMPTY); setEid(null); setFormErr(""); setPicErr(""); setShow(true); };
-  const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform, liveCode: p.liveCode || "" }); setEid(p.id); setFormErr(""); setPicErr(""); setShow(true); };
+  const openAdd = () => { setForm(EMPTY); setEid(null); setFormErr(""); setPicErr(""); clearNewPic(); setShow(true); };
+  const closeForm = () => { setShow(false); clearNewPic(); };
+  const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform, liveCode: p.liveCode || "" }); setEid(p.id); setFormErr(""); setPicErr(""); clearNewPic(); setShow(true); };
   // Delete: if the CLOUD delete fails, the local delete is REVERTED (the DB row
   // survived and the DB-wins reconcile would resurrect it on next load anyway —
   // showing it gone now would be a lie) + the failure pill explains.
@@ -242,7 +255,16 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     // stock-less save; a new product keeps its starting stock and logs it.
     const v2Edit = inventoryV2 && eid !== null && stockChanged && !!prev && !!changed;
     const editDelta = v2Edit ? changed!.stock - prev!.stock : 0;
+    const picForNew = productImages && eid === null && newPic ? newPic.blob : null;
     if (changed) void saveProductDbResult(changed, { skipStock: !stockChanged || v2Edit }).then((r) => {
+      if (r.ok && picForNew) {
+        const id = changed.id;
+        void uploadProductImage(id, picForNew).then((path) => {
+          if (!path) { showNote(t.rd_prd_pic_failed); return; }
+          setImgPaths((m) => new Map(m).set(id, path));
+          setImgVer((m) => new Map(m).set(id, nowMs()));
+        });
+      }
       if (r.ok && v2Edit && editDelta !== 0) {
         void adjustStockLogged(changed.id, editDelta, "manual_edit").then((newStock) => {
           if (newStock == null || newStock < 0) { showNote(t.rd_prd_stock_failed); return; }
@@ -256,6 +278,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
       else showNote(t.rd_prd_sync_failed);
     });
     setShow(false);
+    clearNewPic();
   };
   // Inventory v2 — Restock sheet + History sheet (one product at a time).
   const [restockFor, setRestockFor] = useState<Product | null>(null);
@@ -459,7 +482,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
       )}
 
       {show && (
-        <div onClick={(e) => e.target === e.currentTarget && setShow(false)} style={{ position: "absolute", inset: 0, zIndex: 1000, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 22 }}>
+        <div onClick={(e) => e.target === e.currentTarget && closeForm()} style={{ position: "absolute", inset: 0, zIndex: 1000, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 22 }}>
           <form onSubmit={submit} onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18, boxShadow: "0 24px 60px rgba(0,0,0,.4)", padding: 18, display: "flex", flexDirection: "column", gap: 11 }}>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{eid !== null ? t.rd_prd_edit : t.rd_prd_add_title}</div>
             <div><label style={lbl}>{t.rd_prd_name}</label><input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required style={input} /></div>
@@ -479,27 +502,31 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
             {productImages && (
               <div data-testid="prd-pic-section">
                 <label style={lbl}>{t.rd_prd_pic}</label>
-                {eid === null ? <div data-testid="prd-pic-save-first" style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.4 }}>{t.rd_prd_pic_save_first}</div> : (
+                {(() => {
+                  const preview = eid === null ? (newPic?.url || "") : imgUrl(eid);
+                  const hasPic = eid === null ? !!newPic : imgPaths.has(eid);
+                  return (
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 10, overflow: "hidden", background: avColor(form.name), display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
                       <span style={{ fontSize: 16, fontWeight: 800, color: "rgba(255,255,255,.9)", fontFamily: "var(--font-display)" }}>{initials(form.name)}</span>
-                      {imgUrl(eid) && <img src={imgUrl(eid)} alt={form.name} data-testid="prd-pic-preview" onError={() => markBroken(imgUrl(eid))} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+                      {preview && <img src={preview} alt={form.name} data-testid="prd-pic-preview" onError={() => { if (eid !== null) markBroken(preview); }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
                     </div>
                     <input ref={picInput} type="file" accept="image/*" data-testid="prd-pic-input" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void onPickPic(f); }} />
-                    {picBusy ? <span data-testid="prd-pic-busy" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{picBusy === "up" ? t.rd_prd_pic_uploading : t.rd_prd_pic_removing}</span> : (
+                    {picBusy ? <span data-testid="prd-pic-busy" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{picBusy === "up" ? t.rd_prd_pic_uploading : picBusy === "rm" ? t.rd_prd_pic_removing : "…"}</span> : (
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button type="button" onClick={() => picInput.current?.click()} data-testid="prd-pic-add" style={sheetBtn(false)}>{imgPaths.has(eid) ? t.rd_prd_pic_replace : t.rd_prd_pic_add}</button>
-                        {imgPaths.has(eid) && <button type="button" onClick={() => void onRemovePic()} data-testid="prd-pic-remove" style={{ ...sheetBtn(false), color: "var(--danger)" }}>{t.rd_prd_pic_remove}</button>}
+                        <button type="button" onClick={() => picInput.current?.click()} data-testid="prd-pic-add" style={sheetBtn(false)}>{hasPic ? t.rd_prd_pic_replace : t.rd_prd_pic_add}</button>
+                        {hasPic && <button type="button" onClick={() => { if (eid === null) clearNewPic(); else void onRemovePic(); }} data-testid="prd-pic-remove" style={{ ...sheetBtn(false), color: "var(--danger)" }}>{t.rd_prd_pic_remove}</button>}
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
                 {picErr && <div data-testid="prd-pic-err" style={{ fontSize: 10.5, color: "var(--danger)", marginTop: 4, lineHeight: 1.4 }}>{picErr}</div>}
               </div>
             )}
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.rd_prd_status_will}<b style={{ color: stockColor(parseInt(form.stock, 10) || 0) }}>{statusLabel(statusForStock(parseInt(form.stock, 10) || 0))}</b></div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 2 }}>
-              <button type="button" onClick={() => setShow(false)} style={{ padding: "9px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_cancel}</button>
+              <button type="button" onClick={closeForm} style={{ padding: "9px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_cancel}</button>
               <button type="submit" style={{ padding: "9px 16px", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_save}</button>
             </div>
           </form>

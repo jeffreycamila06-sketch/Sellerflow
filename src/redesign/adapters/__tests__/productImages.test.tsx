@@ -44,7 +44,7 @@ vi.mock("../productsDb", () => ({
 vi.mock("../productImages", async (orig) => ({ ...(await orig<typeof import("../productImages")>()), compressProductImage: vi.fn() }));
 import Products from "../../screens/Products";
 import { TProvider } from "../../i18n";
-import { deleteProductDb } from "../productsDb";
+import { deleteProductDb, saveProductDbResult } from "../productsDb";
 import * as pi from "../productImages";
 
 const real = await vi.importActual<typeof import("../productImages")>("../productImages");
@@ -173,12 +173,93 @@ describe("switch ON", () => {
     expect(screen.getByTestId("prd-pic-add").textContent).toBe("Add picture");
     expect(h.log.some((c) => c.op === "select" && c.args[0] === "local_id")).toBe(true);
   });
-  it("a new product must be saved first", async () => {
-    view({ productImages: true });
-    fireEvent.click(screen.getByText("+ Add"));
-    expect(screen.getByTestId("prd-pic-save-first")).toBeTruthy();
-    expect(screen.queryByTestId("prd-pic-input")).toBeNull();
+});
+
+describe("switch ON — picture in the ADD form (A1)", () => {
+  const saveMock = () => saveProductDbResult as unknown as ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = vi.fn(() => "blob:preview-1");
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn();
+    compressMock.mockResolvedValue({ ok: true, blob: new Blob(["x"], { type: "image/jpeg" }), width: 800, height: 600 });
   });
+  const fillAndPick = async () => {
+    view({ productImages: true });
+    await screen.findByTestId("prd-thumb-7");
+    fireEvent.click(screen.getByText("+ Add"));
+    const inputs = document.querySelectorAll("form input:not([type=file])");
+    fireEvent.change(inputs[0], { target: { value: "New Hat" } });
+    fireEvent.change(inputs[3], { target: { value: "100" } });
+    fireEvent.change(inputs[4], { target: { value: "3" } });
+    fireEvent.change(screen.getByTestId("prd-pic-input"), { target: { files: [new File(["p"], "p.jpg", { type: "image/jpeg" })] } });
+    await waitFor(() => expect(screen.getByTestId("prd-pic-preview").getAttribute("src")).toBe("blob:preview-1"));
+  };
+  it("compresses at once, shows a preview, uploads nothing before the save", async () => {
+    await fillAndPick();
+    expect(compressMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("prd-pic-add").textContent).toBe("Replace");
+    expect(h.bucket.upload).not.toHaveBeenCalled();
+  });
+  it("after a successful save, uploads to {uid}/{new id}.jpg and shows the thumbnail", async () => {
+    await fillAndPick();
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(h.bucket.upload).toHaveBeenCalledTimes(1));
+    const saved = (saveMock().mock.calls.at(-1) as unknown as [{ id: number; name: string }])[0];
+    expect(saved.name).toBe("New Hat");
+    expect(h.bucket.upload.mock.calls[0][0]).toBe(`u1/${saved.id}.jpg`);
+    expect(await screen.findByTestId(`prd-thumb-${saved.id}`)).toBeTruthy();
+  });
+  it("save failure → nothing uploaded", async () => {
+    saveMock().mockResolvedValueOnce({ ok: false });
+    await fillAndPick();
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(saveMock()).toHaveBeenCalled());
+    await flush(); await flush();
+    expect(h.bucket.upload).not.toHaveBeenCalled();
+  });
+  it("duplicate live code → nothing uploaded", async () => {
+    saveMock().mockResolvedValueOnce({ ok: false, duplicateCode: true });
+    await fillAndPick();
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(saveMock()).toHaveBeenCalled());
+    await flush(); await flush();
+    expect(h.bucket.upload).not.toHaveBeenCalled();
+  });
+  it("upload failure → toast, the product stays without a picture", async () => {
+    h.state.uploadError = { message: "nope" };
+    await fillAndPick();
+    fireEvent.click(screen.getByText("Save"));
+    expect(await screen.findByText(/Couldn't save the picture/)).toBeTruthy();
+    expect(screen.getByText("New Hat")).toBeTruthy();
+    expect(document.querySelector('[data-testid^="prd-thumb-"]:not([data-testid="prd-thumb-7"])')).toBeNull();
+  });
+  it("Cancel, openAdd and openEdit clear the held picture", async () => {
+    await fillAndPick();
+    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByText("+ Add"));
+    expect(screen.queryByTestId("prd-pic-preview")).toBeNull();
+    expect(screen.getByTestId("prd-pic-add").textContent).toBe("Add picture");
+    fireEvent.change(screen.getByTestId("prd-pic-input"), { target: { files: [new File(["p"], "p.jpg")] } });
+    await screen.findByTestId("prd-pic-preview");
+    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getAllByText("Edit")[1]); // Blue Bag, no picture
+    expect(screen.queryByTestId("prd-pic-preview")).toBeNull();
+    expect(URL.revokeObjectURL).toHaveBeenCalled();
+  });
+  it("Remove in the add form drops the held picture; a refused picture is never held", async () => {
+    await fillAndPick();
+    fireEvent.click(screen.getByTestId("prd-pic-remove"));
+    expect(screen.queryByTestId("prd-pic-preview")).toBeNull();
+    compressMock.mockResolvedValueOnce({ ok: false, reason: "too_big" });
+    fireEvent.change(screen.getByTestId("prd-pic-input"), { target: { files: [new File(["p"], "p.jpg")] } });
+    expect((await screen.findByTestId("prd-pic-err")).textContent).toContain("400 KB");
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(saveMock()).toHaveBeenCalled());
+    await flush();
+    expect(h.bucket.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe("switch ON — deletes", () => {
   it("deleting a product removes its object, fire-and-forget", async () => {
     view({ productImages: true });
     await screen.findByTestId("prd-thumb-7");
