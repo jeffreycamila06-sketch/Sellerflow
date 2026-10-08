@@ -211,7 +211,11 @@ describe("fbLive.js stop hook", () => {
   });
   it("the hook is the only change in fbLive.js: one try/catch line inside stopPoller", () => {
     const src = readFileSync("server/fbLive.js", "utf8");
-    expect(src.match(/insertAutoReceiptJob/g)).toHaveLength(2);
+    // B1 hook (2) + Build 2's Disconnect queueing behind fb_stop_reasons (2), both inside stopPoller.
+    expect(src.match(/insertAutoReceiptJob/g)).toHaveLength(4);
+    const stopFn = src.slice(src.indexOf("function stopPoller("), src.indexOf("function listPollers("));
+    expect(stopFn.match(/insertAutoReceiptJob/g)).toHaveLength(4);
+    expect(stopFn).toContain('if (reason === "disconnect" && typeof store.insertAutoReceiptJob === "function") {');
     const stop = src.slice(src.indexOf("function stopPoller("), src.indexOf("function listPollers("));
     expect(stop).toContain('try { if ((reason === "session_end" || reason === "idle" || reason === "max_session") && typeof store.insertAutoReceiptJob === "function") Promise.resolve(store.insertAutoReceiptJob(');
     expect(stop).toContain(".catch(() => {}); } catch { /* best effort */ }");
