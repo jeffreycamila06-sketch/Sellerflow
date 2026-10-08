@@ -25,6 +25,7 @@ import type { PinPayload } from "./pinToPrint";
 import type { Comment as RDComment } from "../data";
 import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "./connect";
 import { fbConnect, type FbConnectResult } from "./fb";
+import type { FbStop } from "./fbStopReasons";
 import { isPreviewEnv } from "./previewEnv";
 // Batch E (#13): server URL + seller/browser identity now come from the ONE
 // shared module (was a local copy identical to connect.ts's — parity-tested;
@@ -154,6 +155,8 @@ export interface UseLiveFeed {
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
   // fb_connect_v2 — the Facebook Connect through the same in-flight window as connect().
   connectFacebook: (pageId: string, scopeKey: string) => Promise<FbConnectResult>;
+  // fb_stop_reasons — the last Facebook stop the server explained (null = none yet).
+  fbLastStop: FbStop | null;
   // P3 (additive) — Shopee live status. shopeeConnected mirrors tt/fbConnected
   // (server platform_status platform:"Shopee"); ensureJoined lets the Shopee
   // connect path (RedesignApp → shopee.ts POST) put this socket in the seller
@@ -187,6 +190,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // session-end), and user switch (below). Kept through the amber grace
   // (display hides it there; a recovery resumes with ≤30s-stale data refreshed
   // by the server heartbeat). DISPLAY DATA ONLY — never feeds the status machine.
+  const [fbLastStop, setFbLastStop] = useState<FbStop | null>(null); // fb_stop_reasons
   const [ttViewers, setTtViewers] = useState<number | null>(null);
   // PIN-TO-PRINT — pins ride a CALLBACK seam (the onComment/Auto-Mode pattern:
   // the handler lives behind a ref so its changing identity never re-subscribes
@@ -473,7 +477,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     //     flapping (symptom A); the armed timer falls to honest gray if it doesn't.
     //   • terminal not-connected (streamEnd / not_live / manual / rate_limited /
     //     stale snapshot) → honest gray IMMEDIATELY.
-    s.on("platform_status", (p: { platform?: string; connected?: boolean; reconnecting?: boolean; sellerId?: string; username?: string; sessionId?: string }) => {
+    s.on("platform_status", (p: { platform?: string; connected?: boolean; reconnecting?: boolean; sellerId?: string; username?: string; sessionId?: string; reason?: string }) => {
       if (p.sellerId && p.sellerId !== sellerId) return;
       if (p.sessionId && p.sessionId !== sessionId) return;
       // P3 — Shopee branch FIRST, returning before any TikTok/FB code (so tt/fb
@@ -549,6 +553,8 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       } else {
         cancelGray(plat);
         setPlatformGray(plat);
+        // fb_stop_reasons — record WHY Facebook stopped (after every filter above; display only).
+        if (plat === "Facebook" && p.reason) setFbLastStop({ reason: String(p.reason), scopeKey: p.username || "", at: Date.now() });
       }
     });
     // Viewer count relay (FLive parity) — DISPLAY DATA ONLY, read-only next to
@@ -766,5 +772,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — history block mapped with restored:true so the Dashboard's
   // muted zero-action display branch handles it (duplicate-order layer 3).
   const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
-  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect, connectFacebook, shopeeConnected, ensureJoined, igConnected };
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, fbLastStop, connect, connectFacebook, shopeeConnected, ensureJoined, igConnected };
 }

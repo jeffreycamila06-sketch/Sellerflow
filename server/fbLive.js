@@ -57,6 +57,9 @@ export const MAX_FETCH_ERRORS = 3;    // consecutive hard comments-fetch errors 
 export const STATE_TTL_MS = 10 * 60 * 1000; // OAuth state nonce validity
 export const REFRESH_SCAN_MS = 60 * 60 * 1000; // token re-validation timer cadence (page tokens live ~60d)
 export const IDLE_STOP_MS = 10 * 60 * 1000; // F2: check the live status after this long with no NEW comments
+// fb_stop_reasons (switch ON): every LIVE_RECHECK_MS ask Facebook whether the live is still on,
+// whatever the comment activity (replay comments keep the idle clock fresh for hours).
+export const LIVE_RECHECK_MS = 5 * 60 * 1000;
 export const IDLE_RECHECK_MS = 60 * 1000;   // unreadable live status at the idle limit → ask again after this
 export const MAX_IDLE_UNREADABLE = 3;       // unreadable checks in a row at the idle limit → stop(idle)
 export const MAX_SESSION_MS = 12 * 60 * 60 * 1000; // F2: hard ceiling
@@ -434,6 +437,9 @@ export function replayFbStatus(runtime, sellerId, emailId, emit) {
 export function createFbRuntime(deps) {
   const {
     config, store, emitComment, statusEmit, liveKey,
+    // fb_stop_reasons switch (server.js: cached app_settings read). OFF / missing → no extra
+    // Graph call and no extra auto-receipt job; the stop reason is sent on the status either way.
+    stopReasonsEnabled = async () => false,
     renderUrl, appUrl = APP_REDIRECT_URL,
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
     makeFormParser = (limit) => express.urlencoded({ extended: false, limit }),
@@ -597,6 +603,9 @@ export function createFbRuntime(deps) {
     if (refreshHandle && typeof refreshHandle.unref === "function") refreshHandle.unref();
   }
 
+  // The switch read never throws (a failed read = off).
+  const isStopReasonsOn = async () => { try { return (await stopReasonsEnabled()) === true; } catch { return false; } };
+
   // ---- Poller ----
   // The one thing the two modes do differently: where "is it still LIVE?" is read.
   // live_videos mode → /{live_video}?fields=status; video mode → /{video}?fields=live_status.
@@ -632,6 +641,7 @@ export function createFbRuntime(deps) {
     // Idle limit reached: a quiet room is not a finished live. LIVE → keep polling and look again
     // after the next IDLE_STOP_MS of quiet; any other status → the live ended; unreadable →
     // keep polling, ask again in IDLE_RECHECK_MS, and stop(idle) after MAX_IDLE_UNREADABLE in a row.
+    const idleCheckDue = idleDue && nowMs >= (entry.idleRecheckAtMs || 0); // fb_stop_reasons: no 2nd status read in one tick
     if (idleDue && nowMs >= (entry.idleRecheckAtMs || 0)) {
       const liveStatus = await readLiveStatus(entry);
       if (entry.stopped) return { hadNew: false, stop: false };
@@ -646,6 +656,17 @@ export function createFbRuntime(deps) {
         if (entry.idleUnreadable >= MAX_IDLE_UNREADABLE) return { hadNew: false, stop: true, reason: "idle" };
         entry.idleRecheckAtMs = nowMs + IDLE_RECHECK_MS;
       }
+    }
+
+    // fb_stop_reasons (switch ON) — every LIVE_RECHECK_MS, whatever the comment activity: is the
+    // live still on? LIVE / unreadable → note the time and go on (unreadable never stops here;
+    // the idle path above owns that); any other status → the live ended.
+    if (!idleCheckDue && nowMs - (entry.liveCheckedAtMs || entry.startedAtMs) >= LIVE_RECHECK_MS && (await isStopReasonsOn())) {
+      if (entry.stopped) return { hadNew: false, stop: false };
+      const liveStatus = await readLiveStatus(entry);
+      if (entry.stopped) return { hadNew: false, stop: false };
+      if (liveStatus && liveStatus !== "LIVE") return { hadNew: false, stop: true, reason: "session_end" };
+      entry.liveCheckedAtMs = nowMs;
     }
 
     let res;
@@ -793,10 +814,16 @@ export function createFbRuntime(deps) {
     entry.stopped = true;
     if (entry.timer != null) { clearLoop(entry.timer); entry.timer = null; }
     pollers.delete(key);
-    try { statusEmit(entry.sellerId, { connected: false, pageId: entry.pageId, liveVideoId: entry.liveVideoId, scopeKey: entry.scopeKey, sessionId: entry.sessionId }); } catch { /* best effort */ }
+    try { statusEmit(entry.sellerId, { connected: false, pageId: entry.pageId, liveVideoId: entry.liveVideoId, scopeKey: entry.scopeKey, sessionId: entry.sessionId, reason: String(reason || "") }); } catch { /* best effort */ }
     log(`[FB] poller stop page=${entry.pageId} reason=${reason}`);
     // B1 automatic receipt: the live ended → the store queues a job (only when its switch is on). Fire-and-forget, never blocks or throws.
     try { if ((reason === "session_end" || reason === "idle" || reason === "max_session") && typeof store.insertAutoReceiptJob === "function") Promise.resolve(store.insertAutoReceiptJob({ userId: entry.userId, pageId: entry.pageId, liveVideoId: entry.liveVideoId })).catch(() => {}); } catch { /* best effort */ }
+    // fb_stop_reasons (switch ON): the seller's own Disconnect also queues it (the runner skips
+    // buyers who already have a receipt and checks the seller's toggle and plan). Never on restart.
+    if (reason === "disconnect" && typeof store.insertAutoReceiptJob === "function") {
+      const job = { userId: entry.userId, pageId: entry.pageId, liveVideoId: entry.liveVideoId };
+      void isStopReasonsOn().then((on) => (on ? store.insertAutoReceiptJob(job) : null)).catch(() => {});
+    }
     return true;
   }
 
@@ -904,7 +931,7 @@ export function createFbRuntime(deps) {
     app.get("/fb/pages", requireAuth, requireFbAvailable, async (req, res) => {
       try {
         const pages = await store.listPages(req.authUserId);
-        return res.json({ ok: true, pages: (pages || []).map((p) => ({ page_id: String(p.page_id), name: p.page_name || "", username: p.page_username || "", active: !!p.active })) });
+        return res.json({ ok: true, pages: (pages || []).map((p) => ({ page_id: String(p.page_id), name: p.page_name || "", username: p.page_username || "", active: !!p.active, token_expires_at: p.token_expires_at ? String(p.token_expires_at) : null })) });
       } catch { return res.status(500).json({ ok: false, error: "fb_pages_failed" }); }
     });
 

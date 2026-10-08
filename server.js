@@ -2233,7 +2233,7 @@ try {
       },
       async listPages(userId) {
         // NEVER select access_token — the /fb/pages response must not carry tokens.
-        const { data } = await serviceSb.from("fb_pages").select("page_id, page_name, page_username, active").eq("user_id", userId);
+        const { data } = await serviceSb.from("fb_pages").select("page_id, page_name, page_username, active, token_expires_at").eq("user_id", userId); // the expiry date only (fb_stop_reasons badge)
         return data || [];
       },
       // Throws on a database error so the OAuth callback never reports a page as saved when it
@@ -2253,9 +2253,18 @@ try {
         await serviceSb.from("fb_pages").update({ token_expires_at: iso, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("page_id", String(pageId));
       },
     };
+    // fb_stop_reasons (sql/104): read like fb_enabled (service role, cached 60 s); off on any error.
+    const fbStopReasonsFlag = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_stop_reasons").maybeSingle();
+        if (error) throw new Error("fb_stop_reasons_read_failed");
+        return data ? data.value : null;
+      },
+    });
     fbRuntime = createFbRuntime({
       config: fbCfg,
       store,
+      stopReasonsEnabled: fbStopReasonsFlag,
       liveKey,
       renderUrl: RENDER_URL,
       // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
@@ -2265,8 +2274,9 @@ try {
       // sessionId = the CONNECTING browser's session (from the /fb/connect body), NOT the
       // live-video id — useLiveFeed drops any status whose sessionId ≠ its own, which is why
       // the FB pill never went green when this carried liveVideoId.
-      statusEmit: (sellerId, { connected, scopeKey, sessionId }) => {
-        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Facebook", connected, sellerId: emailIdOf(sellerId), username: String(scopeKey || ""), sessionId: String(sessionId || "") });
+      // fb_stop_reasons — a stop carries its reason (additive; absent on connected:true).
+      statusEmit: (sellerId, { connected, scopeKey, sessionId, reason }) => {
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Facebook", connected, sellerId: emailIdOf(sellerId), username: String(scopeKey || ""), sessionId: String(sessionId || ""), ...(!connected && reason ? { reason: String(reason) } : {}) });
       },
       log: (line) => console.log(line),
     });
