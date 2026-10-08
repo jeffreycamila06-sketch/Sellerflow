@@ -11,6 +11,7 @@ import {
 } from "../adapters/receiptSettings";
 import { useReceiptPicture } from "../adapters/useReceiptPicture";
 import { loadSoldoutSettings, saveSoldoutSettings, SOLDOUT_TEXT_MAX } from "../adapters/fbSoldout";
+import { loadAutoReceipt, saveAutoReceipt } from "../adapters/fbAutoReceipt";
 import type { ReceiptInput } from "../adapters/receiptImage";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
@@ -26,11 +27,14 @@ function sampleReceiptInput(s: ReceiptSettings, cur: string, buyerName: string, 
   };
 }
 
-export default function ReceiptFormat({ cur, onBack, soldout }: {
+export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt }: {
   cur: string; onBack: () => void;
   // F2 (fb_soldout_enabled + Messenger access + Facebook world): the "Sold-out message" section.
   // Absent = the screen exactly as before. onChanged → the app's live toggle after a save.
   soldout?: { onChanged: (enabled: boolean) => void };
+  // B1 (fb_auto_receipt_enabled + Messenger access + Facebook world + Plus or higher): the
+  // "Automatic receipt after live" toggle. Absent = the screen exactly as before.
+  autoReceipt?: { lang: string; currency: string };
 }) {
   const t = useT();
   const [s, setS] = useState<ReceiptSettings>(EMPTY_RECEIPT_SETTINGS);
@@ -108,6 +112,7 @@ export default function ReceiptFormat({ cur, onBack, soldout }: {
           </>
         )}
         {soldout && <SoldoutSection onChanged={soldout.onChanged} />}
+        {autoReceipt && <AutoReceiptSection lang={autoReceipt.lang} currency={autoReceipt.currency} />}
         {status !== "loading" && (
           <div style={card}>
             <span style={label}>{t.rd_rc_sample}</span>
@@ -162,6 +167,50 @@ function SoldoutSection({ onChanged }: { onChanged: (enabled: boolean) => void }
           <div style={counter}>{tpl("{n}/{max}", { n: text.length, max: SOLDOUT_TEXT_MAX })}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
             <button type="button" data-testid="rc-soldout-save" style={{ ...btn(true), opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={() => void save()}>{saving ? t.rd_rc_saving : t.rd_rc_save}</button>
+            {msg && <span role="status" style={{ fontSize: 12.5, fontWeight: 600, color: msg.ok ? "var(--ok)" : "var(--danger)" }}>{msg.text}</span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// B1 — the seller's own switch for the automatic receipt (default OFF). Saved on its own with
+// the app's language and currency (the server draws the picture with them).
+function AutoReceiptSection({ lang, currency }: { lang: string; currency: string }) {
+  const t = useT();
+  const [st, setSt] = useState<"loading" | "ready" | "error">("loading");
+  const [on, setOn] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadAutoReceipt().then((r) => {
+      if (!alive) return;
+      if (r.ok) { setOn(r.enabled); setSt("ready"); } else setSt("error");
+    });
+    return () => { alive = false; };
+  }, []);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true); setMsg(null);
+    const ok = await saveAutoReceipt({ enabled: on, lang, currency });
+    setSaving(false);
+    setMsg({ text: ok ? t.rd_rc_saved : t.rd_rc_save_failed, ok });
+  };
+  return (
+    <div style={card} data-testid="rc-auto">
+      <span style={label}>{t.rd_rc_auto_title}</span>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }}>{t.rd_rc_auto_hint}</div>
+      {st === "error" && <div role="alert" data-testid="rc-auto-error" style={{ color: "var(--danger)", fontSize: 13, fontWeight: 600 }}>{t.rd_rc_load_failed}</div>}
+      {st === "ready" && (
+        <>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
+            <input type="checkbox" data-testid="rc-auto-on" checked={on} onChange={(e) => setOn(e.target.checked)} />
+            {t.rd_rc_auto_toggle}
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button type="button" data-testid="rc-auto-save" style={{ ...btn(true), opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={() => void save()}>{saving ? t.rd_rc_saving : t.rd_rc_save}</button>
             {msg && <span role="status" style={{ fontSize: 12.5, fontWeight: 600, color: msg.ok ? "var(--ok)" : "var(--danger)" }}>{msg.text}</span>}
           </div>
         </>

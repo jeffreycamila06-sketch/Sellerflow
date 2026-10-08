@@ -87,6 +87,7 @@ import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
 import { adjustStockLogged, logStockMovement, loadProductStock } from "./adapters/productsDb";
 import { soldoutGate, soldoutTarget, loadSoldoutSettings, sendSoldOut, type SoldoutComment } from "./adapters/fbSoldout";
+import { autoReceiptGate } from "./adapters/fbAutoReceipt";
 import { joinWaitlist, loadWaitlist, setWaitlistStatus, groupWaitlist, rebuildWaitlistComment, nameHasBuyer, type WaitlistRow } from "./adapters/fbWaitlist";
 import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
@@ -1720,6 +1721,8 @@ export default function RedesignApp() {
   // F2 sold-out Messenger message: switch AND Messenger access (server answer, never the preview
   // list) AND Facebook open AND the Facebook world. The seller's own toggle comes on top.
   const soldoutBase = soldoutGate({ flag: featureSw.fbSoldout, receiptAccess: fbAccess.receipt, fbEnabled, hidden: platformHides("fbSoldout", world) });
+  // B1 — Settings → Receipt format "Automatic receipt after live" toggle (same Facebook world as the sold-out section).
+  const autoReceiptUi = autoReceiptGate({ flag: featureSw.fbAutoReceipt, receiptAccess: fbAccess.receipt, fbEnabled, hidden: platformHides("fbSoldout", world), plan: auth.profile?.plan });
   const [soldoutOn, setSoldoutOn] = useState(false);
   useEffect(() => {
     if (!soldoutBase) return;
@@ -2275,7 +2278,7 @@ export default function RedesignApp() {
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
-          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} />}
+          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings
