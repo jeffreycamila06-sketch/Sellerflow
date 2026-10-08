@@ -19,6 +19,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.9",
     "@supabase/supabase-js": "^2.105.4",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
