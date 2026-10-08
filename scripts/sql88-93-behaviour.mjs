@@ -167,7 +167,39 @@ async function t91() {
   ok((await db.query(`select count(*)::int c from public.fb_receipts`)).rows[0].c === 2, "91 rollback keeps rows");
 }
 
-const runs = { t88, t89, t90, t91 };
+async function t92() {
+  const db = await fresh();
+  await db.exec(src("90_stock_movements.sql"));
+  await db.exec(src("92_fb_waitlist.sql"));
+  const S = "11111111-2222-3333-4444-555555555555";
+  const join = (uid, cid, code = "A1", sess = S) => as(db, uid, () => db.query(`select public.fb_waitlist_join($1,$2,7,$3,'P1','LV','C1','Ana','ana') p`, [sess, code, cid])).then((r) => r.rows[0].p);
+  ok(await join(A, "c1") === 1, "92 first in line = 1");
+  ok(await join(A, "c2") === 2, "92 second = 2");
+  ok(await join(A, "c3", "a1 ") === 3, "92 code case/space-insensitive");
+  ok(await join(A, "c1") === 1, "92 idempotent per comment (same place)");
+  ok(await join(A, "c4", "B2") === 1, "92 other code = own line");
+  ok(await join(A, "c5", "A1", null) === 1, "92 other session (null) = own line");
+  ok(await join(B, "c1") === 1, "92 another seller's same comment id is their own row");
+  ok((await as(db, A, () => db.query(`update public.fb_waitlist set status='given' where comment_id='c1' returning id`))).rows.length === 1, "92 owner marks given");
+  ok(await join(A, "c2") === 1, "92 after the first is given, c2 is next");
+  ok(await join(A, "c1") === null, "92 a given row has no place");
+  ok(await raises(as(db, A, () => db.query(`update public.fb_waitlist set code='X' where comment_id='c2'`))), "92 only status is updatable");
+  ok(await raises(as(db, A, () => db.query(`update public.fb_waitlist set status='other' where comment_id='c2'`)), "fb_waitlist_status"), "92 status check");
+  ok(await raises(as(db, A, () => db.query(`delete from public.fb_waitlist`))), "92 no delete");
+  ok((await as(db, B, () => db.query(`select count(*)::int c from public.fb_waitlist`))).rows[0].c === 1, "92 B sees only own rows");
+  ok(await raises(as(db, B, () => db.query(`insert into public.fb_waitlist(user_id,code,comment_id,page_id) values ('${A}','A1','zz','P')`))), "92 insert as someone else refused");
+  await db.exec(`insert into public.products(user_id,local_id,name,stock) values ('${A}',7,'x',2);`);
+  ok((await as(db, A, () => db.query(`select public.adjust_product_stock_logged(7,-1,'waitlist','c2') n`))).rows[0].n === 1, "92 'waitlist' reason accepted");
+  ok((await db.query(`select command from cron.job where jobname='purge-old-fb-waitlist'`)).rows[0].command.includes("10 days"), "92 purge job");
+  await db.exec(src("92_fb_waitlist.sql"));
+  ok(true, "92 twice ok");
+  await db.exec(src("92_fb_waitlist_rollback.sql"));
+  ok(await raises(db.query(`select 1 from public.fb_waitlist`)), "92 rollback drops table");
+  ok((await db.query(`select count(*)::int c from public.stock_movements where reason='waitlist'`)).rows[0].c === 1, "92 rollback keeps 'waitlist' log rows");
+  ok(await raises(as(db, A, () => db.query(`select public.adjust_product_stock_logged(7,-1,'waitlist',null) n`))), "92 rollback: new 'waitlist' rows refused again");
+}
+
+const runs = { t88, t89, t90, t91, t92 };
 for (const [n, f] of Object.entries(runs)) {
   try { await f(); } catch (e) { fail++; console.log("CRASH", n, e.message); }
 }

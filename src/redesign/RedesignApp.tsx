@@ -87,6 +87,7 @@ import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
 import { adjustStockLogged, logStockMovement, loadProductStock } from "./adapters/productsDb";
 import { soldoutGate, soldoutTarget, loadSoldoutSettings, sendSoldOut, type SoldoutComment } from "./adapters/fbSoldout";
+import { joinWaitlist, loadWaitlist, setWaitlistStatus, groupWaitlist, rebuildWaitlistComment, nameHasBuyer, type WaitlistRow } from "./adapters/fbWaitlist";
 import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts } from "./adapters/productsDb";
@@ -1727,6 +1728,9 @@ export default function RedesignApp() {
     return () => { alive = false; };
   }, [soldoutBase, authUserId]);
   const soldoutSentRef = useRef<Set<string>>(new Set());   // comment ids already handled (one try per comment)
+  // F3 waitlist: same gate shape with its own switch. Joining the line happens only on the F2
+  // path (a sold-out Facebook comment the sold-out message handles) — F3 extends F2.
+  const waitlistBase = soldoutGate({ flag: featureSw.fbWaitlist, receiptAccess: fbAccess.receipt, fbEnabled, hidden: platformHides("fbWaitlist", world) });
   // Fire-and-forget, after the existing sold-out badge. Re-checks the DATABASE stock first: a
   // restock on another device must never produce a wrong "sold out" message.
   const onSoldOutFacebook = (c: ProdComment, code: AutoCode) => {
@@ -1738,8 +1742,54 @@ export default function RedesignApp() {
       const stock = await loadProductStock(code.productLocalId);
       if (stock == null) return;                                // could not verify → no message
       if (stock > 0) { autoStockRef.current.set(code.productLocalId, stock); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0)); return; }
-      await sendSoldOut({ ...target, code: code.code, lang });
+      // F3: join the line BEFORE the message so it can say the place in line.
+      const x = c as ProdComment & SoldoutComment & { liveVideoId?: string; commenterId?: string };
+      const position = waitlistBase
+        ? await joinWaitlist({ sessionId: sessionInstance.currentSessionId ?? null, code: code.code, productLocalId: code.productLocalId, commentId: target.commentId, pageId: target.pageId, liveVideoId: x.liveVideoId, commenterId: x.commenterId, commenterName: c.name || c.handle, handle: c.handle })
+        : null;
+      await sendSoldOut({ ...target, code: code.code, lang, position });
     })();
+  };
+  // F3 — the Orders "Waitlist" section: this session's line, loaded when Orders opens.
+  const [wlRows, setWlRows] = useState<WaitlistRow[] | null | "loading">("loading");
+  const [wlBusy, setWlBusy] = useState<number | null>(null);
+  const [wlNote, setWlNote] = useState<string | null>(null);
+  const wlSession = sessionInstance.currentSessionId ?? null;
+  const reloadWaitlist = useCallback(() => { void loadWaitlist(wlSession).then((r) => setWlRows(r)); }, [wlSession]);
+  useEffect(() => { if (screen === "orders" && waitlistBase) reloadWaitlist(); }, [screen, waitlistBase, reloadWaitlist]);
+  const wlGiveRef = useRef<Set<number>>(new Set());          // sync double-tap guard (money path)
+  // "Give": the EXISTING order path (pin-to-print precedent) — createOrder with a rebuilt comment,
+  // NO autoCode / productLocalId (the sticker shows the code via itemOverride). No message is sent.
+  const onWaitlistGive = (r: WaitlistRow) => {
+    if (wlGiveRef.current.has(r.id) || wlBusy != null) return;
+    const who = r.commenterName || r.handle;
+    if (nameHasBuyer(who, liveSession.session.buyers) && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_wl_same_name, { name: who }))) return;
+    wlGiveRef.current.add(r.id);
+    const code = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === r.code.trim().toLowerCase());
+    const c = rebuildWaitlistComment(r);
+    const order = orders.createOrder(c, effectiveOrderPrice(code ? code.price : 0, samePriceCfg.active), { itemOverride: code ? code.code : r.code });
+    if (!order) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return; }
+    setWlNote(null);
+    setWlBusy(r.id);
+    const snap = snapshotFromCreate(c, order);
+    reprintByIdRef.current.set(`wl:${r.commentId}`, snap);
+    jobToCommentRef.current.set(String(order.orderNum), { cid: `wl:${r.commentId}`, msgId: r.commentId });
+    liveSession.addOrderedMsgId(r.commentId, snap);
+    const lid = r.productLocalId ?? code?.productLocalId ?? null;
+    void (async () => {
+      if (lid != null) {
+        const s = await adjustStockLogged(lid, -1, "waitlist", r.commentId);
+        if (s != null && s >= 0) { autoStockRef.current.set(lid, s); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
+      }
+      await setWaitlistStatus(r.id, "given");
+      setWlBusy(null);
+      reloadWaitlist();
+    })();
+  };
+  const onWaitlistSkip = (r: WaitlistRow) => {
+    if (wlBusy != null) return;
+    setWlBusy(r.id);
+    void setWaitlistStatus(r.id, "skipped").then(() => { setWlBusy(null); reloadWaitlist(); });
   };
   const handlePinned = (p: PinPayload) => {
     if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
@@ -2127,7 +2177,7 @@ export default function RedesignApp() {
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
-          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
+          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string) => { const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}

@@ -29,6 +29,7 @@ export const FEATURE_PLATFORM = {
   fbPill: "facebook",    // Orders "Facebook" filter pill
   minersSplit: "multi",  // Miners platform split card — only for a seller with 2+ platforms
   fbSoldout: "facebook", // F2 sold-out Messenger message (Receipt format section + the send)
+  fbWaitlist: "facebook", // F3 Facebook waitlist (Orders section + joining the line)
 } as const satisfies Record<string, Platform | "multi">;
 export type WorldFeature = keyof typeof FEATURE_PLATFORM;
 

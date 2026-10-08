@@ -11,6 +11,7 @@
 // display-only, the session state/TODAY bar/window semantics are unreachable
 // from here. Every result row gets ↻ Reprint (the audited zero-write path) so
 // the workflow is type → find → reprint → stick.
+import type { WaitlistRow } from "../adapters/fbWaitlist";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { ORDERS, avColor, initials, fmt, statusColor, type Order } from "../data";
 import { filterOrders, buyerReceipt, type ReadState } from "../adapters/useReadData";
@@ -34,7 +35,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false,
+  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -52,6 +53,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // false/absent → the receipt box renders exactly as before.
   fbReceipt?: boolean;
   hideFbPill?: boolean; // PLATFORM WORLDS: no Facebook world → no "Facebook" pill (default false = unchanged)
+  // F3 Facebook waitlist (fb_waitlist_enabled + Messenger access + Facebook world). Absent = no section.
+  waitlist?: WaitlistUi;
   sessionId?: string | null; // the current session (Messenger receipt Send + "Receipt sent ✓")
 }) {
   const t = useT();
@@ -272,6 +275,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         )}
       </div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
+        {waitlist && <WaitlistSection w={waitlist} />}
         {/* F3 summary bar — count · total · unique buyers · AOV over the visible set. */}
         {live && !receipt && (
           <div data-testid="orders-summary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
@@ -342,6 +346,51 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── F3 — Facebook waitlist (this session's line per code, oldest first) ─────────────────────
+export interface WaitlistUi {
+  state: "loading" | "ready" | "error";
+  groups: { code: string; rows: WaitlistRow[] }[];
+  stockFor: (code: string) => number;     // this device's live stock for the code
+  onGive: (r: WaitlistRow) => void;
+  onSkip: (r: WaitlistRow) => void;
+  busyId: number | null;
+  note?: string | null;
+}
+function WaitlistSection({ w }: { w: WaitlistUi }) {
+  const t = useT();
+  if (w.state === "ready" && w.groups.length === 0) return null;
+  return (
+    <div data-testid="waitlist" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "12px 14px", boxShadow: "var(--shadow)" }}>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)", marginBottom: 6 }}>{t.rd_wl_title}</div>
+      {w.state === "loading" && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>…</div>}
+      {w.state === "error" && <div data-testid="waitlist-error" style={{ fontSize: 12.5, color: "var(--danger)" }}>{t.rd_wl_load_failed}</div>}
+      {w.note && <div role="status" data-testid="waitlist-note" style={{ fontSize: 12, color: "var(--danger)", fontWeight: 600, margin: "4px 0" }}>{w.note}</div>}
+      {w.groups.map((g) => {
+        const inStock = w.stockFor(g.code) > 0;
+        return (
+          <div key={g.code} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>
+              <span style={{ fontFamily: mono }}>{g.code}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "var(--ok)" : "var(--text-muted)" }}>{inStock ? t.rd_wl_in_stock : t.rd_wl_out}</span>
+            </div>
+            {g.rows.map((r, i) => {
+              const next = i === 0 && inStock;
+              return (
+                <div key={r.id} data-testid={`waitlist-row-${r.id}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", marginTop: 4, borderRadius: 10, background: next ? "var(--accent-soft)" : "transparent", border: next ? "1px solid var(--accent)" : "1px solid transparent" }}>
+                  <span style={{ width: 22, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textAlign: "right" }}>{i + 1}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.commenterName || r.handle}{next && <span data-testid="waitlist-next" style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: "var(--accent-fg)" }}>{t.rd_wl_next}</span>}</span>
+                  <button disabled={!inStock || w.busyId != null} onClick={() => w.onGive(r)} data-testid={`waitlist-give-${r.id}`} style={{ fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 8, border: "none", background: inStock ? "var(--accent)" : "var(--surface-2)", color: inStock ? "var(--accent-text)" : "var(--text-muted)", cursor: inStock && w.busyId == null ? "pointer" : "default" }}>{t.rd_wl_give}</button>
+                  <button disabled={w.busyId != null} onClick={() => w.onSkip(r)} data-testid={`waitlist-skip-${r.id}`} style={{ fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-dim)", cursor: w.busyId == null ? "pointer" : "default" }}>{t.rd_wl_skip}</button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

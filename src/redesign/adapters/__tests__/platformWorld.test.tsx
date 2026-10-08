@@ -70,7 +70,7 @@ describe("platformHides — the table", () => {
   it("switch constant is OFF in this build", () => { expect(PLATFORM_WORLDS_PUBLIC).toBe(false); });
   it("every feature × world (switch ON, all access)", () => {
     const expected: Record<string, WorldFeature[]> = {
-      none: [], tiktokOnly: ["fbChip", "fbPill", "minersSplit", "fbSoldout"], tiktokFacebook: [], empty: ["fbChip", "fbPill", "minersSplit", "fbSoldout"],
+      none: [], tiktokOnly: ["fbChip", "fbPill", "minersSplit", "fbSoldout", "fbWaitlist"], tiktokFacebook: [], empty: ["fbChip", "fbPill", "minersSplit", "fbSoldout", "fbWaitlist"],
       facebookOnly: ["ttChip", "pinPrint", "minersSplit"], instagramOnly: [...FEATURES], shopeeOnly: [...FEATURES],
     };
     for (const [name, counts] of Object.entries(WORLDS)) {
@@ -95,7 +95,7 @@ describe("platformHides — the table", () => {
     const hid = (viewAs: (typeof PLATFORM_VIEW_AS_OPTIONS)[number]) =>
       FEATURES.filter((f) => platformHides(f, effectiveWorld({ role: "Admin", counts: null, access: ALL_ACCESS, viewAs, isPublic: false })));
     expect(hid("all")).toEqual([]);
-    expect(hid("tiktok")).toEqual(["fbChip", "fbPill", "minersSplit", "fbSoldout"]);
+    expect(hid("tiktok")).toEqual(["fbChip", "fbPill", "minersSplit", "fbSoldout", "fbWaitlist"]);
     expect(hid("facebook")).toEqual(["ttChip", "pinPrint", "minersSplit"]);
     expect(hid("tiktok+facebook")).toEqual([]);
     expect(hid("instagram")).toEqual(FEATURES);
