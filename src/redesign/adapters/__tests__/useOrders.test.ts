@@ -14,7 +14,7 @@ const mk = (over: Partial<ProdComment> = {}): ProdComment => ({
 
 // reference payloads — copied VERBATIM from App.tsx:4348-4372.
 const refOrderRow = (c: ProdComment, o: { item: string; total: number }) => ({
-  customer_name: c.name || c.handle, product: o.item, total_amount: o.total, status: "Pending",
+  customer_name: c.name || c.handle, product: o.item, total_amount: o.total, status: "Pending", platform: c.platform,
 });
 const refLiveRow = (c: ProdComment, o: { bNum: number; item: string; price: number }, day: string) => ({
   buyer_number: o.bNum, handle: c.handle, customer_name: c.name || c.handle,
@@ -59,7 +59,7 @@ describe("db write payloads — parity with App.tsx:4348-4372", () => {
   it("orderDbPayload matches the billing-ledger insert shape", () => {
     const { order } = buildOrderFromComment(mk(), [], 250, new Date());
     expect(orderDbPayload(mk(), order)).toEqual(refOrderRow(mk(), order));
-    expect(orderDbPayload(mk(), order)).toEqual({ customer_name: "Ann Cruz", product: "250", total_amount: 250, status: "Pending" });
+    expect(orderDbPayload(mk(), order)).toEqual({ customer_name: "Ann Cruz", product: "250", total_amount: 250, status: "Pending", platform: "TikTok" });
   });
 
   it("liveSessionPayload matches the cross-device insert shape (Taipei day)", () => {

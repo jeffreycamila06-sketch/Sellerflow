@@ -2,11 +2,16 @@ import { isSupabaseConfigured, supabase } from "./supabase";
 import { taipeiDayId } from "./lib/dateHelpers";
 import type { LiveSessionRow } from "./lib/orderLogic";
 
+const ORDER_PLATFORMS = ["TikTok", "Facebook", "Shopee", "Instagram"]; // = sql/96 orders_platform_check
+
 export async function saveOrderToDatabase(order: {
   customer_name: string;
   product: string;
   total_amount: number;
   status?: string;
+  // sql/96: the live order's platform. Sent only when it is one of the four values the
+  // column's CHECK allows; anything else (or absent) is omitted → NULL, never a failed insert.
+  platform?: string;
 }) {
   if (!isSupabaseConfigured || !supabase) {
     console.info("Supabase is not configured. Order kept in local app state.", order);
@@ -28,6 +33,7 @@ export async function saveOrderToDatabase(order: {
         total_amount: order.total_amount,
         status: order.status || "Pending",
         user_id: user.id,
+        ...(order.platform && ORDER_PLATFORMS.includes(order.platform) ? { platform: order.platform } : {}),
       },
     ])
     .select();
