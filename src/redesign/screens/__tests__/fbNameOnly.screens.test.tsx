@@ -97,7 +97,7 @@ describe("Customers + Customer data", () => {
 describe("Miners + peak-hour list + raffle winner", () => {
   it("Miners: Facebook name once; TikTok keeps @handle", () => {
     const rep: UseMinersReport = { state: "live", load: vi.fn(), reload: vi.fn(), data: {
-      spent: 1000, orders: 3, buyers: 2, avg: 333, tiktokPct: 50, fbPct: 50, start: "2026-10-01", end: "2026-10-06", limit: 10,
+      spent: 1000, orders: 3, buyers: 2, avg: 333, tiktokPct: 50, fbPct: 50, split: [], start: "2026-10-01", end: "2026-10-06", limit: 10,
       top: [
         { name: FB, handle: `@${FB}`, platform: "Facebook", spent: 640, orders: 2, activeDays: 1, repeat: false },
         { name: "Joy M", handle: "@kaldag_queen_oo", platform: "TikTok", spent: 360, orders: 1, activeDays: 1, repeat: false },

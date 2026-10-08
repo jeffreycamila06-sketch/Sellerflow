@@ -9,7 +9,7 @@ import { TProvider } from "../../i18n";
 import type { UseMinersReport, MinersReportData } from "../../adapters/minersReport";
 
 const DATA = (over: Partial<MinersReportData> = {}): MinersReportData => ({
-  spent: 24500, orders: 62, buyers: 33, avg: 395, tiktokPct: 70, fbPct: 30,
+  spent: 24500, orders: 62, buyers: 33, avg: 395, tiktokPct: 70, fbPct: 30, split: [],
   top: [
     { name: "Ann Cruz", handle: "@anncruz", platform: "TikTok", spent: 12000, orders: 9, activeDays: 3, repeat: true },
     { name: "Bea Lim", handle: "", platform: "TikTok", spent: 800, orders: 1, activeDays: 1, repeat: false },
@@ -54,7 +54,7 @@ describe("Miners v2 — ledger-backed", () => {
   });
 
   it("empty state → guidance, clean zeros, no rows", () => {
-    renderM(mkRep({ data: DATA({ spent: 0, orders: 0, buyers: 0, avg: 0, tiktokPct: 0, fbPct: 0, top: [] }), state: "empty" }));
+    renderM(mkRep({ data: DATA({ spent: 0, orders: 0, buyers: 0, avg: 0, tiktokPct: 0, fbPct: 0, split: [], top: [] }), state: "empty" }));
     expect(screen.getByText(/connect an account and start a live session/i)).toBeTruthy();
     expect(screen.getAllByText("0").length).toBeGreaterThan(0);
     expect(screen.queryByText("Ann Cruz")).toBeNull();

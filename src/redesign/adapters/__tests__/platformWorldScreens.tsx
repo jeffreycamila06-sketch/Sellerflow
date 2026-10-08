@@ -35,7 +35,7 @@ const ORDERS: Order[] = [
 ];
 const rep = (): UseMinersReport => ({
   data: {
-    spent: 24500, orders: 62, buyers: 33, avg: 395, tiktokPct: 100, fbPct: 0,
+    spent: 24500, orders: 62, buyers: 33, avg: 395, tiktokPct: 100, fbPct: 0, split: [],
     top: [{ name: "Ann Cruz", handle: "@anncruz", platform: "TikTok", spent: 12000, orders: 9, activeDays: 3, repeat: true }],
     start: "2026-09-01", end: "2026-09-19", limit: 10,
   },

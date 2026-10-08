@@ -158,14 +158,14 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
           {!hidePlatformSplit && <div style={statCard}>
             <div style={statLbl}>{t.rd_min_platforms} <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>· {t.rd_min_alltime}</span></div>
             <div style={{ display: "flex", gap: 7, marginTop: 9 }}>
-              <div style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", borderRadius: 9, padding: "7px 0" }}>
-                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{data?.tiktokPct ?? 0}%</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>TikTok</div>
+              {/* Only the platforms that have buyers (sql/88). No data / no buyers yet → the
+                  original TikTok 0% / Facebook 0% pair. */}
+              {(data?.split.length ? data.split : [{ platform: "TikTok", pct: data?.tiktokPct ?? 0 }, { platform: "Facebook", pct: data?.fbPct ?? 0 }]).map((sp) => (
+              <div key={sp.platform} style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", borderRadius: 9, padding: "7px 0" }}>
+                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{sp.pct}%</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>{sp.platform === "Other" ? t.rd_min_other : sp.platform}</div>
               </div>
-              <div style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", borderRadius: 9, padding: "7px 0" }}>
-                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{data?.fbPct ?? 0}%</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>Facebook</div>
-              </div>
+              ))}
             </div>
           </div>}
         </div>
