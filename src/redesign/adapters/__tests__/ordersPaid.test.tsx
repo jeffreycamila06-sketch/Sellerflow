@@ -54,6 +54,10 @@ describe("matchPaidRows", () => {
 
 describe("isPaidExpired", () => {
   it("unpaid and older than 24 h only", () => {
+    const H = 60 * 60 * 1000;
+    expect(PAID_EXPIRE_MS).toBe(24 * H);
+    expect(isPaidExpired({ id: 1, paidAt: null, createdAt: iso(NOW - 13 * H) }, NOW)).toBe(false);
+    expect(isPaidExpired({ id: 1, paidAt: null, createdAt: iso(NOW - 25 * H) }, NOW)).toBe(true);
     expect(isPaidExpired({ id: 1, paidAt: null, createdAt: iso(NOW - PAID_EXPIRE_MS - 1) }, NOW)).toBe(true);
     expect(isPaidExpired({ id: 1, paidAt: null, createdAt: iso(NOW - PAID_EXPIRE_MS + 1000) }, NOW)).toBe(false);
     expect(isPaidExpired({ id: 1, paidAt: iso(NOW), createdAt: iso(NOW - 2 * PAID_EXPIRE_MS) }, NOW)).toBe(false);

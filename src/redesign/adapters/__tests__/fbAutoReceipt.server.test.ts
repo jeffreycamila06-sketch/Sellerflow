@@ -20,7 +20,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
 const page = { user_id: U, page_id: "111", active: true, can_message: true, access_token: encryptToken("TOK", CONFIG.tokenKey) };
 
 type Row = Record<string, unknown>;
-function world(nBuyers: number, o: { canReply?: boolean | null; graphError?: number; access?: boolean } = {}) {
+function world(nBuyers: number, o: { canReply?: boolean | null; graphError?: number; access?: boolean; second?: number[] } = {}) {
   const receipts: Row[] = [];
   const liveRows: Row[] = [];
   for (let b = 1; b <= nBuyers; b++) liveRows.push({ id: b, session_id: S, buyer_number: b, handle: `buyer${b}`, customer_name: "", product: "Dress", price: 100, qty: 1, created_at: new Date(1_000 + b).toISOString() });
@@ -38,7 +38,10 @@ function world(nBuyers: number, o: { canReply?: boolean | null; graphError?: num
   const rstore = {
     hasReceiptAccess: async () => o.access ?? true,
     getPage: async () => ({ ...page }),
-    listReceiptOrders: async (_u: string, _s: string, b: number) => [{ comment_msg_id: `c${b}`, platform_meta: { page_id: "111", live_video_id: LV }, handle: `buyer${b}`, created_at: new Date(1_000 + b).toISOString() }],
+    listReceiptOrders: async (_u: string, _s: string, b: number) => [
+      { comment_msg_id: `c${b}`, platform_meta: { page_id: "111", live_video_id: LV }, handle: `buyer${b}`, created_at: new Date(1_000 + b).toISOString() },
+      ...(o.second?.includes(b) ? [{ comment_msg_id: `c${b}b`, platform_meta: { page_id: "111", live_video_id: LV }, handle: `buyer${b}`, created_at: new Date(5_000 + b).toISOString() }] : []),
+    ],
     listReceiptRows: async (ids: string[]) => receipts.filter((r) => ids.includes(String(r.comment_id))),
     insertReceipt: async (row: Row) => {
       if (receipts.some((r) => r.comment_id === row.comment_id && r.status !== "failed")) return { conflict: true };
@@ -112,13 +115,14 @@ describe("sending", () => {
     expect(w.finished[1]).toMatchObject({ status: "done", note: expect.stringContaining("sent=0 skipped=3") });
   });
   it("skip-existing: sent or pending receipt rows block the buyer; a sold-out row does not", async () => {
-    const w = world(4);
+    // buyers 2–4 each have a second, free comment: only the blocking row decides
+    const w = world(4, { second: [2, 3, 4] });
     w.receipts.push({ id: 101, user_id: U, comment_id: "c2", status: "sent", kind: "receipt" });
     w.receipts.push({ id: 102, user_id: U, comment_id: "c3", status: "pending", kind: "receipt" });
     w.receipts.push({ id: 103, user_id: U, comment_id: "c4", status: "sent", kind: "soldout" });
     await w.runner.runJob(w.job());
-    expect(w.posts).toEqual(["c1"]); // c4's only comment is used by the sold-out reply → none_left
-    expect(w.finished[0]).toMatchObject({ status: "done", note: expect.stringContaining("sent=1 skipped=3") });
+    expect(w.posts).toEqual(["c1", "c4b"]); // buyer 4: the sold-out reply does not count as a receipt
+    expect(w.finished[0]).toMatchObject({ status: "done", note: expect.stringContaining("sent=2 skipped=2") });
     expect(hasAutoBlockingRow([{ user_id: U, status: "failed", kind: "receipt" }], U)).toBe(false);
     expect(hasAutoBlockingRow([{ user_id: U, status: "failed", error_code: AUTO_NO_PRIVATE_REPLY }], U)).toBe(true);
     expect(hasAutoBlockingRow([{ user_id: "other", status: "sent" }], U)).toBe(false);
