@@ -46,7 +46,7 @@ describe("messages in all 8 languages", () => {
       .toBe("Your Basic plan allows 1 account(s) in total across all live platforms. You're using 1. Remove one, or upgrade to add more.");
     const at = new Date(2026, 9, 8, 15, 30).toISOString();
     const msg = accountLimitText(t, q({ used: 2, limit: 2, locked: 1, nextFreeAt: at }), { ios: false, planName: "Plus", lang: "en", now: new Date(2026, 9, 8, 12, 0).getTime() });
-    expect(msg).toMatch(/^This place is locked for 4 hours after an account is added\. You can add a new one at 0?3:30\s?PM\.$/);
+    expect(msg).toMatch(/^This place is locked for 4 hours after an account is changed\. You can add a new one at 0?3:30\s?PM\.$/);
   });
   it("lock message only when the seller's real accounts still leave room", () => {
     const t = buildT("en");

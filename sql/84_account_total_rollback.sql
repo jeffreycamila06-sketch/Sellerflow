@@ -1,7 +1,7 @@
 -- 84 ROLLBACK — removes everything sql/84_account_total.sql added and restores the
 -- 4-hour slot cooldown table + touch_tiktok_slot exactly as before (INVOKER, sellers
 -- write their own rows under the tac_insert_own / tac_update_own policies).
--- Drops the seat / exempt / log tables (their data is only what 84 created).
+-- Drops the seat / exempt / log tables with all their columns (their data is only what 84 created).
 
 begin;
 set local lock_timeout = '3s';
@@ -17,12 +17,15 @@ drop function if exists public.account_total_fb_ins_trg();
 drop function if exists public.account_total_shop_ins_trg();
 drop function if exists public.account_total_del_trg();
 drop function if exists public.account_quota();
-drop function if exists public.account_total_run(uuid, text, text[], text[], int, int);
-drop function if exists public.account_total_guard(uuid, text, text[], text[], int, int, boolean);
+drop function if exists public.account_total_run(uuid, text, text[], text[], int, int, text, text, boolean);
+drop function if exists public.account_total_guard(uuid, text, text[], text[], int, int, boolean, text, text, boolean);
+drop function if exists public.account_seat_vacate(uuid, text, text);
 drop function if exists public.account_total_enforced();
 drop function if exists public.account_total_used(uuid, int, int);
+drop function if exists public.account_locked_seats(uuid);
 drop function if exists public.account_tiktok_keys(text);
 drop function if exists public.account_limit_for(text);
+drop function if exists public.account_lock_length();
 
 drop table if exists public.account_limit_log;
 drop table if exists public.account_seats;
