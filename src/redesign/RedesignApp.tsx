@@ -60,6 +60,8 @@ import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthSession";
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
+import { useFeatureSwitches } from "./adapters/featureSwitches";
+import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
@@ -82,7 +84,10 @@ import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useOutbox } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
-import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
+import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
+import { adjustStockLogged, logStockMovement, loadProductStock } from "./adapters/productsDb";
+import { soldoutGate, soldoutTarget, loadSoldoutSettings, sendSoldOut, type SoldoutComment } from "./adapters/fbSoldout";
+import { joinWaitlist, loadWaitlist, setWaitlistStatus, groupWaitlist, rebuildWaitlistComment, nameHasBuyer, type WaitlistRow } from "./adapters/fbWaitlist";
 import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts } from "./adapters/productsDb";
@@ -173,7 +178,7 @@ const autoDupKeyOf = (handle: string, code: string): string =>
   `${String(handle || "").trim().toLowerCase()}|${String(code || "").trim().toLowerCase()}`;
 
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion", pinPrint: "sfl_rd_pin_print" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion", pinPrint: "sfl_rd_pin_print", deductOneClick: "sfl_rd_deduct_oneclick" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -734,6 +739,9 @@ export default function RedesignApp() {
   // the range/N pickers + Export; this hook is the fetch/cache (zero poll).
   const minersRep = useMinersReport(authed);
   const salesTab = useSalesTab(authed);
+  // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
+  const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
   const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
@@ -1378,6 +1386,14 @@ export default function RedesignApp() {
   // (default ON, sfl_rd_keepawake). iOS <16.4 = graceful no-op (feature-detect
   // sa hook). Client-side ang order capture — sleeping phone = nawawalang mines.
   const [keepAwake, setKeepAwake] = useState<boolean>(() => readLS(LS.keepAwake, "1") !== "0");
+  // Inventory v2 — "Deduct stock on 1-Click", per device like the other Live-session toggles,
+  // default OFF; only used while inventory_v2_enabled is on.
+  const [deductOneClick, setDeductOneClick] = useState<boolean>(() => readLS(LS.deductOneClick, "0") === "1");
+  const toggleDeductOneClick = () => setDeductOneClick((v) => {
+    const next = !v;
+    try { localStorage.setItem(LS.deductOneClick, next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
   // PIN-TO-PRINT — per-device, DEFAULT OFF (only the printer-holding device
   // should react to pins; on web an auto-pin pops the browser print dialog).
   const [pinPrint, setPinPrint] = useState<boolean>(() => readLS(LS.pinPrint, "0") === "1");
@@ -1641,6 +1657,19 @@ export default function RedesignApp() {
     const plan = planAutoOrder(text || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
     return plan.kind === "soldout" ? plan.code.code : null;
   };
+  // Inventory v2: after a MANUAL order (1-Click / pin, never Enterprise, never Auto) whose
+  // comment is exactly a known code, take one piece off with a logged, post-hoc RPC. Order
+  // creation is untouched; a failed write leaves the order as it is.
+  const deductOneClickStock = (text: string, orderRef: string) => {
+    if (!featureSw.inventoryV2 || !deductOneClick) return;
+    const code = matchCode(text || "", autoCodesRef.current);
+    if (!code) return;
+    void adjustStockLogged(code.productLocalId, -1, "oneclick", orderRef).then((s) => {
+      if (s == null || s < 0) return;
+      autoStockRef.current.set(code.productLocalId, s);
+      setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0)); // = refreshAutoStock (declared below)
+    });
+  };
   const onOneClick = (id: string) => {
     if (printed[id]) return; // already ordered — no duplicate
     const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
@@ -1655,6 +1684,7 @@ export default function RedesignApp() {
       reprintByIdRef.current.set(id, snap);
       jobToCommentRef.current.set(String(order.orderNum), { cid: id, msgId: (prod as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
+      deductOneClickStock(prod.comment, (prod as ProdComment & { msgId?: string }).msgId || String(order.orderNum));
     }
   };
   // PIN-TO-PRINT (Phase 2, Option A): a relayed pin = 1-Click on that comment.
@@ -1674,8 +1704,10 @@ export default function RedesignApp() {
   const [platformViewAs, setPlatformViewAs] = useState<PlatformViewAs>("all");
   const worldQuota = useAccountQuota(
     [auth.profile?.profile.tiktok ?? "", fbPages.length, shopeeShops.length, igAccounts.length].join("|"),
-    PLATFORM_WORLDS_PUBLIC && authed && !isAdmin,
+    authed && ((PLATFORM_WORLDS_PUBLIC && !isAdmin) || featureSw.salesPlatform),
   );
+  // F1: per-platform Sales choices — only with the switch on and 2+ platforms with an account.
+  const salesPlatformOptions = featureSw.salesPlatform ? platformOptions(worldQuota?.platforms) : [];
   const world = effectiveWorld({
     role: auth.profile?.role, counts: worldQuota?.platforms,
     access: { facebook: fbEnabled, instagram: igEnabled, shopee: shopeeEnabled }, viewAs: platformViewAs,
@@ -1684,7 +1716,81 @@ export default function RedesignApp() {
   const hideFbChip = platformHides("fbChip", world);
   const hidePinPrint = platformHides("pinPrint", world);
   const hideFbPill = platformHides("fbPill", world);
-  const hideFbSplit = platformHides("fbSplit", world);
+  const hideMinersSplit = platformHides("minersSplit", world);
+  // F2 sold-out Messenger message: switch AND Messenger access (server answer, never the preview
+  // list) AND Facebook open AND the Facebook world. The seller's own toggle comes on top.
+  const soldoutBase = soldoutGate({ flag: featureSw.fbSoldout, receiptAccess: fbAccess.receipt, fbEnabled, hidden: platformHides("fbSoldout", world) });
+  const [soldoutOn, setSoldoutOn] = useState(false);
+  useEffect(() => {
+    if (!soldoutBase) return;
+    let alive = true;
+    void loadSoldoutSettings().then((r) => { if (alive) setSoldoutOn(r.ok && r.settings.enabled); });
+    return () => { alive = false; };
+  }, [soldoutBase, authUserId]);
+  const soldoutSentRef = useRef<Set<string>>(new Set());   // comment ids already handled (one try per comment)
+  // F3 waitlist: same gate shape with its own switch. Joining the line happens only on the F2
+  // path (a sold-out Facebook comment the sold-out message handles) — F3 extends F2.
+  const waitlistBase = soldoutGate({ flag: featureSw.fbWaitlist, receiptAccess: fbAccess.receipt, fbEnabled, hidden: platformHides("fbWaitlist", world) });
+  // Fire-and-forget, after the existing sold-out badge. Re-checks the DATABASE stock first: a
+  // restock on another device must never produce a wrong "sold out" message.
+  const onSoldOutFacebook = (c: ProdComment, code: AutoCode) => {
+    if (!soldoutBase || !soldoutOn) return;
+    const target = soldoutTarget(c as ProdComment & SoldoutComment);
+    if (!target || soldoutSentRef.current.has(target.commentId)) return;
+    soldoutSentRef.current.add(target.commentId);
+    void (async () => {
+      const stock = await loadProductStock(code.productLocalId);
+      if (stock == null) return;                                // could not verify → no message
+      if (stock > 0) { autoStockRef.current.set(code.productLocalId, stock); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0)); return; }
+      // F3: join the line BEFORE the message so it can say the place in line.
+      const x = c as ProdComment & SoldoutComment & { liveVideoId?: string; commenterId?: string };
+      const position = waitlistBase
+        ? await joinWaitlist({ sessionId: sessionInstance.currentSessionId ?? null, code: code.code, productLocalId: code.productLocalId, commentId: target.commentId, pageId: target.pageId, liveVideoId: x.liveVideoId, commenterId: x.commenterId, commenterName: c.name || c.handle, handle: c.handle })
+        : null;
+      await sendSoldOut({ ...target, code: code.code, lang, position });
+    })();
+  };
+  // F3 — the Orders "Waitlist" section: this session's line, loaded when Orders opens.
+  const [wlRows, setWlRows] = useState<WaitlistRow[] | null | "loading">("loading");
+  const [wlBusy, setWlBusy] = useState<number | null>(null);
+  const [wlNote, setWlNote] = useState<string | null>(null);
+  const wlSession = sessionInstance.currentSessionId ?? null;
+  const reloadWaitlist = useCallback(() => { void loadWaitlist(wlSession).then((r) => setWlRows(r)); }, [wlSession]);
+  useEffect(() => { if (screen === "orders" && waitlistBase) reloadWaitlist(); }, [screen, waitlistBase, reloadWaitlist]);
+  const wlGiveRef = useRef<Set<number>>(new Set());          // sync double-tap guard (money path)
+  // "Give": the EXISTING order path (pin-to-print precedent) — createOrder with a rebuilt comment,
+  // NO autoCode / productLocalId (the sticker shows the code via itemOverride). No message is sent.
+  const onWaitlistGive = (r: WaitlistRow) => {
+    if (wlGiveRef.current.has(r.id) || wlBusy != null) return;
+    const who = r.commenterName || r.handle;
+    if (nameHasBuyer(who, liveSession.session.buyers) && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_wl_same_name, { name: who }))) return;
+    wlGiveRef.current.add(r.id);
+    const code = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === r.code.trim().toLowerCase());
+    const c = rebuildWaitlistComment(r);
+    const order = orders.createOrder(c, effectiveOrderPrice(code ? code.price : 0, samePriceCfg.active), { itemOverride: code ? code.code : r.code });
+    if (!order) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return; }
+    setWlNote(null);
+    setWlBusy(r.id);
+    const snap = snapshotFromCreate(c, order);
+    reprintByIdRef.current.set(`wl:${r.commentId}`, snap);
+    jobToCommentRef.current.set(String(order.orderNum), { cid: `wl:${r.commentId}`, msgId: r.commentId });
+    liveSession.addOrderedMsgId(r.commentId, snap);
+    const lid = r.productLocalId ?? code?.productLocalId ?? null;
+    void (async () => {
+      if (lid != null) {
+        const s = await adjustStockLogged(lid, -1, "waitlist", r.commentId);
+        if (s != null && s >= 0) { autoStockRef.current.set(lid, s); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
+      }
+      await setWaitlistStatus(r.id, "given");
+      setWlBusy(null);
+      reloadWaitlist();
+    })();
+  };
+  const onWaitlistSkip = (r: WaitlistRow) => {
+    if (wlBusy != null) return;
+    setWlBusy(r.id);
+    void setWaitlistStatus(r.id, "skipped").then(() => { setWlBusy(null); reloadWaitlist(); });
+  };
   const handlePinned = (p: PinPayload) => {
     if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
     if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
@@ -1704,6 +1810,7 @@ export default function RedesignApp() {
     reprintByIdRef.current.set(pid, snap);
     jobToCommentRef.current.set(String(order.orderNum), { cid: pid, msgId: c.msgId });
     liveSession.addOrderedMsgId(c.msgId, snap);
+    deductOneClickStock(c.comment, c.msgId || String(order.orderNum));
     // Cosmetic: if the pinned comment is in the visible feed, flip its row to
     // the ordered/Reprint state like a manual tap would (event-handler context,
     // not an effect — no cascading-render lint class).
@@ -1802,7 +1909,7 @@ export default function RedesignApp() {
     if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) { setAutoBadges((b) => ({ ...b, [key]: "duplicate" })); return; }
     // Rule 3 — a sold-out code: no order, no print (the banner is DERIVED from the
     // stock mirror). The feed row gets a "sold out" badge.
-    if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); return; }
+    if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); onSoldOutFacebook(c, plan.code); return; }
     // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
     autoProcessedRef.current.add(key);
     autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
@@ -1820,6 +1927,8 @@ export default function RedesignApp() {
       jobToCommentRef.current.set(String(order.orderNum), { cid: key, msgId: (c as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
       liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
       refreshAutoStock(); // Rule 3 — the decrement may cross the low-stock threshold or hit 0
+      // Inventory v2: a log row next to the order hub's own decrement (fire-and-forget).
+      if (featureSw.inventoryV2) void logStockMovement(plan.code.productLocalId, -1, "auto_order", (c as ProdComment & { msgId?: string }).msgId || String(order.orderNum));
     } else {
       // free-cap soft block / msgId-dedup prevented creation → refund the claim so it
       // can retry (Rule 1 dup claim too — this buyer never got an order).
@@ -2068,13 +2177,13 @@ export default function RedesignApp() {
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
-          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
+          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string) => { const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
-          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideFbSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
-          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
-          {screen === "salestab" && <SalesTab cur={cur} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
+          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
+          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} />}
+          {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
@@ -2123,6 +2232,7 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
               pinPrint={pinPrint} onTogglePinPrint={pinAllowed && !hidePinPrint ? togglePinPrint : undefined}
+              deductOneClick={deductOneClick} onToggleDeductOneClick={featureSw.inventoryV2 ? toggleDeductOneClick : undefined}
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
               /* "Same price for all items" — Live-session row (toggle + remembered price, set via the sheet). */
               cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
@@ -2165,7 +2275,7 @@ export default function RedesignApp() {
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
-          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} />}
+          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings

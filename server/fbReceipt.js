@@ -177,6 +177,19 @@ export function startReceiptImageCleanup({ store, now = () => Date.now(), log = 
   return function stop() { clearOnce(first); clearTimer(every); };
 }
 
+// A page that can send for this user: exists, active, can_message, token decrypts → { pageId,
+// token }; else null. Shared by the picture receipt and the sold-out text (server/fbSoldout.js).
+export function makeSendablePage(store, config) {
+  return async function sendablePage(userId, pageId) {
+    if (!pageId) return null;
+    let page = null;
+    try { page = await store.getPage(userId, pageId); } catch { page = null; }
+    if (!page || !page.active || page.can_message !== true) return null;
+    const token = decryptToken(page.access_token, config.tokenKey);
+    return token ? { pageId: String(page.page_id || pageId), token } : null;
+  };
+}
+
 export function createFbReceipt(deps) {
   const {
     config, store, fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
@@ -198,14 +211,7 @@ export function createFbReceipt(deps) {
   }
 
   // A page that can send: exists, active, can_message, token decrypts. Else null.
-  async function sendablePage(userId, pageId) {
-    if (!pageId) return null;
-    let page = null;
-    try { page = await store.getPage(userId, pageId); } catch { page = null; }
-    if (!page || !page.active || page.can_message !== true) return null;
-    const token = decryptToken(page.access_token, config.tokenKey);
-    return token ? { pageId: String(page.page_id || pageId), token } : null;
-  }
+  const sendablePage = makeSendablePage(store, config);
 
   async function info(userId, body) {
     if (!(await hasAccess(userId))) return { status: 200, json: { ok: true, canSend: false, reason: "no_access", sentCount: 0, lastSentAt: null, remaining: 0 } };

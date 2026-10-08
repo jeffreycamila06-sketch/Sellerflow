@@ -60,11 +60,36 @@ export interface MinersBuyer {
 export interface MinersReportData {
   spent: number; orders: number; buyers: number; avg: number;
   tiktokPct: number; fbPct: number;   // ALL-TIME platform split (orders has no platform)
+  // sql/88: one entry per platform that HAS buyers (+ "Other" for a blank/unknown platform),
+  // in a fixed order. Before sql/88 is applied (no per-platform keys) it is the old two-way
+  // TikTok / Facebook split. Empty when there are no buyers at all.
+  split: PlatformShare[];
   top: MinersBuyer[];
   start: string; end: string; limit: number;
 }
 
+export type SplitPlatform = "TikTok" | "Facebook" | "Shopee" | "Instagram" | "Other";
+export interface PlatformShare { platform: SplitPlatform; pct: number }
+
 const num = (v: unknown): number => Number(v) || 0;
+
+// ALL-TIME buyer split → only the platforms with buyers. Pure.
+export function platformSplit(r: Record<string, unknown>): PlatformShare[] {
+  const total = num(r.platform_all_total);
+  if (!total) return [];
+  const tt = num(r.platform_all_tiktok);
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const hasKeys = ["platform_all_facebook", "platform_all_shopee", "platform_all_instagram"].every((k) => k in r);
+  if (!hasKeys) {
+    // pre-sql/88 response: the old TikTok / everything-else split
+    return ([["TikTok", tt], ["Facebook", total - tt]] as [SplitPlatform, number][])
+      .filter(([, n]) => n > 0).map(([platform, n]) => ({ platform, pct: pct(n) }));
+  }
+  const fb = num(r.platform_all_facebook), sh = num(r.platform_all_shopee), ig = num(r.platform_all_instagram);
+  const other = Math.max(0, total - tt - fb - sh - ig);
+  return ([["TikTok", tt], ["Facebook", fb], ["Shopee", sh], ["Instagram", ig], ["Other", other]] as [SplitPlatform, number][])
+    .filter(([, n]) => n > 0).map(([platform, n]) => ({ platform, pct: pct(n) }));
+}
 const atHandle = (h: string): string => { const s = String(h || "").trim(); return s && !s.startsWith("@") ? `@${s}` : s; };
 
 // miners_report RPC jsonb → screen shape (pure — unit-tested; garbage-safe).
@@ -73,6 +98,7 @@ export function mapMinersReport(raw: unknown): MinersReportData {
   const spent = num(r.spent), orders = num(r.orders), buyers = num(r.buyers);
   const ttAll = num(r.platform_all_tiktok), totAll = num(r.platform_all_total);
   const tiktokPct = totAll ? Math.round((ttAll / totAll) * 100) : 0;
+  const split = platformSplit(r);
   const top: MinersBuyer[] = Array.isArray(r.top)
     ? (r.top as Record<string, unknown>[]).map((t) => ({
         name: String(t.name ?? ""),
@@ -88,7 +114,10 @@ export function mapMinersReport(raw: unknown): MinersReportData {
   return {
     spent, orders, buyers,
     avg: orders ? Math.round(spent / orders) : 0,
-    tiktokPct, fbPct: totAll ? 100 - tiktokPct : 0,
+    tiktokPct,
+    // the real Facebook share once sql/88 is applied; the old "everything but TikTok" before
+    fbPct: !totAll ? 0 : "platform_all_facebook" in r ? Math.round((num(r.platform_all_facebook) / totAll) * 100) : 100 - tiktokPct,
+    split,
     top,
     start: String(r.start ?? ""), end: String(r.end ?? ""), limit: num(r.limit),
   };

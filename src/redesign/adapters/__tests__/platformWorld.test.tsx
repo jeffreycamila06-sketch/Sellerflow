@@ -17,7 +17,7 @@ vi.mock("../useRaffleConfig", () => ({
   useRaffleConfig: () => ({ enabled: false, enabledAt: null, loading: false, toggle: vi.fn(), toggleErrors: 0 }),
 }));
 const rpc = vi.hoisted(() => vi.fn(async () => ({ data: null, error: null })));
-vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rpc } }));
+vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rpc, auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
 import {
   effectiveWorld, platformHides, FEATURE_PLATFORM, PLATFORM_WORLDS_PUBLIC, PLATFORM_VIEW_AS_OPTIONS,
@@ -44,7 +44,7 @@ const seller = (counts: PlatformCounts | null, isPublic: boolean, access = ALL_A
 const propsFor = (w: World, pinAllowed = true): WorldProps => ({
   dash: { hideTtChip: platformHides("ttChip", w), hideFbChip: platformHides("fbChip", w) },
   orders: { hideFbPill: platformHides("fbPill", w) },
-  miners: { hidePlatformSplit: platformHides("fbSplit", w) },
+  miners: { hidePlatformSplit: platformHides("minersSplit", w) },
   pinVisible: pinAllowed && !platformHides("pinPrint", w),
 });
 
@@ -70,8 +70,8 @@ describe("platformHides — the table", () => {
   it("switch constant is OFF in this build", () => { expect(PLATFORM_WORLDS_PUBLIC).toBe(false); });
   it("every feature × world (switch ON, all access)", () => {
     const expected: Record<string, WorldFeature[]> = {
-      none: [], tiktokOnly: ["fbChip", "fbPill", "fbSplit"], tiktokFacebook: [], empty: ["fbChip", "fbPill", "fbSplit"],
-      facebookOnly: ["ttChip", "pinPrint"], instagramOnly: [...FEATURES], shopeeOnly: [...FEATURES],
+      none: [], tiktokOnly: ["fbChip", "fbPill", "minersSplit", "fbSoldout", "fbWaitlist"], tiktokFacebook: [], empty: ["fbChip", "fbPill", "minersSplit", "fbSoldout", "fbWaitlist"],
+      facebookOnly: ["ttChip", "pinPrint", "minersSplit"], instagramOnly: [...FEATURES], shopeeOnly: [...FEATURES],
     };
     for (const [name, counts] of Object.entries(WORLDS)) {
       const w = seller(counts, true);
@@ -95,8 +95,8 @@ describe("platformHides — the table", () => {
     const hid = (viewAs: (typeof PLATFORM_VIEW_AS_OPTIONS)[number]) =>
       FEATURES.filter((f) => platformHides(f, effectiveWorld({ role: "Admin", counts: null, access: ALL_ACCESS, viewAs, isPublic: false })));
     expect(hid("all")).toEqual([]);
-    expect(hid("tiktok")).toEqual(["fbChip", "fbPill", "fbSplit"]);
-    expect(hid("facebook")).toEqual(["ttChip", "pinPrint"]);
+    expect(hid("tiktok")).toEqual(["fbChip", "fbPill", "minersSplit", "fbSoldout", "fbWaitlist"]);
+    expect(hid("facebook")).toEqual(["ttChip", "pinPrint", "minersSplit"]);
     expect(hid("tiktok+facebook")).toEqual([]);
     expect(hid("instagram")).toEqual(FEATURES);
     expect(hid("shopee")).toEqual(FEATURES);
@@ -162,13 +162,14 @@ describe("renders — switch ON", { timeout: 60000 }, () => {
   it("TikTok+Facebook = main", () => {
     expect(renderScreens(propsFor(seller(WORLDS.tiktokFacebook, true)))).toEqual(main());
   });
-  it("Facebook-only: ONLY the TikTok chip (+ dropdown) and the Pin-to-print row go", () => {
+  it("Facebook-only: ONLY the TikTok chip (+ dropdown), the Pin-to-print row and the one-platform Miners split go", () => {
     const m = main();
     const w = renderScreens(propsFor(seller(WORLDS.facebookOnly, true)));
     expect(w.dashboard).toBe(without(m.dashboard, ttChip));
     expect(w.generalSettings).toBe(renderScreens({ pinVisible: false }).generalSettings);
     expect(w.generalSettings).not.toBe(m.generalSettings);
-    for (const k of ["settingsHub", "manageTikTok", "manageFacebook", "orders", "miners", "printerSettings", "printPattern"]) expect(w[k], k).toBe(m[k]);
+    expect(w.miners).toBe(without(m.miners, splitCard));
+    for (const k of ["settingsHub", "manageTikTok", "manageFacebook", "orders", "printerSettings", "printPattern"]) expect(w[k], k).toBe(m[k]);
   });
   it("the Settings → Channels door rows are present in every world", () => {
     for (const [name, counts] of Object.entries(WORLDS)) {
@@ -213,12 +214,12 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(src).toContain('onTogglePinPrint={pinAllowed && !hidePinPrint ? togglePinPrint : undefined}');
     expect(src).toContain('hideTtChip={hideTtChip} hideFbChip={hideFbChip}');
     expect(src).toContain('hideFbPill={hideFbPill}');
-    expect(src).toContain('hidePlatformSplit={hideFbSplit}');
+    expect(src).toContain('hidePlatformSplit={hideMinersSplit}');
     for (const f of FEATURES) expect(src).toContain(`platformHides("${f}", world)`);
   });
   it("access = the existing gates; quota only read with the switch on, never for admins", () => {
     expect(src).toContain("access: { facebook: fbEnabled, instagram: igEnabled, shopee: shopeeEnabled }");
-    expect(src).toContain("PLATFORM_WORLDS_PUBLIC && authed && !isAdmin");
+    expect(src).toContain("authed && ((PLATFORM_WORLDS_PUBLIC && !isAdmin) || featureSw.salesPlatform)");
     expect(src).toContain("platformViewAs={platformViewAs} onSetPlatformViewAs={setPlatformViewAs}");
     expect(src).toContain('livePicker={livePickerEnabled(isAdmin) && platformViewAs === "all"}');
   });

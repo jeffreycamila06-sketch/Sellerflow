@@ -23,6 +23,7 @@ import { exportBrandedXlsx, exportBrandedPdf } from "../adapters/brandedExport";
 import { dayStamp } from "../adapters/csv";
 import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
 import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
+import { platformRange, type SalesPlatform, type UsePlatformSales } from "../adapters/salesByPlatform";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
@@ -40,11 +41,15 @@ const tickLabel = (d: string, hour: boolean): string => {
 // Caption label when a bar is selected: hour keeps "14:00", day → "9/2".
 const capLabel = (d: string, hour: boolean): string => (hour ? d : tickLabel(d, false));
 
-export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer }: {
+export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer, platformOptions = [], platformSales }: {
   cur?: string; sessionStart?: string; today?: string;
   sales: UseSalesTab;
   seller?: { name?: string; email?: string };
   onOpenBuyer?: (name: string) => void;
+  // F1 (sales_platform_enabled + 2+ platforms): the per-platform choices. Empty = no
+  // selector and the screen is exactly as before.
+  platformOptions?: SalesPlatform[];
+  platformSales?: UsePlatformSales;
 }) {
   const t = useT();
   const [range, setRange] = useState<SalesTabRange>("today");
@@ -54,6 +59,8 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   const [q, setQ] = useState("");
   const [openBuyer, setOpenBuyer] = useState<SalesTopBuyer | null>(null);
   const [selBar, setSelBar] = useState<SalesDay | null>(null);
+  const [plat, setPlat] = useState<"all" | SalesPlatform>("all");
+  const platOn = plat !== "all" && platformOptions.includes(plat) && !!platformSales;
   // New range/data → forget the tapped bar (its index no longer lines up). Reset during
   // render via the previous-value compare (the codebase's state-reset pattern; a reset
   // effect trips react-hooks/set-state-in-effect).
@@ -64,6 +71,15 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   const loadRef = useRef(sales.load);
   useEffect(() => { loadRef.current = sales.load; });
   useEffect(() => { loadRef.current(range, bounds); }, [range, bounds]);
+  // Per-platform view: Today / This session / 7 days only (live_session_orders keeps 10 days).
+  const platLoadRef = useRef(platformSales?.load);
+  useEffect(() => { platLoadRef.current = platformSales?.load; });
+  useEffect(() => {
+    if (!platOn || range === "custom") return;
+    const b = platformRange(range === "today" ? "today" : range === "7d" ? "7d" : "session", today, sessionStart);
+    platLoadRef.current?.(plat as SalesPlatform, b.from, b.to);
+  }, [platOn, plat, range, today, sessionStart]);
+  const pickPlat = (p: "all" | SalesPlatform) => { setPlat(p); if (p !== "all" && range === "custom") setRange("session"); };
 
   // Keep the latest bar in view (hourly Today can be up to 24 bars → scroll).
   const trackRef = useRef<HTMLDivElement>(null);
@@ -83,6 +99,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   const capBar = selBar ?? d?.bestDay ?? null;
 
   const RANGES: [SalesTabRange, string][] = [["today", t.rd_ord_today], ["session", t.rd_ord_range_session], ["7d", t.rd_ord_range_7d], ["custom", t.rd_ord_range_custom]];
+  const shownRanges = platOn ? RANGES.filter(([r]) => r !== "custom") : RANGES;
   const pill = (active: boolean): CSSProperties => ({ padding: "7px 13px", borderRadius: 999, border: "1px solid " + (active ? "var(--accent)" : "var(--border)"), background: active ? "var(--accent)" : "var(--surface)", color: active ? "#fff" : "var(--text-dim)", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" });
 
   const doExport = (kind: "xlsx" | "pdf") => {
@@ -115,7 +132,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={headerTitle}>{t.rd_nav_sales}</div>
           <div style={{ position: "relative" }}>
-            <button onClick={() => setExportOpen((v) => !v)} disabled={!d} data-testid="sales-export" style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", border: "none", borderRadius: 10, padding: "8px 12px", color: "var(--on-header)", fontWeight: 700, fontSize: 12.5, cursor: d ? "pointer" : "default", opacity: d ? 1 : 0.5 }}>{t.rd_export} ▾</button>
+            <button onClick={() => setExportOpen((v) => !v)} disabled={!d || platOn} data-testid="sales-export" style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", border: "none", borderRadius: 10, padding: "8px 12px", color: "var(--on-header)", fontWeight: 700, fontSize: 12.5, cursor: d ? "pointer" : "default", opacity: d ? 1 : 0.5 }}>{t.rd_export} ▾</button>
             {exportOpen && d && (
               <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow)", overflow: "hidden", zIndex: 20, minWidth: 140 }}>
                 <button onClick={() => doExport("xlsx")} data-testid="sales-export-xlsx" style={menuItem}>📊 {t.rd_prd_export_excel}</button>
@@ -126,10 +143,18 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
         </div>
         {/* Date pills: Today · This session · 7 days · Custom */}
         <div style={{ display: "flex", gap: 7, marginTop: 12, overflowX: "auto" }}>
-          {RANGES.map(([r, label]) => (
+          {shownRanges.map(([r, label]) => (
             <button key={r} onClick={() => setRange(r)} data-testid={`sales-range-${r}`} style={pill(range === r)}>{label}</button>
           ))}
         </div>
+        {platformOptions.length > 0 && platformSales && (
+          <div style={{ display: "flex", gap: 7, marginTop: 8, overflowX: "auto" }} data-testid="sales-platforms">
+            {(["all", ...platformOptions] as ("all" | SalesPlatform)[]).map((p) => (
+              <button key={p} onClick={() => pickPlat(p)} data-testid={`sales-plat-${p}`} style={pill(plat === p)}>{p === "all" ? t.rd_sal_plat_all : p}</button>
+            ))}
+          </div>
+        )}
+        {platOn && <div style={{ fontSize: 11, color: "var(--on-header)", opacity: 0.85, marginTop: 6 }} data-testid="sales-plat-note">{t.rd_sal_plat_note}</div>}
         {range === "custom" && (
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <label style={{ flex: 1, fontSize: 11, color: "var(--on-header)", opacity: 0.9 }}>{t.rd_ord_range_from}<input type="date" value={customFrom} max={customTo || today} onChange={(e) => setCustomFrom(e.target.value)} data-testid="sales-custom-from" style={dateInput} /></label>
@@ -139,7 +164,9 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
       </div>
 
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {sales.state === "error" ? (
+        {platOn && platformSales ? (
+          <PlatformView data={platformSales.data} state={platformSales.state} cur={cur} />
+        ) : sales.state === "error" ? (
           <div style={{ ...card, textAlign: "center", color: "var(--danger)" }} data-testid="sales-error">{t.rd_sal_error}</div>
         ) : sales.state === "loading" || !d ? (
           <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-loading">{t.rd_sal_loading}</div>
@@ -244,6 +271,55 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
         <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>{t.rd_sal_retention}</div>
       </div>
     </div>
+  );
+}
+
+// Per-platform view (F1): totals, orders per day, best sellers (by Auto code, else by price).
+function PlatformView({ data, state, cur }: { data: UsePlatformSales["data"]; state: UsePlatformSales["state"]; cur: string }) {
+  const t = useT();
+  const fmt = (n: number) => Math.round(n).toLocaleString();
+  if (state === "error") return <div style={{ ...card, textAlign: "center", color: "var(--danger)" }} data-testid="sales-plat-error">{t.rd_sal_error}</div>;
+  if (state === "loading" || state === "idle" || !data) return <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-plat-loading">{t.rd_sal_loading}</div>;
+  if (data.orders === 0) return <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-plat-empty">{t.rd_sal_empty}</div>;
+  const maxO = Math.max(1, ...data.days.map((x) => x.orders));
+  return (
+    <>
+      <div data-testid="sales-plat-summary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+        {[[t.rd_ord_sum_total, `${cur}${fmt(data.revenue)}`], [t.rd_ord_sum_orders, `${data.orders}`], [t.rd_ord_sum_buyers, `${data.buyers}`]].map(([l, v], i) => (
+          <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "10px 9px", textAlign: "center", boxShadow: "var(--shadow)" }}>
+            <div style={{ fontFamily: mono, fontWeight: 800, fontSize: 15, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</div>
+            <div style={{ fontSize: 9.5, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={card}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)", marginBottom: 10 }}>{t.rd_sal_trend}</div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 4, overflowX: "auto" }} data-testid="sales-plat-days">
+          {data.days.map((x) => (
+            <div key={x.d} style={{ flex: `0 0 ${COL_W}px`, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+              <div style={{ fontFamily: mono, fontSize: 10, fontWeight: 700, color: "var(--text-muted)", lineHeight: 1 }}>{x.orders}</div>
+              <div style={{ height: BAR_AREA, width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                <div style={{ width: "78%", height: `${Math.max(4, Math.round((x.orders / maxO) * 100))}%`, background: "var(--accent)", borderRadius: 4, opacity: 0.8 }} />
+              </div>
+              <div style={{ fontSize: 9.5, color: "var(--text-muted)", lineHeight: 1, whiteSpace: "nowrap" }}>{tickLabel(x.d, false)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={card} data-testid="sales-plat-best">
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)", marginBottom: 6 }}>{t.rd_sal_best_sellers}</div>
+        {data.best.map((b, i) => (
+          <div key={`${b.kind}-${b.label}`} data-testid={`sales-plat-best-${i}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 2px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+            <div style={{ width: 20, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textAlign: "right" }}>{i + 1}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.kind === "price" ? `${cur}${b.label}` : b.label}</div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{b.qty} {t.rd_sal_pcs}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{cur}{fmt(b.rev)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

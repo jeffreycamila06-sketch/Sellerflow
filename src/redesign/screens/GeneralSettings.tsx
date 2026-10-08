@@ -61,7 +61,7 @@ export default function GeneralSettings({
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel,
   channelsV2 = false, onOpenChannel, channelsInfo,
-  keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint,
+  keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, deductOneClick = false, onToggleDeductOneClick,
   liveSessionOpen, onToggleLiveSession,
   cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
   onToast,
@@ -97,6 +97,9 @@ export default function GeneralSettings({
   // Live-session toggles turned OFF show a bottom toast (RedesignApp's global toast).
   onToast?: (msg: string) => void;
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
+  // Inventory v2 (inventory_v2_enabled): "Deduct stock on 1-Click", per device, default OFF.
+  // No handler → no row (screen unchanged).
+  deductOneClick?: boolean; onToggleDeductOneClick?: () => void;
   // Motion kill switch — pause looping animations (display toggle; RedesignApp
   // sets [data-motion] on the root). One-shot entrances stay.
   motionOn?: boolean; onToggleMotion?: () => void;
@@ -368,6 +371,10 @@ export default function GeneralSettings({
               <span style={lsLabel}>{t.rd_set_auto_mode}</span>
               <LsToggle on={auto.detect} title={t.rd_set_auto_mode} testId="ls-tg-auto" onClick={() => lsToggle("auto", auto.detect)} />
             </div>
+            {onToggleDeductOneClick && <div style={lsRow}>
+              <span style={lsLabel}>{t.rd_set_deduct_oneclick}</span>
+              <LsToggle on={deductOneClick} title={t.rd_set_deduct_oneclick} testId="ls-tg-deduct" onClick={onToggleDeductOneClick} />
+            </div>}
             {/* 5. Same price for all items — "NT$199" when ON, "NT$199 saved" when OFF with a remembered price */}
             {onSetSamePriceEnabled && (
               <div style={lsRow} data-testid="samePrice-row">

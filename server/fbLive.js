@@ -805,6 +805,20 @@ export function createFbRuntime(deps) {
     return out;
   }
 
+  // Read-only (F2 sold-out reply ownership): did a running poller of THIS user emit this
+  // comment id (optionally on this page)? Looks at the bounded emitted set only; changes
+  // nothing.
+  function wasEmitted(userId, commentId, pageId) {
+    const id = String(commentId || "");
+    if (!id || !userId) return false;
+    for (const e of pollers.values()) {
+      if (e.stopped || e.userId !== userId) continue;
+      if (pageId && e.pageId !== String(pageId)) continue;
+      if (e.emitted.has(id)) return true;
+    }
+    return false;
+  }
+
   function stopAll() {
     for (const key of [...pollers.keys()]) stopPoller(key, "shutdown");
     if (refreshHandle) { clearTimer(refreshHandle); refreshHandle = null; }
@@ -946,5 +960,5 @@ export function createFbRuntime(deps) {
     });
   }
 
-  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers, _completeDone: completeDone, _completeInFlight: completeInFlight };
+  return { registerRoutes, startRefreshTimer, stopAll, stopPoller, startPoller, listPollers, wasEmitted, pollOnce, refreshDuePages, handleCallback, confirmCallback, buildAuthUrl, _pollers: pollers, _completeDone: completeDone, _completeInFlight: completeInFlight };
 }

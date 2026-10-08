@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { avColor, initials, fmt } from "../data";
 import { loadProducts, saveProducts, upsertProduct, deleteProduct, filterProducts, filterByStock, statusForStock, type Product, type ProductForm, type StockFilter } from "../adapters/products";
-import { resolveInitialProducts, saveProductDbResult, deleteProductDb, adjustProductStock } from "../adapters/productsDb";
+import { resolveInitialProducts, saveProductDbResult, deleteProductDb, adjustProductStock, adjustStockLogged, restockProduct, logStockMovement, loadStockMovements, type StockMovement } from "../adapters/productsDb";
 import { dayStamp } from "../adapters/csv";
 import { exportBrandedXlsx, exportBrandedPdf, type ExportColumn } from "../adapters/brandedExport";
 import { useT } from "../i18n";
@@ -22,11 +22,19 @@ const mono = "var(--font-mono)";
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
 const lbl: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const EMPTY: ProductForm = { name: "", sku: "", price: "", stock: "", platform: "TikTok", liveCode: "" };
+const sheetBg: CSSProperties = { position: "absolute", inset: 0, zIndex: 1000, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 22 };
+const sheetCard: CSSProperties = { width: "100%", maxWidth: 360, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18, boxShadow: "0 24px 60px rgba(0,0,0,.4)", padding: 18, display: "flex", flexDirection: "column", gap: 11 };
+const sheetBtn = (primary: boolean): CSSProperties => (primary
+  ? { padding: "9px 16px", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }
+  : { padding: "9px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" });
 const stockColor = (s: number) => (s === 0 ? "var(--danger)" : s <= 5 ? "var(--warn)" : "var(--ok)");
 const stepBtn = (disabled: boolean): CSSProperties => ({ width: 26, height: 26, flexShrink: 0, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: disabled ? "var(--text-muted)" : "var(--text)", fontSize: 15, fontWeight: 800, lineHeight: 1, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "var(--font-ui)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 });
 
-export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold }: {
+export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold, inventoryV2 = false }: {
   cur: string;
+  // Inventory v2 (switch inventory_v2_enabled): every stock change is logged (sql/90), plus
+  // Restock + History on each card. false = the screen exactly as before.
+  inventoryV2?: boolean;
   // Rule 3 — the Live-screen low-stock warning threshold (moved here from Settings →
   // Live session). RedesignApp owns it (sfl_rd_auto_lowstock via load/saveLowStockThreshold);
   // 0 turns the warning off. No handler → no card.
@@ -76,13 +84,16 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const pendingRef = useRef<Map<number, number>>(new Map());
   const inflightRef = useRef<Set<number>>(new Set());
   const stockTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  // ± writer: the logged RPC under Inventory v2, else the original adjust_product_stock.
+  const invRef = useRef(inventoryV2); useEffect(() => { invRef.current = inventoryV2; }, [inventoryV2]);
+  const writeStock = (id: number, delta: number) => (invRef.current ? adjustStockLogged(id, delta, "manual_edit") : adjustProductStock(id, delta));
   useEffect(() => () => {
     stockTimers.current.forEach((t) => clearTimeout(t));
     // M1: persist any un-flushed delta on navigate-away (fire-and-forget) so a quick
     // edit isn't silently lost. Skip ids already mid-write — their remaining pending
     // is flushed by that write's resolve; flushing here too would double-apply.
     pendingRef.current.forEach((delta, id) => {
-      if (delta !== 0 && !inflightRef.current.has(id)) void adjustProductStock(id, delta);
+      if (delta !== 0 && !inflightRef.current.has(id)) void (invRef.current ? adjustStockLogged(id, delta, "manual_edit") : adjustProductStock(id, delta));
     });
   }, []);
 
@@ -100,7 +111,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     // baseline (no transient dip). Undone on failure below.
     authRef.current.set(id, (authRef.current.get(id) ?? 0) + delta);
     inflightRef.current.add(id);
-    void adjustProductStock(id, delta).then((newStock) => {
+    void writeStock(id, delta).then((newStock) => {
       inflightRef.current.delete(id);
       const rem = pendingRef.current.get(id) ?? 0;      // taps that arrived during the write
       const base = authRef.current.get(id) ?? 0;        // = pre-write baseline + this in-flight delta (C1)
@@ -179,13 +190,45 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     // REVERT the local save and show the dup error, mirroring the delete-revert.
     // I1: a meta edit (stock unchanged) OMITS the stock column so it can't clobber
     // an auto-order-decremented DB stock with this screen's stale in-memory value.
-    if (changed) void saveProductDbResult(changed, { skipStock: !stockChanged }).then((r) => {
+    // Inventory v2: an edited stock is written as a LOGGED DELTA (never an overwrite) after a
+    // stock-less save; a new product keeps its starting stock and logs it.
+    const v2Edit = inventoryV2 && eid !== null && stockChanged && !!prev && !!changed;
+    const editDelta = v2Edit ? changed!.stock - prev!.stock : 0;
+    if (changed) void saveProductDbResult(changed, { skipStock: !stockChanged || v2Edit }).then((r) => {
+      if (r.ok && v2Edit && editDelta !== 0) {
+        void adjustStockLogged(changed.id, editDelta, "manual_edit").then((newStock) => {
+          if (newStock == null || newStock < 0) { showNote(t.rd_prd_stock_failed); return; }
+          const nx = setStock(changed.id, newStock);
+          onProductsChanged?.(nx, changed.id, "stock");
+        });
+      }
+      if (r.ok && inventoryV2 && eid === null && changed.stock > 0) void logStockMovement(changed.id, changed.stock, "manual_edit");
       if (r.ok) return;
       if (r.duplicateCode) { save(before); onProductsChanged?.(before); setFormErr(t.rd_prd_code_dup); setShow(true); }
       else showNote(t.rd_prd_sync_failed);
     });
     setShow(false);
   };
+  // Inventory v2 — Restock sheet + History sheet (one product at a time).
+  const [restockFor, setRestockFor] = useState<Product | null>(null);
+  const [restockQty, setRestockQty] = useState("");
+  const [historyFor, setHistoryFor] = useState<Product | null>(null);
+  const [history, setHistory] = useState<StockMovement[] | null | "loading">("loading");
+  const doRestock = () => {
+    const p = restockFor; const qty = parseInt(restockQty, 10);
+    if (!p || !(qty >= 1 && qty <= 100000)) return;
+    setRestockFor(null); setRestockQty("");
+    void restockProduct(p.id, qty).then((newStock) => {
+      if (newStock == null || newStock < 0) { showNote(t.rd_prd_stock_failed); return; }
+      const nx = setStock(p.id, newStock);
+      onProductsChanged?.(nx, p.id, "stock");          // re-seed Auto-mode live stock
+    });
+  };
+  const openHistory = (p: Product) => {
+    setHistoryFor(p); setHistory("loading");
+    void loadStockMovements(p.id).then((rows) => setHistory(rows));
+  };
+  const reasonLabel = (r: string) => (r === "auto_order" ? t.rd_prd_rs_auto : r === "oneclick" ? t.rd_prd_rs_oneclick : r === "restock" ? t.rd_prd_rs_restock : r === "waitlist" ? t.rd_prd_rs_waitlist : t.rd_prd_rs_manual);
   const filtered = useMemo(() => filterByStock(filterProducts(prods, q), stockFilter), [prods, q, stockFilter]);
   const count = (s: string) => prods.filter((p) => p.status === s).length;
   // Translate the derived stock status for display (adapter returns canonical English).
@@ -316,6 +359,12 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                 <button onClick={() => openEdit(p)} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_edit_btn}</button>
                 <button onClick={() => del(p.id)} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_delete_btn}</button>
               </div>
+              {inventoryV2 && (
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <button onClick={() => { setRestockFor(p); setRestockQty(""); }} data-testid={`restock-${p.id}`} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--ok)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_restock}</button>
+                  <button onClick={() => openHistory(p)} data-testid={`history-${p.id}`} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_history}</button>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -325,6 +374,38 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
       {note && (
         <div style={{ position: "sticky", bottom: 14, zIndex: 900, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
           <div style={{ maxWidth: "100%", background: "var(--danger)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>⚠ {note}</div>
+        </div>
+      )}
+
+      {inventoryV2 && restockFor && (
+        <div onClick={(e) => e.target === e.currentTarget && setRestockFor(null)} style={sheetBg}>
+          <form onSubmit={(e) => { e.preventDefault(); doRestock(); }} onClick={(e) => e.stopPropagation()} data-testid="restock-sheet" style={sheetCard}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{t.rd_prd_restock} · {restockFor.name}</div>
+            <div><label style={lbl}>{t.rd_prd_restock_qty}</label><input type="number" inputMode="numeric" min={1} max={100000} value={restockQty} onChange={(e) => setRestockQty(e.target.value)} data-testid="restock-qty" required style={input} /></div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setRestockFor(null)} style={sheetBtn(false)}>{t.rd_prd_cancel}</button>
+              <button type="submit" data-testid="restock-confirm" style={sheetBtn(true)}>{t.rd_prd_restock}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {inventoryV2 && historyFor && (
+        <div onClick={(e) => e.target === e.currentTarget && setHistoryFor(null)} style={sheetBg}>
+          <div onClick={(e) => e.stopPropagation()} data-testid="history-sheet" style={{ ...sheetCard, maxHeight: "70vh", overflowY: "auto" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{t.rd_prd_history} · {historyFor.name}</div>
+            {history === "loading" ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>…</div>
+              : history === null ? <div style={{ fontSize: 12.5, color: "var(--danger)" }} data-testid="history-failed">{t.rd_prd_history_failed}</div>
+              : history.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }} data-testid="history-empty">{t.rd_prd_history_empty}</div>
+              : history.map((m, i) => (
+                <div key={i} data-testid={`history-row-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i ? "1px solid var(--border)" : "none" }}>
+                  <span style={{ fontFamily: mono, fontWeight: 800, fontSize: 13.5, minWidth: 44, color: m.delta > 0 ? "var(--ok)" : "var(--danger)" }}>{m.delta > 0 ? `+${m.delta}` : m.delta}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{reasonLabel(m.reason)}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{m.createdAt ? new Date(m.createdAt).toLocaleString("en-GB", { timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                </div>
+              ))}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={() => setHistoryFor(null)} style={sheetBtn(false)}>{t.rd_prd_cancel}</button></div>
+          </div>
         </div>
       )}
 

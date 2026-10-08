@@ -27,8 +27,10 @@ export const FEATURE_PLATFORM = {
   pinPrint: "tiktok",    // Settings → Pin to print row
   fbChip: "facebook",    // Live header Facebook chip + its activation / pages dropdown
   fbPill: "facebook",    // Orders "Facebook" filter pill
-  fbSplit: "facebook",   // Miners TikTok/Facebook split card
-} as const satisfies Record<string, Platform>;
+  minersSplit: "multi",  // Miners platform split card — only for a seller with 2+ platforms
+  fbSoldout: "facebook", // F2 sold-out Messenger message (Receipt format section + the send)
+  fbWaitlist: "facebook", // F3 Facebook waitlist (Orders section + joining the line)
+} as const satisfies Record<string, Platform | "multi">;
 export type WorldFeature = keyof typeof FEATURE_PLATFORM;
 
 const UNKNOWN: World = { used: new Set(), known: false, adminUnion: false };
@@ -62,5 +64,7 @@ export function effectiveWorld(o: {
 }
 
 export function platformHides(feature: WorldFeature, w: World): boolean {
-  return w.known && !w.adminUnion && !w.used.has(FEATURE_PLATFORM[feature]);
+  const need: Platform | "multi" = FEATURE_PLATFORM[feature];
+  if (need === "multi") return w.known && !w.adminUnion && w.used.size <= 1;
+  return w.known && !w.adminUnion && !w.used.has(need);
 }
