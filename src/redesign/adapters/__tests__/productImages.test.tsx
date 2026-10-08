@@ -232,6 +232,11 @@ describe("switch ON — picture in the ADD form (A1)", () => {
     expect(screen.getByText("New Hat")).toBeTruthy();
     expect(document.querySelector('[data-testid^="prd-thumb-"]:not([data-testid="prd-thumb-7"])')).toBeNull();
   });
+  it("Cancel releases the held picture at once", async () => {
+    await fillAndPick();
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview-1");
+  });
   it("Cancel, openAdd and openEdit clear the held picture", async () => {
     await fillAndPick();
     fireEvent.click(screen.getByText("Cancel"));

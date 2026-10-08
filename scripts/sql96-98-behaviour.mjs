@@ -10,6 +10,7 @@ let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
 const A = "00000000-0000-0000-0000-00000000000a";
 const B = "00000000-0000-0000-0000-00000000000b";
+const ADM = "00000000-0000-0000-0000-0000000000ad";
 const STUB = `
 create role anon; create role authenticated;
 create schema auth; grant usage on schema auth to anon, authenticated;
@@ -20,7 +21,8 @@ create function public.check_and_increment_free_order() returns trigger language
 begin insert into public.free_counter values (new.user_id, 1) on conflict (user_id) do update set n = free_counter.n + 1; return new; end $$;
 create trigger trg_orders_free_tier_check before insert on public.orders for each row execute function public.check_and_increment_free_order();
 alter table public.orders enable row level security;
-create policy orders_select_own on public.orders for select using (user_id = auth.uid());
+create function public.is_admin() returns boolean language sql stable as $$ select auth.uid() = '${ADM}'::uuid $$;
+create policy orders_select_own on public.orders for select using (user_id = auth.uid() or public.is_admin());
 create policy orders_insert_own on public.orders for insert with check (user_id = auth.uid());
 create table public.app_settings(key text primary key, value text);
 grant select, insert, update, delete on public.orders, public.free_counter, public.app_settings to authenticated;
@@ -75,6 +77,7 @@ ok((await call(A, "2026-10-01", "2026-10-08", "Facebook")).orders === 1, "Facebo
 ok((await call(A, "2026-10-05", "2026-10-05", "TikTok")).orders === 1, "NULL-platform (old) rows never counted, B's rows never counted");
 ok((await call(A, "2026-10-06", "2026-10-06", "Shopee")).best.length === 10, "top 10");
 ok((await call(B, "2026-10-01", "2026-10-08", "TikTok")).orders === 1, "B sees only B");
+ok((await call(ADM, "2026-10-01", "2026-10-08", "TikTok")).orders === 0, "an admin (RLS sees all) still gets only own rows");
 ok(!(await raises(call(A, "2026-08-01", "2026-10-02", "TikTok"))), "62 days allowed");
 ok(await raises(call(A, "2026-08-01", "2026-10-03", "TikTok"), "bad_range"), "63 days refused");
 ok(await raises(call(A, "2026-10-08", "2026-10-01", "TikTok"), "bad_range"), "reversed range refused");
