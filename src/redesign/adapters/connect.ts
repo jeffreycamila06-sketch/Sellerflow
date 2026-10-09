@@ -14,7 +14,7 @@ import type { AccountUser } from "../../accountDb";
 // shared module (was a local copy identical to useLiveFeed's — parity-tested).
 import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 import { isAdminRole } from "../../lib/roles";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 import { tpl, type RedesignT } from "../i18n";
 
 export type Platform = "TikTok" | "Facebook";
@@ -163,7 +163,7 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     : { username: facebookPage, pageName: facebookPage, liveVideoId: facebookPage, accessToken: data.accessToken, ...meta };
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-    const r = await fetch(`${SERVER}${ep}`, {
+    const r = await fetch(withCodes(`${SERVER}${ep}`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify(body),
@@ -189,7 +189,7 @@ export async function ttDisconnect(username: string, fetchImpl: typeof fetch = f
   const timer = ac ? setTimeout(() => ac.abort(), 3000) : null;
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-    const r = await fetchImpl(`${SERVER}/disconnect/tiktok`, {
+    const r = await fetchImpl(withCodes(`${SERVER}/disconnect/tiktok`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ username: cleanLiveAccount(username) }),

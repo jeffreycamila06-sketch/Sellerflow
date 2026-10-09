@@ -4,7 +4,7 @@
 // existing receipt-format load/save is untouched), and the fire-and-forget send.
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export const SOLDOUT_TEXT_MAX = 500;
 
@@ -63,7 +63,7 @@ export interface SoldoutSendInput { pageId: string; commentId: string; code: str
 export type SoldoutSendResult = { ok: true } | { ok: false; error: string };
 export async function sendSoldOut(input: SoldoutSendInput, fetchImpl: typeof fetch = fetch): Promise<SoldoutSendResult> {
   try {
-    const r = await fetchImpl(`${SERVER}/fb/soldout/send`, {
+    const r = await fetchImpl(withCodes(`${SERVER}/fb/soldout/send`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ pageId: input.pageId, commentId: input.commentId, code: input.code, lang: input.lang, ...(input.position ? { position: input.position } : {}) }),

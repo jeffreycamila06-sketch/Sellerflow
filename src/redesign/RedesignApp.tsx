@@ -61,7 +61,7 @@ import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthSession";
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
-import { useFeatureSwitches } from "./adapters/featureSwitches";
+import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
 import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
@@ -86,7 +86,7 @@ import { useOrders } from "./adapters/useOrders";
 import { useOutbox } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
-import { adjustStockLogged, logStockMovement, loadProductStock } from "./adapters/productsDb";
+import { adjustStockLogged, logStockMovement, loadProductStock, decrementStockAndTouch, adjustProductStock } from "./adapters/productsDb";
 import { soldoutGate, soldoutTarget, loadSoldoutSettings, sendSoldOut, type SoldoutComment } from "./adapters/fbSoldout";
 import { autoReceiptGate } from "./adapters/fbAutoReceipt";
 import { joinWaitlist, loadWaitlist, setWaitlistStatus, groupWaitlist, rebuildWaitlistComment, nameHasBuyer, type WaitlistRow } from "./adapters/fbWaitlist";
@@ -101,7 +101,7 @@ import { useSamePrice, effectiveOrderPrice, entPrefill } from "./adapters/useSam
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
-import { sessionKeyFor } from "./adapters/shipping";
+import { sessionKeyFor, shippingSessionKey } from "./adapters/shipping";
 import { setStickerLayoutV2Allowed, stickerV2Allowed, stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, printsStickerViaImage } from "./adapters/printing";
 import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
@@ -168,6 +168,8 @@ type PendingConnect =
   | { kind: "fb"; pageId: string; scopeKey: string } // F-P3 — Facebook page connect
   | { kind: "ig"; igUserId: string; scopeKey: string }; // Instagram (phase 1)
 // The Live Source connect target the new modal commits (before the session gate).
+// Build 11 (H1): a piece already taken in the database (product local id + stock left after it).
+type TakenPiece = { lid: number; left: number };
 type LiveConnectTarget =
   | { platform: "TikTok"; username: string; register?: boolean }
   | { platform: "Shopee"; shopId: number; sessionId: string }
@@ -176,6 +178,14 @@ type LiveConnectTarget =
 // The platform a pending/target connect is FOR — passed to start_session so the new
 // session records its platform (H1). Kind "tt" carries platform (TikTok today).
 const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.kind === "fb" ? "Facebook" : p.kind === "ig" ? "Instagram" : p.platform);
+// The connect target as a pending first-connect (picker / owner Start).
+const pendingOfTarget = (t: LiveConnectTarget): PendingConnect => (t.platform === "Shopee"
+  ? { kind: "shopee", shopId: t.shopId, sessionId: t.sessionId }
+  : t.platform === "Facebook"
+  ? { kind: "fb", pageId: t.pageId, scopeKey: t.scopeKey } // F-P3
+  : t.platform === "Instagram"
+  ? { kind: "ig", igUserId: t.igUserId, scopeKey: t.scopeKey }
+  : { kind: "tt", platform: "TikTok", acct: t.username, register: t.register });
 // sql/86 — a first-connect start_session answered "switch needed" (another device started a
 // session on a different platform meanwhile) → route the same connect through the switch confirm.
 const targetOfPending = (p: PendingConnect): LiveConnectTarget => (p.kind === "shopee" ? { platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId } : p.kind === "fb" ? { platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey } : p.kind === "ig" ? { platform: "Instagram", igUserId: p.igUserId, scopeKey: p.scopeKey } : { platform: "TikTok", username: p.acct, register: p.register });
@@ -410,7 +420,9 @@ export default function RedesignApp() {
   // Auto Mode (Step 4) — code map + ref-backed live stock for socket matching. Refs
   // (not state) so the socket handler reads the latest without re-subscribing and so
   // concurrent same-code comments claim stock SYNCHRONOUSLY (no double-decrement).
-  const autoCommentRef = useRef<(c: ProdComment) => void>(() => {});
+  // Build 11 (H1): `taken` = the piece was already taken in the database (sold-out re-check) →
+  // order without a second decrement. Returns whether an order was created.
+  const autoCommentRef = useRef<(c: ProdComment, taken?: TakenPiece) => boolean>(() => false);
   const pinHandlerRef = useRef<(p: PinPayload) => void>(() => {}); // PIN-TO-PRINT seam (mirror kept fresh by an effect below)
   const autoCodesRef = useRef<AutoCode[]>([]);
   const productsGenRef = useRef(0);                              // stock_refresh_v2: bumped by every sign-in products load
@@ -846,10 +858,18 @@ export default function RedesignApp() {
   // code=cap (the plan's page limit) shows the cap text with the plan's limit — so it waits
   // until the profile is loaded (the query stays until then).
   const fbReturnPlan = auth.profile ? auth.profile.plan || "free" : null;
+  const featureSwReady = switchesLoaded(featureSw);
+  // Build 11 (H3, switch build11_enabled): Shipping keyed by the SESSION, so a same-day platform
+  // switch never mixes two buyers #1. OFF → the old day/window key, exactly as before.
+  const shipLegacyKey = sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays);
+  const shipSessionKey = featureSw.build11 ? shippingSessionKey(sessionInstance.currentSessionId, shipLegacyKey) : shipLegacyKey;
   useEffect(() => {
     if (typeof window === "undefined") return;
     const ret = parseFbReturn(window.location.search);
     if (!ret) return;
+    // Build 11 (M5): the message depends on the switches → wait until they are read (the address
+    // keeps the result until then), so it is never the generic "failed" by mistake.
+    if (!featureSwReady) return;
     if (ret.status === "error" && ret.code === "cap" && fbReturnPlan === null) return;
     const msg = fbReturnText(ret, tApp, maxAcc(fbReturnPlan || "free"), featureSw.fbPolishV2);
     if (ret.status === "error" && ret.code === "account_limit") void accountLimitMessage(tApp, { ios, planName: planLabel(fbReturnPlan), lang }).then((m) => setToast({ msg: m, kind: "err" }));
@@ -860,7 +880,7 @@ export default function RedesignApp() {
       for (const k of FB_RETURN_PARAMS) url.searchParams.delete(k); // fb, code + the partial-save details
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
-  }, [reloadFbPages, tApp, fbReturnPlan, ios, lang, featureSw.fbPolishV2]);
+  }, [reloadFbPages, tApp, fbReturnPlan, ios, lang, featureSw.fbPolishV2, featureSwReady]);
 
   // Instagram (phase 1) OAuth return (?ig=connected|error&code=…): toast + strip the query.
   useEffect(() => {
@@ -1251,7 +1271,15 @@ export default function RedesignApp() {
   // Session-RPC v2 follow-up (a): after a "switch needed", the confirm starts the session with the
   // length the seller JUST picked; every other switch keeps today's length rule (null).
   const switchDaysRef = useRef<number | null>(null);
-  const askSwitch = (target: LiveConnectTarget, pickedDays: number | null = null) => { switchDaysRef.current = pickedDays; setSwitchConfirm(target); };
+  // Build 11 (M2): true = no session is running (it ended) → the confirm stops the old platform,
+  // then the normal length picker starts the new session (not a forced start).
+  const switchThenPickRef = useRef(false);
+  const askSwitch = (target: LiveConnectTarget, pickedDays: number | null = null, thenPick = false) => { switchDaysRef.current = pickedDays; switchThenPickRef.current = thenPick; setSwitchConfirm(target); };
+  // Build 11 (M3): the platform of the session this phone is feeding (set on each Connect, from the
+  // server's session platform when known, else the platform being connected). Auto mode orders
+  // only that platform's comments. null (no Connect yet) → no filter, as before.
+  const sessionPlatformRef = useRef<string | null>(null);
+  const noteSessionPlatform = (p: string | null | undefined) => { sessionPlatformRef.current = p ? String(p) : null; };
   // H4 — single start_session per confirm. A same-tick double-tap of "Switch" (before
   // setSwitchConfirm(null) unmounts the modal) must NOT fire two start_session → two
   // buyer# resets. Synchronous ref latch = the only reliable guard for a same-tick race.
@@ -1439,18 +1467,17 @@ export default function RedesignApp() {
         if (featureSw.fbConnectV2 && target.platform === "Facebook" && !(await fbLiveGate(target.pageId))) return;
         askSwitch(target); return;
       }
+      noteSessionPlatform(status.platform || target.platform);
       runTargetConnect(target); return; // same platform → continue same session (NULL → in-app check, sql/86)
     }
-    const pending: PendingConnect = target.platform === "Shopee"
-      ? { kind: "shopee", shopId: target.shopId, sessionId: target.sessionId }
-      : target.platform === "Facebook"
-      ? { kind: "fb", pageId: target.pageId, scopeKey: target.scopeKey } // F-P3
-      : target.platform === "Instagram"
-      ? { kind: "ig", igUserId: target.igUserId, scopeKey: target.scopeKey }
-      : { kind: "tt", platform: "TikTok", acct: target.username, register: target.register };
     if (featureSw.fbConnectV2 && target.platform === "Facebook" && !(await fbLiveGate(target.pageId))) return;
-    if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);
+    // Build 11 (M2): no session running, but another platform is still live in this app → the
+    // same switch dialog (its confirm stops the old platform, then the length picker as usual).
+    if (connectIsSwitch(null, target.platform, { ttEff, shopeeEff, fbEff, igEff })) { askSwitch(target, null, true); return; }
+    openFirstConnect(pendingOfTarget(target));
   };
+  // No session running → the owner Start modal / the length picker (both own a startSession site).
+  const openFirstConnect = (pending: PendingConnect) => { if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending); };
   // The SINGLE commit from the modal (Connect / Use / Shopee connect). Switch detection is
   // now SERVER-ANCHORED inside runSessionAware (checkStatus → connectIsSwitch), not
   // the in-memory client flags — so a stale/recovering ttEff can never mis-route a switch.
@@ -1469,6 +1496,14 @@ export default function RedesignApp() {
     if (!target) return;
     switchingRef.current = true;
     try {
+      // Build 11 (M2): no session was running → stop the old platform (same rule as below), then
+      // the normal first-connect (length picker). No session is started here.
+      if (switchThenPickRef.current) {
+        switchThenPickRef.current = false;
+        if (featureSw.fbConnectV2) await stopOtherPlatforms(target.platform);
+        openFirstConnect(pendingOfTarget(target));
+        return;
+      }
       const picked = switchDaysRef.current;
       switchDaysRef.current = null;
       const days = picked ?? sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
@@ -1479,7 +1514,7 @@ export default function RedesignApp() {
         stopOld: () => stopOtherPlatforms(target.platform),
         start: () => sessionInstance.startSession(days, target.platform, true),
         reset: () => liveSession.reset(),
-        connect: () => runTargetConnect(target),
+        connect: () => { noteSessionPlatform(target.platform); runTargetConnect(target); },
         startFailed: () => setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }),
       });
     } finally { switchingRef.current = false; }
@@ -1605,7 +1640,12 @@ export default function RedesignApp() {
       if (platform === "TikTok" && connectIsSwitch(status.platform, "TikTok", { ttEff, shopeeEff, fbEff, igEff })) {
         setTtOpen(false); askSwitch({ platform: "TikTok", username: acct }); return;
       }
+      noteSessionPlatform(status.platform || platform);
       void performConnect(platform, acct); return;
+    }
+    // Build 11 (M2): no session running but another platform is still live here → the switch dialog.
+    if (platform === "TikTok" && connectIsSwitch(null, "TikTok", { ttEff, shopeeEff, fbEff, igEff })) {
+      setTtOpen(false); askSwitch({ platform: "TikTok", username: acct }, null, true); return;
     }
     // Owner (Session V2): the fixed 5-day "Start Session" modal, NOT the 1–5 picker.
     // Every other seller: the unchanged picker path (byte-for-byte).
@@ -1615,6 +1655,7 @@ export default function RedesignApp() {
   // Run a pending connect after its session was created (picker/owner/switch). Branches
   // the union so a Shopee-first connect gets a real session, same as TikTok.
   const connectPending = (p: PendingConnect) => {
+    noteSessionPlatform(platformOfPending(p)); // Build 11 (M3): the new session's platform
     if (p.kind === "shopee") void doShopeeConnect(p.shopId, p.sessionId);
     else if (p.kind === "fb") void doFbConnect(p.pageId, p.scopeKey); // F-P3
     else if (p.kind === "ig") void doIgConnect(p.igUserId);
@@ -1849,17 +1890,34 @@ export default function RedesignApp() {
     if (!target || soldoutSentRef.current.has(target.commentId)) return;
     soldoutSentRef.current.add(target.commentId);
     void (async () => {
+      // stock_refresh_v2 — Build 11 (H1): take the piece in the DATABASE first (atomic, only when
+      // stock > 0; decrement_product_stock). Taken → order this buyer through the normal Auto path
+      // with NO second decrement; the order is refused (cap / duplicate) → the piece goes back.
+      // Nothing to take → the sold-out / waitlist path below, as before. So two buyers who hit a
+      // restock at the same moment can never both get the last piece. soldoutSentRef keeps it one try.
+      if (featureSw.stockRefreshV2) {
+        const lid = code.productLocalId;
+        stockGuardRef.current.begin(lid, Date.now());
+        const left = await decrementStockAndTouch(lid).catch(() => null).finally(() => stockGuardRef.current.end(lid, Date.now()));
+        if (left == null) return;                               // could not verify → no message
+        if (left >= 0) {
+          autoStockRef.current.set(lid, left); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0));
+          const key = commentKey(c);
+          setAutoBadges((b) => { if (!(key in b)) return b; const n = { ...b }; delete n[key]; return n; });
+          if (!autoCommentRef.current(c, { lid, left })) {
+            void adjustProductStock(lid, 1).then((s) => {
+              if (s != null && s >= 0) { autoStockRef.current.set(lid, s); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
+            });
+          }
+          return;
+        }
+      }
       const stock = await loadProductStock(code.productLocalId);
       if (stock == null) return;                                // could not verify → no message
       if (stock > 0) {
+        // OFF: restocked elsewhere → the count only (no order, no message), as before. ON: only
+        // reachable when a restock landed between the take above and this read → no order.
         autoStockRef.current.set(code.productLocalId, stock); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
-        // stock_refresh_v2 — restocked elsewhere: order this buyer now through the normal Auto
-        // path (order + stock + badge); no sold-out message. soldoutSentRef keeps it one try.
-        if (featureSw.stockRefreshV2) {
-          const key = commentKey(c);
-          setAutoBadges((b) => { if (!(key in b)) return b; const n = { ...b }; delete n[key]; return n; });
-          autoCommentRef.current(c);
-        }
         return;
       }
       // F3: join the line BEFORE the message so it can say the place in line.
@@ -1890,42 +1948,47 @@ export default function RedesignApp() {
     if (nameHasBuyer(who, liveSession.session.buyers) && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_wl_same_name, { name: who }))) return;
     wlGiveRef.current.add(r.id);
     const code = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === r.code.trim().toLowerCase());
-    const give = () => {
+    const lid = r.productLocalId ?? code?.productLocalId ?? null;
+    const setMirror = (l: number, n: number) => { autoStockRef.current.set(l, n); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (x) => autoStockRef.current.get(x) ?? 0)); };
+    // taken = the piece was already taken in the database (Build 11, M13); null = no product,
+    // or the take could not run → the stock step as before (a logged −1 after the order).
+    const give = (taken: boolean) => {
       const c = rebuildWaitlistComment(r);
       const order = orders.createOrder(c, effectiveOrderPrice(code ? code.price : 0, samePriceCfg.active), { itemOverride: code ? code.code : r.code });
-      if (!order) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return; }
+      if (!order) {
+        if (taken && lid != null) void adjustProductStock(lid, 1).then((s) => { if (s != null && s >= 0) setMirror(lid, s); }); // piece back
+        wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return;
+      }
       setWlNote(null);
       setWlBusy(r.id);
       const snap = snapshotFromCreate(c, order);
       reprintByIdRef.current.set(`wl:${r.commentId}`, snap);
       jobToCommentRef.current.set(String(order.orderNum), { cid: `wl:${r.commentId}`, msgId: r.commentId });
       liveSession.addOrderedMsgId(r.commentId, snap);
-      const lid = r.productLocalId ?? code?.productLocalId ?? null;
       void (async () => {
-        if (lid != null) {
+        if (lid != null && taken) void logStockMovement(lid, -1, "waitlist", r.commentId); // the stock history row
+        else if (lid != null) {
           stockGuardRef.current.begin(lid, Date.now());           // stock_refresh_v2 race guard (memory only)
           const s = await adjustStockLogged(lid, -1, "waitlist", r.commentId).finally(() => stockGuardRef.current.end(lid, Date.now()));
-          if (s != null && s >= 0) { autoStockRef.current.set(lid, s); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
+          if (s != null && s >= 0) setMirror(lid, s);
         }
         await setWaitlistStatus(r.id, "given");
         setWlBusy(null);
         reloadWaitlist();
       })();
     };
-    // stock_refresh_v2 — ask the DATABASE first: 0 → no order, the buyer stays in line; could not
-    // verify → today's flow. OFF → today's flow, unchanged.
-    const checkLid = r.productLocalId ?? code?.productLocalId ?? null;
-    if (featureSw.stockRefreshV2 && checkLid != null) {
-      setWlBusy(r.id);
-      void loadProductStock(checkLid).then((st) => {
-        setWlBusy(null);
-        if (st != null) { autoStockRef.current.set(checkLid, st); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
-        if (st === 0) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_no_stock); return; }
-        give();
-      });
-      return;
-    }
-    give();
+    if (lid == null) { give(false); return; }
+    // Build 11 (M13): take the piece in the DATABASE first (atomic, only when stock > 0), then
+    // make the order. Nothing left → no order, the buyer stays in line ("No stock left"). Two
+    // phones (or two taps) can never give the last piece twice. Could not run → as before.
+    setWlBusy(r.id);
+    stockGuardRef.current.begin(lid, Date.now());
+    void decrementStockAndTouch(lid).catch(() => null).finally(() => stockGuardRef.current.end(lid, Date.now())).then((left) => {
+      setWlBusy(null);
+      if (left === -1) { setMirror(lid, 0); wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_no_stock); return; }
+      if (left != null) setMirror(lid, left);
+      give(left != null);
+    });
   };
   const onWaitlistSkip = (r: WaitlistRow) => {
     if (wlBusy != null) return;
@@ -2017,8 +2080,12 @@ export default function RedesignApp() {
   // Rule 3 — recompute the reactive stock mirror from the refs (after a claim / a
   // restock). Cheap (a few dozen codes); drives the low-stock chips + sold-out banner.
   const refreshAutoStock = () => setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
-  autoCommentRef.current = (c: ProdComment) => {
-    if (!autoDetect) return;                                    // Auto Mode OFF → ignore
+  autoCommentRef.current = (c: ProdComment, taken?: TakenPiece): boolean => {
+    if (!autoDetect) return false;                              // Auto Mode OFF → ignore
+    // Build 11 (M3): only the session's own platform is auto-ordered (after an incomplete switch the
+    // old platform's comments may still arrive here). Session platform unknown → as before.
+    const sessionPlatform = sessionPlatformRef.current;
+    if (sessionPlatform && c.platform && sessionPlatform.toLowerCase() !== String(c.platform).toLowerCase()) { log.info("[auto] skipped — not this session's platform", c.platform); return false; }
     // F-DEDUP-RACE (post-audit) — do NOT auto-process while the live-session window is
     // being LOADED (state "loading" = a fetch is in flight → session.orders is still
     // empty → loadedAutoDupSet is empty). A repeat code arriving in that window could
@@ -2030,27 +2097,29 @@ export default function RedesignApp() {
     // gate on the IN-FLIGHT state (not orderedLoaded) so the no-Supabase / no-load case
     // isn't blocked forever; a failed/absent load falls back to the sync autoDupRef +
     // the DB unique index (the cross-device backstop).
-    if (liveSession.state === "loading") { log.info("[auto] skipped — session window loading", c.handle, c.comment); return; }
+    if (liveSession.state === "loading") { log.info("[auto] skipped — session window loading", c.handle, c.comment); return false; }
     // I3 (codes-ready gate) — do NOT auto-process before the products auth-load has
     // resolved: autoCodesRef is still empty, so a real code comment would match
     // NOTHING (silent no-order, no badge). Skip + log (same style as the loading
     // gate); once codes are derived (success OR local-fallback) auto resumes. The
     // buyer can still MANUAL-tap in this narrow start-of-session window.
-    if (!codesReadyRef.current) { log.info("[auto] skipped — codes not loaded yet", c.handle, c.comment); return; }
+    if (!codesReadyRef.current) { log.info("[auto] skipped — codes not loaded yet", c.handle, c.comment); return false; }
     const key = commentKey(c);
-    if (autoProcessedRef.current.has(key) || printed[key]) return; // this comment already handled
-    const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
-    if (plan.kind === "none") return;
+    if (autoProcessedRef.current.has(key) || printed[key]) return false; // this comment already handled
+    // taken (H1): the piece is already out of the database → count it as there (left + 1).
+    const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => (taken && lid === taken.lid ? taken.left + 1 : autoStockRef.current.get(lid) ?? 0));
+    if (plan.kind === "none") return false;
+    if (taken && plan.code.productLocalId !== taken.lid) return false; // code changed meanwhile → caller gives the piece back
     // RULE 1 — dedup FIRST (a repeat by a buyer who already ordered this code shows
     // "duplicate" even if the code is now sold out). Key = lower(handle)|lower(code).
     // Two sources: the SYNC same-tick ref + the loaded/committed orders (session.orders
     // rows carry autoCode via rebuild; in-session orders carry it too). No order, no
     // print, NO stock claim on a duplicate (P5 renders the "duplicate" badge).
     const dupKey = autoDupKeyOf(c.handle, plan.code.code);
-    if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) { setAutoBadges((b) => ({ ...b, [key]: "duplicate" })); return; }
+    if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) { setAutoBadges((b) => ({ ...b, [key]: "duplicate" })); return false; }
     // Rule 3 — a sold-out code: no order, no print (the banner is DERIVED from the
     // stock mirror). The feed row gets a "sold out" badge.
-    if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); onSoldOutFacebook(c, plan.code); return; }
+    if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); onSoldOutFacebook(c, plan.code); return false; }
     // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
     autoProcessedRef.current.add(key);
     autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
@@ -2061,7 +2130,8 @@ export default function RedesignApp() {
     // Same-price override: auto's base is the code price → fixed when set (total = fixed × qty
     // via the builder). Sticker still shows the CODE (itemOverride), stock/dedup/Rules unchanged.
     const autoPrice = effectiveOrderPrice(plan.code.price, samePriceCfg.active);
-    const order = orders.createOrder(c, autoPrice, { productLocalId: plan.code.productLocalId, autoCode: plan.code.code, itemOverride: plan.code.code });
+    // taken (H1): no productLocalId → the order hub does NOT decrement again (the piece is taken).
+    const order = orders.createOrder(c, autoPrice, taken ? { autoCode: plan.code.code, itemOverride: plan.code.code } : { productLocalId: plan.code.productLocalId, autoCode: plan.code.code, itemOverride: plan.code.code });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + autoPrice }));
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
@@ -2078,6 +2148,7 @@ export default function RedesignApp() {
       autoProcessedRef.current.delete(key);
       autoDupRef.current.delete(dupKey);
     }
+    return !!order;
   };
 
 
@@ -2413,7 +2484,7 @@ export default function RedesignApp() {
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} platformViewAs={platformViewAs} onSetPlatformViewAs={setPlatformViewAs} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
-          {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
+          {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={shipSessionKey} {...(shipSessionKey !== shipLegacyKey ? { legacyKey: shipLegacyKey } : {})} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
             <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} />
           )}

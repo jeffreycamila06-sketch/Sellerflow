@@ -21,7 +21,7 @@ describe("loadFbAccess", () => {
     fetchMock.mockResolvedValue(res(200, { ok: true, facebook: true, receipt: "yes" }));
     expect(await loadFbAccess()).toEqual({ facebook: true, receipt: false });
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toMatch(/\/fb\/access$/);
+    expect(String(url)).toMatch(/\/fb\/access\?sfl_codes=1$/);
     expect(init.headers.Authorization).toBe("Bearer JWT");
   });
   it("failure path: non-200, 404 (route not deployed), ok:false, bad JSON, network → null", async () => {

@@ -995,6 +995,7 @@ export function createFbRuntime(deps) {
     };
     pollers.set(key, entry);
     log(`[FB] poller start page=${String(pageId)} lv=${String(liveVideoId)} status=LIVE`);
+    holdWaitingReceipt(entry);
     if (entry.videoMode) log(`[FB] video path user=${String(userId || "").slice(0, 8)} page=${String(pageId)} video=${String(liveVideoId)}`);
     statusEmit(sellerId, { connected: true, pageId: String(pageId), liveVideoId: String(liveVideoId), scopeKey, sessionId: entry.sessionId });
     scheduleNext(entry, 0);
@@ -1010,14 +1011,41 @@ export function createFbRuntime(deps) {
     try { statusEmit(entry.sellerId, { connected: false, pageId: entry.pageId, liveVideoId: entry.liveVideoId, scopeKey: entry.scopeKey, sessionId: entry.sessionId, reason: String(reason || "") }); } catch { /* best effort */ }
     log(`[FB] poller stop page=${entry.pageId} reason=${reason}`);
     // B1 automatic receipt: the live ended → the store queues a job (only when its switch is on). Fire-and-forget, never blocks or throws.
-    try { if ((reason === "session_end" || reason === "idle" || reason === "max_session") && typeof store.insertAutoReceiptJob === "function") Promise.resolve(store.insertAutoReceiptJob({ userId: entry.userId, pageId: entry.pageId, liveVideoId: entry.liveVideoId })).catch(() => {}); } catch { /* best effort */ }
+    try { if ((reason === "session_end" || reason === "idle" || reason === "max_session") && typeof store.insertAutoReceiptJob === "function") chainJob(entry, () => store.insertAutoReceiptJob({ userId: entry.userId, pageId: entry.pageId, liveVideoId: entry.liveVideoId })); } catch { /* best effort */ }
     // fb_stop_reasons (switch ON): the seller's own Disconnect also queues it (the runner skips
     // buyers who already have a receipt and checks the seller's toggle and plan). Never on restart.
     if (reason === "disconnect" && typeof store.insertAutoReceiptJob === "function") {
       const job = { userId: entry.userId, pageId: entry.pageId, liveVideoId: entry.liveVideoId };
-      void isStopReasonsOn().then((on) => (on ? store.insertAutoReceiptJob(job) : null)).catch(() => {});
+      chainJob(entry, () => isStopReasonsOn().then((on) => (on ? store.insertAutoReceiptJob(job) : null)));
     }
     return true;
+  }
+
+  // Build 11 (H2) — a stop queues an automatic receipt 10 minutes later; when the SAME live
+  // (user + page + live video) starts again before that, its waiting job is put aside, so the
+  // buyers get one complete receipt at the real end instead of a partial one mid-live. The job
+  // writes of one live run one after another (a quick reconnect waits for the insert; a stop
+  // right after a start waits for that start's put-aside), never at the same time.
+  const jobChains = new Map(); // "user|page|live" → the last job write of that live
+  const jobKeyOf = (e) => `${e.userId}|${e.pageId}|${e.liveVideoId}`;
+  // Nothing pending for that live → the write starts right away (as before Build 11).
+  function chainJob(entry, step) {
+    const k = jobKeyOf(entry);
+    const prev = jobChains.get(k);
+    let run;
+    if (prev) run = prev.then(step);
+    else { try { run = Promise.resolve(step()); } catch (e) { run = Promise.reject(e); } }
+    const p = run.catch(() => {});
+    jobChains.set(k, p);
+    void p.then(() => { if (jobChains.get(k) === p) jobChains.delete(k); });
+  }
+  function holdWaitingReceipt(entry) {
+    if (typeof store.cancelWaitingAutoReceiptJobs !== "function" || !entry.userId) return;
+    const job = { userId: entry.userId, pageId: entry.pageId, liveVideoId: entry.liveVideoId };
+    chainJob(entry, async () => {
+      const n = await store.cancelWaitingAutoReceiptJobs(job);
+      if (n > 0) log(`[FB] auto receipt held: live resumed page=${job.pageId} lv=${job.liveVideoId} jobs=${n}`);
+    });
   }
 
   // Running pollers of one seller (socket reconnect → status replay in server.js).

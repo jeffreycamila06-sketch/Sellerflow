@@ -217,7 +217,9 @@ describe("fbLive.js stop hook", () => {
     expect(stopFn.match(/insertAutoReceiptJob/g)).toHaveLength(4);
     expect(stopFn).toContain('if (reason === "disconnect" && typeof store.insertAutoReceiptJob === "function") {');
     const stop = src.slice(src.indexOf("function stopPoller("), src.indexOf("function listPollers("));
-    expect(stop).toContain('try { if ((reason === "session_end" || reason === "idle" || reason === "max_session") && typeof store.insertAutoReceiptJob === "function") Promise.resolve(store.insertAutoReceiptJob(');
-    expect(stop).toContain(".catch(() => {}); } catch { /* best effort */ }");
+    // Build 11 (H2): the write goes through chainJob (one live's job writes in order; it still
+    // starts right away when nothing is pending, and chainJob swallows a failing write).
+    expect(stop).toContain('try { if ((reason === "session_end" || reason === "idle" || reason === "max_session") && typeof store.insertAutoReceiptJob === "function") chainJob(entry, () => store.insertAutoReceiptJob(');
+    expect(stop).toContain("})); } catch { /* best effort */ }");
   });
 });

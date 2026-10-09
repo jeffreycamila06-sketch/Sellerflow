@@ -5,7 +5,7 @@
 // success, or an honest error so the composer can offer "send English only".
 import { SERVER } from "./serverIdentity";
 import { supabase } from "../../supabase";
-import { decodeServerJson, sellerSafeWord } from "../../lib/errCodes.js";
+import { decodeServerJson, sellerSafeWord, withCodes } from "../../lib/errCodes.js";
 
 export interface TranslateResult {
   ok: boolean;
@@ -19,7 +19,7 @@ export async function translateBroadcast(text: string): Promise<TranslateResult>
   if (!src) return { ok: false, error: "empty" };
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-    const r = await fetch(`${SERVER}/admin/broadcast-translate`, {
+    const r = await fetch(withCodes(`${SERVER}/admin/broadcast-translate`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ text: src }),

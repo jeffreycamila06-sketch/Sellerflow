@@ -43,8 +43,10 @@ describe("Session-safety contract — routing", () => {
     expect(b).toContain("ensureLoaded()");
     expect(b).toContain("checkStatus()");
     expect(b).toContain("status.running");
-    expect(b).toContain("setOwnerStart");
-    expect(b).toContain("setPickerConnect");
+    // Build 11 (M2): not running → openFirstConnect (owner Start / picker), or the switch dialog first
+    expect(b).toContain("openFirstConnect(pendingOfTarget(target));");
+    expect(body("openFirstConnect")).toContain("setOwnerStart");
+    expect(body("openFirstConnect")).toContain("setPickerConnect");
   });
   it("connectPending branches Shopee (session-aware Shopee) vs TikTok performConnect", () => {
     const b = body("connectPending");

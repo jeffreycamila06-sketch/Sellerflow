@@ -9,6 +9,7 @@
 // mined items into per-buyer# bags.
 import type { Buyer } from "../../lib/orderTypes";
 import { computeWindowState } from "./useSessionWindow";
+import { isFacebookPlatform, fbDisplayName } from "./fbName";
 
 // ── Constants (賣貨便 訂單匯入 template rules, verified from the real file) ────
 export const SHIP_MAX = 500;              // max rows per upload
@@ -59,6 +60,24 @@ export function sessionKeyFor(todayId: string, windowStart: string | null, windo
   return st.active && st.loadStart && st.n > 1 ? `${st.loadStart}~${st.n}d` : todayId;
 }
 
+// Build 11 (H3) — Shipping keyed by the SESSION (switch build11_enabled). Two sessions on the same
+// Taipei day (a platform switch) used to share the day key, so the new buyer #1 opened — and
+// overwrote — the other session's #1 bag. The session key is "sid:<session id>"; no session id
+// (legacy, before the session model) → the old day / window key.
+export function shippingSessionKey(sessionId: string | null | undefined, legacyKey: string): string {
+  return sessionId ? `sid:${sessionId}` : legacyKey;
+}
+
+// Bags saved under the old day / window key before the switch was turned on are still shown — but
+// only those that hold THIS session's orders (their order ids are this session's). Another
+// session's bag on the same day is never shown or touched. A bag already loaded under the session
+// key wins for the same buyer # + bag #.
+export function ownLegacyEntries(sessionRows: ShippingEntry[], legacyRows: ShippingEntry[], sessionOrderIds: Set<number>): ShippingEntry[] {
+  const taken = new Set(sessionRows.map((e) => `${e.buyerNumber}|${e.bagNumber}`));
+  const own = legacyRows.filter((e) => !taken.has(`${e.buyerNumber}|${e.bagNumber}`) && e.includedOrderIds.some((id) => sessionOrderIds.has(id)));
+  return [...sessionRows, ...own].sort((a, b) => a.buyerNumber - b.buyerNumber || a.bagNumber - b.bagNumber);
+}
+
 // ── Buyer grouping — one group per buyer# from the already-loaded session ─────
 // (RebuiltSession.buyers is already consolidated per buyer; zero new queries.)
 export interface GroupOrder { id: number; item: string; total: number } // id = orderNum epoch-ms
@@ -66,6 +85,7 @@ export interface BuyerGroup {
   bNum: number;
   handle: string;
   name: string;
+  platform?: string;        // Build 11 (M1): Facebook → column J gets the name, never the id
   items: number;
   total: number;
   orderIds: number[];       // orderNum epoch-ms
@@ -77,12 +97,19 @@ export function buyerGroupsFrom(buyers: Buyer[]): BuyerGroup[] {
       bNum: b.num,
       handle: b.handle || "",
       name: b.name || "",
+      platform: b.platform,
       items: b.orders.length,
       total: b.orders.reduce((s, o) => s + (Number(o.total) || 0), 0),
       orderIds: b.orders.map((o) => o.orderNum),
       orderList: b.orders.map((o) => ({ id: o.orderNum, item: o.item || "", total: Number(o.total) || 0 })),
     }))
     .sort((a, b) => a.bNum - b.bNum);
+}
+
+// Build 11 (M1): 其他資訊 (column J) for a Facebook buyer = the display name (blank if none),
+// never the commenter's id; every other platform → the handle, as before.
+export function colJHandle(g: Pick<BuyerGroup, "platform" | "handle" | "name">): string {
+  return isFacebookPlatform(g.platform) ? fbDisplayName(g.name) : g.handle;
 }
 
 // Auto 商品 summary — includes the buyer# so the printed 寄件單 matches the bag.
@@ -105,7 +132,7 @@ export function draftEntryFor(g: BuyerGroup, sessionKey: string, id: string): Sh
     productDesc: defaultProductDesc(g.bNum, g.items),
     orderAmount: g.total,
     shippingFee: SHIP_DEFAULT_FEE,
-    buyerUsername: g.handle, // 其他資訊 col J — NEVER the recipient name (col A)
+    buyerUsername: colJHandle(g), // 其他資訊 col J — NEVER the recipient name (col A)
     status: "draft",
     exportBatchId: null,
     exportedAt: null,
@@ -209,7 +236,7 @@ export function buildBagEntries(g: BuyerGroup, sessionKey: string, bags: BagSumm
     productDesc: bagDesc(g.bNum, bag.items, idx + 1, n),
     orderAmount: bag.amount,
     shippingFee: fee,
-    buyerUsername: g.handle,
+    buyerUsername: colJHandle(g),
     status: "encoded" as const,
     exportBatchId: null,
     exportedAt: null,
@@ -269,7 +296,7 @@ export function lateFormEntry(g: BuyerGroup, bags: ShippingEntry[], sessionKey: 
   const bagNumber = editable?.bagNumber ?? Math.max(...bags.map((b) => b.bagNumber)) + 1;
   return {
     id: editable?.id ?? newIdVal,
-    sessionKey,
+    sessionKey: editable?.sessionKey ?? sessionKey, // a saved row keeps its own key (Build 11 H3)
     buyerNumber: g.bNum,
     bagNumber,
     includedOrderIds: lateOrders.map((o) => o.id),
@@ -280,7 +307,7 @@ export function lateFormEntry(g: BuyerGroup, bags: ShippingEntry[], sessionKey: 
     productDesc: lateBagDesc(g.bNum, lateOrders.length, bagNumber),
     orderAmount: lateOrders.reduce((s, o) => s + o.total, 0),
     shippingFee: editable?.shippingFee ?? fee,
-    buyerUsername: g.handle,
+    buyerUsername: colJHandle(g),
     status: "draft",
     exportBatchId: null,
     exportedAt: null,

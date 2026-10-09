@@ -13,7 +13,7 @@ import { SERVER, browserSessionId } from "./serverIdentity";
 import { getAppSetting } from "./appSettings";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 // Item 7 — Authorize + Connect require an ACTIVE PAID plan (admin bypasses; the
 // server also enforces requirePlanActive on /shopee/connect). Module-level so the
@@ -97,7 +97,7 @@ async function bearer(): Promise<string> {
 // the tap. The signed state inside the URL has a ~10-min TTL (STATE_TTL_MS).
 export async function startShopeeAuth(): Promise<{ ok: boolean; url?: string; error?: string }> {
   try {
-    const r = await fetch(`${SERVER}/shopee/oauth/start`, {
+    const r = await fetch(withCodes(`${SERVER}/shopee/oauth/start`), {
       method: "GET",
       headers: { Authorization: `Bearer ${await bearer()}` },
     });
@@ -123,7 +123,7 @@ export interface ShopeeConnectResult { ok: boolean; reason?: string; error?: str
 //     duplicate-auto-order safeguard on multi-device sellers).
 export async function shopeeConnect(shopId: number | string, shopSessionId: string): Promise<ShopeeConnectResult> {
   try {
-    const r = await fetch(`${SERVER}/shopee/connect`, {
+    const r = await fetch(withCodes(`${SERVER}/shopee/connect`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ shop_id: String(shopId), session_id: String(shopSessionId || ""), sessionId: browserSessionId() }),
@@ -143,7 +143,7 @@ export async function shopeeConnect(shopId: number | string, shopSessionId: stri
 // POST /shopee/disconnect { shop_id } → stops the poller. Best-effort.
 export async function shopeeDisconnect(shopId: number | string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const r = await fetch(`${SERVER}/shopee/disconnect`, {
+    const r = await fetch(withCodes(`${SERVER}/shopee/disconnect`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ shop_id: String(shopId) }),

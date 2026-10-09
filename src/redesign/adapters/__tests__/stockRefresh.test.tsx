@@ -104,22 +104,25 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(src).toContain("stockGuardRef.current.touch(plan.code.productLocalId, Date.now());");
     expect(body("onWaitlistGive")).toContain('adjustStockLogged(lid, -1, "waitlist", r.commentId).finally(() => stockGuardRef.current.end(lid, Date.now()));');
   });
-  it("sold-out re-check finds stock → the normal Auto path, no message; still one try per comment", () => {
+  // Build 11 (H1 + M13): the behaviour is pinned for real in __tests__/build11.stockTake.test.tsx
+  // (full app against a fake products table); these keep the shape.
+  it("sold-out re-check (switch on): takes the piece in the database FIRST, then the Auto path without a 2nd decrement; one try per comment", () => {
     const b = body("onSoldOutFacebook");
-    expect(b.indexOf("soldoutSentRef.current.add(target.commentId);")).toBeLessThan(b.indexOf("loadProductStock("));
-    const branch = b.slice(b.indexOf("if (stock > 0) {"), b.indexOf("// F3: join the line BEFORE"));
-    expect(branch).toContain("if (featureSw.stockRefreshV2) {");
-    expect(branch).toContain("autoCommentRef.current(c);");
-    expect(branch).toContain("return;");
-    expect(branch).not.toMatch(/sendSoldOut|joinWaitlist/);
+    expect(b.indexOf("soldoutSentRef.current.add(target.commentId);")).toBeLessThan(b.indexOf("decrementStockAndTouch("));
+    const v2 = b.slice(b.indexOf("if (featureSw.stockRefreshV2) {"), b.indexOf("const stock = await loadProductStock("));
+    expect(v2.indexOf("decrementStockAndTouch(lid)")).toBeLessThan(v2.indexOf("autoCommentRef.current(c, { lid, left })"));
+    expect(v2).toContain("void adjustProductStock(lid, 1)");    // refused order → piece back
+    expect(v2).not.toMatch(/sendSoldOut|joinWaitlist/);
+    const off = b.slice(b.indexOf("if (stock > 0) {"), b.indexOf("// F3: join the line BEFORE"));
+    expect(off).not.toContain("autoCommentRef.current(");        // OFF: count only, as before
+    expect(src).toContain("const order = orders.createOrder(c, autoPrice, taken ? { autoCode: plan.code.code, itemOverride: plan.code.code } : { productLocalId: plan.code.productLocalId, autoCode: plan.code.code, itemOverride: plan.code.code });");
   });
-  it("waitlist Give: DB read first with the switch on; 0 → no order + note; unreadable / OFF → today's flow", () => {
+  it("waitlist Give: the piece is taken in the database first; nothing left → no order + note; could not run → as before", () => {
     const b = body("onWaitlistGive");
-    const v2 = b.slice(b.indexOf("if (featureSw.stockRefreshV2 && checkLid != null) {"));
-    expect(v2.indexOf("loadProductStock(checkLid)")).toBeLessThan(v2.indexOf("give();"));
-    expect(v2).toContain("if (st === 0) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_no_stock); return; }");
-    expect(b.indexOf("const give = () => {")).toBeLessThan(b.indexOf("if (featureSw.stockRefreshV2 && checkLid != null) {"));
-    expect(b.trimEnd().endsWith("give();\n  };") || /give\(\);\s*\};\s*$/.test(b)).toBe(true); // OFF / null id → today's flow
+    expect(b.indexOf("decrementStockAndTouch(lid)")).toBeLessThan(b.indexOf("give(left != null);"));
+    expect(b).toContain("if (left === -1) { setMirror(lid, 0); wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_no_stock); return; }");
+    expect(b).toContain("if (lid == null) { give(false); return; }");
+    expect(b).toContain('void logStockMovement(lid, -1, "waitlist", r.commentId)');
   });
   it("note text in 8 languages", () => {
     expect(buildT("en").rd_wl_no_stock).toBe("No stock left for this code — restock first.");

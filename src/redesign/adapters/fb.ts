@@ -15,7 +15,7 @@ import { tpl, type RedesignT } from "../i18n";
 import { isIOS } from "./platform";
 import { liveRefusedText, ACCOUNT_NOT_COVERED } from "./accountLive";
 import { log } from "../../lib/log";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 // Authorize + Connect are open to EVERY plan while it is active: an ACTIVE free plan
 // (planStatus "active"; free has no expiry) or an ACTIVE PAID plan (status "active" and
@@ -111,7 +111,7 @@ export async function startFbAuth(opts: { app?: boolean; lang?: string } = {}): 
   if (opts.lang) q.set("lang", opts.lang);
   const qs = q.toString();
   try {
-    const r = await fetch(`${SERVER}/fb/oauth/start${qs ? `?${qs}` : ""}`, {
+    const r = await fetch(withCodes(`${SERVER}/fb/oauth/start${qs ? `?${qs}` : ""}`), {
       method: "GET",
       headers: { Authorization: `Bearer ${await bearer()}` },
     });
@@ -161,7 +161,7 @@ export async function fbLiveCheck(pageId: string): Promise<FbConnectResult> {
 
 async function postFbLive(path: string, body: Record<string, string>): Promise<FbConnectResult> {
   try {
-    const r = await fetch(`${SERVER}${path}`, {
+    const r = await fetch(withCodes(`${SERVER}${path}`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify(body),
@@ -220,7 +220,8 @@ const nameList = (a: string[] | undefined, more: number) => {
 };
 export function fbReturnText(ret: FbReturn, t: RedesignT, maxPages: number, polish = false): string | null {
   if (ret.status === "connected") {
-    if (polish && (ret.dropped || 0) > 0) return tpl(t.rd_fb_partial_saved, { kept: nameList(ret.kept, ret.saved || 0), dropped: nameList(ret.names, ret.dropped || 0), max: maxPages });
+    // Build 11 (M5): Pages that did not fit are always named (switch on or off).
+    if ((ret.dropped || 0) > 0) return tpl(t.rd_fb_partial_saved, { kept: nameList(ret.kept, ret.saved || 0), dropped: nameList(ret.names, ret.dropped || 0), max: maxPages });
     return t.rd_fb_authorized_toast;
   }
   if (ret.code === "cancelled") return null;
@@ -273,7 +274,7 @@ export function fbChipState(a: { connected: boolean; livePage: FbPage | null; se
 // POST /fb/disconnect { page_id } → stops the poller. Best-effort.
 export async function fbDisconnect(pageId: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const r = await fetch(`${SERVER}/fb/disconnect`, {
+    const r = await fetch(withCodes(`${SERVER}/fb/disconnect`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ page_id: String(pageId) }),

@@ -17,7 +17,7 @@ import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { TEMP_FROZEN, type FrozenConfig } from "./parcelFrozen";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_MAX_ORDER, SHIP_DEFAULT_FEE, type AmountError } from "./shipping";
-import { decodeServerJson, sellerSafeWord } from "../../lib/errCodes.js";
+import { decodeServerJson, sellerSafeWord, withCodes } from "../../lib/errCodes.js";
 import { hasFeature } from "./featureAccess";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
@@ -353,7 +353,7 @@ export async function scanParcel(base64: string, mediaType: string): Promise<Sca
   if (!base64) return { ok: false, error: "empty_image" };
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-    const r = await fetch(`${SERVER}/admin/parcel-scan`, {
+    const r = await fetch(withCodes(`${SERVER}/admin/parcel-scan`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ imageBase64: base64, mediaType }),
@@ -492,7 +492,7 @@ export async function checkEmapStore(storeId: string): Promise<EmapCheckResult> 
   if (!/^\d{6}$/.test(String(storeId || "").trim())) return { status: "unknown" };
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-    const r = await fetch(`${SERVER}/admin/parcel-emap-check`, {
+    const r = await fetch(withCodes(`${SERVER}/admin/parcel-emap-check`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ storeId }),

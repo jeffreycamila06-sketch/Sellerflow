@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export interface FbAccess { facebook: boolean; receipt: boolean }
 export const FB_ACCESS_NONE: FbAccess = { facebook: false, receipt: false };
@@ -32,7 +32,7 @@ async function bearer(): Promise<string> {
 // → the server's answer, or null on any failure (the caller treats null as no access).
 export async function loadFbAccess(): Promise<FbAccess | null> {
   try {
-    const r = await fetch(`${SERVER}/fb/access`, { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
+    const r = await fetch(withCodes(`${SERVER}/fb/access`), { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
     if (r.status !== 200) return null;
     const j = decodeServerJson(await r.json().catch(() => null)) as { ok?: unknown; facebook?: unknown; receipt?: unknown } | null;
     if (!j || j.ok !== true) return null;

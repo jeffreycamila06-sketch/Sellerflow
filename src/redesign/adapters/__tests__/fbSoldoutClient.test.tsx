@@ -48,7 +48,7 @@ describe("gate", () => {
     const f = vi.fn(async () => ({ status: 200, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
     expect(await sendSoldOut({ pageId: "9", commentId: "1_2", code: "A1", lang: "fil", position: 2 }, f)).toEqual({ ok: true });
     const [url, init] = (f as unknown as { mock: { calls: [string, { headers: Record<string, string>; body: string }][] } }).mock.calls[0];
-    expect(url).toMatch(/\/fb\/soldout\/send$/);
+    expect(url).toMatch(/\/fb\/soldout\/send\?sfl_codes=1$/); // Build 11 (H4): the new-app marker
     expect(init.headers.Authorization).toBe("Bearer JWT");
     expect(JSON.parse(init.body)).toEqual({ pageId: "9", commentId: "1_2", code: "A1", lang: "fil", position: 2 });
     const g = vi.fn(async () => ({ status: 403, json: async () => ({ ok: false, error: "not_owned" }) })) as unknown as typeof fetch;
@@ -91,7 +91,7 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(src).toContain('const soldoutBase = soldoutGate({ flag: featureSw.fbSoldout, receiptAccess: fbAccess.receipt, fbEnabled, hidden: platformHides("fbSoldout", world) });');
   });
   it("called in the sold-out branch AFTER the badge, BEFORE the return", () => {
-    expect(src).toContain('if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); onSoldOutFacebook(c, plan.code); return; }');
+    expect(src).toContain('if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); onSoldOutFacebook(c, plan.code); return false; }');
   });
   it("DB stock re-checked first; > 0 or unreadable → no message; one try per comment", () => {
     const i = src.indexOf("const onSoldOutFacebook = ");

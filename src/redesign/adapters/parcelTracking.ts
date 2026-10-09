@@ -148,6 +148,9 @@ export function chaseTarget(buyerUsername: string | null | undefined): ChaseTarg
     .trim()                                   // trims spaces incl full-width U+3000 / NBSP
     .replace(/^@+/, "");                      // leading @(s)
   if (!cleaned) return { kind: "none" };
+  // Build 11 (M1): a long all-digit value is a Facebook commenter id, not a TikTok handle →
+  // Copy (opening tiktok.com/@<number> lands on a stranger's or a missing profile).
+  if (/^\d{15,}$/.test(cleaned)) return { kind: "copy", handle: cleaned };
   if (/^[A-Za-z0-9._]{1,24}$/.test(cleaned)) return { kind: "open", handle: cleaned, url: `https://www.tiktok.com/@${cleaned}` };
   return { kind: "copy", handle: cleaned };   // platform-tagged / names / CJK / anything else → Copy
 }

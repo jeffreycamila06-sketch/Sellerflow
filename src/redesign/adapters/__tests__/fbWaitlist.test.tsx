@@ -102,7 +102,9 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(guard).toBeLessThan(create);
     expect(b).toContain("orders.createOrder(c, effectiveOrderPrice(code ? code.price : 0, samePriceCfg.active), { itemOverride: code ? code.code : r.code });");
     expect(b).not.toMatch(/autoCode:|productLocalId:/);
-    expect(b).toContain("if (!order) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return; }");
+    // Build 11 (M13): a refused order gives the taken piece back, then keeps the buyer waiting
+    expect(b).toContain("if (taken && lid != null) void adjustProductStock(lid, 1)");
+    expect(b).toContain("wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return;");
     expect(b).toContain('adjustStockLogged(lid, -1, "waitlist", r.commentId)');
     expect(b).toContain('setWaitlistStatus(r.id, "given")');
     expect(b).not.toMatch(/sendSoldOut|soldout\/send/);

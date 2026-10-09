@@ -30,6 +30,7 @@ import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
 import { opaqueErrors } from "./server/errorCodes.js";
+import { finalErrorHandler } from "./server/finalErrorHandler.js";
 import { registerHealthRoutes } from "./server/healthRoutes.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
@@ -2195,6 +2196,18 @@ try {
           due_at: new Date(Date.now() + AUTO_RECEIPT_DELAY_MS).toISOString(),
         });
       },
+      // Build 11 (H2) — the same live came back (reconnect): its still-waiting job is put aside
+      // ('skipped', note live_resumed) so one complete receipt goes out at the real end. Only
+      // 'due' rows — a job already sending ('running') is left alone. Returns how many.
+      async cancelWaitingAutoReceiptJobs({ userId, pageId, liveVideoId }) {
+        if (!userId || !pageId || !liveVideoId) return 0;
+        const { data, error } = await serviceSb.from("fb_auto_receipt_jobs")
+          .update({ status: "skipped", finished_at: new Date().toISOString(), note: "live_resumed" })
+          .eq("user_id", String(userId)).eq("page_id", String(pageId)).eq("live_video_id", String(liveVideoId)).eq("status", "due")
+          .select("id");
+        if (error) throw new Error("auto_receipt_cancel");
+        return (data || []).length;
+      },
       async claimJobs(limit) {
         const { data, error } = await serviceSb.rpc("claim_auto_receipt_jobs", { p_limit: limit });
         if (error) throw new Error("auto_receipt_claim");
@@ -2487,6 +2500,10 @@ try {
   igRuntime = null;
   console.error("[IG] init failed — Instagram disabled, TikTok/Facebook/Shopee unaffected:", e && e.message);
 }
+
+// Build 11 (M8) — LAST: any error a route or the body parser passes on gets a plain answer,
+// never Express's trace page (server/finalErrorHandler.js). Must stay after every route.
+app.use(finalErrorHandler());
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {

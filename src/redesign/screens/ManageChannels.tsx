@@ -59,6 +59,9 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   const addLabel = isTT ? t.rd_ch_add_tt_multi : t.rd_ch_add_fb_multi;
   const popBody = isTT ? t.rd_ch_pop_body_tt : t.rd_ch_pop_body_fb;
   const fbLocked = !isTT && fbActivationOnly; // fb_polish_v2: activation notice only, no name slots
+  // Build 11 (M4): Facebook Pages are on → the old "Facebook page 1" name boxes, their note and the
+  // multi-account button do nothing for this seller; only the "Manage Facebook pages" button stays.
+  const fbPagesOnly = !isTT && fbPagesEnabled && !!onFbPages;
 
   return (
     <div>
@@ -76,7 +79,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
             <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 12 }}>{t.rd_dash_fb_activation}</div>
             <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" data-testid="mc-fb-telegram" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 0", background: "#0088cc", color: "#fff", borderRadius: 11, fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 800, textDecoration: "none" }}>{t.rd_dash_fb_contact}</a>
           </div>
-        ) : (<>
+        ) : fbPagesOnly ? null : (<>
         {isTT && <AccountQuotaLine reloadKey={orig.join(",")} />}
         {slots.map((val, i) => {
           const savedSlot = Boolean(orig[i]);

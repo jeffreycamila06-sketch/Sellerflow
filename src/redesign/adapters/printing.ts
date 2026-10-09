@@ -18,7 +18,7 @@ import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODU
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
-import { fbNameOnly } from "./fbName";
+import { fbNameOnly, printableBuyer } from "./fbName";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 import { log } from "../../lib/log";
 import { hasFeature } from "./featureAccess";
@@ -816,7 +816,10 @@ export function webStickerQrSvg(handle: string | undefined | null): { svg: strin
   return { svg, sizeMm: total * WEB_QR_MODULE_MM };
 }
 
-export function printSlip(buyer: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
+export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
+  // Build 11 (M1): a Facebook buyer prints the name only (blank if none) — never the commenter's
+  // id. Every other buyer: the same object (fbName.ts printableBuyer).
+  const buyer = printableBuyer(buyerIn);
   const base: Settings = typeof printSettings === "string" ? { ...DEF_SETTINGS, stickerSize: printSettings } : printSettings;
   // FACEBOOK NAME ONLY (fbName.ts): a Facebook buyer's handle IS the display name, so the
   // "@name" line is dropped on every print path (the name line stays). Only when the seller has

@@ -43,3 +43,20 @@ export function fbHandleIsId(platform: string | null | undefined, name: string |
 export function looksLikeFbId(handle: string | null | undefined): boolean {
   return /^(\d{10,}|fb-anon-.+)$/i.test(bareHandle(handle));
 }
+
+// Build 11 (M1) — what may be PRINTED or EXPORTED for a buyer. A Facebook buyer's handle is the
+// commenter's id (identity v2) or "fb-anon-…" (hidden commenter): never printed, never written to
+// the 7-11 file. The display name is used instead; "Unknown" (Facebook gave no name) = blank.
+export function fbDisplayName(name: string | null | undefined): string {
+  const n = String(name ?? "").trim();
+  return n === FB_UNKNOWN_NAME ? "" : n;
+}
+// The buyer a sticker is printed for: Facebook → handle blank + name (blank if none), on the buyer
+// and on its order rows (the id never even reaches the printer). Every other platform → the SAME
+// object, untouched (TikTok stickers byte-identical).
+type Who = { handle: string; name: string };
+export function printableBuyer<T extends Who & { platform?: string | null; orders?: Who[] }>(b: T): T {
+  if (!isFacebookPlatform(b.platform)) return b;
+  const hide = <O extends Who>(o: O): O => ({ ...o, handle: "", name: fbDisplayName(o.name) });
+  return { ...hide(b), ...(Array.isArray(b.orders) ? { orders: b.orders.map(hide) } : {}) };
+}
