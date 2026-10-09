@@ -12,7 +12,14 @@ const STYLE: Record<BuyerTag, CSSProperties> = {
   new: { ...BASE, background: "var(--danger-soft)", color: "#991b1b" },
 };
 
-export default function BuyerTagPill({ tag }: { tag: BuyerTag }) {
+// readable (fb_polish_v2): the text color comes from the theme (--btag-old-fg / --btag-new-fg:
+// the same dark text in light mode, a light text in dark mode — 4.5:1 or better in both).
+const READABLE: Record<BuyerTag, CSSProperties> = {
+  old: { ...STYLE.old, color: "var(--btag-old-fg, #166534)" },
+  new: { ...STYLE.new, color: "var(--btag-new-fg, #991b1b)" },
+};
+
+export default function BuyerTagPill({ tag, readable = false }: { tag: BuyerTag; readable?: boolean }) {
   const t = useT();
-  return <span data-testid="buyer-tag" data-tag={tag} style={STYLE[tag]}>{tag === "old" ? t.rd_bt_old : t.rd_bt_new}</span>;
+  return <span data-testid="buyer-tag" data-tag={tag} style={(readable ? READABLE : STYLE)[tag]}>{tag === "old" ? t.rd_bt_old : t.rd_bt_new}</span>;
 }

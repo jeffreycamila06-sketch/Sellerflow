@@ -25,8 +25,11 @@ const timeOf = (iso: string | null) => {
 const input: CSSProperties = { boxSizing: "border-box", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", padding: "7px 9px", fontSize: 14, fontFamily: "var(--font-ui)" };
 const label: CSSProperties = { display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", margin: "10px 2px 5px" };
 
-export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, onSent }: {
+export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, onSent, polish = false }: {
   receipt: BuyerReceipt; cur: string; onClose: () => void;
+  // fb_polish_v2 (Build 7): the reason in place of Send (older than 7 days / not open yet), a
+  // confirm before "Send again", and errors without Facebook's code. Off → the sheet as before.
+  polish?: boolean;
   sessionId?: string | null;              // the current session (sql/20); no id → no Send (step-1 behaviour)
   onSent?: (sentCount: number) => void;   // lets the Orders box show "Receipt sent ✓"
 }) {
@@ -66,6 +69,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   const [sendNote, setSendNote] = useState<SendNote | null>(null);
   const [failInfo, setFailInfo] = useState<{ code?: number; fbCode?: string }>({}); // Facebook's code for a "failed" note
   const sendingRef = useRef(false);
+  const [confirmAgain, setConfirmAgain] = useState(false); // fb_polish_v2: "Send again" asks first
   useEffect(() => {
     if (!sessionId) return;
     let alive = true;
@@ -126,8 +130,13 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   const showSend = canOfferSend && shownLines.length > 0;
   const showNoLines = canOfferSend && shownLines.length === 0;
   const noneLeft = !!info && (info.reason === "none_left" || (info.sentCount > 0 && info.remaining === 0));
+  // fb_polish_v2: why there is no Send button (no_orders = nothing inside Facebook's 7 days).
+  const reasonText = polish && info && !info.canSend
+    ? (info.reason === "no_orders" ? t.rd_rs_too_old : info.reason === "no_access" ? t.rd_rs_no_access : null)
+    : null;
+  const again = polish && !!info && info.sentCount > 0;
   const noteText: Record<SendNote, string> = {
-    needs_messaging: t.rd_rs_needs_messaging, unknown: t.rd_rs_unknown, failed: receiptFailText(failInfo, t),
+    needs_messaging: t.rd_rs_needs_messaging, unknown: t.rd_rs_unknown, failed: receiptFailText(failInfo, t, polish),
     too_big: t.rd_rs_too_big, info_failed: t.rd_rs_info_failed, mixed_buyer: t.rd_rs_mixed_buyer,
   };
 
@@ -194,12 +203,22 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
         {info && info.lastSentAt && info.sentCount > 0 && (
           <div data-testid="rs-sent" style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: "var(--ok)" }}>{tpl(t.rd_rs_sent_at, { time: timeOf(info.lastSentAt) })}</div>
         )}
-        {showSend && (
-          <button type="button" data-testid="rs-send" disabled={sending || !formatLoaded} onClick={() => void send()}
+        {showSend && again && confirmAgain && (
+          <div data-testid="rs-again-confirm" style={{ marginTop: 10, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>{tpl(t.rd_rs_again_confirm, { name: receipt.name })}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" data-testid="rs-again-cancel" onClick={() => setConfirmAgain(false)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rs_again_cancel}</button>
+              <button type="button" data-testid="rs-again-send" onClick={() => { setConfirmAgain(false); void send(); }} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rs_again_send}</button>
+            </div>
+          </div>
+        )}
+        {showSend && !(again && confirmAgain) && (
+          <button type="button" data-testid="rs-send" disabled={sending || !formatLoaded} onClick={() => { if (again) setConfirmAgain(true); else void send(); }}
             style={{ marginTop: 10, width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontSize: 14, fontWeight: 800, cursor: sending || !formatLoaded ? "default" : "pointer", opacity: sending || !formatLoaded ? 0.6 : 1, fontFamily: "var(--font-ui)" }}>
             {sending ? t.rd_rs_sending : info!.sentCount > 0 ? tpl(t.rd_rs_send_again, { n: info!.remaining }) : t.rd_rs_send}
           </button>
         )}
+        {reasonText && <div data-testid="rs-reason" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{reasonText}</div>}
         {showNoLines && <div data-testid="rs-no-lines" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_no_lines}</div>}
         {noneLeft && <div data-testid="rs-none-left" style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_none_left}</div>}
         {sendNote && <div role="alert" data-testid="rs-send-note" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: sendNote === "needs_messaging" || sendNote === "mixed_buyer" ? "var(--warn)" : "var(--danger)", lineHeight: 1.45 }}>{noteText[sendNote]}</div>}

@@ -185,7 +185,9 @@ async function postFbLive(path: string, body: Record<string, string>): Promise<F
 
 // The toast for a failed Facebook Connect — never a raw server code. (The iOS plan_expired
 // popup is handled by the caller before this.)
-export function fbConnectFailText(r: FbConnectResult, t: RedesignT, live?: { ios: boolean; planName: string; max: number }): string {
+// polish (fb_polish_v2): Facebook's code stays in the console only — 190 → "access expired",
+// timeout → "didn't answer", any other code → the plain failed text. Off → today's "(FB …)" texts.
+export function fbConnectFailText(r: FbConnectResult, t: RedesignT, live?: { ios: boolean; planName: string; max: number }, polish = false): string {
   if (r.reason === "not_live") return t.rd_fb_not_live;
   if (r.unreachable) return t.rd_cm_cant_reach;
   const e = r.error || "";
@@ -193,6 +195,12 @@ export function fbConnectFailText(r: FbConnectResult, t: RedesignT, live?: { ios
   if (e === ACCOUNT_NOT_COVERED && live) return liveRefusedText(t, live);
   if (e === "needs_reauth" || e === "page_not_found") return t.rd_fb_reauth_toast;
   if (e === "too_many_requests") return t.rd_fb_too_many;
+  if (polish && (typeof r.fbCode === "number" || r.fbTimeout)) {
+    console.info(`[FB] connect failed code=${r.fbTimeout ? "timeout" : r.fbCode}`);
+    if (r.fbCode === 190) return t.rd_fb_err_expired;
+    if (r.fbTimeout) return t.rd_fb_err_no_answer;
+    return t.rd_cm_conn_failed;
+  }
   if (typeof r.fbCode === "number") return `${t.rd_cm_conn_failed} (FB ${r.fbCode})`;
   if (r.fbTimeout) return `${t.rd_cm_conn_failed} (FB timeout)`;
   return t.rd_cm_conn_failed;

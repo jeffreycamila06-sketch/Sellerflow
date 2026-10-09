@@ -80,9 +80,16 @@ export function blobToBase64(blob: Blob): Promise<string> {
 // Page, or their settings block it). Retrying cannot help, so the sheet says so instead.
 export const FB_NO_PRIVATE_REPLY_CODE = 10903;
 // The failed-send note: the generic text, or the 10903 text, + "(FB code/subcode)" when the server sent it —
-// the same style as the connect toast.
-export function receiptFailText(r: { code?: number; fbCode?: string }, t: RedesignT): string {
+// the same style as the connect toast. polish (fb_polish_v2): no code on screen (console only) —
+// 10903 → its own text, 190 → "access expired", anything else with a code → "Facebook refused".
+export function receiptFailText(r: { code?: number; fbCode?: string }, t: RedesignT, polish = false): string {
   const code = typeof r.code === "number" ? r.code : r.fbCode ? Number(r.fbCode.split("/")[0]) : NaN;
+  if (polish) {
+    if (r.fbCode || Number.isFinite(code)) console.info(`[FB] receipt failed code=${r.fbCode || code}`);
+    if (code === FB_NO_PRIVATE_REPLY_CODE) return t.rd_rs_no_private_reply;
+    if (code === 190) return t.rd_fb_err_expired;
+    return Number.isFinite(code) ? t.rd_fb_err_refused : t.rd_rs_failed;
+  }
   const base = code === FB_NO_PRIVATE_REPLY_CODE ? t.rd_rs_no_private_reply : t.rd_rs_failed;
   return r.fbCode ? `${base} (FB ${r.fbCode})` : base; // no fb_code (old server / no Graph answer) → text only
 }

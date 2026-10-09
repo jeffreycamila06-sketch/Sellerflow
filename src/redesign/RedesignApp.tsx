@@ -1335,7 +1335,7 @@ export default function RedesignApp() {
       else {
         track("connect_failed", { platform: "Facebook", reason: r.reason || r.error || "unknown" });
         if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
-        else setToast({ msg: fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" }); // never a raw server code
+        else setToast({ msg: fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }, featureSw.fbPolishV2), kind: "err" }); // never a raw server code
       }
       return r;
     } finally { setFbConnecting(false); }
@@ -1398,7 +1398,7 @@ export default function RedesignApp() {
     if (g.go === true) return true;
     track("connect_failed", { platform: "Facebook", reason: `live_check:${r.reason || r.error || "unknown"}` });
     if (ios && g.why === "plan_expired") setIosExpired(true);
-    else setToast({ msg: g.why === "not_live" ? tApp.rd_fb_live_first : fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" });
+    else setToast({ msg: g.why === "not_live" ? tApp.rd_fb_live_first : fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }, featureSw.fbPolishV2), kind: "err" });
     return false;
   };
   // fb_connect_v2 — a CONFIRMED switch stops every OTHER platform that is connected (server
@@ -2295,6 +2295,7 @@ export default function RedesignApp() {
               autoBadges={autoBadges}
               buyerAlerts={buyerAlert.views}
               buyerTags={buyerTags}
+              fbPolish={featureSw.fbPolishV2}
               onBuyerTap={buyerAlert.views ? setBuyerAlertHandle : undefined}
               /* "Same price for all items" — persistent chip while ON; ✕ = same as turning it
                  OFF in Settings: instant off + toast, the price stays remembered. */
@@ -2315,7 +2316,7 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string) => { const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
+            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}
@@ -2412,7 +2413,7 @@ export default function RedesignApp() {
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
-          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
+          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings

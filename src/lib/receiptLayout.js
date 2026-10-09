@@ -10,20 +10,22 @@ export const QR_MAX_WIDTH = 420;
 export const FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Noto Sans CJK TC", "PingFang TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif';
 export const RECEIPT_RULE_COLOR = "#e2e1ea";
 
+// Sized for the Messenger bubble (~260 px wide on a phone, so the 720 px picture shows at ~0.36×):
+// items 30 px and the total 36 px read at ~11–13 px there (Build 7; were 24 / 30).
 export function receiptFonts(stack = FONT_STACK) {
   return {
-    opening: `500 26px ${stack}`,
-    header: `700 30px ${stack}`,
-    num: `500 22px ${stack}`,
-    item: `400 24px ${stack}`,
-    price: `600 24px ${stack}`,
-    totalLabel: `700 28px ${stack}`,
-    totalAmount: `700 30px ${stack}`,
-    note: `400 22px ${stack}`,
+    opening: `500 32px ${stack}`,
+    header: `700 38px ${stack}`,
+    num: `500 27px ${stack}`,
+    item: `400 30px ${stack}`,
+    price: `600 30px ${stack}`,
+    totalLabel: `700 34px ${stack}`,
+    totalAmount: `700 36px ${stack}`,
+    note: `400 28px ${stack}`,
   };
 }
-const LH = { opening: 34, header: 40, item: 32, total: 40, note: 30 };
-const NUM_COL = 44;   // "12." column
+const LH = { opening: 42, header: 48, item: 40, total: 48, note: 38 };
+const NUM_COL = 54;   // "12." column
 const GAP = 16;       // between item text and price
 const INK = "#16151f", MUTED = "#6b6a7a";
 
