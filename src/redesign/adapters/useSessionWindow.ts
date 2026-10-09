@@ -12,6 +12,7 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { fetchAllPages } from "../../lib/fetchAllPages";
 import type { LiveSessionRow } from "../../lib/orderLogic";
+import { log } from "../../lib/log";
 
 // 4-day window (2026-07-13, seller requests; egress verified safe by chat-Claude
 // vs real 30-day data — worst ~3,164 rows ≈ 630KB per open, zero-poll unchanged).
@@ -135,7 +136,7 @@ async function loadSessionPage(userId: string, start: string, end: string, page:
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
     .range(from, from + SESSION_PAGE_SIZE - 1);
-  if (error) { console.error("Load live session window error:", error.message); return null; }
+  if (error) { log.error("Load live session window error:", error.message); return null; }
   return (data || []) as LiveSessionRow[];
 }
 
@@ -187,7 +188,7 @@ async function loadSessionPageById(userId: string, sessionId: string, page: numb
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
     .range(from, from + SESSION_PAGE_SIZE - 1);
-  if (error) { console.error("Load live session by id error:", error.message); return null; }
+  if (error) { log.error("Load live session by id error:", error.message); return null; }
   return (data || []) as LiveSessionRow[];
 }
 
@@ -361,7 +362,7 @@ export function useSessionWindow(enabled: boolean, fix = false): UseSessionWindo
     const id = await uid();
     if (!id) return true;
     const { error } = await supabase.from("seller_session_config").upsert({ user_id: id, window_days: n, window_start: start, updated_at: new Date().toISOString() });
-    if (error) console.error("Session window save error:", error.message);
+    if (error) log.error("Session window save error:", error.message);
     return !error;
   }, [uid]);
 

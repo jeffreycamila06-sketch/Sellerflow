@@ -9,6 +9,7 @@
 // without a catalog join; a rename is reconciled on the next save.
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import type { AutoCode } from "./autoMode";
+import { log } from "../../lib/log";
 
 // ── Pure mappers (no Supabase / React — unit-tested) ──────────────────────────
 
@@ -52,7 +53,7 @@ export async function loadCodes(): Promise<AutoCode[] | null> {
     .select("code,product_local_id,product_name,price")
     .eq("user_id", id)
     .order("code", { ascending: true });
-  if (error) { console.error("Load auto codes error:", error.message); return null; }
+  if (error) { log.error("Load auto codes error:", error.message); return null; }
   return (data || []).map((r) => rowToCode(r as Record<string, unknown>));
 }
 
@@ -64,9 +65,9 @@ export async function saveCodes(codes: AutoCode[]): Promise<boolean> {
   const id = await uid();
   if (!id) return false;
   const del = await supabase.from("seller_auto_codes").delete().eq("user_id", id);
-  if (del.error) { console.error("Save auto codes (clear) error:", del.error.message); return false; }
+  if (del.error) { log.error("Save auto codes (clear) error:", del.error.message); return false; }
   if (!codes.length) return true;
   const ins = await supabase.from("seller_auto_codes").insert(codes.map((c) => codeToRow(c, id)));
-  if (ins.error) { console.error("Save auto codes (insert) error:", ins.error.message); return false; }
+  if (ins.error) { log.error("Save auto codes (insert) error:", ins.error.message); return false; }
   return true;
 }

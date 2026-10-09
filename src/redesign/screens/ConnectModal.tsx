@@ -2,7 +2,7 @@
 // account (capped to the plan) or add a new one (when slots remain), then connect.
 // ⚠️ PREVIEW-UNVERIFIABLE: connect POSTs to the Render live server (see connect.ts).
 import { useState, type CSSProperties } from "react";
-import { registeredAccountsFor, canConnectMore, maxAcc, type Platform, type ConnectResult } from "../adapters/connect";
+import { registeredAccountsFor, canConnectMore, maxAcc, connectFailText, type Platform, type ConnectResult } from "../adapters/connect";
 import { planLabel } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
@@ -68,9 +68,8 @@ export default function ConnectModal({ profile, initialTab = "TikTok", onClose, 
       ? await onConnect("TikTok", { username: ttValue })
       : await onConnect("Facebook", { liveVideoId: fbValue, accessToken: fbTok });
     setBusy(false);
-    // F-batch i18n: a client network failure shows the localized "can't reach"
-    // copy; a real server reason still passes through verbatim.
-    if (!r.ok) { setErr(r.unreachable ? t.rd_cm_cant_reach : (r.error || t.rd_cm_conn_failed)); return; }
+    // Build 10: never the server's words or a code (not live / can't reach keep their texts).
+    if (!r.ok) { setErr(connectFailText(r, t)); return; }
     onClose();
   };
 
@@ -123,7 +122,7 @@ export default function ConnectModal({ profile, initialTab = "TikTok", onClose, 
                       setBusy(true); setErr("");
                       const r = await onShopeeConnect(shShopId, shSession.trim());
                       setBusy(false);
-                      if (!r.ok) { setErr(r.reason === "not_live" ? t.rd_shp_not_live : r.unreachable ? t.rd_cm_cant_reach : r.error === ACCOUNT_NOT_COVERED ? liveRefusedText(t, { ios: isIOS(), planName: planLabel(profile.plan), max: maxAcc(profile.plan || "free") }) : (r.error || t.rd_shp_connect_failed)); return; }
+                      if (!r.ok) { setErr(r.reason === "not_live" ? t.rd_shp_not_live : r.unreachable ? t.rd_cm_cant_reach : r.error === ACCOUNT_NOT_COVERED ? liveRefusedText(t, { ios: isIOS(), planName: planLabel(profile.plan), max: maxAcc(profile.plan || "free") }) : t.rd_shp_connect_failed); return; }
                       onClose();
                     }}
                     disabled={busy || shopeeShops.length === 0 || !shShopId || !shSession.trim()}

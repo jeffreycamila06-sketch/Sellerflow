@@ -14,6 +14,8 @@ import { fbPreviewEnabled } from "./fbPreview";
 import { tpl, type RedesignT } from "../i18n";
 import { isIOS } from "./platform";
 import { liveRefusedText, ACCOUNT_NOT_COVERED } from "./accountLive";
+import { log } from "../../lib/log";
+import { decodeServerJson } from "../../lib/errCodes.js";
 
 // Authorize + Connect are open to EVERY plan while it is active: an ACTIVE free plan
 // (planStatus "active"; free has no expiry) or an ACTIVE PAID plan (status "active" and
@@ -113,7 +115,7 @@ export async function startFbAuth(opts: { app?: boolean; lang?: string } = {}): 
       method: "GET",
       headers: { Authorization: `Bearer ${await bearer()}` },
     });
-    const j = await r.json().catch(() => ({} as { url?: string; error?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { url?: string; error?: string })));
     if (!r.ok || !j.url) return { ok: false, error: j.error || `HTTP ${r.status}` };
     return { ok: true, url: String(j.url) };
   } catch {
@@ -164,7 +166,7 @@ async function postFbLive(path: string, body: Record<string, string>): Promise<F
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify(body),
     });
-    const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; live_video_id?: string; fb_code?: unknown; fb_timeout?: unknown }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; live_video_id?: string; fb_code?: unknown; fb_timeout?: unknown })));
     if (r.status === 429) return { ok: false, error: "too_many_requests" };
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized" };
     if (r.status === 403) return { ok: false, error: j.error || "plan_expired" };
@@ -196,7 +198,7 @@ export function fbConnectFailText(r: FbConnectResult, t: RedesignT, live?: { ios
   if (e === "needs_reauth" || e === "page_not_found") return t.rd_fb_reauth_toast;
   if (e === "too_many_requests") return t.rd_fb_too_many;
   if (polish && (typeof r.fbCode === "number" || r.fbTimeout)) {
-    console.info(`[FB] connect failed code=${r.fbTimeout ? "timeout" : r.fbCode}`);
+    log.info(`[FB] connect failed code=${r.fbTimeout ? "timeout" : r.fbCode}`);
     if (r.fbCode === 190) return t.rd_fb_err_expired;
     if (r.fbTimeout) return t.rd_fb_err_no_answer;
     return t.rd_cm_conn_failed;
@@ -277,7 +279,7 @@ export async function fbDisconnect(pageId: string): Promise<{ ok: boolean; error
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ page_id: String(pageId) }),
     });
-    const j = await r.json().catch(() => ({} as { ok?: boolean; error?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { ok?: boolean; error?: string })));
     return { ok: r.ok && j.ok !== false, error: j.error };
   } catch {
     return { ok: false, error: "unreachable" };

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:dist": "node scripts/check-dist.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server.js",

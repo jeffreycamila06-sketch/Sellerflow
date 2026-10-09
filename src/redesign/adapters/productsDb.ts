@@ -12,6 +12,7 @@
 // (statusForStock), so it can never drift.
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { statusForStock, PRODUCT_DEFAULTS, type Product } from "./products";
+import { log } from "../../lib/log";
 
 const MIGRATED_KEY = "sf_prods_migrated";
 
@@ -104,7 +105,7 @@ export async function loadProductsDb(): Promise<Product[] | null> {
     .select("local_id,name,sku,price,stock,platform,live_code")
     .eq("user_id", id)
     .order("created_at", { ascending: true });
-  if (error) { console.error("Load products error:", error.message); return null; }
+  if (error) { log.error("Load products error:", error.message); return null; }
   return (data || []).map((r) => rowToProduct(r as Record<string, unknown>));
 }
 
@@ -126,7 +127,7 @@ export async function saveProductDbResult(p: Product, opts?: { skipStock?: boole
   if (!id) return { ok: true };
   const { error } = await supabase.from("products").upsert(productToRow(p, id, Date.now(), opts), { onConflict: "user_id,local_id" });
   if (!error) return { ok: true };
-  console.error("Save product error:", error.message);
+  log.error("Save product error:", error.message);
   const text = `${error.message || ""} ${(error as { details?: string }).details || ""}`;
   const duplicateCode = error.code === "23505" && text.includes("ux_products_user_live_code");
   return { ok: false, duplicateCode: duplicateCode || undefined };
@@ -140,7 +141,7 @@ export async function deleteProductDb(localId: number): Promise<boolean> {
   const id = await uid();
   if (!id) return true;
   const { error } = await supabase.from("products").delete().eq("user_id", id).eq("local_id", localId);
-  if (error) console.error("Delete product error:", error.message);
+  if (error) log.error("Delete product error:", error.message);
   return !error;
 }
 
@@ -152,7 +153,7 @@ export async function migrateLocalProducts(local: Product[]): Promise<boolean> {
   if (!id || !local.length) return false;
   const rows = local.map((p) => productToRow(p, id));
   const { error } = await supabase.from("products").upsert(rows, { onConflict: "user_id,local_id" });
-  if (error) { console.error("Migrate products error:", error.message); return false; }
+  if (error) { log.error("Migrate products error:", error.message); return false; }
   markMigrated();
   return true;
 }
@@ -169,7 +170,7 @@ export async function decrementStockAndTouch(localId: number): Promise<number | 
   const id = await uid();
   if (!id) return null;
   const { data, error } = await supabase.rpc("decrement_product_stock", { p_local_id: localId });
-  if (error) { console.error("Decrement stock error:", error.message); return null; }
+  if (error) { log.error("Decrement stock error:", error.message); return null; }
   return data == null ? null : Number(data);
 }
 
@@ -185,7 +186,7 @@ export async function adjustProductStock(localId: number, delta: number): Promis
   const id = await uid();
   if (!id) return null;
   const { data, error } = await supabase.rpc("adjust_product_stock", { p_local_id: localId, p_delta: delta });
-  if (error) { console.error("Adjust stock error:", error.message); return null; }
+  if (error) { log.error("Adjust stock error:", error.message); return null; }
   return data == null ? null : Number(data);
 }
 
@@ -217,7 +218,7 @@ export async function adjustStockLogged(localId: number, delta: number, reason: 
   const id = await uid();
   if (!id) return null;
   const { data, error } = await supabase.rpc("adjust_product_stock_logged", { p_local_id: localId, p_delta: delta, p_reason: reason, p_order_ref: orderRef ?? null });
-  if (error) { console.error("Adjust stock (logged) error:", error.message); return null; }
+  if (error) { log.error("Adjust stock (logged) error:", error.message); return null; }
   return data == null ? null : Number(data);
 }
 
@@ -226,7 +227,7 @@ export async function restockProduct(localId: number, qty: number): Promise<numb
   const id = await uid();
   if (!id) return null;
   const { data, error } = await supabase.rpc("restock_product", { p_local_id: localId, p_qty: qty });
-  if (error) { console.error("Restock error:", error.message); return null; }
+  if (error) { log.error("Restock error:", error.message); return null; }
   return data == null ? null : Number(data);
 }
 

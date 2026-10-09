@@ -8,6 +8,11 @@ import RedesignApp from "./RedesignApp";
 import { initAnalytics } from "./analytics";
 import { applyIOSShellClass, applyIOSStatusBarStyle, applyIOSViewportZoomLock } from "./adapters/platform";
 
+// The ONE console line in production (Build 10). Everything else goes through src/lib/log.ts,
+// which is silent (and removed) in a production build.
+export const CONSOLE_BANNER = "Walang makukuha dito. Mag-live ka na lang, kaibigan. 😘\nNothing for you here. Go sell something, friend.";
+console.log(CONSOLE_BANNER);
+
 // iOS app shell display setup, BEFORE first render (all three no-op on
 // Android/web): the sfl-ios-shell class turns on the 16px input floor (the
 // real fix for the WKWebView input-focus auto-zoom), the viewport zoom lock

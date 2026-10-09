@@ -5,6 +5,8 @@
 import type { RedesignT } from "../i18n";
 import { supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
+import { log } from "../../lib/log";
+import { decodeServerJson } from "../../lib/errCodes.js";
 
 export const RECEIPT_CLIENT_MAX_BYTES = 3 * 1024 * 1024;
 
@@ -29,7 +31,7 @@ async function post(path: string, body: unknown): Promise<{ status: number; json
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
     body: JSON.stringify(body),
   });
-  const json = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  const json = decodeServerJson(await r.json().catch(() => ({}))) as Record<string, unknown>;
   return { status: r.status, json };
 }
 
@@ -85,7 +87,7 @@ export const FB_NO_PRIVATE_REPLY_CODE = 10903;
 export function receiptFailText(r: { code?: number; fbCode?: string }, t: RedesignT, polish = false): string {
   const code = typeof r.code === "number" ? r.code : r.fbCode ? Number(r.fbCode.split("/")[0]) : NaN;
   if (polish) {
-    if (r.fbCode || Number.isFinite(code)) console.info(`[FB] receipt failed code=${r.fbCode || code}`);
+    if (r.fbCode || Number.isFinite(code)) log.info(`[FB] receipt failed code=${r.fbCode || code}`);
     if (code === FB_NO_PRIVATE_REPLY_CODE) return t.rd_rs_no_private_reply;
     if (code === 190) return t.rd_fb_err_expired;
     return Number.isFinite(code) ? t.rd_fb_err_refused : t.rd_rs_failed;

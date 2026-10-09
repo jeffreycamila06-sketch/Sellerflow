@@ -22,7 +22,8 @@ tugma sa `sql/04_free_tier_cap.sql`; live cap verified 2026-07-02 = 100, near-ca
 **Ang production entry (`/` = `index.html` → `#redesign-root` →
 `src/redesign/main.tsx` → `RedesignApp`) ay ang REDESIGN.** Ang lumang
 `src/App.tsx` (~4.8k lines) ay ang **rollback app lang** (`app.html`, hindi
-served sa prod). **LAHAT ng fix sa user-facing screens: sa `src/redesign/*`
+served sa prod). **(Build 10: `app.html` is no longer built at all — to restore the escape
+hatch, add `app: 'app.html'` back to `build.rollupOptions.input` in `vite.config.ts`.)** **LAHAT ng fix sa user-facing screens: sa `src/redesign/*`
 MUNA tumingin** — isang App.tsx-only fix ay HINDI lalabas sa production
 (napatunayan 2026-07-04: ang admin "Expiring" fix sa App.tsx ay walang epekto
 dahil may sariling counter-logic copy ang redesign — ayaw ulitin).
@@ -1928,7 +1929,8 @@ walang pagbabago).
 
 ## SESSION 2026-07-07 (part 2) — F-BATCH LEFTOVERS + DOCS CLOSEOUT (branch `claude/f-batch-cleanup`, awaiting Jeff review/merge)
 Tatlong maliit na items, isang branch:
-1. **server.js dead route REMOVED:** `POST /disconnect/tiktok` (F-batch audit
+1. **server.js dead route REMOVED:** (⚠️ later RE-ADDED on purpose by Build 1 / fb_connect_v2 —
+   platform switch only, see the Oct 1 KNOWN note) `POST /disconnect/tiktok` (F-batch audit
    finding — zero caller sa buong repo, re-verified bago tanggalin; ang mga
    helper nito — `disconnectTikTokConnection`/`clearTikTokReconnect`/
    `emitTikTokStatus` — ay may 16 pang ibang call sites, buhay lahat). Stale
@@ -4446,8 +4448,9 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   on the shipping re-key (sessionKeyFor still keys on the Taipei day) + Jeff's video.
 - 🐛 **KNOWN (not fixed, Oct 1)**: (1) **Disconnect is phone-only** — both Disconnect
   paths in RedesignApp are `setTtOff(true)` (code comment: "the redesign has no server
-  unbind"); server.js has NO TikTok disconnect route (only /fb/disconnect, /shopee/
-  disconnect), so the server keeps the TikTok connection until streamEnd/re-Connect/kick,
+  unbind"); the Disconnect buttons never call the server (`POST /disconnect/tiktok` exists
+  again — re-added ON PURPOSE by Build 1 / fb_connect_v2, called ONLY by a confirmed
+  platform switch via `ttDisconnect`), so the server keeps the TikTok connection until streamEnd/re-Connect/kick,
   the socket keeps delivering comments, and the Auto Mode handler (`autoCommentRef`) gates
   only on `autoDetect`, not `ttOff` → with Auto Mode ON, orders can still be created after
   Disconnect while the TikTok live is still running. Fix plan (NOT built, Jeff wants a

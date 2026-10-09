@@ -20,6 +20,7 @@ import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
 import { fbNameOnly } from "./fbName";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
+import { log } from "../../lib/log";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
@@ -265,14 +266,14 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
         const { code, message } = readFailure(m);
         const text = message || nativeFailAlertText; // F-batch i18n (was hardcoded English)
         if (reportNativePrintFailure("native-slip", code, text)) return; // consumed by the no-printer modal
-        console.warn(text);
+        log.warn(text);
         window.alert(text);
         return;
       }
       if (typeof msg !== "string" || !msg.trim()) return;
       if (/printed to/i.test(msg)) return;
       if (reportNativePrintFailure("native-slip", "", msg)) return; // consumed by the no-printer modal
-      console.warn(msg);
+      log.warn(msg);
       window.alert(msg);
     }).catch((err) => {
       // A Capacitor call.reject (e.g. Android/iOS printSlip "No WiFi printer
@@ -281,7 +282,7 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
       // no-printer reject reaches the modal; only console.warn when unconsumed.
       const { code, message } = readFailure(err);
       const text = message || nativeFailAlertText;
-      if (!reportNativePrintFailure("native-slip", code, text)) console.warn("Native printer bridge failed.", err);
+      if (!reportNativePrintFailure("native-slip", code, text)) log.warn("Native printer bridge failed.", err);
     });
   };
   try {
@@ -289,7 +290,7 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
     if (window.Capacitor?.Plugins?.SellerFlowPrinter?.printSlip) { showNativePrinterResult(window.Capacitor.Plugins.SellerFlowPrinter.printSlip(payload)); return true; }
     if (window.ReactNativeWebView?.postMessage) { window.ReactNativeWebView.postMessage(JSON.stringify(payload)); return true; }
   } catch (err) {
-    console.warn("Native printer bridge failed; falling back.", err);
+    log.warn("Native printer bridge failed; falling back.", err);
   }
   return false;
 }
@@ -341,7 +342,7 @@ export const getLastStickerTiming = (): StickerTiming | null => lastStickerTimin
 function recordStickerTiming(t: StickerTiming) {
   lastStickerTiming = t;
   try { (window as unknown as { __sflPrintTiming?: StickerTiming }).__sflPrintTiming = t; } catch { /* ignore */ }
-  console.log(`[STICKER-TIMING] via=${t.via} build=${t.buildMs.toFixed(1)}ms bridge=${t.bridgeMs.toFixed(1)}ms total=${t.totalMs.toFixed(1)}ms bytes=${t.payloadBytes} bands=${t.bands}`);
+  log.log(`[STICKER-TIMING] via=${t.via} build=${t.buildMs.toFixed(1)}ms bridge=${t.bridgeMs.toFixed(1)}ms total=${t.totalMs.toFixed(1)}ms bytes=${t.payloadBytes} bands=${t.bands}`);
 }
 const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
@@ -450,7 +451,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
     const t2 = nowMs();
     const phase = formatBitmapPhase(result);
     recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes: raster.bytes.length, bands: raster.bands });
-    if (phase) console.log(`[STICKER-TIMING] native ${phase}`);
+    if (phase) log.log(`[STICKER-TIMING] native ${phase}`);
     if (result?.ok) {
       reportStickerRoute({ via: "bitmap", ok: true, reason: "", detail: "", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
       return { ok: true, code: "", message: "" };
@@ -459,12 +460,12 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
     reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || "print failed", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
     // BITMAP_SPP_FAILED is not surfaced here — the caller retries via TEXT,
     // which reports its own outcome (no double modal/warn for one print).
-    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
+    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) log.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
     return { ok: false, code, message };
   } catch (err) {
     const { code, message } = readFailure(err);
     reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || String(err), payloadBytes: raster.bytes.length, totalMs: nowMs() - t0 });
-    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerBitmap bridge call failed:", err);
+    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) log.warn("printStickerBitmap bridge call failed:", err);
     return { ok: false, code, message };
   }
 }
@@ -512,12 +513,12 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
     reportStickerRoute({ via: "text", ok: !!result?.ok, reason: fallbackReason, detail: result?.ok ? "" : readFailure(result).message, payloadBytes: 0, totalMs: t1 - t0 });
     if (result?.ok) return { ok: true, code: "", message: "" };
     const { code, message } = readFailure(result);
-    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("[BT sticker] print failed:", message || "check pairing/selection.");
     return { ok: false, code, message };
   } catch (err) {
     const { code, message } = readFailure(err);
     reportStickerRoute({ via: "text", ok: false, reason: fallbackReason, detail: message || code || String(err), payloadBytes: 0, totalMs: 0 });
-    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerNative bridge call failed:", err);
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("printStickerNative bridge call failed:", err);
     return { ok: false, code, message };
   }
 }
@@ -536,11 +537,11 @@ async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, 
     const result = await bridge.printStickerLan(buildNativeStickerPayload(buyer, cur, storeName, cfg));
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
-    if (!reportNativePrintFailure("lan", code, message)) console.warn("[LAN sticker] print failed:", message || "check WiFi printer IP.");
+    if (!reportNativePrintFailure("lan", code, message)) log.warn("[LAN sticker] print failed:", message || "check WiFi printer IP.");
     return false;
   } catch (err) {
     const { code, message } = readFailure(err);
-    if (!reportNativePrintFailure("lan", code, message)) console.warn("printStickerLan bridge call failed:", err);
+    if (!reportNativePrintFailure("lan", code, message)) log.warn("printStickerLan bridge call failed:", err);
     return false;
   }
 }

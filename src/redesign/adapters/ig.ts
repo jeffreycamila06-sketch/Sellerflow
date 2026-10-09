@@ -9,6 +9,7 @@ import { supabase, isSupabaseConfigured } from "../../supabase";
 import { SERVER, browserSessionId } from "./serverIdentity";
 import { tpl, type RedesignT } from "../i18n";
 import { liveRefusedText, ACCOUNT_NOT_COVERED } from "./accountLive";
+import { decodeServerJson } from "../../lib/errCodes.js";
 
 export const IG_PLATFORM = "Instagram" as const;
 
@@ -26,7 +27,7 @@ export async function loadIgAccess(): Promise<boolean> {
   try {
     const r = await fetch(`${SERVER}/ig/access`, { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
     if (r.status !== 200) return false;
-    const j = (await r.json().catch(() => null)) as { ok?: unknown; instagram?: unknown } | null;
+    const j = decodeServerJson(await r.json().catch(() => null)) as { ok?: unknown; instagram?: unknown } | null;
     return !!j && j.ok === true && j.instagram === true;
   } catch {
     return false;
@@ -90,7 +91,7 @@ export const igScopeKey = (a: Pick<IgAccount, "username" | "igUserId">): string 
 export async function startIgAuth(opts: { app?: boolean } = {}): Promise<{ ok: boolean; url?: string }> {
   try {
     const r = await fetch(`${SERVER}/ig/oauth/start${opts.app ? "?client=app" : ""}`, { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
-    const j = await r.json().catch(() => ({} as { url?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { url?: string })));
     return r.ok && j.url ? { ok: true, url: String(j.url) } : { ok: false };
   } catch {
     return { ok: false };
@@ -106,7 +107,7 @@ export async function igConnect(igUserId: string): Promise<IgConnectResult> {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ ig_user_id: String(igUserId), sessionId: browserSessionId() }),
     });
-    const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; ig_code?: unknown }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; ig_code?: unknown })));
     if (r.status === 429) return { ok: false, error: "too_many_requests" };
     if (r.status >= 200 && r.status < 300 && j.ok === true) return { ok: true };
     return { ok: false, reason: j.reason, error: j.error || `HTTP ${r.status}`, ...(typeof j.ig_code === "number" ? { igCode: j.ig_code } : {}) };

@@ -14,6 +14,8 @@ import type { AccountUser } from "../../accountDb";
 // shared module (was a local copy identical to useLiveFeed's — parity-tested).
 import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 import { isAdminRole } from "../../lib/roles";
+import { decodeServerJson } from "../../lib/errCodes.js";
+import type { RedesignT } from "../i18n";
 
 export type Platform = "TikTok" | "Facebook";
 
@@ -125,6 +127,15 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
 // (F-batch i18n; the English error string stays as the analytics/log reason).
 export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean }
 
+// The text a failed TikTok/Facebook connect shows (toast + Connect modal). Build 10: never the
+// server's own words or a code — not live / can't reach keep their texts, anything else is
+// the generic "Couldn't connect. Try again."
+export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable">, t: RedesignT): string {
+  if (r.notLive) return t.rd_cm_not_live;
+  if (r.unreachable) return t.rd_cm_cant_reach;
+  return t.rd_cm_conn_try_again;
+}
+
 // connectPlatform — verbatim POST from App.tsx:4269-4296 (without the posthog/toast
 // side-effects). Returns the cleaned active account on success.
 export async function connectPlatform(platform: Platform, data: Record<string, string>, email: string): Promise<ConnectResult> {
@@ -143,7 +154,7 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify(body),
     });
-    const j = await r.json().catch(() => ({} as { success?: boolean; error?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; error?: string })));
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized", account };
     if (r.status === 500) return { ok: false, error: j.error || "Server error", account };
     // 409 = account resolved connect() but is NOT live (Phase 1 is-LIVE gate). Distinct
@@ -170,7 +181,7 @@ export async function ttDisconnect(username: string, fetchImpl: typeof fetch = f
       body: JSON.stringify({ username: cleanLiveAccount(username) }),
       ...(ac ? { signal: ac.signal } : {}),
     });
-    const j = await r.json().catch(() => null) as { ok?: unknown } | null;
+    const j = decodeServerJson(await r.json().catch(() => null)) as { ok?: unknown } | null;
     return r.ok && !!j && j.ok === true;
   } catch {
     return false;

@@ -14,6 +14,7 @@
 //              builder (buildOrderFromComment) output is byte-identical.
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { log } from "../../lib/log";
 
 // ── Pure helpers (no Supabase / React — unit-tested) ──────────────────────────
 
@@ -103,7 +104,7 @@ export function useSamePrice(): UseSamePrice {
       .from("seller_same_price")
       .upsert({ user_id: id, enabled: nextEnabled, same_price: nextPrice, updated_at: new Date().toISOString() });
     if (error) {
-      console.error("Same-price save error:", error.message);
+      log.error("Same-price save error:", error.message);
       setEnabledState(prevEnabled); setPriceState(prevPrice); // revert — DB is source of truth
       setSaveErrors((c) => c + 1);
     }

@@ -21,6 +21,7 @@ import type { Comment as ProdComment, Buyer, LiveOrder } from "../../lib/orderTy
 import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase, type LiveSessionOrderInput } from "../../db";
 import { isCapError } from "./useFreeCap";
 import { decrementStockAndTouch } from "./productsDb";
+import { log } from "../../lib/log";
 
 const msgIdOf = (c: ProdComment): string => String((c as ProdComment & { msgId?: string }).msgId || "").trim();
 // A returned db-write result is a FAILURE only when it is an object with
@@ -261,7 +262,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       // Kiosk false-alarm fix: a print-side TypeError ("callback is no longer runnable")
       // can bleed into this chain even though the writes returned 200/201. Only a genuine
       // DB/network rejection raises the "cloud save failed" banner; log everything else.
-      console.warn("Background database save failed", err);
+      log.warn("Background database save failed", err);
       if (looksLikeWriteError(err)) onWriteError?.(err);
     }).finally(() => {
       // (5) NEAR-CAP TIMING FIX: resync the free-tier usage counter (App.tsx:4384 —
@@ -292,7 +293,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       }).catch((err) => {
         // Same kiosk false-alarm guard as the billing chain above.
         if (isCapError(err)) return;
-        console.warn("Live session save failed", err);
+        log.warn("Live session save failed", err);
         if (looksLikeWriteError(err)) onWriteError?.(err);
       });
     }
@@ -318,7 +319,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       void dec.then((newStock) => { if (newStock === -1) onStockError?.(new Error("stock_short")); })
         .catch((err) => {
           // Same kiosk false-alarm guard: only a genuine RPC/network error is a stock error.
-          console.warn("Stock decrement failed", err);
+          log.warn("Stock decrement failed", err);
           if (looksLikeWriteError(err)) onStockError?.(err);
         });
     }

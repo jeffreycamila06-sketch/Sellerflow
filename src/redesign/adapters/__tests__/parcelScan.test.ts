@@ -220,10 +220,10 @@ describe("scanParcel (client POST)", () => {
     expect(await scanParcel("aGk=", "image/jpeg")).toEqual({ ok: false, error: "forbidden" });
   });
 
-  it("server error → its error code, no partial fields", async () => {
+  it("server error → the generic scan_failed word (never a server code), no partial fields", async () => {
     const f = vi.fn(async () => ({ ok: false, status: 502, json: async () => ({ success: false, error: "truncated" }) }));
     globalThis.fetch = f as unknown as typeof fetch;
-    expect(await scanParcel("aGk=", "image/jpeg")).toEqual({ ok: false, error: "truncated" });
+    expect(await scanParcel("aGk=", "image/jpeg")).toEqual({ ok: false, error: "scan_failed" });
   });
 
   it("network throw (server not deployed yet) → unreachable signal", async () => {

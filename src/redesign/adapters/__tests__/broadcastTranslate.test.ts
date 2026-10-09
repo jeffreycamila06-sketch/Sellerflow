@@ -44,12 +44,12 @@ describe("translateBroadcast (client)", () => {
     expect(r).toEqual({ ok: false, error: "forbidden" });
   });
 
-  it("502 translate failure → surfaces the server error (offer English-only)", async () => {
+  it("502 translate failure → no server words (the screen shows its generic text; offer English-only)", async () => {
     const f = vi.fn(async () => ({ ok: false, status: 502, json: async () => ({ success: false, error: "anthropic_http_429" }) }));
     globalThis.fetch = f as unknown as typeof fetch;
     const r = await translateBroadcast("hi");
     expect(r.ok).toBe(false);
-    expect(r.error).toBe("anthropic_http_429");
+    expect(r.error).toBe("");
   });
 
   it("server unreachable (not deployed yet) → unreachable flag", async () => {

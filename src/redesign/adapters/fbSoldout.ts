@@ -4,6 +4,7 @@
 // existing receipt-format load/save is untouched), and the fire-and-forget send.
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
+import { decodeServerJson } from "../../lib/errCodes.js";
 
 export const SOLDOUT_TEXT_MAX = 500;
 
@@ -67,7 +68,7 @@ export async function sendSoldOut(input: SoldoutSendInput, fetchImpl: typeof fet
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ pageId: input.pageId, commentId: input.commentId, code: input.code, lang: input.lang, ...(input.position ? { position: input.position } : {}) }),
     });
-    const j = (await r.json().catch(() => null)) as { ok?: unknown; error?: unknown } | null;
+    const j = decodeServerJson(await r.json().catch(() => null)) as { ok?: unknown; error?: unknown } | null;
     if (r.status === 200 && j && j.ok === true) return { ok: true };
     return { ok: false, error: typeof j?.error === "string" ? j.error : `http_${r.status}` };
   } catch {

@@ -29,6 +29,7 @@ import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
 import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
+import { opaqueErrors } from "./server/errorCodes.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
@@ -136,6 +137,8 @@ const defaultJsonParser = express.json();
 // /fb/receipt/send carries a base64 receipt picture (≤ 4 MB) — it parses its own body with a
 // 6mb limit AFTER auth + its rate limit (server/fbReceipt.js), same discipline as parcel-scan.
 app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)));
+// Build 10 — error/reason words leave as short codes on the app-facing routes (server/errorCodes.js).
+app.use(opaqueErrors());
 
 function bearerToken(req) {
   const h = String(req.get("authorization") || "");

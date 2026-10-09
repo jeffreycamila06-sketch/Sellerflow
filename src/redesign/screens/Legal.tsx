@@ -24,6 +24,8 @@ export default function Legal() {
         <p style={p}>{t.lg_rights_p}</p>
         <div style={h}>{t.lg_contact_h}</div>
         <p style={{ ...p, margin: 0 }}>{t.lg_contact_pre}<span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>{TELEGRAM_HANDLE}</span>{t.lg_contact_post}</p>
+        {/* Build 10: the full Terms of Service page (a real link — iOS-safe external open). */}
+        <a href="/terms/" target="_blank" rel="noreferrer noopener" data-testid="lg-terms-link" style={{ display: "inline-block", marginTop: 18, fontSize: 13, fontWeight: 700, color: "var(--accent-fg)" }}>{t.lg_terms_link} ›</a>
       </div>
     </div>
   );
