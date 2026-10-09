@@ -254,3 +254,47 @@ describe("N1 — header never overflows at 375px (title shrinks, buttons wrap)",
     expect(buttons.style.flexShrink).not.toBe("0");
   });
 });
+
+describe("Build 17 — at store after the pickup deadline shows '⚠ Returning'", () => {
+  // today (mocked) = 2026-09-24
+  const ROWS17 = [
+    mk({ buyerUsername: "late", pickupDeadline: "2026-09-23" }),     // yesterday → Returning
+    mk({ buyerUsername: "today", pickupDeadline: "2026-09-24" }),    // today → normal
+    mk({ buyerUsername: "tomorrow", pickupDeadline: "2026-09-25" }), // tomorrow → normal
+  ];
+  const leftOf = (r: ReturnType<typeof view>, name: string) =>
+    within(r.getAllByTestId("pt-row").find((x) => x.textContent?.includes(`@${name}`))!).getByTestId("pt-left");
+
+  it("deadline yesterday → orange '⚠ Returning'; today/tomorrow → normal; still in the Waiting tab", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: ROWS17 });
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(3));
+    const late = leftOf(r, "late");
+    expect(late.textContent).toBe("⚠ Returning");
+    expect(late.getAttribute("data-returning")).toBe("1");
+    expect((late as HTMLElement).style.color).toBe("var(--warn)");
+    expect(leftOf(r, "today").textContent).toBe("due today");
+    expect(leftOf(r, "tomorrow").textContent).toBe("1 day left");
+    expect(leftOf(r, "today").getAttribute("data-returning")).toBeNull();
+    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("3"); // counted under waiting, no new chip
+    expect(r.getAllByTestId("pt-row")[0].textContent).toContain("@late"); // sorted first, as before
+  });
+
+  it("Tagalog → '⚠ Pababalik na'", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [ROWS17[0]] });
+    const r = render(<TProvider lang="fil"><ParcelTracking /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-left").textContent).toBe("⚠ Pababalik na"));
+  });
+
+  it("returned / picked up with an old deadline → unchanged labels", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [
+      mk({ status: "returned", buyerUsername: "back", pickupDeadline: "2026-09-20" }),
+      mk({ status: "picked_up", buyerUsername: "got", pickupDeadline: "2026-09-20" }),
+    ] });
+    const r = view();
+    fireEvent.click(await r.findByTestId("pt-tab-all"));
+    await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(2));
+    expect(leftOf(r, "back").textContent).toBe("Returned");
+    expect(leftOf(r, "got").textContent).toBe("Done");
+  });
+});

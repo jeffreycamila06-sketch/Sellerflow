@@ -108,6 +108,25 @@ describe("Parcel Scan — verdict row highlight (border, FAIL-SAFE, no positive 
     expect(badge.textContent).toMatch(/Dec\s*4|12月|4 thg 12|4 Des|4 ธ/); // with the until-date
   });
 
+  it("Build 17: restricted label = '🚫 Restricted until <date>' (EN) / 'Restricted hanggang' (TL); filter count unchanged", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "restricted", phoneRestrictedUntil: "2026-10-25" }), mk({})];
+    const en = view();
+    const badge = await en.findByTestId("ps-ext-badge-restricted");
+    expect(badge.textContent).toMatch(/^🚫 Restricted until Oct\s*25$/);
+    expect(badge.textContent).not.toContain("can't be used");
+    expect(badge.textContent).not.toContain("·");
+    expect(en.getByTestId("ps-tab-restricted").textContent).toContain("1");
+    en.unmount();
+    const tl = render(<TProvider lang="fil"><ParcelScan cur="NT$" /></TProvider>);
+    expect((await tl.findByTestId("ps-ext-badge-restricted")).textContent).toMatch(/^🚫 Restricted hanggang \S+/);
+  });
+
+  it("Build 17: restricted with no date → just '🚫 Restricted'", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "restricted", phoneRestrictedUntil: null })];
+    const { findByTestId } = view();
+    expect((await findByTestId("ps-ext-badge-restricted")).textContent).toBe("🚫 Restricted");
+  });
+
   it("restricted with NO until-date → 🚫 badge (no date) + RED border (no crash)", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "restricted", phoneRestrictedUntil: null })];
     const { findByTestId, getByTestId } = view();
