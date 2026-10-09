@@ -4,8 +4,9 @@
 // Dashboard callbacks the classic chips call — nothing here touches connect, session,
 // comment, order or print logic.
 //
-// GATE: admins only for now. Widen later by flipping LIVE_PICKER_PUBLIC (one constant).
-export const LIVE_PICKER_PUBLIC = false;
+// GATE: Build 14 (Jeff, approved Oct 8) — every seller. Admins had it first; false puts
+// every non-admin back on the classic chips (one constant).
+export const LIVE_PICKER_PUBLIC = true;
 
 export function livePickerEnabled(isAdmin: boolean): boolean {
   return LIVE_PICKER_PUBLIC || isAdmin === true;
