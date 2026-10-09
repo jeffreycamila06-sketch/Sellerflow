@@ -36,11 +36,12 @@ const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 70
 const mono = "var(--font-mono)";
 const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" };
 
-export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
+export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping, shippingSoon = false,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
+  shippingSoon?: boolean; // Build 16: non-admin seller → the 🚚 button shows "Coming soon" and never opens Shipping
   // 7-day search reach (display-only lane — see ordersSearch.ts)
   historyOrders?: Order[]; historyState?: HistoryState; onEnsureHistory?: () => void;
   // Reprint from a result row (zero-write — resolveReprintRow + performReprint)
@@ -256,7 +257,14 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <div className="sfl-anim-beat" style={title}>{t.rd_ord_title}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             {/* 7-11 shipping entry point (Jeff: inside Orders) */}
-            {onGoShipping && <button onClick={onGoShipping} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 10px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>🚚 {t.rd_sh_shipping}</button>}
+            {onGoShipping && <button onClick={onGoShipping} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 10px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="ord-shipping">🚚 {t.rd_sh_shipping}</button>}
+            {/* Build 16: not offered yet for sellers — the Live picker's "Coming soon" look, not tappable. */}
+            {!onGoShipping && shippingSoon && (
+              <button type="button" disabled aria-disabled="true" data-testid="ord-shipping-soon" data-soon="1" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "4px 10px", borderRadius: 9, cursor: "default", opacity: 0.5, fontFamily: "var(--font-ui)", lineHeight: 1.15 }}>
+                <span>🚚 {t.rd_sh_shipping}</span>
+                <span style={{ fontSize: 9.5, fontWeight: 600 }}>{t.rd_ls_soon}</span>
+              </button>
+            )}
             {/* F5 — branded Excel/PDF export (replaces the old CSV button) of the visible rows */}
             {matchCount > 0 && (
               <div style={{ position: "relative" }}>

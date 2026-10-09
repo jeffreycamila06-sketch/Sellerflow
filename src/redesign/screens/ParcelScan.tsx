@@ -1356,12 +1356,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
         )}
 
-        {/* Summary — subtle, shows before the owner sits at the laptop. */}
-        {flaggedCount > 0 && (
-          <div style={{ ...card, padding: 10, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))", fontSize: 12, fontWeight: 700, color: "var(--danger)" }} data-testid="ps-attention">
-            {tpl(t.rd_ps2_attention, { n: String(flaggedCount) })}
-          </div>
-        )}
+        {/* Build 16: the small "N parcel(s) need your attention" box (wrong store codes only)
+            that sat here was removed — the sticky top bar counts every problem, wrong codes included. */}
 
         {/* 賣貨便 訂單匯入 Excel export. On the phone (app shell / narrow viewport) the
             Export card is gated behind a per-device switch (DEFAULT OFF): laptop-export
