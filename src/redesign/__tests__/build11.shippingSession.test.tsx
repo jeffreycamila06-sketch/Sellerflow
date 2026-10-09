@@ -24,7 +24,9 @@ vi.mock("../adapters/useAuthSession", async (orig) => ({
   useAuthSession: () => ({
     status: "authed",
     profile: {
-      authUserId: "u1", email: "g@x.com", plan: "pro", planStatus: "active", planExpiry: "", role: "seller", connectedAccounts: [],
+      // Build 16: Shipping opens for admins only ("Coming soon" for every other seller), so this
+      // Shipping-logic test runs as an admin. The checks below are unchanged.
+      authUserId: "u1", email: "g@x.com", plan: "pro", planStatus: "active", planExpiry: "", role: "admin", connectedAccounts: [],
       profile: { fullName: "T", storeName: "Shop", phone: "", tiktok: "", facebook: "", adminContactNote: "" },
     },
     reloadProfile: vi.fn(async () => {}),

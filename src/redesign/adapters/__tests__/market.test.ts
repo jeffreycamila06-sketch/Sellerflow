@@ -117,11 +117,15 @@ describe("marketHidesShipping — the Shipping screen is the TW 7-11 module", ()
     const { readFileSync } = require("node:fs") as typeof import("node:fs");
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain("const hideShipping = marketHidesShipping(market);");
-    expect(app).toContain('onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}');
-    expect(app).toContain('onShipping={hideShipping ? undefined : () => setScreen("shipping")}');
-    expect(app).toContain('screen === "shipping" && !hideShipping && <Shipping');
+    // Build 16: the market gate feeds shippingAccess (hidden off-market for everyone; open for
+    // admins; "Coming soon" for other sellers) and every entry point reads that one answer.
+    expect(app).toContain("const shippingGate = shippingAccess(isAdmin, hideShipping);");
+    expect(app).toContain('onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}');
+    expect(app).toContain('onShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined}');
+    expect(app).toContain('screen === "shipping" && shippingGate === "open" && <Shipping');
     const hub = readFileSync("src/redesign/screens/SettingsHub.tsx", "utf8");
-    expect(hub).toContain("{onShipping && <Tile icon={ic.truck}");
+    expect(hub).toContain("? <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping}");
+    expect(hub).toContain(": shippingSoon && <SoonTile icon={ic.truck}");
   });
 });
 
