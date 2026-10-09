@@ -36,6 +36,7 @@ import {
   loadFbEnabled, listFbPages, removeFbPage, startFbAuth,
   fbConnect, fbDisconnect, parseFbReturn, isFbEligible,
 } from "../fb";
+import { setFeatureAccess } from "../featureAccess";
 
 const mkRes = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 
@@ -203,7 +204,10 @@ describe("isFbEligible — every ACTIVE plan (free or paid); expired/pending blo
     expect(isFbEligible({ email: "  TEST@gmail.com ", plan: "free", planStatus: "active", role: "seller" })).toBe(true);
   });
   it("allowlisted account with an EXPIRED paid plan → still true (bypass can't lapse)", () => {
+    setFeatureAccess({ fb_preview: true }); // Build 10b: the list is in the database (sql/112)
     expect(isFbEligible({ email: "googletest@gmail.com", plan: "plus", planStatus: "active", planExpiry: past, role: "seller" })).toBe(true);
+    setFeatureAccess(null);
+    expect(isFbEligible({ email: "googletest@gmail.com", plan: "plus", planStatus: "active", planExpiry: past, role: "seller" })).toBe(false);
   });
   it("NON-allowlisted free seller with an ACTIVE plan → true (FB open to every plan)", () => {
     expect(isFbEligible({ email: "random@seller.com", plan: "free", planStatus: "active", planExpiry: future, role: "seller" })).toBe(true);

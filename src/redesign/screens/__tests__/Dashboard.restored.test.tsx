@@ -57,7 +57,7 @@ describe("history rows — the three states (sql/18)", () => {
     const row = container.querySelector(".sfl-comm-row") as HTMLElement;
     expect(row.querySelectorAll("button").length).toBeGreaterThanOrEqual(2);
     expect(row.textContent).toContain("1-Click");
-    expect(row.textContent).toContain("Enterprise");
+    expect(row.textContent).toContain("Type price"); // Build 10b: the Enterprise button label
     expect(row.style.opacity).toBe("");                       // orderable history is not muted
   });
 
@@ -69,7 +69,7 @@ describe("history rows — the three states (sql/18)", () => {
     expect(buttons[0].textContent).toContain("Reprint");
     expect(row.textContent).not.toContain("Ordered ✓");      // the old chip is gone
     expect(row.textContent).not.toContain("1-Click");        // still no re-order path
-    expect(row.textContent).not.toContain("Enterprise");
+    expect(row.textContent).not.toContain("Type price");
   });
 
   it("live rows are unaffected by the gate (buttons with historyReady=false too)", () => {

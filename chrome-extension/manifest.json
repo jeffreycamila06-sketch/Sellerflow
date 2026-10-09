@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SellerFlow Parcel Checker",
-  "version": "1.15.1",
-  "description": "Check SellerFlowLive parcel scans against 7-11 賣貨便 (full-store + restricted phone) using your logged-in session.",
+  "name": "SellerFlowLive Parcel Checker",
+  "version": "1.15.2",
+  "description": "Checks if your parcels' 7-11 store and phone are OK.",
   "permissions": ["storage", "alarms", "scripting"],
   "host_permissions": [
     "https://www.sellerflowlive.com/*",
@@ -10,21 +10,20 @@
     "https://myship.7-11.com.tw/*",
     "https://emap.pcsc.com.tw/*",
     "https://emap.unipcsc.com.tw/*",
-    "https://sqeuyuktdpidmlfpqgoc.supabase.co/*",
-    "http://localhost:5173/*"
+    "https://sqeuyuktdpidmlfpqgoc.supabase.co/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"],
+      "matches": ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*"],
       "js": ["sellerflow-refresh-main.js"],
       "run_at": "document_idle",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"],
+      "matches": ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*"],
       "js": ["sellerflow-bridge.js"],
       "run_at": "document_idle"
     },
@@ -62,7 +61,7 @@
     }
   ],
   "action": {
-    "default_title": "SellerFlow Parcel Checker",
+    "default_title": "SellerFlowLive Parcel Checker",
     "default_popup": "popup.html"
   }
 }

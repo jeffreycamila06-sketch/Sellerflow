@@ -134,6 +134,8 @@ import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpi
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
+import { useFeatureAccess } from "./adapters/featureAccess";
+import { errCodeOf } from "../lib/errCodes.js";
 
 type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
@@ -202,6 +204,9 @@ const ENDED_EMPTY_SESSION: RebuiltSession = { buyers: [], orders: [] };
 export default function RedesignApp() {
   // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
   const auth = useAuthSession();
+  // Build 10b — preview/dogfood flags for THIS user from the database (sql/112); the gate
+  // helpers below read them. Re-renders once the answer arrives.
+  useFeatureAccess(auth.status === "authed" ? auth.profile?.authUserId : null);
   // Analytics — identify the signed-in seller once authed (parity with App.tsx
   // 735/757: email + plan/store_name/role). No-op when PostHog has no key.
   useEffect(() => {
@@ -335,13 +340,13 @@ export default function RedesignApp() {
   // ⚠️ Profile card writes ONLY name/store/phone — NOT tiktok/facebook. The Channels
   // editor (saveChannels below) is the SOLE writer of the account lists (no double-writer).
   const saveProfile = async (fields: { fullName: string; storeName: string; phone: string }) => {
-    if (!auth.profile) return { ok: false, error: "Not signed in" };
+    if (!auth.profile) return { ok: false, error: "" }; // Build 10b: the screen shows its own words
     const updated = { ...auth.profile, profile: { ...auth.profile.profile, ...fields } };
     try {
       await upsertUser(updated); // spreads existing profile; tiktok/facebook untouched
       await auth.reloadProfile();
       return { ok: true };
-    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Save failed" }; }
+    } catch (e) { log.warn("profile save failed", e); return { ok: false, error: "" }; }
   };
   // Channels editor save — the ONLY writer of seller_profiles.tiktok/.facebook.
   // Mirrors App.tsx handleSaveProfile 4230-4238: keepLockedAccounts (can't overwrite
@@ -349,7 +354,7 @@ export default function RedesignApp() {
   // folded into the pure composeChannelSave. Spreads existing profile; never writes
   // plan/role (trigger-protected). reloadProfile after → locks refresh.
   const saveChannels = async (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => {
-    if (!auth.profile) return { ok: false, error: "Not signed in" };
+    if (!auth.profile) return { ok: false, error: "" }; // Build 10b: the editor shows its own words
     const cur = auth.profile;
     // `unlocked` (default {}) = slot indices the 4h cooldown has server-verified as
     // editable; composeChannelSave still protects every still-locked slot + the cap.
@@ -363,7 +368,8 @@ export default function RedesignApp() {
       // The database refused a NEW username (combined account limit, sql/84): the editor
       // shows the localized reason and keeps the typed value.
       if (isAccountLimitError(e)) return { ok: false, accountLimit: true };
-      return { ok: false, error: e instanceof Error ? e.message : "Save failed" };
+      log.warn("accounts save failed", e);
+      return { ok: false, error: "" };
     }
   };
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
@@ -1279,7 +1285,7 @@ export default function RedesignApp() {
       liveFeed.ensureJoined();
       const r = await shopeeConnect(shopId, sessionId);
       if (r.ok) { track("connect_success", { platform: "Shopee" }); setToast({ msg: tApp.rd_shp_connected_toast, kind: "ok" }); }
-      else track("connect_failed", { platform: "Shopee", reason: r.reason || r.error || "unknown" });
+      else track("connect_failed", { platform: "Shopee", reason: errCodeOf(r.reason || r.error) });
       return r;
     } finally { setShopeeConnecting(false); }
   };
@@ -1334,7 +1340,7 @@ export default function RedesignApp() {
       else { liveFeed.ensureJoined(); r = await fbConnect(pageId); }
       if (r.ok) { track("connect_success", { platform: "Facebook" }); setToast({ msg: tApp.rd_fb_connected_toast, kind: "ok" }); }
       else {
-        track("connect_failed", { platform: "Facebook", reason: r.reason || r.error || "unknown" });
+        track("connect_failed", { platform: "Facebook", reason: errCodeOf(r.reason || r.error) });
         if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
         else setToast({ msg: fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }, featureSw.fbPolishV2), kind: "err" }); // never a raw server code
       }
@@ -1358,7 +1364,7 @@ export default function RedesignApp() {
       const r = await igConnect(igUserId);
       if (r.ok) { track("connect_success", { platform: "Instagram" }); setToast({ msg: tApp.rd_ig_connected_toast, kind: "ok" }); }
       else {
-        track("connect_failed", { platform: "Instagram", reason: r.reason || r.error || "unknown" });
+        track("connect_failed", { platform: "Instagram", reason: errCodeOf(r.reason || r.error) });
         if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
         else setToast({ msg: igConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }), kind: "err" });
       }
@@ -1397,7 +1403,7 @@ export default function RedesignApp() {
     const r = await fbLiveCheck(pageId);
     const g = liveGateOf(r);
     if (g.go === true) return true;
-    track("connect_failed", { platform: "Facebook", reason: `live_check:${r.reason || r.error || "unknown"}` });
+    track("connect_failed", { platform: "Facebook", stage: "live_check", reason: errCodeOf(r.reason || r.error) });
     if (ios && g.why === "plan_expired") setIosExpired(true);
     else setToast({ msg: g.why === "not_live" ? tApp.rd_fb_live_first : fbConnectFailText(r, tApp, { ios, planName: planLabel(auth.profile?.plan), max: maxAcc(auth.profile?.plan || "free") }, featureSw.fbPolishV2), kind: "err" });
     return false;
@@ -1544,7 +1550,7 @@ export default function RedesignApp() {
       // connect_success / connect_failed — captured for EVERY outcome (App.tsx:4289-4311),
       // before the early returns below. reason: not-live → "not_live"; else the real error.
       if (r.ok) track("connect_success", { platform });
-      else { track("connect_failed", { platform, reason: r.notLive ? "not_live" : (r.error || "unknown") }); toastGateFor(platform).disarm(); }
+      else { track("connect_failed", { platform, reason: errCodeOf(r.notLive ? "not_live" : r.error) }); toastGateFor(platform).disarm(); }
       // iOS: an expired plan (server 403 "plan_expired") shows a NEUTRAL "plan inactive"
       // popup → Contact Support, NOT a payment-tinged toast. Android/web keep the toast.
       if (ios && !r.ok && (r.error || "").includes("plan_expired")) { setIosExpired(true); return; }
@@ -2149,7 +2155,7 @@ export default function RedesignApp() {
           {auth.status === "loading" && (
             <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "var(--text-muted)" }}>
               <img src="/redesign/icon-180.png" alt="SellerFlowLive" className="sfl-anim-float" style={{ width: 56, height: 56, borderRadius: 15, objectFit: "cover", opacity: 0.9 }} />
-              <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ui)" }}>Loading…</div>
+              <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ui)" }}>{tApp.rd_loading}</div>
             </div>
           )}
           {screen === "landing" && auth.status !== "loading" && (

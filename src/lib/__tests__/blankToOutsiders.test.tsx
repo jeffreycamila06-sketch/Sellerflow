@@ -88,8 +88,8 @@ describe("scripts/check-dist.mjs", () => {
     return d;
   }
   const good = () => ({ "index.html": "<html></html>", "assets/main.js": `x("${marker}");console.log("${BANNER_START} …")`, "assets/main.css": "a{}" });
-  it("a clean build passes", () => {
-    expect(checkDist(fakeDist(good()), SRC)).toEqual([]);
+  it("a clean build passes (the support contact and made-up placeholders are allowed)", () => {
+    expect(checkDist(fakeDist({ ...good(), "assets/x.js": `m("jeffreycamila06@gmail.com","you@email.com","a@example.com")` }), SRC)).toEqual([]);
   });
   it("fails on a source map, a sourceMappingURL, app.html, a dev log line, a missing marker or banner", () => {
     const msg = devLogMessages(SRC)[0];
@@ -101,6 +101,8 @@ describe("scripts/check-dist.mjs", () => {
       [{ ...good(), "assets/extra.js": `w("${msg}")` }, /dev log message/],
       [{ ...good(), "assets/main.js": `console.log("${BANNER_START}")` }, /marker label missing/],
       [{ ...good(), "assets/main.js": `x("${marker}")` }, /start banner missing/],
+      [{ ...good(), "assets/extra.js": `e("seller.one@gmail.com")` }, /email address in the build/],
+      [{ ...good(), "assets/extra.js": `t("Sign-in is unavailable (Supabase not configured).")` }, /seller-visible phrase/],
     ];
     for (const [files, rx] of cases) expect(checkDist(fakeDist(files), SRC).join("\n")).toMatch(rx);
   });

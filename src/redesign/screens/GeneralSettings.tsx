@@ -6,7 +6,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
-import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
+import { profileToDisplay, planLabel } from "../adapters/useAuthSession";
+import { useLang } from "../i18n/langContext";
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import { normalizeSamePrice, canEnableSamePrice } from "../adapters/useSamePrice";
 import LiveSettingModal from "../components/LiveSettingModal";
@@ -105,6 +106,7 @@ export default function GeneralSettings({
   motionOn?: boolean; onToggleMotion?: () => void;
 }) {
   const t = useT();
+  const uiLang = useLang(); // normalized language for date formatting
   const [kioskCopied, setKioskCopied] = useState(false); // "Copy kiosk command" feedback (web-only card)
   const copyKioskCommand = async () => { setKioskCopied(await copyText(KIOSK_COMMAND_WINDOWS)); };
   const [apLangOpen, setApLangOpen] = useState(false);
@@ -195,7 +197,7 @@ export default function GeneralSettings({
       phone: phChanged && ph ? validatePhone(ph, phoneCountry).national : ph, // clean national on a valid change; else keep as-is (grandfather)
     });
     if (r.ok) { setSaveState("saved"); }
-    else { setSaveState("error"); setSaveErr(r.error || t.rd_set_err_save_failed); }
+    else { setSaveState("error"); setSaveErr(t.rd_set_profile_save_failed); } // never the raw database text
   };
 
   // Phase 5a — real profile (falls back to the demo strings when signed out / no row).
@@ -203,9 +205,17 @@ export default function GeneralSettings({
   const pAvatar = pd ? pd.initials : "MS";
   const pShop = pd ? pd.shopName : "Maria's Live Shop";
   const pHandle = pd ? (pd.handle || "—") : "@maria_shops";
-  const pPlanLine = pd ? pd.planLine : "Pro plan · renews Jul 28";
+  // Plan + renewal date in the seller's own language (was English "renews Jul 28").
+  const renewDate = (exp: string | undefined | null): string => {
+    if (!exp) return "";
+    const d = new Date(exp);
+    if (isNaN(d.getTime())) return "";
+    try { return d.toLocaleDateString(uiLang, { month: "short", day: "numeric" }); } catch { return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
+  };
+  const planLineOf = (plan: string, date: string) => (date ? tpl(t.rd_set_plan_renews, { plan, date }) : tpl(t.rd_set_plan_only, { plan }));
+  const pPlanLine = pd ? planLineOf(pd.planLabel, renewDate(account?.planExpiry)) : planLineOf("Pro", renewDate("2026-07-28T12:00:00Z"));
   const pEmail = account ? account.email : "maria@liveshop.ph";
-  const pSubRow = account ? `${planLabel(account.plan)}${renewLabel(account.planExpiry) ? " · " + renewLabel(account.planExpiry).replace(/^renews /, "") : ""} ›` : "Pro · Jul 28 ›";
+  const pSubRow = account ? `${planLabel(account.plan)}${renewDate(account.planExpiry) ? " · " + renewDate(account.planExpiry) : ""} ›` : `Pro · ${renewDate("2026-07-28T12:00:00Z")} ›`;
   // LIVE SESSION group — collapsed by default, remembered per device. The
   // open/closed state is LIFTED to RedesignApp when the parent provides it
   // (survives a GeneralSettings remount — a local flag would reset, matching the

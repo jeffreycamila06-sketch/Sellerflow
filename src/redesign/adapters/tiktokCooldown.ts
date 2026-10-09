@@ -63,15 +63,17 @@ export async function fetchSlotCooldowns(): Promise<SlotCooldowns | null> {
   return { offsetMs, byKey };
 }
 
+const SAVE_FAILED = "Couldn't save your accounts. Please try again.";
 export interface TouchResult { ok: boolean; cooldown?: boolean; error?: string }
 
 // Record a change at server now(). The server REFUSES 'cooldown_active' (<4h, non-admin)
 // — surfaced as { ok:false, cooldown:true } so the caller shows the error and does NOT
 // persist. Any other failure → { ok:false }. Success → { ok:true }.
 export async function touchSlot(platform: "tiktok" | "facebook", slotIndex: number): Promise<TouchResult> {
-  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "unavailable" };
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: SAVE_FAILED };
   const { error } = await supabase.rpc("touch_tiktok_slot", { p_platform: platform, p_slot_index: slotIndex });
   if (!error) return { ok: true };
   const cooldown = /cooldown_active/i.test(error.message || "");
-  return { ok: false, cooldown, error: error.message };
+  // Never the raw database text — the screen may show `error` as-is.
+  return { ok: false, cooldown, error: SAVE_FAILED };
 }

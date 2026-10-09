@@ -64,7 +64,9 @@ vi.mock("../../../supabase", () => {
 import { useSessionWindow, loadLiveSessionBySessionId } from "../useSessionWindow";
 import { useSessionInstance } from "../useSessionInstance";
 import { useLiveSession, SESSION_LOAD_RETRY_MS } from "../useLiveSession";
-import { sessionNumberingGate, SESSION_NUMBERING_FIX_EMAILS, SESSION_NUMBERING_FIX_PUBLIC } from "../sessionNumberingGate";
+import { sessionNumberingGate, SESSION_NUMBERING_FIX_PUBLIC } from "../sessionNumberingGate";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails } from "./featureSeed";
 
 function useApp({ authed, fix }: { authed: boolean; fix: boolean }) {
   const sessionWindow = useSessionWindow(authed, fix);
@@ -99,12 +101,14 @@ describe("the gate decision (email only)", () => {
       "gee383838@icloud.com", "rominamagat@gmail.com", "juvieho0725@gmail.com", "clarabhie@gmail.com", "mersteve17@gmail.com",
       "jinkyrosepenana@gmail.com", "basaomenchie6@gmail.com", "jaszhu127@gmail.com", "leinapan@gmail.com", "jobelleolivas80@gmail.com", "merriamalmirante194@gmail.com", "apzelejorde@yahoo.com", "s076561908@hotmail.com", "ailun09291990@gmail.com", "ganggang0958@yahoo.com",
       "abeyverdera@yahoo.com", "christinechen769@gmail.com", "z30983359299@gmail.com", "vans0814@gmail.com", "rodelio.martinjr@gmail.com", "michellesebios86@gmail.com", "nashtex@abv.bg", "leahsangalang1215@gmail.com", "sanggalanglhea@gmail.com", "ukaydaily1@gmail.com", "lheyukay@gmail.com", "angelicasu08@gmail.com"];
-    expect(SESSION_NUMBERING_FIX_EMAILS).toEqual(LIST); // the exact staged list
-    for (const e of LIST) {
-      expect(SESSION_NUMBERING_FIX_EMAILS).toContain(e);
-      expect(sessionNumberingGate(true, e.toUpperCase(), false)).toBe("on");
-    }
-    // the staged path (publicFlag false = the constant flipped back): list only
+    expect(seedEmails("session_numbering_fix")).toEqual(LIST); // the exact staged list, now in sql/112
+    // the staged path (publicFlag false = the constant flipped back): the database flag only;
+    // "wait" until the flags have loaded
+    setFeatureAccess(null, false);
+    expect(sessionNumberingGate(true, "camilajeffrey1@gmail.com", false)).toBe("wait");
+    setFeatureAccess({ session_numbering_fix: true });
+    expect(sessionNumberingGate(true, "camilajeffrey1@gmail.com", false)).toBe("on");
+    setFeatureAccess(null);
     expect(sessionNumberingGate(true, "someone@else.com", false)).toBe("off");
     expect(sessionNumberingGate(true, null, false)).toBe("wait");
     expect(sessionNumberingGate(true, "  ", false)).toBe("wait");

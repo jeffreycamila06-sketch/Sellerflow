@@ -130,7 +130,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.15.1"); // 1.15.1 = faster degraded (no_tab 60 s / dead 120 s); 1.15.0 = two-machine failover (lease, sql/71); 1.14.9 = faster phone retry on token-GET timeouts; 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
+    expect(manifest.version).toBe("1.15.2"); // 1.15.2 = Build 10b (plain popup words, masked phone in logs, no localhost); 1.15.1 = faster degraded (no_tab 60 s / dead 120 s); 1.15.0 = two-machine failover (lease, sql/71); 1.14.9 = faster phone retry on token-GET timeouts; 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
     expect(manifest.permissions).toContain("scripting");
   });
 
@@ -179,7 +179,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
 
   it("popup: every non-green state names the ONE action (no bare red)", () => {
     const popup = readFileSync("chrome-extension/popup.js", "utf8");
-    for (const label of ["SellerFlowLive: signed out — log in once", "Tab asleep — click it once", "Waking up…", "Reload that tab"]) {
+    for (const label of ["SellerFlowLive: signed out — log in once", "Click the SellerFlowLive tab once", "Waking up…", "Reload that tab"]) {
       expect(popup).toContain(label);
     }
   });

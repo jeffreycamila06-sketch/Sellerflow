@@ -8,6 +8,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import GeneralSettings from "../GeneralSettings";
 import { TProvider } from "../../i18n";
 import { KIOSK_COMMAND_WINDOWS } from "../../adapters/kioskLauncher";
+import { setFeatureAccess } from "../../adapters/featureAccess";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
 
@@ -36,11 +37,11 @@ const renderGS = (account: AccountUser | null) => render(
     />
   </TProvider>,
 );
-const BTN = "Copy kiosk command";
+const BTN = "Copy"; // rd_wp_cmd_btn (Build 10b wording)
 const CARD = "Silent auto-print on a laptop"; // rd_wp_setup_title — unique card marker
 
 describe("GeneralSettings — laptop auto-print card (admin + allowlist only)", () => {
-  beforeEach(() => { shell.v = false; localStorage.clear(); });
+  beforeEach(() => { shell.v = false; localStorage.clear(); setFeatureAccess(null); });
 
   it("web + admin → whole card + Copy button visible", () => {
     renderGS(acct({ role: "admin" }));
@@ -48,7 +49,8 @@ describe("GeneralSettings — laptop auto-print card (admin + allowlist only)", 
     expect(screen.getByText(BTN)).toBeTruthy();
   });
 
-  it("web + allowlisted email (googletest@gmail.com) → whole card + button visible", () => {
+  it("web + listed account (database flag kiosk_launcher) → whole card + button visible", () => {
+    setFeatureAccess({ kiosk_launcher: true });
     renderGS(acct({ email: "googletest@gmail.com" }));
     expect(screen.getByText(CARD)).toBeTruthy();
     expect(screen.getByText(BTN)).toBeTruthy();
@@ -74,8 +76,9 @@ describe("GeneralSettings — laptop auto-print card (admin + allowlist only)", 
     expect(screen.getByText(BTN)).toBeTruthy();
   });
 
-  it("phone (app shell) + allowlisted email → card VISIBLE", () => {
+  it("phone (app shell) + listed account → card VISIBLE", () => {
     shell.v = true;
+    setFeatureAccess({ kiosk_launcher: true });
     renderGS(acct({ email: "googletest@gmail.com" }));
     expect(screen.getByText(CARD)).toBeTruthy();
   });
@@ -97,7 +100,7 @@ describe("GeneralSettings — laptop auto-print card (admin + allowlist only)", 
 
   it("the read-only command input is present as the manual-copy fallback", () => {
     renderGS(acct({ role: "admin" }));
-    const input = screen.getByLabelText("Kiosk command") as HTMLInputElement;
+    const input = screen.getByLabelText("Silent-print setup") as HTMLInputElement;
     expect(input.value).toBe(KIOSK_COMMAND_WINDOWS);
     expect(input.readOnly).toBe(true);
   });

@@ -78,7 +78,8 @@ describe("Admin panel — U4 toast + U6 labeled close", () => {
     await vi.waitFor(() => expect(onToast).toHaveBeenCalledTimes(1));
     const [msg, kind] = onToast.mock.calls[0];
     expect(kind).toBe("err");
-    expect(String(msg)).toContain("boom");
+    expect(String(msg)).toBe("✗ Delete failed. Please try again."); // Build 10b: never the raw error
+    expect(String(msg)).not.toContain("boom");
     expect(alertSpy).not.toHaveBeenCalled();
   });
 

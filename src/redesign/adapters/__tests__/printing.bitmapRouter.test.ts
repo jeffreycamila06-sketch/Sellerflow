@@ -7,6 +7,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { printSlip, printStickerBtRouted, isClassicTextSticker, setClassicTextSticker, setClassicTextAllowed, canUseClassicText, hasBitmapStickerMethod, setStickerRouteNoticeHandler, getLastStickerRouteNotice, LS_CLASSIC_TEXT, DEF_SETTINGS, getLastStickerTiming, type Settings, type StickerRouteNotice } from "../printing";
 import { buildTestBuyer } from "../printerBridge";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails } from "./featureSeed";
 
 const cfg: Settings = { ...DEF_SETTINGS, printerType: "bluetooth" };
 const buyer = buildTestBuyer();
@@ -246,9 +248,12 @@ describe("printSlip bitmap routing", () => {
   it("canUseClassicText: admin role (both casings) + test accounts YES, regular seller NO", () => {
     expect(canUseClassicText("admin", "seller@x.com")).toBe(true); // db-cased role
     expect(canUseClassicText("Admin", "seller@x.com")).toBe(true); // display-cased role
-    expect(canUseClassicText("seller", "googletest@sellerflowlive.com")).toBe(true); // the real test account
-    expect(canUseClassicText("seller", "GoogleTest@SellerFlowLive.com")).toBe(true); // case-insensitive
-    expect(canUseClassicText("seller", "googletest@gmail.com")).toBe(false); // AUDIT F4: unowned/registrable — removed
+    // Build 10b: the test account lives in sql/112 (feature classic_text) — the app only sees a yes/no
+    expect(seedEmails("classic_text")).toEqual(["googletest@sellerflowlive.com"]); // AUDIT F4: never googletest@gmail.com
+    setFeatureAccess({ classic_text: true });
+    expect(canUseClassicText("seller", "googletest@sellerflowlive.com")).toBe(true);
+    setFeatureAccess(null);
+    expect(canUseClassicText("seller", "googletest@sellerflowlive.com")).toBe(false);
     expect(canUseClassicText("seller", "maria@example.com")).toBe(false);
     expect(canUseClassicText("Seller", "kylerkao@example.com")).toBe(false);
     expect(canUseClassicText(undefined, undefined)).toBe(false); // pre-auth / logged out

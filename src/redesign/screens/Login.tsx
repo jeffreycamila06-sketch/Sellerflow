@@ -17,7 +17,7 @@ export default function Login({
 }: {
   // Phase 5a: real auth. Returns {ok,error}; on ok the parent navigates once the
   // session resolves. Async so the button can show a busy state.
-  onLogin: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  onLogin: (email: string, password: string) => Promise<{ ok: boolean; error?: string; errorKey?: string }>;
   onSignup: () => void;
   configured: boolean;
   lang: string;
@@ -39,7 +39,8 @@ export default function Login({
     if (!email.trim() || !password) { setErr(t.rd_login_err_empty); return; }
     setBusy(true);
     const res = await onLogin(email, password);
-    if (!res.ok) { setErr(res.error || t.rd_login_err_failed); setBusy(false); }
+    // Only translated seller text — never the raw sign-in error.
+    if (!res.ok) { setErr((res.errorKey && (t as unknown as Record<string, string>)[res.errorKey]) || t.rd_login_err_failed); setBusy(false); }
     // on success the parent flips the screen; leave busy=true to avoid a flash.
   };
   // Real <form> submit — the single submit path (button type="submit" OR Enter in a

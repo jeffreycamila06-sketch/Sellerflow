@@ -7,38 +7,28 @@
 // pins below guard that historical file as committed.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { parcelCheckAllowed, PARCEL_CHECK_PUBLIC, PARCEL_CHECK_PREVIEW_EMAILS } from "../parcelCheck";
+import { parcelCheckAllowed, PARCEL_CHECK_PUBLIC } from "../parcelCheck";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails, seedPrefixes } from "./featureSeed";
 import { parseGmPage, validGmShape } from "../../../../server/myshipValidate.js";
 
-describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, deliberate)", () => {
-  it("flip is OFF; the allowlisted emails + admins pass; everyone else fails", () => {
+describe("DOGFOOD GATE — exact allowlist in the database (sql/112, NO prefix rule)", () => {
+  it("flip is OFF; the database list = the old allowlist; the flag + admins pass; everyone else fails", () => {
     expect(PARCEL_CHECK_PUBLIC).toBe(false);
-    expect(PARCEL_CHECK_PREVIEW_EMAILS).toEqual([
+    expect(seedEmails("parcel_check")).toEqual([
       "googletest@gmail.com", "googletest@sellerflowlive.com",
-      "ukaydaily1@gmail.com", // added to dogfood 2026-09-27
-      "sanggalanglhea@gmail.com", // Lhey — added 2026-09-28
-      "h0kmming@yahoo.com.tw", // added 2026-09-28 (h + zero, not letter O)
-      "details2ndserve@gmail.com", // added 2026-09-29
-      "chungmaychilleann@gmail.com", "choletrada1022@gmail.com", // added 2026-10-01
-      "bertongpatag@gmail.com", "jaszhu127@gmail.com",           // added 2026-10-01
-      "ganggang0958@yahoo.com", // added 2026-10-01
-      "jinkyrosepenana@gmail.com", "karenbaltazar040789@gmail.com", "basaomenchie6@gmail.com", // added 2026-10-02
-      "lailinehsu@gmail.com", // added 2026-10-02
+      "ukaydaily1@gmail.com", "sanggalanglhea@gmail.com", "h0kmming@yahoo.com.tw", "details2ndserve@gmail.com",
+      "chungmaychilleann@gmail.com", "choletrada1022@gmail.com", "bertongpatag@gmail.com", "jaszhu127@gmail.com",
+      "ganggang0958@yahoo.com", "jinkyrosepenana@gmail.com", "karenbaltazar040789@gmail.com", "basaomenchie6@gmail.com",
+      "lailinehsu@gmail.com",
     ]);
-    for (const e of ["chungmaychilleann@gmail.com", "choletrada1022@gmail.com", "bertongpatag@gmail.com", "jaszhu127@gmail.com", "ganggang0958@yahoo.com", "jinkyrosepenana@gmail.com", "karenbaltazar040789@gmail.com", "basaomenchie6@gmail.com", "lailinehsu@gmail.com"]) {
-      expect(parcelCheckAllowed(e, "seller"), e).toBe(true);
-      expect(parcelCheckAllowed(`  ${e.toUpperCase()} `, "seller"), e).toBe(true); // case/space-insensitive
-    }
-    // Still allowlist-only (not public). budgetukay5 remains OFF; ukaydaily1 +
-    // sanggalanglhea (Lhey) are ON. Non-allowlisted sellers = byte-unchanged Parcel Scan.
-    expect(parcelCheckAllowed("sanggalanglhea@gmail.com", "seller")).toBe(true); // now allowed
-    expect(parcelCheckAllowed("budgetukay5@gmail.com", "seller")).toBe(false);
-    expect(parcelCheckAllowed("ukaydaily1@gmail.com", "seller")).toBe(true); // now allowed
-    expect(parcelCheckAllowed("UKAYDAILY1@GMAIL.COM", "seller")).toBe(true); // case-insensitive
-    for (const e of PARCEL_CHECK_PREVIEW_EMAILS) expect(parcelCheckAllowed(e, "seller"), e).toBe(true);
-    expect(parcelCheckAllowed("GOOGLETEST@GMAIL.COM", "seller")).toBe(true); // case-insensitive
+    expect(seedPrefixes("parcel_check")).toEqual([]); // no budgetukay* rule here
+    setFeatureAccess({ parcel_check: true });
+    expect(parcelCheckAllowed("ukaydaily1@gmail.com", "seller")).toBe(true);
+    expect(parcelCheckAllowed("", "seller")).toBe(false);
+    setFeatureAccess(null);
+    expect(parcelCheckAllowed("ukaydaily1@gmail.com", "seller")).toBe(false);
     expect(parcelCheckAllowed("anyone@x.com", "admin")).toBe(true);
-    expect(parcelCheckAllowed("budgetukay2@gmail.com", "seller")).toBe(false); // NO prefix rule
     expect(parcelCheckAllowed("random@x.com", "seller")).toBe(false);
     expect(parcelCheckAllowed(null, null)).toBe(false);
   });
@@ -184,8 +174,8 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(bg).toContain("admin_set_parcel_worker_state");
     expect(bg).not.toMatch(/parcel_check_worker_state|worker_state[^)]*\).*(?:return|skip)/);
     const popup = readFileSync("chrome-extension/popup.js", "utf8");
-    expect(popup).toContain("(session expired) — re-open via 賣貨便 → 選擇門市");
-    expect(popup).toContain("E-Map tab not found");
+    expect(popup).toContain("7-11 store map logged out — open it again from the 7-11 seller page (選擇門市)");
+    expect(popup).toContain("7-11 store map not open");
   });
 
   it("SENDER HEALTH-CHECK: a known-clean probe buyer through the sender; restricted → pause (set health false), never mass-flag", () => {

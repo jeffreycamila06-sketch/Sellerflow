@@ -108,7 +108,7 @@ describe("Send posts a FRESH render of the current sheet", () => {
     sheet(); await flush();
     fireEvent.click(q("rs-send")!); await flush();
     expect(m.send).not.toHaveBeenCalled();
-    expect(q("rs-send-note")!.textContent).toContain("over 3 MB");
+    expect(q("rs-send-note")!.textContent).toBe("This picture is too big. Shorten the list or the note."); // Build 10b wording
   });
 });
 
@@ -192,19 +192,19 @@ describe("Orders 'Receipt sent ✓' tag", () => {
   });
 });
 
-describe("failed send shows Facebook's code", () => {
-  it("send_failed with fb_code → the text + (FB code/subcode), connect-toast style", async () => {
+describe("failed send never shows Facebook's code (Build 10)", () => {
+  it("send_failed with fb_code → 'reconnect your Page', no code", async () => {
     m.info.mockResolvedValue(info());
     m.send.mockResolvedValueOnce({ ok: false, error: "send_failed", code: 100, fbCode: "100/1893060" });
     sheet(); await flush();
     fireEvent.click(q("rs-send")!); await flush();
-    expect(q("rs-send-note")!.textContent).toBe("Couldn't send the receipt. Try again. (FB 100/1893060)");
+    expect(q("rs-send-note")!.textContent).toBe("Couldn't connect. Please reconnect your Page.");
   });
   it("code 10903 → the clear 'no private message' text instead of 'Try again'", async () => {
     m.info.mockResolvedValue(info());
     m.send.mockResolvedValueOnce({ ok: false, error: "send_failed", code: 10903, fbCode: "10903/0" });
     sheet(); await flush();
     fireEvent.click(q("rs-send")!); await flush();
-    expect(q("rs-send-note")!.textContent).toBe("Facebook doesn't allow a private message to this commenter (they commented as a Page, or their settings block it). (FB 10903/0)");
+    expect(q("rs-send-note")!.textContent).toBe("Facebook doesn't allow a private message to this commenter (they commented as a Page, or their settings block it).");
   });
 });

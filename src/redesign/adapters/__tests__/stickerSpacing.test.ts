@@ -17,6 +17,8 @@ import {
 } from "../printing";
 import { stickerFit, FIT_SAMPLE_NAME, FIT_SAMPLE_COMMENT } from "../stickerFit";
 import type { Buyer } from "../../../lib/orderTypes";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails } from "./featureSeed";
 
 const mem = new Map<string, string>();
 vi.stubGlobal("localStorage", {
@@ -148,9 +150,12 @@ describe("the allowlist (applies when STICKER_SPACING_PUBLIC is false)", () => {
     expect(STICKER_SPACING_PUBLIC).toBe(true);
     expect(stickerSpacingAllowed("someone@gmail.com", "seller")).toBe(true);
     expect(stickerSpacingAllowed("x@y.com", "admin", false)).toBe(true);
+    // Build 10b: the two googletest accounts live in sql/112 (sticker_spacing); the app sees a yes/no
+    expect(seedEmails("sticker_spacing")).toEqual(["googletest@gmail.com", "googletest@sellerflowlive.com"]);
+    setFeatureAccess({ sticker_spacing: true });
     expect(stickerSpacingAllowed("googletest@gmail.com", "seller", false)).toBe(true);
-    expect(stickerSpacingAllowed(" GoogleTest@SellerFlowLive.com ", "seller", false)).toBe(true);
-    for (const e of ["cristycabanas34@gmail.com", "ronaldgantiga77@gmail.com", "tincabanas13@gmail.com", "someone@gmail.com", ""]) expect(stickerSpacingAllowed(e, "seller", false)).toBe(false);
+    setFeatureAccess(null);
+    for (const e of ["googletest@gmail.com", "cristycabanas34@gmail.com", "someone@gmail.com", ""]) expect(stickerSpacingAllowed(e, "seller", false)).toBe(false);
     expect(stickerSpacingAllowed("someone@gmail.com", "seller", true)).toBe(true);
   });
   it("flags: none when not allowed; half gaps always + compact only when chosen", () => {

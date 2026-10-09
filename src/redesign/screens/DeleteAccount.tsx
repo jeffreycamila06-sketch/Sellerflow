@@ -6,7 +6,6 @@
 import { useState } from "react";
 import { card } from "../ui";
 import { useT } from "../i18n";
-import { isSafeDeleteCode } from "../adapters/adminDelete";
 
 export default function DeleteAccount({ onBack, email = "", onConfirm }: {
   onBack: () => void;
@@ -24,11 +23,9 @@ export default function DeleteAccount({ onBack, email = "", onConfirm }: {
     setBusy(true); setErr("");
     const r = await onConfirm();
     if (!r.ok) {
-      // Item-5 containment: only a known-safe guard code may show the server's own
-      // message (e.g. "Master accounts can't self-delete…"). Any other failure —
-      // the codeless 500 that carries raw internals — shows a generic string; the
-      // detail stays in the edge logs, never on a non-admin seller's screen.
-      setErr(isSafeDeleteCode(r.code) ? (r.error || t.rd_del_fail) : t.rd_del_generic);
+      // Build 10: the server's own text is never shown. A protected account (admin /
+      // master) gets the "message us" sentence; every other failure the generic one.
+      setErr(r.code === "protected_admin" || r.code === "protected_master" ? t.rd_del_protected : t.rd_del_generic);
       setBusy(false);
     }
     // on success the auth listener flips to anon → routes to login (leave busy).

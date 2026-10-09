@@ -92,6 +92,7 @@ export function receiptFailText(r: { code?: number; fbCode?: string }, t: Redesi
     if (code === 190) return t.rd_fb_err_expired;
     return Number.isFinite(code) ? t.rd_fb_err_refused : t.rd_rs_failed;
   }
-  const base = code === FB_NO_PRIVATE_REPLY_CODE ? t.rd_rs_no_private_reply : t.rd_rs_failed;
-  return r.fbCode ? `${base} (FB ${r.fbCode})` : base; // no fb_code (old server / no Graph answer) → text only
+  // Build 10: never a Facebook code on screen. A refusal with a code → "reconnect your Page".
+  if (code === FB_NO_PRIVATE_REPLY_CODE) return t.rd_rs_no_private_reply;
+  return r.fbCode ? t.rd_cm_reconnect_page : t.rd_rs_failed; // no fb_code (old server / no Graph answer) → plain text
 }

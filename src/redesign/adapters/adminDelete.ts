@@ -35,7 +35,7 @@ export function confirmEmailMatches(typed: string, targetEmail: string): boolean
 // Hard-delete ONE seller via the edge function. The server re-checks admin +
 // the self/admin-master guards; a normal seller replaying this gets 403/400.
 export async function hardDeleteUser(email: string): Promise<HardDeleteResult> {
-  if (!supabase) return { ok: false, error: "Delete service unavailable" };
+  if (!supabase) return { ok: false, error: "unavailable" };
   try {
     const { data, error } = await supabase.functions.invoke("admin-delete-user", {
       body: { mode: "user", email: email.trim().toLowerCase() },
@@ -46,7 +46,7 @@ export async function hardDeleteUser(email: string): Promise<HardDeleteResult> {
     if (error || !r?.success) { const e = await readEdgeError(error, r); return { ok: false, error: e.message, code: e.code ?? r?.code }; }
     return { ok: true, deleted: r.deleted };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
+    return { ok: false, error: e instanceof Error ? e.message : "failed" };
   }
 }
 
@@ -56,14 +56,16 @@ export async function hardDeleteUser(email: string): Promise<HardDeleteResult> {
 // DELETE policy now rejects. The caller is derived from the JWT server-side, so
 // no email is sent (a seller can only ever wipe themselves).
 export async function selfDeleteAccount(): Promise<HardDeleteResult> {
-  if (!supabase) return { ok: false, error: "Delete service unavailable" };
+  if (!supabase) return { ok: false, error: "unavailable" };
   try {
     const { data, error } = await supabase.functions.invoke("admin-delete-user", { body: { mode: "self" } });
-    const r = data as { success?: boolean; error?: string; code?: string; deleted?: Record<string, unknown> } | null;
-    if (error || !r?.success) { const e = await readEdgeError(error, r); return { ok: false, error: e.message, code: e.code ?? r?.code }; }
-    return { ok: true, deleted: r.deleted };
+    // Build 10b: the answer is { ok: true } or { ok: false, code } — no table names, no text.
+    // (success = the answer before the edge function is redeployed.)
+    const r = data as { ok?: boolean; success?: boolean; code?: string } | null;
+    if (error || !(r?.ok || r?.success)) { const e = await readEdgeError(error, r); return { ok: false, code: e.code ?? r?.code }; }
+    return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
+    return { ok: false, error: e instanceof Error ? e.message : "failed" };
   }
 }
 
@@ -72,7 +74,7 @@ export async function selfDeleteAccount(): Promise<HardDeleteResult> {
 export async function ghostCleanup(mode: "ghost-scan" | "ghost-purge"): Promise<{
   ok: boolean; error?: string; count?: number; purged?: number; failed?: number; ghosts?: unknown[]; detail?: unknown[]; failures?: unknown[];
 }> {
-  if (!supabase) return { ok: false, error: "Delete service unavailable" };
+  if (!supabase) return { ok: false, error: "unavailable" };
   try {
     const { data, error } = await supabase.functions.invoke("admin-delete-user", { body: { mode } });
     // purge returns per-ghost failures too (a mid-loop wipe error no longer aborts the batch)
@@ -80,6 +82,6 @@ export async function ghostCleanup(mode: "ghost-scan" | "ghost-purge"): Promise<
     if (error || !r?.success) { const e = await readEdgeError(error, r); return { ok: false, error: e.message }; }
     return { ok: true, count: r.count, purged: r.purged, failed: r.failed, ghosts: r.ghosts, detail: r.detail, failures: r.failures };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
+    return { ok: false, error: e instanceof Error ? e.message : "failed" };
   }
 }

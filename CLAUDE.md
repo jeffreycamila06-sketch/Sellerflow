@@ -4616,6 +4616,29 @@ fails all 6 tests with the exact CI error.
 - Still flaky on `main` (NOT touched, different race): `ParcelTracking.checkNow.test.tsx:111`
   (`loadParcelTracking` call count 2 vs 3 — a poll tick racing the assert); failed run 1215.
 
+## 2026-10-09 — BUILD 10b: wording picks + exposure fixes (branch `claude/blank-v3`, NOT merged)
+- Part A wording applied (docs/audits/build10b-strings.md). The redesign i18n no longer imports
+  the old app's `translations.ts` (its 4 still-used keys live in RAW) → that file's internal
+  wording no longer ships.
+- **Preview/dogfood allowlists are in the DATABASE now** — `sql/112_feature_access.sql` (NOT
+  applied): table `feature_access_emails` (no browser access) + RPC `my_feature_access()` →
+  booleans for the signed-in LOGIN email. App: `adapters/featureAccess.ts` (`hasFeature`, loaded
+  once per user in RedesignApp, cached per user in localStorage as booleans). **Add/remove a
+  preview account = one INSERT/DELETE in `feature_access_emails` (no deploy).** ⚠️ Before sql/112
+  is applied, every preview flag is OFF (fail closed) — apply it BEFORE the web merge.
+  test@gmail.com (Meta review) stays in `fb_preview` permanently.
+- `/`, `/health`, `/health/tiktok` answer `{ok:true}` publicly; the TikTok detail needs
+  `X-Poll-Token: <PARCEL_POLL_TOKEN>` (server/healthRoutes.js). `X-Powered-By` off.
+- Seller self-delete answer = `{ok:true}` / `{ok:false, code}`; admin delete 500 = a plain sentence
+  (detail in the edge-function log) — this replaces the Jul 24 "admin paths surface the FULL
+  message" rule for the delete function. Edge function needs a redeploy (+ byte-diff check).
+- Extension 1.15.2: phone masked in logs, no localhost, plain popup words, install-only README.
+  **Chrome loads `chrome-extension-dist/`** (gitignored) built by `npm run build:extension`
+  (minified, sources stay readable in `chrome-extension/`).
+- `mobile/www` = a blank page (the stale full bundle is gone; takes effect with the next binaries).
+- `check:dist` also fails on any email address (except the support contact + placeholders) and on
+  former internal phrases.
+
 ## ⏸ PARKED (2026-10-06) — automated FROZEN (冷凍) store check
 Parked until the owner is back from his trip. `main` = exactly what ran before the frozen merge
 (revert of merge `5ed43c1` on `claude/park-frozen-check`; extension **1.15.1**; sql/81 was NEVER

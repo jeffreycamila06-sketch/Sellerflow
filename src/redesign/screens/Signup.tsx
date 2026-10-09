@@ -68,7 +68,8 @@ export default function Signup({ onBack, onLegal, onRegister }: {
     setBusy(true);
     const r = await onRegister(fields);
     if (r.ok && r.needsConfirm) { setOk(t.rd_su_ok_confirm); setBusy(false); return; }
-    if (!r.ok) { setErr(r.error || t.rd_su_err); setBusy(false); return; }
+    // Only translated seller text — never the raw registration error.
+    if (!r.ok) { setErr((r.errorKey && (t as unknown as Record<string, string>)[r.errorKey]) || t.rd_su_err); setBusy(false); return; }
     // success with a session: leave busy=true; the auth listener navigates to the dashboard.
   };
 

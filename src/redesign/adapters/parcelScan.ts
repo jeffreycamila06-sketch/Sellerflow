@@ -18,6 +18,7 @@ import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { TEMP_FROZEN, type FrozenConfig } from "./parcelFrozen";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_MAX_ORDER, SHIP_DEFAULT_FEE, type AmountError } from "./shipping";
 import { decodeServerJson, sellerSafeWord } from "../../lib/errCodes.js";
+import { hasFeature } from "./featureAccess";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
 // ADMIN ROLE ONLY — deliberately NO googletest allowlist (diverges from
@@ -277,11 +278,11 @@ export function customAmountError(amount: number, fee: number, feeColumnMax: num
 export const MAX_PENDING_PARCELS = 40;
 // Testers (admin + googletest) get a bigger batch; everyone else stays at 40.
 export const MAX_PENDING_PARCELS_TESTER = 50;
-const PARCEL_CAP_TESTER_EMAILS = ["googletest@gmail.com", "googletest@sellerflowlive.com"];
+// Build 10b: the tester list lives in the database (sql/112 feature "parcel_cap_tester").
 export function maxPendingParcels(email?: string | null, role?: string | null): number {
   if (String(role || "").trim().toLowerCase() === "admin") return MAX_PENDING_PARCELS_TESTER;
   const e = String(email || "").trim().toLowerCase();
-  return PARCEL_CAP_TESTER_EMAILS.includes(e) ? MAX_PENDING_PARCELS_TESTER : MAX_PENDING_PARCELS;
+  return e !== "" && hasFeature("parcel_cap_tester") ? MAX_PENDING_PARCELS_TESTER : MAX_PENDING_PARCELS;
 }
 
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }

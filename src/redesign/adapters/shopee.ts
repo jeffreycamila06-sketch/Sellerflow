@@ -136,7 +136,7 @@ export async function shopeeConnect(shopId: number | string, shopSessionId: stri
     // Result `sessionId` = the Shopee live session (unchanged contract for callers).
     return { ok: true, sessionId: j.session_id ? String(j.session_id) : String(shopSessionId) };
   } catch {
-    return { ok: false, unreachable: true, error: "Can't reach the live server." };
+    return { ok: false, unreachable: true, error: "Can't connect right now. Check your internet and try again." };
   }
 }
 

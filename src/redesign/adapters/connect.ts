@@ -15,7 +15,7 @@ import type { AccountUser } from "../../accountDb";
 import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 import { isAdminRole } from "../../lib/roles";
 import { decodeServerJson } from "../../lib/errCodes.js";
-import type { RedesignT } from "../i18n";
+import { tpl, type RedesignT } from "../i18n";
 
 export type Platform = "TikTok" | "Facebook";
 
@@ -127,12 +127,26 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
 // (F-batch i18n; the English error string stays as the analytics/log reason).
 export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean }
 
+// Build 10b: minutes to wait from the cooldown answer (E41 "…in {n} minutes." / E42 "…in about
+// {n} minute(s)|hour(s)." — the app decodes both back to those sentences), else null.
+export function cooldownMinutes(error: string | undefined): number | null {
+  const s = String(error || "");
+  const a = /Try again in (\d+) minutes\.$/.exec(s);
+  if (a) return Number(a[1]);
+  const b = /Try again in about (\d+) (minute|hour)\(s\)\.$/.exec(s);
+  if (b) return Number(b[1]) * (b[2] === "hour" ? 60 : 1);
+  return null;
+}
+
 // The text a failed TikTok/Facebook connect shows (toast + Connect modal). Build 10: never the
-// server's own words or a code — not live / can't reach keep their texts, anything else is
-// the generic "Couldn't connect. Try again."
-export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable">, t: RedesignT): string {
+// server's own words or a code — not live / can't reach / wait N minutes keep their texts,
+// anything else is the generic "Couldn't connect. Try again."
+export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable" | "error">, t: RedesignT): string {
   if (r.notLive) return t.rd_cm_not_live;
   if (r.unreachable) return t.rd_cm_cant_reach;
+  if ((r.error || "").includes("plan_expired")) return t.rd_cm_plan_ended;
+  const mins = cooldownMinutes(r.error);
+  if (mins !== null) return tpl(t.rd_cm_tt_cooldown, { n: mins });
   return t.rd_cm_conn_try_again;
 }
 
@@ -164,7 +178,7 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account };
     return { ok: true, account };
   } catch {
-    return { ok: false, error: "Can't reach the live server. Check your connection.", account, unreachable: true };
+    return { ok: false, error: "Can't connect right now. Check your internet and try again.", account, unreachable: true };
   }
 }
 

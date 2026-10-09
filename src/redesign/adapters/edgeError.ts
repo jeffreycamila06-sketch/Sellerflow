@@ -29,6 +29,8 @@ export async function readEdgeError(error: unknown, data: unknown): Promise<Edge
   // 1. A structured body delivered via `data` (no thrown error path).
   const d = data as BodyShape | null;
   if (d && typeof d.error === "string" && d.error) return { message: d.error, code: d.code };
+  // Build 10b: the seller self-delete answer carries a short code only ({ ok:false, code }).
+  if (d && typeof d.code === "string" && d.code) return { message: "", code: d.code };
 
   // 2. FunctionsHttpError carries the Response in `.context`. Read its JSON body
   //    (clone so we never consume a body another caller might read).
@@ -39,6 +41,7 @@ export async function readEdgeError(error: unknown, data: unknown): Promise<Edge
       if (body && typeof body.error === "string" && body.error) {
         return { message: body.error, code: body.code, status: ctx.status };
       }
+      if (body && typeof body.code === "string" && body.code) return { message: "", code: body.code, status: ctx.status };
     } catch {
       // body wasn't JSON — fall back to raw text
       try {
@@ -51,5 +54,6 @@ export async function readEdgeError(error: unknown, data: unknown): Promise<Edge
   // 3. Last resort: the error's own message, but never the generic wrapper alone.
   const msg = (error as { message?: string } | null)?.message;
   if (msg && msg !== GENERIC) return { message: msg };
-  return { message: msg ? `${GENERIC} (no error body returned)` : "Edge function call failed" };
+  // Build 10: plain words, never the wrapper / tool name.
+  return { message: "Action failed. Please try again." };
 }

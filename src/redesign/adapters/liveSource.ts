@@ -1,3 +1,4 @@
+import { hasFeature } from "./featureAccess";
 // LIVE SOURCE (Option E) — the single "Live source" control that replaces the 3
 // header chips. ONE active source at a time (TikTok / Facebook / Shopee / Instagram).
 //
@@ -13,11 +14,11 @@
 // ⚠️ Account total, Build 2 (sql/85): this flow's "type a name, connect, then save it" path
 // connects to a name that is NOT yet registered. It needs app_settings
 // account_live_unregistered_enforce OFF (missing / not 'true'), or that connect is refused.
-export const LIVE_SOURCE_EMAILS: string[] = [];
+// Build 10b: the list lives in the database (sql/112 feature "live_source"; empty today).
 
 export function liveSourcePreviewEnabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();
-  return e !== "" && LIVE_SOURCE_EMAILS.includes(e);
+  return e !== "" && hasFeature("live_source");
 }
 
 export type SourcePlatform = "TikTok" | "Facebook" | "Shopee" | "Instagram";

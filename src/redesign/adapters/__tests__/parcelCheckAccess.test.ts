@@ -9,6 +9,7 @@ vi.mock("../../../supabase", () => ({
 }));
 
 import { loadParcelCheckAccess, parcelCheckGate } from "../parcelCheck";
+import { setFeatureAccess } from "../featureAccess";
 
 beforeEach(() => { S.configured = true; S.rpc.mockReset(); });
 
@@ -35,9 +36,10 @@ describe("loadParcelCheckAccess", () => {
 });
 
 describe("parcelCheckGate — (allowlist OR DB) AND market shows Parcel Scan", () => {
-  it("allowlisted email → on (even when the DB says no)", () => {
+  it("preview flag (sql/112 parcel_check) → on (even when the access table says no)", () => {
+    setFeatureAccess({ parcel_check: true });
     expect(parcelCheckGate("ukaydaily1@gmail.com", "seller", false, false)).toBe(true);
-    expect(parcelCheckGate("  UKAYDAILY1@gmail.com ", "seller", false, false)).toBe(true);
+    setFeatureAccess(null);
     expect(parcelCheckGate("anyone@x.com", "admin", false, false)).toBe(true);
   });
   it("NOT allowlisted + DB true → on", () => {

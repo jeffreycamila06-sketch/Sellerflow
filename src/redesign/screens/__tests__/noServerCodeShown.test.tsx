@@ -4,7 +4,7 @@
 // Facebook/Instagram connect, Messenger receipt, Parcel Scan, admin broadcast translate.
 // The real adapters run against a mocked fetch carrying exactly what the server would send.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { ERR_CODES, ERR_TEMPLATES, decodeErr, sellerSafeWord } from "../../../lib/errCodes.js";
 import { SERVER_ONLY_CODES } from "../../../../server/errorCodes.js";
@@ -45,14 +45,15 @@ describe("TikTok connect toast (RedesignApp) and Connect modal", () => {
   it("every status × every code → only the app's own texts", async () => {
     for (const lang of LANGS) {
       const t = buildT(lang);
-      const allowed = new Set([t.rd_cm_not_live, t.rd_cm_cant_reach, t.rd_cm_conn_try_again]);
+      const allowed = new Set([t.rd_cm_not_live, t.rd_cm_cant_reach, t.rd_cm_conn_try_again, t.rd_cm_plan_ended]);
       for (const status of [400, 401, 403, 409, 429, 500, 502]) {
         for (const c of CODES) {
           serve(status, { success: false, error: c, ...(status === 409 ? { notLive: true } : {}) });
           const r = await connectPlatform("TikTok", { username: "shop" }, "s@x.com");
           const text = connectFailText(r, t);
           expect(text).not.toMatch(CODE);
-          expect(allowed.has(text)).toBe(true);
+          // Build 10b: or the cooldown sentence with its minutes (E41/E42)
+          expect(allowed.has(text) || /\d/.test(text) && text.startsWith(t.rd_cm_tt_cooldown.split("{n}")[0])).toBe(true);
         }
       }
     }
@@ -73,7 +74,7 @@ describe("TikTok connect toast (RedesignApp) and Connect modal", () => {
     render(<TProvider lang="en"><ConnectModal profile={profile} onClose={() => {}} onConnect={(p, d) => connectPlatform(p, d, "s@x.com")} /></TProvider>);
     fireEvent.change(document.querySelector("input") as HTMLInputElement, { target: { value: "shop" } });
     fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => /connect/i.test(b.textContent || "") && !/×/.test(b.textContent || ""))!);
-    await waitFor(() => expect(screen.getByText(buildT("en").rd_cm_conn_try_again)).toBeTruthy());
+    await waitFor(() => expect(document.querySelector("[style*='var(--danger)']")).toBeTruthy());
     expect(document.querySelector("[style*='var(--danger)']")?.textContent || "").not.toMatch(CODE);
   });
   it.each(CODES)("Connect modal, Shopee tab, server sends %s → no code on screen", async (c) => {

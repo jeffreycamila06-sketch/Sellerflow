@@ -34,7 +34,7 @@ describe("Bulgarian (bg) — coverage + safety", () => {
     expect(bg.rd_nav_live).toBe("Лайв");
     expect(bg.rd_set_language).toBe("Език");
     // deliberate English-in-all-langs stays English in bg too:
-    expect(bg.rd_sup_g5_body).toBe(REDESIGN_STRINGS.en.rd_sup_g5_body);
+    expect(bg.rd_sup_g5_body).not.toBe(REDESIGN_STRINGS.en.rd_sup_g5_body); // Build 10b: g5 guide now translated
   });
 
   it("buildT('bg'): rd_* keys are Bulgarian; production-only keys fall back to ENGLISH (never undefined)", () => {

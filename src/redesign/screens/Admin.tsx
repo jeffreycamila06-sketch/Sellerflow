@@ -329,12 +329,12 @@ function LeaseLine({ lease, serverNow }: { lease: unknown; serverNow: unknown })
     <div data-testid="pm-lease" style={{ fontSize: 11, marginTop: 4, fontFamily: mono, color: "var(--text-muted)" }}>
       on duty: {String(l.leader_label ?? "—")}{since ? ` (since ${since})` : ""}
       {l.leader_id ? <span data-testid="pm-lease-leader-seen" style={{ color: leaderAge != null && leaderAge > 180 ? red : undefined }}> seen {leaseAgo(leaderAge)}</span> : null}
-      {leaderDegraded ? <span data-testid="pm-lease-degraded" style={{ color: red, fontWeight: 800 }}> DEGRADED</span> : null}
+      {leaderDegraded ? <span data-testid="pm-lease-degraded" style={{ color: red, fontWeight: 800 }}> Needs attention</span> : null}
       {" · "}
       {l.standby_id
         ? <>
             <span data-testid="pm-lease-standby" style={{ color: standbyStale ? red : undefined }}>standby: {String(l.standby_label ?? "?")} seen {leaseAgo(standbyAge)}</span>
-            <span data-testid="pm-lease-ready" style={{ color: readiness.ready ? undefined : red }}>{readiness.ready ? ` · ready${readiness.why ? ` (${readiness.why})` : ""}` : ` · NOT READY (${readiness.why})`}</span>
+            <span data-testid="pm-lease-ready" style={{ color: readiness.ready ? undefined : red }}>{readiness.ready ? " · ready" : " · Needs attention"}</span>
           </>
         : <span data-testid="pm-lease-standby">no standby</span>}
     </div>
@@ -365,7 +365,7 @@ function CheckQueueBlock() {
       <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>Store/phone check queue {String(st.enabled) === "true" ? "· ON" : "· OFF"}</div>
       {senderPoisoned && (
         <div data-testid="pm-sender-poisoned" style={{ fontSize: 11, fontWeight: 800, color: "var(--danger, #dc2626)", marginTop: 4 }}>
-          ⚠️ Check sender {String(st.sender_phone ?? "")} is RESTRICTED — verdicts PAUSED. Swap parcel_check_sender_phone to a clean account.
+          ⚠️ Checker: Needs attention — the check number {String(st.sender_phone ?? "")} can't be used, so checks are paused. Change it to another number.
         </div>
       )}
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontFamily: mono }}>
@@ -394,6 +394,7 @@ type ExportMonitorRow = {
 const exportNum = (n: unknown): string => (Number(n) || 0).toLocaleString("en-US");
 const exportDay = (d: string | null): string => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(d ?? ""); return m ? `${m[1]}/${m[2]}` : "—"; };
 function ExportMonitorBlock() {
+  const t = useT();
   const [st, setSt] = useState<ExportMonitorRow[] | "loading" | "err">("loading");
   const [nonce, setNonce] = useState(0);
   useEffect(() => {
@@ -415,21 +416,21 @@ function ExportMonitorBlock() {
   const hcell: CSSProperties = { fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textAlign: "right", padding: "0 6px 6px", whiteSpace: "nowrap" };
   const rows = Array.isArray(st) ? st : [];
   const storeOf = (r: ExportMonitorRow) => r.seller_store || r.seller_email || "—";
-  const noLink = <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: "var(--text-muted)", border: "1px solid var(--border-strong)", borderRadius: 999, padding: "0 6px" }}>no shop link</span>;
+  const noLink = <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: "var(--text-muted)", border: "1px solid var(--border-strong)", borderRadius: 999, padding: "0 6px" }}>{t.rd_adm_exp_no_link}</span>;
   return (
     <div data-testid="pm-exports" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--text)" }}>Exports per seller</div>
+        <div style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--text)" }}>{t.rd_adm_exp_title}</div>
         <button type="button" data-testid="pm-exports-refresh" onClick={() => { setSt("loading"); setNonce((n) => n + 1); }}
-          style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>Refresh</button>
+          style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_dash_refresh}</button>
       </div>
-      {st === "loading" ? <div style={muted}>Loading…</div>
-        : st === "err" ? <div style={muted}>Couldn't load exports</div>
-        : !rows.length ? <div style={muted}>No exports yet</div>
+      {st === "loading" ? <div style={muted}>{t.rd_adm_pm_loading}</div>
+        : st === "err" ? <div style={muted}>{t.rd_adm_exp_load_err}</div>
+        : !rows.length ? <div style={muted}>{t.rd_adm_exp_none}</div>
         : (
           <>
             <div data-testid="pm-exports-summary" style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontFamily: mono }}>
-              This month {exportNum(rows.reduce((a, r) => a + (Number(r.this_month) || 0), 0))} · Last month {exportNum(rows.reduce((a, r) => a + (Number(r.last_month) || 0), 0))} · {rows.length} sellers
+              {tpl(t.rd_adm_exp_summary, { a: exportNum(rows.reduce((a, r) => a + (Number(r.this_month) || 0), 0)), b: exportNum(rows.reduce((a, r) => a + (Number(r.last_month) || 0), 0)), n: rows.length })}
             </div>
             {narrow ? (
               <div style={{ marginTop: 6 }}>
@@ -443,7 +444,7 @@ function ExportMonitorBlock() {
                       <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{exportNum(r.this_month)}</span>
                     </div>
                     <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2, ...ell }}>
-                      {r.seller_plan || "—"} · last month {exportNum(r.last_month)} · 7d {exportNum(r.last_7d)} · last {exportDay(r.last_export_day)} · Pickup {r.pickup_status ? "✓" : "—"}
+                      {tpl(t.rd_adm_exp_line, { plan: r.seller_plan || "—", last: exportNum(r.last_month), d7: exportNum(r.last_7d), day: exportDay(r.last_export_day), pickup: r.pickup_status ? "✓" : "—" })}
                     </div>
                   </div>
                 ))}
@@ -455,13 +456,13 @@ function ExportMonitorBlock() {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th style={{ ...hcell, textAlign: "left" }}>Seller</th>
-                    <th style={{ ...hcell, textAlign: "left" }}>Plan</th>
-                    <th style={hcell}>This month</th>
-                    <th style={hcell}>Last month</th>
-                    <th style={hcell}>7 days</th>
-                    <th style={hcell}>Last export</th>
-                    <th style={hcell}>Pickup</th>
+                    <th style={{ ...hcell, textAlign: "left" }}>{t.rd_adm_exp_h_seller}</th>
+                    <th style={{ ...hcell, textAlign: "left" }}>{t.rd_adm_exp_h_plan}</th>
+                    <th style={hcell}>{t.rd_adm_exp_h_this}</th>
+                    <th style={hcell}>{t.rd_adm_exp_h_last}</th>
+                    <th style={hcell}>{t.rd_adm_exp_h_7d}</th>
+                    <th style={hcell}>{t.rd_adm_exp_h_lastexp}</th>
+                    <th style={hcell}>{t.rd_adm_exp_h_pickup}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -895,7 +896,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     try {
       const r = await fn();
       if (r.ok) onOk?.();
-      else notify(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }), "err");
+      else notify(tpl(t.rd_adm_failed, { label }), "err");
     } finally { setAnnBusy(false); }
   };
   // Hard delete (trash) — confirm first, then remove the row entirely. RLS
@@ -949,9 +950,9 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     try {
       const r = await fn();
       if (r.ok) { onOk?.(); onChanged?.(); notify(tpl(t.rd_adm_ok, { label, email }), "ok"); } // refresh real list
-      else notify(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }), "err");
-    } catch (e) {
-      notify(tpl(t.rd_adm_failed, { label, err: e instanceof Error ? e.message : t.rd_adm_err }), "err");
+      else notify(tpl(t.rd_adm_failed, { label }), "err");
+    } catch {
+      notify(tpl(t.rd_adm_failed, { label }), "err");
     } finally {
       setBusy(false); // never leave the panel stuck (was the bug blocking later actions)
     }
@@ -979,9 +980,9 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
       try {
         const r = await actions.removeUser(u.email);
         if (r.ok) { onChanged?.(); notify(tpl(t.rd_adm_del_ok, { email: u.email }), "ok"); }
-        else notify(tpl(t.rd_adm_failed, { label: t.rd_adm_act_delete, err: r.error || t.rd_adm_err }), "err");
-      } catch (e) {
-        notify(tpl(t.rd_adm_failed, { label: t.rd_adm_act_delete, err: e instanceof Error ? e.message : t.rd_adm_err }), "err");
+        else notify(tpl(t.rd_adm_failed, { label: t.rd_adm_act_delete }), "err");
+      } catch {
+        notify(tpl(t.rd_adm_failed, { label: t.rd_adm_act_delete }), "err");
       } finally { setBusy(false); }
     })();
   };
@@ -1207,7 +1208,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                     <div style={{ border: "1px solid var(--danger)", background: "var(--surface-2)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
                       {/* U9 — a 403 "forbidden" means the caller isn't admin: retrying just 403s
                           again, so show a distinct message and hide the (useless) Retry. */}
-                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--danger)", marginBottom: 8, lineHeight: 1.45 }}>{annErr === "forbidden" ? t.rd_ann_forbidden : tpl(t.rd_ann_translate_fail, { err: annErr })}</div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--danger)", marginBottom: 8, lineHeight: 1.45 }}>{annErr === "forbidden" ? t.rd_ann_forbidden : t.rd_ann_translate_fail}</div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {annErr !== "forbidden" && <button disabled={annBusy || !annMsg.trim()} onClick={() => void startTranslate()} style={{ ...actBtn, opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_retry}</button>}
                         <button disabled={annBusy || !annMsg.trim()} onClick={sendEnglishOnly} style={{ ...actBtn, opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_english_only}</button>

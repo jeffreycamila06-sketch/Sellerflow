@@ -79,7 +79,7 @@ describe("Dashboard 🛒 badge", () => {
     const row = container.querySelector(".sfl-comm-row")!;
     // DOM order: the badge renders after the comment text (bottom action row),
     // immediately before the Enterprise button — not up in the name header.
-    expect(row.textContent).toMatch(/mine.*🛒3.*Enterprise/s);
+    expect(row.textContent).toMatch(/mine.*🛒3.*Type price/s); // Build 10b: Enterprise button reads "Type price"
   });
 
   it("reactive: a new order (updated counts map) bumps the badge on rerender", () => {

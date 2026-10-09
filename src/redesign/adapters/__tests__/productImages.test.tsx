@@ -148,7 +148,7 @@ describe("switch ON", () => {
     await screen.findByTestId("prd-thumb-7");
     fireEvent.click(screen.getAllByText("Edit")[1]);
     fireEvent.change(screen.getByTestId("prd-pic-input"), { target: { files: [new File(["p"], "p.jpg", { type: "image/jpeg" })] } });
-    expect((await screen.findByTestId("prd-pic-err")).textContent).toContain("400 KB");
+    expect((await screen.findByTestId("prd-pic-err")).textContent).toBe("This picture is too big. Pick a smaller one."); // Build 10b wording
     expect(h.bucket.upload).not.toHaveBeenCalled();
   });
   it("a failed upload says so and keeps the old state", async () => {
@@ -256,7 +256,7 @@ describe("switch ON — picture in the ADD form (A1)", () => {
     expect(screen.queryByTestId("prd-pic-preview")).toBeNull();
     compressMock.mockResolvedValueOnce({ ok: false, reason: "too_big" });
     fireEvent.change(screen.getByTestId("prd-pic-input"), { target: { files: [new File(["p"], "p.jpg")] } });
-    expect((await screen.findByTestId("prd-pic-err")).textContent).toContain("400 KB");
+    expect((await screen.findByTestId("prd-pic-err")).textContent).toBe("This picture is too big. Pick a smaller one."); // Build 10b wording
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(saveMock()).toHaveBeenCalled());
     await flush();

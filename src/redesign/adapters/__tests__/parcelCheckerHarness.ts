@@ -46,7 +46,7 @@ export type BootOpts = {
 };
 
 export function bootWorker(opts: BootOpts = {}) {
-  const src = readFileSync("chrome-extension/background.js", "utf8");
+  const src = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/background.js`, "utf8");
   const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },

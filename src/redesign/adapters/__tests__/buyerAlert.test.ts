@@ -9,7 +9,7 @@ const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: { rpc, from } }));
 
 import {
-  BUYER_ALERT_DATA_OWNER_EMAIL, BUYER_ALERT_PUBLIC, BUYER_ALERT_REFRESH_MS,
+  BUYER_ALERT_PUBLIC, BUYER_ALERT_REFRESH_MS,
   buildViews, buyerAlertGate, daysLeft, loadBuyerAlertAccess, normHandle, parseLookup, taipeiDate, useBuyerAlert, viewFor,
   type BuyerRecord,
 } from "../buyerAlert";
@@ -207,8 +207,8 @@ describe("sql/72 contract", () => {
     expect(code).toContain("grant execute on function public.buyer_alert_can_use() to authenticated");
   });
   it("no DROP statements", () => { expect(code).not.toMatch(/\bdrop\b/); });
-  it("data owner email matches the client constant; explicit owner filter", () => {
-    expect(code).toContain(`'${BUYER_ALERT_DATA_OWNER_EMAIL}'`);
+  it("test-phase data owner (server-side only — Build 10b took the email out of the app); explicit owner filter", () => {
+    expect(code).toContain("'googletest@gmail.com'");
     expect(code).toContain("where t.user_id = v_owner");
   });
   it("never returns phone numbers or recipient names", () => {

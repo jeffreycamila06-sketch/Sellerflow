@@ -5,7 +5,7 @@
 // NEVER the raw server text, while a KNOWN-SAFE guard code (protected_master) still
 // surfaces its real message. Admin paths are untouched (they don't use the gate).
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import DeleteAccount from "../DeleteAccount";
 import { TProvider, buildT } from "../../i18n";
 import { isSafeDeleteCode, SAFE_DELETE_CODES } from "../../adapters/adminDelete";
@@ -51,12 +51,21 @@ describe("DeleteAccount — self-delete disclosure containment", () => {
     expect(screen.queryByText(/user_fn_|unexpected_failure|deleteUser failed/i)).toBeNull();
   });
 
-  it("KNOWN-SAFE guard code (protected_master) → surfaces its REAL message", async () => {
-    const guardMsg = "Master accounts can't self-delete — please contact support.";
-    renderWith(async () => ({ ok: false, error: guardMsg, code: "protected_master" }));
-    await waitFor(() => expect(screen.getByText(new RegExp("Master accounts can't self-delete"))).toBeTruthy());
-    // and NOT the generic string
-    expect(screen.queryByText(new RegExp(t.rd_del_generic.slice(0, 20)))).toBeNull();
+  it("protected_master / protected_admin → the 'message us' text, never the server's own words (Build 10)", async () => {
+    for (const code of ["protected_master", "protected_admin"]) {
+      renderWith(async () => ({ ok: false, error: "Master accounts can't self-delete — please contact support.", code }));
+      await waitFor(() => expect(screen.getByText(new RegExp(t.rd_del_protected.slice(0, 25)))).toBeTruthy());
+      expect(screen.queryByText(/Master accounts can't self-delete/)).toBeNull();
+      expect(screen.queryByText(new RegExp(t.rd_del_generic.slice(0, 20)))).toBeNull();
+      cleanup();
+    }
+  });
+  it("any other code (delete_failed, not_found, self_delete) → the generic text", async () => {
+    for (const code of ["delete_failed", "not_found", "self_delete"]) {
+      renderWith(async () => ({ ok: false, code }));
+      await waitFor(() => expect(screen.getByText(new RegExp(t.rd_del_generic.slice(0, 20)))).toBeTruthy());
+      cleanup();
+    }
   });
 
   it("rd_del_generic is filled in all 7 languages", () => {

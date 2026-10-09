@@ -80,9 +80,8 @@ describe("Receipt format", () => {
 });
 
 describe("built-in text = the server's", () => {
-  it("en / fil / zh / zh-TW placeholders match SOLDOUT_DEFAULTS; others = English", () => {
-    for (const l of ["en", "fil", "zh", "zh-TW"] as const) expect(buildT(l).rd_rc_so_default).toBe(SOLDOUT_DEFAULTS[l].plain);
-    for (const l of ["vi", "th", "id", "bg"]) expect(buildT(l).rd_rc_so_default).toBe(SOLDOUT_DEFAULTS.en.plain);
+  it("every language's placeholder matches SOLDOUT_DEFAULTS (Build 10b: vi/th/id/bg have their own text)", () => {
+    for (const l of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as const) expect(buildT(l).rd_rc_so_default).toBe(SOLDOUT_DEFAULTS[l].plain);
   });
 });
 

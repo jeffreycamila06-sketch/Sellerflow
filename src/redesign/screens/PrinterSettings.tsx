@@ -80,12 +80,12 @@ export default function PrinterSettings({
     setBtScanning(true); setBtMsg("");
     const r = await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
     setBtScanning(false);
-    if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.message || ""); }
+    if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.ok === false ? t.rd_ps_scan_unavail : ""); } // never the raw printer text
     else setBtMsg(t.rd_ps_scan_unavail);
   }
   async function selectBt(p: BluetoothPrinterDevice) {
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: p.transport });
-    setBtSaved(r?.savedPrinter || p); setBtMsg(r?.message || t.rd_ps_bt_saved);
+    setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
   }
   async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); }
   async function testBt() {
