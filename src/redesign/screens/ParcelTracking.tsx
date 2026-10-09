@@ -66,6 +66,16 @@ function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t:
       </span>
     );
   }
+  // Build 17: still at the store after the pickup deadline → 7-11 sends it back within a
+  // day or two (it only flips the status to returned later). Display only, orange.
+  if (c.kind === "days" && c.days !== null && c.days < 0) {
+    return (
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--warn)", ...ellipsis, display: "block" }}
+        data-testid="pt-left" data-urgent="1" data-returning="1">
+        {t.rd_pt_returning}
+      </span>
+    );
+  }
   let label: string;
   let urgent = false;
   if (c.kind === "done") label = t.rd_pt_left_done;
@@ -74,7 +84,6 @@ function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t:
   else {
     urgent = c.urgent;
     if (c.days === null) label = t.rd_pt_no_deadline;
-    else if (c.days < 0) label = t.rd_pt_overdue;
     else if (c.days === 0) label = t.rd_pt_due_today;
     else if (c.days === 1) label = t.rd_pt_day_left;
     else label = tpl(t.rd_pt_days_left, { n: c.days });

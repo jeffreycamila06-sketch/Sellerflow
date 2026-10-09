@@ -75,7 +75,7 @@ const PINS: Record<string, { en: string; fil: string }> = {
   rd_ps2_orphan_title: { en: "{n} parcels started exporting at {time}, but we don't know if the file was uploaded", fil: "{n} parcel ang nagsimulang i-export nang {time}, pero hindi namin alam kung na-upload ang file" },
   rd_ps2_pending_q: { en: "{n} parcel(s) are still being checked. Exported parcels won't be checked anymore. Wait a moment, or export anyway?", fil: "{n} parcel ang sinusuri pa. Hindi na susuriin ang mga na-export na parcel. Maghintay sandali, o i-export na rin?" },
   rd_ps2_recheck_q: { en: "Check this parcel again?", fil: "I-check ulit ang parcel na 'to?" },
-  rd_ps2_restricted: { en: "number can't be used", fil: "hindi puwede ang number" },
+  rd_ps2_restricted: { en: "Restricted", fil: "Restricted" },
   rd_ps2_scan_clearer: { en: "Try a clearer photo of the parcel slip.", fil: "Subukan ang mas malinaw na picture ng parcel slip." },
   rd_ps2_sub: { en: "Snap handwritten parcel slips — we fill in the details", fil: "Picturan ang sulat-kamay na parcel slip — kami na ang mag-fill in" },
   rd_ps2_undo_failed: { en: "Undo failed. Please try again.", fil: "Hindi na-undo. Subukan ulit." },

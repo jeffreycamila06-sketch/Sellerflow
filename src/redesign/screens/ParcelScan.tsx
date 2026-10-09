@@ -1502,7 +1502,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     </div>
                   )}
                   {/* Verdict labels shown TOGETHER with the row's glowing border above:
-                      ⚠️ Full (+ orange border), 🚫 Restricted · until <date> (+ red border),
+                      ⚠️ Full (+ orange border), 🚫 Restricted until <date> (+ red border),
                       ✅ Buyer OK (no border — a passing check is clean). FAIL-SAFE: only
                       explicit 'full'/'restricted'/'ok' render; null/'unknown' stay quiet. */}
                   {r.storeFullStatus === "full" && (
@@ -1510,7 +1510,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   )}
                   {r.phoneCheckStatus === "restricted" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-badge-restricted">
-                      🚫 {t.rd_ps2_restricted}{r.phoneRestrictedUntil ? ` · ${tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) })}` : ""}
+                      🚫 {r.phoneRestrictedUntil ? tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) }) : t.rd_ps2_restricted}
                     </div>
                   )}
                   {/* GREEN ✅ only when FULLY verified: phone ok AND store resolved OPEN.
