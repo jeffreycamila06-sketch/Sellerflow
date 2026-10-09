@@ -271,7 +271,7 @@ export default function Dashboard({
   onDismissSoldOut?: (code: string) => void;
   // Rules 1/3 per-row badge (keyed by commentKey = c.id): duplicate / soldout.
   // Display-only — set by the RedesignApp auto seam, never touches dedup.
-  autoBadges?: Record<string, "duplicate" | "soldout">;
+  autoBadges?: Record<string, "duplicate" | "soldout" | "given">; // Build 13: "given" = a waitlist Give went through
   // "Same price for all items" — persistent chip while ON (visible without scrolling);
   // ✕ = same as turning it OFF in Settings: instant off + toast (RedesignApp), the price
   // stays remembered. `samePrice` is the ACTIVE value (null when OFF).
@@ -1025,8 +1025,8 @@ export default function Dashboard({
                     {/* Rules 1/2/3 auto badge (display-only, keyed by commentKey = c.id):
                         a duplicate / sold-out comment that created NO order. */}
                     {autoBadges[c.id] && (
-                      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: autoBadges[c.id] === "duplicate" ? "var(--text-muted)" : "var(--danger)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>
-                        {autoBadges[c.id] === "duplicate" ? t.rd_auto_badge_duplicate : t.rd_auto_badge_soldout}
+                      <span data-testid={`auto-badge-${autoBadges[c.id]}`} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: autoBadges[c.id] === "duplicate" ? "var(--text-muted)" : autoBadges[c.id] === "given" ? "var(--ok)" : "var(--danger)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>
+                        {autoBadges[c.id] === "duplicate" ? t.rd_auto_badge_duplicate : autoBadges[c.id] === "given" ? t.rd_auto_badge_given : t.rd_auto_badge_soldout}
                       </span>
                     )}
                   </div>

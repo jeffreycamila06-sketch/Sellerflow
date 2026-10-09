@@ -826,6 +826,7 @@ const RAW: Record<string, Row> = {
   // Feed row badges (Rules 1/2/3) + the manual sold-out override confirm.
   rd_auto_badge_duplicate: { en: "Duplicate", fil: "Duplicate", zh: "重复", "zh-TW": "重複", vi: "Trùng", th: "ซ้ำ", id: "Duplikat", bg: "Дубликат" },
   rd_auto_badge_soldout: { en: "Sold out", fil: "Ubos na", zh: "已售罄", "zh-TW": "已售完", vi: "Hết hàng", th: "ขายหมด", id: "Habis", bg: "Изчерпано" },
+  rd_auto_badge_given: { en: "Given", fil: "Naibigay", zh: "已给予", "zh-TW": "已給予", vi: "Đã giao", th: "ให้แล้ว", id: "Diberikan", bg: "Дадено" }, // Build 13: waitlist Give done
   rd_auto_manual_soldout_confirm: { en: "{code} is sold out. Continue anyway?", fil: "Ubos na ang {code}. Ituloy pa rin?", zh: "{code} 已售罄。仍要继续吗？", "zh-TW": "{code} 已售完。仍要繼續嗎？", vi: "{code} đã hết hàng. Vẫn tiếp tục?", th: "{code} ขายหมดแล้ว ดำเนินการต่อหรือไม่?", id: "{code} sudah habis. Tetap lanjutkan?", bg: "{code} е изчерпан. Да продължа ли все пак?" },
   rd_set_appearance: { en: "APPEARANCE", fil: "ITSURA", zh: "外观", "zh-TW": "外觀", vi: "GIAO DIỆN", th: "ลักษณะ", id: "TAMPILAN", bg: "ВЪНШЕН ВИД" },
   rd_set_theme: { en: "Theme", fil: "Tema", zh: "主题", "zh-TW": "主題", vi: "Giao diện", th: "ธีม", id: "Tema", bg: "Тема" },

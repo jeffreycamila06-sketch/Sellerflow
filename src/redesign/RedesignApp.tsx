@@ -450,7 +450,7 @@ export default function RedesignApp() {
   // RULE 1/2/3 feed badges — display-only, keyed by commentKey (c.id): a comment that
   // was a duplicate / sold-out / short gets a chip next to MINE. NEVER touches
   // commentKey/dedup/toRedesignComment — a parallel map like `printed`.
-  const [autoBadges, setAutoBadges] = useState<Record<string, "duplicate" | "soldout">>({});
+  const [autoBadges, setAutoBadges] = useState<Record<string, "duplicate" | "soldout" | "given">>({});
 
   // Dashboard account-picker selection (declared before useLiveFeed so the feed can
   // scope comments to the chosen account). registeredAccountsFor is pure.
@@ -1962,6 +1962,10 @@ export default function RedesignApp() {
         wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return;
       }
       setWlNote(null);
+      // Build 13 (Fix 1): the buyer's comment that showed "Sold out" now shows "Given" (display
+      // only — a memory badge like "Sold out"). Matched by the line row's Facebook comment id.
+      const fed = comments.find((x) => x.platform === "Facebook" && !!x.msgId && x.msgId === r.commentId);
+      if (fed) setAutoBadges((b) => (b[fed.id] === "soldout" ? { ...b, [fed.id]: "given" } : b));
       setWlBusy(r.id);
       const snap = snapshotFromCreate(c, order);
       reprintByIdRef.current.set(`wl:${r.commentId}`, snap);
