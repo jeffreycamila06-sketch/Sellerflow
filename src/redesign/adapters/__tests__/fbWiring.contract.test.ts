@@ -25,7 +25,7 @@ describe("Dashboard — FB dropdown: byte-identical gate off, real picker on", (
     expect(dash).toContain("onPickFB");
     expect(dash).toContain("onConnectFB");
     expect(dash).toContain("onManageFB");
-    expect(dash).toContain("connLabel(fbConnected, fbConnecting)"); // real Connect button
+    expect(dash).toContain("<ConnectButton connected={fbConnected} connecting={fbConnecting} onConnect={() => onConnectFB?.()}"); // real Connect button (Build 13: tap feedback)
   });
   it("fbConnectEnabled defaults OFF (non-allowlisted sellers get the gate)", () => {
     expect(dash).toMatch(/fbConnectEnabled = false/);

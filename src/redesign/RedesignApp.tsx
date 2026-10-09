@@ -1346,10 +1346,9 @@ export default function RedesignApp() {
     // A different Page than the connected one: stop the connected Page first, then connect.
     if (fbChip.action.kind === "switch") {
       const { stopPageId, page } = fbChip.action;
-      void fbDisconnect(stopPageId).catch(() => null).then(() => commitLiveConnect({ platform: "Facebook", pageId: page.pageId, scopeKey: fbPageScopeKey(page) }));
-      return;
+      return fbDisconnect(stopPageId).catch(() => null).then(() => commitLiveConnect({ platform: "Facebook", pageId: page.pageId, scopeKey: fbPageScopeKey(page) }));
     }
-    commitLiveConnect({ platform: "Facebook", pageId: selectedPage.pageId, scopeKey: fbScopeKey });
+    return commitLiveConnect({ platform: "Facebook", pageId: selectedPage.pageId, scopeKey: fbScopeKey });
   };
   // The socket-side FB connect (mirror doShopeeConnect): ensureJoined so a FB-only seller's
   // socket is in the room before the poller relays, POST /fb/connect, toast the outcome.
@@ -1381,7 +1380,7 @@ export default function RedesignApp() {
     if (igEff) { setIgOff(true); if (selectedIg) void igDisconnect(selectedIg.igUserId); return; }
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
     if (!selectedIg) { setChanBack("dashboard"); setScreen("igaccounts"); return; }
-    commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
+    return commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
   };
   const doIgConnect = async (igUserId: string) => {
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
@@ -1484,7 +1483,7 @@ export default function RedesignApp() {
   const commitLiveConnect = (target: LiveConnectTarget) => {
     setLiveConnectPlatform(null);
     setActiveSource(target.platform);
-    void runSessionAware(target);
+    return runSessionAware(target); // Build 13: the Connect button waits on it (look only)
   };
   // Confirmed platform switch → new session (startSession reuses the running window
   // length; born-ended fix makes it safe — no endSession first) → reset board (#1) →
@@ -2335,7 +2334,7 @@ export default function RedesignApp() {
                  Non-owner: sessionV2Owner=false → Dashboard renders nothing extra. */
               sessionV2Owner={sessionV2}
               onEndSession={sessionV2 ? () => setEndConfirm(true) : undefined}
-              onConnectTT={() => void doConnect("TikTok")}
+              onConnectTT={() => doConnect("TikTok")}
               onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
               /* Option E — Live Source single button (owner-gated). Off = classic chips. */
               liveSourceMode={liveSourceMode}
