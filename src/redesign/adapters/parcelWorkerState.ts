@@ -33,12 +33,12 @@ export function describeWorkerState(raw: unknown, now: number): { level: WorkerL
   if (typeof w.at !== "number") return null;
   const silentFor = now - w.at;
   if (silentFor > WORKER_SILENT_MS) {
-    return { level: "bad", text: `worker v${w.v ?? "?"} SILENT — last heartbeat ${ago(w.at, now)} (laptop asleep / extension stopped?)` };
+    return { level: "bad", text: `Checker: Needs attention — no signal ${ago(w.at, now)}` };
   }
   // 1.14.4: a recent verdict never hides a definitive latest miss — same rule as the worker
   const latestStoreFailed = typeof w.lastStoreMissAt === "number" && w.lastStoreMissAt > (typeof w.lastStoreVerdictAt === "number" ? w.lastStoreVerdictAt : 0);
   const emapShown = w.emap === "ok" && latestStoreFailed ? "degraded" : w.emap;
-  const parts = [`sfl ${w.sfl ?? "—"}`, `myship ${w.myship ?? "—"} (phone ${ago(w.lastPhoneVerdictAt, now)})`, `emap ${emapShown ?? "—"} (store ${ago(w.lastStoreVerdictAt, now)}${latestStoreFailed ? `, last check FAILED ${ago(w.lastStoreMissAt, now)}` : ""}${w.emapDomain ? ` · ${w.emapDomain}` : ""})`];
   const level = [levelOf(w.sfl), levelOf(w.myship), levelOf(emapShown)].reduce(worst, "ok" as WorkerLevel);
-  return { level, text: `worker v${w.v ?? "?"} · ${parts.join(" · ")} · heartbeat ${ago(w.at, now)}` };
+  // Build 10: plain words only — no tab, partner-system or setting names in the bundle.
+  return { level, text: level === "ok" ? "Checker: OK" : "Checker: Needs attention" };
 }

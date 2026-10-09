@@ -140,7 +140,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [files, setFiles] = useState<File[]>([]);
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [scanErr, setScanErr] = useState("");
+  const [, setScanErr] = useState(""); // kept for state flow; the raw reason is never shown
   const [form, setForm] = useState<FormState>(emptyForm);
   // "Buyer has no social handle" — the deliberate per-parcel escape hatch. NEVER persisted
   // (no localStorage) so skipping is a per-parcel choice, not a habit: it resets on every
@@ -1175,7 +1175,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         {phase === "error" && (
           <div style={{ ...card, borderColor: "var(--danger)" }} data-testid="ps-error">
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>{t.rd_ps2_err_scan}</div>
-            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3, fontFamily: mono }}>{scanErr}</div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps2_scan_clearer}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={() => void scanOne(files, idx)} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, cursor: "pointer" }} data-testid="ps-retry">{t.rd_ps2_retry}</button>
               <button onClick={advance} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-skip-err">{t.rd_ps2_skip}</button>
@@ -1265,7 +1265,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {t.rd_ps2_no_handle}
                 </label>
               </div>
-              {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
+              {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save}</div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
                 {editing
@@ -1316,7 +1316,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 <button data-batch={o.batchId} onClick={onPutBackClick} disabled={!!orphanBusy} style={{ flex: 1, padding: "9px 10px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: orphanBusy ? "default" : "pointer" }} data-testid="ps-orphan-putback">↩ {t.rd_ps2_orphan_putback}</button>
                 <button data-batch={o.batchId} onClick={onSentClick} disabled={!!orphanBusy} style={{ flex: 1, padding: "9px 10px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, fontSize: 12.5, cursor: orphanBusy ? "default" : "pointer" }} data-testid="ps-orphan-sent">✓ {t.rd_ps2_orphan_sent}</button>
               </div>
-              {orphanMsg?.batchId === o.batchId && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.5 }} data-testid="ps-orphan-msg">{orphanMsg.key === "in_progress" ? t.rd_ps2_in_progress : <>{t.rd_ps2_undo_failed} <span style={{ fontFamily: mono }}>{orphanMsg.err}</span></>}</div>}
+              {orphanMsg?.batchId === o.batchId && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.5 }} data-testid="ps-orphan-msg">{orphanMsg.key === "in_progress" ? t.rd_ps2_in_progress : t.rd_ps2_undo_failed}</div>}
             </div>
           ))}
         </div>
@@ -1333,7 +1333,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 || frozen.blocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 || frozen.blocked ? "default" : "pointer" }}
             data-testid="ps-export-btn"
           >📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
-          {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-export-err">{t.rd_ps2_x_failed} <span style={{ fontFamily: mono }}>{exportErr}</span></div>}
+          {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-export-err">{t.rd_ps2_x_failed}</div>}
           {/* Honest failure on the phone (Web Share unsupported/failed) — point to Safari.
               We never fall back to the blob no-op, so rows are NOT marked exported here. */}
           {mobileExportFail && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 11px", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-export-appfail">{t.rd_ps2_x_app_fail}</div>}
@@ -1342,7 +1342,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           {lastExportBatch && (
             <button onClick={askUndo} style={{ width: "100%", marginTop: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="ps-undo-btn">↩ {tpl(t.rd_ps2_undo_btn, { n: String(lastExportBatch.ids.length) })}</button>
           )}
-          {undoErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-undo-err">{t.rd_ps2_undo_failed} <span style={{ fontFamily: mono }}>{undoErr}</span></div>}
+          {undoErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-undo-err">{t.rd_ps2_undo_failed}</div>}
           {undoMsg && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-undo-refused">{undoMsg === "not_latest" ? t.rd_ps2_undo_not_latest : t.rd_ps2_in_progress}</div>}
           {deliverIssue === "put_back" && <div style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "var(--danger)", borderRadius: 10, padding: "10px 12px", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-put-back-warn">⛔ {t.rd_ps2_put_back_warn}</div>}
           {deliverIssue === "unconfirmed" && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--warn, #b45309)", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-unconfirmed">{t.rd_ps2_unconfirmed}</div>}
@@ -1516,8 +1516,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       : t.rd_ps2_delete_row_q}
             </div>
             {confirm.kind === "mode" && modeErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-mode-err">{t.rd_ps2_mode_err}</div>}
-            {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
-            {confirm.kind === "export" && exportPrep === "error" && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-prebuild-err">{t.rd_ps2_x_failed} <span style={{ fontFamily: mono }}>{exportErr}</span></div>}
+            {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err}</div>}
+            {confirm.kind === "export" && exportPrep === "error" && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-prebuild-err">{t.rd_ps2_x_failed}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button onClick={closeConfirm} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{confirm.kind === "pending" ? t.rd_ps2_pending_wait : t.rd_ps2_cancel}</button>
               {confirm.kind === "mode"

@@ -27,7 +27,7 @@ export function checkDeleteAllowed(callerUserId: string, target: DeleteTarget): 
   const norm = (s: string | null | undefined) => String(s ?? "").trim().toLowerCase();
 
   if (!target.authUserId) {
-    return { allowed: false, code: "not_found", error: "No account found for that email. Use ghost cleanup for profile-less accounts." };
+    return { allowed: false, code: "not_found", error: "No account with that email. Try 'Clean up empty accounts'." };
   }
   // HARD GUARD 1 — never delete yourself.
   if (target.authUserId === callerUserId) {
@@ -67,10 +67,10 @@ export function isAlreadyDeletedError(err: { status?: number; code?: string; mes
 export function checkSelfDeleteAllowed(role: string | null, plan: string | null): GuardResult {
   const norm = (s: string | null | undefined) => String(s ?? "").trim().toLowerCase();
   if (norm(role) === "admin") {
-    return { allowed: false, code: "protected_admin", error: "Admin accounts can't self-delete — please contact another admin." };
+    return { allowed: false, code: "protected_admin", error: "This account can't be deleted in the app. Message us and we'll do it." };
   }
   if (norm(plan) === "master") {
-    return { allowed: false, code: "protected_master", error: "Master accounts can't self-delete — please contact support." };
+    return { allowed: false, code: "protected_master", error: "This account can't be deleted in the app. Message us and we'll do it." };
   }
   return { allowed: true };
 }

@@ -30,12 +30,14 @@ import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
 import { opaqueErrors } from "./server/errorCodes.js";
+import { registerHealthRoutes } from "./server/healthRoutes.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 
 const app = express();
+app.disable("x-powered-by"); // Build 10b — no framework name in every answer
 const server = http.createServer(app);
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -753,15 +755,6 @@ io.on("connection", (socket) => {
   });
 });
 
-app.get("/", (req, res) => {
-  res.send("SellerFlow TikTok Server Running 🚀");
-});
-app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
-    service: "sellerflow-live-server",
-  });
-});
 
 // TikTok-signing health probe. Synchronous, makes no external calls
 // (zero Eulerstream quota cost), reads existing in-memory state plus the
@@ -773,7 +766,7 @@ app.get("/health", (_req, res) => {
 //   - Eulerstream service down before any seller has tried to connect
 //   - Quota exhaustion before a real attempt hits the wall
 // EULER_API_KEY value is NEVER returned -- only a boolean flag.
-app.get("/health/tiktok", (_req, res) => {
+function tiktokHealthDetail() {
   const eulerKeyConfigured = !!process.env.EULER_API_KEY;
   const activeConnections = tiktokConnections.size;
   const reconnectingNow = tiktokReconnectTimers.size;
@@ -795,7 +788,7 @@ app.get("/health/tiktok", (_req, res) => {
   const ok = warnings.length === 0;
   const status = ok ? "healthy" : "degraded";
 
-  res.json({
+  return {
     ok,
     status,
     service: "tiktok-signing",
@@ -811,8 +804,11 @@ app.get("/health/tiktok", (_req, res) => {
     lastFailReason,
     warnings,
     timestamp: new Date().toISOString(),
-  });
-});
+  };
+}
+// Build 10b — "/", "/health", "/health/tiktok": public = {ok:true} only; the detail above
+// needs X-Poll-Token = PARCEL_POLL_TOKEN (server/healthRoutes.js).
+registerHealthRoutes(app, { token: PARCEL_POLL_TOKEN, tiktokDetail: tiktokHealthDetail });
 
 
 // fb_connect_v2 — a CONFIRMED platform switch stops the caller's own TikTok live on the server
@@ -1856,8 +1852,7 @@ async function connectTikTok(username, res, meta = {}) {
         }
         return res.json({
           success: true,
-          reused: true,
-          message: `TikTok LIVE already connected: ${cleanUsername}`,
+          message: "Connected to your TikTok LIVE.", // Build 10b — no reuse detail in the answer
         });
         }
         // R2 fall-through: ownership moved mid-verify (health cycle replaced /

@@ -4,7 +4,9 @@
 // path — still covered below via publicFlag=false.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { stickerV2Allowed, STICKER_V2_PREVIEW_EMAILS, STICKER_LAYOUT_V2_PUBLIC } from "../printing";
+import { stickerV2Allowed, STICKER_LAYOUT_V2_PUBLIC } from "../printing";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails } from "./featureSeed";
 
 describe("stickerV2Allowed", () => {
   it("the public switch is ON (2026-10-02) → every seller is allowed by default", () => {
@@ -18,12 +20,11 @@ describe("stickerV2Allowed", () => {
     expect(stickerV2Allowed("anyone@example.com", "admin", false)).toBe(true);
     expect(stickerV2Allowed(null, "Admin", false)).toBe(true);
   });
-  it("switch OFF (publicFlag=false): exactly the four allowlisted emails, case- and space-insensitive", () => {
-    expect(STICKER_V2_PREVIEW_EMAILS).toEqual(["cristycabanas34@gmail.com", "ronaldgantiga77@gmail.com", "tincabanas13@gmail.com", "googletest@gmail.com"]);
-    for (const e of STICKER_V2_PREVIEW_EMAILS) {
-      expect(stickerV2Allowed(e, "seller", false)).toBe(true);
-      expect(stickerV2Allowed(`  ${e.toUpperCase()}  `, "seller", false)).toBe(true);
-    }
+  it("switch OFF (publicFlag=false): the four listed accounts (sql/112 sticker_v2) get it through the database flag", () => {
+    expect(seedEmails("sticker_v2")).toEqual(["cristycabanas34@gmail.com", "ronaldgantiga77@gmail.com", "tincabanas13@gmail.com", "googletest@gmail.com"]);
+    setFeatureAccess({ sticker_v2: true });
+    expect(stickerV2Allowed("cristycabanas34@gmail.com", "seller", false)).toBe(true);
+    setFeatureAccess(null);
   });
   it("switch OFF (publicFlag=false) — NOT allowed: a random seller, null/empty email, near-misses (no prefix rules)", () => {
     expect(stickerV2Allowed("random.seller@gmail.com", "seller", false)).toBe(false);

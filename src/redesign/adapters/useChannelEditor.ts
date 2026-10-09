@@ -133,7 +133,7 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
     // 'cooldown_active' → abort WITHOUT persisting (no silent partial save).
     for (const i of changed) {
       const r = await touchSlot(field, i);
-      if (!r.ok) { setState("error"); setErr(r.cooldown ? t.rd_ch_cooldown_err : (r.error || t.rd_set_err_save_failed)); return; }
+      if (!r.ok) { setState("error"); setErr(r.cooldown ? t.rd_ch_cooldown_err : t.rd_ch_save_failed); return; } // Build 10b: translated, never raw
     }
     const lists = isTT
       ? { tiktok: accountText(slots), facebook: account?.profile.facebook || "" }
@@ -144,7 +144,7 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
     // Combined account limit (sql/84): the database refused a NEW username. Show the
     // localized reason; `slots` is untouched, so the typed value stays.
     const msg = r.accountLimit ? await accountLimitMessage(t, { ios: isIOS(), planName: planLabel(account?.plan), lang }) : r.error;
-    setState("error"); setErr(msg || t.rd_set_err_save_failed);
+    setState("error"); setErr(msg || t.rd_ch_save_failed);
   };
 
   return { isTT, isAdmin, limit, planBadge, orig, slots, setSlot, savedSlotView, unlock, atCap, notCovered, dirty, save, state, err };

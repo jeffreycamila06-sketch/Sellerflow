@@ -633,7 +633,7 @@ export default function Landing({
             <span>{t.rd_l2_foot_bottom}</span>
             <span style={{ display: "flex", gap: 14 }}>
               <a href="/privacy/" style={{ color: C.inkSoft }}>{t.rd_l2_privacy}</a>
-              <a href="/terms/" style={{ color: C.inkSoft }}>Terms</a>
+              <a href="/terms/" style={{ color: C.inkSoft }}>{t.rd_terms}</a>
             </span>
           </div>
           <div style={{ marginTop: 10, fontSize: 12, color: C.inkSoft }}>Operated by SELLERFLOWLIVE PRINTER TRADING · Orani, Bataan, Philippines · jeffreycamila06@gmail.com</div>

@@ -3,7 +3,9 @@
 //   • a source map ships (*.map) or any .js/.css/.html still points to one (sourceMappingURL);
 //   • the old app page (app.html) is in the build;
 //   • a dev-only log message (a string passed to log.* / devLog.* in src) reached the bundle;
-//   • the start banner is missing, or the marker label (the i18n key below) is missing.
+//   • the start banner is missing, or the marker label (the i18n key below) is missing;
+//   • (Build 10b) an email address that is not the public support contact or a made-up
+//     placeholder, or a seller-visible phrase that names how the app works.
 // Usage: node scripts/check-dist.mjs [distDir] [srcDir]
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
@@ -11,6 +13,14 @@ import { fileURLToPath } from "node:url";
 
 export const MARKER_KEY = "rd_ps_fw_channel";
 export const BANNER_START = "Walang makukuha dito.";
+// The public support contact + made-up placeholders; any other address = a seller/test email.
+// (git@github.com, fedor@indutny.com = a bundled library's own package metadata, never shown.)
+export const ALLOWED_EMAILS = ["jeffreycamila06@gmail.com", "you@email.com", "maria@liveshop.ph", "git@github.com", "fedor@indutny.com"];
+const ALLOWED_EMAIL_DOMAINS = /@(example\.com|x\.com)$/;
+// Words a seller must never read (former UI texts). "Edge Function" is not listed: the database
+// client library names its own error classes that way (never shown); the i18n test bans it in
+// every seller string instead.
+export const FORBIDDEN_PHRASES = ["Supabase not configured", "(TSPL", "TSPL,", "Printer bridge", "bridge failed", "myship2.7-11", "duonglily", "sessionid to backend", "Page Access Token"];
 
 function walk(dir) {
   const out = [];
@@ -57,6 +67,12 @@ export function checkDist(distDir, srcDir) {
   if (!marker) errors.push(`marker key ${MARKER_KEY} not found in the i18n source`);
   else if (!js.includes(marker)) errors.push("marker label missing from the bundle");
   if (!js.includes(BANNER_START)) errors.push("start banner missing from the bundle");
+  const shipped = bodies.map(([, b]) => b).join("\n");
+  for (const m of shipped.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z.]{2,}/g)) {
+    const e = m[0].toLowerCase().replace(/\.+$/, "");
+    if (!ALLOWED_EMAILS.includes(e) && !ALLOWED_EMAIL_DOMAINS.test(e)) { errors.push(`email address in the build: ${e}`); break; }
+  }
+  for (const p of FORBIDDEN_PHRASES) if (js.includes(p)) errors.push(`seller-visible phrase in the bundle: "${p}"`);
   return errors;
 }
 

@@ -49,7 +49,7 @@ describe("readEdgeError — surfaces the real edge-function error", () => {
     const err = { name: "FunctionsHttpError", message: GENERIC, context: new Response("", { status: 500 }) };
     const e = await readEdgeError(err, null);
     expect(e.message).not.toBe(GENERIC);           // must be annotated, not the bare wrapper
-    expect(e.message).toContain("no error body");
+    expect(e.message).toBe("Action failed. Please try again."); // Build 10: plain words
   });
 
   it("uses a non-generic error.message directly when there is no context", async () => {

@@ -102,9 +102,9 @@ describe("client: fb_code reaches the toast; other texts unchanged", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res(502, { ok: false, error: "fb_check_failed" })));
     expect(await fbConnect("P1")).toEqual({ ok: false, error: "fb_check_failed" }); // an older server
   });
-  it("the generic text gets ' (FB <code>)' or ' (FB timeout)'", () => {
-    expect(fbConnectFailText({ ok: false, error: "fb_check_failed", fbCode: 100 }, t)).toBe(`${t.rd_cm_conn_failed} (FB 100)`);
-    expect(fbConnectFailText({ ok: false, error: "fb_check_failed", fbTimeout: true }, t)).toBe(`${t.rd_cm_conn_failed} (FB timeout)`);
+  it("Build 10b: a Facebook code or timeout shows 'reconnect your Page' — never '(FB <code>)'", () => {
+    expect(fbConnectFailText({ ok: false, error: "fb_check_failed", fbCode: 100 }, t)).toBe(t.rd_cm_reconnect_page);
+    expect(fbConnectFailText({ ok: false, error: "fb_check_failed", fbTimeout: true }, t)).toBe(t.rd_cm_reconnect_page);
     expect(fbConnectFailText({ ok: false, error: "fb_check_failed" }, t)).toBe(t.rd_cm_conn_failed);
   });
   it("not_live, needs_reauth, too_many_requests and unreachable texts are unchanged", () => {

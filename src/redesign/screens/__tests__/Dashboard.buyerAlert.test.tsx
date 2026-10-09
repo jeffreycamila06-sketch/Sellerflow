@@ -72,7 +72,7 @@ describe("gated seller — red / amber rows", () => {
     expect(r.style.background).toBe("var(--warn-soft)");
     expect(r.style.boxShadow).toContain("var(--risk-watch-bg)");
     expect(r.querySelector("[data-testid='ba-chip-amber']")!.textContent).toBe("📦 2 days left");
-    expect(r.querySelector("[data-testid='ba-near-line']")!.textContent).toBe("May parcel sa 7-11 大安門市 — 2 days na lang bago ma-return");
+    expect(r.querySelector("[data-testid='ba-near-line']")!.textContent).toBe("Parcel at 7-11 大安門市 — 2 days left before it's returned"); // Build 10b: en was Tagalog
   });
   it("matched but under thresholds → no tint/chip; unmatched handle → nothing, plain name", () => {
     const [, , clean, nobody] = rows(mount());
@@ -113,8 +113,8 @@ describe("BuyerAlertSheet", () => {
     const { getByTestId, getAllByTestId, getByText } = render(
       <TProvider lang="en"><BuyerAlertSheet handle="ann" record={record} overrides={{}} cur="NT$" onForgive={onForgive} onClose={noop} /></TProvider>);
     expect(getByTestId("ba-returned").textContent).toBe("1Returned");
-    expect(getByTestId("ba-at-store").textContent).toBe("1Nasa 7-11");
-    expect(getByTestId("ba-picked-up").textContent).toBe("5Nakuha (7 days)");
+    expect(getByTestId("ba-at-store").textContent).toBe("1At 7-11");
+    expect(getByTestId("ba-picked-up").textContent).toBe("5Picked up (7 days)");
     expect(getAllByTestId("ba-return")).toHaveLength(2);
     expect(getByText("2026-09-01 · NT$350")).toBeTruthy();
     fireEvent.click(getByTestId("ba-forgive"));

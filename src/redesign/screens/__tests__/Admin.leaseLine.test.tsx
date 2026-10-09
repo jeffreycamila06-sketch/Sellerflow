@@ -67,7 +67,7 @@ describe("check-queue card — on duty / standby line", () => {
     const { el } = await readyEl({ ...READY, myship: "stale" });
     expect(el.textContent).toBe(" · ready");
   });
-  it("NOT READY names the tab, in red — each tab", async () => {
+  it("not ready → plain 'Needs attention' in red (no tab names) — each case", async () => {
     for (const [state, why] of [
       [{ ...READY, sfl: "signed_out" }, "sfl: signed_out"],
       [{ ...READY, myship: "no_tab" }, "myship: no_tab"],
@@ -83,12 +83,12 @@ describe("check-queue card — on duty / standby line", () => {
       [{ sfl: "asleep", myship: "no_tab", emap: "dead", multi: true }, "sfl: asleep, myship: no_tab, emap: dead"],
     ] as const) {
       const { r, el } = await readyEl(state);
-      expect(el.textContent).toBe(` · NOT READY (${why})`);
+      expect(el.textContent).toBe(" · Needs attention"); void why;
       expect(el.style.color).toBe(RED);
       r.unmount();
     }
   });
-  it("soft states are a passing blip → 'ready (<tab>: <state>)' in the normal colour", async () => {
+  it("soft states are a passing blip → plain ' · ready' in the normal colour", async () => {
     for (const [state, text] of [
       [{ ...READY, emap: "stale" }, " · ready (emap: stale)"],
       [{ ...READY, emap: "degraded" }, " · ready (emap: degraded)"],
@@ -98,14 +98,14 @@ describe("check-queue card — on duty / standby line", () => {
       [{ ...READY, myship: "healing" }, " · ready (myship: healing)"],
     ] as const) {
       const { r, el } = await readyEl(state);
-      expect(el.textContent).toBe(text);
+      expect(el.textContent).toBe(" · ready"); void text;
       expect(el.style.color).toBe("");
       r.unmount();
     }
   });
-  it("missing standby_state → NOT READY (no state reported)", async () => {
+  it("missing standby_state → Needs attention", async () => {
     const { el } = await readyEl(undefined);
-    expect(el.textContent).toBe(" · NOT READY (no state reported)");
+    expect(el.textContent).toBe(" · Needs attention");
     expect(el.style.color).toBe(RED);
   });
   it("not seen for more than 3 min stays red, alongside the readiness", async () => {
@@ -130,7 +130,7 @@ describe("check-queue card — on duty / standby line", () => {
     M.stats = { ...base, lease: { leader_id: "a", leader_label: "Mac", leader_since: NOW, leader_at: NOW, leader_state: { degraded: true } } };
     let r = view();
     await waitFor(() => expect(r.getByTestId("pm-lease-degraded")).toBeTruthy());
-    expect(r.getByTestId("pm-lease-degraded").textContent).toBe(" DEGRADED");
+    expect(r.getByTestId("pm-lease-degraded").textContent).toBe(" Needs attention");
     expect((r.getByTestId("pm-lease-degraded") as HTMLElement).style.color).toBe(RED);
     r.unmount();
     M.stats = { ...base, lease: { leader_id: "a", leader_label: "Mac", leader_since: NOW, leader_at: NOW, leader_state: { degraded: false } } };

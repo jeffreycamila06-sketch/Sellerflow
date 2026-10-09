@@ -169,16 +169,16 @@ export default function PrintPattern({
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "#1c1a35" }}>SellerFlowLive</span>
               {/* Date & time prints at a FIXED size (no scale in the print path) — honest preview mirrors that. */}
-              {pp.dateTime && <span style={{ fontSize: previewDateFontPx(pp.dateTimeSize), color: "#9795ad", whiteSpace: "nowrap" }}>Session: 05/22/2026 12:21PM</span>}
+              {pp.dateTime && <span style={{ fontSize: previewDateFontPx(pp.dateTimeSize), color: "#9795ad", whiteSpace: "nowrap" }}>{`${t.rd_pp_sample_session} 05/22/2026 12:21PM`}</span>}
             </div>
             {layoutV2 && pp.comment && <div style={{ textAlign: "right", fontSize: 11, color: "#9795ad", marginTop: 1 }} data-testid="pp-v2-time">14:05</div>}
             {/* Preview sizes route through previewFontPx ONLY (kill-switch-gated; honest = base × printScaleLevel = print). */}
             {pp.shopName && <div style={{ fontSize: previewFontPx(16, pp.shopNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} data-testid="pp-preview-shop">{shopName}</div>}
             {/* Buyer line matches the new paper layout: "Buyer" + bare number, small gap, no "#". */}
-            {pp.buyerNum && <div style={{ fontSize: previewFontPx(14, pp.buyerNumSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Buyer 12</div>}
+            {pp.buyerNum && <div style={{ fontSize: previewFontPx(14, pp.buyerNumSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>{t.rd_pp_sample_buyer}</div>}
             {pp.tiktokName && <div style={{ fontSize: previewFontPx(14, pp.tiktokNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Maria Santos</div>}
             {pp.tiktokUser && <div style={{ fontSize: previewFontPx(12, pp.tiktokUserSize), fontWeight: 600, color: "#7c3aed", marginTop: 3 }}>@maria_live</div>}
-            {pp.comment && !layoutV2 && <div style={{ fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), color: "#5a5872", marginTop: 7 }}>Comment</div>}
+            {pp.comment && !layoutV2 && <div style={{ fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), color: "#5a5872", marginTop: 7 }}>{t.rd_pp_sample_comment}</div>}
             {pp.comment && layoutV2 && (
               <div style={{ borderTop: "1.5px solid #1c1a35", marginTop: 7, paddingTop: 4, textAlign: "left", fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), letterSpacing: ".35em", lineHeight: 1.35, color: "#5a5872", wordBreak: "break-word" }} data-testid="pp-v2-comment">{PREVIEW_COMMENT}</div>
             )}

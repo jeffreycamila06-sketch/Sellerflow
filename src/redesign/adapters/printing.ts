@@ -21,6 +21,7 @@ import { loadCjkAtlas } from "./cjkAtlasLoader";
 import { fbNameOnly } from "./fbName";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 import { log } from "../../lib/log";
+import { hasFeature } from "./featureAccess";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
@@ -136,17 +137,12 @@ export function stickerLayoutV2Effective(): boolean { return STICKER_LAYOUT_V2_P
 // Allowlist (the pinToPrint pattern): these sellers get exactly what admins get for v2 —
 // the new sticker layout, "Print QR on sticker" in LIVE print pattern, the exact
 // preview. Exact emails only (trimmed, case-insensitive) — no prefix rules.
-export const STICKER_V2_PREVIEW_EMAILS: string[] = [
-  "cristycabanas34@gmail.com",
-  "ronaldgantiga77@gmail.com",
-  "tincabanas13@gmail.com",
-  "googletest@gmail.com",
-];
+// Build 10b: the list lives in the database (sql/112 feature "sticker_v2").
 export function stickerV2Allowed(email: string | undefined | null, role: string | undefined | null, publicFlag: boolean = STICKER_LAYOUT_V2_PUBLIC): boolean {
   if (publicFlag) return true;
   if (isAdminRole(role)) return true;
   const e = String(email || "").trim().toLowerCase();
-  return e !== "" && STICKER_V2_PREVIEW_EMAILS.includes(e);
+  return e !== "" && hasFeature("sticker_v2");
 }
 
 // ── Sticker spacing (half-letter word gaps + Normal/Compact) — bitmap path only ──────────
@@ -156,12 +152,12 @@ export function stickerV2Allowed(email: string | undefined | null, role: string 
 // byte-identical to before. The native payload, text fallback, WiFi sticker, slip and web print
 // never see these flags.
 export const STICKER_SPACING_PUBLIC = true;
-export const STICKER_SPACING_EMAILS: string[] = ["googletest@gmail.com", "googletest@sellerflowlive.com"];
+// Build 10b: the list lives in the database (sql/112 feature "sticker_spacing").
 export function stickerSpacingAllowed(email: string | undefined | null, role: string | undefined | null, publicFlag: boolean = STICKER_SPACING_PUBLIC): boolean {
   if (publicFlag) return true;
   if (isAdminRole(role)) return true;
   const e = String(email || "").trim().toLowerCase();
-  return e !== "" && STICKER_SPACING_EMAILS.includes(e);
+  return e !== "" && hasFeature("sticker_spacing");
 }
 export type StickerSpacing = "normal" | "compact";
 // Normal/Compact CHOICE (2026-10-07): the row in Live print pattern is HIDDEN and every seller with
@@ -267,14 +263,14 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
         const text = message || nativeFailAlertText; // F-batch i18n (was hardcoded English)
         if (reportNativePrintFailure("native-slip", code, text)) return; // consumed by the no-printer modal
         log.warn(text);
-        window.alert(text);
+        window.alert(nativeFailAlertText); // Build 10b: the seller words, never the printer's raw text
         return;
       }
       if (typeof msg !== "string" || !msg.trim()) return;
       if (/printed to/i.test(msg)) return;
       if (reportNativePrintFailure("native-slip", "", msg)) return; // consumed by the no-printer modal
       log.warn(msg);
-      window.alert(msg);
+      window.alert(nativeFailAlertText);
     }).catch((err) => {
       // A Capacitor call.reject (e.g. Android/iOS printSlip "No WiFi printer
       // saved" → PRINTER_NOT_SET) lands here as a rejection, NOT a resolved
@@ -324,10 +320,10 @@ export function setClassicTextSticker(on: boolean): void {
 // AUDIT F4: ONLY the owner-controlled documented test account. Never add an
 // unowned/registrable address here — registration is open, so a listed email
 // is a grantable backdoor to the toggle.
-const CLASSIC_TEXT_TEST_ACCOUNTS = new Set(["googletest@sellerflowlive.com"]);
+// Build 10b: that one account lives in the database (sql/112 feature "classic_text").
 export function canUseClassicText(role: string | undefined | null, email: string | undefined | null): boolean {
   if (isAdminRole(role)) return true;
-  return CLASSIC_TEXT_TEST_ACCOUNTS.has(String(email || "").trim().toLowerCase());
+  return String(email || "").trim() !== "" && hasFeature("classic_text");
 }
 let classicTextAllowed = false;
 export function setClassicTextAllowed(allowed: boolean): void { classicTextAllowed = allowed; }

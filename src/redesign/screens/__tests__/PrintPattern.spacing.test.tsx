@@ -31,7 +31,7 @@ describe("PrintPattern — sticker spacing", () => {
   it("allowed, text mode / web: the mock, labelled approximate, no warning", () => {
     const v = view({ spacingAllowed: true, imagePath: false });
     expect(v.queryByTestId("pp-exact-preview")).toBeNull();
-    expect(v.getByTestId("pp-approx").textContent).toBe("Approximate — your printer prints in text mode (the layout may differ)");
+    expect(v.getByTestId("pp-approx").textContent).toBe("Approximate — Simple print is on, so the layout may differ"); // Build 10b wording
     expect(v.queryByTestId("pp-fit-warning")).toBeNull();
   });
   it("comment 3× on 60x40: the warning says which scale will print", () => {

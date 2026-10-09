@@ -75,7 +75,7 @@ describe("Shopee UI gate — ConnectModal tab", () => {
   it("shopeeEnabled=true → Shopee tab present; selecting it shows the session-ID input + Connect calls onShopeeConnect", async () => {
     const onShopeeConnect = vi.fn(async () => ({ ok: true }));
     renderModal({ shopeeEnabled: true, shopeeShops: [{ shopId: 555, shopName: "My Shop" }], initialTab: "Shopee", onShopeeConnect });
-    const input = screen.getByPlaceholderText("Paste your Shopee Live session ID") as HTMLInputElement;
+    const input = screen.getByPlaceholderText("Paste your Shopee Live code") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "S9" } });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(onShopeeConnect).toHaveBeenCalledWith(555, "S9");
@@ -83,7 +83,7 @@ describe("Shopee UI gate — ConnectModal tab", () => {
   it("not_live result → shows the not-live error inline", async () => {
     const onShopeeConnect = vi.fn(async () => ({ ok: false, reason: "not_live" }));
     renderModal({ shopeeEnabled: true, shopeeShops: [{ shopId: 555, shopName: "My Shop" }], initialTab: "Shopee", onShopeeConnect });
-    fireEvent.change(screen.getByPlaceholderText("Paste your Shopee Live session ID"), { target: { value: "S9" } });
+    fireEvent.change(screen.getByPlaceholderText("Paste your Shopee Live code"), { target: { value: "S9" } });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(await screen.findByText(/Couldn't start/)).toBeTruthy();
   });

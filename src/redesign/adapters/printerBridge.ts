@@ -40,7 +40,7 @@ export function normalizeBridgeResult(raw: unknown): MobilePrinterResult {
   return { ok: true, message: "Printer command sent" };
 }
 
-const OPEN_APP = "Open this inside the SellerFlow mobile app to use phone printer scanning.";
+const OPEN_APP = "Open the SellerFlowLive app on your phone to set up this printer.";
 
 // LAN/WiFi bridge — verbatim from App.tsx:454-473.
 export async function callMobilePrinterBridge(action: LanBridgeAction, printer?: MobilePrinterDevice | PrinterLanConfig): Promise<MobilePrinterResult> {
@@ -56,9 +56,9 @@ export async function callMobilePrinterBridge(action: LanBridgeAction, printer?:
     else if (action === "printerStatus") raw = await bridge.printerStatus?.();
     else if (action === "testPrint") raw = await bridge.testPrint?.();
     return normalizeBridgeResult(raw);
-  } catch (err) {
-    const e = err as { message?: string };
-    return { ok: false, message: e?.message || String(err) || "Printer bridge failed" };
+  } catch {
+    // Never the raw printer/app text — one plain sentence for the seller.
+    return { ok: false, message: "Printer didn't respond. Check it's on." };
   }
 }
 

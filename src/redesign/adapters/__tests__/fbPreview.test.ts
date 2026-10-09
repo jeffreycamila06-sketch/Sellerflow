@@ -5,17 +5,20 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import * as fbPreview from "../fbPreview";
-import { FB_PREVIEW_EMAILS, fbPreviewEnabled } from "../fbPreview";
+import { fbPreviewEnabled } from "../fbPreview";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails } from "./featureSeed";
 
 describe("fbPreviewEnabled — email allowlist", () => {
-  it("allowlisted owner + googletest + Meta App Review account → true (case/space-insensitive)", () => {
-    expect(FB_PREVIEW_EMAILS).toEqual(["camilajeffrey1@gmail.com", "googletest@gmail.com", "test@gmail.com"]);
-    for (const e of ["camilajeffrey1@gmail.com", "  CAMILAJEFFREY1@gmail.com ", "googletest@gmail.com", "test@gmail.com"]) {
-      expect(fbPreviewEnabled(e)).toBe(true);
-    }
+  it("the database list (sql/112) is owner + googletest + the Meta App Review account", () => {
+    expect(seedEmails("fb_preview")).toEqual(["camilajeffrey1@gmail.com", "googletest@gmail.com", "test@gmail.com"]);
   });
-  it("everyone else → false (the activation gate stays for them)", () => {
-    for (const e of ["random@seller.com", "", null, undefined]) expect(fbPreviewEnabled(e)).toBe(false);
+  it("signed-in user with the flag → true; without it → false (the activation gate stays)", () => {
+    setFeatureAccess({ fb_preview: true });
+    expect(fbPreviewEnabled("test@gmail.com")).toBe(true);
+    expect(fbPreviewEnabled("")).toBe(false); // no signed-in email → never
+    setFeatureAccess(null);
+    for (const e of ["test@gmail.com", "random@seller.com", "", null, undefined]) expect(fbPreviewEnabled(e)).toBe(false);
   });
 });
 

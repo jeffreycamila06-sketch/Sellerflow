@@ -64,7 +64,7 @@ before editing. Verified against main `940558f` (re-checked 2026-06-20).
 | Login / register / forgot | `src/App.tsx` — `PublicAuth` (~line 652) | Landing page + auth card (login/reg/forgot modes), Supabase Auth |
 | Subscription / plan lock (frontend) | `src/App.tsx` — `accountLocked` + `TrialExpiredWall`, `SubPage` | Auto-expire effect flips planStatus client-side |
 | Plan enforcement (backend) | `server.js` — `checkPlanActive` (~lines 133–201) | `PLAN_ENFORCEMENT_ENABLED` kill-switch; FAIL-OPEN on any error; free tier exempt |
-| Backend API endpoints | `server.js` | `GET /` , `GET /health`, `GET /health/tiktok`, `POST /connect/tiktok`, `POST /connect/facebook` |
+| Backend API endpoints | `server.js` | `GET /` , `GET /health` (both `ok` only), `GET /health/tiktok` (detail with X-Poll-Token), `POST /connect/tiktok`, `POST /connect/facebook` |
 | Database client | `src/supabase.ts` (init), `src/accountDb.ts` (seller_profiles, audit_logs), `src/db.ts` (orders, customers) | Plus RPCs called from App.tsx: `free_tier_status_for_user`, `list_free_users_status`, `free_tier_mark_warned` |
 | DB schema / triggers | `sql/01–04` | RLS policies, free-tier 200-order cap trigger (`free_tier_cap()`), status RPCs — run manually in Supabase SQL Editor |
 
@@ -72,7 +72,9 @@ before editing. Verified against main `940558f` (re-checked 2026-06-20).
 
 ## Existing Health / Monitoring
 
-### `GET /health/tiktok` (server.js, no auth)
+### `GET /health/tiktok` (server/healthRoutes.js)
+Public answer = `{"ok":true}` only (Build 10b). The detail below needs the header
+`X-Poll-Token: <PARCEL_POLL_TOKEN>` (Render env; 5 wrong tokens in 15 min = 429 lockout).
 Returns TikTok-signing health + connection stats. How to read it:
 - `activeConnections` — live TikTok connections right now. 0 during off-hours
   is normal; 0 during a seller's announced live session is a problem.

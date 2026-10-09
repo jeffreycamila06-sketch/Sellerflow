@@ -282,7 +282,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <input className="sfl-header-search" value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t.rd_ord_search}
             style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--on-header)", fontFamily: "var(--font-ui)" }} />
           {searching && (
-            <button onClick={() => setQuery("")} aria-label="clear" style={{ background: "transparent", border: "none", color: "var(--on-header)", fontSize: 14, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+            <button onClick={() => setQuery("")} aria-label={t.rd_ord_search_clear} style={{ background: "transparent", border: "none", color: "var(--on-header)", fontSize: 14, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
           )}
         </div>
         {/* F2 platform pills + F4 date range — additive controls; default = All + This session. */}

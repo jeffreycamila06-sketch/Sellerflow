@@ -1,9 +1,9 @@
+import { readFileSync } from "node:fs";
 // i18n plumbing tests (Step 2) — pure shim/merge logic + the TProvider/useT context.
 // No screen strings are converted yet; this only proves the wiring + reuse work.
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { normalizeLang, applySupplement, buildT, tpl, REDESIGN_STRINGS, TProvider, useT } from "../index";
-import { TRANSLATIONS, type T } from "../../../translations";
 
 describe("normalizeLang — redesign picker code → production Lang", () => {
   it("shims lowercase zh-tw → zh-TW (case-insensitive)", () => {
@@ -25,20 +25,20 @@ describe("normalizeLang — redesign picker code → production Lang", () => {
 
 describe("applySupplement — supplement (new keys) wins over production base", () => {
   it("merges + overrides", () => {
-    const base = { a: "prod-a", b: "prod-b" } as unknown as T;
+    const base = { a: "prod-a", b: "prod-b" };
     const out = applySupplement(base, { b: "new-b", c: "new-c" });
     expect(out).toMatchObject({ a: "prod-a", b: "new-b", c: "new-c" });
   });
 });
 
 describe("buildT — merged dictionary per language", () => {
-  it("reuses production keys verbatim (no duplication)", () => {
-    expect(buildT("en").nav_live).toBe(TRANSLATIONS.en.nav_live);
-    expect(buildT("zh").nav_live).toBe(TRANSLATIONS.zh.nav_live);
-  });
-  it("zh-tw resolves to production zh-TW (verified auth key + English fallback elsewhere)", () => {
-    expect(buildT("zh-tw").login_title).toBe(TRANSLATIONS["zh-TW"].login_title); // verified Traditional
-    expect(buildT("zh-tw").nav_live).toBe(TRANSLATIONS["zh-TW"].nav_live);       // English fallback (matches prod)
+  it("Build 10b: the old app's translations are NOT merged in (they don't ship); the 4 keys still shown keep their values", () => {
+    expect(buildT("en").nav_live).toBeUndefined();
+    expect(buildT("en").lp_login).toBe("Log in");
+    expect(buildT("zh-tw").lp_login).toBe("登入");
+    expect(buildT("bg").lp_feat_print_t).toBe("1-Click Print"); // bg kept the English fallback it had
+    const src = readFileSync("src/redesign/i18n/index.tsx", "utf8");
+    expect(src).not.toMatch(/from "\.\.\/\.\.\/translations"/);
   });
   it("layers an injected supplement on top of production keys (supplement wins)", () => {
     const supp = { ...REDESIGN_STRINGS, en: { brand_new_key: "Hi", nav_live: "OVERRIDE" } };
@@ -72,7 +72,7 @@ describe("Legal screen keys (Step 3) — behavior identical for en", () => {
     expect(t.lg_contact_pre).toBe("Questions? Reach us on Telegram ");
     expect(t.lg_contact_post).toBe(" or email jeffreycamila06@gmail.com.");
     expect(t.lg_collect_p).toContain("comment on your live session");
-    expect(t.lg_keep_p).toBe("Live comments: 10 days. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account. A buyer's Messenger ID: 90 days. Waiting list: 10 days."); // Build 8
+    expect(t.lg_keep_p).toBe("Live comments: 10 days. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account. The buyer's Messenger contact: 90 days. Waiting list: 10 days."); // Build 8 (+ Build 10b wording)
     expect(t.lg_rights_p).toContain("takes effect immediately");
   });
   it("zh-tw resolves the legal keys — non-empty, not falling back blank", () => {
@@ -127,15 +127,15 @@ describe("en values are byte-exact for the shipped English (no en drift)", () =>
   });
 });
 
-function Probe() { const t = useT(); return <span>{t.nav_live}</span>; }
+function Probe() { const t = useT(); return <span>{t.lp_login}</span>; }
 
 describe("TProvider / useT context", () => {
   it("provides the merged t to descendants for the given lang", () => {
     render(<TProvider lang="zh"><Probe /></TProvider>);
-    expect(screen.getByText(TRANSLATIONS.zh.nav_live)).toBeTruthy();
+    expect(screen.getByText("登录")).toBeTruthy();
   });
   it("applies the zh-tw shim through the provider", () => {
     render(<TProvider lang="zh-tw"><Probe /></TProvider>);
-    expect(screen.getByText(TRANSLATIONS["zh-TW"].nav_live)).toBeTruthy();
+    expect(screen.getByText("登入")).toBeTruthy();
   });
 });

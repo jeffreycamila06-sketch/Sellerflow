@@ -2,6 +2,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { maxPendingParcels, MAX_PENDING_PARCELS, MAX_PENDING_PARCELS_TESTER } from "../parcelScan";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails } from "./featureSeed";
 
 describe("maxPendingParcels", () => {
   it("the everyone-cap stays 40; testers get 50", () => {
@@ -12,10 +14,12 @@ describe("maxPendingParcels", () => {
     expect(maxPendingParcels("someone@example.com", "admin")).toBe(50);
     expect(maxPendingParcels(null, " Admin ")).toBe(50);
   });
-  it("googletest (both addresses) → 50, case/space-insensitive", () => {
+  it("tester flag (sql/112 parcel_cap_tester = googletest, both addresses) → 50", () => {
+    expect(seedEmails("parcel_cap_tester")).toEqual(["googletest@gmail.com", "googletest@sellerflowlive.com"]);
+    setFeatureAccess({ parcel_cap_tester: true });
     expect(maxPendingParcels("googletest@gmail.com", "seller")).toBe(50);
-    expect(maxPendingParcels("googletest@sellerflowlive.com", "seller")).toBe(50);
-    expect(maxPendingParcels("  GOOGLETEST@GMAIL.COM ", null)).toBe(50);
+    setFeatureAccess(null);
+    expect(maxPendingParcels("googletest@gmail.com", "seller")).toBe(40);
   });
   it("random seller → 40; null / empty / near-miss → 40", () => {
     expect(maxPendingParcels("random.seller@gmail.com", "seller")).toBe(40);

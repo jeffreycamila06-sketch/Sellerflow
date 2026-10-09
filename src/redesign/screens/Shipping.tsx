@@ -137,7 +137,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
     const encoded: ShippingEntry = { ...form, status: "encoded" };
     const r = await upsertShippingEntry(encoded);
     setBusy(false);
-    if (!r.ok) { setNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+    if (!r.ok) { setNote(t.rd_shp_save_failed); return; }
     setEntries((list) => [...list.filter((e) => !(e.buyerNumber === encoded.buyerNumber && e.bagNumber === encoded.bagNumber)), encoded]);
     setSel((old) => new Set([...old, encoded.id]));
     closeForm();
@@ -178,7 +178,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       const rows = buildBagEntries(g, sessionKey, bags, sShared, sFee, ids);
       for (const row of rows) {
         const r = await upsertShippingEntry(row);
-        if (!r.ok) { setSNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+        if (!r.ok) { setSNote(t.rd_shp_save_failed); return; }
       }
       for (const old of existing.filter((e) => e.bagNumber > nBags)) await deleteShippingEntry(old.id);
       setEntries((list) => [...list.filter((e) => e.buyerNumber !== g.bNum), ...rows]);
@@ -195,7 +195,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       if (!first) { closeSplit(); return; }
       const merged: ShippingEntry = { ...first, includedOrderIds: g.orderIds, orderAmount: g.total, productDesc: defaultProductDesc(g.bNum, g.items), status: entryIsValid({ ...first, includedOrderIds: g.orderIds, orderAmount: g.total, productDesc: defaultProductDesc(g.bNum, g.items) }) ? "encoded" : "draft" };
       const r = await upsertShippingEntry(merged);
-      if (!r.ok) { setSNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+      if (!r.ok) { setSNote(t.rd_shp_save_failed); return; }
       for (const old of bags.filter((e) => e.bagNumber > 1)) await deleteShippingEntry(old.id);
       setEntries((list) => [...list.filter((e) => e.buyerNumber !== g.bNum), merged]);
       closeSplit();
@@ -238,7 +238,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
           const rows = await loadShippingEntries(sessionKey);
           setEntries(rows);
           setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id)));
-        } else setExNote({ kind: "err", text: tpl(t.rd_shp_export_failed, { err: r.error || "?" }) });
+        } else setExNote({ kind: "err", text: t.rd_shp_export_failed });
         return;
       }
       // server has stamped exported — reflect locally regardless of file outcome
@@ -253,9 +253,9 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
         const d = await deliverXlsm(bytes, file);
         if (!d.ok) throw new Error(d.error || d.via);
         setExNote({ kind: "ok", text: tpl(t.rd_shp_export_ok, { n: r.count ?? chosen.length, file }) });
-      } catch (fileErr) {
-        // entries are already exported server-side — say so honestly
-        setExNote({ kind: "err", text: tpl(t.rd_shp_dl_failed, { err: fileErr instanceof Error ? fileErr.message : String(fileErr) }) });
+      } catch {
+        // entries are already exported server-side — say so honestly (never the file-builder text)
+        setExNote({ kind: "err", text: t.rd_shp_dl_failed });
       }
     } finally {
       setExporting(false);

@@ -18,8 +18,6 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 // ⚠️ ONE-LINE SWITCH to public (flip v_public in sql/72 at the same time): every seller,
 // each reading their OWN parcel_tracking rows instead of the test owner's.
 export const BUYER_ALERT_PUBLIC = false;
-// Test-phase data owner — the RPC reads THIS account's rows (pinned against sql/72 by a test).
-export const BUYER_ALERT_DATA_OWNER_EMAIL = "googletest@gmail.com";
 export const BUYER_ALERT_RED_AT = 3;          // returns (after forgive) for the red alert
 export const BUYER_ALERT_NEAR_DAYS = 3;       // amber: 0..3 days to the pickup deadline
 export const BUYER_ALERT_REFRESH_MS = 10 * 60 * 1000;

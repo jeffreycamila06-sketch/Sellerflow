@@ -9,14 +9,15 @@
 // shopeePreviewEnabled → false → the effective shopeeEnabled is the global flag alone →
 // byte-for-byte unchanged (zero Shopee UI while the flag is off).
 import { SHOPEE_PAUSED, type ShopeeShop } from "./shopee";
+import { hasFeature } from "./featureAccess";
 
 // SOFT-REVERTED 2026-09-23: emptied with LIVE_SOURCE_EMAILS → no Shopee owner-preview row.
-export const SHOPEE_PREVIEW_EMAILS: string[] = [];
+// Build 10b: the list lives in the database (sql/112 feature "shopee_preview"; empty today).
 
 export function shopeePreviewEnabled(email: string | undefined | null): boolean {
   if (SHOPEE_PAUSED) return false; // paused → not even the owner preview shows Shopee
   const e = String(email || "").trim().toLowerCase();
-  return e !== "" && SHOPEE_PREVIEW_EMAILS.includes(e);
+  return e !== "" && hasFeature("shopee_preview");
 }
 
 // A DISPLAY-ONLY placeholder shop so the preview renders the screens POPULATED (chip,
@@ -28,7 +29,7 @@ export function shopeePreviewEnabled(email: string | undefined | null): boolean 
 export const SHOPEE_PREVIEW_SHOP: ShopeeShop = {
   id: "00000000-0000-0000-0000-000000000000",
   shopId: 0,
-  shopName: "Preview shop (no live capture)",
+  shopName: "Sample shop (preview)",
   active: true,
 };
 

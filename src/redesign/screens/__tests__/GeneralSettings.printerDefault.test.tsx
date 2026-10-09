@@ -52,7 +52,7 @@ describe("Settings printer row — default slot", () => {
 
   it("index 0 is still the WiFi/LAN slot — reachable when the user taps it (nothing removed)", () => {
     renderRow(0);
-    expect(screen.getByText(/WiFi \/ LAN receipt printer/)).toBeTruthy();
+    expect(screen.getByText(/WiFi receipt printer/)).toBeTruthy();
     expect(screen.getByText(/not set up yet/i)).toBeTruthy();
   });
 

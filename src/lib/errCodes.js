@@ -78,6 +78,16 @@ export function sellerSafeWord(v) {
   return typeof v === "string" && !/\s/.test(v) && Object.prototype.hasOwnProperty.call(ERR_CODES, v) ? v : "";
 }
 
+// Build 10b — what analytics may send: the code only, never the word or a server sentence.
+// An app word → its code; a code (or "E41:12") → the code; anything else → "E0".
+/** @param {unknown} v @returns {string} */
+export function errCodeOf(v) {
+  if (typeof v !== "string" || v === "") return "E0";
+  if (Object.prototype.hasOwnProperty.call(ERR_CODES, v)) return ERR_CODES[v];
+  const m = /^(E\d+)(?::|$)/.exec(v);
+  return m ? m[1] : "E0";
+}
+
 // A server answer with its `error` / `reason` decoded (a new object only when something changed).
 /** @template T @param {T} j @returns {T} */
 export function decodeServerJson(j) {

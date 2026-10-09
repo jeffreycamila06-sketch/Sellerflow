@@ -30,7 +30,7 @@ describe("Products screen — cloud-sync failure surfacing (Batch D #11)", () =>
     const form = document.querySelector("form") as HTMLFormElement;
     fireEvent.change(form.querySelector("input") as HTMLInputElement, { target: { value: "Offline Item" } });
     fireEvent.submit(form);
-    await vi.waitFor(() => expect(screen.getByText(/cloud sync failed/i)).toBeTruthy());
+    await vi.waitFor(() => expect(screen.getByText(/Saved on this phone only/i)).toBeTruthy());
     expect(screen.getByText("Offline Item")).toBeTruthy(); // kept locally (primary store)
   });
 
@@ -53,6 +53,6 @@ describe("Products screen — cloud-sync failure surfacing (Batch D #11)", () =>
     fireEvent.click(screen.getAllByText("Delete")[0]);
     await vi.waitFor(() => expect(deleteProductDb as Mock).toHaveBeenCalled());
     expect(screen.queryByText(/Delete failed/i)).toBeNull();
-    expect(screen.queryByText(/cloud sync failed/i)).toBeNull();
+    expect(screen.queryByText(/Saved on this phone only/i)).toBeNull();
   });
 });

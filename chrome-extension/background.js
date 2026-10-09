@@ -294,7 +294,7 @@ async function pcPoll(pass) {
   // the myship/emap statuses on polls that had parcels → hours-stale badges).
   // myship/emap may auto-reload when discarded; the SFL tab NEVER does.
   const sflHealth = await pcHealTab(
-    ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"],
+    ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*"],
     "sellerflow-bridge.js", false);
   const myshipHealth = await pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true);
   // 2026-09-27: PCSC moved the 賣貨便 store-search E-Map to emap.unipcsc.com.tw
@@ -449,7 +449,7 @@ const PC_RECOVER_MIN_SPAN_MS = 2 * 60 * 1000;
 const PC_HEARTBEAT_EVERY = 12;                // ~60s at the 5s cadence
 const PC_WORKER_STATE_PUSH_MS = 60 * 1000;    // Admin-card mirror cadence (also on change)
 let pcLastKeepaliveAt = 0;
-const PC_SFL_PATTERNS = ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"];
+const PC_SFL_PATTERNS = ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*"];
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
   lastStoreReason: "", lastPhoneReason: "",
@@ -971,15 +971,21 @@ async function pcSenderHealthCheck(cfg, rpcHeaders) {
     await setHealth(false);
     pcSenderHealthy = false;
     await pcStatus({ multi: "sender_poisoned" });
-    console.warn(`[PC-SENDER] POISONED: sender ${conf.sender_phone} returns 'restricted' for a known-clean buyer — verdicts PAUSED. Swap parcel_check_sender_phone to a clean account.`);
+    console.warn(`[PC-SENDER] POISONED: sender ${pcMaskPhone(conf.sender_phone)} returns 'restricted' for a known-clean buyer — verdicts PAUSED. Swap parcel_check_sender_phone to a clean account.`);
   } else if (st === "ok") {
     pcSenderStrikes = 0;
     if (conf.healthy !== "true") {
       await setHealth(true);
       pcSenderHealthy = true;
-      console.log(`[PC-SENDER] recovered: sender ${conf.sender_phone} healthy again — resuming.`);
+      console.log(`[PC-SENDER] recovered: sender ${pcMaskPhone(conf.sender_phone)} healthy again — resuming.`);
     }
   }
+}
+
+// Build 10b — a phone number never goes to the console in full: 09******78.
+function pcMaskPhone(p) {
+  const s = String(p || "");
+  return s.length > 4 ? s.slice(0, 2) + "*".repeat(s.length - 4) + s.slice(-2) : "****";
 }
 
 async function pcPollMulti(pass) {
@@ -989,7 +995,7 @@ async function pcPollMulti(pass) {
   // verdicts) is LEADER-ONLY. pass.leader was decided by pcPoll's lease call this pass.
   if (!pcPassLeader(pass)) return;
   if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) return;
-  const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
+  const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*"]);
   if (!sflTabId) return;
   const token = await pcGetToken(sflTabId);
   if (!token) return;
@@ -1254,7 +1260,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     const cfg = await pcConfig();
     if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { sendResponse({ ok: false, reason: "no_config" }); return; }
-    const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
+    const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*"]);
     if (!sflTabId) { sendResponse({ ok: false, reason: "no_sfl_tab" }); return; }
     const token = await pcGetToken(sflTabId);
     if (!token) { sendResponse({ ok: false, reason: "no_token" }); return; }
@@ -1301,7 +1307,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     const cfg = await pcConfig();
     if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { sendResponse({ ok: false, reason: "no_config" }); return; }
-    const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
+    const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*"]);
     if (!sflTabId) { sendResponse({ ok: false, reason: "no_sfl_tab" }); return; }
     const token = await pcGetToken(sflTabId);
     if (!token) { sendResponse({ ok: false, reason: "no_token" }); return; }

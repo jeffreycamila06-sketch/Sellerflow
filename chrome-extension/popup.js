@@ -22,27 +22,36 @@ function pcOne(key, fallback) {
 function pcSetObj(value) {
   return new Promise((resolve) => chrome.storage.local.set(value, resolve));
 }
+// Build 10b — plain words (what happened + what to do); the worker's status keys are unchanged.
 const PC_STATUS_LABEL = {
-  connected: ["ok", "Connected"], paused: ["off", "Paused"], no_config: ["bad", "Set URL + key"],
-  no_tab: ["bad", "Tab not open"], no_token: ["bad", "Log in"], ok: ["ok", "OK"], issue: ["warn", "See note below"],
-  // Self-heal (v1.7.0) — each non-green state names the ONE action needed:
-  expired: ["warn", "Refreshing session…"],                 // 1.14.5: auto-refresh in flight (was "click the tab")
-  refreshing: ["warn", "Refreshing SellerFlowLive session…"], // in-place refresh / GET re-nav underway
+  connected: ["ok", "Connected"], paused: ["off", "Paused"], no_config: ["bad", "Finish setup"],
+  no_tab: ["bad", "Tab not open — open it"], no_token: ["bad", "Log in"], ok: ["ok", "OK"], issue: ["warn", "See below"],
+  expired: ["warn", "Reconnecting…"],
+  refreshing: ["warn", "Reconnecting…"],
   signed_out: ["bad", "SellerFlowLive: signed out — log in once"], // truly logged out — the only manual case
-  asleep: ["warn", "Tab asleep — click it once"],           // discarded SFL tab (never auto-reloaded)
-  healing: ["warn", "Waking up…"],                           // auto reload/inject fired; next check confirms
-  dead_script: ["bad", "Reload that tab"],                   // re-inject failed — the one truly manual case
-  // 1.14.0 — evidence-based per-tab states (green ONLY when that tab's checks resolved
-  // in the last 6 min; every other state names the ONE fix):
-  starting: ["off", "Starting…"],                            // worker just booted — nothing earned yet
-  stale: ["warn", "No check resolved in 6 min — click that tab once"],
-  guid_missing: ["warn", "Session lost — re-opening…"],
-  recovering: ["warn", "Re-opened — verifying…"],
-  degraded: ["warn", "Last check failed — recovering…"],     // 1.14.4: a recent verdict never hides a fresh failure
-  reminting: ["warn", "Re-opening via 賣貨便 選擇取貨門市…"],  // 1.14.3 unattended re-mint in flight
-  dead: ["bad", "Re-open via 賣貨便 → 選擇門市"],            // 2 recoveries didn't help = real expiry
-  maintenance: ["warn", "7-ELEVEN maintenance (1–5 AM)"],     // 1.14.6: nightly window, checks slowed, nothing counted
+  asleep: ["warn", "Click the SellerFlowLive tab once"],      // discarded SFL tab (never auto-reloaded)
+  healing: ["warn", "Waking up…"],
+  dead_script: ["bad", "Reload that tab"],
+  starting: ["off", "Starting…"],
+  stale: ["warn", "Hasn't checked in a while — click the 7-11 tab"],
+  guid_missing: ["warn", "Reconnecting…"],
+  recovering: ["warn", "Reconnecting…"],
+  degraded: ["warn", "Last check failed — trying again…"],
+  reminting: ["warn", "Reconnecting…"],
+  dead: ["bad", "7-11 store map logged out — open it again from 選擇門市"],
+  maintenance: ["warn", "7-ELEVEN maintenance (1–5 AM)"],
 };
+// The worker's last-error / per-check reasons in plain words (the raw reason stays in the
+// worker's console log). Unknown texts pass through unchanged.
+function pcPlain(reason) {
+  const r = String(reason || "");
+  if (!r) return "";
+  if (/Supabase URL|anon key/i.test(r)) return "Set up the connection first";
+  if (/parcel_scans read failed|\b401\b/i.test(r)) return "Couldn't load parcels. Log in again.";
+  if (/CheckoutValidation|tokenID|returned HTML|session\/token/i.test(r)) return "7-11 page logged out — log in again";
+  if (/eshopGuid|guid|error\.aspx|byIDData|bounced/i.test(r)) return "7-11 store map not ready — reopen it";
+  return r;
+}
 function pcBadge(el, status) {
   const [cls, label] = PC_STATUS_LABEL[status] || ["off", status || "—"];
   el.innerHTML = `<span class="dot ${cls}"></span>${label}`;
@@ -50,7 +59,7 @@ function pcBadge(el, status) {
 function pcReasonRow(rowEl, valEl, reason, at) {
   const show = Boolean(reason);
   rowEl.style.display = show ? "" : "none";
-  valEl.textContent = show ? `${reason}${at ? ` (${new Date(at).toLocaleTimeString()})` : ""}` : "";
+  valEl.textContent = show ? `${pcPlain(reason)}${at ? ` (${new Date(at).toLocaleTimeString()})` : ""}` : "";
 }
 // 1.15.0 — two-machine failover: which machine is on duty. Labels come from the
 // lease (another machine's Device name) → always set as TEXT, never as HTML.
@@ -58,22 +67,22 @@ function pcReasonRow(rowEl, valEl, reason, at) {
 // then a lease failure (the role shown below it would be stale), then the role.
 function pcRenderRole(st, cfg) {
   if (!pcEls.role) return;
-  const me = st.workerLabel ? ` · this: ${st.workerLabel}` : "";
+  const me = st.workerLabel ? ` · this computer: ${st.workerLabel}` : "";
   let cls = "off", text = `Starting…${me}`;
-  if (cfg && cfg.multiSeller !== true) { cls = "bad"; text = `Multi-seller mode is OFF — this machine cannot serve the sellers${me}`; }
-  else if (st.leaseFailing && st.leaseFailOpen) { cls = "warn"; text = `Lease unreachable 3+ min — working (may double-check)${me}`; }
+  if (cfg && cfg.multiSeller !== true) { cls = "bad"; text = `This computer is not checking — turn on "Check for all sellers"${me}`; }
+  else if (st.leaseFailing && st.leaseFailOpen) { cls = "warn"; text = `Reconnecting — still checking${me}`; }
   // While the lease fails the text says what this machine is ACTUALLY doing (leaseWorking
   // is decided by the worker on every attempt) — never "leader" while no work is done.
-  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseLone) { cls = "warn"; text = `Lease not reachable — lone leader, still working${me}`; }
-  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseWorking !== false) { cls = "warn"; text = `Lease not reachable — still working (pauses 60 s after the last answer)${me}`; }
-  else if (st.leaseFailing && st.leaseRole === "leader") { cls = "bad"; text = `Lease not reachable — PAUSED (another machine was seen) until the lease answers or 3 min of failure${me}`; }
-  else if (st.leaseFailing && st.leaseRole === "standby") { cls = "warn"; text = `Lease not reachable — staying STANDBY (works after 3 min of failure)${me}`; }
-  else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — working (no answer since start)${me}`; }
-  else if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${st.degraded ? " — DEGRADED (7-11 tab missing 1+ min / dead 2+ min)" : ""}${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseLone) { cls = "warn"; text = `Reconnecting — still checking${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseWorking !== false) { cls = "warn"; text = `Reconnecting — still checking${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "leader") { cls = "bad"; text = `Paused — reconnecting${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "standby") { cls = "warn"; text = `Waiting — reconnecting${me}`; }
+  else if (st.leaseFailing) { cls = "warn"; text = `Reconnecting — still checking${me}`; }
+  else if (st.leaseRole === "leader") { cls = "ok"; text = `Checking now${st.degraded ? " — a 7-11 tab needs attention" : ""}${me}`; }
   else if (st.leaseRole === "standby") {
     const age = typeof st.leaseLeaderAgeS === "number"
       ? st.leaseLeaderAgeS + (st.leaseAt ? Math.max(0, Math.round((Date.now() - st.leaseAt) / 1000)) : 0) : null;
-    cls = "warn"; text = `STANDBY — leader: ${st.leaseLeaderLabel || "?"}${age != null ? `, seen ${age}s ago` : ""}${me}`;
+    cls = "warn"; text = `Waiting — another computer is checking (${st.leaseLeaderLabel || "?"}${age != null ? `, seen ${age}s ago` : ""})${me}`;
   }
   pcEls.role.textContent = "";
   const dot = document.createElement("span"); dot.className = `dot ${cls}`;
@@ -89,24 +98,17 @@ async function pcRenderStatus() {
   // on error.aspx (real expiry); amber = no emap tab; green = a store check /
   // keepalive actually resolved; grey = tab present, awaiting a verdict.
   if (pcEls.emapSessionRow) {
-    const dom = st.emapDomain ? ` · ${st.emapDomain}` : "";
-    const tab = st.emapTabId != null ? ` (tab ${st.emapTabId})` : "";
     const lastV = st.lastStoreVerdictAt ? ` — last store check ${new Date(st.lastStoreVerdictAt).toLocaleTimeString()}` : "";
     const s = st.emapSession;
-    const m = st.inMaintenanceWindow ? ["#b45309", "7-ELEVEN maintenance window (1–5 AM) — store checks resume at 5:00"]
-      : s === "expired" ? ["#e5484d", `⚠️ E-Map landed on error.aspx (session expired) — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
-      : s === "dead" ? ["#e5484d", st.emapDeadReason === "no_cart_detail"
-          ? `⚠️ E-Map session expired — re-open via 賣貨便 → 選擇門市 (or park 賣貨便 on /cart/detail for auto re-mint)${dom}${tab}`
-          : st.emapDeadReason === "timeout"
-            ? `⚠️ E-Map session expired — auto re-mint via 選擇取貨門市 did not yield a session in 20 s — re-open via 賣貨便 → 選擇門市${dom}${tab}`
-            : `⚠️ E-Map session expired — re-open via 賣貨便 → 選擇門市${st.emapDeadReason ? ` (${st.emapDeadReason})` : ""}${dom}${tab}`]
-      : s === "reminting" ? ["#b45309", "⏳ E-Map session expired — re-opening via 賣貨便 → 選擇取貨門市 (auto, ≤20 s)"]
-      : s === "no_tab" ? ["#b45309", "⚠️ E-Map tab not found — open E-Map via 賣貨便 → 選擇門市"]
-      : s === "guid_missing" || s === "recovering" ? ["#b45309", `⚠️ E-Map session lost — re-opening the tab (GET, no resubmission dialog) to re-mint it${dom}${tab}`]
-      : s === "degraded" ? ["#b45309", `⚠️ E-Map: latest store check failed (${st.lastStoreReason || "guid missing"}) — recovering…${lastV}${dom}${tab}`]
-      : s === "stale" ? ["#b45309", `⚠️ E-Map tab open but no store check resolved in 6 min${lastV}${dom}${tab}`]
-      : s === "ok" ? ["#16a34a", `● E-Map session OK${lastV}${dom}${tab}`]
-      : s === "starting" ? ["#8a8a8a", "○ Worker starting — first check in a few seconds"]
+    const m = st.inMaintenanceWindow ? ["#b45309", "7-ELEVEN maintenance (1–5 AM) — store checks resume at 5:00"]
+      : s === "expired" || (s === "dead" && st.emapDeadReason !== "no_cart_detail") ? ["#e5484d", "⚠️ 7-11 store map logged out — open it again from the 7-11 seller page (選擇門市)"]
+      : s === "dead" ? ["#e5484d", "⚠️ 7-11 store map logged out — open it again from the 7-11 seller page (選擇門市), or keep a 7-11 checkout page open so it reopens by itself"]
+      : s === "reminting" || s === "guid_missing" || s === "recovering" ? ["#b45309", "⏳ 7-11 store map logged out — opening it again…"]
+      : s === "no_tab" ? ["#b45309", "⚠️ 7-11 store map not open — open it from the 7-11 seller page (選擇門市)"]
+      : s === "degraded" ? ["#b45309", `⚠️ Last store check failed — trying again…${lastV}`]
+      : s === "stale" ? ["#b45309", `⚠️ Hasn't checked in a while — click the 7-11 store map tab${lastV}`]
+      : s === "ok" ? ["#16a34a", `● 7-11 store map OK${lastV}`]
+      : s === "starting" ? ["#8a8a8a", "○ Starting — first check in a few seconds"]
       : null;
     pcEls.emapSessionRow.style.display = m ? "" : "none";
     if (m) { pcEls.emapSessionRow.style.color = m[0]; pcEls.emapSessionRow.textContent = m[1]; }
@@ -118,7 +120,7 @@ async function pcRenderStatus() {
   const showErr = Boolean(st.lastError);
   pcEls.errK.style.display = showErr ? "" : "none";
   pcEls.err.style.display = showErr ? "" : "none";
-  pcEls.err.textContent = st.lastError || "";
+  pcEls.err.textContent = pcPlain(st.lastError);
   // Exact per-check reason for the last 'unknown' — so Jeff never opens DevTools.
   pcReasonRow(pcEls.storeErrRow, pcEls.storeErr, st.lastStoreReason, st.lastStoreAt);
   // multi-seller queue depth (visible once the mode has reported at least once)
@@ -150,7 +152,7 @@ pcEls.save.addEventListener("click", async () => {
     deviceName: pcEls.device ? pcEls.device.value.trim().slice(0, 40) : (c.deviceName || ""),
   } });
   pcEls.save.textContent = "Saved ✓";
-  setTimeout(() => { pcEls.save.textContent = "Save config"; }, 1500);
+  setTimeout(() => { pcEls.save.textContent = "Save"; }, 1500);
 });
 pcEls.pause.addEventListener("click", async () => {
   const c = (await pcOne(PC_CONFIG_KEY, {})) || {};

@@ -1,13 +1,14 @@
 // Option E — the reset-detection logic (decisions 4 & 5). Reset (#1) ONLY on a real
 // PLATFORM switch while live; account switch / reconnect / fresh open → continue.
 import { describe, it, expect } from "vitest";
-import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isServerPlatformSwitch, isConnectableSource, LIVE_SOURCE_EMAILS } from "../liveSource";
+import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isServerPlatformSwitch, isConnectableSource } from "../liveSource";
+import { seedEmails } from "./featureSeed";
 
 describe("liveSourcePreviewEnabled — owner allowlist", () => {
   it("owner → true (case/space-insensitive); everyone else → false", () => {
     // SOFT-REVERTED: the allowlist is empty → the new flow is OFF for EVERYONE
     // (owner + googletest included) → old 3-chip header + old dropdown.
-    expect(LIVE_SOURCE_EMAILS).toEqual([]);
+    expect(seedEmails("live_source")).toEqual([]);
     for (const e of ["camilajeffrey1@gmail.com", "  CAMILAJEFFREY1@gmail.com ", "googletest@gmail.com", "random@seller.com", "", null, undefined]) expect(liveSourcePreviewEnabled(e)).toBe(false);
   });
 });

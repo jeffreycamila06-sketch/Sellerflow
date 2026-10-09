@@ -176,7 +176,7 @@ describe("TikTok and Shopee: only the new code is mapped (source pins)", () => {
   });
   it("LIVE_SOURCE_EMAILS carries the switch note", () => {
     const ls = readFileSync("src/redesign/adapters/liveSource.ts", "utf8");
-    expect(ls).toMatch(/account_live_unregistered_enforce[\s\S]{0,200}export const LIVE_SOURCE_EMAILS/);
+    expect(ls).toMatch(/account_live_unregistered_enforce[\s\S]{0,300}sql\/112 feature "live_source"/); // Build 10b: the list moved to the database
   });
 });
 

@@ -26,7 +26,7 @@ describe("web/preview — no native bridge", () => {
   it("callMobilePrinterBridge returns the friendly 'open the app' result (no throw)", async () => {
     const r = await callMobilePrinterBridge("getPrinter");
     expect(r.ok).toBe(false);
-    expect(r.message).toMatch(/mobile app/i);
+    expect(r.message).toMatch(/SellerFlowLive app/i);
   });
   it("btCall returns null when the bridge method is absent", async () => {
     expect(await btCall("scanBluetoothLabelPrinters")).toBeNull();
@@ -49,8 +49,8 @@ describe("with a stubbed native bridge", () => {
     expect(scan).toHaveBeenCalled();
     expect(r?.printers).toHaveLength(1);
   });
-  it("catches a throwing bridge call → ok:false", async () => {
+  it("catches a throwing bridge call → ok:false with a plain sentence (never the raw text)", async () => {
     (window as { SellerFlowPrinter?: unknown }).SellerFlowPrinter = { testPrint: vi.fn().mockRejectedValue(new Error("boom")) };
-    expect((await callMobilePrinterBridge("testPrint"))).toMatchObject({ ok: false, message: "boom" });
+    expect((await callMobilePrinterBridge("testPrint"))).toMatchObject({ ok: false, message: "Printer didn't respond. Check it's on." });
   });
 });

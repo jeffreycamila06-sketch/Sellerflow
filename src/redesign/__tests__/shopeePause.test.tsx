@@ -9,7 +9,8 @@ import { readFileSync, existsSync } from "node:fs";
 vi.mock("../../supabase", () => ({ isSupabaseConfigured: false, supabase: null }));
 
 import { SHOPEE_PAUSED, loadShopeeEnabled } from "../adapters/shopee";
-import { shopeePreviewEnabled, SHOPEE_PREVIEW_EMAILS } from "../adapters/shopeePreview";
+import { shopeePreviewEnabled } from "../adapters/shopeePreview";
+import { setFeatureAccess } from "../adapters/featureAccess";
 
 describe("the Shopee master off switch", () => {
   it("is ON (paused)", () => {
@@ -19,11 +20,11 @@ describe("the Shopee master off switch", () => {
     expect(await loadShopeeEnabled()).toBe(false);
   });
   it("the owner-preview allowlist cannot reopen it, even with an email on the list", () => {
-    SHOPEE_PREVIEW_EMAILS.push("camilajeffrey1@gmail.com");
+    setFeatureAccess({ shopee_preview: true });
     try {
       expect(shopeePreviewEnabled("camilajeffrey1@gmail.com")).toBe(false);
     } finally {
-      SHOPEE_PREVIEW_EMAILS.length = 0;
+      setFeatureAccess(null);
     }
   });
 });

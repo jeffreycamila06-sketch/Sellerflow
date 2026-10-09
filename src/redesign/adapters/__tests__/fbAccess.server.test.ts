@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { createFbFlagReader, createFbLock, fbPreviewEmail, FB_PREVIEW_EMAILS, FB_FLAG_TTL_MS } from "../../../../server/fbAccess.js";
 import { createFbRuntime, signState } from "../../../../server/fbLive.js";
 import { encryptToken } from "../../../../server/fbTokens.js";
+import { seedEmails } from "./featureSeed";
 
 const CONFIG = { enabled: true, appId: "app123", appSecret: "sekret", tokenKey: "tk" };
 const mkRes = (status: number, body: unknown) => ({ status, json: async () => body });
@@ -192,12 +193,7 @@ describe("server-side Facebook lock on /fb/* routes", () => {
 
 // ── The preview list exists twice: server and client must match ───────────────
 describe("preview-list parity", () => {
-  it("server FB_PREVIEW_EMAILS equals src/redesign/adapters/fbPreview.ts", () => {
-    const src = readFileSync("src/redesign/adapters/fbPreview.ts", "utf8");
-    const m = /export const FB_PREVIEW_EMAILS\s*:\s*string\[\]\s*=\s*\[([^\]]*)\]/.exec(src);
-    expect(m).not.toBeNull();
-    const client = [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
-    expect(client.length).toBeGreaterThan(0);
-    expect([...FB_PREVIEW_EMAILS].sort()).toEqual([...client].sort());
+  it("server FB_PREVIEW_EMAILS equals the database list (sql/112 fb_preview) — the app no longer carries it", () => {
+    expect([...FB_PREVIEW_EMAILS].sort()).toEqual([...seedEmails("fb_preview")].sort());
   });
 });

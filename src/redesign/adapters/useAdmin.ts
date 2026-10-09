@@ -234,10 +234,10 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
       const result = data as { success?: boolean; error?: string } | null;
       // Same real-error surfacing as the delete path (error.context, not the wrapper).
       if (error || result?.error) { const e = await readEdgeError(error, result); return { ok: false, error: e.message }; }
-      audit("set password", email, "via admin-set-password Edge Function");
+      audit("set password", email, "Password changed by admin");
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
+      return { ok: false, error: e instanceof Error ? e.message : "Set password failed. Please try again." };
     }
   }, [audit]);
 

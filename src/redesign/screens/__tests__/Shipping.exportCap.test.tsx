@@ -58,7 +58,7 @@ describe(`Shipping export — ${SHIP_MAX}-row importer cap (Batch D / audit #6)`
     renderShipping();
     await vi.waitFor(() => exportBtn()); // entries loaded → export card + button mounted
     fireEvent.click(exportBtn());
-    await vi.waitFor(() => expect(screen.getByText(new RegExp(`Max ${SHIP_MAX} rows`))).toBeTruthy());
+    await vi.waitFor(() => expect(screen.getByText(new RegExp(`Max ${SHIP_MAX} buyers`))).toBeTruthy());
     expect(screen.getByText(new RegExp(`${SHIP_MAX + 1} selected`))).toBeTruthy(); // says how many they picked
     expect(rpcMock).not.toHaveBeenCalled();
   });
@@ -70,6 +70,6 @@ describe(`Shipping export — ${SHIP_MAX}-row importer cap (Batch D / audit #6)`
     fireEvent.click(exportBtn());
     await vi.waitFor(() => expect(rpcMock).toHaveBeenCalledTimes(1));
     expect((rpcMock as Mock).mock.calls[0][0]).toHaveLength(SHIP_MAX);
-    expect(screen.queryByText(new RegExp(`Max ${SHIP_MAX} rows`))).toBeNull();
+    expect(screen.queryByText(new RegExp(`Max ${SHIP_MAX} buyers`))).toBeNull();
   });
 });

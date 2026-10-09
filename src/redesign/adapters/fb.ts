@@ -181,7 +181,7 @@ async function postFbLive(path: string, body: Record<string, string>): Promise<F
     if (j.ok === false) return { ok: false, reason: j.reason, error: j.error };
     return { ok: false, error: j.error || `HTTP ${r.status}` };
   } catch {
-    return { ok: false, unreachable: true, error: "Can't reach the live server." };
+    return { ok: false, unreachable: true, error: "Can't connect right now. Check your internet and try again." };
   }
 }
 
@@ -203,8 +203,7 @@ export function fbConnectFailText(r: FbConnectResult, t: RedesignT, live?: { ios
     if (r.fbTimeout) return t.rd_fb_err_no_answer;
     return t.rd_cm_conn_failed;
   }
-  if (typeof r.fbCode === "number") return `${t.rd_cm_conn_failed} (FB ${r.fbCode})`;
-  if (r.fbTimeout) return `${t.rd_cm_conn_failed} (FB timeout)`;
+  if (typeof r.fbCode === "number" || r.fbTimeout) return t.rd_cm_reconnect_page; // Build 10b: no "(FB …)" code on screen
   return t.rd_cm_conn_failed;
 }
 

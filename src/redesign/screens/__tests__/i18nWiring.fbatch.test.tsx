@@ -61,7 +61,7 @@ describe("(b) connect 'can't reach' — localized instead of the hardcoded Engli
     fireEvent.change(document.querySelector("input") as HTMLInputElement, { target: { value: "seclothingtw" } });
     // the primary connect button carries the TikTok connect label
     fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => /連接|connect/i.test(b.textContent || ""))!);
-    await waitFor(() => expect(screen.getByText("無法連接直播伺服器。請檢查網路連線。")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("目前無法連線。請檢查網路後再試一次。")).toBeTruthy());
     expect(screen.queryByText(/Can't reach the live server/)).toBeNull();
   });
   it("a server reason is never shown — the generic text instead (Build 10)", async () => {
@@ -69,7 +69,7 @@ describe("(b) connect 'can't reach' — localized instead of the hardcoded Engli
     render(<TProvider lang="zh-TW"><ConnectModal profile={profile} onClose={() => {}} onConnect={onConnect} /></TProvider>);
     fireEvent.change(document.querySelector("input") as HTMLInputElement, { target: { value: "seclothingtw" } });
     fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => /連接|connect/i.test(b.textContent || ""))!);
-    await waitFor(() => expect(screen.getByText("無法連線，請再試一次。")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("無法連線。請確認你正在直播，然後再試一次。")).toBeTruthy());
     expect(screen.queryByText("rate limited")).toBeNull();
   });
 });
@@ -84,10 +84,12 @@ describe("(c) native-printer failure alert — localized fallback", () => {
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("本機列印失敗。"));
     setNativePrintAlertText("Native printer failed."); // restore the default for other tests
   });
-  it("a native-provided message still passes through untouched", async () => {
+  it("Build 10b: the printer's own message is never shown — the seller words instead", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    setNativePrintAlertText("Couldn't print. Check your printer is on and connected.");
     (window as unknown as Record<string, unknown>).SellerFlowPrinter = { printSlip: () => ({ ok: false, message: "Paper jam" }) };
     printSlip(buyer, "NT$", "Shop", { ...DEF_SETTINGS, printerType: "lan", lanFormat: "receipt" });
-    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Paper jam"));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Couldn't print. Check your printer is on and connected."));
+    expect(alertSpy).not.toHaveBeenCalledWith("Paper jam");
   });
 });

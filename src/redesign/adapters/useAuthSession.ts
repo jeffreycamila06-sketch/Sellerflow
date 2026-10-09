@@ -25,7 +25,7 @@ import { initials as deriveInitials } from "../data";
 export type AuthStatus = "loading" | "authed" | "anon";
 
 export interface RegisterFields { email: string; password: string; confirm: string; fullName: string; storeName: string; phone: string; phoneCountry?: string }
-export interface RegisterResult { ok: boolean; error?: string; needsConfirm?: boolean }
+export interface RegisterResult { ok: boolean; error?: string; errorKey?: string; needsConfirm?: boolean }
 
 export interface UseAuthSession {
   status: AuthStatus;
@@ -35,7 +35,7 @@ export interface UseAuthSession {
   // (sessionNumberingGate). null when signed out.
   email: string | null;
   configured: boolean;
-  signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string; errorKey?: string }>;
   signOut: () => Promise<void>;
   reloadProfile: () => Promise<void>; // 5i — re-fetch own profile after a save
   // Self-serve registration — mirrors App.tsx PublicAuth `reg` (738-758): signUp →
@@ -121,13 +121,19 @@ export function useAuthSession(): UseAuthSession {
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!isSupabaseConfigured || !supabase) {
-      return { ok: false, error: "Sign-in is unavailable (Supabase not configured)." };
+      return { ok: false, error: "Sign-in isn't available right now. Please try again later.", errorKey: "rd_login_unavailable" };
     }
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
     });
-    if (error) return { ok: false, error: error.message };
+    // Never hand the raw auth/network text to the screen — a seller-facing key instead.
+    if (error) {
+      const wrong = /invalid login credentials/i.test(error.message || "");
+      return wrong
+        ? { ok: false, error: "Wrong email or password.", errorKey: "rd_login_err_wrong" }
+        : { ok: false, error: "Sign-in failed. Check your details and try again.", errorKey: "rd_login_err_failed" };
+    }
     // onAuthStateChange flips status + loads the profile.
     return { ok: true };
   }, []);
@@ -157,12 +163,12 @@ export function useAuthSession(): UseAuthSession {
   // Self-serve registration — same path as App.tsx PublicAuth `reg` (738-758).
   const register = useCallback(async (f: RegisterFields): Promise<RegisterResult> => {
     const invalid = validateRegistration(f);
-    if (invalid) return { ok: false, error: invalid };
-    if (!isSupabaseConfigured || !supabase) return { ok: false, error: "Registration is unavailable (service not configured)." };
+    if (invalid) { const c = registrationErrorCode(f); return { ok: false, error: invalid, errorKey: c ? REG_ERROR_KEYS[c] : undefined }; }
+    if (!isSupabaseConfigured || !supabase) return { ok: false, error: "You can't create an account right now. Please try again later.", errorKey: "rd_su_err_unavailable" };
     const cleanEmail = f.email.trim().toLowerCase();
     const { data, error } = await supabase.auth.signUp({ email: cleanEmail, password: f.password });
-    if (error) return { ok: false, error: mapSignUpError(error.message) };
-    if (!data.user) return { ok: false, error: "Registration failed. Please try again." };
+    if (error) return { ok: false, error: mapSignUpError(error.message), errorKey: mapSignUpErrorKey(error.message) };
+    if (!data.user) return { ok: false, error: "Could not create your account. Please try again.", errorKey: "rd_su_err" };
     // Email confirmation enabled → no session yet → cannot create the profile row
     // (RLS needs auth.uid()). Same branch as App.tsx (748-752).
     if (!data.session) return { ok: true, needsConfirm: true };
@@ -175,8 +181,9 @@ export function useAuthSession(): UseAuthSession {
         country: (f.phoneCountry || DEFAULT_COUNTRY).toUpperCase(),
         tiktok: "", facebook: "", adminContactNote: "",
       });
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Could not create your profile." };
+    } catch {
+      // Never show the raw database text — the account exists, only the profile step failed.
+      return { ok: false, error: "Your account was created, but setup didn't finish. Please log in and try again.", errorKey: "rd_su_err_setup" };
     }
     // The auth listener already flipped status→authed (signUp persisted a session);
     // load the profile now so the dashboard renders the real account, not a fallback.
@@ -249,6 +256,11 @@ export function validateRegistration(f: RegisterFields): string {
 // Mirrors App.tsx (746): existing-email detection.
 export function mapSignUpError(message: string): string {
   return /already|registered|exists/i.test(message) ? "That email is already registered. Try logging in." : "Could not create your account. Please try again.";
+}
+
+// Same rule as mapSignUpError, as an i18n key (the screen shows it translated).
+export function mapSignUpErrorKey(message: string): string {
+  return /already|registered|exists/i.test(message) ? "rd_su_err_exists" : "rd_su_err";
 }
 
 // The exact localStorage keys App.tsx handleDeleteAccount clears (4213), keyed per

@@ -34,7 +34,7 @@ describe("unified search input", () => {
     fireEvent.change(input(container), { target: { value: "yushan" } });
     expect(container.textContent).toContain("Yu Shan");
     expect(container.textContent).not.toContain("Mei Lin");
-    fireEvent.click(getByLabelText("clear"));
+    fireEvent.click(getByLabelText("Clear search"));
     expect(input(container).value).toBe("");
     expect(container.textContent).toContain("Mei Lin");
   });

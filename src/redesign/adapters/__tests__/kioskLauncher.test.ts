@@ -2,7 +2,9 @@
 // gating predicate. A pasted command replaced the .bat download (Windows 11 Smart
 // App Control blocks downloaded .bat files; a pasted command has no file).
 import { describe, it, expect } from "vitest";
-import { KIOSK_COMMAND_WINDOWS, KIOSK_COMMAND_MAC, KIOSK_LAUNCHER_EMAILS, canSeeKioskLauncher } from "../kioskLauncher";
+import { KIOSK_COMMAND_WINDOWS, KIOSK_COMMAND_MAC, canSeeKioskLauncher } from "../kioskLauncher";
+import { setFeatureAccess } from "../featureAccess";
+import { seedEmails } from "./featureSeed";
 import type { AccountUser } from "../../../accountDb";
 
 const acct = (over: Partial<AccountUser> = {}): AccountUser => ({
@@ -31,10 +33,11 @@ describe("canSeeKioskLauncher gating (single allowlist)", () => {
   it("admin role → visible", () => {
     expect(canSeeKioskLauncher(acct({ role: "admin" }))).toBe(true);
   });
-  it("allowlisted email (googletest@gmail.com, case-insensitive) → visible", () => {
-    expect(KIOSK_LAUNCHER_EMAILS).toContain("googletest@gmail.com");
+  it("listed account (sql/112 kiosk_launcher = googletest) → visible", () => {
+    expect(seedEmails("kiosk_launcher")).toEqual(["googletest@gmail.com"]);
+    setFeatureAccess({ kiosk_launcher: true });
     expect(canSeeKioskLauncher(acct({ email: "googletest@gmail.com" }))).toBe(true);
-    expect(canSeeKioskLauncher(acct({ email: "GoogleTest@Gmail.com" }))).toBe(true);
+    setFeatureAccess(null);
   });
   it("ordinary seller → hidden", () => {
     expect(canSeeKioskLauncher(acct())).toBe(false);

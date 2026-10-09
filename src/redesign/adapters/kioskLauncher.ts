@@ -6,17 +6,17 @@
 // !isAppShell()); no native/DB dependency.
 import { isAdminRole } from "../../lib/roles";
 import type { AccountUser } from "../../accountDb";
+import { hasFeature } from "./featureAccess";
 
 // ── Gating ────────────────────────────────────────────────────────────────────
-// While the helper is limited, these emails see the button (admins always do).
-// ONE place — widen or empty this list to open it to everyone.
-export const KIOSK_LAUNCHER_EMAILS = ["googletest@gmail.com"];
+// While the helper is limited, listed accounts see the button (admins always do). Build 10b:
+// the list lives in the database (sql/112 feature "kiosk_launcher").
 
 export function canSeeKioskLauncher(account: AccountUser | null | undefined): boolean {
   if (!account) return false;
   if (isAdminRole(account.role)) return true;
   const email = String(account.email || "").trim().toLowerCase();
-  return KIOSK_LAUNCHER_EMAILS.includes(email);
+  return email !== "" && hasFeature("kiosk_launcher");
 }
 
 // ── The command (single source of truth; unit-test-pinned) ────────────────────

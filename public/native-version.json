@@ -1,4 +1,4 @@
 {
   "ios": { "latest": 11, "message_key": "rd_upd_msg_ble", "force": false },
-  "android": { "latest": 8, "message_key": "rd_upd_msg_ble", "force": false, "_comment": "Update nudge ACTIVE on both platforms. 1.7 live on both stores (iOS build 11, Android vc8) — in-app camera + manual encode. Older builds are prompted to update. Note: Android users on vc5 or older have no getBuildNumber bridge (readBinaryBuild returns Infinity), so they are never prompted — expected, not a bug." }
+  "android": { "latest": 8, "message_key": "rd_upd_msg_ble", "force": false }
 }

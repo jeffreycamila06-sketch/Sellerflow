@@ -8,6 +8,7 @@ import { renderHook, act } from "@testing-library/react";
 vi.mock("../../../supabase", () => ({ supabase: { auth: { getSession: async () => ({ data: { session: { access_token: "JWT" } } }) } } }));
 import { loadFbAccess, useFbAccess, fbUiGates, FB_ACCESS_NONE, FB_ACCESS_REFRESH_MIN_MS, FB_ACCESS_RETRY_FIRST_MS, FB_ACCESS_RETRY_EVERY_MS } from "../fbAccess";
 import { fbPreviewEnabled } from "../fbPreview";
+import { setFeatureAccess } from "../featureAccess";
 
 const res = (status: number, body: unknown) => ({ status, json: async () => body });
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -165,10 +166,12 @@ describe("UI gates", () => {
   it("non-tester (flag off, not preview, no access) → no Facebook UI and no receipt UI", () => {
     expect(fbUiGates({ fbFlag: false, fbPreview: fbPreviewEnabled("seller@x.co"), access: none })).toEqual({ fbEnabled: false, receiptUi: false });
   });
-  it("the 3 hard-coded accounts → both, even with no /fb/access answer (unchanged)", () => {
+  it("the preview accounts (database flag fb_preview) → both, even with no /fb/access answer (unchanged)", () => {
+    setFeatureAccess({ fb_preview: true });
     for (const e of ["camilajeffrey1@gmail.com", "googletest@gmail.com", "test@gmail.com"]) {
       expect(fbUiGates({ fbFlag: false, fbPreview: fbPreviewEnabled(e), access: none })).toEqual({ fbEnabled: true, receiptUi: true });
     }
+    setFeatureAccess(null);
   });
   it("tester → Facebook; receipt UI only with receipt access", () => {
     expect(fbUiGates({ fbFlag: false, fbPreview: false, access: { facebook: true, receipt: false } })).toEqual({ fbEnabled: true, receiptUi: false });

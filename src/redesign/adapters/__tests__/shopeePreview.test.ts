@@ -2,12 +2,13 @@
 // global shopee_enabled flag, and injects a display-only placeholder shop so the
 // screens render populated. Everyone else → false → zero Shopee UI (unchanged).
 import { describe, it, expect } from "vitest";
-import { shopeePreviewEnabled, withShopeePreview, SHOPEE_PREVIEW_SHOP, SHOPEE_PREVIEW_EMAILS } from "../shopeePreview";
+import { shopeePreviewEnabled, withShopeePreview, SHOPEE_PREVIEW_SHOP } from "../shopeePreview";
+import { seedEmails } from "./featureSeed";
 import type { ShopeeShop } from "../shopee";
 
 describe("shopeePreviewEnabled — owner allowlist only", () => {
   it("SOFT-REVERTED: the allowlist is empty → Shopee preview OFF for everyone", () => {
-    expect(SHOPEE_PREVIEW_EMAILS).toEqual([]);
+    expect(seedEmails("shopee_preview")).toEqual([]);
     for (const e of ["camilajeffrey1@gmail.com", "  CamilaJeffrey1@Gmail.com ", "someone@else.com", "", null, undefined]) {
       expect(shopeePreviewEnabled(e)).toBe(false);
     }

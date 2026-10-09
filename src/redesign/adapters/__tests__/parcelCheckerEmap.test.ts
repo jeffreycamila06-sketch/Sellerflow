@@ -55,8 +55,8 @@ function loadEmap(html: string, url: string, opts: { mainGuid?: string | null; b
   };
   vm.createContext(sandbox);
   // MAIN-world helper first (as the manifest orders it), then the isolated script
-  vm.runInNewContext(readFileSync("chrome-extension/emap-guid-main.js", "utf8"), sandbox, { filename: "emap-guid-main.js" });
-  vm.runInNewContext(readFileSync("chrome-extension/emap-711.js", "utf8"), sandbox, { filename: "emap-711.js" });
+  vm.runInNewContext(readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/emap-guid-main.js`, "utf8"), sandbox, { filename: "emap-guid-main.js" });
+  vm.runInNewContext(readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/emap-711.js`, "utf8"), sandbox, { filename: "emap-711.js" });
   const send = (msg: Msg) => new Promise<Record<string, unknown>>((resolve) => { handler!(msg, {}, (r) => resolve(r as Record<string, unknown>)); });
   return { send, calls, createElement, win };
 }
@@ -183,7 +183,7 @@ describe("emap-711 1.14.1 — guid without page-context execution", () => {
   });
 
   it("emap-guid-main.js: MAIN-world helper is CSP-exempt by construction — it only reads window vars and dispatches a CustomEvent (no DOM writes, no fetch)", () => {
-    const src = readFileSync("chrome-extension/emap-guid-main.js", "utf8");
+    const src = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/emap-guid-main.js`, "utf8");
     expect(src).not.toMatch(/fetch\(|createElement|innerHTML|localStorage|chrome\./);
     expect(src).toContain('new CustomEvent("__sfl_emap_guid"');
     expect(src).toContain('document.addEventListener("__sfl_emap_guid_req"');

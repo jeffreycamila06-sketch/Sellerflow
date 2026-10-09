@@ -293,11 +293,11 @@ describe("F · Admin card view of the mirrored worker state", () => {
     const now = 10 * MIN;
     const ok = describeWorkerState({ v: "1.14.0", at: now - 30_000, sfl: "connected", myship: "ok", emap: "ok", emapDomain: "emap.unipcsc.com.tw", lastStoreVerdictAt: now - 60_000, lastPhoneVerdictAt: now - 90_000 }, now);
     expect(ok?.level).toBe("ok");
-    expect(ok?.text).toContain("emap ok (store 1m ago · emap.unipcsc.com.tw)");
+    expect(ok?.text).toBe("Checker: OK");
     // 1.14.4: the card applies the same rule — verdict 1 min ago but a later definitive miss → amber 'degraded'
     const deg = describeWorkerState({ v: "1.14.4", at: now - 30_000, sfl: "connected", myship: "ok", emap: "ok", lastStoreVerdictAt: now - 60_000, lastStoreMissAt: now - 20_000, lastPhoneVerdictAt: now - 90_000 }, now);
     expect(deg?.level).toBe("warn");
-    expect(deg?.text).toContain("emap degraded (store 1m ago, last check FAILED 0m ago)");
+    expect(deg?.text).toBe("Checker: Needs attention");
     const older = describeWorkerState({ at: now - 30_000, sfl: "connected", myship: "ok", emap: "ok", lastStoreVerdictAt: now - 60_000, lastStoreMissAt: now - 5 * MIN }, now);
     expect(older?.level).toBe("ok"); // the miss predates the verdict → green
     expect(describeWorkerState({ at: now - 30_000, sfl: "connected", myship: "ok", emap: "stale" }, now)?.level).toBe("warn");
@@ -305,7 +305,7 @@ describe("F · Admin card view of the mirrored worker state", () => {
     expect(describeWorkerState({ at: now - 30_000, sfl: "connected", myship: "no_tab", emap: "ok" }, now)?.level).toBe("bad");
     const silent = describeWorkerState({ v: "1.14.0", at: now - WORKER_SILENT_MS - 1, sfl: "connected", myship: "ok", emap: "ok" }, now);
     expect(silent?.level).toBe("bad");
-    expect(silent?.text).toMatch(/SILENT/);
+    expect(silent?.text).toMatch(/^Checker: Needs attention — no signal/);
     expect(describeWorkerState(null, now)).toBeNull();
     expect(describeWorkerState({}, now)).toBeNull();
   });

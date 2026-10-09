@@ -14,6 +14,9 @@ item; anything that fails goes into a report — **do not auto-fix** (see
 
 - [ ] **Check `GET /health/tiktok`**
       (`https://sellerflow-live-server.onrender.com/health/tiktok`)
+      - ⚠️ Build 10b: without a token it answers only `{"ok":true}`. For the detail send
+        the poll secret: `curl -H "X-Poll-Token: $PARCEL_POLL_TOKEN" <url>` (the same secret
+        cron-job.org uses; it lives in Render env, never in the repo).
       - `activeConnections` makes sense for the time of day
       - `recentTiktokAttempts`: no flood of `fail`/`rate_limit` entries
         (a few "user isn't online" fails are normal; remember the ring buffer

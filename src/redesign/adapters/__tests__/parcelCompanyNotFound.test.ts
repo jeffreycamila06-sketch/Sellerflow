@@ -56,7 +56,7 @@ describe("worker · company / not_found are real store verdicts", () => {
     expect(bg.split("pcIsStoreVerdict(").length - 1).toBe(4); // definition + legacy lane + multi lane + keepalive
     expect(bg).toContain('const alive = pcIsStoreVerdict(verdict) && verdict !== "not_found";');
     const m = JSON.parse(readFileSync("chrome-extension/manifest.json", "utf8"));
-    expect(m.version).toBe("1.15.1");
+    expect(m.version).toBe("1.15.2");
   });
 });
 

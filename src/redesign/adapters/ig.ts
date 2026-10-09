@@ -134,7 +134,7 @@ export function igConnectFailText(r: IgConnectResult, t: RedesignT, live?: { ios
   if (e === ACCOUNT_NOT_COVERED && live) return liveRefusedText(t, live);
   if (e === "needs_reauth" || e === "account_not_found") return t.rd_ig_reauth_toast;
   if (e === "too_many_requests") return t.rd_fb_too_many;
-  if (typeof r.igCode === "number") return `${t.rd_cm_conn_failed} (IG ${r.igCode})`;
+  if (typeof r.igCode === "number") return t.rd_cm_reconnect_page; // Build 10: never the IG code on screen
   return t.rd_cm_conn_failed;
 }
 

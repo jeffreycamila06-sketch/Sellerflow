@@ -140,7 +140,7 @@ describe("text rules", () => {
   it("default per language, {code}, {position} or none", () => {
     expect(soldoutText({ custom: "", lang: "en", code: "B2", position: null })).toBe("Sorry, B2 is already sold out. Thank you for your interest!");
     expect(soldoutText({ custom: "", lang: "zh-TW", code: "B2", position: 2 })).toBe("抱歉，B2 已經售完了。您是候補名單第 2 位。");
-    expect(soldoutText({ custom: "", lang: "th", code: "B2", position: null })).toBe(SOLDOUT_DEFAULTS.en.plain.replace("{code}", "B2"));
+    expect(soldoutText({ custom: "", lang: "th", code: "B2", position: null })).toBe(SOLDOUT_DEFAULTS.th.plain.replace("{code}", "B2"));
   });
   it("the seller's own text wins; {position} removed (with its #) when there is none", () => {
     expect(soldoutText({ custom: "Ubos na ang {code}! Pang-#{position} ka.", lang: "en", code: "C3", position: null })).toBe("Ubos na ang C3! Pang- ka.");

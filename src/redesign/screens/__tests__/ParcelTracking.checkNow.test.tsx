@@ -108,7 +108,9 @@ describe("check card", () => {
       .mockResolvedValue(st({ last_completed_at: ago(0), last_job: { id: "j", kind: "manual", status: "done", error: null, parcels_checked: 5, parcels_total: 6 } }));
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("Updated 5 of 6 parcels"));
-    expect(loadParcelTracking).toHaveBeenCalledTimes(2);
+    // Build 10b: wait for the real condition (the parcels were re-read after the first load)
+    // instead of an exact call count — a poll tick under CI load can add one more read.
+    await waitFor(() => expect(loadParcelTracking.mock.calls.length).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(r.getByTestId("pt-check-now").textContent).toBe("Check now"));
   });
 

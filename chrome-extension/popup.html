@@ -35,14 +35,14 @@
     </style>
   </head>
   <body>
-    <h3>SellerFlow Parcel Checker</h3>
+    <h3>SellerFlowLive Parcel Checker</h3>
 
     <h4>Parcel checker (賣貨便)</h4>
     <div class="pc-card">
-      <div class="pc-row"><span class="k">Duty</span><span class="v" id="pcRole"><span class="dot off"></span>—</span></div>
+      <div class="pc-row"><span class="k">Status</span><span class="v" id="pcRole"><span class="dot off"></span>—</span></div>
       <div class="pc-row"><span class="k">SellerFlowLive</span><span class="v" id="pcSfl"><span class="dot off"></span>—</span></div>
-      <div class="pc-row"><span class="k">賣貨便 (myship)</span><span class="v" id="pcMyship"><span class="dot off"></span>—</span></div>
-      <div class="pc-row"><span class="k">E-Map (emap)</span><span class="v" id="pcEmap"><span class="dot off"></span>—</span></div>
+      <div class="pc-row"><span class="k">7-11 seller page</span><span class="v" id="pcMyship"><span class="dot off"></span>—</span></div>
+      <div class="pc-row"><span class="k">7-11 store map</span><span class="v" id="pcEmap"><span class="dot off"></span>—</span></div>
       <div id="pcEmapSessionRow" style="display:none;font-size:11px;margin:2px 0 0;line-height:1.35"></div>
       <div class="pc-row"><span class="k">Last check</span><span class="v" id="pcLast">—</span></div>
       <div class="pc-row"><span class="k" id="pcErrK" style="display:none">Note</span><span class="v" id="pcErr" style="color:#e5484d;display:none"></span></div>
@@ -52,24 +52,24 @@
       </div>
 
       <div class="pc-cfg">
-        <div><label>Device name (shown when two machines run the checker)</label><input id="pcDevice" placeholder="e.g. Office laptop" /></div>
-        <div><label>Supabase URL</label><input id="pcUrl" placeholder="https://….supabase.co" /></div>
-        <div><label>Supabase anon key (public — from the web app)</label><input id="pcKey" placeholder="eyJ…" /></div>
+        <div><label>Computer name</label><input id="pcDevice" placeholder="e.g. Office laptop" /></div>
+        <div><label>Connection link</label><input id="pcUrl" placeholder="https://…" /></div>
+        <div><label>Connection code</label><input id="pcKey" placeholder="Paste the code" /></div>
         <div id="pcPerSellerCfg">
-          <div><label>賣場 GM id (Cgdm_Id)</label><input id="pcCgdm" placeholder="GM2609096130694" /></div>
-          <div><label>Seller phone (ordMobile)</label><input id="pcOrd" placeholder="09……" /></div>
+          <div><label>Your 7-11 shop ID</label><input id="pcCgdm" placeholder="GM…" /></div>
+          <div><label>Your phone number</label><input id="pcOrd" placeholder="09……" /></div>
         </div>
       </div>
       <div class="pc-btns">
-        <button id="pcSave" class="primary">Save config</button>
+        <button id="pcSave" class="primary">Save</button>
         <button id="pcPause" class="warn">Pause</button>
       </div>
       <button id="pcCheckNow" style="width:100%;margin-top:8px">Check now</button>
       <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;cursor:pointer">
-        <input type="checkbox" id="pcMulti" style="margin:0"> Multi-seller mode (dogfood)
+        <input type="checkbox" id="pcMulti" style="margin:0"> Check for all sellers
       </label>
       <div id="pcMultiRow" style="display:none;font-size:11px;opacity:.8;margin-top:4px">Queue: <span id="pcMultiQueue">—</span></div>
-      <div class="hint">Keep THREE tabs open: SellerFlowLive (logged in), myship.7-11.com.tw (logged in), and an E-Map tab opened via 賣貨便 → 選擇門市 (a bare E-Map URL has no session). The checker keeps them awake and re-handshakes by itself; a badge stays green only while that tab's checks actually resolve. It never submits an order — it only reads store status and validates phones.</div>
+      <div class="hint">Keep these 3 tabs open and logged in: SellerFlowLive, 7-11 seller page, 7-11 store map. It never places orders.</div>
     </div>
     <script src="popup.js"></script>
   </body>

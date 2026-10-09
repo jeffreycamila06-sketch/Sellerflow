@@ -20,12 +20,16 @@ export const SOLDOUT_TEXT_MAX = 1000;
 export const SOLDOUT_LANGS = ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"];
 
 // Built-in texts (the client shows the same ones as the placeholder — pinned by a test).
-// Languages without their own text use English.
+// Build 10b: every app language has its own text (vi/th/id/bg added).
 export const SOLDOUT_DEFAULTS = {
   en: { plain: "Sorry, {code} is already sold out. Thank you for your interest!", pos: "Sorry, {code} is already sold out. You are #{position} on the waitlist." },
   fil: { plain: "Pasensya na, sold out na ang {code}. Salamat sa interes!", pos: "Pasensya na, sold out na ang {code}. Ikaw ay #{position} sa waitlist." },
   zh: { plain: "抱歉，{code} 已经售完了。谢谢您的支持！", pos: "抱歉，{code} 已经售完了。您是候补名单第 {position} 位。" },
   "zh-TW": { plain: "抱歉，{code} 已經售完了。謝謝您的支持！", pos: "抱歉，{code} 已經售完了。您是候補名單第 {position} 位。" },
+  vi: { plain: "Xin lỗi, {code} đã bán hết. Cảm ơn bạn đã quan tâm!", pos: "Xin lỗi, {code} đã bán hết. Bạn là #{position} trong danh sách chờ." },
+  th: { plain: "ขออภัย {code} ขายหมดแล้ว ขอบคุณที่สนใจ!", pos: "ขออภัย {code} ขายหมดแล้ว คุณอยู่ลำดับที่ #{position} ในรายชื่อรอ" },
+  id: { plain: "Maaf, {code} sudah habis terjual. Terima kasih atas minat Anda!", pos: "Maaf, {code} sudah habis terjual. Anda nomor #{position} di daftar tunggu." },
+  bg: { plain: "Съжаляваме, {code} е разпродаден. Благодарим за интереса!", pos: "Съжаляваме, {code} е разпродаден. Вие сте #{position} в списъка с чакащи." },
 };
 
 // The text sent: the seller's own (trimmed, non-empty) or the built-in default for the language.

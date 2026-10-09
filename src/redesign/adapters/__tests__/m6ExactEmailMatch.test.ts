@@ -37,9 +37,10 @@ describe("M6 — the outer catch is mode-aware", () => {
     expect(iLog).toBeLessThan(iReturn);
   });
 
-  it("self mode → generic delete_failed; admin modes keep the detail (Jul 24 rule)", () => {
-    expect(tail).toContain('if (mode === "self") return json({ success: false, error: "delete_failed" }, 500);');
-    expect(tail).toContain("return json({ success: false, error: detail }, 500);");
+  it("self mode → the code delete_failed; admin modes get a plain sentence, the detail stays in the function log (Build 10b)", () => {
+    expect(tail).toContain('if (mode === "self") return json({ ok: false, code: "delete_failed" }, 500);');
+    expect(tail).toContain(`return json({ success: false, error: "Couldn't delete this account. Please try again." }, 500);`);
+    expect(tail).toContain("console.error(`[admin-delete-user] mode=${mode} failed:`, detail);");
     // The old raw-leak-to-everyone return is gone:
     expect(fn).not.toContain('error: e instanceof Error ? e.message : "delete_failed"');
   });

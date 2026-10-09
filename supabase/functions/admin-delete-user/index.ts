@@ -224,7 +224,8 @@ Deno.serve(async (req: Request) => {
       if (sErr) throw new Error(`self profile lookup failed: ${sErr.message}`);
       // Guard: admin/master accounts may NOT self-delete (protected).
       const guard = checkSelfDeleteAllowed(prof?.role ?? null, prof?.plan ?? null);
-      if (!guard.allowed) return json({ success: false, error: guard.error, code: guard.code }, 403);
+      // Build 10b: the seller gets a short code only (the app shows its own words).
+      if (!guard.allowed) return json({ ok: false, code: guard.code }, 403);
       const email = String(prof?.email ?? caller.email ?? "").trim().toLowerCase();
       const wiped = await hardWipe(admin, caller.id, email);
       // Best-effort audit — a failed insert must NOT report a completed wipe as an error.
@@ -233,7 +234,7 @@ Deno.serve(async (req: Request) => {
           actor_email: email, action: "self-deleted account", target_email: email, details: JSON.stringify(wiped),
         });
       } catch { /* audit is best-effort; the wipe already happened */ }
-      return json({ success: true, mode: "self", deleted: wiped });
+      return json({ ok: true }); // Build 10b: never list what was wiped (table names) to the seller
     }
 
     // ── GHOST modes: auth.users with NO seller_profiles row ──────────────────
@@ -290,7 +291,7 @@ Deno.serve(async (req: Request) => {
 
     // ── mode "user": hard-delete ONE seller by email ─────────────────────────
     const email = String(body.email ?? "").trim().toLowerCase();
-    if (!email) return json({ success: false, error: "email_required" }, 400);
+    if (!email) return json({ success: false, error: "Enter an email.", code: "email_required" }, 400);
 
     // Resolve target from seller_profiles (auth_user_id + role + plan for the guards).
     // M6 (security audit 2026-09-26): EXACT match, not ilike — a typo'd email with a
@@ -327,7 +328,8 @@ Deno.serve(async (req: Request) => {
     // purpose — the 2026-07-24 rule: admin-only paths surface the real error.
     const detail = e instanceof Error ? e.message : String(e);
     console.error(`[admin-delete-user] mode=${mode} failed:`, detail);
-    if (mode === "self") return json({ success: false, error: "delete_failed" }, 500);
-    return json({ success: false, error: detail }, 500);
+    if (mode === "self") return json({ ok: false, code: "delete_failed" }, 500);
+    // Build 10b: admins get a plain sentence too; the full detail stays in the function log.
+    return json({ success: false, error: "Couldn't delete this account. Please try again." }, 500);
   }
 });

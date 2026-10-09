@@ -114,10 +114,10 @@ describe("no raw '(FB …)' code in seller-facing text", () => {
     expect(receiptFailText({ code: 4 }, t, true)).toBe(t.rd_fb_err_refused);
     expect(receiptFailText({}, t, true)).toBe(t.rd_rs_failed);
   });
-  it("OFF: today's texts, codes included", () => {
-    expect(fbConnectFailText({ ok: false, fbCode: 190 }, t)).toBe(`${t.rd_cm_conn_failed} (FB 190)`);
-    expect(fbConnectFailText({ ok: false, fbTimeout: true }, t)).toBe(`${t.rd_cm_conn_failed} (FB timeout)`);
-    expect(receiptFailText({ fbCode: "100/1893060" }, t)).toBe(`${t.rd_rs_failed} (FB 100/1893060)`);
+  it("OFF too: no '(FB …)' code any more (Build 10b) — reconnect your Page", () => {
+    expect(fbConnectFailText({ ok: false, fbCode: 190 }, t)).toBe(t.rd_cm_reconnect_page);
+    expect(fbConnectFailText({ ok: false, fbTimeout: true }, t)).toBe(t.rd_cm_reconnect_page);
+    expect(receiptFailText({ fbCode: "100/1893060" }, t)).toBe(t.rd_cm_reconnect_page); // Build 10b: receipts never show the FB code
   });
   it("RedesignApp passes the switch to both connect toasts", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
@@ -256,8 +256,8 @@ describe("text batch", () => {
       if (k !== "rd_rc_so_default" && k !== "rd_rc_opening_ph") expect(tw[k], k).not.toContain("您"); // texts buyers read keep 您
     }
   });
-  it("the sold-out default stays English in vi / th / id / bg", () => {
-    for (const l of ["vi", "th", "id", "bg"] as const) expect((buildT(l) as unknown as Record<string, string>).rd_rc_so_default).toBe(t.rd_rc_so_default);
+  it("Build 10b: the sold-out default has its own text in vi / th / id / bg", () => {
+    for (const l of ["vi", "th", "id", "bg"] as const) expect((buildT(l) as unknown as Record<string, string>).rd_rc_so_default).not.toBe(t.rd_rc_so_default);
   });
   it("new en / fil strings: seller words only, at most 2 sentences", () => {
     const keys = ["rd_fb_err_expired", "rd_fb_err_no_answer", "rd_fb_err_refused", "rd_rs_too_old", "rd_rs_no_access", "rd_rs_again_confirm", "rd_rs_again_cancel", "rd_rs_again_send", "rd_rc_sub_live", "rd_wl_title", "rd_ord_expired", "rd_rc_auto_title"] as const;

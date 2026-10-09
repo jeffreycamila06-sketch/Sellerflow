@@ -2,6 +2,7 @@
 // pill using design tokens (warn tint), not a broken/error look. `label` overrides
 // the default text (e.g. "Soon · cross-device").
 import type { CSSProperties } from "react";
+import { useT } from "../i18n";
 
 const base: CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 5,
@@ -11,11 +12,12 @@ const base: CSSProperties = {
   fontFamily: "var(--font-ui)", whiteSpace: "nowrap",
 };
 
-export default function SoonBadge({ label = "Soon", style }: { label?: string; style?: CSSProperties }) {
+export default function SoonBadge({ label, style }: { label?: string; style?: CSSProperties }) {
+  const t = useT();
   return (
-    <span style={{ ...base, ...style }} title="Coming soon — not yet functional">
+    <span style={{ ...base, ...style }} title={t.rd_soon_title}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warn)" }} />
-      {label}
+      {label ?? t.rd_soon}
     </span>
   );
 }

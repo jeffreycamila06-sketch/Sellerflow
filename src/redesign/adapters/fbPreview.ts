@@ -1,3 +1,4 @@
+import { hasFeature } from "./featureAccess";
 // FACEBOOK ALLOWLIST (owner + test accounts) — grants the listed accounts the FULL
 // Facebook flow (FbChannels authorize / remove, Dashboard FB connect, the live poller,
 // the platform-switch flow) WITHOUT flipping the global app_settings `fb_enabled` (which
@@ -15,9 +16,10 @@
 // ⚠️ PERMANENT — DO NOT REMOVE "test@gmail.com" in any future cleanup: it is the account
 // Meta App Review uses to test the Facebook Connection / OAuth flow, and Meta re-tests
 // approved apps periodically. Removing it would break a future review.
-export const FB_PREVIEW_EMAILS: string[] = ["camilajeffrey1@gmail.com", "googletest@gmail.com", "test@gmail.com"];
+// Build 10b: the list lives in the database (sql/112 feature "fb_preview"); the app only
+// gets a yes/no for the signed-in user (featureAccess.ts).
 
 export function fbPreviewEnabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();
-  return e !== "" && FB_PREVIEW_EMAILS.includes(e);
+  return e !== "" && hasFeature("fb_preview");
 }
