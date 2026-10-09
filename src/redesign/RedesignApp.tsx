@@ -92,7 +92,8 @@ import { autoReceiptGate } from "./adapters/fbAutoReceipt";
 import { joinWaitlist, loadWaitlist, setWaitlistStatus, groupWaitlist, rebuildWaitlistComment, nameHasBuyer, type WaitlistRow } from "./adapters/fbWaitlist";
 import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
-import { resolveInitialProducts } from "./adapters/productsDb";
+import { resolveInitialProducts, loadProductsDb } from "./adapters/productsDb";
+import { createStockGuard, mergeReloadedStock, debounceAllows, useStockRefreshTriggers } from "./adapters/stockRefresh";
 import { loadProducts, type Product } from "./adapters/products";
 import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
@@ -404,6 +405,7 @@ export default function RedesignApp() {
   const autoCommentRef = useRef<(c: ProdComment) => void>(() => {});
   const pinHandlerRef = useRef<(p: PinPayload) => void>(() => {}); // PIN-TO-PRINT seam (mirror kept fresh by an effect below)
   const autoCodesRef = useRef<AutoCode[]>([]);
+  const productsGenRef = useRef(0);                              // stock_refresh_v2: bumped by every sign-in products load
   const codesReadyRef = useRef(false);                           // I3: false until the products auth-load resolves (no auto match before codes exist)
   const autoStockRef = useRef<Map<number, number>>(new Map());   // productLocalId → live remaining
   const autoProcessedRef = useRef<Set<string>>(new Set());       // commentKey → already handled (sync dedup)
@@ -573,6 +575,7 @@ export default function RedesignApp() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- logout reset (same pattern as the other auth-reset effects here)
     if (!authed) { codesReadyRef.current = false; autoCodesRef.current = []; autoStockRef.current = new Map(); autoProcessedRef.current = new Set(); autoDupRef.current = new Set(); setAutoCodeStock([]); return; }
     codesReadyRef.current = false; // I3: a fresh load is in flight — no auto match until it resolves
+    productsGenRef.current += 1;   // stock_refresh_v2: a reload started before this load is discarded
     let active = true;
     void (async () => {
       const resolved = await resolveInitialProducts(loadProducts());
@@ -601,6 +604,26 @@ export default function RedesignApp() {
     // re-derive (an edited/added code appears; a restocked code drops out of sold-out).
     setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
   }, []);
+  // stock_refresh_v2 — re-read codes + stock WITHOUT touching any per-session state (dedup refs,
+  // codesReadyRef, processed set). Skipped while the sign-in load is in flight, at most once per
+  // 10 s, and an empty / failed read changes nothing. Products with a deduction in flight (or
+  // one within the last 15 s) keep their local count (createStockGuard).
+  const stockGuardRef = useRef(createStockGuard());
+  const lastStockReloadRef = useRef(0);
+  const reloadAutoProducts = async () => {
+    if (!codesReadyRef.current) return;
+    const startedAt = Date.now();
+    if (!debounceAllows(lastStockReloadRef.current, startedAt)) return;
+    lastStockReloadRef.current = startedAt;
+    const gen = productsGenRef.current;
+    const rows = await loadProductsDb();
+    if (gen !== productsGenRef.current || !codesReadyRef.current || !rows || rows.length === 0) return;
+    autoCodesRef.current = codesFromProducts(rows);
+    autoStockRef.current = mergeReloadedStock(autoStockRef.current, rows, stockGuardRef.current, startedAt);
+    setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
+  };
+  const reloadAutoProductsRef = useRef(reloadAutoProducts);       // effect mirror (react-hooks/refs)
+  useEffect(() => { reloadAutoProductsRef.current = reloadAutoProducts; });
   // Rule 1 resets on a NEW session (a fresh session_id = a fresh live) — clear the
   // synchronous dedup ref; loadedAutoDupSet clears with the reloaded (empty) session.
   useEffect(() => { autoDupRef.current = new Set(); setAutoBadges({}); }, [sessionInstance.currentSessionId]); // eslint-disable-line react-hooks/set-state-in-effect -- fresh session resets Rule-1 dedup + its feed badges
@@ -1738,7 +1761,9 @@ export default function RedesignApp() {
     if (!featureSw.inventoryV2 || !deductOneClick) return;
     const code = matchCode(text || "", autoCodesRef.current);
     if (!code) return;
+    stockGuardRef.current.begin(code.productLocalId, Date.now()); // stock_refresh_v2 race guard (memory only)
     void adjustStockLogged(code.productLocalId, -1, "oneclick", orderRef).then((s) => {
+      stockGuardRef.current.end(code.productLocalId, Date.now());
       if (s == null || s < 0) return;
       autoStockRef.current.set(code.productLocalId, s);
       setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0)); // = refreshAutoStock (declared below)
@@ -1817,7 +1842,17 @@ export default function RedesignApp() {
     void (async () => {
       const stock = await loadProductStock(code.productLocalId);
       if (stock == null) return;                                // could not verify → no message
-      if (stock > 0) { autoStockRef.current.set(code.productLocalId, stock); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0)); return; }
+      if (stock > 0) {
+        autoStockRef.current.set(code.productLocalId, stock); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
+        // stock_refresh_v2 — restocked elsewhere: order this buyer now through the normal Auto
+        // path (order + stock + badge); no sold-out message. soldoutSentRef keeps it one try.
+        if (featureSw.stockRefreshV2) {
+          const key = commentKey(c);
+          setAutoBadges((b) => { if (!(key in b)) return b; const n = { ...b }; delete n[key]; return n; });
+          autoCommentRef.current(c);
+        }
+        return;
+      }
       // F3: join the line BEFORE the message so it can say the place in line.
       const x = c as ProdComment & SoldoutComment & { liveVideoId?: string; commenterId?: string };
       const position = waitlistBase
@@ -1833,6 +1868,10 @@ export default function RedesignApp() {
   const wlSession = sessionInstance.currentSessionId ?? null;
   const reloadWaitlist = useCallback(() => { void loadWaitlist(wlSession).then((r) => setWlRows(r)); }, [wlSession]);
   useEffect(() => { if (screen === "orders" && waitlistBase) reloadWaitlist(); }, [screen, waitlistBase, reloadWaitlist]);
+  // stock_refresh_v2 — fresh codes + stock when the app comes back (visible / native resume) and
+  // when Orders opens (its Waitlist Give reads this count). OFF → no listener, no extra read.
+  useStockRefreshTriggers(featureSw.stockRefreshV2, () => { void reloadAutoProductsRef.current(); });
+  useEffect(() => { if (featureSw.stockRefreshV2 && screen === "orders") void reloadAutoProductsRef.current(); }, [featureSw.stockRefreshV2, screen]);
   const wlGiveRef = useRef<Set<number>>(new Set());          // sync double-tap guard (money path)
   // "Give": the EXISTING order path (pin-to-print precedent) — createOrder with a rebuilt comment,
   // NO autoCode / productLocalId (the sticker shows the code via itemOverride). No message is sent.
@@ -1842,25 +1881,42 @@ export default function RedesignApp() {
     if (nameHasBuyer(who, liveSession.session.buyers) && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_wl_same_name, { name: who }))) return;
     wlGiveRef.current.add(r.id);
     const code = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === r.code.trim().toLowerCase());
-    const c = rebuildWaitlistComment(r);
-    const order = orders.createOrder(c, effectiveOrderPrice(code ? code.price : 0, samePriceCfg.active), { itemOverride: code ? code.code : r.code });
-    if (!order) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return; }
-    setWlNote(null);
-    setWlBusy(r.id);
-    const snap = snapshotFromCreate(c, order);
-    reprintByIdRef.current.set(`wl:${r.commentId}`, snap);
-    jobToCommentRef.current.set(String(order.orderNum), { cid: `wl:${r.commentId}`, msgId: r.commentId });
-    liveSession.addOrderedMsgId(r.commentId, snap);
-    const lid = r.productLocalId ?? code?.productLocalId ?? null;
-    void (async () => {
-      if (lid != null) {
-        const s = await adjustStockLogged(lid, -1, "waitlist", r.commentId);
-        if (s != null && s >= 0) { autoStockRef.current.set(lid, s); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
-      }
-      await setWaitlistStatus(r.id, "given");
-      setWlBusy(null);
-      reloadWaitlist();
-    })();
+    const give = () => {
+      const c = rebuildWaitlistComment(r);
+      const order = orders.createOrder(c, effectiveOrderPrice(code ? code.price : 0, samePriceCfg.active), { itemOverride: code ? code.code : r.code });
+      if (!order) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return; }
+      setWlNote(null);
+      setWlBusy(r.id);
+      const snap = snapshotFromCreate(c, order);
+      reprintByIdRef.current.set(`wl:${r.commentId}`, snap);
+      jobToCommentRef.current.set(String(order.orderNum), { cid: `wl:${r.commentId}`, msgId: r.commentId });
+      liveSession.addOrderedMsgId(r.commentId, snap);
+      const lid = r.productLocalId ?? code?.productLocalId ?? null;
+      void (async () => {
+        if (lid != null) {
+          stockGuardRef.current.begin(lid, Date.now());           // stock_refresh_v2 race guard (memory only)
+          const s = await adjustStockLogged(lid, -1, "waitlist", r.commentId).finally(() => stockGuardRef.current.end(lid, Date.now()));
+          if (s != null && s >= 0) { autoStockRef.current.set(lid, s); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
+        }
+        await setWaitlistStatus(r.id, "given");
+        setWlBusy(null);
+        reloadWaitlist();
+      })();
+    };
+    // stock_refresh_v2 — ask the DATABASE first: 0 → no order, the buyer stays in line; could not
+    // verify → today's flow. OFF → today's flow, unchanged.
+    const checkLid = r.productLocalId ?? code?.productLocalId ?? null;
+    if (featureSw.stockRefreshV2 && checkLid != null) {
+      setWlBusy(r.id);
+      void loadProductStock(checkLid).then((st) => {
+        setWlBusy(null);
+        if (st != null) { autoStockRef.current.set(checkLid, st); setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (l) => autoStockRef.current.get(l) ?? 0)); }
+        if (st === 0) { wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_no_stock); return; }
+        give();
+      });
+      return;
+    }
+    give();
   };
   const onWaitlistSkip = (r: WaitlistRow) => {
     if (wlBusy != null) return;
@@ -1990,6 +2046,7 @@ export default function RedesignApp() {
     autoProcessedRef.current.add(key);
     autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
     autoStockRef.current.set(plan.code.productLocalId, plan.nextStock);
+    stockGuardRef.current.touch(plan.code.productLocalId, Date.now()); // stock_refresh_v2: its DB decrement is in flight
     // STICKER TEXT (Jeff follow-up): AUTO orders show the CODE ("A1") for packing.
     // Always 1 piece — there is no quantity syntax (autoMode.ts).
     // Same-price override: auto's base is the code price → fixed when set (total = fixed × qty
