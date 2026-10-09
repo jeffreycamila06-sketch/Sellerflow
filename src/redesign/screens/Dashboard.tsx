@@ -161,7 +161,7 @@ export default function Dashboard({
   onPrintWinner,
   basketCounts,
   minerRisk,
-  buyerAlerts, onBuyerTap, buyerTags,
+  buyerAlerts, onBuyerTap, buyerTags, fbPolish = false,
 }: {
   comments: Comment[]; cur: string;
   // 🛒 per-buyer order count for the current session window (key: "handle platform").
@@ -175,6 +175,7 @@ export default function Dashboard({
   buyerAlerts?: Map<string, BuyerAlertView>;
   // BUYER TAG — OLD / NEW pill; null/absent = not loaded → no pill (rows exactly as before).
   buyerTags?: BuyerTagMap | null;
+  fbPolish?: boolean; // fb_polish_v2: the buyer-tag pill readable in both themes
   onBuyerTap?: (handle: string) => void;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
@@ -976,7 +977,7 @@ export default function Dashboard({
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     )}
                     {!fbNameOnly(c.platform, c.name) && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>}
-                    {bt && <BuyerTagPill tag={bt} />}
+                    {bt && <BuyerTagPill tag={bt} readable={fbPolish} />}
                     {risk && (
                       <span data-testid="miner-risk" data-level={risk} title={RISK_TIP[risk](t)} aria-label={RISK_TIP[risk](t)} style={RISK_CHIP[risk]}>
                         {risk === "risky" ? "⚠ " : ""}{RISK_TAG[risk](t)}

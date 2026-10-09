@@ -71,9 +71,9 @@ describe("A — masked email", () => {
   });
 });
 
-describe("A — GET /fb/oauth/callback shows the confirm page, nothing is exchanged", () => {
-  it("valid state + code → 200 confirm page with the receiving account; no Graph call, nothing saved", async () => {
-    const { rt, store, fetchImpl } = runtime();
+describe("A — GET /fb/oauth/callback shows the confirm page, nothing is saved", () => {
+  it("valid state + code → 200 confirm page with the receiving account and the Pages; nothing saved", async () => {
+    const { rt, store } = runtime();
     const base = await serve(rt);
     const st = state();
     const r = await fetch(`${base}/fb/oauth/callback?code=CODE%22%3E&state=${encodeURIComponent(st)}`, { redirect: "manual" });
@@ -83,7 +83,8 @@ describe("A — GET /fb/oauth/callback shows the confirm page, nothing is exchan
     expect(html).toContain("Your Facebook Page will be connected to this SellerFlowLive account:");
     expect(html).toContain("ma•••s@gmail.com");
     expect(html).not.toContain("maria.santos");
-    expect(html).toContain("Maria &lt;Shop&gt;");                       // escaped store name
+    expect(html).toContain("<span>store name set by this account: <i>Maria &lt;Shop&gt;</i></span>"); // escaped, labelled
+    expect(html).toContain('<ul class="pages"><li>My Page</li></ul>');
     expect(html).toContain("Only continue if this is your own SellerFlowLive account.");
     expect(html).toContain('<form id="c" method="post" action="/fb/oauth/complete">');
     expect(html).toContain('<input type="hidden" name="code" value="CODE&quot;&gt;">'); // escaped
@@ -97,8 +98,7 @@ describe("A — GET /fb/oauth/callback shows the confirm page, nothing is exchan
     expect(r.headers.get("cache-control")).toBe("no-store");
     expect(r.headers.get("x-frame-options")).toBe("DENY");
     expect(r.headers.get("content-security-policy")).toBe(`default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self' ${APP}`);
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(store.upserts).toEqual([]);
+    expect(store.upserts).toEqual([]); // Build 5: the Pages are read (to name them), nothing is saved
     expect(store.getAccountLabel).toHaveBeenCalledWith("user-1");
   });
   it("no store name → only the masked email", async () => {

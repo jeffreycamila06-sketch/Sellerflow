@@ -38,7 +38,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null,
+  buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -62,6 +62,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // B2 (orders_paid_flag_enabled): Mark paid / Unpaid per order, the "Unpaid" pill, "Expired"
   // after 24 h unpaid. false/absent = the screen exactly as before (no extra read).
   paidFlag?: boolean;
+  // fb_polish_v2 (Build 7): receipt sheet reasons / Send-again confirm / seller-word errors, the
+  // buyer-tag pill readable in both themes, and the row footer wraps on narrow phones.
+  fbPolish?: boolean;
   buyerTags?: BuyerTagMap | null; // OLD / NEW pill next to the buyer (null = not loaded → no pill)
 }) {
   const t = useT();
@@ -183,7 +186,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
             <span style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{o.buyer}</span>
             {!fbNameOnly(o.platform, o.buyer) && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.handle}</span>}
-            {(() => { const bt = buyerTagFor(buyerTags, o.handle, o.buyer, o.platform); return bt && <BuyerTagPill tag={bt} />; })()}
+            {(() => { const bt = buyerTagFor(buyerTags, o.handle, o.buyer, o.platform); return bt && <BuyerTagPill tag={bt} readable={fbPolish} />; })()}
             {/* Date chip — any row not from today (history results + earlier
                 days of a multi-day window) is unambiguous at a glance. */}
             {o.date && todayId && o.date !== todayId && (
@@ -197,7 +200,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 1 }}>{cur}{fmt(o.total)}</div>
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
+      <div data-testid="ord-row-foot" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)", ...(fbPolish ? { flexWrap: "wrap" as const, rowGap: 6 } : null) }}>
         {/* F-batch i18n: canonical status value ("New") stays English for
             statusColor state-equality; only the DISPLAY translates. */}
         <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: statusColor(o.status), background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 7 }}>{o.status === "New" ? t.rd_ord_st_new : o.status}</span>
@@ -373,7 +376,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             )}
             {fbReceipt && receipt.platform === "Facebook" && receiptSheetOpen && (
               <ReceiptSheet key={receipt.num} receipt={receipt} cur={cur} onClose={() => setReceiptSheetOpen(false)}
-                sessionId={sessionId} onSent={(n) => { if (tagKey) setSentTag({ key: tagKey, sent: n > 0 }); }} />
+                sessionId={sessionId} polish={fbPolish} onSent={(n) => { if (tagKey) setSentTag({ key: tagKey, sent: n > 0 }); }} />
             )}
           </div>
         ) : (

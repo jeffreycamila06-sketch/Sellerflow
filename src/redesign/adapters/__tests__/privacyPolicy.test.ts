@@ -18,8 +18,9 @@ describe("public privacy pages", () => {
   });
 
   it("privacy policy keeps the Meta sentences, operator and contact", () => {
-    expect(privacy).toContain("Data from Facebook is the list of Pages you manage and the comments on your Page's live video, including each commenter's public name, profile ID and profile picture. It is used only to show those comments in your dashboard and create orders. If you send a Messenger receipt, your Page sends that commenter one message with the receipt picture. It is never sold or used for advertising.");
-    expect(privacy).toContain("Last updated: October 5, 2026");
+    expect(privacy).toContain("Data from Facebook is the list of Pages you manage and the comments on your Page's live video, including each commenter's public name, profile ID and profile picture. It is used only to show those comments in your dashboard and create orders. If you send a Messenger receipt, your Page sends that commenter one message with the receipt picture.");
+    expect(privacy).toContain("without a tap. It is never sold or used for advertising."); // Build 8 sentences sit in between
+    expect(privacy).toContain("Last updated: October 9, 2026"); // Build 8 privacy sentences
     expect(privacy).toContain("Meta Platform Terms</a>. You can remove our access in Facebook Settings &rarr; Apps and Websites.");
     expect(privacy).toContain("We do not sell your data.");
     expect(privacy).toContain("SELLERFLOWLIVE PRINTER TRADING &middot; <a href=\"mailto:jeffreycamila06@gmail.com\">");

@@ -17,13 +17,14 @@ import { notCoveredLabel } from "../adapters/accountLive";
 import { isIOS } from "../adapters/platform";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+import { TELEGRAM_URL } from "../../lib/telegram";
 const USERNAME_RE = /^[a-z0-9._]*$/; // SOFT guidance only — never hard-blocks (matches main's accept-then-clean).
 
 const input: CSSProperties = { flex: 1, minWidth: 0, border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, padding: "13px 0", outline: "none" };
 const inputWrap = (invalid: boolean): CSSProperties => ({ flex: 1, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${invalid ? "var(--warn)" : "var(--border-strong)"}`, borderRadius: 12, background: "var(--surface-2)", padding: "0 13px" });
 const badge = (locked: boolean): CSSProperties => ({ display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, background: locked ? "var(--surface-3)" : "var(--accent-soft)", color: locked ? "var(--text-muted)" : "var(--accent-fg)", fontSize: 12, fontWeight: 800, letterSpacing: ".04em", flexShrink: 0 });
 
-export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages, onInstagram }: {
+export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages, onInstagram, fbActivationOnly = false }: {
   platform: "tiktok" | "facebook";
   account?: AccountUser | null;
   onBack: () => void;
@@ -41,6 +42,10 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   onFbPages?: () => void;
   // Instagram (phase 1): passed ONLY while igEnabled → absent = zero Instagram UI here.
   onInstagram?: () => void;
+  // fb_polish_v2 + Facebook not open for this seller: the Facebook screen shows only the
+  // activation notice + Telegram link (the Live chip's), no name slots — nothing is saved, no
+  // plan slot is used and no 4-hour lock starts. Absent/false → today's screen.
+  fbActivationOnly?: boolean;
 }) {
   const t = useT();
   // Editor state + save/cooldown logic = the shared hook (single source; see its header).
@@ -53,6 +58,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   const helper = isTT ? t.rd_ch_validation : t.rd_ch_fb_helper;
   const addLabel = isTT ? t.rd_ch_add_tt_multi : t.rd_ch_add_fb_multi;
   const popBody = isTT ? t.rd_ch_pop_body_tt : t.rd_ch_pop_body_fb;
+  const fbLocked = !isTT && fbActivationOnly; // fb_polish_v2: activation notice only, no name slots
 
   return (
     <div>
@@ -65,6 +71,12 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
       </div>
 
       <div style={{ padding: "16px 14px 24px" }}>
+        {fbLocked ? (
+          <div data-testid="mc-fb-activation" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", boxShadow: "var(--shadow)" }}>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 12 }}>{t.rd_dash_fb_activation}</div>
+            <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" data-testid="mc-fb-telegram" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 0", background: "#0088cc", color: "#fff", borderRadius: 11, fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 800, textDecoration: "none" }}>{t.rd_dash_fb_contact}</a>
+          </div>
+        ) : (<>
         {isTT && <AccountQuotaLine reloadKey={orig.join(",")} />}
         {slots.map((val, i) => {
           const savedSlot = Boolean(orig[i]);
@@ -117,6 +129,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
           <button onClick={save} disabled={state === "saving" || !onSaveChannels} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: state === "saving" || !onSaveChannels ? "default" : "pointer", opacity: state === "saving" || !onSaveChannels ? 0.6 : 1, boxShadow: "0 5px 14px var(--accent-soft)", marginBottom: 12 }}>{state === "saving" ? t.rd_set_saving : t.rd_ch_save}</button>
         )}
         <button onClick={() => setAddOpen(true)} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, letterSpacing: ".02em", cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>{addLabel}</button>
+        </>)}
 
         {/* P3 — Shopee shops section (flag-gated). A separate live source with its
             own authorize/remove screen; NOT part of the tiktok/facebook cap. */}

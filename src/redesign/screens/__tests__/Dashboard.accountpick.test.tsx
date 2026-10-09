@@ -25,7 +25,7 @@ const renderDash = (over: Partial<typeof base> = {}) =>
 // Scope to the dropdown PANEL (parent of its header). The chip button also shows the
 // selected account name, so a global getByText would be ambiguous — within(panel) excludes it.
 const ttPanel = () => screen.getByText("TIKTOK ACCOUNT").parentElement as HTMLElement;
-const fbPanel = () => screen.getByText("FACEBOOK PAGE / GROUP").parentElement as HTMLElement;
+const fbPanel = () => screen.getByText("FACEBOOK PAGE").parentElement as HTMLElement;
 const rowIn = (panel: HTMLElement, name: string) => within(panel).getByText(name).closest("button") as HTMLButtonElement;
 
 describe("Dashboard account pick = select-only (TikTok)", () => {

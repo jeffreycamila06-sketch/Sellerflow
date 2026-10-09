@@ -70,7 +70,7 @@ describe("i18n", () => {
       const t = buildT(l);
       for (const k of ["rd_rc_auto_title", "rd_rc_auto_hint", "rd_rc_auto_toggle"] as const) expect(String(t[k] || "").trim()).not.toBe("");
     }
-    expect(buildT("en").rd_rc_auto_title).toBe("Automatic receipt after live (Plus and up)");
+    expect(buildT("en").rd_rc_auto_title).toBe("Send receipts automatically after the live (Plus plan and up)"); // Build 7 wording
   });
 });
 

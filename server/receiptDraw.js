@@ -22,17 +22,17 @@ export const SERVER_FONTS = [
 ];
 export const SERVER_FONT_STACK = '"Noto Sans", "Noto Sans TC", "Noto Sans SC", "Noto Sans Thai", sans-serif';
 
-// The two picture words, per app language — the same text as the app's rd_rc_pic_total /
-// rd_rc_pic_tbc (a test pins them). Unknown language → English.
+// The picture words, per app language — the same text as the app's rd_rc_pic_total /
+// rd_rc_pic_tbc / rd_rc_pic_more (a test pins them). Unknown language → English.
 export const RECEIPT_LABELS = {
-  en: { total: "Total", toBeConfirmed: "to be confirmed" },
-  fil: { total: "Kabuuan", toBeConfirmed: "kukumpirmahin pa" },
-  zh: { total: "合计", toBeConfirmed: "待确认" },
-  "zh-TW": { total: "合計", toBeConfirmed: "待確認" },
-  vi: { total: "Tổng cộng", toBeConfirmed: "sẽ xác nhận sau" },
-  th: { total: "รวม", toBeConfirmed: "รอยืนยัน" },
-  id: { total: "Total", toBeConfirmed: "akan dikonfirmasi" },
-  bg: { total: "Общо", toBeConfirmed: "предстои потвърждение" },
+  en: { total: "Total", toBeConfirmed: "to be confirmed", more: "…and {n} more" },
+  fil: { total: "Kabuuan", toBeConfirmed: "kukumpirmahin pa", more: "…at {n} pa" },
+  zh: { total: "合计", toBeConfirmed: "待确认", more: "…还有 {n} 项" },
+  "zh-TW": { total: "合計", toBeConfirmed: "待確認", more: "…還有 {n} 項" },
+  vi: { total: "Tổng cộng", toBeConfirmed: "sẽ xác nhận sau", more: "…và {n} món nữa" },
+  th: { total: "รวม", toBeConfirmed: "รอยืนยัน", more: "…และอีก {n} รายการ" },
+  id: { total: "Total", toBeConfirmed: "akan dikonfirmasi", more: "…dan {n} lagi" },
+  bg: { total: "Общо", toBeConfirmed: "предстои потвърждение", more: "…и още {n}" },
 };
 
 // rows: ONE buyer's live_session_orders rows (any order) → the shared ReceiptInput. PURE.
@@ -63,6 +63,16 @@ export function receiptInputFromRows(rows, settings = {}) {
   };
 }
 
+export const QR_MAX_BYTES = 2 * 1024 * 1024; // decoded size of the QR data URL
+export const QR_MAX_SIDE = 1000;             // px, width or height
+// data:image/...;base64,XXXX → decoded byte count (no decode).
+export function qrDataBytes(dataUrl) {
+  const s = String(dataUrl || "");
+  const comma = s.indexOf(",");
+  const b64 = comma >= 0 ? s.slice(comma + 1) : s;
+  return Math.floor((b64.replace(/=+$/, "").length * 3) / 4);
+}
+
 let canvasMod = null;
 async function loadCanvas() {
   if (canvasMod) return canvasMod;
@@ -86,7 +96,12 @@ export async function drawReceiptPng(rows, settings = {}) {
   const { createCanvas, loadImage } = await loadCanvas();
   const input = receiptInputFromRows(rows, settings);
   let qr = null;
-  if (input.qrImage) { try { qr = await loadImage(input.qrImage); } catch { qr = null; } }
+  if (input.qrImage) {
+    // Build 8: the seller's QR is refused (the receipt is not drawn) above 2 MB or 1,000 px a side.
+    if (qrDataBytes(input.qrImage) > QR_MAX_BYTES) throw new Error("qr_too_big");
+    try { qr = await loadImage(input.qrImage); } catch { qr = null; }
+    if (qr && (qr.width > QR_MAX_SIDE || qr.height > QR_MAX_SIDE)) throw new Error("qr_too_big");
+  }
   const probe = createCanvas(1, 1).getContext("2d");
   const measure = (t, font) => { probe.font = font; return probe.measureText(t).width; };
   const layout = serverLayout(input, measure, qr ? { w: qr.width, h: qr.height } : null);

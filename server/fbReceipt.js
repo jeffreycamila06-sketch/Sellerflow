@@ -16,6 +16,7 @@ import express from "express";
 import { GRAPH_VERSION } from "./fbConfig.js";
 import { GRAPH_HOST } from "./fbLive.js";
 import { decryptToken } from "./fbTokens.js";
+import { withAppSecretProof, maskSecretText, makeRateGate, isFbCommentId } from "./fbHardening.js";
 
 export const RECEIPT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000; // 7 days minus 1 hour
 export const RECEIPT_MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -87,7 +88,7 @@ export function pickReceiptCandidates(orders, rows) {
   const out = [];
   for (const o of orders || []) {
     const commentId = String(o.comment_msg_id || "").trim();
-    if (!commentId || seen.has(commentId) || !knownHandle(o.handle)) continue;
+    if (!commentId || !isFbCommentId(commentId) || seen.has(commentId) || !knownHandle(o.handle)) continue; // same id check as the sold-out reply
     seen.add(commentId);
     const f = fails.get(commentId) || 0;
     if (busy.has(commentId) || f >= RECEIPT_MAX_FAILS) continue;
@@ -111,16 +112,14 @@ export function buildReceiptRequest({ pageId, commentId, imageUrl, pageToken }) 
 // Nothing else from the answer. Any URL is replaced by "[url]" and the page token (when given)
 // by "[redacted]", so the request / image URL and the token can never end up in it.
 export const RECEIPT_ERROR_DETAIL_MAX = 300;
+export const RECEIPT_INFO_RATE_MAX = 60; // /fb/receipt/info per seller per minute (Build 8)
 export function receiptErrorDetail(err, token = "") {
   const e = err && typeof err === "object" ? err : {};
   const parts = [e.message, e.type, e.error_user_title, e.error_user_msg]
     .filter((v) => typeof v === "string")
     .map((v) => v.replace(/\s+/g, " ").trim())
     .filter(Boolean);
-  let out = parts.join(" | ");
-  if (token) out = out.split(String(token)).join("[redacted]");
-  out = out.replace(/\bhttps?:\/\/\S+/gi, "[url]");
-  return out.slice(0, RECEIPT_ERROR_DETAIL_MAX).trim();
+  return maskSecretText(parts.join(" | "), token, RECEIPT_ERROR_DETAIL_MAX); // the one shared masker
 }
 
 // Graph answer → sent (message_id) | failed (Graph error object + detail) | unknown (anything
@@ -218,11 +217,12 @@ export function makeSendablePage(store, config) {
 
 export function createFbReceipt(deps) {
   const {
-    config, store, fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
+    config, store, fetchImpl: rawFetch = globalThis.fetch, now = () => Date.now(), log = () => {},
     randomHex = () => randomBytes(32).toString("hex"),
     makeJsonParser = (limit) => express.json({ limit }),
     graphTimeoutMs = RECEIPT_GRAPH_TIMEOUT_MS,
   } = deps;
+  const fetchImpl = withAppSecretProof(rawFetch, config && config.appSecret); // Build 8: appsecret_proof
   const sendAttempts = new Map(); // userId → timestamps (in memory; a restart clears it)
   const sending = new Set();      // user|session|buyer — one send at a time per buyer (in memory)
 
@@ -408,8 +408,14 @@ export function createFbReceipt(deps) {
     }
   };
 
+  // Build 8: /fb/receipt/info is limited per seller (RECEIPT_INFO_RATE_MAX per minute).
+  const infoRateGate = makeRateGate({
+    max: RECEIPT_INFO_RATE_MAX, windowMs: 60 * 1000, now,
+    keyOf: (req) => req.authUserId,
+    onLimit: (_req, res) => res.status(429).json({ ok: false, error: "too_many_requests" }),
+  });
   function registerRoutes(app, requireAuth) {
-    app.post("/fb/receipt/info", requireAuth, wrap(info));
+    app.post("/fb/receipt/info", requireAuth, infoRateGate, wrap(info));
     // auth → access → rate limit → the raised-limit parser (the global parser skips this path).
     app.post("/fb/receipt/send", requireAuth, sendAccessGate, sendRateLimit, makeJsonParser(RECEIPT_BODY_LIMIT), wrap(send));
   }

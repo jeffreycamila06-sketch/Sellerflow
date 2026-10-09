@@ -7,23 +7,32 @@
 export const RECEIPT_WIDTH = 720;
 export const RECEIPT_PAD = 36;
 export const QR_MAX_WIDTH = 420;
+// Build 8 caps (same on the phone and the server): at most RECEIPT_MAX_LINES order lines (the rest
+// become one "…and N more" row), a picture at most RECEIPT_MAX_HEIGHT tall (lines stop early to keep
+// the total, note and QR), and a QR at most QR_MAX_HEIGHT tall.
+export const RECEIPT_MAX_LINES = 400;
+export const RECEIPT_MAX_HEIGHT = 12000;
+export const QR_MAX_HEIGHT = 1000;
+export const MORE_LABEL_DEFAULT = "…and {n} more";
 export const FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Noto Sans CJK TC", "PingFang TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif';
 export const RECEIPT_RULE_COLOR = "#e2e1ea";
 
+// Sized for the Messenger bubble (~260 px wide on a phone, so the 720 px picture shows at ~0.36×):
+// items 30 px and the total 36 px read at ~11–13 px there (Build 7; were 24 / 30).
 export function receiptFonts(stack = FONT_STACK) {
   return {
-    opening: `500 26px ${stack}`,
-    header: `700 30px ${stack}`,
-    num: `500 22px ${stack}`,
-    item: `400 24px ${stack}`,
-    price: `600 24px ${stack}`,
-    totalLabel: `700 28px ${stack}`,
-    totalAmount: `700 30px ${stack}`,
-    note: `400 22px ${stack}`,
+    opening: `500 32px ${stack}`,
+    header: `700 38px ${stack}`,
+    num: `500 27px ${stack}`,
+    item: `400 30px ${stack}`,
+    price: `600 30px ${stack}`,
+    totalLabel: `700 34px ${stack}`,
+    totalAmount: `700 36px ${stack}`,
+    note: `400 28px ${stack}`,
   };
 }
-const LH = { opening: 34, header: 40, item: 32, total: 40, note: 30 };
-const NUM_COL = 44;   // "12." column
+const LH = { opening: 42, header: 48, item: 40, total: 48, note: 38 };
+const NUM_COL = 54;   // "12." column
 const GAP = 16;       // between item text and price
 const INK = "#16151f", MUTED = "#6b6a7a";
 
@@ -79,12 +88,31 @@ export function layoutReceipt(input, measure, qrSize, fontStack = FONT_STACK) {
   for (const l of wrapText(header, CW, F.header, measure)) { y += LH.header; text(l, P, F.header); }
   y += 16; ops.push({ kind: "rule", y }); y += 8;
 
-  input.lines.forEach((ln, i) => {
+  // Everything after the lines is laid out first (only measured here), so the lines know how much
+  // room is left under RECEIPT_MAX_HEIGHT.
+  const { text: totalText, allPriced } = receiptTotalText(input.lines, input.currency, input.labels.toBeConfirmed);
+  const labelW = measure(input.labels.total, F.totalLabel);
+  const amountFont = allPriced ? F.totalAmount : F.totalLabel;
+  const amountLines = wrapText(totalText, Math.max(CW - labelW - GAP, 80), amountFont, measure);
+  const noteLines = input.note.trim() ? wrapText(input.note.trim(), CW, F.note, measure) : [];
+  let qrW = 0, qrH = 0;
+  if (qrSize && qrSize.w > 0 && qrSize.h > 0) {
+    qrW = Math.min(QR_MAX_WIDTH, CW, qrSize.w);
+    qrH = Math.round((qrSize.h * qrW) / qrSize.w);
+    if (qrH > QR_MAX_HEIGHT) { qrH = QR_MAX_HEIGHT; qrW = Math.max(1, Math.round((qrSize.w * qrH) / qrSize.h)); }
+  }
+  const tailH = 12 + amountLines.length * LH.total + (noteLines.length ? 22 + noteLines.length * LH.note : 0) + (qrW ? 24 + qrH : 0) + P;
+  const linesLimit = RECEIPT_MAX_HEIGHT - tailH - (LH.item + 6); // room kept for the "…and N more" row
+
+  let shownLines = 0;
+  for (let i = 0; i < input.lines.length; i++) {
+    const ln = input.lines[i];
     const priced = Number(ln.total) > 0;
     const price = priced ? formatAmount(input.currency, Number(ln.total)) : "";
     const priceW = priced ? measure(price, F.price) : 0;
     const itemW = CW - NUM_COL - (priced ? priceW + GAP : 0);
     const wrapped = wrapText(ln.item || "", Math.max(itemW, 40), F.item, measure);
+    if (i >= RECEIPT_MAX_LINES || y + wrapped.length * LH.item + 6 > linesLimit) break;
     wrapped.forEach((l, j) => {
       y += LH.item;
       if (j === 0) {
@@ -94,29 +122,30 @@ export function layoutReceipt(input, measure, qrSize, fontStack = FONT_STACK) {
       text(l, P + NUM_COL, F.item);
     });
     y += 6;
-  });
+    shownLines++;
+  }
+  const hidden = input.lines.length - shownLines;
+  if (hidden > 0) {
+    y += LH.item;
+    text(String(input.labels.more || MORE_LABEL_DEFAULT).replace("{n}", String(hidden)), P + NUM_COL, F.item, "left", MUTED);
+    y += 6;
+  }
 
   y += 6; ops.push({ kind: "rule", y }); y += 6;
-  const { text: totalText, allPriced } = receiptTotalText(input.lines, input.currency, input.labels.toBeConfirmed);
-  const labelW = measure(input.labels.total, F.totalLabel);
-  const amountFont = allPriced ? F.totalAmount : F.totalLabel;
-  const amountLines = wrapText(totalText, Math.max(CW - labelW - GAP, 80), amountFont, measure);
   amountLines.forEach((l, j) => {
     y += LH.total;
     if (j === 0) text(input.labels.total, P, F.totalLabel);
     text(l, P + CW, amountFont, "right", allPriced ? INK : MUTED);
   });
 
-  if (input.note.trim()) {
+  if (noteLines.length) {
     y += 22;
-    for (const l of wrapText(input.note.trim(), CW, F.note, measure)) { y += LH.note; text(l, P, F.note); }
+    for (const l of noteLines) { y += LH.note; text(l, P, F.note); }
   }
-  if (qrSize && qrSize.w > 0 && qrSize.h > 0) {
-    const w = Math.min(QR_MAX_WIDTH, CW, qrSize.w);
-    const h = Math.round((qrSize.h * w) / qrSize.w);
+  if (qrW) {
     y += 24;
-    ops.push({ kind: "image", x: Math.round((W - w) / 2), y, w, h });
-    y += h;
+    ops.push({ kind: "image", x: Math.round((W - qrW) / 2), y, w: qrW, h: qrH });
+    y += qrH;
   }
-  return { width: W, height: Math.ceil(y + P), ops, totalText, allPriced };
+  return { width: W, height: Math.min(Math.ceil(y + P), RECEIPT_MAX_HEIGHT), ops, totalText, allPriced, hiddenLines: hidden };
 }

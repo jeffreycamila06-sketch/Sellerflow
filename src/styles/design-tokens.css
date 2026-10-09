@@ -54,6 +54,8 @@
   /* U10 — danger tint (danger @ 10%): screens referenced var(--danger-soft, …)
      with divergent inline fallbacks; defining it makes the tint theme-consistent. */
   --danger-soft: rgba(225,29,72,.1);
+  --btag-old-fg: #166534; /* buyer-tag pill text (fb_polish_v2) */
+  --btag-new-fg: #991b1b;
   --warn-soft: rgba(217,119,6,.1); /* Buyer Alert amber row tint (warn @ 10%) */
   /* Miner-risk chips (theme-adaptive FILL tokens; a filled chip needs a
      saturated background that keeps its ink legible — the --danger/--warn TEXT
@@ -100,6 +102,8 @@
   --warn: #fbbf24;
   --danger: #fb7185;
   --danger-soft: rgba(251,113,133,.16);
+  --btag-old-fg: #86efac; /* buyer-tag pill text (fb_polish_v2) — light on the dark pill */
+  --btag-new-fg: #fecaca;
   --warn-soft: rgba(251,191,36,.14);
   /* Miner-risk chips — dark theme. The FILL stays SATURATED (crimson/deep amber,
      NOT the lightened --danger/--warn text tokens) so white ink reads AND the

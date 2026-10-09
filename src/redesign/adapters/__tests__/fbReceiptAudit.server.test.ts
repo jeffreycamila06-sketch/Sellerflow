@@ -38,7 +38,7 @@ function makeStore(orders: Order[], opts: { deleteOk?: boolean; uploadGate?: Pro
   };
 }
 const order = (over: Partial<Order> = {}): Order => ({
-  user_id: U, session_id: S, buyer_number: 3, platform: "Facebook", comment_msg_id: "c1",
+  user_id: U, session_id: S, buyer_number: 3, platform: "Facebook", comment_msg_id: "801_1",
   platform_meta: { page_id: "P1", live_video_id: "LV1" }, handle: "Maria Santos", created_at: ago(3600_000), ...over,
 });
 const graphOk = () => vi.fn(async () => ({ status: 200, json: async () => ({ message_id: "m.1" }) }));
@@ -50,7 +50,7 @@ describe("B1 one send at a time per buyer", () => {
   it("a second send while one is running → 409 busy; nothing claimed for it; one Graph call", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
-    const store = makeStore([order({ comment_msg_id: "c1" }), order({ comment_msg_id: "c2" })], { uploadGate: gate });
+    const store = makeStore([order({ comment_msg_id: "801_1" }), order({ comment_msg_id: "802_2" })], { uploadGate: gate });
     const f = graphOk();
     const r = mk(store, f);
     const first = r.send(U, body());
@@ -64,7 +64,7 @@ describe("B1 one send at a time per buyer", () => {
   it("another buyer of the same session is not blocked", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
-    const store = makeStore([order(), order({ buyer_number: 4, comment_msg_id: "c9" })], { uploadGate: gate });
+    const store = makeStore([order(), order({ buyer_number: 4, comment_msg_id: "809_9" })], { uploadGate: gate });
     const r = mk(store);
     const first = r.send(U, body());
     await vi.waitFor(() => expect(store.uploadReceiptImage).toHaveBeenCalled());
@@ -74,7 +74,7 @@ describe("B1 one send at a time per buyer", () => {
     expect((await second).status).toBe(200);
   });
   it("the lock is released after success and after a throw", async () => {
-    const store = makeStore([order({ comment_msg_id: "c1" }), order({ comment_msg_id: "c2" })]);
+    const store = makeStore([order({ comment_msg_id: "801_1" }), order({ comment_msg_id: "802_2" })]);
     const r = mk(store);
     expect((await r.send(U, body())).status).toBe(200);
     expect((await r.send(U, body())).status).toBe(200); // not busy
@@ -130,7 +130,7 @@ describe("B3 recipient guard", () => {
     expect(isMixedBuyer([withId("A"), withId("B")])).toBe(true);
   });
   it("mixed buyer number → info canSend:false mixed_buyer; send 409 mixed_buyer, nothing claimed or sent", async () => {
-    const store = makeStore([withId("A", { comment_msg_id: "c1" }), withId("B", { comment_msg_id: "c2" })]);
+    const store = makeStore([withId("A", { comment_msg_id: "801_1" }), withId("B", { comment_msg_id: "802_2" })]);
     const f = graphOk();
     const r = mk(store, f);
     expect((await r.info(U, body())).json).toMatchObject({ ok: true, canSend: false, reason: "mixed_buyer" });
@@ -139,13 +139,13 @@ describe("B3 recipient guard", () => {
     expect(f).not.toHaveBeenCalled();
   });
   it("one commenter + older rows without commenter_id → sendable as today", async () => {
-    const store = makeStore([withId("A", { comment_msg_id: "c1" }), order({ comment_msg_id: "c0" })]);
+    const store = makeStore([withId("A", { comment_msg_id: "801_1" }), order({ comment_msg_id: "800_0" })]);
     const r = mk(store);
     expect((await r.info(U, body())).json).toMatchObject({ canSend: true, remaining: 2 });
     expect((await r.send(U, body())).status).toBe(200);
   });
   it("handle 'unknown' (any case) or empty → never a candidate", async () => {
-    const rows = [order({ comment_msg_id: "u1", handle: "Unknown" }), order({ comment_msg_id: "u2", handle: "  " }), order({ comment_msg_id: "u3", handle: "UNKNOWN" })];
+    const rows = [order({ comment_msg_id: "811_1", handle: "Unknown" }), order({ comment_msg_id: "812_2", handle: "  " }), order({ comment_msg_id: "813_3", handle: "UNKNOWN" })];
     expect(pickReceiptCandidates(rows, [])).toEqual([]);
     const store = makeStore(rows);
     const f = graphOk();
