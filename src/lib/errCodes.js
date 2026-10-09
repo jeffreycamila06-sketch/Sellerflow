@@ -70,6 +70,14 @@ export function decodeErr(v) {
   return WORD_BY_CODE[m[1]] ?? v;
 }
 
+// What a screen may print from a server answer: an app word (a key of ERR_CODES without a
+// space), else "" so the screen falls back to its own generic seller text. Codes (E0,
+// server-only, unknown) and raw server sentences never reach a seller.
+/** @param {unknown} v @returns {string} */
+export function sellerSafeWord(v) {
+  return typeof v === "string" && !/\s/.test(v) && Object.prototype.hasOwnProperty.call(ERR_CODES, v) ? v : "";
+}
+
 // A server answer with its `error` / `reason` decoded (a new object only when something changed).
 /** @template T @param {T} j @returns {T} */
 export function decodeServerJson(j) {

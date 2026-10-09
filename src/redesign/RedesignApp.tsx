@@ -109,7 +109,7 @@ import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, buildTestBuyer } from "./adapters/printerBridge";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
-import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, type Platform, ttDisconnect } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, type Platform, ttDisconnect } from "./adapters/connect";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
 import { fbHandleIsId } from "./adapters/fbName";
@@ -1560,7 +1560,8 @@ export default function RedesignApp() {
       // CONNECT-TRUTH Item A: the old r.ok "Connected!" toast is GONE (the same
       // POST-ok-as-truth lie the branch removes) — success now toasts via the
       // gated ttConnected rise above. Failures keep the honest r-based toast.
-      if (!r.ok) setToast({ msg: r.error || tApp.rd_cm_conn_failed, kind: "err" });
+      // Build 10: never the server's words or a code — the generic text instead.
+      if (!r.ok) setToast({ msg: connectFailText(r, tApp), kind: "err" });
     } finally { setConnecting(false); }
   };
   const doConnect = async (platform: Platform) => {

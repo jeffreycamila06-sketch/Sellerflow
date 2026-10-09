@@ -64,12 +64,13 @@ describe("(b) connect 'can't reach' — localized instead of the hardcoded Engli
     await waitFor(() => expect(screen.getByText("無法連接直播伺服器。請檢查網路連線。")).toBeTruthy());
     expect(screen.queryByText(/Can't reach the live server/)).toBeNull();
   });
-  it("a real server reason still passes through verbatim (unchanged behavior)", async () => {
+  it("a server reason is never shown — the generic text instead (Build 10)", async () => {
     const onConnect = vi.fn().mockResolvedValue({ ok: false, error: "rate limited", account: "" });
     render(<TProvider lang="zh-TW"><ConnectModal profile={profile} onClose={() => {}} onConnect={onConnect} /></TProvider>);
     fireEvent.change(document.querySelector("input") as HTMLInputElement, { target: { value: "seclothingtw" } });
     fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => /連接|connect/i.test(b.textContent || ""))!);
-    await waitFor(() => expect(screen.getByText("rate limited")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("無法連線，請再試一次。")).toBeTruthy());
+    expect(screen.queryByText("rate limited")).toBeNull();
   });
 });
 

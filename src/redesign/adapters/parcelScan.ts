@@ -17,7 +17,7 @@ import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { TEMP_FROZEN, type FrozenConfig } from "./parcelFrozen";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_MAX_ORDER, SHIP_DEFAULT_FEE, type AmountError } from "./shipping";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, sellerSafeWord } from "../../lib/errCodes.js";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
 // ADMIN ROLE ONLY — deliberately NO googletest allowlist (diverges from
@@ -360,8 +360,8 @@ export async function scanParcel(base64: string, mediaType: string): Promise<Sca
     const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; fields?: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence>; error?: string; balance?: number })));
     const bal = typeof j.balance === "number" ? j.balance : undefined;
     if (r.status === 403) return { ok: false, error: "forbidden" };
-    if (r.status === 402) return { ok: false, error: j.error || "insufficient_credits", insufficient: true, balance: bal ?? 0 };
-    if (!r.ok || !j.success || !j.fields) return { ok: false, error: j.error || `http_${r.status}`, balance: bal };
+    if (r.status === 402) return { ok: false, error: "insufficient_credits", insufficient: true, balance: bal ?? 0 };
+    if (!r.ok || !j.success || !j.fields) return { ok: false, error: sellerSafeWord(j.error) || "scan_failed", balance: bal }; // Build 10: no code/raw text on screen
     return { ok: true, fields: j.fields, confidence: j.confidence, balance: bal };
   } catch {
     return { ok: false, error: "unreachable", unreachable: true };

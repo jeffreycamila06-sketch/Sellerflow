@@ -5,7 +5,7 @@
 // success, or an honest error so the composer can offer "send English only".
 import { SERVER } from "./serverIdentity";
 import { supabase } from "../../supabase";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, sellerSafeWord } from "../../lib/errCodes.js";
 
 export interface TranslateResult {
   ok: boolean;
@@ -26,7 +26,7 @@ export async function translateBroadcast(text: string): Promise<TranslateResult>
     });
     const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; i18n?: Record<string, string>; error?: string })));
     if (r.status === 403) return { ok: false, error: "forbidden" };
-    if (!r.ok || !j.success || !j.i18n) return { ok: false, error: j.error || `http_${r.status}` };
+    if (!r.ok || !j.success || !j.i18n) return { ok: false, error: sellerSafeWord(j.error) }; // Build 10: "" → the screen's generic text
     return { ok: true, i18n: j.i18n };
   } catch {
     // Server not deployed yet / offline → honest error, offer English-only.

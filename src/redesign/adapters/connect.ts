@@ -15,6 +15,7 @@ import type { AccountUser } from "../../accountDb";
 import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 import { isAdminRole } from "../../lib/roles";
 import { decodeServerJson } from "../../lib/errCodes.js";
+import type { RedesignT } from "../i18n";
 
 export type Platform = "TikTok" | "Facebook";
 
@@ -125,6 +126,15 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
 // the app shows a localized "can't reach the live server" toast for this case
 // (F-batch i18n; the English error string stays as the analytics/log reason).
 export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean }
+
+// The text a failed TikTok/Facebook connect shows (toast + Connect modal). Build 10: never the
+// server's own words or a code — not live / can't reach keep their texts, anything else is
+// the generic "Couldn't connect. Try again."
+export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable">, t: RedesignT): string {
+  if (r.notLive) return t.rd_cm_not_live;
+  if (r.unreachable) return t.rd_cm_cant_reach;
+  return t.rd_cm_conn_try_again;
+}
 
 // connectPlatform — verbatim POST from App.tsx:4269-4296 (without the posthog/toast
 // side-effects). Returns the cleaned active account on success.
