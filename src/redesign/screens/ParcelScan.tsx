@@ -16,7 +16,8 @@ import {
   rowCheckUnresolved, verdictPollMs, mergeExtensionVerdicts, storeClear, wrongStoreCode, minParcelAmount,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
-import { newlyFlagged, attentionCount, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
+import { newlyFlagged, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
+import { problemOf, problemRows, newProblemRows, alertStoreCode, ATTN_TOAST_MS, ATTN_VIBRATE_MS, ATTN_HIGHLIGHT_MS } from "../adapters/parcelAttention";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobile, exportFilename } from "../adapters/shippingExport";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { loadFrozenState, saveParcelMode, FROZEN_LOADING, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, isFrozenLayer, xlsOptsForRow, type FrozenState, type TempLayer } from "../adapters/parcelFrozen";
@@ -197,7 +198,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Saved-list tab (Change 2): "all" (default) | "wrong" (not_found only — either check) |
   // "full" | "restricted" (extension verdicts — the last two only surface when
   // there ARE such rows; see tabDefs).
-  const [tab, setTab] = useState<"all" | "wrong" | "full" | "restricted">("all");
+  // Build 15: + "attention" = every problem parcel (wrong code / full / restricted) — shown only
+  // while there are some; the red half of the top bar opens it.
+  const [tab, setTab] = useState<"all" | "wrong" | "full" | "restricted" | "attention">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
   const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "pending"; n: number } | { kind: "undo" } | { kind: "enablephone" } | { kind: "mode"; to: TempLayer } | null>(null);
@@ -336,13 +339,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // badge has landed and pauses when backgrounded (zero idle egress). ~3s cadence.
   // Merges ONLY the three extension-verdict fields by id → never clobbers an
   // in-progress edit, the wrong-code (store_check_status) flow, or row order.
-  // Attention alert (item 9): a chime + a sticky "N need attention" banner on a
-  // NEW restricted/full verdict, so a late verdict is impossible to miss after
-  // the seller has moved on. verdictSnapRef = last-seen verdicts (seeded on load
-  // so pre-existing flags populate the banner count but don't chime; only
-  // transitions WHILE the screen is open chime). Only runs when the feature is
-  // active for this seller (checkOn) — else the poll/copy/alert are all inert.
-  const [attnAck, setAttnAck] = useState(false);
+  // Attention alert (item 9): a chime on a NEW restricted/full verdict, so a late
+  // verdict is impossible to miss after the seller has moved on (Build 15: the old
+  // "Got it" banner is replaced by the sticky top bar + the new-problem alert below).
+  // verdictSnapRef = last-seen verdicts (seeded on load so pre-existing flags don't
+  // chime; only transitions WHILE the screen is open chime). Only runs when the
+  // feature is active for this seller (checkOn) — else the poll/copy/alert are inert.
   const verdictSnapRef = useRef<VerdictLite[]>([]);
   // Seed ONCE when the list first loads (intentionally not on every rows change —
   // re-seeding each merge would erase the prev/fresh delta and silence the chime).
@@ -360,14 +362,60 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         const fresh: VerdictLite[] = res.rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus }));
         const nf = newlyFlagged(verdictSnapRef.current, fresh);
         verdictSnapRef.current = fresh;
-        if (nf.restricted > 0) { playChime("restricted"); setAttnAck(false); }
-        else if (nf.full > 0) { playChime("full"); setAttnAck(false); }
+        if (nf.restricted > 0) playChime("restricted");
+        else if (nf.full > 0) playChime("full");
         setRows((prev) => mergeExtensionVerdicts(prev, res.rows));
       });
     }, pollMs);
     return () => { live = false; clearInterval(id); };
   }, [pollMs, pageVisible]);
-  const attnCount = checkOn ? attentionCount(rows) : 0;
+  // Build 15 — the top bar's "needs attention" half + the new-problem alert (display only; the
+  // problem rule is the rows' own red/orange flag, see adapters/parcelAttention.ts).
+  const problems = problemRows(rows);
+  const problemCount = problems.length;
+  // Ids already alerted: seeded with the problems present when the list first loads (no alert
+  // for those), then every NEW problem parcel alerts once — never again for the same parcel.
+  const [alerted, setAlerted] = useState<ReadonlySet<string> | null>(null);
+  const [attnToast, setAttnToast] = useState<{ seq: number; text: string } | null>(null);
+  if (listLoaded && alerted === null) setAlerted(new Set(problems.map((r) => r.id)));      // adjust-during-render
+  else if (alerted !== null) {
+    const fresh = newProblemRows(alerted, rows);
+    if (fresh.length > 0) {
+      const first = fresh[0];
+      const kind = problemOf(first);
+      const reason = kind === "wrong_store" ? t.rd_ps2_x_wrong_store : kind === "full" ? t.rd_ps2_x_store_full : t.rd_ps2_x_restricted;
+      const code = alertStoreCode(first);
+      setAlerted(new Set([...alerted, ...fresh.map((r) => r.id)]));
+      setAttnToast((prev) => ({ seq: (prev?.seq ?? 0) + 1, text: `⚠ ${reason}${code ? ` · ${code}` : ""}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ""}` }));
+    }
+  }
+  // One vibration per alert (silently skipped where the phone has none), then hide the alert.
+  const attnSeq = attnToast?.seq ?? 0;
+  useEffect(() => {
+    if (!attnSeq) return;
+    triggerHaptic(ATTN_VIBRATE_MS);
+    const id = setTimeout(() => setAttnToast(null), ATTN_TOAST_MS);
+    return () => clearTimeout(id);
+  }, [attnSeq]);
+  // Tap the red half → the "needs attention" filter, scroll to the first problem parcel, ring it.
+  const [hl, setHl] = useState<{ id: string; seq: number } | null>(null);
+  const savedListRef = useRef<HTMLDivElement | null>(null);
+  const openAttention = () => {
+    if (problemCount === 0) return;
+    setTab("attention");
+    setHl((prev) => ({ id: problems[0].id, seq: (prev?.seq ?? 0) + 1 }));
+  };
+  const hlSeq = hl?.seq ?? 0;
+  useEffect(() => {
+    if (!hlSeq || !hl) return;
+    const list = savedListRef.current;
+    const el = list?.querySelector(`[data-row-id="${hl.id.replace(/["\\]/g, "\\$&")}"]`) ?? list;
+    const reduce = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try { (el as HTMLElement | null)?.scrollIntoView?.({ block: "center", behavior: reduce ? "auto" : "smooth" }); } catch { /* ignore */ }
+    const id = setTimeout(() => setHl(null), ATTN_HIGHLIGHT_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hlSeq]);
   const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && !(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)));
   useEffect(() => {
     if (!anyUnresolved || !pageVisible) return;
@@ -994,6 +1042,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // otherwise the original file-picker fallback renders (and it also shows the
   // disabled button when out of credits).
   const useCameraUI = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !outOfCredits;
+  const statsShown = listLoaded || credits !== null || scanCount > 0; // the stats row's own condition (unchanged)
   const flaggedCount = rows.filter(wrongStoreCode).length;
   const fullCount = rows.filter((r) => r.storeFullStatus === "full").length;
   const restrictedCount = rows.filter((r) => r.phoneCheckStatus === "restricted").length;
@@ -1005,6 +1054,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   ];
   if (fullCount > 0) tabDefs.push(["full", `${t.rd_ps2_tab_full} · ${fullCount}`]);
   if (restrictedCount > 0) tabDefs.push(["restricted", `${t.rd_ps2_tab_restricted} · ${restrictedCount}`]);
+  if (problemCount > 0) tabDefs.push(["attention", `⚠ ${t.rd_ps2_tab_attn} · ${problemCount}`]);
   // If the active tab vanished (e.g. its last row was rechecked away), fall back
   // to All so the list never shows an orphaned/empty selection.
   const activeTab = tabDefs.some(([k]) => k === tab) ? tab : "all";
@@ -1013,7 +1063,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const shown = activeTab === "wrong" ? rows.filter(wrongStoreCode)
     : activeTab === "full" ? rows.filter((r) => r.storeFullStatus === "full")
       : activeTab === "restricted" ? rows.filter((r) => r.phoneCheckStatus === "restricted")
-        : rows;
+        : activeTab === "attention" ? problems
+          : rows;
   const progress = files.length > 1 ? { i: String(idx + 1), n: String(files.length) } : { i: "1", n: "1" };
 
   const timeOf = (iso: string): string => {
@@ -1023,9 +1074,62 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
 
   return (
     <div>
-      <div style={headerBar}>
-        <div className="sfl-anim-beat" style={headerTitle}>{t.rd_ps2_title}</div>
-        <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_ps2_sub}</div>
+      {/* Build 15: header + the Batch / attention bar + the new-problem alert stay at the top
+          while the seller scrolls (one sticky block; the header itself is unchanged). */}
+      <div style={{ position: "sticky", top: 0, zIndex: 5 }} data-testid="ps-top">
+        <div style={{ ...headerBar, position: "relative" }}>
+          <div className="sfl-anim-beat" style={headerTitle}>{t.rd_ps2_title}</div>
+          <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_ps2_sub}</div>
+        </div>
+        {(statsShown || attnToast) && (
+        <div style={{ padding: "8px 14px", background: "var(--app-bg)", borderBottom: "1px solid var(--border)", display: "grid", gap: 8 }} data-testid="ps-topbar">
+          {/* Compact stats row — Scan Credits + this-session counter + the batch
+              counter (N / MAX) as small pills (same visual language as the All/Wrong
+              segmented tabs below). The batch pill shows for BOTH admin and the
+              manual-only seller (they need to see the cap); credits/session stay
+              admin-only. */}
+          {statsShown && (
+            <div style={{ display: "flex", gap: 6 }} data-testid="ps-stats">
+              {!manualOnly && credits !== null && (
+                <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-credits">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_credits}</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: outOfCredits ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-credits-n">{credits}</span>
+                </div>
+              )}
+              {!manualOnly && scanCount > 0 && (
+                <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-scancount">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_session}</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-scancount-n">{scanCount}</span>
+                </div>
+              )}
+              {/* Batch counter — pending / MAX; turns danger at the cap. */}
+              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-batch">
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_batch}</span>
+                <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-batch-n">{pendingCount} / {pendingCap}</span>
+              </div>
+              {/* Build 15 — attention half: red "⚠ N need attention" (tap → the problem parcels)
+                  or green "✓ All OK" (not tappable). Shown once the saved list has loaded. */}
+              {listLoaded && (problemCount > 0 ? (
+                <button type="button" onClick={openAttention} aria-label={t.rd_ps2_attn_open} title={t.rd_ps2_attn_open} data-testid="ps-attn" data-state="problem"
+                  style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid #dc2626", background: "#dc2626", color: "#fff", fontSize: 12, fontWeight: 900, lineHeight: 1.2, cursor: "pointer", minWidth: 0, textAlign: "center", fontFamily: "var(--font-ui)", overflowWrap: "anywhere" }}>
+                  {tpl(t.rd_ps2_attn_bar, { n: String(problemCount) })}
+                </button>
+              ) : (
+                <div data-testid="ps-attn" data-state="ok"
+                  style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--ok, #16a34a)", background: "var(--surface-2)", color: "var(--ok, #16a34a)", fontSize: 12, fontWeight: 900, lineHeight: 1.2, minWidth: 0, textAlign: "center", overflowWrap: "anywhere", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {t.rd_ps2_attn_ok_all}
+                </div>
+              ))}
+            </div>
+          )}
+          {attnToast && (
+            <div role="alert" aria-live="assertive" data-testid="ps-attn-toast"
+              style={{ padding: "9px 12px", borderRadius: 10, background: "#dc2626", color: "#fff", fontSize: 13, fontWeight: 800, lineHeight: 1.35, boxShadow: "0 8px 22px rgba(220,38,38,.35)", overflowWrap: "anywhere" }}>
+              {attnToast.text}
+            </div>
+          )}
+        </div>
+        )}
       </div>
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {banner}
@@ -1048,32 +1152,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
         )}
 
-        {/* Compact stats row — Scan Credits + this-session counter + the batch
-            counter (N / MAX) as small pills (same visual language as the All/Wrong
-            segmented tabs below). The batch pill shows for BOTH admin and the
-            manual-only seller (they need to see the cap); credits/session stay
-            admin-only. */}
-        {(listLoaded || credits !== null || scanCount > 0) && (
-          <div style={{ display: "flex", gap: 6 }} data-testid="ps-stats">
-            {!manualOnly && credits !== null && (
-              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-credits">
-                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_credits}</span>
-                <span style={{ fontSize: 13, fontWeight: 900, color: outOfCredits ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-credits-n">{credits}</span>
-              </div>
-            )}
-            {!manualOnly && scanCount > 0 && (
-              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-scancount">
-                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_session}</span>
-                <span style={{ fontSize: 13, fontWeight: 900, color: "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-scancount-n">{scanCount}</span>
-              </div>
-            )}
-            {/* Batch counter — pending / MAX; turns danger at the cap. */}
-            <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-batch">
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_batch}</span>
-              <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-batch-n">{pendingCount} / {pendingCap}</span>
-            </div>
-          </div>
-        )}
 
         {/* Batch full → clear "export first" banner (does NOT hide the camera;
             the entry buttons below are disabled so it's obvious why). Edit +
@@ -1368,7 +1446,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         )}
 
         {/* Saved list — read-on-open snapshot + local appends. Full queue = A2. */}
-        <div style={card}>
+        <div style={card} ref={savedListRef} data-testid="ps-saved-list">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <div style={{ fontSize: 12.5, fontWeight: 800 }}>{t.rd_ps2_saved} {rows.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 700 }}>· {rows.length}</span>}</div>
             {exportedCount > 0 && (
@@ -1392,14 +1470,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             })}
           </div>
 
-          {/* item 9: sticky "N need attention" banner — persists until acknowledged;
-              a NEW verdict re-raises it (setAttnAck(false) in the poll). */}
-          {checkOn && attnCount > 0 && !attnAck && (
-            <div data-testid="ps-attention-banner" role="status" style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", marginBottom: 8, borderRadius: 10, background: "var(--danger-soft, #fef2f2)", border: "1px solid var(--danger, #dc2626)" }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: "var(--danger, #dc2626)", flex: 1 }}>⚠️ {tpl(t.rd_ps2_attention, { n: attnCount })}</span>
-              <button onClick={() => setAttnAck(true)} aria-label={t.rd_ps2_attention_ack} data-testid="ps-attention-ack" style={{ padding: "3px 10px", borderRadius: 8, border: "1px solid var(--danger, #dc2626)", background: "transparent", color: "var(--danger, #dc2626)", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ps2_attention_ok}</button>
-            </div>
-          )}
+          {/* Build 15: the old "N need attention · Got it" box here was removed — the sticky top
+              bar (red half) + the new-problem alert replace it (it also counted fewer problems). */}
           {listLoaded && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-empty">{t.rd_ps2_empty}</div>}
           {listLoaded && activeTab === "wrong" && rows.length > 0 && flaggedCount === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-wrong-empty">{t.rd_ps2_wrong_empty}</div>}
           {shown.map((r) => {
@@ -1418,7 +1490,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             const rowOrange = !rowRed && r.storeFullStatus === "full";
             const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
-              <div key={r.id} data-testid="ps-row" data-flag={rowRed ? "red" : rowOrange ? "orange" : ""} style={{ padding: rowFlag ? "9px 8px" : "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", ...(rowFlag ? { border: `1.5px solid ${rowFlag}`, borderRadius: 10, boxShadow: `0 0 6px -1px ${rowFlag}`, margin: "4px 0" } : {}) }}>
+              <div key={r.id} data-testid="ps-row" data-row-id={r.id} data-highlight={hl?.id === r.id ? "1" : undefined} data-flag={rowRed ? "red" : rowOrange ? "orange" : ""} style={{ padding: rowFlag ? "9px 8px" : "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", ...(rowFlag ? { border: `1.5px solid ${rowFlag}`, borderRadius: 10, boxShadow: `0 0 6px -1px ${rowFlag}`, margin: "4px 0" } : {}), ...(hl?.id === r.id ? { outline: "3px solid var(--danger, #dc2626)", outlineOffset: 2, borderRadius: 10 } : {}) }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {r.customerName || "—"}
