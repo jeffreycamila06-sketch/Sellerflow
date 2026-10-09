@@ -45,7 +45,7 @@ import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePrevie
 import FbChannels from "./screens/FbChannels";
 import IgChannels from "./screens/IgChannels";
 import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
-import { loadFbEnabled, listFbPages, fbConnect, fbLiveCheck, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
+import { loadFbEnabled, listFbPages, fbConnect, fbLiveCheck, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, FB_RETURN_PARAMS, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import { useFbAccess, fbUiGates } from "./adapters/fbAccess";
 import LiveSourceSheet from "./components/LiveSourceSheet";
@@ -844,16 +844,16 @@ export default function RedesignApp() {
     const ret = parseFbReturn(window.location.search);
     if (!ret) return;
     if (ret.status === "error" && ret.code === "cap" && fbReturnPlan === null) return;
-    const msg = fbReturnText(ret, tApp, maxAcc(fbReturnPlan || "free"));
+    const msg = fbReturnText(ret, tApp, maxAcc(fbReturnPlan || "free"), featureSw.fbPolishV2);
     if (ret.status === "error" && ret.code === "account_limit") void accountLimitMessage(tApp, { ios, planName: planLabel(fbReturnPlan), lang }).then((m) => setToast({ msg: m, kind: "err" }));
     else if (ret.status === "connected") { if (msg) setToast({ msg, kind: "ok" }); void reloadFbPages(); }
     else if (msg) setToast({ msg, kind: "err" }); // null = cancelled on purpose → no toast
     try {
       const url = new URL(window.location.href);
-      url.searchParams.delete("fb"); url.searchParams.delete("code");
+      for (const k of FB_RETURN_PARAMS) url.searchParams.delete(k); // fb, code + the partial-save details
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
-  }, [reloadFbPages, tApp, fbReturnPlan, ios, lang]);
+  }, [reloadFbPages, tApp, fbReturnPlan, ios, lang, featureSw.fbPolishV2]);
 
   // Instagram (phase 1) OAuth return (?ig=connected|error&code=…): toast + strip the query.
   useEffect(() => {
@@ -2381,6 +2381,7 @@ export default function RedesignApp() {
             <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen(chanBack)} onSaveChannels={saveChannels}
               shopeeEnabled={shopeeEnabled} onShopee={() => { setChanBack("settings"); setScreen("shopeechannels"); }}
               fbPagesEnabled={fbEnabled} onFbPages={() => { setChanBack("settings"); setScreen("fbpages"); }}
+              fbActivationOnly={featureSw.fbPolishV2 && !fbEnabled}
               {...(igEnabled ? { onInstagram: () => { setChanBack("settings"); setScreen("igaccounts"); } } : {})} />
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
@@ -2391,7 +2392,7 @@ export default function RedesignApp() {
           {/* F-P3 — Facebook pages (fbEnabled-gated; reachable from ManageChannels + the
               Live FB chip's Manage row / no-page authorize). Origin-aware Back via chanBack. */}
           {screen === "fbpages" && (
-            <FbChannels account={auth.profile} pages={fbPages} needsReconnectIds={fbReconnectIds} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+            <FbChannels account={auth.profile} pages={fbPages} needsReconnectIds={fbReconnectIds} polish={featureSw.fbPolishV2} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {screen === "igaccounts" && igEnabled && (
             <IgChannels account={auth.profile} accounts={igAccounts} onReload={reloadIgAccounts} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />

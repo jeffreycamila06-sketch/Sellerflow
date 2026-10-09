@@ -155,11 +155,17 @@ button:disabled{opacity:.7;cursor:default}
 <p class="note">This can take a few seconds.</p>
 </div></main><script>${CONFIRM_SCRIPT}</script></body></html>`;
 }
-describe("Facebook confirm page is byte-identical to before", () => {
+// Build 5: the same page except (1) the store name sits under "store name set by this account:"
+// (never a bare headline), (2) the button carries its busy text, (3) three CSS lines for those.
+const withBuild5 = (html: string, storeName: string) => html
+  .replace(".acct b{display:block}\n", ".acct b{display:block}\n.acct span{display:block;margin-top:6px;font-size:13px;color:#6b6880}\n.acct i{font-style:normal;color:#1d1b2e}\n.pages{margin:0 0 12px;padding:0 0 0 20px;font-size:15px;line-height:1.5;font-weight:600}\n")
+  .replace(`</b>${escapeHtml(String(storeName).trim())}</div>`, String(storeName).trim() ? `</b><span>store name set by this account: <i>${escapeHtml(String(storeName).trim())}</i></span></div>` : "</b></div>")
+  .replace('<button type="submit">Connect</button>', '<button type="submit" data-busy="Connecting…">Connect</button>');
+describe("Facebook confirm page = the old page + only the Build 5 changes", () => {
   it("web / app, with and without a store name, odd characters", () => {
     for (const app of [false, true]) for (const storeName of ["", "Shop <&> \"x\""]) {
       const a = { code: "c<1>", state: "s&2", email: "seller@example.com", storeName, appUrl: "https://app.test", app };
-      expect(buildConfirmPage(a)).toBe(buildConfirmPageBefore(a));
+      expect(buildConfirmPage(a)).toBe(withBuild5(buildConfirmPageBefore(a), storeName));
     }
   });
 });

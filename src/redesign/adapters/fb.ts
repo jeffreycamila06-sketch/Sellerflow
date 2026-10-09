@@ -102,9 +102,14 @@ async function bearer(): Promise<string> {
 // opts.app = the phone app's in-app sign-in sheet (SellerFlowAuth plugin): the flow then ends on
 // the app's callback scheme instead of the website. Without it the request is byte-identical to
 // before (normal browsers + old app builds).
-export async function startFbAuth(opts: { app?: boolean } = {}): Promise<{ ok: boolean; url?: string; error?: string }> {
+// opts.lang (fb_polish_v2 only) = the confirm page's language; absent → the same request as before.
+export async function startFbAuth(opts: { app?: boolean; lang?: string } = {}): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const q = new URLSearchParams();
+  if (opts.app) q.set("client", "app");
+  if (opts.lang) q.set("lang", opts.lang);
+  const qs = q.toString();
   try {
-    const r = await fetch(`${SERVER}/fb/oauth/start${opts.app ? "?client=app" : ""}`, {
+    const r = await fetch(`${SERVER}/fb/oauth/start${qs ? `?${qs}` : ""}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${await bearer()}` },
     });
@@ -196,9 +201,25 @@ export function fbConnectFailText(r: FbConnectResult, t: RedesignT, live?: { ios
 // The toast for the OAuth return (?fb=connected | ?fb=error&code=…): code "cap" = the plan's
 // page limit was hit → the cap text (with the plan's limit); code "cancelled" = the seller
 // tapped Cancel on the confirm page on purpose → null (no toast); any other error → generic.
-export function fbReturnText(ret: { status: "connected" | "error"; code?: string }, t: RedesignT, maxPages: number): string | null {
-  if (ret.status === "connected") return t.rd_fb_authorized_toast;
+// polish (fb_polish_v2): a connect that left Pages out names them, and the other error codes
+// get their own words. Off → exactly the texts above.
+export interface FbReturn { status: "connected" | "error"; code?: string; saved?: number; dropped?: number; kept?: string[]; names?: string[] }
+const nameList = (a: string[] | undefined, more: number) => {
+  const list = (a || []).filter(Boolean);
+  const extra = more - list.length;
+  return list.join(", ") + (extra > 0 ? ` +${extra}` : "");
+};
+export function fbReturnText(ret: FbReturn, t: RedesignT, maxPages: number, polish = false): string | null {
+  if (ret.status === "connected") {
+    if (polish && (ret.dropped || 0) > 0) return tpl(t.rd_fb_partial_saved, { kept: nameList(ret.kept, ret.saved || 0), dropped: nameList(ret.names, ret.dropped || 0), max: maxPages });
+    return t.rd_fb_authorized_toast;
+  }
   if (ret.code === "cancelled") return null;
+  if (polish) {
+    if (ret.code === "no_pages") return t.rd_fb_ret_no_pages;
+    if (ret.code === "token_exchange" || ret.code === "bad_state" || ret.code === "missing_params") return t.rd_fb_ret_expired;
+    if (ret.code === "save_failed" || ret.code === "read_failed" || ret.code === "exception") return t.rd_fb_ret_save_failed;
+  }
   if (ret.code === "cap") return tpl(t.rd_fb_cap, { max: maxPages });
   // Combined account limit (sql/84). Callers with the seller's numbers use accountLimitMessage.
   if (ret.code === "account_limit") return isIOS() ? t.rd_acct_limit_generic_ios : t.rd_acct_limit_generic;
@@ -258,11 +279,18 @@ export async function fbDisconnect(pageId: string): Promise<{ ok: boolean; error
 // Pure — parse the OAuth-callback return param on app load (the callback redirects back
 // to APP_REDIRECT_URL with ?fb=connected | ?fb=error&code=...). Returns null when there
 // is no fb param. The caller toasts + clears the query. Mirror parseShopeeReturn.
-export function parseFbReturn(search: string): { status: "connected" | "error"; code?: string } | null {
+// A connect that left Pages out also carries saved / dropped / kept / names (server partialSaveQuery).
+export const FB_RETURN_PARAMS = ["fb", "code", "saved", "dropped", "kept", "names"];
+export function parseFbReturn(search: string): FbReturn | null {
   let params: URLSearchParams;
   try { params = new URLSearchParams(String(search || "").replace(/^\?/, "")); } catch { return null; }
   const s = params.get("fb");
-  if (s === "connected") return { status: "connected" };
+  if (s === "connected") {
+    const dropped = Number(params.get("dropped") || 0);
+    if (!(dropped > 0)) return { status: "connected" };
+    const list = (k: string) => String(params.get(k) || "").split("\n").map((x) => x.trim()).filter(Boolean);
+    return { status: "connected", saved: Number(params.get("saved") || 0) || 0, dropped, kept: list("kept"), names: list("names") };
+  }
   if (s === "error") return { status: "error", code: params.get("code") || undefined };
   return null;
 }

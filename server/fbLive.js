@@ -80,20 +80,29 @@ export const FB_RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80001, 80006]);
 // Identical construction to shopeeLive.signState — state = base64url(userId).exp.HMAC.
 // verifyState returns the userId only when the signature matches AND it has not
 // expired, so a page can never be bound to a different seller by tampering.
-// app = the flow was started from the phone app (the in-app sign-in sheet): a 4th segment "a"
-// INSIDE the HMAC'd body, so nobody can switch a flow between web and app. Web flows keep the
-// exact 3-part format (byte-identical to before).
-export function signState({ userId, key, nowMs = Date.now(), ttlMs = STATE_TTL_MS, app = false }) {
+// app = the flow was started from the phone app (the in-app sign-in sheet): a segment "a"
+// INSIDE the HMAC'd body, so nobody can switch a flow between web and app. lang = the seller's
+// app language ("l<code>", one of CONFIRM_LANGS) for the confirm page. Without app / lang the
+// state keeps the exact 3-part format (byte-identical to before).
+export const CONFIRM_LANGS = ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"];
+export const confirmLangOf = (v) => (CONFIRM_LANGS.includes(String(v || "")) ? String(v) : "");
+export function signState({ userId, key, nowMs = Date.now(), ttlMs = STATE_TTL_MS, app = false, lang = "" }) {
   const exp = nowMs + ttlMs;
-  const body = `${Buffer.from(String(userId)).toString("base64url")}.${exp}${app ? ".a" : ""}`;
+  const l = confirmLangOf(lang);
+  const body = `${Buffer.from(String(userId)).toString("base64url")}.${exp}${app ? ".a" : ""}${l ? `.l${l}` : ""}`;
   const mac = createHmac("sha256", String(key)).update(body).digest("hex");
   return `${body}.${mac}`;
 }
-// → { userId, app } when the signature matches and the state has not expired, else null.
-// Accepts the 3-part web form and the 4-part app form ("a" only).
+// → { userId, app, lang } when the signature matches and the state has not expired, else null.
+// Between the expiry and the signature: at most one "a" and at most one "l<lang>", in that order.
 export function verifyStateDetail(state, key, nowMs = Date.now()) {
   const parts = String(state || "").split(".");
-  if (parts.length !== 3 && !(parts.length === 4 && parts[2] === "a")) return null;
+  if (parts.length < 3 || parts.length > 5) return null;
+  const extra = parts.slice(2, -1);
+  let app = false, lang = "", i = 0;
+  if (extra[i] === "a") { app = true; i++; }
+  if (i < extra.length && extra[i].startsWith("l") && confirmLangOf(extra[i].slice(1))) { lang = extra[i].slice(1); i++; }
+  if (i !== extra.length) return null;
   const mac = parts[parts.length - 1];
   const body = parts.slice(0, -1).join(".");
   const [uidB64, expStr] = parts;
@@ -106,7 +115,7 @@ export function verifyStateDetail(state, key, nowMs = Date.now()) {
   if (!Number.isFinite(exp) || exp < nowMs) return null; // expired
   let userId = null;
   try { userId = Buffer.from(uidB64, "base64url").toString("utf8") || null; } catch { userId = null; }
-  return userId ? { userId, app: parts.length === 4 } : null;
+  return userId ? { userId, app, ...(lang ? { lang } : {}) } : null;
 }
 export function verifyState(state, key, nowMs = Date.now()) {
   const d = verifyStateDetail(state, key, nowMs);
@@ -120,6 +129,16 @@ export function verifyState(state, key, nowMs = Date.now()) {
 export const COMPLETE_FORM_LIMIT = "8kb";
 export const COMPLETE_REMEMBER_MS = 10 * 60 * 1000; // a finished connected / cap answer is repeated this long
 export const COMPLETE_REMEMBER_MAX = 500;           // remembered answers kept (oldest dropped)
+export const EXCHANGE_KEEP_MS = STATE_TTL_MS;       // a code's exchange answer is kept this long (confirm page → Connect)
+export const EXCHANGE_KEEP_MAX = 500;
+// fb=connected with Pages left out by the plan: saved=<n>&dropped=<m>&kept=<names>&names=<names>,
+// at most PARTIAL_NAMES_MAX names each (cut to 60 characters), URL-encoded.
+export const PARTIAL_NAMES_MAX = 3;
+export function partialSaveQuery(kept, dropped) {
+  const list = (a) => a.slice(0, PARTIAL_NAMES_MAX).map((n) => String(n || "").slice(0, 60)).join("\n");
+  const q = new URLSearchParams({ saved: String(kept.length), dropped: String(dropped.length), kept: list(kept), names: list(dropped) });
+  return q.toString();
+}
 export const CONFIRM_PAGE_HEADERS_BASE = { "Cache-Control": "no-store", "X-Frame-Options": "DENY" };
 
 export function escapeHtml(v) {
@@ -140,9 +159,10 @@ export function maskEmail(email) {
 }
 
 // The one inline script on the confirm page: the first submit disables the button and shows
-// "Connecting…"; any further submit is ignored. Allowed in the CSP by its sha256 hash only.
+// its data-busy text ("Connecting…" in the page's language); any further submit is ignored.
+// Allowed in the CSP by its sha256 hash only (one script for every language).
 // Without scripts the page still works — /fb/oauth/complete answers repeats the same way.
-export const CONFIRM_SCRIPT = 'var f=document.getElementById("c"),s=false;f.addEventListener("submit",function(e){if(s){e.preventDefault();return;}s=true;var b=f.querySelector("button");b.disabled=true;b.textContent="Connecting\u2026";});';
+export const CONFIRM_SCRIPT = 'var f=document.getElementById("c"),s=false;f.addEventListener("submit",function(e){if(s){e.preventDefault();return;}s=true;var b=f.querySelector("button");b.disabled=true;b.textContent=b.getAttribute("data-busy");});';
 export const CONFIRM_SCRIPT_HASH = `sha256-${createHash("sha256").update(CONFIRM_SCRIPT, "utf8").digest("base64")}`;
 
 // The form posts back to this server; after the POST the browser is redirected (303) to the
@@ -155,15 +175,35 @@ export function confirmPageCsp(appUrl, { app = false } = {}) {
   return `default-src 'none'; script-src '${CONFIRM_SCRIPT_HASH}'; style-src 'unsafe-inline'; form-action 'self'${appOrigin ? ` ${appOrigin}` : ""}${app ? ` ${APP_AUTH_SCHEME}:` : ""}`;
 }
 
-// labels (optional, Instagram reuses this page): the defaults are Facebook's exact strings, so
-// every Facebook call is byte-identical to before. param = the web return query key.
-export const FB_CONFIRM_LABELS = { title: "Connect your Facebook Page", lead: "Your Facebook Page will be connected to this SellerFlowLive account:", action: "/fb/oauth/complete", param: "fb" };
-export function buildConfirmPage({ code, state, email, storeName, appUrl, app = false, labels = FB_CONFIRM_LABELS }) {
+// labels (optional, Instagram reuses this page with its own title/lead/action/param). The
+// Facebook page is in the language from the signed state (FB_CONFIRM_TEXT, English fallback).
+// The store name is the receiving account's OWN text, so it is shown only under a label that
+// says so — never as a headline (an Authorize link sent to another Page admin must not look
+// like that person's own account). pages = the Page names that will be connected (read before
+// anything is saved).
+export const FB_CONFIRM_TEXT = {
+  en: { title: "Connect your Facebook Page", lead: "Your Facebook Page will be connected to this SellerFlowLive account:", storeLabel: "store name set by this account:", pagesLead: "These Pages will be connected:", warn: "Only continue if this is your own SellerFlowLive account.", connect: "Connect", busy: "Connecting\u2026", cancel: "Cancel", note: "This can take a few seconds." },
+  fil: { title: "Ikonekta ang Facebook Page mo", lead: "Ikokonekta ang Facebook Page mo sa SellerFlowLive account na ito:", storeLabel: "pangalan ng tindahan na nilagay ng account na ito:", pagesLead: "Ito ang mga Page na ikokonekta:", warn: "Ituloy lang kung sa iyo talaga ang SellerFlowLive account na ito.", connect: "Ikonekta", busy: "Kinokonekta\u2026", cancel: "Huwag na", note: "Ilang segundo lang ito." },
+  zh: { title: "连接你的 Facebook 主页", lead: "你的 Facebook 主页将连接到这个 SellerFlowLive 账号：", storeLabel: "此账号设置的店铺名称：", pagesLead: "将连接以下主页：", warn: "只有这是你自己的 SellerFlowLive 账号时才继续。", connect: "连接", busy: "连接中\u2026", cancel: "取消", note: "可能需要几秒钟。" },
+  "zh-TW": { title: "連接你的 Facebook 粉絲專頁", lead: "你的 Facebook 粉絲專頁將連接到這個 SellerFlowLive 帳號：", storeLabel: "此帳號設定的商店名稱：", pagesLead: "將連接以下粉絲專頁：", warn: "只有這是你自己的 SellerFlowLive 帳號時才繼續。", connect: "連接", busy: "連接中\u2026", cancel: "取消", note: "可能需要幾秒鐘。" },
+  vi: { title: "Kết nối Trang Facebook của bạn", lead: "Trang Facebook của bạn sẽ được kết nối với tài khoản SellerFlowLive này:", storeLabel: "tên cửa hàng do tài khoản này đặt:", pagesLead: "Các Trang sẽ được kết nối:", warn: "Chỉ tiếp tục nếu đây là tài khoản SellerFlowLive của chính bạn.", connect: "Kết nối", busy: "Đang kết nối\u2026", cancel: "Huỷ", note: "Việc này có thể mất vài giây." },
+  th: { title: "เชื่อมต่อเพจ Facebook ของคุณ", lead: "เพจ Facebook ของคุณจะเชื่อมต่อกับบัญชี SellerFlowLive นี้:", storeLabel: "ชื่อร้านที่บัญชีนี้ตั้งไว้:", pagesLead: "เพจที่จะเชื่อมต่อ:", warn: "ทำต่อเฉพาะเมื่อนี่เป็นบัญชี SellerFlowLive ของคุณเอง", connect: "เชื่อมต่อ", busy: "กำลังเชื่อมต่อ\u2026", cancel: "ยกเลิก", note: "อาจใช้เวลาสักครู่" },
+  id: { title: "Hubungkan Halaman Facebook Anda", lead: "Halaman Facebook Anda akan dihubungkan ke akun SellerFlowLive ini:", storeLabel: "nama toko yang diatur akun ini:", pagesLead: "Halaman yang akan dihubungkan:", warn: "Lanjutkan hanya jika ini akun SellerFlowLive milik Anda sendiri.", connect: "Hubungkan", busy: "Menghubungkan\u2026", cancel: "Batal", note: "Ini bisa memakan beberapa detik." },
+  bg: { title: "Свържи своята Facebook страница", lead: "Твоята Facebook страница ще бъде свързана с този SellerFlowLive акаунт:", storeLabel: "име на магазина, зададено от този акаунт:", pagesLead: "Ще бъдат свързани тези страници:", warn: "Продължи само ако това е твоят собствен SellerFlowLive акаунт.", connect: "Свържи", busy: "Свързване\u2026", cancel: "Отказ", note: "Може да отнеме няколко секунди." },
+};
+export const FB_CONFIRM_LABELS = { ...FB_CONFIRM_TEXT.en, action: "/fb/oauth/complete", param: "fb" };
+export const CONFIRM_PAGES_SHOWN = 20; // Page names listed at most
+export function buildConfirmPage({ code, state, email, storeName, appUrl, app = false, labels = FB_CONFIRM_LABELS, lang = "en", pages = [] }) {
   const L = { ...FB_CONFIRM_LABELS, ...labels };
   const cancel = app ? `${APP_AUTH_CALLBACK}?fb=error&code=cancelled` : `${appUrl}/?${L.param}=error&code=cancelled`;
   const store = String(storeName || "").trim();
+  const names = (Array.isArray(pages) ? pages : []).map((p) => String((p && (p.name || p.id)) || "").trim()).filter(Boolean);
+  const shown = names.slice(0, CONFIRM_PAGES_SHOWN);
+  const pagesHtml = shown.length ? `<p>${escapeHtml(L.pagesLead)}</p>
+<ul class="pages">${shown.map((n) => `<li>${escapeHtml(n)}</li>`).join("")}${names.length > shown.length ? `<li>+${names.length - shown.length}</li>` : ""}</ul>
+` : "";
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="${escapeHtml(confirmLangOf(lang) || "en")}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(L.title)}</title>
 <style>
 body{margin:0;background:#f4f3fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1d1b2e}
@@ -173,6 +213,9 @@ h1{font-size:20px;margin:0 0 12px}
 p{font-size:15px;line-height:1.5;margin:0 0 12px}
 .acct{background:#f0eefc;border-radius:10px;padding:12px 14px;margin:0 0 12px;font-size:15px;word-break:break-all}
 .acct b{display:block}
+.acct span{display:block;margin-top:6px;font-size:13px;color:#6b6880}
+.acct i{font-style:normal;color:#1d1b2e}
+.pages{margin:0 0 12px;padding:0 0 0 20px;font-size:15px;line-height:1.5;font-weight:600}
 .warn{color:#8a5a00;font-weight:600}
 form{margin:20px 0 0}
 button,a.btn{display:block;width:100%;box-sizing:border-box;text-align:center;font-size:16px;font-weight:700;padding:14px 0;border-radius:12px;text-decoration:none}
@@ -184,15 +227,15 @@ button:disabled{opacity:.7;cursor:default}
 <body><main><div class="card">
 <h1>${escapeHtml(L.title)}</h1>
 <p>${escapeHtml(L.lead)}</p>
-<div class="acct"><b>${escapeHtml(maskEmail(email))}</b>${store ? `${escapeHtml(store)}` : ""}</div>
-<p class="warn">Only continue if this is your own SellerFlowLive account.</p>
+<div class="acct"><b>${escapeHtml(maskEmail(email))}</b>${store ? `<span>${escapeHtml(L.storeLabel)} <i>${escapeHtml(store)}</i></span>` : ""}</div>
+${pagesHtml}<p class="warn">${escapeHtml(L.warn)}</p>
 <form id="c" method="post" action="${escapeHtml(L.action)}">
 <input type="hidden" name="code" value="${escapeHtml(code)}">
 <input type="hidden" name="state" value="${escapeHtml(state)}">
-<button type="submit">Connect</button>
+<button type="submit" data-busy="${escapeHtml(L.busy)}">${escapeHtml(L.connect)}</button>
 </form>
-<a class="btn" href="${escapeHtml(cancel)}">Cancel</a>
-<p class="note">This can take a few seconds.</p>
+<a class="btn" href="${escapeHtml(cancel)}">${escapeHtml(L.cancel)}</a>
+<p class="note">${escapeHtml(L.note)}</p>
 </div></main><script>${CONFIRM_SCRIPT}</script></body></html>`;
 }
 
@@ -525,8 +568,8 @@ export function createFbRuntime(deps) {
   // ---- OAuth ----
   // messaging = the user is on fb_receipt_access → also ask for pages_messaging. Everyone
   // else gets exactly OAUTH_SCOPE (unchanged).
-  function buildAuthUrl(userId, { messaging = false, app = false } = {}) {
-    const state = signState({ userId, key: config.appSecret, nowMs: now(), app });
+  function buildAuthUrl(userId, { messaging = false, app = false, lang = "" } = {}) {
+    const state = signState({ userId, key: config.appSecret, nowMs: now(), app, lang });
     const q = new URLSearchParams({
       client_id: config.appId,
       redirect_uri: redirectUri,
@@ -537,6 +580,40 @@ export function createFbRuntime(deps) {
     return `${FB_DIALOG_HOST}/${GRAPH_VERSION}/dialog/oauth?${q.toString()}`;
   }
 
+  // ---- One code exchange per (code, state), shared by the confirm page and Connect ----
+  // A Facebook code can be exchanged once. The confirm page (GET) exchanges it to list the Page
+  // names; Connect (POST) reuses that answer instead of exchanging again. Nothing is saved by the
+  // exchange. Kept in memory only (sha256(code|state) key), for EXCHANGE_KEEP_MS, at most
+  // EXCHANGE_KEEP_MAX; dropped after Connect or on a failure (a reload then tries again). After a
+  // server restart Connect exchanges by itself, as before.
+  const exchanges = new Map(); // key → { at, promise }
+  const exchangeKeyOf = (code, state) => createHash("sha256").update(`${code}|${state}`, "utf8").digest("hex");
+  async function exchangeForPages(code) {
+    const shortTok = await exchangeCodeForToken({ config, fetchImpl, code, redirectUri });
+    if (!shortTok.ok) return { error: "token_exchange" };
+    const longTok = await exchangeForLongLivedUserToken({ config, fetchImpl, shortToken: shortTok.access });
+    if (!longTok.ok) return { error: "token_exchange" };
+    const pages = await fetchPages({ config, fetchImpl, userToken: longTok.access });
+    if (pages.length === 0) return { error: "no_pages" };
+    // Recorded per page for a later Messenger receipt. Never throws; any doubt → false.
+    const canMessage = await fetchMessagingGranted({ fetchImpl, userToken: longTok.access });
+    return { longTok, pages, canMessage };
+  }
+  function sharedExchange(code, state) {
+    const key = exchangeKeyOf(code, state);
+    const nowMs = now();
+    for (const [k, v] of exchanges) { if (nowMs - v.at >= EXCHANGE_KEEP_MS) exchanges.delete(k); else break; }
+    let e = exchanges.get(key);
+    if (!e) {
+      const promise = exchangeForPages(code).catch((err) => { log(`[FB] callback error: ${err && err.message}`); return { error: "exception" }; });
+      e = { at: nowMs, promise };
+      exchanges.set(key, e);
+      while (exchanges.size > EXCHANGE_KEEP_MAX) exchanges.delete(exchanges.keys().next().value);
+      void promise.then((r) => { if (r.error && exchanges.get(key) === e) exchanges.delete(key); });
+    }
+    return { key, promise: e.promise };
+  }
+
   async function handleCallback({ code, state }) {
     const st = verifyStateDetail(state, config.appSecret, now());
     // An unverified state cannot be trusted to say "app" → bad_state always goes to the web.
@@ -544,15 +621,11 @@ export function createFbRuntime(deps) {
     const userId = st.userId;
     const back = (q) => (st.app ? `${APP_AUTH_CALLBACK}?${q}` : `${appUrl}/?${q}`);
     if (!code) return { redirect: back("fb=error&code=missing_params") };
+    const ex = sharedExchange(code, state);
     try {
-      const shortTok = await exchangeCodeForToken({ config, fetchImpl, code, redirectUri });
-      if (!shortTok.ok) return { redirect: back("fb=error&code=token_exchange") };
-      const longTok = await exchangeForLongLivedUserToken({ config, fetchImpl, shortToken: shortTok.access });
-      if (!longTok.ok) return { redirect: back("fb=error&code=token_exchange") };
-      const pages = await fetchPages({ config, fetchImpl, userToken: longTok.access });
-      if (pages.length === 0) return { redirect: back("fb=error&code=no_pages") };
-      // Recorded per page for a later Messenger receipt. Never throws; any doubt → false.
-      const canMessage = await fetchMessagingGranted({ fetchImpl, userToken: longTok.access });
+      const got = await ex.promise;
+      if (got.error) return { redirect: back(`fb=error&code=${got.error}`) };
+      const { longTok, pages, canMessage } = got;
 
       // Per-plan cap (Option A: fb_pages rows vs maxAccountsForPlan) — re-auth of an
       // EXISTING page is always allowed; each NEW page counts against the cap.
@@ -569,12 +642,13 @@ export function createFbRuntime(deps) {
       // ~60d reminder from the long-lived user-token window (see the deviation note).
       const expiresAtIso = new Date(now() + longTok.expireInSec * 1000).toISOString();
       let upserted = 0, capped = 0, failed = 0, limited = 0;
+      const keptNames = [], droppedNames = []; // for the partial-save answer
       for (const p of pages) {
         let existing = null;
         try { existing = await store.getPage(userId, p.id); } catch { existing = null; }
         // F6-class TOCTOU (ACCEPTED, LOW — same as shopeeLive): two concurrent
         // callbacks could both pass the cap for two NEW pages. Soft business cap only.
-        if (!existing && count >= max) { capped++; continue; }
+        if (!existing && count >= max) { capped++; droppedNames.push(p.name || p.id); continue; }
         // A failed save is counted separately: it is not "saved" and does not use the cap.
         try {
           await store.upsertPage({
@@ -584,11 +658,12 @@ export function createFbRuntime(deps) {
           });
         } catch (e) {
           // The database's combined account limit (sql/84) refused this NEW page.
-          if (e && e.message === "account_limit") limited++;
+          if (e && e.message === "account_limit") { limited++; droppedNames.push(p.name || p.id); }
           else failed++;
           continue;
         }
         upserted++;
+        keptNames.push(p.name || p.id);
         if (!existing) count++;
       }
       if (upserted === 0 && limited > 0) return { redirect: back("fb=error&code=account_limit") };
@@ -598,10 +673,13 @@ export function createFbRuntime(deps) {
       }
       if (upserted === 0) return { redirect: back("fb=error&code=cap") };
       log(`[FB] callback ok user=${userId} pages=${upserted} capped=${capped} failed=${failed}`);
-      return { redirect: back("fb=connected") };
+      // Some Pages did not fit the plan → say which (the app tells the seller; old apps ignore it).
+      return { redirect: back(droppedNames.length ? `fb=connected&${partialSaveQuery(keptNames, droppedNames)}` : "fb=connected") };
     } catch (e) {
       log(`[FB] callback error: ${e && e.message}`);
       return { redirect: back("fb=error&code=exception") };
+    } finally {
+      if (exchanges.get(ex.key)) exchanges.delete(ex.key); // tokens leave memory after Connect
     }
   }
 
@@ -630,8 +708,8 @@ export function createFbRuntime(deps) {
   }
 
   // GET /fb/oauth/callback: verify state + code exactly like handleCallback (same error
-  // redirects), then read the receiving account and answer the confirm page. The code is NOT
-  // exchanged here. → { redirect } or { html }.
+  // redirects), read the receiving account, read the Pages (shared exchange — nothing saved)
+  // and answer the confirm page in the state's language. → { redirect } or { html }.
   async function confirmCallback({ code, state }) {
     const st = verifyStateDetail(state, config.appSecret, now());
     if (!st) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
@@ -641,7 +719,12 @@ export function createFbRuntime(deps) {
     let label = null;
     try { label = typeof store.getAccountLabel === "function" ? await store.getAccountLabel(userId) : null; } catch { label = null; }
     if (!label || !String(label.email || "").trim()) return { redirect: back("fb=error&code=exception") };
-    return { app: st.app, html: buildConfirmPage({ code, state, email: label.email, storeName: label.storeName, appUrl, app: st.app }) };
+    // Read the Pages now (nothing is saved) so the page can name them; Connect reuses this answer.
+    const got = await sharedExchange(code, state).promise;
+    if (got.error) return { redirect: back(`fb=error&code=${got.error}`) };
+    const lang = st.lang || "en";
+    const labels = { ...(FB_CONFIRM_TEXT[lang] || FB_CONFIRM_TEXT.en), action: "/fb/oauth/complete", param: "fb" };
+    return { app: st.app, html: buildConfirmPage({ code, state, email: label.email, storeName: label.storeName, appUrl, app: st.app, labels, lang, pages: got.pages }) };
   }
 
   // ---- Token re-validation timer (see the deviation note) ----
@@ -966,7 +1049,8 @@ export function createFbRuntime(deps) {
       try { messaging = typeof store.hasReceiptAccess === "function" && (await store.hasReceiptAccess(req.authUserId)) === true; } catch { messaging = false; }
       // ?client=app → the phone app's sign-in sheet (the flow ends on the app scheme).
       const app = String((req.query && req.query.client) || "") === "app";
-      try { return res.json({ url: buildAuthUrl(req.authUserId, { messaging, app }) }); }
+      const lang = confirmLangOf(req.query && req.query.lang); // the confirm page's language; "" = English
+      try { return res.json({ url: buildAuthUrl(req.authUserId, { messaging, app, lang }) }); }
       catch { return res.status(500).json({ ok: false, error: "fb_start_failed" }); }
     });
 

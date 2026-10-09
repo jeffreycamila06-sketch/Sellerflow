@@ -189,7 +189,8 @@ describe("the confirm page shows the tap worked", () => {
     expect(inline).toBe(CONFIRM_SCRIPT);
     const hash = createHash("sha256").update(inline, "utf8").digest("base64");
     expect(r.headers.get("content-security-policy")).toContain(`script-src 'sha256-${hash}';`);
-    expect(inline).toContain("Connecting…");
+    expect(inline).toContain('b.getAttribute("data-busy")');
+    expect(html).toContain('<button type="submit" data-busy="Connecting…">Connect</button>');
     expect(html).toContain('<p class="note">This can take a few seconds.</p>');
   });
   it("the script: first submit disables the button and shows Connecting…, further submits are ignored", async () => {

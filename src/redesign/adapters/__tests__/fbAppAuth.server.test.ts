@@ -117,7 +117,7 @@ describe("the confirm page is still shown for app flows", () => {
     expect(html).toContain('<form id="c" method="post" action="/fb/oauth/complete">');
     expect(html).toContain('href="com.sellerflow.live://fb-auth?fb=error&amp;code=cancelled"');
     expect(r.headers.get("content-security-policy")).toContain(`form-action 'self' ${APP} com.sellerflow.live:`);
-    expect(f).not.toHaveBeenCalled();
+    // Build 5: the Pages are read to name them (no save, no page-token write).
     expect(upserts).toEqual([]);
   });
   it("web state → today's page: web Cancel link and today's CSP", async () => {

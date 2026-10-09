@@ -28,10 +28,12 @@ import { planLabel } from "../adapters/useAuthSession";
 import { isIOS } from "../adapters/platform";
 
 export const FB_AUTH_REFRESH_MS = 8 * 60 * 1000;
+// fb_polish_v2: "Preparing…" gives up after this long → "Try again" (a failed fetch shows it at once).
+export const FB_AUTH_PREPARE_TIMEOUT_MS = 15 * 1000;
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 
-export default function FbChannels({ account = null, pages, onReload, onBack, onToast, onUpsell, needsReconnectIds = [] }: {
+export default function FbChannels({ account = null, pages, onReload, onBack, onToast, onUpsell, needsReconnectIds = [], polish = false }: {
   account?: AccountUser | null;
   pages: FbPage[]; // REAL authorized pages only (no placeholder) — Remove always acts on a real row
   onReload: () => void | Promise<void>;
@@ -41,6 +43,9 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   // fb_stop_reasons (switch ON): Pages whose access ended → "Needs reconnect" + Reconnect
   // (the same Authorize flow as the button below). Absent / empty = the rows as before.
   needsReconnectIds?: string[];
+  // fb_polish_v2 (Build 5): the confirm page in the app's language, own texts per return code,
+  // and "Try again" when the link can't be prepared. Off → this screen exactly as before.
+  polish?: boolean;
 }) {
   const t = useT();
   const coverage = useAccountCoverage(pages.map((p) => p.pageId).join(",")); // Build 2: "not covered" labels (enforcing + over-limit only)
@@ -57,6 +62,8 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
   // after "Connect". Old builds / normal browsers: null → the unchanged <a target="_blank">.
   const [authSession] = useState(() => nativeAuthSession());
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false); // fb_polish_v2 only
+  const confirmLang = polish ? lang : ""; // the confirm page's language (off → not sent)
 
   // Pre-fetch the signed OAuth URL so "Authorize" is a REAL anchor the seller taps directly
   // (the signed state has a ~10-min TTL). A refresh keeps the current link until the new one
@@ -66,10 +73,23 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
     let alive = true;
     if (authTick === 0) setAuthUrl(null);
     if (!eligible) { setAuthUrl(null); return; }
-    void startFbAuth(authSession ? { app: true } : {}).then((r) => { if (alive) setAuthUrl(r.ok && r.url ? r.url : null); });
+    const opts = { ...(authSession ? { app: true } : {}), ...(confirmLang ? { lang: confirmLang } : {}) };
+    void startFbAuth(opts).then((r) => {
+      if (!alive) return;
+      setAuthUrl(r.ok && r.url ? r.url : null);
+      if (polish) setAuthFailed(!(r.ok && r.url));
+    });
     return () => { alive = false; };
-  }, [eligible, authTick, authSession]);
+  }, [eligible, authTick, authSession, polish, confirmLang]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // fb_polish_v2: still no link after FB_AUTH_PREPARE_TIMEOUT_MS → "Try again".
+  useEffect(() => {
+    if (!polish || !eligible || authUrl || authFailed) return;
+    const id = window.setTimeout(() => setAuthFailed(true), FB_AUTH_PREPARE_TIMEOUT_MS);
+    return () => window.clearTimeout(id);
+  }, [polish, eligible, authUrl, authFailed, authTick]);
+  const retryAuth = () => { setAuthFailed(false); setAuthTick((n) => n + 1); };
 
   // Back in the app (visible / focused) → reload the page list + a fresh link. Both events fire
   // on one return, so a second call within 1 s is skipped. Plus a fresh link every 8 minutes.
@@ -105,11 +125,11 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
     setSheetOpen(false);
     setAuthTick((n) => n + 1);
     if (r.status === "connected") {
-      onToast?.(fbReturnText({ status: "connected" }, t, limit) || "", "ok");
+      onToast?.(fbReturnText({ status: "connected" }, t, limit, polish) || "", "ok");
     } else if (r.status === "error" && r.code === "account_limit") {
       onToast?.(await accountLimitMessage(t, { ios: isIOS(), planName: planLabel(plan), lang }), "err");
     } else if (r.status === "error") {
-      const msg = fbReturnText({ status: "error", code: r.code }, t, limit);
+      const msg = fbReturnText({ status: "error", code: r.code }, t, limit, polish);
       if (msg) onToast?.(msg, "err");
     }
     // cancelled / busy → nothing to show.
@@ -190,6 +210,11 @@ export default function FbChannels({ account = null, pages, onReload, onBack, on
           <button type="button" data-testid="fb-authorize-inapp" onClick={() => void authorizeInApp()} disabled={sheetOpen} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: sheetOpen ? "default" : "pointer", opacity: sheetOpen ? 0.6 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{t.rd_fb_authorize}</button>
         ) : canAuthorize ? (
           <a href={authUrl!} target="_blank" rel="noreferrer noopener" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", padding: "15px 0", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, textDecoration: "none", boxShadow: "0 6px 18px var(--accent-soft)" }}>{t.rd_fb_authorize}</a>
+        ) : polish && authFailed ? (
+          <>
+            <div data-testid="fb-open-failed" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", margin: "0 2px 8px" }}>{t.rd_fb_open_failed}</div>
+            <button type="button" data-testid="fb-authorize-retry" onClick={retryAuth} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{t.rd_fb_try_again}</button>
+          </>
         ) : (
           <button disabled style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--surface-3)", color: "var(--text-muted)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "default" }}>{t.rd_fb_authorize_preparing}</button>
         )}
