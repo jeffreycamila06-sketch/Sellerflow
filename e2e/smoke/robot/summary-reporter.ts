@@ -52,9 +52,10 @@ class SummaryReporter implements Reporter {
       ...[...this.rows.values()].map((r) => `| ${r.title} | ${r.result} | ${r.why} |`),
       "",
     ];
+    // The Summary tab, and the run log too (so the results can be read from the log as well).
     const file = process.env.GITHUB_STEP_SUMMARY;
     if (file) appendFileSync(file, lines.join("\n") + "\n");
-    else console.log(lines.join("\n"));
+    console.log(lines.join("\n"));
   }
 }
 

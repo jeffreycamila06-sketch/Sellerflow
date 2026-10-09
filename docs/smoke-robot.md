@@ -49,11 +49,11 @@ usually enough. If you can, add the screenshot from the report.
 | 01 Login | Logs in. The Live screen opens. No error message, no `E` code. |
 | 02 Every main screen | Live, Orders, Products, Sales, Settings, Customers, Shipping, General Settings, sticker print pattern, printer settings, subscription (view only), support, Privacy & Terms, and the public `/privacy/` and `/terms/` pages all open. None is blank, none shows a code or a text key like `rd_...`. |
 | 03 Language | Switches to Filipino, opens a few screens, switches back to English. No text key shows. |
-| 04 Products | Adds a test product with a code, sees it in the list and on the Live screen (Auto mode codes), adds 1 to its stock, reloads, then deletes it. |
+| 04 Products | First removes any test product an earlier run left. Then adds a test product with a code, sees it in the list and on the Live screen (it turns Auto mode on in its own browser for this, and back off after), adds 1 to its stock, reloads, then deletes it. |
 | 05 Manual order | **Always skipped.** In the app an order can only come from a live comment, and there is no button to remove an order. The robot would leave it behind. |
 | 06 Sticker preview | The sticker preview shows "Buyer 12", no long number, no error. It never presses Printer Test. |
 | 07a / 07b Shipping | The 7-11 shipping screen opens. If a buyer is in the current session, it opens that buyer's form and presses **Cancel** (never Save). Skipped when there is no buyer. |
-| 08 Facebook | For a seller without Facebook access: the Facebook screen shows the plain "activation required" notice, no empty boxes, no technical words. Skipped if the test account has Facebook access. |
+| 08 Facebook | For a seller without Facebook access: the Facebook screen shows the plain "activation required" notice, no empty boxes, no technical words. Skipped if the test account has Facebook access. If it fails, it says whether the `fb_polish_v2` switch is on or off (it reads the app's own answer; it never changes the switch). |
 | 11a TikTok add | Adds a made-up TikTok name (`sfl_robot_x7q9z_notlive`) to the test account and sees it in the list. |
 | 12 TikTok not live | Connects that made-up name **once**. The app must say in plain words that it is not live (no code, no technical words), and nothing may stay connected. Never retried. |
 | 11b TikTok remove | Removes the made-up name again. |

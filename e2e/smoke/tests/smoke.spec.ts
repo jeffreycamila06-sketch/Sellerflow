@@ -14,8 +14,9 @@ import { test, expect, openApp, visibleText, errorCodesIn, missingKeysIn, techni
 import { EN, FIL } from "../robot/strings";
 import { navTo, tpl } from "../robot/nav";
 import { openHub, openGeneral, openLiveSessionGroup, openChannel } from "../robot/settings";
-import { productCard, deleteProductByName } from "../robot/products";
+import { productCard, deleteProductByName, openProductsLoaded } from "../robot/products";
 import { ROBOT_TT, slotInputs, slotValues, slotBlock, recentRemoval, markRemoval, tiktokChip, waitForSave, watchSlotLocks } from "../robot/tiktok";
+import { watchSwitch } from "../robot/switches";
 import { CONNECT_MARK, CONSOLE_FILE, RUN_ID, SERVER_URL } from "../robot/config";
 import type { Page } from "@playwright/test";
 
@@ -154,17 +155,20 @@ test("03 Language: Filipino and back to English, no missing text", async ({ page
 
 // ─────────────────────────────────────────────────────────────────────────────────────────
 test("04 Products: add a product with a code, see it, change stock, delete it", async ({ page }) => {
-  // Auto mode on in THIS browser only (a device setting) so the Live screen shows the codes.
-  await page.addInitScript(() => { try { localStorage.setItem("sfl_rd_automode", "1"); } catch { /* ignore */ } });
   await openApp(page);
   const name = `Robot test product ${RUN_ID}-${test.info().retry}`;
   const code = `ZR${RUN_ID.slice(-4)}${test.info().retry}`;
   // Leftovers of earlier robot runs first (only products named "Robot test product …").
-  await navTo(page, "products");
-  for (const old of await page.getByText(/^Robot test product /).allInnerTexts()) await deleteProductByName(page, old.trim());
+  expect(await openProductsLoaded(page), "the Products list did not load").toBe(true);
+  const old = (await page.getByText(/^Robot test product /).allInnerTexts()).map((s) => s.trim());
+  let cleaned = 0;
+  for (const o of old) if (await deleteProductByName(page, o)) cleaned++;
+  if (old.length) note(`Removed ${cleaned} of ${old.length} test product(s) left by an earlier run.`);
+  let autoTurnedOn = false;
 
   try {
     await test.step("add the product", async () => {
+      await navTo(page, "products");
       await page.getByRole("button", { name: EN.rd_prd_add, exact: true }).click();
       const form = page.locator("form").filter({ hasText: EN.rd_prd_add_title });
       await expect(form).toBeVisible();
@@ -183,8 +187,14 @@ test("04 Products: add a product with a code, see it, change stock, delete it", 
       await expect(page.getByText(EN.rd_prd_sync_failed)).toHaveCount(0);
     });
     await test.step("its code shows on the Live screen (Auto mode low-stock chip)", async () => {
+      // Auto mode is a per-phone setting: switched on here through Settings like a seller
+      // does, and switched back off at the end.
+      autoTurnedOn = await setAutoMode(page, true);
       await navTo(page, "live");
-      await expect(page.getByText(tpl(EN.rd_auto_lowstock_left, { code, n: 2 }), { exact: true })).toBeVisible();
+      const chip = page.getByText(tpl(EN.rd_auto_lowstock_left, { code, n: 2 }), { exact: true });
+      if (!(await chip.isVisible({ timeout: 12_000 }).catch(() => false))) {
+        throw new Error(`The product's code ${code} does not show on the Live screen with Auto mode on (${await liveAutoFacts(page)}).`);
+      }
     });
     await test.step("change the stock (+1) and see it saved after a reload", async () => {
       await navTo(page, "products");
@@ -200,17 +210,40 @@ test("04 Products: add a product with a code, see it, change stock, delete it", 
     await test.step("delete it and see it stays deleted after a reload", async () => {
       expect(await deleteProductByName(page, name), "the product came back after Delete").toBe(true);
       await openApp(page);
-      await navTo(page, "products");
-      await expect(page.getByRole("button", { name: EN.rd_prd_add, exact: true })).toBeVisible();
+      expect(await openProductsLoaded(page), "the Products list did not load after the reload").toBe(true);
       await expect(page.getByText(name, { exact: true })).toHaveCount(0);
       noteRemoved("product", name);
     });
   } finally {
-    if (await page.getByText(name, { exact: true }).count().catch(() => 0)) {
-      if (await deleteProductByName(page, name).catch(() => false)) noteRemoved("product", name);
-    }
+    // Always try (it goes to Products itself; "already gone" counts as removed).
+    if (await deleteProductByName(page, name).catch(() => false)) noteRemoved("product", name);
+    if (autoTurnedOn) await setAutoMode(page, false).catch(() => false);
   }
 });
+
+// Auto mode switch (General Settings → Live session). Turning it ON shows a short
+// explanation with "Turn on". Returns true when this call changed it.
+async function setAutoMode(page: Page, on: boolean): Promise<boolean> {
+  await openGeneral(page);
+  await openLiveSessionGroup(page);
+  const sw = page.getByTestId("ls-tg-auto");
+  if ((await sw.getAttribute("aria-checked")) === String(on)) return false;
+  await sw.click();
+  if (on) await page.getByRole("button", { name: EN.rd_lss_turn_on, exact: true }).click();
+  await expect(sw).toHaveAttribute("aria-checked", String(on));
+  return true;
+}
+
+// What the Live screen shows about Auto mode (product codes only), for a failure message.
+async function liveAutoFacts(page: Page): Promise<string> {
+  return page.evaluate((tail) => {
+    const chips = [...document.querySelectorAll("span")].map((s) => (s.textContent || "").trim()).filter((s) => s.endsWith(tail)).slice(0, 8);
+    let auto = "?";
+    try { auto = localStorage.getItem("sfl_rd_automode") === "1" ? "on" : "off"; } catch { /* ignore */ }
+    const ended = document.querySelector('[data-testid="session-ended"]') ? "yes" : "no";
+    return `Auto mode on this browser: ${auto}; low-stock chips shown: ${chips.length ? chips.join(", ") : "none"}; session ended: ${ended}`;
+  }, EN.rd_auto_lowstock_left.split("{n}")[1]);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────────────────
 test("05 Orders: one manual order for a made-up buyer", async () => {
@@ -263,6 +296,7 @@ test("07b Shipping: open a buyer's form and cancel without saving", async ({ pag
 
 // ─────────────────────────────────────────────────────────────────────────────────────────
 test("08 Facebook settings for a seller without Facebook: plain notice, no dead boxes", async ({ page }) => {
+  const switchSeen = watchSwitch(page, "fb_polish_v2");
   await openApp(page);
   await openChannel(page, "facebook");
   if (await page.getByText(EN.rd_fb_channels_title, { exact: true }).first().isVisible({ timeout: 4000 }).catch(() => false)) {
@@ -272,7 +306,9 @@ test("08 Facebook settings for a seller without Facebook: plain notice, no dead 
   const notice = page.getByTestId("mc-fb-activation");
   const boxes = page.getByText(`${EN.rd_ch_fb_page_label} 1`, { exact: true });
   if (!(await notice.isVisible().catch(() => false)) && (await boxes.count())) {
-    throw new Error("The old 'Facebook page 1' boxes show instead of the 'activation required' notice (the fb_polish_v2 switch looks OFF).");
+    const sw = await switchSeen;
+    const why = sw === false ? "the fb_polish_v2 switch is OFF in production (read from the app's own settings answer)" : sw === true ? "even though the fb_polish_v2 switch is ON" : "the fb_polish_v2 switch could not be read";
+    throw new Error(`The old 'Facebook page 1' boxes show instead of the 'activation required' notice — ${why}.`);
   }
   await expect(notice).toBeVisible();
   await expect(boxes).toHaveCount(0);
@@ -393,13 +429,19 @@ test.describe("TikTok connect", () => {
 
 test("11b TikTok accounts: remove the made-up account again", async ({ page }) => {
   await openApp(page);
+  const locksSeen = watchSlotLocks(page);
   await openChannel(page, "tiktok");
+  // Until the app has its 4-hour lock answer, it shows every saved name as locked — wait for it.
+  const locks = await locksSeen;
   const values = await slotValues(page);
   const i = values.indexOf(ROBOT_TT);
   if (i < 0) test.skip(true, "The made-up account is not saved, so there is nothing to remove.");
   const block = slotBlock(page, i);
   const change = block.getByTestId("mc-change");
+  await change.waitFor({ timeout: 10_000 }).catch(() => undefined);
   if (!(await change.count())) {
+    const until = locks?.get(i);
+    if (until) throw new Error(`Could not remove the made-up TikTok account now — that place is locked until about ${until.toISOString().slice(11, 16)} UTC (the app's 4-hour rule). The next run after that removes it.`);
     const lockNote = (await block.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
     throw new Error(`Could not remove the made-up TikTok account now — the app shows it LOCKED (${lockNote}). The next run removes it.`);
   }
