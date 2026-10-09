@@ -26,6 +26,20 @@ function Tile({ icon, label, onClick, variant = "accent", locked = false, testid
   );
 }
 
+// Build 16 — a feature that isn't offered yet: the Live picker's "Coming soon" look (dimmed, the
+// words under the label) and NOT tappable (disabled, no handler).
+function SoonTile({ icon, label, soon, testid }: { icon: ReactNode; label: string; soon: string; testid?: string }) {
+  return (
+    <button type="button" disabled aria-disabled="true" style={{ ...tile, opacity: 0.5, cursor: "default" }} data-testid={testid} data-soon="1">
+      <span style={chip("neutral")}>{icon}</span>
+      <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+        <span style={tileLabel}>{label}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.15 }}>{soon}</span>
+      </span>
+    </button>
+  );
+}
+
 const ic = {
   gear: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
   people: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.7" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17 14.3a5.5 5.5 0 0 1 3.5 4.7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>,
@@ -44,12 +58,13 @@ const ic = {
 };
 
 export default function SettingsHub({
-  onGeneral, onCustomers, onAdmin, onShipping, onCustomerData, onLegal, onDelete, onLogout,
+  onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
   isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, onParcelUpsell, onReceiptFormat,
 }: {
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void;
-  onShipping?: () => void; // TW 7-11 module — passed ONLY when the market has shippingModule "tw-711" (marketHidesShipping)
+  onShipping?: () => void; // TW 7-11 module — passed ONLY when the market has shippingModule "tw-711" (marketHidesShipping) AND the user is an admin (Build 16)
+  shippingSoon?: boolean; // Build 16: non-admin seller in a shipping market → a "Coming soon" tile that never opens the screen
   onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
   onParcelScan?: () => void; // Parcel Scan A1 — passed ONLY when canUseParcelScan allows (admin/test acct)
@@ -77,7 +92,9 @@ export default function SettingsHub({
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
           {/* Owner-only (production: isAdminUser) */}
           {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
-          {onShipping && <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />}
+          {onShipping
+            ? <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} testid="tile-shipping" />
+            : shippingSoon && <SoonTile icon={ic.truck} label={t.rd_sh_shipping} soon={t.rd_ls_soon} testid="tile-shipping-soon" />}
           {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED
               upsell tile (🔒) that opens the neutral contact-support popup, never the
               screen. The onParcelScan prop is the ALLOW gate; parcelLocked is tile-only. */}
