@@ -4597,6 +4597,25 @@ branch when the extension reloaded.
 - If Chrome's "Loaded from" (chrome://extensions → Details) is ever not
   `~/Sellerflow/chrome-extension`, tell Jeff.
 
+## 2026-10-09 — BUILD 10 CI RED = ParcelScan test race (fixed on `claude/magical-thompson-ar4k9s`, on top of `claude/blank-v2`)
+The Build 10 push (`dca7f9f`, branch `claude/blank-v2`) went CI-red on ONE test —
+`ParcelScan.exportconfirm.test.tsx` → "Unable to find ps-confirm-export" with a DOM showing
+**"Export 0 parcel(s)" disabled**. NOT a Build 10 regression (it touches nothing that test
+sees; the same DOM dump appears in run 1215 on `main`): the ParcelScan tests did
+`fireEvent.click(await findByTestId("ps-export-btn"))`, but the button EXISTS (disabled) before
+the mocked `loadParcelScans` resolves; under CI load React flushes that out-of-`act` update on
+a scheduler macrotask, so the click landed on the disabled button = no dialog. Passes 8/8 in
+isolation — load-only. **Proven deterministically:** a one-macrotask delay on the load mock
+fails all 6 tests with the exact CI error.
+- **Fix (tests only, 3 files):** `tapExport()` waits for the button to be ENABLED before
+  tapping (`exportconfirm`, `pendingGuard`; inline in `exportShare`'s `openExportDialog`).
+  `exportconfirm`'s load mock now resolves one tick later in EVERY run = the regression pin
+  (sabotage: wait removed + delay kept → 6/6 red).
+- 🔑 **PATTERN:** for any button gated on async-loaded data, `findBy` + click is a race —
+  wait for the ENABLED state (or the loaded count) first; `exportConcurrency.test` already did.
+- Still flaky on `main` (NOT touched, different race): `ParcelTracking.checkNow.test.tsx:111`
+  (`loadParcelTracking` call count 2 vs 3 — a poll tick racing the assert); failed run 1215.
+
 ## ⏸ PARKED (2026-10-06) — automated FROZEN (冷凍) store check
 Parked until the owner is back from his trip. `main` = exactly what ran before the frozen merge
 (revert of merge `5ed43c1` on `claude/park-frozen-check`; extension **1.15.1**; sql/81 was NEVER

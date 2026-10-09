@@ -12,9 +12,11 @@ const { deliverXlsm, markScansExported, unmarkScansExported, undoExportBatch, lo
   deliverXlsm: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   markScansExported: vi.fn(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }) as { ok: boolean; batchId?: string; claimed: string[] }),
   unmarkScansExported: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
-  loadParcelScans: vi.fn(async () => ({ ok: true, rows: [
+  // Resolves one macrotask later, as the DB read does — so the "list not rendered yet"
+  // window exists in EVERY run (a tap before it is a no-op; see tapExport).
+  loadParcelScans: vi.fn(async () => { await new Promise((r) => setTimeout(r, 0)); return { ok: true, rows: [
     { id: "r1", customerName: "Juan", phone: "0912345678", storeId: "266402", amount: 550, notes: "", status: "confirmed", storeCheckStatus: "valid", createdAt: "2026-09-08T00:00:00Z" },
-  ] as ParcelScanRow[] })),
+  ] as ParcelScanRow[] }; }),
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({
@@ -53,6 +55,15 @@ import ParcelScan from "../ParcelScan";
 
 const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 
+// The Saved list arrives only when loadParcelScans resolves; until then the Export button
+// is rendered DISABLED ("Export 0 parcel(s)") and a tap on it does nothing (no dialog). Wait
+// for it to be enabled before tapping — under CI load the old findBy+click raced the load.
+const tapExport = async (findByTestId: (id: string) => Promise<HTMLElement>) => {
+  const b = await findByTestId("ps-export-btn");
+  await waitFor(() => expect((b as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(b);
+};
+
 beforeEach(() => {
   deliverXlsm.mockClear(); markScansExported.mockClear(); unmarkScansExported.mockClear(); undoExportBatch.mockClear();
   deliverXlsm.mockResolvedValue({ ok: true });
@@ -63,7 +74,7 @@ beforeEach(() => {
 describe("Parcel Scan — export confirmation (FIX 4)", () => {
   it("tapping Export opens the confirm dialog and does NOT export yet", async () => {
     const { findByTestId, getByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     expect(getByTestId("ps-confirm-overlay")).toBeTruthy();
     expect(getByTestId("ps-confirm-msg").textContent).toContain("1"); // count shown
     expect(deliverXlsm).not.toHaveBeenCalled();                        // no export until confirmed
@@ -71,7 +82,7 @@ describe("Parcel Scan — export confirmation (FIX 4)", () => {
 
   it("confirming claims the rows (markScansExported) then delivers (deliverXlsm) and closes", async () => {
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     fireEvent.click(getByTestId("ps-confirm-export"));
     await waitFor(() => expect(deliverXlsm).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(markScansExported).toHaveBeenCalledTimes(1));
@@ -80,7 +91,7 @@ describe("Parcel Scan — export confirmation (FIX 4)", () => {
 
   it("cancelling closes the dialog and never exports", async () => {
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     fireEvent.click(getByTestId("ps-confirm-cancel"));
     expect(queryByTestId("ps-confirm-overlay")).toBeNull();
     expect(deliverXlsm).not.toHaveBeenCalled();
@@ -89,7 +100,7 @@ describe("Parcel Scan — export confirmation (FIX 4)", () => {
   // FIX 5 — Undo last export.
   it("after exporting, an Undo button appears; confirming reverts the batch (undoExportBatch — keeps the latest-only tombstone) and clears", async () => {
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     fireEvent.click(getByTestId("ps-confirm-export"));
     // Undo affordance shows once the export run is stamped with a batch id.
     await findByTestId("ps-undo-btn");
@@ -105,7 +116,7 @@ describe("Parcel Scan — export confirmation (FIX 4)", () => {
   it("a failed claim (markScansExported not ok) delivers NO file and shows no Undo (2a claim-first)", async () => {
     markScansExported.mockResolvedValue({ ok: false, claimed: [] });
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     fireEvent.click(getByTestId("ps-confirm-export"));
     await findByTestId("ps-export-err");
     expect(deliverXlsm).not.toHaveBeenCalled();                 // never a file for unclaimed rows
@@ -115,7 +126,7 @@ describe("Parcel Scan — export confirmation (FIX 4)", () => {
   it("a failed download RELEASES the claim (rows back to ready)", async () => {
     deliverXlsm.mockResolvedValue({ ok: false, error: "boom" });
     const { findByTestId, getByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     fireEvent.click(getByTestId("ps-confirm-export"));
     await findByTestId("ps-export-err");
     await waitFor(() => expect(unmarkScansExported).toHaveBeenCalledWith("batch-1"));
