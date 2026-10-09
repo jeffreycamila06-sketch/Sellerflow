@@ -51,6 +51,7 @@ const RAW: Record<string, Row> = {
   lg_contact_h: { en: "5. Contact", fil: "5. Kontakin kami", zh: "5. 联系我们", "zh-TW": "5. 聯絡我們", vi: "5. Liên hệ", th: "5. ติดต่อเรา", id: "5. Kontak", bg: "5. Контакт" },
   lg_contact_pre: { en: "Questions? Reach us on Telegram ", fil: "May tanong? Mag-message sa Telegram ", zh: "有疑问？请在 Telegram 联系我们 ", "zh-TW": "有疑問？請在 Telegram 聯絡我們 ", vi: "Có câu hỏi? Liên hệ Telegram ", th: "มีคำถาม? ติดต่อเราทาง Telegram ", id: "Ada pertanyaan? Hubungi kami di Telegram ", bg: "Въпроси? Свържи се с нас в Telegram " },
   lg_contact_post: { en: " or email jeffreycamila06@gmail.com.", fil: " o mag-email sa jeffreycamila06@gmail.com.", zh: " 或发送邮件至 jeffreycamila06@gmail.com。", "zh-TW": " 或寄信至 jeffreycamila06@gmail.com。", vi: " hoặc email jeffreycamila06@gmail.com.", th: " หรืออีเมล jeffreycamila06@gmail.com", id: " atau email jeffreycamila06@gmail.com.", bg: " или пиши на jeffreycamila06@gmail.com." },
+  lg_terms_link: { en: "Terms of Service", fil: "Mga Tuntunin ng Serbisyo", zh: "服务条款", "zh-TW": "服務條款", vi: "Điều khoản dịch vụ", th: "ข้อกำหนดการให้บริการ", id: "Ketentuan Layanan", bg: "Условия за ползване" },
 
   // ════ Support ════
   rd_sup_title: { en: "Support", fil: "Suporta", zh: "支持", "zh-TW": "支援", vi: "Hỗ trợ", th: "ฝ่ายสนับสนุน", id: "Dukungan", bg: "Поддръжка" },
@@ -970,6 +971,7 @@ const RAW: Record<string, Row> = {
   rd_ps_sending_test: { en: "Sending test sticker…", fil: "Nagpapadala ng test sticker…", zh: "正在发送测试贴纸…", "zh-TW": "正在傳送測試貼紙…", vi: "Đang gửi sticker thử…", th: "กำลังส่งสติกเกอร์ทดสอบ…", id: "Mengirim stiker uji…", bg: "Изпращане на тестов стикер…" },
   rd_ps_test_sent: { en: "Test sticker sent.", fil: "Naipadala ang test sticker.", zh: "测试贴纸已发送。", "zh-TW": "測試貼紙已傳送。", vi: "Đã gửi sticker thử.", th: "ส่งสติกเกอร์ทดสอบแล้ว", id: "Stiker uji terkirim.", bg: "Тестовият стикер е изпратен." },
   rd_ps_test_failed: { en: "Test sticker failed — check pairing.", fil: "Nabigo ang test sticker — tingnan ang pairing.", zh: "测试贴纸失败——请检查配对。", "zh-TW": "測試貼紙失敗——請檢查配對。", vi: "Sticker thử thất bại — kiểm tra ghép nối.", th: "สติกเกอร์ทดสอบล้มเหลว — ตรวจสอบการจับคู่", id: "Stiker uji gagal — periksa pemasangan.", bg: "Тестовият стикер не успя — провери сдвояването." },
+  rd_ps_fw_channel: { en: "Firmware channel: stable-4beq9h2", fil: "Firmware channel: stable-4beq9h2", zh: "固件通道：stable-4beq9h2", "zh-TW": "韌體通道：stable-4beq9h2", vi: "Kênh firmware: stable-4beq9h2", th: "ช่องเฟิร์มแวร์: stable-4beq9h2", id: "Kanal firmware: stable-4beq9h2", bg: "Канал на фърмуера: stable-4beq9h2" },
   rd_ps_bt_device: { en: "Bluetooth printer", fil: "Bluetooth printer", zh: "蓝牙打印机", "zh-TW": "藍牙印表機", vi: "Máy in Bluetooth", th: "เครื่องพิมพ์ Bluetooth", id: "Printer Bluetooth", bg: "Bluetooth принтер" },
   rd_ps_paired: { en: "Paired", fil: "Naka-pair", zh: "已配对", "zh-TW": "已配對", vi: "Đã ghép nối", th: "จับคู่แล้ว", id: "Terpasang", bg: "Сдвоен" },
   rd_ps_nearby: { en: "Nearby", fil: "Malapit", zh: "附近", "zh-TW": "附近", vi: "Gần đây", th: "ใกล้เคียง", id: "Terdekat", bg: "Наблизо" },

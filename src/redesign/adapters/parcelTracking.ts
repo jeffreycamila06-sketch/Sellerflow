@@ -14,6 +14,7 @@
 import { useEffect } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
+import { log } from "../../lib/log";
 
 // ── Feature gate ──────────────────────────────────────────────────────────────
 // Tiers that CAN be allowlisted (case-insensitive). The allowlist row is the switch.
@@ -389,7 +390,7 @@ export async function loadBuyerNamesByHandle(handles: string[]): Promise<Map<str
       }
       if (page.length < BUYER_NAMES_CHUNK) return out;
     }
-    if (!buyerNamesCapLogged) { buyerNamesCapLogged = true; console.warn(`[pickup] buyer names: stopped at ${BUYER_NAMES_MAX} customer rows`); }
+    if (!buyerNamesCapLogged) { buyerNamesCapLogged = true; log.warn(`[pickup] buyer names: stopped at ${BUYER_NAMES_MAX} customer rows`); }
     return out;
   } catch { return new Map(); }
 }

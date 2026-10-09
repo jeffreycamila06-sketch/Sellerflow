@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isFreePlan } from "../../lib/planWindow";
+import { log } from "../../lib/log";
 
 // Shape of the free_tier_status_for_user RPC (copied from App.tsx:57).
 export interface FreeStatus {
@@ -86,7 +87,7 @@ export function useFreeCap(enabled: boolean, plan: string | undefined): UseFreeC
     try {
       const { data } = await supabase.rpc("free_tier_status_for_user");
       setFreeStatus((data as FreeStatus) || null);
-    } catch (err) { console.warn("free_tier_status_for_user failed:", err); }
+    } catch (err) { log.warn("free_tier_status_for_user failed:", err); }
   }, [enabled]);
 
   // M2 FIX — poll every 30s but ONLY when visible; also refresh on return-to-visible.

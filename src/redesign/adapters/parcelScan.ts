@@ -17,6 +17,7 @@ import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { TEMP_FROZEN, type FrozenConfig } from "./parcelFrozen";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_MAX_ORDER, SHIP_DEFAULT_FEE, type AmountError } from "./shipping";
+import { decodeServerJson } from "../../lib/errCodes.js";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
 // ADMIN ROLE ONLY — deliberately NO googletest allowlist (diverges from
@@ -356,7 +357,7 @@ export async function scanParcel(base64: string, mediaType: string): Promise<Sca
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ imageBase64: base64, mediaType }),
     });
-    const j = await r.json().catch(() => ({} as { success?: boolean; fields?: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence>; error?: string; balance?: number }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; fields?: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence>; error?: string; balance?: number })));
     const bal = typeof j.balance === "number" ? j.balance : undefined;
     if (r.status === 403) return { ok: false, error: "forbidden" };
     if (r.status === 402) return { ok: false, error: j.error || "insufficient_credits", insufficient: true, balance: bal ?? 0 };
@@ -495,7 +496,7 @@ export async function checkEmapStore(storeId: string): Promise<EmapCheckResult> 
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ storeId }),
     });
-    const j = await r.json().catch(() => ({} as { success?: boolean; status?: string; storeName?: string; address?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; status?: string; storeName?: string; address?: string })));
     if (!r.ok || !j.success) return { status: "unknown" };
     const status: StoreCheckStatus = j.status === "valid" || j.status === "not_found" ? j.status : "unknown";
     return { status, storeName: j.storeName, address: j.address };

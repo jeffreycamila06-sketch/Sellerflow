@@ -13,6 +13,7 @@ import { SERVER, browserSessionId } from "./serverIdentity";
 import { getAppSetting } from "./appSettings";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
+import { decodeServerJson } from "../../lib/errCodes.js";
 
 // Item 7 — Authorize + Connect require an ACTIVE PAID plan (admin bypasses; the
 // server also enforces requirePlanActive on /shopee/connect). Module-level so the
@@ -100,7 +101,7 @@ export async function startShopeeAuth(): Promise<{ ok: boolean; url?: string; er
       method: "GET",
       headers: { Authorization: `Bearer ${await bearer()}` },
     });
-    const j = await r.json().catch(() => ({} as { url?: string; error?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { url?: string; error?: string })));
     if (!r.ok || !j.url) return { ok: false, error: j.error || `HTTP ${r.status}` };
     return { ok: true, url: String(j.url) };
   } catch {
@@ -127,7 +128,7 @@ export async function shopeeConnect(shopId: number | string, shopSessionId: stri
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ shop_id: String(shopId), session_id: String(shopSessionId || ""), sessionId: browserSessionId() }),
     });
-    const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; session_id?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; session_id?: string })));
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized" };
     if (r.status === 403) return { ok: false, error: j.error || "plan_expired" };
     if (r.status >= 500) return { ok: false, error: j.error || "Server error" };
@@ -147,7 +148,7 @@ export async function shopeeDisconnect(shopId: number | string): Promise<{ ok: b
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ shop_id: String(shopId) }),
     });
-    const j = await r.json().catch(() => ({} as { ok?: boolean; error?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { ok?: boolean; error?: string })));
     return { ok: r.ok && j.ok !== false, error: j.error };
   } catch {
     return { ok: false, error: "unreachable" };

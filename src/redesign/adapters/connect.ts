@@ -14,6 +14,7 @@ import type { AccountUser } from "../../accountDb";
 // shared module (was a local copy identical to useLiveFeed's — parity-tested).
 import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 import { isAdminRole } from "../../lib/roles";
+import { decodeServerJson } from "../../lib/errCodes.js";
 
 export type Platform = "TikTok" | "Facebook";
 
@@ -143,7 +144,7 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify(body),
     });
-    const j = await r.json().catch(() => ({} as { success?: boolean; error?: string }));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; error?: string })));
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized", account };
     if (r.status === 500) return { ok: false, error: j.error || "Server error", account };
     // 409 = account resolved connect() but is NOT live (Phase 1 is-LIVE gate). Distinct
@@ -170,7 +171,7 @@ export async function ttDisconnect(username: string, fetchImpl: typeof fetch = f
       body: JSON.stringify({ username: cleanLiveAccount(username) }),
       ...(ac ? { signal: ac.signal } : {}),
     });
-    const j = await r.json().catch(() => null) as { ok?: unknown } | null;
+    const j = decodeServerJson(await r.json().catch(() => null)) as { ok?: unknown } | null;
     return r.ok && !!j && j.ok === true;
   } catch {
     return false;

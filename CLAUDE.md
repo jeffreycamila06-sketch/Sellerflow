@@ -22,7 +22,8 @@ tugma sa `sql/04_free_tier_cap.sql`; live cap verified 2026-07-02 = 100, near-ca
 **Ang production entry (`/` = `index.html` → `#redesign-root` →
 `src/redesign/main.tsx` → `RedesignApp`) ay ang REDESIGN.** Ang lumang
 `src/App.tsx` (~4.8k lines) ay ang **rollback app lang** (`app.html`, hindi
-served sa prod). **LAHAT ng fix sa user-facing screens: sa `src/redesign/*`
+served sa prod). **(Build 10: `app.html` is no longer built at all — to restore the escape
+hatch, add `app: 'app.html'` back to `build.rollupOptions.input` in `vite.config.ts`.)** **LAHAT ng fix sa user-facing screens: sa `src/redesign/*`
 MUNA tumingin** — isang App.tsx-only fix ay HINDI lalabas sa production
 (napatunayan 2026-07-04: ang admin "Expiring" fix sa App.tsx ay walang epekto
 dahil may sariling counter-logic copy ang redesign — ayaw ulitin).

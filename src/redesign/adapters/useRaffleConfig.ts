@@ -9,6 +9,7 @@
 // state (preview-friendly) but skips the DB write.
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { log } from "../../lib/log";
 
 export interface UseRaffleConfig {
   enabled: boolean;
@@ -68,7 +69,7 @@ export function useRaffleConfig(): UseRaffleConfig {
       .from("raffle_config")
       .upsert({ user_id: id, enabled: on, enabled_at: at, updated_at: new Date().toISOString() });
     if (error) {
-      console.error("Raffle toggle save error:", error.message);
+      log.error("Raffle toggle save error:", error.message);
       setEnabled(prevOn); setEnabledAt(prevAt); // revert — the DB is the raffle's source of truth
       setToggleErrors((c) => c + 1);
     }

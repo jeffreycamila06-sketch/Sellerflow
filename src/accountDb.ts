@@ -1,5 +1,6 @@
 import { isSupabaseConfigured, supabase, supabaseConfigHint } from "./supabase";
 import { fetchAllPages } from "./lib/fetchAllPages";
+import { log as devLog } from "./lib/log";
 
 type Plan = "free" | "trial" | "basic" | "plus" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
@@ -137,7 +138,7 @@ export async function getMyProfile(authUserId: string): Promise<AccountUser | nu
     .maybeSingle();
 
   if (error) {
-    console.error("Load profile error:", error.message);
+    devLog.error("Load profile error:", error.message);
     return null;
   }
   return data ? rowToUser(data) : null;
@@ -169,7 +170,7 @@ export async function createMyProfile(
     .single();
 
   if (error) {
-    console.error("Create profile error:", error.message);
+    devLog.error("Create profile error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
   return rowToUser(data);
@@ -211,7 +212,7 @@ export async function listUsers(): Promise<AccountUser[]> {
       .order("email", { ascending: true })
       .range(from, from + USERS_PAGE_SIZE - 1);
     if (error) {
-      console.error("Load users error:", error.message);
+      devLog.error("Load users error:", error.message);
       return null;
     }
     return (data || []).map(rowToUser);
@@ -234,7 +235,7 @@ export async function upsertUser(user: AccountUser, opts: { includePlan?: boolea
 
   const { error } = await query;
   if (error) {
-    console.error("Save user error:", error.message);
+    devLog.error("Save user error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
   return cleanUser;
@@ -253,7 +254,7 @@ export async function deleteUser(email: string): Promise<void> {
     .eq("email", cleanEmail);
 
   if (error) {
-    console.error("Delete user error:", error.message);
+    devLog.error("Delete user error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 }
@@ -280,7 +281,7 @@ export async function adminUpdatePlan(
     .eq("email", email.trim().toLowerCase());
 
   if (error) {
-    console.error("Admin update plan error:", error.message);
+    devLog.error("Admin update plan error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 }
@@ -299,7 +300,7 @@ export async function adminUpdateContactNote(email: string, note: string): Promi
     .eq("email", email.trim().toLowerCase());
 
   if (error) {
-    console.error("Admin update contact note error:", error.message);
+    devLog.error("Admin update contact note error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 }
@@ -315,7 +316,7 @@ export async function listAuditLogs(): Promise<AccountAuditLog[]> {
     .limit(80);
 
   if (error) {
-    console.error("Load audit logs error:", error.message);
+    devLog.error("Load audit logs error:", error.message);
     return localLogs;
   }
 
@@ -345,6 +346,6 @@ export async function saveAuditLog(log: Omit<AccountAuditLog, "id" | "timestamp"
     });
 
   if (error) {
-    console.error("Save audit log error:", error.message);
+    devLog.error("Save audit log error:", error.message);
   }
 }

@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, supabase } from "./supabase";
 import { taipeiDayId } from "./lib/dateHelpers";
 import type { LiveSessionRow } from "./lib/orderLogic";
+import { log } from "./lib/log";
 
 const ORDER_PLATFORMS = ["TikTok", "Facebook", "Shopee", "Instagram"]; // = sql/96 orders_platform_check
 
@@ -14,13 +15,13 @@ export async function saveOrderToDatabase(order: {
   platform?: string;
 }) {
   if (!isSupabaseConfigured || !supabase) {
-    console.info("Supabase is not configured. Order kept in local app state.", order);
+    log.info("Supabase is not configured. Order kept in local app state.", order);
     return { success: true, data: null, skipped: true };
   }
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    console.error("Supabase save order error: no authenticated user");
+    log.error("Supabase save order error: no authenticated user");
     return { success: false, error: new Error("Not authenticated") };
   }
 
@@ -39,7 +40,7 @@ export async function saveOrderToDatabase(order: {
     .select();
 
   if (error) {
-    console.error("Supabase save order error:", error.message);
+    log.error("Supabase save order error:", error.message);
     return { success: false, error };
   }
 
@@ -54,13 +55,13 @@ export async function saveCustomerToDatabase(customer: {
   total_spent: number;
 }) {
   if (!isSupabaseConfigured || !supabase) {
-    console.info("Supabase is not configured. Customer kept in local app state.", customer);
+    log.info("Supabase is not configured. Customer kept in local app state.", customer);
     return { success: true, data: null, skipped: true };
   }
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    console.error("Supabase save customer error: no authenticated user");
+    log.error("Supabase save customer error: no authenticated user");
     return { success: false, error: new Error("Not authenticated") };
   }
 
@@ -73,7 +74,7 @@ export async function saveCustomerToDatabase(customer: {
       .maybeSingle();
 
     if (findError) {
-      console.error("Find customer error:", findError.message);
+      log.error("Find customer error:", findError.message);
       return { success: false, error: findError };
     }
 
@@ -92,7 +93,7 @@ export async function saveCustomerToDatabase(customer: {
       .select();
 
     if (error) {
-      console.error("Update customer error:", error.message);
+      log.error("Update customer error:", error.message);
       return { success: false, error };
     }
 
@@ -121,7 +122,7 @@ export async function saveCustomerToDatabase(customer: {
       return await updateExistingCustomer();
     }
 
-    console.error("Supabase save customer error:", error.message);
+    log.error("Supabase save customer error:", error.message);
     return { success: false, error };
   }
 
@@ -169,13 +170,13 @@ export interface LiveSessionOrderInput {
 // polling. Mirrors saveOrderToDatabase's auth + skip-when-unconfigured shape.
 export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
   if (!isSupabaseConfigured || !supabase) {
-    console.info("Supabase is not configured. Live session order kept in local app state.", order);
+    log.info("Supabase is not configured. Live session order kept in local app state.", order);
     return { success: true, data: null, skipped: true };
   }
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    console.error("Supabase save live session order error: no authenticated user");
+    log.error("Supabase save live session order error: no authenticated user");
     return { success: false, error: new Error("Not authenticated") };
   }
 
@@ -203,7 +204,7 @@ export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
     .select();
 
   if (error) {
-    console.error("Supabase save live session order error:", error.message);
+    log.error("Supabase save live session order error:", error.message);
     return { success: false, error };
   }
 
@@ -233,7 +234,7 @@ export async function loadTodaysLiveSession(sessionDate?: string): Promise<LiveS
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("Load today's live session error:", error.message);
+    log.error("Load today's live session error:", error.message);
     return [];
   }
 
@@ -251,7 +252,7 @@ export async function getCustomersFromDatabase() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Load customers error:", error.message);
+    log.error("Load customers error:", error.message);
     return [];
   }
 

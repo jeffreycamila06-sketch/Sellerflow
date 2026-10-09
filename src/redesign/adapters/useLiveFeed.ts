@@ -17,6 +17,7 @@
 // `injectSynthetic()` pushes a test comment through the SAME dedup pipeline so the
 // feed/dedup/scroll can be verified without a real socket. It is gated to
 // non-production hosts via isPreviewEnv() so real users never see it.
+import { log } from "../../lib/log";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { supabase } from "../../supabase";
@@ -452,21 +453,21 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         // classification from the browser console (≤ring-size lines per connect).
         if (feedRef.current.length === 0) {
           pushInitial(c);
-          console.info("[initial] accepted", c.handle, (c as ProdComment & { msgId?: string }).msgId || "");
+          log.info("[initial] accepted", c.handle, (c as ProdComment & { msgId?: string }).msgId || "");
         } else if (connectInFlightRef.current) {
           // exitpath — page-alive reconnect: the OLD feed still occupies memory
           // while OUR connect's batch arrives mid-POST. Buffer; connect() flushes
           // on success (after the feed clear) or discards on failure.
           pendingInitialRef.current.push(c);
-          console.info("[initial] buffered (connect in flight)", c.handle);
+          log.info("[initial] buffered (connect in flight)", c.handle);
         } else {
-          console.info("[initial] dropped (feed not empty:", feedRef.current.length, ")", c.handle);
+          log.info("[initial] dropped (feed not empty:", feedRef.current.length, ")", c.handle);
         }
         return;
       }
       // Auto Mode seam — fire on the ACCEPTED comment (after every filter above),
       // before pushComment. commentKey/dedup below are unchanged (tangled zone #1).
-      try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
+      try { onCommentRef.current?.(c); } catch (err) { log.warn("onComment handler failed", err); }
       pushComment(c);
     });
     // #6 — server-driven connection status + active account (App.tsx 4072-4082),
@@ -602,7 +603,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       const msgId = String(p.msgId || "");
       if (!msgId || pinSeenRef.current.has(msgId)) return;
       pinSeenRef.current.add(msgId);
-      try { onPinnedRef.current?.(p); } catch (err) { console.warn("onPinned handler failed", err); }
+      try { onPinnedRef.current?.(p); } catch (err) { log.warn("onPinned handler failed", err); }
     });
     s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
       if (e.sellerId && e.sellerId !== sellerId) return;
@@ -693,7 +694,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         // history block (this is the page-alive exit-return case; on a fresh
         // page the batch was accepted directly and this buffer is empty).
         for (const c of pendingInitialRef.current) pushInitial(c);
-        if (pendingInitialRef.current.length) console.info("[initial] flushed", pendingInitialRef.current.length, "buffered after connect ok");
+        if (pendingInitialRef.current.length) log.info("[initial] flushed", pendingInitialRef.current.length, "buffered after connect ok");
       }
       return r;
     } finally {
@@ -751,7 +752,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       timestamp: now.toISOString(),
       sessionId: browserSessionId(),
     } as ProdComment;
-    try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
+    try { onCommentRef.current?.(c); } catch (err) { log.warn("onComment handler failed", err); }
     pushComment(c);
   }, [pushComment]);
 

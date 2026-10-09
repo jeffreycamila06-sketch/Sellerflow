@@ -30,11 +30,11 @@ describe("public privacy pages", () => {
     expect(privacy).toContain("Live comments: 10 days. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account, which you can do anytime in the app.");
   });
 
-  it("terms (Oct 5, 2026): disconnecting deletes the stored token", () => {
+  it("terms (Oct 9, 2026, Build 10): disconnecting deletes the access we kept — in seller words", () => {
     const terms = readFileSync("public/terms/index.html", "utf8");
-    expect(terms).toContain("You may disconnect an integration at any time, which deletes the stored access token.");
+    expect(terms).toContain("You can disconnect one at any time, and we then delete the access we kept for it.");
     expect(terms).not.toContain("revokes and deletes");
-    expect(terms).toContain("Last updated: October 5, 2026");
+    expect(terms).toContain("Last updated: October 9, 2026");
   });
 
   it("data deletion keeps the seller + Facebook-user steps and the 30-day promise, without the backups line", () => {

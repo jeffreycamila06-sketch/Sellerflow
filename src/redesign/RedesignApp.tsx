@@ -133,6 +133,7 @@ import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed,
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
+import { log } from "../lib/log";
 
 type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
@@ -1418,7 +1419,7 @@ export default function RedesignApp() {
       else if (platform === "Shopee") { setShopeeOff(true); if (id) stops.push({ name: platform, p: shopeeDisconnect(id).then((x) => x.ok) }); }
       else { setIgOff(true); if (id) stops.push({ name: platform, p: igDisconnect(id) }); }
     }
-    await settleStops(stops, (name) => console.warn("[switch] stop not confirmed:", name));
+    await settleStops(stops, (name) => { log.warn("[switch] stop not confirmed:", name); });
   };
   const runSessionAware = async (target: LiveConnectTarget) => {
     await sessionInstance.ensureLoaded();
@@ -2022,13 +2023,13 @@ export default function RedesignApp() {
     // gate on the IN-FLIGHT state (not orderedLoaded) so the no-Supabase / no-load case
     // isn't blocked forever; a failed/absent load falls back to the sync autoDupRef +
     // the DB unique index (the cross-device backstop).
-    if (liveSession.state === "loading") { console.info("[auto] skipped — session window loading", c.handle, c.comment); return; }
+    if (liveSession.state === "loading") { log.info("[auto] skipped — session window loading", c.handle, c.comment); return; }
     // I3 (codes-ready gate) — do NOT auto-process before the products auth-load has
     // resolved: autoCodesRef is still empty, so a real code comment would match
     // NOTHING (silent no-order, no badge). Skip + log (same style as the loading
     // gate); once codes are derived (success OR local-fallback) auto resumes. The
     // buyer can still MANUAL-tap in this narrow start-of-session window.
-    if (!codesReadyRef.current) { console.info("[auto] skipped — codes not loaded yet", c.handle, c.comment); return; }
+    if (!codesReadyRef.current) { log.info("[auto] skipped — codes not loaded yet", c.handle, c.comment); return; }
     const key = commentKey(c);
     if (autoProcessedRef.current.has(key) || printed[key]) return; // this comment already handled
     const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);

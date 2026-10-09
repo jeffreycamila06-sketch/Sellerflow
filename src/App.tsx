@@ -25,6 +25,7 @@ import { sellerExpiryState } from "./lib/sellerExpiry";
 import { TELEGRAM_URL } from "./lib/telegram";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, isInMonitorWindow, monitorWindowDays } from "./lib/planWindow";
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "./lib/printerRouting";
+import { log as devLog } from "./lib/log";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "free" | "trial" | "basic" | "plus" | "pro" | "master";
@@ -482,15 +483,15 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
       if(msg&&typeof msg==="object"){
         if(msg.ok)return;
         const text=msg.message||"Native printer failed.";
-        console.warn(text);
+        devLog.warn(text);
         window.alert(text);
         return;
       }
       if(typeof msg!=="string"||!msg.trim())return;
       if(/printed to/i.test(msg))return;
-      console.warn(msg);
+      devLog.warn(msg);
       window.alert(msg);
-    }).catch(err=>console.warn("Native printer bridge failed.",err));
+    }).catch(err=>devLog.warn("Native printer bridge failed.",err));
   };
   try{
     if(window.SellerFlowPrinter?.printSlip){
@@ -506,7 +507,7 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
       return true;
     }
   }catch(err){
-    console.warn("Native printer bridge failed; falling back to browser print.",err);
+    devLog.warn("Native printer bridge failed; falling back to browser print.",err);
   }
   return false;
 }
@@ -598,7 +599,7 @@ async function printStickerViaBluetooth(buyer:Buyer,cur:string,storeName:string,
     const result=await bridge.printStickerNative(buildNativeStickerPayload(buyer,cur,storeName,cfg));
     return !!result?.ok;
   }catch(err){
-    console.warn("printStickerNative bridge call failed:",err);
+    devLog.warn("printStickerNative bridge call failed:",err);
     return false;
   }
 }
@@ -615,7 +616,7 @@ async function printStickerViaLan(buyer:Buyer,cur:string,storeName:string,cfg:Se
     const result=await bridge.printStickerLan(buildNativeStickerPayload(buyer,cur,storeName,cfg));
     return !!result?.ok;
   }catch(err){
-    console.warn("printStickerLan bridge call failed:",err);
+    devLog.warn("printStickerLan bridge call failed:",err);
     return false;
   }
 }
@@ -630,7 +631,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   const nativePrinter=typeof window!=="undefined"?window.SellerFlowPrinter:undefined;
   if(shouldUseBluetoothSticker(cfg.printerType,!!nativePrinter?.printStickerNative)){
     void printStickerViaBluetooth(buyer,cur,storeName,cfg).then(ok=>{
-      if(!ok)console.warn("[BT sticker] print failed — check Bluetooth printer pairing and selection in Settings.");
+      if(!ok)devLog.warn("[BT sticker] print failed — check Bluetooth printer pairing and selection in Settings.");
     });
     return;
   }
@@ -642,7 +643,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   // printStickerLan) this is always skipped.
   if(shouldUseLanSticker(cfg.printerType,cfg.lanFormat,!!nativePrinter?.printStickerLan)){
     void printStickerViaLan(buyer,cur,storeName,cfg).then(ok=>{
-      if(!ok)console.warn("[LAN sticker] print failed — check WiFi printer IP in Settings.");
+      if(!ok)devLog.warn("[LAN sticker] print failed — check WiFi printer IP in Settings.");
     });
     return;
   }
@@ -683,7 +684,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   frame.style.opacity="0";
   document.body.appendChild(frame);
   const win=frame.contentWindow;
-  if(!win){frame.remove();console.warn("Printer was not ready. Try again.");return;}
+  if(!win){frame.remove();devLog.warn("Printer was not ready. Try again.");return;}
   win.onafterprint=()=>setTimeout(()=>frame.remove(),50);
   const doc=win.document;
   doc.open();
@@ -1515,7 +1516,7 @@ function Shipping({user,t}:{user:User;t:T}){
       migrateLegacyShipping(user.email);
       return arrLS<Shipment>(sKey).filter(isValidShipment);
     }catch(e){
-      console.warn("[Shipping] init failed, starting empty:",e);
+      devLog.warn("[Shipping] init failed, starting empty:",e);
       return [];
     }
   });
@@ -3022,7 +3023,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       try{
         const {data}=await supabase.rpc("list_free_users_status");
         setFreeUsers((data as FreeUserRow[])||[]);
-      }catch(err){console.warn("list_free_users_status failed:",err);}
+      }catch(err){devLog.warn("list_free_users_status failed:",err);}
     }
   }
 
@@ -4024,7 +4025,7 @@ export default function App(){
       setAllOrders(dbOrders);
       setTotOrd(dbOrders.length);
       LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),dbOrders);
-    }).catch(err=>console.warn("Load today's live session failed (non-fatal):",err));
+    }).catch(err=>devLog.warn("Load today's live session failed (non-fatal):",err));
     return()=>{active=false;};
   },[user?.email,currentLiveDayId]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -4039,10 +4040,10 @@ export default function App(){
     const sellerId=sellerIdOf(user.email);
     const sessionId=currentSessionId;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
-    if(DEBUG_SOCKET)console.info("[SellerFlowLive] socket server",SERVER);
+    if(DEBUG_SOCKET)devLog.info("[SellerFlowLive] socket server",SERVER);
     const joinRoom=()=>s.emit("join_live_room",{sellerId,sessionId});
     s.on("connect",joinRoom);
-    s.on("connect_error",(err:Error)=>{if(DEBUG_SOCKET)console.warn("[SellerFlowLive] socket connect_error",{server:SERVER,message:err.message});});
+    s.on("connect_error",(err:Error)=>{if(DEBUG_SOCKET)devLog.warn("[SellerFlowLive] socket connect_error",{server:SERVER,message:err.message});});
     joinRoom();
     s.on("comment", (d: Comment) => {
       // Initial-history relay (redesign feature, audit F4): initial:true =
@@ -4173,7 +4174,7 @@ export default function App(){
     try{
       const {data}=await supabase.rpc("free_tier_status_for_user");
       setFreeStatus((data as FreeStatus)||null);
-    }catch(err){console.warn("free_tier_status_for_user failed:",err);}
+    }catch(err){devLog.warn("free_tier_status_for_user failed:",err);}
   }
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
@@ -4222,7 +4223,7 @@ export default function App(){
   async function handleDeleteAccount(){
     if(!user)return;
     const email=user.email;
-    try{await deleteUser(email);}catch(err){console.error("Delete profile failed:",err);}
+    try{await deleteUser(email);}catch(err){devLog.error("Delete profile failed:",err);}
     void supabase?.auth.signOut();
     ["sf_session","sf_session_user","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),sellerDataKey("sf_buyers",email),sellerDataKey("sf_orders",email),sellerDataKey("sf_printed",email)].forEach(k=>LS.del(k));
     setShowProf(false);
@@ -4348,7 +4349,7 @@ export default function App(){
     const {order,singleOrderBuyer,nextBuyers}=buildOrderFromComment(c,buyers,price,new Date());
     const orderItem=order.item;
     saveBuyerMemory(nextBuyers);
-    try{autoRegisterCustomer(c);}catch(autoRegErr){console.warn("autoRegisterCustomer failed (non-fatal):",autoRegErr);} // never block order creation / printing
+    try{autoRegisterCustomer(c);}catch(autoRegErr){devLog.warn("autoRegisterCustomer failed (non-fatal):",autoRegErr);} // never block order creation / printing
     setSelBuyer(singleOrderBuyer);
     setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
 
@@ -4391,7 +4392,7 @@ export default function App(){
         setCapPopup("hard");
         void refreshFreeStatus();
       }else{
-        console.warn("Background database save failed",err);
+        devLog.warn("Background database save failed",err);
       }
     });
     // Free users: resync the usage counter so the topbar + near-cap warning stay live.
