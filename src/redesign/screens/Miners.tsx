@@ -14,7 +14,7 @@ import {
 } from "../adapters/minersReport";
 import { exportBrandedXlsx, exportBrandedPdf, type ExportColumn } from "../adapters/brandedExport";
 import { useT } from "../i18n";
-import { fbNameOnly } from "../adapters/fbName";
+import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const statCard: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: 14, boxShadow: "var(--shadow)" };
@@ -75,7 +75,7 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
       { header: t.rd_min_total_spent, width: 14, align: "right" },
     ];
     const rows = list.map((m, i) => [
-      i + 1, m.name, m.handle, m.platform, m.orders, m.activeDays,
+      i + 1, m.name, fbHandleIsId(m.platform, m.name, m.handle) ? m.name : m.handle, m.platform, m.orders, m.activeDays,
       m.repeat ? t.rd_min_repeat : "", `${cur}${fmt(m.spent)}`,
     ]);
     const summary = [

@@ -25,6 +25,7 @@ import {
 } from "../adapters/shippingSettings";
 import { isAppShell } from "../adapters/appShell";
 import { useT, tpl, type RedesignT } from "../i18n";
+import { fbHandleIsId } from "../adapters/fbName";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -43,6 +44,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
 }) {
   const t = useT();
   const groups = useMemo(() => buyerGroupsFrom(buyers), [buyers]);
+  const platformOf = useMemo(() => new Map(buyers.map((b) => [b.num, b.platform])), [buyers]);
   const [entries, setEntries] = useState<ShippingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [openB, setOpenB] = useState<number | null>(null); // expanded buyer group
@@ -361,7 +363,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ fontFamily: mono, fontSize: 17, fontWeight: 700, color: "var(--accent-fg)", flexShrink: 0 }}>#{g.bNum}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.handle ? `@${g.handle}` : g.name || `#${g.bNum}`}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbHandleIsId(platformOf.get(g.bNum), g.name, g.handle) ? g.name : g.handle ? `@${g.handle}` : g.name || `#${g.bNum}`}</div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{tpl(t.rd_shp_items, { n: g.items })} · {cur}{g.total.toLocaleString()}</div>
                   </div>
                   {isExported ? (

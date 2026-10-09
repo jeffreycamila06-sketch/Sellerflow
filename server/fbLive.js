@@ -507,6 +507,9 @@ export function createFbRuntime(deps) {
     stopReasonsEnabled = async () => false,
     // fb_comment_paging switch (server.js: cached app_settings read). OFF / missing: one page per tick.
     commentPagingEnabled = async () => false,
+    // fb_identity_v2 switch (server.js: cached app_settings read). Read ONCE per Connect; the
+    // poller keeps that mode for its whole life. OFF / missing: the handle is the display name.
+    identityV2Enabled = async () => false,
     renderUrl, appUrl = APP_REDIRECT_URL,
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
     makeFormParser = (limit) => express.urlencoded({ extended: false, limit }),
@@ -673,6 +676,7 @@ export function createFbRuntime(deps) {
   // The switch read never throws (a failed read = off).
   const isStopReasonsOn = async () => { try { return (await stopReasonsEnabled()) === true; } catch { return false; } };
   const isCommentPagingOn = async () => { try { return (await commentPagingEnabled()) === true; } catch { return false; } };
+  const isIdentityV2On = async () => { try { return (await identityV2Enabled()) === true; } catch { return false; } };
 
   // ---- Poller ----
   // The one thing the two modes do differently: where "is it still LIVE?" is read.
@@ -825,6 +829,7 @@ export function createFbRuntime(deps) {
         // so this is what scopes the live flow to the device that tapped Connect.
         sellerId: entry.sellerId, sessionId: entry.sessionId,
         pageId: entry.pageId, liveVideoId: entry.liveVideoId, pageUsername: entry.scopeKey, nowMs,
+        ...(entry.identityV2 ? { identityV2: true } : null), // fixed at Connect (startPoller)
       });
       if (asInitial) payload.initial = true; // display-only lane; dedup by msgId (initialKey)
       // → the real emitCommentScoped (sanitizes + per-account scoping). platform "Facebook".
@@ -859,7 +864,8 @@ export function createFbRuntime(deps) {
   // videoMode = the Live Video API was refused (code 10) and liveVideoId is a VIDEO id from
   // /{page}/videos: comments come from /{video}/comments (same request) and the live status from
   // /{video}?fields=live_status. Everything else is identical to the live_videos mode.
-  function startPoller({ sellerId, userId, pageId, pageUsername, liveVideoId, sessionId = "", videoMode = false }) {
+  // identityV2 = the fb_identity_v2 mode, read once by /fb/connect; fixed for this poller's life.
+  function startPoller({ sellerId, userId, pageId, pageUsername, liveVideoId, sessionId = "", videoMode = false, identityV2 = false }) {
     const scopeKey = String(pageUsername || pageId); // the select_account scoping key
     const key = liveKey(sellerId, "Facebook", pageId);
     stopPoller(key, "restart"); // single poller per page
@@ -872,6 +878,7 @@ export function createFbRuntime(deps) {
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2
       accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4
       videoMode: videoMode === true,
+      identityV2: identityV2 === true,
     };
     pollers.set(key, entry);
     log(`[FB] poller start page=${String(pageId)} lv=${String(liveVideoId)} status=LIVE`);
@@ -1073,7 +1080,11 @@ export function createFbRuntime(deps) {
       }
       const live = await resolvePageLive(userId, pageId, page);
       if (live.answer) return res.status(live.answer.status).json(live.answer.json);
-      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || ""), videoMode: live.videoMode });
+      // fb_identity_v2: read once here. A re-Connect to the SAME live keeps the running poller's
+      // mode, so a session is never re-keyed mid-live when the switch flips.
+      const prev = pollers.get(liveKey(sellerId, "Facebook", pageId));
+      const identityV2 = prev && prev.liveVideoId === String(live.liveVideoId) ? prev.identityV2 === true : await isIdentityV2On();
+      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(body.sessionId || ""), videoMode: live.videoMode, identityV2 });
       return res.json({ ok: true, live_video_id: live.liveVideoId });
     });
 

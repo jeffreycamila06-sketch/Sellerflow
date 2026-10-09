@@ -26,7 +26,7 @@ import type { HistoryState } from "../adapters/ordersSearch";
 import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
 import { fbReceiptInfo } from "../adapters/fbReceipt";
-import { fbNameOnly } from "../adapters/fbName";
+import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
 import BuyerTagPill from "../components/BuyerTagPill";
 import { usePaidFlags, isPaidExpired, orderKey } from "../adapters/ordersPaid";
@@ -155,7 +155,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
       { header: t.rd_ord_col_time, width: 12 },
     ];
     const vis = [...shown, ...shownHist];
-    const rows = vis.map((o) => [o.id, o.buyer, o.handle, o.items, `${cur}${fmt(o.total)}`, o.status === "New" ? t.rd_ord_st_new : o.status, o.platform, o.time]);
+    const rows = vis.map((o) => [o.id, o.buyer, fbHandleIsId(o.platform, o.buyer, o.handle) ? o.buyer : o.handle, o.items, `${cur}${fmt(o.total)}`, o.status === "New" ? t.rd_ord_st_new : o.status, o.platform, o.time]);
     const s = orderSummary(vis);
     const smry = [
       { label: t.rd_ord_sum_orders, value: s.count },

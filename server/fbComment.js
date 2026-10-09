@@ -43,7 +43,10 @@ const firstStr = (...vals) => {
 };
 
 // raw = one comment object from the Graph /{live-video-id}/comments edge.
-// ctx = { sellerId, sessionId, pageId, liveVideoId, pageUsername, nowMs? }.
+// ctx = { sellerId, sessionId, pageId, liveVideoId, pageUsername, nowMs?, identityV2? }.
+// identityV2 (fb_identity_v2, fixed per poller at Connect): handle = the commenter's id, or
+// "fb-anon-<comment id>" when Facebook hides the commenter (each such comment = its own buyer).
+// Off / missing → today's handle (display name → id → "unknown"), byte-identical.
 // Output = the SAME shape as the TikTok/Shopee relay with platform:"Facebook", PLUS
 // the additive pageId + liveVideoId keys (receipt plumbing — they pass through
 // emitCommentScoped untouched). msgId = comment.id (stable per-comment). roomId =
@@ -59,10 +62,12 @@ export function fbToPayload(raw, ctx = {}) {
   const fromName = firstStr(from.name, r.from_name);
   const fromId = firstStr(from.id, r.from_id);
 
-  const handle = firstStr(fromName, fromId, "unknown"); // display name → id → anon
+  const commentId = firstStr(r.id, r.comment_id, r.msg_id);
+  const handle = ctx.identityV2 === true
+    ? firstStr(fromId, `fb-anon-${commentId}`)
+    : firstStr(fromName, fromId, "unknown"); // display name → id → anon
   const name = firstStr(fromName, "Unknown");
   const comment = firstStr(r.message, r.text, r.comment);
-  const commentId = firstStr(r.id, r.comment_id, r.msg_id);
   // Avatar: the expanded from.picture.data.url when Graph returns it, else "" (initials).
   const avatar = firstStr(from?.picture?.data?.url, r.avatar);
 

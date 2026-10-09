@@ -2270,11 +2270,20 @@ try {
         return data ? data.value : null;
       },
     });
+    // fb_identity_v2 (sql/106): same cached reader (60 s); off on any error. Read once per Connect.
+    const fbIdentityV2Flag = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_identity_v2").maybeSingle();
+        if (error) throw new Error("fb_identity_v2_read_failed");
+        return data ? data.value : null;
+      },
+    });
     fbRuntime = createFbRuntime({
       config: fbCfg,
       store,
       stopReasonsEnabled: fbStopReasonsFlag,
       commentPagingEnabled: fbCommentPagingFlag,
+      identityV2Enabled: fbIdentityV2Flag,
       liveKey,
       renderUrl: RENDER_URL,
       // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
