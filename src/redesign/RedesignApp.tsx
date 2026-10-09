@@ -210,6 +210,7 @@ const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKe
 
 // Empty board for the "Session ended" idle dashboard (display-only; nothing is deleted).
 const ENDED_EMPTY_SESSION: RebuiltSession = { buyers: [], orders: [] };
+const ENDED_NO_COMMENTS: never[] = []; // Build 13: an ended idle session shows an empty board (display only)
 
 export default function RedesignApp() {
   // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
@@ -449,7 +450,7 @@ export default function RedesignApp() {
   // RULE 1/2/3 feed badges — display-only, keyed by commentKey (c.id): a comment that
   // was a duplicate / sold-out / short gets a chip next to MINE. NEVER touches
   // commentKey/dedup/toRedesignComment — a parallel map like `printed`.
-  const [autoBadges, setAutoBadges] = useState<Record<string, "duplicate" | "soldout">>({});
+  const [autoBadges, setAutoBadges] = useState<Record<string, "duplicate" | "soldout" | "given">>({});
 
   // Dashboard account-picker selection (declared before useLiveFeed so the feed can
   // scope comments to the chosen account). registeredAccountsFor is pure.
@@ -1254,7 +1255,9 @@ export default function RedesignApp() {
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never
   // modified). Connected → today's behavior ("Session continues …").
-  const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff || igEff);
+  // Build 13: "ended" = the server says the session's length ran out (ended) OR the seller ended
+  // it with End Session (closed — also known after a reload from the row's end stamp).
+  const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended || !!sessionInstance.closed, ttEff || fbEff || shopeeEff || igEff);
   // ── Option E — Live Source (owner-gated). ONE active source at a time. The new
   // single "Live source" button + sheet REPLACE the 3 chips for the owner only;
   // everyone else keeps the classic 3-chip header (liveSourceMode false → unchanged).
@@ -1346,10 +1349,9 @@ export default function RedesignApp() {
     // A different Page than the connected one: stop the connected Page first, then connect.
     if (fbChip.action.kind === "switch") {
       const { stopPageId, page } = fbChip.action;
-      void fbDisconnect(stopPageId).catch(() => null).then(() => commitLiveConnect({ platform: "Facebook", pageId: page.pageId, scopeKey: fbPageScopeKey(page) }));
-      return;
+      return fbDisconnect(stopPageId).catch(() => null).then(() => commitLiveConnect({ platform: "Facebook", pageId: page.pageId, scopeKey: fbPageScopeKey(page) }));
     }
-    commitLiveConnect({ platform: "Facebook", pageId: selectedPage.pageId, scopeKey: fbScopeKey });
+    return commitLiveConnect({ platform: "Facebook", pageId: selectedPage.pageId, scopeKey: fbScopeKey });
   };
   // The socket-side FB connect (mirror doShopeeConnect): ensureJoined so a FB-only seller's
   // socket is in the room before the poller relays, POST /fb/connect, toast the outcome.
@@ -1381,7 +1383,7 @@ export default function RedesignApp() {
     if (igEff) { setIgOff(true); if (selectedIg) void igDisconnect(selectedIg.igUserId); return; }
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
     if (!selectedIg) { setChanBack("dashboard"); setScreen("igaccounts"); return; }
-    commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
+    return commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
   };
   const doIgConnect = async (igUserId: string) => {
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
@@ -1484,7 +1486,7 @@ export default function RedesignApp() {
   const commitLiveConnect = (target: LiveConnectTarget) => {
     setLiveConnectPlatform(null);
     setActiveSource(target.platform);
-    void runSessionAware(target);
+    return runSessionAware(target); // Build 13: the Connect button waits on it (look only)
   };
   // Confirmed platform switch → new session (startSession reuses the running window
   // length; born-ended fix makes it safe — no endSession first) → reset board (#1) →
@@ -1960,6 +1962,10 @@ export default function RedesignApp() {
         wlGiveRef.current.delete(r.id); setWlNote(tApp.rd_wl_give_failed); return;
       }
       setWlNote(null);
+      // Build 13 (Fix 1): the buyer's comment that showed "Sold out" now shows "Given" (display
+      // only — a memory badge like "Sold out"). Matched by the line row's Facebook comment id.
+      const fed = comments.find((x) => x.platform === "Facebook" && !!x.msgId && x.msgId === r.commentId);
+      if (fed) setAutoBadges((b) => (b[fed.id] === "soldout" ? { ...b, [fed.id]: "given" } : b));
       setWlBusy(r.id);
       const snap = snapshotFromCreate(c, order);
       reprintByIdRef.current.set(`wl:${r.commentId}`, snap);
@@ -2291,7 +2297,7 @@ export default function RedesignApp() {
           )}
           {screen === "dashboard" && (
             <Dashboard
-              comments={comments} cur={cur} basketCounts={basketCounts} minerRisk={minerRisk}
+              comments={sessionIdleEnded ? ENDED_NO_COMMENTS : comments} cur={cur} basketCounts={basketCounts} minerRisk={minerRisk}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setShopeeOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setShopeeOpen(false); }}
@@ -2335,7 +2341,7 @@ export default function RedesignApp() {
                  Non-owner: sessionV2Owner=false → Dashboard renders nothing extra. */
               sessionV2Owner={sessionV2}
               onEndSession={sessionV2 ? () => setEndConfirm(true) : undefined}
-              onConnectTT={() => void doConnect("TikTok")}
+              onConnectTT={() => doConnect("TikTok")}
               onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
               /* Option E — Live Source single button (owner-gated). Off = classic chips. */
               liveSourceMode={liveSourceMode}

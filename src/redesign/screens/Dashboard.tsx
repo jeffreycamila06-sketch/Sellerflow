@@ -114,6 +114,43 @@ const conn = (connected: boolean, connecting: boolean) => ({
   border: connected ? "1px solid var(--border-strong)" : "none",
 });
 const connFooterWrap: CSSProperties = { display: "flex", gap: 6, padding: "7px 4px 3px", marginTop: 4, borderTop: "1px solid var(--border)" };
+
+// Build 13 — Connect button tap feedback (dropdown + live-picker panel; TikTok, Facebook,
+// Shopee, Instagram). Before the connect itself starts, the app first checks the session —
+// a silent pause in which sellers tapped again. A Connect tap now shows a spinner +
+// "Connecting…" at once and stays disabled until the tapped call's promise settles (the
+// connect started → the app's own `connecting` flag takes over; a dialog opened instead; a
+// refusal shown), the menu closes (this button unmounts) or 30 s pass — never stuck. A
+// Disconnect tap and the connect itself are unchanged: this is the button's look only.
+// Reduced motion / the motion switch: no spinner, text only (redesign.css .sfl-conn-spin).
+export const CONNECT_TAP_FALLBACK_MS = 30_000;
+function ConnectButton({ connected, connecting, onConnect, look, labels }: {
+  connected: boolean; connecting: boolean; onConnect: () => unknown;
+  look: { border: string; bg: string; fg: string };
+  labels: { connect: string; connecting: string; disconnect: string };
+}) {
+  const [tapped, setTapped] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const settle = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } setTapped(false); };
+  const busy = connecting || (tapped && !connected);
+  const onClick = () => {
+    if (connected) { onConnect(); return; }            // Disconnect: exactly as before
+    setTapped(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(settle, CONNECT_TAP_FALLBACK_MS);
+    let r: unknown;
+    try { r = onConnect(); } catch (e) { settle(); throw e; }
+    if (r && typeof (r as PromiseLike<unknown>).then === "function") (r as PromiseLike<unknown>).then(settle, (e: unknown) => { settle(); throw e; }); // a failure stays visible as before
+    else settle();                                     // nothing pending (a popup / a screen opened at once)
+  };
+  return (
+    <button onClick={onClick} disabled={busy} aria-busy={busy || undefined} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: look.border, borderRadius: 9, background: look.bg, color: look.fg, fontSize: 11.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>
+      {busy && <span className="sfl-conn-spin" data-testid="conn-spin" aria-hidden="true" />}
+      {busy ? labels.connecting : connected ? labels.disconnect : labels.connect}
+    </button>
+  );
+}
 const refreshBtn: CSSProperties = { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface-2)", color: "var(--text)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" };
 const refreshIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 0 0-14-4.5L4 8m0 0V4m0 4h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 13a8 8 0 0 0 14 4.5L20 16m0 0v4m0-4h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
@@ -193,7 +230,7 @@ export default function Dashboard({
   // picker + Connect ONLY when fbConnectEnabled (owner-gated). off → the gate is
   // byte-identical (onConnectFB/onPickFB/onManageFB unused).
   ttConnected: boolean; fbConnected: boolean; ttConnecting: boolean; fbConnecting: boolean;
-  onConnectTT: () => void;
+  onConnectTT: () => void | Promise<unknown>; // Build 13: a promise = the button shows "Connecting…" until it settles
   onRefreshTT?: () => void; refreshing?: boolean;
   ttAccounts?: string[]; fbAccounts?: string[];
   // F-P3 — Facebook real connect (all optional; only used when fbConnectEnabled).
@@ -201,7 +238,7 @@ export default function Dashboard({
   fbPages?: { pageId: string; name: string; username: string }[];
   fbPageIdx?: number;
   onPickFB?: (i: number) => void;
-  onConnectFB?: () => void;
+  onConnectFB?: () => void | Promise<unknown>;
   onManageFB?: () => void;
   // fb_stop_reasons (switch ON): Pages showing "Needs reconnect" in the picker, and keep a
   // Disconnect while connected even when Facebook access is gone. Defaults = today.
@@ -214,7 +251,7 @@ export default function Dashboard({
   shopeeOpen?: boolean; onToggleShopee?: () => void;
   shopeeIdx?: number; onPickShopee?: (i: number) => void;
   shopeeConnected?: boolean; shopeeConnecting?: boolean;
-  onConnectShopee?: () => void; onManageShopee?: () => void;
+  onConnectShopee?: () => void | Promise<unknown>; onManageShopee?: () => void;
   // Option E — Live Source single button (owner-gated). liveSourcePlatform/Name drive
   // the compact button's icon + label; connected/connecting drive its status dot.
   liveSourceMode?: boolean;
@@ -226,7 +263,7 @@ export default function Dashboard({
   // PLATFORM WORLDS (adapters/platformWorld.ts): hide the classic header chip of a platform
   // the seller does not use. Default false = unchanged.
   hideTtChip?: boolean; hideFbChip?: boolean;
-  ig?: { accounts: { igUserId: string; name: string }[]; idx: number; onPick: (i: number) => void; connected: boolean; connecting: boolean; onConnect: () => void; onManage: () => void };
+  ig?: { accounts: { igUserId: string; name: string }[]; idx: number; onPick: (i: number) => void; connected: boolean; connecting: boolean; onConnect: () => void | Promise<unknown>; onManage: () => void };
   // Rule 3 — low-stock chips + persistent (dismissible) sold-out banner. Auto codes
   // whose live stock is ≤ threshold / at 0; RedesignApp gates these on Auto Mode ON.
   autoLowStock?: { code: string; productName: string; stock: number }[];
@@ -234,7 +271,7 @@ export default function Dashboard({
   onDismissSoldOut?: (code: string) => void;
   // Rules 1/3 per-row badge (keyed by commentKey = c.id): duplicate / soldout.
   // Display-only — set by the RedesignApp auto seam, never touches dedup.
-  autoBadges?: Record<string, "duplicate" | "soldout">;
+  autoBadges?: Record<string, "duplicate" | "soldout" | "given">; // Build 13: "given" = a waitlist Give went through
   // "Same price for all items" — persistent chip while ON (visible without scrolling);
   // ✕ = same as turning it OFF in Settings: instant off + toast (RedesignApp), the price
   // stays remembered. `samePrice` is the ACTIVE value (null when OFF).
@@ -277,7 +314,7 @@ export default function Dashboard({
   const sh = conn(shopeeConnected, shopeeConnecting); // P3
   const shShow = shopeeEnabled && shopeeShops.length > 0; // chip renders only when flag on + ≥1 shop
   const shName = shopeeShops.length ? (shopeeShops[shopeeIdx] || shopeeShops[0]) : null;
-  const connLabel = (connected: boolean, connecting: boolean) => (connecting ? t.rd_dash_connecting : connected ? t.rd_dash_disconnect : t.rd_dash_connect);
+  const dashLabels = { connect: t.rd_dash_connect, connecting: t.rd_dash_connecting, disconnect: t.rd_dash_disconnect }; // Build 13 (ConnectButton)
   const ttTitle = ttConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const fbTitle = fbConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const summary = sessionSummary(session); // Phase 5c — today's hydrated session
@@ -306,7 +343,7 @@ export default function Dashboard({
                 </button>
                 <div style={connFooterWrap}>
                   <button onClick={onRefreshTT} disabled={refreshing} title={t.rd_dash_refresh} style={{ ...refreshBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? "default" : "pointer" }}>{refreshIcon}{refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
-                  <button onClick={onConnectTT} disabled={ttConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: ttConnecting ? "default" : "pointer", opacity: ttConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ttConnected, ttConnecting)}</button>
+                  <ConnectButton connected={ttConnected} connecting={ttConnecting} onConnect={onConnectTT} look={tt} labels={dashLabels} />
                 </div>
     </>
   );
@@ -330,7 +367,7 @@ export default function Dashboard({
                       <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_fb_manage}</span></span>
                     </button>
                     <div style={connFooterWrap}>
-                      <button onClick={onConnectFB} disabled={fbConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: fbConnecting ? "default" : "pointer", opacity: fbConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(fbConnected, fbConnecting)}</button>
+                      <ConnectButton connected={fbConnected} connecting={fbConnecting} onConnect={() => onConnectFB?.()} look={fb} labels={dashLabels} />
                     </div>
                   </>
                 ) : (
@@ -366,7 +403,7 @@ export default function Dashboard({
                     <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_shp_channels_title}</span></span>
                   </button>
                   <div style={connFooterWrap}>
-                    <button onClick={onConnectShopee} disabled={shopeeConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: sh.border, borderRadius: 9, background: sh.bg, color: sh.fg, fontSize: 11.5, fontWeight: 700, cursor: shopeeConnecting ? "default" : "pointer", opacity: shopeeConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{shopeeConnecting ? t.rd_shp_connecting : shopeeConnected ? t.rd_shp_disconnect : t.rd_shp_connect}</button>
+                    <ConnectButton connected={shopeeConnected} connecting={shopeeConnecting} onConnect={() => onConnectShopee?.()} look={sh} labels={{ connect: t.rd_shp_connect, connecting: t.rd_shp_connecting, disconnect: t.rd_shp_disconnect }} />
                   </div>
     </>
   );
@@ -388,7 +425,7 @@ export default function Dashboard({
                   <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_dash_manage_accounts}</span></span>
                 </button>
                 <div style={connFooterWrap}>
-                  <button onClick={ig.onConnect} disabled={ig.connecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: igSt.border, borderRadius: 9, background: igSt.bg, color: igSt.fg, fontSize: 11.5, fontWeight: 700, cursor: ig.connecting ? "default" : "pointer", opacity: ig.connecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ig.connected, ig.connecting)}</button>
+                  <ConnectButton connected={ig.connected} connecting={ig.connecting} onConnect={ig.onConnect} look={igSt} labels={dashLabels} />
                 </div>
     </>
   ) : null;
@@ -823,16 +860,9 @@ export default function Dashboard({
         {sessionState === "loading" && (
           <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 2px 9px" }}>{t.rd_dash_loading_session}</div>
         )}
-        {sessionEndedIdle && (
-          <div data-testid="session-ended-empty" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--text-muted)", background: "var(--surface-2)", padding: "4px 9px", borderRadius: 7 }}>{t.rd_ses_ended}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{summary.buyers} {t.rd_dash_buyers} · {summary.orders} {t.rd_cus_orders_suffix}</span>
-              <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{summary.total.toLocaleString("en-US")}</span>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.45 }}>{t.rd_ses_ended_empty}</div>
-          </div>
-        )}
+        {/* Build 13 (Jeff): an ended session (End Session or its length ran out) with nothing
+            live shows NO summary card — no "TODAY" and no "Session ended" card; the picker / the
+            empty board only. The summary returns when a new session starts and has orders. */}
         {!sessionEndedIdle && summary.orders > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
             <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "4px 9px", borderRadius: 7 }}>{t.rd_dash_today_badge}</span>
@@ -995,8 +1025,8 @@ export default function Dashboard({
                     {/* Rules 1/2/3 auto badge (display-only, keyed by commentKey = c.id):
                         a duplicate / sold-out comment that created NO order. */}
                     {autoBadges[c.id] && (
-                      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: autoBadges[c.id] === "duplicate" ? "var(--text-muted)" : "var(--danger)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>
-                        {autoBadges[c.id] === "duplicate" ? t.rd_auto_badge_duplicate : t.rd_auto_badge_soldout}
+                      <span data-testid={`auto-badge-${autoBadges[c.id]}`} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: autoBadges[c.id] === "duplicate" ? "var(--text-muted)" : autoBadges[c.id] === "given" ? "var(--ok)" : "var(--danger)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>
+                        {autoBadges[c.id] === "duplicate" ? t.rd_auto_badge_duplicate : autoBadges[c.id] === "given" ? t.rd_auto_badge_given : t.rd_auto_badge_soldout}
                       </span>
                     )}
                   </div>

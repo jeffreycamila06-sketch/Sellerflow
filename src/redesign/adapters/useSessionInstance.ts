@@ -71,6 +71,10 @@ export interface UseSessionInstance {
   // current_session_id + stamps session_ended_at. After this the next Start begins
   // buyer# at #1. Returns true on success. ADDITIVE — non-owner code never calls it.
   endSession: () => Promise<boolean>;
+  // Build 13 (display only): the seller ENDED the session with End Session — no running
+  // session and the database row carries the end stamp (session_ended_at). Read on app open,
+  // set by endSession(), cleared by a new startSession(). Never used for Connect decisions.
+  closed: boolean;
 }
 
 // Read state TAGGED with the enabled value it belongs to. Before sign-in finishes the hook
@@ -87,6 +91,7 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
   const [sessionStartedAt, setStartedAt] = useState<string | null>(null);
   const [sessionWindowDays, setWinDays] = useState<number | null>(null);
   const [ended, setEnded] = useState(false);
+  const [closed, setClosed] = useState(false); // Build 13: ended with End Session (display only)
   const [loadedOld, setLoaded] = useState(false); // fix off: today's plain flag
   // The read result is TAGGED with the enabled value it belongs to, so loaded/known are false
   // in the very render enabled turns true. Signing out resets the tag (in the read effect), so
@@ -132,7 +137,7 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
       if (!id) { if (active) setLoaded(true); return; }
       const { data, error } = await supabase
         .from("seller_session_config")
-        .select("current_session_id,session_started_at,session_window_days")
+        .select("current_session_id,session_started_at,session_window_days,session_ended_at")
         .eq("user_id", id)
         .maybeSingle();
       if (!active) return;
@@ -140,13 +145,14 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
         setId((data?.current_session_id as string) || null);
         setStartedAt((data?.session_started_at as string) || null);
         setWinDays(data?.session_window_days != null ? Number(data.session_window_days) : null);
+        setClosed(!data?.current_session_id && !!data?.session_ended_at); // Build 13
       }
       setLoaded(true);
     };
     const firstRunOfSignIn = enabled && !lastEnabledRef.current;
     lastEnabledRef.current = enabled;
     const p = !fix ? old() : (async () => {
-      if (firstRunOfSignIn) { setId(null); setStartedAt(null); setWinDays(null); } // new sign-in: never keep the previous user's session id
+      if (firstRunOfSignIn) { setId(null); setStartedAt(null); setWinDays(null); setClosed(false); } // new sign-in: never keep the previous user's session id
       if (!enabled || !isSupabaseConfigured || !supabase) { if (active) setRead({ forEnabled: enabled, status: "known" }); return; }
       let id: string | null;
       try { id = await uid(); } catch { id = null; }
@@ -156,7 +162,7 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
       try {
         res = await supabase
           .from("seller_session_config")
-          .select("current_session_id,session_started_at,session_window_days")
+          .select("current_session_id,session_started_at,session_window_days,session_ended_at")
           .eq("user_id", id)
           .maybeSingle() as unknown as { data: Record<string, unknown> | null; error: unknown };
       } catch (e) { res = { data: null, error: e }; }
@@ -166,6 +172,7 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
         setId((data?.current_session_id as string) || null);
         setStartedAt((data?.session_started_at as string) || null);
         setWinDays(data?.session_window_days != null ? Number(data.session_window_days) : null);
+        setClosed(!data?.current_session_id && !!data?.session_ended_at); // Build 13
         setRead({ forEnabled: enabled, status: "known" });
       } else {
         // Keep "known" if a checkStatus already resolved it meanwhile; else unknown.
@@ -246,6 +253,7 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
       const id = String(data);
       setId(id);
       setEnded(false); // a session the server just started/returned is running, by definition
+      setClosed(false); // Build 13: a new session is not "ended with End Session"
       // Populate the header-indicator fields NOW so "Session ends: {date}" renders
       // immediately, without waiting for a refresh (bug fix). Read the SERVER values
       // back — start_session stamped session_started_at with server now() and
@@ -288,6 +296,7 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
       setStartedAt(null);
       setWinDays(null);
       setEnded(false);
+      setClosed(true); // Build 13: the Live screen goes back to the picker (display only)
       return true;
     } catch {
       return false;
@@ -307,5 +316,5 @@ export function useSessionInstance(enabled: boolean, fix = false): UseSessionIns
   // keeps ended=false (statusFallback) → nothing is hidden on a failed read.
   useEffect(() => { if (loaded && idRef.current) void checkStatus(); }, [loaded, checkStatus]);
 
-  return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, known, retry, ensureLoaded, checkStatus, startSession, endSession };
+  return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, known, retry, ensureLoaded, checkStatus, startSession, endSession, closed };
 }

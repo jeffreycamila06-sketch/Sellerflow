@@ -644,6 +644,16 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
   [data-redesign] .rd-pt-hg-dots > i { animation: none; opacity: 1; }
 }
 
+/* Build 13 — Connect button tap feedback (Dashboard ConnectButton): a small spinner beside
+   "Connecting…". transform only; prefers-reduced-motion and [data-motion=off] → no spinner,
+   the text alone says it. */
+@keyframes sflConnSpin { to { transform: rotate(360deg); } }
+[data-redesign] .sfl-conn-spin { display: inline-block; flex-shrink: 0; width: 10px; height: 10px; box-sizing: border-box; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sflConnSpin .8s linear infinite; }
+[data-redesign][data-motion="off"] .sfl-conn-spin { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  [data-redesign] .sfl-conn-spin { display: none; }
+}
+
 /* ── LIVE PLATFORM PICKER (admin preview; Dashboard lpkPicker) ─────────────────────
  * Durations + mode come from adapters/livePicker.ts as CSS variables (--lpk-*).
  * Keyframes are the owner-approved ones, prefixed sflLpk* so they never replace the
