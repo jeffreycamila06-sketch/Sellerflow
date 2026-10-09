@@ -33,6 +33,6 @@ export async function deleteProductByName(page: Page, name: string): Promise<boo
   page.once("dialog", (d) => { void d.accept(); });
   await card.first().getByRole("button", { name: EN.rd_prd_delete_btn, exact: true }).click();
   try { await page.getByText(name, { exact: true }).first().waitFor({ state: "detached", timeout: 10_000 }); } catch { return false; }
-  await page.waitForTimeout(1500);                               // the cloud delete (a failure brings it back)
+  await page.waitForTimeout(2500);                               // the cloud delete (a failure brings it back)
   return !(await productCard(page, name).count());
 }

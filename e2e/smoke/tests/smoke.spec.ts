@@ -160,10 +160,15 @@ test("04 Products: add a product with a code, see it, change stock, delete it", 
   const code = `ZR${RUN_ID.slice(-4)}${test.info().retry}`;
   // Leftovers of earlier robot runs first (only products named "Robot test product …").
   expect(await openProductsLoaded(page), "the Products list did not load").toBe(true);
-  const old = (await page.getByText(/^Robot test product /).allInnerTexts()).map((s) => s.trim());
-  let cleaned = 0;
-  for (const o of old) if (await deleteProductByName(page, o)) cleaned++;
-  if (old.length) note(`Removed ${cleaned} of ${old.length} test product(s) left by an earlier run.`);
+  const robotNames = async (): Promise<string[]> => [...new Set((await page.getByText(/^Robot test product /).allInnerTexts()).map((x) => x.trim()))];
+  const old = await robotNames();
+  if (old.length) {
+    for (const o of old) if (!(await deleteProductByName(page, o))) await deleteProductByName(page, o); // one more try
+    expect(await openProductsLoaded(page), "the Products list did not load").toBe(true);
+    const still = await robotNames();
+    for (const n of still) noteCreated("product (left by an earlier run)", n); // test 99 names it
+    note(`Found ${old.length} test product(s) left by an earlier run; removed ${old.length - still.length}${still.length ? `; still there: ${still.join(", ")}` : ""}.`);
+  }
   let autoTurnedOn = false;
 
   try {
@@ -305,11 +310,14 @@ test("08 Facebook settings for a seller without Facebook: plain notice, no dead 
   await expect(page.getByText(EN.rd_ch_manage_fb_title, { exact: true })).toBeVisible();
   const notice = page.getByTestId("mc-fb-activation");
   const boxes = page.getByText(`${EN.rd_ch_fb_page_label} 1`, { exact: true });
-  if (!(await notice.isVisible().catch(() => false)) && (await boxes.count())) {
-    const sw = await switchSeen;
+  const boxesFirst = !(await notice.isVisible().catch(() => false)) && (await boxes.count()) > 0;
+  // The screen depends on the app's switches, which load when the app opens: wait for them.
+  const sw = await switchSeen;
+  if (!(await notice.isVisible({ timeout: 8_000 }).catch(() => false)) && (await boxes.count())) {
     const why = sw === false ? "the fb_polish_v2 switch is OFF in production (read from the app's own settings answer)" : sw === true ? "even though the fb_polish_v2 switch is ON" : "the fb_polish_v2 switch could not be read";
     throw new Error(`The old 'Facebook page 1' boxes show instead of the 'activation required' notice — ${why}.`);
   }
+  if (boxesFirst) note("Right after the app opened, this screen showed the old 'Facebook page 1' boxes for a moment, until the app's switches had loaded.");
   await expect(notice).toBeVisible();
   await expect(boxes).toHaveCount(0);
   await expect(page.locator("input")).toHaveCount(0);
