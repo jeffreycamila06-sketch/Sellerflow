@@ -27,3 +27,19 @@ export function fbNameOnly(platform: string | null | undefined, name: string | n
   const n = String(name ?? "").trim();
   return n !== "" && n !== FB_UNKNOWN_NAME;
 }
+
+// IDENTITY V2 (fb_identity_v2): a Facebook buyer's handle is the commenter's id, never something
+// to show. true = a Facebook row with a real name whose handle is NOT that name (an id) → show the
+// name in place of the handle. Rows saved before the switch (handle = name), "Unknown" rows and
+// every other platform → false, so those keep today's output exactly.
+const bareHandle = (s: string | null | undefined): string => String(s ?? "").trim().replace(/^@/, "").trim().toLowerCase();
+export function fbHandleIsId(platform: string | null | undefined, name: string | null | undefined, handle: string | null | undefined): boolean {
+  return isFacebookPlatform(platform) && fbNameOnly(platform, name) && bareHandle(handle) !== bareHandle(name);
+}
+
+// Same idea where the data carries NO platform (Sales tab top buyers: sales_report groups by
+// name). A Facebook id is 10+ digits; a hidden commenter is "fb-anon-…".
+// ponytail: shape check, not the platform — exact once sales_report returns the platform.
+export function looksLikeFbId(handle: string | null | undefined): boolean {
+  return /^(\d{10,}|fb-anon-.+)$/i.test(bareHandle(handle));
+}

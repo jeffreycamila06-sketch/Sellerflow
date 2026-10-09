@@ -133,7 +133,7 @@ describe("i18n + wiring + sql/102", () => {
   });
   it("RedesignApp: one hook on the same live trigger as Buyer Alert; map passed to Dashboard + Orders", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(src).toContain("const buyerTags = useBuyerTags(ttEff || fbEff || shopeeEff || igEff);");
+    expect(src).toContain("const buyerTags = useBuyerTags(ttEff || fbEff || shopeeEff || igEff, featureSw.fbIdentityV2);");
     expect(src.match(/buyerTags=\{buyerTags\}/g)).toHaveLength(2);
     expect(src.match(/useBuyerTags\(/g)).toHaveLength(1);
   });

@@ -19,7 +19,7 @@ import type { Announcement } from "../adapters/useAnnouncements";
 import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
-import { fbNameOnly } from "../adapters/fbName";
+import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 import {
   livePickerView, LIVE_PICKER_MOTION, LIVE_PICKER_ONCE_ITERATIONS, LIVE_PICKER_TIMING, PICKER_ORDER, type PickerPlatform,
 } from "../adapters/livePicker";
@@ -948,7 +948,8 @@ export default function Dashboard({
             // would show "?". TikTok unchanged.
             const risk = ["facebook", "instagram"].includes(String(c.platform || "").toLowerCase()) ? null : minerRiskFor(minerRisk, c.handle, c.platform);
             // Buyer Alert — O(1) lookup; undefined = not gated / no parcels for this handle.
-            const ba = buyerAlerts?.get(normHandle(c.handle));
+            const baKey = normHandle(fbHandleIsId(c.platform, c.name, c.handle) ? c.name : c.handle); // Facebook id → the name (identity v2)
+            const ba = buyerAlerts?.get(baKey);
             const baRed = !!ba?.red, baNear = ba?.near ?? null;
             const bt = buyerTagFor(buyerTags, c.handle, c.name, c.platform); // O(1); null → no pill
             return (
@@ -970,7 +971,7 @@ export default function Dashboard({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     {ba && onBuyerTap ? (
-                      <button onClick={() => onBuyerTap(normHandle(c.handle))} title={t.rd_ba_tap_title} data-testid="ba-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", lineHeight: "inherit", textDecoration: "underline dotted", textUnderlineOffset: 3 }}>{c.name}</button>
+                      <button onClick={() => onBuyerTap(baKey)} title={t.rd_ba_tap_title} data-testid="ba-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", lineHeight: "inherit", textDecoration: "underline dotted", textUnderlineOffset: 3 }}>{c.name}</button>
                     ) : (
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     )}

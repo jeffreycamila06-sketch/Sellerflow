@@ -24,6 +24,7 @@ import { dayStamp } from "../adapters/csv";
 import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
 import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
 import { platformRange, platformRangeFor, platformRpcFor, type SalesPlatform, type UsePlatformSales } from "../adapters/salesByPlatform";
+import { looksLikeFbId } from "../adapters/fbName";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
@@ -119,7 +120,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
         { header: t.rd_ord_sum_orders, align: "right" as const, width: 10 },
         { header: t.rd_ord_sum_total, align: "right" as const, width: 14 },
       ],
-      rows: d.topBuyers.map((b, i) => [i + 1, b.handle ? `${b.name || "—"} (${atHandle(b.handle)})` : (b.name || "—"), b.orders, `${cur}${fmt(b.spent)}`]),
+      rows: d.topBuyers.map((b, i) => [i + 1, b.handle && !looksLikeFbId(b.handle) ? `${b.name || "—"} (${atHandle(b.handle)})` : (b.name || "—"), b.orders, `${cur}${fmt(b.spent)}`]),
       summary: [
         { label: t.rd_ord_sum_total, value: `${cur}${fmt(d.revenue)}` },
         { label: t.rd_ord_sum_orders, value: d.orders },
@@ -240,7 +241,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
                       <div style={{ width: 38, height: 38, borderRadius: 999, background: avColor(openBuyer.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{initials(openBuyer.name)}</div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{openBuyer.name || "—"}</div>
-                        {openBuyer.handle && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atHandle(openBuyer.handle)}</div>}
+                        {openBuyer.handle && !looksLikeFbId(openBuyer.handle) && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atHandle(openBuyer.handle)}</div>}
                         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>{openBuyer.orders} {t.rd_ord_sum_orders} · {cur}{fmt(openBuyer.spent)}</div>
                       </div>
                     </div>
@@ -261,7 +262,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
                         <div style={{ width: 34, height: 34, borderRadius: 999, background: avColor(b.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{initials(b.name)}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name || "—"}</div>
-                          {b.handle && <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atHandle(b.handle)}</div>}
+                          {b.handle && !looksLikeFbId(b.handle) && <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atHandle(b.handle)}</div>}
                         </div>
                         <div style={{ textAlign: "right", flexShrink: 0 }}>
                           <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{cur}{fmt(b.spent)}</div>

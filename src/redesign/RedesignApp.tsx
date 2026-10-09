@@ -111,6 +111,7 @@ import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, type Platform, ttDisconnect } from "./adapters/connect";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
+import { fbHandleIsId } from "./adapters/fbName";
 import { useAccountCoverage, coveredTikTokNames, liveRefusedText, ACCOUNT_NOT_COVERED } from "./adapters/accountLive";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
@@ -748,7 +749,7 @@ export default function RedesignApp() {
   const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
   const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
-  const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
+  const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, fbHandleIsId(c.platform, c.name, c.handle) ? c.name : c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
 
   // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
   // matches App.tsx:1988 exactly: [#SF{orderNum}, name, item, qty, cur+total, platform, time].
@@ -1198,7 +1199,7 @@ export default function RedesignApp() {
   // connects, refreshed every 10 min; rows do an O(1) map lookup. No access → no RPC, no change.
   const buyerAlert = useBuyerAlert(buyerAlertGate(buyerAlertAccess), ttEff || fbEff || shopeeEff || igEff);
   // OLD / NEW buyer tag (no gate): one RPC at live start + every 10 min (adapters/buyerTag.ts).
-  const buyerTags = useBuyerTags(ttEff || fbEff || shopeeEff || igEff);
+  const buyerTags = useBuyerTags(ttEff || fbEff || shopeeEff || igEff, featureSw.fbIdentityV2);
   const [buyerAlertHandle, setBuyerAlertHandle] = useState<string | null>(null);
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never
