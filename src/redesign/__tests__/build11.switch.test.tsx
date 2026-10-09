@@ -5,7 +5,7 @@
 //       TikTok session (incomplete switch) creates no order; TikTok comments still do.
 // TikTok-only sellers: no dialog, the picker as before; Auto unchanged.
 import { describe, it, expect, vi, beforeEach, beforeAll, type Mock } from "vitest";
-import { render, act, screen, fireEvent } from "@testing-library/react";
+import { render, act, screen, fireEvent, within } from "@testing-library/react";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
 import { buildT } from "../i18n";
 
@@ -19,6 +19,10 @@ const H = vi.hoisted(() => ({
   connect: { fn: null as Mock<(...args: unknown[]) => unknown> | null },
   fbDisconnect: { fn: null as Mock<(...args: unknown[]) => unknown> | null },
   startSession: { fn: null as Mock<(...args: unknown[]) => unknown> | null },
+  // Build 14: the Live picker is on for every seller. false = the classic chips (still the
+  // app's view while 2+ sources are live) — the only way to reach TikTok Connect while
+  // Facebook alone is live (the picker then shows just the Facebook button).
+  picker: { v: true },
 }));
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 
@@ -70,6 +74,10 @@ vi.mock("../adapters/fb", async (orig) => ({
   listFbPages: async () => [{ id: "r1", pageId: "555", name: "Shop Page", username: "", active: true }],
 }));
 vi.mock("../adapters/fbAccess", async (orig) => ({ ...(await orig() as object), useFbAccess: () => ({ facebook: true, receipt: false }) }));
+vi.mock("../adapters/livePicker", async (orig) => {
+  const a = await orig() as { livePickerEnabled: (isAdmin: boolean) => boolean };
+  return { ...a, livePickerEnabled: (isAdmin: boolean) => H.picker.v && a.livePickerEnabled(isAdmin) };
+});
 vi.mock("../adapters/productsDb", async (orig) => ({
   ...(await orig() as object),
   resolveInitialProducts: vi.fn(async () => ({ products: [{ id: 14, name: "Brief", sku: "BR", price: 52, stock: 5, platform: "TikTok", status: "Active", liveCode: "D" }], source: "local" })),
@@ -88,6 +96,13 @@ async function mount() {
   await flush();
 }
 const tapTikTokConnect = async () => {
+  if (H.picker.v) {
+    fireEvent.click(screen.getByTestId("lpk-tile-tt"));              // the TikTok tile → its account panel
+    await flush();
+    fireEvent.click(within(screen.getByTestId("lpk-panel-tt")).getByRole("button", { name: t.rd_dash_connect }));
+    await flush();
+    return;
+  }
   fireEvent.click(screen.getAllByRole("button").find((b) => (b.textContent || "").includes("shop1"))!); // the TikTok chip
   await flush();
   const btn = screen.getAllByRole("button").find((b) => b.textContent === t.rd_dash_connect);
@@ -100,6 +115,7 @@ beforeEach(() => {
   localStorage.clear();
   H.status.v = { running: false, platform: null };
   H.fbConnected.v = false;
+  H.picker.v = true;
   H.connect.fn = vi.fn(async () => ({ ok: true, account: "shop1" }));
   H.fbDisconnect.fn = vi.fn(async () => ({ ok: true }));
   H.startSession.fn = vi.fn(async () => "S2");
@@ -109,6 +125,7 @@ beforeEach(() => {
 describe("M2 — switch while no session is running", () => {
   it("Facebook still live, session ended → TikTok Connect shows the switch dialog (not the picker)", async () => {
     H.fbConnected.v = true;
+    H.picker.v = false;                               // the classic chips (see H.picker)
     await mount();
     await tapTikTokConnect();
     expect(screen.queryByTestId("livesource-switch-overlay")).not.toBeNull();

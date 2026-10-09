@@ -2350,8 +2350,9 @@ export default function RedesignApp() {
               liveSourceConnected={activeSource === "Shopee" ? shopeeEff : (ttEff && !liveFeed.ttRecovering)}
               liveSourceConnecting={activeSource === "Shopee" ? shopeeConnecting : (ttConnecting || liveFeed.ttRecovering)}
               onOpenSourceSheet={() => setSourceSheetOpen(true)}
-              /* Live platform picker — admin-only preview (presentation only; same
-                 callbacks as the classic chips). Non-admins: false → classic, unchanged. */
+              /* Live platform picker — every seller (Build 14; presentation only; same
+                 callbacks as the classic chips). platformViewAs is always "all" for a
+                 non-admin (only the Admin screen sets it). */
               /* An admin previewing a platform world sees the classic header a seller sees. */
               livePicker={livePickerEnabled(isAdmin) && platformViewAs === "all"}
               hideTtChip={hideTtChip} hideFbChip={hideFbChip}

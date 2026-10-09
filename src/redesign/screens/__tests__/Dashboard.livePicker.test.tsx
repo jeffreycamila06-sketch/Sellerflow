@@ -1,5 +1,5 @@
-// Live platform picker (admin preview) — a new LOOK over the classic chip callbacks.
-// Pins: the gate (non-admins render the classic header / dropdowns / empty state);
+// Live platform picker (every seller since Build 14) — a new LOOK over the classic chip callbacks.
+// Pins: the gate (livePicker false renders the classic header / dropdowns / empty state);
 // the view decision; the four tiles (order, disabled "Coming soon"); every panel row
 // calls the SAME callback the classic dropdown calls; connecting / failure / connected
 // states; the "Choose live source" overlay; 2+ live sources → classic; motion config.
@@ -37,10 +37,10 @@ const shopee = { shopeeEnabled: true, shopeeShops: [{ shopId: 7, shopName: "Shop
 const lpkIds = () => document.querySelectorAll("[data-testid^='lpk-']").length;
 
 describe("gate", () => {
-  it("admins only; one constant widens it", () => {
-    expect(LIVE_PICKER_PUBLIC).toBe(false);
+  it("every seller since Build 14 (one constant; false = admins only)", () => {
+    expect(LIVE_PICKER_PUBLIC).toBe(true);
     expect(livePickerEnabled(true)).toBe(true);
-    expect(livePickerEnabled(false)).toBe(false);
+    expect(livePickerEnabled(false)).toBe(true);
   });
 
   it("gate false → classic header chips, dropdown and empty state; no picker element", () => {

@@ -175,7 +175,7 @@ export default function Dashboard({
   // the classic 3-chip header, byte-for-byte unchanged.
   liveSourceMode = false, liveSourcePlatform = "TikTok", liveSourceName = "",
   liveSourceConnected = false, liveSourceConnecting = false, onOpenSourceSheet,
-  // Live platform picker (admin preview, presentation only). false = classic, unchanged.
+  // Live platform picker (every seller since Build 14, presentation only). false = classic, unchanged.
   livePicker = false,
   hideTtChip = false, hideFbChip = false,
   // Instagram (phase 1): present ONLY while igEnabled → the picker's Instagram tile works; absent =
@@ -319,7 +319,7 @@ export default function Dashboard({
   const fbTitle = fbConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const summary = sessionSummary(session); // Phase 5c — today's hydrated session
   // The three source menus — the SAME content the classic chip dropdowns show; the
-  // live platform picker (admin preview) renders these very functions, so every row
+  // live platform picker (every seller) renders these very functions, so every row
   // calls exactly the same callbacks. Classic output is unchanged (Dashboard.livePicker
   // test). dismissFB = what the honest-gate Telegram link does to close its menu.
   const ttMenu = () => (
@@ -430,7 +430,7 @@ export default function Dashboard({
     </>
   ) : null;
   const [igOpen, setIgOpen] = useState(false);
-  // ── Live platform picker (admin preview) — presentation only ──────────────────
+  // ── Live platform picker (every seller) — presentation only ──────────────────
   // chosen / overlayOpen / fly are local UI state; every connect, refresh, account
   // and manage action goes through the menus above (the classic callbacks).
   const ttChipName = ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : t.rd_dash_connect_tiktok;

@@ -50,8 +50,68 @@ export function saveErrorShown(text: string): string {
 }
 
 // The TikTok chip on the Live screen (its small "t" badge tells it from the Facebook chip).
+// Since Build 14 the chip row shows only while 2+ sources are live; otherwise the Live picker.
 export const tiktokChip = (page: Page): Locator =>
   page.locator("button").filter({ has: page.locator("span", { hasText: /^t$/ }) }).first();
+
+// The TikTok account menu on the Live screen, wherever the app shows it (Build 14):
+//   • the Live picker (nothing live, empty board): the TikTok tile → its account panel;
+//   • "Choose live source" (nothing live, the board still has comments) → the same picker;
+//   • the old chip row (2+ sources live) → the TikTok chip's dropdown.
+// One source already live (one header button) → { skip }: the robot never touches a live.
+// The menu holds the SAME rows and Connect button in every case.
+export type TikTokMenu = {
+  how: "picker" | "chip";
+  menu: Locator;                          // where the account rows + Connect are
+  ensureOpen: () => Promise<void>;        // open it again if the app closed it
+  close: () => Promise<void>;
+  isSelected: (name: string) => Promise<boolean>;
+};
+export async function openTikTokMenu(page: Page): Promise<TikTokMenu | { skip: string }> {
+  const tile = page.getByTestId("lpk-tile-tt");
+  const choose = page.getByTestId("lpk-choose-button");
+  const live = page.getByTestId("lpk-source-button");
+  const chip = tiktokChip(page);
+  // Which one is on screen (the tile is checked before the chip: the tile's emblem is also a "t").
+  let first = "";
+  for (const until = Date.now() + 10_000; !first && Date.now() < until; await page.waitForTimeout(200)) {
+    if (await live.count()) first = "live";
+    else if (await tile.count()) first = "tile";
+    else if (await choose.count()) first = "choose";
+    else if (await page.getByTestId("livesource-button").count()) first = "livesource";
+    else if (await chip.count()) first = "chip";
+  }
+  if (!first) throw new Error("The Live screen shows neither the Live picker nor the TikTok chip.");
+  if (first === "live") return { skip: "The test account is connected to a live right now — the robot does not touch it." };
+  if (first === "livesource") return { skip: "The test account has the single 'Live source' button (live_source preview), not the Live picker — the robot only knows the picker and the old chips." };
+  if (first === "tile" || first === "choose") {
+    const panel = page.getByTestId("lpk-panel-tt");
+    const ensureOpen = async (): Promise<void> => {
+      if (await panel.count()) return;
+      // Still chosen (e.g. "Connecting…" hides the panel for a moment): wait — tapping the
+      // chosen tile again would mean Back.
+      if ((await tile.count()) && (await tile.getAttribute("aria-expanded")) === "true") { await panel.waitFor({ timeout: 15_000 }); return; }
+      if (await choose.isVisible().catch(() => false)) await choose.click();
+      await tile.click();
+      await panel.waitFor();
+    };
+    await ensureOpen();
+    return {
+      how: "picker", menu: panel, ensureOpen,
+      close: async () => { if (await panel.count()) await tile.click(); },   // the chosen tile again = Back
+      isSelected: async (name) => /✓\s*$/.test((await panel.getByRole("button").filter({ hasText: name }).first().innerText()).trim()),
+    };
+  }
+  const ensureOpen = async (): Promise<void> => {
+    if (!(await page.getByRole("button", { name: EN.rd_dash_connect, exact: true }).or(page.getByRole("button", { name: EN.rd_dash_disconnect, exact: true })).count())) await chip.click();
+  };
+  await chip.click();
+  return {
+    how: "chip", menu: page.locator("body"), ensureOpen,
+    close: async () => { await chip.click(); },
+    isSelected: async (name) => ((await chip.innerText()) || "").includes(name),
+  };
+}
 
 // After pressing Save: the app reloads the account, so the short "Saved" note can vanish at
 // once. A good save = the Save button goes away (nothing left to save). A refused save =

@@ -54,8 +54,9 @@ usually enough. If you can, add the screenshot from the report.
 | 06 Sticker preview | The sticker preview shows "Buyer 12", no long number, no error. It never presses Printer Test. |
 | 07a / 07b Shipping | The 7-11 shipping screen opens. If a buyer is in the current session, it opens that buyer's form and presses **Cancel** (never Save). Skipped when there is no buyer. |
 | 08 Facebook | For a seller without Facebook access: the Facebook screen shows the plain "activation required" notice, no empty boxes, no technical words. Skipped if the test account has Facebook access. If it fails, it says whether the `fb_polish_v2` switch is on or off (it reads the app's own answer; it never changes the switch). |
+| 14 Live picker | The Live screen shows the 4 tiles TikTok, Facebook, Instagram, Shopee (Instagram and Shopee "Coming soon"). Taps Facebook: a seller without Facebook access sees the "activation required" notice and the Telegram link (it only reads where the link goes, never opens it), no Connect. Then Back. Never connects. Skipped if the test account is live. |
 | 11a TikTok add | Adds a made-up TikTok name (`sfl_robot_x7q9z_notlive`) to the test account and sees it in the list. |
-| 12 TikTok not live | Connects that made-up name **once**. The app must say in plain words that it is not live (no code, no technical words), and nothing may stay connected. Never retried. |
+| 12 TikTok not live | Opens the TikTok menu from the Live picker's TikTok tile (or the old TikTok chip, which only shows while 2+ sources are live), picks the made-up name and connects it **once**. The app must say in plain words that it is not live (no code, no technical words), and nothing may stay connected. Never retried. Skipped if the test account is live. |
 | 11b TikTok remove | Removes the made-up name again. |
 | 13 Practice comments | **Always skipped.** The practice comment feed is switched off on the real site; turning it on would mean changing the app. |
 | 10 Server health | The live server's `/health` answers exactly `{"ok":true}`. |

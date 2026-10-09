@@ -15,9 +15,10 @@ import { EN, FIL } from "../robot/strings";
 import { navTo, tpl } from "../robot/nav";
 import { openHub, openGeneral, openLiveSessionGroup, openChannel } from "../robot/settings";
 import { productCard, deleteProductByName, openProductsLoaded } from "../robot/products";
-import { ROBOT_TT, slotInputs, slotValues, slotBlock, recentRemoval, markRemoval, tiktokChip, waitForSave, watchSlotLocks } from "../robot/tiktok";
+import { ROBOT_TT, slotInputs, slotValues, slotBlock, recentRemoval, markRemoval, openTikTokMenu, waitForSave, watchSlotLocks } from "../robot/tiktok";
 import { watchSwitch } from "../robot/switches";
 import { CONNECT_MARK, CONSOLE_FILE, RUN_ID, SERVER_URL } from "../robot/config";
+import { TELEGRAM_URL } from "../../../src/lib/telegram";
 import type { Page } from "@playwright/test";
 
 const note = (text: string): void => { test.info().annotations.push({ type: "note", description: text }); };
@@ -327,6 +328,59 @@ test("08 Facebook settings for a seller without Facebook: plain notice, no dead 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────
+// Build 14: every seller gets the Live picker. Look only — it never connects, and never opens
+// the Telegram link (it only reads where the link goes).
+test("14 Live picker: TikTok, Facebook, Instagram, Shopee tiles; Facebook without access shows the notice", async ({ page }) => {
+  await openApp(page);
+  const picker = page.getByTestId("lpk-picker");
+  const choose = page.getByTestId("lpk-choose-button");
+  const live = page.getByTestId("lpk-source-button");
+  let seen = "";
+  for (const until = Date.now() + 10_000; !seen && Date.now() < until; await page.waitForTimeout(200)) {
+    if (await live.count()) seen = "live";
+    else if (await picker.count()) seen = "picker";
+    else if (await choose.count()) seen = "choose";
+  }
+  if (seen === "live") test.skip(true, "The test account is connected to a live right now — the picker only shows when nothing is live.");
+  expect(seen, "the Live screen does not show the Live picker (nor its 'Choose live source' button)").not.toBe("");
+  if (seen === "choose") await choose.click();               // the board still has comments → the picker opens over it
+  await expect(picker).toBeVisible();
+  const tiles = page.getByTestId(/^lpk-tile-/);
+  await expect(tiles).toHaveCount(4);
+  expect(await tiles.evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")))).toEqual(["lpk-tile-tt", "lpk-tile-fb", "lpk-tile-ig", "lpk-tile-sh"]);
+  for (const [slug, name] of [["tt", "TikTok"], ["fb", "Facebook"], ["ig", "Instagram"], ["sh", "Shopee"]]) {
+    await expect(page.getByTestId(`lpk-tile-${slug}`)).toContainText(name);
+  }
+  await expect(page.getByTestId("lpk-tile-tt")).toBeEnabled();
+  await expect(page.getByTestId("lpk-tile-fb")).toBeEnabled();
+  for (const slug of ["ig", "sh"]) {
+    const tile = page.getByTestId(`lpk-tile-${slug}`);
+    if (await tile.isEnabled()) { note(`The ${slug === "ig" ? "Instagram" : "Shopee"} tile is open for this test account (it has access) — not "Coming soon".`); continue; }
+    await expect(tile).toContainText(EN.rd_ls_soon);
+  }
+  await screenIsFine(page, "Live picker");
+  expect(technicalWordsIn(await visibleText(page)), "technical words on the Live picker").toEqual([]);
+
+  // Facebook tile: a seller without Facebook access gets today's notice + the Telegram link.
+  await page.getByTestId("lpk-tile-fb").click();
+  const panel = page.getByTestId("lpk-panel-fb");
+  await expect(panel).toBeVisible();
+  if (await panel.getByText(EN.rd_dash_fb_activation, { exact: true }).isVisible().catch(() => false)) {
+    const link = panel.getByRole("link", { name: new RegExp(EN.rd_dash_fb_contact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
+    await expect(link).toHaveAttribute("href", TELEGRAM_URL);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(panel.getByRole("button", { name: EN.rd_dash_connect, exact: true })).toHaveCount(0);
+  } else {
+    note("This test account HAS Facebook access: the Facebook tile shows its pages and Connect (not the notice). Nothing was tapped.");
+    await expect(panel.getByRole("button", { name: EN.rd_dash_connect, exact: true })).toBeVisible();
+  }
+  await screenIsFine(page, "Live picker — Facebook");
+  await page.getByTestId("lpk-tile-fb").click();                 // the chosen tile again = Back
+  await expect(panel).toHaveCount(0);
+  await expect(tiles).toHaveCount(4);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
 // TikTok: 11a add the made-up name → 12 one "not live" connect → 11b remove the name again.
 test("11a TikTok accounts: add a made-up account and see it listed", async ({ page }) => {
   await openApp(page);
@@ -383,17 +437,20 @@ test.describe("TikTok connect", () => {
   test("12 TikTok 'not live' answer: one connect to the made-up account", async ({ page }) => {
     if (existsSync(CONNECT_MARK)) test.skip(true, "Already tried once in this run — never retried (protects the live server from a TikTok cooldown that would hit every seller).");
     await openApp(page);
-    const chip = tiktokChip(page);
-    await expect(chip).toBeVisible();
-    await chip.click();
+    // The TikTok account menu: the Live picker's TikTok tile (Build 14), or the old chip.
+    const found = await openTikTokMenu(page);
+    if ("skip" in found) { test.skip(true, found.skip); return; }
+    const ttm = found;
+    const menu = ttm.menu;
     // an account row in the open menu ("… TikTok · tap to go live"), not the chip itself
-    const row = page.getByRole("button").filter({ hasText: ROBOT_TT }).filter({ hasText: EN.rd_dash_tap_go_live }).first();
-    if (!(await row.count())) { await chip.click(); test.skip(true, "The made-up TikTok account is not saved (see 11a), so there is nothing safe to connect."); }
+    const row = menu.getByRole("button").filter({ hasText: ROBOT_TT }).filter({ hasText: EN.rd_dash_tap_go_live }).first();
+    if (!(await row.count())) { await ttm.close(); test.skip(true, "The made-up TikTok account is not saved (see 11a), so there is nothing safe to connect."); }
     const disconnect = page.getByRole("button", { name: EN.rd_dash_disconnect, exact: true });
-    if (await disconnect.count()) { await chip.click(); test.skip(true, "The test account is connected to a live right now — the robot does not touch it."); }
+    if (await disconnect.count()) { await ttm.close(); test.skip(true, "The test account is connected to a live right now — the robot does not touch it."); }
     await row.click();                                                // select the made-up name (no connect yet)
-    await expect(chip).toContainText(ROBOT_TT);
-    if (!(await page.getByRole("button", { name: EN.rd_dash_connect, exact: true }).isVisible().catch(() => false))) await chip.click();
+    await expect.poll(() => ttm.isSelected(ROBOT_TT), { message: "the made-up account is not the selected one" }).toBe(true);
+    await ttm.ensureOpen();
+    note(ttm.how === "picker" ? "The TikTok menu was opened from the Live picker's TikTok tile." : "The TikTok menu was opened from the old TikTok chip (2+ sources were live).");
 
     writeFileSync(CONNECT_MARK, new Date().toISOString());           // once per run, even if this test is retried
     const seen: string[] = [];
@@ -406,7 +463,7 @@ test.describe("TikTok connect", () => {
         await page.waitForTimeout(150);
       }
     })();
-    await page.getByRole("button", { name: EN.rd_dash_connect, exact: true }).click();
+    await menu.getByRole("button", { name: EN.rd_dash_connect, exact: true }).click();
     // No session running → the length picker: the shortest (1 day) session for the test account.
     const picker = page.getByTestId("session-pick-1");
     const switchDialog = page.getByTestId("livesource-switch-overlay");
@@ -429,8 +486,9 @@ test.describe("TikTok connect", () => {
     note(words === EN.rd_cm_not_live ? "The app said: not live (as expected)." : `The app said: "${words}"`);
     // Nothing stays connected.
     await page.waitForTimeout(4000);
-    if (!(await page.getByRole("button", { name: EN.rd_dash_connect, exact: true }).isVisible().catch(() => false))) await chip.click();
-    await expect(page.getByRole("button", { name: EN.rd_dash_connect, exact: true })).toBeVisible();
+    await expect(page.getByTestId("lpk-source-button"), "a live-source button is showing (something stayed connected)").toHaveCount(0);
+    await ttm.ensureOpen();
+    await expect(menu.getByRole("button", { name: EN.rd_dash_connect, exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: EN.rd_dash_disconnect, exact: true })).toHaveCount(0);
   });
 });
