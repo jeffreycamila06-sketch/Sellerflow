@@ -3,7 +3,7 @@
 // The descriptive text stays in the server log only ([ERR] lines). App-read words share
 // their codes with the app (src/lib/errCodes.js); the words below are server-only and their
 // codes never reach the app bundle. NEVER renumber or reuse a code (E1–E99 = shared table).
-import { ERR_CODES, ERR_TEMPLATES } from "../src/lib/errCodes.js";
+import { ERR_CODES, ERR_TEMPLATES, CODES_PARAM } from "../src/lib/errCodes.js";
 
 export const SERVER_ONLY_CODES = Object.freeze({
   already_connected: "E101", already_replied: "E102", already_running: "E103",
@@ -43,10 +43,17 @@ export const OPAQUE_SKIP = ["/admin/parcel-tracking-poll", "/admin/product-image
 
 const underPrefix = (path) => OPAQUE_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`) || (p === "/parcel" && path.startsWith(p)));
 
+// Build 11 — only an app that sends `?sfl_codes=1` (src/lib/errCodes.js withCodes) gets codes.
+// Without it (apps from before Build 10) the answer leaves exactly as before Build 10.
+export function wantsCodes(req) {
+  const q = req && req.query;
+  return !!q && q[CODES_PARAM] === "1";
+}
+
 // Express middleware: wraps res.json for the routes above. Statuses are never touched.
 export function opaqueErrors({ log = console.log } = {}) {
   return (req, res, next) => {
-    if (!underPrefix(req.path) || OPAQUE_SKIP.includes(req.path)) return next();
+    if (!underPrefix(req.path) || OPAQUE_SKIP.includes(req.path) || !wantsCodes(req)) return next();
     const json = res.json.bind(res);
     res.json = (body) => {
       if (!body || typeof body !== "object" || Array.isArray(body)) return json(body);

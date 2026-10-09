@@ -32,7 +32,7 @@ describe("translateBroadcast (client)", () => {
     expect(r.ok).toBe(true);
     expect(r.i18n).toEqual(full);
     const [url, init] = f.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://srv.test/admin/broadcast-translate");
+    expect(url).toBe("https://srv.test/admin/broadcast-translate?sfl_codes=1"); // Build 11 (H4): new-app marker
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt-abc");
     expect(JSON.parse(init.body as string).text).toBe("Big sale"); // trimmed
   });

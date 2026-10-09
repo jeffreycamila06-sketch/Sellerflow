@@ -161,7 +161,7 @@ describe("connectPlatform — POST to the live server", () => {
     const r = await connectPlatform("TikTok", { username: "@Duong_Lily" }, "Seller@X.com");
     expect(r.ok).toBe(true); expect(r.account).toBe("duong_lily");
     const [url, opts] = fetchMock.mock.calls[0];
-    expect(String(url)).toMatch(/\/connect\/tiktok$/);
+    expect(String(url)).toMatch(/\/connect\/tiktok\?sfl_codes=1$/);
     const sent = JSON.parse((opts as RequestInit).body as string);
     expect(sent.username).toBe("duong_lily");
     expect(sent.sellerId).toBe("seller@x.com");

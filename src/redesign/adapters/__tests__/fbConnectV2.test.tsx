@@ -112,7 +112,7 @@ describe("adapters", () => {
     vi.stubGlobal("fetch", f);
     expect(await fbLiveCheck("P1")).toEqual({ ok: false, reason: "not_live", error: undefined });
     const [url, init] = f.mock.calls[0] as unknown as [string, { body: string; headers: Record<string, string> }];
-    expect(url).toMatch(/\/fb\/live-check$/);
+    expect(url).toMatch(/\/fb\/live-check\?sfl_codes=1$/);
     expect(JSON.parse(init.body)).toEqual({ page_id: "P1" });
     expect(init.headers.Authorization).toBe("Bearer JWT");
     vi.stubGlobal("fetch", vi.fn(async () => ({ status: 409, json: async () => ({ ok: false, error: "needs_reauth" }) })));
@@ -126,7 +126,7 @@ describe("adapters", () => {
     const f = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, stopped: true }) }));
     expect(await ttDisconnect("@Shop_A", f as unknown as typeof fetch)).toBe(true);
     const [url, init] = f.mock.calls[0] as unknown as [string, { body: string }];
-    expect(url).toMatch(/\/disconnect\/tiktok$/);
+    expect(url).toMatch(/\/disconnect\/tiktok\?sfl_codes=1$/);
     expect(JSON.parse(init.body)).toEqual({ username: "shop_a" });
     expect(await ttDisconnect("a", (async () => { throw new Error("x"); }) as unknown as typeof fetch)).toBe(false);
     expect(await ttDisconnect("a", (async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch)).toBe(false);
@@ -206,7 +206,9 @@ describe("RedesignApp wiring (source contract)", () => {
     const gate = 'featureSw.fbConnectV2 && target.platform === "Facebook" && !(await fbLiveGate(target.pageId))';
     expect(b.split(gate)).toHaveLength(3);
     expect(b.indexOf(gate)).toBeLessThan(b.indexOf("askSwitch(target)"));
-    expect(b.lastIndexOf(gate)).toBeLessThan(b.indexOf("if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);"));
+    // Build 11 (M2): the picker / owner Start now sit in openFirstConnect, reached after the gate.
+    expect(b.lastIndexOf(gate)).toBeLessThan(b.indexOf("openFirstConnect(pendingOfTarget(target));"));
+    expect(body("openFirstConnect")).toContain("if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);");
     expect(b).toContain("runTargetConnect(target); return; // same platform → continue"); // reconnect branch untouched
     expect(body("fbLiveGate")).toContain("tApp.rd_fb_live_first");
     expect(body("fbLiveGate")).not.toContain("startSession");

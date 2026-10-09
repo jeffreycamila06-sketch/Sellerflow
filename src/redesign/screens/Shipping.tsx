@@ -4,17 +4,17 @@
 // 7-11 store) with live 賣貨便 validation, entries persisted to shipping_entries
 // (RLS, cross-device). Export (.xlsm template round-trip + plan quota RPC) = P2;
 // split bags / free-shipping auto-rule = P3.
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import type { Buyer } from "../../lib/orderTypes";
 import {
   buyerGroupsFrom, draftEntryFor, validateEntry, entryIsValid, codTotal,
   mustSplit, splitSummary, buildBagEntries, validateSplit, splitIsValid, defaultProductDesc,
-  lateOrdersFor, lateFormEntry,
+  lateOrdersFor, lateFormEntry, ownLegacyEntries,
   SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, SHIP_DEFAULT_FEE, SHIP_MAX, SHIP_MAX_DESC, STORE_LOOKUP_URL, SPLIT_MAX_BAGS,
   type BuyerGroup, type ShippingEntry, type EntryErrors, type SharedRecipient,
 } from "../adapters/shipping";
-import { loadShippingEntries, upsertShippingEntry, deleteShippingEntry } from "../adapters/shippingDb";
+import { loadShippingEntries, loadShippingEntriesOrNull, upsertShippingEntry, deleteShippingEntry } from "../adapters/shippingDb";
 import {
   quotaForPlan, callExportRpc, loadExportedCount, entryToXlsRow, exportFilename,
   fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, hasNativeFileShare, markBatchShipped,
@@ -32,18 +32,34 @@ const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-d
 const errTxt: CSSProperties = { fontSize: 10.5, fontWeight: 600, color: "var(--danger)", marginTop: 3 };
 const newId = (): string => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
+// Build 11 (H3): legacyKey is given only while the session-keyed Shipping is on — the session's
+// own rows + the old day/window-key bags that hold this session's orders. A failed read → null
+// (the screen says so instead of an empty list). No legacyKey → the one read of today.
+async function loadShipEntries(sessionKey: string, legacyKey: string | undefined, orderIds: Set<number>): Promise<ShippingEntry[] | null> {
+  if (!legacyKey) return loadShippingEntries(sessionKey);
+  const [own, legacy] = await Promise.all([loadShippingEntriesOrNull(sessionKey), loadShippingEntriesOrNull(legacyKey)]);
+  return own && legacy ? ownLegacyEntries(own, legacy, orderIds) : null;
+}
+
 // Error-code → localized message (validators return codes, not copy).
 const nameErrText = (t: RedesignT, e: EntryErrors["name"]): string =>
   e === "required" ? t.rd_shp_err_required : e === "too_long" ? t.rd_shp_err_name_len : e === "forbidden" ? t.rd_shp_err_name_chars : "";
 const amountErrText = (t: RedesignT, e: EntryErrors["amounts"]): string =>
   e === "fee_range" ? t.rd_shp_err_fee : e === "order_range" ? t.rd_shp_err_order : e === "total_low" ? t.rd_shp_err_total_low : e === "total_high" ? t.rd_shp_err_total_high : "";
 
-export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1, plan, onUpgrade }: {
+export default function Shipping({ cur, buyers = [], sessionKey, legacyKey, windowDays = 1, plan, onUpgrade }: {
   cur: string; buyers?: Buyer[]; sessionKey: string; windowDays?: number;
+  // Build 11 (H3): the old day/window key, passed only while Shipping is keyed by session.
+  legacyKey?: string;
   plan?: string; onUpgrade?: () => void; // upgrade prompt hidden on iOS (no prop)
 }) {
   const t = useT();
   const groups = useMemo(() => buyerGroupsFrom(buyers), [buyers]);
+  // Build 11 (H3): this session's order ids (which old-key bags belong to it) + a load failure.
+  const orderIdsRef = useRef<Set<number>>(new Set());
+  useEffect(() => { orderIdsRef.current = new Set(groups.flatMap((g) => g.orderIds)); }, [groups]);
+  const legacyReady = legacyKey ? buyers.length > 0 : false; // the session's orders are known
+  const [loadFailed, setLoadFailed] = useState(false);
   const platformOf = useMemo(() => new Map(buyers.map((b) => [b.num, b.platform])), [buyers]);
   const [entries, setEntries] = useState<ShippingEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,8 +102,10 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   // this screen open; no poll.
   useEffect(() => {
     let active = true;
-    void loadShippingEntries(sessionKey).then((rows) => {
+    void loadShipEntries(sessionKey, legacyKey, orderIdsRef.current).then((loaded) => {
       if (!active) return;
+      setLoadFailed(loaded === null);
+      const rows = loaded ?? [];
       setEntries(rows); setLoading(false);
       setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id))); // default: all encoded
     });
@@ -101,7 +119,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       setThrDraft(s?.freeThreshold != null ? String(s.freeThreshold) : "");
     });
     return () => { active = false; };
-  }, [sessionKey]);
+  }, [sessionKey, legacyKey, legacyReady]);
 
   const entryFor = (bNum: number): ShippingEntry | null =>
     entries.find((e) => e.buyerNumber === bNum && e.bagNumber === 1) || null;
@@ -175,7 +193,11 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       const existing = bagsFor(g.bNum);
       const { bags } = splitSummary(g.orderList, assign, nBags);
       const ids = bags.map((_, i) => existing.find((e) => e.bagNumber === i + 1)?.id ?? newId());
-      const rows = buildBagEntries(g, sessionKey, bags, sShared, sFee, ids);
+      // A saved bag keeps its own key (Build 11 H3: an old-key bag stays there); new bags → sessionKey.
+      const rows = buildBagEntries(g, sessionKey, bags, sShared, sFee, ids).map((r) => {
+        const ex = existing.find((e) => e.id === r.id);
+        return ex && ex.sessionKey !== r.sessionKey ? { ...r, sessionKey: ex.sessionKey } : r;
+      });
       for (const row of rows) {
         const r = await upsertShippingEntry(row);
         if (!r.ok) { setSNote(t.rd_shp_save_failed); return; }
@@ -235,7 +257,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
           // Stale selection (another device already exported these rows — the
           // sql/10 stamped=0 guard). Refresh once so the list matches the DB.
           setExNote({ kind: "err", text: t.rd_shp_none_encoded });
-          const rows = await loadShippingEntries(sessionKey);
+          const rows = (await loadShipEntries(sessionKey, legacyKey, orderIdsRef.current)) ?? [];
           setEntries(rows);
           setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id)));
         } else setExNote({ kind: "err", text: t.rd_shp_export_failed });
@@ -340,7 +362,8 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
           )}
         </div>
         {loading && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "14px 0" }}>{t.rd_shp_loading}</div>}
-        {!loading && groups.length === 0 && (
+        {!loading && loadFailed && <div data-testid="shp-load-failed" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", textAlign: "center", padding: "14px 0" }}>{t.rd_shp_load_failed}</div>}
+        {!loading && !loadFailed && groups.length === 0 && (
           <div style={{ ...card, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55 }}>{t.rd_shp_empty}</div>
         )}
 
@@ -556,7 +579,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
         </div>
 
         {/* ── P2: Ready to export — meter + selection + RPC-then-file ── */}
-        {!loading && groups.length > 0 && (
+        {!loading && !loadFailed && groups.length > 0 && (
           <div style={{ ...card, marginTop: 14, padding: "13px 14px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, color: "var(--text)", flex: 1 }}>{t.rd_shp_ready}</span>

@@ -6,7 +6,7 @@ import type { RedesignT } from "../i18n";
 import { supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
 import { log } from "../../lib/log";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export const RECEIPT_CLIENT_MAX_BYTES = 3 * 1024 * 1024;
 
@@ -26,7 +26,7 @@ async function bearer(): Promise<string> {
 }
 
 async function post(path: string, body: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
-  const r = await fetch(`${SERVER}${path}`, {
+  const r = await fetch(withCodes(`${SERVER}${path}`), {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
     body: JSON.stringify(body),

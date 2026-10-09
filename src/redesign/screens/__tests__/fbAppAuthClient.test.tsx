@@ -46,8 +46,9 @@ describe("startFbAuth", () => {
     vi.stubGlobal("fetch", f);
     await real.startFbAuth({ app: true });
     await real.startFbAuth();
-    expect(String(f.mock.calls[0][0])).toMatch(/\/fb\/oauth\/start\?client=app$/);
-    expect(String(f.mock.calls[1][0])).toMatch(/\/fb\/oauth\/start$/);
+    // Build 11 (H4): + the new-app marker
+    expect(String(f.mock.calls[0][0])).toMatch(/\/fb\/oauth\/start\?client=app&sfl_codes=1$/);
+    expect(String(f.mock.calls[1][0])).toMatch(/\/fb\/oauth\/start\?sfl_codes=1$/);
   });
 });
 

@@ -31,10 +31,14 @@ const account = { email: "a@b.c", plan: "pro", planStatus: "active", role: "admi
 
 describe("fbReturnText", () => {
   const codes = ["no_pages", "token_exchange", "bad_state", "missing_params", "save_failed", "read_failed", "exception", "cap", "account_limit", "cancelled", "weird"];
-  it("switch OFF → exactly today's texts for every code (and a partial save reads as a plain success)", () => {
+  // Build 11 (M5): a partial save now names the Pages that did not fit with the switch OFF too.
+  it("switch OFF → exactly today's texts for every error code; a partial save names the dropped Pages", () => {
     for (const code of codes) expect(real.fbReturnText({ status: "error", code }, t, 3)).toBe(real.fbReturnText({ status: "error", code }, t, 3, false));
     expect(real.fbReturnText({ status: "error", code: "no_pages" }, t, 3)).toBe(t.rd_fb_auth_error_toast);
-    expect(real.fbReturnText({ status: "connected", saved: 1, dropped: 2, kept: ["A"], names: ["B", "C"] }, t, 1)).toBe(t.rd_fb_authorized_toast);
+    const partial = real.fbReturnText({ status: "connected", saved: 1, dropped: 2, kept: ["A"], names: ["B", "C"] }, t, 1);
+    expect(partial).toBe(real.fbReturnText({ status: "connected", saved: 1, dropped: 2, kept: ["A"], names: ["B", "C"] }, t, 1, true));
+    expect(partial).toContain("B");
+    expect(real.fbReturnText({ status: "connected" }, t, 1)).toBe(t.rd_fb_authorized_toast);
   });
   it("switch ON → own words per code; cap / account_limit / cancelled unchanged", () => {
     const on = (code: string) => real.fbReturnText({ status: "error", code }, t, 3, true);
@@ -69,9 +73,10 @@ describe("fbReturnText", () => {
     await real.startFbAuth({ lang: "fil" });
     await real.startFbAuth({ app: true, lang: "zh-TW" });
     await real.startFbAuth();
-    expect(String(f.mock.calls[0][0])).toMatch(/\/fb\/oauth\/start\?lang=fil$/);
-    expect(String(f.mock.calls[1][0])).toMatch(/\/fb\/oauth\/start\?client=app&lang=zh-TW$/);
-    expect(String(f.mock.calls[2][0])).toMatch(/\/fb\/oauth\/start$/);
+    // Build 11 (H4): + the new-app marker
+    expect(String(f.mock.calls[0][0])).toMatch(/\/fb\/oauth\/start\?lang=fil&sfl_codes=1$/);
+    expect(String(f.mock.calls[1][0])).toMatch(/\/fb\/oauth\/start\?client=app&lang=zh-TW&sfl_codes=1$/);
+    expect(String(f.mock.calls[2][0])).toMatch(/\/fb\/oauth\/start\?sfl_codes=1$/);
     vi.unstubAllGlobals();
   });
 });

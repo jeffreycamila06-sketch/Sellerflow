@@ -17,10 +17,11 @@ export const FEATURE_SWITCH_KEYS = {
   stockRefreshV2: "stock_refresh_v2", // Build 6 stock freshness (sql/107)
   fbIdentityV2: "fb_identity_v2", // Build 4 Facebook identity v2 — app side = the buyer tag only (sql/106)
   fbPolishV2: "fb_polish_v2", // Builds 5 + 7 Facebook polish — app side (sql/109)
+  build11: "build11_enabled", // Build 11 — changes for every seller (Shipping keyed by session, H3)
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {
@@ -45,13 +46,21 @@ export async function loadFeatureSwitches(): Promise<FeatureSwitches> {
 }
 
 // userKey: the signed-in user's id ("" = signed out → no read, all off).
+// Build 11 (M5): the answer of a finished read is never the SWITCHES_OFF object itself (a failed
+// read is stored as a copy), so switchesLoaded() can tell "read finished" from "not read yet".
 export function useFeatureSwitches(userKey: string): FeatureSwitches {
   const [state, setState] = useState<{ key: string; sw: FeatureSwitches }>({ key: "", sw: SWITCHES_OFF });
   useEffect(() => {
     if (!userKey) return;
     let live = true;
-    void loadFeatureSwitches().then((sw) => { if (live) setState({ key: userKey, sw }); });
+    void loadFeatureSwitches().then((sw) => { if (live) setState({ key: userKey, sw: sw === SWITCHES_OFF ? { ...SWITCHES_OFF } : sw }); });
     return () => { live = false; };
   }, [userKey]);
   return state.key === userKey && userKey ? state.sw : SWITCHES_OFF;
+}
+
+// Build 11 (M5): has this sign-in's switch read finished (on or off)? false while signed out or
+// still reading. For the few screens that must not decide before the switches are known.
+export function switchesLoaded(sw: FeatureSwitches): boolean {
+  return sw !== SWITCHES_OFF;
 }

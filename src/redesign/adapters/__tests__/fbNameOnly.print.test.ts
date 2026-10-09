@@ -320,8 +320,11 @@ describe("web/laptop print", () => {
     expect(out).toContain('<div class="user">@kaldag_queenpocket_oo</div>');
     expect(out).not.toContain("fbname");
   });
-  it("Facebook 'Unknown' and username-off keep today's page", () => {
-    expect(html(mk("Facebook", "Unknown", ID))).toContain(`<div class="user">@${ID}</div>`);
+  // Build 11 (M1): a Facebook commenter id is never printed — "Unknown" + id prints no @line, no name.
+  it("Facebook 'Unknown' prints no id; username-off keeps today's page", () => {
+    const unknown = html(mk("Facebook", "Unknown", ID));
+    expect(unknown).not.toContain(ID);
+    expect(unknown).not.toContain('<div class="user">');
     const off = html(mk("Facebook", FB, FB), { ...DEF_SETTINGS, printBuyerUsername: false });
     expect(off).not.toContain("fbname");
   });

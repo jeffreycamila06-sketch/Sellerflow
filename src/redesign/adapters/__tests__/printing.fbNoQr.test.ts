@@ -72,18 +72,20 @@ describe("phone (bitmap) sticker", () => {
     const off: Settings = { ...btCfg, printBuyerUsername: false };
     expect(await printWith(buyer("Facebook"), off)).toBe(await printWith(buyer("TikTok"), off));
   });
-  it("Facebook comment with no name (\"Unknown\", handle = the id): byte-identical to main's output before this change", async () => {
-    // sha256 captured by running this exact print on origin/main 711bc20 (clock pinned to 2026-10-06T04:00Z)
-    const MAIN_SHA256 = "544aa261c1e7cde12f351eab493ab776fe85f7d575aea355e10d1364aacee39c";
+  // Build 11 (M1): the old pin here kept main's output, which printed the commenter's id. Now a
+  // Facebook buyer never prints the id: "Unknown" + id prints like a buyer with no name and no handle.
+  it("Facebook comment with no name (\"Unknown\", handle = the id): the id is NOT printed", async () => {
+    const OLD_MAIN_SHA256 = "544aa261c1e7cde12f351eab493ab776fe85f7d575aea355e10d1364aacee39c"; // printed the id
     vi.useFakeTimers({ now: new Date("2026-10-06T04:00:00Z"), toFake: ["Date"] });
     try {
       const ID = "1029384756473829";
       const o = { ...order("Facebook"), handle: ID, name: "Unknown" };
       const b = { handle: ID, name: "Unknown", platform: "Facebook", num: 12, orders: [o], totalOrders: 1, totalSpent: 320 } as unknown as Buyer;
+      const blank = { handle: "", name: "", platform: "Facebook", num: 12, orders: [{ ...o, handle: "", name: "" }], totalOrders: 1, totalSpent: 320 } as unknown as Buyer;
       const data = await printWith(b, btCfg);
-      expect(data).toHaveLength(4192);
       const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data)));
-      expect([...digest].map((x) => x.toString(16).padStart(2, "0")).join("")).toBe(MAIN_SHA256);
+      expect([...digest].map((x) => x.toString(16).padStart(2, "0")).join("")).not.toBe(OLD_MAIN_SHA256);
+      expect(data).toBe(await printWith(blank, btCfg));
     } finally { vi.useRealTimers(); }
   });
 });

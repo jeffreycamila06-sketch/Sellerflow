@@ -209,7 +209,7 @@ describe("scanParcel (client POST)", () => {
     expect(r.fields).toEqual(fields);
     expect(r.confidence?.notes).toBe("low");
     const [url, init] = f.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://srv.test/admin/parcel-scan");
+    expect(url).toBe("https://srv.test/admin/parcel-scan?sfl_codes=1"); // Build 11 (H4): new-app marker
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt-abc");
     expect(JSON.parse(init.body as string)).toEqual({ imageBase64: "aGVsbG8=", mediaType: "image/jpeg" });
   });
@@ -249,7 +249,7 @@ describe("checkEmapStore (client POST) — best-effort, never blocks", () => {
     expect(r.status).toBe("valid");
     expect(r.storeName).toBe("德民門市");
     const [url, init] = f.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://srv.test/admin/parcel-emap-check");
+    expect(url).toBe("https://srv.test/admin/parcel-emap-check?sfl_codes=1"); // Build 11 (H4)
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt-abc");
     expect(JSON.parse(init.body as string)).toEqual({ storeId: "982063" });
   });

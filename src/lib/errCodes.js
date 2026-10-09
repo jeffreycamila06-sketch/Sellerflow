@@ -99,3 +99,15 @@ export function decodeServerJson(j) {
   }
   return out;
 }
+
+// Build 11 — the server sends codes ONLY to an app that says it reads them. Apps from before
+// Build 10 never send this, so they keep getting the old sentences after the Render deploy.
+// A query parameter, not a header: a new header would fail the CORS check of a server that
+// does not list it yet (the app deploys before Render).
+export const CODES_PARAM = "sfl_codes";
+
+// Adds `sfl_codes=1` to a server URL (keeps any query it already has).
+/** @param {string} url @returns {string} */
+export function withCodes(url) {
+  return `${url}${url.includes("?") ? "&" : "?"}${CODES_PARAM}=1`;
+}

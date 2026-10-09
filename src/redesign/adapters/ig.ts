@@ -9,7 +9,7 @@ import { supabase, isSupabaseConfigured } from "../../supabase";
 import { SERVER, browserSessionId } from "./serverIdentity";
 import { tpl, type RedesignT } from "../i18n";
 import { liveRefusedText, ACCOUNT_NOT_COVERED } from "./accountLive";
-import { decodeServerJson } from "../../lib/errCodes.js";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export const IG_PLATFORM = "Instagram" as const;
 
@@ -25,7 +25,7 @@ async function bearer(): Promise<string> {
 // GET /ig/access → true only on a 200 { ok:true, instagram:true }. Anything else → false.
 export async function loadIgAccess(): Promise<boolean> {
   try {
-    const r = await fetch(`${SERVER}/ig/access`, { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
+    const r = await fetch(withCodes(`${SERVER}/ig/access`), { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
     if (r.status !== 200) return false;
     const j = decodeServerJson(await r.json().catch(() => null)) as { ok?: unknown; instagram?: unknown } | null;
     return !!j && j.ok === true && j.instagram === true;
@@ -90,7 +90,7 @@ export const igScopeKey = (a: Pick<IgAccount, "username" | "igUserId">): string 
 
 export async function startIgAuth(opts: { app?: boolean } = {}): Promise<{ ok: boolean; url?: string }> {
   try {
-    const r = await fetch(`${SERVER}/ig/oauth/start${opts.app ? "?client=app" : ""}`, { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
+    const r = await fetch(withCodes(`${SERVER}/ig/oauth/start${opts.app ? "?client=app" : ""}`), { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } });
     const j = decodeServerJson(await r.json().catch(() => ({} as { url?: string })));
     return r.ok && j.url ? { ok: true, url: String(j.url) } : { ok: false };
   } catch {
@@ -102,7 +102,7 @@ export interface IgConnectResult { ok: boolean; reason?: string; error?: string;
 
 export async function igConnect(igUserId: string): Promise<IgConnectResult> {
   try {
-    const r = await fetch(`${SERVER}/ig/connect`, {
+    const r = await fetch(withCodes(`${SERVER}/ig/connect`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ ig_user_id: String(igUserId), sessionId: browserSessionId() }),
@@ -118,7 +118,7 @@ export async function igConnect(igUserId: string): Promise<IgConnectResult> {
 
 export async function igDisconnect(igUserId: string): Promise<void> {
   try {
-    await fetch(`${SERVER}/ig/disconnect`, {
+    await fetch(withCodes(`${SERVER}/ig/disconnect`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
       body: JSON.stringify({ ig_user_id: String(igUserId) }),

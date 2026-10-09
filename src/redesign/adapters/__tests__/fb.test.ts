@@ -98,7 +98,7 @@ describe("startFbAuth", () => {
     const r = await startFbAuth();
     expect(r).toEqual({ ok: true, url: "https://www.facebook.com/v25.0/dialog/oauth?x=1" });
     const [url, opts] = f.mock.calls[0];
-    expect(String(url)).toMatch(/\/fb\/oauth\/start$/);
+    expect(String(url)).toMatch(/\/fb\/oauth\/start\?sfl_codes=1$/);
     expect((opts as { headers: Record<string, string> }).headers.Authorization).toBe("Bearer JWT123");
   });
   it("non-2xx → { ok:false }", async () => {
@@ -118,7 +118,7 @@ describe("fbConnect", () => {
     const r = await fbConnect("P1");
     expect(r).toEqual({ ok: true, liveVideoId: "LV42" });
     const [url, opts] = f.mock.calls[0];
-    expect(String(url)).toMatch(/\/fb\/connect$/);
+    expect(String(url)).toMatch(/\/fb\/connect\?sfl_codes=1$/);
     const body = JSON.parse((opts as { body: string }).body);
     expect(body.page_id).toBe("P1");
     expect(typeof body.sessionId).toBe("string");
@@ -165,7 +165,7 @@ describe("fbDisconnect", () => {
     const f = vi.fn().mockResolvedValue(mkRes(200, { ok: true }));
     vi.stubGlobal("fetch", f);
     expect((await fbDisconnect("P1")).ok).toBe(true);
-    expect(String(f.mock.calls[0][0])).toMatch(/\/fb\/disconnect$/);
+    expect(String(f.mock.calls[0][0])).toMatch(/\/fb\/disconnect\?sfl_codes=1$/);
     expect(JSON.parse((f.mock.calls[0][1] as { body: string }).body)).toEqual({ page_id: "P1" });
   });
 });

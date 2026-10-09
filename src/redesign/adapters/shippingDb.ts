@@ -80,9 +80,16 @@ export const SHIPPING_PAGE_SIZE = 1000;
 // (one pager for users/shipping). Contract unchanged: complete rows, [] on any
 // page error — never partial.
 export async function loadShippingEntries(sessionKey: string): Promise<ShippingEntry[]> {
+  return (await loadShippingEntriesOrNull(sessionKey)) ?? [];
+}
+
+// Build 11 (H3): the same read, but null when it could not be done (no signed-in user, or a page
+// error) — so the session-keyed Shipping can say "couldn't load" instead of showing an empty list
+// that invites a second encode of the same bag. Not configured → [] (nothing to read).
+export async function loadShippingEntriesOrNull(sessionKey: string): Promise<ShippingEntry[] | null> {
   if (!isSupabaseConfigured || !supabase) return [];
   const id = await uid();
-  if (!id) return [];
+  if (!id) return null;
   const rows = await fetchAllPages<ShippingEntry>(async (page) => {
     const from = page * SHIPPING_PAGE_SIZE;
     const { data, error } = await supabase!
@@ -96,7 +103,7 @@ export async function loadShippingEntries(sessionKey: string): Promise<ShippingE
     if (error || !data) return null;
     return data.map((r) => rowToEntry(r as Record<string, unknown>));
   }, SHIPPING_PAGE_SIZE);
-  return rows === null ? [] : rows;
+  return rows;
 }
 
 // One upsert per encode save (write-on-action). Conflict target = the group key,

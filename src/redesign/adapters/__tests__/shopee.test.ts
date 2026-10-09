@@ -103,7 +103,7 @@ describe("startShopeeAuth", () => {
     const r = await startShopeeAuth();
     expect(r).toEqual({ ok: true, url: "https://partner.shopee/auth?x=1" });
     const [url, opts] = f.mock.calls[0];
-    expect(String(url)).toMatch(/\/shopee\/oauth\/start$/);
+    expect(String(url)).toMatch(/\/shopee\/oauth\/start\?sfl_codes=1$/);
     expect((opts as { headers: Record<string, string> }).headers.Authorization).toBe("Bearer JWT123");
   });
   it("non-2xx → { ok:false }", async () => {
@@ -123,7 +123,7 @@ describe("shopeeConnect", () => {
     const r = await shopeeConnect(555, "S9");
     expect(r).toEqual({ ok: true, sessionId: "S9" }); // result sessionId = the Shopee live session (unchanged)
     const [url, opts] = f.mock.calls[0];
-    expect(String(url)).toMatch(/\/shopee\/connect$/);
+    expect(String(url)).toMatch(/\/shopee\/connect\?sfl_codes=1$/);
     const body = JSON.parse((opts as { body: string }).body);
     expect(body.shop_id).toBe("555");
     expect(body.session_id).toBe("S9");               // the Shopee live session the seller pasted
@@ -172,7 +172,7 @@ describe("shopeeDisconnect", () => {
     const f = vi.fn().mockResolvedValue(mkRes(200, { ok: true }));
     vi.stubGlobal("fetch", f);
     expect((await shopeeDisconnect(555)).ok).toBe(true);
-    expect(String(f.mock.calls[0][0])).toMatch(/\/shopee\/disconnect$/);
+    expect(String(f.mock.calls[0][0])).toMatch(/\/shopee\/disconnect\?sfl_codes=1$/);
   });
 });
 

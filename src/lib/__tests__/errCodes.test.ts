@@ -9,7 +9,7 @@ import express from "express";
 import type { AddressInfo } from "node:net";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { ERR_CODES, ERR_TEMPLATES, decodeErr, decodeServerJson } from "../errCodes.js";
+import { ERR_CODES, ERR_TEMPLATES, decodeErr, decodeServerJson, withCodes, CODES_PARAM } from "../errCodes.js";
 import { SERVER_ONLY_CODES, encodeErr, opaqueErrors, OPAQUE_SKIP } from "../../../server/errorCodes.js";
 import { fbConnectFailText } from "../../redesign/adapters/fb";
 import { igConnectFailText } from "../../redesign/adapters/ig";
@@ -112,7 +112,9 @@ describe("the server middleware (real express)", () => {
     await new Promise<void>((r) => { server = app.listen(0, r); });
     return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
   }
-  const get = async (base: string, p: string) => { const r = await fetch(base + p); return { status: r.status, j: await r.json() }; };
+  // The new app always asks for codes (withCodes); an app from before Build 10 never does.
+  const get = async (base: string, p: string) => { const r = await fetch(withCodes(base + p)); return { status: r.status, j: await r.json() }; };
+  const getOld = async (base: string, p: string) => { const r = await fetch(base + p); return { status: r.status, j: await r.json() }; };
 
   it("statuses unchanged; only the words change; the app gets the same answer back", async () => {
     const base = await serve();
@@ -144,6 +146,33 @@ describe("the server middleware (real express)", () => {
     expect((await get(base, "/fb/ok")).j).toEqual({ ok: true, pages: [] });
   });
 
+  it("Build 11 (H4): an app WITHOUT the marker (from before Build 10) gets the old words, byte-identical", async () => {
+    const base = await serve();
+    const cases: [string, number, Record<string, unknown>][] = [
+      ["/connect/tiktok", 401, { success: false, error: "Unauthorized" }],
+      ["/fb/connect", 403, { ok: false, error: "plan_expired", message: "Your plan has expired." }],
+      ["/ig/connect", 429, { ok: false, error: "too_many_requests" }],
+      ["/shopee/connect", 200, { ok: false, reason: "not_live" }],
+      ["/connect/raw", 500, { success: false, error: "the request user is not online" }],
+      ["/fb/receipt/send", 502, { ok: false, error: "try_later", code: 4 }],
+      ["/admin/parcel-scan", 402, { success: false, error: "insufficient_credits", balance: 0 }],
+    ];
+    for (const [p, status, body] of cases) {
+      const r = await getOld(base, p);
+      expect(r.status, p).toBe(status);
+      expect(r.j, p).toEqual(body);
+    }
+    // any other value of the marker = treated as an old app
+    const odd = await fetch(`${base}/fb/connect?${CODES_PARAM}=0`);
+    expect((await odd.json()).error).toBe("plan_expired");
+    expect(logs).toEqual([]); // nothing coded → nothing to log
+  });
+
+  it("withCodes adds the marker and keeps any query the URL already has", () => {
+    expect(withCodes("https://x/fb/access")).toBe("https://x/fb/access?sfl_codes=1");
+    expect(withCodes("https://x/ig/oauth/start?client=app")).toBe("https://x/ig/oauth/start?client=app&sfl_codes=1");
+  });
+
   it("the descriptive text goes to the server log only", async () => {
     const base = await serve();
     const r = await get(base, "/connect/raw");
@@ -166,12 +195,25 @@ describe("source contracts", () => {
     let checked = 0;
     for (const f of files) {
       const s = readFileSync(join(dir, f), "utf8");
-      if (!/fetch(?:Impl)?\(`\$\{SERVER\}/.test(s)) continue;
+      if (!/fetch(?:Impl)?\((?:withCodes\()?`\$\{SERVER\}/.test(s)) continue;
       const raw = s.split("\n").filter((l) => /r\.json\(\)/.test(l) && !/decodeServerJson\(/.test(l));
       // ttDisconnect only reads ok:true (POST /disconnect/tiktok is outside the coded routes).
       expect(raw.filter((l) => !/as \{ ok\?: unknown \} \| null/.test(l)), f).toEqual([]);
       checked++;
     }
     expect(checked).toBeGreaterThanOrEqual(8);
+  });
+  it("Build 11 (H4): every app call to the live server carries the marker (withCodes)", () => {
+    const dir = join(root, "src", "redesign");
+    const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? (e.name === "__tests__" ? [] : walk(join(d, e.name))) : /\.tsx?$/.test(e.name) ? [join(d, e.name)] : []);
+    let calls = 0;
+    for (const f of walk(dir)) {
+      const s = readFileSync(f, "utf8");
+      const all = s.match(/fetch(?:Impl)?\((?:withCodes\()?`\$\{SERVER\}/g) || [];
+      const marked = s.match(/fetch(?:Impl)?\(withCodes\(`\$\{SERVER\}/g) || [];
+      expect(marked.length, f).toBe(all.length);
+      calls += all.length;
+    }
+    expect(calls).toBeGreaterThanOrEqual(18);
   });
 });
