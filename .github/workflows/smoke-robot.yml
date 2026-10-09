@@ -1,0 +1,88 @@
+# Smoke robot — logs in to the REAL production app as ONE test seller and clicks through the
+# main screens (docs/smoke-robot.md). Runs by hand (Actions → Smoke robot → Run workflow) and
+# on every push to the robot's own branch. Never on main pushes.
+name: Smoke robot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/build9-smoke-robot]
+
+permissions:
+  contents: read
+
+# One robot at a time on the test account (a second run waits, never overlaps).
+concurrency:
+  group: smoke-robot
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # No page text copy in the report on a failure (it could show the account email).
+      PLAYWRIGHT_NO_COPY_PROMPT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/smoke/package-lock.json
+
+      # The robot reads the app's own wording (src/redesign/i18n), which needs the app packages.
+      - name: Install the app packages (read-only use)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install the robot and its browser (Chromium only)
+        working-directory: e2e/smoke
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      # The robot's small memory between runs: when it last removed its made-up TikTok name
+      # (the app locks that place for 4 hours after a removal, so a run inside those 4 hours
+      # adds nothing it could not remove again). Holds a time only — no secret.
+      - name: Restore the robot's memory
+        uses: actions/cache/restore@v4
+        with:
+          path: e2e/smoke/.state
+          key: smoke-robot-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: smoke-robot-state-
+
+      - name: Run the robot
+        working-directory: e2e/smoke
+        env:
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: npx playwright test
+
+      - name: Keep the robot's memory for the next run
+        if: always()
+        run: mkdir -p e2e/smoke/.state
+
+      - name: Save the robot's memory
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: e2e/smoke/.state
+          key: smoke-robot-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # The saved login (.run/) is never uploaded — remove it before anything else.
+      - name: Remove the saved login
+        if: always()
+        working-directory: e2e/smoke
+        run: rm -rf .run test-results
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-robot-report
+          path: e2e/smoke/playwright-report
+          retention-days: 14
+          if-no-files-found: ignore
