@@ -73,7 +73,7 @@ describe("OAuth", () => {
 
   it("saves only Pages with a linked IG account; the PAGE token is stored encrypted, no expiry", async () => {
     const { runtime, store } = rt({ fetchImpl: exchange([page("1", { id: "17841", username: "shop.ig" }), page("2")]) });
-    const out = await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000 }) });
+    const out = await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) });
     expect(out.redirect).toBe("https://app.test/?ig=connected");
     expect(store.upserts).toHaveLength(1);
     const row = store.upserts[0];
@@ -84,29 +84,29 @@ describe("OAuth", () => {
   });
   it("no linked IG professional account → ?ig=error&code=no_ig_account", async () => {
     const { runtime } = rt({ fetchImpl: exchange([page("2")]) });
-    const out = await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000 }) });
+    const out = await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) });
     expect(out.redirect).toBe("https://app.test/?ig=error&code=no_ig_account");
   });
   it("plan cap: a NEW account over the cap → cap; re-authorizing an existing one passes", async () => {
     const seed = [{ user_id: "u1", ig_user_id: "17841", active: true }];
     const a = rt({ store: makeStore(seed, "basic"), fetchImpl: exchange([page("1", { id: "999", username: "new" })]) });
-    expect((await a.runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000 }) })).redirect).toBe("https://app.test/?ig=error&code=cap");
+    expect((await a.runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) })).redirect).toBe("https://app.test/?ig=error&code=cap");
     const b = rt({ store: makeStore(seed, "basic"), fetchImpl: exchange([page("1", { id: "17841", username: "same" })]) });
-    expect((await b.runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000 }) })).redirect).toBe("https://app.test/?ig=connected");
+    expect((await b.runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) })).redirect).toBe("https://app.test/?ig=connected");
   });
   it("the database account limit (sql/87 trigger) → account_limit", async () => {
     const s = makeStore(); s.failUpsert = "account_limit";
     const { runtime } = rt({ store: s, fetchImpl: exchange([page("1", { id: "1", username: "x" })]) });
-    expect((await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000 }) })).redirect).toBe("https://app.test/?ig=error&code=account_limit");
+    expect((await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) })).redirect).toBe("https://app.test/?ig=error&code=account_limit");
   });
   it("bad state → web error; app flow ends on the native callback with fb= (the sheet's contract)", async () => {
     const { runtime } = rt({ fetchImpl: exchange([page("1", { id: "1", username: "x" })]) });
     expect((await runtime.handleCallback({ code: "c", state: "forged" })).redirect).toBe("https://app.test/?ig=error&code=bad_state");
-    const out = await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, app: true }) });
+    const out = await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, app: true, kind: "ig" }) });
     expect(out.redirect).toBe(`${APP_AUTH_CALLBACK}?fb=connected`);
   });
   it("confirm page names Instagram, posts to /ig/oauth/complete, cancels to ?ig=", async () => {
-    const out = await rt().runtime.confirmCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000 }) });
+    const out = await rt().runtime.confirmCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) });
     expect(out.html).toContain("<h1>Connect your Instagram account</h1>");
     expect(out.html).toContain('action="/ig/oauth/complete"');
     expect(out.html).toContain("https://app.test/?ig=error&amp;code=cancelled");

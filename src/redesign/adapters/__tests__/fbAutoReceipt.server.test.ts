@@ -39,8 +39,8 @@ function world(nBuyers: number, o: { canReply?: boolean | null; graphError?: num
     hasReceiptAccess: async () => o.access ?? true,
     getPage: async () => ({ ...page }),
     listReceiptOrders: async (_u: string, _s: string, b: number) => [
-      { comment_msg_id: `c${b}`, platform_meta: { page_id: "111", live_video_id: LV }, handle: `buyer${b}`, created_at: new Date(1_000 + b).toISOString() },
-      ...(o.second?.includes(b) ? [{ comment_msg_id: `c${b}b`, platform_meta: { page_id: "111", live_video_id: LV }, handle: `buyer${b}`, created_at: new Date(5_000 + b).toISOString() }] : []),
+      { comment_msg_id: `9${b}_1`, platform_meta: { page_id: "111", live_video_id: LV }, handle: `buyer${b}`, created_at: new Date(1_000 + b).toISOString() },
+      ...(o.second?.includes(b) ? [{ comment_msg_id: `9${b}_2`, platform_meta: { page_id: "111", live_video_id: LV }, handle: `buyer${b}`, created_at: new Date(5_000 + b).toISOString() }] : []),
     ],
     listReceiptRows: async (ids: string[]) => receipts.filter((r) => ids.includes(String(r.comment_id))),
     insertReceipt: async (row: Row) => {
@@ -105,7 +105,7 @@ describe("sending", () => {
   it("one receipt per buyer through the existing claim → send path; note = counts only", async () => {
     const w = world(3);
     await w.runner.runJob(w.job());
-    expect(w.posts).toEqual(["c1", "c2", "c3"]);
+    expect(w.posts).toEqual(["91_1", "92_1", "93_1"]);
     expect(w.receipts.map((r) => r.status)).toEqual(["sent", "sent", "sent"]);
     expect(w.finished).toEqual([expect.objectContaining({ status: "done", note: "buyers sent=3 skipped=0 failed=0 unknown=0 retry=0 left=0" })]);
     expect(w.logs.join("\n")).not.toMatch(/buyer\d|c\d|PSID|TOK/);
@@ -117,11 +117,11 @@ describe("sending", () => {
   it("skip-existing: sent or pending receipt rows block the buyer; a sold-out row does not", async () => {
     // buyers 2–4 each have a second, free comment: only the blocking row decides
     const w = world(4, { second: [2, 3, 4] });
-    w.receipts.push({ id: 101, user_id: U, comment_id: "c2", status: "sent", kind: "receipt" });
-    w.receipts.push({ id: 102, user_id: U, comment_id: "c3", status: "pending", kind: "receipt" });
-    w.receipts.push({ id: 103, user_id: U, comment_id: "c4", status: "sent", kind: "soldout" });
+    w.receipts.push({ id: 101, user_id: U, comment_id: "92_1", status: "sent", kind: "receipt" });
+    w.receipts.push({ id: 102, user_id: U, comment_id: "93_1", status: "pending", kind: "receipt" });
+    w.receipts.push({ id: 103, user_id: U, comment_id: "94_1", status: "sent", kind: "soldout" });
     await w.runner.runJob(w.job());
-    expect(w.posts).toEqual(["c1", "c4b"]); // buyer 4: the sold-out reply does not count as a receipt
+    expect(w.posts).toEqual(["91_1", "94_2"]); // buyer 4: the sold-out reply does not count as a receipt
     expect(w.finished[0]).toMatchObject({ status: "done", note: expect.stringContaining("sent=2 skipped=2") });
     expect(hasAutoBlockingRow([{ user_id: U, status: "failed", kind: "receipt" }], U)).toBe(false);
     expect(hasAutoBlockingRow([{ user_id: U, status: "failed", error_code: AUTO_NO_PRIVATE_REPLY }], U)).toBe(true);
@@ -131,7 +131,7 @@ describe("sending", () => {
     const w = world(1, { canReply: false });
     await w.runner.runJob(w.job());
     expect(w.posts).toEqual([]);
-    expect(w.receipts).toEqual([expect.objectContaining({ comment_id: "c1", status: "failed", error_code: AUTO_NO_PRIVATE_REPLY })]);
+    expect(w.receipts).toEqual([expect.objectContaining({ comment_id: "91_1", status: "failed", error_code: AUTO_NO_PRIVATE_REPLY })]);
     expect(w.finished[0]).toMatchObject({ status: "done", note: expect.stringContaining("skipped=1") });
     expect(w.gets).toHaveLength(1);
     await w.runner.runJob(w.job());
@@ -141,7 +141,7 @@ describe("sending", () => {
   it("can_reply_privately unreadable → the send decides", async () => {
     const w = world(1, { canReply: null });
     await w.runner.runJob(w.job());
-    expect(w.posts).toEqual(["c1"]);
+    expect(w.posts).toEqual(["91_1"]);
   });
   it(`at most ${AUTO_RECEIPT_RATE_MAX} sends a minute; the rest a minute later without using an attempt`, async () => {
     const w = world(12);
@@ -156,7 +156,7 @@ describe("sending", () => {
   });
   it("skipped buyers do not use the minute's sends", async () => {
     const w = world(12);
-    for (let b = 1; b <= 5; b++) w.receipts.push({ id: 200 + b, user_id: U, comment_id: `c${b}`, status: "sent", kind: "receipt" });
+    for (let b = 1; b <= 5; b++) w.receipts.push({ id: 200 + b, user_id: U, comment_id: `9${b}_1`, status: "sent", kind: "receipt" });
     await w.runner.runJob(w.job());
     expect(w.posts).toHaveLength(7);
     expect(w.finished[0]).toMatchObject({ status: "done" });
@@ -173,7 +173,7 @@ describe("sending", () => {
     const w = world(1);
     w.jstore.claimJobs.mockResolvedValueOnce([w.job()]);
     expect(await w.runner.tick()).toBe(1);
-    expect(w.posts).toEqual(["c1"]);
+    expect(w.posts).toEqual(["91_1"]);
     w.jstore.claimJobs.mockRejectedValueOnce(new Error("db down"));
     expect(await w.runner.tick()).toBe(0);
   });

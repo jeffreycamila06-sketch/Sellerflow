@@ -34,6 +34,7 @@ import { createHash, createHmac } from "node:crypto";
 import express from "express";
 import { GRAPH_VERSION } from "./fbConfig.js";
 import { fbToPayload } from "./fbComment.js";
+import { withAppSecretProof, maskSecretText, makeRateGate, ipOf, parseSignedRequest } from "./fbHardening.js";
 import { encryptToken, decryptToken, isExpiringSoon } from "./fbTokens.js";
 import { maxAccountsForPlan } from "./accountCap.js";
 import { fbPreviewEmail } from "./fbAccess.js";
@@ -86,23 +87,30 @@ export const FB_RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80001, 80006]);
 // state keeps the exact 3-part format (byte-identical to before).
 export const CONFIRM_LANGS = ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"];
 export const confirmLangOf = (v) => (CONFIRM_LANGS.includes(String(v || "")) ? String(v) : "");
-export function signState({ userId, key, nowMs = Date.now(), ttlMs = STATE_TTL_MS, app = false, lang = "" }) {
+// kind (Build 8) = which app flow minted the state: "fb" (default) or "ig", as "k<kind>" INSIDE the
+// HMAC'd body; each callback accepts only its own kind (verifyStateDetail's expectKind).
+export const STATE_KINDS = ["fb", "ig"];
+export function signState({ userId, key, nowMs = Date.now(), ttlMs = STATE_TTL_MS, app = false, lang = "", kind = "fb" }) {
   const exp = nowMs + ttlMs;
   const l = confirmLangOf(lang);
-  const body = `${Buffer.from(String(userId)).toString("base64url")}.${exp}${app ? ".a" : ""}${l ? `.l${l}` : ""}`;
+  const k = STATE_KINDS.includes(kind) ? kind : "fb";
+  const body = `${Buffer.from(String(userId)).toString("base64url")}.${exp}${app ? ".a" : ""}${l ? `.l${l}` : ""}.k${k}`;
   const mac = createHmac("sha256", String(key)).update(body).digest("hex");
   return `${body}.${mac}`;
 }
 // → { userId, app, lang } when the signature matches and the state has not expired, else null.
-// Between the expiry and the signature: at most one "a" and at most one "l<lang>", in that order.
-export function verifyStateDetail(state, key, nowMs = Date.now()) {
+// Between the expiry and the signature: at most one "a", one "l<lang>", one "k<kind>", in that
+// order. expectKind given → a state of another kind, or with no kind, is null (bad_state).
+export function verifyStateDetail(state, key, nowMs = Date.now(), expectKind = null) {
   const parts = String(state || "").split(".");
-  if (parts.length < 3 || parts.length > 5) return null;
+  if (parts.length < 3 || parts.length > 6) return null;
   const extra = parts.slice(2, -1);
-  let app = false, lang = "", i = 0;
+  let app = false, lang = "", kind = "", i = 0;
   if (extra[i] === "a") { app = true; i++; }
   if (i < extra.length && extra[i].startsWith("l") && confirmLangOf(extra[i].slice(1))) { lang = extra[i].slice(1); i++; }
+  if (i < extra.length && extra[i].startsWith("k") && STATE_KINDS.includes(extra[i].slice(1))) { kind = extra[i].slice(1); i++; }
   if (i !== extra.length) return null;
+  if (expectKind && kind !== expectKind) return null;
   const mac = parts[parts.length - 1];
   const body = parts.slice(0, -1).join(".");
   const [uidB64, expStr] = parts;
@@ -131,6 +139,11 @@ export const COMPLETE_REMEMBER_MS = 10 * 60 * 1000; // a finished connected / ca
 export const COMPLETE_REMEMBER_MAX = 500;           // remembered answers kept (oldest dropped)
 export const EXCHANGE_KEEP_MS = STATE_TTL_MS;       // a code's exchange answer is kept this long (confirm page → Connect)
 export const EXCHANGE_KEEP_MAX = 500;
+// Build 8: per-IP gates on the two routes a browser / Meta reach without a SellerFlowLive login.
+export const COMPLETE_RATE_MAX = 30;      // POST /fb/oauth/complete per IP per minute
+export const DEAUTH_RATE_MAX = 60;        // POST /fb/deauthorize per IP per minute
+export const DEAUTH_MAX_AGE_S = 60 * 60;  // a signed_request older than this is refused (replay)
+export const DEAUTH_SEEN_MAX = 2000;      // processed signatures remembered (a replay does nothing)
 // fb=connected with Pages left out by the plan: saved=<n>&dropped=<m>&kept=<names>&names=<names>,
 // at most PARTIAL_NAMES_MAX names each (cut to 60 characters), URL-encoded.
 export const PARTIAL_NAMES_MAX = 3;
@@ -347,6 +360,15 @@ export async function fetchMessagingGranted({ fetchImpl, userToken }) {
     return body.data.some((p) => p && p.permission === "pages_messaging" && p.status === "granted");
   } catch { return false; }
 }
+// The Facebook user (app-scoped id) who is authorizing — GET /me?fields=id. "" on any failure.
+// Saved next to each Page so Meta's Deauthorize Callback can find that person's Pages. Never throws.
+export async function fetchMeId({ fetchImpl, userToken }) {
+  try {
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl("/me", { fields: "id", access_token: userToken }) });
+    const id = String((body && body.id) || "");
+    return status === 200 && /^\d{1,40}$/.test(id) ? id : "";
+  } catch { return ""; }
+}
 // Is this page currently live? Returns { liveVideoId, failed, authFail }: liveVideoId = the
 // first status=LIVE video, most recent first ("" when none). status is uppercase-compared so
 // only an ACTIVE broadcast matches — an ended one (VOD / LIVE_STOPPED / PROCESSING) is
@@ -554,7 +576,7 @@ export function createFbRuntime(deps) {
     // poller keeps that mode for its whole life. OFF / missing: the handle is the display name.
     identityV2Enabled = async () => false,
     renderUrl, appUrl = APP_REDIRECT_URL,
-    fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
+    fetchImpl: rawFetch = globalThis.fetch, now = () => Date.now(), log = () => {},
     makeFormParser = (limit) => express.urlencoded({ extended: false, limit }),
     setLoop = (fn, ms) => setTimeout(fn, ms), clearLoop = (h) => clearTimeout(h),
     setTimer = (fn, ms) => setInterval(fn, ms), clearTimer = (h) => clearInterval(h),
@@ -562,6 +584,10 @@ export function createFbRuntime(deps) {
 
   const pollers = new Map();   // liveKey → entry
   let refreshHandle = null;
+  // Build 8: every Graph request that carries a token also carries appsecret_proof.
+  const fetchImpl = withAppSecretProof(rawFetch, config.appSecret);
+  // Facebook's own error text, safe for a log line (no token, no URL).
+  const safe = (msg, token = "") => maskSecretText(msg, token, 200) || "-";
 
   const redirectUri = `${String(renderUrl).replace(/\/+$/, "")}/fb/oauth/callback`;
 
@@ -569,7 +595,7 @@ export function createFbRuntime(deps) {
   // messaging = the user is on fb_receipt_access → also ask for pages_messaging. Everyone
   // else gets exactly OAUTH_SCOPE (unchanged).
   function buildAuthUrl(userId, { messaging = false, app = false, lang = "" } = {}) {
-    const state = signState({ userId, key: config.appSecret, nowMs: now(), app, lang });
+    const state = signState({ userId, key: config.appSecret, nowMs: now(), app, lang, kind: "fb" });
     const q = new URLSearchParams({
       client_id: config.appId,
       redirect_uri: redirectUri,
@@ -597,7 +623,8 @@ export function createFbRuntime(deps) {
     if (pages.length === 0) return { error: "no_pages" };
     // Recorded per page for a later Messenger receipt. Never throws; any doubt → false.
     const canMessage = await fetchMessagingGranted({ fetchImpl, userToken: longTok.access });
-    return { longTok, pages, canMessage };
+    const fbUserId = await fetchMeId({ fetchImpl, userToken: longTok.access }); // Build 8 (deauthorize)
+    return { longTok, pages, canMessage, fbUserId };
   }
   function sharedExchange(code, state) {
     const key = exchangeKeyOf(code, state);
@@ -605,7 +632,7 @@ export function createFbRuntime(deps) {
     for (const [k, v] of exchanges) { if (nowMs - v.at >= EXCHANGE_KEEP_MS) exchanges.delete(k); else break; }
     let e = exchanges.get(key);
     if (!e) {
-      const promise = exchangeForPages(code).catch((err) => { log(`[FB] callback error: ${err && err.message}`); return { error: "exception" }; });
+      const promise = exchangeForPages(code).catch((err) => { log(`[FB] callback error: ${safe(err && err.message)}`); return { error: "exception" }; });
       e = { at: nowMs, promise };
       exchanges.set(key, e);
       while (exchanges.size > EXCHANGE_KEEP_MAX) exchanges.delete(exchanges.keys().next().value);
@@ -615,7 +642,7 @@ export function createFbRuntime(deps) {
   }
 
   async function handleCallback({ code, state }) {
-    const st = verifyStateDetail(state, config.appSecret, now());
+    const st = verifyStateDetail(state, config.appSecret, now(), "fb");
     // An unverified state cannot be trusted to say "app" → bad_state always goes to the web.
     if (!st) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
     const userId = st.userId;
@@ -625,7 +652,7 @@ export function createFbRuntime(deps) {
     try {
       const got = await ex.promise;
       if (got.error) return { redirect: back(`fb=error&code=${got.error}`) };
-      const { longTok, pages, canMessage } = got;
+      const { longTok, pages, canMessage, fbUserId } = got;
 
       // Per-plan cap (Option A: fb_pages rows vs maxAccountsForPlan) — re-auth of an
       // EXISTING page is always allowed; each NEW page counts against the cap.
@@ -635,7 +662,7 @@ export function createFbRuntime(deps) {
         plan = await store.getPlan(userId);
         count = await store.countPages(userId);
       } catch (e) {
-        log(`[FB] callback read_failed user=${userId}: ${e && e.message}`);
+        log(`[FB] callback read_failed user=${userId}: ${safe(e && e.message)}`);
         return { redirect: back("fb=error&code=read_failed") };
       }
       const max = plan ? maxAccountsForPlan(plan) : Infinity;
@@ -664,6 +691,9 @@ export function createFbRuntime(deps) {
         }
         upserted++;
         keptNames.push(p.name || p.id);
+        // Who authorized it (for the Deauthorize Callback). Best effort: before sql/111 the column
+        // is missing and this fails quietly — the Page is saved either way.
+        if (fbUserId && typeof store.setPageFbUser === "function") { try { await store.setPageFbUser(userId, p.id, fbUserId); } catch { /* best effort */ } }
         if (!existing) count++;
       }
       if (upserted === 0 && limited > 0) return { redirect: back("fb=error&code=account_limit") };
@@ -676,7 +706,7 @@ export function createFbRuntime(deps) {
       // Some Pages did not fit the plan → say which (the app tells the seller; old apps ignore it).
       return { redirect: back(droppedNames.length ? `fb=connected&${partialSaveQuery(keptNames, droppedNames)}` : "fb=connected") };
     } catch (e) {
-      log(`[FB] callback error: ${e && e.message}`);
+      log(`[FB] callback error: ${safe(e && e.message)}`);
       return { redirect: back("fb=error&code=exception") };
     } finally {
       if (exchanges.get(ex.key)) exchanges.delete(ex.key); // tokens leave memory after Connect
@@ -711,7 +741,7 @@ export function createFbRuntime(deps) {
   // redirects), read the receiving account, read the Pages (shared exchange — nothing saved)
   // and answer the confirm page in the state's language. → { redirect } or { html }.
   async function confirmCallback({ code, state }) {
-    const st = verifyStateDetail(state, config.appSecret, now());
+    const st = verifyStateDetail(state, config.appSecret, now(), "fb");
     if (!st) return { redirect: `${appUrl}/?fb=error&code=bad_state` };
     const userId = st.userId;
     const back = (q) => (st.app ? `${APP_AUTH_CALLBACK}?${q}` : `${appUrl}/?${q}`);
@@ -746,7 +776,7 @@ export function createFbRuntime(deps) {
         }
         // transient (neither ok nor authFail) → leave active, retry next scan
       } catch (e) {
-        log(`[FB] revalidate error page=${p.page_id}: ${e && e.message}`);
+        log(`[FB] revalidate error page=${p.page_id}: ${safe(e && e.message)}`);
       }
     }
   }
@@ -847,7 +877,7 @@ export function createFbRuntime(deps) {
     if (res.featureGate) {
       if (!entry.featureGated) {
         entry.featureGated = true;
-        log(`[FB] comments blocked: Live Video API not approved (code 200) page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"} — page kept active, session kept alive`);
+        log(`[FB] comments blocked: Live Video API not approved (code 200) page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} subcode=${res.errorSubcode ?? "-"} msg=${safe(res.error, entry.accessToken)} — page kept active, session kept alive`);
       }
       return { hadNew: false, stop: false, backoff: true };
     }
@@ -864,7 +894,7 @@ export function createFbRuntime(deps) {
     if (res.authFail) {
       entry.authFails = (entry.authFails || 0) + 1;
       entry.reauth = true; // F4 — force a fresh token read + one retry on the next poll
-      log(`[FB] comments auth-fail page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"} (${entry.authFails}/${MAX_AUTH_FAILURES})`);
+      log(`[FB] comments auth-fail page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${safe(res.error, entry.accessToken)} (${entry.authFails}/${MAX_AUTH_FAILURES})`);
       if (entry.authFails >= MAX_AUTH_FAILURES) {
         try { await store.setActive(entry.userId, entry.pageId, false); } catch { /* best effort */ }
         return { hadNew: false, stop: true, reason: "auth" };
@@ -879,7 +909,7 @@ export function createFbRuntime(deps) {
     // as an ended live).
     if (res.hardError) {
       entry.fetchErrors = (entry.fetchErrors || 0) + 1;
-      log(`[FB] comments error page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"}${res.shapeAnomaly ? ` shape=no-data-array keys=${res.bodyKeys}` : ""} (${entry.fetchErrors}/${MAX_FETCH_ERRORS})`);
+      log(`[FB] comments error page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${safe(res.error, entry.accessToken)}${res.shapeAnomaly ? ` shape=no-data-array keys=${res.bodyKeys}` : ""} (${entry.fetchErrors}/${MAX_FETCH_ERRORS})`);
       if (entry.fetchErrors >= MAX_FETCH_ERRORS) {
         const liveStatus = await readLiveStatus(entry);
         if (liveStatus && liveStatus !== "LIVE") return { hadNew: false, stop: true, reason: "session_end" };
@@ -1020,8 +1050,7 @@ export function createFbRuntime(deps) {
   // the request URL. The message is cut to 120 chars and any copy of the token is masked.
   function logConnectCheckFailed(userId, pageId, detail, token) {
     const d = detail || {};
-    let msg = String(d.message || "").replace(/\s+/g, " ").slice(0, 120);
-    if (token) msg = msg.split(String(token)).join("[redacted]");
+    const msg = maskSecretText(d.message, token, 120);
     log(`[FB] connect check failed user=${String(userId || "").slice(0, 8)} page=${pageId} http=${d.httpStatus ?? "-"} code=${d.code ?? "-"} subcode=${d.subcode ?? "-"} type=${d.type ?? "-"} timeout=${d.timedOut === true} msg=${msg || "-"}`);
   }
 
@@ -1073,7 +1102,9 @@ export function createFbRuntime(deps) {
     // later retry runs again. Missing fields → handleCallback as before (no key).
     const formParser = makeFormParser(COMPLETE_FORM_LIMIT);
     const parseForm = (req, res, next) => formParser(req, res, (err) => { if (err) req.body = {}; next(); });
-    app.post("/fb/oauth/complete", parseForm, async (req, res) => {
+    const tooMany = (_req, res) => res.status(429).type("text/plain").send("Too many tries. Wait a minute and try again.");
+    const completeGate = makeRateGate({ max: COMPLETE_RATE_MAX, windowMs: 60 * 1000, keyOf: ipOf, onLimit: tooMany, now });
+    app.post("/fb/oauth/complete", completeGate, parseForm, async (req, res) => {
       const body = req.body && typeof req.body === "object" ? req.body : {};
       const code = typeof body.code === "string" ? body.code : "";
       const state = typeof body.state === "string" ? body.state : "";
@@ -1089,6 +1120,29 @@ export function createFbRuntime(deps) {
         completeInFlight.set(key, flight);
       }
       return res.redirect(303, await flight);
+    });
+
+    // Meta "Deauthorize Callback URL": a person removed the app in Facebook → every Page that
+    // person authorized is deleted (all sellers) and its poller stopped. Body = signed_request
+    // (form). Bad signature / shape / too old → 400 with no detail; otherwise 200 always. A
+    // signature already handled answers 200 and does nothing. Logs a count only — no ids, no token.
+    const deauthSeen = new Map(); // signature → time handled
+    const deauthGate = makeRateGate({ max: DEAUTH_RATE_MAX, windowMs: 60 * 1000, keyOf: ipOf, onLimit: (_q, r) => r.status(429).end(), now });
+    app.post("/fb/deauthorize", deauthGate, parseForm, async (req, res) => {
+      const signed = req.body && typeof req.body.signed_request === "string" ? req.body.signed_request : "";
+      const sr = parseSignedRequest(signed, config.appSecret);
+      const nowS = Math.floor(now() / 1000);
+      if (!sr || sr.issuedAt == null || sr.issuedAt < nowS - DEAUTH_MAX_AGE_S || sr.issuedAt > nowS + 300) return res.status(400).end();
+      if (deauthSeen.has(sr.sig)) return res.status(200).json({ ok: true });
+      deauthSeen.set(sr.sig, nowS);
+      while (deauthSeen.size > DEAUTH_SEEN_MAX) deauthSeen.delete(deauthSeen.keys().next().value);
+      let rows = [];
+      try { rows = (typeof store.deletePagesByFbUser === "function" ? await store.deletePagesByFbUser(sr.userId) : []) || []; }
+      catch { log("[FB] deauthorize delete failed"); }
+      const gone = new Set(rows.map((r) => `${r.user_id}|${r.page_id}`));
+      for (const [key, e] of [...pollers]) if (gone.has(`${e.userId}|${e.pageId}`)) stopPoller(key, "deauthorized");
+      log(`[FB] deauthorize pages=${rows.length}`);
+      return res.status(200).json({ ok: true });
     });
 
     // List own pages — id, name, username, active. NEVER the token column.

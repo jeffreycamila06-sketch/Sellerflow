@@ -147,10 +147,10 @@ describe("the language in the state", () => {
     const s = st("fil");
     expect(verifyStateDetail(s, KEY, NOW)).toEqual({ userId: "user-1", app: false, lang: "fil" });
     const p = s.split(".");
-    expect(verifyStateDetail([p[0], p[1], "lvi", p[3]].join("."), KEY, NOW)).toBeNull();
+    expect(verifyStateDetail([p[0], p[1], "lvi", p[3], p[4]].join("."), KEY, NOW)).toBeNull();
     const web = st().split(".");
-    expect(verifyStateDetail([web[0], web[1], "lfil", web[2]].join("."), KEY, NOW)).toBeNull();
-    expect(st("xx").split(".")).toHaveLength(3);
+    expect(verifyStateDetail([web[0], web[1], "lfil", web[2], web[3]].join("."), KEY, NOW)).toBeNull();
+    expect(st("xx").split(".")).toHaveLength(4); // user.exp.kfb.mac — no language segment
     const app = signState({ userId: "user-1", key: KEY, nowMs: NOW, app: true, lang: "zh-TW" });
     expect(verifyStateDetail(app, KEY, NOW)).toEqual({ userId: "user-1", app: true, lang: "zh-TW" });
   });

@@ -11,6 +11,7 @@
 // sold-out) at the database. Errors never touch the page row and never the poller.
 import { GRAPH_VERSION } from "./fbConfig.js";
 import { GRAPH_HOST } from "./fbLive.js";
+import { withAppSecretProof, isFbCommentId } from "./fbHardening.js";
 import { classifyReceiptAnswer, checkReceiptRate, makeSendablePage, updateSentReceipt, RECEIPT_RETRYABLE_CODES, RECEIPT_GRAPH_TIMEOUT_MS } from "./fbReceipt.js";
 
 export const SOLDOUT_RATE_MAX = 30;                 // its own bucket (separate from receipts)
@@ -52,7 +53,7 @@ export function parseSoldoutBody(body) {
   const pageId = String(body?.pageId ?? "").trim();
   const commentId = String(body?.commentId ?? "").trim();
   const code = String(body?.code ?? "").trim();
-  if (!/^\d{1,40}$/.test(pageId) || !/^[0-9_]{1,80}$/.test(commentId) || !code || code.length > 40) return null;
+  if (!/^\d{1,40}$/.test(pageId) || !isFbCommentId(commentId) || !code || code.length > 40) return null;
   const lang = SOLDOUT_LANGS.includes(String(body?.lang)) ? String(body.lang) : "en";
   const p = Number(body?.position);
   const position = Number.isInteger(p) && p >= 1 && p <= 9999 ? p : null;
@@ -62,9 +63,10 @@ export function parseSoldoutBody(body) {
 export function createFbSoldout(deps) {
   const {
     config, store, soldoutEnabled, isOwnedComment,
-    fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
+    fetchImpl: rawFetch = globalThis.fetch, now = () => Date.now(), log = () => {},
     graphTimeoutMs = RECEIPT_GRAPH_TIMEOUT_MS,
   } = deps;
+  const fetchImpl = withAppSecretProof(rawFetch, config && config.appSecret); // Build 8: appsecret_proof
   const sendablePage = makeSendablePage(store, config);
   const attempts = new Map(); // userId → timestamps (in memory)
 

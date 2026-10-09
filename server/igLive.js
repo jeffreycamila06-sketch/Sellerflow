@@ -130,13 +130,13 @@ export function createIgRuntime(deps) {
     : `${appUrl}/?ig=${status}${code ? `&code=${code}` : ""}`);
 
   function buildAuthUrl(userId, { app = false } = {}) {
-    const state = signState({ userId, key: config.appSecret, nowMs: now(), app });
+    const state = signState({ userId, key: config.appSecret, nowMs: now(), app, kind: "ig" });
     const q = new URLSearchParams({ client_id: config.appId, redirect_uri: redirectUri, state, scope: IG_OAUTH_SCOPE, response_type: "code" });
     return `${FB_DIALOG_HOST}/${GRAPH_VERSION}/dialog/oauth?${q.toString()}`;
   }
 
   async function handleCallback({ code, state }) {
-    const st = verifyStateDetail(state, config.appSecret, now());
+    const st = verifyStateDetail(state, config.appSecret, now(), "ig"); // Build 8: an Instagram state only
     if (!st) return { redirect: backTo(false)("error", "bad_state") };
     const back = backTo(st.app);
     const userId = st.userId;
@@ -178,7 +178,7 @@ export function createIgRuntime(deps) {
   }
 
   async function confirmCallback({ code, state }) {
-    const st = verifyStateDetail(state, config.appSecret, now());
+    const st = verifyStateDetail(state, config.appSecret, now(), "ig"); // Build 8: an Instagram state only
     if (!st) return { redirect: backTo(false)("error", "bad_state") };
     const back = backTo(st.app);
     if (!code) return { redirect: back("error", "missing_params") };

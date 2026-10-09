@@ -58,7 +58,7 @@ function makeStore(opts: { orders?: Order[]; rows?: Row[]; access?: boolean; pag
   return store;
 }
 const order = (over: Partial<Order> = {}): Order => ({
-  user_id: U, session_id: S, buyer_number: 3, platform: "Facebook", comment_msg_id: "c1",
+  user_id: U, session_id: S, buyer_number: 3, platform: "Facebook", comment_msg_id: "701_1",
   platform_meta: { page_id: "P1", live_video_id: "LV1" }, handle: "Maria Santos", created_at: ago(2 * H), ...over,
 });
 const graphOk = (id = "m.ABC") => vi.fn(async () => ({ status: 200, json: async () => ({ recipient_id: "R1", message_id: id }) }));
@@ -85,49 +85,49 @@ describe("access gate", () => {
 
 describe("comment + page come only from the database", () => {
   it("client-supplied comment id / page id / handle are ignored", async () => {
-    const store = makeStore({ orders: [order({ comment_msg_id: "c-db" })] });
+    const store = makeStore({ orders: [order({ comment_msg_id: "709_9" })] });
     const f = graphOk();
     const { r } = rt(store, f);
     const out = await r.send(U, body({ commentId: "evil", comment_id: "evil", pageId: "P-evil", page_id: "P-evil", handle: "x", recipient: { comment_id: "evil" } }));
     expect(out.status).toBe(200);
     const [url, init] = f.mock.calls[0] as unknown as [string, { body: string }];
     expect(url.startsWith(`https://graph.facebook.com/${GRAPH_VERSION}/P1/messages?`)).toBe(true);
-    expect(JSON.parse(init.body).recipient).toEqual({ comment_id: "c-db" });
+    expect(JSON.parse(init.body).recipient).toEqual({ comment_id: "709_9" });
     expect(store.getPage).toHaveBeenCalledWith(U, "P1");
-    expect(store.insertReceipt.mock.calls[0][0]).toMatchObject({ user_id: U, page_id: "P1", comment_id: "c-db", live_video_id: "LV1", handle: "Maria Santos", buyer_number: 3, session_id: S, status: "pending" });
+    expect(store.insertReceipt.mock.calls[0][0]).toMatchObject({ user_id: U, page_id: "P1", comment_id: "709_9", live_video_id: "LV1", handle: "Maria Santos", buyer_number: 3, session_id: S, status: "pending" });
   });
   it("other users, sessions, buyers and platforms are never candidates", async () => {
     const store = makeStore({ orders: [
-      order({ user_id: OTHER, comment_msg_id: "x1" }), order({ session_id: "99999999-2222-3333-4444-555555555555", comment_msg_id: "x2" }),
-      order({ buyer_number: 4, comment_msg_id: "x3" }), order({ platform: "TikTok", comment_msg_id: "x4" }), order({ comment_msg_id: null }),
+      order({ user_id: OTHER, comment_msg_id: "721_1" }), order({ session_id: "99999999-2222-3333-4444-555555555555", comment_msg_id: "722_2" }),
+      order({ buyer_number: 4, comment_msg_id: "723_3" }), order({ platform: "TikTok", comment_msg_id: "724_4" }), order({ comment_msg_id: null }),
     ] });
     const { r } = rt(store);
     expect(await r.send(U, body())).toEqual({ status: 409, json: { ok: false, error: "none_left" } });
     expect((await r.info(U, body())).json).toMatchObject({ canSend: false, reason: "no_orders" });
   });
   it("7-day window: the query starts at now − (7 days − 1 hour)", async () => {
-    const store = makeStore({ orders: [order({ comment_msg_id: "old", created_at: ago(7 * D - H + 60_000) }), order({ comment_msg_id: "ok", created_at: ago(6 * D) })] });
+    const store = makeStore({ orders: [order({ comment_msg_id: "731_1", created_at: ago(7 * D - H + 60_000) }), order({ comment_msg_id: "732_2", created_at: ago(6 * D) })] });
     const f = graphOk();
     const { r } = rt(store, f);
     await r.send(U, body());
     expect(store.listReceiptOrders.mock.calls[0][3]).toBe(new Date(NOW - RECEIPT_WINDOW_MS).toISOString());
     expect(RECEIPT_WINDOW_MS).toBe(7 * D - H);
-    expect(JSON.parse((f.mock.calls[0] as unknown as [string, { body: string }])[1].body).recipient.comment_id).toBe("ok");
+    expect(JSON.parse((f.mock.calls[0] as unknown as [string, { body: string }])[1].body).recipient.comment_id).toBe("732_2");
   });
 });
 
 describe("candidate order", () => {
   it("no pending/sent; < 2 failed; never-failed first, then newest", () => {
     const orders = [
-      order({ comment_msg_id: "old", created_at: ago(5 * H) }), order({ comment_msg_id: "new", created_at: ago(1 * H) }),
-      order({ comment_msg_id: "failed1", created_at: ago(0.5 * H) }), order({ comment_msg_id: "failed2", created_at: ago(0.2 * H) }),
-      order({ comment_msg_id: "sent", created_at: ago(0.1 * H) }), order({ comment_msg_id: "pending", created_at: ago(0.1 * H) }),
+      order({ comment_msg_id: "731_1", created_at: ago(5 * H) }), order({ comment_msg_id: "733_3", created_at: ago(1 * H) }),
+      order({ comment_msg_id: "741_1", created_at: ago(0.5 * H) }), order({ comment_msg_id: "742_2", created_at: ago(0.2 * H) }),
+      order({ comment_msg_id: "751_1", created_at: ago(0.1 * H) }), order({ comment_msg_id: "752_2", created_at: ago(0.1 * H) }),
     ];
     const rows = [
-      { comment_id: "failed1", status: "failed" }, { comment_id: "failed2", status: "failed" }, { comment_id: "failed2", status: "failed" },
-      { comment_id: "sent", status: "sent" }, { comment_id: "pending", status: "pending" },
+      { comment_id: "741_1", status: "failed" }, { comment_id: "742_2", status: "failed" }, { comment_id: "742_2", status: "failed" },
+      { comment_id: "751_1", status: "sent" }, { comment_id: "752_2", status: "pending" },
     ];
-    expect(pickReceiptCandidates(orders, rows).map((c: { commentId: string }) => c.commentId)).toEqual(["new", "old", "failed1"]);
+    expect(pickReceiptCandidates(orders, rows).map((c: { commentId: string }) => c.commentId)).toEqual(["733_3", "731_1", "741_1"]);
   });
 });
 
@@ -142,13 +142,13 @@ describe("one live message per comment", () => {
     expect(store.rows.filter((x) => x.status !== "failed")).toHaveLength(1);
   });
   it("a sent comment is never used again; the next send takes the next comment", async () => {
-    const store = makeStore({ orders: [order({ comment_msg_id: "c1", created_at: ago(1 * H) }), order({ comment_msg_id: "c2", created_at: ago(2 * H) })] });
+    const store = makeStore({ orders: [order({ comment_msg_id: "701_1", created_at: ago(1 * H) }), order({ comment_msg_id: "702_2", created_at: ago(2 * H) })] });
     const f = graphOk();
     const { r } = rt(store, f);
     expect((await r.send(U, body())).json).toMatchObject({ ok: true, sentCount: 1, remaining: 1 });
     expect((await r.send(U, body())).json).toMatchObject({ ok: true, sentCount: 2, remaining: 0 });
     expect((await r.send(U, body())).json).toEqual({ ok: false, error: "none_left" });
-    expect(f.mock.calls.map((c) => JSON.parse((c as unknown as [string, { body: string }])[1].body).recipient.comment_id)).toEqual(["c1", "c2"]);
+    expect(f.mock.calls.map((c) => JSON.parse((c as unknown as [string, { body: string }])[1].body).recipient.comment_id)).toEqual(["701_1", "702_2"]);
     expect(store.rows.map((x) => x.status)).toEqual(["sent", "sent"]);
   });
 });
@@ -227,7 +227,7 @@ describe("Graph error / unknown result", () => {
     const { r } = rt(store, f);
     for (let i = 0; i < 3; i++) {
       expect((await r.send(U, body())).json).toEqual({ ok: false, error: "upload_failed" });
-      expect(pickReceiptCandidates([order()], store.rows).map((c: { commentId: string }) => c.commentId)).toEqual(["c1"]);
+      expect(pickReceiptCandidates([order()], store.rows).map((c: { commentId: string }) => c.commentId)).toEqual(["701_1"]);
     }
     expect(f).not.toHaveBeenCalled();
     expect((await r.send(U, body())).json).toMatchObject({ ok: true, sentCount: 1 });
@@ -254,12 +254,12 @@ describe("the verified request shape", () => {
     const [url, init] = f.mock.calls[0] as unknown as [string, { method: string; headers: Record<string, string>; body: string }];
     const u = new URL(url);
     expect(`${u.origin}${u.pathname}`).toBe(`https://graph.facebook.com/${GRAPH_VERSION}/P1/messages`);
-    expect([...u.searchParams.keys()]).toEqual(["access_token"]);
+    expect([...u.searchParams.keys()]).toEqual(["access_token", "appsecret_proof"]); // Build 8: the proof rides along
     expect(u.searchParams.get("access_token")).toBe(PAGE_TOKEN);
     expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/json");
     const sent = JSON.parse(init.body);
-    expect(sent).toEqual({ recipient: { comment_id: "c1" }, message: { attachment: { type: "image", payload: { url: `https://cdn.test/storage/v1/object/public/fb-receipts/${store.uploads[0].path}` } } } });
+    expect(sent).toEqual({ recipient: { comment_id: "701_1" }, message: { attachment: { type: "image", payload: { url: `https://cdn.test/storage/v1/object/public/fb-receipts/${store.uploads[0].path}` } } } });
     expect(store.uploads[0].path).toMatch(/^[0-9a-f]{64}\.png$/);
     expect(buildReceiptRequest({ pageId: "P1", commentId: "c", imageUrl: "u", pageToken: "t" }).body).toEqual({ recipient: { comment_id: "c" }, message: { attachment: { type: "image", payload: { url: "u" } } } });
   });
@@ -309,7 +309,7 @@ describe("routes: middleware order, body limit, rate limit", () => {
     expect(send[1]).toBe(r.sendAccessGate);
     expect(send[2]).toBe(r.sendRateLimit);
     expect((send[3] as { limit: string }).limit).toBe("6mb");
-    expect(routes["/fb/receipt/info"]).toHaveLength(2);
+    expect(routes["/fb/receipt/info"]).toHaveLength(3); // Build 8: auth → per-seller rate gate → handler
     expect(routes["/fb/receipt/info"][0]).toBe(requireAuth);
   });
   it("no-access account → 403 at the gate: the parser never runs and no rate-limit entry is made", async () => {

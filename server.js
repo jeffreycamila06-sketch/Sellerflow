@@ -31,6 +31,7 @@ import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
+import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 
 const app = express();
@@ -2252,6 +2253,18 @@ try {
       async updateExpiry(userId, pageId, iso) {
         await serviceSb.from("fb_pages").update({ token_expires_at: iso, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("page_id", String(pageId));
       },
+      // Build 8 (sql/111 fb_pages.fb_user_id): who authorized the Page. Throws on error; the OAuth
+      // callback ignores it (before sql/111 the column is missing and the Page is saved anyway).
+      async setPageFbUser(userId, pageId, fbUserId) {
+        const { error } = await serviceSb.from("fb_pages").update({ fb_user_id: String(fbUserId) }).eq("user_id", userId).eq("page_id", String(pageId));
+        if (error) throw new Error("fb_user_save_failed");
+      },
+      // Meta Deauthorize Callback: delete every Page this Facebook user authorized (any seller).
+      async deletePagesByFbUser(fbUserId) {
+        const { data, error } = await serviceSb.from("fb_pages").delete().eq("fb_user_id", String(fbUserId)).select("user_id,page_id");
+        if (error) throw new Error("fb_deauth_failed");
+        return data || [];
+      },
     };
     // fb_stop_reasons (sql/104): read like fb_enabled (service role, cached 60 s); off on any error.
     const fbStopReasonsFlag = createFbFlagReader({
@@ -2365,6 +2378,7 @@ try {
     try {
       if (fbReceiptApi) autoReceiptRunner = createAutoReceiptRunner({
         store, flag: autoReceiptFlag, hasAccess: (uid) => store.hasReceiptAccess(uid),
+        fetchImpl: withAppSecretProof(globalThis.fetch, fbCfg.appSecret), // Build 8: the preflight GET too
         receipt: fbReceiptApi, log: (line) => console.log(line),
       });
     } catch {

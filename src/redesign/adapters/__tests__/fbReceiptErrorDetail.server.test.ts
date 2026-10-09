@@ -22,7 +22,7 @@ function makeStore(o: { missingColumn?: "error" | "throw"; deleteOk?: boolean } 
   const store = {
     rows, updates,
     hasReceiptAccess: async () => true,
-    listReceiptOrders: async () => [{ user_id: U, session_id: S, buyer_number: 3, platform: "Facebook", comment_msg_id: "c1", platform_meta: { page_id: "P1", live_video_id: "LV1", commenter_id: "COMMENTER-ID-9" }, handle: "Secret Buyer", created_at: new Date(NOW - 3600_000).toISOString() }],
+    listReceiptOrders: async () => [{ user_id: U, session_id: S, buyer_number: 3, platform: "Facebook", comment_msg_id: "701_1", platform_meta: { page_id: "P1", live_video_id: "LV1", commenter_id: "COMMENTER-ID-9" }, handle: "Secret Buyer", created_at: new Date(NOW - 3600_000).toISOString() }],
     listReceiptRows: async (ids: string[]) => rows.filter((r) => ids.includes(String(r.comment_id))),
     insertReceipt: async (row: Record<string, unknown>) => { const r = { ...row, id: 100 + rows.length }; rows.push(r); return { id: r.id }; },
     updateReceipt: vi.fn(async (id: number, patch: Record<string, unknown>) => {

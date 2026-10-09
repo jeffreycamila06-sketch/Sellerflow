@@ -59,7 +59,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
     // Only lines with an item (after trim) are on the picture and in the total; the picture numbers
     // them 1..n with no gaps. Preview and the sent picture both use this same input.
     lines: shownLines.map((l) => ({ item: l.item.trim(), total: Number(l.price) > 0 ? Number(l.price) : 0 })),
-    labels: { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc },
+    labels: { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more },
   };
   const picture = useReceiptPicture(pictureInput);
 

@@ -57,15 +57,15 @@ describe("phone/server layout parity", () => {
 });
 
 describe("labels", () => {
-  it("equal the app's rd_rc_pic_total / rd_rc_pic_tbc in every language", () => {
+  it("equal the app's rd_rc_pic_total / rd_rc_pic_tbc / rd_rc_pic_more in every language", () => {
     const src = readFileSync(new URL("../../i18n/index.tsx", import.meta.url), "utf8");
     const parse = (key: string) => {
       const line = src.split("\n").find((l) => l.trimStart().startsWith(`${key}:`))!;
       return Object.fromEntries([...line.matchAll(/(?:"([\w-]+)"|(\w+)): "([^"]*)"/g)].map((m) => [m[1] || m[2], m[3]]));
     };
-    const total = parse("rd_rc_pic_total"), tbc = parse("rd_rc_pic_tbc");
+    const total = parse("rd_rc_pic_total"), tbc = parse("rd_rc_pic_tbc"), more = parse("rd_rc_pic_more");
     expect(Object.keys(RECEIPT_LABELS).sort()).toEqual(Object.keys(total).sort());
-    for (const lang of Object.keys(total)) expect(RECEIPT_LABELS[lang as keyof typeof RECEIPT_LABELS]).toEqual({ total: total[lang], toBeConfirmed: tbc[lang] });
+    for (const lang of Object.keys(total)) expect(RECEIPT_LABELS[lang as keyof typeof RECEIPT_LABELS]).toEqual({ total: total[lang], toBeConfirmed: tbc[lang], more: more[lang] });
   });
 });
 

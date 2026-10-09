@@ -121,12 +121,17 @@ export function createAutoReceiptRunner(deps) {
         return finish(job, "due", counts(c, buyers.length - i), { due_at: iso(t + AUTO_RECEIPT_RATE_WINDOW_MS), attempts: Math.max(0, (Number(job.attempts) || 1) - 1) });
       }
       let out;
+      let drawFail = ""; // Build 8: a picture that cannot be drawn (too big, bad QR, no canvas) → skip this buyer, logged
+      const makePng = async () => {
+        try { return await draw(b.rows, g.settings); }
+        catch (e) { drawFail = String((e && e.message) || "draw_failed").replace(/[^a-z_]/gi, "").slice(0, 40) || "draw_failed"; throw e; }
+      };
       try {
-        out = await receipt.autoSend(job.user_id, { sessionId: b.sessionId, buyerNumber: b.buyerNumber },
-          () => draw(b.rows, g.settings), preflight);
+        out = await receipt.autoSend(job.user_id, { sessionId: b.sessionId, buyerNumber: b.buyerNumber }, makePng, preflight);
       } catch {
-        out = { status: 500, json: { ok: false, error: "draw_or_send_failed" } };
+        out = drawFail ? { status: 200, json: { ok: false, skipped: `draw_${drawFail}` } } : { status: 500, json: { ok: false, error: "draw_or_send_failed" } };
       }
+      if (drawFail) log(`[AUTO-RECEIPT] skip user=${short(job.user_id)} buyer=#${b.buyerNumber} reason=${drawFail}`);
       const kind = outcome(out);
       if (kind === "skipped" || kind === "none") { rate.set(job.user_id, r.kept.slice(0, -1)); c.skipped++; continue; }
       rate.set(job.user_id, r.kept);

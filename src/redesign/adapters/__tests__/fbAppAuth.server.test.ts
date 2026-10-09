@@ -18,25 +18,26 @@ const NOW = 1_000_000;
 const mkRes = (status: number, body: unknown) => ({ status, json: async () => body });
 
 describe("state: app mode inside the signature", () => {
-  it("web state is byte-identical to the old 3-part format", () => {
+  it("web state = user.exp.kfb.<mac> (Build 8 adds the app-kind segment inside the signature)", () => {
     const s = signState({ userId: "user-1", key: KEY, nowMs: NOW });
-    const body = `${Buffer.from("user-1").toString("base64url")}.${NOW + 10 * 60 * 1000}`;
+    const body = `${Buffer.from("user-1").toString("base64url")}.${NOW + 10 * 60 * 1000}.kfb`;
     expect(s).toBe(`${body}.${createHmac("sha256", KEY).update(body).digest("hex")}`);
     expect(verifyStateDetail(s, KEY, NOW)).toEqual({ userId: "user-1", app: false });
   });
-  it("app state = 4 parts ending in .a.<mac>; verifies as app; verifyState still returns the user id", () => {
+  it("app state = user.exp.a.kfb.<mac>; verifies as app; verifyState still returns the user id", () => {
     const s = signState({ userId: "user-1", key: KEY, nowMs: NOW, app: true });
-    expect(s.split(".")).toHaveLength(4);
+    expect(s.split(".")).toHaveLength(5);
     expect(s.split(".")[2]).toBe("a");
+    expect(s.split(".")[3]).toBe("kfb");
     expect(verifyStateDetail(s, KEY, NOW)).toEqual({ userId: "user-1", app: true });
     expect(verifyState(s, KEY, NOW)).toBe("user-1");
   });
   it("the mode cannot be flipped: adding or removing .a breaks the signature; other 4th segments are refused", () => {
     const web = signState({ userId: "user-1", key: KEY, nowMs: NOW }).split(".");
-    expect(verifyStateDetail([web[0], web[1], "a", web[2]].join("."), KEY, NOW)).toBeNull();
+    expect(verifyStateDetail([web[0], web[1], "a", web[2], web[3]].join("."), KEY, NOW)).toBeNull();
     const app = signState({ userId: "user-1", key: KEY, nowMs: NOW, app: true }).split(".");
-    expect(verifyStateDetail([app[0], app[1], app[3]].join("."), KEY, NOW)).toBeNull();
-    expect(verifyStateDetail([app[0], app[1], "b", app[3]].join("."), KEY, NOW)).toBeNull();
+    expect(verifyStateDetail([app[0], app[1], app[3], app[4]].join("."), KEY, NOW)).toBeNull();
+    expect(verifyStateDetail([app[0], app[1], "b", app[3], app[4]].join("."), KEY, NOW)).toBeNull();
     expect(verifyStateDetail(signState({ userId: "user-1", key: KEY, nowMs: NOW, app: true }), KEY, NOW + 10 * 60 * 1000 + 1)).toBeNull(); // expiry unchanged
   });
 });

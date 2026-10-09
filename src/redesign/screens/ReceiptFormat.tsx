@@ -57,7 +57,7 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
     return () => { alive = false; };
   }, []);
 
-  const picture = useReceiptPicture(status === "loading" ? null : sampleReceiptInput(s, cur, t.rd_rc_sample_buyer, { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc }));
+  const picture = useReceiptPicture(status === "loading" ? null : sampleReceiptInput(s, cur, t.rd_rc_sample_buyer, { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more }));
 
   const pickQr = async (f: File | undefined) => {
     if (!f) return;
