@@ -24,7 +24,7 @@ const input: CSSProperties = { flex: 1, minWidth: 0, border: "none", background:
 const inputWrap = (invalid: boolean): CSSProperties => ({ flex: 1, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${invalid ? "var(--warn)" : "var(--border-strong)"}`, borderRadius: 12, background: "var(--surface-2)", padding: "0 13px" });
 const badge = (locked: boolean): CSSProperties => ({ display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, background: locked ? "var(--surface-3)" : "var(--accent-soft)", color: locked ? "var(--text-muted)" : "var(--accent-fg)", fontSize: 12, fontWeight: 800, letterSpacing: ".04em", flexShrink: 0 });
 
-export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages, onInstagram, fbActivationOnly = false }: {
+export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages, onInstagram, fbActivationOnly = false, fbSwitchesLoading = false }: {
   platform: "tiktok" | "facebook";
   account?: AccountUser | null;
   onBack: () => void;
@@ -46,6 +46,10 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   // activation notice + Telegram link (the Live chip's), no name slots — nothing is saved, no
   // plan slot is used and no 4-hour lock starts. Absent/false → today's screen.
   fbActivationOnly?: boolean;
+  // Build 12 (Fix A): the app's feature switches are still loading. The Facebook screen then
+  // shows only a loading line — never the old "Facebook page 1" boxes that the switches may be
+  // about to hide. TikTok screen: ignored. Absent/false → today's screen.
+  fbSwitchesLoading?: boolean;
 }) {
   const t = useT();
   // Editor state + save/cooldown logic = the shared hook (single source; see its header).
@@ -62,6 +66,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   // Build 11 (M4): Facebook Pages are on → the old "Facebook page 1" name boxes, their note and the
   // multi-account button do nothing for this seller; only the "Manage Facebook pages" button stays.
   const fbPagesOnly = !isTT && fbPagesEnabled && !!onFbPages;
+  const fbLoading = !isTT && fbSwitchesLoading; // Build 12 (Fix A)
 
   return (
     <div>
@@ -74,7 +79,9 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
       </div>
 
       <div style={{ padding: "16px 14px 24px" }}>
-        {fbLocked ? (
+        {fbLoading ? (
+          <div data-testid="mc-fb-loading" style={{ fontSize: 13, color: "var(--text-muted)", padding: "6px 2px" }}>{t.rd_loading}</div>
+        ) : fbLocked ? (
           <div data-testid="mc-fb-activation" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", boxShadow: "var(--shadow)" }}>
             <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 12 }}>{t.rd_dash_fb_activation}</div>
             <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" data-testid="mc-fb-telegram" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 0", background: "#0088cc", color: "#fff", borderRadius: 11, fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 800, textDecoration: "none" }}>{t.rd_dash_fb_contact}</a>
@@ -147,7 +154,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
         {/* F-P3 — Facebook Pages section (fbEnabled-gated). Separate live source with its
             own authorize/remove OAuth screen; NOT part of the tiktok/facebook cap.
             Facebook screen only — never on the TikTok screen. */}
-        {platform === "facebook" && fbPagesEnabled && onFbPages && (
+        {platform === "facebook" && fbPagesEnabled && onFbPages && !fbLoading && (
           <button onClick={onFbPages} style={{ width: "100%", marginTop: 12, padding: "14px 15px", border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface)", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "var(--shadow)" }}>
             <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", flexShrink: 0 }}>f</span>
             <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_fb_channels_title}</span><span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{t.rd_fb_section_sub}</span></span>
