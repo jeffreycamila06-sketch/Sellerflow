@@ -1,0 +1,11 @@
+{
+  "name": "sellerflow-smoke-robot",
+  "private": true,
+  "description": "Smoke robot: clicks through the real production app as one test seller (docs/smoke-robot.md).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
