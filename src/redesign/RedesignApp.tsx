@@ -2462,6 +2462,7 @@ export default function RedesignApp() {
               shopeeEnabled={shopeeEnabled} onShopee={() => { setChanBack("settings"); setScreen("shopeechannels"); }}
               fbPagesEnabled={fbEnabled} onFbPages={() => { setChanBack("settings"); setScreen("fbpages"); }}
               fbActivationOnly={featureSw.fbPolishV2 && !fbEnabled}
+              fbSwitchesLoading={!featureSwReady}
               {...(igEnabled ? { onInstagram: () => { setChanBack("settings"); setScreen("igaccounts"); } } : {})} />
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
