@@ -59,6 +59,15 @@ import ParcelScan from "../ParcelScan";
 
 const view = (checkOn = true) => render(<TProvider lang="en"><ParcelScan cur="NT$" checkOn={checkOn} /></TProvider>);
 
+// The Saved list arrives only when loadParcelScans resolves; until then the Export button
+// is rendered DISABLED ("Export 0 parcel(s)") and a tap on it does nothing (no dialog). Wait
+// for it to be enabled before tapping — under CI load the old findBy+click raced the load.
+const tapExport = async (findByTestId: (id: string) => Promise<HTMLElement>) => {
+  const b = await findByTestId("ps-export-btn");
+  await waitFor(() => expect((b as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(b);
+};
+
 beforeEach(() => { deliverXlsm.mockClear(); markScansExported.mockClear(); });
 
 describe("Parcel Scan — export-time guard for parcels still being checked", () => {
@@ -69,7 +78,7 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
       row("r3", { phoneCheckStatus: "ok", storeFullStatus: "open" }),
     ] });
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     const msg = getByTestId("ps-pending-msg");
     expect(msg.textContent).toContain("2 parcel(s) are still being checked");
     expect(getByTestId("ps-confirm-cancel").textContent).toBe("Wait");
@@ -86,7 +95,7 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
       row("r2", { phoneCheckStatus: "restricted", storeFullStatus: "full" }),
     ] });
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     expect(queryByTestId("ps-pending-msg")).toBeNull();
     expect(getByTestId("ps-confirm-export")).toBeTruthy();
   });
@@ -97,7 +106,7 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
       row("r2", { phoneCheckStatus: "ok", storeFullStatus: "open" }),
     ] });
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     expect(getByTestId("ps-pending-msg").textContent).toContain("1 parcel(s)");
     fireEvent.click(getByTestId("ps-confirm-export-anyway"));
     expect(queryByTestId("ps-pending-msg")).toBeNull();
@@ -115,7 +124,7 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
       row("r4", { phoneCheckStatus: "ok", storeFullStatus: "open" }),
     ] });
     const { findByTestId, getByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     expect(getByTestId("ps-pending-msg").textContent).toContain("3 parcel(s)");
   });
 
@@ -125,7 +134,7 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
       row("r2", { phoneCheckStatus: "ok", storeFullStatus: "open" }),
     ] });
     const { findByTestId, getByTestId, queryByTestId } = view();
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     expect(queryByTestId("ps-pending-msg")).toBeNull();
     expect(getByTestId("ps-confirm-export")).toBeTruthy();
   });
@@ -133,7 +142,7 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
   it("checks feature OFF (all-null rows are normal there) → never asks", async () => {
     loadParcelScans.mockResolvedValue({ ok: true, rows: [row("r1", { phoneCheckStatus: null, storeFullStatus: null })] });
     const { findByTestId, getByTestId, queryByTestId } = view(false);
-    fireEvent.click(await findByTestId("ps-export-btn"));
+    await tapExport(findByTestId);
     expect(queryByTestId("ps-pending-msg")).toBeNull();
     expect(getByTestId("ps-confirm-export")).toBeTruthy();
   });

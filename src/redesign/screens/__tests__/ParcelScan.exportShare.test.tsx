@@ -68,7 +68,9 @@ afterEach(() => { try { delete win.Capacitor; } catch { /* ignore */ } });
 const openExportDialog = async (u: ReturnType<typeof view>) => {
   fireEvent.click(await u.findByTestId("ps-export-switch-toggle"));
   fireEvent.click(await u.findByTestId("ps-confirm-enablephone"));
-  fireEvent.click(await u.findByTestId("ps-export-btn")); // askExport → prebuild + dialog
+  const b = await u.findByTestId("ps-export-btn");
+  await waitFor(() => expect((b as HTMLButtonElement).disabled).toBe(false)); // the Saved list has arrived (a tap before that is a no-op)
+  fireEvent.click(b); // askExport → prebuild + dialog
 };
 
 describe("Parcel Scan — mobile export delivery (Option B)", () => {
