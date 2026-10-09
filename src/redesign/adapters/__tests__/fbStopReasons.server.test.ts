@@ -92,7 +92,7 @@ describe("5-minute live check", () => {
     const src = readFileSync("server/fbLive.js", "utf8");
     const poll = src.slice(src.indexOf("async function pollOnce("), src.indexOf("function scheduleNext("));
     expect(poll.indexOf("if (!idleCheckDue && nowMs - (entry.liveCheckedAtMs || entry.startedAtMs) >= LIVE_RECHECK_MS")).toBeGreaterThan(poll.indexOf("if (idleDue && nowMs >= (entry.idleRecheckAtMs || 0)) {"));
-    expect(poll.indexOf("LIVE_RECHECK_MS")).toBeLessThan(poll.indexOf("res = await fetchComments("));
+    expect(poll.indexOf("LIVE_RECHECK_MS")).toBeLessThan(poll.indexOf("res = await fetchCommentPages(")); // Build 3: the comments call is the paged variant
   });
 });
 

@@ -51,6 +51,7 @@ export const POLL_ACTIVE_MS = 2000;   // cadence while comments are flowing
 export const POLL_QUIET_MS = 5000;    // cadence when a poll returned nothing new
 export const POLL_RATE_LIMIT_MS = 30 * 1000; // wait after a rate-limited comments poll
 export const COMMENTS_PAGE_LIMIT = 100; // comments per poll request
+export const MAX_COMMENT_PAGES = 3;     // fb_comment_paging: extra pages per tick at most (<= 400 comments)
 export const GRAPH_TIMEOUT_MS = 10 * 1000; // every Graph GET gives up after this
 export const MAX_AUTH_FAILURES = 3;   // consecutive auth failures → mark inactive + stop
 export const MAX_FETCH_ERRORS = 3;    // consecutive hard comments-fetch errors → confirm-via-live-status then stop (fetch_error, NOT a session_end guess)
@@ -64,7 +65,7 @@ export const IDLE_RECHECK_MS = 60 * 1000;   // unreadable live status at the idl
 export const MAX_IDLE_UNREADABLE = 3;       // unreadable checks in a row at the idle limit → stop(idle)
 export const MAX_SESSION_MS = 12 * 60 * 60 * 1000; // F2: hard ceiling
 export const TOKEN_REREAD_MARGIN_MS = 10 * 60 * 1000; // F4: re-read the cached token this long before it expires
-export const EMITTED_CAP = 500;       // per-poller bounded set of emitted comment ids
+export const EMITTED_CAP = 1000;      // per-poller bounded set of emitted comment ids (fb_comment_paging: a 400-comment tick must stay inside it)
 export const LONG_LIVED_USER_TTL_SEC = 60 * 24 * 60 * 60; // ~60d default when expires_in absent
 export const FB_AUTH_ERROR_CODE = 190; // Graph OAuthException (invalid/expired/revoked token)
 // Graph "(#200) Missing Permissions" on the live-comments edge = a FEATURE GATE (the app's
@@ -386,9 +387,14 @@ export async function fetchVideoLiveStatus({ fetchImpl, videoId, pageToken }) {
 // session_end (poller died seconds after connect). Returns the raw error detail; the
 // caller (pollOnce) decides retry-vs-ended — this NEVER self-declares ended.
 export async function fetchComments({ config, fetchImpl, liveVideoId, pageToken }) {
+  return (await fetchCommentsPage({ config, fetchImpl, liveVideoId, pageToken })).result;
+}
+// One page: the result above plus the raw body (for the next-page cursor). after = a cursor.
+async function fetchCommentsPage({ config, fetchImpl, liveVideoId, pageToken, after }) {
   void config;
   const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${liveVideoId}/comments`, {
-    fields: "id,message,from{id,name,picture},created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", limit: COMMENTS_PAGE_LIMIT, access_token: pageToken,
+    fields: "id,message,from{id,name,picture},created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", limit: COMMENTS_PAGE_LIMIT,
+    ...(after ? { after } : {}), access_token: pageToken,
   }) });
   const hasData = Array.isArray(body.data);
   const list = hasData ? body.data : [];
@@ -398,11 +404,70 @@ export async function fetchComments({ config, fetchImpl, liveVideoId, pageToken 
   // as a hard error so it is logged (bodyKeys) and retried, never mistaken for an empty feed.
   const shapeAnomaly = status === 200 && !(cls.code > 0) && !hasData;
   const hardError = status !== 200 || cls.code > 0 || shapeAnomaly; // non-2xx, Graph error body, or bad shape
-  return {
+  return { body, result: {
     status, list, authFail: cls.authFail, featureGate: cls.featureGate, rateLimited: cls.rateLimited, hardError, shapeAnomaly,
     errorCode: cls.code || null, errorSubcode: cls.subcode, error: cls.message,
     bodyKeys: Object.keys(body || {}).join(",") || "(empty)", // key NAMES only — never values (token-free)
-  };
+  } };
+}
+
+// The next-page cursor of a comments answer: paging.cursors.after, else the `after` of paging.next.
+export function nextCommentsCursor(body) {
+  const p = body && typeof body === "object" ? body.paging : null;
+  if (!p || typeof p !== "object") return "";
+  if (p.cursors && typeof p.cursors.after === "string" && p.cursors.after) return p.cursors.after;
+  if (typeof p.next === "string") { try { return new URL(p.next).searchParams.get("after") || ""; } catch { return ""; } }
+  return "";
+}
+
+// fb_comment_paging — the comments of one tick, following older pages while a code drop
+// outruns the poll. The FIRST page is fetched and classified exactly like fetchComments (its
+// result is what pollOnce acts on, unchanged). More pages are read only when (a) that first page
+// is clean, FULL, ALL unseen and has a cursor (a new drop), or (b) the previous tick stopped at
+// the page cap and left a cursor in state.pagingAfter (the rest of that drop). Then the switch is
+// asked (allowMore) and up to maxPages more pages are read, each next one only while the page
+// before it was full, all unseen and had a cursor. A failed follow-up page keeps what was fetched
+// and stops (one token-free log line; that page is tried again next tick). Pages are appended
+// newest → oldest, so the caller's pickNewComments(...).reverse() still emits oldest → newest.
+// A follow-up page never throws.
+export async function fetchCommentPages({ config, fetchImpl, liveVideoId, pageToken, emitted, allowMore, state = null, maxPages = MAX_COMMENT_PAGES, log = () => {}, pageId = "" }) {
+  const first = await fetchCommentsPage({ config, fetchImpl, liveVideoId, pageToken });
+  const r = first.result;
+  if (r.hardError || r.authFail || r.featureGate || r.rateLimited || typeof allowMore !== "function") return r;
+  const unseen = (list) => list.every((c) => !emitted.has(commentIdOf(c)));
+  const wantsMore = (list, body) => list.length === COMMENTS_PAGE_LIMIT && unseen(list) && !!nextCommentsCursor(body);
+  const fresh = wantsMore(r.list, first.body);
+  const backlog = state && typeof state.pagingAfter === "string" ? state.pagingAfter : "";
+  if (!fresh && !backlog) return r;
+  let on = false;
+  try { on = (await allowMore()) === true; } catch { on = false; }
+  if (!on) { if (state) state.pagingAfter = ""; return r; }
+  const list = [...r.list];
+  let after = fresh ? nextCommentsCursor(first.body) : backlog;
+  let left = "";                                 // a cursor still to read on a later tick
+  for (let n = 1; n <= maxPages; n++) {
+    let page;
+    try { page = await fetchCommentsPage({ config, fetchImpl, liveVideoId, pageToken, after }); }
+    catch (e) {
+      log(`[FB] comments page ${n + 1} failed page=${pageId} lv=${liveVideoId} error=${e && e.message === "graph_timeout" ? "timeout" : "network"} — keeping ${list.length} comments`);
+      left = after;
+      break;
+    }
+    const pr = page.result;
+    if (pr.hardError || pr.authFail || pr.featureGate || pr.rateLimited) {
+      log(`[FB] comments page ${n + 1} failed page=${pageId} lv=${liveVideoId} http=${pr.status} code=${pr.errorCode ?? "-"} — keeping ${list.length} comments`);
+      left = after;
+      break;
+    }
+    list.push(...pr.list);
+    if (!wantsMore(pr.list, page.body)) { left = ""; break; } // not full / reached known comments / no cursor
+    after = nextCommentsCursor(page.body);
+    left = after;                                             // the cap may end the loop here
+  }
+  // A new drop that finished keeps the older backlog for the next tick; a drop that hit the cap
+  // (or failed) replaces it with its own cursor.
+  if (state) state.pagingAfter = left || (fresh ? backlog : "");
+  return { ...r, list };
 }
 // Lightweight re-validation of a page token (the refresh-timer path, see the deviation
 // note above). Returns { ok, authFail }. A valid token → ok. A 190 → authFail (revoked).
@@ -440,6 +505,8 @@ export function createFbRuntime(deps) {
     // fb_stop_reasons switch (server.js: cached app_settings read). OFF / missing → no extra
     // Graph call and no extra auto-receipt job; the stop reason is sent on the status either way.
     stopReasonsEnabled = async () => false,
+    // fb_comment_paging switch (server.js: cached app_settings read). OFF / missing: one page per tick.
+    commentPagingEnabled = async () => false,
     renderUrl, appUrl = APP_REDIRECT_URL,
     fetchImpl = globalThis.fetch, now = () => Date.now(), log = () => {},
     makeFormParser = (limit) => express.urlencoded({ extended: false, limit }),
@@ -605,6 +672,7 @@ export function createFbRuntime(deps) {
 
   // The switch read never throws (a failed read = off).
   const isStopReasonsOn = async () => { try { return (await stopReasonsEnabled()) === true; } catch { return false; } };
+  const isCommentPagingOn = async () => { try { return (await commentPagingEnabled()) === true; } catch { return false; } };
 
   // ---- Poller ----
   // The one thing the two modes do differently: where "is it still LIVE?" is read.
@@ -671,7 +739,12 @@ export function createFbRuntime(deps) {
 
     let res;
     try {
-      res = await fetchComments({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
+      // fb_comment_paging - the first page exactly as before; older pages only when that page is
+      // full and all new (a code drop) and the switch is on. Never on the first poll after Connect.
+      res = await fetchCommentPages({
+        config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken,
+        emitted: entry.emitted, allowMore: entry.firstPollDone ? isCommentPagingOn : null, state: entry, log, pageId: entry.pageId,
+      });
     } catch { return { hadNew: false, stop: false }; } // transient network / timeout → keep looping
     if (entry.stopped) return { hadNew: false, stop: false }; // stopped while the request was out: emit nothing
 
