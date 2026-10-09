@@ -46,20 +46,21 @@ describe("sessionEndedIdle", () => {
 });
 
 describe("Dashboard session pill + board", () => {
-  it("ended + not connected → 'Session ended' pill, zero summary, the Connect note — no old session shown", () => {
+  // Build 13 (Jeff): ended + not connected → NO summary card at all (no "TODAY", no gray
+  // "Session ended" card). The header pill stays.
+  it("ended + not connected → 'Session ended' pill, NO summary card — no old session shown", () => {
     const v = dash({ sessionEnded: true, sessionEndedIdle: true, session: EMPTY, sessionState: "empty" });
     expect(v.getByTestId("session-ended").textContent).toBe("Session ended");
     expect(v.queryByTestId("session-ends")).toBeNull();
     expect(v.queryByTestId("session-continues")).toBeNull();
-    const card = v.getByTestId("session-ended-empty");
-    expect(card.textContent).toContain("0 buyers · 0 orders");
-    expect(card.textContent).toContain("NT$0");
-    expect(card.textContent).toContain("Session ended. Tap Connect to start a new one.");
+    expect(v.queryByTestId("session-ended-empty")).toBeNull();
+    expect(v.queryByText("TODAY")).toBeNull();
     expect(v.container.textContent).not.toContain("700");
   });
-  it("Filipino note is the requested wording", () => {
-    const v = render(<TProvider lang="fil"><Dashboard {...baseProps} sessionEndsAt="x" sessionEnded sessionEndedIdle session={EMPTY} /></TProvider>);
-    expect(v.getByTestId("session-ended-empty").textContent).toContain("Tapos na ang session. Tap Connect para magsimula ng bago.");
+  it("no summary card in Filipino either", () => {
+    const v = render(<TProvider lang="fil"><Dashboard {...baseProps} sessionEndsAt="x" sessionEnded sessionEndedIdle session={OLD} /></TProvider>);
+    expect(v.queryByTestId("session-ended-empty")).toBeNull();
+    expect(v.queryByText("NGAYON")).toBeNull();
   });
   it("ended WHILE connected → unchanged: 'Session continues…' and the board stays", () => {
     const v = dash({ ttConnected: true, sessionEnded: true, sessionEndedIdle: false, session: OLD, sessionState: "live" });
@@ -85,9 +86,10 @@ describe("Dashboard session pill + board", () => {
 
 describe("RedesignApp wiring (display-only, no order writes)", () => {
   const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-  it("idle-ended = server ended flag AND no live connection; the dashboard gets an empty session", () => {
-    expect(app).toContain("const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff || igEff);");
+  it("idle-ended = (server ended flag OR ended with End Session) AND no live connection; the dashboard gets an empty session + no comments", () => {
+    expect(app).toContain("const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended || !!sessionInstance.closed, ttEff || fbEff || shopeeEff || igEff);");
     expect(app).toContain("session={sessionIdleEnded ? ENDED_EMPTY_SESSION : liveSession.session}");
+    expect(app).toContain("comments={sessionIdleEnded ? ENDED_NO_COMMENTS : comments}");
     expect(app).toContain("sessionEndedIdle={sessionIdleEnded}");
   });
   it("the loaded session itself is untouched (Orders tab still gets liveSession)", () => {

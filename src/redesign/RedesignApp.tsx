@@ -210,6 +210,7 @@ const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKe
 
 // Empty board for the "Session ended" idle dashboard (display-only; nothing is deleted).
 const ENDED_EMPTY_SESSION: RebuiltSession = { buyers: [], orders: [] };
+const ENDED_NO_COMMENTS: never[] = []; // Build 13: an ended idle session shows an empty board (display only)
 
 export default function RedesignApp() {
   // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
@@ -1254,7 +1255,9 @@ export default function RedesignApp() {
   // Ended session + not connected → the dashboard shows "Session ended" and an empty
   // board (display-only: the session's orders stay loaded for the Orders tab, never
   // modified). Connected → today's behavior ("Session continues …").
-  const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff || igEff);
+  // Build 13: "ended" = the server says the session's length ran out (ended) OR the seller ended
+  // it with End Session (closed — also known after a reload from the row's end stamp).
+  const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended || !!sessionInstance.closed, ttEff || fbEff || shopeeEff || igEff);
   // ── Option E — Live Source (owner-gated). ONE active source at a time. The new
   // single "Live source" button + sheet REPLACE the 3 chips for the owner only;
   // everyone else keeps the classic 3-chip header (liveSourceMode false → unchanged).
@@ -2290,7 +2293,7 @@ export default function RedesignApp() {
           )}
           {screen === "dashboard" && (
             <Dashboard
-              comments={comments} cur={cur} basketCounts={basketCounts} minerRisk={minerRisk}
+              comments={sessionIdleEnded ? ENDED_NO_COMMENTS : comments} cur={cur} basketCounts={basketCounts} minerRisk={minerRisk}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setShopeeOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setShopeeOpen(false); }}

@@ -860,16 +860,9 @@ export default function Dashboard({
         {sessionState === "loading" && (
           <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 2px 9px" }}>{t.rd_dash_loading_session}</div>
         )}
-        {sessionEndedIdle && (
-          <div data-testid="session-ended-empty" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--text-muted)", background: "var(--surface-2)", padding: "4px 9px", borderRadius: 7 }}>{t.rd_ses_ended}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{summary.buyers} {t.rd_dash_buyers} · {summary.orders} {t.rd_cus_orders_suffix}</span>
-              <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{summary.total.toLocaleString("en-US")}</span>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.45 }}>{t.rd_ses_ended_empty}</div>
-          </div>
-        )}
+        {/* Build 13 (Jeff): an ended session (End Session or its length ran out) with nothing
+            live shows NO summary card — no "TODAY" and no "Session ended" card; the picker / the
+            empty board only. The summary returns when a new session starts and has orders. */}
         {!sessionEndedIdle && summary.orders > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
             <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "4px 9px", borderRadius: 7 }}>{t.rd_dash_today_badge}</span>
