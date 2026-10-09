@@ -75,11 +75,9 @@ test("02 Every main screen opens (no crash, no blank page)", async ({ page }) =>
     await screenIsFine(page, "Customers");
   });
   await test.step("Shipping", async () => {
-    await openHub(page);
-    const tile = page.getByRole("button", { name: EN.rd_sh_shipping, exact: true });
-    if (!(await tile.count())) { note("Shipping: not shown for this account's market (7-11 is Taiwan only)."); return; }
-    await tile.first().click();
-    await expect(page.getByTestId("shp-global-fee")).toBeVisible();
+    const entry = await openShipping(page);
+    if (entry === "hidden") { note("Shipping: not shown for this account's market (7-11 is Taiwan only)."); return; }
+    if (entry === "soon") { await expectShippingSoon(page); note("Shipping: 'Coming soon' for this seller (admins only since Build 16)."); return; }
     await screenIsFine(page, "Shipping");
   });
   await test.step("General Settings", async () => {
@@ -271,24 +269,48 @@ test("06 Sticker preview shows the buyer number, no long number, no error", asyn
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────
-async function openShipping(page: Page): Promise<boolean> {
+// Build 16: Shipping opens for admins only; every other seller gets a "Coming soon" tile (Settings)
+// and a "Coming soon" 🚚 button (Orders) that never open it. "open" = it opened (admin);
+// "soon" = the Coming-soon tile; "hidden" = no tile at all (a market without 7-11 shipping).
+async function openShipping(page: Page): Promise<"open" | "soon" | "hidden"> {
   await openHub(page);
-  const tile = page.getByRole("button", { name: EN.rd_sh_shipping, exact: true });
-  if (!(await tile.count())) return false;
+  const soon = page.getByTestId("tile-shipping-soon");
+  // the tile's testid (Build 16+), or the plain "Shipping" tile of an older app version
+  const tile = page.getByTestId("tile-shipping").or(page.getByRole("button", { name: EN.rd_sh_shipping, exact: true }));
+  if (await soon.count()) return "soon";
+  if (!(await tile.count())) return "hidden";
   await tile.first().click();
   await expect(page.getByTestId("shp-global-fee")).toBeVisible();
-  return true;
+  return "open";
 }
-test("07a Shipping screen opens", async ({ page }) => {
+// Both entry points say "Coming soon", are disabled, and the Shipping screen never shows.
+async function expectShippingSoon(page: Page): Promise<void> {
+  const tile = page.getByTestId("tile-shipping-soon");
+  await expect(tile).toBeDisabled();
+  await expect(tile).toContainText(EN.rd_sh_shipping);
+  await expect(tile).toContainText(EN.rd_ls_soon);
+  await expect(page.getByTestId("shp-global-fee")).toHaveCount(0);
+  await navTo(page, "orders");
+  const btn = page.getByTestId("ord-shipping-soon");
+  await expect(btn).toBeDisabled();
+  await expect(btn).toContainText(EN.rd_ls_soon);
+  await expect(page.getByTestId("ord-shipping")).toHaveCount(0);
+  await expect(page.getByTestId("shp-global-fee")).toHaveCount(0);
+}
+test("07a Shipping: opens for an admin, 'Coming soon' for a seller", async ({ page }) => {
   await openApp(page);
-  if (!(await openShipping(page))) test.skip(true, "Shipping (7-11) is not shown for this account's market — Taiwan only.");
+  const entry = await openShipping(page);
+  if (entry === "hidden") test.skip(true, "Shipping (7-11) is not shown for this account's market — Taiwan only.");
+  if (entry === "soon") { await expectShippingSoon(page); await screenIsFine(page, "Orders (Shipping coming soon)"); note("This seller sees Shipping as 'Coming soon' in Settings and Orders, and neither opens it (admins only since Build 16)."); return; }
   await page.waitForTimeout(1500);
   await expect(page.getByTestId("shp-load-failed")).toHaveCount(0);
   await screenIsFine(page, "Shipping");
 });
 test("07b Shipping: open a buyer's form and cancel without saving", async ({ page }) => {
   await openApp(page);
-  if (!(await openShipping(page))) test.skip(true, "Shipping (7-11) is not shown for this account's market — Taiwan only.");
+  const entry = await openShipping(page);
+  if (entry === "hidden") test.skip(true, "Shipping (7-11) is not shown for this account's market — Taiwan only.");
+  if (entry === "soon") test.skip(true, "Shipping is 'Coming soon' for sellers (admins only since Build 16) — the robot's test seller cannot open it.");
   await page.waitForTimeout(1500);
   const open = page.getByRole("button", { name: new RegExp(`^(${EN.rd_shp_add_info}|✓ ${EN.rd_shp_encoded})$`) }).first();
   if (!(await open.count())) test.skip(true, "No buyer in the test account's current session, so there is no form to open (the robot cannot create orders — see test 05).");

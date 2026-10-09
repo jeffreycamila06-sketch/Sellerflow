@@ -47,12 +47,12 @@ usually enough. If you can, add the screenshot from the report.
 | Test | What it checks |
 |---|---|
 | 01 Login | Logs in. The Live screen opens. No error message, no `E` code. |
-| 02 Every main screen | Live, Orders, Products, Sales, Settings, Customers, Shipping, General Settings, sticker print pattern, printer settings, subscription (view only), support, Privacy & Terms, and the public `/privacy/` and `/terms/` pages all open. None is blank, none shows a code or a text key like `rd_...`. |
+| 02 Every main screen | Live, Orders, Products, Sales, Settings, Customers, Shipping (or its "Coming soon" tile for a seller), General Settings, sticker print pattern, printer settings, subscription (view only), support, Privacy & Terms, and the public `/privacy/` and `/terms/` pages all open. None is blank, none shows a code or a text key like `rd_...`. |
 | 03 Language | Switches to Filipino, opens a few screens, switches back to English. No text key shows. |
 | 04 Products | First removes any test product an earlier run left. Then adds a test product with a code, sees it in the list and on the Live screen (it turns Auto mode on in its own browser for this, and back off after), adds 1 to its stock, reloads, then deletes it. |
 | 05 Manual order | **Always skipped.** In the app an order can only come from a live comment, and there is no button to remove an order. The robot would leave it behind. |
 | 06 Sticker preview | The sticker preview shows "Buyer 12", no long number, no error. It never presses Printer Test. |
-| 07a / 07b Shipping | The 7-11 shipping screen opens. If a buyer is in the current session, it opens that buyer's form and presses **Cancel** (never Save). Skipped when there is no buyer. |
+| 07a / 07b Shipping | Since Build 16 Shipping opens for admins only. For the robot's test seller (not an admin), 07a checks that the Settings tile and the Orders 🚚 button both say "Coming soon", are disabled and never open Shipping; 07b is skipped. For an admin account: the 7-11 shipping screen opens, and if a buyer is in the current session it opens that buyer's form and presses **Cancel** (never Save). |
 | 08 Facebook | For a seller without Facebook access: the Facebook screen shows the plain "activation required" notice, no empty boxes, no technical words. Skipped if the test account has Facebook access. If it fails, it says whether the `fb_polish_v2` switch is on or off (it reads the app's own answer; it never changes the switch). |
 | 14 Live picker | The Live screen shows the 4 tiles TikTok, Facebook, Instagram, Shopee (Instagram and Shopee "Coming soon"). Taps Facebook: a seller without Facebook access sees the "activation required" notice and the Telegram link (it only reads where the link goes, never opens it), no Connect. Then Back. Never connects. Skipped if the test account is live. |
 | 11a TikTok add | Adds a made-up TikTok name (`sfl_robot_x7q9z_notlive`) to the test account and sees it in the list. |
