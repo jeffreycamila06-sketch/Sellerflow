@@ -16,7 +16,7 @@ const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
 });
 const tileLabel: CSSProperties = { fontSize: 13.5, fontWeight: 600, color: "var(--text)", lineHeight: 1.15 };
 
-function Tile({ icon, label, onClick, variant = "accent", locked = false, testid }: { icon: ReactNode; label: string; onClick: () => void; variant?: "accent" | "danger" | "neutral"; locked?: boolean; testid?: string }) {
+function Tile({ icon, label, onClick, variant = "accent", locked = false, testid }: { icon: ReactNode; label: ReactNode; onClick: () => void; variant?: "accent" | "danger" | "neutral"; locked?: boolean; testid?: string }) {
   return (
     <button onClick={onClick} style={locked ? { ...tile, opacity: 0.72 } : tile} data-testid={testid} data-locked={locked ? "1" : undefined}>
       <span style={locked ? chip("neutral") : chip(variant)}>{icon}</span>
@@ -27,10 +27,11 @@ function Tile({ icon, label, onClick, variant = "accent", locked = false, testid
 }
 
 // Build 16 — a feature that isn't offered yet: the Live picker's "Coming soon" look (dimmed, the
-// words under the label) and NOT tappable (disabled, no handler).
-function SoonTile({ icon, label, soon, testid }: { icon: ReactNode; label: string; soon: string; testid?: string }) {
+// words under the label) and NOT tappable (disabled, no handler). With onTap (Parcel Scan tiles)
+// it still looks the same, but a tap shows a short note — never a screen.
+function SoonTile({ icon, label, soon, testid, onTap }: { icon: ReactNode; label: ReactNode; soon: string; testid?: string; onTap?: () => void }) {
   return (
-    <button type="button" disabled aria-disabled="true" style={{ ...tile, opacity: 0.5, cursor: "default" }} data-testid={testid} data-soon="1">
+    <button type="button" disabled={!onTap} onClick={onTap} aria-disabled="true" style={{ ...tile, opacity: 0.5, cursor: "default" }} data-testid={testid} data-soon="1">
       <span style={chip("neutral")}>{icon}</span>
       <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
         <span style={tileLabel}>{label}</span>
@@ -39,6 +40,25 @@ function SoonTile({ icon, label, soon, testid }: { icon: ReactNode; label: strin
     </button>
   );
 }
+
+// Parcel Scan tiles: "Parcel Scan" with the store on a second, smaller line ("7-11" /
+// "FamilyMart") and a small colour dot on the icon (colour only — no store logo or artwork).
+// The title is its own span so it reads the same; whole words only, fits a 320 px half-tile.
+const SEVEN_RED = "#e4002b", FAMILY_GREEN = "#00a14b";
+function ParcelLabel({ title, store }: { title: string; store: string }) {
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      <span>{title}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)" }}>{store}</span>
+    </span>
+  );
+}
+const dotIcon = (icon: ReactNode, dot: string) => (
+  <span style={{ position: "relative", display: "flex" }}>
+    {icon}
+    <span aria-hidden data-testid="parcel-dot" style={{ position: "absolute", top: -4, right: -5, width: 8, height: 8, borderRadius: "50%", background: dot, boxShadow: "0 0 0 2px var(--surface)" }} />
+  </span>
+);
 
 const ic = {
   gear: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
@@ -59,7 +79,7 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, onParcelUpsell, onReceiptFormat,
+  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon,
 }: {
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void;
@@ -73,6 +93,10 @@ export default function SettingsHub({
   parcelLocked?: boolean; // basic/free: show Parcel Scan + Customer Details as LOCKED upsell tiles
   onParcelUpsell?: () => void; // locked-tile click → neutral contact-support popup (never opens the screen)
   onReceiptFormat?: () => void; // Messenger receipt format — passed ONLY for FB preview accounts
+  // Taiwan market only (same market rule that lets Parcel Scan appear at all; admin sees it).
+  // Shows the FamilyMart "Coming soon" tile, and a "Coming soon" 7-11 tile for a seller who has
+  // neither the working nor the locked 7-11 tile. A tap only shows a short note.
+  onParcelSoon?: (store: "711" | "fm") => void;
 }) {
   const t = useT();
   // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
@@ -98,9 +122,24 @@ export default function SettingsHub({
           {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED
               upsell tile (🔒) that opens the neutral contact-support popup, never the
               screen. The onParcelScan prop is the ALLOW gate; parcelLocked is tile-only. */}
-          {onParcelScan
-            ? <Tile icon={ic.camera} label={t.rd_ps2_title} onClick={onParcelScan} testid="tile-parcelscan" />
-            : parcelLocked && onParcelUpsell && <Tile icon={ic.camera} label={t.rd_ps2_title} onClick={onParcelUpsell} locked testid="tile-parcelscan-locked" />}
+          {(() => {
+            const seven = <ParcelLabel title={t.rd_ps2_title} store="7-11" />;
+            const sevenIcon = dotIcon(ic.camera, SEVEN_RED);
+            const sevenTile = onParcelScan
+              ? <Tile icon={sevenIcon} label={seven} onClick={onParcelScan} testid="tile-parcelscan" />
+              : parcelLocked && onParcelUpsell
+                ? <Tile icon={sevenIcon} label={seven} onClick={onParcelUpsell} locked testid="tile-parcelscan-locked" />
+                : onParcelSoon
+                  ? <SoonTile icon={sevenIcon} label={seven} soon={t.rd_ls_soon} testid="tile-parcelscan-soon" onTap={() => onParcelSoon("711")} />
+                  : null;
+            const fmTile = onParcelSoon
+              ? <SoonTile icon={dotIcon(ic.camera, FAMILY_GREEN)} label={<ParcelLabel title={t.rd_ps2_title} store={t.rd_sh_fm_name} />} soon={t.rd_ls_soon} testid="tile-parcelscan-fm" onTap={() => onParcelSoon("fm")} />
+              : null;
+            // Both shown → one full-width row so they always sit side by side.
+            return sevenTile && fmTile
+              ? <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} data-testid="parcel-pair">{sevenTile}{fmTile}</div>
+              : sevenTile || fmTile;
+          })()}
           {/* Customer Details phonebook — same allow gate + same locked upsell. */}
           {onCustomerDetails
             ? <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onCustomerDetails} testid="tile-customerdetails" />
