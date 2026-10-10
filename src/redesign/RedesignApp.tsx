@@ -32,7 +32,7 @@ import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type View
 import { shippingAccess } from "./adapters/shippingGate";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
-import { parcelTrackingVisible, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
+import { parcelTrackingVisible, parcelTrackingLocked, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -331,6 +331,7 @@ export default function RedesignApp() {
   const parcelTrackingAllowed = parcelTrackingVisible({
     role: auth.profile?.role, plan: auth.profile?.plan, access: authed && parcelTrackingAccess, marketHidden: hidePickup,
   });
+  const pickupLocked = parcelTrackingLocked({ role: auth.profile?.role, plan: auth.profile?.plan, allowed: parcelTrackingAllowed, marketHidden: hidePickup });
   // Automatic Pickup Status check: on app open and every return to the app. Throttled to
   // once per 30 min per account inside requestAutoCheck; the database makes every decision.
   useAutoPickupCheck(authed && parcelTrackingAllowed, authUserId);
@@ -2427,6 +2428,7 @@ export default function RedesignApp() {
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}
               onParcelTracking={parcelTrackingAllowed ? () => setScreen("parceltracking") : undefined}
               parcelLocked={parcelLocked}
+              pickupLocked={pickupLocked}
               onParcelUpsell={() => setUpsellOpen(true)}
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}

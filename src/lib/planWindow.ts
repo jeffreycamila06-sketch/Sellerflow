@@ -72,3 +72,10 @@ export const isExpiringNotExpired = (p: PlanState): boolean =>
 // Plan Monitoring table: same shape, per-plan window (trial 3 / paid 7).
 export const isInMonitorWindow = (p: PlanState): boolean =>
   isTimeLimitedPlan(p.plan) && p.planStatus !== "pending" && (p.planStatus === "expired" || p.daysLeft <= monitorWindowDays(p.plan));
+
+// Basic or free (a missing/blank plan counts as free), case-insensitive. Expiry does NOT
+// matter. The single rule for the 🔒 upsell tiles (Parcel Scan, Customer Details, Pickup Status).
+export function isBasicOrFreePlan(plan: string | null | undefined): boolean {
+  const tier = String(plan ?? "").trim().toLowerCase();
+  return tier === "basic" || tier === "free" || tier === "";
+}

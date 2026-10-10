@@ -75,7 +75,7 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon,
+  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon,
 }: {
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void;
@@ -87,6 +87,7 @@ export default function SettingsHub({
   onCustomerDetails?: () => void; // Customer Details phonebook — SAME gate as Parcel Scan (parcelScanVisible)
   onParcelTracking?: () => void; // Pickup Status (Part 5) — passed ONLY when parcelTrackingVisible (admin/googletest)
   parcelLocked?: boolean; // basic/free: show Parcel Scan + Customer Details as LOCKED upsell tiles
+  pickupLocked?: boolean; // basic/free, TW, no access: show Pickup Status as a LOCKED upsell tile (parcelTrackingLocked)
   onParcelUpsell?: () => void; // locked-tile click → neutral contact-support popup (never opens the screen)
   onReceiptFormat?: () => void; // Messenger receipt format — passed ONLY for FB preview accounts
   // Taiwan market only (same market rule that lets Parcel Scan appear at all; admin sees it).
@@ -144,7 +145,9 @@ export default function SettingsHub({
             : parcelLocked && onParcelUpsell && <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onParcelUpsell} locked testid="tile-customerdetails-locked" />}
           {/* Pickup Status (Part 5) — the prop IS the gate (parcelTrackingVisible: admin/googletest). No locked variant. */}
           {onReceiptFormat && <Tile icon={ic.receipt} label={t.rd_rc_title} onClick={onReceiptFormat} testid="tile-receipt-format" />}
-          {onParcelTracking && <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelTracking} testid="tile-parceltracking" />}
+          {onParcelTracking
+            ? <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelTracking} testid="tile-parceltracking" />
+            : pickupLocked && onParcelUpsell && <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelUpsell} locked testid="tile-parceltracking-locked" />}
           {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
           <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
           {/* Need help? — support entry point, directly ABOVE Delete Account.
