@@ -14,6 +14,7 @@
 import { useEffect } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
+import { isBasicOrFreePlan } from "../../lib/planWindow";
 import { log } from "../../lib/log";
 
 // ── Feature gate ──────────────────────────────────────────────────────────────
@@ -32,6 +33,14 @@ export function parcelTrackingVisible(account: {
   const tier = String(account.plan ?? "").trim().toLowerCase();
   if (!PARCEL_TRACKING_TIERS.includes(tier as (typeof PARCEL_TRACKING_TIERS)[number])) return false;
   return account.access === true;
+}
+
+// Pickup Status 🔒 upsell tile (basic/free, TW market, no access, not admin) — the SAME
+// basic/free rule as the Parcel Scan locked tile. Tile-only: the screen render stays gated on
+// parcelTrackingVisible, so a locked seller can never open Pickup Status.
+export function parcelTrackingLocked(a: { role?: string | null; plan?: string | null; allowed: boolean; marketHidden?: boolean }): boolean {
+  if (a.allowed || a.marketHidden || isAdminRole(a.role)) return false;
+  return isBasicOrFreePlan(a.plan);
 }
 
 // Own allowlist flag (SECURITY DEFINER RPC, own row only). FAIL-CLOSED: any error,

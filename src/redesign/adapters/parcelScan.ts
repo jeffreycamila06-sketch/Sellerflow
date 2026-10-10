@@ -14,7 +14,7 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { fetchAllPages } from "../../lib/fetchAllPages";
 import { getAppSetting, setAppSetting } from "./appSettings";
 import { isAdminRole } from "../../lib/roles";
-import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
+import { isActivePaid, planDaysLeft, isBasicOrFreePlan } from "../../lib/planWindow";
 import { TEMP_FROZEN, type FrozenConfig } from "./parcelFrozen";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_MAX_ORDER, SHIP_DEFAULT_FEE, type AmountError } from "./shipping";
 import { decodeServerJson, sellerSafeWord, withCodes } from "../../lib/errCodes.js";
@@ -120,9 +120,7 @@ export function parcelScanVisible(opts: {
   // Locked = basic or free (a missing/blank plan is treated as free), when the
   // feature isn't already allowed to them. Expiry does NOT matter here (basic
   // active AND expired both see the upsell tile). Case-insensitive.
-  const tier = String(opts.plan ?? "").trim().toLowerCase();
-  const isBasicOrFree = tier === "basic" || tier === "free" || tier === "";
-  const locked = !visible && !admin && isBasicOrFree;
+  const locked = !visible && !admin && isBasicOrFreePlan(opts.plan);
   return { visible, manualOnly: visible && !admin, locked };
 }
 
