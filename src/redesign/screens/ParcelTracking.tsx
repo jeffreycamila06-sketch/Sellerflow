@@ -155,6 +155,22 @@ function Buyer({ row, t, nowMs, buyerName }: { row: ParcelTrackingRow; t: T; now
 }
 const storeOf = (row: ParcelTrackingRow) => row.recStore || row.storeId || "—";
 
+// Search (display only, over the rows already loaded): buyer name, @username (with or
+// without @), 7-11 store, parcel number (spaces / dashes ignored). Case-insensitive, partial.
+const SEARCH_DEBOUNCE_MS = 150;
+const squash = (v: string) => v.toLowerCase().replace(/[\s-]+/g, "");
+function matchesSearch(row: ParcelTrackingRow, query: string, buyerName: string | undefined): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const bare = q.replace(/^@+/, "");
+  const user = String(row.buyerUsername ?? "").trim().replace(/^@+/, "").toLowerCase();
+  if (bare && user.includes(bare)) return true;
+  if (buyerName && buyerName.toLowerCase().includes(q)) return true;
+  if ([row.recStore, row.storeId].some((x) => x && String(x).toLowerCase().includes(q))) return true;
+  const code = squash(q);
+  return !!code && squash(row.trackingNo || "").includes(code);
+}
+
 // WEB — boxed tabs (radius 8px 8px 0 0; active = accent fill + on-accent text) on a 3px
 // accent rule; horizontal scroll when the row is too wide.
 function Tabs({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<PickupTab, number>; onPick: (x: PickupTab) => void; t: T }) {
@@ -329,6 +345,12 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
   const [status, setStatus] = useState<TrackingStatus | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [search, setSearch] = useState("");      // what is typed (kept while the screen is open)
+  const [searchQ, setSearchQ] = useState("");    // what filters (debounced)
+  useEffect(() => {
+    const id = setTimeout(() => setSearchQ(search), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [search]);
   const busy = !!status?.active_job;
   const showToast = (msg: string, ms = 4000) => { setToast(msg); setTimeout(() => setToast(""), ms); };
 
@@ -556,21 +578,36 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
               </div>
             : (() => {
                 const counts = tabCounts(groups, totals);
-                const tabList = tabRows(groups, tab, today);
+                const tabList = tabRows(groups, tab, today).filter((r) => matchesSearch(r, searchQ, names.get(normHandle(r.buyerUsername))));
                 // S7 — more unfinished parcels than the first page: offer the next page.
                 const more = liveRemaining > 0 && tab !== "picked" && tab !== "returned"
                   ? <button onClick={() => void onLoadMore()} disabled={loadingMore} style={{ ...btn, width: "100%", marginTop: 10, opacity: loadingMore ? 0.6 : 1 }} data-testid="pt-load-more">
                       {loadingMore ? t.rd_pt_loading : tpl(t.rd_pt_load_more, { n: liveRemaining })}
                     </button>
                   : null;
-                const emptyTab = <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-tab-empty">{t.rd_pt_tab_empty}</div>;
+                const searchBox = (
+                  <div style={{ position: "relative", marginBottom: 12 }} data-testid="pt-search-wrap">
+                    <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.rd_pt_search_ph} aria-label={t.rd_pt_search_ph}
+                      data-testid="pt-search" autoComplete="off" spellCheck={false}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "9px 36px 9px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14, minWidth: 0 }} />
+                    {search && (
+                      <button type="button" onClick={() => { setSearch(""); setSearchQ(""); }} aria-label={t.rd_pt_search_clear} data-testid="pt-search-clear"
+                        style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, background: "none", border: "none", color: "var(--text-muted)", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: 0 }}>✕</button>
+                    )}
+                  </div>
+                );
+                const emptyTab = searchQ.trim()
+                  ? <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-search-empty">{t.rd_pt_search_none}</div>
+                  : <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-tab-empty">{t.rd_pt_tab_empty}</div>;
                 return narrow
                   ? <div data-testid="pt-mobile">
                       <Cards tab={tab} counts={counts} onPick={setTab} t={t} />
+                      {searchBox}
                       {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} /> : emptyTab}
                       {more}
                     </div>
                   : <div data-testid="pt-web">
+                      {searchBox}
                       <Tabs tab={tab} counts={counts} onPick={setTab} t={t} />
                       {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} /> : emptyTab}
                       {more}
