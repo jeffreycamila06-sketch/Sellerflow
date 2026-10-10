@@ -105,3 +105,35 @@ describe("toast text + market rule", () => {
     expect(line).not.toMatch(/parcelAllowed|parcelLocked|setScreen/); // no 7-11 access rule, no navigation
   });
 });
+
+describe("order — no empty half-row before the Parcel pair", () => {
+  // Walk the 2-column grid: a full-width child (gridColumn 1 / -1) starts a fresh row, so the
+  // single tiles since the previous full-width child must be an even count when we reach it.
+  const singlesBeforePair = (r: ReturnType<typeof view>) => {
+    const pair = r.getByTestId("parcel-pair");
+    const grid = pair.parentElement!;
+    let run = 0;
+    for (const el of Array.from(grid.children) as HTMLElement[]) {
+      if (el === pair) return run;
+      run = el.style.gridColumn === "1 / -1" ? 0 : run + 1;
+    }
+    throw new Error("pair not in grid");
+  };
+  const before = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const cases: Array<[string, Record<string, unknown>]> = [
+    ["basic (locked 7-11, Shipping soon)", { parcelLocked: true, onParcelUpsell: noop, onParcelSoon: noop, shippingSoon: true }],
+    ["plus with access", { onParcelScan: noop, onCustomerDetails: noop, onParcelSoon: noop, shippingSoon: true }],
+    ["admin", { isAdmin: true, onParcelScan: noop, onCustomerDetails: noop, onParcelSoon: noop, onShipping: noop, onParcelTracking: noop }],
+  ];
+  for (const [name, props] of cases) {
+    it(`${name}: pair right after General / Customers, before Shipping — no orphan cell`, () => {
+      const r = view(props);
+      const pair = r.getByTestId("parcel-pair");
+      expect(singlesBeforePair(r) % 2).toBe(0);
+      const shipping = r.queryByTestId("tile-shipping") ?? r.queryByTestId("tile-shipping-soon");
+      expect(shipping).toBeTruthy();
+      expect(before(pair, shipping!)).toBe(true);
+      expect(before(r.getByText(t.rd_cus_title).closest("button")!, pair)).toBe(true);
+    });
+  }
+});

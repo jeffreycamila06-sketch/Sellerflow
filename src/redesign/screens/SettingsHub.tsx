@@ -110,11 +110,8 @@ export default function SettingsHub({
           <InviteFriendsCard />
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
-          {/* Owner-only (production: isAdminUser) */}
-          {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
-          {onShipping
-            ? <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} testid="tile-shipping" />
-            : shippingSoon && <SoonTile icon={ic.truck} label={t.rd_sh_shipping} soon={t.rd_ls_soon} testid="tile-shipping-soon" />}
+          {/* Parcel tiles right after General / Customers: when the 7-11 + FamilyMart pair takes a
+              full row, every single tile after it still pairs up (no empty half-row). */}
           {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED
               upsell tile (🔒) that opens the neutral contact-support popup, never the
               screen. The onParcelScan prop is the ALLOW gate; parcelLocked is tile-only. */}
@@ -136,6 +133,11 @@ export default function SettingsHub({
               ? <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, minWidth: 0 }} data-testid="parcel-pair">{sevenTile}{fmTile}</div>
               : sevenTile || fmTile;
           })()}
+          {/* Owner-only (production: isAdminUser) */}
+          {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
+          {onShipping
+            ? <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} testid="tile-shipping" />
+            : shippingSoon && <SoonTile icon={ic.truck} label={t.rd_sh_shipping} soon={t.rd_ls_soon} testid="tile-shipping-soon" />}
           {/* Customer Details phonebook — same allow gate + same locked upsell. */}
           {onCustomerDetails
             ? <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onCustomerDetails} testid="tile-customerdetails" />
