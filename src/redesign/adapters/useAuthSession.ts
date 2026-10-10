@@ -21,6 +21,7 @@ import { getMyProfile, createMyProfile, type AccountUser } from "../../accountDb
 import { selfDeleteAccount } from "./adminDelete";
 import { validatePhone, DEFAULT_COUNTRY } from "./phone";
 import { initials as deriveInitials } from "../data";
+import { resetInFlight, endResetSession } from "./resetCode";
 
 export type AuthStatus = "loading" | "authed" | "anon";
 
@@ -81,9 +82,17 @@ export function useAuthSession(): UseAuthSession {
     if (!isSupabaseConfigured || !supabase) { setStatus("anon"); return; }
     const client = supabase;
 
-    // (a) restore the persisted session on load
-    void client.auth.getSession().then(({ data }) => {
+    // (a) restore the persisted session on load. A password reset that was left half-way
+    // (app closed after the code, before the new password) never logs anyone in: its
+    // reset-only session is dropped here.
+    void client.auth.getSession().then(async ({ data }) => {
       if (!activeRef.current) return;
+      if (data.session && resetInFlight()) {
+        try { await client.auth.signOut({ scope: "local" }); } catch { /* still treated as signed out */ }
+        endResetSession();
+        if (activeRef.current) void loadProfile(null);
+        return;
+      }
       void loadProfile(data.session?.user?.id, data.session?.user?.email);
     });
 
@@ -91,6 +100,9 @@ export function useAuthSession(): UseAuthSession {
     const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
       if (!activeRef.current) return;
       if (!session?.user) { authedUserIdRef.current = null; setProfile(null); setStatus("anon"); return; }
+      // Forgot-password code flow: the session verifyOtp creates is only for saving the new
+      // password — never a sign-in (the screen signs it out when it is done).
+      if (resetInFlight() && session.user.id !== authedUserIdRef.current) return;
       // SAME-USER GUARD (finding #1): TOKEN_REFRESHED / USER_UPDATED for the
       // already-authed user must be a no-op — status stays "authed", so the
       // live socket and every enabled=authed hook keep running untouched.
@@ -105,6 +117,7 @@ export function useAuthSession(): UseAuthSession {
     // shared auth key — re-read the session so we never render stale auth.
     const onStorage = (e: StorageEvent) => {
       if (e.key !== AUTH_STORAGE_KEY) return;
+      if (resetInFlight()) return; // another tab's reset-only session is not a sign-in
       void client.auth.getSession().then(({ data }) => {
         if (!activeRef.current) return;
         void loadProfile(data.session?.user?.id, data.session?.user?.email);
@@ -123,6 +136,7 @@ export function useAuthSession(): UseAuthSession {
     if (!isSupabaseConfigured || !supabase) {
       return { ok: false, error: "Sign-in isn't available right now. Please try again later.", errorKey: "rd_login_unavailable" };
     }
+    endResetSession(); // a normal login is never blocked by a leftover reset marker
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
@@ -229,8 +243,15 @@ export type RegErrorCode = "" | "fields" | "phone" | "pw_len" | "pw_match";
 export function registrationErrorCode(f: RegisterFields): RegErrorCode {
   if (!f.fullName.trim() || !f.storeName.trim() || !f.email.trim() || !f.password) return "fields";
   if (!validatePhone(f.phone, f.phoneCountry || DEFAULT_COUNTRY).valid) return "phone";
-  if (f.password.length < 6) return "pw_len";
-  if (f.password !== f.confirm) return "pw_match";
+  return passwordRuleCode(f.password, f.confirm);
+}
+
+// The app's one password rule (signup + forgot-password reset): ≥ 6 characters, and the
+// two boxes must match.
+export const PASSWORD_MIN = 6;
+export function passwordRuleCode(password: string, confirm: string): "" | "pw_len" | "pw_match" {
+  if (password.length < PASSWORD_MIN) return "pw_len";
+  if (password !== confirm) return "pw_match";
   return "";
 }
 

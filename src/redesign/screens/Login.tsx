@@ -1,10 +1,14 @@
 // Screen 5 — Login / Landing (pre-auth, no bottom nav). dc.html v3 L284–376.
-// v3: a "Forgot password?" modal (admin-only reset → Telegram redirect).
-import { useState, type CSSProperties } from "react";
+// v3: a "Forgot password?" modal (admin-only reset → Telegram redirect). When the
+// reset_code_enabled switch is on (or an owner-preview tab), the 6-digit email code flow
+// (components/ResetCodeModal) replaces it; anything unreadable keeps the Telegram modal.
+import { useEffect, useState, type CSSProperties } from "react";
 import { LANGS } from "../data";
 import { useT } from "../i18n";
 import PasswordInput from "../components/PasswordInput";
 import { TELEGRAM_HANDLE, TELEGRAM_URL } from "../../lib/telegram";
+import ResetCodeModal from "../components/ResetCodeModal";
+import { readResetPreview, loadResetCodeEnabled } from "../adapters/resetCode";
 
 const card: CSSProperties = { flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: 11, textAlign: "center", boxShadow: "var(--shadow)" };
 const statNum: CSSProperties = { fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 17, color: "var(--accent-fg)" };
@@ -32,10 +36,20 @@ export default function Login({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
+  const [codeFlow, setCodeFlow] = useState(() => readResetPreview());
+  useEffect(() => {
+    if (codeFlow) return;
+    let live = true;
+    void loadResetCodeEnabled().then((on) => { if (live && on) setCodeFlow(true); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const submit = async () => {
     if (busy) return;
     setErr("");
+    setNotice("");
     if (!email.trim() || !password) { setErr(t.rd_login_err_empty); return; }
     setBusy(true);
     const res = await onLogin(email, password);
@@ -81,6 +95,7 @@ export default function Login({
 
           <div style={{ textAlign: "right", marginBottom: 16 }}><span onClick={() => setForgotOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>{t.rd_login_forgot}</span></div>
 
+          {notice && <div data-testid="login-notice" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ok, #16a34a)", background: "var(--surface-2)", border: "1px solid var(--ok, #16a34a)", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{notice}</div>}
           {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{err}</div>}
           {!configured && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>{t.rd_login_unavailable}</div>}
 
@@ -120,8 +135,12 @@ export default function Login({
         </div>
       </div>
 
+      {forgotOpen && codeFlow && (
+        <ResetCodeModal initialEmail={email} onClose={() => setForgotOpen(false)}
+          onDone={(done) => { setForgotOpen(false); setEmail(done); setPassword(""); setErr(""); setNotice(t.rd_pwr_done); }} />
+      )}
       {/* Forgot-password modal (dc.html v3 L355–375) — admin-only reset → Telegram. */}
-      {forgotOpen && (
+      {forgotOpen && !codeFlow && (
         <div onClick={() => setForgotOpen(false)} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 320, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,.4)", overflow: "hidden" }}>
             <div style={{ padding: "22px 20px 18px", textAlign: "center" }}>
