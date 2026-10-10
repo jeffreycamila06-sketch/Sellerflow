@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   createIgRuntime, igConfig, IG_OAUTH_SCOPE, IG_COMMENTS_LIMIT, classifyIgError, fetchIgAccounts, replayIgStatus,
+  fetchIgAccountsDetailed, igAccountsLogLine, IG_ACCOUNTS_MAX_BATCHES,
 } from "../../../../server/igLive.js";
 import { igToPayload, IG_PLATFORM } from "../../../../server/igComment.js";
 import { createIgLock, createIgAccessHandler } from "../../../../server/igAccess.js";
@@ -57,8 +58,8 @@ describe("igConfig — off unless IG_ENABLED=true and the Facebook secrets exist
 });
 
 describe("OAuth", () => {
-  it("asks EXACTLY the four approved permissions, redirect = /ig/oauth/callback", () => {
-    expect(IG_OAUTH_SCOPE).toBe("instagram_basic,instagram_manage_comments,pages_show_list,pages_read_engagement");
+  it("asks EXACTLY the four approved permissions + ads_read + business_management, redirect = /ig/oauth/callback", () => {
+    expect(IG_OAUTH_SCOPE).toBe("instagram_basic,instagram_manage_comments,pages_show_list,pages_read_engagement,ads_read,business_management");
     const u = new URL(rt().runtime.buildAuthUrl("u1"));
     expect(u.searchParams.get("scope")).toBe(IG_OAUTH_SCOPE);
     expect(u.searchParams.get("redirect_uri")).toBe("https://srv.test/ig/oauth/callback");
@@ -115,6 +116,93 @@ describe("OAuth", () => {
     const f = vi.fn(async () => res(200, { data: [] }));
     await fetchIgAccounts({ fetchImpl: f, userToken: "t" });
     expect(url(f.mock.calls[0] as unknown[]).searchParams.get("fields")).toBe("id,name,access_token,instagram_business_account{id,username}");
+  });
+});
+
+describe("IG account lookup — fallback, paging, diagnostics (no_ig_account fix)", () => {
+  const G = "https://graph.facebook.com";
+  const pg = (id: string, ig?: { id: string; username: string }) => ({ id, name: `Seller Flow ${id}`, access_token: `pagetok-${id}`, ...(ig ? { instagram_business_account: ig } : {}) });
+  const mkFetch = (handler: (u: URL) => { status: number; body: unknown }) =>
+    vi.fn(async (raw: string) => { const r = handler(new URL(raw)); return res(r.status, r.body); });
+
+  it("a Page without instagram_business_account in /me/accounts is asked directly with ITS token → that IG account is used", async () => {
+    const f = mkFetch((u) => {
+      if (u.pathname.endsWith("/me/accounts")) return { status: 200, body: { data: [pg("111")] } };
+      if (u.pathname.endsWith("/111")) {
+        expect(u.searchParams.get("access_token")).toBe("pagetok-111");
+        expect(u.searchParams.get("fields")).toBe("instagram_business_account{id,username},connected_instagram_account{id,username}");
+        return { status: 200, body: { id: "111", connected_instagram_account: { id: "1784100", username: "shop.ig" } } };
+      }
+      return { status: 500, body: {} };
+    });
+    const { accounts, diag } = await fetchIgAccountsDetailed({ fetchImpl: f, userToken: "usertok" });
+    expect(accounts).toEqual([{ pageId: "111", pageName: "Seller Flow 111", pageToken: "pagetok-111", igUserId: "1784100", igUsername: "shop.ig" }]);
+    expect(diag).toMatchObject({ status: 200, pagesReturned: 1, pagesWithIg: 0, fallbackTried: 1, fallbackFound: 1 });
+  });
+  it("fallback prefers instagram_business_account; a failing fallback (error / throw) is skipped, never thrown", async () => {
+    const f = mkFetch((u) => {
+      if (u.pathname.endsWith("/me/accounts")) return { status: 200, body: { data: [pg("1"), pg("2"), pg("3")] } };
+      if (u.pathname.endsWith("/1")) return { status: 200, body: { instagram_business_account: { id: "A", username: "a" }, connected_instagram_account: { id: "B", username: "b" } } };
+      if (u.pathname.endsWith("/2")) return { status: 403, body: { error: { code: 10 } } };
+      throw new Error("boom");
+    });
+    const { accounts, diag } = await fetchIgAccountsDetailed({ fetchImpl: f, userToken: "t" });
+    expect(accounts.map((a) => a.igUserId)).toEqual(["A"]);
+    expect(diag).toMatchObject({ fallbackTried: 3, fallbackFound: 1 });
+  });
+  it("paginates /me/accounts via paging.next (the Page is on batch 2); capped at 5 batches; never follows a non-Graph next", async () => {
+    let calls = 0;
+    const f = mkFetch((u) => {
+      if (u.pathname.endsWith("/me/accounts")) {
+        calls++;
+        const after = u.searchParams.get("after");
+        if (!after) return { status: 200, body: { data: [pg("1")], paging: { next: `${G}/v21.0/me/accounts?access_token=t&after=b2` } } };
+        return { status: 200, body: { data: [pg("2", { id: "IG2", username: "two" })] } };
+      }
+      return { status: 200, body: {} };
+    });
+    const { accounts, diag } = await fetchIgAccountsDetailed({ fetchImpl: f, userToken: "t" });
+    expect(calls).toBe(2);
+    expect(accounts.map((a) => a.igUserId)).toEqual(["IG2"]);
+    expect(diag).toMatchObject({ batches: 2, pagesReturned: 2, pagesWithIg: 1 });
+
+    const endless = mkFetch((u) => (u.pathname.endsWith("/me/accounts")
+      ? { status: 200, body: { data: [], paging: { next: `${G}/v21.0/me/accounts?after=x${Math.random()}` } } }
+      : { status: 200, body: {} }));
+    expect((await fetchIgAccountsDetailed({ fetchImpl: endless, userToken: "t" })).diag.batches).toBe(IG_ACCOUNTS_MAX_BATCHES);
+    expect(IG_ACCOUNTS_MAX_BATCHES).toBe(5);
+
+    const evil = mkFetch((u) => (u.hostname === "graph.facebook.com"
+      ? { status: 200, body: { data: [], paging: { next: "https://evil.example/steal?access_token=t" } } }
+      : { status: 200, body: {} }));
+    await fetchIgAccountsDetailed({ fetchImpl: evil, userToken: "t" });
+    expect(evil.mock.calls.every((c) => String(c[0]).startsWith(`${G}/`))).toBe(true);
+  });
+  it("Graph error → [] + error code/subcode/type in diagnostics; network throw → [] too; neither throws", async () => {
+    const f = mkFetch(() => ({ status: 403, body: { error: { code: 200, error_subcode: 1349, type: "OAuthException", message: "secret text" } } }));
+    const { accounts, diag } = await fetchIgAccountsDetailed({ fetchImpl: f, userToken: "t" });
+    expect(accounts).toEqual([]);
+    expect(diag).toMatchObject({ status: 403, code: 200, subcode: 1349, type: "OAuthException", pagesReturned: 0 });
+    expect(JSON.stringify(diag)).not.toContain("secret text");
+    const boom = vi.fn(async () => { throw new Error("net down"); });
+    await expect(fetchIgAccounts({ fetchImpl: boom, userToken: "t" })).resolves.toEqual([]);
+  });
+  it("the callback logs ONE accounts line — numbers only, no token / page name / id / username / email", async () => {
+    const f = vi.fn(async (u: string) => {
+      if (u.includes("/oauth/access_token") && u.includes("code=")) return res(200, { access_token: "shorttok" });
+      if (u.includes("fb_exchange_token")) return res(200, { access_token: "longusertok", expires_in: 100 });
+      if (u.includes("/me/accounts")) return res(200, { data: [pg("555"), pg("556", { id: "17841999", username: "secret.handle" })] });
+      if (u.includes("/555?")) return res(200, { connected_instagram_account: { id: "17841888", username: "other.handle" } });
+      return res(500, {});
+    });
+    const { runtime, log } = rt({ fetchImpl: f });
+    const out = await runtime.handleCallback({ code: "c", state: signState({ userId: "u1", key: "sekret", nowMs: 1_000_000, kind: "ig" }) });
+    expect(out.redirect).toBe("https://app.test/?ig=connected");
+    const lines = log.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[IG] accounts"));
+    expect(lines).toEqual(["[IG] accounts pages=2 withIg=1 status=200 code=none fallback=1/1"]);
+    for (const bad of ["tok", "Seller Flow", "555", "556", "17841", "handle", "@", "u1"]) expect(lines[0]).not.toContain(bad);
+    expect(igAccountsLogLine({ pagesReturned: 0, pagesWithIg: 0, status: 403, code: 200, fallbackFound: 0, fallbackTried: 0 }))
+      .toBe("[IG] accounts pages=0 withIg=0 status=403 code=200 fallback=0/0");
   });
 });
 
