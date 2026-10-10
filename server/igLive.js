@@ -28,9 +28,11 @@ import { maxAccountsForPlan } from "./accountCap.js";
 import { fbPreviewEmail } from "./fbAccess.js";
 import { igToPayload, IG_PLATFORM } from "./igComment.js";
 
-// Exactly the four permissions the owner approved. pages_read_user_content is added ONLY if
-// Meta's dialog turns out to require it (instagram_basic lists it as a dependency).
-export const IG_OAUTH_SCOPE = "instagram_basic,instagram_manage_comments,pages_show_list,pages_read_engagement";
+// The four permissions the owner approved + ads_read / business_management: a user whose
+// access to the Page comes through a Business portfolio role may need them to read the linked
+// Instagram account (Meta docs). pages_read_user_content is added ONLY if Meta's dialog turns
+// out to require it (instagram_basic lists it as a dependency).
+export const IG_OAUTH_SCOPE = "instagram_basic,instagram_manage_comments,pages_show_list,pages_read_engagement,ads_read,business_management";
 export const IG_COMMENTS_LIMIT = 50;          // Meta's maximum per comments query
 export const IG_RATE_LIMIT_CODES = new Set([80002]); // Instagram business-use-case throttle (on top of Facebook's)
 export const IG_CONFIRM_LABELS = { title: "Connect your Instagram account", lead: "Your Instagram account will be connected to this SellerFlowLive account:", action: "/ig/oauth/complete", param: "ig" };
@@ -55,16 +57,53 @@ export function classifyIgError(status, body) {
 }
 const failDetail = (status, cls) => ({ httpStatus: status, code: cls.code > 0 ? cls.code : null, subcode: cls.subcode, type: cls.type, timedOut: false, message: cls.message });
 
-// Long-lived USER token → every Page that has a linked Instagram professional account.
-// [] on any failure (never throws).
-export async function fetchIgAccounts({ fetchImpl, userToken }) {
+// Long-lived USER token → every Page that has a linked Instagram professional account, plus
+// diagnostics for the callback log (numbers / Graph error fields only — never a token, name,
+// id or username). /me/accounts is paged (≤ IG_ACCOUNTS_MAX_BATCHES batches, Graph host only).
+// A Page with a token but no instagram_business_account in the list is asked directly with its
+// own token (instagram_business_account / connected_instagram_account). Never throws.
+export const IG_ACCOUNTS_MAX_BATCHES = 5;
+const toAccount = (p, ig) => ({ pageId: String(p.id), pageName: String(p.name || ""), pageToken: String(p.access_token), igUserId: String(ig.id), igUsername: String(ig.username || "") });
+export async function fetchIgAccountsDetailed({ fetchImpl, userToken }) {
+  const diag = { status: null, code: null, subcode: null, type: null, batches: 0, pagesReturned: 0, pagesWithIg: 0, fallbackTried: 0, fallbackFound: 0 };
+  const accounts = [];
   try {
-    const { body } = await graphGet({ fetchImpl, url: graphUrl("/me/accounts", { fields: "id,name,access_token,instagram_business_account{id,username}", access_token: userToken }) });
-    const list = Array.isArray(body.data) ? body.data : [];
-    return list
-      .filter((p) => p && p.instagram_business_account && p.instagram_business_account.id && p.access_token)
-      .map((p) => ({ pageId: String(p.id), pageName: String(p.name || ""), pageToken: String(p.access_token), igUserId: String(p.instagram_business_account.id), igUsername: String(p.instagram_business_account.username || "") }));
-  } catch { return []; }
+    const pages = [];
+    let next = graphUrl("/me/accounts", { fields: "id,name,access_token,instagram_business_account{id,username}", access_token: userToken });
+    while (next && diag.batches < IG_ACCOUNTS_MAX_BATCHES) {
+      const { status, body } = await graphGet({ fetchImpl, url: next });
+      diag.batches++;
+      diag.status = status;
+      if (status >= 400 || (body && body.error)) {
+        const c = classifyGraphError(status, body);
+        diag.code = c.code > 0 ? c.code : null; diag.subcode = c.subcode; diag.type = c.type;
+        break;
+      }
+      if (Array.isArray(body.data)) pages.push(...body.data);
+      const n = body.paging && body.paging.next;
+      next = typeof n === "string" && n.startsWith(`${GRAPH_HOST}/`) ? n : null; // never send the token elsewhere
+    }
+    diag.pagesReturned = pages.length;
+    for (const p of pages) {
+      if (!p || !p.id || !p.access_token) continue;
+      const ig = p.instagram_business_account;
+      if (ig && ig.id) { diag.pagesWithIg++; accounts.push(toAccount(p, ig)); continue; }
+      diag.fallbackTried++;
+      try {
+        const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${p.id}`, { fields: "instagram_business_account{id,username},connected_instagram_account{id,username}", access_token: p.access_token }) });
+        const got = status < 400 && body && ((body.instagram_business_account && body.instagram_business_account.id && body.instagram_business_account)
+          || (body.connected_instagram_account && body.connected_instagram_account.id && body.connected_instagram_account));
+        if (got) { diag.fallbackFound++; accounts.push(toAccount(p, got)); }
+      } catch { /* one Page failing never stops the others */ }
+    }
+  } catch { /* never throws — whatever was found so far is returned */ }
+  return { accounts, diag };
+}
+export const igAccountsLogLine = (d) =>
+  `[IG] accounts pages=${Number(d.pagesReturned) || 0} withIg=${Number(d.pagesWithIg) || 0} status=${Number.isFinite(d.status) ? d.status : "none"} code=${Number.isFinite(d.code) ? d.code : "none"} fallback=${Number(d.fallbackFound) || 0}/${Number(d.fallbackTried) || 0}`;
+// The list only ([] on any failure, never throws).
+export async function fetchIgAccounts({ fetchImpl, userToken }) {
+  return (await fetchIgAccountsDetailed({ fetchImpl, userToken })).accounts;
 }
 
 // Is this Instagram account broadcasting now? live_media returns only a live broadcast.
@@ -146,7 +185,8 @@ export function createIgRuntime(deps) {
       if (!shortTok.ok) return { redirect: back("error", "token_exchange") };
       const longTok = await exchangeForLongLivedUserToken({ config, fetchImpl, shortToken: shortTok.access });
       if (!longTok.ok) return { redirect: back("error", "token_exchange") };
-      const accounts = await fetchIgAccounts({ fetchImpl, userToken: longTok.access });
+      const { accounts, diag } = await fetchIgAccountsDetailed({ fetchImpl, userToken: longTok.access });
+      log(igAccountsLogLine(diag));
       if (accounts.length === 0) return { redirect: back("error", "no_ig_account") };
       let plan, count;
       try { plan = await store.getPlan(userId); count = await store.countAccounts(userId); }
