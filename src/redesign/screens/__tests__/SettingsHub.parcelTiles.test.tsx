@@ -1,6 +1,6 @@
 // Settings hub — Parcel Scan split into "· 7-11" (today's tile, unchanged behaviour) and
 // "· FamilyMart" (Coming soon, toast only). TW-market sellers with no 7-11 access see a
-// Coming-soon 7-11 tile too. Colour dots only — no store logos.
+// Coming-soon 7-11 tile too. Our own inline-SVG shop icon — no store logos / image files.
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -15,13 +15,14 @@ const view = (extra: Record<string, unknown> = {}, lang = "en") =>
   render(<TProvider lang={lang}><SettingsHub {...base} {...extra} /></TProvider>);
 
 describe("7-11 tile — today's behaviour kept", () => {
-  it("with access: opens Parcel Scan, label 'Parcel Scan · 7-11' + red dot", () => {
+  it("with access: opens Parcel Scan, label 'Parcel Scan' + '7-11', shop icon with a 3-colour bar", () => {
     const onParcelScan = vi.fn(), onParcelSoon = vi.fn();
     const r = view({ onParcelScan, onParcelSoon });
     const tile = r.getByTestId("tile-parcelscan");
     expect(tile.textContent).toContain("Parcel Scan");
     expect(tile.textContent).toContain("7-11");
-    expect((tile.querySelector('[data-testid="parcel-dot"]') as HTMLElement).style.background).toBe("rgb(228, 0, 43)");
+    expect(tile.querySelector('[data-testid="parcel-icon-711"]')).toBeTruthy();
+    expect(Array.from(tile.querySelectorAll('[data-testid="parcel-accent"]')).map((r) => r.getAttribute("fill"))).toEqual(["#f58220", "#00965e", "#e4002b"]);
     fireEvent.click(tile);
     expect(onParcelScan).toHaveBeenCalledTimes(1);
     expect(onParcelSoon).not.toHaveBeenCalled();
@@ -38,7 +39,7 @@ describe("7-11 tile — today's behaviour kept", () => {
     const onParcelSoon = vi.fn();
     const r = view({ onParcelSoon });
     const tile = r.getByTestId("tile-parcelscan-soon");
-    expect(tile.textContent).toContain("Coming soon");
+    expect(tile.textContent).toContain(t.rd_soon); // SoonBadge
     expect(tile.style.opacity).toBe("0.5");
     fireEvent.click(tile);
     expect(onParcelSoon).toHaveBeenCalledWith("711");
@@ -47,15 +48,15 @@ describe("7-11 tile — today's behaviour kept", () => {
 });
 
 describe("FamilyMart tile", () => {
-  it("shows for a TW seller WITHOUT Parcel Scan access; Coming soon; grey; green dot; tap = toast only", () => {
+  it("shows for a TW seller WITHOUT Parcel Scan access; Soon badge; grey; shop icon with a 2-colour bar; tap = toast only", () => {
     const onParcelSoon = vi.fn();
     const r = view({ onParcelSoon });
     const fm = r.getByTestId("tile-parcelscan-fm");
     expect(fm.textContent).toContain("Parcel Scan");
     expect(fm.textContent).toContain("FamilyMart");
-    expect(fm.textContent).toContain(t.rd_ls_soon);
+    expect(fm.textContent).toContain(t.rd_soon);
     expect(fm.style.opacity).toBe("0.5");
-    expect((fm.querySelector('[data-testid="parcel-dot"]') as HTMLElement).style.background).toBe("rgb(0, 161, 75)");
+    expect(Array.from(fm.querySelectorAll('[data-testid="parcel-accent"]')).map((r) => r.getAttribute("fill"))).toEqual(["#00a14b", "#0072bc"]);
     fireEvent.click(fm);
     expect(onParcelSoon).toHaveBeenCalledTimes(1);
     expect(onParcelSoon).toHaveBeenCalledWith("fm");
@@ -72,10 +73,15 @@ describe("FamilyMart tile", () => {
     expect(r.queryByTestId("tile-parcelscan-fm")).toBeNull();
     expect(r.queryByTestId("tile-parcelscan-soon")).toBeNull();
   });
-  it("no logo images: the tiles hold no <img>", () => {
+  it("no logo images: inline SVG only, no <img>, no image files referenced", () => {
     const r = view({ onParcelScan: noop, onParcelSoon: noop });
-    expect(r.getByTestId("tile-parcelscan").querySelector("img")).toBeNull();
-    expect(r.getByTestId("tile-parcelscan-fm").querySelector("img")).toBeNull();
+    for (const id of ["tile-parcelscan", "tile-parcelscan-fm"]) {
+      const el = r.getByTestId(id);
+      expect(el.querySelector("img, image, use")).toBeNull();
+      expect(el.querySelector("svg")).toBeTruthy();
+    }
+    const src = readFileSync("src/redesign/components/ParcelStoreIcon.tsx", "utf8");
+    expect(src).not.toMatch(/\.(png|jpe?g|svg|webp|gif)["']|<image|href=/);
   });
   it("Tagalog / Chinese labels", () => {
     expect(view({ onParcelSoon: noop }, "zh-TW").getByTestId("tile-parcelscan-fm").textContent).toContain("全家");

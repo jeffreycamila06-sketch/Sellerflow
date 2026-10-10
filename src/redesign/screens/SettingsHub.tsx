@@ -4,6 +4,8 @@ import { headerBar, headerTitle } from "../ui";
 import { useT } from "../i18n";
 import InviteFriendsCard from "../components/InviteFriendsCard";
 import SupportContactModal from "../components/SupportContactModal";
+import SoonBadge from "../components/SoonBadge";
+import ParcelStoreIcon from "../components/ParcelStoreIcon";
 
 const tile: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "15px 13px", border: "1px solid var(--border)", borderRadius: 15, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
 const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
@@ -29,7 +31,7 @@ function Tile({ icon, label, onClick, variant = "accent", locked = false, testid
 // Build 16 — a feature that isn't offered yet: the Live picker's "Coming soon" look (dimmed, the
 // words under the label) and NOT tappable (disabled, no handler). With onTap (Parcel Scan tiles)
 // it still looks the same, but a tap shows a short note — never a screen.
-function SoonTile({ icon, label, soon, testid, onTap }: { icon: ReactNode; label: ReactNode; soon: string; testid?: string; onTap?: () => void }) {
+function SoonTile({ icon, label, soon, testid, onTap }: { icon: ReactNode; label: ReactNode; soon: ReactNode; testid?: string; onTap?: () => void }) {
   return (
     <button type="button" disabled={!onTap} onClick={onTap} aria-disabled="true" style={{ ...tile, opacity: 0.5, cursor: "default" }} data-testid={testid} data-soon="1">
       <span style={chip("neutral")}>{icon}</span>
@@ -42,9 +44,9 @@ function SoonTile({ icon, label, soon, testid, onTap }: { icon: ReactNode; label
 }
 
 // Parcel Scan tiles: "Parcel Scan" with the store on a second, smaller line ("7-11" /
-// "FamilyMart") and a small colour dot on the icon (colour only — no store logo or artwork).
+// "FamilyMart") and our own shop-front icon (components/ParcelStoreIcon — no store logo).
 // The title is its own span so it reads the same; whole words only, fits a 320 px half-tile.
-const SEVEN_RED = "#e4002b", FAMILY_GREEN = "#00a14b";
+const PARCEL_BADGE: CSSProperties = { whiteSpace: "normal", alignSelf: "flex-start", maxWidth: "100%", boxSizing: "border-box" };
 function ParcelLabel({ title, store }: { title: string; store: string }) {
   return (
     <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -53,12 +55,6 @@ function ParcelLabel({ title, store }: { title: string; store: string }) {
     </span>
   );
 }
-const dotIcon = (icon: ReactNode, dot: string) => (
-  <span style={{ position: "relative", display: "flex" }}>
-    {icon}
-    <span aria-hidden data-testid="parcel-dot" style={{ position: "absolute", top: -4, right: -5, width: 8, height: 8, borderRadius: "50%", background: dot, boxShadow: "0 0 0 2px var(--surface)" }} />
-  </span>
-);
 
 const ic = {
   gear: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
@@ -124,20 +120,20 @@ export default function SettingsHub({
               screen. The onParcelScan prop is the ALLOW gate; parcelLocked is tile-only. */}
           {(() => {
             const seven = <ParcelLabel title={t.rd_ps2_title} store="7-11" />;
-            const sevenIcon = dotIcon(ic.camera, SEVEN_RED);
+            const sevenIcon = <ParcelStoreIcon store="711" />;
             const sevenTile = onParcelScan
               ? <Tile icon={sevenIcon} label={seven} onClick={onParcelScan} testid="tile-parcelscan" />
               : parcelLocked && onParcelUpsell
                 ? <Tile icon={sevenIcon} label={seven} onClick={onParcelUpsell} locked testid="tile-parcelscan-locked" />
                 : onParcelSoon
-                  ? <SoonTile icon={sevenIcon} label={seven} soon={t.rd_ls_soon} testid="tile-parcelscan-soon" onTap={() => onParcelSoon("711")} />
+                  ? <SoonTile icon={sevenIcon} label={seven} soon={<SoonBadge style={PARCEL_BADGE} />} testid="tile-parcelscan-soon" onTap={() => onParcelSoon("711")} />
                   : null;
             const fmTile = onParcelSoon
-              ? <SoonTile icon={dotIcon(ic.camera, FAMILY_GREEN)} label={<ParcelLabel title={t.rd_ps2_title} store={t.rd_sh_fm_name} />} soon={t.rd_ls_soon} testid="tile-parcelscan-fm" onTap={() => onParcelSoon("fm")} />
+              ? <SoonTile icon={<ParcelStoreIcon store="fm" />} label={<ParcelLabel title={t.rd_ps2_title} store={t.rd_sh_fm_name} />} soon={<SoonBadge style={PARCEL_BADGE} />} testid="tile-parcelscan-fm" onTap={() => onParcelSoon("fm")} />
               : null;
             // Both shown → one full-width row so they always sit side by side.
             return sevenTile && fmTile
-              ? <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} data-testid="parcel-pair">{sevenTile}{fmTile}</div>
+              ? <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, minWidth: 0 }} data-testid="parcel-pair">{sevenTile}{fmTile}</div>
               : sevenTile || fmTile;
           })()}
           {/* Customer Details phonebook — same allow gate + same locked upsell. */}
