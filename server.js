@@ -5,6 +5,8 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
+import { readFileSync } from "fs";
+import { answerQuestion, callClaude, parseGuide, changedSections, checkedMap } from "./server/helpBot.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
@@ -960,6 +962,108 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
   }
   return res.json({ success: true, i18n: result.i18n });
 });
+
+// Help bot (sql/116). OFF unless app_settings.support_ai_enabled = 'true' AND the caller is an
+// admin or on the 'support_ai_preview' list (feature_access_emails). user_id comes from the JWT
+// only. The answer logic lives in server/helpBot.js (tested); this is wiring. Logs: counts and
+// codes only — never question/answer text, emails or tokens.
+let helpGuide = [];
+try {
+  helpGuide = parseGuide(readFileSync(new URL("./docs/support/sfl-guide.md", import.meta.url), "utf8"));
+} catch {
+  console.log("[SUPPORT] guide missing");
+}
+const supportLastAsk = new Map(); // ponytail: in-memory, per server instance
+async function readSetting(key) {
+  const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
+  return data ? data.value : null;
+}
+async function callerIsAdmin(req) {
+  try {
+    const userSb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${req.authToken}` } },
+    });
+    const { data, error } = await userSb.rpc("is_admin");
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+async function helpBotAllowed(req) {
+  if (!serviceSb) return false;
+  if ((await readSetting("support_ai_enabled")) !== "true") return false;
+  if (await callerIsAdmin(req)) return true;
+  const email = String(req.userEmail || "").trim().toLowerCase();
+  if (!email) return false;
+  const { data, error } = await serviceSb.from("feature_access_emails").select("email,is_prefix").eq("feature", "support_ai_preview");
+  if (error) return false;
+  return (data || []).some((r) => r.email === email || (r.is_prefix && email.startsWith(r.email)));
+}
+
+app.post("/support/ask", requireAuth, async (req, res) => {
+  try {
+    if (!(await helpBotAllowed(req))) return res.status(403).json({ success: false, error: "not_available" });
+    const now = Date.now();
+    if (now - (supportLastAsk.get(req.authUserId) || 0) < 2000) return res.status(429).json({ success: false, error: "too_fast" });
+    supportLastAsk.set(req.authUserId, now);
+    const [cap, daily] = await Promise.all([readSetting("support_ai_monthly_cap_usd"), readSetting("support_ai_daily_per_seller")]);
+    const r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang }, {
+      settings: { capUsd: Number(cap ?? 15), dailyPerSeller: Number(daily ?? 20) },
+      matchFaq: async (q) => {
+        const { data, error } = await serviceSb.rpc("support_faq_match", { p_q: q });
+        if (error) throw error;
+        return (data && data[0]) || null;
+      },
+      usage: async (uid) => {
+        const { data, error } = await serviceSb.rpc("support_usage", { p_user: uid });
+        if (error) throw error;
+        return data || {};
+      },
+      faqs: async () => {
+        const { data, error } = await serviceSb.from("support_faq").select("id,question,answer,guide_sections")
+          .eq("enabled", true).eq("needs_recheck", false).order("id").limit(300);
+        if (error) throw error;
+        return data || [];
+      },
+      guide: async () => helpGuide,
+      callModel: (a) => callClaude({ apiKey: ANTHROPIC_API_KEY, ...a }),
+      save: async (row) => {
+        const { data, error } = await serviceSb.from("support_chats").insert(row).select("id").single();
+        if (error) throw error;
+        return data.id;
+      },
+      log: (line) => console.log(line),
+    });
+    if (r.error) return res.status(400).json({ success: false, error: r.error });
+    return res.json({ success: true, id: r.id, source: r.source, answer: r.answer, saved: r.saved, contact: r.contact });
+  } catch (e) {
+    console.log(`[SUPPORT] fail code=${(e && e.code) || "error"}`);
+    return res.status(500).json({ success: false, error: "failed" });
+  }
+});
+
+// A guide section's "Last checked" date changed since the last start → its linked FAQ entries
+// are marked needs_recheck (and stop being served until Admin saves them again).
+async function supportGuideRecheck() {
+  if (!serviceSb || !helpGuide.length) return;
+  try {
+    const raw = await readSetting("support_guide_checked");
+    if (raw === null) return; // sql/116 not applied
+    let stored = {};
+    try { stored = JSON.parse(raw); } catch { /* treat as empty */ }
+    const changed = changedSections(stored, helpGuide);
+    if (changed.length) {
+      const { data } = await serviceSb.rpc("support_mark_recheck", { p_sections: changed });
+      console.log(`[SUPPORT] recheck sections=${changed.length} faqs=${data || 0}`);
+    }
+    await serviceSb.from("app_settings").update({ value: JSON.stringify(checkedMap(helpGuide)) }).eq("key", "support_guide_checked");
+  } catch {
+    console.log("[SUPPORT] recheck failed");
+  }
+}
+setTimeout(supportGuideRecheck, 5000).unref?.();
 
 // Parcel Scan (Phase A1, ADMIN-ONLY dogfood). One handwritten-slip photo per
 // call (the client loops parcels sequentially); Claude vision extracts the

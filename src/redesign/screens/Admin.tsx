@@ -20,6 +20,7 @@ import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
 import ContactChip from "../components/ContactChip";
+import AdminHelpChat from "../components/AdminHelpChat";
 import { useT, tpl, type RedesignT } from "../i18n";
 import { isIOS } from "../adapters/platform";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
@@ -38,7 +39,7 @@ const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 
 
 export type AdminPanelKind =
   | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee" | "parcelsw"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -55,6 +56,7 @@ const cic = {
   parcelmon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5v-9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="m4 7.5 8 3.5 8-3.5M12 11v9" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>,
   audit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 13h6M9 16.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
   userbase: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="1.7" opacity=".5" /></svg>,
+  helpchat: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4A2.5 2.5 0 0 1 4 13.5v-8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M8.5 9.5h7M8.5 12.5h4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
   pulse: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2.5-6 4 13 2.5-7H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   shipfee: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /><circle cx="17.5" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /></svg>,
   parcelsw: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="6" stroke="currentColor" strokeWidth="1.6" /><circle cx="15" cy="12" r="3" fill="currentColor" /></svg>,
@@ -150,6 +152,7 @@ export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr
           <Ctrl icon={cic.shipfee} label={t.rd_adm_ctrl_shipfee} onClick={() => onOpenPanel("shipfee")} />
           <Ctrl icon={cic.parcelsw} label={t.rd_adm_ctrl_parcelsw} onClick={() => onOpenPanel("parcelsw")} />
           <Ctrl icon={cic.audit} label={t.rd_adm_ctrl_audit} onClick={() => onOpenPanel("audit")} />
+          <Ctrl icon={cic.helpchat} label={t.rd_adm_ctrl_helpchat} onClick={() => onOpenPanel("helpchat")} />
         </div>
       </div>
     </div>
@@ -162,7 +165,7 @@ const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   parcelmon: t.rd_adm_pt_parcel, shipfee: t.rd_adm_pt_shipfee, parcelsw: t.rd_adm_pt_parcelsw, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
-  pulse: t.rd_pulse_title,
+  pulse: t.rd_pulse_title, helpchat: t.rd_adm_ctrl_helpchat,
 } as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const miniStat: CSSProperties = { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
@@ -1179,6 +1182,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           {panel === "parcelmon" && <ParcelMonPanel />}
           {panel === "shipfee" && <ShipFeePanel />}
           {panel === "parcelsw" && <ParcelSwitchPanel />}
+          {panel === "helpchat" && <AdminHelpChat />}
 
           {panel === "broadcast" && (
             <div>

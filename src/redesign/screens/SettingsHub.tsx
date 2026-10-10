@@ -6,6 +6,7 @@ import InviteFriendsCard from "../components/InviteFriendsCard";
 import SupportContactModal from "../components/SupportContactModal";
 import SoonBadge from "../components/SoonBadge";
 import ParcelStoreIcon from "../components/ParcelStoreIcon";
+import HelpBot from "../components/HelpBot";
 
 const tile: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "15px 13px", border: "1px solid var(--border)", borderRadius: 15, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
 const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
@@ -75,8 +76,9 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon,
+  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, helpBot = false,
 }: {
+  helpBot?: boolean; // help bot preview (switch on + preview list / admin): bubble instead of the "Need help?" tile
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void;
   onShipping?: () => void; // TW 7-11 module — passed ONLY when the market has shippingModule "tw-711" (marketHidesShipping) AND the user is an admin (Build 16)
@@ -101,7 +103,7 @@ export default function SettingsHub({
   const [helpOpen, setHelpOpen] = useState(false);
   return (
     <div>
-      <div style={headerBar}>
+      <div style={headerBar} data-hb-top>
         <div className="sfl-anim-beat" style={headerTitle}>{t.rd_set_title}</div>
         <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_sh_sub}</div>
       </div>
@@ -158,15 +160,19 @@ export default function SettingsHub({
               look — both gated by reduced-motion + [data-motion=off]). Rendered inline
               (not <Tile>) so the shared Tile/chip — and every other card — stay
               byte-unchanged. */}
-          <button onClick={() => setHelpOpen(true)} style={tile} data-testid="help-card">
-            <span className="sfl-anim-beat3" data-testid="help-badge" style={{ ...chip("accent"), background: "var(--accent)", color: "var(--accent-text)" }}>{ic.help}</span>
-            <span className="sfl-anim-beat" data-testid="help-label" style={tileLabel}>{t.rd_sh_help}</span>
-          </button>
+          {/* Help bot preview (helpBot): the bubble replaces this tile; everyone else keeps it. */}
+          {!helpBot && (
+            <button onClick={() => setHelpOpen(true)} style={tile} data-testid="help-card">
+              <span className="sfl-anim-beat3" data-testid="help-badge" style={{ ...chip("accent"), background: "var(--accent)", color: "var(--accent-text)" }}>{ic.help}</span>
+              <span className="sfl-anim-beat" data-testid="help-label" style={tileLabel}>{t.rd_sh_help}</span>
+            </button>
+          )}
           <Tile icon={ic.trash} label={t.rd_sh_delete} onClick={onDelete} variant="danger" />
           <Tile icon={ic.exit} label={t.rd_sh_logout} onClick={onLogout} variant="neutral" />
         </div>
       </div>
       {helpOpen && <SupportContactModal onClose={() => setHelpOpen(false)} />}
+      {helpBot && <HelpBot />}
     </div>
   );
 }

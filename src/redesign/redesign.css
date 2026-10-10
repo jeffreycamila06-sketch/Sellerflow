@@ -745,3 +745,9 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
 @media (prefers-reduced-motion: reduce) {
   [data-redesign] .sfl-lpk, [data-redesign] .sfl-lpk *, [data-redesign] .sfl-lpk-fly { animation: none !important; transition: none !important; }
 }
+
+/* Help bot bubble — ONE gentle pulse when Settings opens (not a loop). */
+@keyframes sflHbPulse { 0% { transform: scale(1); } 35% { transform: scale(1.12); } 70% { transform: scale(.97); } 100% { transform: scale(1); } }
+[data-redesign] .sfl-hb-pulse { animation: sflHbPulse .9s ease-out .4s 1 both; }
+[data-redesign][data-motion="off"] .sfl-hb-pulse { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { [data-redesign] .sfl-hb-pulse { animation: none !important; } }
