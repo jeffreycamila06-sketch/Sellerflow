@@ -191,6 +191,7 @@ export interface FmUploadResult {
   ok: boolean;
   error?: FmUploadError;
   inserted?: number; updated?: number; hidden?: number; skipped?: number; notShipped?: number;
+  atStore?: number; // parcels in the file now waiting at the store
 }
 
 export async function uploadFmExport(bytes: Uint8Array): Promise<FmUploadResult> {
@@ -208,5 +209,6 @@ export async function uploadFmExport(bytes: Uint8Array): Promise<FmUploadResult>
     const map: Record<string, FmUploadError> = { not_signed_in: "signed_out", disabled: "disabled", not_allowed: "not_allowed", too_many: "too_many", too_soon: "too_soon" };
     return { ok: false, error: map[d.reason ?? ""] ?? "network" };
   }
-  return { ok: true, inserted: d.inserted ?? 0, updated: d.updated ?? 0, hidden: d.hidden ?? 0, skipped: d.skipped ?? 0, notShipped: parsed.notShipped };
+  return { ok: true, inserted: d.inserted ?? 0, updated: d.updated ?? 0, hidden: d.hidden ?? 0, skipped: d.skipped ?? 0, notShipped: parsed.notShipped,
+    atStore: parsed.rows.filter((r) => r.status === "at_store").length };
 }

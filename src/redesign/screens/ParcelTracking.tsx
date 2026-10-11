@@ -348,7 +348,7 @@ function jobDoneText(job: TrackingJob | null, t: T): string {
   return t.rd_pt_job_failed;
 }
 
-// fm = the 全家 switch (or its preview) is on for this seller: adds "Sync from 全家" and
+// fm = the 全家 switch (or its preview) is on for this seller: adds "Sync from FamilyMart" and
 // the 7-11 / 全家 label. Off → the screen is exactly as before.
 export default function ParcelTracking({ userId, fm = false }: { userId?: string | null; fm?: boolean } = {}) {
   const t = useT();
@@ -361,6 +361,8 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
   const [toast, setToast] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncErr, setSyncErr] = useState(""); // S4: a persistent, plain-words upload error
+  // Not-an-error results: "info" (file fine, nothing shipped yet) or "ok" (FamilyMart counts).
+  const [syncNote, setSyncNote] = useState<{ tone: "info" | "ok"; text: string } | null>(null);
   const [showHow, setShowHow] = useState(false);
   const [rows, setRows] = useState<ParcelTrackingRow[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -479,7 +481,7 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
   };
 
 
-  // "Sync from 賣貨便" — read the uploaded 匯出報表 .xlsx and sync it under the seller's own
+  // "Sync from 7-11" — read the uploaded 匯出報表 .xlsx and sync it under the seller's own
   // JWT. Client-side parse; poller columns are never written. Every failure cause gets its
   // own plain-words message (S4) that stays on screen until the next upload or ✕.
   const onSyncPick = async (files: FileList | null) => {
@@ -487,7 +489,7 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
     if (fileRef.current) fileRef.current.value = ""; // re-picking the same file works
     if (!file) return;
     setSyncing(true);
-    setSyncErr("");
+    setSyncErr(""); setSyncNote(null);
     let res: SyncResult;
     try {
       res = await syncFromExport(new Uint8Array(await file.arrayBuffer()));
@@ -508,7 +510,7 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
     if (res.fresh > 0) { const st = await loadTrackingStatus(); if (st) setStatus(st); }
   };
 
-  // "Sync from 全家" — the 好賣+ Order export, read here and saved by the fm_pickup_upload RPC.
+  // "Sync from FamilyMart" — the 好賣+ Order export, read here and saved by the fm_pickup_upload RPC.
   const onFmPick = async (files: FileList | null) => {
     const file = files && files[0];
     if (fmFileRef.current) fmFileRef.current.value = "";
@@ -518,8 +520,10 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
     let res: FmUploadResult;
     try { res = await uploadFmExport(new Uint8Array(await file.arrayBuffer())); } catch { res = { ok: false, error: "network" }; }
     setFmSyncing(false);
+    setSyncNote(null);
+    if (!res.ok && res.error === "empty") { setSyncNote({ tone: "info", text: t.rd_pt_fm_empty }); return; }
     if (!res.ok) { setSyncErr(fmErrorText(res, t)); return; }
-    showToast(tpl(t.rd_pt_fm_done, { new: res.inserted ?? 0, updated: (res.updated ?? 0) + (res.hidden ?? 0) }), 5000);
+    setSyncNote({ tone: "ok", text: tpl(t.rd_pt_fm_done, { n: (res.inserted ?? 0) + (res.updated ?? 0) + (res.hidden ?? 0), w: res.atStore ?? 0 }) });
     await load();
   };
 
@@ -566,6 +570,13 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
             <button onClick={() => setSyncErr("")} aria-label={t.rd_pt_dismiss} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
           </div>
         )}
+        {syncNote && (
+          <div role="status" data-testid="pt-sync-note" data-tone={syncNote.tone}
+            style={{ ...card, padding: "10px 12px", marginBottom: 14, border: `1px solid ${syncNote.tone === "ok" ? "var(--ok, #16a34a)" : "var(--border-strong)"}`, display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: syncNote.tone === "ok" ? "var(--ok, #16a34a)" : "var(--text-dim)", lineHeight: 1.45 }}>{syncNote.text}</div>
+            <button onClick={() => setSyncNote(null)} aria-label={t.rd_pt_dismiss} style={{ background: "none", border: "none", color: "var(--text-dim)", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
+          </div>
+        )}
         {/* Stage 2 — on-demand check. "Last checked" comes ONLY from last_completed_at. */}
         {state === "ready" && !empty && (() => {
           const b = checkButtonState(status, nowMs);
@@ -597,6 +608,7 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
             state, which carries its own 3 steps + Sync button (N2). */}
         {!empty && <div style={{ ...card, padding: 12, marginBottom: 14 }} data-testid="pt-sync-card">
           <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{t.rd_pt_sync_hint}</div>
+          {fm && <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 4 }} data-testid="pt-sync-hint-fm">{t.rd_pt_sync_hint_fm}</div>}
           <button onClick={() => setShowHow((v) => !v)} style={{ marginTop: 6, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--accent)", fontSize: 12, fontWeight: 700 }} data-testid="pt-sync-how-toggle">
             {showHow ? t.rd_pt_sync_how_hide : t.rd_pt_sync_how}
           </button>
