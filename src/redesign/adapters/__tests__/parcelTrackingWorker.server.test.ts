@@ -397,6 +397,15 @@ describe("day-1 transit skip (parcel_tracking_transit_skip_hours)", () => {
     expect(sb.queries.some((q) => q.table === "parcel_tracking" && q.op === "update")).toBe(false);
   });
 
+  it("worker: a seller's manual press where every parcel was transit-skipped gets the press back", async () => {
+    const sb = fakeSb({ job: job("manual"), rows: [day1("a", { status: "unknown" })] });
+    const check = checkOk();
+    await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick();
+    expect(check).not.toHaveBeenCalled();
+    expect((jobUpdate(sb)?.patch as { parcels_total: number }).parcels_total).toBe(0);
+    expect(sb.rpcs.some((r) => r.name === "parcel_tracking_refund_press")).toBe(true);
+  });
+
   it("worker: setting 0 turns it off", async () => {
     const sb = fakeSb({ job: job("manual"), rows: [day1("a", { status: "unknown" })], settings: { [TRANSIT_SKIP_KEY]: "0" } });
     const check = checkOk();
