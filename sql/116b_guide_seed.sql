@@ -298,7 +298,7 @@ Who has it:
 - **Free / Basic**: tile shows 🔒 (contact-support popup).
 - Not shown outside Taiwan.
 
-How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 7-11** and pick the file. New parcels are checked automatically; **Check now** works once per day.
+How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 7-11** and pick the file. New parcels are checked automatically; **Check now** can be used again 12 hours after your last check.
 
 **全家 (FamilyMart) parcels** — only when 全家 is turned on for your account (being rolled out):
 - On 好賣+, open the **ALL ORDERS** tab and download the **Order export** (.xlsx) there (one file then has every status), then tap **Sync from FamilyMart** and pick the file. A green note shows how many parcels were updated and how many wait for pickup. Upload it again whenever you want fresher statuses — 全家 parcels are **not** checked automatically and **Check now** is 7-11 only.
