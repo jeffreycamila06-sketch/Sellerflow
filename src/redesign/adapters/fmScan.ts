@@ -6,6 +6,7 @@
 // is a text cell, so phone 09… and store 0… keep their leading 0. Max 500 rows per file.
 import { buildZip, crc32 } from "./shippingXlsmPatch";
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { getAppSetting, setAppSetting } from "./appSettings";
 
 export const FM_SCAN_MAX_PER_FILE = 500;
 export const FM_SCAN_DEFAULT_FEE = 39;
@@ -34,6 +35,12 @@ export interface FmScanInput {
 export type FmScanField = "recipientName" | "phone" | "storeId" | "amount" | "shippingFee" | "orderDate" | "buyerUsername" | "total";
 export type FmScanError =
   | "name_required" | "name_long" | "phone" | "store" | "amount" | "fee" | "total" | "date" | "username_long";
+
+// The i18n key for each problem (screens show t[FM_ERROR_KEY[e]]).
+export const FM_ERROR_KEY = {
+  name_required: "rd_fms_e_name_required", name_long: "rd_fms_e_name_long", phone: "rd_fms_e_phone", store: "rd_fms_e_store",
+  amount: "rd_fms_e_amount", fee: "rd_fms_e_fee", total: "rd_fms_e_total", date: "rd_fms_e_date", username_long: "rd_fms_e_username_long",
+} as const satisfies Record<FmScanError, string>;
 
 // ── rules (FamilyMart 大量匯單) ──────────────────────────────────────────────────
 export const normPhone = (v: string) => String(v ?? "").replace(/[\s-]/g, "");
@@ -242,17 +249,39 @@ export async function markFmExported(ids: string[], batchId: string, atIso: stri
   return !error;
 }
 
-export async function loadFmFee(): Promise<number> {
+// Undo one export: the batch's parcels go back to "not exported" (own rows, RLS).
+export async function undoFmExport(batchId: string): Promise<boolean> {
   const me = await uid();
-  if (!me) return FM_SCAN_DEFAULT_FEE;
-  const { data } = await supabase!.from("fm_scan_settings").select("shipping_fee").eq("user_id", me).maybeSingle();
-  const n = Number((data as { shipping_fee?: unknown } | null)?.shipping_fee);
-  return Number.isFinite(n) && n >= 0 && n <= 200 ? n : FM_SCAN_DEFAULT_FEE;
+  if (!me || !batchId) return false;
+  const { error } = await supabase!.from("fm_parcel_scans").update({ exported_at: null, export_batch_id: null }).eq("user_id", me).eq("export_batch_id", batchId);
+  return !error;
 }
 
-export async function saveFmFee(fee: number): Promise<boolean> {
+// "Clear exported": delete every exported parcel (own rows, RLS).
+export async function deleteFmExported(): Promise<boolean> {
   const me = await uid();
-  if (!me || !(fee >= 0 && fee <= 200)) return false;
-  const { error } = await supabase!.from("fm_scan_settings").upsert({ user_id: me, shipping_fee: fee, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (!me) return false;
+  const { error } = await supabase!.from("fm_parcel_scans").delete().eq("user_id", me).not("exported_at", "is", null);
   return !error;
+}
+
+// ── FamilyMart shipping fee: ONE global admin setting (app_settings 'fm_shipping_fee', sql/121) ──
+// Sellers read it, only an admin writes it. Missing / unreadable / outside 0–200 → 39.
+// (fm_scan_settings from sql/120 is no longer used.)
+export const FM_FEE_KEY = "fm_shipping_fee";
+export function validFmFee(v: unknown): boolean {
+  if (v === null || v === undefined || String(v).trim() === "") return false;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 200;
+}
+export async function loadFmGlobalFeeMeta(): Promise<{ fee: number; updatedAt: string | null }> {
+  const row = await getAppSetting(FM_FEE_KEY);
+  return { fee: validFmFee(row?.value) ? Number(row!.value) : FM_SCAN_DEFAULT_FEE, updatedAt: row?.updatedAt ?? null };
+}
+export async function loadFmGlobalFee(): Promise<number> {
+  return (await loadFmGlobalFeeMeta()).fee;
+}
+export async function saveFmGlobalFee(fee: number): Promise<{ ok: boolean; error?: string }> {
+  if (!validFmFee(fee)) return { ok: false, error: "invalid_fee" };
+  return setAppSetting(FM_FEE_KEY, String(fee));
 }
