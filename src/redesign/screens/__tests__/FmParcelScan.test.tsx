@@ -66,17 +66,57 @@ describe("FmParcelScan screen", () => {
     expect(saveFmScan).not.toHaveBeenCalled();
   });
 
-  it("saves a good parcel with the default fee and today's date", async () => {
+  it("the form has exactly 5 fields; fee + order date sit side by side in the top row with the hint", async () => {
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("fms-empty")).toBeTruthy());
+    const ids = Array.from(r.getByTestId("fms-form").querySelectorAll("input")).map((i) => i.getAttribute("data-testid"));
+    expect(ids).toEqual(["fms-recipientName", "fms-phone", "fms-storeId", "fms-amount", "fms-buyerUsername"]);
+    const top = r.getByTestId("fms-top");
+    expect(top.querySelector('[data-testid="fms-default-fee"]')).toBeTruthy();
+    expect(top.querySelector('[data-testid="fms-top-date"]')).toBeTruthy();
+    expect((top.firstElementChild as HTMLElement).style.gridTemplateColumns).toBe("minmax(0, 1fr) minmax(0, 1fr)");
+    expect(r.getByTestId("fms-top-hint").textContent).toBe("Applies to new parcels. For a different fee or date, change it here before adding.");
+  });
+
+  it("Add parcel uses the top fee + top order date (today by default, changeable)", async () => {
     saveFmScan.mockResolvedValue({ ok: true, row: row("n1") });
     const r = view();
     await waitFor(() => expect(r.getByTestId("fms-empty")).toBeTruthy());
-    expect((r.getByTestId("fms-shippingFee") as HTMLInputElement).value).toBe("39");
-    expect((r.getByTestId("fms-orderDate") as HTMLInputElement).value).toBe("2026-10-11");
+    expect((r.getByTestId("fms-default-fee") as HTMLInputElement).value).toBe("39");
+    expect((r.getByTestId("fms-top-date") as HTMLInputElement).value).toBe("2026-10-11");
+    type(r, "default-fee", "60"); type(r, "top-date", "2026-10-01");
     type(r, "recipientName", "Jeffrey"); type(r, "phone", "0958704782"); type(r, "storeId", "022131"); type(r, "amount", "500");
     fireEvent.click(r.getByTestId("fms-save"));
     await waitFor(() => expect(r.getAllByTestId("fms-row")).toHaveLength(1));
-    expect(saveFmScan).toHaveBeenCalledWith(expect.objectContaining({ recipientName: "Jeffrey", phone: "0958704782", storeId: "022131", amount: "500", shippingFee: "39", orderDate: "2026-10-11" }), undefined);
+    expect(saveFmScan).toHaveBeenCalledWith(expect.objectContaining({ recipientName: "Jeffrey", phone: "0958704782", storeId: "022131", amount: "500", shippingFee: "60", orderDate: "2026-10-01" }), undefined);
     expect(r.getByTestId("fms-summary").textContent).toBe("1 parcels · total NT$539");
+  });
+
+  it("total error shows under Item amount; date error under the top Order date", async () => {
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("fms-empty")).toBeTruthy());
+    type(r, "amount", "10"); type(r, "top-date", "2026-08-01");
+    fireEvent.click(r.getByTestId("fms-save"));
+    const total = r.getByTestId("fms-err-total");
+    expect(total.textContent).toBe("Item amount + shipping must be 60 to 20,000.");
+    expect(total.parentElement!.querySelector('[data-testid="fms-amount"]')).toBeTruthy();
+    expect(r.getByTestId("fms-top").contains(r.getByTestId("fms-err-orderDate"))).toBe(true);
+    expect(r.getByTestId("fms-err-orderDate").textContent).toBe("Order date must be within the last 60 days.");
+    expect(saveFmScan).not.toHaveBeenCalled();
+  });
+
+  it("editing keeps the parcel's saved fee + date, even when the top values differ", async () => {
+    loadFmScans.mockResolvedValue({ ok: true, rows: [row("a", { shippingFee: 45, orderDate: "2026-10-05" })] });
+    saveFmScan.mockResolvedValue({ ok: true, row: row("a", { shippingFee: 45, orderDate: "2026-10-05", recipientName: "Jeff" }) });
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("fms-row")).toHaveLength(1));
+    type(r, "default-fee", "80"); type(r, "top-date", "2026-10-11");
+    fireEvent.click(r.getByTestId("fms-edit"));
+    expect(r.getByTestId("fms-form").querySelectorAll("input")).toHaveLength(5);
+    type(r, "recipientName", "Jeff");
+    fireEvent.click(r.getByTestId("fms-save"));
+    await waitFor(() => expect(saveFmScan).toHaveBeenCalled());
+    expect(saveFmScan).toHaveBeenCalledWith(expect.objectContaining({ recipientName: "Jeff", shippingFee: "45", orderDate: "2026-10-05" }), "a");
   });
 
   it("export: builds the file, marks the rows exported, moves them to the Exported tab", async () => {

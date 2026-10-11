@@ -450,7 +450,9 @@ Who sees what:
 When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, and upload that file on the 賣貨便 website. **Customer Details** (same access as Parcel Scan) keeps repeat buyers so you can **Import** them again.
 
 **Parcel Scan FamilyMart (全家)** — only when it is turned on for your account (being rolled out), with the same plan and Taiwan rules as Parcel Scan 7-11:
-- Type each parcel: recipient name, phone (10 digits starting 09), 6-digit FamilyMart store number (the number on a FamilyMart receipt works, e.g. 022131), item amount (10–20,000), shipping fee (0–200, filled from your default — default 39), order date (within the last 60 days) and the buyer's @username (optional; blank = "商品"). Item + shipping must be 60–20,000. A wrong field shows a short message under it.
+- The top row has the **shipping fee** (0–200; tap Save to keep it as your default — default 39) and the **order date** (today when you open the screen; within the last 60 days). Both apply to every new parcel — for a different fee or date, change it there before adding.
+- Then type each parcel: recipient name, phone (10 digits starting 09), 6-digit FamilyMart store number (the number on a FamilyMart receipt works, e.g. 022131), item amount (10–20,000) and the buyer's @username (optional; blank = "商品"). Item + shipping must be 60–20,000. A wrong field shows a short message under it.
+- Editing a parcel keeps its own fee and date.
 - **Export** builds the 好賣+ 大量匯單 Excel file (up to 500 parcels per file; more = several numbered files). Upload it on 好賣+ → 大量匯單. Exported parcels move to the **Exported** tab and can be exported again.
 - The @username goes in the 商品 column, so the 全家 Order export can be matched back to the buyer in Pickup Status.
 

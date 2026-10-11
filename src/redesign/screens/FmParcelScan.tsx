@@ -48,6 +48,8 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
   const [fee, setFee] = useState(FM_SCAN_DEFAULT_FEE);
   const [feeDraft, setFeeDraft] = useState(String(FM_SCAN_DEFAULT_FEE));
   const [form, setForm] = useState<FmScanInput>(() => blank(FM_SCAN_DEFAULT_FEE, today));
+  // Top row: fee + order date for every NEW parcel. The date is not saved anywhere (today on open).
+  const [topDate, setTopDate] = useState(today);
   const [editId, setEditId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,13 +63,14 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
       if (!live) return;
       if (res.ok) setRows(res.rows);
       setFee(f); setFeeDraft(String(f));
-      setForm((x) => (x.amount || x.recipientName ? x : { ...x, shippingFee: String(f) }));
       setLoading(false);
     });
     return () => { live = false; };
   }, []);
 
-  const errors = validateFmScan(form, today);
+  // New parcel → the top fee + date; editing → the parcel keeps its saved fee + date.
+  const effective: FmScanInput = editId ? form : { ...form, shippingFee: feeDraft, orderDate: topDate };
+  const errors = validateFmScan(effective, today);
   const hasErrors = Object.keys(errors).length > 0;
   const set = (k: keyof FmScanInput) => (e: { target: { value: string } }) => setForm((x) => ({ ...x, [k]: e.target.value }));
   const fieldErr = (k: FmScanField) => (touched && errors[k] ? <div style={errText} data-testid={`fms-err-${k}`}>{errorText(errors[k]!, t)}</div> : null);
@@ -76,7 +79,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
     setTouched(true);
     if (hasErrors || saving) return;
     setSaving(true);
-    const res = await saveFmScan(form, editId ?? undefined);
+    const res = await saveFmScan(effective, editId ?? undefined);
     setSaving(false);
     if (!res.ok || !res.row) { show(t.rd_fms_err_save); return; }
     setRows((list) => (editId ? list.map((r) => (r.id === editId ? res.row! : r)) : [res.row!, ...list]));
@@ -95,7 +98,6 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
     if (!(feeDraft.trim() !== "" && n >= 0 && n <= 200)) return;
     if (!(await saveFmFee(n))) { show(t.rd_fms_err_save); return; }
     setFee(n); show(t.rd_fms_saved, 1500);
-    if (!editId && !form.amount && !form.recipientName) setForm((x) => ({ ...x, shippingFee: String(n) }));
   };
 
   const shown = useMemo(() => rows.filter((r) => (tab === "new" ? !r.exportedAt : !!r.exportedAt)), [rows, tab]);
@@ -135,22 +137,33 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
         <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>{t.rd_fms_sub}</div>
       </div>
       <div style={{ padding: 16, maxWidth: 620, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ ...card, display: "flex", gap: 10, alignItems: "flex-end" }}>
-          <div style={{ flex: 1 }}>
-            <label style={label}>{t.rd_fms_default_fee}</label>
-            <input style={input} inputMode="numeric" value={feeDraft} onChange={(e) => setFeeDraft(e.target.value)} data-testid="fms-default-fee" />
+        <div style={card} data-testid="fms-top">
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, alignItems: "start" }}>
+            <div style={{ minWidth: 0 }}>
+              <label style={label}>{`${t.rd_fms_default_fee} (${cur})`}</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input style={{ ...input, minWidth: 0 }} inputMode="numeric" value={feeDraft} onChange={(e) => setFeeDraft(e.target.value)} data-testid="fms-default-fee" />
+                <button style={{ ...ghost, padding: "8px 10px", flexShrink: 0 }} onClick={() => void onSaveFee()} data-testid="fms-save-fee">{t.rd_fms_save}</button>
+              </div>
+              {fieldErr("shippingFee")}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <label style={label}>{t.rd_fms_date}</label>
+              <input style={input} type="date" max={today} value={topDate} onChange={(e) => setTopDate(e.target.value)} data-testid="fms-top-date" />
+              {fieldErr("orderDate")}
+            </div>
           </div>
-          <button style={ghost} onClick={() => void onSaveFee()} data-testid="fms-save-fee">{t.rd_fms_save}</button>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }} data-testid="fms-top-hint">{t.rd_fms_top_hint}</div>
         </div>
 
         <div style={{ ...card, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} data-testid="fms-form">
           <div style={{ gridColumn: "1 / -1" }}>{field("recipientName", t.rd_fms_name)}</div>
           {field("phone", t.rd_fms_phone, { inputMode: "numeric", placeholder: "09xxxxxxxx" })}
           {field("storeId", t.rd_fms_store, { inputMode: "numeric", placeholder: "022131" })}
-          {field("amount", `${t.rd_fms_amount} (${cur})`, { inputMode: "numeric" })}
-          {field("shippingFee", `${t.rd_fms_fee} (${cur})`, { inputMode: "numeric" })}
-          {touched && errors.total && <div style={{ ...errText, gridColumn: "1 / -1", marginTop: -4 }} data-testid="fms-err-total">{errorText(errors.total, t)}</div>}
-          {field("orderDate", t.rd_fms_date, { type: "date", max: today })}
+          <div>
+            {field("amount", `${t.rd_fms_amount} (${cur})`, { inputMode: "numeric" })}
+            {touched && !errors.amount && errors.total && <div style={errText} data-testid="fms-err-total">{errorText(errors.total, t)}</div>}
+          </div>
           {field("buyerUsername", t.rd_fms_username, { placeholder: "@username" })}
           <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
             <button style={{ ...primary, flex: 1, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={() => void onSave()} data-testid="fms-save">{editId ? t.rd_fms_update : t.rd_fms_add}</button>
