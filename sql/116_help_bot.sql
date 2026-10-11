@@ -2,9 +2,9 @@
 -- sql/116 — Help bot (in-app help chat on the Settings screen). NOT APPLIED.
 -- ============================================================================
 -- Two tables + small RPCs. The server (POST /support/ask, service role) is the ONLY writer of
--- support_chats. A seller reads only their own chats and rates them through support_rate().
--- Admin reads everything and approves / edits / marks wrong through admin_support_* RPCs
--- (each guarded by is_admin() inside the function).
+-- support_chats. No browser role can select either table. A seller sees only Admin's answers
+-- to their own questions (support_admin_answers) and rates through support_rate(). Admin reads
+-- and reviews through admin_support_* RPCs (each guarded by is_admin() inside the function).
 --
 -- Switches (app_settings — readable by every signed-in seller, so NO emails here):
 --   support_ai_enabled          'false'  only the exact string 'true' turns the bot on
@@ -82,14 +82,10 @@ alter table public.support_chats enable row level security;
 alter table public.support_faq enable row level security;
 revoke all on public.support_chats from anon, authenticated;
 revoke all on public.support_faq from anon, authenticated;
-grant select on public.support_chats to authenticated;
-grant select on public.support_faq to authenticated;
-create policy support_chats_select on public.support_chats
-  for select to authenticated using (user_id = (select auth.uid()) or public.is_admin());
-create policy support_faq_select on public.support_faq
-  for select to authenticated using (public.is_admin());
--- No insert/update/delete policies: the server writes with the service role; everything else
--- goes through the functions below.
+-- No grants and no policies for browser roles: nobody signed in reads or writes these tables
+-- directly (model, cost and review notes stay out of sight). The server writes with the
+-- service role; sellers use support_admin_answers / support_quick_questions / support_rate;
+-- admins use the admin_support_* functions below.
 
 -- ── seller ────────────────────────────────────────────────────────────────────
 create function public.support_rate(p_chat_id uuid, p_rating smallint)
@@ -346,6 +342,22 @@ begin
 end;
 $$;
 
+-- FAQ list for the Admin screen (no direct table access).
+create function public.admin_support_faq_list()
+returns table (id bigint, question text, answer text, enabled boolean, needs_recheck boolean, lang text, guide_sections text[])
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then raise exception 'forbidden'; end if;
+  return query
+    select f.id, f.question, f.answer, f.enabled, f.needs_recheck, f.lang, f.guide_sections
+    from public.support_faq f order by f.id desc limit 500;
+end;
+$$;
+
 -- FAQ edit / on-off. null = keep. Saving text clears needs_recheck (the admin re-checked it).
 create function public.admin_support_faq_update(p_id bigint, p_question text, p_answer text, p_enabled boolean)
 returns boolean
@@ -378,6 +390,7 @@ revoke all on function public.admin_support_approve_batch(jsonb) from public, an
 revoke all on function public.admin_support_answer_batch(jsonb) from public, anon;
 revoke all on function public.support_admin_answers() from public, anon;
 revoke all on function public.support_admin_answers_seen() from public, anon;
+revoke all on function public.admin_support_faq_list() from public, anon;
 revoke all on function public.admin_support_faq_update(bigint, text, text, boolean) from public, anon;
 grant execute on function public.support_norm(text) to authenticated, service_role;
 grant execute on function public.support_rate(uuid, smallint) to authenticated;
@@ -391,6 +404,7 @@ grant execute on function public.admin_support_approve_batch(jsonb) to authentic
 grant execute on function public.admin_support_answer_batch(jsonb) to authenticated;
 grant execute on function public.support_admin_answers() to authenticated;
 grant execute on function public.support_admin_answers_seen() to authenticated;
+grant execute on function public.admin_support_faq_list() to authenticated;
 grant execute on function public.admin_support_faq_update(bigint, text, text, boolean) to authenticated;
 
 -- ── switches + preview list ──────────────────────────────────────────────────

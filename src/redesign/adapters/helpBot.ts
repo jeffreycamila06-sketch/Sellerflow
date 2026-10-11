@@ -154,8 +154,8 @@ export async function answerBatch(items: AnswerItem[]): Promise<number | null> {
 export interface FaqRow { id: number; question: string; answer: string; enabled: boolean; needs_recheck: boolean; lang: string | null }
 export async function loadFaqs(): Promise<FaqRow[] | null> {
   if (!supabase) return null;
-  const { data, error } = await supabase.from("support_faq").select("id,question,answer,enabled,needs_recheck,lang").order("id", { ascending: false }).limit(500);
-  return error ? null : (data as FaqRow[]);
+  const { data, error } = await supabase.rpc("admin_support_faq_list");
+  return error || !Array.isArray(data) ? null : (data as FaqRow[]);
 }
 export async function updateFaq(id: number, patch: { question?: string; answer?: string; enabled?: boolean }): Promise<boolean> {
   if (!supabase) return false;

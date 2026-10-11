@@ -61,11 +61,12 @@ const a2 = await ins({ user: alice, q: "Can I get a refund?", a: "[handoff]", sr
 const b1 = await ins({ user: bob, q: "Why no comments?", a: "Close and reopen.", src: "ai", rating: 1, cost: 0.003 });
 const b2 = await ins({ user: bob, q: "Does it work on Shopee?", a: "The guide doesn't cover that.", src: "ai", needs: "not_covered" });
 
-// ── RLS: own rows only ──
-ok((await as("authenticated", alice, false, () => q("select id from support_chats"))).rows.length === 2, "alice sees only her 2 chats");
-ok((await as("authenticated", admin, true, () => q("select id from support_chats"))).rows.length === 4, "admin sees all chats");
-ok((await as("anon", null, false, () => q("select 1 from support_chats").then(() => "read", () => "denied"))) === "denied", "anon cannot read chats");
-ok((await as("authenticated", alice, false, () => q("select id from support_faq"))).rows.length === 0, "seller cannot list FAQ table");
+// ── no direct table reads for any browser role (model, cost, review notes stay hidden) ──
+for (const t of ["support_chats", "support_faq"]) {
+  for (const [role, uid, adm, who] of [["authenticated", alice, false, "seller"], ["authenticated", admin, true, "admin"], ["anon", null, false, "anon"]]) {
+    await throws(() => as(role, uid, adm, () => q(`select * from ${t}`)), `${who} direct select on ${t} is denied`);
+  }
+}
 
 // ── rating ──
 ok((await as("authenticated", alice, false, () => one("select support_rate($1, -1::smallint) r", [a1]))).r === true, "rate own chat");
@@ -133,6 +134,10 @@ ok(m.rows.length === 1 && m.rows[0].sim >= 0.6, "trigram match ≥ 0.6 (case/pun
 ok((await q("select * from support_faq_match($1)", ["what is the weather today"])).rows.length === 0, "unrelated question → no match");
 ok((await q("select * from support_faq_match($1)", ["Does it work on Shopee"])).rows.length === 0, "disabled FAQ never matches");
 await throws(() => as("authenticated", alice, false, () => q("select * from support_faq_match('x')")), "sellers cannot call faq_match");
+
+// ── admin FAQ list RPC ──
+ok((await as("authenticated", admin, true, () => q("select * from admin_support_faq_list()"))).rows.length === 3, "admin FAQ list via RPC");
+await throws(() => as("authenticated", alice, false, () => q("select * from admin_support_faq_list()")), "seller cannot call admin FAQ list");
 
 // ── recheck ──
 await q("update support_faq set guide_sections='{printer-test}' where answer like '%edited%'");

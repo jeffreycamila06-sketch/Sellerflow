@@ -27,6 +27,7 @@ delete from public.app_settings where key in
   ('support_ai_enabled', 'support_ai_monthly_cap_usd', 'support_ai_daily_per_seller', 'support_guide_checked');
 
 drop function public.admin_support_faq_update(bigint, text, text, boolean);
+drop function public.admin_support_faq_list();
 drop function public.admin_support_answer_batch(jsonb);
 drop function public.admin_support_approve_batch(jsonb);
 drop function public.admin_support_queue(text, integer);

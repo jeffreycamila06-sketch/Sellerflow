@@ -186,6 +186,12 @@ describe("prices + cost", () => {
 });
 
 describe("helpers", () => {
+  it("handoff = money / account actions only", () => {
+    for (const q of ["magkano ang Plus?", "paano magbayad?", "refund please", "怎麼付款", "how much is the Pro plan", "Pro 方案多少錢", "where do I pay", "pwede mag-upgrade sa Master?", "renew po", "delete my account", "invoice for my payment"])
+      expect(isHandoffTopic(q), q).toBe(true);
+    for (const q of ["anong plan ang may Parcel Scan?", "paano i-mark paid ang order?", "how many accounts can Plus have?", "which plan has Pickup Status?", "how do I send a receipt to my buyer", "what does Unpaid 24h+ mean", "哪個方案有包裹掃描？", "magkano ang shipping fee sa 7-11?", "subscribe button where?"])
+      expect(isHandoffTopic(q), q).toBe(false);
+  });
   it("handoff words", () => {
     expect(isHandoffTopic("printer not printing")).toBe(false);
     expect(isHandoffTopic("paano mag-print")).toBe(false);
@@ -213,6 +219,13 @@ describe("helpers", () => {
     for (const s of GUIDE) expect(s.checked).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(pickSections(GUIDE, "bluetooth printer").map((s) => s.id)).toContain("printer-bluetooth");
     expect(pickSections(GUIDE, "qwzx")).toEqual([]);
+  });
+  it("UNSURE: lines never reach the AI", () => {
+    const g = parseGuide("## a-b — Title\nLast checked: 2026-10-11\nKeywords: x\n\nReal text.\nUNSURE: secret note\n  unsure: another\nMore text.");
+    expect(g[0].text).toContain("Real text.");
+    expect(g[0].text).toContain("More text.");
+    expect(g[0].text).not.toMatch(/unsure/i);
+    for (const s of GUIDE) expect(s.text).not.toMatch(/UNSURE:/);
   });
   it("changed 'last checked' dates", () => {
     const s: never = [{ id: "a", checked: "2026-10-11" }, { id: "b", checked: "2026-10-12" }, { id: "c", checked: "2026-10-11" }] as never;

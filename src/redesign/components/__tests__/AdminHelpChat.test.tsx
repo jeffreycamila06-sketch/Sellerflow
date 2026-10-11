@@ -9,7 +9,7 @@ vi.mock("../../../supabase", () => ({
   isSupabaseConfigured: true,
   supabase: {
     rpc: (...a: unknown[]) => rpc(...a),
-    from: () => ({ select: () => ({ order: () => ({ limit: async () => faqRows() }) }) }),
+    from: () => { throw new Error("no direct table reads"); },
   },
 }));
 
@@ -27,6 +27,7 @@ beforeEach(() => {
     if (name === "admin_support_approve_batch") return { data: (args.p_items as unknown[]).length, error: null };
     if (name === "admin_support_answer_batch") return { data: (args.p_items as unknown[]).length, error: null };
     if (name === "admin_support_faq_update") return { data: true, error: null };
+    if (name === "admin_support_faq_list") return faqRows();
     return { data: null, error: null };
   });
   faqRows.mockResolvedValue({ data: [

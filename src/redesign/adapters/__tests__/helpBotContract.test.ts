@@ -47,6 +47,11 @@ describe("guide", () => {
       expect(s).toMatch(/^Keywords: .+$/m);
     }
   });
+  it("no UNSURE: lines left, no prices, free plan = 20 with no reset", () => {
+    expect(guide).not.toMatch(/UNSURE:/);
+    expect(guide).not.toMatch(/NT\$\s?\d|\bWise\b|100 (free )?orders/i);
+    expect(guide).toContain("20 orders in total");
+  });
   it("no secrets, switch names or server details", () => {
     expect(guide).not.toMatch(/support_ai|_enabled|app_settings|supabase|service[_ ]role|ANTHROPIC|Render|honeypot|eyJ/i);
   });
@@ -62,6 +67,12 @@ describe("/support/ask wiring (server.js)", () => {
     const allowed = server.slice(server.indexOf("async function helpBotAllowed"), server.indexOf('app.post("/support/ask"'));
     expect(allowed).toContain('readSetting("support_ai_enabled")) !== "true"');
     expect(allowed).toContain('"support_ai_preview"');
+  });
+  it("the reply carries only id, source, answer, saved, contact — never model or cost", () => {
+    const replies = [...route.matchAll(/res\.json\(\{([^}]*)\}\)/g)].map((m) => m[1]);
+    const ok = replies.find((r) => r.includes("success: true"));
+    expect(ok?.replace(/\s/g, "")).toBe("success:true,id:r.id,source:r.source,answer:r.answer,saved:r.saved,contact:r.contact");
+    for (const r of replies) expect(r).not.toMatch(/model|cost|tokens|review/);
   });
   it("logs codes only — never the question, answer, email or token", () => {
     const logs = [...route.matchAll(/console\.log\(([^\n]*)\)/g)].map((m) => m[1]);

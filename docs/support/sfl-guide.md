@@ -59,25 +59,24 @@ Keywords: general settings, profile, shop name, phone, live session, appearance,
 
 ## plans — Plans: Free, Basic, Plus, Pro, Master
 Last checked: 2026-10-11
-Keywords: plan, plans, subscription, free, basic, plus, pro, master, upgrade, presyo, magkano, 方案, 订阅, 升級
+Keywords: plan, plans, subscription, free, basic, plus, pro, master, which plan, features, anong plan, 方案, 订阅, 哪個方案
 
 There are five plans. What the app shows per plan:
 
 | Plan | Live accounts | Order limit | Parcel Scan / Customer Details / Pickup Status (Taiwan only) |
 |---|---|---|---|
-| Free | 1 | 100 free orders (see "Free order limit") | 🔒 locked |
-| Basic | 1 | no free-order limit | 🔒 locked |
-| Plus | 2 | no free-order limit | can be opened for you (see those sections) |
-| Pro | 3 | no free-order limit | can be opened for you |
-| Master | 5 | no free-order limit | can be opened for you |
+| Free | 1 | 20 orders in total (see "Free order limit") | 🔒 locked |
+| Basic | 1 | unlimited | 🔒 locked |
+| Plus | 2 | unlimited | Pickup Status and parcel check: automatic. Parcel Scan: see that section |
+| Pro | 3 | unlimited | same as Plus |
+| Master | 5 | unlimited | same as Plus |
 
 - The account number is the **total across all live platforms**.
 - "Print QR on sticker" is on every plan.
 - 7-11 Shipping is **Coming soon** for sellers.
 - To see your plan, open **Settings → General Settings → Subscription** (it shows CURRENT PLAN, days left and renew date).
-- Payment is done outside the app through Telegram. Message Admin on Telegram @SellerFlowLive to upgrade or renew. Admin confirms what each plan includes and costs.
-
-UNSURE: The in-app Support guide "Renewing your subscription" shows prices (Basic NT$500, Pro NT$1,200, Master NT$1,700) and no Plus plan; this may be out of date, so the guide does not quote prices.
+- Payment is done outside the app through Telegram. Message Admin on Telegram @SellerFlowLive to subscribe, upgrade or renew.
+- This guide does not quote prices. For prices, message Admin.
 
 ## account-limit — Account limit per plan
 Last checked: 2026-10-11
@@ -95,22 +94,18 @@ What to do:
 2. Upgrade your plan: message Admin on Telegram @SellerFlowLive.
 3. To add an extra TikTok account beyond your plan, tap **Add TikTok — Multi Account** and message Admin on Telegram.
 
-UNSURE: The in-app Support guide lists "Basic 1, Pro 3, Master 5" and does not mention Plus (2). The code says Plus = 2.
-
 ## free-order-limit — Free plan order limit
 Last checked: 2026-10-11
-Keywords: free, free plan, 100 orders, order limit, cap, limit reached, upgrade, libre, naubos, 免费, 免費額度, 订单上限
+Keywords: free, free plan, 20 orders, order limit, cap, limit reached, reset, upgrade, libre, naubos, 免费, 免費額度, 订单上限
 
-On the **Free** plan you can create up to **100 orders**. Paid plans do not have this limit.
+On the **Free** plan you can create **20 orders in total**. They **do not reset** — there is no monthly refill. Upgrade for unlimited orders. Paid plans do not have this limit.
 
 - When you are close, a popup says "You're almost there!" and how many free orders are left.
-- When you reach it: "You've reached your 100-order limit — You've used all 100 free orders. Upgrade to keep selling." New orders are not created after this.
+- When you reach it, the popup says you've used all your free orders. New orders are not created after this.
 - Tap **Upgrade plan** to see your plan, or **View my orders** to see what you have.
 - To upgrade, message Admin on Telegram @SellerFlowLive. On iPhone the popup says "Free limit reached… Please contact support."
 
 You can see "Free orders used" on **Settings → General Settings → Subscription**.
-
-UNSURE: Does the free count reset? The Subscription screen says "Your free orders don't reset — upgrade for unlimited", but older notes and the in-app Support guide say 100 orders per 30-day cycle that resets. Check before answering.
 
 ## plan-expired — Plan expired or expiring
 Last checked: 2026-10-11
@@ -118,7 +113,7 @@ Keywords: expired, expire, plan ended, renew, renewal, inactive, nag-expire, tap
 
 Before your plan ends, the app shows "Your plan expires in N days" or "Your plan expires today". After it ends: "Your plan has expired. Renew to keep your live sessions and printing running." Tap **Renew now**.
 
-If you tap Connect after it ends you may see: "Your plan has ended. Renew to connect again."
+After your plan ends you can only **view your history** (orders, sales). To go live and print again, renew. If you tap Connect you may see: "Your plan has ended. Renew to connect again."
 
 To renew:
 1. Message Admin on Telegram @SellerFlowLive (**Renew via Telegram** on the Subscription screen).
@@ -127,11 +122,9 @@ To renew:
 
 On iPhone the messages say "Your account expires…" and "Contact support".
 
-UNSURE: What exactly a seller can still do after a paid plan expires (fall back to Free with 100 orders, or blocked from connecting) is not clear from the app. The website FAQ says the account returns to the free tier.
-
 ## payment — Paying for a plan
 Last checked: 2026-10-11
-Keywords: payment, pay, renew, upgrade, telegram, wise, bayad, magbayad, paano magbayad, 付款, 付费, 續訂
+Keywords: payment, pay, renew, upgrade, telegram, bayad, magbayad, paano magbayad, 付款, 付费, 續訂
 
 Payment is not done inside the app.
 
@@ -140,7 +133,7 @@ Payment is not done inside the app.
 3. After payment, Admin activates your plan.
 4. Fully close the app and open it again.
 
-The guide does not quote prices. Ask Admin for the current price. Plans run month to month.
+This guide does not quote prices. For prices, message Admin. Plans run month to month.
 
 ## connect-tiktok — Connect your TikTok live
 Last checked: 2026-10-11
@@ -162,9 +155,9 @@ Tip: tap **Connect** once and wait. Tapping many times can cause the wait messag
 
 ## connect-facebook — Facebook live (activation required)
 Last checked: 2026-10-11
-Keywords: facebook, fb, facebook page, facebook live, activation, activate, messenger, hindi ma-connect fb, 脸书, 臉書, 粉丝页, 啟用
+Keywords: facebook, fb, facebook page, facebook live, activation, activate, hindi ma-connect fb, 脸书, 臉書, 粉丝页, 啟用
 
-Facebook live is an **advanced feature that needs activation**. If it is not activated for you, the Facebook tile shows "Advanced feature — activation required" and a **Contact us** button. Message Admin on Telegram @SellerFlowLive to ask for it.
+Facebook live **needs activation**. If it is not activated for you, the Facebook tile shows "Advanced feature — activation required" and a **Contact us** button. To ask for it, message Admin on Telegram @SellerFlowLive.
 
 When Facebook is activated for you:
 1. Go to **Settings → General Settings → Facebook Live → Manage Facebook pages**.
@@ -175,8 +168,6 @@ Common messages:
 - "That page isn't live right now — start your Facebook LIVE first."
 - "Facebook needs you to connect your Page again." Authorize the Page again in Facebook pages.
 - "This Page was connected on another phone, so this one stopped receiving."
-
-UNSURE: Which sellers can get Facebook activated, and whether Messenger receipts come with it, is decided by Admin.
 
 ## other-platforms — Instagram and Shopee
 Last checked: 2026-10-11
@@ -197,9 +188,7 @@ When you tap **Connect** and no session is running, the app asks **Start a live 
 - **2 to 5 days** asks you to confirm: "You can't change the length until this session ends." Tap **Confirm** (or **Back**).
 - **Cancel** / ✕ stops the connect. No session starts.
 
-Buyer numbers stay continuous for the whole session. The day you start counts as day 1. The session ends after the last day (Taiwan time), and the header shows "Session ends {date}". After it ends, the next Connect asks for a new length and buyer numbers start again at #1.
-
-UNSURE: Sessions end at the end of the last day in Taiwan time. Check how to explain this to sellers in other countries.
+Buyer numbers stay continuous for the whole session. The day you start counts as day 1. The session ends at **midnight Taiwan time (UTC+8)** after the last day, and the header shows "Session ends {date}". After it ends, the next Connect asks for a new length and buyer numbers start again at #1.
 
 ## buyer-numbers — Buyer numbers
 Last checked: 2026-10-11
@@ -282,9 +271,7 @@ Open **Products** in the bottom bar.
 - **⬇ Export** gives an **Excel (.xlsx)** or **PDF** list.
 - Auto mode orders take stock off automatically.
 
-You may also see **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live session settings.
-
-UNSURE: Restock, History, product pictures and "Deduct stock on 1-Click" only show when Admin has turned them on, so some sellers will not see them.
+Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live session settings. Admin turns these on per account. If you don't see one, it isn't turned on for your account yet — ask Admin.
 
 ## reprint — Reprint a sticker
 Last checked: 2026-10-11
@@ -310,8 +297,7 @@ Open **Orders** in the bottom bar.
 - Each buyer card has **Print slip** and **Reprint**.
 - **⬇ Export** downloads Excel or PDF.
 - The **Miners** tab shows your top buyers.
-
-UNSURE: Some sellers may also see **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist on Orders; these only appear when Admin turns them on.
+- Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don't see them, they aren't turned on for your account yet — ask Admin.
 
 ## sales — Sales screen
 Last checked: 2026-10-11
@@ -348,9 +334,7 @@ Keywords: screen awake, sleep, screen off, lock screen, keep awake, namamatay sc
 
 A sleeping phone stops capturing orders. Turn on **Settings → General Settings → LIVE SESSION → Keep screen awake while live**, then tap **Turn on**.
 
-It keeps the phone awake while you are connected. Keep the app open on screen during your live. Also keep the phone charging for long lives.
-
-UNSURE: Some older phones (for example older iPhone versions) may not support keeping the screen awake; there the setting does nothing.
+It keeps the phone awake while you are connected. Keep the app open on screen during your live. Also keep the phone charging for long lives. Some older phones don't support it.
 
 ## language-theme — Language, theme and currency
 Last checked: 2026-10-11
@@ -413,9 +397,7 @@ Keywords: sticker size, paper size, 100x60, 60x40, layout, chinese name, qr, pri
 
 **Chinese names** print correctly; no extra setting needed.
 
-**Print QR on sticker** adds a QR of the buyer's @username so you can scan it back in Parcel Scan. It is off by default, on every plan, and not available on 60×40.
-
-UNSURE: The QR hint says "QR available on 70×50, 80×50, 80×60 only", but the code only blocks 60×40 (100×60 may also work).
+**Print QR on sticker** adds a QR of the buyer's @username so you can scan it back in Parcel Scan. It is off by default and on every plan. In the phone app it works on every size except **60×40** (too small to scan quickly).
 
 ## laptop-printing — Printing from a laptop
 Last checked: 2026-10-11
@@ -459,14 +441,13 @@ Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details
 **Parcel Scan** is a Taiwan-only tool for 7-11 parcels. It is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile, which is **Coming soon**.
 
 Who sees what:
-- **Free / Basic**: the tile shows 🔒. Tapping it shows a contact-support popup.
-- **Plus / Pro / Master** with an active plan: Parcel Scan can open for **manual entry** (type customer name, phone, 7-11 store #, amount, buyer @username). Snapping a photo of the slip is **coming soon**.
-- Otherwise the tile shows **Coming soon**.
+- With an active paid plan, Parcel Scan opens for **manual entry** (type customer name, phone, 7-11 store #, amount, buyer @username) once it is open for your account. Snapping a photo of the slip is **coming soon**.
+- If you see **Coming soon**, it isn't open for your account yet.
+- If you see 🔒, it isn't part of your plan. Tapping it shows a contact-support popup.
 - Sellers outside Taiwan do not see it.
+- The automatic **parcel check** (it checks the buyer's phone and 7-11 store before you ship) is on automatically for Taiwan **Plus / Pro / Master** — no request needed.
 
 When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, and upload that file on the 賣貨便 website. **Customer Details** (same access as Parcel Scan) keeps repeat buyers so you can **Import** them again.
-
-UNSURE: Manual Parcel Scan for Plus/Pro/Master only opens when Admin has switched it on; it may show Coming soon even on those plans.
 
 ## pickup-status — Pickup Status
 Last checked: 2026-10-11
@@ -475,21 +456,19 @@ Keywords: pickup status, pickup, tracking, returned, not picked up, 7-11, chase 
 **Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
 
 Who has it:
+- **Plus / Pro / Master** in Taiwan: **on automatically** — no request needed. If you just upgraded, close the app fully and open it again.
 - **Free / Basic**: tile shows 🔒 (contact-support popup).
-- **Plus / Pro / Master**: Admin can turn it on for your account. Message Admin on Telegram @SellerFlowLive.
 - Not shown outside Taiwan.
 
 How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 賣貨便** and pick the file. New parcels are checked automatically; **Check now** works once per day.
 
-## shipping — 7-11 Shipping export
+## shipping — Shipping (Coming soon)
 Last checked: 2026-10-11
 Keywords: shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送
 
 The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
 
-Do not promise a date. For parcels today, Plus/Pro/Master sellers in Taiwan may use **Parcel Scan** if it is open for them.
-
-UNSURE: The in-app Support guide still has "How to use: 7-11 shipping export" step-by-step, but the Shipping screen itself is Coming soon for sellers.
+There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.
 
 ## manage-accounts — Manage TikTok accounts (4-hour lock)
 Last checked: 2026-10-11
@@ -535,9 +514,7 @@ Keywords: sign up, signup, register, create account, phone number, invalid phone
 
 Other messages: "That email is already registered. Try logging in." / "Passwords do not match."
 
-To log in, use your **email** and password.
-
-UNSURE: The login box is labelled "Phone or email", but signing in seems to work with email only.
+To log in, use your **email** and password. Logging in with a phone number does not work.
 
 ## delete-account — Delete your account
 Last checked: 2026-10-11

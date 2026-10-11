@@ -51,13 +51,28 @@ export function redact(text) {
     .slice(0, MAX_QUESTION);
 }
 
-// a) topics that only Admin can settle. English, Tagalog and Chinese words.
+// a) Only real money / account actions go to Admin. Feature questions that merely mention a
+// plan ("which plan has Parcel Scan?") or "paid" ("how do I mark paid?") must NOT match.
+const PLAN = "(plans?|basic|plus|pro|master|subscription|membership|monthly|buwanan)";
+const CN_PLAN = "(方案|會員|会员|訂閱|订阅|basic|plus|pro|master)";
+const CN_PRICE = "(多少錢|多少钱|價格|价格|費用|费用)";
 const HANDOFF = [
-  /\brefund/i, /\bbilling\b/i, /\binvoice\b/i, /\bpayment/i, /\bpay\b/i, /\bpaid\b/i, /\bsubscri/i,
-  /\bplan\b/i, /\bupgrade/i, /\bdowngrade/i, /\brenew/i, /\bprice\b/i, /\bpricing\b/i,
-  /\bbayad\b/i, /\bmagbayad\b/i, /\bmagkano\b/i, /\bpresyo\b/i, /\bibalik\b.*\bpera\b/i,
-  /delete\s+(my\s+)?account/i, /\b(burahin|i-?delete)\b.*\baccount\b/i,
-  /退款|退費|付款|付費|繳費|收費|價格|价格|方案|訂閱|订阅|續約|续约|升級|升级|帳單|账单|刪除帳號|删除账号|註銷|注销/,
+  // refund
+  /\brefund/i, /\b(ibalik|isauli)\b.*\b(bayad|pera)\b/i, /退款|退費|退费|退錢|退钱/,
+  // how / where to pay
+  /\b(how|where)\b.{0,20}\bpay\b/i, /\bpayment (method|option)s?\b/i, /\bmagbayad\b/i, /\b(paano|saan)\b.{0,15}\bbayad\b/i,
+  /(怎麼|怎么|如何|哪裡|哪里|在哪).{0,4}(付款|付費|付费|繳費|缴费|匯款|汇款)|付款方式/,
+  // price / cost of a plan (the bot never quotes prices)
+  new RegExp(`\\b(price|pricing|cost|how much|magkano)\\b.*\\b${PLAN}\\b`, "i"),
+  new RegExp(`\\b${PLAN}\\b.*\\b(price|pricing|cost|how much|magkano)\\b`, "i"),
+  new RegExp(`${CN_PLAN}.{0,10}${CN_PRICE}|${CN_PRICE}.{0,10}${CN_PLAN}`, "i"),
+  // invoice / receipt for a SellerFlowLive payment
+  /\binvoice\b/i, /\b(receipt|resibo)\b.*\b(payment|bayad|subscription|plan|sellerflow|sfl)\b/i,
+  /(付款|訂閱|订阅|方案).{0,6}(收據|收据|發票|发票)|(收據|收据|發票|发票).{0,6}(付款|訂閱|订阅|方案)/,
+  // renew / upgrade / downgrade
+  /\brenew/i, /\bupgrade/i, /\bdowngrade/i, /續約|续约|續訂|续订|續費|续费|升級|升级|降級|降级/,
+  // delete my account
+  /\bdelete\b.{0,10}\baccount\b/i, /\b(burahin|i-?delete|tanggalin)\b.*\baccount\b/i, /刪除帳號|删除账号|刪除帳戶|删除账户|註銷|注销/,
 ];
 export const isHandoffTopic = (q) => HANDOFF.some((re) => re.test(q));
 
@@ -71,6 +86,7 @@ export function detectLang(q, appLang = "en") {
 
 // ── guide ──────────────────────────────────────────────────────────────────────
 // Sections are "## <id> — <Title>" followed by "Last checked: YYYY-MM-DD" and "Keywords: …".
+// Lines starting "UNSURE:" are dropped.
 export function parseGuide(md) {
   const out = [];
   for (const chunk of String(md || "").split(/^## /m).slice(1)) {
@@ -79,7 +95,9 @@ export function parseGuide(md) {
     if (!m) continue;
     const checked = (chunk.match(/^Last checked:\s*(\S+)/m) || [])[1] || "";
     const keywords = ((chunk.match(/^Keywords:\s*(.+)$/m) || [])[1] || "").toLowerCase();
-    out.push({ id: m[1], title: m[2].trim(), checked, keywords, text: `## ${chunk.trim()}` });
+    // "UNSURE:" lines are notes for Admin — never sent to the AI.
+    const text = chunk.split("\n").filter((l) => !/^\s*UNSURE:/i.test(l)).join("\n").trim();
+    out.push({ id: m[1], title: m[2].trim(), checked, keywords, text: `## ${text}` });
   }
   return out;
 }
