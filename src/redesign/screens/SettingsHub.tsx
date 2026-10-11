@@ -76,7 +76,7 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, helpBot = false,
+  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false,
 }: {
   helpBot?: boolean; // help bot preview (switch on + preview list / admin): bubble instead of the "Need help?" tile
   onGeneral: () => void; onCustomers: () => void;
@@ -96,6 +96,9 @@ export default function SettingsHub({
   // Shows the FamilyMart "Coming soon" tile, and a "Coming soon" 7-11 tile for a seller who has
   // neither the working nor the locked 7-11 tile. A tap only shows a short note.
   onParcelSoon?: (store: "711" | "fm") => void;
+  // Parcel Scan FamilyMart — passed ONLY when fm_scan_enabled (or the fm_pickup preview) AND the
+  // 7-11 manual Parcel Scan rule allow it. Absent → the FamilyMart tile stays "Soon".
+  onFmScan?: () => void;
 }) {
   const t = useT();
   // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
@@ -128,7 +131,10 @@ export default function SettingsHub({
                 : onParcelSoon
                   ? <SoonTile icon={sevenIcon} label={seven} soon={<SoonBadge style={PARCEL_BADGE} />} testid="tile-parcelscan-soon" onTap={() => onParcelSoon("711")} />
                   : null;
-            const fmTile = onParcelSoon
+            const fmLabel = <ParcelLabel title={t.rd_ps2_title} store={t.rd_sh_fm_name} />;
+            const fmTile = onFmScan
+              ? <Tile icon={<ParcelStoreIcon store="fm" />} label={fmLabel} onClick={onFmScan} testid="tile-parcelscan-fm-open" />
+              : onParcelSoon
               ? <SoonTile icon={<ParcelStoreIcon store="fm" />} label={<ParcelLabel title={t.rd_ps2_title} store={t.rd_sh_fm_name} />} soon={<SoonBadge style={PARCEL_BADGE} />} testid="tile-parcelscan-fm" onTap={() => onParcelSoon("fm")} />
               : null;
             // Both shown → one full-width row so they always sit side by side.

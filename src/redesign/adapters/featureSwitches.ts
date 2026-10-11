@@ -19,10 +19,11 @@ export const FEATURE_SWITCH_KEYS = {
   fbPolishV2: "fb_polish_v2", // Builds 5 + 7 Facebook polish — app side (sql/109)
   build11: "build11_enabled", // Build 11 — changes for every seller (Shipping keyed by session, H3)
   fmPickup: "fm_pickup_enabled", // 全家 rows in Pickup Status (sql/119)
+  fmScan: "fm_scan_enabled", // Parcel Scan FamilyMart (sql/120)
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {
