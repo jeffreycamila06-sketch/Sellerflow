@@ -83,7 +83,7 @@ const ARRIVED = /到店|到門市|到達門市/;
 const KNOWN = /到店|到門市|取件|取貨|退回|退貨|取消|配送|運送|寄件|出貨|已成立|處理|待|完成/;
 const seenUnknown = new Set<string>();
 
-export interface FmStatusInput { status: string; shipped: string; picked: string; returned: string; cancelled: string }
+export interface FmStatusInput { status: string; shipped: string; picked: string; returned: string; cancelled: string; deadline?: string }
 
 // PURE. null = not shipped yet → not shown.
 export function fmStatusOf(r: FmStatusInput): FmStatus | null {
@@ -91,7 +91,8 @@ export function fmStatusOf(r: FmStatusInput): FmStatus | null {
   if (has(r.cancelled)) return "hide";
   if (has(r.returned)) return "returned";
   if (has(r.picked)) return "picked_up";
-  if (has(r.shipped)) return ARRIVED.test(r.status || "") ? "at_store" : "in_transit";
+  // A pickup deadline only exists once the parcel is at the store, so it counts as arrived too.
+  if (has(r.shipped)) return ARRIVED.test(r.status || "") || has(r.deadline ?? "") ? "at_store" : "in_transit";
   return null;
 }
 
@@ -115,6 +116,15 @@ function storeIdOf(v: string): string | null {
 }
 
 // ── parse ─────────────────────────────────────────────────────────────────────
+// Real headers carry a note after the name ("訂單內容 (品名 規格/尺寸 顏色 數量)", "訂單總金額 (A+B-C)").
+// A header matches when it IS the name, or the whole name followed by a space or an opening
+// bracket — so 取件日期 never matches 包裹退回取件日期 and 訂單狀態 never matches 訂單狀態時間.
+export function headerMatches(header: string, key: string): boolean {
+  const h = String(header ?? "").trim();
+  if (h === key) return true;
+  return h.startsWith(key) && /^[\s(（]/.test(h.slice(key.length));
+}
+
 export async function parseFmExport(bytes: Uint8Array): Promise<{ ok: true; rows: FmRow[]; notShipped: number } | { ok: false; error: FmParseError }> {
   const bad = { ok: false as const, error: "not_fm_export" as const };
   let entries: ReturnType<typeof parseZip>;
@@ -135,8 +145,7 @@ export async function parseFmExport(bytes: Uint8Array): Promise<{ ok: true; rows
   if (!header) return bad;
   const col: Partial<Record<Key, string>> = {};
   for (const [c, v] of Object.entries(header.cells)) {
-    const text = v.trim();
-    for (const k of Object.keys(H) as Key[]) if (text === H[k] && !col[k]) col[k] = c;
+    for (const k of Object.keys(H) as Key[]) if (!col[k] && headerMatches(v, H[k])) col[k] = c;
   }
   if (REQUIRED.some((k) => !col[k])) return bad;
 
@@ -149,7 +158,7 @@ export async function parseFmExport(bytes: Uint8Array): Promise<{ ok: true; rows
   let notShipped = 0;
   for (const r of data) {
     const statusText = get(r, "status").trim();
-    const status = fmStatusOf({ status: statusText, shipped: get(r, "shipped"), picked: get(r, "picked"), returned: get(r, "returned"), cancelled: get(r, "cancelled") });
+    const status = fmStatusOf({ status: statusText, shipped: get(r, "shipped"), picked: get(r, "picked"), returned: get(r, "returned"), cancelled: get(r, "cancelled"), deadline: get(r, "deadline") });
     if (status) noteUnknownStatus(statusText);
     if (!status) { notShipped += 1; continue; }
     const shipType = get(r, "shipType").trim();

@@ -273,7 +273,7 @@ Rows that failed show **Not printed**. Tap **Reprint** on each one after the pri
 **Printer used by another app or phone:** a Bluetooth printer connects to one app at a time. Close the printer''s own app (or other label apps), disconnect it from other phones, turn the printer off and on, then in **Printer settings** tap **Scan** and pick it again. Use **Test Print** to check.
 
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.'),
-  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-10-11'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家', '**Parcel Scan** is a Taiwan-only tool for 7-11 parcels. It is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile, which is **Coming soon**.
+  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-10-11'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家', '**Parcel Scan** is a Taiwan-only tool for 7-11 parcels. It is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile — it shows **Coming soon** unless FamilyMart is turned on for your account.
 
 Who sees what:
 - With an active paid plan, Parcel Scan opens for **manual entry** (type customer name, phone, 7-11 store #, amount, buyer @username) once it is open for your account. Snapping a photo of the slip is **coming soon**.
@@ -282,7 +282,12 @@ Who sees what:
 - Sellers outside Taiwan do not see it.
 - The automatic **parcel check** (it checks the buyer''s phone and 7-11 store before you ship) is on automatically for Taiwan **Plus / Pro / Master** — no request needed.
 
-When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, and upload that file on the 賣貨便 website. **Customer Details** (same access as Parcel Scan) keeps repeat buyers so you can **Import** them again.'),
+When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, and upload that file on the 賣貨便 website. **Customer Details** (same access as Parcel Scan) keeps repeat buyers so you can **Import** them again.
+
+**Parcel Scan FamilyMart (全家)** — only when it is turned on for your account (being rolled out), with the same plan and Taiwan rules as Parcel Scan 7-11:
+- Type each parcel: recipient name, phone (10 digits starting 09), 6-digit FamilyMart store number (the number on a FamilyMart receipt works, e.g. 022131), item amount (10–20,000), shipping fee (0–200, filled from your default — default 39), order date (within the last 60 days) and the buyer''s @username (optional; blank = "商品"). Item + shipping must be 60–20,000. A wrong field shows a short message under it.
+- **Export** builds the 好賣+ 大量匯單 Excel file (up to 500 parcels per file; more = several numbered files). Upload it on 好賣+ → 大量匯單. Exported parcels move to the **Exported** tab and can be exported again.
+- The @username goes in the 商品 column, so the 全家 Order export can be matched back to the buyer in Pickup Status.'),
   ('pickup-status', 'Pickup Status', '2026-10-11'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
 
 Who has it:

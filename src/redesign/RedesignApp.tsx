@@ -27,6 +27,7 @@ import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
 import CustomerDetails from "./screens/CustomerDetails";
 import ParcelTracking from "./screens/ParcelTracking";
+import FmParcelScan from "./screens/FmParcelScan";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr, maxPendingParcels } from "./adapters/parcelScan";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { shippingAccess } from "./adapters/shippingGate";
@@ -143,10 +144,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages", "receiptformat", "igaccounts"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -795,6 +796,9 @@ export default function RedesignApp() {
   const salesTab = useSalesTab(authed);
   // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
   const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  // Parcel Scan FamilyMart: the 7-11 manual Parcel Scan rule (parcelAllowed) AND the fm_scan_enabled
+  // switch or the fm_pickup preview list (sql/120). Off → the FamilyMart tile stays "Soon".
+  const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
@@ -2448,6 +2452,7 @@ export default function RedesignApp() {
               pickupLocked={pickupLocked}
               onParcelUpsell={() => setUpsellOpen(true)}
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
+              onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
               helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin)}
             />
@@ -2523,6 +2528,7 @@ export default function RedesignApp() {
             <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} />}
+          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
