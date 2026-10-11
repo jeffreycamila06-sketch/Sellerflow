@@ -99,7 +99,7 @@ describe("Landing v2", () => {
     expect(screen.getByText(/no credit card needed/)).toBeTruthy();
     fireEvent.click(screen.getByText("How do I pay for a plan?"));
     expect(screen.queryByText(/no credit card needed/)).toBeNull(); // first closed (single-open)
-    expect(screen.getByText(/Via Wise transfer/)).toBeTruthy();
+    expect(screen.getByText(/to subscribe or renew/)).toBeTruthy();
   });
 
   it("renders the localized testimonials", () => {

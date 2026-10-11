@@ -63,6 +63,7 @@ import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthS
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
 import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
+import { helpBotVisible, useHelpBotSwitch } from "./adapters/helpBot";
 import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
@@ -135,7 +136,7 @@ import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpi
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
-import { useFeatureAccess } from "./adapters/featureAccess";
+import { useFeatureAccess, hasFeature } from "./adapters/featureAccess";
 import { errCodeOf } from "../lib/errCodes.js";
 
 type Screen =
@@ -794,6 +795,7 @@ export default function RedesignApp() {
   const salesTab = useSalesTab(authed);
   // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
   const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
   const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
@@ -2432,6 +2434,7 @@ export default function RedesignApp() {
               onParcelUpsell={() => setUpsellOpen(true)}
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
+              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin)}
             />
           )}
           {screen === "settings" && (

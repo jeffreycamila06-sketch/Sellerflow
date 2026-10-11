@@ -10,3 +10,5 @@
 // for the old number when renaming.
 export const TELEGRAM_HANDLE = "@SellerFlowLive";
 export const TELEGRAM_URL = "https://t.me/SellerFlowLive";
+// LINE contact for the help chat. Empty = no LINE button (Jeff hasn't given a LINE link yet).
+export const LINE_URL = "";

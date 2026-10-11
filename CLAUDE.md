@@ -161,6 +161,14 @@ persist) · **order capture** · **sticker print (AIMO D520BT)** · **slip print
 **free-cap popup** · **Channels** · **Products cross-device sync**. (Slip "blank
 print" was just **reversed thermal paper**, not a bug.)
 
+## 🔒 Help-bot guide rule (2026-10-11)
+Any change a seller can see (screens, buttons, text, plan rules, limits) must also update
+`docs/support/sfl-guide.md` in the same branch (bump that section's `Last checked` date) and
+regenerate `sql/116b_guide_seed.sql` (`node scripts/sync-guide.mjs`). Say so in the report.
+The help bot reads the guide from the `support_guide` table (5-minute cache), so applying
+sql/116b after the merge updates the bot without a Render deploy. A test fails when sql/116b
+doesn't match the guide file.
+
 ## ⚠️ Critical rules — WAG GALAWIN
 - **billing `orders` ledger** (~31k rows) + its `check_and_increment_free_order`
   **free-tier-cap trigger** (cap=100 live) — wag galawin. Cross-device uses a SEPARATE table.

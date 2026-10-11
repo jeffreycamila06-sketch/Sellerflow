@@ -11,6 +11,7 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 export const FEATURE_KEYS = [
   "fb_preview", "kiosk_launcher", "parcel_check", "parcel_cap_tester", "pin_print", "sticker_v2",
   "sticker_spacing", "session_v2", "session_numbering_fix", "shopee_preview", "live_source", "classic_text",
+  "support_ai_preview", // help bot preview (sql/116)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

@@ -5,6 +5,8 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
+import { readFile } from "fs/promises";
+import { answerQuestion, callClaude, createGuideSource } from "./server/helpBot.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
@@ -960,6 +962,95 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
   }
   return res.json({ success: true, i18n: result.i18n });
 });
+
+// Help bot (sql/116). OFF unless app_settings.support_ai_enabled = 'true' AND the caller is an
+// admin or on the 'support_ai_preview' list (feature_access_emails). user_id comes from the JWT
+// only. The answer logic lives in server/helpBot.js (tested); this is wiring. Logs: counts and
+// codes only — never question/answer text, emails or tokens.
+// The bot's knowledge = support_guide rows (sql/116, seeded by sql/116b), cached 5 minutes, so
+// a guide change needs no Render deploy. The repo file is only the fallback.
+const helpGuide = createGuideSource({
+  loadRows: async () => {
+    if (!serviceSb) return [];
+    const { data, error } = await serviceSb.from("support_guide").select("id,title,checked,keywords,body");
+    if (error) throw error;
+    return data || [];
+  },
+  readFile: () => readFile(new URL("./docs/support/sfl-guide.md", import.meta.url), "utf8"),
+  log: (line) => console.log(line),
+});
+const supportLastAsk = new Map(); // ponytail: in-memory, per server instance
+async function readSetting(key) {
+  const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
+  return data ? data.value : null;
+}
+async function callerIsAdmin(req) {
+  try {
+    const userSb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${req.authToken}` } },
+    });
+    const { data, error } = await userSb.rpc("is_admin");
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+async function helpBotAllowed(req) {
+  if (!serviceSb) return false;
+  if ((await readSetting("support_ai_enabled")) !== "true") return false;
+  if (await callerIsAdmin(req)) return true;
+  const email = String(req.userEmail || "").trim().toLowerCase();
+  if (!email) return false;
+  const { data, error } = await serviceSb.from("feature_access_emails").select("email,is_prefix").eq("feature", "support_ai_preview");
+  if (error) return false;
+  return (data || []).some((r) => r.email === email || (r.is_prefix && email.startsWith(r.email)));
+}
+
+app.post("/support/ask", requireAuth, async (req, res) => {
+  try {
+    if (!(await helpBotAllowed(req))) return res.status(403).json({ success: false, error: "not_available" });
+    const now = Date.now();
+    if (now - (supportLastAsk.get(req.authUserId) || 0) < 2000) return res.status(429).json({ success: false, error: "too_fast" });
+    supportLastAsk.set(req.authUserId, now);
+    const [cap, daily] = await Promise.all([readSetting("support_ai_monthly_cap_usd"), readSetting("support_ai_daily_per_seller")]);
+    const r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang }, {
+      settings: { capUsd: Number(cap ?? 15), dailyPerSeller: Number(daily ?? 20) },
+      matchFaq: async (q) => {
+        const { data, error } = await serviceSb.rpc("support_faq_match", { p_q: q });
+        if (error) throw error;
+        return (data && data[0]) || null;
+      },
+      usage: async (uid) => {
+        const { data, error } = await serviceSb.rpc("support_usage", { p_user: uid });
+        if (error) throw error;
+        return data || {};
+      },
+      faqs: async () => {
+        const { data, error } = await serviceSb.from("support_faq").select("id,question,answer,guide_sections")
+          .eq("enabled", true).eq("needs_recheck", false).order("id").limit(300);
+        if (error) throw error;
+        return data || [];
+      },
+      guide: helpGuide,
+      callModel: (a) => callClaude({ apiKey: ANTHROPIC_API_KEY, ...a }),
+      save: async (row) => {
+        const { data, error } = await serviceSb.from("support_chats").insert(row).select("id").single();
+        if (error) throw error;
+        return data.id;
+      },
+      log: (line) => console.log(line),
+    });
+    if (r.error) return res.status(400).json({ success: false, error: r.error });
+    return res.json({ success: true, id: r.id, source: r.source, answer: r.answer, saved: r.saved, contact: r.contact });
+  } catch (e) {
+    console.log(`[SUPPORT] fail code=${(e && e.code) || "error"}`);
+    return res.status(500).json({ success: false, error: "failed" });
+  }
+});
+
+// "Last checked" changes → needs_recheck is a database trigger on support_guide (sql/116).
 
 // Parcel Scan (Phase A1, ADMIN-ONLY dogfood). One handwritten-slip photo per
 // call (the client loops parcels sequentially); Claude vision extracts the
