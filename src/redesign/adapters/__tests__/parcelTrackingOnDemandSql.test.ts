@@ -94,3 +94,59 @@ describe("sql/64 refund the daily press", () => {
     expect(sql64).toContain("grant execute on function public.parcel_tracking_claim_job() to service_role;");
   });
 });
+
+// sql/122 — Check now = 12 hours after the LAST press (no once-per-Taipei-day rule). The press
+// timings (20:00 → 08:00 next day, 00:17 → 12:17, 11h59m locked, 12h allowed) are proved on a real
+// Postgres by scripts/sql122-behaviour.mjs; these pins stop the changed lines drifting.
+describe("sql/122 Check now: 12h after the last press", () => {
+  const up = readFileSync("sql/122_check_now_12h.sql", "utf8");
+  const down = readFileSync("sql/122_check_now_12h_rollback.sql", "utf8");
+  const sql119 = readFileSync("sql/119_fm_pickup.sql", "utf8");
+  const between = (src: string, start: string, end: string) => {
+    const i = src.indexOf(start);
+    return src.slice(i, src.indexOf(end, i) + end.length);
+  };
+  const nm = (src: string) => between(src, "create or replace function public.parcel_tracking_next_manual_at(", "\n$$;");
+  const rc = (src: string) => between(src, "create or replace function public.parcel_tracking_request_check(p_kind text default 'manual'::text)", "\n$function$;");
+  const st = (src: string) => between(src, "create or replace function public.parcel_tracking_status()", "\n$$;");
+
+  it("next_manual_at: null after 12h, else last press + 12h; no Taipei-day rule; same signature", () => {
+    const f = nm(up);
+    expect(f).toContain("public.parcel_tracking_next_manual_at(p_last_at timestamptz, p_last_day date)");
+    expect(f).toContain("when p_last_at is null then null");
+    expect(f).toContain("when now() - p_last_at >= interval '12 hours' then null");
+    expect(f).toContain("else p_last_at + interval '12 hours'");
+    expect(f).not.toContain("taipei_today");
+    expect(f).not.toContain("p_last_day =");
+  });
+
+  it("request_check = the live sql/119 definition minus the used_today block, nothing else", () => {
+    const live = rc(sql119);
+    const block = "    if v_acc.last_manual_check_day = v_today then\n      return jsonb_build_object('ok', false, 'reason', 'used_today', 'next_available_at', v_next);\n    end if;\n";
+    expect(live).toContain(block);
+    expect(rc(up)).toBe(live.replace(block, ""));
+    const f = rc(up);
+    expect(f).not.toContain("'used_today'");
+    expect(f).toContain("'reason', 'too_soon', 'next_available_at', v_next");
+    expect(f).toContain("for update");
+    expect(f).toContain("set last_manual_check_at = now(), last_manual_check_day = v_today");
+    expect(f).toContain("t.carrier = '711'");
+    expect(f).toContain("'urgent_used_today'");
+  });
+
+  it("status: used_today = locked by the 12h rule (next_manual_at in the future); rest unchanged", () => {
+    const live = st(readFileSync("sql/63_parcel_tracking_on_demand.sql", "utf8"));
+    const oldLine = "'used_today',           coalesce(v_acc.last_manual_check_day = v_today, false),";
+    const newLine = "'used_today',           coalesce(public.parcel_tracking_next_manual_at(v_acc.last_manual_check_at, v_acc.last_manual_check_day) > now(), false),";
+    expect(live).toContain(oldLine);
+    expect(st(up)).toBe(live.replace(oldLine, newLine));
+  });
+
+  it("rollback restores the exact sql/63 + sql/119 definitions", () => {
+    const sql63 = readFileSync("sql/63_parcel_tracking_on_demand.sql", "utf8");
+    expect(nm(down)).toBe(nm(sql63));
+    expect(rc(down)).toBe(rc(sql119));
+    expect(st(down)).toBe(st(sql63));
+    expect(down).not.toMatch(/drop[^;]*if exists/i);
+  });
+});
