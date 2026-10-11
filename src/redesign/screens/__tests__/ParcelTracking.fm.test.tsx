@@ -34,7 +34,8 @@ describe("Pickup Status — 全家", () => {
     const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
     await waitFor(() => expect(r.getAllByTestId("pt-carrier").length).toBeGreaterThan(0));
     expect(loadParcelTracking).toHaveBeenCalledWith(true);
-    expect(r.getByTestId("pt-fm-sync").textContent).toBe("Sync from 全家");
+    expect(r.getByTestId("pt-fm-sync").textContent).toBe("Sync from FamilyMart");
+    expect(r.getByTestId("pt-sync").textContent).toBe("Sync from 7-11");
     const labels = r.getAllByTestId("pt-carrier").map((e) => e.textContent);
     expect(labels).toContain("7-11");
     expect(labels).toContain("全家");
@@ -49,9 +50,66 @@ describe("Pickup Status — 全家", () => {
     pick();
     await waitFor(() => expect(r.getByTestId("pt-sync-error").textContent).toContain("This isn't a 全家 Order export."));
     loadParcelTracking.mockClear();
-    uploadFmExport.mockResolvedValueOnce({ ok: true, inserted: 3, updated: 1, hidden: 0 });
+    uploadFmExport.mockResolvedValueOnce({ ok: true, inserted: 3, updated: 1, hidden: 0, atStore: 2 });
     pick();
-    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toBe("全家: 3 new, 1 updated."));
+    await waitFor(() => expect(r.getByTestId("pt-sync-note").textContent).toContain("FamilyMart: 4 parcels updated (2 waiting pickup)."));
+    expect(r.getByTestId("pt-sync-note").getAttribute("data-tone")).toBe("ok");
+    expect(r.queryByTestId("pt-sync-error")).toBeNull();
     expect(loadParcelTracking).toHaveBeenCalledWith(true);
+  });
+
+  it("no shipped parcels in the file → neutral info notice, not the red error", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
+    const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-fm-sync")).toBeTruthy());
+    uploadFmExport.mockResolvedValueOnce({ ok: false, error: "empty", notShipped: 4 });
+    fireEvent.change(r.getByTestId("pt-fm-sync-file"), { target: { files: [new File([new Uint8Array([1])], "x.xlsx")] } });
+    await waitFor(() => expect(r.getByTestId("pt-sync-note").getAttribute("data-tone")).toBe("info"));
+    expect(r.getByTestId("pt-sync-note").textContent).toContain("FamilyMart file read OK. No shipped parcels in it yet — orders still being processed or cancelled are not shown.");
+    expect(r.getByTestId("pt-sync-note").getAttribute("role")).toBe("status");
+    expect(r.queryByTestId("pt-sync-error")).toBeNull();
+  });
+
+  it("hint card: FamilyMart line only when FamilyMart is on; 'How to sync?' kept", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
+    const off = render(<TProvider lang="en"><ParcelTracking /></TProvider>);
+    await waitFor(() => expect(off.getByTestId("pt-sync-card")).toBeTruthy());
+    expect(off.getByTestId("pt-sync-card").textContent).toContain("7-11: upload the 賣貨便 匯出報表 with Sync from 7-11.");
+    expect(off.queryByTestId("pt-sync-hint-fm")).toBeNull();
+    expect(off.getByTestId("pt-sync-how-toggle")).toBeTruthy();
+    off.unmount();
+    const on = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(on.getByTestId("pt-sync-hint-fm").textContent).toBe("FamilyMart: upload the 好賣+ Order export with Sync from FamilyMart."));
+  });
+
+  it("labels translate per language with the brand words kept", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
+    const r = render(<TProvider lang="zh-TW"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-fm-sync").textContent).toBe("從全家同步"));
+    expect(r.getByTestId("pt-sync").textContent).toBe("從 7-11 同步");
+  });
+
+  it("not dropped off yet: In transit with the note and 'Drop off before Oct 25'; red when ≤ 3 days left", async () => {
+    const pending = (id: string, deadline: string) => ({ ...row(id, "fm"), status: "in_transit", pickupDeadline: deadline, statusMessage: "出貨中" });
+    const ymd = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [pending("P1", ymd(10)), pending("P2", ymd(2)), { ...row("T1", "fm"), status: "in_transit", pickupDeadline: null }], totals: { ...totals, transit: 3, waiting: 0 } });
+    const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-tab-transit")).toBeTruthy());
+    fireEvent.click(r.getByTestId("pt-tab-transit"));
+    await waitFor(() => expect(r.getAllByTestId("pt-not-dropped")).toHaveLength(2));
+    expect(r.getAllByTestId("pt-not-dropped")[0].textContent).toBe("Not dropped off yet");
+    const lefts = r.getAllByTestId("pt-left").filter((e) => e.getAttribute("data-dropoff"));
+    expect(lefts.map((e) => e.getAttribute("data-urgent")).sort()).toEqual(["0", "1"]);
+    const far = lefts.find((e) => e.getAttribute("data-dropoff") === ymd(10))!;
+    const [y, m, d] = ymd(10).split("-").map(Number);
+    expect(far.textContent).toBe(`Drop off before ${new Date(y, m - 1, d).toLocaleDateString("en", { month: "short", day: "numeric" })}`);
+  });
+
+  it("'How to sync?' tells FamilyMart sellers to export from the ALL ORDERS tab (only when FamilyMart is on)", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
+    const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-sync-how-toggle")).toBeTruthy());
+    fireEvent.click(r.getByTestId("pt-sync-how-toggle"));
+    expect(r.getByTestId("pt-sync-how-fm").textContent).toContain("ALL ORDERS");
   });
 });

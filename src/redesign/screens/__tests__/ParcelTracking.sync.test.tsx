@@ -1,4 +1,4 @@
-// Pickup Status "Sync from 賣貨便" — screen wiring for the upload flow (Stage 1b):
+// Pickup Status "Sync from 7-11" — screen wiring for the upload flow (Stage 1b):
 // every failure cause shows its own plain-words message (S4) and stays until ✕ / the
 // next upload; a no-op re-upload says "already synced, 0 new" (S5); the empty state is
 // a 3-step card with the Sync button right there (N2). loadParcelTracking + the reader
@@ -129,10 +129,10 @@ describe("N2 — empty state: 3 steps + the Sync button right there", () => {
     const steps = r.getByTestId("pt-empty-steps").querySelectorAll("li");
     expect(steps).toHaveLength(3);
     expect(steps[0].textContent).toContain("匯出報表");
-    expect(steps[1].textContent).toContain("Sync from 賣貨便");
+    expect(steps[1].textContent).toContain("Sync from 7-11");
     expect(steps[2].textContent).toContain("checked automatically");
     expect(r.queryByTestId("pt-sync-card")).toBeNull();
-    expect(r.getByTestId("pt-empty-sync").textContent).toBe("Sync from 賣貨便");
+    expect(r.getByTestId("pt-empty-sync").textContent).toBe("Sync from 7-11");
   });
 
   it("the empty-state Sync button opens the same file picker", async () => {

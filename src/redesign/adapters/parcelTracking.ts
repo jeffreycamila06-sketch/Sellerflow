@@ -258,6 +258,15 @@ export type LeftCell =
   | { kind: "none" }
   | { kind: "done" }
   | { kind: "returned" };
+// 全家 parcel with a tracking number that is not dropped off yet: in transit, and the stored
+// pickup_deadline is the drop-off deadline (好賣+ voids the number 14 days after issuing it).
+// Red when 3 days or fewer are left. null = not such a row.
+export function fmDropOff(row: ParcelTrackingRow, today: string): { deadline: string; days: number | null; urgent: boolean } | null {
+  if (row.carrier !== "fm" || row.status !== "in_transit" || !row.pickupDeadline) return null;
+  const days = daysUntilDate(row.pickupDeadline, today);
+  return { deadline: row.pickupDeadline, days, urgent: days !== null && days <= 3 };
+}
+
 export function leftCell(row: ParcelTrackingRow, today: string): LeftCell {
   if (isUnchecked(row)) return { kind: "unchecked" };
   const tab = rowTab(row);

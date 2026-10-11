@@ -291,19 +291,21 @@ When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, a
 - **📇 Customers**: every FamilyMart parcel you add saves the buyer (name, phone, store #, @username). Search by name, phone or @username, type the price and tap **Import** to add them as a new parcel. These are separate from your 7-11 customers. Removing a customer never deletes a parcel.
 - **Export to 好賣+ (Excel)** builds the 好賣+ 大量匯單 file (up to 500 parcels per file; more = several numbered files). Upload it on 好賣+ → 大量匯單. Parcels are marked exported only after the file is really saved or shared; **Undo last export** puts them back. **Clear exported** deletes exported parcels. On a phone, turn on **Export on this phone** first (off by default).
 - The @username goes in the 商品 column, so the 全家 Order export can be matched back to the buyer in Pickup Status. (No parcel check, E-Map or frozen option for FamilyMart.)'),
-  ('pickup-status', 'Pickup Status', '2026-10-11'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
+  ('pickup-status', 'Pickup Status', '2026-10-12'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
 
 Who has it:
 - **Plus / Pro / Master** in Taiwan: **on automatically** — no request needed. If you just upgraded, close the app fully and open it again.
 - **Free / Basic**: tile shows 🔒 (contact-support popup).
 - Not shown outside Taiwan.
 
-How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 賣貨便** and pick the file. New parcels are checked automatically; **Check now** works once per day.
+How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 7-11** and pick the file. New parcels are checked automatically; **Check now** works once per day.
 
 **全家 (FamilyMart) parcels** — only when 全家 is turned on for your account (being rolled out):
-- Download the **Order export** (.xlsx) from 好賣+, then tap **Sync from 全家** and pick the file. Upload it again whenever you want fresher statuses — 全家 parcels are **not** checked automatically and **Check now** is 7-11 only.
+- On 好賣+, open the **ALL ORDERS** tab and download the **Order export** (.xlsx) there (one file then has every status), then tap **Sync from FamilyMart** and pick the file. A green note shows how many parcels were updated and how many wait for pickup. Upload it again whenever you want fresher statuses — 全家 parcels are **not** checked automatically and **Check now** is 7-11 only.
 - 7-11 and 全家 parcels share one list; each row has a small **7-11** or **全家** label.
-- Status comes from the file''s dates: picked up, returned, waiting at the store (with the pickup deadline), or in transit. Cancelled orders and orders not shipped yet are not shown.
+- Status comes from the file''s dates: picked up, returned, waiting at the store (with the pickup deadline), or in transit. Cancelled orders and orders still being processed (no tracking number yet) are not shown.
+- A parcel with a tracking number (寄件編號) that is not dropped off yet shows in **In transit** with **Not dropped off yet** and **Drop off before (date)** — 好賣+ cancels the tracking number 14 days after it was issued. The date turns red when 3 days or fewer are left.
+- If none in the file are shipped yet, a grey note says "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
 - "This isn''t a 全家 Order export" = a different file was picked. Up to 2,000 orders per file; wait a few seconds between uploads.'),
   ('shipping', 'Shipping (Coming soon)', '2026-10-11'::date, 'shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送', 'The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
 
