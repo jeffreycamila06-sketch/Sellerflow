@@ -64,6 +64,9 @@ describe("helpers", () => {
     expect(fmBuyerUsername("@juan_dela.cruz  1")).toBe("juan_dela.cruz");
     expect(fmBuyerUsername("汽泡水  1")).toBe("汽泡水");
     expect(fmBuyerUsername("  ")).toBeNull();
+    // the Parcel Scan FamilyMart placeholder (no @username) is not a buyer
+    expect(fmBuyerUsername("商品  1")).toBeNull();
+    expect(fmBuyerUsername("商品")).toBeNull();
   });
   it("dates: strings, 上午/下午, Excel serials", () => {
     expect(fmDate("2026/10/5")).toBe("2026-10-05");

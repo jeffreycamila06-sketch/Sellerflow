@@ -9,6 +9,7 @@ import { parseZip, readEntryText } from "./shippingXlsmPatch";
 import { rowsOf, sharedStrings } from "./parcelExportRead";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { log } from "../../lib/log";
+import { FM_SCAN_DEFAULT_PRODUCT } from "./fmScan";
 
 export const FM_MAX_ROWS = 2000;
 
@@ -123,10 +124,11 @@ function noteUnknownStatus(text: string) {
   log.warn(`[FM] unknown 訂單狀態 text: ${t}`);
 }
 
-// "@juan_dela.cruz  1" → "juan_dela.cruz" ; "汽泡水  1" → "汽泡水"
+// "@juan_dela.cruz  1" → "juan_dela.cruz" ; "汽泡水  1" → "汽泡水".
+// "商品  1" → null: Parcel Scan FamilyMart writes that placeholder when the buyer has no @username.
 export function fmBuyerUsername(content: string): string | null {
   const s = String(content ?? "").replace(/\s+\d+\s*$/, "").trim().replace(/^@/, "").trim();
-  return s || null;
+  return s && s !== FM_SCAN_DEFAULT_PRODUCT ? s : null;
 }
 
 function storeIdOf(v: string): string | null {
