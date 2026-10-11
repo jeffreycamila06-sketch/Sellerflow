@@ -1174,6 +1174,9 @@ export default function RedesignApp() {
     prevAnyLiveRef.current = anyPlatformLive;
     if (anyPlatformLive && !was) resyncSession();
   }, [anyPlatformLive, resyncSession]);
+  // …and when the app / tab comes back to the front: a phone left open and connected all day never
+  // loses its socket, so the reconnect above never fires (same skip + same order gate).
+  useStockRefreshTriggers(sessionFix, resyncSession);
   const [connectOpen, setConnectOpen] = useState<ConnectTab | null>(null); // P3 — can open on the Shopee tab
   // CONNECT-TRUTH Item A — "Connected!" fires on the ttConnected RISE (server
   // truth), gated to a recent Connect tap: background rises (health-cycle

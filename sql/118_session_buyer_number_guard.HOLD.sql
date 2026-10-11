@@ -1,4 +1,7 @@
--- 118 — buyer-number guard on live_session_orders (session_id rows only). NOT applied yet.
+-- ON HOLD — do not apply; breaks shared accounts (sticker ≠ saved number)
+-- 118 — buyer-number guard on live_session_orders (session_id rows only). NOT applied.
+-- Why on hold: shared accounts (several sellers on one account + one session) produce duplicate
+-- numbers on purpose; this trigger would renumber their rows away from the printed stickers.
 -- 2026-10-11 bug: one device numbered new buyers from a board that was hours old, so new
 -- buyers got #9, #10… that other buyers already owned (73 numbers with two buyers in one
 -- session). The app now reloads the session's buyers on every reconnect; this trigger is the

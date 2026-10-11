@@ -1,7 +1,7 @@
 // Runs sql/118 (buyer-number guard) + its rollback on a real Postgres (PGlite, WASM): 139 buyers,
 // then a stale #9 → #140, a returning buyer keeps #50, outbox retry, legacy rows, rollback.
 // Not part of CI (PGlite is not a dependency). Run from a scratch folder:
-//   npm i @electric-sql/pglite@0.2.17 && node sql118-behaviour.mjs <repo>/sql/118_session_buyer_number_guard.sql <repo>/sql/118_session_buyer_number_guard_rollback.sql
+//   npm i @electric-sql/pglite@0.2.17 && node sql118-behaviour.mjs <repo>/sql/118_session_buyer_number_guard.HOLD.sql <repo>/sql/118_session_buyer_number_guard_rollback.HOLD.sql
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 const [,, up, down] = process.argv;

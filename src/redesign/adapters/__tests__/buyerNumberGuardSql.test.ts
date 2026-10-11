@@ -1,10 +1,10 @@
-// sql/118 contract (behaviour is proven on Postgres by scripts/sql118-behaviour.mjs).
+// sql/118 contract — ON HOLD file, not applied; nothing in the app may depend on it (behaviour is proven on Postgres by scripts/sql118-behaviour.mjs).
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const up = readFileSync(resolve(__dirname, "../../../../sql/118_session_buyer_number_guard.sql"), "utf8");
-const down = readFileSync(resolve(__dirname, "../../../../sql/118_session_buyer_number_guard_rollback.sql"), "utf8");
+const up = readFileSync(resolve(__dirname, "../../../../sql/118_session_buyer_number_guard.HOLD.sql"), "utf8");
+const down = readFileSync(resolve(__dirname, "../../../../sql/118_session_buyer_number_guard_rollback.HOLD.sql"), "utf8");
 
 describe("sql/118 buyer-number guard", () => {
   it("only touches session rows, under one lock per seller + session", () => {

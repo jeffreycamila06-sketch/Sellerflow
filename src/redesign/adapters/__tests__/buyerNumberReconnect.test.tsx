@@ -50,12 +50,15 @@ vi.mock("../../../supabase", () => {
 import { useSessionWindow } from "../useSessionWindow";
 import { useSessionInstance } from "../useSessionInstance";
 import { useLiveSession, RESYNC_FRESH_MS } from "../useLiveSession";
+import { useStockRefreshTriggers } from "../stockRefresh";
 import { buildOrderFromComment, nextBuyerNumber } from "../../../lib/orderLogic";
 
 function useApp(fix = true) {
   const sessionWindow = useSessionWindow(true, fix);
   const sessionInstance = useSessionInstance(true, fix);
-  return useLiveSession(true, { ready: sessionWindow.loaded && sessionInstance.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId, fix, sessionKnown: sessionInstance.known, windowKnown: sessionWindow.known });
+  const ls = useLiveSession(true, { ready: sessionWindow.loaded && sessionInstance.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId, fix, sessionKnown: sessionInstance.known, windowKnown: sessionWindow.known });
+  useStockRefreshTriggers(fix, ls.resync); // RedesignApp's foreground wiring (same hook, same args)
+  return ls;
 }
 type LS = ReturnType<typeof useLiveSession>;
 // Exactly what useOrders.createOrder does: buildOrderFromComment(c, getBuyers(), …).
@@ -141,12 +144,61 @@ describe("reconnect inside a multi-day session (139 buyers on the server)", () =
   });
 });
 
+// The stale phone never lost its socket (connected all day) → no reconnect rise. Coming back to
+// the front must reload the buyers too.
+const setVisibility = (v: "hidden" | "visible") => {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => v });
+  document.dispatchEvent(new Event("visibilitychange"));
+};
+describe("still connected, app goes to the background and back (no reconnect)", () => {
+  afterEach(() => { Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" }); delete (window as { Capacitor?: unknown }).Capacitor; });
+
+  it("tab hidden → visible → orders pause, then a new buyer gets #140", async () => {
+    const { result } = await staleBoard();
+    act(() => { setVisibility("hidden"); });
+    expect(result.current.canOrder()).toBe(true); // going to the background does nothing
+    act(() => { setVisibility("visible"); });
+    expect(result.current.canOrder()).toBe(false);
+    await waitFor(() => expect(result.current.canOrder()).toBe(true));
+    expect(numberFor(result.current, "@new")).toBe(140);
+    expect(numberFor(result.current, "@b50")).toBe(50);
+  });
+
+  it("native app resume (Capacitor App plugin) reloads too; visible + resume together = one reload", async () => {
+    const listeners: Record<string, () => void> = {};
+    (window as { Capacitor?: unknown }).Capacitor = { Plugins: { App: { addListener: (e: string, f: () => void) => { listeners[e] = f; return { remove: () => {} }; } } } };
+    const { result } = await staleBoard();
+    const loads = db.loads;
+    act(() => { listeners.resume(); });
+    act(() => { setVisibility("visible"); }); // second trigger while the first reload is still in flight
+    await waitFor(() => expect(result.current.canOrder()).toBe(true));
+    expect(db.loads).toBe(loads + 1);
+    expect(numberFor(result.current, "@new")).toBe(140);
+  });
+
+  it("back to the front within 30 s of a load → no reload", async () => {
+    db.bySession.S1 = range(1, 8);
+    const { result } = renderHook(() => useApp());
+    await waitFor(() => expect(result.current.getBuyers()).toHaveLength(8));
+    const loads = db.loads;
+    act(() => { setVisibility("visible"); });
+    expect(result.current.canOrder()).toBe(true);
+    expect(db.loads).toBe(loads);
+  });
+});
+
 describe("RedesignApp wiring", () => {
   const src = readFileSync(resolve(__dirname, "../../RedesignApp.tsx"), "utf8");
   it("a live platform going from not connected to connected calls liveSession.resync", () => {
     expect(src).toMatch(/const anyPlatformLive = liveFeed\.ttConnected \|\| liveFeed\.fbConnected \|\| liveFeed\.shopeeConnected \|\| liveFeed\.igConnected;/);
     expect(src).toMatch(/const resyncSession = liveSession\.resync;/);
     expect(src).toMatch(/if \(anyPlatformLive && !was\) resyncSession\(\);/);
+  });
+  it("coming back to the front calls the same resync", () => {
+    expect(src).toMatch(/useStockRefreshTriggers\(sessionFix, resyncSession\);/);
+  });
+  it("nothing in the app depends on the sql/118 trigger", () => {
+    expect(src).not.toMatch(/lso_session_buyer_number/);
   });
   it("orders still go through the session gate and the pause notice", () => {
     expect(src).toMatch(/canOrder: liveSession\.canOrder/);

@@ -75,7 +75,8 @@ export interface UseLiveSession {
   retry: () => void;         // re-run a failed load now (also automatic, see below)
   // Reconnect resync (fix on, session_id only): reload this session's buyers from the
   // server and merge them into the board, even though the board has orders. Called when a
-  // live platform (re)connects — another device may have numbered buyers meanwhile, so the
+  // live platform (re)connects or the app comes back to the front — another device may have
+  // numbered buyers meanwhile, so the
   // board must not be trusted. Orders stay paused until the reload lands (and stay paused,
   // with the retry notice, if it fails). Skipped when the board was loaded < RESYNC_FRESH_MS ago.
   resync: () => void;
@@ -305,6 +306,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   const resync = useCallback(() => {
     if (!fixRef.current || !winSessionIdRef.current) return;
     if (Date.now() - lastLoadedAtRef.current < RESYNC_FRESH_MS) return;
+    if (resyncRef.current) return; // one already owed (in flight, or failed → the retry ladder reloads it)
     // Close the order gate in this tick (like reset) — no order is numbered from the old board.
     if (loadStatusRef.current === "ok") { loadStatusRef.current = "pending"; setFetchStatus("pending"); setLoadKind("correction"); }
     resyncRef.current = true;
