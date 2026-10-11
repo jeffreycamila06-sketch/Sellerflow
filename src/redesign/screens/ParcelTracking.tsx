@@ -18,12 +18,13 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
+import { useLang } from "../i18n/langContext";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
 import { syncFromExport, type SyncResult } from "../adapters/parcelExportRead";
 import { uploadFmExport, type FmUploadResult } from "../adapters/fmPickup";
 import {
-  loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, isUnchecked, tabRows, tabCounts,
+  loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, fmDropOff, isUnchecked, tabRows, tabCounts,
   PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
   loadTrackingStatus, requestAutoCheck, requestCheck, checkButtonState, isStale, urgentEligible, formatTaipei, CHECK_POLL_MS,
@@ -56,7 +57,23 @@ function useNarrowLayout(): boolean {
 }
 
 // "Left" cell text + colour (gray normally; red + medium weight when urgent).
+// "Oct 25" in the app language.
+function shortDate(ymd: string, lang: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  try { return new Date(y, m - 1, d).toLocaleDateString(lang, { month: "short", day: "numeric" }); } catch { return ymd; }
+}
+
 function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t: T }) {
+  const lang = useLang();
+  const drop = fmDropOff(row, today);
+  if (drop) {
+    return (
+      <span style={{ fontSize: 12.5, fontWeight: drop.urgent ? 600 : 400, color: drop.urgent ? "var(--danger)" : "var(--text-dim)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
+        data-testid="pt-left" data-dropoff={drop.deadline} data-urgent={drop.urgent ? "1" : "0"}>
+        {tpl(t.rd_pt_fm_drop_by, { date: shortDate(drop.deadline, lang) })}
+      </span>
+    );
+  }
   const c = leftCell(row, today);
   if (c.kind === "unchecked") {
     // Wraps (no ellipsis) — the compact row gives this cell ≤34% width on a phone.
@@ -150,7 +167,11 @@ function Buyer({ row, t, nowMs, buyerName }: { row: ParcelTrackingRow; t: T; now
   const carrier = row.carrier
     ? <span data-testid="pt-carrier" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{row.carrier === "fm" ? "全家" : "7-11"}</span>
     : null;
+  const notDropped = row.carrier === "fm" && row.status === "in_transit" && !!row.pickupDeadline
+    ? <span data-testid="pt-not-dropped" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--warn)", fontSize: 10.5, fontWeight: 700, color: "var(--warn)", whiteSpace: "nowrap" }}>{t.rd_pt_fm_not_dropped}</span>
+    : null;
   const stale = isStale(row, nowMs);
+  if (notDropped) return <>{label}{carrier}{notDropped}{stale && <span data-testid="pt-stale" style={{ display: "inline-block", marginTop: 3, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{t.rd_pt_stale}</span>}</>;
   if (!stale && !carrier) return label;
   if (!stale) return <>{label}{carrier}</>;
   return (
@@ -618,6 +639,7 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
               <li>{t.rd_pt_sync_s2}</li>
               <li>{t.rd_pt_sync_s3}</li>
               <li>{t.rd_pt_sync_s4}</li>
+              {fm && <li data-testid="pt-sync-how-fm">{t.rd_pt_sync_fm_step}</li>}
             </ol>
           )}
         </div>}

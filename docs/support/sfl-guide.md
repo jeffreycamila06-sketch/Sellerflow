@@ -471,9 +471,11 @@ Who has it:
 How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 7-11** and pick the file. New parcels are checked automatically; **Check now** works once per day.
 
 **全家 (FamilyMart) parcels** — only when 全家 is turned on for your account (being rolled out):
-- Download the **Order export** (.xlsx) from 好賣+, then tap **Sync from FamilyMart** and pick the file. A green note shows how many parcels were updated and how many wait for pickup. Upload it again whenever you want fresher statuses — 全家 parcels are **not** checked automatically and **Check now** is 7-11 only.
+- On 好賣+, open the **ALL ORDERS** tab and download the **Order export** (.xlsx) there (one file then has every status), then tap **Sync from FamilyMart** and pick the file. A green note shows how many parcels were updated and how many wait for pickup. Upload it again whenever you want fresher statuses — 全家 parcels are **not** checked automatically and **Check now** is 7-11 only.
 - 7-11 and 全家 parcels share one list; each row has a small **7-11** or **全家** label.
-- Status comes from the file's dates: picked up, returned, waiting at the store (with the pickup deadline), or in transit. Cancelled orders and orders not shipped yet are not shown. If none in the file are shipped yet, a grey note says "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
+- Status comes from the file's dates: picked up, returned, waiting at the store (with the pickup deadline), or in transit. Cancelled orders and orders still being processed (no tracking number yet) are not shown.
+- A parcel with a tracking number (寄件編號) that is not dropped off yet shows in **In transit** with **Not dropped off yet** and **Drop off before (date)** — 好賣+ cancels the tracking number 14 days after it was issued. The date turns red when 3 days or fewer are left.
+- If none in the file are shipped yet, a grey note says "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
 - "This isn't a 全家 Order export" = a different file was picked. Up to 2,000 orders per file; wait a few seconds between uploads.
 
 ## shipping — Shipping (Coming soon)

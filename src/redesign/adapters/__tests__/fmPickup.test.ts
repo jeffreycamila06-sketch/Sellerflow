@@ -6,7 +6,7 @@ const warn = vi.fn();
 vi.mock("../../../lib/log", () => ({ log: { warn: (...a: unknown[]) => warn(...a), log() {}, info() {}, error() {}, debug() {} } }));
 
 import { buildZip, crc32 } from "../shippingXlsmPatch";
-import { headerMatches, fmStatusOf, fmBuyerUsername, fmDate, fmTimestamp, parseFmExport, uploadFmExport, FM_MAX_ROWS } from "../fmPickup";
+import { headerMatches, fmStatusOf, fmBuyerUsername, fmDate, fmTimestamp, fmDropOffDeadline, parseFmExport, uploadFmExport, FM_MAX_ROWS } from "../fmPickup";
 
 // The real 好賣+ "Order export" header row (row 1, 38 columns), copied from Jeff's file. Several
 // headers carry a note after the name — the reader must still find them.
@@ -54,6 +54,8 @@ describe("fmStatusOf — status mapping table", () => {
     [{ status: "配送中", shipped: d, picked: "", returned: "", cancelled: "" }, "in_transit"],
     [{ status: "怪怪的", shipped: d, picked: "", returned: "", cancelled: "" }, "in_transit"],
     [{ status: "已成立", shipped: "", picked: "", returned: "", cancelled: "" }, null],
+    [{ status: "出貨中", shipped: "", picked: "", returned: "", cancelled: "", trackingNo: "16351746626" }, "in_transit"],
+    [{ status: "出貨中", shipped: "", picked: "", returned: "", cancelled: d, trackingNo: "16351746626" }, "hide"],
   ])("%j → %s", (input, want) => { expect(fmStatusOf(input)).toBe(want); });
 });
 
@@ -94,6 +96,38 @@ describe("real 好賣+ export (Jeff's file)", () => {
   it("a pickup deadline with a ship date → waiting at the store, even when 訂單狀態 lacks 到店", async () => {
     const r = await one({ "寄件日期": "2026/10/12", "取貨截止日": "2026/10/19" });
     expect(r.ok && r.rows[0]).toMatchObject({ status: "at_store", pickup_deadline: "2026-10-19" });
+  });
+});
+
+// Jeff's real Pending-shipment row: tracking number issued, not dropped off yet.
+const PENDING: Record<string, Cell> = { ...REAL, "訂單狀態": "出貨中", "寄件編號": 16351746626 };
+
+describe("not dropped off yet (出貨中 + 寄件編號, no 寄件日期)", () => {
+  const one = async (extra: Record<string, Cell>) => parseFmExport(xlsx([{ ...PENDING, ...extra }]));
+  it("shows in transit with tracking_no = 寄件編號 and the drop-off deadline (status date + 14 days)", async () => {
+    const r = await one({});
+    if (!r.ok) throw new Error("rejected");
+    expect(r.notShipped).toBe(0);
+    expect(r.rows[0]).toMatchObject({ status: "in_transit", tracking_no: "16351746626", status_message: "出貨中", pickup_deadline: "2026-10-25" });
+  });
+  it("+寄件日期 → normal in transit (no drop-off deadline)", async () => {
+    const r = await one({ "寄件日期": "2026/10/12" });
+    expect(r.ok && r.rows[0]).toMatchObject({ status: "in_transit", pickup_deadline: null });
+  });
+  it("+取消日期 → hidden", async () => {
+    const r = await one({ "取消日期": "2026/10/13" });
+    expect(r.ok && r.rows[0].status).toBe("hide");
+  });
+  it("處理中 with neither 寄件編號 nor 寄件日期 stays hidden", async () => {
+    const r = await parseFmExport(xlsx([REAL]));
+    expect(r).toEqual({ ok: true, rows: [], notShipped: 1 });
+  });
+  it("deadline year: from 訂購日期, next year when the status date is earlier in the year", () => {
+    expect(fmDropOffDeadline("10/11 17:05", "2026/10/11")).toBe("2026-10-25");
+    expect(fmDropOffDeadline("12/25 09:00", "2026/12/20")).toBe("2027-01-08");
+    expect(fmDropOffDeadline("01/02 09:00", "2026/12/30")).toBe("2027-01-16");
+    expect(fmDropOffDeadline("", "2026/10/11")).toBeNull();
+    expect(fmDropOffDeadline("10/11 17:05", "")).toBeNull();
   });
 });
 

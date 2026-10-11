@@ -88,4 +88,28 @@ describe("Pickup Status — 全家", () => {
     await waitFor(() => expect(r.getByTestId("pt-fm-sync").textContent).toBe("從全家同步"));
     expect(r.getByTestId("pt-sync").textContent).toBe("從 7-11 同步");
   });
+
+  it("not dropped off yet: In transit with the note and 'Drop off before Oct 25'; red when ≤ 3 days left", async () => {
+    const pending = (id: string, deadline: string) => ({ ...row(id, "fm"), status: "in_transit", pickupDeadline: deadline, statusMessage: "出貨中" });
+    const ymd = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [pending("P1", ymd(10)), pending("P2", ymd(2)), { ...row("T1", "fm"), status: "in_transit", pickupDeadline: null }], totals: { ...totals, transit: 3, waiting: 0 } });
+    const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-tab-transit")).toBeTruthy());
+    fireEvent.click(r.getByTestId("pt-tab-transit"));
+    await waitFor(() => expect(r.getAllByTestId("pt-not-dropped")).toHaveLength(2));
+    expect(r.getAllByTestId("pt-not-dropped")[0].textContent).toBe("Not dropped off yet");
+    const lefts = r.getAllByTestId("pt-left").filter((e) => e.getAttribute("data-dropoff"));
+    expect(lefts.map((e) => e.getAttribute("data-urgent")).sort()).toEqual(["0", "1"]);
+    const far = lefts.find((e) => e.getAttribute("data-dropoff") === ymd(10))!;
+    const [y, m, d] = ymd(10).split("-").map(Number);
+    expect(far.textContent).toBe(`Drop off before ${new Date(y, m - 1, d).toLocaleDateString("en", { month: "short", day: "numeric" })}`);
+  });
+
+  it("'How to sync?' tells FamilyMart sellers to export from the ALL ORDERS tab (only when FamilyMart is on)", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
+    const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-sync-how-toggle")).toBeTruthy());
+    fireEvent.click(r.getByTestId("pt-sync-how-toggle"));
+    expect(r.getByTestId("pt-sync-how-fm").textContent).toContain("ALL ORDERS");
+  });
 });
