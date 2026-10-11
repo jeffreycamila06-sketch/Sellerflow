@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   SONNET, HAIKU, PRICES, costUsd, redact, isHandoffTopic, detectLang, parseGuide, pickSections,
-  changedSections, checkedMap, parseMatcherReply, parseAnswer, answerQuestion, callClaude, NOT_COVERED,
+  createGuideSource, sectionFromRow, GUIDE_TTL_MS, parseMatcherReply, parseAnswer, answerQuestion, callClaude, NOT_COVERED,
   buildAnswerSystem, buildMatcherPrompt,
 } from "../../../../server/helpBot.js";
 
@@ -227,11 +227,11 @@ describe("helpers", () => {
     expect(g[0].text).not.toMatch(/unsure/i);
     for (const s of GUIDE) expect(s.text).not.toMatch(/UNSURE:/);
   });
-  it("changed 'last checked' dates", () => {
-    const s: never = [{ id: "a", checked: "2026-10-11" }, { id: "b", checked: "2026-10-12" }, { id: "c", checked: "2026-10-11" }] as never;
-    expect(changedSections({ a: "2026-10-11", b: "2026-10-01" }, s)).toEqual(["b"]);
-    expect(changedSections(null, s)).toEqual([]);
-    expect(checkedMap(s)).toEqual({ a: "2026-10-11", b: "2026-10-12", c: "2026-10-11" });
+  it("a DB row becomes the same section shape as the file", () => {
+    const fromFile = GUIDE.find((x) => x.id === "printer-bluetooth")!;
+    const fromRow = sectionFromRow({ id: fromFile.id, title: fromFile.title, checked: fromFile.checked, keywords: fromFile.keywords, body: fromFile.body });
+    expect(fromRow).toEqual(fromFile);
+    expect(sectionFromRow({ id: "x", title: "T", checked: "2026-10-11T00:00:00", keywords: "", body: "a\nUNSURE: b" }).text).toBe("## x — T\n\na");
   });
 });
 
@@ -250,5 +250,50 @@ describe("callClaude", () => {
     expect((await callClaude({ apiKey: "k", fetchImpl: mk({ ok: true, json: async () => ({ stop_reason: "refusal", content: [] }) }), model: HAIKU, system: "", user: "", maxTokens: 20 } as never)).error).toBe("refusal");
     expect((await callClaude({ apiKey: "k", fetchImpl: mk({ ok: false, status: 529 }), model: HAIKU, system: "", user: "", maxTokens: 20 } as never)).error).toBe("http_529");
     expect((await callClaude({ apiKey: "k", fetchImpl: vi.fn(async () => { throw new Error("x"); }), model: HAIKU, system: "", user: "", maxTokens: 20 } as never)).error).toBe("network");
+  });
+});
+
+describe("guide source (support_guide table, 5-minute cache)", () => {
+  const row = { id: "printer-bluetooth", title: "Bluetooth printer", checked: "2026-10-11", keywords: "bluetooth", body: "Turn it on." };
+  it("reads the table, caches 5 minutes, then reads again", async () => {
+    let t = 0;
+    const loadRows = vi.fn(async () => [row]);
+    const readFile = vi.fn(async () => "");
+    const get = createGuideSource({ loadRows, readFile, now: () => t });
+    expect((await get())[0].body).toBe("Turn it on.");
+    t = GUIDE_TTL_MS - 1;
+    loadRows.mockResolvedValue([{ ...row, body: "New text." }]);
+    expect((await get())[0].body).toBe("Turn it on.");
+    expect(loadRows).toHaveBeenCalledTimes(1);
+    t = GUIDE_TTL_MS;
+    expect((await get())[0].body).toBe("New text.");
+    expect(loadRows).toHaveBeenCalledTimes(2);
+    expect(readFile).not.toHaveBeenCalled();
+  });
+  it("empty table → the repo file", async () => {
+    const get = createGuideSource({ loadRows: async () => [], readFile: async () => readFileSync("docs/support/sfl-guide.md", "utf8") });
+    expect((await get()).length).toBe(GUIDE.length);
+  });
+  it("unreadable table → the repo file; logs the source only (no text)", async () => {
+    const logs: string[] = [];
+    const get = createGuideSource({ loadRows: async () => { throw new Error("db down"); }, readFile: async () => "## a — A\nLast checked: 2026-10-11\nKeywords: k\n\nBody.", log: (l: string) => logs.push(l) });
+    expect((await get()).map((x) => x.id)).toEqual(["a"]);
+    expect(logs).toEqual(["[SUPPORT] guide from=file sections=1"]);
+  });
+});
+
+describe("scripts/sync-guide.mjs", () => {
+  it("same guide → same SQL, and the committed sql/116b matches the guide", async () => {
+    const { buildGuideSql } = await import("../../../../scripts/sync-guide.mjs");
+    const md = readFileSync("docs/support/sfl-guide.md", "utf8");
+    expect(buildGuideSql(md)).toBe(buildGuideSql(md));
+    expect(readFileSync("sql/116b_guide_seed.sql", "utf8")).toBe(buildGuideSql(md));
+  });
+  it("quotes safely, deletes removed sections, refuses an empty guide", async () => {
+    const { buildGuideSql } = await import("../../../../scripts/sync-guide.mjs");
+    const sql = buildGuideSql("## a-b — It's here\nLast checked: 2026-10-11\nKeywords: k\n\nDon't panic.");
+    expect(sql).toContain("('a-b', 'It''s here', '2026-10-11'::date, 'k', 'Don''t panic.')");
+    expect(sql).toContain("delete from public.support_guide where id not in ('a-b');");
+    expect(() => buildGuideSql("no sections")).toThrow();
   });
 });

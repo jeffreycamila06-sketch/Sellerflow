@@ -5,8 +5,8 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { readFileSync } from "fs";
-import { answerQuestion, callClaude, parseGuide, changedSections, checkedMap } from "./server/helpBot.js";
+import { readFile } from "fs/promises";
+import { answerQuestion, callClaude, createGuideSource } from "./server/helpBot.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
@@ -967,12 +967,18 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
 // admin or on the 'support_ai_preview' list (feature_access_emails). user_id comes from the JWT
 // only. The answer logic lives in server/helpBot.js (tested); this is wiring. Logs: counts and
 // codes only — never question/answer text, emails or tokens.
-let helpGuide = [];
-try {
-  helpGuide = parseGuide(readFileSync(new URL("./docs/support/sfl-guide.md", import.meta.url), "utf8"));
-} catch {
-  console.log("[SUPPORT] guide missing");
-}
+// The bot's knowledge = support_guide rows (sql/116, seeded by sql/116b), cached 5 minutes, so
+// a guide change needs no Render deploy. The repo file is only the fallback.
+const helpGuide = createGuideSource({
+  loadRows: async () => {
+    if (!serviceSb) return [];
+    const { data, error } = await serviceSb.from("support_guide").select("id,title,checked,keywords,body");
+    if (error) throw error;
+    return data || [];
+  },
+  readFile: () => readFile(new URL("./docs/support/sfl-guide.md", import.meta.url), "utf8"),
+  log: (line) => console.log(line),
+});
 const supportLastAsk = new Map(); // ponytail: in-memory, per server instance
 async function readSetting(key) {
   const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", key).maybeSingle();
@@ -1027,7 +1033,7 @@ app.post("/support/ask", requireAuth, async (req, res) => {
         if (error) throw error;
         return data || [];
       },
-      guide: async () => helpGuide,
+      guide: helpGuide,
       callModel: (a) => callClaude({ apiKey: ANTHROPIC_API_KEY, ...a }),
       save: async (row) => {
         const { data, error } = await serviceSb.from("support_chats").insert(row).select("id").single();
@@ -1044,26 +1050,7 @@ app.post("/support/ask", requireAuth, async (req, res) => {
   }
 });
 
-// A guide section's "Last checked" date changed since the last start → its linked FAQ entries
-// are marked needs_recheck (and stop being served until Admin saves them again).
-async function supportGuideRecheck() {
-  if (!serviceSb || !helpGuide.length) return;
-  try {
-    const raw = await readSetting("support_guide_checked");
-    if (raw === null) return; // sql/116 not applied
-    let stored = {};
-    try { stored = JSON.parse(raw); } catch { /* treat as empty */ }
-    const changed = changedSections(stored, helpGuide);
-    if (changed.length) {
-      const { data } = await serviceSb.rpc("support_mark_recheck", { p_sections: changed });
-      console.log(`[SUPPORT] recheck sections=${changed.length} faqs=${data || 0}`);
-    }
-    await serviceSb.from("app_settings").update({ value: JSON.stringify(checkedMap(helpGuide)) }).eq("key", "support_guide_checked");
-  } catch {
-    console.log("[SUPPORT] recheck failed");
-  }
-}
-setTimeout(supportGuideRecheck, 5000).unref?.();
+// "Last checked" changes → needs_recheck is a database trigger on support_guide (sql/116).
 
 // Parcel Scan (Phase A1, ADMIN-ONLY dogfood). One handwritten-slip photo per
 // call (the client loops parcels sequentially); Claude vision extracts the

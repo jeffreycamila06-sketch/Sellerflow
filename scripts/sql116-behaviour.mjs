@@ -139,14 +139,37 @@ await throws(() => as("authenticated", alice, false, () => q("select * from supp
 ok((await as("authenticated", admin, true, () => q("select * from admin_support_faq_list()"))).rows.length === 3, "admin FAQ list via RPC");
 await throws(() => as("authenticated", alice, false, () => q("select * from admin_support_faq_list()")), "seller cannot call admin FAQ list");
 
-// ── recheck ──
-await q("update support_faq set guide_sections='{printer-test}' where answer like '%edited%'");
-ok((await q("select support_mark_recheck('{printer-test}') n")).rows[0].n === 1, "mark recheck by section");
+// ── guide table: seed (sql/116b), no browser access, trigger marks needs_recheck ──
+const { buildGuideSql } = await import(`${dir}/../scripts/sync-guide.mjs`);
+const md = readFileSync(`${dir}/../docs/support/sfl-guide.md`, "utf8");
+await db.exec(readFileSync(`${dir}/116b_guide_seed.sql`, "utf8"));
+const nSections = (await one("select count(*)::int c from support_guide")).c;
+ok(nSections > 20, "seed loads every guide section");
+ok((await one("select count(*)::int c from support_guide where body ~ 'UNSURE:'")).c === 0, "no UNSURE lines in the table");
+for (const [role, uid, adm, who] of [["authenticated", alice, false, "seller"], ["authenticated", admin, true, "admin"], ["anon", null, false, "anon"]])
+  await throws(() => as(role, uid, adm, () => q("select * from support_guide")), `${who} cannot read support_guide`);
+await q("update support_faq set guide_sections='{printer-bluetooth}' where answer like '%edited%'");
+const before = (await one("select max(updated_at)::text t from support_guide")).t;
+await db.exec(readFileSync(`${dir}/116b_guide_seed.sql`, "utf8"));
+ok((await one("select max(updated_at)::text t from support_guide")).t === before, "re-applying the same seed changes nothing");
+ok((await one("select count(*)::int c from support_faq where needs_recheck")).c === 0, "…and marks nothing");
+await q("update support_guide set body = body || ' more' where id='printer-bluetooth'");
+ok((await one("select count(*)::int c from support_faq where needs_recheck")).c === 0, "body change without a new date → no recheck");
+await db.exec(buildGuideSql(md.replace(/(## printer-bluetooth[^\n]*\nLast checked: )\S+/, "$12026-12-01")));
+ok((await one("select checked::text d from support_guide where id='printer-bluetooth'")).d === "2026-12-01", "new date upserted");
+ok((await one("select count(*)::int c from support_faq where needs_recheck")).c === 1, "changed Last checked → linked FAQ needs recheck");
 ok((await q("select * from support_faq_match($1)", ["how do i print a test sticker"])).rows.length === 0, "needs-recheck FAQ is not served");
 const fid = (await one("select id from support_faq where needs_recheck")).id;
 await as("authenticated", admin, true, () => q("select admin_support_faq_update($1, null, $2, null)", [fid, "Settings → Printer → Test print."]));
 ok((await one("select needs_recheck r from support_faq where id=$1", [fid])).r === false, "admin edit clears recheck");
 await throws(() => as("authenticated", alice, false, () => q("select admin_support_faq_update($1, null, 'x', null)", [fid])), "seller cannot edit FAQ");
+// a section removed from the guide file is deleted, and its FAQ is marked
+const noBt = md.replace(/## printer-bluetooth[\s\S]*?(?=\n## )/, "");
+await db.exec(buildGuideSql(noBt));
+ok((await one("select count(*)::int c from support_guide")).c === nSections - 1, "removed section deleted from the table");
+ok((await one("select needs_recheck r from support_faq where id=$1", [fid])).r === true, "deleted section → linked FAQ needs recheck");
+await db.exec(buildGuideSql(md));
+await q("update support_faq set needs_recheck=false");
 
 // ── quick questions + stats ──
 await q("update support_chats set faq_id=$1 where id=$2", [fid, b1]);

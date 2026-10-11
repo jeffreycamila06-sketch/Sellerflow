@@ -86,20 +86,51 @@ export function detectLang(q, appLang = "en") {
 
 // ── guide ──────────────────────────────────────────────────────────────────────
 // Sections are "## <id> — <Title>" followed by "Last checked: YYYY-MM-DD" and "Keywords: …".
-// Lines starting "UNSURE:" are dropped.
+// The same section shape comes from the support_guide table (sectionFromRow) or the repo file
+// (parseGuide). "UNSURE:" lines are notes for Admin — they never reach the AI.
+const dropUnsure = (body) => String(body || "").split("\n").filter((l) => !/^\s*UNSURE:/i.test(l)).join("\n").trim();
+export function sectionFromRow(r) {
+  const body = dropUnsure(r.body);
+  const title = String(r.title || "").trim();
+  return { id: String(r.id), title, checked: r.checked ? String(r.checked).slice(0, 10) : "", keywords: String(r.keywords || ""), body, text: `## ${r.id} — ${title}\n\n${body}` };
+}
 export function parseGuide(md) {
   const out = [];
   for (const chunk of String(md || "").split(/^## /m).slice(1)) {
-    const head = chunk.split("\n", 1)[0];
-    const m = head.match(/^([a-z0-9][a-z0-9-]*)\s+[—-]+\s+(.+)$/i);
+    const lines = chunk.split("\n");
+    const m = lines[0].match(/^([a-z0-9][a-z0-9-]*)\s+[—-]+\s+(.+)$/i);
     if (!m) continue;
     const checked = (chunk.match(/^Last checked:\s*(\S+)/m) || [])[1] || "";
-    const keywords = ((chunk.match(/^Keywords:\s*(.+)$/m) || [])[1] || "").toLowerCase();
-    // "UNSURE:" lines are notes for Admin — never sent to the AI.
-    const text = chunk.split("\n").filter((l) => !/^\s*UNSURE:/i.test(l)).join("\n").trim();
-    out.push({ id: m[1], title: m[2].trim(), checked, keywords, text: `## ${text}` });
+    const keywords = ((chunk.match(/^Keywords:\s*(.+)$/m) || [])[1] || "").trim();
+    const body = lines.slice(1).filter((l) => !/^(Last checked|Keywords):/.test(l)).join("\n");
+    out.push(sectionFromRow({ id: m[1], title: m[2], checked, keywords, body }));
   }
   return out;
+}
+
+// Guide source for the server: support_guide rows (no deploy needed to change the bot's
+// knowledge), cached 5 minutes; the repo file only when the table is empty or unreadable.
+export const GUIDE_TTL_MS = 5 * 60 * 1000;
+export function createGuideSource({ loadRows, readFile, now = () => Date.now(), ttlMs = GUIDE_TTL_MS, log }) {
+  let cache = null;
+  return async function getGuide() {
+    if (cache && now() - cache.at < ttlMs) return cache.sections;
+    let sections = [];
+    let from = "db";
+    try {
+      const rows = await loadRows();
+      sections = (rows || []).map(sectionFromRow).filter((x) => x.body);
+    } catch {
+      sections = [];
+    }
+    if (!sections.length) {
+      from = "file";
+      try { sections = parseGuide(await readFile()); } catch { sections = []; }
+    }
+    if (!cache || cache.from !== from) log?.(`[SUPPORT] guide from=${from} sections=${sections.length}`);
+    cache = { at: now(), sections, from };
+    return sections;
+  };
 }
 
 const words = (s) => String(s || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
@@ -108,7 +139,7 @@ export function pickSections(sections, question, max = 4) {
   const q = new Set(words(question).filter((w) => w.length > 1 || /[㐀-鿿]/.test(w)));
   const scored = sections.map((s) => {
     let score = 0;
-    const kw = s.keywords;
+    const kw = s.keywords.toLowerCase();
     for (const w of q) {
       if (kw.includes(w)) score += 3;
       if (s.title.toLowerCase().includes(w)) score += 2;
@@ -119,13 +150,6 @@ export function pickSections(sections, question, max = 4) {
   });
   return scored.filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, max).map((x) => x.s);
 }
-
-// Sections whose "last checked" date differs from the stored map (new sections don't count).
-export function changedSections(stored, sections) {
-  const old = stored && typeof stored === "object" ? stored : {};
-  return sections.filter((s) => old[s.id] && old[s.id] !== s.checked).map((s) => s.id);
-}
-export const checkedMap = (sections) => Object.fromEntries(sections.map((s) => [s.id, s.checked]));
 
 // ── prompts ───────────────────────────────────────────────────────────────────
 export function buildMatcherPrompt(faqs) {

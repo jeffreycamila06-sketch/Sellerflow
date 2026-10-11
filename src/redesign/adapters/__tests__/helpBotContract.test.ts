@@ -9,7 +9,7 @@ const i18nSrc = readFileSync("src/redesign/i18n/index.tsx", "utf8");
 const keys = [...i18nSrc.matchAll(/^ {2}(rd_h[bc]_\w+|rd_adm_ctrl_helpchat):/gm)].map((m) => m[1]);
 const guide = readFileSync("docs/support/sfl-guide.md", "utf8");
 const server = readFileSync("server.js", "utf8");
-const route = server.slice(server.indexOf('app.post("/support/ask"'), server.indexOf("async function supportGuideRecheck"));
+const route = server.slice(server.indexOf('app.post("/support/ask"'), server.indexOf('"Last checked" changes → needs_recheck'));
 
 describe("naming rule", () => {
   it("help-chat strings never say Jeff, in any language", () => {
@@ -82,3 +82,19 @@ describe("/support/ask wiring (server.js)", () => {
     expect(readFileSync("server/errorCodes.js", "utf8")).not.toContain('"/support"');
   });
 });
+
+describe("support_guide (sql/116)", () => {
+  const sql = readFileSync("sql/116_help_bot.sql", "utf8");
+  it("service role only, and a date change / delete marks FAQs (trigger)", () => {
+    expect(sql).toContain("revoke all on public.support_guide from anon, authenticated;");
+    expect(sql).not.toMatch(/grant [^;]* on public\.support_guide/i);
+    expect(sql).toContain("after update or delete on public.support_guide");
+    expect(sql).toMatch(/new\.checked is distinct from old\.checked/);
+  });
+  it("the server reads the table through the 5-minute cache, the file only as fallback", () => {
+    expect(server).toContain('from("support_guide").select("id,title,checked,keywords,body")');
+    expect(server).toContain("guide: helpGuide,");
+    expect(server).not.toMatch(/readFileSync\([^)]*sfl-guide/);
+  });
+});
+
