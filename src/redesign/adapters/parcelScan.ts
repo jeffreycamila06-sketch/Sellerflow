@@ -276,8 +276,11 @@ export function customAmountError(amount: number, fee: number, feeColumnMax: num
 export const MAX_PENDING_PARCELS = 40;
 // Testers (admin + googletest) get a bigger batch; everyone else stays at 40.
 export const MAX_PENDING_PARCELS_TESTER = 50;
+// One seller's bigger batch (sql/117 feature "parcel_cap_70"), checked first.
+export const MAX_PENDING_PARCELS_SPECIAL = 70;
 // Build 10b: the tester list lives in the database (sql/112 feature "parcel_cap_tester").
 export function maxPendingParcels(email?: string | null, role?: string | null): number {
+  if (hasFeature("parcel_cap_70")) return MAX_PENDING_PARCELS_SPECIAL;
   if (String(role || "").trim().toLowerCase() === "admin") return MAX_PENDING_PARCELS_TESTER;
   const e = String(email || "").trim().toLowerCase();
   return e !== "" && hasFeature("parcel_cap_tester") ? MAX_PENDING_PARCELS_TESTER : MAX_PENDING_PARCELS;
