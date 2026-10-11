@@ -132,7 +132,7 @@ describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoi
   });
 
   it("load = three DISJOINT bounded queries (non-terminal / returned / picked_up), each count:exact", () => {
-    expect(adapter).toContain('.select(PT_SELECT, { count: "exact" })');
+    expect(adapter).toContain('.select(ptSelect(fm), { count: "exact" })'); // ptSelect(false) === PT_SELECT (sql/119)
     expect(adapter).toContain('.eq("terminal", false)');
     expect(adapter).toContain('.eq("status", "returned")');
     expect(adapter).toContain('.eq("status", "picked_up")');
@@ -144,7 +144,7 @@ describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoi
   });
   it("S7: the unfinished list is PAGED in a stable order (deadline, then id) and Load more continues from the offset", () => {
     expect(adapter).toMatch(/\.order\("pickup_deadline", \{ ascending: true, nullsFirst: false \}\)\s*\.order\("id", \{ ascending: true \}\)\s*\.range\(from, from \+ PARCEL_TRACKING_PAGE - 1\)/);
-    expect(adapter).toContain("const { data, error } = await livePage(me, Math.max(0, offset));");
+    expect(adapter).toContain("const { data, error } = await livePage(me, Math.max(0, offset), fm);");
     // exact waiting = chaseable at_store + not-checked-yet; transit = chaseable in_transit
     expect(adapter).toContain('.or("special_type.is.null,special_type.eq.")');
     expect(adapter).toContain("waiting: (atStore.count ?? 0) + (unchecked.count ?? 0),");

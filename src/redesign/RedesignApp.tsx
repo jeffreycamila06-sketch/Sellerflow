@@ -2523,7 +2523,7 @@ export default function RedesignApp() {
             <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} />}
-          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} />}
+          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
           {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}

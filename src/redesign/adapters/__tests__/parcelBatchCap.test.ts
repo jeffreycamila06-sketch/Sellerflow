@@ -74,7 +74,9 @@ describe("sql/117 my_feature_access", () => {
     const k117 = keysOf("sql/117_parcel_cap_70.sql");
     expect(k116[k116.length - 1]).toBe("support_ai_preview");
     expect(k117).toEqual([...k116, "parcel_cap_70"]);
-    expect([...k117].sort()).toEqual([...FEATURE_KEYS].sort());
+    const k119 = keysOf("sql/119_fm_pickup.sql"); // the latest list (全家 preview)
+    expect(k119).toEqual([...k117, "fm_pickup"]);
+    expect([...k119].sort()).toEqual([...FEATURE_KEYS].sort());
   });
   it("no email rows in the file; the rollback restores the sql/116 list", () => {
     const sql = readFileSync("sql/117_parcel_cap_70.sql", "utf8");
