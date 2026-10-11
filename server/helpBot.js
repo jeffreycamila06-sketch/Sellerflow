@@ -111,7 +111,7 @@ export function parseGuide(md) {
 // Guide source for the server: support_guide rows (no deploy needed to change the bot's
 // knowledge), cached 5 minutes; the repo file only when the table is empty or unreadable.
 export const GUIDE_TTL_MS = 5 * 60 * 1000;
-export function createGuideSource({ loadRows, readFile, now = () => Date.now(), ttlMs = GUIDE_TTL_MS, log }) {
+export function createGuideSource({ loadRows, readFile, now = () => Date.now(), ttlMs = GUIDE_TTL_MS, log = (_line) => {} }) {
   let cache = null;
   return async function getGuide() {
     if (cache && now() - cache.at < ttlMs) return cache.sections;
@@ -127,7 +127,7 @@ export function createGuideSource({ loadRows, readFile, now = () => Date.now(), 
       from = "file";
       try { sections = parseGuide(await readFile()); } catch { sections = []; }
     }
-    if (!cache || cache.from !== from) log?.(`[SUPPORT] guide from=${from} sections=${sections.length}`);
+    if (!cache || cache.from !== from) log(`[SUPPORT] guide from=${from} sections=${sections.length}`);
     cache = { at: now(), sections, from };
     return sections;
   };
