@@ -12,7 +12,8 @@
 //   POST list.aspx/GetOrderDetail {EC_ORDER_NO, RCV_USER_NAME:null, ORDER_NO}  (only when CNT = 1;
 //        CNT > 1 asks for the recipient name) → { d: '{"ErrorCode":"000","List":[{STATUS_D, ORDER_DATE,
 //        ORDER_TIME, ORDER_DATE_RTN (取貨截止日), RCV_STORE_NAME, SEND_STORE_NAME (return store), …}]}' }
-//   --detail also makes these two calls after the first accepted query (status wordings only are printed).
+//   --detail also makes these calls after the first accepted query (status wordings only are printed);
+//   --numbers a,b,c sends up to 5 numbers in that one query.
 //
 // Gentle by design: one request at a time, 8–15 s random wait before every request, hard caps
 // (15 captcha fetches, 10 submits), stop on any unusual answer. Never logs tokens or cookies.
@@ -24,7 +25,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 const BASE = "https://ecfme.fme.com.tw/FMEDCFPWebV2_II";
 const ENTRY = `${BASE}/index.aspx?orderno=`;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
-const TRACKING = "16351746626"; // our own test parcel
+// --numbers a,b,c (max 5, one captcha covers them all); default = our own test parcel.
+const numArg = process.argv.includes("--numbers") ? process.argv[process.argv.indexOf("--numbers") + 1] || "" : "";
+const NUMBERS = (numArg ? numArg.split(",").map((x) => x.trim()).filter(Boolean) : ["16351746626"]).slice(0, 5);
+const TRACKING = NUMBERS.join(",");
 const OUT = "vendor/fm-captcha-samples";
 const MAX_CAPTCHA = 15, MAX_SUBMIT = 10;
 const N = Math.min(Number(process.argv[process.argv.indexOf("--n") + 1]) || 10, MAX_SUBMIT);
@@ -123,15 +127,20 @@ async function main() {
         if (process.argv.includes("--detail")) {
           const list = JSON.parse((await (await postJson("list.aspx/InquiryOrders", { ListEC_ORDER_NO: TRACKING })).json()).d || "{}");
           writeFileSync(`${OUT}/inquiry.json`, JSON.stringify(list, null, 2));
-          const first = (list.List || [])[0] || {};
-          console.log(`InquiryOrders ErrorCode=${list.ErrorCode} CNT=${first.CNT} ORDERMESSAGE=${first.ORDERMESSAGE ?? "-"}`);
-          if (first.CNT === 1) {
-            const det = JSON.parse((await (await postJson("list.aspx/GetOrderDetail", { EC_ORDER_NO: first.EC_ORDER_NO, RCV_USER_NAME: null, ORDER_NO: first.ORDER_NO })).json()).d || "{}");
-            writeFileSync(`${OUT}/detail.json`, JSON.stringify(det, null, 2));
+          console.log(`InquiryOrders ErrorCode=${list.ErrorCode} rows=${(list.List || []).length}`);
+          const details = [];
+          for (const row of list.List || []) {
+            console.log(`\n${row.EC_ORDER_NO}: matches=${row.CNT} summary=${row.ORDERMESSAGE ?? "-"}`);
+            if (row.CNT !== 1) { console.log("  (no detail: no match, or the site asks for the recipient name)"); continue; }
+            const det = JSON.parse((await (await postJson("list.aspx/GetOrderDetail", { EC_ORDER_NO: row.EC_ORDER_NO, RCV_USER_NAME: null, ORDER_NO: row.ORDER_NO })).json()).d || "{}");
+            details.push({ no: row.EC_ORDER_NO, det });
             const L = det.List || [];
-            console.log(`GetOrderDetail ErrorCode=${det.ErrorCode} steps=${L.length} deadline(ORDER_DATE_RTN)=${L[0]?.ORDER_DATE_RTN ?? "none"} returnStore=${L[0]?.SEND_STORE_NAME ? "yes" : "no"}`);
+            if (det.ErrorCode !== "000") { console.log(`  detail ErrorCode=${det.ErrorCode}`); continue; }
+            console.log(`  取貨截止日 (ORDER_DATE_RTN): ${L[0]?.ORDER_DATE_RTN ?? "none"}`);
+            console.log(`  return store present: ${L[0]?.SEND_STORE_NAME ? "yes" : "no"}`);
             for (const st of L) console.log(`  status: ${st.STATUS_D ?? "-"} @ ${st.ORDER_DATE ?? ""} ${st.ORDER_TIME ?? ""}`);
           }
+          writeFileSync(`${OUT}/detail.json`, JSON.stringify(details, null, 2));
           break; // one query is enough for the detail run
         }
       }
