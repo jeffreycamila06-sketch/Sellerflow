@@ -343,12 +343,55 @@ export async function exchangeForLongLivedUserToken({ config, fetchImpl, shortTo
 // long-lived user token → the seller's pages (each with its own long-lived page token).
 // Returns [] on any failure (never throws — the callback treats [] as "no pages").
 export async function fetchPages({ config, fetchImpl, userToken }) {
+  return (await fetchPagesDetail({ config, fetchImpl, userToken })).pages;
+}
+// Same single /me/accounts call, plus its HTTP status and Facebook error code (for the no_pages
+// diagnostic). status/code null when the call itself failed. Never throws.
+export async function fetchPagesDetail({ config, fetchImpl, userToken }) {
   void config;
   try {
-    const { body } = await graphGet({ fetchImpl, url: graphUrl("/me/accounts", { fields: "id,name,username,access_token", access_token: userToken }) });
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl("/me/accounts", { fields: "id,name,username,access_token", access_token: userToken }) });
     const list = Array.isArray(body.data) ? body.data : [];
-    return list.map((p) => ({ id: String(p.id || ""), name: String(p.name || ""), username: p.username ? String(p.username) : "", access_token: String(p.access_token || "") })).filter((p) => p.id && p.access_token);
-  } catch { return []; }
+    const code = body && body.error && body.error.code != null ? Number(body.error.code) : null;
+    const pages = list.map((p) => ({ id: String(p.id || ""), name: String(p.name || ""), username: p.username ? String(p.username) : "", access_token: String(p.access_token || "") })).filter((p) => p.id && p.access_token);
+    return { pages, status, code };
+  } catch { return { pages: [], status: null, code: null }; }
+}
+// no_pages diagnostic — WHY Facebook gave no Page. Permission NAMES and counts only: never a
+// token, the app secret, a page/user id, a name or an email. Two reads, each failing to null
+// ("-" in the log): GET /me/permissions (user token) and GET /debug_token (input = user token,
+// app token = appId|appSecret; sent WITHOUT appsecret_proof → appFetch is the unwrapped fetch).
+// pageTargets = target_ids count on the pages_show_list granular scope; "all" when the scope has
+// no target list. Never throws.
+export async function noPagesDiag({ config, fetchImpl, appFetch, userToken }) {
+  const out = { granted: null, declined: null, pageTargets: null, messaging: null };
+  try {
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl("/me/permissions", { access_token: userToken }) });
+    if (status === 200 && Array.isArray(body.data)) {
+      const by = (st) => body.data.filter((p) => p && p.status === st && p.permission).map((p) => String(p.permission));
+      out.granted = by("granted");
+      out.declined = by("declined");
+      out.messaging = out.granted.includes("pages_messaging") ? 1 : 0;
+    }
+  } catch { /* "-" */ }
+  try {
+    const { status, body } = await graphGet({ fetchImpl: appFetch, url: graphUrl("/debug_token", { input_token: userToken, access_token: `${config.appId}|${config.appSecret}` }) });
+    const scopes = status === 200 && body.data && Array.isArray(body.data.granular_scopes) ? body.data.granular_scopes : null;
+    if (scopes) {
+      const g = scopes.find((x) => x && x.scope === "pages_show_list");
+      out.pageTargets = !g ? 0 : Array.isArray(g.target_ids) ? g.target_ids.length : "all";
+    }
+  } catch { /* "-" */ }
+  return out;
+}
+// The one no_pages log line (and the probe row detail) from the fields above.
+export function noPagesFields({ flow, http, code, diag }) {
+  const list = (a) => (Array.isArray(a) ? (a.length ? a.join(",") : "none") : "-");
+  const v = (x) => (x == null ? "-" : String(x));
+  return { flow, http: v(http), code: v(code), granted: list(diag.granted), declined: list(diag.declined), pageTargets: v(diag.pageTargets), messaging: v(diag.messaging) };
+}
+export function noPagesLine(f) {
+  return `[FB] no_pages flow=${f.flow} http=${f.http} code=${f.code} granted=${f.granted} declined=${f.declined} pageTargets=${f.pageTargets} messaging=${f.messaging}`;
 }
 // Did this user grant pages_messaging? GET /me/permissions with the long-lived USER token
 // → true only when an entry { permission: "pages_messaging", status: "granted" } exists.
@@ -602,6 +645,9 @@ export function createFbRuntime(deps) {
       state,
       scope: messaging ? `${OAUTH_SCOPE},pages_messaging` : OAUTH_SCOPE,
       response_type: "code",
+      // Always show the Page picker again: without it a user who once continued without ticking
+      // a Page gets a one-tap "Continue as …" that re-sends the same empty grant (no_pages).
+      auth_type: "rerequest",
     });
     return `${FB_DIALOG_HOST}/${GRAPH_VERSION}/dialog/oauth?${q.toString()}`;
   }
@@ -614,25 +660,43 @@ export function createFbRuntime(deps) {
   // server restart Connect exchanges by itself, as before.
   const exchanges = new Map(); // key → { at, promise }
   const exchangeKeyOf = (code, state) => createHash("sha256").update(`${code}|${state}`, "utf8").digest("hex");
-  async function exchangeForPages(code) {
+  async function exchangeForPages(code, ctx = {}) {
     const shortTok = await exchangeCodeForToken({ config, fetchImpl, code, redirectUri });
     if (!shortTok.ok) return { error: "token_exchange" };
     const longTok = await exchangeForLongLivedUserToken({ config, fetchImpl, shortToken: shortTok.access });
     if (!longTok.ok) return { error: "token_exchange" };
-    const pages = await fetchPages({ config, fetchImpl, userToken: longTok.access });
-    if (pages.length === 0) return { error: "no_pages" };
+    const got = await fetchPagesDetail({ config, fetchImpl, userToken: longTok.access });
+    const pages = got.pages;
+    if (pages.length === 0) {
+      await logNoPages({ ctx, http: got.status, code: got.code, userToken: longTok.access });
+      return { error: "no_pages" };
+    }
     // Recorded per page for a later Messenger receipt. Never throws; any doubt → false.
     const canMessage = await fetchMessagingGranted({ fetchImpl, userToken: longTok.access });
     const fbUserId = await fetchMeId({ fetchImpl, userToken: longTok.access }); // Build 8 (deauthorize)
     return { longTok, pages, canMessage, fbUserId };
   }
-  function sharedExchange(code, state) {
+  // One log line + one fb_probe_log row (step oauth_no_pages; user_id column, no other ids).
+  // Never throws; the seller gets the same no_pages answer either way.
+  async function logNoPages({ ctx, http, code, userToken }) {
+    try {
+      const diag = await noPagesDiag({ config, fetchImpl, appFetch: rawFetch, userToken });
+      const f = noPagesFields({ flow: ctx.app ? "app" : "web", http, code, diag });
+      log(noPagesLine(f));
+      if (typeof store.insertProbeRow === "function") {
+        try {
+          await store.insertProbeRow({ user_id: ctx.userId || null, page_id: null, step: "oauth_no_pages", http: Number.isFinite(Number(http)) && http != null ? Number(http) : null, fb_code: code != null && Number.isFinite(Number(code)) ? Number(code) : null, items: 0, detail: f });
+        } catch { log("[FB] no_pages probe row failed"); }
+      }
+    } catch { /* diagnostics never break the callback */ }
+  }
+  function sharedExchange(code, state, ctx = {}) {
     const key = exchangeKeyOf(code, state);
     const nowMs = now();
     for (const [k, v] of exchanges) { if (nowMs - v.at >= EXCHANGE_KEEP_MS) exchanges.delete(k); else break; }
     let e = exchanges.get(key);
     if (!e) {
-      const promise = exchangeForPages(code).catch((err) => { log(`[FB] callback error: ${safe(err && err.message)}`); return { error: "exception" }; });
+      const promise = exchangeForPages(code, ctx).catch((err) => { log(`[FB] callback error: ${safe(err && err.message)}`); return { error: "exception" }; });
       e = { at: nowMs, promise };
       exchanges.set(key, e);
       while (exchanges.size > EXCHANGE_KEEP_MAX) exchanges.delete(exchanges.keys().next().value);
@@ -648,7 +712,7 @@ export function createFbRuntime(deps) {
     const userId = st.userId;
     const back = (q) => (st.app ? `${APP_AUTH_CALLBACK}?${q}` : `${appUrl}/?${q}`);
     if (!code) return { redirect: back("fb=error&code=missing_params") };
-    const ex = sharedExchange(code, state);
+    const ex = sharedExchange(code, state, { userId, app: !!st.app });
     try {
       const got = await ex.promise;
       if (got.error) return { redirect: back(`fb=error&code=${got.error}`) };
@@ -750,7 +814,7 @@ export function createFbRuntime(deps) {
     try { label = typeof store.getAccountLabel === "function" ? await store.getAccountLabel(userId) : null; } catch { label = null; }
     if (!label || !String(label.email || "").trim()) return { redirect: back("fb=error&code=exception") };
     // Read the Pages now (nothing is saved) so the page can name them; Connect reuses this answer.
-    const got = await sharedExchange(code, state).promise;
+    const got = await sharedExchange(code, state, { userId, app: !!st.app }).promise;
     if (got.error) return { redirect: back(`fb=error&code=${got.error}`) };
     const lang = st.lang || "en";
     const labels = { ...(FB_CONFIRM_TEXT[lang] || FB_CONFIRM_TEXT.en), action: "/fb/oauth/complete", param: "fb" };
