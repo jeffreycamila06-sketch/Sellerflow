@@ -1,7 +1,7 @@
 // Session-numbering fix — the production repro, run with the staged gate ON and OFF.
 // Bug: inside ONE running multi-day session, buyer numbers restarted from "today's buyer
 // count + 1". Gate ON (fix) → the correct #75 / returning #3. Gate OFF → today's code path,
-// which still shows the bug (#6) — proving the gate really separates the two behaviours.
+// where a returning day-1 buyer still gets a second number — proving the gate still matters.
 //
 // Wiring mirrors RedesignApp exactly:
 //   useSessionWindow(authed) · useSessionInstance(authed) ·
@@ -89,8 +89,10 @@ async function connect(h: Awaited<ReturnType<typeof openApp>>) {
 
 for (const gate of ["on", "off"] as const) describe(`gate ${gate}: buyer numbering in a running session`, () => {
   beforeEach(() => { FIX = gate === "on"; });
-  const NEW = gate === "on" ? 75 : 6;          // off = today's bug, unchanged
-  const RETURNING = gate === "on" ? 3 : 6;
+  // off = the old path (day-only board). Since 2026-10-11 a new buyer continues from the highest
+  // number on that board (#75, was #6), but a returning day-1 buyer still gets a 2nd number (#75).
+  const NEW = 75;
+  const RETURNING = gate === "on" ? 3 : 75;
   const tick = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
   it("(a) slow current_session_id read → next new buyer / returning day-1 buyer", async () => {

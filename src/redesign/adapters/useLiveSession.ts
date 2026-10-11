@@ -73,6 +73,13 @@ export interface UseLiveSession {
   // Why orders are paused right now (null = not paused). Read-only, for the pause log.
   pauseReason: SessionPauseReason | null;
   retry: () => void;         // re-run a failed load now (also automatic, see below)
+  // Reconnect resync (fix on, session_id only): reload this session's buyers from the
+  // server and merge them into the board, even though the board has orders. Called when a
+  // live platform (re)connects or the app comes back to the front — another device may have
+  // numbered buyers meanwhile, so the
+  // board must not be trusted. Orders stay paused until the reload lands (and stay paused,
+  // with the retry notice, if it fails). Skipped when the board was loaded < RESYNC_FRESH_MS ago.
+  resync: () => void;
 }
 export type SessionLoadStatus = "pending" | "ok" | "failed" | "unknown";
 // The condition that pauses orders (fix on, loadStatus not "ok"), named plainly for the pause log:
@@ -91,6 +98,8 @@ export function pauseReasonOf(loadStatus: SessionLoadStatus, winReady: boolean, 
 }
 // fix: a failed board load is retried after these delays (then on focus / visible / Retry).
 export const SESSION_LOAD_RETRY_MS = [3000, 10000, 30000];
+// resync(): a board loaded this recently is already fresh (e.g. app open → Connect).
+export const RESYNC_FRESH_MS = 30000;
 
 // Multi-day window options (from useSessionWindow). When omitted → pure 5c
 // single-day behavior. When provided → load gated until config `ready`, then the
@@ -194,6 +203,11 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   const hydratedFromRef = useRef<string | null>(null);
   const localNewRef = useRef<{ order: LiveOrder; sessionId: string | null }[]>([]);
   const winSessionIdRef = useRef<string | null>(winSessionId);
+  // resync(): a reload by session id is owed (cleared only when it lands, so a failed one is
+  // retried as a resync, not skipped by the hydrate-on-empty guard). lastLoadedAt = when the
+  // board last matched the server.
+  const resyncRef = useRef(false);
+  const lastLoadedAtRef = useRef(0);
   useEffect(() => { winSessionIdRef.current = winSessionId; }, [winSessionId]);
 
   useEffect(() => {
@@ -204,7 +218,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     // was hydrated from something else → reload by the id even though the board has orders,
     // and merge (mergeCorrectedSession). Never without fix.
     const target = winSessionId ? `session:${winSessionId}` : "legacy";
-    const correcting = fix && !!winSessionId && sessionRef.current.orders.length > 0 && hydratedFromRef.current !== target;
+    const correcting = fix && !!winSessionId && sessionRef.current.orders.length > 0 && (hydratedFromRef.current !== target || resyncRef.current);
     if (sessionRef.current.orders.length && !correcting) return; // hydrate-on-empty guard (unchanged)
     let active = true;
     setState("loading");
@@ -251,6 +265,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
           setSession(merged); setState(merged.orders.length ? "live" : "empty");
           localNewRef.current = localNewRef.current.filter((x) => x.sessionId === winSessionId);
           hydratedFromRef.current = target;
+          resyncRef.current = false; lastLoadedAtRef.current = Date.now();
           setFetchStatus("ok"); retryCountRef.current = 0;
           return;
         }
@@ -259,7 +274,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
         const rebuilt = rebuildSessionFromRows(rows); // UNCHANGED — handles multi-day rows
         if (rebuilt.orders.length) { setSession(rebuilt); setState("live"); }
         else setState("empty");
-        if (fix) { hydratedFromRef.current = target; localNewRef.current = []; }
+        if (fix) { hydratedFromRef.current = target; localNewRef.current = []; resyncRef.current = false; lastLoadedAtRef.current = Date.now(); }
         if (fix) { setFetchStatus("ok"); retryCountRef.current = 0; }
       })
       .catch(() => { if (active) { setState("idle"); setLoadError(true); if (fix) setFetchStatus("failed"); } });
@@ -283,11 +298,20 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     // fix: close the order gate SYNCHRONOUSLY — between this reset and the reload an order
     // must not be built on the now-empty board (it would get #1). No-op without fix.
     if (loadStatusRef.current === "ok" && fixRef.current) { loadStatusRef.current = "pending"; setFetchStatus("pending"); setLoadKind("load"); }
-    hydratedFromRef.current = null; localNewRef.current = [];
+    hydratedFromRef.current = null; localNewRef.current = []; resyncRef.current = false; lastLoadedAtRef.current = 0;
     setSession(EMPTY); setOrderedMsgIds(new Map()); setReloadKey((k) => k + 1);
   }, []);
   const canOrder = useCallback(() => loadStatusRef.current === "ok", []);
   const retry = useCallback(() => { setReloadKey((k) => k + 1); }, []);
+  const resync = useCallback(() => {
+    if (!fixRef.current || !winSessionIdRef.current) return;
+    if (Date.now() - lastLoadedAtRef.current < RESYNC_FRESH_MS) return;
+    if (resyncRef.current) return; // one already owed (in flight, or failed → the retry ladder reloads it)
+    // Close the order gate in this tick (like reset) — no order is numbered from the old board.
+    if (loadStatusRef.current === "ok") { loadStatusRef.current = "pending"; setFetchStatus("pending"); setLoadKind("correction"); }
+    resyncRef.current = true;
+    setReloadKey((k) => k + 1);
+  }, []);
 
   // fix: a FAILED board load is retried — after SESSION_LOAD_RETRY_MS, then whenever the app
   // comes back to the foreground (and by retry()). Bounded; no interval poll.
@@ -344,5 +368,5 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   }, [dayId, winStart, winDays, winSessionId, reset, unknown]);
 
   const pauseReason = pauseReasonOf(loadStatus, winReady, win?.sessionKnown, loadKind);
-  return { session, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId, loadStatus, canOrder, retry, pauseReason };
+  return { session, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId, loadStatus, canOrder, retry, pauseReason, resync };
 }
