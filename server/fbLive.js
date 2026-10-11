@@ -363,7 +363,42 @@ export async function fetchPagesDetail({ config, fetchImpl, userToken }) {
 // app token = appId|appSecret; sent WITHOUT appsecret_proof → appFetch is the unwrapped fetch).
 // pageTargets = target_ids count on the pages_show_list granular scope; "all" when the scope has
 // no target list. Never throws.
-export async function noPagesDiag({ config, fetchImpl, appFetch, userToken }) {
+// GET /debug_token (input = user token, app token = appId|appSecret; WITHOUT appsecret_proof →
+// appFetch is the unwrapped fetch) → granular_scopes array, or null on any failure. Never throws.
+export async function fetchGranularScopes({ config, appFetch, userToken }) {
+  try {
+    const { status, body } = await graphGet({ fetchImpl: appFetch, url: graphUrl("/debug_token", { input_token: userToken, access_token: `${config.appId}|${config.appSecret}` }) });
+    return status === 200 && body.data && Array.isArray(body.data.granular_scopes) ? body.data.granular_scopes : null;
+  } catch { return null; }
+}
+// The Page ids the user ticked: target_ids of pages_show_list, else of pages_read_engagement.
+// Max PAGE_TARGETS_MAX, strings, no blanks, no repeats. PURE.
+export const PAGE_TARGETS_MAX = 10;
+export function pageTargetIds(scopes) {
+  const ids = (name) => {
+    const g = (scopes || []).find((x) => x && x.scope === name);
+    return g && Array.isArray(g.target_ids) ? g.target_ids.map((t) => String(t || "").trim()).filter(Boolean) : [];
+  };
+  const list = ids("pages_show_list");
+  return [...new Set(list.length ? list : ids("pages_read_engagement"))].slice(0, PAGE_TARGETS_MAX);
+}
+// Business-portfolio Pages: /me/accounts can be empty although the user ticked a Page. Read each
+// ticked Page directly with the long-lived USER token (fetchImpl adds appsecret_proof) → the same
+// shape as fetchPages (id + access_token required). A failed read is skipped. Never throws.
+export async function fetchPagesByTargets({ fetchImpl, userToken, ids }) {
+  const pages = [];
+  for (const id of ids || []) {
+    try {
+      const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${encodeURIComponent(id)}`, { fields: "id,name,username,access_token", access_token: userToken }) });
+      if (status !== 200 || !body) continue;
+      const p = { id: String(body.id || ""), name: String(body.name || ""), username: body.username ? String(body.username) : "", access_token: String(body.access_token || "") };
+      if (p.id && p.access_token) pages.push(p);
+    } catch { /* skipped */ }
+  }
+  return pages;
+}
+// scopes: the granular_scopes already read by the caller (undefined → read them here).
+export async function noPagesDiag({ config, fetchImpl, appFetch, userToken, scopes }) {
   const out = { granted: null, declined: null, pageTargets: null, messaging: null };
   try {
     const { status, body } = await graphGet({ fetchImpl, url: graphUrl("/me/permissions", { access_token: userToken }) });
@@ -374,21 +409,18 @@ export async function noPagesDiag({ config, fetchImpl, appFetch, userToken }) {
       out.messaging = out.granted.includes("pages_messaging") ? 1 : 0;
     }
   } catch { /* "-" */ }
-  try {
-    const { status, body } = await graphGet({ fetchImpl: appFetch, url: graphUrl("/debug_token", { input_token: userToken, access_token: `${config.appId}|${config.appSecret}` }) });
-    const scopes = status === 200 && body.data && Array.isArray(body.data.granular_scopes) ? body.data.granular_scopes : null;
-    if (scopes) {
-      const g = scopes.find((x) => x && x.scope === "pages_show_list");
-      out.pageTargets = !g ? 0 : Array.isArray(g.target_ids) ? g.target_ids.length : "all";
-    }
-  } catch { /* "-" */ }
+  const sc = scopes === undefined ? await fetchGranularScopes({ config, appFetch, userToken }) : scopes;
+  if (sc) {
+    const g = sc.find((x) => x && x.scope === "pages_show_list");
+    out.pageTargets = !g ? 0 : Array.isArray(g.target_ids) ? g.target_ids.length : "all";
+  }
   return out;
 }
 // The one no_pages log line (and the probe row detail) from the fields above.
-export function noPagesFields({ flow, http, code, diag }) {
+export function noPagesFields({ flow, http, code, diag, fallback }) {
   const list = (a) => (Array.isArray(a) ? (a.length ? a.join(",") : "none") : "-");
   const v = (x) => (x == null ? "-" : String(x));
-  return { flow, http: v(http), code: v(code), granted: list(diag.granted), declined: list(diag.declined), pageTargets: v(diag.pageTargets), messaging: v(diag.messaging) };
+  return { flow, http: v(http), code: v(code), granted: list(diag.granted), declined: list(diag.declined), pageTargets: v(diag.pageTargets), messaging: v(diag.messaging), ...(fallback ? { fallback } : {}) };
 }
 export function noPagesLine(f) {
   return `[FB] no_pages flow=${f.flow} http=${f.http} code=${f.code} granted=${f.granted} declined=${f.declined} pageTargets=${f.pageTargets} messaging=${f.messaging}`;
@@ -666,10 +698,20 @@ export function createFbRuntime(deps) {
     const longTok = await exchangeForLongLivedUserToken({ config, fetchImpl, shortToken: shortTok.access });
     if (!longTok.ok) return { error: "token_exchange" };
     const got = await fetchPagesDetail({ config, fetchImpl, userToken: longTok.access });
-    const pages = got.pages;
+    let pages = got.pages;
     if (pages.length === 0) {
-      await logNoPages({ ctx, http: got.status, code: got.code, userToken: longTok.access });
-      return { error: "no_pages" };
+      // Business-portfolio Pages: /me/accounts is empty although a Page was ticked → read the
+      // ticked Page ids from debug_token and fetch each Page directly. Numbers only in the log.
+      const scopes = await fetchGranularScopes({ config, appFetch: rawFetch, userToken: longTok.access });
+      const ids = pageTargetIds(scopes);
+      if (ids.length) {
+        pages = await fetchPagesByTargets({ fetchImpl, userToken: longTok.access, ids });
+        log(`[FB] pages via targets tried=${ids.length} found=${pages.length}`);
+      }
+      if (pages.length === 0) {
+        await logNoPages({ ctx, http: got.status, code: got.code, userToken: longTok.access, scopes, fallback: `${ids.length}/0` });
+        return { error: "no_pages" };
+      }
     }
     // Recorded per page for a later Messenger receipt. Never throws; any doubt → false.
     const canMessage = await fetchMessagingGranted({ fetchImpl, userToken: longTok.access });
@@ -678,10 +720,10 @@ export function createFbRuntime(deps) {
   }
   // One log line + one fb_probe_log row (step oauth_no_pages; user_id column, no other ids).
   // Never throws; the seller gets the same no_pages answer either way.
-  async function logNoPages({ ctx, http, code, userToken }) {
+  async function logNoPages({ ctx, http, code, userToken, scopes, fallback }) {
     try {
-      const diag = await noPagesDiag({ config, fetchImpl, appFetch: rawFetch, userToken });
-      const f = noPagesFields({ flow: ctx.app ? "app" : "web", http, code, diag });
+      const diag = await noPagesDiag({ config, fetchImpl, appFetch: rawFetch, userToken, scopes });
+      const f = noPagesFields({ flow: ctx.app ? "app" : "web", http, code, diag, fallback });
       log(noPagesLine(f));
       if (typeof store.insertProbeRow === "function") {
         try {
