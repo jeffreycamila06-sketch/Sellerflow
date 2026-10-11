@@ -284,12 +284,13 @@ Who sees what:
 
 When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, and upload that file on the 賣貨便 website. **Customer Details** (same access as Parcel Scan) keeps repeat buyers so you can **Import** them again.
 
-**Parcel Scan FamilyMart (全家)** — only when it is turned on for your account (being rolled out), with the same plan and Taiwan rules as Parcel Scan 7-11:
-- The top row has the **shipping fee** (0–200; tap Save to keep it as your default — default 39) and the **order date** (today when you open the screen; within the last 60 days). Both apply to every new parcel — for a different fee or date, change it there before adding.
-- Then type each parcel: recipient name, phone (10 digits starting 09), 6-digit FamilyMart store number (the number on a FamilyMart receipt works, e.g. 022131), item amount (10–20,000) and the buyer''s @username (optional; blank = "商品"). Item + shipping must be 60–20,000. A wrong field shows a short message under it.
-- Editing a parcel keeps its own fee and date.
-- **Export** builds the 好賣+ 大量匯單 Excel file (up to 500 parcels per file; more = several numbered files). Upload it on 好賣+ → 大量匯單. Exported parcels move to the **Exported** tab and can be exported again.
-- The @username goes in the 商品 column, so the 全家 Order export can be matched back to the buyer in Pickup Status.'),
+**Parcel Scan FamilyMart (全家)** — only when it is turned on for your account (being rolled out), with the same plan and Taiwan rules as Parcel Scan 7-11. It looks and works like Parcel Scan 7-11 manual entry:
+- Tap **✏️ Add parcel**, then type customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount (10–20,000) and the buyer @username. The @username is required — tick **Buyer has no social handle** if there is none. A wrong field shows a short message under it.
+- **▣ Scan QR** reads the buyer @username from a SellerFlowLive sticker photo, same as 7-11.
+- There is **no shipping fee field and no order date field**. The shipping fee is set by SellerFlowLive for everyone (sellers can''t change it), and the order date is the day you add the parcel (Taiwan time). Amount + shipping must be 60–20,000. Editing a parcel keeps its own fee and date.
+- **📇 Customers**: every FamilyMart parcel you add saves the buyer (name, phone, store #, @username). Search by name, phone or @username, type the price and tap **Import** to add them as a new parcel. These are separate from your 7-11 customers. Removing a customer never deletes a parcel.
+- **Export to 好賣+ (Excel)** builds the 好賣+ 大量匯單 file (up to 500 parcels per file; more = several numbered files). Upload it on 好賣+ → 大量匯單. Parcels are marked exported only after the file is really saved or shared; **Undo last export** puts them back. **Clear exported** deletes exported parcels. On a phone, turn on **Export on this phone** first (off by default).
+- The @username goes in the 商品 column, so the 全家 Order export can be matched back to the buyer in Pickup Status. (No parcel check, E-Map or frozen option for FamilyMart.)'),
   ('pickup-status', 'Pickup Status', '2026-10-11'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
 
 Who has it:

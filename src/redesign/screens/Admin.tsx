@@ -13,6 +13,7 @@ import { maxAcc } from "../adapters/connect";
 import { VIEW_AS_OPTIONS, type ViewAs } from "../adapters/market";
 import { PLATFORM_VIEW_AS_OPTIONS, PLATFORM_VIEW_AS_LABEL, type PlatformViewAs } from "../adapters/platformWorld";
 import { loadGlobalShippingFeeMeta, saveGlobalShippingFee, validGlobalFee } from "../adapters/shippingSettings";
+import { loadFmGlobalFeeMeta, saveFmGlobalFee, validFmFee } from "../adapters/fmScan";
 import { loadParcelManualEnabledMeta, saveParcelManualEnabled } from "../adapters/parcelScan";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
 import { describeWorkerState } from "../adapters/parcelWorkerState";
@@ -693,6 +694,68 @@ function ShipFeePanel() {
   );
 }
 
+// FamilyMart (全家) shipping fee (app_settings 'fm_shipping_fee', sql/121) — same look and save path
+// as the 7-11 block above (admin-only write, RLS is_admin()). Range 0–200; every new FamilyMart
+// parcel uses it, sellers have no fee field.
+function FmShipFeePanel() {
+  const t = useT();
+  const [fee, setFee] = useState<number | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void loadFmGlobalFeeMeta().then((m) => {
+      if (!alive) return;
+      setFee(m.fee); setUpdatedAt(m.updatedAt); setDraft(String(m.fee)); setState("ready");
+    }).catch(() => { if (alive) setState("error"); });
+    return () => { alive = false; };
+  }, []);
+
+  const when = (iso: string | null): string => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  };
+
+  const onSave = async () => {
+    if (busy) return;
+    if (!validFmFee(draft)) { setNote({ kind: "err", text: t.rd_adm_fmf_invalid }); return; }
+    const n = Number(draft);
+    setBusy(true); setNote(null);
+    const r = await saveFmGlobalFee(n);
+    setBusy(false);
+    if (!r.ok) { setNote({ kind: "err", text: r.error === "invalid_fee" ? t.rd_adm_fmf_invalid : t.rd_adm_sf_failed }); return; }
+    setFee(n); setUpdatedAt(new Date().toISOString());
+    setNote({ kind: "ok", text: t.rd_adm_sf_saved });
+  };
+
+  if (state === "loading") return <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }} data-testid="fmf-loading">{t.rd_adm_pm_loading}</div>;
+  if (state === "error") return <div style={{ fontSize: 12.5, color: "var(--danger)", padding: "8px 2px" }} data-testid="fmf-error">{t.rd_adm_pm_error}</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: "1px solid var(--border)", paddingTop: 18 }} data-testid="fmf-panel">
+      <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{t.rd_adm_fmf_title}</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_adm_fmf_hint}</div>
+      <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" }}>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 700 }}>{t.rd_adm_sf_current}</div>
+        <div style={{ fontFamily: mono, fontWeight: 800, fontSize: 22, color: "var(--text)", marginTop: 2 }} data-testid="fmf-current">NT${fee}</div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{tpl(t.rd_adm_sf_updated, { when: when(updatedAt) })}</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>NT$</span>
+        <input value={draft} onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder="39"
+          style={{ width: 90, padding: "9px 11px", border: "1.3px solid var(--accent)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 14, fontWeight: 700, outline: "none", textAlign: "right" }} data-testid="fmf-input" />
+        <button onClick={() => void onSave()} disabled={busy} style={{ marginLeft: "auto", padding: "10px 18px", borderRadius: 10, border: "none", background: busy ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: busy ? "default" : "pointer" }} data-testid="fmf-save">{t.rd_adm_sf_save}</button>
+      </div>
+      {note && <div style={{ fontSize: 12, fontWeight: 700, color: note.kind === "ok" ? "var(--ok, #16a34a)" : "var(--danger)" }} data-testid="fmf-note">{note.text}</div>}
+    </div>
+  );
+}
+
 // Parcel Scan seller-access kill switch (app_settings 'parcel_manual_enabled').
 // ON = paying+active sellers get manual encode; OFF = admin-only. Admin access is
 // independent of this switch. Fail-closed everywhere; the write is admin-gated by
@@ -1180,7 +1243,12 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           )}
 
           {panel === "parcelmon" && <ParcelMonPanel />}
-          {panel === "shipfee" && <ShipFeePanel />}
+          {panel === "shipfee" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+              <ShipFeePanel />
+              <FmShipFeePanel />
+            </div>
+          )}
           {panel === "parcelsw" && <ParcelSwitchPanel />}
           {panel === "helpchat" && <AdminHelpChat />}
 
