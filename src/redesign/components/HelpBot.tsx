@@ -14,6 +14,7 @@ import { TELEGRAM_URL, LINE_URL } from "../../lib/telegram";
 import {
   askHelpBot, rateChat, loadQuickQuestions, loadAdminAnswers, markAdminAnswersSeen, STARTER_KEYS,
   BUBBLE, TAP_SLOP, snapPos, defaultPos, loadBubblePos, saveBubblePos, clampY,
+  hintDue, recordHintShown, recordChatOpened, HINT_DELAY_MS, HINT_SHOW_MS,
   type Box, type BubblePos, type HelpSource, type AdminAnswer,
 } from "../adapters/helpBot";
 
@@ -51,6 +52,8 @@ export default function HelpBot() {
   const [pulse] = useState(() => !motionOff());
   const [answers, setAnswers] = useState<AdminAnswer[]>([]);
   const unseen = answers.some((a) => !a.seen);
+  // "Do you have a question?" hint: ~1 s after Settings opens, 5 s on screen, then a fade.
+  const [hint, setHint] = useState<"off" | "on" | "leaving">("off");
 
   useEffect(() => {
     const onResize = () => {
@@ -67,6 +70,17 @@ export default function HelpBot() {
     void loadAdminAnswers().then((a) => { if (alive) setAnswers(a); });
     return () => { alive = false; };
   }, []);
+  useEffect(() => {
+    if (!hintDue()) return;
+    const t = setTimeout(() => { recordHintShown(); setHint("on"); }, HINT_DELAY_MS);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    if (hint === "off") return;
+    const t = setTimeout(() => setHint(hint === "on" && pulse ? "leaving" : "off"), hint === "on" ? HINT_SHOW_MS : 300);
+    return () => clearTimeout(t);
+  }, [hint, pulse]);
+  const openChat = () => { setHint("off"); setOpen(true); recordChatOpened(); };
 
   const left = (p: BubblePos) => (p.side === "left" ? 12 : box.w - BUBBLE - 12);
   const onDown = (e: RPointerEvent<HTMLButtonElement>) => {
@@ -85,7 +99,7 @@ export default function HelpBot() {
     const s = start.current;
     start.current = null;
     if (!s) return;
-    if (!s.moved) { setDrag(null); setOpen(true); return; }
+    if (!s.moved) { setDrag(null); openChat(); return; }
     const next = snapPos(s.x + (e.clientX - s.px), s.y + (e.clientY - s.py), box);
     setDrag(null);
     setPos(next);
@@ -99,6 +113,14 @@ export default function HelpBot() {
     display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
     transition: drag ? "none" : "left .18s ease, top .18s ease",
   };
+  // The hint sits beside the bubble on the side facing the screen centre, vertically centred on
+  // it (the bubble's y is already kept between the header and the bottom bar).
+  const bx = left(pos);
+  const hintWrap: CSSProperties = {
+    position: "fixed", zIndex: 1250, top: pos.y, height: BUBBLE, display: "flex", alignItems: "center",
+    ...(pos.side === "right" ? { right: box.w - bx + 10, maxWidth: bx - 22 } : { left: bx + BUBBLE + 10, maxWidth: box.w - bx - BUBBLE - 22 }),
+  };
+  const showHint = hint !== "off" && !open && !drag;
   const root = (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || (typeof document !== "undefined" ? document.body : null);
   if (!root) return null;
   return createPortal(
@@ -107,9 +129,23 @@ export default function HelpBot() {
         <button type="button" aria-label={unseen ? `${t.rd_hb_open} — ${t.rd_hb_new_reply}` : t.rd_hb_open}
           data-testid="helpbot-bubble" data-side={pos.side} className={pulse ? "sfl-hb-pulse" : undefined} style={style}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { start.current = null; setDrag(null); }}>
-          {chatIcon}
+          <span className={hint === "on" && pulse ? "sfl-hb-wave" : undefined} style={{ display: "flex" }} data-testid="helpbot-icon">{chatIcon}</span>
           {unseen && <span data-testid="helpbot-dot" style={{ position: "absolute", top: 4, right: 4, width: 12, height: 12, borderRadius: "50%", background: "var(--danger)", border: "2px solid var(--surface)" }} />}
         </button>
+      )}
+      {showHint && (
+        <div style={hintWrap} data-testid="helpbot-hint-wrap" data-side={pos.side}>
+          <div className={pulse ? (hint === "leaving" ? "sfl-hb-hint sfl-hb-hint-out" : "sfl-hb-hint") : undefined} data-testid="helpbot-hint-box"
+            style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "0 6px 18px rgba(9,7,24,.18)", padding: "2px 2px 2px 4px", transformOrigin: pos.side === "right" ? "right center" : "left center" }}>
+            <span aria-hidden style={{ position: "absolute", top: "50%", [pos.side === "right" ? "right" : "left"]: -6, width: 10, height: 10, marginTop: -5, background: "var(--surface)", borderTop: "1px solid var(--border)", borderRight: "1px solid var(--border)", transform: pos.side === "right" ? "rotate(45deg)" : "rotate(-135deg)" }} />
+            <button type="button" onClick={openChat} data-testid="helpbot-hint"
+              style={{ position: "relative", border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, lineHeight: 1.3, padding: "7px 4px 7px 8px", cursor: "pointer", textAlign: "left" }}>
+              {t.rd_hb_hint}
+            </button>
+            <button type="button" onClick={() => setHint("off")} aria-label={t.rd_hb_close} data-testid="helpbot-hint-close"
+              style={{ position: "relative", border: "none", background: "transparent", color: "var(--text-dim)", fontSize: 17, lineHeight: 1, padding: "6px 8px", cursor: "pointer" }}>×</button>
+          </div>
+        </div>
       )}
       {open && (
         <HelpChat

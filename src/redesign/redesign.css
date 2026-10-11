@@ -751,3 +751,17 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
 [data-redesign] .sfl-hb-pulse { animation: sflHbPulse .9s ease-out .4s 1 both; }
 [data-redesign][data-motion="off"] .sfl-hb-pulse { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { [data-redesign] .sfl-hb-pulse { animation: none !important; } }
+
+/* Help bot hint — pop/slide in, fade out; the bot icon waves once. Off with motion off. */
+@keyframes sflHbHintIn { 0% { opacity: 0; transform: scale(.8); } 70% { opacity: 1; transform: scale(1.04); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes sflHbHintOut { to { opacity: 0; transform: scale(.94); } }
+@keyframes sflHbWave { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-16deg); } 40% { transform: rotate(13deg); } 60% { transform: rotate(-9deg); } 80% { transform: rotate(5deg); } }
+[data-redesign] .sfl-hb-hint { animation: sflHbHintIn .32s ease-out both; }
+[data-redesign] .sfl-hb-hint-out { animation: sflHbHintOut .3s ease-in forwards; }
+[data-redesign] .sfl-hb-wave { animation: sflHbWave .9s ease-in-out 1; transform-origin: 50% 80%; }
+[data-redesign][data-motion="off"] .sfl-hb-hint,
+[data-redesign][data-motion="off"] .sfl-hb-hint-out,
+[data-redesign][data-motion="off"] .sfl-hb-wave { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  [data-redesign] .sfl-hb-hint, [data-redesign] .sfl-hb-hint-out, [data-redesign] .sfl-hb-wave { animation: none !important; }
+}
