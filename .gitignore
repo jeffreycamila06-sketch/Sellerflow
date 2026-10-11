@@ -54,3 +54,6 @@ mobile/www/
 mobile/ios/App/golden
 mobile/ios/App/manifest.json
 mobile/ios/App/payloads
+
+# FamilyMart tracking probe samples (research only)
+vendor/fm-captcha-samples/
