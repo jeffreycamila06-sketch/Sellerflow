@@ -114,6 +114,37 @@ export function saveBubblePos(p: BubblePos): void {
   try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* per-device convenience only */ }
 }
 
+// ── hint ("Do you have a question?") ──────────────────────────────────────────────
+// At most once a day per device; once the seller has opened the chat, at most once every
+// 3 days. Storage blocked → once per app session (the module flag below).
+const HINT_KEY = "sfl_rd_helpbot_hint";
+export const HINT_DAY_MS = 24 * 60 * 60 * 1000;
+export const HINT_DELAY_MS = 1000;
+export const HINT_SHOW_MS = 5000;
+interface HintState { last: number; used: boolean }
+let hintShownThisSession = false;
+export const resetHintSession = (): void => { hintShownThisSession = false; }; // tests
+const readHint = (): HintState | null => {
+  const v = JSON.parse(localStorage.getItem(HINT_KEY) || "null") as Partial<HintState> | null;
+  return v ? { last: Number(v.last) || 0, used: v.used === true } : null;
+};
+export function hintDue(now = Date.now()): boolean {
+  if (hintShownThisSession) return false;
+  try {
+    const s = readHint();
+    return !s || now - s.last >= (s.used ? 3 : 1) * HINT_DAY_MS;
+  } catch {
+    return true;
+  }
+}
+export function recordHintShown(now = Date.now()): void {
+  hintShownThisSession = true;
+  try { localStorage.setItem(HINT_KEY, JSON.stringify({ last: now, used: readHint()?.used === true })); } catch { /* session flag covers it */ }
+}
+export function recordChatOpened(): void {
+  try { localStorage.setItem(HINT_KEY, JSON.stringify({ last: readHint()?.last ?? 0, used: true })); } catch { /* per-device convenience only */ }
+}
+
 // ── admin ───────────────────────────────────────────────────────────────────────
 export interface SupportStats { total: number; faq: number; faq_ai_match: number; ai: number; handoff: number; limit: number; cost_usd: number; cap_usd: number; saved: number }
 export async function loadSupportStats(): Promise<SupportStats | null> {

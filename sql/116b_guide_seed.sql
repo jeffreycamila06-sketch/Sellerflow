@@ -369,6 +369,8 @@ Do this on **every device** you use for the same account, especially after a pla
 
 In the app: **Settings → Need help? Contact us**, or **Settings → General Settings → Support & user guide**, which also has a short user guide.
 
+Some accounts have a **help chat** instead: a round chat bubble on the **Settings** screen. Tap it (or the "Do you have a question?" hint next to it) and type your question. You can drag the bubble to the left or right edge.
+
 When you message, include your account email, your TikTok username, what you were doing, and the exact message you saw. A screenshot helps.')
 on conflict (id) do update set
   title = excluded.title, checked = excluded.checked, keywords = excluded.keywords,
