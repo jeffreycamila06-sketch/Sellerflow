@@ -81,6 +81,6 @@ describe("triggers", () => {
   it("RedesignApp wires it to signed-in, allowed accounts and passes the user to Pickup Status", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain("useAutoPickupCheck(authed && parcelTrackingAllowed, authUserId);");
-    expect(src).toContain("<ParcelTracking userId={authUserId} />");
+    expect(src).toContain('<ParcelTracking userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} />');
   });
 });

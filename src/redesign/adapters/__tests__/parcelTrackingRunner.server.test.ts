@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import {
   runPoll, capLiveRowsPerSeller, PER_SELLER_LIVE_CAP, pollGateFrom,
   underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, taipeiDay,
-  nextUnchangedPolls, shouldRetire, RETIRE_AFTER_POLLS,
+  nextUnchangedPolls, shouldRetire, RETIRE_AFTER_POLLS, selectLiveRows, isMissingCarrierColumn,
 } from "../../../../server/parcelTrackingRunner.js";
 import { QUERY_URL, SEARCH_URL } from "../../../../server/parcelTracking.js";
 
@@ -621,5 +621,47 @@ describe("Stage 1b — health row: sellers polled + rows skipped by the per-sell
     const sb = fakeSb([{ id: "a0", user_id: "A", tracking_no: "FA0000000", arrived_at: null, status: "in_transit" }], { access: ["A", "B", "C"] });
     await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: smallLimits });
     expect(sb._captured.health[0]).toMatchObject({ sellers: 1 });
+  });
+});
+
+describe("全家 (sql/119) — the check never sees carrier 'fm' rows", () => {
+  // Minimal chain recorder for selectLiveRows; `missing` = the carrier column doesn't exist yet.
+  const sbFor = (missing: boolean) => {
+    const calls: [string, unknown][][] = [];
+    return {
+      calls,
+      from() {
+        const eqs: [string, unknown][] = [];
+        calls.push(eqs);
+        const ch: Record<string, unknown> = {
+          select() { return ch; },
+          eq(c: string, v: unknown) { eqs.push([c, v]); return ch; },
+          in() { return ch; }, order() { return ch; },
+          range() {
+            const err = missing && eqs.some(([c]) => c === "carrier") ? { code: "42703", message: "column parcel_tracking.carrier does not exist" } : null;
+            return Promise.resolve(err ? { data: null, error: err } : { data: [{ id: "r1" }], error: null });
+          },
+        };
+        return ch;
+      },
+    };
+  };
+  it("filters carrier = '711'", async () => {
+    const sb = sbFor(false);
+    const r = await selectLiveRows(sb, ["U"]);
+    expect(sb.calls[0]).toContainEqual(["carrier", "711"]);
+    expect(r).toMatchObject({ rows: [{ id: "r1" }] });
+  });
+  it("before sql/119 (no carrier column) → the same query without the filter", async () => {
+    const sb = sbFor(true);
+    const r = await selectLiveRows(sb, ["U"]);
+    expect(sb.calls).toHaveLength(2);
+    expect(sb.calls[1].some(([c]) => c === "carrier")).toBe(false);
+    expect(r).toMatchObject({ rows: [{ id: "r1" }] });
+  });
+  it("isMissingCarrierColumn only matches the missing-column error", () => {
+    expect(isMissingCarrierColumn({ code: "42703" })).toBe(true);
+    expect(isMissingCarrierColumn({ code: "57014", message: "timeout" })).toBe(false);
+    expect(isMissingCarrierColumn(null)).toBe(false);
   });
 });

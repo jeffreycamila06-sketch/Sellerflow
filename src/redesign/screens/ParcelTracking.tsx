@@ -21,6 +21,7 @@ import { useT, tpl } from "../i18n";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
 import { syncFromExport, type SyncResult } from "../adapters/parcelExportRead";
+import { uploadFmExport, type FmUploadResult } from "../adapters/fmPickup";
 import {
   loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, isUnchecked, tabRows, tabCounts,
   PICKUP_TABS, PICKUP_STATUS_TABS,
@@ -145,10 +146,17 @@ function Buyer({ row, t, nowMs, buyerName }: { row: ParcelTrackingRow; t: T; now
     : name
     ? <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={`@${name.replace(/^@+/, "")}`}>@{name.replace(/^@+/, "")}</span>
     : <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", fontStyle: "italic", ...ellipsis, display: "block" }}>{t.rd_pt_no_username}</span>;
-  if (!isStale(row, nowMs)) return label;
+  // 全家 switch on → every row carries its carrier; off → no label (exactly as before).
+  const carrier = row.carrier
+    ? <span data-testid="pt-carrier" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{row.carrier === "fm" ? "全家" : "7-11"}</span>
+    : null;
+  const stale = isStale(row, nowMs);
+  if (!stale && !carrier) return label;
+  if (!stale) return <>{label}{carrier}</>;
   return (
     <>
       {label}
+      {carrier}
       <span data-testid="pt-stale" style={{ display: "inline-block", marginTop: 3, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{t.rd_pt_stale}</span>
     </>
   );
@@ -283,6 +291,19 @@ function syncErrorText(res: SyncResult, t: T): string {
   }
 }
 
+function fmErrorText(res: FmUploadResult, t: T): string {
+  switch (res.error) {
+    case "not_fm_export": return t.rd_pt_fm_err_not_export;
+    case "too_many": return t.rd_pt_fm_err_too_many;
+    case "too_soon": return t.rd_pt_fm_err_too_soon;
+    case "disabled": return t.rd_pt_fm_err_disabled;
+    case "empty": return t.rd_pt_fm_empty;
+    case "not_allowed": return t.rd_pt_err_permission;
+    case "signed_out": return t.rd_pt_err_signed_out;
+    default: return t.rd_pt_err_network;
+  }
+}
+
 // Same width in ready / checking / locked (fits the longest locale + the hourglass).
 const CHECK_BTN_MIN_W = 150;
 
@@ -327,7 +348,9 @@ function jobDoneText(job: TrackingJob | null, t: T): string {
   return t.rd_pt_job_failed;
 }
 
-export default function ParcelTracking({ userId }: { userId?: string | null } = {}) {
+// fm = the 全家 switch (or its preview) is on for this seller: adds "Sync from 全家" and
+// the 7-11 / 全家 label. Off → the screen is exactly as before.
+export default function ParcelTracking({ userId, fm = false }: { userId?: string | null; fm?: boolean } = {}) {
   const t = useT();
   const today = taipeiDayId();
   const narrow = useNarrowLayout();
@@ -342,6 +365,8 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
   const [rows, setRows] = useState<ParcelTrackingRow[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const fmFileRef = useRef<HTMLInputElement>(null);
+  const [fmSyncing, setFmSyncing] = useState(false);
   const [status, setStatus] = useState<TrackingStatus | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -374,7 +399,7 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
   async function load() {
     setNamesNonce((x) => x + 1);
     setState("loading");
-    const res = await loadParcelTracking();
+    const res = await (fm ? loadParcelTracking(true) : loadParcelTracking());
     if (!res.ok) { setState("error"); return; }
     apply(res.rows, res.totals);
     setState("ready");
@@ -384,7 +409,7 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
   const liveRemaining = Math.max(0, (totals?.live ?? liveLoaded) - liveLoaded);
   const onLoadMore = async () => {
     setLoadingMore(true);
-    const res = await loadMoreLive(liveLoaded);
+    const res = await (fm ? loadMoreLive(liveLoaded, true) : loadMoreLive(liveLoaded));
     setLoadingMore(false);
     if (!res.ok) { showToast(t.rd_pt_err_network); return; }
     const have = new Set(rows.map((r) => r.id));
@@ -395,7 +420,7 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
   // already "loading" so mount needs no extra set. (CustomerDetails pattern.)
   useEffect(() => {
     let live = true;
-    void loadParcelTracking().then((res) => {
+    void (fm ? loadParcelTracking(true) : loadParcelTracking()).then((res) => {
       if (!live) return;
       if (!res.ok) { setState("error"); return; }
       setRows(res.rows);
@@ -483,6 +508,21 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
     if (res.fresh > 0) { const st = await loadTrackingStatus(); if (st) setStatus(st); }
   };
 
+  // "Sync from 全家" — the 好賣+ Order export, read here and saved by the fm_pickup_upload RPC.
+  const onFmPick = async (files: FileList | null) => {
+    const file = files && files[0];
+    if (fmFileRef.current) fmFileRef.current.value = "";
+    if (!file) return;
+    setFmSyncing(true);
+    setSyncErr("");
+    let res: FmUploadResult;
+    try { res = await uploadFmExport(new Uint8Array(await file.arrayBuffer())); } catch { res = { ok: false, error: "network" }; }
+    setFmSyncing(false);
+    if (!res.ok) { setSyncErr(fmErrorText(res, t)); return; }
+    showToast(tpl(t.rd_pt_fm_done, { new: res.inserted ?? 0, updated: (res.updated ?? 0) + (res.hidden ?? 0) }), 5000);
+    await load();
+  };
+
   const empty = state === "ready" && (totals ? totals.all === 0
     : !!groups && !groups.waitingPickup.length && !groups.inTransit.length && !groups.pickedUp.length && !groups.returned.length && !groups.other.length);
   const syncButton = (onHeader: boolean) => (
@@ -504,12 +544,19 @@ export default function ParcelTracking({ userId }: { userId?: string | null } = 
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minWidth: 0, maxWidth: "100%" }}>
           {syncButton(true)}
+          {fm && (
+            <button onClick={() => fmFileRef.current?.click()} disabled={fmSyncing} data-testid="pt-fm-sync"
+              style={{ ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)", opacity: fmSyncing ? 0.6 : 1 }}>
+              {fmSyncing ? t.rd_pt_sync_ing : t.rd_pt_fm_sync}
+            </button>
+          )}
           <button onClick={() => void load()} style={{ ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)" }} data-testid="pt-refresh">
             {t.rd_pt_refresh}
           </button>
         </div>
       </div>
       <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden data-testid="pt-sync-file" onChange={(e) => void onSyncPick(e.target.files)} />
+      {fm && <input ref={fmFileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden data-testid="pt-fm-sync-file" onChange={(e) => void onFmPick(e.target.files)} />}
 
       <div style={{ padding: 16, maxWidth: narrow ? 620 : 960, margin: "0 auto" }}>
         {/* S4 — upload error: plain words, one message per cause, stays until ✕ / next upload. */}

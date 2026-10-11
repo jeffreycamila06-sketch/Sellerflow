@@ -289,12 +289,25 @@ async function pollUserIds(serviceSb, userId) {
 // Page through ALL non-terminal rows for the given sellers, stalest first ACROSS
 // sellers (last_polled_at ASC NULLS FIRST, id tiebreak for stable pages). Never relies
 // on the PostgREST default row cap. Any page error → error (never a partial set).
+// FamilyMart (sql/119): 全家 rows (carrier 'fm') are updated only by the seller's upload — the
+// SHOPMORE check never sees them. Before sql/119 is applied the carrier column does not exist
+// (Postgres 42703) → the query runs without the filter, exactly as before.
+export function isMissingCarrierColumn(error) {
+  return !!error && (String(error.code || "") === "42703" || /carrier/i.test(String(error.message || "")));
+}
 export async function selectLiveRows(serviceSb, ids, pageSize = PAGE_SIZE) {
+  const first = await selectLivePages(serviceSb, ids, pageSize, true);
+  if (first.error && isMissingCarrierColumn(first.error)) return selectLivePages(serviceSb, ids, pageSize, false);
+  return first;
+}
+async function selectLivePages(serviceSb, ids, pageSize, sevenElevenOnly) {
   const out = [];
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await serviceSb.from("parcel_tracking")
+    let q = serviceSb.from("parcel_tracking")
       .select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at,last_polled_at,pickup_deadline")
-      .eq("terminal", false)
+      .eq("terminal", false);
+    if (sevenElevenOnly) q = q.eq("carrier", "711");
+    const { data, error } = await q
       .in("user_id", ids)
       .order("last_polled_at", { ascending: true, nullsFirst: true })
       .order("id", { ascending: true })

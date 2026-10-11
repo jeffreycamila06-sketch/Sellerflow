@@ -72,6 +72,7 @@ export interface ParcelTrackingRow {
   specialType: string | null;
   terminal: boolean;
   lastPolledAt?: string | null; // last SHOPMORE check of this row (drives the Stale chip)
+  carrier?: "711" | "fm";      // set only when the 全家 switch is on (sql/119)
 }
 
 export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
@@ -92,6 +93,7 @@ export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
     specialType: s(row.special_type),
     terminal: row.terminal === true,
     lastPolledAt: s(row.last_polled_at),
+    ...(row.carrier === "fm" || row.carrier === "711" ? { carrier: row.carrier } : {}),
   };
 }
 
@@ -429,8 +431,12 @@ export interface ParcelTotals { all: number; picked: number; returned: number; l
 // complete non-terminal set.
 // The unfinished (non-terminal) list is PAGED (S7): deadline ASC nulls-last, then id —
 // a stable order, so "Load more" (liveOffset) never repeats or skips a row.
-function livePage(me: string, from: number) {
-  return supabase!.from("parcel_tracking").select(PT_SELECT, { count: "exact" }).eq("user_id", me).eq("terminal", false)
+// fm = the 全家 switch is on → also read `carrier` (for the 7-11 / 全家 label). Off → the
+// exact pre-全家 select (the database hides 全家 rows from it anyway, sql/119).
+const ptSelect = (fm: boolean) => (fm ? PT_SELECT + ", carrier" : PT_SELECT);
+
+function livePage(me: string, from: number, fm = false) {
+  return supabase!.from("parcel_tracking").select(ptSelect(fm), { count: "exact" }).eq("user_id", me).eq("terminal", false)
     .order("pickup_deadline", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true })
     .range(from, from + PARCEL_TRACKING_PAGE - 1);
@@ -443,14 +449,14 @@ function headCount(me: string) {
   return supabase!.from("parcel_tracking").select("id", { count: "exact", head: true }).eq("user_id", me);
 }
 
-export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; totals?: ParcelTotals; error?: string }> {
+export async function loadParcelTracking(fm = false): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; totals?: ParcelTotals; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
-  const base = () => supabase!.from("parcel_tracking").select(PT_SELECT, { count: "exact" }).eq("user_id", me);
+  const base = () => supabase!.from("parcel_tracking").select(ptSelect(fm), { count: "exact" }).eq("user_id", me);
   const chaseable = (q: ReturnType<typeof headCount>) => q.eq("ship_type", "C2C").or("special_type.is.null,special_type.eq.");
   const [live, returned, picked, atStore, unchecked, transit] = await Promise.all([
-    livePage(me, 0),
+    livePage(me, 0, fm),
     base().eq("status", "returned")
       .order("returned_at", { ascending: false, nullsFirst: false })
       .limit(PARCEL_TRACKING_PAGE),
@@ -464,7 +470,7 @@ export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelT
   const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error;
   if (err) return { ok: false, rows: [], error: err.message }; // never partial (the S1 rule)
   const rows = [...(live.data ?? []), ...(returned.data ?? []), ...(picked.data ?? [])]
-    .map((r) => rowToTracking(r as Record<string, unknown>));
+    .map((r) => rowToTracking(r as unknown as Record<string, unknown>));
   const totals: ParcelTotals = {
     all: (live.count ?? 0) + (returned.count ?? 0) + (picked.count ?? 0),
     picked: picked.count ?? 0,
@@ -477,13 +483,13 @@ export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelT
 }
 
 // S7 — the next page of the unfinished list, starting at `offset` (= how many are loaded).
-export async function loadMoreLive(offset: number): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; error?: string }> {
+export async function loadMoreLive(offset: number, fm = false): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
-  const { data, error } = await livePage(me, Math.max(0, offset));
+  const { data, error } = await livePage(me, Math.max(0, offset), fm);
   if (error) return { ok: false, rows: [], error: error.message };
-  return { ok: true, rows: (data ?? []).map((r) => rowToTracking(r as Record<string, unknown>)) };
+  return { ok: true, rows: (data ?? []).map((r) => rowToTracking(r as unknown as Record<string, unknown>)) };
 }
 
 // ── Stage 2: on-demand "Check now" (sql/63) ─────────────────────────────────────
@@ -614,7 +620,7 @@ export function isStale(row: Pick<ParcelTrackingRow, "terminal" | "status" | "la
 // PURE — mirrors the server's urgent rule: an at-store live parcel due today or tomorrow.
 export function urgentEligible(rows: ParcelTrackingRow[], today: string): boolean {
   return rows.some((r) => {
-    if (r.terminal || r.status !== "at_store") return false;
+    if (r.terminal || r.status !== "at_store" || r.carrier === "fm") return false; // 全家 is never checked by us
     const d = daysUntilDate(r.pickupDeadline, today);
     return d !== null && d <= 1;
   });

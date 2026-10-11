@@ -31,7 +31,7 @@ const unesc = (s: string): string =>
     .replace(/&#10;/g, "\n").replace(/&#13;/g, "\r").replace(/&amp;/g, "&");
 
 // sharedStrings: concat ALL <t> runs within each <si> (a value can be rich text).
-function sharedStrings(xml: string): string[] {
+export function sharedStrings(xml: string): string[] {
   const out: string[] = [];
   for (const m of xml.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
     let t = "";
@@ -41,8 +41,8 @@ function sharedStrings(xml: string): string[] {
   return out;
 }
 
-interface SheetRow { rn: number; cells: Record<string, string> }
-function rowsOf(xml: string, S: string[]): SheetRow[] {
+export interface SheetRow { rn: number; cells: Record<string, string> }
+export function rowsOf(xml: string, S: string[]): SheetRow[] {
   const rows: SheetRow[] = [];
   for (const rm of xml.matchAll(/<row[^>]*r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)) {
     const rn = +rm[1];

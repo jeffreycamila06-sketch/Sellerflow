@@ -283,14 +283,20 @@ Who sees what:
 - The automatic **parcel check** (it checks the buyer''s phone and 7-11 store before you ship) is on automatically for Taiwan **Plus / Pro / Master** — no request needed.
 
 When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, and upload that file on the 賣貨便 website. **Customer Details** (same access as Parcel Scan) keeps repeat buyers so you can **Import** them again.'),
-  ('pickup-status', 'Pickup Status', '2026-10-11'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流', '**Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
+  ('pickup-status', 'Pickup Status', '2026-10-11'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
 
 Who has it:
 - **Plus / Pro / Master** in Taiwan: **on automatically** — no request needed. If you just upgraded, close the app fully and open it again.
 - **Free / Basic**: tile shows 🔒 (contact-support popup).
 - Not shown outside Taiwan.
 
-How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 賣貨便** and pick the file. New parcels are checked automatically; **Check now** works once per day.'),
+How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 賣貨便** and pick the file. New parcels are checked automatically; **Check now** works once per day.
+
+**全家 (FamilyMart) parcels** — only when 全家 is turned on for your account (being rolled out):
+- Download the **Order export** (.xlsx) from 好賣+, then tap **Sync from 全家** and pick the file. Upload it again whenever you want fresher statuses — 全家 parcels are **not** checked automatically and **Check now** is 7-11 only.
+- 7-11 and 全家 parcels share one list; each row has a small **7-11** or **全家** label.
+- Status comes from the file''s dates: picked up, returned, waiting at the store (with the pickup deadline), or in transit. Cancelled orders and orders not shipped yet are not shown.
+- "This isn''t a 全家 Order export" = a different file was picked. Up to 2,000 orders per file; wait a few seconds between uploads.'),
   ('shipping', 'Shipping (Coming soon)', '2026-10-11'::date, 'shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送', 'The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
 
 There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.'),

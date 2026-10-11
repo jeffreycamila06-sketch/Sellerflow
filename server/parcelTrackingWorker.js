@@ -13,7 +13,7 @@
 // and a 10-min rest after 30 min of back-to-back work.
 import {
   checkRows, readPollGate, readDailyRequests, writePollHealth, purgeRetention,
-  selectLiveRows, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP,
+  selectLiveRows, isMissingCarrierColumn, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP,
 } from "./parcelTrackingRunner.js";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MEMORY_LIMIT_MB } from "./observability.js";
@@ -143,8 +143,15 @@ export function createWorker(opts) {
       // Rows inserted while this job ran were blocked from enqueuing by the one-active
       // lock — queue a follow-up covering them.
       if (job.started_at) {
-        const { data: fresh } = await serviceSb.from("parcel_tracking").select("id")
-          .eq("user_id", job.user_id).eq("terminal", false).is("last_polled_at", null).gte("created_at", job.started_at).limit(1);
+        // 7-11 rows only (sql/119); before sql/119 the carrier column is missing → unfiltered.
+        const freshQuery = (sevenElevenOnly) => {
+          let q = serviceSb.from("parcel_tracking").select("id")
+            .eq("user_id", job.user_id).eq("terminal", false);
+          if (sevenElevenOnly) q = q.eq("carrier", "711");
+          return q.is("last_polled_at", null).gte("created_at", job.started_at).limit(1);
+        };
+        let { data: fresh, error: freshErr } = await freshQuery(true);
+        if (isMissingCarrierColumn(freshErr)) ({ data: fresh } = await freshQuery(false));
         if ((fresh || []).length) {
           await serviceSb.rpc("parcel_tracking_enqueue_job", { p_user_id: job.user_id, p_kind: "new_parcels", p_created_by: "followup", p_requested_at: job.started_at });
           logger.log(`${TAG} follow-up new_parcels queued user=${job.user_id}`);

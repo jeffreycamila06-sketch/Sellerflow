@@ -13,6 +13,7 @@ export const FEATURE_KEYS = [
   "sticker_spacing", "session_v2", "session_numbering_fix", "shopee_preview", "live_source", "classic_text",
   "support_ai_preview", // help bot preview (sql/116)
   "parcel_cap_70", // one seller's bigger Parcel Scan batch (sql/117)
+  "fm_pickup", // 全家 rows in Pickup Status before the switch is on (sql/119)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;
