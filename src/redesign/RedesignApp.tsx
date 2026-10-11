@@ -1162,6 +1162,18 @@ export default function RedesignApp() {
   // server. ⚠️ Preview-unverifiable (Render + socket) — only active post-merge/APK.
   const ttConnected = liveFeed.ttConnected;
   const fbConnected = liveFeed.fbConnected;
+  // Buyer numbers (2026-10-11 fix): whenever a live platform (re)connects — Connect tap, the
+  // socket back after a drop, a new live room — reload this session's buyers from the server
+  // before the next order is numbered. The board on this device may be hours old (another
+  // device kept selling); numbering from it repeated #9, #10… Orders pause until it lands.
+  const anyPlatformLive = liveFeed.ttConnected || liveFeed.fbConnected || liveFeed.shopeeConnected || liveFeed.igConnected;
+  const prevAnyLiveRef = useRef(anyPlatformLive);
+  const resyncSession = liveSession.resync;
+  useEffect(() => {
+    const was = prevAnyLiveRef.current;
+    prevAnyLiveRef.current = anyPlatformLive;
+    if (anyPlatformLive && !was) resyncSession();
+  }, [anyPlatformLive, resyncSession]);
   const [connectOpen, setConnectOpen] = useState<ConnectTab | null>(null); // P3 — can open on the Shopee tab
   // CONNECT-TRUTH Item A — "Connected!" fires on the ttConnected RISE (server
   // truth), gated to a recent Connect tap: background rises (health-cycle
