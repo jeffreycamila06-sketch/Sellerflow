@@ -17,7 +17,7 @@ import {
 } from "./parcelTrackingRunner.js";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MEMORY_LIMIT_MB } from "./observability.js";
-import { AUTO_SETTING_KEYS, autoSettingsFrom, autoTier, autoScope, overMemoryLimit } from "./parcelTrackingAuto.js";
+import { AUTO_SETTING_KEYS, autoSettingsFrom, autoTier, autoScope, overMemoryLimit, clampSetting } from "./parcelTrackingAuto.js";
 
 export const WORKER_TICK_MS = 20 * 1000;
 export const JOB_MAX_MS = 30 * 60 * 1000;
@@ -27,6 +27,35 @@ export const NEW_PARCEL_SLACK_MS = 5 * 60 * 1000;      // new_parcels scope reac
 export const IN_TRANSIT_FRESH_MS = 24 * 60 * 60 * 1000; // manual skips in_transit rows checked < 24h ago
 export const AUTO_STALE_MS = 60 * 60 * 1000;           // an auto job queued > 1h ago (e.g. worker was off) is dropped
 const TAG = "[PARCEL-JOB]";
+
+// Day-1 transit skip: a 7-11 parcel synced less than N hours ago, already checked once and
+// still in transit almost never reaches the store yet (median 2.7 days Sync → at_store), so
+// manual / auto jobs leave it for a later run. N = app_settings key below (0 = off).
+export const TRANSIT_SKIP_KEY = "parcel_tracking_transit_skip_hours";
+export const TRANSIT_SKIP_SPEC = { def: 24, min: 0, max: 72 };
+const TRANSIT_SKIP_KINDS = new Set(["manual", "auto"]);            // never new_parcels / urgent / health
+const TRANSIT_SKIP_STATUSES = new Set(["in_transit", "created", "unknown"]);
+
+// PURE — the setting value → whole hours in [0, 72]; missing / invalid → 24.
+export function transitSkipHours(raw) {
+  return clampSetting(raw, TRANSIT_SKIP_SPEC);
+}
+
+// PURE — split a job's live rows into { rows (may be queried), skipped }. Skipped rows are
+// simply left out of this job: nothing is written for them, so they come back next run.
+// The live select is 7-11 only (or pre-carrier-column = all 7-11), so a missing carrier counts as 7-11.
+export function splitTransitSkip(job, rows, nowDate, hours) {
+  if (!(hours > 0) || !TRANSIT_SKIP_KINDS.has(job.kind)) return { rows, skipped: [] };
+  const cutoff = nowDate.getTime() - hours * 60 * 60 * 1000;
+  const keep = [], skipped = [];
+  for (const r of rows) {
+    const skip = (r.carrier == null || r.carrier === "711") && !r.terminal
+      && TRANSIT_SKIP_STATUSES.has(r.status) && !!r.last_polled_at
+      && Date.parse(r.created_at) > cutoff;
+    (skip ? skipped : keep).push(r);
+  }
+  return { rows: keep, skipped };
+}
 
 // PURE — per-job parcel cap and per-seller daily request budget by plan.
 export function planCaps(plan, isAdmin = false) {
@@ -215,10 +244,21 @@ export function createWorker(opts) {
       const sel = await selectLiveRows(serviceSb, [job.user_id]);
       if (sel.error) return finishJob(job, { status: "failed", error: "select_failed", startedMs });
       const live = sel.rows.filter((r) => r && r.tracking_no);
-      const scope = auto
-        ? autoScope(live, now(), { ...auto, maxParcels: Math.min(auto.maxParcels, caps.parcels) }, tier)
-        : scopeForJob(job, live, now(), caps);
-      if (!scope.rows.length) return finishJob(job, { status: "done", error: null, startedMs, stats: autoStats() });
+      let skipHours = 0;
+      if (TRANSIT_SKIP_KINDS.has(job.kind)) {
+        // A failed settings read keeps the old behaviour (no skip).
+        const { data: ts, error: tsErr } = await serviceSb.from("app_settings").select("key,value").in("key", [TRANSIT_SKIP_KEY]);
+        if (!tsErr) skipHours = transitSkipHours((ts || []).find((r) => r.key === TRANSIT_SKIP_KEY)?.value);
+      }
+      const split = splitTransitSkip(job, live, now(), skipHours);
+      const scopeOf = (list) => (auto
+        ? autoScope(list, now(), { ...auto, maxParcels: Math.min(auto.maxParcels, caps.parcels) }, tier)
+        : scopeForJob(job, list, now(), caps));
+      const scope = scopeOf(split.rows);
+      // Count only the held-back rows this job would otherwise have queried.
+      const skipped = split.skipped.length ? scopeOf(split.skipped).rows.length : 0;
+      const skipStat = skipped ? ` transit_skipped=${skipped}` : "";
+      if (!scope.rows.length) return finishJob(job, { status: "done", error: null, startedMs, stats: autoStats() + skipStat });
 
       if (isAuto) stopDelay = loopDelay();
       const r = await checkRowsImpl({
@@ -228,7 +268,7 @@ export function createWorker(opts) {
       const out = jobOutcome({ stopReason: r.stopReason, tripped: r.tripped, checked: r.updated, capped: scope.capped });
       return finishJob(job, {
         ...out, checked: r.updated, total: scope.rows.length, requests: r.sent, batches: r.batchesRun,
-        failures: r.failures, retired: r.retired, startedMs, stats: autoStats(),
+        failures: r.failures, retired: r.retired, startedMs, stats: autoStats() + skipStat,
       });
     } catch (e) {
       logger.error(`${TAG} job threw job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");

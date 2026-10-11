@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   planCaps, scopeForJob, jobOutcome, taipeiHour, createWorker, shouldRefundPress, JOB_MAX_MS, REST_MS,
+  transitSkipHours, splitTransitSkip, TRANSIT_SKIP_KEY,
 } from "../../../../server/parcelTrackingWorker.js";
 
 const T0 = new Date("2026-09-29T02:00:00Z"); // 10:00 Taipei
@@ -14,14 +15,15 @@ type Q = { table: string; op: string; filters: unknown[][]; patch: unknown };
 type Cfg = {
   enabled?: string; plan?: string; role?: string; job?: Record<string, unknown> | null; claimError?: unknown;
   rows?: Record<string, unknown>[]; todaysJobs?: { requests_used: number }[]; dailyRequests?: number;
-  healthToday?: boolean; freshAfter?: boolean;
+  healthToday?: boolean; freshAfter?: boolean; settings?: Record<string, string>;
 };
 function fakeSb(cfg: Cfg = {}) {
   const queries: Q[] = [];
   const rpcs: { name: string; args: Record<string, unknown> }[] = [];
   const resolve = (q: Q) => {
     const has = (k: string, ...v: unknown[]) => q.filters.some((f) => f[0] === k && v.every((x, i) => f[i + 1] === x));
-    if (q.table === "app_settings") return { data: [{ key: "parcel_tracking_enabled", value: cfg.enabled ?? "true" }], error: null };
+    if (q.table === "app_settings") return { data: [{ key: "parcel_tracking_enabled", value: cfg.enabled ?? "true" },
+      ...Object.entries(cfg.settings ?? {}).map(([key, value]) => ({ key, value }))], error: null };
     if (q.table === "seller_profiles") return { data: { plan: cfg.plan ?? "plus", role: cfg.role ?? "seller" }, error: null };
     if (q.table === "parcel_tracking_daily") return { data: { requests: cfg.dailyRequests ?? 0 }, error: null };
     if (q.table === "parcel_tracking_jobs" && q.op === "select") {
@@ -335,5 +337,70 @@ describe("refund the daily press when a seller's manual check did nothing", () =
     expect(shouldRefundPress({ kind: "manual", created_by: "admin" }, "failed", 0)).toBe(false);
     expect(shouldRefundPress({ kind: "urgent", created_by: "seller" }, "done", 0)).toBe(false);
     expect(shouldRefundPress({ kind: "health", created_by: "worker" }, "failed", 0)).toBe(false);
+  });
+});
+
+describe("day-1 transit skip (parcel_tracking_transit_skip_hours)", () => {
+  const polled = iso(1 * H);
+  const day1 = (id: string, extra: Record<string, unknown> = {}) => row(id, { last_polled_at: polled, created_at: iso(5 * H), ...extra });
+
+  it("setting: missing/invalid → 24, clamped to 0..72, 0 = off", () => {
+    expect(transitSkipHours(undefined)).toBe(24);
+    expect(transitSkipHours("abc")).toBe(24);
+    expect(transitSkipHours("0")).toBe(0);
+    expect(transitSkipHours("-5")).toBe(0);
+    expect(transitSkipHours("100")).toBe(72);
+    expect(transitSkipHours("36")).toBe(36);
+  });
+
+  it("day-1 in-transit (checked once) is skipped; created/unknown too", () => {
+    const rows = [day1("a"), day1("b", { status: "created" }), day1("c", { status: "unknown" })];
+    const s = splitTransitSkip(job("manual"), rows, T0, 24);
+    expect(s.rows).toEqual([]);
+    expect(s.skipped.map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("never skipped: never polled, at_store, no status, older than N, other carrier", () => {
+    const rows = [
+      day1("np", { last_polled_at: null }),
+      day1("st", { status: "at_store" }),
+      day1("ns", { status: null }),
+      day1("old", { created_at: iso(25 * H) }),
+      day1("fm", { carrier: "fm" }),
+    ];
+    expect(splitTransitSkip(job("auto"), rows, T0, 24).skipped).toEqual([]);
+  });
+
+  it("urgent / new_parcels / health jobs never skip; N=0 disables", () => {
+    for (const k of ["urgent", "new_parcels", "health"]) expect(splitTransitSkip(job(k), [day1("a")], T0, 24).skipped).toEqual([]);
+    expect(splitTransitSkip(job("manual"), [day1("a")], T0, 0).skipped).toEqual([]);
+  });
+
+  it("N is the window: 4h-old parcel skipped at N=6, kept at N=3", () => {
+    const r = [day1("a", { created_at: iso(4 * H) })];
+    expect(splitTransitSkip(job("auto"), r, T0, 6).skipped).toHaveLength(1);
+    expect(splitTransitSkip(job("auto"), r, T0, 3).skipped).toHaveLength(0);
+  });
+
+  it("worker: skipped parcels are not queried, not counted in parcels_total, logged as a count", async () => {
+    // unknown status: the manual 24h-polled rule does not hold it back, only the new rule does
+    const rows = [day1("a", { status: "unknown" }), row("b", { status: "in_transit", last_polled_at: iso(30 * H), created_at: iso(48 * H) })];
+    const sb = fakeSb({ job: job("manual"), rows });
+    const logger = quiet();
+    const check = checkOk();
+    await createWorker({ serviceSb: sb, now: () => T0, logger, checkRowsImpl: check }).tick();
+    expect((check.mock.calls[0][0] as { rows: { id: string }[] }).rows.map((r) => r.id)).toEqual(["b"]);
+    expect((jobUpdate(sb)?.patch as { parcels_total: number }).parcels_total).toBe(1);
+    const done = logger.log.mock.calls.map((c) => String(c[0])).find((l) => l.includes(" done "))!;
+    expect(done).toContain("transit_skipped=1");
+    expect(done).not.toMatch(/F[ab]0000000/);
+    expect(sb.queries.some((q) => q.table === "parcel_tracking" && q.op === "update")).toBe(false);
+  });
+
+  it("worker: setting 0 turns it off", async () => {
+    const sb = fakeSb({ job: job("manual"), rows: [day1("a", { status: "unknown" })], settings: { [TRANSIT_SKIP_KEY]: "0" } });
+    const check = checkOk();
+    await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick();
+    expect((check.mock.calls[0][0] as { rows: unknown[] }).rows).toHaveLength(1);
   });
 });
