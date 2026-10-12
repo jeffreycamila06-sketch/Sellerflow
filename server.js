@@ -39,6 +39,7 @@ import { createFbSoldout } from "./server/fbSoldout.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
+import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1150,27 +1151,31 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 // store-code check must work. This is a pure external 7-11 lookup — no auth.uid()
 // use, no per-user table, no credit — so any signed-in caller is safe (the AI
 // scan at /admin/parcel-scan stays requireAdmin). Path name kept for the client.
-// requirePlanActive is deliberately NOT added (it passes free too, so it buys
-// nothing here; free never reaches this screen client-side). Body is tiny
+// requirePlanActive was added by Audit Oct 13 item 12 (an expired seller is
+// refused; free still passes, as everywhere). Body is tiny
 // ({ storeId }), so the GLOBAL 100kb json parser applies (not the parcel-scan
 // skip). Best-effort: the core has its own ~5s timeout, returns "unknown" on fail.
-app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
+// Audit Oct 13 item 12: + requirePlanActive (an expired seller can't use it) and a per-seller
+// rate limit (EMAP_CHECK_MAX_PER_MIN) — every check comes from the shared server IP.
+const emapCheckAllowed = createWindowLimiter({ max: EMAP_CHECK_MAX_PER_MIN, windowMs: 60_000 });
+app.post("/admin/parcel-emap-check", requireAuth, requirePlanActive, async (req, res) => {
   const storeId = String((req.body && req.body.storeId) || "").trim();
   if (!/^\d{6}$/.test(storeId)) {
     return res.status(400).json({ success: false, error: "bad_store_id" });
   }
+  if (!emapCheckAllowed(req.sellerId)) {
+    return res.status(429).json({ success: false, error: "rate_limited", message: "Too many store checks. Please wait a minute and try again." });
+  }
+  const startedAt = Date.now();
   const result = await checkEmapStore(storeId);
   // ONE diagnostic line on EVERY check (server console ONLY, never the client):
   // which query variant ran, the verdict, and how many store nodes came back —
   // so scanning a known-valid code (982063) shows, per variant, whether real
   // store data returned (pois>=1). note flags an S1 not_found→unknown downgrade.
   console.log(`[EMAP_CHECK] variant=${result.variant} store=${storeId} result=${result.status} pois=${result.pois ?? 0}${result.note ? ` (${result.note})` : ""}`);
-  // RAW: the bounded response body (server console ONLY) — attached on every
-  // non-valid verdict AND on a valid verdict while the S1 gate is unconfirmed,
-  // so the owner can confirm the real XML shape before flipping
-  // EMAP_CHECK_CONFIRMED=true.
+  // RAW (Audit Oct 13 item 12): status + timing only — the response body is no longer logged.
   if (result.raw !== undefined) {
-    console.log(`[EMAP_CHECK] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
+    console.log(`[EMAP_CHECK] RAW status=${result.status} ms=${Date.now() - startedAt}`);
   }
   return res.json({ success: true, storeId: result.storeId, status: result.status, storeName: result.storeName, address: result.address });
 });

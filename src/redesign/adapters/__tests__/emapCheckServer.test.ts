@@ -220,20 +220,19 @@ describe("checkEmapStore (injected fetch)", () => {
 describe("server.js route wiring (structural — the server.js convention)", () => {
   const src = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8");
 
-  it("route exists as requireAuth ONLY (relaxed from requireAdmin 2026-09-10 — manual encode is open to paying sellers; the AI scan at /admin/parcel-scan stays requireAdmin)", () => {
-    // Auth before the handler; no per-route body parser needed for the tiny body.
-    expect(src).toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*async/);
-    // Guard against a silent re-tighten OR a stray requirePlanActive (free passes it → pointless).
+  it("route = requireAuth + requirePlanActive (Audit Oct 13 item 12; relaxed from requireAdmin 2026-09-10 — the AI scan at /admin/parcel-scan stays requireAdmin)", () => {
+    // Auth + plan check before the handler; no per-route body parser needed for the tiny body.
+    expect(src).toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*requirePlanActive,\s*async/);
+    // Guard against a silent re-tighten to admin-only.
     expect(src).not.toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*requireAdmin/);
-    expect(src).not.toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*requirePlanActive/);
   });
   it("validates a 6-digit store id server-side", () => {
     const slice = src.slice(src.indexOf('"/admin/parcel-emap-check"'));
     expect(slice.slice(0, 400)).toMatch(/\^\\d\{6\}\$/);
   });
-  it("logs ONE diagnostic line per check with variant + result + pois, plus the bounded RAW; server-console only (never in the json response)", () => {
+  it("logs ONE diagnostic line per check with variant + result + pois, plus a RAW line (status + timing only, Audit Oct 13 item 12); server-console only (never in the json response)", () => {
     expect(src).toMatch(/\[EMAP_CHECK\] variant=\$\{result\.variant\} store=\$\{storeId\} result=\$\{result\.status\} pois=\$\{result\.pois/);
-    expect(src).toMatch(/\[EMAP_CHECK\] RAW \$\{JSON\.stringify\(String\(result\.raw\)\.slice\(0, 500\)\)\}/);
+    expect(src).toMatch(/\[EMAP_CHECK\] RAW status=\$\{result\.status\} ms=\$\{Date\.now\(\) - startedAt\}/);
     const slice = src.slice(src.indexOf('"/admin/parcel-emap-check"'));
     const end = slice.indexOf("\n});");
     // neither raw nor variant/pois are forwarded to the client json response
