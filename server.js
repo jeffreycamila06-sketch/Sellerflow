@@ -224,16 +224,17 @@ async function requireAdmin(req, res, next) {
 //   * No hard-coded emails. No deny-list. Decisions come from the DB only.
 //
 // Every decision emits a single greppable log line:
-//   [PLAN_CHECK] ALLOW  email=... plan=... status=... expiry=...
-//   [PLAN_CHECK] BLOCK  email=... plan=... status=... expiry=... reason=...
-//   [PLAN_CHECK] ERROR  email=... err=... -> FAIL-OPEN (allowing)
-//   [PLAN_CHECK] (disabled) WOULD BLOCK email=... ... reason=...
+//   [PLAN_CHECK] ALLOW  seller=<id> plan=... status=... expiry=...
+//   [PLAN_CHECK] BLOCK  seller=<id> plan=... status=... expiry=... reason=...
+//   [PLAN_CHECK] ERROR  seller=<id> err=... -> FAIL-OPEN (allowing)
+//   [PLAN_CHECK] (disabled) WOULD BLOCK seller=<id> ... reason=...
+// (Audit Oct 13 item 9: the seller's auth id, never the email.)
 // ============================================================================
 
 const PLAN_ENFORCEMENT_ENABLED = true;
 
 async function checkPlanActive(email, authUserId, token) {
-  const ctx = `email=${email || "(unknown)"}`;
+  const ctx = `seller=${authUserId || "(unknown)"}`;
 
   if (!sb || !SUPABASE_URL || !SUPABASE_KEY) {
     console.log(`[PLAN_CHECK] ERROR ${ctx} err=no_supabase_client -> FAIL-OPEN (allowing)`);
@@ -351,7 +352,7 @@ function accountCapReject(req, platform, username, opts = {}) {
     refuseUnregistered: opts.refuseUnregistered === true,
   });
   if (v.allowed) return null;
-  console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} email=${req.userEmail} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
+  console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
   return {
     success: false,
     error: "account_limit",
@@ -396,7 +397,7 @@ function requireConnectRate(req, res, next) {
   const { allowed, kept } = checkConnectRate(connectAttempts.get(uid), Date.now());
   connectAttempts.set(uid, kept);
   if (!allowed) {
-    console.log(`[CONNECT-RATE] throttle seller=${req.sellerId} email=${req.userEmail} (${kept.length} attempts in ${CONNECT_RATE_WINDOW_MS / 1000}s)`);
+    console.log(`[CONNECT-RATE] throttle seller=${req.sellerId} (${kept.length} attempts in ${CONNECT_RATE_WINDOW_MS / 1000}s)`);
     return res.status(429).json({
       success: false,
       error: "too_many_requests",
@@ -942,7 +943,7 @@ app.post("/myship/validate-gm", requireAuth, async (req, res) => {
     }).finally(() => clearTimeout(t));
     if (!r.ok) return res.json({ valid: false, error: `http_${r.status}` });
     const parsed = parseGmPage(await r.text(), gmId);
-    console.log(`[GM-VALIDATE] ${req.userEmail || req.sellerId} ${gmId} valid=${parsed.valid} shop=${parsed.shopName || "-"}`);
+    console.log(`[GM-VALIDATE] seller=${req.sellerId} ${gmId} valid=${parsed.valid} shop=${parsed.shopName || "-"}`);
     return res.json(parsed);
   } catch (e) {
     // Datacenter-IP block / timeout — expected-possible (unverified from Render
@@ -1473,12 +1474,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       }
     } catch { /* the diag must never affect the connection */ }
     if (msgType !== "WebcastRoomPinMessage") return;
-    try {
-      const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);
-      let raw = "";
-      try { raw = JSON.stringify(obj).slice(0, 2000); } catch { raw = "unstringifiable"; } // 2000: the 800 cap cut off action/isShowMsg
-      console.log(`[PIN-PROBE] ${cleanUsername} phase=${pinProbeConnected ? "live" : "initial"} owning=${owning} ${raw}`);
-    } catch { /* the probe must never affect the connection */ }
+    // (Audit Oct 13 item 9: the [PIN-PROBE] raw-JSON dump — buyer name/comment text — is removed.)
     // ── PIN-TO-PRINT Phase 2 relay (Option A: pin = 1-Click on the client) ──
     // Ordering is load-bearing: live-phase gate FIRST (pre-connect-buffer pins
     // are history — relaying them is the reconnect/print-every-10-min hazard),
@@ -1506,7 +1502,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
         roomId: state?.roomId || "",
       }));
       io.to(sellerRoom(sellerId)).emit("platform_pin", { ...payload, username: cleanUsername });
-      console.log(`[PIN-RELAY] ${cleanUsername} msgId=${chat.msgId} @${chat.handle} lagMs=${pinLagMs(obj) ?? "?"}`); // lagMs = TikTok pin-broadcast leg
+      console.log(`[PIN-RELAY] ${cleanUsername} msgId=${chat.msgId} lagMs=${pinLagMs(obj) ?? "?"}`); // lagMs = TikTok pin-broadcast leg
     } catch (e) {
       console.warn(`[PIN-RELAY] failed for ${cleanUsername} (connection unaffected):`, e?.message || e);
     }

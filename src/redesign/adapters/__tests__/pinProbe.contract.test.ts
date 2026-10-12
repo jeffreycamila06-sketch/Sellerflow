@@ -21,7 +21,7 @@ describe("[PIN-PROBE] Phase 1 — log-only pin observation", () => {
     expect(probeStart).toBeGreaterThan(-1);
     expect(probe).toContain('tiktokConnection.on("decodedData", (msgType, obj) => {');
     expect(probe).toContain('if (msgType !== "WebcastRoomPinMessage") return;');
-    expect(probe).toContain("[PIN-PROBE]");
+    expect(probe).toContain("[PIN-PROBE]"); // the comment header + the type-count diag stay
   });
 
   it("is attached BEFORE connect() so pre-connect buffer pins are captured (phase=initial)", () => {
@@ -29,7 +29,6 @@ describe("[PIN-PROBE] Phase 1 — log-only pin observation", () => {
     expect(probeStart).toBeLessThan(connectAt);
     // and the phase flag flips to live-phase right after connect resolves
     expect(flipAt).toBeGreaterThan(connectAt);
-    expect(probe).toContain('phase=${pinProbeConnected ? "live" : "initial"}');
   });
 
   it("is LOG-ONLY: no socket emit, no comment relay, no status emit inside the probe", () => {
@@ -39,11 +38,9 @@ describe("[PIN-PROBE] Phase 1 — log-only pin observation", () => {
     expect(probe).not.toContain("touchTikTokConnection"); // never a liveness signal
   });
 
-  it("can never break the connection: guarded log, bounded raw dump, owning-tagged", () => {
-    expect(probe).toContain("} catch { /* the probe must never affect the connection */ }");
-    expect(probe).toContain(".slice(0, 2000)"); // widened in Phase 2: 800 cut off action/isShowMsg
-    // owning is TAGGED (data), not used to drop — orphan re-delivery is itself probe data
-    expect(probe).toContain("const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);");
+  it("Audit Oct 13 item 9: the raw pin JSON dump (buyer name + comment text) is removed", () => {
+    expect(probe).not.toContain("JSON.stringify(obj)");
+    expect(probe).not.toMatch(/console\.log\(`\[PIN-PROBE\] /);
   });
 
   it("[PIN-PROBE-DIAG] counts EVERY type BEFORE the pin filter, bounded + throttled + log-only", () => {
