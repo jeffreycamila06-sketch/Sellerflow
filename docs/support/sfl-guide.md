@@ -11,7 +11,7 @@ SellerFlowLive helps you sell on live video without writing orders in a notebook
 - **Connect** your TikTok account while you are live. Comments come into the **Live** screen.
 - Turn a comment into an order with **1-Click** or **Type price**, or let **Auto mode** do it from product codes.
 - Every buyer gets a **buyer number** for the whole session, so you can sort bags by number.
-- Orders print on a **Bluetooth sticker printer** (like the AIMO D520BT) or a **WiFi receipt printer**.
+- Orders print on a **Bluetooth sticker printer** (AIMO or Phomemo **D520BT**) or a **WiFi receipt printer**.
 - See your orders in **Orders**, your numbers in **Sales**, and your items and stock in **Products**.
 
 The app works in English, Filipino, Bahasa Indonesia, Tiếng Việt, 中文 (简体), 中文 (繁體), ไทย and Български. Printer connection and live connect work in the SellerFlowLive phone app; some things (like exporting files) work better in a browser on a computer.
@@ -348,21 +348,23 @@ Keywords: language, english, chinese, tagalog, theme, dark mode, light, currency
 - **Currency** — applies to all prices.
 
 ## printer-overview — Which printers work
-Last checked: 2026-10-11
-Keywords: printer, printers, which printer, supported, aimo, xprinter, sticker, receipt, anong printer, 打印机, 印表機, 列印, 支援
+Last checked: 2026-10-12
+Keywords: printer, printers, which printer, supported, aimo, phomemo, d520bt, brand, xprinter, sticker, receipt, anong printer, 打印机, 印表機, 列印, 支援
 
 SellerFlowLive prints two kinds of labels:
 
-- **Sticker** on a **Bluetooth sticker printer** (AIMO D520BT, 100×60mm standard). One label per order with buyer number, name, username and comment/price.
+- **Sticker** on a **Bluetooth sticker printer** — model **D520BT** (100×60mm standard). It is sold as **AIMO D520BT** and **Phomemo D520BT** — same printer, different brand, both work. One label per order with buyer number, name, username and comment/price.
 - **Slip / receipt** on a **WiFi receipt printer** (like Xprinter) on the same WiFi as your phone.
+
+Not sure of your model? Check the sticker under the printer — it must say **D520BT**. Other sticker printers are not supported yet.
 
 Choose it in **Settings → General Settings → Printer → CHOOSE PRINTER**, then open **Printer Settings**.
 
 Printer connection runs in the **SellerFlowLive phone app**. In a web browser you see "Printer connection runs in the SellerFlowLive app — these controls work on your phone, not in the web preview." For a laptop, see "Laptop auto-print".
 
-## printer-bluetooth — Bluetooth sticker printer (AIMO D520BT)
-Last checked: 2026-10-11
-Keywords: bluetooth, bt, aimo, d520bt, sticker printer, pair, scan, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸
+## printer-bluetooth — Bluetooth sticker printer (AIMO / Phomemo D520BT)
+Last checked: 2026-10-12
+Keywords: bluetooth, bt, aimo, phomemo, d520bt, sticker printer, pair, scan, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸
 
 1. Turn on the printer and keep it close to the phone.
 2. Make sure it is **not connected to another app or phone**.
