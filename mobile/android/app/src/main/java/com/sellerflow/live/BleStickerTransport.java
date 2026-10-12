@@ -84,7 +84,13 @@ final class BleStickerTransport {
         final String address;
         final String name;
         final int rssi;
-        Discovered(String address, String name, int rssi) { this.address = address; this.name = name; this.rssi = rssi; }
+        // Generic-printer scan (Phase 1): D520BT match, and "looks like a printer" by service.
+        final boolean target;
+        final boolean likely;
+        Discovered(String address, String name, int rssi) { this(address, name, rssi, true, true); }
+        Discovered(String address, String name, int rssi, boolean target, boolean likely) {
+            this.address = address; this.name = name; this.rssi = rssi; this.target = target; this.likely = likely;
+        }
     }
 
     /** Honest, code-tagged failure — codes mirror the plugin/iOS reject codes. */
@@ -129,6 +135,9 @@ final class BleStickerTransport {
     private final Map<String, Discovered> scanFound = new LinkedHashMap<>();
     private Runnable scanTimer;
     private ScanCallback activeScanCallback;
+    // Per-scan options (both false = the D520BT-only filter, unchanged).
+    private boolean scanIncludeGeneric;
+    private boolean scanShowAll;
 
     // print-job state (single-flight with scan)
     private boolean jobActive;
@@ -171,8 +180,15 @@ final class BleStickerTransport {
     // serial handler thread. The plugin gates permissions before calling.
     // ────────────────────────────────────────────────────────────────────────
 
+    void scan(final long timeoutMs, final ScanCallbackFn cb) { scan(timeoutMs, false, false, cb); }
+
+    /**
+     * includeGeneric: also keep devices advertising a known printer service
+     * (BleStickerLogic.isLikelyPrinter). showAll: keep every NAMED device. Both false =
+     * exactly the D520BT-only scan.
+     */
     @SuppressLint("MissingPermission")
-    void scan(final long timeoutMs, final ScanCallbackFn cb) {
+    void scan(final long timeoutMs, final boolean includeGeneric, final boolean showAll, final ScanCallbackFn cb) {
         handler.post(() -> {
             if (!ensureAdapter()) { cb.onResult(null, new BtError("Bluetooth not supported on this device", "BT_UNAVAILABLE")); return; }
             if (!adapter.isEnabled()) { cb.onResult(null, new BtError("Bluetooth is off. Turn it on then try again.", "BT_OFF")); return; }
@@ -184,6 +200,8 @@ final class BleStickerTransport {
             if (scanner == null) { cb.onResult(null, new BtError("Bluetooth LE scan unavailable.", "BT_UNAVAILABLE")); return; }
             scanning = true;
             scanCb = cb;
+            scanIncludeGeneric = includeGeneric;
+            scanShowAll = showAll;
             scanFound.clear();
             activeScanCallback = new ScanCallback() {
                 @Override public void onScanResult(int callbackType, ScanResult result) {
@@ -287,14 +305,36 @@ final class BleStickerTransport {
             if (uuids != null) for (ParcelUuid pu : uuids) if (pu != null) services.add(pu.getUuid().toString());
         }
         if (name == null) { try { name = device.getName(); } catch (Exception ignored) {} }
-        if (!BleStickerLogic.isTargetPrinter(name, services)) return;
+        if (!scanIncludeGeneric && !scanShowAll) {
+            // D520BT-only scan — exactly the pre-Phase-1 behavior.
+            if (!BleStickerLogic.isTargetPrinter(name, services)) return;
+            String addr = device.getAddress();
+            if (addr == null) return;
+            String key = addr.toUpperCase(Locale.US);
+            Discovered prev = scanFound.get(key);
+            int rssi = result.getRssi();
+            if (prev == null || rssi > prev.rssi) {
+                scanFound.put(key, new Discovered(addr, name != null && !name.isEmpty() ? name : addr, rssi));
+            }
+            return;
+        }
+        boolean target = BleStickerLogic.isTargetPrinter(name, services);
+        boolean likely = target || BleStickerLogic.isLikelyPrinter(services);
+        boolean named = name != null && !name.trim().isEmpty();
+        if (!target && !(scanIncludeGeneric && likely) && !(scanShowAll && named)) return;
         String addr = device.getAddress();
         if (addr == null) return;
         String key = addr.toUpperCase(Locale.US);
         Discovered prev = scanFound.get(key);
         int rssi = result.getRssi();
+        // Advert and scan response can carry different fields — keep what either said.
+        boolean t = target || (prev != null && prev.target);
+        boolean l = likely || (prev != null && prev.likely);
+        String n = named ? name : (prev != null ? prev.name : addr);
         if (prev == null || rssi > prev.rssi) {
-            scanFound.put(key, new Discovered(addr, name != null && !name.isEmpty() ? name : addr, rssi));
+            scanFound.put(key, new Discovered(addr, n, rssi, t, l));
+        } else if (t != prev.target || l != prev.likely || (named && prev.name.equals(addr))) {
+            scanFound.put(key, new Discovered(addr, named && prev.name.equals(addr) ? name : prev.name, prev.rssi, t, l));
         }
     }
 

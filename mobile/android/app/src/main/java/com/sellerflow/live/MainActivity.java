@@ -110,7 +110,8 @@ public class MainActivity extends BridgeActivity {
             // these on window.SellerFlowPrinter; they forward to the Capacitor
             // plugin's @PluginMethods. Existing LAN method wrappers above are
             // untouched.
-            + "window.SellerFlowPrinter.scanBluetoothLabelPrinters=function(){return cap.scanBluetoothLabelPrinters();};"
+            // Scan options (includeGenericPrinters / showAllDevices) are forwarded; none → {} = unchanged.
+            + "window.SellerFlowPrinter.scanBluetoothLabelPrinters=function(o){return cap.scanBluetoothLabelPrinters(o||{});};"
             + "window.SellerFlowPrinter.getBluetoothLabelPrinter=function(){return cap.getBluetoothLabelPrinter();};"
             + "window.SellerFlowPrinter.setBluetoothLabelPrinter=function(printer){return cap.setBluetoothLabelPrinter(printer||{});};"
             + "window.SellerFlowPrinter.clearBluetoothLabelPrinter=function(){return cap.clearBluetoothLabelPrinter();};"
@@ -124,6 +125,9 @@ public class MainActivity extends BridgeActivity {
             // @PluginMethod that routes bytes through the SAME BLE/SPP transport as
             // testStickerPrint. Production sticker path (printStickerNative) unaffected.
             + "window.SellerFlowPrinter.printRawTspl=function(p){return cap.printRawTspl(p||{});};"
+            // Phase 1 generic BLE printer: one sample sticker to an unsaved printer (test-gated web flow).
+            // The web shows the generic-printer UI only when this method exists.
+            + "window.SellerFlowPrinter.testGenericPrinter=function(p){return cap.testGenericPrinter(p||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"
