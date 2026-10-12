@@ -98,7 +98,7 @@ import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowSto
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts, loadProductsDb } from "./adapters/productsDb";
 import { createStockGuard, mergeReloadedStock, debounceAllows, useStockRefreshTriggers } from "./adapters/stockRefresh";
-import { loadProducts, type Product } from "./adapters/products";
+import { loadProducts, clearProductsCacheFor, type Product } from "./adapters/products";
 import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useSamePrice, effectiveOrderPrice, entPrefill } from "./adapters/useSamePrice";
@@ -728,6 +728,7 @@ export default function RedesignApp() {
     write: saveLiveSessionOrder,
     onExhausted: () => setOrderWriteErrs((c) => c + 1),
     drainSignal: liveFeed.ttConnected || liveFeed.fbConnected,
+    ownerId: auth.status === "authed" ? auth.profile?.authUserId ?? null : null, // Audit Oct 13 (5): items are tagged + drained per user
   });
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
   // builder + db writes; updates the live session optimistically. 5f: soft-block
@@ -2473,7 +2474,13 @@ export default function RedesignApp() {
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
-              onLogout={() => { resetAnalytics(); void auth.signOut(); setScreen("login"); }}
+              onLogout={() => {
+                // Audit Oct 13 (5): a shared device keeps nothing of this shop for the next one.
+                const me = auth.profile?.authUserId;
+                outbox.dropOwner(me);
+                clearProductsCacheFor(me);
+                resetAnalytics(); void auth.signOut(); setScreen("login");
+              }}
               isAdmin={isAdmin}
               onParcelScan={parcelAllowed ? openParcelScan : undefined}
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}

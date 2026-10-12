@@ -31,7 +31,16 @@ const BACKOFF_CAP_MS = 30_000;
 export interface WriteResult { success: boolean; data?: unknown; skipped?: boolean; error?: unknown }
 export type WriteFn = (payload: LiveSessionOrderInput) => Promise<WriteResult | void>;
 
-export interface OutboxItem { id: string; payload: LiveSessionOrderInput; msgId: string; retries: number; firstAt: number }
+// ownerId (Audit Oct 13 item 5): the user who queued it. A shared device never writes one
+// shop's queued order into another shop's account. Legacy items (no ownerId) are written
+// for whoever is signed in, as before.
+export interface OutboxItem { id: string; payload: LiveSessionOrderInput; msgId: string; retries: number; firstAt: number; ownerId?: string }
+
+/** May this item be written now? Owned items only for their owner; legacy items for anyone. */
+export function itemWritableBy(item: OutboxItem, currentUserId: string | null | undefined): boolean {
+  if (!item.ownerId) return true;
+  return !!currentUserId && item.ownerId === currentUserId;
+}
 export type ExhaustKind = "terminal" | "exhausted" | "overflow";
 
 // ── Pure classification (unit-tested; the highest-risk logic — wrong here = an
@@ -116,10 +125,12 @@ export interface UseOutbox {
   // (the caller only enqueues msgId-bearing writes; FB has none → written direct).
   enqueue: (payload: LiveSessionOrderInput, msgId: string) => void;
   pending: () => number;
+  /** Logout: drop the signing-out user's queued items (memory + storage). */
+  dropOwner: (ownerId: string | null | undefined) => void;
 }
 
-export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKind) => void; drainSignal?: unknown }): UseOutbox {
-  const { write, onExhausted, drainSignal } = opts;
+export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKind) => void; drainSignal?: unknown; ownerId?: string | null }): UseOutbox {
+  const { write, onExhausted, drainSignal, ownerId } = opts;
   const queueRef = useRef<OutboxItem[]>(loadQueue());
   const drainingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,7 +139,8 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
   // it after later renders (ref writes during render are lint-banned).
   const writeRef = useRef(write);
   const exhaustRef = useRef(onExhausted);
-  useEffect(() => { writeRef.current = write; exhaustRef.current = onExhausted; });
+  const ownerRef = useRef(ownerId || null);
+  useEffect(() => { writeRef.current = write; exhaustRef.current = onExhausted; ownerRef.current = ownerId || null; });
 
   const scheduleDrain = useCallback((drain: () => void) => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -141,7 +153,8 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
     if (!queueRef.current.length) return;
     drainingRef.current = true;
     try {
-      const batch = [...queueRef.current];
+      const me = ownerRef.current;
+      const batch = queueRef.current.filter((i) => itemWritableBy(i, me)); // another user's items wait for them
       const done = new Set<string>();               // ok / duplicate / terminal / exhausted → remove
       const retryUpdates = new Map<string, number>(); // id → new retry count
       for (const item of batch) {
@@ -160,7 +173,7 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
         .map((i) => (retryUpdates.has(i.id) ? { ...i, retries: retryUpdates.get(i.id)! } : i));
       queueRef.current = next;
       saveQueue(next);
-      if (next.length) scheduleDrain(run);           // backoff self-reschedule while items remain
+      if (next.some((i) => itemWritableBy(i, ownerRef.current))) scheduleDrain(run); // backoff self-reschedule while OUR items remain
     } finally {
       drainingRef.current = false;
     }
@@ -171,7 +184,7 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
     if (!m) return;                                  // never enqueue a keyless write
     const q = queueRef.current;
     if (q.length >= MAX_QUEUE) { q.shift(); exhaustRef.current?.("overflow"); } // bounded — drop oldest + surface
-    q.push({ id: uid(), payload, msgId: m, retries: 0, firstAt: Date.now() });
+    q.push({ id: uid(), payload, msgId: m, retries: 0, firstAt: Date.now(), ...(ownerRef.current ? { ownerId: ownerRef.current } : {}) });
     saveQueue(q);
     void drain();                                    // attempt immediately (common path = inline success)
   }, [drain]);
@@ -185,7 +198,13 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
       document.removeEventListener("visibilitychange", onVis);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [drain, drainSignal]);
+  }, [drain, drainSignal, ownerId]); // a new user signing in drains their own items
 
-  return { enqueue, pending: () => queueRef.current.length };
+  const dropOwner = useCallback((who: string | null | undefined) => {
+    if (!who) return;
+    queueRef.current = queueRef.current.filter((i) => i.ownerId !== who);
+    saveQueue(queueRef.current);
+  }, []);
+
+  return { enqueue, pending: () => queueRef.current.length, dropOwner };
 }

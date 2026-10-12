@@ -11,7 +11,7 @@
 // updated_at. `status` is NOT stored — it is derived from stock on read
 // (statusForStock), so it can never drift.
 import { isSupabaseConfigured, supabase } from "../../supabase";
-import { statusForStock, PRODUCT_DEFAULTS, type Product } from "./products";
+import { statusForStock, PRODUCT_DEFAULTS, productsOwner, setProductsOwner, type Product } from "./products";
 import { log } from "../../lib/log";
 
 const MIGRATED_KEY = "sf_prods_migrated";
@@ -195,10 +195,21 @@ export async function adjustProductStock(localId: number, delta: number): Promis
 // failure / no-session keeps the local cache untouched. The caller mirrors the
 // resolved list back to localStorage (offline view + production parity).
 export interface ResolveResult { products: Product[]; source: "db" | "local" | "migrated" }
+// Audit Oct 13 (5): the local cache is used / migrated ONLY when it is known to belong to
+// the signed-in user (sf_prods_owner). Missing or another user's owner → the DB list only
+// (even when empty) — never one shop's products uploaded into another shop's account.
 export async function resolveInitialProducts(local: Product[]): Promise<ResolveResult> {
+  const me = await uid();
+  const owner = productsOwner();
+  const mine = !!me && owner === me;
   const rows = await loadProductsDb();
-  if (rows === null) return { products: local, source: "local" };  // unconfigured / no session / error
+  if (rows === null) {                                              // unconfigured / no session / error
+    if (me && owner && owner !== me) return { products: [], source: "local" }; // another shop's cache — never shown
+    return { products: local, source: "local" };
+  }
+  if (me) setProductsOwner(me);                                     // the cache the caller mirrors back is now this user's
   if (rows.length) return { products: rows, source: "db" };        // DB is source of truth
+  if (!mine) return { products: rows, source: "db" };              // cache not provably ours → DB list (empty), no migration
   if (shouldMigrate(local, alreadyMigrated())) {                   // empty DB + real local → migrate once
     const ok = await migrateLocalProducts(local);
     if (ok) return { products: local, source: "migrated" };
