@@ -1,1 +1,13 @@
-{ "git": { "deploymentEnabled": { "**": false, "main": true, "preview/**": true } } }
+{
+  "git": { "deploymentEnabled": { "**": false, "main": true, "preview/**": true } },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Content-Security-Policy", "value": "frame-ancestors 'self'" }
+      ]
+    }
+  ]
+}
