@@ -8,7 +8,7 @@ const captured: { table: string | null; rows: Array<Record<string, unknown>> } =
 vi.mock("../../../supabase", () => ({
   isSupabaseConfigured: true,
   supabase: {
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } } })) },
+    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } } })), getSession: vi.fn(async () => ({ data: { session: { user: { id: "user-1" } } } })) },
     from: vi.fn((table: string) => {
       captured.table = table;
       return { insert: (rows: Array<Record<string, unknown>>) => { captured.rows = rows; return { select: async () => ({ data: rows, error: null }) }; } };

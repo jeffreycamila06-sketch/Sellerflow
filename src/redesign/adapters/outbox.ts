@@ -18,6 +18,7 @@
 // before the queue drains for real — it is the whole safety proof.
 import { useCallback, useEffect, useRef } from "react";
 import type { LiveSessionOrderInput } from "../../db";
+import { NO_SESSION_ERROR } from "../../lib/noSession";
 
 export const OUTBOX_KEY = "sfl_rd_outbox_v1";
 export const MAX_RETRIES = 8;
@@ -57,6 +58,9 @@ export function isRetryableError(err: unknown): boolean {
   const e = err as { message?: string; code?: string; status?: number; name?: string } | undefined;
   if (!e) return false;
   if (e.name === "AbortError") return true; // fetch timeout / abort
+  // Audit Oct 13 (4): no local session (db.ts NoSessionError). Offline → keep it (the
+  // session may simply not be readable yet); online + signed out → terminal.
+  if (e.name === NO_SESSION_ERROR) return typeof navigator !== "undefined" && navigator.onLine === false;
   const msg = String(e.message || e || "").toLowerCase();
   if (/failed to fetch|network ?error|fetch failed|load failed|timeout|timed out|econnreset|etimedout|socket hang up|network request failed/.test(msg)) return true;
   const status = typeof e.status === "number" ? e.status : Number(e.code);
