@@ -288,7 +288,11 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   // and flip to "live" so the summary strip + Orders tab reflect it immediately.
   const applyOrder = useCallback((nextBuyers: Buyer[], order: LiveOrder) => {
     if (fixRef.current) localNewRef.current.push({ order, sessionId: winSessionIdRef.current }); // part 2: kept by a correction reload if not saved yet
-    setSession((prev) => ({ buyers: nextBuyers, orders: [...prev.orders, order] }));
+    // Audit Oct 13 (3): update the ref NOW — a second order built before React re-renders
+    // reads getBuyers() from it (stale ref → same buyer # twice, first buyer lost).
+    const next: RebuiltSession = { buyers: nextBuyers, orders: [...sessionRef.current.orders, order] };
+    sessionRef.current = next;
+    setSession(() => next);
     setState("live");
   }, []);
   // step 5 — clear local session + force the load effect to re-run (fresh window
