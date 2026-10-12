@@ -2491,7 +2491,7 @@ export default function RedesignApp() {
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
-              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin)}
+              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios)}
             />
           )}
           {screen === "settings" && (
