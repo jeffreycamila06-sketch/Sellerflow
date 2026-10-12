@@ -58,7 +58,7 @@ vi.mock("../adapters/useLiveSession", async (orig) => ({
       ],
     },
     state: "live", loadError: false, dayId: "2026-10-09",
-    getBuyers: () => [], applyOrder: () => {}, reset: () => {}, orderedMsgIds: new Map(), orderedLoaded: true, addOrderedMsgId: () => {},
+    getBuyers: () => [], applyOrder: () => {}, reset: () => {}, orderedMsgIds: new Map(), orderedLoaded: true, addOrderedMsgId: () => {}, canOrder: () => true,
   }),
 }));
 vi.mock("../adapters/useSessionInstance", async (orig) => {

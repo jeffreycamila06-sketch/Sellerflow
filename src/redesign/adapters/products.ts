@@ -40,6 +40,26 @@ export function saveProducts(list: Product[]): void {
   try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* ignore */ }
 }
 
+// Audit Oct 13 (5): whose products the "sf_prods" cache holds (a shared device must
+// never migrate / show one shop's cached products for another). Written by
+// resolveInitialProducts once the signed-in user is known; removed at logout.
+export const OWNER_KEY = "sf_prods_owner";
+export function productsOwner(): string | null {
+  try { return localStorage.getItem(OWNER_KEY) || null; } catch { return null; }
+}
+export function setProductsOwner(userId: string): void {
+  try { localStorage.setItem(OWNER_KEY, userId); } catch { /* ignore */ }
+}
+/** Logout: drop the cache when it belongs to the user signing out (or has no owner). */
+export function clearProductsCacheFor(userId: string | null | undefined): void {
+  try {
+    const owner = localStorage.getItem(OWNER_KEY);
+    if (owner && userId && owner !== userId) return; // another shop's cache — not ours to touch
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(OWNER_KEY);
+  } catch { /* ignore */ }
+}
+
 // App.tsx:1307-1313 submit() — add (id=Date.now) or edit (by eid). `now` injectable
 // for deterministic tests. Pure.
 export function upsertProduct(list: Product[], form: ProductForm, eid: number | null, now: number): Product[] {

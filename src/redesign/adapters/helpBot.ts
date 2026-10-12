@@ -10,7 +10,10 @@ export type HelpSource = "faq" | "faq_ai_match" | "ai" | "handoff" | "limit";
 export interface AskResult { ok: boolean; id?: string; source?: HelpSource; answer?: string; saved?: boolean; contact?: boolean; error?: string }
 
 // Shown only when the switch is on AND the seller is in preview (admins always are).
-export const helpBotVisible = (switchOn: boolean, preview: boolean, isAdmin: boolean): boolean => switchOn && (preview || isAdmin);
+// Audit Oct 13 (7): never inside the iOS app — its answers can point to paying outside the
+// app (App Store Guideline 3.1.1). Web and Android unchanged. ios = the same isIOS() check
+// that hides pricing/upgrade.
+export const helpBotVisible = (switchOn: boolean, preview: boolean, isAdmin: boolean, ios = false): boolean => switchOn && !ios && (preview || isAdmin);
 
 // app_settings.support_ai_enabled — one small read per sign-in. Fail closed: only 'true' = on.
 export async function loadHelpBotSwitch(): Promise<boolean> {

@@ -22,6 +22,7 @@ const H = vi.hoisted(() => ({
   stock: { v: 2 },
   createOrder: { fn: null as Mock<(...args: unknown[]) => unknown> | null },
   sessionState: { v: "empty" as "idle" | "loading" | "live" | "empty" }, // F-DEDUP-RACE gate
+  canOrder: { v: true }, // the order gate (Audit Oct 13 item 2)
 }));
 
 vi.mock("../adapters/useAuthSession", async (orig) => ({
@@ -74,6 +75,7 @@ vi.mock("../adapters/useLiveSession", async (orig) => ({
     orderedMsgIds: new Map(),
     orderedLoaded: true,
     addOrderedMsgId: () => {},
+    canOrder: () => H.canOrder.v,
   }),
 }));
 
@@ -90,9 +92,10 @@ const comment = (over: Partial<ProdComment> = {}): ProdComment => ({
 // are seeded, then return a driver for the captured onComment.
 async function mountWithAutoMode(on: boolean) {
   localStorage.setItem("sfl_rd_automode", on ? "1" : "0");
-  render(<RedesignApp />);
+  const r = render(<RedesignApp />);
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  return (c: ProdComment) => act(() => { H.onComment.fn?.(c); });
+  const drive = (c: ProdComment) => act(() => { H.onComment.fn?.(c); });
+  return Object.assign(drive, { rerender: () => act(() => { r.rerender(<RedesignApp />); }) });
 }
 
 describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
@@ -100,6 +103,7 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     localStorage.clear();
     H.stock.v = 2;
     H.sessionState.v = "empty"; // hydrated by default
+    H.canOrder.v = true;
     H.createOrder.fn = vi.fn(() => ({ orderNum: 1750000000000, item: "52", qty: 1, price: 52, total: 52, time: "", handle: "buyer1", name: "Buyer One", bNum: 1, platform: "TikTok", status: "New", date: "2026-06-27" }));
   });
 
@@ -124,6 +128,51 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ comment: "D" }));
     expect(H.createOrder.fn).not.toHaveBeenCalled();
+  });
+
+  it("Audit Oct 13 (2) — held during a reload: no order yet; load completes → exactly ONE order for that comment", async () => {
+    H.sessionState.v = "loading";
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D", handle: "late1" }));
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+    H.sessionState.v = "live";
+    await drive.rerender();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    expect((H.createOrder.fn!.mock.calls[0][0] as ProdComment).handle).toBe("late1");
+    await drive.rerender(); // nothing left to replay
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("Audit Oct 13 (2) — the order gate closed (resync pending, state not loading) also holds, then replays once", async () => {
+    H.canOrder.v = false;
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D" }));
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+    H.canOrder.v = true;
+    await drive.rerender();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("Audit Oct 13 (2) — the same comment twice while loading → ONE order after the load", async () => {
+    H.sessionState.v = "loading";
+    const drive = await mountWithAutoMode(true);
+    const c = comment({ comment: "D" });
+    await drive(c);
+    await drive(c);
+    H.sessionState.v = "live";
+    await drive.rerender();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("Audit Oct 13 (2) — a failed load keeps the held comment; the next successful load replays it", async () => {
+    H.canOrder.v = false;
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D" }));
+    await drive.rerender(); // still failed / pending
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+    H.canOrder.v = true;
+    await drive.rerender();
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
   });
 
   it("F-DEDUP-RACE — once the window is hydrated (not loading), auto processes normally", async () => {

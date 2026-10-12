@@ -85,6 +85,7 @@ import { useMinersReport } from "./adapters/minersReport";
 import { useSalesTab } from "./adapters/salesTab";
 import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
+import { createDeferredAutoQueue } from "./adapters/deferredAuto";
 import { useOrders } from "./adapters/useOrders";
 import { useOutbox } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
@@ -97,7 +98,7 @@ import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowSto
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts, loadProductsDb } from "./adapters/productsDb";
 import { createStockGuard, mergeReloadedStock, debounceAllows, useStockRefreshTriggers } from "./adapters/stockRefresh";
-import { loadProducts, type Product } from "./adapters/products";
+import { loadProducts, clearProductsCacheFor, type Product } from "./adapters/products";
 import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useSamePrice, effectiveOrderPrice, entPrefill } from "./adapters/useSamePrice";
@@ -431,6 +432,9 @@ export default function RedesignApp() {
   // Build 11 (H1): `taken` = the piece was already taken in the database (sold-out re-check) →
   // order without a second decrement. Returns whether an order was created.
   const autoCommentRef = useRef<(c: ProdComment, taken?: TakenPiece) => boolean>(() => false);
+  // Audit Oct 13 (2): Auto Mode comments held while the session board (re)loads; replayed
+  // through autoCommentRef once it is ready. Cleared when a new session starts / the platform changes.
+  const [deferredAuto] = useState(() => createDeferredAutoQueue<ProdComment>());
   const pinHandlerRef = useRef<(p: PinPayload) => void>(() => {}); // PIN-TO-PRINT seam (mirror kept fresh by an effect below)
   const autoCodesRef = useRef<AutoCode[]>([]);
   const productsGenRef = useRef(0);                              // stock_refresh_v2: bumped by every sign-in products load
@@ -724,6 +728,7 @@ export default function RedesignApp() {
     write: saveLiveSessionOrder,
     onExhausted: () => setOrderWriteErrs((c) => c + 1),
     drainSignal: liveFeed.ttConnected || liveFeed.fbConnected,
+    ownerId: auth.status === "authed" ? auth.profile?.authUserId ?? null : null, // Audit Oct 13 (5): items are tagged + drained per user
   });
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
   // builder + db writes; updates the live session optimistically. 5f: soft-block
@@ -1308,7 +1313,11 @@ export default function RedesignApp() {
   // server's session platform when known, else the platform being connected). Auto mode orders
   // only that platform's comments. null (no Connect yet) → no filter, as before.
   const sessionPlatformRef = useRef<string | null>(null);
-  const noteSessionPlatform = (p: string | null | undefined) => { sessionPlatformRef.current = p ? String(p) : null; };
+  const noteSessionPlatform = (p: string | null | undefined) => {
+    const next = p ? String(p) : null;
+    if (next !== sessionPlatformRef.current) deferredAuto.clear(); // platform switch → held comments are not for this session
+    sessionPlatformRef.current = next;
+  };
   // H4 — single start_session per confirm. A same-tick double-tap of "Switch" (before
   // setSwitchConfirm(null) unmounts the modal) must NOT fire two start_session → two
   // buyer# resets. Synchronous ref latch = the only reliable guard for a same-tick race.
@@ -1541,7 +1550,7 @@ export default function RedesignApp() {
         v2: featureSw.fbConnectV2,
         stopOld: () => stopOtherPlatforms(target.platform),
         start: () => sessionInstance.startSession(days, target.platform, true),
-        reset: () => liveSession.reset(),
+        reset: () => { deferredAuto.clear(); liveSession.reset(); },
         connect: () => { noteSessionPlatform(target.platform); runTargetConnect(target); },
         startFailed: () => setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }),
       });
@@ -1701,6 +1710,7 @@ export default function RedesignApp() {
     const sid = await sessionInstance.startSession(SESSION_V2_DAYS, platformOfPending(pending), false);
     if (sid === SESSION_SWITCH_NEEDED) { askSwitch(targetOfPending(pending), SESSION_V2_DAYS); return; }
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
+    deferredAuto.clear(); // new session → nothing held from the old one
     liveSession.reset();
     connectPending(pending);
   };
@@ -1711,6 +1721,7 @@ export default function RedesignApp() {
     setEndConfirm(false);
     const ok = await sessionInstance.endSession();
     if (!ok) { setToast({ msg: tApp.rd_os_end_failed, kind: "err" }); return; }
+    deferredAuto.clear();
     liveSession.reset();
     setToast({ msg: tApp.rd_os_ended, kind: "ok" });
   };
@@ -1728,6 +1739,7 @@ export default function RedesignApp() {
     // (empty → buyer# restarts at #1). The load effect re-runs on the sessionId
     // change; reset() clears the prior session's rows so the hydrate-on-empty
     // guard lets the fresh (empty) session load.
+    deferredAuto.clear(); // new session → nothing held from the old one
     liveSession.reset();
     connectPending(pending);
   };
@@ -2129,7 +2141,16 @@ export default function RedesignApp() {
     // gate on the IN-FLIGHT state (not orderedLoaded) so the no-Supabase / no-load case
     // isn't blocked forever; a failed/absent load falls back to the sync autoDupRef +
     // the DB unique index (the cross-device backstop).
-    if (liveSession.state === "loading") { log.info("[auto] skipped — session window loading", c.handle, c.comment); return false; }
+    // Audit Oct 13 (2): the board reloads on every return to the app and on reconnect —
+    // a comment arriving then is HELD (not dropped) and replayed through this same handler
+    // once the board is ready (effect below). The sold-out re-check path (taken) keeps the
+    // old skip: its caller gives the piece back.
+    if (liveSession.state === "loading" || !liveSession.canOrder()) {
+      if (taken) { log.info("[auto] skipped — session window loading", c.handle, c.comment); return false; }
+      if (deferredAuto.push(commentKey(c), c)) log.info("[auto] held — session window loading", c.handle, c.comment);
+      else log.info("[auto] not held (already held or queue full)", c.handle, c.comment);
+      return false;
+    }
     // I3 (codes-ready gate) — do NOT auto-process before the products auth-load has
     // resolved: autoCodesRef is still empty, so a real code comment would match
     // NOTHING (silent no-order, no badge). Skip + log (same style as the loading
@@ -2183,6 +2204,16 @@ export default function RedesignApp() {
     return !!order;
   };
 
+
+  // Audit Oct 13 (2): replay held Auto Mode comments once the board is ready (load landed and
+  // the order gate is open), in arrival order, through the SAME handler. A failed load keeps
+  // them for the next successful one.
+  useEffect(() => {
+    if (liveSession.state === "loading" || !liveSession.canOrder() || deferredAuto.size() === 0) return;
+    const held = deferredAuto.take();
+    log.info("[auto] replaying held comments", held.length);
+    for (const c of held) autoCommentRef.current(c);
+  }, [liveSession, deferredAuto]);
 
   // Persist appearance (redesign-namespaced keys; never touches existing keys).
   useEffect(() => { try { localStorage.setItem(LS.theme, theme); } catch { /* ignore */ } }, [theme]);
@@ -2443,7 +2474,13 @@ export default function RedesignApp() {
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
-              onLogout={() => { resetAnalytics(); void auth.signOut(); setScreen("login"); }}
+              onLogout={() => {
+                // Audit Oct 13 (5): a shared device keeps nothing of this shop for the next one.
+                const me = auth.profile?.authUserId;
+                outbox.dropOwner(me);
+                clearProductsCacheFor(me);
+                resetAnalytics(); void auth.signOut(); setScreen("login");
+              }}
               isAdmin={isAdmin}
               onParcelScan={parcelAllowed ? openParcelScan : undefined}
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}
@@ -2454,7 +2491,7 @@ export default function RedesignApp() {
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
-              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin)}
+              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios)}
             />
           )}
           {screen === "settings" && (

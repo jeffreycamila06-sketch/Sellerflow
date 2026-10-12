@@ -22,6 +22,11 @@ export function initAnalytics(): void {
     person_profiles: "identified_only",
     capture_pageview: true,
     capture_pageleave: true,
+    // Audit Oct 13 (6): no automatic capture of screen text / clicks / recordings — buyer
+    // names and phones are on screen. Only the explicit track() events are sent.
+    autocapture: false,
+    disable_session_recording: true,
+    mask_all_text: true,
   });
 }
 

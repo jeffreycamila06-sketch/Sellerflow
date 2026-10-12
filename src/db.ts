@@ -2,8 +2,23 @@ import { isSupabaseConfigured, supabase } from "./supabase";
 import { taipeiDayId } from "./lib/dateHelpers";
 import type { LiveSessionRow } from "./lib/orderLogic";
 import { log } from "./lib/log";
+import { NO_SESSION_ERROR } from "./lib/noSession";
 
 const ORDER_PLATFORMS = ["TikTok", "Facebook", "Shopee", "Instagram"]; // = sql/96 orders_platform_check
+
+// Audit Oct 13 (4): the signed-in user id from the LOCAL session (getSession reads
+// storage; getUser is a network call that returns null offline → the outbox used to
+// treat "Not authenticated" as terminal and delete the order). No session at all →
+// a NoSessionError: the outbox keeps it while offline, drops it only online + signed out.
+async function sessionUserId(): Promise<string | null> {
+  const { data } = await supabase!.auth.getSession();
+  return data.session?.user?.id || null;
+}
+function noSessionError(): Error {
+  const e = new Error("Not authenticated");
+  e.name = NO_SESSION_ERROR;
+  return e;
+}
 
 export async function saveOrderToDatabase(order: {
   customer_name: string;
@@ -19,10 +34,10 @@ export async function saveOrderToDatabase(order: {
     return { success: true, data: null, skipped: true };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const userId = await sessionUserId();
+  if (!userId) {
     log.error("Supabase save order error: no authenticated user");
-    return { success: false, error: new Error("Not authenticated") };
+    return { success: false, error: noSessionError() };
   }
 
   const { data, error } = await supabase
@@ -33,7 +48,7 @@ export async function saveOrderToDatabase(order: {
         product: order.product,
         total_amount: order.total_amount,
         status: order.status || "Pending",
-        user_id: user.id,
+        user_id: userId,
         ...(order.platform && ORDER_PLATFORMS.includes(order.platform) ? { platform: order.platform } : {}),
       },
     ])
@@ -174,17 +189,17 @@ export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
     return { success: true, data: null, skipped: true };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const userId = await sessionUserId();
+  if (!userId) {
     log.error("Supabase save live session order error: no authenticated user");
-    return { success: false, error: new Error("Not authenticated") };
+    return { success: false, error: noSessionError() };
   }
 
   const { data, error } = await supabase
     .from("live_session_orders")
     .insert([
       {
-        user_id: user.id,
+        user_id: userId,
         session_date: order.session_date || taipeiDayId(),
         buyer_number: order.buyer_number,
         handle: order.handle,

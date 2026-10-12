@@ -38,6 +38,8 @@ import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } 
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
+import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
+import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -151,7 +153,7 @@ function bearerToken(req) {
 }
 
 async function verifyToken(token) {
-  if (!sb || !token) return null;
+  if (!sb || typeof token !== "string" || !token) return null;
   const { data, error } = await sb.auth.getUser(token);
   return error ? null : data.user;
 }
@@ -223,16 +225,17 @@ async function requireAdmin(req, res, next) {
 //   * No hard-coded emails. No deny-list. Decisions come from the DB only.
 //
 // Every decision emits a single greppable log line:
-//   [PLAN_CHECK] ALLOW  email=... plan=... status=... expiry=...
-//   [PLAN_CHECK] BLOCK  email=... plan=... status=... expiry=... reason=...
-//   [PLAN_CHECK] ERROR  email=... err=... -> FAIL-OPEN (allowing)
-//   [PLAN_CHECK] (disabled) WOULD BLOCK email=... ... reason=...
+//   [PLAN_CHECK] ALLOW  seller=<id> plan=... status=... expiry=...
+//   [PLAN_CHECK] BLOCK  seller=<id> plan=... status=... expiry=... reason=...
+//   [PLAN_CHECK] ERROR  seller=<id> err=... -> FAIL-OPEN (allowing)
+//   [PLAN_CHECK] (disabled) WOULD BLOCK seller=<id> ... reason=...
+// (Audit Oct 13 item 9: the seller's auth id, never the email.)
 // ============================================================================
 
 const PLAN_ENFORCEMENT_ENABLED = true;
 
 async function checkPlanActive(email, authUserId, token) {
-  const ctx = `email=${email || "(unknown)"}`;
+  const ctx = `seller=${authUserId || "(unknown)"}`;
 
   if (!sb || !SUPABASE_URL || !SUPABASE_KEY) {
     console.log(`[PLAN_CHECK] ERROR ${ctx} err=no_supabase_client -> FAIL-OPEN (allowing)`);
@@ -350,7 +353,7 @@ function accountCapReject(req, platform, username, opts = {}) {
     refuseUnregistered: opts.refuseUnregistered === true,
   });
   if (v.allowed) return null;
-  console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} email=${req.userEmail} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
+  console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
   return {
     success: false,
     error: "account_limit",
@@ -395,7 +398,7 @@ function requireConnectRate(req, res, next) {
   const { allowed, kept } = checkConnectRate(connectAttempts.get(uid), Date.now());
   connectAttempts.set(uid, kept);
   if (!allowed) {
-    console.log(`[CONNECT-RATE] throttle seller=${req.sellerId} email=${req.userEmail} (${kept.length} attempts in ${CONNECT_RATE_WINDOW_MS / 1000}s)`);
+    console.log(`[CONNECT-RATE] throttle seller=${req.sellerId} (${kept.length} attempts in ${CONNECT_RATE_WINDOW_MS / 1000}s)`);
     return res.status(429).json({
       success: false,
       error: "too_many_requests",
@@ -676,8 +679,8 @@ async function disconnectTikTokConnection(key, { manual = false } = {}) {
   manualTikTokDisconnects.delete(key);
 }
 
-io.use(async (socket, next) => {
-  const token = socket.handshake.auth?.token || "";
+io.use(safeSocketMiddleware(async (socket, next) => {
+  const token = socketToken(socket);
   const user = await verifyToken(token);
   if (!user) return next(new Error("unauthorized"));
   socket.data.sellerId = String(user.id || ""); // H1 — UUID key, never the email
@@ -693,10 +696,11 @@ io.use(async (socket, next) => {
     return next(new Error(planResult.reason === "no_profile" ? "no_profile" : "plan_expired"));
   }
   next();
-});
+}));
 
 io.on("connection", (socket) => {
-  socket.on("join_live_room", ({ sessionId } = {}) => {
+  socket.on("join_live_room", safeSocketHandler("join_live_room", (p) => {
+    const sessionId = strField(p, "sessionId");
     const cleanId = socket.data.sellerId;
     if (!cleanId) return;
     socket.join(sellerRoom(cleanId));
@@ -736,7 +740,7 @@ io.on("connection", (socket) => {
     replayFbStatus(fbRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
     // Instagram pollers (server/igLive.js) — same replay; igRuntime is null while IG is off.
     replayIgStatus(igRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
-  });
+  }));
 
   // Per-socket comment scoping. The client tells the server which account it is
   // currently VIEWING per platform; the server then only forwards that account's
@@ -745,7 +749,9 @@ io.on("connection", (socket) => {
   // ⚠️ Backward-compat: a client that never emits select_account leaves
   // socket.data.selected undefined → emitCommentScoped treats it as "no selection"
   // → that socket receives ALL comments, exactly like before (production main).
-  socket.on("select_account", ({ platform, username } = {}) => {
+  socket.on("select_account", safeSocketHandler("select_account", (payload) => {
+    const platform = strField(payload, "platform");
+    const username = strField(payload, "username");
     if (!socket.data.selected) socket.data.selected = {};
     // Additive 3rd platform: "Shopee" is now an accepted scoping key (P2). Any
     // other value still coerces to "TikTok" (backward-compatible). This is the
@@ -755,7 +761,7 @@ io.on("connection", (socket) => {
     // "Instagram" (phase 1): its own key — only the IG runtime emits that platform.
     const p = ps === "Facebook" ? "Facebook" : ps === "Shopee" ? "Shopee" : ps === "Instagram" ? "Instagram" : "TikTok";
     socket.data.selected[p] = cleanAccountKey(username || "");
-  });
+  }));
 });
 
 
@@ -938,7 +944,7 @@ app.post("/myship/validate-gm", requireAuth, async (req, res) => {
     }).finally(() => clearTimeout(t));
     if (!r.ok) return res.json({ valid: false, error: `http_${r.status}` });
     const parsed = parseGmPage(await r.text(), gmId);
-    console.log(`[GM-VALIDATE] ${req.userEmail || req.sellerId} ${gmId} valid=${parsed.valid} shop=${parsed.shopName || "-"}`);
+    console.log(`[GM-VALIDATE] seller=${req.sellerId} ${gmId} valid=${parsed.valid} shop=${parsed.shopName || "-"}`);
     return res.json(parsed);
   } catch (e) {
     // Datacenter-IP block / timeout — expected-possible (unverified from Render
@@ -1145,27 +1151,31 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 // store-code check must work. This is a pure external 7-11 lookup — no auth.uid()
 // use, no per-user table, no credit — so any signed-in caller is safe (the AI
 // scan at /admin/parcel-scan stays requireAdmin). Path name kept for the client.
-// requirePlanActive is deliberately NOT added (it passes free too, so it buys
-// nothing here; free never reaches this screen client-side). Body is tiny
+// requirePlanActive was added by Audit Oct 13 item 12 (an expired seller is
+// refused; free still passes, as everywhere). Body is tiny
 // ({ storeId }), so the GLOBAL 100kb json parser applies (not the parcel-scan
 // skip). Best-effort: the core has its own ~5s timeout, returns "unknown" on fail.
-app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
+// Audit Oct 13 item 12: + requirePlanActive (an expired seller can't use it) and a per-seller
+// rate limit (EMAP_CHECK_MAX_PER_MIN) — every check comes from the shared server IP.
+const emapCheckAllowed = createWindowLimiter({ max: EMAP_CHECK_MAX_PER_MIN, windowMs: 60_000 });
+app.post("/admin/parcel-emap-check", requireAuth, requirePlanActive, async (req, res) => {
   const storeId = String((req.body && req.body.storeId) || "").trim();
   if (!/^\d{6}$/.test(storeId)) {
     return res.status(400).json({ success: false, error: "bad_store_id" });
   }
+  if (!emapCheckAllowed(req.sellerId)) {
+    return res.status(429).json({ success: false, error: "rate_limited", message: "Too many store checks. Please wait a minute and try again." });
+  }
+  const startedAt = Date.now();
   const result = await checkEmapStore(storeId);
   // ONE diagnostic line on EVERY check (server console ONLY, never the client):
   // which query variant ran, the verdict, and how many store nodes came back —
   // so scanning a known-valid code (982063) shows, per variant, whether real
   // store data returned (pois>=1). note flags an S1 not_found→unknown downgrade.
   console.log(`[EMAP_CHECK] variant=${result.variant} store=${storeId} result=${result.status} pois=${result.pois ?? 0}${result.note ? ` (${result.note})` : ""}`);
-  // RAW: the bounded response body (server console ONLY) — attached on every
-  // non-valid verdict AND on a valid verdict while the S1 gate is unconfirmed,
-  // so the owner can confirm the real XML shape before flipping
-  // EMAP_CHECK_CONFIRMED=true.
+  // RAW (Audit Oct 13 item 12): status + timing only — the response body is no longer logged.
   if (result.raw !== undefined) {
-    console.log(`[EMAP_CHECK] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
+    console.log(`[EMAP_CHECK] RAW status=${result.status} ms=${Date.now() - startedAt}`);
   }
   return res.json({ success: true, storeId: result.storeId, status: result.status, storeName: result.storeName, address: result.address });
 });
@@ -1469,12 +1479,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       }
     } catch { /* the diag must never affect the connection */ }
     if (msgType !== "WebcastRoomPinMessage") return;
-    try {
-      const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);
-      let raw = "";
-      try { raw = JSON.stringify(obj).slice(0, 2000); } catch { raw = "unstringifiable"; } // 2000: the 800 cap cut off action/isShowMsg
-      console.log(`[PIN-PROBE] ${cleanUsername} phase=${pinProbeConnected ? "live" : "initial"} owning=${owning} ${raw}`);
-    } catch { /* the probe must never affect the connection */ }
+    // (Audit Oct 13 item 9: the [PIN-PROBE] raw-JSON dump — buyer name/comment text — is removed.)
     // ── PIN-TO-PRINT Phase 2 relay (Option A: pin = 1-Click on the client) ──
     // Ordering is load-bearing: live-phase gate FIRST (pre-connect-buffer pins
     // are history — relaying them is the reconnect/print-every-10-min hazard),
@@ -1502,7 +1507,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
         roomId: state?.roomId || "",
       }));
       io.to(sellerRoom(sellerId)).emit("platform_pin", { ...payload, username: cleanUsername });
-      console.log(`[PIN-RELAY] ${cleanUsername} msgId=${chat.msgId} @${chat.handle} lagMs=${pinLagMs(obj) ?? "?"}`); // lagMs = TikTok pin-broadcast leg
+      console.log(`[PIN-RELAY] ${cleanUsername} msgId=${chat.msgId} lagMs=${pinLagMs(obj) ?? "?"}`); // lagMs = TikTok pin-broadcast leg
     } catch (e) {
       console.warn(`[PIN-RELAY] failed for ${cleanUsername} (connection unaffected):`, e?.message || e);
     }

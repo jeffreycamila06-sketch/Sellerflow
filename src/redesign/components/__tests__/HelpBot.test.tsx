@@ -60,6 +60,10 @@ describe("who sees the bubble", () => {
     expect(helpBotVisible(true, false, true)).toBe(true);
     expect(helpBotVisible(true, false, false)).toBe(false);
     expect(helpBotVisible(false, true, true)).toBe(false);
+    // Audit Oct 13 (7): iOS → no bubble (even admin + preview); Android/web → as today.
+    expect(helpBotVisible(true, true, true, true)).toBe(false);
+    expect(helpBotVisible(true, true, false, true)).toBe(false);
+    expect(helpBotVisible(true, true, false, false)).toBe(true);
   });
   it("the switch read fails closed", async () => {
     expect(await loadHelpBotSwitch()).toBe(false); // the mock has no table access → error → off

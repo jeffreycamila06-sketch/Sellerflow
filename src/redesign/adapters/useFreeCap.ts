@@ -85,7 +85,10 @@ export function useFreeCap(enabled: boolean, plan: string | undefined): UseFreeC
   const refresh = useCallback(async () => {
     if (!enabled || !isSupabaseConfigured || !supabase) { setFreeStatus(null); return; }
     try {
-      const { data } = await supabase.rpc("free_tier_status_for_user");
+      const { data, error } = await supabase.rpc("free_tier_status_for_user");
+      // Audit Oct 13 (8): an errored check keeps the previous status — only a successful
+      // answer may change freeCapped (an error used to set null = cap lifted).
+      if (error) { log.warn("free_tier_status_for_user failed:", error.message); return; }
       setFreeStatus((data as FreeStatus) || null);
     } catch (err) { log.warn("free_tier_status_for_user failed:", err); }
   }, [enabled]);

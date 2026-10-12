@@ -7,6 +7,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
+import { helpBotVisible } from "../../adapters/helpBot";
 import { TProvider } from "../../i18n";
 import Support from "../Support";
 import Admin from "../Admin";
@@ -90,5 +91,17 @@ describe("iOS gates pinned in RedesignApp source", () => {
   });
   it("gate 7 — Shipping upgrade prompt is withheld on iOS (onUpgrade undefined)", () => {
     expect(src).toContain("onUpgrade={ios ? undefined :");
+  });
+  it("gate 8 (Audit Oct 13 item 7) — the help bot bubble is never shown in the iOS app", () => {
+    expect(src).toContain('helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios)}');
+  });
+});
+
+// Audit Oct 13 item 7 — rendered: SettingsHub shows the bubble only when helpBot is true;
+// RedesignApp computes it with helpBotVisible(..., ios) → iOS false, Android/web as today.
+describe("help bot bubble per platform (Audit Oct 13 item 7)", () => {
+  it("iOS → hidden; Android/web → shown as today", () => {
+    expect(helpBotVisible(true, true, false, true)).toBe(false);  // iOS
+    expect(helpBotVisible(true, true, false, false)).toBe(true);  // Android / web
   });
 });
