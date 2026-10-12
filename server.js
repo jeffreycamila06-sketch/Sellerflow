@@ -38,6 +38,7 @@ import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } 
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
+import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -151,7 +152,7 @@ function bearerToken(req) {
 }
 
 async function verifyToken(token) {
-  if (!sb || !token) return null;
+  if (!sb || typeof token !== "string" || !token) return null;
   const { data, error } = await sb.auth.getUser(token);
   return error ? null : data.user;
 }
@@ -676,8 +677,8 @@ async function disconnectTikTokConnection(key, { manual = false } = {}) {
   manualTikTokDisconnects.delete(key);
 }
 
-io.use(async (socket, next) => {
-  const token = socket.handshake.auth?.token || "";
+io.use(safeSocketMiddleware(async (socket, next) => {
+  const token = socketToken(socket);
   const user = await verifyToken(token);
   if (!user) return next(new Error("unauthorized"));
   socket.data.sellerId = String(user.id || ""); // H1 — UUID key, never the email
@@ -693,10 +694,11 @@ io.use(async (socket, next) => {
     return next(new Error(planResult.reason === "no_profile" ? "no_profile" : "plan_expired"));
   }
   next();
-});
+}));
 
 io.on("connection", (socket) => {
-  socket.on("join_live_room", ({ sessionId } = {}) => {
+  socket.on("join_live_room", safeSocketHandler("join_live_room", (p) => {
+    const sessionId = strField(p, "sessionId");
     const cleanId = socket.data.sellerId;
     if (!cleanId) return;
     socket.join(sellerRoom(cleanId));
@@ -736,7 +738,7 @@ io.on("connection", (socket) => {
     replayFbStatus(fbRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
     // Instagram pollers (server/igLive.js) — same replay; igRuntime is null while IG is off.
     replayIgStatus(igRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
-  });
+  }));
 
   // Per-socket comment scoping. The client tells the server which account it is
   // currently VIEWING per platform; the server then only forwards that account's
@@ -745,7 +747,9 @@ io.on("connection", (socket) => {
   // ⚠️ Backward-compat: a client that never emits select_account leaves
   // socket.data.selected undefined → emitCommentScoped treats it as "no selection"
   // → that socket receives ALL comments, exactly like before (production main).
-  socket.on("select_account", ({ platform, username } = {}) => {
+  socket.on("select_account", safeSocketHandler("select_account", (payload) => {
+    const platform = strField(payload, "platform");
+    const username = strField(payload, "username");
     if (!socket.data.selected) socket.data.selected = {};
     // Additive 3rd platform: "Shopee" is now an accepted scoping key (P2). Any
     // other value still coerces to "TikTok" (backward-compatible). This is the
@@ -755,7 +759,7 @@ io.on("connection", (socket) => {
     // "Instagram" (phase 1): its own key — only the IG runtime emits that platform.
     const p = ps === "Facebook" ? "Facebook" : ps === "Shopee" ? "Shopee" : ps === "Instagram" ? "Instagram" : "TikTok";
     socket.data.selected[p] = cleanAccountKey(username || "");
-  });
+  }));
 });
 
 
