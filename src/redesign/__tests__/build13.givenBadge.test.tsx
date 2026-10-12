@@ -49,7 +49,7 @@ vi.mock("../adapters/useLiveSession", async (orig) => ({
   ...(await orig() as object),
   useLiveSession: () => ({
     session: { buyers: [], orders: [] }, state: "empty", loadError: false, dayId: "2026-10-09",
-    getBuyers: () => [], applyOrder: () => {}, reset: () => {}, orderedMsgIds: new Map(), orderedLoaded: true, addOrderedMsgId: () => {},
+    getBuyers: () => [], applyOrder: () => {}, reset: () => {}, orderedMsgIds: new Map(), orderedLoaded: true, addOrderedMsgId: () => {}, canOrder: () => true,
   }),
 }));
 vi.mock("../adapters/featureSwitches", async (orig) => {
