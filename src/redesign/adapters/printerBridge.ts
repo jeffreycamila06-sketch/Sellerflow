@@ -14,7 +14,7 @@ import type { Buyer } from "../../lib/orderTypes";
 export interface MobilePrinterDevice { id: string; type: "bluetooth" | "lan"; name: string; address?: string; host?: string; port?: number; paired?: boolean; online?: boolean; signal?: number; distance?: string; hint?: string }
 export interface MobilePrinterResult { ok?: boolean; message?: string; online?: boolean; host?: string; port?: number; savedPrinter?: MobilePrinterDevice | null; printers?: MobilePrinterDevice[] }
 export interface PrinterLanConfig { host: string; port?: number }
-export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number; transport?: "ble" | "spp" }
+export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number; transport?: "ble" | "spp"; model?: "D520BT" | "generic"; likely?: boolean }
 export interface BluetoothScanResult { ok?: boolean; message?: string; printers?: BluetoothPrinterDevice[]; savedPrinter?: BluetoothPrinterDevice | null }
 export interface StickerPrintResult { ok?: boolean; message?: string }
 
@@ -24,7 +24,7 @@ export type LanBridgeAction = "scanPrinters" | "printerStatus" | "testPrint" | "
 // print-probe harness that used it was removed pre-merge; the native method
 // stays for future diagnostics). Both route through the SAME native BLE/SPP
 // transport as testStickerPrint; the TEXT path (printStickerNative) is unaffected.
-export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative" | "printStickerBitmap" | "printRawTspl";
+export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative" | "printStickerBitmap" | "printRawTspl" | "testGenericPrinter";
 
 export const hasNativePrinter = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter;
 export const hasBtBridge = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
@@ -89,6 +89,38 @@ export async function btCallOutcome(action: BtBridgeAction, arg?: unknown): Prom
   } catch (err) {
     const e = (err && typeof err === "object" ? err : {}) as { code?: unknown; message?: unknown };
     return { ok: false, code: typeof e.code === "string" ? e.code : "", message: typeof e.message === "string" ? e.message : "" };
+  }
+}
+
+// ── Generic BLE label printers (Phase 1, test-gated) ─────────────────────────
+// Shown only to admins and accounts on the "test_printers" list, and only on an app
+// build that has the native testGenericPrinter method (older apps and iOS: hidden).
+export const hasGenericPrinterBridge = (): boolean =>
+  typeof window !== "undefined" && typeof (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.testGenericPrinter === "function";
+export const testPrintersEnabled = (isAdmin: boolean, listed: boolean): boolean => isAdmin || listed;
+
+// A scan row the seller must test before saving: a BLE printer that is not a D520BT.
+export const isGenericRow = (p: BluetoothPrinterDevice): boolean => p.model === "generic" && p.transport === "ble";
+// "Printers" section: likely printers, D520BTs and already-paired devices; the rest only after "show all".
+export const isPrinterRow = (p: BluetoothPrinterDevice): boolean => p.likely === true || p.model === "D520BT" || !!p.paired;
+
+export interface GenericPrintResult { ok: boolean; code: string; confirmed: boolean; statusHex: string; service: string; characteristic: string }
+// Admin-only line after a generic print. Printer data only.
+export function genericDebugLine(r: Pick<GenericPrintResult, "confirmed" | "service" | "characteristic" | "statusHex">): string {
+  return `confirmed: ${r.confirmed ? "yes" : "no"} · via ${r.service || "?"}/${r.characteristic || "?"} · status: ${r.statusHex || "none"}`;
+}
+
+export async function testGenericPrinter(address: string, payload: unknown): Promise<GenericPrintResult> {
+  const fail = (code: string): GenericPrintResult => ({ ok: false, code, confirmed: false, statusHex: "", service: "", characteristic: "" });
+  const fn = typeof window !== "undefined" ? (window.SellerFlowPrinter as Record<string, ((a?: unknown) => Promise<unknown>) | undefined> | undefined)?.testGenericPrinter : undefined;
+  if (typeof fn !== "function") return fail("");
+  try {
+    const raw = (await fn({ address, payload })) as Record<string, unknown> | null;
+    const str = (v: unknown) => (typeof v === "string" ? v : "");
+    return { ok: raw?.ok === true, code: "", confirmed: raw?.confirmed === true, statusHex: str(raw?.statusHex), service: str(raw?.service), characteristic: str(raw?.characteristic) };
+  } catch (err) {
+    const code = err && typeof err === "object" && typeof (err as { code?: unknown }).code === "string" ? (err as { code: string }).code : "";
+    return fail(code);
   }
 }
 

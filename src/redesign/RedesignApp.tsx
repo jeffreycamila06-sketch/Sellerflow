@@ -110,7 +110,7 @@ import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePr
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
-import { hasBtBridge, hasNativePrinter, buildTestBuyer } from "./adapters/printerBridge";
+import { hasBtBridge, hasNativePrinter, buildTestBuyer, testPrintersEnabled } from "./adapters/printerBridge";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, type Platform, ttDisconnect } from "./adapters/connect";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
@@ -2546,6 +2546,8 @@ export default function RedesignApp() {
               stickerQrAllowed={stickerQrAllowed}
               stickerQrMoved={stickerV2On}
               testComment={stickerV2On ? PREVIEW_COMMENT : undefined}
+              testPrinters={testPrintersEnabled(isAdmin, hasFeature("test_printers"))}
+              isAdmin={isAdmin}
             />
           )}
           {screen === "printpattern" && (

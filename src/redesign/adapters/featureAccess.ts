@@ -14,6 +14,7 @@ export const FEATURE_KEYS = [
   "support_ai_preview", // help bot preview (sql/116)
   "parcel_cap_70", // one seller's bigger Parcel Scan batch (sql/117)
   "fm_pickup", // 全家 rows in Pickup Status before the switch is on (sql/119)
+  "test_printers", // generic BLE label printers in the printer picker (sql/123)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

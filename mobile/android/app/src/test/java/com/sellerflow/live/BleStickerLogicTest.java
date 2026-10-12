@@ -3,9 +3,12 @@ package com.sellerflow.live;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.junit.Test;
@@ -94,5 +97,91 @@ public class BleStickerLogicTest {
         assertEquals(180, parts.get(0).length);
         assertEquals(180, parts.get(1).length);
         assertEquals(40, parts.get(2).length);
+    }
+
+    // ── Generic BLE printers (Phase 1) ──────────────────────────────────────
+
+    private static final int W = BleStickerLogic.PROP_WRITE;
+    private static final int WNR = BleStickerLogic.PROP_WRITE_NO_RESPONSE;
+    private static final int N = BleStickerLogic.PROP_NOTIFY;
+    private static final String BASE = "-0000-1000-8000-00805f9b34fb";
+    private static String u16(String s) { return "0000" + s.toLowerCase() + BASE; }
+    private static BleStickerLogic.Chr chr(String uuid, int props) { return new BleStickerLogic.Chr(uuid, props); }
+    private static BleStickerLogic.Svc svc(String uuid, BleStickerLogic.Chr... cs) { return new BleStickerLogic.Svc(uuid, new ArrayList<>(Arrays.asList(cs))); }
+
+    @Test
+    public void isLikelyPrinter_byServiceOnly() {
+        assertTrue(BleStickerLogic.isLikelyPrinter(Arrays.asList("FEE7", "18F0")));              // Y41BT
+        assertTrue(BleStickerLogic.isLikelyPrinter(Arrays.asList(u16("FEE7"), u16("18F0"))));    // full-128 form
+        assertTrue(BleStickerLogic.isLikelyPrinter(Collections.singletonList("AF30")));          // D520BT
+        assertTrue(BleStickerLogic.isLikelyPrinter(Collections.singletonList("49535343-fe7d-4ae5-8fa9-9fafd205e455")));
+        assertFalse(BleStickerLogic.isLikelyPrinter(Collections.emptyList()));
+        assertFalse(BleStickerLogic.isLikelyPrinter(Collections.singletonList("180D")));         // heart rate
+        assertFalse(BleStickerLogic.isLikelyPrinter(null));
+    }
+
+    @Test
+    public void pickWriteTarget_y41btLayout_ff00ff02_withBothNotifies() {
+        List<BleStickerLogic.Svc> y41 = Arrays.asList(
+            svc(u16("1800"), chr(u16("2A00"), W)),
+            svc(u16("FF00"), chr(u16("FF02"), W | WNR), chr(u16("FF01"), N), chr(u16("FF03"), N)),
+            svc(u16("FF10"), chr(u16("FF11"), W)),
+            svc(u16("FF80"), chr(u16("FF82"), WNR)),
+            svc(u16("FFF0"), chr(u16("FFF2"), W)),
+            svc("49535343-fe7d-4ae5-8fa9-9fafd205e455", chr("49535343-8841-43f4-a8d4-ecbe34729bb3", W)));
+        BleStickerLogic.WriteTarget t = BleStickerLogic.pickWriteTarget(y41);
+        assertEquals("FF00", t.service);
+        assertEquals("FF02", t.writeChar);
+        assertEquals(Arrays.asList("FF01", "FF03"), t.notifyChars);
+        assertTrue(t.writeNoResponse());
+    }
+
+    @Test
+    public void pickWriteTarget_only18f0() {
+        BleStickerLogic.WriteTarget t = BleStickerLogic.pickWriteTarget(Collections.singletonList(
+            svc(u16("18F0"), chr(u16("2AF0"), N), chr(u16("2AF1"), W))));
+        assertEquals("18F0", t.service);
+        assertEquals("2AF1", t.writeChar);
+        assertEquals(Collections.singletonList("2AF0"), t.notifyChars);
+        assertFalse(t.writeNoResponse());
+    }
+
+    @Test
+    public void pickWriteTarget_heartRateOnly_null() {
+        assertNull(BleStickerLogic.pickWriteTarget(Collections.singletonList(
+            svc(u16("180D"), chr(u16("2A37"), N), chr(u16("2A38"), 0x02)))));
+        assertNull(BleStickerLogic.pickWriteTarget(Collections.emptyList()));
+        assertNull(BleStickerLogic.pickWriteTarget(null));
+    }
+
+    @Test
+    public void pickWriteTarget_never1800or1801() {
+        // Only Generic Access / Generic Attribute are writable → nothing to pick.
+        assertNull(BleStickerLogic.pickWriteTarget(Arrays.asList(
+            svc(u16("1800"), chr(u16("2A00"), W)),
+            svc(u16("1801"), chr(u16("2A05"), W | N)))));
+        // With another writable service, that one wins even though 1800 comes first.
+        BleStickerLogic.WriteTarget t = BleStickerLogic.pickWriteTarget(Arrays.asList(
+            svc(u16("1800"), chr(u16("2A00"), W)),
+            svc("12345678-1234-1234-1234-1234567890ab", chr("aaaaaaaa-1234-1234-1234-1234567890ab", WNR))));
+        assertEquals("12345678-1234-1234-1234-1234567890AB", t.service);
+        assertEquals("AAAAAAAA-1234-1234-1234-1234567890AB", t.writeChar);
+    }
+
+    @Test
+    public void pickWriteTarget_preferredCharMustBeWritable() {
+        // FF00 present but FF02 not writable → next preference (FFF0/FFF2).
+        BleStickerLogic.WriteTarget t = BleStickerLogic.pickWriteTarget(Arrays.asList(
+            svc(u16("FF00"), chr(u16("FF02"), N)),
+            svc(u16("FFF0"), chr(u16("FFF2"), W))));
+        assertEquals("FFF0", t.service);
+        assertEquals("FFF2", t.writeChar);
+    }
+
+    @Test
+    public void toHexCapped_capsLength() {
+        assertEquals("53532F", BleStickerLogic.toHexCapped(new byte[] {0x53, 0x53, 0x2F}, 256));
+        assertEquals(256, BleStickerLogic.toHexCapped(new byte[400], 256).length());
+        assertEquals("", BleStickerLogic.toHexCapped(null, 256));
     }
 }

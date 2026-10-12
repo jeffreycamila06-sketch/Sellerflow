@@ -44,6 +44,9 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // (Classic RFCOMM). ABSENT → "spp" so every printer saved before this build
     // keeps using the unchanged Classic path (no migration).
     private static final String PREF_BT_TRANSPORT = "bt_label_transport";
+    // Phase 1 generic BLE printer: "generic" only when the seller saved a non-D520BT
+    // BLE printer through the test-gated flow. ABSENT → the unchanged D520BT path.
+    private static final String PREF_BT_MODEL = "bt_label_model";
     private static final int DEFAULT_PORT = 9100;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     // Receipt printer (XP-N160II) resident character set is Big5 (Traditional
@@ -88,6 +91,42 @@ public class SellerFlowPrinterPlugin extends Plugin {
     private synchronized BleStickerTransport ble() {
         if (bleTransport == null) bleTransport = new BleStickerTransport(getContext());
         return bleTransport;
+    }
+
+    // Generic BLE label printer transport (Phase 1, test-gated) — separate from ble()
+    // so the D520BT path is untouched.
+    private GenericBleTransport genericTransport;
+    private synchronized GenericBleTransport generic() {
+        if (genericTransport == null) genericTransport = new GenericBleTransport(getContext());
+        return genericTransport;
+    }
+
+    private boolean isGenericSaved() {
+        return "ble".equals(prefs().getString(PREF_BT_TRANSPORT, "spp"))
+            && "generic".equals(prefs().getString(PREF_BT_MODEL, ""));
+    }
+
+    /** Send ready TSPL bytes to a generic BLE printer and resolve with the printer's answer. */
+    private void printGeneric(PluginCall call, byte[] tspl, String address, String what) {
+        generic().printJob(tspl, address, r -> {
+            if (r.error != null) {
+                Log.e(TAG, what + " (generic) failed: " + r.error.code + " " + r.error.message);
+                call.reject("BT_NOT_SUPPORTED".equals(r.error.code) ? r.error.message : "Bluetooth print failed: " + r.error.message, r.error.code);
+                return;
+            }
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            ret.put("bytes", tspl.length);
+            ret.put("model", "generic");
+            ret.put("confirmed", r.confirmed);
+            ret.put("statusHex", r.statusHex);
+            ret.put("service", r.service);
+            ret.put("characteristic", r.characteristic);
+            ret.put("chunks", r.chunks);
+            ret.put("mtu", r.mtu);
+            ret.put("message", "Sent to printer");
+            call.resolve(ret);
+        });
     }
 
     @PluginMethod
@@ -225,17 +264,26 @@ public class SellerFlowPrinterPlugin extends Plugin {
         } catch (Exception e) {
             Log.w(TAG, "scanBluetoothLabelPrinters bonded read failed: " + e.getMessage());
         }
+        // Phase 1 options (old web never sends them → both false → unchanged rows).
+        final boolean includeGeneric = Boolean.TRUE.equals(call.getBoolean("includeGenericPrinters", false));
+        final boolean showAll = Boolean.TRUE.equals(call.getBoolean("showAllDevices", false));
+        final boolean tagRows = includeGeneric || showAll;
         // 2) Fresh BLE scan (unpaired — no system pairing), tagged "ble". Merge on
         // the transport's completion; dedup by MAC with BLE preferred (the whole
         // point: pick the no-pairing entry). If BOTH lists are empty, keep the
         // Settings-pairing guidance so a Classic-only printer still has a path.
-        ble().scan(4500, (printers, error) -> {
+        ble().scan(4500, includeGeneric, showAll, (printers, error) -> {
             try {
                 JSONArray merged = new JSONArray();
                 Map<String, Boolean> bleSeen = new HashMap<>();
                 if (printers != null) {
                     for (BleStickerTransport.Discovered p : printers) {
-                        merged.put(bluetoothScanJson(p.address, p.name, "ble", p.rssi));
+                        JSONObject row = bluetoothScanJson(p.address, p.name, "ble", p.rssi);
+                        if (tagRows) {
+                            row.put("model", p.target ? "D520BT" : "generic");
+                            row.put("likely", p.likely);
+                        }
+                        merged.put(row);
                         if (p.address != null) bleSeen.put(p.address.toUpperCase(Locale.US), true);
                     }
                 }
@@ -244,6 +292,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
                     if (d == null) continue;
                     String a = d.optString("address", "").toUpperCase(Locale.US);
                     if (bleSeen.containsKey(a)) continue; // BLE-preferred on MAC clash
+                    if (tagRows) {
+                        boolean target = BleStickerLogic.isTargetPrinter(d.optString("name", ""), null);
+                        d.put("model", target ? "D520BT" : "generic");
+                        d.put("likely", target);
+                    }
                     merged.put(d);
                 }
                 JSObject ret = new JSObject();
@@ -282,11 +335,16 @@ public class SellerFlowPrinterPlugin extends Plugin {
         // "ble" for a BLE-discovered printer, else "spp". Anything unrecognized
         // (or absent — iOS/old web) falls back to "spp" = the unchanged path.
         String transport = "ble".equals(call.getString("transport", "")) ? "ble" : "spp";
-        prefs().edit()
+        // Generic only for a BLE printer saved through the test-gated flow; anything
+        // else (D520BT, SPP, old web without the field) clears it → D520BT path.
+        boolean genericModel = "ble".equals(transport) && "generic".equals(call.getString("model", ""));
+        android.content.SharedPreferences.Editor edit = prefs().edit()
             .putString(PREF_BT_ADDR, address.trim())
             .putString(PREF_BT_NAME, name == null ? "" : name.trim())
-            .putString(PREF_BT_TRANSPORT, transport)
-            .apply();
+            .putString(PREF_BT_TRANSPORT, transport);
+        if (genericModel) edit.putString(PREF_BT_MODEL, "generic");
+        else edit.remove(PREF_BT_MODEL);
+        edit.apply();
         JSObject ret = new JSObject();
         ret.put("ok", true);
         ret.put("savedPrinter", savedBluetoothPrinter());
@@ -297,7 +355,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
     @PluginMethod
     public void clearBluetoothLabelPrinter(PluginCall call) {
-        prefs().edit().remove(PREF_BT_ADDR).remove(PREF_BT_NAME).remove(PREF_BT_TRANSPORT).apply();
+        prefs().edit().remove(PREF_BT_ADDR).remove(PREF_BT_NAME).remove(PREF_BT_TRANSPORT).remove(PREF_BT_MODEL).apply();
         JSObject ret = new JSObject();
         ret.put("ok", true);
         ret.put("savedPrinter", JSObject.NULL);
@@ -331,6 +389,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
         }
         final JSObject jsPayload = call.getData();
         final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
+        final boolean generic = isGenericSaved();
         executor.execute(() -> {
             try {
                 JSONObject payload = jsPayload == null
@@ -343,6 +402,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 // IDENTICAL bytes for both transports — TsplBuilder is the single
                 // source; only the wire (BLE GATT vs Classic SPP) differs.
                 byte[] tspl = TsplBuilder.forStickerNative(payload, labelWidthMm, labelHeightMm);
+                if (generic) { printGeneric(call, tspl, address, "printStickerNative"); return; }
                 if ("ble".equals(transport)) {
                     ble().printJob(tspl, address, err -> {
                         if (err == null) {
@@ -395,9 +455,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
         }
         String storeName = call.getString("storeName", "SellerFlowLive");
         final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
+        final boolean generic = isGenericSaved();
         executor.execute(() -> {
             try {
                 byte[] tspl = TsplBuilder.textTestPage(storeName, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
+                if (generic) { printGeneric(call, tspl, address, "testStickerPrint"); return; }
                 if ("ble".equals(transport)) {
                     ble().printJob(tspl, address, err -> {
                         if (err == null) {
@@ -463,8 +525,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
             return;
         }
         final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
+        final boolean generic = isGenericSaved();
         executor.execute(() -> {
             try {
+                if (generic) { printGeneric(call, tspl, address, "printStickerBitmap"); return; }
                 if ("ble".equals(transport)) {
                     ble().printJob(tspl, address, err -> {
                         if (err == null) {
@@ -541,8 +605,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
             return;
         }
         final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
+        final boolean generic = isGenericSaved();
         executor.execute(() -> {
             try {
+                if (generic) { printGeneric(call, tspl, address, "printRawTspl"); return; }
                 if ("ble".equals(transport)) {
                     ble().printJob(tspl, address, err -> {
                         if (err == null) {
@@ -569,6 +635,39 @@ public class SellerFlowPrinterPlugin extends Plugin {
             } catch (Exception e) {
                 Log.e(TAG, "printRawTspl failed", e);
                 call.reject("Probe print failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
+            }
+        });
+    }
+
+    /**
+     * Phase 1 (test-gated web flow): print ONE sample sticker to a generic BLE printer
+     * the seller has NOT saved yet, so they can confirm it prints correctly before
+     * saving. Params: address, payload (the web's test sticker payload, with
+     * labelWidthMm/labelHeightMm from the seller's sticker size). Saves nothing.
+     */
+    @PluginMethod
+    public void testGenericPrinter(PluginCall call) {
+        String address = call.getString("address", "");
+        if (address == null || address.trim().isEmpty()) {
+            call.reject("Bluetooth address is required", "BT_ADDR_REQUIRED");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then tap Test print again.", "BT_PERMISSION");
+            return;
+        }
+        final JSObject jsPayload = call.getObject("payload", new JSObject());
+        final String addr = address.trim();
+        executor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject(jsPayload == null ? "{}" : jsPayload.toString());
+                byte[] tspl = TsplBuilder.forStickerNative(payload,
+                    payload.optInt("labelWidthMm", LABEL_WIDTH_MM), payload.optInt("labelHeightMm", LABEL_HEIGHT_MM));
+                printGeneric(call, tspl, addr, "testGenericPrinter");
+            } catch (Exception e) {
+                Log.e(TAG, "testGenericPrinter failed", e);
+                call.reject("Test print failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
             }
         });
     }
@@ -600,6 +699,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
         p.put("name", name == null || name.isEmpty() ? "Bluetooth printer" : name);
         p.put("paired", true);
         p.put("transport", prefs().getString(PREF_BT_TRANSPORT, "spp"));
+        if (isGenericSaved()) p.put("model", "generic");
         return p;
     }
 
