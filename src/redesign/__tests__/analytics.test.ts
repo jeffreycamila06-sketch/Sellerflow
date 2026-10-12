@@ -59,6 +59,8 @@ describe("analytics — when VITE_PUBLIC_POSTHOG_KEY is set", () => {
     expect(reset).toHaveBeenCalledTimes(1);
     initAnalytics();
     expect(init).toHaveBeenCalledTimes(1);
+    // Audit Oct 13 (6): no autocapture / recording / screen text — buyer data stays out of PostHog.
+    expect(init.mock.calls[0][1]).toMatchObject({ autocapture: false, disable_session_recording: true, mask_all_text: true });
     expect(init).toHaveBeenCalledWith("phc_test", expect.objectContaining({
       person_profiles: "identified_only", capture_pageview: true, capture_pageleave: true,
     }));
