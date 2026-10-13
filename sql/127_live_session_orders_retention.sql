@@ -10,7 +10,12 @@
 --       recent OTHER sessions (ranked by the session's latest created_at).
 -- Rows with a null session_id (legacy) follow (a) only. So nobody keeps less than today, and a
 -- multi-day seller keeps up to 7 finished sessions + the current one; the oldest goes only after
--- the 8th session is finished (and is older than 10 days). public.orders is NOT touched.
+-- the 8th session is finished (and is older than 10 days).
+-- ABSOLUTE CAP: any row with session_date < Taipei today − 40 is deleted whatever its session
+-- (the current one included) — a seller who stops selling does not keep rows forever. 40 > 10,
+-- so this only ever deletes rows today's rule would delete too. public.orders is NOT touched.
+-- Also adds idx_lso_user_session_created (user_id, session_id, created_at) for the per-session
+-- grouping here and in my_session_summaries() (sql/128). idx_lso_user_session is kept.
 -- The function runs as its owner (postgres, BYPASSRLS) from pg_cron, like the old command.
 begin;
 set local lock_timeout = '5s';
@@ -23,6 +28,7 @@ set search_path to 'public'
 as $function$
 declare
   v_cut date := (now() at time zone 'Asia/Taipei')::date - 10;
+  v_cap date := (now() at time zone 'Asia/Taipei')::date - 40;
   v_n   integer;
 begin
   with sessions as (                       -- each seller's sessions, newest activity first
@@ -45,12 +51,16 @@ begin
   delete from public.live_session_orders l
    where l.session_date < v_cut
      and (l.session_id is null
+          or l.session_date < v_cap
           or not exists (select 1 from keep k where k.user_id = l.user_id and k.session_id = l.session_id));
   get diagnostics v_n = row_count;
   return v_n;
 end;
 $function$;
 revoke all on function public.purge_live_session_orders() from public, anon, authenticated;
+
+create index if not exists idx_lso_user_session_created
+  on public.live_session_orders (user_id, session_id, created_at);
 
 -- Same job name → cron.schedule UPDATES the existing job in place (same jobid, same time).
 select cron.schedule(

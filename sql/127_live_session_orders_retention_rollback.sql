@@ -1,5 +1,5 @@
 -- Rollback of 127 — the cron job back to the sql/44 command (verbatim: plain 10-day purge,
--- fleet-wide) and the function dropped.
+-- fleet-wide), the function dropped and the index dropped (idx_lso_user_session stays).
 begin;
 set local lock_timeout = '5s';
 
@@ -11,5 +11,6 @@ select cron.schedule(
 );
 
 drop function public.purge_live_session_orders();
+drop index public.idx_lso_user_session_created;
 
 commit;

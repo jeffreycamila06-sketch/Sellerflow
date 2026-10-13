@@ -1,5 +1,6 @@
 // Runs sql/127 (+ its rollback) on a real Postgres (PGlite, WASM): live_session_orders retention =
-// never less than today's 10-day rule, and up to 7 finished sessions + the current one are kept.
+// never less than today's 10-day rule, up to 7 finished sessions + the current one are kept, and
+// nothing older than 40 days survives (absolute cap, current session included).
 // pg_cron is stubbed (cron.job + cron.schedule upsert by name, like pg_cron ≥ 1.3).
 // Not part of CI (PGlite is not a dependency). Run from a scratch folder:
 //   mkdir /tmp/pg127 && cd /tmp/pg127 && npm i @electric-sql/pglite@0.2.17
@@ -60,7 +61,15 @@ await db.exec(`insert into live_session_orders(user_id, session_id, session_date
 await session(6, 1, 3, 0);
 await db.exec(`insert into seller_session_config values ('${uid(6)}', null)`);
 
+// G — inactive seller: the "current" session has rows from 45 to 35 days ago (nothing since).
+await session(7, 1, 45, 35);
+await db.exec(`insert into seller_session_config values ('${uid(7)}', '${sid(7, 1)}')`);
+// H — sparse seller: finished sessions 50, 45 and 30 days old + today's current.
+await session(8, 1, 50, 50); await session(8, 2, 45, 45); await session(8, 3, 30, 30); await session(8, 4, 0, 0);
+await db.exec(`insert into seller_session_config values ('${uid(8)}', '${sid(8, 4)}')`);
+
 const beforeF = await count(`user_id = '${uid(6)}'`);
+const oldRule = await count(`session_date < ${today} - 10`); // what the sql/44 rule would delete now
 await db.exec(readFileSync(up, "utf8"));
 const job = (await db.query("select schedule, command from cron.job where jobname = 'purge-old-live-session-orders'")).rows;
 ok(job.length === 1 && job[0].schedule === "0 17 * * *" && job[0].command === "select public.purge_live_session_orders()", "the existing job now calls the function, same time, no duplicate");
@@ -83,7 +92,18 @@ ok((await has(4, 1)) === 6, "the current session is never deleted, even 25–30 
 ok((await count(`user_id = '${uid(5)}'`)) === 2 && (await count(`user_id = '${uid(5)}' and session_date < ${today} - 10`)) === 0, "legacy (null session_id) rows: today's 10-day rule only");
 // F: untouched.
 ok((await count(`user_id = '${uid(6)}'`)) === beforeF, "another seller with only recent rows is untouched");
-ok(deleted === 3 + 5 + 1 + 1, `deleted count = A 3 + B 5 + C 1 + E 1 (${deleted})`);
+// G: the 40-day cap applies to the current session too: rows 41–45 days old go, 35–40 stay.
+ok((await count(`user_id = '${uid(7)}' and session_date < ${today} - 40`)) === 0, "inactive seller: current-session rows older than 40 days are deleted");
+ok((await has(7, 1)) === 6, "inactive seller: current-session rows 35–40 days old are kept");
+// H: finished sessions inside the 7 but older than 40 days go; the 30-day one stays.
+ok((await has(8, 1)) === 0 && (await has(8, 2)) === 0, "finished sessions older than 40 days are deleted even inside the 7");
+ok((await has(8, 3)) === 1 && (await has(8, 4)) === 1, "…the 30-day-old finished session and the current one are kept");
+// Nothing older than 40 days is left anywhere; and only rows the old 10-day rule would delete went.
+ok((await count(`session_date < ${today} - 40`)) === 0, "no row older than 40 days survives");
+ok(deleted <= oldRule, `deleted (${deleted}) ≤ what the old 10-day rule deletes (${oldRule})`);
+ok(deleted === 3 + 5 + 1 + 1 + 5 + 2, `deleted count = A 3 + B 5 + C 1 + E 1 + G 5 + H 2 (${deleted})`);
+const idx = (await db.query("select indexdef from pg_indexes where indexname = 'idx_lso_user_session_created'")).rows;
+ok(idx.length === 1 && /\(user_id, session_id, created_at\)/.test(idx[0].indexdef), "index idx_lso_user_session_created (user_id, session_id, created_at) exists");
 
 // A second run deletes nothing more.
 ok((await db.query("select public.purge_live_session_orders() n")).rows[0].n === 0, "idempotent: a second run deletes nothing");
@@ -93,6 +113,7 @@ await db.exec(readFileSync(down, "utf8"));
 const back = (await db.query("select schedule, command from cron.job where jobname = 'purge-old-live-session-orders'")).rows;
 ok(back.length === 1 && back[0].schedule === "0 17 * * *" && back[0].command === oldCmd, "rollback restores the old cron command verbatim");
 ok((await db.query("select count(*)::int n from pg_proc where proname = 'purge_live_session_orders'")).rows[0].n === 0, "rollback drops the function");
+ok((await db.query("select count(*)::int n from pg_indexes where indexname = 'idx_lso_user_session_created'")).rows[0].n === 0, "rollback drops the index");
 
 console.log(`pass=${pass} fail=${fail}`);
 process.exit(fail ? 1 : 0);
