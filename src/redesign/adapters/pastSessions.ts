@@ -1,6 +1,8 @@
-// Past sessions for the Orders buyer-# card (Send to TikTok testers: admin OR "tiktok_send").
+// Past sessions in Orders (Send to TikTok testers: admin OR "tiktok_send", switch on).
 // READ-ONLY and SEPARATE STATE: these rows never reach liveSession, buyer numbering, Auto
-// Mode, printing, Sales or shipping — they only feed the numeric buyer-# card in Orders.
+// Mode, Sales or shipping. They feed only the Orders screen's past-session view: the order
+// list, the buyer-# card + Send, Export, and Reprint (which prints the STORED row, found by its
+// own id — RedesignApp's zero-write performReprint).
 // Loaded lazily: the session list (one small RPC, my_session_summaries — sql/128) EACH time the
 // picker opens, one session's rows when picked. The RPC filters on auth.uid() and the session
 // read is RLS + user_id scoped, so every read is the signed-in seller's own rows.
@@ -86,21 +88,28 @@ async function loadSummaries(currentId: string | null): Promise<SessionSummary[]
   }
 }
 
+/** A stored live_session_orders row with its own database id. */
+export type PastRow = LiveSessionRow & { id?: number | null };
 /** One past session, read-only: its buyers + order list rebuilt exactly like the live board
- *  (rebuildSessionFromRows), and the STORED rows by orderNum for Reprint. */
-export interface PastSessionData { buyers: Buyer[]; orders: Order[]; rows: Map<number, LiveSessionRow> }
-export function pastSessionFromRows(rows: LiveSessionRow[]): PastSessionData {
+ *  (rebuildSessionFromRows), and the STORED rows by their own id for Reprint. Each order
+ *  carries rowId = the id of the row it was rebuilt from (rebuild makes one order per row, in
+ *  row order; liveOrdersToRedesign lists them newest first). Never keyed by time: two rows can
+ *  share a created_at millisecond. */
+export interface PastSessionData { buyers: Buyer[]; orders: Order[]; rows: Map<number, PastRow> }
+export function pastSessionFromRows(rows: PastRow[]): PastSessionData {
   const rebuilt = rebuildSessionFromRows(rows);
-  const byNum = new Map<number, LiveSessionRow>();
-  for (const r of rows) {
-    const t = r.created_at ? Date.parse(r.created_at) : NaN;
-    if (Number.isFinite(t)) byNum.set(t, r); // orderNum derivation mirrors rebuildSessionFromRows
-  }
-  return { buyers: rebuilt.buyers, orders: liveOrdersToRedesign(rebuilt), rows: byNum };
+  const byId = new Map<number, PastRow>();
+  for (const r of rows) if (typeof r.id === "number" && Number.isFinite(r.id)) byId.set(r.id, r);
+  const listed = liveOrdersToRedesign(rebuilt); // newest first = rows reversed
+  const n = rows.length;
+  const orders = listed.length === n
+    ? listed.map((o, k) => { const id = rows[n - 1 - k].id; return typeof id === "number" ? { ...o, rowId: id } : o; })
+    : listed; // never expected; without rowId the row simply has no Reprint
+  return { buyers: rebuilt.buyers, orders, rows: byId };
 }
 export async function loadPastSession(sessionId: string): Promise<PastSessionData | null> {
-  const rows = await loadLiveSessionBySessionId(sessionId, true);
-  return rows === null ? null : pastSessionFromRows(rows);
+  const rows = await loadLiveSessionBySessionId(sessionId, true, true);
+  return rows === null ? null : pastSessionFromRows(rows as PastRow[]);
 }
 const EMPTY: PastSessionData = { buyers: [], orders: [], rows: new Map() };
 
@@ -138,9 +147,9 @@ export function usePastSessions(enabled: boolean, currentId: string | null) {
     if (d === null) setBuyersState("error"); else { setData(d); setBuyersState("ready"); }
   }, []);
 
-  // Reprint source in a past session: ONLY the stored row of that order (its own buyer # and
-  // item) — never anything looked up from the live session.
-  const rowFor = useCallback((orderNum: number | undefined): LiveSessionRow | null => (orderNum == null ? null : data.rows.get(orderNum) ?? null), [data]);
+  // Reprint source in a past session: ONLY the stored row with that id (its own buyer # and
+  // item) — never anything looked up from the live session or by time.
+  const rowFor = useCallback((rowId: number | undefined): PastRow | null => (rowId == null ? null : data.rows.get(rowId) ?? null), [data]);
 
   return { list, listState, ensureList, selected: enabled ? selected : null, buyers: data.buyers, orders: data.orders, rowFor, buyersState, pick };
 }

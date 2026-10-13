@@ -52,8 +52,9 @@ const mk = (num: number, handle: string, name: string, items: [string, number][]
 });
 const ANN = mk(3, "@ann", "Ann", [["A1 dress", 350], ["B2 top", 280]]);
 const BEA = mk(3, "@bea", "Bea", [["C3 skirt", 120]]);
-const row = (sid: string, day: string, n: number, handle: string, name: string, product: string, price: number) =>
-  ({ session_id: sid, session_date: day, created_at: `${day}T05:00:00.000Z`, buyer_number: n, handle, customer_name: name, platform: "TikTok", product, price, qty: 1, comment_msg_id: null, auto_code: null });
+let nextRowId = 1000;
+const row = (sid: string, day: string, n: number, handle: string, name: string, product: string, price: number, id: number | null = nextRowId++) =>
+  ({ id, session_id: sid, session_date: day, created_at: `${day}T05:00:00.000Z`, buyer_number: n, handle, customer_name: name, platform: "TikTok", product, price, qty: 1, comment_msg_id: null, auto_code: null });
 const sum = (session_id: string, first_day: string, last_day: string, orders: number) => ({ session_id, first_day, last_day, orders, latest: `${last_day}T05:00:00.000Z` });
 
 const q = (sel: string) => document.querySelector(`[data-testid='${sel}']`) as HTMLElement | null;
@@ -323,6 +324,7 @@ describe("10 — one 🗓 menu: This session + past sessions (tiktokSend only)",
     render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[nowOrder]} state="live" buyers={[now]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" onReprintRow={onReprintRow} onReprintOrder={onReprintOrder} /></TProvider>);
     await pickSession(0);
     fireEvent.click(document.querySelector("[aria-label='Reprint']")!);
+    fireEvent.click(q("reprint-old-ok")!);
     expect(onReprintOrder).not.toHaveBeenCalled();
     expect(onReprintRow).toHaveBeenCalledTimes(1);
     const stored = onReprintRow.mock.calls[0][0];
@@ -346,6 +348,7 @@ describe("10 — one 🗓 menu: This session + past sessions (tiktokSend only)",
     const r = render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" paidFlag onReprintRow={vi.fn()} /></TProvider>);
     await pickSession(0);
     fireEvent.click(document.querySelector("[aria-label='Reprint']")!);
+    fireEvent.click(q("reprint-old-ok")!);
     fireEvent.change(r.container.querySelectorAll("input")[0], { target: { value: "2" } });
     fireEvent.click(q("tt-send-btn")!);
     fireEvent.click(q("tts-old-yes")!);
@@ -366,5 +369,140 @@ describe("10 — one 🗓 menu: This session + past sessions (tiktokSend only)",
     expect(q("ord-past-banner")).toBeNull();
     expect(q("ord-range")!.textContent).toBe("🗓 This session ▾");
     expect(r.container.innerHTML).toBe(before);
+  });
+});
+
+describe("11 — fix round 3", () => {
+  const renderWith = (props: Record<string, unknown> = {}, buyers: Buyer[] = [ANN]) =>
+    render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={buyers} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" {...props} /></TProvider>);
+  const reprintBtns = () => Array.from(document.querySelectorAll("[aria-label='Reprint']")) as HTMLElement[];
+  const rowsDrawn = () => document.querySelectorAll("[data-testid='ord-row-foot']").length;
+
+  it("A1 — two rows with the SAME created_at ms: each Reprint prints its own row (looked up by id)", async () => {
+    const same = "2026-10-09T05:00:00.123Z";
+    const mkRow = (id: number, n: number, handle: string, product: string) => ({ ...row("old", "2026-10-09", n, handle, handle, product, 100, id), created_at: same });
+    for (const pickIdx of [0, 1]) {
+      S.bySession.old = [mkRow(11, 3, "@aa", "ITEM-A"), mkRow(12, 4, "@bb", "ITEM-B")];
+      const onReprintRow = vi.fn();
+      const r = renderWith({ onReprintRow });
+      await pickSession(0);
+      const btns = reprintBtns();
+      expect(btns).toHaveLength(2);
+      // the list is newest first: index 0 = row 12, index 1 = row 11
+      fireEvent.click(btns[pickIdx]);
+      fireEvent.click(q("reprint-old-ok")!);
+      const stored = onReprintRow.mock.calls[0][0];
+      expect(stored.id).toBe(pickIdx === 0 ? 12 : 11);
+      expect(reprintBuyer(stored)!.num).toBe(pickIdx === 0 ? 4 : 3);
+      expect(reprintBuyer(stored)!.orders[0].item).toBe(pickIdx === 0 ? "ITEM-B" : "ITEM-A");
+      r.unmount();
+    }
+  });
+
+  it("B1 — one confirm per past session; Cancel prints nothing; current session never asks", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onReprintRow = vi.fn(), onReprintOrder = vi.fn();
+      renderWith({ onReprintRow, onReprintOrder });
+      fireEvent.click(reprintBtns()[0]);                   // current session: prints directly
+      expect(q("reprint-old-confirm")).toBeNull();
+      expect(onReprintOrder).toHaveBeenCalledTimes(1);
+      await act(async () => { vi.advanceTimersByTime(2100); });
+      await pickSession(0);
+      fireEvent.click(reprintBtns()[0]);
+      expect(q("reprint-old-confirm")!.textContent).toContain("Reprint an OLD order?");
+      expect(q("reprint-old-confirm")!.textContent).toContain("This order is from Past session · 10/08 → 10/10. The sticker will show today's date.");
+      fireEvent.click(q("reprint-old-cancel")!);
+      expect(onReprintRow).not.toHaveBeenCalled();
+      fireEvent.click(reprintBtns()[0]);                   // still asks after a Cancel
+      fireEvent.click(q("reprint-old-ok")!);
+      expect(onReprintRow).toHaveBeenCalledTimes(1);
+      await act(async () => { vi.advanceTimersByTime(2100); });
+      fireEvent.click(reprintBtns()[1]);                   // same past session: prints directly
+      expect(q("reprint-old-confirm")).toBeNull();
+      expect(onReprintRow).toHaveBeenCalledTimes(2);
+      await act(async () => { vi.advanceTimersByTime(2100); });
+      await pickSession(1);                                // another past session → asks again
+      fireEvent.click(reprintBtns()[0]);
+      expect(q("reprint-old-confirm")).not.toBeNull();
+      expect(onReprintRow).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("B1 — the fil wording", async () => {
+    render(<TProvider lang="fil"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[]} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" onReprintRow={vi.fn()} /></TProvider>);
+    await pickSession(0);
+    fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("↻"))!);
+    const box = q("reprint-old-confirm")!.textContent || "";
+    expect(box).toContain("I-reprint ang LUMANG order?");
+    expect(box).toContain("Galing ang order na ito sa Past session · 10/08 → 10/10. Petsa ngayon ang lalabas sa sticker.");
+    expect(box).toContain("Cancel");
+    expect(box).toContain("I-reprint");
+  });
+
+  it("A5 — a past row with no stored id has no Reprint button", async () => {
+    S.bySession.old = [row("old", "2026-10-08", 1, "@a", "A", "P1", 10, null), row("old", "2026-10-09", 2, "@b", "B", "P2", 20, 77)];
+    renderWith({ onReprintRow: vi.fn() });
+    await pickSession(0);
+    expect(rowsDrawn()).toBe(2);
+    expect(reprintBtns()).toHaveLength(1);
+  });
+
+  it("A8 — past-session export title is 'Past session · {range}'; current export title unchanged", async () => {
+    renderWith();
+    fireEvent.click(q("orders-export")!);
+    await act(async () => { fireEvent.click(q("orders-export-xlsx")!); });
+    expect((exported.last as unknown as { title: string }).title).toBe("Orders");
+    await pickSession(0);
+    fireEvent.click(q("orders-export")!);
+    await act(async () => { fireEvent.click(q("orders-export-pdf")!); });
+    expect((exported.last as unknown as { title: string }).title).toBe("Past session · 10/08 → 10/10");
+  });
+
+  it("A11 — past mode draws 150 rows + Show more; search / Export use every row", async () => {
+    S.bySession.old = Array.from({ length: 320 }, (_, i) => ({ ...row("old", "2026-10-09", i + 1, `@h${i}`, `Buyer${i}`, `ITEM${i}`, 10), created_at: new Date(Date.UTC(2026, 9, 9, 5, 0, i)).toISOString() }));
+    const r = renderWith();
+    await pickSession(0);
+    expect(rowsDrawn()).toBe(150);
+    expect(q("ord-past-more")!.textContent).toBe("Show more (150 of 170 left)");
+    fireEvent.click(q("orders-export")!);
+    await act(async () => { fireEvent.click(q("orders-export-xlsx")!); });
+    expect(exported.last!.rows).toHaveLength(320);
+    fireEvent.click(q("ord-past-more")!);
+    expect(rowsDrawn()).toBe(300);
+    fireEvent.click(q("ord-past-more")!);
+    expect(rowsDrawn()).toBe(320);
+    expect(q("ord-past-more")).toBeNull();
+    fireEvent.click(q("ord-range")!);                    // another session resets the page
+    await settle();
+    fireEvent.click(qa("ord-session-item")[0]);
+    await settle();
+    expect(rowsDrawn()).toBe(150);
+    fireEvent.change(r.container.querySelectorAll("input")[0], { target: { value: "ITEM5" } }); // the oldest row (ITEM5) is beyond the first 150
+    expect(r.container.textContent).toContain("ITEM5");
+  });
+
+  it("A11 — the current session is not capped", () => {
+    const many = Array.from({ length: 160 }, (_, i) => ({ ...todayOrder, id: `#${i}`, orderNum: ON + i })) as Order[];
+    render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={many} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" /></TProvider>);
+    expect(rowsDrawn()).toBe(160);
+    expect(q("ord-past-more")).toBeNull();
+  });
+
+  it("A9 — tiktokSend turning on after Today was picked → back to This session", () => {
+    const view = (on: boolean) => <TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend={on} sellerId="me" /></TProvider>;
+    const r = render(view(false));
+    fireEvent.click(q("ord-range")!);
+    fireEvent.click(q("ord-range-today")!);
+    expect(q("ord-range")!.textContent).toBe("🗓 Today ▾");
+    r.rerender(view(true));
+    expect(q("ord-range")!.textContent).toBe("🗓 This session ▾");
+  });
+
+  it("A13 — no 'Print slip' tooltip on past rows (current rows keep it)", async () => {
+    renderWith();
+    expect(document.querySelector("[title='Print slip']")).not.toBeNull();
+    await pickSession(0);
+    expect(document.querySelector("[title='Print slip']")).toBeNull();
   });
 });

@@ -42,6 +42,7 @@ const menuItem = (on: boolean): CSSProperties => ({ display: "block", width: "10
 const menuNote: CSSProperties = { padding: "9px 14px", fontSize: 12, color: "var(--text-muted)" };
 const rangeBtn: CSSProperties = { fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.14)", color: "var(--on-header)" };
 const rangeMenu: CSSProperties = { position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 41, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 11, boxShadow: "0 12px 32px rgba(0,0,0,.28)", overflow: "hidden", minWidth: 168 };
+const PAST_PAGE = 150; // past-session list: rows drawn per page ("Show more" adds the next 150)
 const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" };
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping, shippingSoon = false,
@@ -93,12 +94,20 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // A hidden Facebook pill can never stay selected (an admin switching "View as platform").
   const platformFilter: PlatformFilter = hideFbPill && platformFilterRaw === "Facebook" ? "all" : platformFilterRaw;
   const [range, setRange] = useState<DateRange>("session");                    // F4 (default = today's behavior)
+  // Send to TikTok testers only have "This session" + past sessions: if the switch/feature turns
+  // on after another range was picked, go back to This session.
+  if (tiktokSend && range !== "session") setRange("session");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [rangeOpen, setRangeOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [receiptSheetOpen, setReceiptSheetOpen] = useState(false);
   const [ttSendOpen, setTtSendOpen] = useState(false);
+  // Past-session Reprint: one confirm per past session (cleared by picking another session or
+  // leaving Orders), and a 150-row page with "Show more" (search / filters / Export use all rows).
+  const [reprintOkFor, setReprintOkFor] = useState<string | null>(null);
+  const [reprintAsk, setReprintAsk] = useState<Order | null>(null);
+  const [pastLimit, setPastLimit] = useState<{ id: string; n: number } | null>(null);
   const live = state === "live";
   const paid = usePaidFlags(paidFlag, orders);
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -114,6 +123,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // numeric buyer-# card — read-only, separate state (pastSessions.ts). null = Current.
   const past = usePastSessions(tiktokSend, sessionId);
   const pastSel = past.selected;
+  const pastShow = pastSel && pastLimit?.id === pastSel.id ? pastLimit.n : PAST_PAGE;
   const receiptBuyers = pastSel ? past.buyers : buyers;
   const numeric = /^\d+$/.test(trimmed);
   const matches = numeric ? buyerReceipts(receiptBuyers, Number(trimmed)) : [];
@@ -208,21 +218,42 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
       { label: t.rd_ord_sum_aov, value: `${cur}${fmt(s.aov)}` },
     ];
     const file = pastSel ? `sellerflow-orders-session-${pastSel.first}_${pastSel.last}` : `sellerflow-orders-${dayStamp()}`;
-    return { title: t.rd_ord_title, seller, columns, rows, summary: smry, filename: file };
+    return { title: pastSel ? tpl(t.rd_psn_btn, { range: sessionRange(pastSel) }) : t.rd_ord_title, seller, columns, rows, summary: smry, filename: file };
   };
   const doExportXlsx = () => { setExportOpen(false); void exportBrandedXlsx(buildExport()).catch(() => { /* export chunk failed */ }); };
   const doExportPdf = () => { setExportOpen(false); exportBrandedPdf(buildExport()); };
+  // Reprint key: the order's time for the current session (as before); the stored row id in a
+  // past session (two rows can share a millisecond there).
+  const reprintKeyOf = (o: Order) => (pastSel ? `r${o.rowId}` : `${o.orderNum ?? o.id}`);
   const reprint = (o: Order) => {
-    const key = `${o.orderNum ?? o.id}`;
+    const key = reprintKeyOf(o);
     if (reprintingKey) return; // global 2s cooldown — mirrors the Dashboard ↻ (BLE-protective)
-    setReprintingKey(key);
-    if (pastSel) { const r = past.rowFor(o.orderNum); if (r) onReprintRow?.(r); } // stored row only
-    else onReprintOrder?.(o);
+    if (pastSel) {
+      const r = past.rowFor(o.rowId);                     // the STORED row, by its own id
+      if (!r) return;
+      if (reprintOkFor !== pastSel.id) { setReprintAsk(o); return; } // once per past session
+      setReprintingKey(key);
+      onReprintRow?.(r);
+    } else {
+      setReprintingKey(key);
+      onReprintOrder?.(o);
+    }
+    setTimeout(() => setReprintingKey(""), 2000);
+  };
+  const confirmOldReprint = () => {
+    const o = reprintAsk;
+    setReprintAsk(null);
+    if (!o || !pastSel) return;
+    setReprintOkFor(pastSel.id);
+    const r = past.rowFor(o.rowId);
+    if (!r || reprintingKey) return;
+    setReprintingKey(reprintKeyOf(o));
+    onReprintRow?.(r);
     setTimeout(() => setReprintingKey(""), 2000);
   };
 
   const row = (o: Order, idx: number, hist: boolean) => (
-    <div key={`${hist ? "h" : "w"}-${o.orderNum ?? o.id}-${idx}`} onClick={pastSel ? undefined : onGoPrint} title={t.rd_ord_print_slip} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)", cursor: pastSel ? "default" : "pointer" }}>
+    <div key={`${hist ? "h" : "w"}-${o.orderNum ?? o.id}-${idx}`} onClick={pastSel ? undefined : onGoPrint} title={pastSel ? undefined : t.rd_ord_print_slip} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)", cursor: pastSel ? "default" : "pointer" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
         <div style={{ width: 40, height: 40, borderRadius: 12, background: avColor(o.buyer), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(o.buyer)}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -253,13 +284,13 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             (resolveReprintRow → performReprint = printSlip only); available on
             every result row that carries an orderNum. stopPropagation so the
             row's go-to-Print onClick never co-fires. */}
-        {(pastSel ? onReprintRow : onReprintOrder) && o.orderNum != null && (
+        {(pastSel ? !!onReprintRow && !!past.rowFor(o.rowId) : onReprintOrder && o.orderNum != null) && (
           <button
             onClick={(e) => { e.stopPropagation(); reprint(o); }}
             disabled={!!reprintingKey}
             title={t.rd_dash_reprint_title} aria-label={t.rd_dash_reprint}
-            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 800, color: "var(--ok)", background: "transparent", border: "1.5px solid var(--ok)", padding: "4px 10px", borderRadius: 8, cursor: reprintingKey ? "default" : "pointer", opacity: reprintingKey && reprintingKey !== `${o.orderNum}` ? 0.55 : 1, fontFamily: "var(--font-ui)" }}>
-            ↻ {reprintingKey === `${o.orderNum}` ? t.rd_dash_reprinting : t.rd_dash_reprint}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 800, color: "var(--ok)", background: "transparent", border: "1.5px solid var(--ok)", padding: "4px 10px", borderRadius: 8, cursor: reprintingKey ? "default" : "pointer", opacity: reprintingKey && reprintingKey !== (pastSel ? reprintKeyOf(o) : `${o.orderNum}`) ? 0.55 : 1, fontFamily: "var(--font-ui)" }}>
+            ↻ {reprintingKey === (pastSel ? reprintKeyOf(o) : `${o.orderNum}`) ? t.rd_dash_reprinting : t.rd_dash_reprint}
           </button>
         )}
         {paidUi && paidControls(o)}
@@ -366,7 +397,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
                     {past.listState === "error" && <div style={{ ...menuNote, color: "var(--danger)" }}>{t.rd_psn_failed}</div>}
                     {past.listState === "ready" && past.list.filter((x) => !x.current).length === 0 && <div style={menuNote}>{t.rd_psn_none}</div>}
                     {past.list.filter((x) => !x.current).map((x) => (
-                      <button key={x.id} role="menuitem" data-testid="ord-session-item" onClick={() => { setRangeOpen(false); setRange("session"); pickDup(null); void past.pick(x); }} style={menuItem(pastSel?.id === x.id)}>
+                      <button key={x.id} role="menuitem" data-testid="ord-session-item" onClick={() => { setRangeOpen(false); setRange("session"); setPastLimit(null); pickDup(null); void past.pick(x); }} style={menuItem(pastSel?.id === x.id)}>
                         {sessionLabel(x)}
                         {mayBeIncomplete(x) && <span data-testid="ord-session-incomplete" style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#b45309", marginTop: 2 }}>{t.rd_psn_incomplete}</span>}
                       </button>
@@ -393,6 +424,18 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </div>
         )}
       </div>
+      {pastSel && reprintAsk && (
+        <div data-testid="reprint-old-overlay" onClick={() => setReprintAsk(null)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div role="dialog" aria-label={t.rd_rpo_title} data-testid="reprint-old-confirm" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 340, background: "var(--surface)", borderRadius: 16, padding: "18px 18px 14px", boxShadow: "0 18px 48px rgba(0,0,0,.35)" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>{t.rd_rpo_title}</div>
+            <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.45 }}>{tpl(t.rd_rpo_body, { range: sessionRange(pastSel) })}</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button type="button" data-testid="reprint-old-cancel" onClick={() => setReprintAsk(null)} style={{ flex: 1, padding: "10px 0", borderRadius: 11, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rpo_cancel}</button>
+              <button type="button" data-testid="reprint-old-ok" onClick={confirmOldReprint} style={{ flex: 1, padding: "10px 0", borderRadius: 11, border: "none", background: "#b45309", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rpo_ok}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {pastSel && (
         <div data-testid="ord-past-banner" style={{ background: "#fef3c7", color: "#92400e", borderBottom: "1px solid #f59e0b", padding: "9px 16px", fontSize: 13, fontWeight: 800 }}>
           {tpl(t.rd_psn_banner, { range: sessionRange(pastSel) })}
@@ -499,7 +542,13 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <>
             {past.buyersState === "loading" && <div style={noteStyle}>{t.rd_psn_buyers_loading}</div>}
             {past.buyersState === "error" && <div role="alert" style={{ ...noteStyle, color: "var(--danger)" }}>{t.rd_psn_failed}</div>}
-            {shown.map((o, idx) => row(o, idx, false))}
+            {shown.slice(0, pastShow).map((o, idx) => row(o, idx, false))}
+            {shown.length > pastShow && (
+              <button type="button" data-testid="ord-past-more" onClick={() => setPastLimit({ id: pastSel.id, n: pastShow + PAST_PAGE })}
+                style={{ padding: "10px 0", borderRadius: 11, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                {tpl(t.rd_psn_more, { n: Math.min(PAST_PAGE, shown.length - pastShow), left: shown.length - pastShow })}
+              </button>
+            )}
             {past.buyersState === "ready" && shown.length === 0 && <div data-testid="ord-past-empty" style={noteStyle}>{t.rd_ord_no_match}</div>}
           </>
         ) : (
