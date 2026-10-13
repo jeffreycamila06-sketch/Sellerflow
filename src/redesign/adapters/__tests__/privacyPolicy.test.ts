@@ -27,7 +27,7 @@ describe("public privacy pages", () => {
   });
 
   it("states the retention the database enforces", () => {
-    expect(privacy).toContain("Live comments: 10 days. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account, which you can do anytime in the app.");
+    expect(privacy).toContain("Live comments: kept for 10 days, or your last 7 sessions if longer. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account, which you can do anytime in the app.");
   });
 
   it("terms (Oct 9, 2026, Build 10): disconnecting deletes the access we kept — in seller words", () => {

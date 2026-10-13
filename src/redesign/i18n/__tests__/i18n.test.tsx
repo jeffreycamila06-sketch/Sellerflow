@@ -72,7 +72,7 @@ describe("Legal screen keys (Step 3) — behavior identical for en", () => {
     expect(t.lg_contact_pre).toBe("Questions? Reach us on Telegram ");
     expect(t.lg_contact_post).toBe(" or email jeffreycamila06@gmail.com.");
     expect(t.lg_collect_p).toContain("comment on your live session");
-    expect(t.lg_keep_p).toBe("Live comments: 10 days. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account. The buyer's Messenger contact: 90 days. Waiting list: 10 days."); // Build 8 (+ Build 10b wording)
+    expect(t.lg_keep_p).toBe("Live comments: kept for 10 days, or your last 7 sessions if longer. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account. The buyer's Messenger contact: 90 days. Waiting list: 10 days."); // Build 8 (+ Build 10b wording)
     expect(t.lg_rights_p).toContain("takes effect immediately");
   });
   it("zh-tw resolves the legal keys — non-empty, not falling back blank", () => {
