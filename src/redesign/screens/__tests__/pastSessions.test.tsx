@@ -92,25 +92,26 @@ describe("buildSessionIndex (pure)", () => {
 });
 
 describe("the picker", () => {
-  it("ungated → no picker, no reads", async () => {
+  it("ungated → no past sessions in the menu, no reads", async () => {
     renderOrders(false);
+    fireEvent.click(q("ord-range")!);
     await settle();
-    expect(q("ord-session-btn")).toBeNull();
+    expect(q("ord-past-heading")).toBeNull();
     expect(S.calls).toEqual([]);
   });
-  it("gated → 'Session: Current'; opening lists the past sessions (newest first, current not repeated)", async () => {
+  it("gated → the 🗓 menu lists the past sessions (newest first, current not repeated)", async () => {
     renderOrders(true);
-    expect(q("ord-session-btn")!.textContent).toContain("Session: Current");
-    expect(S.calls).toEqual([]);                           // nothing read until the picker opens
-    fireEvent.click(q("ord-session-btn")!);
+    expect(q("ord-range")!.textContent).toContain("This session");
+    expect(S.calls).toEqual([]);                           // nothing read until the menu opens
+    fireEvent.click(q("ord-range")!);
     await settle();
     const items = qa("ord-session-item").map((e) => e.textContent);
-    expect(items).toEqual(["3 days · 10/08 → 10/10 · 2 orders", "1 day · 10/01 · 1 ordersMay be incomplete — older days were removed"]);
+    expect(items).toEqual(["Past session · 10/08 → 10/10 · 3 days", "Past session · 10/01 · 1 dayMay be incomplete — older days were removed"]);
     expect(S.calls.map((c) => c.table)).toEqual(["rpc:my_session_summaries"]); // one small call, no row paging
   });
   it("past session: buyer #1 is THAT session's #1 (not today's), labelled with the session; Send carries the range + x3", async () => {
     const r = renderOrders(true);
-    fireEvent.click(q("ord-session-btn")!);
+    fireEvent.click(q("ord-range")!);
     await settle();
     fireEvent.click(qa("ord-session-item")[0]);
     await settle();
@@ -132,20 +133,20 @@ describe("the picker", () => {
     const r = renderOrders(true);
     r.type("1");
     const original = q("buyer-receipt")!.outerHTML;
-    fireEvent.click(q("ord-session-btn")!);
+    fireEvent.click(q("ord-range")!);
     await settle();
     fireEvent.click(qa("ord-session-item")[0]);
     await settle();
     expect(q("buyer-receipt")!.textContent).toContain("Old Buyer");
-    fireEvent.click(q("ord-session-btn")!);
-    fireEvent.click(q("ord-session-current")!);
+    fireEvent.click(q("ord-range")!);
+    fireEvent.click(q("ord-range-session")!);
     await settle();
     expect(q("buyer-receipt")!.outerHTML).toBe(original);
     expect(q("receipt-session")).toBeNull();
   });
   it("read-only: the summaries RPC + selects on live_session_orders only (no insert / update / upsert / delete)", async () => {
     const r = renderOrders(true);
-    fireEvent.click(q("ord-session-btn")!);
+    fireEvent.click(q("ord-range")!);
     await settle();
     fireEvent.click(qa("ord-session-item")[1]);
     await settle();

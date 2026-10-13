@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, act } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 
-const S = vi.hoisted(() => ({ rpcCalls: 0, bySession: {} as Record<string, unknown[]>, summaries: [] as unknown[] }));
+const S = vi.hoisted(() => ({ rpcCalls: 0, bySession: {} as Record<string, unknown[]>, summaries: [] as unknown[], writes: [] as string[] }));
 function builder() {
   const filters: Record<string, unknown> = {};
   const q = {
@@ -14,6 +14,10 @@ function builder() {
     not: () => q,
     order: () => q,
     range: async () => ({ data: S.bySession[String(filters.session_id)] || [], error: null }),
+    insert: () => { S.writes.push("insert"); return q; },
+    update: () => { S.writes.push("update"); return q; },
+    upsert: () => { S.writes.push("upsert"); return q; },
+    delete: () => { S.writes.push("delete"); return q; },
   };
   return q;
 }
@@ -24,11 +28,18 @@ vi.mock("../../../supabase", () => ({
 vi.mock("../../../db", () => ({ saveOrderToDatabase: vi.fn(), saveLiveSessionOrder: vi.fn(), saveCustomerToDatabase: vi.fn() }));
 const copyText = vi.hoisted(() => vi.fn(async (_s: string) => true));
 vi.mock("../../components/inviteShare", async (orig) => ({ ...(await orig<object>()), copyText }));
+// Paid flags: every order "has a row" so Mark paid would show wherever paid UI is allowed.
+const setPaid = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("../../adapters/ordersPaid", async (orig) => ({ ...(await orig<object>()), usePaidFlags: (on: boolean) => ({ map: on ? { get: () => ({ id: 1, paidAt: null, createdAt: "2026-10-14T00:00:00Z" }) } : new Map(), setPaid }) }));
+const exported = vi.hoisted(() => ({ last: null as null | { rows: unknown[][]; filename: string } }));
+vi.mock("../../adapters/brandedExport", async (orig) => ({ ...(await orig<object>()), exportBrandedXlsx: async (i: { rows: unknown[][]; filename: string }) => { exported.last = i; }, exportBrandedPdf: (i: { rows: unknown[][]; filename: string }) => { exported.last = i; } }));
 
 import { TProvider } from "../../i18n";
 import Orders from "../Orders";
 import { tiktokSendAllowed, priceInput, sumLines, messageTotal, buildSendMessage, currentSessionDate, type SendLine } from "../../adapters/tiktokSend";
 import { buyerReceipt, buyerReceipts } from "../../adapters/useReadData";
+import { reprintBuyer } from "../../adapters/reprint";
+import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase } from "../../../db";
 import { mayBeIncomplete, RETENTION_V2_SINCE } from "../../adapters/pastSessions";
 import { parseSwitches, FEATURE_SWITCH_KEYS } from "../../adapters/featureSwitches";
 import type { Buyer } from "../../../lib/orderTypes";
@@ -56,14 +67,14 @@ const renderOrders = (buyers: Buyer[], extra: Record<string, unknown> = {}) => {
   return { ...r, type: (v: string) => fireEvent.change(search, { target: { value: v } }) };
 };
 const pickSession = async (idx: number) => {
-  fireEvent.click(q("ord-session-btn")!);
+  fireEvent.click(q("ord-range")!);
   await settle();
   fireEvent.click(qa("ord-session-item")[idx]);
   await settle();
 };
 
 beforeEach(() => {
-  vi.clearAllMocks(); localStorage.clear(); S.rpcCalls = 0;
+  vi.clearAllMocks(); localStorage.clear(); S.rpcCalls = 0; S.writes = []; exported.last = null;
   S.summaries = [sum("old", "2026-10-08", "2026-10-10", 3), sum("older", "2026-09-28", "2026-09-30", 1)];
   S.bySession = {
     old: [row("old", "2026-10-08", 1, "@oldann", "Old Ann", "P1", 200), row("old", "2026-10-09", 1, "@oldbea", "Old Bea", "P2", 90), row("old", "2026-10-10", 2, "@x", "X", "P3", 50)],
@@ -127,7 +138,7 @@ describe("5 — 'may be incomplete' (A10)", () => {
   });
   it("shown in the list and on the card for an old session only", async () => {
     const r = renderOrders([ANN]);
-    fireEvent.click(q("ord-session-btn")!);
+    fireEvent.click(q("ord-range")!);
     await settle();
     const items = qa("ord-session-item");
     expect(items[0].querySelector("[data-testid='ord-session-incomplete']")).toBeNull();
@@ -160,17 +171,23 @@ describe("6 — Send total = the printed lines (A11)", () => {
 });
 
 describe("7 — past-session mode (B2/B3)", () => {
-  it("amber banner; the current list and non-numeric results are hidden → 'Type a buyer #'", async () => {
+  it("amber button + banner; the list is THAT session's orders only; search works inside it", async () => {
     const r = renderOrders([ANN]);
     expect(document.body.textContent).toContain("Today Row Buyer");
     await pickSession(0);
-    expect(q("ord-past-banner")!.textContent).toBe("Past session · 10/08 → 10/10 — buyer # only");
-    expect(document.body.textContent).not.toContain("Today Row Buyer");
-    expect(q("orders-summary")).toBeNull();
-    expect(q("ord-past-type")!.textContent).toBe("Type a buyer #");
+    expect(q("ord-range")!.textContent).toBe("🗓 Past session · 10/08 → 10/10 ▾");
+    expect(q("ord-past-banner")!.textContent).toBe("Past session · 10/08 → 10/10 — read only");
+    const text = document.body.textContent || "";
+    expect(text).not.toContain("Today Row Buyer");
+    expect(text).toContain("Old Ann");
+    expect(text).toContain("Old Bea");
+    expect(text).toContain("P3");
+    r.type("Bea");
+    expect(document.body.textContent).toContain("Old Bea");
+    expect(document.body.textContent).not.toContain("Old Ann");
     r.type("Today");
+    expect(q("ord-past-empty")).not.toBeNull();
     expect(document.body.textContent).not.toContain("Today Row Buyer");
-    expect(q("ord-past-type")!.textContent).toBe("Type a buyer #");
   });
   it("Send sheet says 'Past session 10/08 → 10/10' and asks ONE confirm before any copy", async () => {
     const r = renderOrders([ANN]);
@@ -215,7 +232,8 @@ describe("8 — off switch tiktok_send_enabled (B7)", () => {
     fireEvent.change(r.container.querySelectorAll("input")[0], { target: { value: "3" } });
     expect(q("buyer-receipt")).not.toBeNull();
     expect(q("tt-send-btn")).toBeNull();
-    expect(q("ord-session-btn")).toBeNull();
+    fireEvent.click(q("ord-range")!);
+    expect(q("ord-past-heading")).toBeNull();
   });
   it("sql/128 seeds the key 'true' in the same file as my_session_summaries()", () => {
     const sql = readFileSync("sql/128_tiktok_send_support.sql", "utf8");
@@ -240,12 +258,12 @@ describe("9 — small items", () => {
   });
   it("A19 — the session list reloads every time the picker opens", async () => {
     renderOrders([ANN]);
-    fireEvent.click(q("ord-session-btn")!);
+    fireEvent.click(q("ord-range")!);
     await settle();
     expect(qa("ord-session-item")).toHaveLength(2);
-    fireEvent.click(q("ord-session-btn")!);              // close
+    fireEvent.click(q("ord-range")!);                    // close
     S.summaries = [sum("new", "2026-10-13", "2026-10-13", 4), ...S.summaries];
-    fireEvent.click(q("ord-session-btn")!);              // open again
+    fireEvent.click(q("ord-range")!);                    // open again
     await settle();
     expect(S.rpcCalls).toBe(2);
     expect(qa("ord-session-item")).toHaveLength(3);
@@ -259,5 +277,94 @@ describe("9 — small items", () => {
     r.type("3");
     fireEvent.click(q("tt-send-btn")!);
     expect(q("tts-preview")!.textContent).toContain("Order mo sa live (10/12 → 10/14):");
+  });
+});
+
+describe("10 — one 🗓 menu: This session + past sessions (tiktokSend only)", () => {
+  const menuIds = () => Array.from(document.querySelectorAll("[role='menu'] [data-testid]")).map((e) => e.getAttribute("data-testid"));
+  it("gated: This session + 'Past sessions' + one row per past session; no Today / 7 days / Custom", async () => {
+    renderOrders([ANN]);
+    fireEvent.click(q("ord-range")!);
+    await settle();
+    expect(menuIds()).toEqual(["ord-range-session", "ord-past-heading", "ord-session-item", "ord-session-item", "ord-session-incomplete"]);
+    expect(q("ord-past-heading")!.textContent).toBe("Past sessions");
+    expect(qa("ord-session-item")[0].textContent).toBe("Past session · 10/08 → 10/10 · 3 days");
+    expect(qa("ord-session-item")[1].textContent).toContain("Past session · 09/28 → 09/30 · 3 days");
+  });
+  it("ungated: the 4 options exactly as before, no past sessions, no reads", async () => {
+    const r = render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={[ANN]} todayId="2026-10-14" /></TProvider>);
+    fireEvent.click(q("ord-range")!);
+    await settle();
+    expect(menuIds()).toEqual(["ord-range-session", "ord-range-today", "ord-range-7days", "ord-range-custom"]);
+    expect(S.rpcCalls).toBe(0);
+    r.unmount();
+  });
+  it("a 1-day past session reads 'Past session · 10/07 · 1 day'", async () => {
+    S.summaries = [sum("one", "2026-10-07", "2026-10-07", 2)];
+    renderOrders([ANN]);
+    fireEvent.click(q("ord-range")!);
+    await settle();
+    expect(qa("ord-session-item")[0].textContent).toBe("Past session · 10/07 · 1 day");
+  });
+  it("Export of a past session = that session's orders only", async () => {
+    renderOrders([ANN]);
+    await pickSession(0);
+    fireEvent.click(q("orders-export")!);
+    await act(async () => { fireEvent.click(q("orders-export-xlsx")!); });
+    const buyers = exported.last!.rows.map((r) => r[1]);
+    expect(buyers.sort()).toEqual(["Old Ann", "Old Bea", "X"]);
+    expect(exported.last!.filename).toBe("sellerflow-orders-session-2026-10-08_2026-10-10");
+  });
+  it("Reprint in a past session prints the STORED row: same handle #3 there, #12 now → sticker says #3", async () => {
+    S.bySession.old = [row("old", "2026-10-09", 3, "@ann", "Ann", "OLD-ITEM", 150)];
+    const now = mk(12, "@ann", "Ann", [["NOW-ITEM", 99]]);
+    const nowOrder = { ...todayOrder, id: "#12", buyer: "Ann", handle: "@ann", items: "NOW-ITEM", orderNum: Date.parse("2026-10-09T05:00:00.000Z") } as unknown as Order;
+    const onReprintRow = vi.fn(), onReprintOrder = vi.fn();
+    render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[nowOrder]} state="live" buyers={[now]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" onReprintRow={onReprintRow} onReprintOrder={onReprintOrder} /></TProvider>);
+    await pickSession(0);
+    fireEvent.click(document.querySelector("[aria-label='Reprint']")!);
+    expect(onReprintOrder).not.toHaveBeenCalled();
+    expect(onReprintRow).toHaveBeenCalledTimes(1);
+    const stored = onReprintRow.mock.calls[0][0];
+    expect(stored).toMatchObject({ buyer_number: 3, handle: "@ann", product: "OLD-ITEM", price: 150 });
+    expect(reprintBuyer(stored)!.num).toBe(3);
+    expect(reprintBuyer(stored)!.orders[0].item).toBe("OLD-ITEM");
+  });
+  it("no paid UI in a past session (no Mark paid, no Unpaid filter); it is back on This session", async () => {
+    const r = render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" paidFlag /></TProvider>);
+    expect(q("ord-unpaid-pill")).not.toBeNull();
+    expect(r.container.textContent).toContain("Mark paid");
+    await pickSession(0);
+    expect(q("ord-unpaid-pill")).toBeNull();
+    expect(r.container.textContent).not.toContain("Mark paid");
+    fireEvent.click(q("ord-range")!);
+    fireEvent.click(q("ord-range-session")!);
+    await settle();
+    expect(q("ord-unpaid-pill")).not.toBeNull();
+  });
+  it("zero writes in a past session: browsing, search, card, Send copy and Reprint", async () => {
+    const r = render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" paidFlag onReprintRow={vi.fn()} /></TProvider>);
+    await pickSession(0);
+    fireEvent.click(document.querySelector("[aria-label='Reprint']")!);
+    fireEvent.change(r.container.querySelectorAll("input")[0], { target: { value: "2" } });
+    fireEvent.click(q("tt-send-btn")!);
+    fireEvent.click(q("tts-old-yes")!);
+    await act(async () => { fireEvent.click(q("tts-copy-only")!); });
+    expect(S.writes).toEqual([]);
+    expect(setPaid).not.toHaveBeenCalled();
+    expect(saveOrderToDatabase).not.toHaveBeenCalled();
+    expect(saveLiveSessionOrder).not.toHaveBeenCalled();
+    expect(saveCustomerToDatabase).not.toHaveBeenCalled();
+  });
+  it("back to This session = the original screen", async () => {
+    const r = renderOrders([ANN]);
+    const before = r.container.innerHTML;
+    await pickSession(0);
+    fireEvent.click(q("ord-range")!);
+    fireEvent.click(q("ord-range-session")!);
+    await settle();
+    expect(q("ord-past-banner")).toBeNull();
+    expect(q("ord-range")!.textContent).toBe("🗓 This session ▾");
+    expect(r.container.innerHTML).toBe(before);
   });
 });

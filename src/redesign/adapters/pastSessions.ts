@@ -7,7 +7,9 @@
 import { useCallback, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { addDays } from "./useSessionWindow";
-import { rebuildSessionFromRows } from "../../lib/orderLogic";
+import { rebuildSessionFromRows, type LiveSessionRow } from "../../lib/orderLogic";
+import { liveOrdersToRedesign } from "./useReadData";
+import type { Order } from "../data";
 import type { Buyer } from "../../lib/orderTypes";
 import { loadLiveSessionBySessionId } from "./useSessionWindow";
 import { log } from "../../lib/log";
@@ -84,11 +86,23 @@ async function loadSummaries(currentId: string | null): Promise<SessionSummary[]
   }
 }
 
-/** One past session's buyers, grouped exactly like the live board (rebuildSessionFromRows). */
-export async function loadSessionBuyers(sessionId: string): Promise<Buyer[] | null> {
-  const rows = await loadLiveSessionBySessionId(sessionId, true);
-  return rows === null ? null : rebuildSessionFromRows(rows).buyers;
+/** One past session, read-only: its buyers + order list rebuilt exactly like the live board
+ *  (rebuildSessionFromRows), and the STORED rows by orderNum for Reprint. */
+export interface PastSessionData { buyers: Buyer[]; orders: Order[]; rows: Map<number, LiveSessionRow> }
+export function pastSessionFromRows(rows: LiveSessionRow[]): PastSessionData {
+  const rebuilt = rebuildSessionFromRows(rows);
+  const byNum = new Map<number, LiveSessionRow>();
+  for (const r of rows) {
+    const t = r.created_at ? Date.parse(r.created_at) : NaN;
+    if (Number.isFinite(t)) byNum.set(t, r); // orderNum derivation mirrors rebuildSessionFromRows
+  }
+  return { buyers: rebuilt.buyers, orders: liveOrdersToRedesign(rebuilt), rows: byNum };
 }
+export async function loadPastSession(sessionId: string): Promise<PastSessionData | null> {
+  const rows = await loadLiveSessionBySessionId(sessionId, true);
+  return rows === null ? null : pastSessionFromRows(rows);
+}
+const EMPTY: PastSessionData = { buyers: [], orders: [], rows: new Map() };
 
 export type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -97,7 +111,7 @@ export function usePastSessions(enabled: boolean, currentId: string | null) {
   const [list, setList] = useState<SessionSummary[]>([]);
   const [listState, setListState] = useState<LoadState>("idle");
   const [selected, setSelected] = useState<SessionSummary | null>(null);
-  const [buyers, setBuyers] = useState<Buyer[]>([]);
+  const [data, setData] = useState<PastSessionData>(EMPTY);
   const [buyersState, setBuyersState] = useState<LoadState>("idle");
   const pickedRef = useRef<string | null>(null); // the latest pick (an older load that lands late is dropped)
 
@@ -116,13 +130,17 @@ export function usePastSessions(enabled: boolean, currentId: string | null) {
   }, [enabled, currentId]);
 
   const pick = useCallback(async (s: SessionSummary | null) => {
-    if (!s || s.current) { pickedRef.current = null; setSelected(null); setBuyers([]); setBuyersState("idle"); return; } // back to Current
+    if (!s || s.current) { pickedRef.current = null; setSelected(null); setData(EMPTY); setBuyersState("idle"); return; } // back to Current
     pickedRef.current = s.id;
-    setSelected(s); setBuyers([]); setBuyersState("loading");
-    const b = await loadSessionBuyers(s.id);
+    setSelected(s); setData(EMPTY); setBuyersState("loading");
+    const d = await loadPastSession(s.id);
     if (pickedRef.current !== s.id) return;      // the seller picked something else meanwhile
-    if (b === null) setBuyersState("error"); else { setBuyers(b); setBuyersState("ready"); }
+    if (d === null) setBuyersState("error"); else { setData(d); setBuyersState("ready"); }
   }, []);
 
-  return { list, listState, ensureList, selected: enabled ? selected : null, buyers, buyersState, pick };
+  // Reprint source in a past session: ONLY the stored row of that order (its own buyer # and
+  // item) — never anything looked up from the live session.
+  const rowFor = useCallback((orderNum: number | undefined): LiveSessionRow | null => (orderNum == null ? null : data.rows.get(orderNum) ?? null), [data]);
+
+  return { list, listState, ensureList, selected: enabled ? selected : null, buyers: data.buyers, orders: data.orders, rowFor, buyersState, pick };
 }
