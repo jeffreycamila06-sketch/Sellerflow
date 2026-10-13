@@ -4,9 +4,14 @@
 // written to orders / live_session_orders / products / Sales. The only thing remembered is
 // the seller's last note (localStorage, per seller id).
 import { fmt } from "../data";
+import { taipeiDateOf } from "./sessionEnd";
+import { addDays } from "./useSessionWindow";
 
-/** Who sees Send: an admin, or a seller on the "tiktok_send" preview list (sql/126). */
-export const tiktokSendAllowed = (isAdmin: boolean, listed: boolean): boolean => isAdmin || listed;
+const md = (day: string): string => (day && day.length >= 10 ? day.slice(5, 10).replace("-", "/") : day);
+
+/** Who sees Send: an admin, or a seller on the "tiktok_send" preview list (sql/126) — and only
+ *  while the app_settings switch tiktok_send_enabled is on (sql/128; off = nobody, admins too). */
+export const tiktokSendAllowed = (isAdmin: boolean, listed: boolean, enabled: boolean): boolean => enabled && (isAdmin || listed);
 
 export interface SendLine {
   key: string;
@@ -29,13 +34,23 @@ export const qtyOf = (q: unknown): number => {
 /** " x3" after the item text, only when qty > 1. */
 export const qtySuffix = (qty: number): string => (qtyOf(qty) > 1 ? ` x${qtyOf(qty)}` : "");
 
+/** A typed price: digits and ONE dot ("12.5.0" → "12.50"). */
+export const priceInput = (s: string): string => {
+  const clean = String(s).replace(/[^0-9.]/g, "");
+  const dot = clean.indexOf(".");
+  return dot < 0 ? clean : clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, "");
+};
+
 export const priceOf = (s: string): number => {
   const n = Number(String(s).replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
-/** Total of the lines going into the message (removed lines are not in `lines`). */
-export const sumLines = (lines: SendLine[]): number => lines.reduce((s, l) => s + priceOf(l.price), 0);
+/** The lines printed in the message: blank-text lines are left out. */
+export const printedLines = (lines: SendLine[]): SendLine[] => lines.filter((l) => l.text.trim() !== "");
+
+/** Total of the lines printed in the message (removed and blank-text lines are not counted). */
+export const sumLines = (lines: SendLine[]): number => printedLines(lines).reduce((s, l) => s + priceOf(l.price), 0);
 
 /** Total shown in the message: the seller's override when set, else the sum. */
 export const messageTotal = (lines: SendLine[], override: string | null): number =>
@@ -48,7 +63,7 @@ export function buildSendMessage(o: {
   name: string; date: string; lines: SendLine[]; total: number; cur: string; note: string; labels: MessageLabels;
 }): string {
   const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
-  const rows = o.lines.filter((l) => l.text.trim() !== "");
+  const rows = printedLines(o.lines);
   const out = [
     fill(o.labels.hi, { name: o.name }),
     fill(o.labels.order, { date: o.date }),
@@ -67,6 +82,15 @@ export function sessionDateLabel(orderNums: number[], fallbackDay: string): stri
     ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(first))
     : fallbackDay;
   return day && day.length >= 10 ? day.slice(5, 10).replace("-", "/") : day;
+}
+
+/** Current session date for the message: a multi-day session → "10/08 → 10/10" (Taipei start
+ *  day + window − 1); a 1-day session (or no session data) → the single-date label above. */
+export function currentSessionDate(startedAt: string | null | undefined, windowDays: number | null | undefined, orderNums: number[], fallbackDay: string): string {
+  const days = Math.floor(Number(windowDays));
+  const start = startedAt ? taipeiDateOf(startedAt) : "";
+  if (!start || !Number.isFinite(days) || days <= 1) return sessionDateLabel(orderNums, fallbackDay);
+  return `${md(start)} → ${md(addDays(start, days - 1))}`;
 }
 
 // ── the seller's last note (the ONLY thing remembered) ──

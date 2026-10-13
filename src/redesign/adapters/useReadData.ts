@@ -107,7 +107,14 @@ export function filterOrders(orders: Order[], query: string): Order[] {
 export interface BuyerReceipt { num: number; name: string; handle: string; lines: { item: string; total: number; qty?: number }[]; count: number; total: number; platform: string; }
 export function buyerReceipt(buyers: Buyer[], num: number): BuyerReceipt | null {
   const b = buyers.find((x) => x.num === num);
-  if (!b) return null;
+  return b ? toReceipt(b) : null;
+}
+// Every buyer with EXACTLY that number (a shared account / two phones can give two buyers the
+// same #). Orders shows the card when there is one, a chooser when there are more.
+export function buyerReceipts(buyers: Buyer[], num: number): BuyerReceipt[] {
+  return buyers.filter((x) => x.num === num).map(toReceipt);
+}
+function toReceipt(b: Buyer): BuyerReceipt {
   return {
     num: b.num,
     name: b.name || b.handle,

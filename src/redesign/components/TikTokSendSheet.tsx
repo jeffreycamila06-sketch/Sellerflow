@@ -4,12 +4,12 @@
 // orders, live_session_orders, products or Sales. Only the note is remembered (per seller).
 import { useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { useT } from "../i18n";
+import { useT, tpl } from "../i18n";
 import { chaseTarget } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { copyText } from "./inviteShare";
 import {
-  initialSendLines, sumLines, messageTotal, buildSendMessage, loadSendNote, saveSendNote, qtySuffix, type SendLine,
+  initialSendLines, sumLines, messageTotal, buildSendMessage, loadSendNote, saveSendNote, qtySuffix, priceInput, type SendLine,
 } from "../adapters/tiktokSend";
 import type { BuyerReceipt } from "../adapters/useReadData";
 
@@ -18,14 +18,17 @@ const input: CSSProperties = { boxSizing: "border-box", padding: "9px 10px", bor
 const smallBtn: CSSProperties = { width: 40, height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text-muted)", fontSize: 18, lineHeight: 1, cursor: "pointer", fontFamily: "var(--font-ui)" };
 const bigBtn: CSSProperties = { display: "block", boxSizing: "border-box", width: "100%", marginTop: 10, padding: "12px 0", borderRadius: 12, fontSize: 14, fontWeight: 800, textAlign: "center", textDecoration: "none", cursor: "pointer", fontFamily: "var(--font-ui)" };
 
-export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose }: {
-  receipt: BuyerReceipt; cur: string; date: string; sellerId: string; onClose: () => void;
+// pastRange (e.g. "10/08 → 10/10"): the card is from a PAST session → the header says so and
+// the first copy asks one confirm ("This is an OLD session … Send anyway?").
+export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose, pastRange }: {
+  receipt: BuyerReceipt; cur: string; date: string; sellerId: string; onClose: () => void; pastRange?: string;
 }) {
   const t = useT();
   const [lines, setLines] = useState<SendLine[]>(() => initialSendLines(receipt.lines));
   const [totalOverride, setTotalOverride] = useState<string | null>(null);
   const [note, setNote] = useState(() => loadSendNote(sellerId));
   const [status, setStatus] = useState("");
+  const [oldOk, setOldOk] = useState(!pastRange); // past session: copy buttons only after one confirm
   const nextId = useRef(0);
   const ios = isIOS();
   const target = chaseTarget(receipt.handle);
@@ -65,6 +68,11 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose 
             <span style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>{t.rd_tts_title}</span>
             <button type="button" data-testid="tts-close" onClick={onClose} style={{ marginLeft: "auto", border: "none", background: "transparent", color: "var(--accent-fg)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_rc_close}</button>
           </div>
+          {pastRange && (
+            <div data-testid="tts-past" style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#92400e", background: "#fef3c7", borderRadius: 8, padding: "4px 9px", display: "inline-block" }}>
+              {tpl(t.rd_tts_past, { range: pastRange })}
+            </div>
+          )}
           <div data-testid="tts-header" style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>
             <b style={{ fontFamily: "var(--font-mono)" }}>#{receipt.num}</b> {receipt.name} <span style={{ color: "var(--handle)" }}>{receipt.handle}</span>
           </div>
@@ -80,7 +88,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose 
               {l.added
                 ? <input data-testid="tts-text" aria-label={t.rd_rc_item_ph} placeholder={t.rd_rc_item_ph} value={l.text} onChange={(e) => setLine(l.key, { text: e.target.value })} style={{ ...input, flex: 1, minWidth: 0 }} />
                 : <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--text-dim)", overflowWrap: "anywhere" }}>{l.text}{l.qty > 1 && <span data-testid="tts-qty" style={{ marginLeft: 6, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)" }}>{qtySuffix(l.qty).trim()}</span>}</span>}
-              <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode="decimal" value={l.price} onChange={(e) => setPrice(l.key, e.target.value.replace(/[^0-9.]/g, ""))} style={{ ...input, width: 96, textAlign: "right" }} />
+              <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode="decimal" value={l.price} onChange={(e) => setPrice(l.key, priceInput(e.target.value))} style={{ ...input, width: 96, textAlign: "right" }} />
               <button type="button" data-testid="tts-remove" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => removeLine(l.key)} style={smallBtn}>×</button>
             </div>
           ))}
@@ -91,7 +99,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose 
 
           <span style={label}>{t.rd_ord_receipt_total}{totalOverride !== null && totalOverride.trim() !== "" && <span data-testid="tts-edited" style={{ marginLeft: 6, fontWeight: 600, letterSpacing: 0, color: "var(--warn)" }}>{t.rd_tts_edited}</span>}</span>
           <input data-testid="tts-total" inputMode="decimal" value={totalOverride ?? String(sum)}
-            onChange={(e) => setTotalOverride(e.target.value.replace(/[^0-9.]/g, ""))} style={{ ...input, width: 140, textAlign: "right" }} />
+            onChange={(e) => setTotalOverride(priceInput(e.target.value))} style={{ ...input, width: 140, textAlign: "right" }} />
 
           <span style={label}>{t.rd_tts_note}</span>
           <textarea data-testid="tts-note" value={note} maxLength={500} placeholder={t.rd_tts_note_ph} onChange={(e) => setNote(e.target.value)} style={{ ...input, width: "100%", minHeight: 64, resize: "vertical" }} />
@@ -101,6 +109,13 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose 
         </div>
 
         <div style={{ flex: "0 0 auto", padding: "0 14px calc(18px + env(safe-area-inset-bottom))" }}>
+          {!oldOk ? (
+            <div data-testid="tts-old-confirm" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "#fef3c7", color: "#92400e", fontSize: 13, fontWeight: 700, lineHeight: 1.45 }}>
+              {tpl(t.rd_tts_old_confirm, { range: pastRange || "" })}
+              <button type="button" data-testid="tts-old-yes" onClick={() => setOldOk(true)}
+                style={{ ...bigBtn, border: "none", background: "#b45309", color: "#fff" }}>{t.rd_tts_old_yes}</button>
+            </div>
+          ) : (<>
           {target.kind === "open"
             ? <a href={target.url} target="_blank" rel="noreferrer" data-testid="tts-copy-open" onClick={onCopyOpen}
                 style={{ ...bigBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_tts_copy_open}</a>
@@ -108,6 +123,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose 
                 style={{ ...bigBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_tts_copy_find_btn}</button>}
           <button type="button" data-testid="tts-copy-only" onClick={() => onCopyOnly("only")}
             style={{ ...bigBtn, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)" }}>{t.rd_tts_copy_only}</button>
+          </>)}
           {status && <div role="status" data-testid="tts-status" style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: "var(--ok)", lineHeight: 1.45 }}>{status}</div>}
         </div>
       </div>

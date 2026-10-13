@@ -255,7 +255,7 @@ describe("FIX 2 — quantity in the message", () => {
 describe("FIX 3 — who sees Send: admin OR the tiktok_send preview list", () => {
   const allowedFor = (isAdmin: boolean, listed: boolean) => {
     setFeatureAccess(Object.fromEntries(FEATURE_KEYS.map((k) => [k, k === "tiktok_send" && listed])) as never);
-    return tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"));
+    return tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), true);
   };
   for (const [label, isAdmin, listed, sees] of [
     ["admin (not listed)", true, false, true],
@@ -272,7 +272,7 @@ describe("FIX 3 — who sees Send: admin OR the tiktok_send preview list", () =>
   it("tiktok_send is a feature key; RedesignApp passes ONE boolean from admin || the key", () => {
     expect(FEATURE_KEYS).toContain("tiktok_send");
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain('tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"))}');
+    expect(app).toContain('tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)}');
     expect(app).not.toMatch(/<Orders[^>]*\bisAdmin=/);
   });
 });

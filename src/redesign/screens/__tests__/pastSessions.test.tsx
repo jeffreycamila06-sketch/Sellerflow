@@ -27,9 +27,22 @@ function builder(table: string) {
   };
   return q;
 }
+// my_session_summaries() (sql/128): the same grouping the database does, from S.index.
+function summaries() {
+  const by = new Map<string, { session_id: string; first_day: string; last_day: string; orders: number; latest: string }>();
+  for (const r of S.index as { session_id: string; session_date: string; created_at: string }[]) {
+    const s = by.get(r.session_id);
+    if (!s) { by.set(r.session_id, { session_id: r.session_id, first_day: r.session_date, last_day: r.session_date, orders: 1, latest: r.created_at }); continue; }
+    if (r.session_date < s.first_day) s.first_day = r.session_date;
+    if (r.session_date > s.last_day) s.last_day = r.session_date;
+    if (r.created_at > s.latest) s.latest = r.created_at;
+    s.orders += 1;
+  }
+  return [...by.values()];
+}
 vi.mock("../../../supabase", () => ({
   isSupabaseConfigured: true,
-  supabase: { from: (t: string) => builder(t), rpc: vi.fn(), auth: { getSession: async () => ({ data: { session: { user: { id: "me" } } } }) } },
+  supabase: { from: (t: string) => builder(t), rpc: async (fn: string) => { S.calls.push({ table: `rpc:${fn}`, op: "rpc", filters: {} }); return { data: summaries(), error: null }; }, auth: { getSession: async () => ({ data: { session: { user: { id: "me" } } } }) } },
 }));
 vi.mock("../../../db", () => ({ saveOrderToDatabase: vi.fn(), saveLiveSessionOrder: vi.fn(), saveCustomerToDatabase: vi.fn() }));
 const copyText = vi.hoisted(() => vi.fn(async (_s: string) => true));
@@ -37,7 +50,7 @@ vi.mock("../../components/inviteShare", async (orig) => ({ ...(await orig<object
 
 import { TProvider } from "../../i18n";
 import Orders from "../Orders";
-import { buildSessionIndex, sessionRange } from "../../adapters/pastSessions";
+import { buildSessionIndex, sessionRange, summariesFromRpc } from "../../adapters/pastSessions";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const CUR = "cur-session", OLD = "old-session", OLDER = "older-session";
@@ -73,6 +86,9 @@ describe("buildSessionIndex (pure)", () => {
     expect(sessionRange(idx[1])).toBe("10/08 → 10/10");
     expect(sessionRange(idx[2])).toBe("10/01");
   });
+  it("A18 — the database summaries map to the same list as the old client grouping", () => {
+    expect(summariesFromRpc(summaries() as never, CUR)).toEqual(buildSessionIndex(S.index as never, CUR));
+  });
 });
 
 describe("the picker", () => {
@@ -89,7 +105,8 @@ describe("the picker", () => {
     fireEvent.click(q("ord-session-btn")!);
     await settle();
     const items = qa("ord-session-item").map((e) => e.textContent);
-    expect(items).toEqual(["3 days · 10/08 → 10/10 · 2 orders", "1 day · 10/01 · 1 orders"]);
+    expect(items).toEqual(["3 days · 10/08 → 10/10 · 2 orders", "1 day · 10/01 · 1 ordersMay be incomplete — older days were removed"]);
+    expect(S.calls.map((c) => c.table)).toEqual(["rpc:my_session_summaries"]); // one small call, no row paging
   });
   it("past session: buyer #1 is THAT session's #1 (not today's), labelled with the session; Send carries the range + x3", async () => {
     const r = renderOrders(true);
@@ -106,6 +123,8 @@ describe("the picker", () => {
     const msg = q("tts-preview")!.textContent || "";
     expect(msg).toContain("Order mo sa live (10/08 → 10/10):");
     expect(msg).toContain("1. A12 Pink blouse x3 — NT$750");
+    expect(q("tts-copy-open")).toBeNull();                 // an OLD session asks one confirm first
+    fireEvent.click(q("tts-old-yes")!);
     await act(async () => { fireEvent.click(q("tts-copy-open")!); });
     expect(copyText.mock.calls[0][0]).toContain("Old Buyer");
   });
@@ -124,7 +143,7 @@ describe("the picker", () => {
     expect(q("buyer-receipt")!.outerHTML).toBe(original);
     expect(q("receipt-session")).toBeNull();
   });
-  it("read-only: every call is a select on live_session_orders (no insert / update / upsert / delete)", async () => {
+  it("read-only: the summaries RPC + selects on live_session_orders only (no insert / update / upsert / delete)", async () => {
     const r = renderOrders(true);
     fireEvent.click(q("ord-session-btn")!);
     await settle();
@@ -133,7 +152,7 @@ describe("the picker", () => {
     r.type("1");
     expect(q("buyer-receipt")!.textContent).toContain("Older Buyer");
     expect(S.calls.length).toBeGreaterThan(0);
-    expect(S.calls.every((c) => c.op === "select" && c.table === "live_session_orders" && c.filters.user_id === "me")).toBe(true);
+    expect(S.calls.every((c) => (c.op === "rpc" && c.table === "rpc:my_session_summaries") || (c.op === "select" && c.table === "live_session_orders" && c.filters.user_id === "me"))).toBe(true);
   });
 });
 

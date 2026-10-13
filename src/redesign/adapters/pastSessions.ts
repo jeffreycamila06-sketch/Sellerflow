@@ -1,11 +1,12 @@
 // Past sessions for the Orders buyer-# card (Send to TikTok testers: admin OR "tiktok_send").
 // READ-ONLY and SEPARATE STATE: these rows never reach liveSession, buyer numbering, Auto
 // Mode, printing, Sales or shipping — they only feed the numeric buyer-# card in Orders.
-// Loaded lazily: the session list when the picker opens, one session's rows when picked.
-// RLS + an explicit user_id filter keep every read to the signed-in seller's own rows.
+// Loaded lazily: the session list (one small RPC, my_session_summaries — sql/128) EACH time the
+// picker opens, one session's rows when picked. The RPC filters on auth.uid() and the session
+// read is RLS + user_id scoped, so every read is the signed-in seller's own rows.
 import { useCallback, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
-import { fetchAllPages } from "../../lib/fetchAllPages";
+import { addDays } from "./useSessionWindow";
 import { rebuildSessionFromRows } from "../../lib/orderLogic";
 import type { Buyer } from "../../lib/orderTypes";
 import { loadLiveSessionBySessionId } from "./useSessionWindow";
@@ -20,19 +21,27 @@ export interface SessionSummary {
   latest: string;  // latest created_at (sort key)
   current: boolean;
 }
-interface IndexRow { session_id: string | null; session_date: string | null; created_at: string | null }
+export interface IndexRow { session_id: string | null; session_date: string | null; created_at: string | null }
 
 const DAY_MS = 86_400_000;
 const spanDays = (a: string, b: string): number => {
   const d = Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY_MS);
   return Number.isFinite(d) && d >= 0 ? d + 1 : 1;
 };
+/** The day the retention v2 purge (sql/127) went live. Before it, days older than 10 were
+ *  deleted whatever the session — so a session that started more than 10 days before this
+ *  date may be missing its first days. */
+export const RETENTION_V2_SINCE = "2026-10-14";
+/** True when a session may be incomplete (its first day is before RETENTION_V2_SINCE − 10). */
+export const mayBeIncomplete = (s: Pick<SessionSummary, "first">): boolean => !!s.first && s.first < addDays(RETENTION_V2_SINCE, -10);
+
 /** "10/10" from "2026-10-10". */
 export const md = (day: string): string => (day && day.length >= 10 ? day.slice(5, 10).replace("-", "/") : day);
 /** "10/10 → 10/14", or "10/14" for a one-day session. */
 export const sessionRange = (s: Pick<SessionSummary, "first" | "last">): string => (s.first === s.last ? md(s.first) : `${md(s.first)} → ${md(s.last)}`);
 
-/** Rows → one summary per session_id, newest activity first. PURE. */
+/** Rows → one summary per session_id, newest activity first. PURE. (The app now gets the
+ *  summaries from the database — my_session_summaries(); this stays as the test reference.) */
 export function buildSessionIndex(rows: IndexRow[], currentId: string | null): SessionSummary[] {
   const by = new Map<string, SessionSummary>();
   for (const r of rows) {
@@ -50,25 +59,29 @@ export function buildSessionIndex(rows: IndexRow[], currentId: string | null): S
   return out.sort((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0));
 }
 
-const INDEX_PAGE = 1000;
-async function loadIndexRows(): Promise<IndexRow[] | null> {
+interface SummaryRow { session_id: string | null; first_day: string | null; last_day: string | null; orders: number | null; latest: string | null }
+
+/** my_session_summaries() rows → SessionSummary[], newest activity first. PURE. */
+export function summariesFromRpc(rows: SummaryRow[], currentId: string | null): SessionSummary[] {
+  const out: SessionSummary[] = [];
+  for (const r of rows) {
+    if (!r.session_id || !r.first_day || !r.last_day) continue;
+    const first = r.first_day.slice(0, 10), last = r.last_day.slice(0, 10);
+    out.push({ id: r.session_id, first, last, days: spanDays(first, last), orders: Number(r.orders) || 0, latest: r.latest || "", current: r.session_id === currentId });
+  }
+  return out.sort((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0));
+}
+
+async function loadSummaries(currentId: string | null): Promise<SessionSummary[] | null> {
   if (!isSupabaseConfigured || !supabase) return [];
-  const { data: { session } } = await supabase.auth.getSession();
-  const me = session?.user?.id;
-  if (!me) return null;
-  return fetchAllPages<IndexRow>(async (page) => {
-    const from = page * INDEX_PAGE;
-    const { data, error } = await supabase!
-      .from("live_session_orders")
-      .select("session_id,session_date,created_at")
-      .eq("user_id", me)
-      .not("session_id", "is", null)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, from + INDEX_PAGE - 1);
+  try {
+    const { data, error } = await supabase.rpc("my_session_summaries");
     if (error) { log.error("Load past sessions error:", error.message); return null; }
-    return (data || []) as IndexRow[];
-  }, INDEX_PAGE);
+    return summariesFromRpc((data || []) as SummaryRow[], currentId);
+  } catch (e) {
+    log.error("Load past sessions error:", e instanceof Error ? e.message : String(e));
+    return null;
+  }
 }
 
 /** One past session's buyers, grouped exactly like the live board (rebuildSessionFromRows). */
@@ -88,14 +101,19 @@ export function usePastSessions(enabled: boolean, currentId: string | null) {
   const [buyersState, setBuyersState] = useState<LoadState>("idle");
   const pickedRef = useRef<string | null>(null); // the latest pick (an older load that lands late is dropped)
 
+  const loadingRef = useRef(false);
+  // Reloads EVERY time the picker opens (a session started on another phone shows up); the old
+  // list stays visible meanwhile. One call at a time.
   const ensureList = useCallback(async () => {
-    if (!enabled || listState === "loading" || listState === "ready") return;
+    if (!enabled || loadingRef.current) return;
+    loadingRef.current = true;
     setListState("loading");
-    const rows = await loadIndexRows();
-    if (rows === null) { setListState("error"); return; }
-    setList(buildSessionIndex(rows, currentId));
+    const next = await loadSummaries(currentId);
+    loadingRef.current = false;
+    if (next === null) { setListState("error"); return; }
+    setList(next);
     setListState("ready");
-  }, [enabled, listState, currentId]);
+  }, [enabled, currentId]);
 
   const pick = useCallback(async (s: SessionSummary | null) => {
     if (!s || s.current) { pickedRef.current = null; setSelected(null); setBuyers([]); setBuyersState("idle"); return; } // back to Current

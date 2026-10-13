@@ -188,12 +188,13 @@ Some accounts also have **Restock** ("How many pieces arrived?"), **History** of
 - On **Orders**: find the order (use search) and tap **Reprint** or **Print slip**.
 
 If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint on those rows", fix the printer first (see "Printer not printing"), then tap **Reprint** on those rows.'),
-  ('orders-search', 'Orders screen and search', '2026-10-11'::date, 'orders, order list, search, find order, buyer, history, last 7 days, hanapin order, listahan, 订单, 訂單, 搜索, 查詢', 'Open **Orders** in the bottom bar.
+  ('orders-search', 'Orders screen and search', '2026-10-14'::date, 'orders, order list, search, find order, buyer, history, last 7 days, hanapin order, listahan, 订单, 訂單, 搜索, 查詢', 'Open **Orders** in the bottom bar.
 
 - Choose a range: **Today**, **This session**, **Last 7 days**, or **Custom** (From / To).
 - The top shows Orders, Total, Buyers and Avg order.
 - **Search buyer #, name, item…** finds orders. If it is not in this session, the app searches the last 7 days ("Searching the last 7 days…").
 - "No match in the last 7 days — older orders are no longer stored." Older orders cannot be found in search.
+- Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If **two buyers have the same number** (for example two phones on one account), you see "2 buyers have #3 — pick one": tap the right buyer to open their card.
 - Each buyer card has **Print slip** and **Reprint**.
 - **⬇ Export** downloads Excel or PDF.
 - The **Miners** tab shows your top buyers.
