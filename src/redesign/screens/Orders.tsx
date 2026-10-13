@@ -25,6 +25,8 @@ import type { Buyer } from "../../lib/orderTypes";
 import type { HistoryState } from "../adapters/ordersSearch";
 import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
+import TikTokSendSheet from "../components/TikTokSendSheet";
+import { sessionDateLabel } from "../adapters/tiktokSend";
 import { fbReceiptInfo } from "../adapters/fbReceipt";
 import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
@@ -39,6 +41,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping, shippingSoon = false,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
+  isAdmin = false, sellerId = "",
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   shippingSoon?: boolean; // Build 16: non-admin seller → the 🚚 button shows "Coming soon" and never opens Shipping
@@ -67,6 +70,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // buyer-tag pill readable in both themes, and the row footer wraps on narrow phones.
   fbPolish?: boolean;
   buyerTags?: BuyerTagMap | null; // OLD / NEW pill next to the buyer (null = not loaded → no pill)
+  // "Send to TikTok" preview — admin only (false/absent = the card exactly as before). Read-only:
+  // copies a message + opens the buyer's profile; nothing is written. sellerId keys the saved note.
+  isAdmin?: boolean; sellerId?: string;
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
@@ -81,6 +87,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   const [rangeOpen, setRangeOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [receiptSheetOpen, setReceiptSheetOpen] = useState(false);
+  const [ttSendOpen, setTtSendOpen] = useState(false);
   const live = state === "live";
   const paid = usePaidFlags(paidFlag, orders);
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -374,8 +381,18 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_ord_receipt_total}</span>
                 <span style={{ fontFamily: mono, fontSize: 20, fontWeight: 500, color: "var(--text)" }}>{cur}{fmt(receipt.total)}</span>
+                {isAdmin && receipt.platform === "TikTok" && (
+                  <button type="button" data-testid="tt-send-btn" onClick={() => setTtSendOpen(true)}
+                    style={{ marginLeft: 6, alignSelf: "center", fontSize: 12, fontWeight: 800, padding: "5px 11px", borderRadius: 8, border: "1.3px solid var(--accent)", background: "var(--accent-soft)", color: "var(--accent-fg)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                    {t.rd_tts_send}
+                  </button>
+                )}
               </span>
             </div>
+            {isAdmin && receipt.platform === "TikTok" && ttSendOpen && (
+              <TikTokSendSheet key={receipt.num} receipt={receipt} cur={cur} sellerId={sellerId} onClose={() => setTtSendOpen(false)}
+                date={sessionDateLabel((buyers.find((b) => b.num === receipt.num)?.orders || []).map((o) => o.orderNum), todayId)} />
+            )}
             {fbReceipt && receipt.platform === "Facebook" && (
               <button type="button" data-testid="messenger-receipt-btn" onClick={() => setReceiptSheetOpen(true)}
                 style={{ marginTop: 12, width: "100%", padding: "10px 0", borderRadius: 11, border: "1.3px solid var(--accent)", background: "var(--accent-soft)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
