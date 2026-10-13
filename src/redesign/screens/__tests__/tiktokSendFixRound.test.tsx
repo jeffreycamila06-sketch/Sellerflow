@@ -93,6 +93,14 @@ describe("1 — duplicate buyer # (B1)", () => {
     expect(q("buyer-receipt")).toBeNull();
     expect(qa("dup-option")).toHaveLength(2);
   });
+  it("the pick follows the buyer, not the list position, when the live list reorders", () => {
+    const r = renderOrders([ANN, BEA]);
+    r.type("3");
+    fireEvent.click(qa("dup-option")[1]);                 // Bea
+    r.rerender(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={[BEA, ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" /></TProvider>);
+    expect(q("buyer-receipt")!.textContent).toContain("Bea");
+    expect(q("buyer-receipt")!.textContent).not.toContain("Ann");
+  });
   it("a single match is the card exactly as before (no chooser, no back link)", () => {
     const r = renderOrders([ANN, mk(4, "@d", "D", [["y", 5]])]);
     r.type("3");

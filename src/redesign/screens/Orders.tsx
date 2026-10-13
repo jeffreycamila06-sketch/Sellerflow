@@ -116,10 +116,13 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // Two or more buyers with the same # (shared account / two phones): the seller picks one first.
   // One match = the card exactly as before.
   const dupKey = `${pastSel?.id ?? "current"}:${trimmed}`;
-  const [dupPick, setDupPick] = useState<{ key: string; idx: number } | null>(null);
-  const receipt = matches.length === 1 ? matches[0] : (dupPick && dupPick.key === dupKey ? matches[dupPick.idx] ?? null : null);
+  // The pick is remembered by WHO (platform + handle), never by list position, so a live list
+  // that grows or reorders can never swap the picked buyer for another one.
+  const whoOf = (r: { platform: string; handle: string }) => `${r.platform}|${r.handle}`;
+  const [dupPick, setDupPick] = useState<{ key: string; who: string } | null>(null);
+  const receipt = matches.length === 1 ? matches[0] : (dupPick && dupPick.key === dupKey ? matches.find((m) => whoOf(m) === dupPick.who) ?? null : null);
   const chooser = matches.length > 1 && !receipt;
-  const pickDup = (idx: number | null) => { setTtSendOpen(false); setReceiptSheetOpen(false); setDupPick(idx === null ? null : { key: dupKey, idx }); };
+  const pickDup = (idx: number | null) => { setTtSendOpen(false); setReceiptSheetOpen(false); setDupPick(idx === null || !matches[idx] ? null : { key: dupKey, who: whoOf(matches[idx]) }); };
   // The Messenger receipt is for the CURRENT session only (its sends are keyed by sessionId).
   const fbReceiptOn = fbReceipt && !pastSel;
   // "Receipt sent ✓" — ONE info call when a Facebook buyer's box appears (no polling).
