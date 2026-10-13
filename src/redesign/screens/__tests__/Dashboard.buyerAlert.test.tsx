@@ -134,8 +134,8 @@ describe("BuyerAlertSheet", () => {
   });
 });
 
-// The RedesignApp composition: access answer → gate → hook → Dashboard rows.
-describe("server access gate → rows", () => {
+// The RedesignApp composition: access answer → gate (public) → hook → Dashboard rows.
+describe("public gate → rows", () => {
   function Feed({ access }: { access: boolean }) {
     const ba = useBuyerAlert(buyerAlertGate(access), true);
     return <Dashboard {...props(FEED)} buyerAlerts={ba.views} onBuyerTap={ba.views ? noop : undefined} />;
@@ -155,29 +155,41 @@ describe("server access gate → rows", () => {
     expect(container.querySelector("[data-buyer-alert='red']")).not.toBeNull();
   });
 
+  // Public (sql/125): every seller gets one lookup; the SERVER returns their own rows (or the
+  // shared pool for listed testers). No parcel data → {} → rows byte-identical to before.
   for (const [label, answer] of [
-    ["access false", { data: false, error: null }],
+    ["not listed (access false)", { data: false, error: null }],
     ["access RPC error", { data: true, error: { message: "boom" } }],
   ] as const) {
-    it(`${label} → no lookup RPC and identical row HTML`, async () => {
+    it(`${label}, no parcel data → one lookup, nothing shows (identical row HTML)`, async () => {
       rpc.mockReset();
-      rpc.mockImplementation((name: string) => Promise.resolve(name === "buyer_alert_can_use" ? answer : LOOKUP));
+      rpc.mockImplementation((name: string) => Promise.resolve(name === "buyer_alert_can_use" ? answer : { data: {}, error: null }));
       const access = await loadBuyerAlertAccess();
       expect(access).toBe(false);
       const { container } = render(<TProvider lang="en"><Feed access={access} /></TProvider>);
       await settle();
-      expect(lookups()).toBe(0);
+      expect(lookups()).toBe(1);
+      expect(container.querySelector("[data-buyer-alert]")).toBeNull();
       expect(container.innerHTML).toBe(plain());
+    });
+    it(`${label}, own parcel data → their own alerts show`, async () => {
+      rpc.mockReset();
+      rpc.mockImplementation((name: string) => Promise.resolve(name === "buyer_alert_can_use" ? answer : LOOKUP));
+      const access = await loadBuyerAlertAccess();
+      const { container } = render(<TProvider lang="en"><Feed access={access} /></TProvider>);
+      await settle();
+      expect(lookups()).toBe(1);
+      expect(container.querySelector("[data-buyer-alert='red']")).not.toBeNull();
     });
   }
 
-  it("still loading (answer not back yet = false) → no lookup RPC and identical row HTML", async () => {
+  it("access answer still loading → the lookup runs anyway (public)", async () => {
     rpc.mockReset();
     rpc.mockImplementation((name: string) => (name === "buyer_alert_can_use" ? new Promise(() => {}) : Promise.resolve(LOOKUP)));
     void loadBuyerAlertAccess();                 // never resolves
     const { container } = render(<TProvider lang="en"><Feed access={false} /></TProvider>);
     await settle();
-    expect(lookups()).toBe(0);
-    expect(container.innerHTML).toBe(plain());
+    expect(lookups()).toBe(1);
+    expect(container.querySelector("[data-buyer-alert='red']")).not.toBeNull();
   });
 });

@@ -8,16 +8,17 @@
 // normalised buyer handle. Loaded when the live starts, refreshed every 10 min. Each comment
 // row is an O(1) Map lookup — never a query per comment.
 //
-// GATE: a SERVER-SIDE access list (the Parcel Check pattern): buyer_alert_can_use() = admin OR an
-// enabled buyer_alert_access row. Never an email rule (seller_profiles.email is user-chosen).
-// buyer_alert_lookup() checks the same list itself. Not allowed / still loading / any error →
-// the hook never calls the lookup and the Dashboard gets no map → byte-identical rows.
+// PUBLIC (sql/125): every seller gets the lookup. The server picks whose rows: a caller on the
+// access list (buyer_alert_can_use() = admin OR an enabled buyer_alert_access row) reads the shared
+// googletest test pool; everyone else reads their OWN parcel_tracking rows. Never an email rule
+// (seller_profiles.email is user-chosen). No parcel data → {} → nothing shows on the rows.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 
-// ⚠️ ONE-LINE SWITCH to public (flip v_public in sql/72 at the same time): every seller,
-// each reading their OWN parcel_tracking rows instead of the test owner's.
-export const BUYER_ALERT_PUBLIC = false;
+// PUBLIC since sql/125 (applied together): every seller loads the lookup; the server decides
+// whose rows (listed → the googletest pool, everyone else → their own). false = back to the
+// access list only (ship with the sql/125 rollback).
+export const BUYER_ALERT_PUBLIC = true;
 export const BUYER_ALERT_RED_AT = 3;          // returns (after forgive) for the red alert
 export const BUYER_ALERT_NEAR_DAYS = 3;       // amber: 0..3 days to the pickup deadline
 export const BUYER_ALERT_REFRESH_MS = 10 * 60 * 1000;

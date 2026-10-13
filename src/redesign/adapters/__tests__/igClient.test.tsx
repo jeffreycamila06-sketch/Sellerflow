@@ -118,7 +118,8 @@ describe("Settings entry + accounts screen", () => {
     render(<TProvider lang="en"><IgChannels account={account} accounts={[{ id: "1", igUserId: "178", username: "shop.ig", pageName: "My Page", active: true }]} onReload={noop} onBack={noop} onUpsell={noop} /></TProvider>);
     expect(screen.getByTestId("ig-account").textContent).toContain("@shop.ig");
     await waitFor(() => expect(screen.getByTestId("ig-authorize").getAttribute("href")).toBe("https://www.facebook.com/v25.0/dialog/oauth?x=1"));
-    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toContain("/ig/oauth/start");
+    // find the oauth call by URL (an earlier test's pending request can land on this stub first)
+    expect(fetchMock.mock.calls.some((c) => String((c as unknown[])[0]).includes("/ig/oauth/start"))).toBe(true);
     vi.unstubAllGlobals();
   });
 });

@@ -83,11 +83,11 @@ describe("Taipei deadline math (UTC+8) at day boundaries", () => {
   });
 });
 
-describe("gate — the server access list only (buyer_alert_can_use), fail-closed", () => {
-  it("is not public in this phase; the gate is PUBLIC || serverAccess", () => {
-    expect(BUYER_ALERT_PUBLIC).toBe(false);
+describe("gate — public; the access list (buyer_alert_can_use) only picks the data pool", () => {
+  it("is public (sql/125): the gate is PUBLIC || serverAccess → open for every seller", () => {
+    expect(BUYER_ALERT_PUBLIC).toBe(true);
     expect(buyerAlertGate(true)).toBe(true);
-    expect(buyerAlertGate(false)).toBe(false);
+    expect(buyerAlertGate(false)).toBe(true); // not listed → still loads; the server returns the seller's OWN rows
   });
   it("loadBuyerAlertAccess calls the access RPC and opens only on a literal true", async () => {
     rpc.mockResolvedValue({ data: true, error: null });
