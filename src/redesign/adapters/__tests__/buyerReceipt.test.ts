@@ -24,11 +24,13 @@ describe("buyerReceipt", () => {
     expect(r.num).toBe(1);
     expect(r.name).toBe("Maria");
     expect(r.handle).toBe("@maria");
-    expect(r.lines).toEqual([
+    // item/total unchanged; qty is the additive field for Send to TikTok ("x3")
+    expect(r.lines.map(({ item, total }) => ({ item, total }))).toEqual([
       { item: "Red dress M", total: 550 },
       { item: "Blue top L", total: 380 },
       { item: "Sneakers 38", total: 890 },
     ]);
+    expect(r.lines.map((l) => l.qty)).toEqual([1, 1, 1]);
     expect(r.count).toBe(3);
     expect(r.total).toBe(1820); // buyer.totalSpent, NOT re-summed
   });

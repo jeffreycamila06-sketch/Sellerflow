@@ -65,6 +65,7 @@ import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./ada
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
 import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
 import { helpBotVisible, useHelpBotSwitch } from "./adapters/helpBot";
+import { tiktokSendAllowed } from "./adapters/tiktokSend";
 import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
@@ -712,6 +713,14 @@ export default function RedesignApp() {
     const row = resolveReprintRow(o.orderNum, ordersHistory.rowFor(o.orderNum), liveSession.session.orders);
     if (!row) return;
     const r = performReprint(row, pc.cur, pc.storeName, pc.settings);
+    track("reprint", { via: r.via });
+  };
+  // Past-session Reprint (Orders, Send to TikTok testers): the STORED row of that past order —
+  // its own buyer # and item, never looked up from the live session. Same zero-write path.
+  const onReprintRow = (row: ReprintRow) => {
+    const pc = printCfgRef.current;
+    if (!pc) return;
+    const r = performReprint(row, pc.cur, pc.storeName, pc.settings, { originalDate: true }); // exact copy: the order's own date
     track("reprint", { via: r.via });
   };
   // Batch D (#7): counts non-cap background write failures from the order
@@ -2461,7 +2470,8 @@ export default function RedesignApp() {
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
-            isAdmin={isAdmin} sellerId={auth.profile?.authUserId || ""} />}
+            tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
+            sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}
           {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}

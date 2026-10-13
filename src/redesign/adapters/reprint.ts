@@ -55,8 +55,18 @@ export function reprintBuyer(row: ReprintRow | null | undefined): Buyer | null {
 
 // The whole reprint action: rebuild the original buyer → printSlip. Nothing
 // else — no order creation, no state change, no write (contract-tested).
-export function performReprint(row: ReprintRow, cur: string, storeName: string, settings: Settings): PrintResult {
+export function performReprint(row: ReprintRow, cur: string, storeName: string, settings: Settings, opts?: { originalDate?: boolean }): PrintResult {
   const buyer = reprintBuyer(row);
   if (!buyer) return { ok: false, via: "none" };
-  return printSlip(buyer, cur, storeName, settings);
+  // originalDate (past-session Reprint only): the header date = THIS row's created_at instant
+  // (its own Taipei date — a 00:05 order after a midnight-crossing live shows the next day, like
+  // the original). Every other caller passes nothing → printSlip prints today, as before.
+  const at = opts?.originalDate ? originalPrintInstant(row) : undefined;
+  return at != null ? printSlip(buyer, cur, storeName, settings, { at }) : printSlip(buyer, cur, storeName, settings);
+}
+
+/** The stored row's created_at as epoch ms (the original order instant), or undefined. */
+export function originalPrintInstant(row: ReprintRow): number | undefined {
+  const t = row.created_at ? Date.parse(row.created_at) : NaN;
+  return Number.isFinite(t) ? t : undefined;
 }

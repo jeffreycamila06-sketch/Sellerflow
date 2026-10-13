@@ -178,30 +178,33 @@ export async function loadLiveSessionDay(day: string): Promise<LiveSessionRow[] 
 // all the session's days). SAME columns / order / paging / null-on-error / RLS +
 // explicit own-filter as the window path — only the WHERE swaps session_date-range
 // for session_id. Client-side own-scoped SELECT: no server.js, no RPC.
-async function loadSessionPageById(userId: string, sessionId: string, page: number): Promise<LiveSessionRow[] | null> {
+async function loadSessionPageById(userId: string, sessionId: string, page: number, withId = false): Promise<LiveSessionRow[] | null> {
   const from = page * SESSION_PAGE_SIZE;
+  const cols = "buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id,qty,auto_code";
   const { data, error } = await supabase!
     .from("live_session_orders")
-    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id,qty,auto_code")
+    .select((withId ? `id,${cols}` : cols) as string)
     .eq("user_id", userId)
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
     .range(from, from + SESSION_PAGE_SIZE - 1);
   if (error) { log.error("Load live session by id error:", error.message); return null; }
-  return (data || []) as LiveSessionRow[];
+  return (data || []) as unknown as LiveSessionRow[];
 }
 
 // Returns null when the READ FAILED (never partial — a partial set would recreate
 // the duplicate-buyer# bug), [] when there are genuinely no rows (a fresh session).
 // strict (session-numbering fix): a missing user id is a FAILED read (null), never "no
 // rows" ([]) — an empty board would restart numbering at #1. Default false = today.
-export async function loadLiveSessionBySessionId(sessionId: string, strict = false): Promise<LiveSessionRow[] | null> {
+// withId (past-session view only): also read each row's own id, so a past-session Reprint finds
+// THAT row by id. Default false = the live load's columns exactly as before.
+export async function loadLiveSessionBySessionId(sessionId: string, strict = false, withId = false): Promise<LiveSessionRow[] | null> {
   if (!isSupabaseConfigured || !supabase) return [];
   const { data: { session } } = await supabase.auth.getSession();
   const id = session?.user?.id;
   if (!id) return strict ? null : [];
-  return fetchAllSessionPages((page) => loadSessionPageById(id, sessionId, page));
+  return fetchAllSessionPages((page) => loadSessionPageById(id, sessionId, page, withId));
 }
 
 // ms from now until the NEXT Asia/Taipei midnight (00:00 UTC+8). Egress-free

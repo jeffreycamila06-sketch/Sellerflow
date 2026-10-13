@@ -20,14 +20,14 @@ describe("public privacy pages", () => {
   it("privacy policy keeps the Meta sentences, operator and contact", () => {
     expect(privacy).toContain("Data from Facebook is the list of Pages you manage and the comments on your Page's live video, including each commenter's public name, profile ID and profile picture. It is used only to show those comments in your dashboard and create orders. If you send a Messenger receipt, your Page sends that commenter one message with the receipt picture.");
     expect(privacy).toContain("without a tap. It is never sold or used for advertising."); // Build 8 sentences sit in between
-    expect(privacy).toContain("Last updated: October 9, 2026"); // Build 8 privacy sentences
+    expect(privacy).toContain("Last updated: October 14, 2026"); // Build 8 privacy sentences
     expect(privacy).toContain("Meta Platform Terms</a>. You can remove our access in Facebook Settings &rarr; Apps and Websites.");
     expect(privacy).toContain("We do not sell your data.");
     expect(privacy).toContain("SELLERFLOWLIVE PRINTER TRADING &middot; <a href=\"mailto:jeffreycamila06@gmail.com\">");
   });
 
   it("states the retention the database enforces", () => {
-    expect(privacy).toContain("Live comments: 10 days. Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account, which you can do anytime in the app.");
+    expect(privacy).toContain("Live comments: kept for 10 days, or your last 7 sessions if longer (up to 40 days). Order history: 3 months. Messenger receipt pictures: 24 hours. Receipt records: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account, which you can do anytime in the app.");
   });
 
   it("terms (Oct 9, 2026, Build 10): disconnecting deletes the access we kept — in seller words", () => {

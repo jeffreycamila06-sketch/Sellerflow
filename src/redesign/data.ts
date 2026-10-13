@@ -54,6 +54,7 @@ export interface Order {
   // Orders search (2026-07-13, additive/optional): orderNum = epoch-ms identity
   // for Reprint resolution; date = Taipei session_date for the row date chip.
   orderNum?: number; date?: string;
+  rowId?: number; // past-session view only: the live_session_orders row id (Reprint lookup)
 }
 export interface Miner { name: string; handle: string; orders: number; spent: number; platform: string; }
 

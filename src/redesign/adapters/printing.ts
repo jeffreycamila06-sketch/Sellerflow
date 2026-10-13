@@ -51,8 +51,10 @@ function resolveStickerLabel(size: string | undefined): { w: number; h: number }
 }
 
 // ── buildNativeStickerPayload — copied VERBATIM from App.tsx:538-585 ──────────
-export function buildNativeStickerPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings): NativeStickerPayload {
-  const sessionDate = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+// at (OPTIONAL, past-session Reprint only): the original order's instant, so the header date
+// is that order's own Taipei date. Absent (every other print) = now, exactly as before.
+export function buildNativeStickerPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings, at?: number): NativeStickerPayload {
+  const sessionDate = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(at != null ? new Date(at) : new Date());
   const localizedOrders = buyer.orders.map(o => {
     const ts = typeof o.orderNum === "number" ? o.orderNum : 0;
     const time = ts > 1e12
@@ -188,9 +190,10 @@ export function stickerSpacingFlags(choiceVisible: boolean = STICKER_SPACING_CHO
 }
 
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
-export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings): NativePrinterPayload {
-  const sess = new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
-  return { type: "sellerflow.printSlip", buyer, currency: cur, storeName, settings: cfg, sessionDate: sess, createdAt: new Date().toISOString() };
+export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings, at?: number): NativePrinterPayload {
+  const when = at != null ? new Date(at) : new Date(); // at: past-session Reprint only (see buildNativeStickerPayload)
+  const sess = when.toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
+  return { type: "sellerflow.printSlip", buyer, currency: cur, storeName, settings: cfg, sessionDate: sess, createdAt: when.toISOString() };
 }
 
 // F-batch i18n: the ONLY user-visible string this module generates itself (the
@@ -466,7 +469,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   }
 }
 
-async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName = false): Promise<BtRouteResult> {
+async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName = false, at?: number): Promise<BtRouteResult> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
   // BITMAP default: fires only when the new native passthrough exists AND the
@@ -481,7 +484,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   let cjkUnavailable = false;
   let sppFailed = false;
   if (bmpFn && !classic) {
-    const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
+    const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg, at);
     // The CJK atlas is a code-split chunk (prefetched at app start on bridge
     // devices). ASCII/Latin prints never wait on it; a CJK print awaits the
     // SAME promise the prefetch started. If the chunk can't load (offline cold
@@ -503,7 +506,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : sppFailed ? "bitmap-spp-failed" : "bitmap-method-missing";
   try {
     const t0 = nowMs();
-    const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));
+    const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg, at));
     const t1 = nowMs();
     recordStickerTiming({ via: "text", buildMs: 0, bridgeMs: t1 - t0, totalMs: t1 - t0, payloadBytes: 0, bands: 0 });
     reportStickerRoute({ via: "text", ok: !!result?.ok, reason: fallbackReason, detail: result?.ok ? "" : readFailure(result).message, payloadBytes: 0, totalMs: t1 - t0 });
@@ -526,11 +529,11 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
 // Awaitable with the native {code, message} preserved for button messaging.
 export const printStickerBtRouted = printStickerViaBluetooth;
 
-async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
+async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, cfg: Settings, at?: number): Promise<boolean> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerLan) return false;
   try {
-    const result = await bridge.printStickerLan(buildNativeStickerPayload(buyer, cur, storeName, cfg));
+    const result = await bridge.printStickerLan(buildNativeStickerPayload(buyer, cur, storeName, cfg, at));
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("lan", code, message)) log.warn("[LAN sticker] print failed:", message || "check WiFi printer IP.");
@@ -728,7 +731,7 @@ export function __resetWebPrintQueue(): void {
 // intentionally NOT queued here. Payload bytes + the Capacitor plugin are UNTOUCHED
 // — only WHEN JS calls the existing bridge changes.
 type NativeStickerVia = "bluetooth" | "lan";
-interface NativeStickerJob { via: NativeStickerVia; buyer: Buyer; cur: string; storeName: string; cfg: Settings; jobId: string; fbName?: boolean; }
+interface NativeStickerJob { via: NativeStickerVia; buyer: Buyer; cur: string; storeName: string; cfg: Settings; jobId: string; fbName?: boolean; at?: number; }
 // ABOVE the native BLE overall cap (~30s) so a genuinely wedged bridge (a promise
 // that never settles) can't freeze the queue — on timeout we mark not-printed and
 // advance. The native side self-bounds well under this in every normal case, so the
@@ -772,8 +775,8 @@ async function pumpNativeQueue(): Promise<void> {
 async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
   try {
     const run: Promise<BtRouteResult | boolean> = job.via === "bluetooth"
-      ? printStickerViaBluetooth(job.buyer, job.cur, job.storeName, job.cfg, job.fbName === true)
-      : printStickerViaLan(job.buyer, job.cur, job.storeName, job.cfg);
+      ? printStickerViaBluetooth(job.buyer, job.cur, job.storeName, job.cfg, job.fbName === true, job.at)
+      : printStickerViaLan(job.buyer, job.cur, job.storeName, job.cfg, job.at);
     // WATCHDOG: race the print against a timer ABOVE the native cap. The winner is
     // almost always the print (BT resolves {ok}; LAN resolves boolean); a genuine
     // hang loses to the timer → not-printed → advance. The timer is cleared the
@@ -816,7 +819,11 @@ export function webStickerQrSvg(handle: string | undefined | null): { svg: strin
   return { svg, sizeMm: total * WEB_QR_MODULE_MM };
 }
 
-export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
+// opts.at (OPTIONAL — passed ONLY by the past-session Reprint): the original order's instant, so
+// the header date (and the slip's Created line) is that order's own Taipei date — an exact copy
+// of the original. Absent = now, byte-identical to before on every route.
+export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printSettings: Settings | string, opts?: { at?: number }): PrintResult {
+  const at = opts?.at != null && Number.isFinite(opts.at) ? opts.at : undefined;
   // Build 11 (M1): a Facebook buyer prints the name only (blank if none) — never the commenter's
   // id. Every other buyer: the same object (fbName.ts printableBuyer).
   const buyer = printableBuyer(buyerIn);
@@ -833,15 +840,15 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
     // awaits each print to native completion before the next → no BT_BUSY overlap
     // drops. Return contract unchanged (enqueue succeeded). Failure/not-printed is
     // surfaced by the queue (no-printer modal + the not-printed reprint channel).
-    enqueueNativeSticker({ via: "bluetooth", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer), ...(fbName ? { fbName } : {}) });
+    enqueueNativeSticker({ via: "bluetooth", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer), ...(fbName ? { fbName } : {}), ...(at != null ? { at } : {}) });
     return { ok: true, via: "bluetooth" };
   }
   if (shouldUseLanSticker(cfg.printerType, cfg.lanFormat, !!nativePrinter?.printStickerLan)) {
     // SERIALIZED with the BT lane (same single printer) — see enqueueNativeSticker.
-    enqueueNativeSticker({ via: "lan", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer) });
+    enqueueNativeSticker({ via: "lan", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer), ...(at != null ? { at } : {}) });
     return { ok: true, via: "lan" };
   }
-  const nativePayload = buildSlipPayload(buyer, cur, storeName, cfg);
+  const nativePayload = buildSlipPayload(buyer, cur, storeName, cfg, at);
   if (hasNativeMobilePrinter() && sendSlipToNativePrinter(nativePayload)) return { ok: true, via: "native-slip" };
   // ── WEB FALLBACK: browser print — MIRRORS the native TSPL sticker layout
   // (tsplReference.ts / TsplBuilder tiers), replacing the old 2-column slip
@@ -859,7 +866,7 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
   const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
   // Taipei date, same source/format family as buildNativeStickerPayload + the
   // native truncate(12) — NOT the old en-PH long date.
-  const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), 12);
+  const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(at != null ? new Date(at) : new Date()), 12);
   // The order this sticker prints (onPrint passes a single-order buyer; reprint
   // rebuilds one). item = the CODE ("A2" / "A2 x2") for auto orders, else the
   // price string for manual — rendered LARGE at the bottom, mirroring native.
