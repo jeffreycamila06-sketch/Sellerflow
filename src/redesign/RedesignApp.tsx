@@ -65,6 +65,7 @@ import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./ada
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
 import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
 import { helpBotVisible, useHelpBotSwitch } from "./adapters/helpBot";
+import { tiktokSendAllowed } from "./adapters/tiktokSend";
 import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
@@ -2461,7 +2462,7 @@ export default function RedesignApp() {
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
-            isAdmin={isAdmin} sellerId={auth.profile?.authUserId || ""} />}
+            tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"))} sellerId={auth.profile?.authUserId || ""} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}
           {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}

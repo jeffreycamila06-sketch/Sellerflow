@@ -104,7 +104,7 @@ export function filterOrders(orders: Order[], query: string): Order[] {
 // line uses order.total. null when no buyer has EXACTLY that number (the screen
 // then falls back to normal "no match" — EXACT match, so "1" is never #10/#11).
 // platform (additive, 2026-10-05): lets Orders offer the Messenger receipt for Facebook buyers.
-export interface BuyerReceipt { num: number; name: string; handle: string; lines: { item: string; total: number }[]; count: number; total: number; platform: string; }
+export interface BuyerReceipt { num: number; name: string; handle: string; lines: { item: string; total: number; qty?: number }[]; count: number; total: number; platform: string; }
 export function buyerReceipt(buyers: Buyer[], num: number): BuyerReceipt | null {
   const b = buyers.find((x) => x.num === num);
   if (!b) return null;
@@ -112,7 +112,7 @@ export function buyerReceipt(buyers: Buyer[], num: number): BuyerReceipt | null 
     num: b.num,
     name: b.name || b.handle,
     handle: b.handle,
-    lines: b.orders.map((o) => ({ item: o.item, total: o.total })),
+    lines: b.orders.map((o) => ({ item: o.item, total: o.total, qty: o.qty })), // qty: additive (Send to TikTok "x3"); the box does not show it
     count: b.orders.length,
     total: b.totalSpent,
     platform: b.platform,

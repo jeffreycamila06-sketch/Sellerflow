@@ -5,17 +5,29 @@
 // the seller's last note (localStorage, per seller id).
 import { fmt } from "../data";
 
+/** Who sees Send: an admin, or a seller on the "tiktok_send" preview list (sql/126). */
+export const tiktokSendAllowed = (isAdmin: boolean, listed: boolean): boolean => isAdmin || listed;
+
 export interface SendLine {
   key: string;
   text: string;
   price: string;   // the editable field ("" = 0)
   added: boolean;  // added in the sheet (+ Dagdag item) — message only
+  qty: number;     // the order's quantity (read-only; added lines = 1). The price stays the LINE total.
 }
 
 /** The buyer card's lines, in the card's order (NT$0 lines included). */
-export function initialSendLines(lines: { item: string; total: number }[]): SendLine[] {
-  return lines.map((l, i) => ({ key: `c${i}`, text: l.item, price: String(Number(l.total) || 0), added: false }));
+export function initialSendLines(lines: { item: string; total: number; qty?: number }[]): SendLine[] {
+  return lines.map((l, i) => ({ key: `c${i}`, text: l.item, price: String(Number(l.total) || 0), added: false, qty: qtyOf(l.qty) }));
 }
+
+/** A whole quantity ≥ 1 (missing / odd values → 1). */
+export const qtyOf = (q: unknown): number => {
+  const n = Math.floor(Number(q));
+  return Number.isFinite(n) && n > 1 ? n : 1;
+};
+/** " x3" after the item text, only when qty > 1. */
+export const qtySuffix = (qty: number): string => (qtyOf(qty) > 1 ? ` x${qtyOf(qty)}` : "");
 
 export const priceOf = (s: string): number => {
   const n = Number(String(s).replace(/[^0-9.]/g, ""));
@@ -40,7 +52,7 @@ export function buildSendMessage(o: {
   const out = [
     fill(o.labels.hi, { name: o.name }),
     fill(o.labels.order, { date: o.date }),
-    ...rows.map((l, i) => `${i + 1}. ${l.text.trim()} — ${o.cur}${fmt(priceOf(l.price))}`),
+    ...rows.map((l, i) => `${i + 1}. ${l.text.trim()}${qtySuffix(l.qty)} — ${o.cur}${fmt(priceOf(l.price))}`),
     fill(o.labels.total, { total: `${o.cur}${fmt(o.total)}` }),
   ];
   const note = o.note.trim();

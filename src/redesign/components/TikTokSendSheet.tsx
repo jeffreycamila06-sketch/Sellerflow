@@ -9,7 +9,7 @@ import { chaseTarget } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { copyText } from "./inviteShare";
 import {
-  initialSendLines, sumLines, messageTotal, buildSendMessage, loadSendNote, saveSendNote, type SendLine,
+  initialSendLines, sumLines, messageTotal, buildSendMessage, loadSendNote, saveSendNote, qtySuffix, type SendLine,
 } from "../adapters/tiktokSend";
 import type { BuyerReceipt } from "../adapters/useReadData";
 
@@ -38,8 +38,11 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose 
   });
 
   const setLine = (key: string, patch: Partial<SendLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  const removeLine = (key: string) => setLines((ls) => ls.filter((l) => l.key !== key));
-  const addLine = () => { const key = `a${nextId.current++}`; setLines((ls) => [...ls, { key, text: "", price: "", added: true }]); };
+  // Any change to the items' money (a price, a removed line, an added line) drops the Total
+  // override → the total is the sum again. Typing an added line's TEXT keeps it.
+  const setPrice = (key: string, price: string) => { setTotalOverride(null); setLine(key, { price }); };
+  const removeLine = (key: string) => { setTotalOverride(null); setLines((ls) => ls.filter((l) => l.key !== key)); };
+  const addLine = () => { setTotalOverride(null); const key = `a${nextId.current++}`; setLines((ls) => [...ls, { key, text: "", price: "", added: true, qty: 1 }]); };
 
   const copy = async (): Promise<boolean> => {
     saveSendNote(sellerId, note);
@@ -76,8 +79,8 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose 
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)", width: 24, textAlign: "right", flexShrink: 0 }}>{i + 1}.</span>
               {l.added
                 ? <input data-testid="tts-text" aria-label={t.rd_rc_item_ph} placeholder={t.rd_rc_item_ph} value={l.text} onChange={(e) => setLine(l.key, { text: e.target.value })} style={{ ...input, flex: 1, minWidth: 0 }} />
-                : <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--text-dim)", overflowWrap: "anywhere" }}>{l.text}</span>}
-              <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode="decimal" value={l.price} onChange={(e) => setLine(l.key, { price: e.target.value.replace(/[^0-9.]/g, "") })} style={{ ...input, width: 96, textAlign: "right" }} />
+                : <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--text-dim)", overflowWrap: "anywhere" }}>{l.text}{l.qty > 1 && <span data-testid="tts-qty" style={{ marginLeft: 6, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)" }}>{qtySuffix(l.qty).trim()}</span>}</span>}
+              <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode="decimal" value={l.price} onChange={(e) => setPrice(l.key, e.target.value.replace(/[^0-9.]/g, ""))} style={{ ...input, width: 96, textAlign: "right" }} />
               <button type="button" data-testid="tts-remove" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => removeLine(l.key)} style={smallBtn}>×</button>
             </div>
           ))}

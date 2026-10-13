@@ -69,14 +69,23 @@ describe("sql/117 my_feature_access", () => {
     const body = readFileSync(file, "utf8");
     return [...body.slice(body.indexOf("keys(k) as (")).split("\n  )")[0].matchAll(/\('([a-z0-9_]+)'\)/g)].map((m) => m[1]);
   };
-  it("keys = the sql/116 list (production) plus parcel_cap_70, and match the app's FEATURE_KEYS", () => {
+  it("keys = the sql/116 list plus parcel_cap_70 / fm_pickup / test_printers / tiktok_send; the latest (sql/126) matches the app's FEATURE_KEYS", () => {
     const k116 = keysOf("sql/116_help_bot.sql");
     const k117 = keysOf("sql/117_parcel_cap_70.sql");
     expect(k116[k116.length - 1]).toBe("support_ai_preview");
     expect(k117).toEqual([...k116, "parcel_cap_70"]);
-    const k119 = keysOf("sql/119_fm_pickup.sql"); // the latest list (全家 preview)
+    const k119 = keysOf("sql/119_fm_pickup.sql"); // 全家 preview
     expect(k119).toEqual([...k117, "fm_pickup"]);
-    expect([...k119].sort()).toEqual([...FEATURE_KEYS].sort());
+    const k123 = keysOf("sql/123_test_printers_feature.sql");
+    expect(k123).toEqual([...k119, "test_printers"]);
+    const k126 = keysOf("sql/126_tiktok_send_feature.sql"); // the LATEST my_feature_access list
+    expect(k126).toEqual([...k123, "tiktok_send"]);
+    expect([...k126].sort()).toEqual([...FEATURE_KEYS].sort());
+    // sql/126: no email rows; its rollback = the sql/123 list
+    const sql126 = readFileSync("sql/126_tiktok_send_feature.sql", "utf8");
+    expect(sql126).not.toMatch(/^\s*insert/im);
+    expect(sql126).not.toMatch(/@[a-z0-9-]+\.[a-z]/i);
+    expect(keysOf("sql/126_tiktok_send_feature_rollback.sql")).toEqual(k123);
   });
   it("no email rows in the file; the rollback restores the sql/116 list", () => {
     const sql = readFileSync("sql/117_parcel_cap_70.sql", "utf8");
