@@ -480,7 +480,7 @@ describe("11 — fix round 3", () => {
     expect(rowsDrawn()).toBe(150);
     fireEvent.change(r.container.querySelectorAll("input")[0], { target: { value: "ITEM5" } }); // the oldest row (ITEM5) is beyond the first 150
     expect(r.container.textContent).toContain("ITEM5");
-  });
+  }, 20_000); // renders 320 rows several times — ~1.3 s alone, can pass 5 s under full-suite load
 
   it("A11 — the current session is not capped", () => {
     const many = Array.from({ length: 160 }, (_, i) => ({ ...todayOrder, id: `#${i}`, orderNum: ON + i })) as Order[];
