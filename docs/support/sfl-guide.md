@@ -480,6 +480,17 @@ How it works: export the 匯出報表 file from 賣貨便 (in a normal browser),
 - If none in the file are shipped yet, a grey note says "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
 - "This isn't a 全家 Order export" = a different file was picked. Up to 2,000 orders per file; wait a few seconds between uploads.
 
+## buyer-alert — Buyer Alert (returns and pickup deadlines)
+Last checked: 2026-10-13
+Keywords: buyer alert, returns, returned parcels, bogus buyer, joy reserver, pickup deadline, days left, forgive, 退件, 取件期限, 原諒, hindi kinuha, patawarin
+
+**Buyer Alert** warns you about a buyer while you are live, right on their comment:
+- A buyer with **3 or more returned parcels** shows **⚠ N returns**.
+- A buyer with a parcel at 7-11 that is **3 days or fewer** from its pickup deadline shows **📦 N days left**.
+- **Tap the buyer's name** to see their parcels (returned, at 7-11, picked up). **Forgive** removes a return that wasn't the buyer's fault, so it no longer counts; **Undo** puts it back.
+- It uses your **Pickup Status** data, so it only works if you use Pickup Status (Taiwan). No Pickup Status data = no alerts.
+- Alerts only — orders are **not** blocked. 1-Click, Auto Mode and printing work as usual.
+
 ## shipping — Shipping (Coming soon)
 Last checked: 2026-10-11
 Keywords: shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送

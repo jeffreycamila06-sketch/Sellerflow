@@ -309,6 +309,12 @@ How it works: export the 匯出報表 file from 賣貨便 (in a normal browser),
 - A parcel with a tracking number (寄件編號) that is not dropped off yet shows in **In transit** with **Not dropped off yet** and **Drop off before (date)** — 好賣+ cancels the tracking number 14 days after it was issued. The date turns red when 3 days or fewer are left.
 - If none in the file are shipped yet, a grey note says "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
 - "This isn''t a 全家 Order export" = a different file was picked. Up to 2,000 orders per file; wait a few seconds between uploads.'),
+  ('buyer-alert', 'Buyer Alert (returns and pickup deadlines)', '2026-10-13'::date, 'buyer alert, returns, returned parcels, bogus buyer, joy reserver, pickup deadline, days left, forgive, 退件, 取件期限, 原諒, hindi kinuha, patawarin', '**Buyer Alert** warns you about a buyer while you are live, right on their comment:
+- A buyer with **3 or more returned parcels** shows **⚠ N returns**.
+- A buyer with a parcel at 7-11 that is **3 days or fewer** from its pickup deadline shows **📦 N days left**.
+- **Tap the buyer''s name** to see their parcels (returned, at 7-11, picked up). **Forgive** removes a return that wasn''t the buyer''s fault, so it no longer counts; **Undo** puts it back.
+- It uses your **Pickup Status** data, so it only works if you use Pickup Status (Taiwan). No Pickup Status data = no alerts.
+- Alerts only — orders are **not** blocked. 1-Click, Auto Mode and printing work as usual.'),
   ('shipping', 'Shipping (Coming soon)', '2026-10-11'::date, 'shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送', 'The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
 
 There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.'),
@@ -395,5 +401,5 @@ on conflict (id) do update set
   body = excluded.body, updated_at = now()
 where (support_guide.title, support_guide.checked, support_guide.keywords, support_guide.body)
   is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body);
-delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support');
+delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support');
 commit;
