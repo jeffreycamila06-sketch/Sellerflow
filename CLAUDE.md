@@ -169,6 +169,15 @@ The help bot reads the guide from the `support_guide` table (5-minute cache), so
 sql/116b after the merge updates the bot without a Render deploy. A test fails when sql/116b
 doesn't match the guide file.
 
+## UI / design rules
+
+### Mobile-first rule (Jeff, Oct 14 2026)
+Most sellers use phones. Every UI change must be designed and checked for phones FIRST:
+- Check layouts at 360px, 390px and 430px wide (plus one desktop width).
+- Headers and toolbars must not wrap onto extra lines or grow taller on phones; long labels get a compact form on narrow screens.
+- Tap targets at least 44px; no horizontal page scroll.
+- Every UI report must state that the phone widths were checked and what changed for narrow screens.
+
 ## ⚠️ Critical rules — WAG GALAWIN
 - **billing `orders` ledger** (~31k rows) + its `check_and_increment_free_order`
   **free-tier-cap trigger** (cap=100 live) — wag galawin. Cross-device uses a SEPARATE table.
