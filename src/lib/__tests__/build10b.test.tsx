@@ -41,14 +41,16 @@ describe("/health — public says ok, the detail needs the poll token", () => {
     expect(await get(`${base}/health`)).toEqual({ status: 200, text: '{"ok":true}' });
     expect(await get(`${base}/health/tiktok`)).toEqual({ status: 200, text: '{"ok":true}' });
   });
-  it("the right X-Poll-Token gets the detail; a wrong one 403, then a lockout 429", async () => {
+  it("the right X-Poll-Token gets the detail; wrong ones 403, then 429 — but the right token still passes", async () => {
     const base = await serve("s3cret");
     const ok = await get(`${base}/health/tiktok`, { "X-Poll-Token": "s3cret" });
     expect(ok.status).toBe(200);
     expect(JSON.parse(ok.text).service).toBe("tiktok-signing");
     expect((await get(`${base}/health/tiktok`, { "X-Poll-Token": "nope" })).status).toBe(403);
     expect((await get(`${base}/health/tiktok`, { "X-Poll-Token": "nope" })).status).toBe(403);
-    expect((await get(`${base}/health/tiktok`, { "X-Poll-Token": "s3cret" })).status).toBe(429);
+    expect((await get(`${base}/health/tiktok`, { "X-Poll-Token": "nope" })).status).toBe(429);  // locked for wrong tokens
+    expect((await get(`${base}/health/tiktok`, { "X-Poll-Token": "s3cret" })).status).toBe(200); // audit Oct 14: never locked out
+    expect((await get(`${base}/health/tiktok`, { "X-Poll-Token": "nope" })).status).toBe(403);  // the correct token cleared it
   });
   it("no secret configured → never the detail", async () => {
     const base = await serve("");
