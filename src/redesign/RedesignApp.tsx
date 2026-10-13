@@ -720,7 +720,7 @@ export default function RedesignApp() {
   const onReprintRow = (row: ReprintRow) => {
     const pc = printCfgRef.current;
     if (!pc) return;
-    const r = performReprint(row, pc.cur, pc.storeName, pc.settings);
+    const r = performReprint(row, pc.cur, pc.storeName, pc.settings, { originalDate: true }); // exact copy: the order's own date
     track("reprint", { via: r.via });
   };
   // Batch D (#7): counts non-cap background write failures from the order

@@ -39,6 +39,17 @@ export const RETENTION_V2_SINCE = "2026-10-14";
 /** True when a session may be incomplete (its first day is before RETENTION_V2_SINCE − 10). */
 export const mayBeIncomplete = (s: Pick<SessionSummary, "first">): boolean => !!s.first && s.first < addDays(RETENTION_V2_SINCE, -10);
 
+/** A past order's own Taipei date + time from its order instant: "10/08 · 2:41 AM". */
+export function pastOrderStamp(orderNum: number | undefined): string {
+  if (orderNum == null || !Number.isFinite(orderNum)) return "";
+  const d = new Date(orderNum);
+  try {
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+    const time = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", hour: "numeric", minute: "2-digit" }).format(d);
+    return `${md(day)} · ${time}`;
+  } catch { return ""; }
+}
+
 /** "10/10" from "2026-10-10". */
 export const md = (day: string): string => (day && day.length >= 10 ? day.slice(5, 10).replace("-", "/") : day);
 /** "10/10 → 10/14", or "10/14" for a one-day session. */

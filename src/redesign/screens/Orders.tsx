@@ -28,7 +28,7 @@ import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
 import TikTokSendSheet from "../components/TikTokSendSheet";
 import { currentSessionDate } from "../adapters/tiktokSend";
-import { usePastSessions, sessionRange, mayBeIncomplete, type SessionSummary } from "../adapters/pastSessions";
+import { usePastSessions, sessionRange, mayBeIncomplete, pastOrderStamp, type SessionSummary } from "../adapters/pastSessions";
 import { fbReceiptInfo } from "../adapters/fbReceipt";
 import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
@@ -263,7 +263,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             {!pastSel && (() => { const bt = buyerTagFor(buyerTags, o.handle, o.buyer, o.platform); return bt && <BuyerTagPill tag={bt} readable={fbPolish} />; })()}
             {/* Date chip — any row not from today (history results + earlier
                 days of a multi-day window) is unambiguous at a glance. */}
-            {o.date && todayId && o.date !== todayId && (
+            {!pastSel && o.date && todayId && o.date !== todayId && (
               <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap", flexShrink: 0 }}>{o.date.slice(5).replace("-", "/")}</span>
             )}
           </div>
@@ -279,7 +279,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             statusColor state-equality; only the DISPLAY translates. */}
         <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: statusColor(o.status), background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 7 }}>{o.status === "New" ? t.rd_ord_st_new : o.status}</span>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{o.platform}</span>
-        <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{live || hist ? o.time : `${o.time} ${t.rd_ord_ago}`}</span>
+        <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{pastSel ? pastOrderStamp(o.orderNum) : live || hist ? o.time : `${o.time} ${t.rd_ord_ago}`}</span>
         {/* ↻ Reprint — the torn-sticker workflow's last step. Zero-write path
             (resolveReprintRow → performReprint = printSlip only); available on
             every result row that carries an orderNum. stopPropagation so the

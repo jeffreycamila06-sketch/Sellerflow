@@ -177,7 +177,7 @@ describe("7 — past-session mode (B2/B3)", () => {
     expect(document.body.textContent).toContain("Today Row Buyer");
     await pickSession(0);
     expect(q("ord-range")!.textContent).toBe("🗓 Past session · 10/08 → 10/10 ▾");
-    expect(q("ord-past-banner")!.textContent).toBe("Past session · 10/08 → 10/10 — read only");
+    expect(q("ord-past-banner")!.textContent).toBe("Past session · 10/08 → 10/10");
     const text = document.body.textContent || "";
     expect(text).not.toContain("Today Row Buyer");
     expect(text).toContain("Old Ann");
@@ -411,7 +411,7 @@ describe("11 — fix round 3", () => {
       await pickSession(0);
       fireEvent.click(reprintBtns()[0]);
       expect(q("reprint-old-confirm")!.textContent).toContain("Reprint an OLD order?");
-      expect(q("reprint-old-confirm")!.textContent).toContain("This order is from Past session · 10/08 → 10/10. The sticker will show today's date.");
+      expect(q("reprint-old-confirm")!.textContent).toContain("This order is from Past session · 10/08 → 10/10. The sticker will be the same as the original.");
       fireEvent.click(q("reprint-old-cancel")!);
       expect(onReprintRow).not.toHaveBeenCalled();
       fireEvent.click(reprintBtns()[0]);                   // still asks after a Cancel
@@ -435,7 +435,7 @@ describe("11 — fix round 3", () => {
     fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("↻"))!);
     const box = q("reprint-old-confirm")!.textContent || "";
     expect(box).toContain("I-reprint ang LUMANG order?");
-    expect(box).toContain("Galing ang order na ito sa Past session · 10/08 → 10/10. Petsa ngayon ang lalabas sa sticker.");
+    expect(box).toContain("Galing ang order na ito sa Past session · 10/08 → 10/10. Pareho ang sticker sa orihinal.");
     expect(box).toContain("Cancel");
     expect(box).toContain("I-reprint");
   });
@@ -504,5 +504,23 @@ describe("11 — fix round 3", () => {
     expect(document.querySelector("[title='Print slip']")).not.toBeNull();
     await pickSession(0);
     expect(document.querySelector("[title='Print slip']")).toBeNull();
+  });
+});
+
+describe("12 — fix round 4: past rows show their own date + time", () => {
+  it("past rows: '10/08 · 1:00 PM' (Taipei), no 'ago'; current rows unchanged", async () => {
+    S.bySession.old = [row("old", "2026-10-08", 1, "@a", "A", "P1", 10)]; // created 05:00Z = 1:00 PM Taipei
+    const r = render(<TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="empty" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend sellerId="me" /></TProvider>);
+    expect(r.container.textContent).toContain("13:00 ago");          // current session, state not live: unchanged
+    await pickSession(0);
+    expect(r.container.textContent).toContain("10/08 · 1:00 PM");
+    expect(r.container.textContent).not.toContain("ago");
+    const late = { ...row("old", "2026-10-08", 2, "@b", "B", "P2", 10), created_at: "2026-10-08T16:05:00.000Z" };
+    S.bySession.old = [late];
+    fireEvent.click(q("ord-range")!);
+    await settle();
+    fireEvent.click(qa("ord-session-item")[0]);
+    await settle();
+    expect(r.container.textContent).toContain("10/09 · 12:05 AM");   // its own Taipei day
   });
 });
