@@ -27,6 +27,7 @@ import { useT, tpl } from "../i18n";
 import ReceiptSheet from "../components/ReceiptSheet";
 import TikTokSendSheet from "../components/TikTokSendSheet";
 import { sessionDateLabel } from "../adapters/tiktokSend";
+import { usePastSessions, sessionRange, type SessionSummary } from "../adapters/pastSessions";
 import { fbReceiptInfo } from "../adapters/fbReceipt";
 import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
@@ -36,6 +37,8 @@ import { usePaidFlags, isPaidExpired, orderKey } from "../adapters/ordersPaid";
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
 const mono = "var(--font-mono)";
+const menuItem = (on: boolean): CSSProperties => ({ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: on ? "var(--accent-soft)" : "transparent", border: "none", borderBottom: "1px solid var(--border)", color: on ? "var(--accent-fg)" : "var(--text)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-ui)" });
+const menuNote: CSSProperties = { padding: "9px 14px", fontSize: 12, color: "var(--text-muted)" };
 const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" };
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping, shippingSoon = false,
@@ -100,9 +103,17 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // A pure-digit query that EXACTLY matches a buyer# → show the receipt box ONLY
   // (Option A). EXACT `num ===`, so "1" is buyer #1, never #10/#11 (contains).
   const trimmed = query.trim();
-  const receipt = /^\d+$/.test(trimmed) ? buyerReceipt(buyers, Number(trimmed)) : null;
+  // Past-session picker (tiktokSend testers only): a picked past session feeds ONLY this
+  // numeric buyer-# card — read-only, separate state (pastSessions.ts). null = Current.
+  const past = usePastSessions(tiktokSend, sessionId);
+  const [sessionMenu, setSessionMenu] = useState(false);
+  const pastSel = past.selected;
+  const receiptBuyers = pastSel ? past.buyers : buyers;
+  const receipt = /^\d+$/.test(trimmed) ? buyerReceipt(receiptBuyers, Number(trimmed)) : null;
+  // The Messenger receipt is for the CURRENT session only (its sends are keyed by sessionId).
+  const fbReceiptOn = fbReceipt && !pastSel;
   // "Receipt sent ✓" — ONE info call when a Facebook buyer's box appears (no polling).
-  const tagKey = fbReceipt && receipt && receipt.platform === "Facebook" && sessionId ? `${sessionId}:${receipt.num}` : "";
+  const tagKey = fbReceiptOn && receipt && receipt.platform === "Facebook" && sessionId ? `${sessionId}:${receipt.num}` : "";
   const [sentTag, setSentTag] = useState<{ key: string; sent: boolean } | null>(null);
   useEffect(() => {
     if (!tagKey) return;
@@ -258,6 +269,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
     );
   };
 
+  const sessionLabel = (x: SessionSummary) => `${x.days === 1 ? t.rd_psn_day1 : tpl(t.rd_psn_days, { n: x.days })} · ${sessionRange(x)} · ${tpl(t.rd_psn_orders, { n: x.orders })}`;
+
   return (
     <div>
       <div style={headerBar}>
@@ -292,6 +305,31 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </div>
         </div>
         {topTabs}
+        {/* Session picker (tiktokSend testers only) — Current = the screen exactly as before. */}
+        {tiktokSend && (
+          <div style={{ position: "relative", marginTop: 11 }}>
+            <button type="button" data-testid="ord-session-btn" aria-haspopup="menu" aria-expanded={sessionMenu}
+              onClick={() => { setSessionMenu((o) => !o); void past.ensureList(); }}
+              style={{ fontSize: 12, fontWeight: 700, padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", border: "1px solid rgba(255,255,255,.35)", background: pastSel ? "#fff" : "rgba(255,255,255,.14)", color: pastSel ? "var(--accent)" : "var(--on-header)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {t.rd_psn_session}: {pastSel ? sessionLabel(pastSel) : t.rd_psn_current} ▾
+            </button>
+            {sessionMenu && (
+              <>
+                <div onClick={() => setSessionMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                <div role="menu" data-testid="ord-session-menu" style={{ position: "absolute", left: 0, top: "calc(100% + 6px)", zIndex: 41, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 11, boxShadow: "0 12px 32px rgba(0,0,0,.28)", overflow: "hidden", minWidth: 240, maxHeight: 320, overflowY: "auto" }}>
+                  <button role="menuitem" data-testid="ord-session-current" onClick={() => { setSessionMenu(false); void past.pick(null); }} style={menuItem(!pastSel)}>{t.rd_psn_current}</button>
+                  {past.listState === "loading" && <div style={menuNote}>{t.rd_psn_loading}</div>}
+                  {past.listState === "error" && <div style={{ ...menuNote, color: "var(--danger)" }}>{t.rd_psn_failed}</div>}
+                  {past.listState === "ready" && past.list.filter((x) => !x.current).length === 0 && <div style={menuNote}>{t.rd_psn_none}</div>}
+                  {past.list.filter((x) => !x.current).map((x) => (
+                    <button key={x.id} role="menuitem" data-testid="ord-session-item" onClick={() => { setSessionMenu(false); void past.pick(x); }} style={menuItem(pastSel?.id === x.id)}>{sessionLabel(x)}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {pastSel && <div data-testid="ord-session-hint" style={{ fontSize: 11, color: "var(--on-header)", opacity: 0.85, marginTop: 5 }}>{past.buyersState === "loading" ? t.rd_psn_buyers_loading : past.buyersState === "error" ? t.rd_psn_failed : t.rd_psn_hint}</div>}
+          </div>
+        )}
         {/* Unified search — sits where the old (dead) status-chip row was. */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, background: "rgba(255,255,255,.14)", borderRadius: 11, padding: "8px 12px" }}>
           <span style={{ fontSize: 13, opacity: 0.8 }}>🔍</span>
@@ -358,6 +396,11 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             stay pinned outside the scroll region. */}
         {receipt ? (
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)" }} data-testid="buyer-receipt">
+            {pastSel && (
+              <div data-testid="receipt-session" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 8, padding: "4px 9px", marginBottom: 9, display: "inline-block" }}>
+                {tpl(t.rd_psn_card, { range: sessionRange(pastSel) })}
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 11, paddingBottom: 11, borderBottom: "1px solid var(--border)" }}>
               <div style={{ width: 40, height: 40, borderRadius: 12, background: avColor(receipt.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: mono }}>#{receipt.num}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -392,15 +435,15 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             </div>
             {tiktokSend && receipt.platform === "TikTok" && ttSendOpen && (
               <TikTokSendSheet key={receipt.num} receipt={receipt} cur={cur} sellerId={sellerId} onClose={() => setTtSendOpen(false)}
-                date={sessionDateLabel((buyers.find((b) => b.num === receipt.num)?.orders || []).map((o) => o.orderNum), todayId)} />
+                date={pastSel ? sessionRange(pastSel) : sessionDateLabel((buyers.find((b) => b.num === receipt.num)?.orders || []).map((o) => o.orderNum), todayId)} />
             )}
-            {fbReceipt && receipt.platform === "Facebook" && (
+            {fbReceiptOn && receipt.platform === "Facebook" && (
               <button type="button" data-testid="messenger-receipt-btn" onClick={() => setReceiptSheetOpen(true)}
                 style={{ marginTop: 12, width: "100%", padding: "10px 0", borderRadius: 11, border: "1.3px solid var(--accent)", background: "var(--accent-soft)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
                 {t.rd_rc_button}
               </button>
             )}
-            {fbReceipt && receipt.platform === "Facebook" && receiptSheetOpen && (
+            {fbReceiptOn && receipt.platform === "Facebook" && receiptSheetOpen && (
               <ReceiptSheet key={receipt.num} receipt={receipt} cur={cur} onClose={() => setReceiptSheetOpen(false)}
                 sessionId={sessionId} polish={fbPolish} onSent={(n) => { if (tagKey) setSentTag({ key: tagKey, sent: n > 0 }); }} />
             )}
