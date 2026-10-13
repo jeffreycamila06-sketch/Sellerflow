@@ -14,7 +14,7 @@ import { createOcr, readPollGate, writePollHealth } from "./server/parcelTrackin
 import { createWorker as createParcelWorker } from "./server/parcelTrackingWorker.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
-import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
+import { makeFailureThrottle, checkPollToken } from "./server/pollAuth.js";
 import { sweepProductImages, makeSweepStore, readSweepSwitch } from "./server/productImagesSweep.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs } from "./server/pinRelay.js";
@@ -1189,18 +1189,12 @@ const parcelPollAuthThrottle = makeFailureThrottle({ max: 5, windowMs: 15 * 60 *
 
 app.post("/admin/parcel-tracking-poll", async (req, res) => {
   if (!PARCEL_POLL_TOKEN) return res.status(503).json({ ok: false, error: "poll_not_configured" });
-  // M5 — header only (never the query string), lockout after repeated bad tokens,
-  // constant-time compare. The cron-job.org job sends X-Poll-Token (documented).
-  if (parcelPollAuthThrottle.blocked()) {
-    console.log("[PARCEL-POLL] auth throttle — locked out after repeated bad tokens");
-    return res.status(429).json({ ok: false, error: "too_many_attempts" });
-  }
-  const token = req.headers["x-poll-token"];
-  if (!timingSafeTokenEqual(token, PARCEL_POLL_TOKEN)) {
-    parcelPollAuthThrottle.fail();
-    return res.status(403).json({ ok: false, error: "forbidden" });
-  }
-  parcelPollAuthThrottle.ok();
+  // M5 — header only (never the query string), constant-time compare. Audit Oct 14: the
+  // correct token is compared FIRST and always passes; only wrong tokens get the lockout.
+  // The cron-job.org job sends X-Poll-Token (documented).
+  const auth = checkPollToken(parcelPollAuthThrottle, req.headers["x-poll-token"], PARCEL_POLL_TOKEN, { label: "PARCEL-POLL" });
+  if (auth === "locked") return res.status(429).json({ ok: false, error: "too_many_attempts" });
+  if (auth !== "ok") return res.status(403).json({ ok: false, error: "forbidden" });
   if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
   // KILL SWITCH (app_settings.parcel_tracking_enabled) — checked here too so a
   // disabled poller answers 200 immediately (cron history shows it) without
@@ -1240,12 +1234,9 @@ let productImagesSweepRunning = false;
 
 app.post("/admin/product-images-sweep", async (req, res) => {
   if (!PRODUCT_IMAGES_SWEEP_TOKEN) return res.status(503).json({ ok: false, error: "sweep_not_configured" });
-  if (productImagesSweepAuthThrottle.blocked()) return res.status(429).json({ ok: false, error: "too_many_attempts" });
-  if (!timingSafeTokenEqual(req.headers["x-poll-token"], PRODUCT_IMAGES_SWEEP_TOKEN)) {
-    productImagesSweepAuthThrottle.fail();
-    return res.status(403).json({ ok: false, error: "forbidden" });
-  }
-  productImagesSweepAuthThrottle.ok();
+  const auth = checkPollToken(productImagesSweepAuthThrottle, req.headers["x-poll-token"], PRODUCT_IMAGES_SWEEP_TOKEN, { label: "PRODUCT-IMAGES-SWEEP" });
+  if (auth === "locked") return res.status(429).json({ ok: false, error: "too_many_attempts" });
+  if (auth !== "ok") return res.status(403).json({ ok: false, error: "forbidden" });
   if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
   if (!(await readSweepSwitch(serviceSb))) return res.status(204).end();
   if (productImagesSweepRunning) return res.status(409).json({ ok: false, error: "already_running" });

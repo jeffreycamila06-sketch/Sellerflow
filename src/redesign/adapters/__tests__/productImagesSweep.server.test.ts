@@ -105,10 +105,10 @@ describe("store + switch", () => {
 describe("route + sql/98 contract", () => {
   const src = readFileSync("server.js", "utf8");
   const route = src.slice(src.indexOf('app.post("/admin/product-images-sweep"'), src.indexOf("function emitTikTokStatus"));
-  it("token first (header, timing-safe, lockout), then service role, then switch → 204, then single-flight 202", () => {
+  it("token first (header, timing-safe, lockout for wrong tokens only), then service role, then switch → 204, then single-flight 202", () => {
     const at = (s: string) => { const i = route.indexOf(s); expect(i, s).toBeGreaterThan(-1); return i; };
-    const tok = at('timingSafeTokenEqual(req.headers["x-poll-token"], PRODUCT_IMAGES_SWEEP_TOKEN)');
-    expect(at("productImagesSweepAuthThrottle.blocked()")).toBeLessThan(tok);
+    const tok = at('checkPollToken(productImagesSweepAuthThrottle, req.headers["x-poll-token"], PRODUCT_IMAGES_SWEEP_TOKEN');
+    expect(at('auth === "locked"')).toBeGreaterThan(tok);
     expect(at("!serviceSb")).toBeGreaterThan(tok);
     const sw = at("readSweepSwitch(serviceSb)");
     expect(sw).toBeGreaterThan(tok);

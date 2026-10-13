@@ -286,14 +286,15 @@ describe("server.js /admin/parcel-tracking-poll (structural — secret-gated cro
     expect(route).not.toContain("requireAuth");
     expect(route).not.toContain("requireAdmin");
     // token compared against the env secret; 403 on mismatch, 503 when unconfigured
-    // (M5 2026-09-26: header-only + constant-time via server/pollAuth.js)
-    expect(route).toMatch(/!timingSafeTokenEqual\(token, PARCEL_POLL_TOKEN\)/);
+    // (M5 2026-09-26: header-only + constant-time via server/pollAuth.js; audit Oct 14:
+    // one gate, checkPollToken, compares the token first)
+    expect(route).toMatch(/checkPollToken\(parcelPollAuthThrottle, req\.headers\["x-poll-token"\], PARCEL_POLL_TOKEN/);
     expect(route).toMatch(/status\(403\)/);
     expect(route).toMatch(/!PARCEL_POLL_TOKEN/);
   });
 
   it("checks the token BEFORE touching the DB (no work for a bad caller); never touches SHOPMORE/OCR itself", () => {
-    const tokenAt = route.indexOf("timingSafeTokenEqual(token, PARCEL_POLL_TOKEN");
+    const tokenAt = route.indexOf("checkPollToken(parcelPollAuthThrottle");
     expect(tokenAt).toBeGreaterThan(-1);
     expect(tokenAt).toBeLessThan(route.indexOf("readPollGate("));                 // first DB touch
     expect(tokenAt).toBeLessThan(route.indexOf("parcel_tracking_enqueue_job"));
