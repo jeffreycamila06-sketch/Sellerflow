@@ -100,6 +100,7 @@ import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts, loadProductsDb } from "./adapters/productsDb";
 import { createStockGuard, mergeReloadedStock, debounceAllows, useStockRefreshTriggers } from "./adapters/stockRefresh";
 import { loadProducts, clearProductsCacheFor, type Product } from "./adapters/products";
+import { signOutAndReload, sessionEnded, appReload } from "./adapters/logoutReset";
 import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useSamePrice, effectiveOrderPrice, entPrefill } from "./adapters/useSamePrice";
@@ -2256,6 +2257,27 @@ export default function RedesignApp() {
       setScreen(anonScreen());
     }
   }, [auth.status]);
+  // Audit Oct 14 (1): ANY end of a signed-in session (account deleted, session expired, logout
+  // in another tab) → the same full reload as Logout. Logout itself reloads after its own
+  // awaited sign-out (leavingRef), so this does not fire twice.
+  const prevAuthStatusRef = useRef<string | null>(null);
+  const leavingRef = useRef(false);
+  useEffect(() => {
+    const prev = prevAuthStatusRef.current;
+    prevAuthStatusRef.current = auth.status;
+    if (sessionEnded(prev, auth.status) && !leavingRef.current) { leavingRef.current = true; appReload.run(); }
+  }, [auth.status]);
+  // Self-delete: the same cleanups as Logout once the account is gone, then the full reload.
+  // leavingRef holds the automatic reload back until the cleanups ran (released on failure).
+  const onDeleteAccount = async () => {
+    const me = auth.profile?.authUserId;
+    leavingRef.current = true;
+    const r = await auth.deleteAccount();
+    if (!r.ok) { leavingRef.current = false; return r; }
+    outbox.dropOwner(me); clearProductsCacheFor(me); resetAnalytics();
+    appReload.run();
+    return r;
+  };
 
   const showNav = screen !== "login" && auth.status === "authed";
   const ordersActive = screen === "orders" || screen === "print";
@@ -2487,10 +2509,16 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
               onLogout={() => {
                 // Audit Oct 13 (5): a shared device keeps nothing of this shop for the next one.
+                // Audit Oct 14 (1): then sign out (awaited, time-boxed) and reload the whole app,
+                // so no in-memory state (feed, buyers, report caches, Buyer Alert, products)
+                // reaches the next account.
                 const me = auth.profile?.authUserId;
                 outbox.dropOwner(me);
                 clearProductsCacheFor(me);
-                resetAnalytics(); void auth.signOut(); setScreen("login");
+                resetAnalytics();
+                leavingRef.current = true;
+                setScreen("login");
+                void signOutAndReload(auth.signOut);
               }}
               isAdmin={isAdmin}
               onParcelScan={parcelAllowed ? openParcelScan : undefined}
@@ -2581,7 +2609,7 @@ export default function RedesignApp() {
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
           {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
-          {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
+          {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={onDeleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings
               onBack={() => setScreen("settings")}
