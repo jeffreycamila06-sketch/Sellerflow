@@ -39,7 +39,12 @@ const FORBIDDEN = [
   /\bsource ?code\b/i, /\b(github|repository)\b/i,
   /\b(api|apis|endpoint|webhook|database|sql|supabase|backend|scrap(e|es|er|ing))\b/i,
   /\b(what|which|where)\b.{0,12}\b(server|servers|hosting)\b/i,
-  /\b(how|where)\b.{0,25}\b(you|the app|sellerflow\w*|it|system)\b.{0,20}\b(read|reads|fetch|fetches|capture|captures|grab|grabs|pull|pulls)\b.{0,20}\bcomments?\b/i,
+  /\b(how|where)\b.{0,25}\b(you|the app|sellerflow\w*|it|system)\b.{0,20}\b(read|reads|get|gets|receive|receives|collect|collects|fetch|fetches|capture|captures|grab|grabs|pull|pulls)\b.{0,20}\bcomments?\b/i,
+  /\bhow\b.{0,25}\b(you|the app|it|system|sellerflow\w*|buyer alert|pickup status|parcel check)\b.{0,15}\b(decide|decides|determine|determines|know|knows|calculate|calculates|detect|detects|count|counts)\b/i,
+  /\bhow\b.{0,25}\b(parcel check|buyer alert)\b.{0,15}\bworks?\b/i,
+  /\bwho\b.{0,10}\b(made|built|created|developed|owns|runs|coded)\b.{0,15}\b(this|the app|sellerflow\w*|it)\b/i,
+  /\bhosted\b/i,
+  /\b(paano|pano)\b.{0,20}\b(nalalaman|nalaman|nadedetect|natutukoy|nakikilala)\b/i,
   /\bhow\b.{0,25}\bparcels?\b.{0,20}\b(checked|matched|verified)\b/i,
   /\b(data source|where does the data come from|where do you get the data)\b/i,
   /\b(paano|pano)\b.{0,25}\b(gumagana|ginagawa)\b.{0,15}\bsa loob\b/i,
@@ -63,7 +68,8 @@ const FORBIDDEN = [
   /\bcaptcha\b/i,
   /\b(unofficial|fake)\b.{0,10}\b(bots?|comments?|viewers?|likes?|followers?|accounts?)\b/i,
   /\bauto[- ]?(commenter|liker|follower)s?\b/i, /\bbots?\b.{0,15}\b(to )?(comment|like|follow|boost)/i,
-  /\b(iwas|lusutan|lusot)\b.{0,15}\b(ban|tiktok|facebook|rules?)\b/i,
+  /\b(viewers?|followers?|likes?|comments?)\b.{0,20}\bbots?\b/i,
+  /\b(iwas|iwasan|maiwasan|lusutan|lusot)\b.{0,15}\b(ban|tiktok|facebook|rules?)\b/i,
   /繞過|绕过|規避|规避|驗證碼|验证码|外掛|外挂|刷讚|刷赞|刷留言|刷粉|假帳號|假账号|機器人留言|机器人留言/,
   // instructions hidden in the question
   /\b(ignore|forget|disregard)\b.{0,20}\b(previous|above|all|your|the)\b.{0,15}\b(rules?|instructions?|prompt)\b/i,
@@ -92,18 +98,35 @@ const MONEY_Q = [
   /bayad|bayaran|singil/i,
   /\bmagkano\b(?!.{0,25}\b(item|items|product|products|produkto|order|orders|sticker|stickers|printer|shipping|padala|buyer)\b)/i,
   /\bpresyo ng (plan|app|sellerflow)/i,
-  /方案|訂閱|订阅|付款|付費|付费|繳費|缴费|匯款|汇款|升級|升级|降級|降级|續費|续费|續約|续约|續訂|续订|發票|发票|試用|试用|到期/,
+  /方案|訂閱|订阅|付款|付費|付费|繳費|缴费|匯款|汇款|升級|升级|降級|降级|續費|续费|續約|续约|續訂|续订|發票|发票|試用|试用|信用卡|月費|月费|折扣|優惠|优惠|帳號上限|账号上限|帳號數|账号数/,
+  // plan names compared / bought / asked about
+  /\b(free|basic|plus|pro|master)\b.{0,30}\b(free|basic|plus|pro|master)\b/i,
+  /\b(bili|bumili|bilhin|buy|get|kunin|avail)\b.{0,15}\b(plus|pro|master|basic)\b/i,
+  /\b(sa|ng|yung|ung|ang|for|on)\s+(plus|pro|master|basic)\b/i,
+  // account count = plan topic on iPhone
+  /\bhow many\b.{0,20}\baccounts?\b/i, /\bilang\b.{0,10}\baccounts?\b/i,
+  /\b(another|more|extra|additional|isa pang|dagdag)\b.{0,20}\baccounts?\b/i,
+  /\b(discount|discounts|promo|promos|installment|installments|credit card|hulog|avail|mahal|plano|price ?list)\b/i,
+  /\brates?\b.{0,15}\b(app|sellerflow\w*|plan|monthly|buwan)\b/i,
   /(免費|免费).{0,3}(額度|额度|方案|版|次數|次数)/,
   /專業版|专业版|高級版|高级版|基本版|大師版|大师版|會員費|会员费/,
   /(多少錢|多少钱|價格|价格|費用|费用).{0,8}(app|App|APP|軟體|软件|會員|会员|月|SellerFlow)|(app|App|APP|軟體|软件|會員|会员|SellerFlow).{0,8}(多少錢|多少钱|價格|价格|費用|费用)/,
 ];
-// "expire" means the plan — unless the question is about the live session ("my session expired").
-const EXPIRE_Q = /expir/i;
-const SESSION_ONLY = /\bsession\b|場次|场次/i;
+// "expire" / 到期 means the plan — unless the question is about a session or a parcel.
+const EXPIRE_Q = /expir|到期/i;
+const NOT_PLAN_EXPIRE = /\bsession\b|場次|场次|包裹|取件|取貨|取货|寄件|門市|门市|\bparcels?\b|\bpick ?up\b/i;
+// Words that make "upgrade" / "pay" about something else — unless a plan word is also there.
+const PLAN_WORD = /\b(plan|plans|plano|subscription|subscribe|tier|free|basic|plus|pro|master|account|accounts)\b|方案|訂閱|订阅/i;
+const APP_UPDATE = /\b(app|version|update)\b/i;
+const BUYER_PAY = /\b(buyer|buyers|customer|customers|mamimili|order|orders)\b/i;
 export function isMoneyQuestion(q) {
-  const s = clean(q);
+  let s = clean(q);
+  if (!PLAN_WORD.test(s)) {
+    if (APP_UPDATE.test(s)) s = s.replace(/\b(upgrade|upgrading|update|updating)\b/gi, " ");
+    if (BUYER_PAY.test(s)) s = s.replace(/\b(pay|paying|payment|payments)\b|\w*bayad\w*/gi, " ");
+  }
   if (MONEY_Q.some((re) => re.test(s))) return true;
-  return EXPIRE_Q.test(s) && !SESSION_ONLY.test(s);
+  return EXPIRE_Q.test(s) && !NOT_PLAN_EXPIRE.test(s);
 }
 
 const MONEY_OUT = [
@@ -116,7 +139,10 @@ const MONEY_OUT = [
   /\b(gcash|paymaya|bank transfer|wise|invoice|pricing)\b/i,
   /(NT\$|NTD|TWD|PHP|₱|US\$|USD|\$|₫|฿|Rp|RM)\s?\d/i, /\d\s?(NT\$|NTD|TWD|PHP|USD|元|塊)/i,
   /\b(magbayad|bayaran|pagbabayad|singil)\b/i,
-  /方案|訂閱|订阅|付款|付費|付费|繳費|缴费|匯款|汇款|升級|升级|續費|续费|續約|续约|續訂|续订|發票|发票/,
+  /\b(Basic|Plus|Pro|Master)\b/, // plan names, case-sensitive, anywhere
+  /\b(discount|discounts|promo|promos|avail|installment|installments|credit card|hulog)\b/i,
+  /\bmas mataas na (plan|plano|bersyon|version)\b/i,
+  /方案|訂閱|订阅|付款|付費|付费|繳費|缴费|匯款|汇款|升級|升级|續費|续费|續約|续约|續訂|续订|發票|发票|信用卡|月費|月费|折扣|優惠|优惠/,
 ];
 export const hasMoneyText = (text) => MONEY_OUT.some((re) => re.test(clean(text)));
 

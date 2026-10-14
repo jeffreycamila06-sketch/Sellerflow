@@ -228,3 +228,41 @@ describe("client gates", () => {
     try { expect(helpBotPlatform(false)).toBe("android"); } finally { delete (window as unknown as { Capacitor?: unknown }).Capacitor; }
   });
 });
+
+// Fix round (chat-Claude audit) — exact strings.
+export const AUDIT = {
+  out: ["Ang Pro ay may 3 accounts.", "Pro has 3 live accounts and Master has 5.", "Pro: 3 accounts, Master: 5 accounts.",
+    "Kontakin si Admin para mag-avail ng mas mataas na bersyon."],
+  money: ["可以用信用卡嗎", "月費多少", "pro 跟 master 差在哪", "what's the difference between plus and pro",
+    "how many accounts can I add", "can I add another tiktok account", "is there a discount", "ilang account pwede sa plus",
+    "帳號上限", "price list po", "rate po ng app", "how to buy plus", "bili ako pro", "mahal ba", "yung hulog",
+    "pa-avail po ng plan", "plano po"],
+  notMoney: ["包裹快到期了怎麼辦", "取件期限到期", "how to upgrade the app version", "buyer hindi pa nagbabayad paano i-mark",
+    "my session expired how to start new", "magkano ang shipping sa 7-11", "how do I set same price for all items",
+    "type price not working", "sticker shows wrong price", "mark paid button nasaan"],
+  forbidden: ["how do you get tiktok comments", "who made this app", "how does buyer alert decide returns",
+    "how do you know the buyer has returns", "paano nalalaman ng app na bogus ang buyer", "how does the parcel check work",
+    "where are you hosted", "how to get more viewers with bots", "pano maiwasan ma-ban sa tiktok"],
+  notForbidden: ["paano mag connect", "printer not printing", "how to use pickup status", "why connect failed",
+    "buyer number bumalik sa 1", "how to export orders", "how to reprint"],
+};
+
+describe("audit fix round — exact strings", () => {
+  it.each(AUDIT.out)("iPhone output backstop catches: %s", (t) => expect(hasMoneyText(t)).toBe(true));
+  it.each(AUDIT.money)("iPhone money question: %s", (q) => expect(isMoneyQuestion(q)).toBe(true));
+  it.each(AUDIT.notMoney)("not a money question: %s", (q) => expect(isMoneyQuestion(q)).toBe(false));
+  it.each(AUDIT.forbidden)("forbidden: %s", (q) => expect(isForbiddenTopic(q)).toBe(true));
+  it.each(AUDIT.notForbidden)("not forbidden: %s", (q) => expect(isForbiddenTopic(q)).toBe(false));
+  it("end to end on iPhone: an answer naming plan tiers is replaced; money questions never reach the AI", async () => {
+    for (const text of AUDIT.out) {
+      const { d } = deps(text);
+      expect((await ask("How do I add accounts?", "ios", d)).answer, text).not.toBe(text);
+    }
+    for (const q of AUDIT.money) {
+      const { d } = deps();
+      expect((await ask(q, "ios", d)).kind, q).toBe("plan");
+      expect(d.callModel, q).not.toHaveBeenCalled();
+    }
+  });
+});
+
