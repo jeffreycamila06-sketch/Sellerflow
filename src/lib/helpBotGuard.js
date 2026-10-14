@@ -118,10 +118,12 @@ const NOT_PLAN_EXPIRE = /\bsession\b|場次|场次|包裹|取件|取貨|取货|�
 // Words that make "upgrade" / "pay" about something else — unless a plan word is also there.
 const PLAN_WORD = /\b(plan|plans|plano|subscription|subscribe|tier|free|basic|plus|pro|master|account|accounts)\b|方案|訂閱|订阅/i;
 const APP_UPDATE = /\b(app|version|update)\b/i;
+const SESSION_CTX = /\bsession\b|場次|场次/i;
 const BUYER_PAY = /\b(buyer|buyers|customer|customers|mamimili|order|orders)\b/i;
 export function isMoneyQuestion(q) {
   let s = clean(q);
   if (!PLAN_WORD.test(s)) {
+    if (SESSION_CTX.test(s)) s = s.replace(/\b(renew|renews|renewing|renewal|renewed)\b/gi, " ");
     if (APP_UPDATE.test(s)) s = s.replace(/\b(upgrade|upgrading|update|updating)\b/gi, " ");
     if (BUYER_PAY.test(s)) s = s.replace(/\b(pay|paying|payment|payments)\b|\w*bayad\w*/gi, " ");
   }

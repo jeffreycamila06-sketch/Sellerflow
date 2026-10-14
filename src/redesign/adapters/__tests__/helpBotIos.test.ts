@@ -2,7 +2,7 @@
 // Fakes only (no network). Rules: src/lib/helpBotGuard.js, wired in server/helpBot.js.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { answerQuestion, parseGuide, detectLang } from "../../../../server/helpBot.js";
+import { answerQuestion, parseGuide, detectLang, CLASSIFIER_PROMPT, OUTPUT_CHECK_PROMPT, HAIKU, SONNET, costUsd, HANDOFF_ANSWER, parseClassifierReply } from "../../../../server/helpBot.js";
 import {
   isForbiddenTopic, isMoneyQuestion, hasMoneyText, planAnswer, blockedAnswer, normPlatform,
   IOS_EXCLUDED_SECTIONS, BLOCKED_ANSWERS,
@@ -25,6 +25,8 @@ function deps(modelText = "1. Open Settings.\n2. Tap Printer.", over: Record<str
     guide: vi.fn(async () => GUIDE),
     callModel: vi.fn(async (a: Call) => {
       calls.push(a);
+      if (a.system === CLASSIFIER_PROMPT) return { ok: true, text: "HOWTO", usage: { input_tokens: 150, output_tokens: 2 } };
+      if (a.system === OUTPUT_CHECK_PROMPT) return { ok: true, text: "NO", usage: { input_tokens: 120, output_tokens: 1 } };
       if (a.maxTokens === 20) return { ok: true, text: "none", usage: { input_tokens: 10, output_tokens: 1 } };
       return { ok: true, text: modelText, usage: { input_tokens: 10, output_tokens: 10 } };
     }),
@@ -127,7 +129,7 @@ describe("iPhone: output backstop replaces plan / payment text from ANY source",
   it("handoff / limit / error answers pass (no plan text in them)", async () => {
     const lim = deps("", { usage: vi.fn(async () => ({ day_count: 99, month_cost: 0 })) });
     expect((await ask("printer not printing", "ios", lim.d)).source).toBe("limit");
-    const err = deps("", { callModel: vi.fn(async () => ({ ok: false, error: "timeout" })) });
+    const err = deps("", { callModel: vi.fn(async (a: Call) => (a.system === CLASSIFIER_PROMPT ? { ok: true, text: "HOWTO", usage: {} } : { ok: false, error: "timeout" })) });
     const r = await ask("printer not printing", "ios", err.d);
     expect(r.source).toBe("handoff");
     expect(r.kind).toBeUndefined();
@@ -154,11 +156,11 @@ describe("iPhone context leaves plan / payment material out", () => {
   it("plan guide sections and plan FAQs never reach the AI prompt", async () => {
     const { d, calls } = deps();
     await ask("Which plan has Pickup Status and how do I get it?", "android", d); // android baseline sees plans
-    const androidUser = calls.at(-1)!.user;
+    const androidUser = calls.find((c) => c.maxTokens === 600)!.user;
     expect(androidUser).toMatch(/## plans/);
     const ios = deps();
     await ask("What does Pickup Status show?", "ios", ios.d);
-    const iosCall = ios.calls.at(-1)!;
+    const iosCall = ios.calls.find((c) => c.maxTokens === 600)!;
     for (const id of IOS_EXCLUDED_SECTIONS) expect(iosCall.user).not.toContain(`## ${id} —`);
     expect(iosCall.system).not.toContain(PLAN_FAQ.answer);
     expect(iosCall.system).toContain(SAFE_FAQ.answer);
@@ -192,7 +194,7 @@ describe("forbidden topics are blocked on every platform", () => {
   it("the answer prompt carries the use-only rules on every platform", async () => {
     const { d, calls } = deps();
     await ask("How do I connect TikTok?", "web", d);
-    const sys = calls.at(-1)!.system;
+    const sys = calls.find((c) => c.maxTokens === 600)!.system;
     expect(sys).toContain("Only say how to USE the app");
     expect(sys).toContain("Never help get around TikTok or Facebook rules");
     expect(sys).not.toContain("Never mention prices, plans, subscriptions"); // iPhone-only line
@@ -264,5 +266,116 @@ describe("audit fix round — exact strings", () => {
       expect(d.callModel, q).not.toHaveBeenCalled();
     }
   });
+});
+
+// Fix round 2 — the Haiku question check (every platform) and the iPhone answer check.
+type Reply = { ok: boolean; text?: string; error?: string; usage?: Record<string, number> } | "throw";
+function haikuDeps(classify: Reply, check: Reply = { ok: true, text: "NO" }, answer = "1. Open Settings.") {
+  const U = { input_tokens: 100, output_tokens: 2 };
+  const reply = (r: Reply) => { if (r === "throw") throw new Error("boom"); return { usage: U, ...r }; };
+  return deps(answer, {
+    faqs: vi.fn(async () => []),
+    callModel: vi.fn(async (a: Call) => {
+      if (a.system === CLASSIFIER_PROMPT) return reply(classify);
+      if (a.system === OUTPUT_CHECK_PROMPT) return reply(check);
+      return { ok: true, text: answer, usage: { input_tokens: 1000, output_tokens: 80 } };
+    }),
+  });
+}
+const Q = "How do I start a live?"; // passes every regex: only the classifier decides
+
+describe("Haiku question check", () => {
+  it("parses only the four labels", () => {
+    expect(parseClassifierReply("HOWTO")).toBe("HOWTO");
+    expect(parseClassifierReply(" money.")).toBe("MONEY");
+    expect(parseClassifierReply("Internal")).toBe("INTERNAL");
+    expect(parseClassifierReply("I think MONEY")).toBeNull();
+    expect(parseClassifierReply("")).toBeNull();
+  });
+  it("INTERNAL → blocked on every platform, no answer model", async () => {
+    for (const p of ["ios", "android", "web"]) {
+      const { d, saved, calls } = haikuDeps({ ok: true, text: "INTERNAL" });
+      expect(await ask(Q, p, d), p).toMatchObject({ source: "handoff", kind: "blocked", answer: blockedAnswer("en") });
+      expect(saved[0]).toMatchObject({ needs_admin: "blocked", model: HAIKU });
+      expect(calls.some((c) => c.maxTokens === 600)).toBe(false);
+    }
+  });
+  it("MONEY → iPhone plan answer; Android/web today's handoff", async () => {
+    const i = haikuDeps({ ok: true, text: "MONEY" });
+    expect(await ask(Q, "ios", i.d)).toMatchObject({ kind: "plan", answer: planAnswer("en") });
+    for (const p of ["android", "web"]) {
+      const a = haikuDeps({ ok: true, text: "MONEY" });
+      const r = await ask(Q, p, a.d);
+      expect(r, p).toMatchObject({ source: "handoff", answer: HANDOFF_ANSWER, contact: true });
+      expect(a.saved[0].needs_admin).toBe("billing");
+    }
+  });
+  it("HOWTO / OTHER → answered as today", async () => {
+    for (const label of ["HOWTO", "OTHER"]) for (const p of ["ios", "android"]) {
+      const { d } = haikuDeps({ ok: true, text: label });
+      expect((await ask(Q, p, d)).source, `${label} ${p}`).toBe("ai");
+    }
+  });
+  it("iPhone fails CLOSED on an error, an odd reply or a throw", async () => {
+    for (const c of [{ ok: false, error: "http_529" }, { ok: true, text: "Sure! Here is" }, "throw"] as Reply[]) {
+      const { d, calls } = haikuDeps(c);
+      expect(await ask(Q, "ios", d)).toMatchObject({ kind: "plan", answer: planAnswer("en") });
+      expect(calls.some((x) => x.maxTokens === 600)).toBe(false);
+    }
+  });
+  it("Android / web fail OPEN (continue as today)", async () => {
+    for (const c of [{ ok: false, error: "http_529" }, { ok: true, text: "Sure!" }, "throw"] as Reply[]) for (const p of ["android", "web"]) {
+      const { d } = haikuDeps(c);
+      expect((await ask(Q, p, d)).source).toBe("ai");
+    }
+  });
+});
+
+describe("iPhone answer check (Haiku yes/no)", () => {
+  it("YES → plan answer; NO → the answer stands", async () => {
+    const y = haikuDeps({ ok: true, text: "HOWTO" }, { ok: true, text: "YES" });
+    expect(await ask(Q, "ios", y.d)).toMatchObject({ source: "ai", kind: "plan", answer: planAnswer("en") });
+    expect(y.saved[0].answer).toBe(planAnswer("en"));
+    const n = haikuDeps({ ok: true, text: "HOWTO" }, { ok: true, text: "NO" });
+    expect((await ask(Q, "ios", n.d)).answer).toBe("1. Open Settings.");
+  });
+  it("a failed or odd check → plan answer", async () => {
+    for (const c of [{ ok: false, error: "timeout" }, { ok: true, text: "maybe" }, "throw"] as Reply[]) {
+      const { d } = haikuDeps({ ok: true, text: "HOWTO" }, c);
+      expect((await ask(Q, "ios", d)).answer).toBe(planAnswer("en"));
+    }
+  });
+  it("also checks a Haiku-matched saved answer", async () => {
+    const { d } = deps("", {
+      faqs: vi.fn(async () => [SAFE_FAQ]),
+      callModel: vi.fn(async (a: Call) => ({ ok: true, usage: {}, text: a.system === CLASSIFIER_PROMPT ? "HOWTO" : a.system === OUTPUT_CHECK_PROMPT ? "YES" : "7" })),
+    });
+    expect(await ask("how do i print a test sticker", "ios", d)).toMatchObject({ source: "faq_ai_match", kind: "plan", saved: false, answer: planAnswer("en") });
+  });
+  it("never runs on Android / web", async () => {
+    const { d, calls } = haikuDeps({ ok: true, text: "HOWTO" }, { ok: true, text: "YES" });
+    expect((await ask(Q, "android", d)).answer).toBe("1. Open Settings.");
+    expect(calls.some((c) => c.system === OUTPUT_CHECK_PROMPT)).toBe(false);
+  });
+});
+
+describe("both Haiku calls count in the month's spend", () => {
+  it("iPhone AI answer: question check + answer + answer check", async () => {
+    const { d, saved } = haikuDeps({ ok: true, text: "HOWTO" });
+    await ask(Q, "ios", d);
+    const U = { input_tokens: 100, output_tokens: 2 };
+    expect(saved[0].cost_usd as number).toBeCloseTo(costUsd(HAIKU, U) * 2 + costUsd(SONNET, { input_tokens: 1000, output_tokens: 80 }), 12);
+    expect(saved[0].tokens_in).toBe(1200);
+  });
+  it("a blocked / money result from the check is costed too", async () => {
+    const { d, saved } = haikuDeps({ ok: true, text: "INTERNAL" });
+    await ask(Q, "web", d);
+    expect(saved[0].cost_usd as number).toBeCloseTo(costUsd(HAIKU, { input_tokens: 100, output_tokens: 2 }), 12);
+  });
+});
+
+describe("renewing a session is not money", () => {
+  it.each(["how do I renew my session", "renewing my session po", "paano i-renew ang session"])("%s", (q) => expect(isMoneyQuestion(q)).toBe(false));
+  it("renew with a plan word is still money", () => expect(isMoneyQuestion("how do I renew my plan and session")).toBe(true));
 });
 

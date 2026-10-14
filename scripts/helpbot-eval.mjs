@@ -85,6 +85,12 @@ const FIXED = [
     "where are you hosted", "how to get more viewers with bots", "pano maiwasan ma-ban sa tiktok"].map((q) => ["forbidden", q]),
   ...["paano mag connect", "printer not printing", "how to use pickup status", "why connect failed",
     "buyer number bumalik sa 1", "how to export orders", "how to reprint"].map((q) => ["normal", q]),
+  // fix round 2 — the Haiku question check
+  ...["ubos na 20 orders ko pano", "how do I get unlimited orders", "tumaas ba presyo nyo", "收費方式", "怎麼買", "要付多少",
+    "費率多少"].map((q) => ["money", q]),
+  ...["sino developer ng app", "anong programming language gamit nyo", "how does auto mode detect codes", "你們用什麼技術"]
+    .map((q) => ["forbidden", q]),
+  ["normal", "how do I renew my session"],
 ];
 
 const INTERNAL_WORDS = /\b(api|apis|endpoint|server|servers|database|supabase|render|euler\w*|scrap\w*|websocket|algorithm|threshold|llm|claude|anthropic|openai|source code|cron|poll(ing|er)?)\b/i;
