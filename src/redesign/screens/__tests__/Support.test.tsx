@@ -31,16 +31,16 @@ describe("Support user-guide accordions", () => {
     expect(screen.queryByText(/add your account in Channels/)).toBeNull();
   });
 
-  it("g5 shipping-export guide is present and expands to the step list", () => {
+  it("g5 (7-11 shipping export) is hidden while Shipping shows Coming soon", () => {
     renderSupport();
-    expect(screen.queryByText(/Add shipping info/)).toBeNull();  // collapsed
-    fireEvent.click(screen.getByText("How to use: 7-11 shipping export"));
-    expect(screen.getByText(/Add shipping info/)).toBeTruthy();
-    // Help guide rule: steps only, no "how it works inside" lines.
-    expect(screen.queryByText(/grouped by buyer number/)).toBeNull();
-    expect(screen.queryByText(/NT\$55/)).toBeNull();
-    expect(screen.getByText(/NT\$38/)).toBeTruthy();
-    expect(screen.getByText(/Ship within 4 days/)).toBeTruthy();
+    expect(screen.queryByText("How to use: 7-11 shipping export")).toBeNull();
+  });
+  it("Auto Mode steps point to Products → Live code and the LIVE SESSION switch", () => {
+    renderSupport();
+    fireEvent.click(screen.getByText("How Auto Mode works"));
+    expect(screen.getByText(/Go to Products, edit a product and fill in Live code/)).toBeTruthy();
+    expect(screen.getByText(/Settings → General Settings → LIVE SESSION → Auto mode/)).toBeTruthy();
+    expect(screen.queryByText(/match a code to a product/)).toBeNull();
   });
 
   it("only one accordion is open at a time", () => {

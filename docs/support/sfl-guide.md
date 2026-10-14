@@ -170,13 +170,13 @@ Common messages:
 - "This Page was connected on another phone, so this one stopped receiving."
 
 ## other-platforms — Instagram and Shopee
-Last checked: 2026-10-11
+Last checked: 2026-10-14
 Keywords: instagram, ig, shopee, other platform, coming soon, wala pa, kailan, 虾皮, 蝦皮, ig直播, 即将推出
 
 On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
 
 - **Instagram** and **Shopee** show **Coming soon** for most sellers and cannot be tapped.
-- Do not promise a date. If a seller asks, they can message Admin on Telegram @SellerFlowLive.
+- There is no date yet.
 
 ## session-length — Choosing the session length
 Last checked: 2026-10-14

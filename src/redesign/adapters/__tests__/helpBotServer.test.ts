@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import {
   SONNET, HAIKU, PRICES, costUsd, redact, isHandoffTopic, detectLang, parseGuide, pickSections,
   createGuideSource, sectionFromRow, GUIDE_TTL_MS, parseMatcherReply, parseAnswer, answerQuestion, callClaude, NOT_COVERED,
-  buildAnswerSystem, buildMatcherPrompt,
+  buildAnswerSystem, buildMatcherPrompt, CLASSIFIER_PROMPT, OUTPUT_CHECK_PROMPT,
 } from "../../../../server/helpBot.js";
 
 const FAQS = [
@@ -27,6 +27,8 @@ function deps(over: Partial<Record<string, unknown>> = {}) {
     guide: vi.fn(async () => GUIDE),
     callModel: vi.fn(async (a: { model: string; maxTokens: number; system: string; user: string; cache?: boolean }) => {
       calls.push(a);
+      if (a.system === CLASSIFIER_PROMPT) return { ok: true, text: "HOWTO", usage: { input_tokens: 150, output_tokens: 2 } };
+      if (a.system === OUTPUT_CHECK_PROMPT) return { ok: true, text: "NO", usage: { input_tokens: 120, output_tokens: 1 } };
       if (a.maxTokens === 20) return { ok: true, text: "none", usage: { input_tokens: 300, output_tokens: 2 } };
       return { ok: true, text: "1. Open Settings.\n2. Tap Printer.", usage: { input_tokens: 1000, cache_read_input_tokens: 2000, output_tokens: 80 } };
     }),
@@ -74,38 +76,39 @@ describe("answer order", () => {
   });
   it("d) Haiku picks a saved question → faq_ai_match", async () => {
     const { d, calls } = deps({
-      callModel: vi.fn(async (a: { model: string; maxTokens: number }) => { calls.push(a as never); return { ok: true, text: "9", usage: { input_tokens: 300, output_tokens: 1 } }; }),
+      callModel: vi.fn(async (a: { model: string; maxTokens: number; system: string }) => { calls.push(a as never); return { ok: true, text: a.system === CLASSIFIER_PROMPT ? "HOWTO" : "9", usage: { input_tokens: 300, output_tokens: 1 } }; }),
     });
     const r = await ask("walang comments na pumapasok", d);
     expect(r).toMatchObject({ source: "faq_ai_match", answer: FAQS[1].answer, saved: true });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ model: HAIKU, maxTokens: 20 });
+    expect(calls).toHaveLength(2); // question check, then the matcher
+    expect(calls[0]).toMatchObject({ model: HAIKU, maxTokens: 5 });
+    expect(calls[1]).toMatchObject({ model: HAIKU, maxTokens: 20 });
   });
   it("d) is skipped when there are no saved FAQs", async () => {
     const { d, calls } = deps({ faqs: vi.fn(async () => []) });
     await ask("printer not printing", d);
-    expect(calls.map((c) => c.maxTokens)).toEqual([600]);
+    expect(calls.map((c) => c.maxTokens)).toEqual([5, 600]);
   });
   it("e) Sonnet answers with caching, guide sections and FAQs", async () => {
     const { d, calls, saved } = deps();
     const r = await ask("bluetooth printer not printing", d);
     expect(r).toMatchObject({ source: "ai", saved: false, contact: false });
-    expect(calls[1]).toMatchObject({ model: SONNET, maxTokens: 600, cache: true });
-    expect(calls[1].system).toContain(FAQS[0].answer);
-    expect(calls[1].user).toMatch(/## printer-bluetooth/);
+    expect(calls[2]).toMatchObject({ model: SONNET, maxTokens: 600, cache: true });
+    expect(calls[2].system).toContain(FAQS[0].answer);
+    expect(calls[2].user).toMatch(/## printer-bluetooth/);
     expect(saved[0]).toMatchObject({ source: "ai", model: SONNET, needs_admin: null });
     expect((saved[0].guide_sections as string[]).length).toBeGreaterThan(0);
-    expect(saved[0].cost_usd).toBeCloseTo(costUsd(HAIKU, { input_tokens: 300, output_tokens: 2 }) + costUsd(SONNET, { input_tokens: 1000, cache_read_input_tokens: 2000, output_tokens: 80 }), 9);
+    expect(saved[0].cost_usd).toBeCloseTo(costUsd(HAIKU, { input_tokens: 150, output_tokens: 2 }) + costUsd(HAIKU, { input_tokens: 300, output_tokens: 2 }) + costUsd(SONNET, { input_tokens: 1000, cache_read_input_tokens: 2000, output_tokens: 80 }), 9);
   });
   it("e) at 80% of the cap full answers use Haiku", async () => {
     const { d, calls } = deps({ usage: vi.fn(async () => ({ day_count: 0, month_cost: 12 })) });
     await ask("printer not printing", d);
-    expect(calls[1].model).toBe(HAIKU);
+    expect(calls[2].model).toBe(HAIKU);
   });
   it("e) just under 80% still uses Sonnet", async () => {
     const { d, calls } = deps({ faqs: vi.fn(async () => []), usage: vi.fn(async () => ({ day_count: 19, month_cost: 11.99 })) });
     await ask("printer not printing", d);
-    expect(calls[0].model).toBe(SONNET);
+    expect(calls[1].model).toBe(SONNET);
   });
   it("e) guide doesn't cover it → flagged for Admin + contact buttons", async () => {
     const { d, saved } = deps({ faqs: vi.fn(async () => []), callModel: vi.fn(async () => ({ ok: true, text: `${NOT_COVERED} I don't have that yet. Admin can help.`, usage: {} })) });
@@ -159,7 +162,7 @@ describe("redaction", () => {
 describe("logs", () => {
   it("never contain the question or the answer", async () => {
     const secret = "zebra-unicorn printer question";
-    const { d, logs } = deps({ faqs: vi.fn(async () => []), callModel: vi.fn(async () => ({ ok: true, text: "secret-answer-text", usage: { input_tokens: 5, output_tokens: 5 } })) });
+    const { d, logs } = deps({ faqs: vi.fn(async () => []), callModel: vi.fn(async (a: { system: string }) => ({ ok: true, text: a.system === CLASSIFIER_PROMPT ? "HOWTO" : "secret-answer-text", usage: { input_tokens: 5, output_tokens: 5 } })) });
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     await ask(secret, d);
     const all = [...logs, ...spy.mock.calls.flat().map(String)].join("\n");

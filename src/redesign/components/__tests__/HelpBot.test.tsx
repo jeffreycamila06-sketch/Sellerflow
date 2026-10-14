@@ -164,7 +164,7 @@ describe("chat panel", () => {
     expect(r.getByTestId("helpbot-saved").textContent).toBe("Saved answer");
     expect(r.getByTestId("helpbot-contact").textContent).toContain("Still not fixed? Message Admin");
     const body = JSON.parse(((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string }).body);
-    expect(body).toEqual({ question: "How do I connect TikTok?", lang: "en" });
+    expect(body).toEqual({ question: "How do I connect TikTok?", lang: "en", platform: "web" });
   });
   it("AI answer: no Saved label; 👍 rates the chat; tapping again clears it", async () => {
     answerWith({ success: true, id: "c2", source: "ai", answer: "Steps…", saved: false, contact: false });
@@ -243,3 +243,89 @@ describe("admin helpers", () => {
   });
   it("pct", () => { expect(pct(1, 3)).toBe(33); expect(pct(1, 0)).toBe(0); });
 });
+
+// iPhone (App Store 3.1.1): no plan / payment text anywhere in the bubble; one "Contact support"
+// button to Telegram. isIOS() = the ?ios=1 preview here.
+describe("iPhone chat panel", () => {
+  beforeEach(() => { window.history.pushState({}, "", "/?ios=1"); });
+  const restore = () => window.history.pushState({}, "", "/");
+  const openChat = async () => {
+    const r = ui(<HelpBot />);
+    const b = r.getByTestId("helpbot-bubble");
+    fireEvent.pointerDown(b, { clientX: 1, clientY: 1 }); fireEvent.pointerUp(b, { clientX: 1, clientY: 1 });
+    await r.findByTestId("helpbot-chat");
+    return r;
+  };
+  const ask = async (r: Awaited<ReturnType<typeof openChat>>, q: string) => {
+    fireEvent.change(r.getByTestId("helpbot-input"), { target: { value: q } });
+    await act(async () => { fireEvent.click(r.getByTestId("helpbot-send")); });
+  };
+
+  it("sends platform ios; one Contact support button to Telegram, no Telegram/LINE labels", async () => {
+    try {
+      answerWith({ success: true, id: "i1", source: "ai", answer: "Tap Connect.", contact: false });
+      const r = await openChat();
+      await ask(r, "how to connect");
+      const body = JSON.parse(((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as { body: string }).body);
+      expect(body.platform).toBe("ios");
+      const btn = r.getByTestId("helpbot-contact-support");
+      expect(btn.textContent).toBe("Contact support");
+      expect(btn.getAttribute("href")).toBe("https://t.me/SellerFlowLive");
+      expect(btn.tagName).toBe("A");
+      expect(r.queryByTestId("helpbot-telegram")).toBeNull();
+    } finally { restore(); }
+  });
+  it("plan answer (kind) and blocked answer show the fixed localized text", async () => {
+    try {
+      answerWith({ success: true, id: "i2", source: "handoff", answer: "x", contact: true, kind: "plan" });
+      const r = await openChat();
+      await ask(r, "how much");
+      expect(r.getAllByTestId("helpbot-msg-bot")[0].textContent).toContain("For questions about your plan, please contact support.");
+      answerWith({ success: true, id: "i3", source: "handoff", answer: "x", contact: true, kind: "blocked" });
+      await ask(r, "which ai");
+      expect(r.getAllByTestId("helpbot-msg-bot")[1].textContent).toContain("I can only help with how to use SellerFlowLive.");
+    } finally { restore(); }
+  });
+  it("an answer with plan text that slipped through is replaced on the phone too", async () => {
+    try {
+      answerWith({ success: true, id: "i4", source: "ai", answer: "Upgrade to the Pro plan.", contact: false });
+      const r = await openChat();
+      await ask(r, "parcels");
+      const txt = r.getAllByTestId("helpbot-msg-bot")[0].textContent || "";
+      expect(txt).toContain("For questions about your plan");
+      expect(txt).not.toMatch(/Pro plan|Upgrade/);
+    } finally { restore(); }
+  });
+  it("quick questions with plan text are hidden", async () => {
+    try {
+      rpcAnswers.support_quick_questions = [{ question: "How much is the Pro plan?" }, { question: "How to reprint?" }];
+      const r = await openChat();
+      await waitFor(() => expect(r.getAllByTestId("helpbot-quick-q").map((x) => x.textContent)).toEqual(["How to reprint?"]));
+    } finally { restore(); }
+  });
+  it("Admin answers with plan text are hidden; the others still show", async () => {
+    try {
+      rpcAnswers.support_admin_answers = [
+        { id: "a1", question: "renew?", admin_answer: "Pay on Telegram and we renew your plan.", admin_answered_at: "2026-10-14", seen: false },
+        { id: "a2", question: "printer?", admin_answer: "Turn it off and on.", admin_answered_at: "2026-10-14", seen: false },
+      ];
+      const r = ui(<HelpBot />);
+      await r.findByTestId("helpbot-dot"); // a2 (no plan text) is still unread
+      const b = r.getByTestId("helpbot-bubble");
+      fireEvent.pointerDown(b, { clientX: 1, clientY: 1 }); fireEvent.pointerUp(b, { clientX: 1, clientY: 1 });
+      await r.findByTestId("helpbot-chat");
+      const all = r.getByTestId("helpbot-chat").textContent || "";
+      expect(all).toContain("Turn it off and on.");
+      expect(all).not.toMatch(/renew|Pay on Telegram/i);
+    } finally { restore(); }
+  });
+  it("Android / web keep the Telegram button and the plain answer", async () => {
+    restore();
+    answerWith({ success: true, id: "w1", source: "ai", answer: "Upgrade to the Pro plan.", contact: false });
+    const r = await openChat();
+    await ask(r, "parcels");
+    expect(r.getAllByTestId("helpbot-msg-bot")[0].textContent).toContain("Upgrade to the Pro plan.");
+    expect(r.getByTestId("helpbot-telegram")).toBeTruthy();
+  });
+});
+

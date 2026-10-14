@@ -6,13 +6,18 @@
 // The bubble renders into the [data-redesign] root (portal) so the screen's slide-in
 // transform never becomes its containing block, and the design tokens still resolve.
 // Contact buttons are REAL anchors (the iOS WKWebView rule — no window.open).
+// iPhone (App Store 3.1.1): no plan / payment text anywhere — quick questions, Admin answers and
+// bot answers that mention it are hidden or replaced (src/lib/helpBotGuard.js), and the contact
+// button is one "Contact support" anchor to Telegram.
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useLang } from "../i18n/langContext";
 import { TELEGRAM_URL, LINE_URL } from "../../lib/telegram";
+import { hasMoneyText } from "../../lib/helpBotGuard.js";
+import { isIOS } from "../adapters/platform";
 import {
-  askHelpBot, rateChat, loadQuickQuestions, loadAdminAnswers, markAdminAnswersSeen, STARTER_KEYS,
+  askHelpBot, helpBotPlatform, rateChat, loadQuickQuestions, loadAdminAnswers, markAdminAnswersSeen, STARTER_KEYS,
   BUBBLE, TAP_SLOP, snapPos, defaultPos, loadBubblePos, saveBubblePos, clampY,
   hintDue, recordHintShown, recordChatOpened, HINT_DELAY_MS, HINT_SHOW_MS,
   type Box, type BubblePos, type HelpSource, type AdminAnswer,
@@ -67,7 +72,8 @@ export default function HelpBot() {
   }, []);
   useEffect(() => {
     let alive = true;
-    void loadAdminAnswers().then((a) => { if (alive) setAnswers(a); });
+    const ios = isIOS();
+    void loadAdminAnswers().then((a) => { if (alive) setAnswers(ios ? a.filter((x) => !hasMoneyText(x.admin_answer) && !hasMoneyText(x.question)) : a); });
     return () => { alive = false; };
   }, []);
   useEffect(() => {
@@ -162,7 +168,7 @@ export default function HelpBot() {
 interface Msg { key: string; who: "me" | "bot" | "admin"; text: string; question?: string; id?: string; source?: HelpSource; saved?: boolean; rating?: -1 | 0 | 1 }
 
 const sheet: CSSProperties = { position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" };
-const panel: CSSProperties = { width: "100%", maxWidth: 480, height: "min(88vh, 720px)", background: "var(--app-bg)", borderRadius: "20px 20px 0 0", display: "flex", flexDirection: "column", fontFamily: "var(--font-ui)", paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "border-box" };
+const panel: CSSProperties = { width: "100%", maxWidth: 480, height: "min(88vh, 720px)", maxHeight: "calc(100% - 8px)", background: "var(--app-bg)", borderRadius: "20px 20px 0 0", display: "flex", flexDirection: "column", fontFamily: "var(--font-ui)", paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "border-box" };
 const bubbleBase: CSSProperties = { maxWidth: "85%", padding: "9px 12px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" };
 const chipBtn: CSSProperties = { padding: "8px 11px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "left" };
 const contactBtn: CSSProperties = { flex: 1, padding: "9px 0", borderRadius: 10, textDecoration: "none", color: "#fff", fontSize: 12.5, fontWeight: 700, textAlign: "center" };
@@ -170,18 +176,32 @@ const contactBtn: CSSProperties = { flex: 1, padding: "9px 0", borderRadius: 10,
 export function HelpChat({ adminAnswers, onClose, onSeen }: { adminAnswers: AdminAnswer[]; onClose: () => void; onSeen: () => void }) {
   const t = useT();
   const lang = useLang();
+  const ios = isIOS();
   const [quick, setQuick] = useState<string[] | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>(() => adminAnswers.map((a) => ({ key: `adm-${a.id}`, who: "admin" as const, text: a.admin_answer, question: a.question })));
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
+  // iPhone keyboard: it shrinks the VISIBLE area, not the page, so a bottom sheet would sit
+  // under it. Lift the sheet by the hidden height (0 on Android / desktop, where the page itself
+  // gets shorter) so the input always stays above the keyboard.
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const on = () => setKb(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)));
+    on();
+    vv.addEventListener("resize", on);
+    vv.addEventListener("scroll", on);
+    return () => { vv.removeEventListener("resize", on); vv.removeEventListener("scroll", on); };
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    void loadQuickQuestions(lang).then((q) => { if (alive) setQuick(q); });
+    void loadQuickQuestions(lang).then((q) => { if (alive) setQuick(ios ? q.filter((x) => !hasMoneyText(x)) : q); });
     return () => { alive = false; };
-  }, [lang]);
+  }, [lang, ios]);
   useEffect(() => { onSeen(); }, [onSeen]);
   useEffect(() => {
     const el = listRef.current;
@@ -195,12 +215,16 @@ export function HelpChat({ adminAnswers, onClose, onSeen }: { adminAnswers: Admi
     setText("");
     setMsgs((m) => [...m, { key: `me-${++seq.current}`, who: "me", text: q }]);
     setBusy(true);
-    const r = await askHelpBot(q, lang);
+    const r = await askHelpBot(q, lang, helpBotPlatform(ios));
     setBusy(false);
     let reply: Msg;
     if (!r.ok) {
       const txt = r.error === "unreachable" ? t.rd_hb_err_net : r.error === "too_fast" ? t.rd_hb_too_fast : t.rd_hb_err;
       reply = { key: `bot-${++seq.current}`, who: "bot", text: txt };
+    } else if (r.kind === "plan" || (ios && hasMoneyText(r.answer))) {
+      reply = { key: `bot-${++seq.current}`, who: "bot", text: t.rd_hb_plan, source: r.source };
+    } else if (r.kind === "blocked") {
+      reply = { key: `bot-${++seq.current}`, who: "bot", text: t.rd_hb_blocked, source: r.source };
     } else if (r.source === "handoff") {
       reply = { key: `bot-${++seq.current}`, who: "bot", text: t.rd_hb_handoff, source: "handoff" };
     } else if (r.source === "limit") {
@@ -220,12 +244,12 @@ export function HelpChat({ adminAnswers, onClose, onSeen }: { adminAnswers: Admi
   const empty = msgs.length === 0;
 
   return (
-    <div style={sheet} role="dialog" aria-modal="true" aria-label={t.rd_hb_title} data-testid="helpbot-chat" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div style={{ ...sheet, bottom: kb }} role="dialog" aria-modal="true" aria-label={t.rd_hb_title} data-testid="helpbot-chat" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={panel} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
           <span style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center" }}>{chatIcon}</span>
           <div style={{ flex: 1, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{t.rd_hb_title}</div>
-          <button type="button" onClick={onClose} aria-label={t.rd_hb_close} data-testid="helpbot-close" style={{ border: "none", background: "transparent", color: "var(--text-dim)", fontSize: 22, cursor: "pointer", lineHeight: 1 }}>×</button>
+          <button type="button" onClick={onClose} aria-label={t.rd_hb_close} data-testid="helpbot-close" style={{ border: "none", background: "transparent", color: "var(--text-dim)", fontSize: 22, cursor: "pointer", lineHeight: 1, width: 44, height: 44, margin: "-10px -12px -10px 0", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "14px 14px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ ...bubbleBase, alignSelf: "flex-start", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}>{t.rd_hb_greeting}</div>
@@ -259,8 +283,12 @@ export function HelpChat({ adminAnswers, onClose, onSeen }: { adminAnswers: Admi
                 <div data-testid="helpbot-contact" style={{ width: "85%", marginTop: 2 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", marginBottom: 5 }}>{t.rd_hb_still}</div>
                   <div style={{ display: "flex", gap: 7 }}>
-                    <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" data-testid="helpbot-telegram" style={{ ...contactBtn, background: "#0088cc" }}>Telegram</a>
-                    {LINE_URL && <a href={LINE_URL} target="_blank" rel="noreferrer noopener" data-testid="helpbot-line" style={{ ...contactBtn, background: "#06c755" }}>LINE</a>}
+                    {ios
+                      ? <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" data-testid="helpbot-contact-support" style={{ ...contactBtn, background: "#0088cc", minHeight: 44, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>{t.rd_hb_contact_support}</a>
+                      : <>
+                        <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" data-testid="helpbot-telegram" style={{ ...contactBtn, background: "#0088cc" }}>Telegram</a>
+                        {LINE_URL && <a href={LINE_URL} target="_blank" rel="noreferrer noopener" data-testid="helpbot-line" style={{ ...contactBtn, background: "#06c755" }}>LINE</a>}
+                      </>}
                   </div>
                 </div>
               )}
@@ -270,8 +298,8 @@ export function HelpChat({ adminAnswers, onClose, onSeen }: { adminAnswers: Admi
         </div>
         <form onSubmit={(e) => { e.preventDefault(); void send(text); }} style={{ display: "flex", gap: 8, padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
           <input value={text} onChange={(e) => setText(e.target.value.slice(0, 500))} placeholder={t.rd_hb_placeholder} maxLength={500} aria-label={t.rd_hb_placeholder} data-testid="helpbot-input"
-            style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 12, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 16 }} />
-          <button type="submit" disabled={busy || !text.trim()} data-testid="helpbot-send" style={{ padding: "0 16px", borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontWeight: 700, fontFamily: "var(--font-ui)", cursor: "pointer", opacity: busy || !text.trim() ? 0.55 : 1 }}>{t.rd_hb_send}</button>
+            style={{ flex: 1, minWidth: 0, minHeight: 44, boxSizing: "border-box", padding: "11px 12px", borderRadius: 12, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 16 }} />
+          <button type="submit" disabled={busy || !text.trim()} data-testid="helpbot-send" style={{ minHeight: 44, padding: "0 16px", borderRadius: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontWeight: 700, fontFamily: "var(--font-ui)", cursor: "pointer", opacity: busy || !text.trim() ? 0.55 : 1 }}>{t.rd_hb_send}</button>
         </form>
       </div>
     </div>

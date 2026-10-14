@@ -118,10 +118,10 @@ Common messages:
 - "That page isn''t live right now — start your Facebook LIVE first."
 - "Facebook needs you to connect your Page again." Authorize the Page again in Facebook pages.
 - "This Page was connected on another phone, so this one stopped receiving."'),
-  ('other-platforms', 'Instagram and Shopee', '2026-10-11'::date, 'instagram, ig, shopee, other platform, coming soon, wala pa, kailan, 虾皮, 蝦皮, ig直播, 即将推出', 'On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
+  ('other-platforms', 'Instagram and Shopee', '2026-10-14'::date, 'instagram, ig, shopee, other platform, coming soon, wala pa, kailan, 虾皮, 蝦皮, ig直播, 即将推出', 'On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
 
 - **Instagram** and **Shopee** show **Coming soon** for most sellers and cannot be tapped.
-- Do not promise a date. If a seller asks, they can message Admin on Telegram @SellerFlowLive.'),
+- There is no date yet.'),
   ('session-length', 'Choosing the session length', '2026-10-14'::date, 'session, session length, days, multi-day, 1 day, 3 days, start session, ilang araw, haba ng session, 场次, 天数, 直播天數', 'When you tap **Connect** and no session is running, the app asks **Start a live session** and you choose: **1 day** ("Ship same day") up to **5 days** ("N-day live before sending").
 
 - **1 day** starts right away.

@@ -130,7 +130,7 @@ export function ApproveTab({ onDone }: { onDone: (n: number | null) => void }) {
 }
 
 const reasonKey = (r: QueueRow) =>
-  r.needs_admin === "billing" ? "rd_hc_reason_billing" : r.needs_admin === "not_covered" ? "rd_hc_reason_not_covered" : r.needs_admin === "ai_error" ? "rd_hc_reason_ai_error" : "rd_hc_reason_down";
+  r.needs_admin === "billing" ? "rd_hc_reason_billing" : r.needs_admin === "not_covered" ? "rd_hc_reason_not_covered" : r.needs_admin === "ai_error" ? "rd_hc_reason_ai_error" : r.needs_admin === "blocked" ? "rd_hc_reason_blocked" : "rd_hc_reason_down";
 
 export function AnswerTab({ onDone }: { onDone: (n: number | null) => void }) {
   const t = useT();

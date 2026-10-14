@@ -68,10 +68,10 @@ describe("/support/ask wiring (server.js)", () => {
     expect(allowed).toContain('readSetting("support_ai_enabled")) !== "true"');
     expect(allowed).toContain('"support_ai_preview"');
   });
-  it("the reply carries only id, source, answer, saved, contact — never model or cost", () => {
+  it("the reply carries only id, source, answer, saved, contact, kind — never model or cost", () => {
     const replies = [...route.matchAll(/res\.json\(\{([^}]*)\}\)/g)].map((m) => m[1]);
     const ok = replies.find((r) => r.includes("success: true"));
-    expect(ok?.replace(/\s/g, "")).toBe("success:true,id:r.id,source:r.source,answer:r.answer,saved:r.saved,contact:r.contact");
+    expect(ok?.replace(/\s/g, "")).toBe("success:true,id:r.id,source:r.source,answer:r.answer,saved:r.saved,contact:r.contact,kind:r.kind||null");
     for (const r of replies) expect(r).not.toMatch(/model|cost|tokens|review/);
   });
   it("logs codes only — never the question, answer, email or token", () => {
