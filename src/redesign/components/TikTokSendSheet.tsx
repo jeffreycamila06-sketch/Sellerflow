@@ -2,7 +2,7 @@
 // profile (the SAME chaseTarget rule as Pickup Status Chase), then Message → Paste → Send in
 // TikTok. Every edit here is message-only and is discarded on close — nothing is written to
 // orders, live_session_orders, products or Sales. Only the note is remembered (per seller).
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useT, tpl } from "../i18n";
 import { chaseTarget } from "../adapters/parcelTracking";
@@ -87,7 +87,10 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)", width: 24, textAlign: "right", flexShrink: 0 }}>{i + 1}.</span>
               {l.added
                 ? <input data-testid="tts-text" aria-label={t.rd_rc_item_ph} placeholder={t.rd_rc_item_ph} value={l.text} onChange={(e) => setLine(l.key, { text: e.target.value })} style={{ ...input, flex: 1, minWidth: 0 }} />
-                : <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--text-dim)", overflowWrap: "anywhere" }}>{l.text}{l.qty > 1 && <span data-testid="tts-qty" style={{ marginLeft: 6, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)" }}>{qtySuffix(l.qty).trim()}</span>}</span>}
+                : <>
+                  <GrowText value={l.text} placeholder={l.orig} label={t.rd_rc_item_ph} onChange={(text) => setLine(l.key, { text })} />
+                  {l.qty > 1 && <span data-testid="tts-qty" style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)" }}>{qtySuffix(l.qty).trim()}</span>}
+                </>}
               <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode="decimal" value={l.price} onChange={(e) => setPrice(l.key, priceInput(e.target.value))} style={{ ...input, width: 96, textAlign: "right" }} />
               <button type="button" data-testid="tts-remove" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => removeLine(l.key)} style={smallBtn}>×</button>
             </div>
@@ -130,4 +133,32 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
     </div>
   );
   return createPortal(node, (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body);
+}
+
+// Order line text: one line that grows down with the text (no scrollbar). Enter adds no new
+// line (the message is one line per item) — except while an IME (zh / th keyboard) is composing,
+// where Enter picks the word; pasted line breaks become spaces.
+function GrowText({ value, placeholder, label: aria, onChange }: { value: string; placeholder?: string; label: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const fit = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`; // + the 1px top/bottom border
+  };
+  useLayoutEffect(fit, [value]);
+  // The width settles after the sheet lays out (and changes on rotate) → measure again.
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined" || !ref.current) return;
+    let w = 0;
+    const ro = new ResizeObserver(([e]) => { if (e.contentRect.width !== w) { w = e.contentRect.width; fit(); } });
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <textarea ref={ref} data-testid="tts-text-order" aria-label={aria} rows={1} value={value} placeholder={placeholder}
+      onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault(); }}
+      onChange={(e) => onChange(e.target.value.replace(/[\r\n]+/g, " "))}
+      style={{ ...input, flex: 1, minWidth: 0, resize: "none", overflow: "hidden", lineHeight: 1.35, overflowWrap: "anywhere" }} />
+  );
 }
