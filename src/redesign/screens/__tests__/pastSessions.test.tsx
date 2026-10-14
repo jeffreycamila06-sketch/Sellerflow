@@ -101,7 +101,7 @@ describe("the picker", () => {
   });
   it("gated → the 🗓 menu lists the past sessions (newest first, current not repeated)", async () => {
     renderOrders(true);
-    expect(q("ord-range")!.textContent).toContain("This session");
+    expect(q("ord-range")!.textContent).toBe("🗓 Sessions ▾");
     expect(S.calls).toEqual([]);                           // nothing read until the menu opens
     fireEvent.click(q("ord-range")!);
     await settle();

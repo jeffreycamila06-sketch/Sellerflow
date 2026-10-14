@@ -40,7 +40,7 @@ const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 70
 const mono = "var(--font-mono)";
 const menuItem = (on: boolean): CSSProperties => ({ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: on ? "var(--accent-soft)" : "transparent", border: "none", borderBottom: "1px solid var(--border)", color: on ? "var(--accent-fg)" : "var(--text)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-ui)" });
 const menuNote: CSSProperties = { padding: "9px 14px", fontSize: 12, color: "var(--text-muted)" };
-const rangeBtn: CSSProperties = { fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.14)", color: "var(--on-header)" };
+const rangeBtn: CSSProperties = { fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.14)", color: "var(--on-header)", whiteSpace: "nowrap" };
 const rangeMenu: CSSProperties = { position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 41, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 11, boxShadow: "0 12px 32px rgba(0,0,0,.28)", overflow: "hidden", minWidth: 168 };
 const PAST_PAGE = 150; // past-session list: rows drawn per page ("Show more" adds the next 150)
 const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" };
@@ -181,8 +181,10 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // it is byte-identical to today; when a filter is active the summary bar carries
   // the accurate counts.
   const defaultView = range === "session" && platformFilter === "all" && !pastSel;
-  const badge = state === "loading" ? `${t.rd_ord_today} · …`
-    : searching ? `${receipt ? receipt.count : matchCount}` : `${t.rd_ord_today} · ${orders.length}`;
+  // Send to TikTok users count by session ("Session · N"); everyone else keeps "Today · N".
+  const badgeWord = tiktokSend ? t.rd_ord_badge_session : t.rd_ord_today;
+  const badge = state === "loading" ? `${badgeWord} · …`
+    : searching ? `${receipt ? receipt.count : matchCount}` : `${badgeWord} · ${orders.length}`;
 
   const onQuery = (v: string) => {
     setQuery(v);
@@ -369,21 +371,26 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           )}
         </div>
         {/* F2 platform pills + F4 date range — additive controls; default = All + This session. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
+        {/* ONE line on every width (mobile-first): the chips scroll sideways when they don't fit
+            (no scrollbar shown), the 🗓 button stays at the right end. Each button's tap area is
+            44px tall without making the header taller (redesign.css .sfl-tap44). */}
+        <div className="sfl-ord-filters" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9 }}>
+          <div className="sfl-ord-chips" data-testid="ord-chips">
           {((hideFbPill ? ["all", "TikTok"] : ["all", "TikTok", "Facebook"]) as PlatformFilter[]).map((pf) => {
             const on = platformFilter === pf;
             const label = pf === "all" ? t.rd_ord_pf_all : pf;
             return (
-              <button key={pf} onClick={() => setPlatformFilter(pf)} data-testid={`ord-pf-${pf}`} aria-pressed={on} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: on ? "1px solid #fff" : "1px solid rgba(255,255,255,.35)", background: on ? "#fff" : "rgba(255,255,255,.14)", color: on ? "var(--accent)" : "var(--on-header)" }}>{label}</button>
+              <button key={pf} className="sfl-tap44" onClick={() => setPlatformFilter(pf)} data-testid={`ord-pf-${pf}`} aria-pressed={on} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: on ? "1px solid #fff" : "1px solid rgba(255,255,255,.35)", background: on ? "#fff" : "rgba(255,255,255,.14)", color: on ? "var(--accent)" : "var(--on-header)" }}>{label}</button>
             );
           })}
           {paidUi && (
-            <button onClick={() => setUnpaidOnly((v) => !v)} data-testid="ord-unpaid-pill" aria-pressed={unpaidOnly} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: unpaidOnly ? "1px solid #fff" : "1px solid rgba(255,255,255,.35)", background: unpaidOnly ? "#fff" : "rgba(255,255,255,.14)", color: unpaidOnly ? "var(--accent)" : "var(--on-header)" }}>{t.rd_ord_unpaid}</button>
+            <button className="sfl-tap44" onClick={() => setUnpaidOnly((v) => !v)} data-testid="ord-unpaid-pill" aria-pressed={unpaidOnly} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: unpaidOnly ? "1px solid #fff" : "1px solid rgba(255,255,255,.35)", background: unpaidOnly ? "#fff" : "rgba(255,255,255,.14)", color: unpaidOnly ? "var(--accent)" : "var(--on-header)" }}>{t.rd_ord_unpaid}</button>
           )}
+          </div>
           {/* date-range selector — pill button → menu (custom reveals two date inputs) */}
-          <div style={{ position: "relative", marginLeft: "auto" }}>
-            <button onClick={() => { const opening = !rangeOpen; setRangeOpen(opening); if (opening && tiktokSend) void past.ensureList(); }} data-testid="ord-range" aria-haspopup="menu" aria-expanded={rangeOpen}
-              style={pastSel ? { ...rangeBtn, border: "1px solid #f59e0b", background: "#fef3c7", color: "#92400e" } : rangeBtn}>🗓 {pastSel ? tpl(t.rd_psn_btn, { range: sessionRange(pastSel) }) : rangeLabel} ▾</button>
+          <div style={{ position: "relative", marginLeft: "auto", flexShrink: 0 }}>
+            <button className="sfl-tap44" onClick={() => { const opening = !rangeOpen; setRangeOpen(opening); if (opening && tiktokSend) void past.ensureList(); }} data-testid="ord-range" aria-haspopup="menu" aria-expanded={rangeOpen}
+              style={pastSel ? { ...rangeBtn, border: "1px solid #f59e0b", background: "#fef3c7", color: "#92400e" } : rangeBtn}>🗓 {tiktokSend ? t.rd_ord_sessions_btn : rangeLabel} ▾</button>
             {rangeOpen && (
               <>
                 <div onClick={() => setRangeOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
@@ -555,7 +562,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <>
             {paidFlag && paidErr && <div role="alert" data-testid="ord-paid-error" style={{ ...noteStyle, color: "var(--danger)" }}>{t.rd_ord_paid_failed}</div>}
             {state === "loading" && <div style={noteStyle}>{t.rd_ord_loading}</div>}
-            {state === "empty" && !searching && <div style={noteStyle}>{t.rd_ord_empty}</div>}
+            {state === "empty" && !searching && <div style={noteStyle}>{tiktokSend ? t.rd_ord_empty_session : t.rd_ord_empty}</div>}
             {shown.map((o, idx) => row(o, idx, false))}
             {shownHist.map((o, idx) => row(o, idx, true))}
             {/* Search states below the results: still-fetching chip · the 7-day

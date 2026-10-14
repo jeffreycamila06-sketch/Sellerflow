@@ -176,7 +176,8 @@ describe("7 — past-session mode (B2/B3)", () => {
     const r = renderOrders([ANN]);
     expect(document.body.textContent).toContain("Today Row Buyer");
     await pickSession(0);
-    expect(q("ord-range")!.textContent).toBe("🗓 Past session · 10/08 → 10/10 ▾");
+    expect(q("ord-range")!.textContent).toBe("🗓 Sessions ▾");          // same label, amber
+    expect(q("ord-range")!.getAttribute("style")).toContain("background: rgb(254, 243, 199)");
     expect(q("ord-past-banner")!.textContent).toBe("Past session · 10/08 → 10/10");
     const text = document.body.textContent || "";
     expect(text).not.toContain("Today Row Buyer");
@@ -367,7 +368,7 @@ describe("10 — one 🗓 menu: This session + past sessions (tiktokSend only)",
     fireEvent.click(q("ord-range-session")!);
     await settle();
     expect(q("ord-past-banner")).toBeNull();
-    expect(q("ord-range")!.textContent).toBe("🗓 This session ▾");
+    expect(q("ord-range")!.textContent).toBe("🗓 Sessions ▾");
     expect(r.container.innerHTML).toBe(before);
   });
 });
@@ -490,13 +491,16 @@ describe("11 — fix round 3", () => {
   });
 
   it("A9 — tiktokSend turning on after Today was picked → back to This session", () => {
-    const view = (on: boolean) => <TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder]} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend={on} sellerId="me" /></TProvider>;
+    const yesterday = { ...todayOrder, id: "#8", buyer: "Yesterday Buyer", date: "2026-10-13", orderNum: ON - 86_400_000 } as Order;
+    const view = (on: boolean) => <TProvider lang="en"><Orders onGoPrint={vi.fn()} cur="NT$" orders={[todayOrder, yesterday]} state="live" buyers={[ANN]} todayId="2026-10-14" sessionId="cur" tiktokSend={on} sellerId="me" /></TProvider>;
     const r = render(view(false));
     fireEvent.click(q("ord-range")!);
     fireEvent.click(q("ord-range-today")!);
     expect(q("ord-range")!.textContent).toBe("🗓 Today ▾");
+    expect(r.container.textContent).not.toContain("Yesterday Buyer");    // Today hides yesterday's order
     r.rerender(view(true));
-    expect(q("ord-range")!.textContent).toBe("🗓 This session ▾");
+    expect(q("ord-range")!.textContent).toBe("🗓 Sessions ▾");
+    expect(r.container.textContent).toContain("Yesterday Buyer");        // back to the whole session
   });
 
   it("A13 — no 'Print slip' tooltip on past rows (current rows keep it)", async () => {

@@ -765,3 +765,22 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
 @media (prefers-reduced-motion: reduce) {
   [data-redesign] .sfl-hb-hint, [data-redesign] .sfl-hb-hint-out, [data-redesign] .sfl-hb-wave { animation: none !important; }
 }
+
+/* Orders filter row (mobile-first, Oct 14 2026): chips + the 🗓 button on ONE line at every
+   width. The chips scroll sideways when they don't fit (no scrollbar shown) — never wrap.
+   The chip box gets 9px of vertical room (margin cancels it) so the 44px tap areas below are
+   not clipped by the sideways scroll. */
+[data-redesign] .sfl-ord-filters { flex-wrap: nowrap; min-width: 0; }
+[data-redesign] .sfl-ord-chips {
+  display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0;
+  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; padding: 9px 14px 9px 0; margin: -9px 0;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  /* soft fade at the right edge = "there is more, swipe"; when everything fits the fade only
+     covers the empty end padding */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
+}
+[data-redesign] .sfl-ord-chips::-webkit-scrollbar { display: none; }
+/* 44px tap area around a small pill without changing its size or the header height. */
+[data-redesign] .sfl-tap44 { position: relative; }
+[data-redesign] .sfl-tap44::after { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; height: 44px; transform: translateY(-50%); }
