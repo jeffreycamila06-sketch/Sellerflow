@@ -169,6 +169,11 @@ The help bot reads the guide from the `support_guide` table (5-minute cache), so
 sql/116b after the merge updates the bot without a Render deploy. A test fails when sql/116b
 doesn't match the guide file.
 
+### Help guide writing rule (Jeff, Oct 14 2026)
+- Every word is for the seller: what they can do and where to tap.
+- No explanation of how it works inside (no logic, rules, data or technical detail).
+- Keep it short. Another SaaS owner reading it must not get any ideas from it.
+
 ## UI / design rules
 
 ### Mobile-first rule (Jeff, Oct 14 2026)
