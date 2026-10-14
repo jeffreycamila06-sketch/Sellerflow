@@ -8,8 +8,8 @@
 //   0b) iPhone only: plan / price / paying question → 'handoff' 'billing', fixed answer (no AI)
 //   a) billing / plan / refund / payment / account deletion → 'handoff' (no AI)
 //   (b and c below run first; then the Haiku question check:)
-//   c2) Haiku sorts the question: INTERNAL → blocked (every platform); MONEY → iPhone plan answer,
-//       Android/web the billing handoff; HOWTO/OTHER → continue. A failed or odd reply: iPhone =
+//   c2) Haiku sorts the question: INTERNAL → blocked (every platform); MONEY → iPhone plan answer
+//       (Android/web continue as today); HOWTO/OTHER → continue. A failed or odd reply: iPhone =
 //       plan answer (fail closed), Android/web = continue (fail open).
 //   iPhone answers from the AI (d, e) get one more Haiku yes/no check for plan / payment talk;
 //   "yes" or a failed check → plan answer. Both calls count in the month's spend.
@@ -346,10 +346,9 @@ export async function answerQuestion({ userId, question, appLang, platform = "we
   if (cr.usage) add(HAIKU, cr.usage);
   const label = cr.ok ? parseClassifierReply(cr.text) : null;
   if (label === "INTERNAL") return done({ source: "handoff", needs_admin: "blocked", answer: blockedAnswer(lang), ...costCols(HAIKU) }, { contact: true, kind: "blocked" });
-  if (label === "MONEY") {
-    if (ios) return done(...planRow(costCols(HAIKU)));
-    return done({ source: "handoff", needs_admin: "billing", answer: HANDOFF_ANSWER, ...costCols(HAIKU) }, { contact: true });
-  }
+  // MONEY: iPhone only. Android/web continue as today (the regex handoff above already caught
+  // price / payment / refund / renew questions).
+  if (label === "MONEY" && ios) return done(...planRow(costCols(HAIKU)));
   if (!label) {
     deps.log?.(`[SUPPORT] classify_fail code=${cr.ok ? "odd_reply" : cr.error || "error"}${ios ? " closed" : " open"}`);
     if (ios) return done(...planRow(costCols(HAIKU)));

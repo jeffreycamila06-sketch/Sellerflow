@@ -273,14 +273,15 @@ type Reply = { ok: boolean; text?: string; error?: string; usage?: Record<string
 function haikuDeps(classify: Reply, check: Reply = { ok: true, text: "NO" }, answer = "1. Open Settings.") {
   const U = { input_tokens: 100, output_tokens: 2 };
   const reply = (r: Reply) => { if (r === "throw") throw new Error("boom"); return { usage: U, ...r }; };
-  return deps(answer, {
-    faqs: vi.fn(async () => []),
-    callModel: vi.fn(async (a: Call) => {
-      if (a.system === CLASSIFIER_PROMPT) return reply(classify);
-      if (a.system === OUTPUT_CHECK_PROMPT) return reply(check);
-      return { ok: true, text: answer, usage: { input_tokens: 1000, output_tokens: 80 } };
-    }),
-  });
+  const box = deps(answer, { faqs: vi.fn(async () => []) });
+  // records every call (classifier, answer, answer check) in box.calls
+  box.d.callModel = vi.fn(async (a: Call) => {
+    box.calls.push(a);
+    if (a.system === CLASSIFIER_PROMPT) return reply(classify);
+    if (a.system === OUTPUT_CHECK_PROMPT) return reply(check);
+    return { ok: true, text: answer, usage: { input_tokens: 1000, output_tokens: 80 } };
+  }) as typeof box.d.callModel;
+  return box;
 }
 const Q = "How do I start a live?"; // passes every regex: only the classifier decides
 
@@ -300,14 +301,22 @@ describe("Haiku question check", () => {
       expect(calls.some((c) => c.maxTokens === 600)).toBe(false);
     }
   });
-  it("MONEY → iPhone plan answer; Android/web today's handoff", async () => {
+  it("MONEY → iPhone plan answer; Android/web continue as today (AI answers)", async () => {
     const i = haikuDeps({ ok: true, text: "MONEY" });
     expect(await ask(Q, "ios", i.d)).toMatchObject({ kind: "plan", answer: planAnswer("en") });
     for (const p of ["android", "web"]) {
       const a = haikuDeps({ ok: true, text: "MONEY" });
       const r = await ask(Q, p, a.d);
-      expect(r, p).toMatchObject({ source: "handoff", answer: HANDOFF_ANSWER, contact: true });
-      expect(a.saved[0].needs_admin).toBe("billing");
+      expect(r, p).toMatchObject({ source: "ai", answer: "1. Open Settings." });
+      expect(a.saved[0].needs_admin).toBeNull();
+      expect(a.calls.some((c) => c.maxTokens === 600)).toBe(true);
+    }
+  });
+  it("Android/web price / payment / refund / renew still get the regex handoff (no AI call)", async () => {
+    for (const q of ["How much is the Pro plan?", "How do I pay?", "Can I get a refund?", "How do I renew?"]) for (const p of ["android", "web"]) {
+      const a = haikuDeps({ ok: true, text: "MONEY" });
+      expect(await ask(q, p, a.d), `${q} ${p}`).toMatchObject({ source: "handoff", answer: HANDOFF_ANSWER });
+      expect(a.d.callModel).not.toHaveBeenCalled();
     }
   });
   it("HOWTO / OTHER → answered as today", async () => {
