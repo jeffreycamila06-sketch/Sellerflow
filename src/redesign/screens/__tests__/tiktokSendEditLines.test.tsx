@@ -70,6 +70,13 @@ describe("Send sheet — order lines are editable (message only)", () => {
     edit(1, "B2\ntop\r\nred");
     expect(qa("tts-text-order")[1].value).toBe("B2 top red");
   });
+  it("Enter while an IME is composing (zh / th keyboard picking a word) is NOT blocked", () => {
+    openSheet();
+    const ev = new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true });
+    qa("tts-text-order")[0].dispatchEvent(ev);
+    expect(ev.isComposing).toBe(true);
+    expect(ev.defaultPrevented).toBe(false);
+  });
   it("added lines are unchanged (single-line input, accent background)", () => {
     openSheet();
     fireEvent.click(q("tts-add")!);

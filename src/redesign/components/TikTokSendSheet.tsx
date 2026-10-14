@@ -136,7 +136,8 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
 }
 
 // Order line text: one line that grows down with the text (no scrollbar). Enter adds no new
-// line (the message is one line per item); pasted line breaks become spaces.
+// line (the message is one line per item) — except while an IME (zh / th keyboard) is composing,
+// where Enter picks the word; pasted line breaks become spaces.
 function GrowText({ value, placeholder, label: aria, onChange }: { value: string; placeholder?: string; label: string; onChange: (v: string) => void }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fit = () => {
@@ -156,7 +157,7 @@ function GrowText({ value, placeholder, label: aria, onChange }: { value: string
   }, []);
   return (
     <textarea ref={ref} data-testid="tts-text-order" aria-label={aria} rows={1} value={value} placeholder={placeholder}
-      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+      onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault(); }}
       onChange={(e) => onChange(e.target.value.replace(/[\r\n]+/g, " "))}
       style={{ ...input, flex: 1, minWidth: 0, resize: "none", overflow: "hidden", lineHeight: 1.35, overflowWrap: "anywhere" }} />
   );
