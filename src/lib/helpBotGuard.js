@@ -70,7 +70,9 @@ const FORBIDDEN = [
   /\bauto[- ]?(commenter|liker|follower)s?\b/i, /\bbots?\b.{0,15}\b(to )?(comment|like|follow|boost)/i,
   /\b(viewers?|followers?|likes?|comments?)\b.{0,20}\bbots?\b/i,
   /\b(iwas|iwasan|maiwasan|lusutan|lusot)\b.{0,15}\b(ban|tiktok|facebook|rules?)\b/i,
-  /繞過|绕过|規避|规避|驗證碼|验证码|外掛|外挂|刷讚|刷赞|刷留言|刷粉|假帳號|假账号|機器人留言|机器人留言/,
+  /繞過|绕过|規避|规避|外掛|外挂|刷讚|刷赞|刷留言|刷粉|假帳號|假账号|機器人留言|机器人留言/,
+  // 驗證碼 is also the sign-up / password "verification code" — forbidden only with bypass words.
+  /(繞過|绕过|破解|跳過|跳过|bypass).{0,8}(驗證碼|验证码)|(驗證碼|验证码).{0,8}(繞過|绕过|破解|跳過|跳过|bypass)/i,
   // instructions hidden in the question
   /\b(ignore|forget|disregard)\b.{0,20}\b(previous|above|all|your|the)\b.{0,15}\b(rules?|instructions?|prompt)\b/i,
   /\b(system prompt|your prompt|your instructions|developer mode|jailbreak|role-?play)\b/i,
