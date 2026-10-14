@@ -1038,7 +1038,7 @@ app.post("/support/ask", requireAuth, async (req, res) => {
         return data || {};
       },
       faqs: async () => {
-        const { data, error } = await serviceSb.from("support_faq").select("id,question,answer,guide_sections")
+        const { data, error } = await serviceSb.from("support_faq").select("id,question,answer,guide_sections,lang")
           .eq("enabled", true).eq("needs_recheck", false).order("id").limit(300);
         if (error) throw error;
         return data || [];

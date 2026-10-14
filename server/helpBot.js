@@ -179,6 +179,13 @@ export function buildMatcherPrompt(faqs) {
     ...faqs.map((f) => `${f.id}: ${String(f.question).replace(/\s+/g, " ")}`),
   ].join("\n");
 }
+// Saved FAQs in the seller's language only (zh and zh-TW are one group); none in that language →
+// all of them, so the matcher still has something to pick from.
+const langGroup = (l) => (l === "zh" || l === "zh-TW" ? "zh" : l || "");
+export function faqsForLang(faqs, lang) {
+  const same = faqs.filter((f) => langGroup(f.lang) === langGroup(lang));
+  return same.length ? same : faqs;
+}
 export function parseMatcherReply(text, faqs) {
   const m = String(text || "").trim().match(/^\D*(\d+)/);
   if (!m) return null;
@@ -366,9 +373,10 @@ export async function answerQuestion({ userId, question, appLang, platform = "we
 
   // d)
   if (faqs.length) {
-    const r = await call({ model: HAIKU, system: buildMatcherPrompt(faqs), user: q, maxTokens: MATCH_MAX_TOKENS });
+    const matchList = faqsForLang(faqs, lang);
+    const r = await call({ model: HAIKU, system: buildMatcherPrompt(matchList), user: q, maxTokens: MATCH_MAX_TOKENS });
     if (r.usage) add(HAIKU, r.usage);
-    const pick = r.ok ? parseMatcherReply(r.text, faqs) : null;
+    const pick = r.ok ? parseMatcherReply(r.text, matchList) : null;
     if (pick) {
       const ok = !ios || (await iosAnswerOk(pick.answer));
       const row = { source: "faq_ai_match", faq_id: pick.id, answer: ok ? pick.answer : planAnswer(lang), guide_sections: pick.guide_sections || [], ...costCols(HAIKU) };
