@@ -19,11 +19,15 @@ export interface SendLine {
   price: string;   // the editable field ("" = 0)
   added: boolean;  // added in the sheet (+ Dagdag item) — message only
   qty: number;     // the order's quantity (read-only; added lines = 1). The price stays the LINE total.
+  orig?: string;   // order lines: the buyer's comment — used when the edited text is cleared
 }
+
+/** The text printed for a line: the edited text, or the original comment if it was cleared. */
+export const lineText = (l: SendLine): string => l.text.trim() || (l.orig ?? "").trim();
 
 /** The buyer card's lines, in the card's order (NT$0 lines included). */
 export function initialSendLines(lines: { item: string; total: number; qty?: number }[]): SendLine[] {
-  return lines.map((l, i) => ({ key: `c${i}`, text: l.item, price: String(Number(l.total) || 0), added: false, qty: qtyOf(l.qty) }));
+  return lines.map((l, i) => ({ key: `c${i}`, text: l.item, price: String(Number(l.total) || 0), added: false, qty: qtyOf(l.qty), orig: l.item }));
 }
 
 /** A whole quantity ≥ 1 (missing / odd values → 1). */
@@ -47,7 +51,7 @@ export const priceOf = (s: string): number => {
 };
 
 /** The lines printed in the message: blank-text lines are left out. */
-export const printedLines = (lines: SendLine[]): SendLine[] => lines.filter((l) => l.text.trim() !== "");
+export const printedLines = (lines: SendLine[]): SendLine[] => lines.filter((l) => lineText(l) !== "");
 
 /** Total of the lines printed in the message (removed and blank-text lines are not counted). */
 export const sumLines = (lines: SendLine[]): number => printedLines(lines).reduce((s, l) => s + priceOf(l.price), 0);
@@ -67,7 +71,7 @@ export function buildSendMessage(o: {
   const out = [
     fill(o.labels.hi, { name: o.name }),
     fill(o.labels.order, { date: o.date }),
-    ...rows.map((l, i) => `${i + 1}. ${l.text.trim()}${qtySuffix(l.qty)} — ${o.cur}${fmt(priceOf(l.price))}`),
+    ...rows.map((l, i) => `${i + 1}. ${lineText(l)}${qtySuffix(l.qty)} — ${o.cur}${fmt(priceOf(l.price))}`),
     fill(o.labels.total, { total: `${o.cur}${fmt(o.total)}` }),
   ];
   const note = o.note.trim();
