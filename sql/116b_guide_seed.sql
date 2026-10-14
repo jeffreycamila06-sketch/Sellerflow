@@ -122,56 +122,50 @@ Common messages:
 
 - **Instagram** and **Shopee** show **Coming soon** for most sellers and cannot be tapped.
 - Do not promise a date. If a seller asks, they can message Admin on Telegram @SellerFlowLive.'),
-  ('session-length', 'Choosing the session length', '2026-10-11'::date, 'session, session length, days, multi-day, 1 day, 3 days, start session, ilang araw, haba ng session, 场次, 天数, 直播天數', 'When you tap **Connect** and no session is running, the app asks **Start a live session** and you choose: **1 day** ("Ship same day") up to **5 days** ("N-day live before sending").
+  ('session-length', 'Choosing the session length', '2026-10-14'::date, 'session, session length, days, multi-day, 1 day, 3 days, start session, ilang araw, haba ng session, 场次, 天数, 直播天數', 'When you tap **Connect** and no session is running, the app asks **Start a live session** and you choose: **1 day** ("Ship same day") up to **5 days** ("N-day live before sending").
 
 - **1 day** starts right away.
 - **2 to 5 days** asks you to confirm: "You can''t change the length until this session ends." Tap **Confirm** (or **Back**).
 - **Cancel** / ✕ stops the connect. No session starts.
 
-Buyer numbers stay continuous for the whole session. The day you start counts as day 1. The session ends at **midnight Taiwan time (UTC+8)** after the last day, and the header shows "Session ends {date}". After it ends, the next Connect asks for a new length and buyer numbers start again at #1.'),
-  ('buyer-numbers', 'Buyer numbers', '2026-10-11'::date, 'buyer number, buyer #, numbering, reset, restart, number 1, numero, bumalik sa 1, 买家编号, 買家編號, 號碼重置', '- Each buyer gets **one number for the whole session**. Buyer #5 stays #5 on every order in that session.
-- Numbers reset to **#1 only when a new session starts**. That happens after your session''s last day ends, or if you switch live source ("Switch to …? This ends your current capture and starts a new session — buyers restart at #1").
-- In a **multi-day session** (2 to 5 days) numbers continue across all days. They do not reset at midnight.
-- Numbers are the **same on every device** logged in to your account (phone + computer), and stay the same after refresh or logging in again.
+Buyer numbers stay continuous for the whole session. The day you start counts as day 1. The header shows when your session ends. After it ends, the next Connect asks for a new length and buyer numbers start again at #1.'),
+  ('buyer-numbers', 'Buyer numbers', '2026-10-14'::date, 'buyer number, buyer #, numbering, reset, restart, number 1, numero, bumalik sa 1, 买家编号, 買家編號, 號碼重置', '- Each buyer gets **one number for the whole session**. Buyer #5 stays #5 on every order in that session.
+- A **new session starts at #1**.
+- In a **multi-day session** (2 to 5 days) numbers keep counting across all days.
 
-If you see "Couldn''t load this session''s buyers. Orders are paused so buyer numbers don''t repeat" tap **Retry** after checking your internet. If you see "Session still loading — that order wasn''t created", wait a moment and try again.
+If you see "Couldn''t load this session''s buyers", check your internet and tap **Retry**. If you see "Session still loading — that order wasn''t created", wait a moment and try again.
 
 If numbers look wrong, fully close the app on every device and open it again, then tap Connect once.'),
-  ('one-click-orders', '1-Click and Type price orders', '2026-10-11'::date, '1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, 一键, 一鍵下單, 输入价格', 'Every comment on the **Live** screen has two buttons:
+  ('one-click-orders', '1-Click and Type price orders', '2026-10-14'::date, '1-click, one click, type price, enterprise, order, print order, price, mag-order, presyo, 一键, 一鍵下單, 输入价格', 'Every comment on the **Live** screen has two buttons:
 
 - **1-Click** — creates the order and prints the sticker right away with the comment text. The price is 0 unless **Same price for all items** is on.
 - **Type price** — type the price, then tap ✓ (or press Enter) to **Print this order**.
 
-After an order, the row shows **Printed** and a **Reprint** button. A comment can only make one order, so you won''t get duplicates by tapping again.
+After an order, the row shows **Printed** and a **Reprint** button.
 
 If the comment is a sold-out Auto mode code, the app asks "{code} is sold out. Continue anyway?" You can still sell it.
 
-Some comment rows show tags like **NEW** ("New account (under 7 days) with no followers") or **CHECK** to warn you about risky buyers.'),
+Tags like **NEW** or **CHECK** warn you about risky buyers.'),
   ('same-price', 'Same price for all items', '2026-10-11'::date, 'same price, fixed price, all items, price, isang presyo, pare-pareho presyo, 统一价, 同價, 固定價格', '**Settings → General Settings → LIVE SESSION → Same price for all items**.
 
 1. Turn it on, type the price, and tap **Turn on**.
 2. While it is on, every **1-Click** and **Auto** order prints this price, whatever the buyer types. In **Type price**, the price is filled in for you but you can still change it.
 3. Turn it off with **Turn off**. The app remembers the price for next time.'),
-  ('auto-mode', 'Auto mode (live codes)', '2026-10-11'::date, 'auto mode, auto, code, live code, automatic order, sold out, awtomatiko, code ng item, 自动, 自動下單, 代码, 口令', 'Auto mode turns comments into orders by itself.
+  ('auto-mode', 'Auto mode (live codes)', '2026-10-14'::date, 'auto mode, auto, code, live code, automatic order, sold out, awtomatiko, code ng item, 自动, 自動下單, 代码, 口令', 'Auto mode turns comments into orders by itself.
 
 Set up:
 1. Go to **Products**, edit a product, and fill in **Live code** (for example A1). Set its **Price** and **Stock**.
 2. Turn on **Settings → General Settings → LIVE SESSION → Auto mode**.
 
 During the live:
-- Announce the code. Buyers who type the code **exactly** get an order, first come first served, until stock runs out.
-- Upper or lower case does not matter, but extra words or symbols do: "D" works, "D po" or "D." does not.
-- The same buyer typing the code twice still gets one order (you may see a **Duplicate** tag).
+- Announce the code. Buyers must type the code **exactly** — "D" works, "D po" or "D." does not.
 - When stock reaches 0 you see "Code {code} — Sold out".
 - On **Products** you can set a **Low-stock warning at** number to get a warning on the Live screen.
 
-If a product''s price is 0, its auto orders total 0. Each code can belong to only one product.'),
-  ('auto-print-pinned', 'Auto-print pinned comments', '2026-10-11'::date, 'pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtomatikong print, 置顶, 置頂留言, 自动打印', '**Settings → General Settings → LIVE SESSION → Auto-print pinned comments** (TikTok).
+Use each code for one product only.'),
+  ('auto-print-pinned', 'Auto-print pinned comments', '2026-10-14'::date, 'pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtomatikong print, 置顶, 置頂留言, 自动打印', '**Settings → General Settings → LIVE SESSION → Auto-print pinned comments** (TikTok).
 
-When it is on, pinning a comment on your TikTok LIVE makes this device order and print it, like tapping **1-Click**.
-
-- Turn it on **only on the device that has the printer**, so the order is not made twice.
-- A pinned comment that is a sold-out Auto mode code is skipped.'),
+Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.'),
   ('products-stock', 'Products, codes and stock', '2026-10-11'::date, 'products, product, item, stock, inventory, price, code, restock, add product, produkto, stocks, 商品, 库存, 庫存, 補貨', 'Open **Products** in the bottom bar.
 
 - **+ Add** — enter **Name**, **Item code**, **Live code** (optional, for Auto mode), **Price**, **Stock**, **Platform**, then **Save**. The status (Active, Low stock, Out of stock) follows the stock.
@@ -192,9 +186,8 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 
 - Choose a range: **Today**, **This session**, **Last 7 days**, or **Custom** (From / To).
 - The top shows Orders, Total, Buyers and Avg order.
-- **Search buyer #, name, item…** finds orders. If it is not in this session, the app searches the last 7 days ("Searching the last 7 days…").
-- "No match in the last 7 days — older orders are no longer stored." Older orders cannot be found in search.
-- Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If **two buyers have the same number** (for example two phones on one account), you see "2 buyers have #3 — pick one": tap the right buyer to open their card.
+- **Search buyer #, name, item…** finds orders.
+- Type only a **buyer number** (for example 3) to see that buyer''s card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
 - Each buyer card has **Print slip** and **Reprint**.
 - **⬇ Export** downloads Excel or PDF.
 - The **Miners** tab shows your top buyers.
@@ -202,16 +195,15 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
   ('tiktok-send', 'Send to TikTok', '2026-10-14'::date, 'send to tiktok, send message, message buyer, copy message, edit item, ipadala sa tiktok, i-message ang buyer, i-edit ang item, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品', '- On **Orders**, type the buyer number, then tap **Send**.
 - You can edit each item before you send.
 - When it''s ready, tap **Copy and open TikTok**, then **Send** in TikTok.'),
-  ('sales', 'Sales screen', '2026-10-11'::date, 'sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额', 'Open **Sales** in the bottom bar.
+  ('sales', 'Sales screen', '2026-10-14'::date, 'sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额', 'Open **Sales** in the bottom bar.
 
 - Pick a range: **Today**, **This session**, **Last 7 days**, **2 months**, or **Custom**.
 - You see Orders, Total, Buyers and Avg order, a **Daily trend** (or **Hourly trend**), **Top buyers** (with **Search buyer**) and **Best sellers**.
 - Tap a buyer and **Open in Orders** to see their orders.
-- **⬇ Export** gives Excel or PDF.
-- "History kept for 3 months." Older sales are not shown.'),
-  ('miners-customers', 'Miners and Customers', '2026-10-11'::date, 'miners, top buyers, customers, loyal, repeat buyer, suki, mamimili, 买家, 客户, 顧客, 常客', '- **Miners** (Orders → Miners tab) shows top buyers for a range (This session, Today, 7 days, This month, Custom): total buyers, orders, money spent. **Repeat** marks buyers who ordered on 2 or more days in that range.
-- **Customers** (Settings → Customers) lists buyers you''ve had. Use **Search loaded customers (name or @handle)** and **Load more**. Comment history is not stored; live comments appear on the Live screen only.'),
-  ('raffle-games', 'Games (raffle)', '2026-10-11'::date, 'games, raffle, spin, wheel, winner, giveaway, roleta, pa-raffle, 抽奖, 抽獎, 转盘', 'On the **Live** screen, turn on **Games**. Orders placed while Games is ON join the raffle automatically (1 order = 1 entry, max 3 per buyer).
+- **⬇ Export** gives Excel or PDF.'),
+  ('miners-customers', 'Miners and Customers', '2026-10-14'::date, 'miners, top buyers, customers, loyal, repeat buyer, suki, mamimili, 买家, 客户, 顧客, 常客', '- **Miners** (Orders → Miners tab) shows top buyers for a range (This session, Today, 7 days, This month, Custom): total buyers, orders, money spent.
+- **Customers** (Settings → Customers) lists buyers you''ve had. Use **Search loaded customers (name or @handle)** and **Load more**.'),
+  ('raffle-games', 'Games (raffle)', '2026-10-14'::date, 'games, raffle, spin, wheel, winner, giveaway, roleta, pa-raffle, 抽奖, 抽獎, 转盘', 'On the **Live** screen, turn on **Games**. Orders placed while Games is ON join the raffle.
 
 - Tap **Spin** to pick a **Winner**.
 - **Exclude & spin again** removes that winner and spins again.
@@ -252,19 +244,17 @@ Printer connection runs in the **SellerFlowLive phone app**. In a web browser yo
 6. Tap **Test Connection**, then **Connect**, then **Test Print**.
 
 **Find** checks the saved printer. If it fails, check that the phone and printer are on the same WiFi and the number is right (it can change after the router restarts).'),
-  ('stickers', 'Sticker sizes, layout, Chinese names and QR', '2026-10-11'::date, 'sticker size, paper size, 100x60, 60x40, layout, chinese name, qr, print pattern, laki ng sticker, 贴纸尺寸, 标签尺寸, 中文名, 二维码', '**Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer.
+  ('stickers', 'Sticker sizes, layout, Chinese names and QR', '2026-10-14'::date, 'sticker size, paper size, 100x60, 60x40, layout, chinese name, qr, print pattern, laki ng sticker, 贴纸尺寸, 标签尺寸, 中文名, 二维码', '**Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer.
 
 **Layout**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Choose what prints: Date & time, Buyer #, TikTok name, TikTok username, Comment / Price, SellerFlowLive logo, size and **Spacing** (Normal/Compact). Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
 
 **Chinese names** print correctly; no extra setting needed.
 
-**Print QR on sticker** adds a QR of the buyer''s @username so you can scan it back in Parcel Scan. It is off by default and on every plan. In the phone app it works on every size except **60×40** (too small to scan quickly).'),
-  ('laptop-printing', 'Printing from a laptop', '2026-10-11'::date, 'laptop, computer, windows, mac, chrome, silent print, kiosk, auto-print, browser, kompyuter, 电脑, 電腦列印, 静默打印', 'On a computer, printing uses your computer''s printer settings.
-
-1. Install your label printer''s driver, set it as the default printer, and set the paper size to your label (at least 60×40mm).
+**Print QR on sticker** — scan it in Parcel Scan to fill in the buyer quickly. It is off by default and does not work on **60×40** stickers.'),
+  ('laptop-printing', 'Printing from a laptop', '2026-10-14'::date, 'laptop, computer, windows, mac, chrome, silent print, kiosk, auto-print, browser, kompyuter, 电脑, 電腦列印, 静默打印', '1. Install your label printer''s driver, set it as the default printer, and set the paper size to your label (at least 60×40mm).
 2. In **Settings → General Settings**, find **LAPTOP AUTO-PRINT** ("Silent auto-print on a laptop"). Tap **Copy**.
-3. Windows: press Win+R, paste, press Enter. Mac: open Terminal, paste, press Return. A separate Chrome window opens that prints without asking.
-4. Log in once in that window and use it only for printing during your live.
+3. Windows: press Win+R, paste, press Enter. Mac: open Terminal, paste, press Return.
+4. Log in once in the window that opens, and use that window for printing during your live.
 
 If you see "Auto-print not silent?", repeat these steps.'),
   ('no-printer-connected', '"No printer connected"', '2026-10-11'::date, 'no printer connected, not printed, printer not set up, order saved, walang printer, hindi nag-print, 未连接打印机, 沒有印表機, 未打印', '"No printer connected — Your order was saved, but it couldn''t print — no printer is set up yet."
@@ -279,46 +269,54 @@ Rows that failed show **Not printed**. Tap **Reprint** on each one after the pri
 **Printer used by another app or phone:** a Bluetooth printer connects to one app at a time. Close the printer''s own app (or other label apps), disconnect it from other phones, turn the printer off and on, then in **Printer settings** tap **Scan** and pick it again. Use **Test Print** to check.
 
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.'),
-  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-10-11'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家', '**Parcel Scan** is a Taiwan-only tool for 7-11 parcels. It is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile — it shows **Coming soon** unless FamilyMart is turned on for your account.
+  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-10-14'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家', '**Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
 
 Who sees what:
-- With an active paid plan, Parcel Scan opens for **manual entry** (type customer name, phone, 7-11 store #, amount, buyer @username) once it is open for your account. Snapping a photo of the slip is **coming soon**.
-- If you see **Coming soon**, it isn''t open for your account yet.
-- If you see 🔒, it isn''t part of your plan. Tapping it shows a contact-support popup.
+- If the tile opens, you can use it.
+- **Coming soon** — it isn''t open for your account yet.
+- 🔒 — it isn''t part of your plan. Tapping it shows a contact-support popup.
 - Sellers outside Taiwan do not see it.
-- The automatic **parcel check** (it checks the buyer''s phone and 7-11 store before you ship) is on automatically for Taiwan **Plus / Pro / Master** — no request needed.
 
-When open: save parcels, then **Export to 賣貨便 (Excel)** from a computer, and upload that file on the 賣貨便 website. **Customer Details** (same access as Parcel Scan) keeps repeat buyers so you can **Import** them again.
+**Parcel Scan 7-11**
+1. Tap **Manual encode (no camera)** and type the customer name, phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
+2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo.
+3. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel.
+4. Tap **Export to 賣貨便 (Excel)** and upload the file on the 賣貨便 website.
 
-**Parcel Scan FamilyMart (全家)** — only when it is turned on for your account (being rolled out), with the same plan and Taiwan rules as Parcel Scan 7-11. It looks and works like Parcel Scan 7-11 manual entry:
-- Tap **✏️ Add parcel**, then type customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount (10–20,000) and the buyer @username. The @username is required — tick **Buyer has no social handle** if there is none. A wrong field shows a short message under it.
-- **▣ Scan QR** reads the buyer @username from a SellerFlowLive sticker photo, same as 7-11.
-- There is **no shipping fee field and no order date field**. The shipping fee is set by SellerFlowLive for everyone (sellers can''t change it), and the order date is the day you add the parcel (Taiwan time). Amount + shipping must be 60–20,000. Editing a parcel keeps its own fee and date.
-- **📇 Customers**: every FamilyMart parcel you add saves the buyer (name, phone, store #, @username). Search by name, phone or @username, type the price and tap **Import** to add them as a new parcel. These are separate from your 7-11 customers. Removing a customer never deletes a parcel.
-- **Export to 好賣+ (Excel)** builds the 好賣+ 大量匯單 file (up to 500 parcels per file; more = several numbered files). Upload it on 好賣+ → 大量匯單. Parcels are marked exported only after the file is really saved or shared; **Undo last export** puts them back. **Clear exported** deletes exported parcels. On a phone, turn on **Export on this phone** first (off by default).
-- The @username goes in the 商品 column, so the 全家 Order export can be matched back to the buyer in Pickup Status. (No parcel check, E-Map or frozen option for FamilyMart.)'),
-  ('pickup-status', 'Pickup Status', '2026-10-12'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows which 7-11 parcels are **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can chase buyers before parcels are returned.
+**Parcel Scan FamilyMart (全家)** — only when it is turned on for your account.
+1. Tap **✏️ Add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
+2. **▣ Scan QR** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
+3. Tap **Export to 好賣+ (Excel)** and upload the file on 好賣+ → 大量匯單.
+
+Both:
+- **Undo last export** puts the last exported parcels back. **Clear exported** removes exported parcels.
+- On a phone, turn on **Export on this phone** first (it is off by default).
+- A field with a mistake shows a short message under it.'),
+  ('pickup-status', 'Pickup Status', '2026-10-14'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows your parcels as **Waiting pickup**, **In transit**, **Picked up** or **Returned**, so you can remind buyers.
 
 Who has it:
-- **Plus / Pro / Master** in Taiwan: **on automatically** — no request needed. If you just upgraded, close the app fully and open it again.
-- **Free / Basic**: tile shows 🔒 (contact-support popup).
+- **Plus / Pro / Master** in Taiwan. If you just upgraded, close the app fully and open it again.
+- **Free / Basic**: the tile shows 🔒 (contact-support popup).
 - Not shown outside Taiwan.
 
-How it works: export the 匯出報表 file from 賣貨便 (in a normal browser), then tap **Sync from 7-11** and pick the file. New parcels are checked automatically; **Check now** can be used again 12 hours after your last check.
+**7-11:** on 賣貨便 (in a normal browser), download the 匯出報表 file. Then tap **Sync from 7-11** and pick the file. Tap **Check now** to refresh.
 
-**全家 (FamilyMart) parcels** — only when 全家 is turned on for your account (being rolled out):
-- On 好賣+, open the **ALL ORDERS** tab and download the **Order export** (.xlsx) there (one file then has every status), then tap **Sync from FamilyMart** and pick the file. A green note shows how many parcels were updated and how many wait for pickup. Upload it again whenever you want fresher statuses — 全家 parcels are **not** checked automatically and **Check now** is 7-11 only.
-- 7-11 and 全家 parcels share one list; each row has a small **7-11** or **全家** label.
-- Status comes from the file''s dates: picked up, returned, waiting at the store (with the pickup deadline), or in transit. Cancelled orders and orders still being processed (no tracking number yet) are not shown.
-- A parcel with a tracking number (寄件編號) that is not dropped off yet shows in **In transit** with **Not dropped off yet** and **Drop off before (date)** — 好賣+ cancels the tracking number 14 days after it was issued. The date turns red when 3 days or fewer are left.
-- If none in the file are shipped yet, a grey note says "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
-- "This isn''t a 全家 Order export" = a different file was picked. Up to 2,000 orders per file; wait a few seconds between uploads.'),
-  ('buyer-alert', 'Buyer Alert (returns and pickup deadlines)', '2026-10-13'::date, 'buyer alert, returns, returned parcels, bogus buyer, joy reserver, pickup deadline, days left, forgive, 退件, 取件期限, 原諒, hindi kinuha, patawarin', '**Buyer Alert** warns you about a buyer while you are live, right on their comment:
-- A buyer with **3 or more returned parcels** shows **⚠ N returns**.
-- A buyer with a parcel at 7-11 that is **3 days or fewer** from its pickup deadline shows **📦 N days left**.
-- **Tap the buyer''s name** to see their parcels (returned, at 7-11, picked up). **Forgive** removes a return that wasn''t the buyer''s fault, so it no longer counts; **Undo** puts it back.
-- It uses your **Pickup Status** data, so it only works if you use Pickup Status (Taiwan). No Pickup Status data = no alerts.
-- Alerts only — orders are **not** blocked. 1-Click, Auto Mode and printing work as usual.'),
+**全家 (FamilyMart)** — only when 全家 is turned on for your account:
+1. On 好賣+, open **ALL ORDERS** and download the **Order export** (.xlsx).
+2. Tap **Sync from FamilyMart** and pick the file. A green note shows how many parcels were updated.
+3. Upload a new file whenever you want newer statuses.
+
+- 7-11 and 全家 parcels are in one list. Each row has a small **7-11** or **全家** label.
+- Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
+- "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
+- "This isn''t a 全家 Order export" — pick the Order export file from 好賣+ and try again.'),
+  ('buyer-alert', 'Buyer Alert (returns and pickup deadlines)', '2026-10-14'::date, 'buyer alert, returns, returned parcels, bogus buyer, joy reserver, pickup deadline, days left, forgive, 退件, 取件期限, 原諒, hindi kinuha, patawarin', '**Buyer Alert** shows a warning on a buyer''s comment while you are live:
+- **⚠ N returns** — this buyer has returned parcels.
+- **📦 N days left** — this buyer has a parcel at the store that must be picked up soon.
+
+- **Tap the buyer''s name** to see their parcels. **Forgive** removes a return that wasn''t the buyer''s fault; **Undo** puts it back.
+- Orders are **not** blocked. 1-Click, Auto mode and printing work as usual.
+- For Taiwan sellers who use **Pickup Status**.'),
   ('shipping', 'Shipping (Coming soon)', '2026-10-11'::date, 'shipping, ship, 7-11 shipping, export, myship, delivery, padala, pagpapadala, 出货, 出貨, 运送, 寄送', 'The **Shipping** tile (Settings) and the Shipping button on Orders show **Coming soon** for sellers in Taiwan. Sellers in other countries do not see Shipping.
 
 There is no date yet. For parcels today, sellers in Taiwan may use **Parcel Scan** if it is open for them.'),

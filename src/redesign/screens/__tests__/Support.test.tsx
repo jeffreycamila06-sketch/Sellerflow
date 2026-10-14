@@ -33,9 +33,12 @@ describe("Support user-guide accordions", () => {
 
   it("g5 shipping-export guide is present and expands to the step list", () => {
     renderSupport();
-    expect(screen.queryByText(/grouped by buyer number/)).toBeNull();  // collapsed
+    expect(screen.queryByText(/Add shipping info/)).toBeNull();  // collapsed
     fireEvent.click(screen.getByText("How to use: 7-11 shipping export"));
-    expect(screen.getByText(/grouped by buyer number/)).toBeTruthy();
+    expect(screen.getByText(/Add shipping info/)).toBeTruthy();
+    // Help guide rule: steps only, no "how it works inside" lines.
+    expect(screen.queryByText(/grouped by buyer number/)).toBeNull();
+    expect(screen.queryByText(/NT\$55/)).toBeNull();
     expect(screen.getByText(/NT\$38/)).toBeTruthy();
     expect(screen.getByText(/Ship within 4 days/)).toBeTruthy();
   });
