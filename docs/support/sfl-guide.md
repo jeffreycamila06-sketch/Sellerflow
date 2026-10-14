@@ -300,6 +300,20 @@ Open **Orders** in the bottom bar.
 - The **Miners** tab shows your top buyers.
 - Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don't see them, they aren't turned on for your account yet — ask Admin.
 
+## tiktok-send — Send to TikTok (message a buyer their order)
+Last checked: 2026-10-14
+Keywords: send to tiktok, send message, message buyer, copy message, edit item, edit order line, ipadala sa tiktok, i-message ang buyer, i-edit ang item, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品
+
+**Send to TikTok** makes a ready message with the buyer's order, so you can paste it to the buyer in TikTok.
+
+- On **Orders**, type the buyer number to open their card, then tap **Send**. Only TikTok buyers have it.
+- Every item line can be edited before you send. The text box grows as the text gets longer.
+- **Nothing here changes the order.** Edits are only for this message: they are not saved. Close and open the sheet again to see the original lines.
+- If you delete all the text of a line, the message uses the buyer's original comment for that line.
+- You can change the **Total**. Changing an item's text keeps your Total. Changing a price, **Add item** or removing a line (×) sets the Total back to the sum.
+- Tap **Copy and open TikTok**, then in TikTok: Message → Paste → Send.
+- Some accounts have this. Admin turns it on per account. If you don't see **Send**, it isn't turned on for your account yet — ask Admin.
+
 ## sales — Sales screen
 Last checked: 2026-10-11
 Keywords: sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额
