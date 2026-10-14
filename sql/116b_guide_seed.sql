@@ -199,13 +199,9 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - **⬇ Export** downloads Excel or PDF.
 - The **Miners** tab shows your top buyers.
 - Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don''t see them, they aren''t turned on for your account yet — ask Admin.'),
-  ('tiktok-send', 'Send to TikTok', '2026-10-14'::date, 'send to tiktok, send message, message buyer, copy message, edit item, ipadala sa tiktok, i-message ang buyer, i-edit ang item, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品', '**Send to TikTok** helps you message a buyer their order.
-
-- On **Orders**, type the buyer number, then tap **Send**.
-- Tap an item to change its words before you send. You can also change prices, the **Total**, or tap **Add item**.
-- Your changes are only for this message. **Nothing here changes the order.**
-- Tap **Copy and open TikTok**, then in TikTok: Message → Paste → Send.
-- Don''t see **Send**? Ask Admin.'),
+  ('tiktok-send', 'Send to TikTok', '2026-10-14'::date, 'send to tiktok, send message, message buyer, copy message, edit item, ipadala sa tiktok, i-message ang buyer, i-edit ang item, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品', '- On **Orders**, type the buyer number, then tap **Send**.
+- You can edit each item before you send.
+- When it''s ready, tap **Copy and open TikTok**, then **Send** in TikTok.'),
   ('sales', 'Sales screen', '2026-10-11'::date, 'sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额', 'Open **Sales** in the bottom bar.
 
 - Pick a range: **Today**, **This session**, **Last 7 days**, **2 months**, or **Custom**.

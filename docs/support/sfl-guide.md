@@ -304,13 +304,9 @@ Open **Orders** in the bottom bar.
 Last checked: 2026-10-14
 Keywords: send to tiktok, send message, message buyer, copy message, edit item, ipadala sa tiktok, i-message ang buyer, i-edit ang item, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品
 
-**Send to TikTok** helps you message a buyer their order.
-
 - On **Orders**, type the buyer number, then tap **Send**.
-- Tap an item to change its words before you send. You can also change prices, the **Total**, or tap **Add item**.
-- Your changes are only for this message. **Nothing here changes the order.**
-- Tap **Copy and open TikTok**, then in TikTok: Message → Paste → Send.
-- Don't see **Send**? Ask Admin.
+- You can edit each item before you send.
+- When it's ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 
 ## sales — Sales screen
 Last checked: 2026-10-11
