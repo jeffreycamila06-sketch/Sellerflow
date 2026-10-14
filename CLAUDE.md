@@ -169,6 +169,11 @@ The help bot reads the guide from the `support_guide` table (5-minute cache), so
 sql/116b after the merge updates the bot without a Render deploy. A test fails when sql/116b
 doesn't match the guide file.
 
+## Help guide rule
+- Pang-user lang ang bawat salita sa help guide: kung ano ang kayang gawin ng seller at saan pipindutin.
+- Walang paliwanag kung paano gumagana sa loob (logic, rules, data, admin o technical na detalye).
+- Maikli lang, para walang makuhang idea ang ibang SaaS owner na babasa nito o magtatanong sa help bot.
+
 ## UI / design rules
 
 ### Mobile-first rule (Jeff, Oct 14 2026)
