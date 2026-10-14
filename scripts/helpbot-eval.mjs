@@ -4,7 +4,8 @@
 // not shown on screen and not kept in the Terminal history):
 //   read -s "ANTHROPIC_API_KEY?Anthropic key: " && echo && ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY node scripts/helpbot-eval.mjs; unset ANTHROPIC_API_KEY
 // The key is read ONLY from the ANTHROPIC_API_KEY env var and is never printed, logged or saved.
-// No key → skips. Stops when spend passes US$2.
+// No key → skips. Stops when spend reaches US$1. Haiku writes the extra questions and judges;
+// only the real answers use the normal answer model.
 //
 // Questions: ~80 fixed runs (40 questions × ios + android: normal, tricky, forbidden, money; en /
 // fil / zh) PLUS ~40 tricky questions Haiku writes itself (also run on ios + android).
@@ -25,7 +26,7 @@ if (!KEY) {
   console.log(`  ${RUN_LINE}\n`);
   process.exit(0);
 }
-const MAX_SPEND = 2; // US$
+const MAX_SPEND = 1; // US$ — the run stops once this is reached
 let spent = 0;
 class SpendCap extends Error {}
 async function model(args) {
@@ -160,5 +161,6 @@ for (const k of groups) {
   console.log(`${g.padEnd(25)} ${p.padEnd(9)} ${String(rs.filter((r) => r.ok).length).padStart(4)}  ${String(rs.filter((r) => !r.ok).length).padStart(4)}`);
 }
 const fails = results.filter((r) => !r.ok);
-console.log(`\nTotal: ${results.length - fails.length}/${results.length} passed · spend US$${spent.toFixed(3)}`);
+console.log(`\nTotal: ${results.length - fails.length}/${results.length} passed`);
 for (const f of fails) console.log(`\n✗ [${f.group} · ${f.platform}] ${f.q}\n  ${f.problems.join("; ")}\n  answer (${f.kind}): ${f.a.replace(/\s+/g, " ").slice(0, 400)}`);
+console.log(`\nTotal spent: US$${spent.toFixed(3)} (cap US$${MAX_SPEND.toFixed(2)})`);
