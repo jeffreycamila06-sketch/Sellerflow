@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { readFile } from "fs/promises";
 import { answerQuestion, callClaude, createGuideSource } from "./server/helpBot.js";
+import { normPlatform } from "./src/lib/helpBotGuard.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
@@ -1017,11 +1018,14 @@ async function helpBotAllowed(req) {
 app.post("/support/ask", requireAuth, async (req, res) => {
   try {
     if (!(await helpBotAllowed(req))) return res.status(403).json({ success: false, error: "not_available" });
+    // iPhone has its own switch (App Store 3.1.1) — off unless app_settings.support_ai_ios = 'true'.
+    const platform = normPlatform(req.body && req.body.platform);
+    if (platform === "ios" && (await readSetting("support_ai_ios")) !== "true") return res.status(403).json({ success: false, error: "not_available" });
     const now = Date.now();
     if (now - (supportLastAsk.get(req.authUserId) || 0) < 2000) return res.status(429).json({ success: false, error: "too_fast" });
     supportLastAsk.set(req.authUserId, now);
     const [cap, daily] = await Promise.all([readSetting("support_ai_monthly_cap_usd"), readSetting("support_ai_daily_per_seller")]);
-    const r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang }, {
+    const r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang, platform }, {
       settings: { capUsd: Number(cap ?? 15), dailyPerSeller: Number(daily ?? 20) },
       matchFaq: async (q) => {
         const { data, error } = await serviceSb.rpc("support_faq_match", { p_q: q });
@@ -1049,7 +1053,7 @@ app.post("/support/ask", requireAuth, async (req, res) => {
       log: (line) => console.log(line),
     });
     if (r.error) return res.status(400).json({ success: false, error: r.error });
-    return res.json({ success: true, id: r.id, source: r.source, answer: r.answer, saved: r.saved, contact: r.contact });
+    return res.json({ success: true, id: r.id, source: r.source, answer: r.answer, saved: r.saved, contact: r.contact, kind: r.kind || null });
   } catch (e) {
     console.log(`[SUPPORT] fail code=${(e && e.code) || "error"}`);
     return res.status(500).json({ success: false, error: "failed" });

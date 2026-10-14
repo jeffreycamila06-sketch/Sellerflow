@@ -7,36 +7,50 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export type HelpSource = "faq" | "faq_ai_match" | "ai" | "handoff" | "limit";
-export interface AskResult { ok: boolean; id?: string; source?: HelpSource; answer?: string; saved?: boolean; contact?: boolean; error?: string }
+// kind: 'plan' = the fixed iPhone plan answer; 'blocked' = a question the bot does not answer.
+export interface AskResult { ok: boolean; id?: string; source?: HelpSource; answer?: string; saved?: boolean; contact?: boolean; kind?: "plan" | "blocked" | null; error?: string }
 
 // Shown only when the switch is on AND the seller is in preview (admins always are).
-// Audit Oct 13 (7): never inside the iOS app — its answers can point to paying outside the
-// app (App Store Guideline 3.1.1). Web and Android unchanged. ios = the same isIOS() check
-// that hides pricing/upgrade.
-export const helpBotVisible = (switchOn: boolean, preview: boolean, isAdmin: boolean, ios = false): boolean => switchOn && !ios && (preview || isAdmin);
+// iPhone (App Store 3.1.1): only when its own switch app_settings.support_ai_ios is on too —
+// the server keeps plan / payment text out of every iPhone answer (src/lib/helpBotGuard.js).
+// Web and Android unchanged. ios = the same isIOS() check that hides pricing/upgrade.
+export const helpBotVisible = (switchOn: boolean, preview: boolean, isAdmin: boolean, ios = false, iosOn = false): boolean =>
+  switchOn && (!ios || iosOn) && (preview || isAdmin);
 
-// app_settings.support_ai_enabled — one small read per sign-in. Fail closed: only 'true' = on.
-export async function loadHelpBotSwitch(): Promise<boolean> {
+// The platform sent with every question — the server answers iPhone with stricter rules.
+export function helpBotPlatform(ios: boolean): "ios" | "android" | "web" {
+  if (ios) return "ios";
+  try {
+    const cap = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+    return cap?.getPlatform?.() === "android" ? "android" : "web";
+  } catch {
+    return "web";
+  }
+}
+
+// app_settings switch (support_ai_enabled, or support_ai_ios) — one small read per sign-in.
+// Fail closed: only 'true' = on.
+export async function loadHelpBotSwitch(key = "support_ai_enabled"): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;
   try {
-    const { data, error } = await supabase.from("app_settings").select("value").eq("key", "support_ai_enabled").maybeSingle();
+    const { data, error } = await supabase.from("app_settings").select("value").eq("key", key).maybeSingle();
     return !error && (data as { value?: unknown } | null)?.value === "true";
   } catch {
     return false;
   }
 }
-export function useHelpBotSwitch(userKey: string): boolean {
+export function useHelpBotSwitch(userKey: string, key = "support_ai_enabled"): boolean {
   const [st, setSt] = useState<{ key: string; on: boolean }>({ key: "", on: false });
   useEffect(() => {
     if (!userKey) return;
     let alive = true;
-    void loadHelpBotSwitch().then((on) => { if (alive) setSt({ key: userKey, on }); });
+    void loadHelpBotSwitch(key).then((on) => { if (alive) setSt({ key: userKey, on }); });
     return () => { alive = false; };
-  }, [userKey]);
+  }, [userKey, key]);
   return !!userKey && st.key === userKey && st.on;
 }
 
-export async function askHelpBot(question: string, lang: string): Promise<AskResult> {
+export async function askHelpBot(question: string, lang: string, platform: "ios" | "android" | "web" = "web"): Promise<AskResult> {
   const q = String(question || "").trim();
   if (!q) return { ok: false, error: "empty" };
   try {
@@ -44,11 +58,12 @@ export async function askHelpBot(question: string, lang: string): Promise<AskRes
     const r = await fetch(withCodes(`${SERVER}/support/ask`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
-      body: JSON.stringify({ question: q.slice(0, 500), lang }),
+      body: JSON.stringify({ question: q.slice(0, 500), lang, platform }),
     });
     const j = decodeServerJson(await r.json().catch(() => ({}))) as Partial<AskResult> & { success?: boolean };
     if (!r.ok || !j.success) return { ok: false, error: r.status === 403 ? "not_available" : r.status === 429 ? "too_fast" : "failed" };
-    return { ok: true, id: j.id, source: j.source, answer: j.answer, saved: !!j.saved, contact: !!j.contact };
+    const kind = j.kind === "plan" || j.kind === "blocked" ? j.kind : null;
+    return { ok: true, id: j.id, source: j.source, answer: j.answer, saved: !!j.saved, contact: !!j.contact, kind };
   } catch {
     return { ok: false, error: "unreachable" };
   }
@@ -167,7 +182,8 @@ export async function loadQueue(tab: "approve" | "answer", offset = 0): Promise<
   return error || !Array.isArray(data) ? null : (data as QueueRow[]);
 }
 // Tab B: billing questions default to NOT saving as FAQ (the answer is about one seller).
-export const saveFaqDefault = (row: Pick<QueueRow, "needs_admin">): boolean => row.needs_admin !== "billing";
+// Off-topic ('blocked') questions default to NOT saving too.
+export const saveFaqDefault = (row: Pick<QueueRow, "needs_admin">): boolean => row.needs_admin !== "billing" && row.needs_admin !== "blocked";
 
 export interface ApproveItem { id: string; ok: boolean; save_faq: boolean; question?: string; answer?: string }
 export async function approveBatch(items: ApproveItem[]): Promise<number | null> {

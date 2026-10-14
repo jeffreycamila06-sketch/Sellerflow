@@ -815,6 +815,8 @@ export default function RedesignApp() {
   // switch or the fm_pickup preview list (sql/120). Off → the FamilyMart tile stays "Soon".
   const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
+  // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
+  const helpBotIosOn = useHelpBotSwitch(authed && isIOS() ? (authUserId || "") : "", "support_ai_ios");
   const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
   const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
@@ -2530,7 +2532,7 @@ export default function RedesignApp() {
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
-              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios)}
+              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios, helpBotIosOn)}
             />
           )}
           {screen === "settings" && (

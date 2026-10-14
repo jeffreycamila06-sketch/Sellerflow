@@ -93,7 +93,7 @@ describe("iOS gates pinned in RedesignApp source", () => {
     expect(src).toContain("onUpgrade={ios ? undefined :");
   });
   it("gate 8 (Audit Oct 13 item 7) — the help bot bubble is never shown in the iOS app", () => {
-    expect(src).toContain('helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios)}');
+    expect(src).toContain('helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios, helpBotIosOn)}');
   });
 });
 
