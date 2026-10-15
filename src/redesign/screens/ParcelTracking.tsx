@@ -29,7 +29,7 @@ import {
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
   loadTrackingStatus, requestAutoCheck, requestCheck, checkButtonState, isStale, urgentEligible, formatTaipei, CHECK_POLL_MS,
   type TrackingStatus, type TrackingJob, type CheckResult,
-  loadBuyerNamesByHandle, normHandle,
+  loadBuyerNamesByHandle, normHandle, formatPrice,
 } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
@@ -185,9 +185,13 @@ function Buyer({ row, t, nowMs, buyerName }: { row: ParcelTrackingRow; t: T; now
 const storeOf = (row: ParcelTrackingRow) => row.recStore || row.storeId || "—";
 
 // Search (display only, over the rows already loaded): buyer name, @username (with or
-// without @), 7-11 store, parcel number (spaces / dashes ignored). Case-insensitive, partial.
+// without @), 7-11 store, parcel number (spaces / dashes ignored), and the price when the
+// whole query is price-like. Case-insensitive, partial.
 const SEARCH_DEBOUNCE_MS = 150;
 const squash = (v: string) => v.toLowerCase().replace(/[\s-]+/g, "");
+// Whole query is a price: digits with an optional "NT$" prefix, commas and spaces — and
+// nothing else. So "rhian_651" / a parcel code never match a row by its amount.
+const PRICE_QUERY = /^(nt\$)?[\d,\s]+$/;
 function matchesSearch(row: ParcelTrackingRow, query: string, buyerName: string | undefined): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -196,6 +200,10 @@ function matchesSearch(row: ParcelTrackingRow, query: string, buyerName: string 
   if (bare && user.includes(bare)) return true;
   if (buyerName && buyerName.toLowerCase().includes(q)) return true;
   if ([row.recStore, row.storeId].some((x) => x && String(x).toLowerCase().includes(q))) return true;
+  if (PRICE_QUERY.test(q)) {
+    const digits = q.replace(/\D/g, "");
+    if (digits && typeof row.orderAmount === "number" && String(row.orderAmount).includes(digits)) return true;
+  }
   const code = squash(q);
   return !!code && squash(row.trackingNo || "").includes(code);
 }
@@ -231,13 +239,14 @@ function Table({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingR
     <div style={{ ...card, padding: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0, overflow: "hidden" }}>
       <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse" }} data-testid="pt-table">
         <colgroup>
-          <col style={{ width: "27%" }} /><col style={{ width: "27%" }} /><col style={{ width: "20%" }} /><col style={{ width: "14%" }} /><col style={{ width: 92 }} />
+          <col style={{ width: "24%" }} /><col style={{ width: "22%" }} /><col style={{ width: "18%" }} /><col style={{ width: "12%" }} /><col style={{ width: "14%" }} /><col style={{ width: 92 }} />
         </colgroup>
         <thead>
           <tr>
             <th style={th}>{t.rd_pt_col_buyer}</th>
             <th style={th}>{t.rd_pt_col_store}</th>
             <th style={th}>{t.rd_pt_col_parcel}</th>
+            <th style={{ ...th, textAlign: "center" }}>{t.rd_pt_col_price}</th>
             <th style={th}>{t.rd_pt_col_left}</th>
             <th style={th} aria-hidden="true" />
           </tr>
@@ -248,6 +257,7 @@ function Table({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingR
               <td style={td}><Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} /></td>
               <td style={td}><span style={{ fontSize: 12.5, color: "var(--text)", ...ellipsis, display: "block" }} title={storeOf(r)}>{storeOf(r)}</span></td>
               <td style={td}><span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={r.trackingNo} data-testid="pt-code">{r.trackingNo}</span></td>
+              <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 12.5, color: "var(--text)", fontVariantNumeric: "tabular-nums", ...ellipsis, display: "block" }} data-testid="pt-price">{formatPrice(r.orderAmount)}</span></td>
               <td style={td}><LeftText row={r} today={today} t={t} /></td>
               <td style={{ ...td, textAlign: "right" }}><ChaseAction row={r} t={t} onCopy={onCopy} /></td>
             </tr>
@@ -287,7 +297,10 @@ function CompactList({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTra
         <div key={r.id} data-testid="pt-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid var(--border)" : "none" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} />
-            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, ...ellipsis }}>{storeOf(r)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, display: "flex", alignItems: "baseline" }}>
+              <span style={{ ...ellipsis, minWidth: 0 }}>{storeOf(r)}</span>
+              {r.orderAmount !== null && <span style={{ flexShrink: 0, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }} data-testid="pt-price">{" · "}{formatPrice(r.orderAmount)}</span>}
+            </div>
           </div>
           <div style={{ flexShrink: 0, maxWidth: "34%", textAlign: "right" }}><LeftText row={r} today={today} t={t} /></div>
           <div style={{ flexShrink: 0 }}><ChaseAction row={r} t={t} onCopy={onCopy} /></div>

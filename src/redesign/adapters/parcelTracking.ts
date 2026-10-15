@@ -70,6 +70,7 @@ export interface ParcelTrackingRow {
   arrivedAt: string | null;
   shipType: string | null;
   specialType: string | null;
+  orderAmount: number | null; // 賣貨便 order total (display only)
   terminal: boolean;
   lastPolledAt?: string | null; // last SHOPMORE check of this row (drives the Stale chip)
   carrier?: "711" | "fm";      // set only when the 全家 switch is on (sql/119)
@@ -77,6 +78,11 @@ export interface ParcelTrackingRow {
 
 export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
   const s = (v: unknown): string | null => (v === null || v === undefined || v === "" ? null : String(v));
+  const num = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
   return {
     id: String(row.id),
     trackingNo: String(row.tracking_no ?? ""),
@@ -91,6 +97,7 @@ export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
     arrivedAt: s(row.arrived_at),
     shipType: s(row.ship_type),
     specialType: s(row.special_type),
+    orderAmount: num(row.order_amount),
     terminal: row.terminal === true,
     lastPolledAt: s(row.last_polled_at),
     ...(row.carrier === "fm" || row.carrier === "711" ? { carrier: row.carrier } : {}),
@@ -419,7 +426,13 @@ export async function loadBuyerNamesByHandle(handles: string[]): Promise<Map<str
 }
 
 export const PARCEL_TRACKING_PAGE = 500;
-export const PT_SELECT = "id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal, last_polled_at";
+export const PT_SELECT = "id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, order_amount, terminal, last_polled_at";
+
+// PURE — "NT$" + thousands-separated amount (NT$1,250). null / non-finite → "—"; 0 → "NT$0".
+export function formatPrice(amount: number | null): string {
+  if (amount === null || !Number.isFinite(amount)) return "—";
+  return `NT$${amount.toLocaleString("en-US")}`;
+}
 
 // Exact per-tab totals that survive the page cap (see the starvation note below).
 // live = every non-terminal row (drives "Load more"); waiting / transit = exact counts

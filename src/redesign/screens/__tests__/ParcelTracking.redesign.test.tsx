@@ -33,7 +33,7 @@ let n = 0;
 const mk = (over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
   id: `r${++n}`, trackingNo: `F0000${n}`, cmOrderNo: null, buyerUsername: `buyer${n}`, recipientName: null,
   storeId: "Store A", recStore: null, status: "at_store", statusMessage: null, pickupDeadline: null,
-  arrivedAt: null, shipType: "C2C", specialType: null, terminal: false, ...over,
+  arrivedAt: null, shipType: "C2C", specialType: null, orderAmount: null, terminal: false, ...over,
 });
 const ROWS = [
   mk({ buyerUsername: "maria_shop", pickupDeadline: "2026-09-29", recStore: "7-11 Songshan" }), // waiting, 5d
@@ -66,8 +66,8 @@ describe("WEB — boxed status tabs + aligned table", () => {
     expect(r.getByTestId("pt-tab-waiting").getAttribute("aria-selected")).toBe("true");
     const table = r.getByTestId("pt-table");
     expect(table.style.tableLayout).toBe("fixed");
-    expect(table.querySelectorAll("thead th")).toHaveLength(5);          // Buyer · Store · Parcel · Left · action
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(4);  // the action header is aria-hidden (empty)
+    expect(table.querySelectorAll("thead th")).toHaveLength(6);          // Buyer · Store · Parcel · Price · Left · action
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(5);  // the action header is aria-hidden (empty)
     expect(r.queryByTestId("pt-cards")).toBeNull();
   });
 
