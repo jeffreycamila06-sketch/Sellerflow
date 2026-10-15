@@ -246,7 +246,7 @@ function Table({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingR
             <th style={th}>{t.rd_pt_col_buyer}</th>
             <th style={th}>{t.rd_pt_col_store}</th>
             <th style={th}>{t.rd_pt_col_parcel}</th>
-            <th style={{ ...th, textAlign: "right" }}>{t.rd_pt_col_price}</th>
+            <th style={{ ...th, textAlign: "center" }}>{t.rd_pt_col_price}</th>
             <th style={th}>{t.rd_pt_col_left}</th>
             <th style={th} aria-hidden="true" />
           </tr>
@@ -257,7 +257,7 @@ function Table({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingR
               <td style={td}><Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} /></td>
               <td style={td}><span style={{ fontSize: 12.5, color: "var(--text)", ...ellipsis, display: "block" }} title={storeOf(r)}>{storeOf(r)}</span></td>
               <td style={td}><span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={r.trackingNo} data-testid="pt-code">{r.trackingNo}</span></td>
-              <td style={{ ...td, textAlign: "right" }}><span style={{ fontSize: 12.5, color: "var(--text)", fontVariantNumeric: "tabular-nums", ...ellipsis, display: "block" }} data-testid="pt-price">{formatPrice(r.orderAmount)}</span></td>
+              <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 12.5, color: "var(--text)", fontVariantNumeric: "tabular-nums", ...ellipsis, display: "block" }} data-testid="pt-price">{formatPrice(r.orderAmount)}</span></td>
               <td style={td}><LeftText row={r} today={today} t={t} /></td>
               <td style={{ ...td, textAlign: "right" }}><ChaseAction row={r} t={t} onCopy={onCopy} /></td>
             </tr>

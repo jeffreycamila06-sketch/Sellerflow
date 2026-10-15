@@ -55,6 +55,7 @@ describe("price in the list", () => {
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-table")).toBeTruthy());
     expect(r.getByTestId("pt-price").textContent).toContain("NT$350");
+    expect(r.getByTestId("pt-price").closest("td")?.style.textAlign).toBe("center"); // centered in its column
   });
   it("mobile compact list shows NT$350", async () => {
     M.narrow = true;
