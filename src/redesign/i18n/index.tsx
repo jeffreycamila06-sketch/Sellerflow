@@ -1895,6 +1895,7 @@ const RAW: Record<string, Row> = {
   rd_pt_col_buyer: { en: "Buyer", fil: "Buyer", zh: "买家", "zh-TW": "買家", vi: "Người mua", th: "ผู้ซื้อ", id: "Pembeli", bg: "Купувач" },
   rd_pt_col_store: { en: "Store", fil: "Tindahan", zh: "门市", "zh-TW": "門市", vi: "Cửa hàng", th: "สาขา", id: "Toko", bg: "Магазин" },
   rd_pt_col_parcel: { en: "Parcel", fil: "Parcel", zh: "包裹", "zh-TW": "包裹", vi: "Bưu kiện", th: "พัสดุ", id: "Paket", bg: "Пратка" },
+  rd_pt_col_price: { en: "Price", fil: "Presyo", zh: "金额", "zh-TW": "金額", vi: "Giá", th: "ราคา", id: "Harga", bg: "Цена" },
   rd_pt_col_left: { en: "Left", fil: "Natitira", zh: "剩余", "zh-TW": "剩餘", vi: "Còn lại", th: "เหลือ", id: "Sisa", bg: "Остават" },
   rd_pt_left_done: { en: "Done", fil: "Tapos", zh: "已完成", "zh-TW": "已完成", vi: "Xong", th: "เสร็จแล้ว", id: "Selesai", bg: "Готово" },
   rd_pt_left_returned: { en: "Returned", fil: "Ibinalik", zh: "已退回", "zh-TW": "已退回", vi: "Đã hoàn", th: "ตีกลับ", id: "Dikembalikan", bg: "Върната" },
