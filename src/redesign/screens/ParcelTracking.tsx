@@ -185,9 +185,13 @@ function Buyer({ row, t, nowMs, buyerName }: { row: ParcelTrackingRow; t: T; now
 const storeOf = (row: ParcelTrackingRow) => row.recStore || row.storeId || "—";
 
 // Search (display only, over the rows already loaded): buyer name, @username (with or
-// without @), 7-11 store, parcel number (spaces / dashes ignored). Case-insensitive, partial.
+// without @), 7-11 store, parcel number (spaces / dashes ignored), and the price when the
+// whole query is price-like. Case-insensitive, partial.
 const SEARCH_DEBOUNCE_MS = 150;
 const squash = (v: string) => v.toLowerCase().replace(/[\s-]+/g, "");
+// Whole query is a price: digits with an optional "NT$" prefix, commas and spaces — and
+// nothing else. So "rhian_651" / a parcel code never match a row by its amount.
+const PRICE_QUERY = /^(nt\$)?[\d,\s]+$/;
 function matchesSearch(row: ParcelTrackingRow, query: string, buyerName: string | undefined): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -196,8 +200,10 @@ function matchesSearch(row: ParcelTrackingRow, query: string, buyerName: string 
   if (bare && user.includes(bare)) return true;
   if (buyerName && buyerName.toLowerCase().includes(q)) return true;
   if ([row.recStore, row.storeId].some((x) => x && String(x).toLowerCase().includes(q))) return true;
-  const digits = q.replace(/[^\d]/g, "");
-  if (digits && row.orderAmount !== null && String(row.orderAmount).includes(digits)) return true;
+  if (PRICE_QUERY.test(q)) {
+    const digits = q.replace(/\D/g, "");
+    if (digits && typeof row.orderAmount === "number" && String(row.orderAmount).includes(digits)) return true;
+  }
   const code = squash(q);
   return !!code && squash(row.trackingNo || "").includes(code);
 }

@@ -27,7 +27,7 @@ let n = 0;
 const mk = (over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
   id: `s${++n}`, trackingNo: `F0000${n}`, cmOrderNo: null, buyerUsername: `buyer${n}`, recipientName: null,
   storeId: "Store A", recStore: null, status: "at_store", statusMessage: null, pickupDeadline: "2026-09-28",
-  arrivedAt: null, shipType: "C2C", specialType: null, terminal: false, ...over,
+  arrivedAt: null, shipType: "C2C", specialType: null, orderAmount: null, terminal: false, ...over,
 });
 const ROWS = [
   mk({ buyerUsername: "maria_shop", trackingNo: "F12345678", recStore: "7-11 Songshan" }),
@@ -126,6 +126,28 @@ describe("Pickup Status search", () => {
       await waitFor(() => expect(rowsText(r)).toHaveLength(1));
       expect(loadParcelTracking).toHaveBeenCalledTimes(1);
     } finally { vi.useRealTimers(); }
+  });
+  // Price search only fires for a price-like whole query; a username/code that merely
+  // contains digits (e.g. "rhian_651") must never match a row by its amount.
+  it("a price-like query matches the amount; a username with digits does not", async () => {
+    const PRICE_ROWS = [
+      mk({ buyerUsername: "rhian_651", orderAmount: 500, trackingNo: "F70000001", recStore: "7-11 Xinyi" }),
+      mk({ buyerUsername: "coco", orderAmount: 6510, trackingNo: "F80000002", recStore: "7-11 Neihu" }),
+    ];
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: PRICE_ROWS });
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(2));
+    // "rhian_651": matches ONLY the username row — NOT coco by its amount 6510
+    // (waitFor on the CONTENT: consecutive 1-row results would pass a length-only check stale)
+    await type(r, "rhian_651");
+    await waitFor(() => { const t = rowsText(r); expect(t).toHaveLength(1); expect(t[0]).toContain("@rhian_651"); });
+    // price-like queries DO match the amount
+    await type(r, "6510");
+    await waitFor(() => { const t = rowsText(r); expect(t).toHaveLength(1); expect(t[0]).toContain("@coco"); });
+    await type(r, "NT$500");
+    await waitFor(() => { const t = rowsText(r); expect(t).toHaveLength(1); expect(t[0]).toContain("@rhian_651"); });
+    await type(r, "1,250"); // no such amount → no match
+    await waitFor(() => expect(r.getByTestId("pt-search-empty")).toBeTruthy());
   });
   it("Tagalog strings", async () => {
     const r = render(<TProvider lang="fil"><ParcelTracking /></TProvider>);
