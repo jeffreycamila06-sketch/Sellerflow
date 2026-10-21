@@ -9,12 +9,13 @@
 // the APK. (The slip/sticker payload builders live in printing.ts, byte-parity.)
 import { buildNativeStickerPayload, type Settings } from "./printing";
 import type { Buyer } from "../../lib/orderTypes";
+import { rememberSavedPrinter, type PrinterLang } from "./savedPrinter";
 
 // Result/config shapes — structurally identical to App.tsx:39-54.
 export interface MobilePrinterDevice { id: string; type: "bluetooth" | "lan"; name: string; address?: string; host?: string; port?: number; paired?: boolean; online?: boolean; signal?: number; distance?: string; hint?: string }
 export interface MobilePrinterResult { ok?: boolean; message?: string; online?: boolean; host?: string; port?: number; savedPrinter?: MobilePrinterDevice | null; printers?: MobilePrinterDevice[] }
 export interface PrinterLanConfig { host: string; port?: number }
-export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number; transport?: "ble" | "spp"; model?: "D520BT" | "generic"; likely?: boolean }
+export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number; transport?: "ble" | "spp"; model?: "D520BT" | "generic"; likely?: boolean; lang?: PrinterLang }
 export interface BluetoothScanResult { ok?: boolean; message?: string; printers?: BluetoothPrinterDevice[]; savedPrinter?: BluetoothPrinterDevice | null }
 export interface StickerPrintResult { ok?: boolean; message?: string }
 
@@ -69,9 +70,15 @@ export async function btCall<T>(action: BtBridgeAction, arg?: unknown): Promise<
   const bridge = window.SellerFlowPrinter as Record<string, ((a?: unknown) => Promise<unknown>) | undefined> | undefined;
   const fn = bridge?.[action];
   if (typeof fn !== "function") return null;
-  try { return (arg === undefined ? await fn() : await fn(arg)) as T; }
-  catch { return null; }
+  try {
+    const r = (arg === undefined ? await fn() : await fn(arg)) as T;
+    // Printer setup v2: every answer that carries `savedPrinter` is the native truth about
+    // the saved sticker printer (model / language) — remember it for the print router.
+    if (SAVED_PRINTER_ACTIONS.has(action) && r && typeof r === "object" && "savedPrinter" in (r as object)) rememberSavedPrinter((r as { savedPrinter?: unknown }).savedPrinter);
+    return r;
+  } catch { return null; }
 }
+const SAVED_PRINTER_ACTIONS: ReadonlySet<BtBridgeAction> = new Set(["getBluetoothLabelPrinter", "setBluetoothLabelPrinter", "clearBluetoothLabelPrinter", "scanBluetoothLabelPrinters"]);
 
 // Like btCall but PRESERVES the native reject {code, message} instead of
 // collapsing it to null — the Test Print button needs the reject CODE to tell
@@ -92,17 +99,11 @@ export async function btCallOutcome(action: BtBridgeAction, arg?: unknown): Prom
   }
 }
 
-// ── Generic BLE label printers (Phase 1, test-gated) ─────────────────────────
-// Shown only to admins and accounts on the "test_printers" list, and only on an app
-// build that has the native testGenericPrinter method (older apps and iOS: hidden).
+// ── Generic BLE label printers (printer setup v2) ────────────────────────────
+// The v2 Printer settings flow (printerModels.printerFlowV2Enabled) needs an app build
+// with the native testGenericPrinter method; older apps keep today's screen.
 export const hasGenericPrinterBridge = (): boolean =>
   typeof window !== "undefined" && typeof (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.testGenericPrinter === "function";
-export const testPrintersEnabled = (isAdmin: boolean, listed: boolean): boolean => isAdmin || listed;
-
-// A scan row the seller must test before saving: a BLE printer that is not a D520BT.
-export const isGenericRow = (p: BluetoothPrinterDevice): boolean => p.model === "generic" && p.transport === "ble";
-// "Printers" section: likely printers, D520BTs and already-paired devices; the rest only after "show all".
-export const isPrinterRow = (p: BluetoothPrinterDevice): boolean => p.likely === true || p.model === "D520BT" || !!p.paired;
 
 export interface GenericPrintResult { ok: boolean; code: string; confirmed: boolean; statusHex: string; service: string; characteristic: string }
 // Admin-only line after a generic print. Printer data only.
@@ -110,12 +111,15 @@ export function genericDebugLine(r: Pick<GenericPrintResult, "confirmed" | "serv
   return `confirmed: ${r.confirmed ? "yes" : "no"} · via ${r.service || "?"}/${r.characteristic || "?"} · status: ${r.statusHex || "none"}`;
 }
 
-export async function testGenericPrinter(address: string, payload: unknown): Promise<GenericPrintResult> {
+// One test sticker to a printer that is NOT saved. `job` = the native TSPL text sticker
+// ({ payload }) or ready bytes the web built ({ data: base64 } — the ESC/POS try).
+// ONE bridge call per test; a completed write is "sent" — never re-sent.
+export async function testGenericPrinter(address: string, job: { payload: unknown } | { data: string }): Promise<GenericPrintResult> {
   const fail = (code: string): GenericPrintResult => ({ ok: false, code, confirmed: false, statusHex: "", service: "", characteristic: "" });
   const fn = typeof window !== "undefined" ? (window.SellerFlowPrinter as Record<string, ((a?: unknown) => Promise<unknown>) | undefined> | undefined)?.testGenericPrinter : undefined;
   if (typeof fn !== "function") return fail("");
   try {
-    const raw = (await fn({ address, payload })) as Record<string, unknown> | null;
+    const raw = (await fn({ address, ...job })) as Record<string, unknown> | null;
     const str = (v: unknown) => (typeof v === "string" ? v : "");
     return { ok: raw?.ok === true, code: "", confirmed: raw?.confirmed === true, statusHex: str(raw?.statusHex), service: str(raw?.service), characteristic: str(raw?.characteristic) };
   } catch (err) {

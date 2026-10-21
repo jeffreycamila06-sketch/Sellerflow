@@ -6,13 +6,23 @@
 // ⚠️ NATIVE-ONLY / PREVIEW-UNVERIFIABLE: on web/preview there is no bridge, so every
 // action returns the friendly "open the app" status (safe no-op). Only verifiable in
 // a real APK.
-import { useEffect, useState, type CSSProperties } from "react";
+//
+// PRINTER SETUP v2 ("no switch, fewer taps" — flowV2 + an app build with the generic
+// printer method): the scan list shows PRINTERS ONLY with a "✓ Works with SFL" / "New"
+// pill; a known printer saves at once and prints one test sticker; a new printer prints
+// one test sticker, asks "Did it look like this?", retries once in the other command
+// language, then says it isn't supported yet. Everyone else keeps today's screen.
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer,
-  hasGenericPrinterBridge, isGenericRow, isPrinterRow, testGenericPrinter, genericDebugLine,
+  hasGenericPrinterBridge, testGenericPrinter, genericDebugLine,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { buildNativeStickerPayload, printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { buildNativeStickerPayload, buildEscposStickerBytes, printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { bytesToBase64 } from "../adapters/stickerRaster";
+import { isKnownPrinter, isPrinterOnlyRow, knownPrinterLang, nextLang, type PrinterLang } from "../adapters/printerModels";
+import { TELEGRAM_URL } from "../../lib/telegram";
+import ExactStickerPreview from "../components/ExactStickerPreview";
 import { useT } from "../i18n";
 import { isAppShell } from "../adapters/appShell";
 
@@ -22,11 +32,15 @@ const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px
 const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWeight: 800, color: "var(--text-muted)", margin: "14px 2px 8px" };
 const gridBtn: CSSProperties = { padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", borderRadius: 11, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textAlign: "center", border: "none", ...(active ? { background: "var(--surface)", color: "var(--accent-fg)", boxShadow: "var(--shadow)" } : { background: "transparent", color: "var(--text-dim)" }) });
+const rowBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
+const pill = (known: boolean): CSSProperties => ({ flexShrink: 0, whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 800, padding: "4px 8px", borderRadius: 999, border: `1px solid ${known ? "var(--ok)" : "var(--accent)"}`, color: known ? "var(--ok)" : "var(--accent-fg)", background: "var(--surface-2)" });
+
+type V2Stage = "idle" | "saving" | "testing" | "retry" | "ask" | "unsupported";
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
-  stickerQrMoved = false, testComment, testPrinters = false, isAdmin = false,
+  stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false,
 }: {
   onBack: () => void;
   psType: "wifi" | "bt";
@@ -37,7 +51,7 @@ export default function PrinterSettings({
   stickerQrAllowed?: boolean; // all plans; hidden only off-market (canUseStickerQr) — default HIDDEN
   stickerQrMoved?: boolean; // admins (LIVE layout v2 gate): the toggle lives in LIVE print pattern instead
   testComment?: string; // LIVE layout v2 users: the test sticker's comment ("COMMENT / PRICE"); others keep buildTestBuyer's "PRICE"
-  testPrinters?: boolean; // admin OR "test_printers" list — generic BLE printers in the picker (Phase 1)
+  flowV2?: boolean; // printer setup v2 (printerFlowV2Enabled): admin / test_printers / the printer_flow_v2 switch
   isAdmin?: boolean; // admin-only debug line after a generic test print
 }) {
   const t = useT();
@@ -56,14 +70,15 @@ export default function PrinterSettings({
   const [btPrinters, setBtPrinters] = useState<BluetoothPrinterDevice[]>([]);
   const [btSaved, setBtSaved] = useState<BluetoothPrinterDevice | null>(null);
   const [btMsg, setBtMsg] = useState("");
-  // Generic BLE printers (Phase 1): only for testPrinters AND an app build with the native method.
-  const genericOn = testPrinters && hasGenericPrinterBridge();
+  // Printer setup v2: gated accounts on an app build with the native generic-printer method.
+  // Older apps (and the web, which has no bridge) keep today's screen exactly.
+  const v2 = flowV2 && hasGenericPrinterBridge();
   const [btScanned, setBtScanned] = useState(false);
-  const [btShowAll, setBtShowAll] = useState(false);
-  const [genPick, setGenPick] = useState<BluetoothPrinterDevice | null>(null);
-  const [genStage, setGenStage] = useState<"idle" | "testing" | "ask">("idle");
-  const [genMsg, setGenMsg] = useState("");
-  const [genDebug, setGenDebug] = useState("");
+  const [v2Pick, setV2Pick] = useState<BluetoothPrinterDevice | null>(null);
+  const [v2Stage, setV2Stage] = useState<V2Stage>("idle");
+  const [v2Lang, setV2Lang] = useState<PrinterLang>("tspl");
+  const [v2Debug, setV2Debug] = useState("");
+  const v2PictureBuyer = useMemo(() => testBuyer(), [testComment]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Classic text mode" — mirrors the localStorage flag printing.ts routes on.
   const [classicText, setClassicText] = useState(() => isClassicTextSticker());
   // "Print QR on sticker" — per-device, DEFAULT OFF (localStorage; printing.ts threads it
@@ -86,14 +101,14 @@ export default function PrinterSettings({
   async function testConn() { const r = await callMobilePrinterBridge("testConnection", { host: host.trim(), port: clampPort() }); setStatus(r); if (r.ok) await saveLan(); }
   async function testPrint() { setStatus(await callMobilePrinterBridge("testPrint")); }
 
-  async function scanBt(showAll = false) {
+  async function scanBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_scan); return; }
     setBtScanning(true); setBtMsg("");
-    const r = genericOn
-      ? await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters", { includeGenericPrinters: true, showAllDevices: showAll })
+    const r = v2
+      ? await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters", { includeGenericPrinters: true, showAllDevices: false })
       : await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
     setBtScanning(false);
-    if (genericOn) { setBtScanned(true); setBtShowAll(showAll); }
+    if (v2) { setBtScanned(true); setV2Pick(null); setV2Stage("idle"); }
     if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.ok === false ? t.rd_ps_scan_unavail : ""); } // never the raw printer text
     else setBtMsg(t.rd_ps_scan_unavail);
   }
@@ -101,27 +116,9 @@ export default function PrinterSettings({
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: p.transport });
     setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
   }
-  // Generic printer: one test sticker first; saved only when the seller says it printed correctly.
-  function openGeneric(p: BluetoothPrinterDevice) { setGenPick(p); setGenStage("idle"); setGenMsg(""); setGenDebug(""); }
-  async function runGenericTest() {
-    if (!genPick || !settings) return;
-    setGenStage("testing"); setGenMsg(t.rd_ps_gen_testing); setGenDebug("");
-    const r = await testGenericPrinter(genPick.address, buildNativeStickerPayload(testBuyer(), cur, storeName, settings));
-    if (r.ok) { setGenStage("ask"); setGenMsg(""); setGenDebug(genericDebugLine(r)); return; }
-    setGenStage("idle");
-    setGenMsg(r.code === "BT_NOT_SUPPORTED" ? t.rd_ps_gen_unsupported : t.rd_ps_test_failed);
-  }
-  async function answerGeneric(ok: boolean) {
-    if (!genPick) return;
-    if (!ok) { setGenStage("idle"); setGenMsg(t.rd_ps_gen_incompatible); return; }
-    const p = genPick;
-    const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: "ble", model: "generic" });
-    setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
-    setGenPick(null); setGenStage("idle"); setGenMsg("");
-  }
   const btRow = (p: BluetoothPrinterDevice) => (
-    <button key={p.id || p.address} onClick={() => (genericOn && isGenericRow(p) ? openGeneric(p) : void selectBt(p))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-      <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{p.name || t.rd_ps_bt_device}{genericOn && isGenericRow(p) ? ` ${t.rd_ps_gen_tag}` : ""}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>{p.address}</span></span>
+    <button key={p.id || p.address} onClick={() => void selectBt(p)} style={rowBtn}>
+      <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>{p.address}</span></span>
       <span style={{ fontSize: 10.5, fontWeight: 800, color: p.paired ? "var(--ok)" : "var(--accent-fg)" }}>{p.paired ? t.rd_ps_paired : t.rd_ps_nearby}</span>
     </button>
   );
@@ -137,6 +134,63 @@ export default function PrinterSettings({
     if (r.ok) { setBtMsg(t.rd_ps_test_sent); return; }
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
   }
+
+  // ── Printer setup v2 ────────────────────────────────────────────────────────
+  // Known printer (D520BT or a listed model): save at once, then one test sticker through
+  // the SAME route a real order takes. New printer: one test sticker in TSPL, ask, retry
+  // once in ESC/POS, ask, then "not supported yet". Every test = ONE native call; a
+  // completed write is "sent" — nothing is ever re-sent on its own.
+  async function pickV2(p: BluetoothPrinterDevice) {
+    if (v2Stage !== "idle" || !settings) return;
+    setV2Pick(p); setV2Debug(""); setBtMsg("");
+    if (isKnownPrinter(p)) {
+      setV2Stage("saving");
+      const save = p.model === "D520BT"
+        ? { address: p.address, name: p.name, transport: p.transport }
+        : { address: p.address, name: p.name, transport: "ble", model: "generic", lang: knownPrinterLang(p.name) ?? "tspl" };
+      const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
+      setBtSaved(r?.savedPrinter || p);
+      const printed = await printStickerBtRouted(testBuyer(), cur, storeName, settings);
+      setBtMsg(printed.ok ? t.rd_ps_test_sent : t.rd_ps_test_failed);
+      setV2Stage("idle"); setV2Pick(null);
+      return;
+    }
+    await tryLang(p, "tspl");
+  }
+  async function tryLang(p: BluetoothPrinterDevice, lang: PrinterLang) {
+    if (!settings) return;
+    setV2Lang(lang); setV2Stage(lang === "tspl" ? "testing" : "retry");
+    const payload = buildNativeStickerPayload(testBuyer(), cur, storeName, settings);
+    const r = lang === "tspl"
+      ? await testGenericPrinter(p.address, { payload })
+      : await testGenericPrinter(p.address, { data: bytesToBase64(await buildEscposStickerBytes(payload, {}, payload.buyer.platform)) });
+    setV2Debug(genericDebugLine(r));
+    if (r.ok) { setV2Stage("ask"); return; }
+    await nextOrGiveUp(p, lang);
+  }
+  async function nextOrGiveUp(p: BluetoothPrinterDevice, lang: PrinterLang) {
+    const n = nextLang(lang);
+    if (n) { await tryLang(p, n); return; }
+    setV2Stage("unsupported");
+  }
+  async function answerV2(yes: boolean) {
+    const p = v2Pick;
+    if (!p) return;
+    if (!yes) { await nextOrGiveUp(p, v2Lang); return; }
+    const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: "ble", model: "generic", lang: v2Lang });
+    setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
+    setV2Pick(null); setV2Stage("idle");
+  }
+  const v2Row = (p: BluetoothPrinterDevice) => {
+    const known = isKnownPrinter(p);
+    return (
+      <button key={p.id || p.address} data-testid="ps-v2-row" onClick={() => void pickV2(p)} disabled={v2Stage !== "idle"} style={{ ...rowBtn, opacity: v2Stage !== "idle" ? 0.6 : 1 }}>
+        <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.address}</span></span>
+        <span data-testid={known ? "ps-v2-known" : "ps-v2-new"} style={pill(known)}>{known ? t.rd_ps_v2_works : t.rd_ps_v2_new}</span>
+      </button>
+    );
+  };
+  const v2Printers = btPrinters.filter(isPrinterOnlyRow);
 
   const dot = status.ok ? "var(--ok)" : nativeReady ? "var(--warn)" : "var(--text-muted)";
 
@@ -220,35 +274,42 @@ export default function PrinterSettings({
               <button onClick={() => void scanBt()} disabled={btScanning} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
               {btSaved && <button onClick={() => void testBt()} style={gridBtn}>{t.rd_ps_test_print}</button>}
             </div>
-            {!genericOn && btPrinters.length > 0 && (
+            {!v2 && btPrinters.length > 0 && (
               <div style={listBox}>
                 {btPrinters.map(btRow)}
               </div>
             )}
-            {genericOn && btScanned && (
-              <div data-testid="ps-gen-list">
-                <div style={groupLabel}>{t.rd_ps_gen_section}</div>
-                {btPrinters.some(isPrinterRow) && <div style={{ ...listBox, marginTop: 0 }}>{btPrinters.filter(isPrinterRow).map(btRow)}</div>}
-                {!btShowAll && <button data-testid="ps-gen-show-all" onClick={() => void scanBt(true)} disabled={btScanning} style={{ ...gridBtn, width: "100%", marginTop: 10 }}>{t.rd_ps_gen_show_all}</button>}
-                {btShowAll && btPrinters.some((p) => !isPrinterRow(p)) && <div style={listBox}>{btPrinters.filter((p) => !isPrinterRow(p)).map(btRow)}</div>}
+            {v2 && btScanned && (
+              <div data-testid="ps-v2-list">
+                {v2Printers.length > 0
+                  ? <div style={listBox}>{v2Printers.map(v2Row)}</div>
+                  : <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{t.rd_ps_v2_none}</div>}
               </div>
             )}
-            {genericOn && genPick && (
-              <div data-testid="ps-gen-panel" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{genPick.name || t.rd_ps_bt_device} {t.rd_ps_gen_tag}</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }}>{t.rd_ps_gen_hint}</div>
-                {genStage !== "ask" && <button data-testid="ps-gen-test" onClick={() => void runGenericTest()} disabled={genStage === "testing" || !settings} style={{ ...gridBtn, width: "100%", marginTop: 10, opacity: genStage === "testing" ? 0.6 : 1 }}>{t.rd_ps_gen_test}</button>}
-                {genStage === "ask" && (
+            {v2 && v2Pick && (
+              <div data-testid="ps-v2-panel" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v2Pick.name || t.rd_ps_bt_device}</div>
+                {v2Stage === "saving" && <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_ps_v2_saved_testing}</div>}
+                {v2Stage === "testing" && <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_ps_gen_testing}</div>}
+                {v2Stage === "retry" && <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_ps_v2_other}</div>}
+                {v2Stage === "ask" && settings && (
                   <div style={{ marginTop: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_gen_ask}</div>
+                    <div style={{ maxWidth: 220 }}><ExactStickerPreview settings={settings} cur={cur} shopName={storeName} v2={!!testComment} flags={{}} buyer={v2PictureBuyer} /></div>
+                    <div data-testid="ps-v2-ask" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginTop: 10 }}>{t.rd_ps_v2_ask}</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 8 }}>
-                      <button data-testid="ps-gen-yes" onClick={() => void answerGeneric(true)} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_ps_gen_yes}</button>
-                      <button data-testid="ps-gen-no" onClick={() => void answerGeneric(false)} style={gridBtn}>{t.rd_ps_gen_no}</button>
+                      <button data-testid="ps-v2-yes" onClick={() => void answerV2(true)} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_ps_v2_yes}</button>
+                      <button data-testid="ps-v2-no" onClick={() => void answerV2(false)} style={gridBtn}>{t.rd_ps_v2_no}</button>
                     </div>
                   </div>
                 )}
-                {genMsg && <div data-testid="ps-gen-msg" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{genMsg}</div>}
-                {isAdmin && genDebug && <div data-testid="ps-gen-debug" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text-muted)", marginTop: 8, wordBreak: "break-all" }}>{genDebug}</div>}
+                {v2Stage === "unsupported" && (
+                  <div style={{ marginTop: 10 }}>
+                    <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{t.rd_ps_gen_unsupported}</div>
+                    {/* A real anchor, tapped directly — the only external open that works in the iOS shell. */}
+                    <a data-testid="ps-v2-contact" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ ...gridBtn, display: "block", textAlign: "center", textDecoration: "none", marginTop: 10 }}>{t.rd_ps_v2_contact}</a>
+                  </div>
+                )}
+                {isAdmin && v2Debug && <div data-testid="ps-v2-debug" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text-muted)", marginTop: 8, wordBreak: "break-all" }}>{v2Debug}</div>}
               </div>
             )}
             {btMsg && <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{btMsg}</div>}
@@ -258,8 +319,9 @@ export default function PrinterSettings({
                 localStorage, same pattern as the other printer prefs.
                 ADMIN/TEST-ONLY (showClassicToggle ← canUseClassicText): hidden from
                 regular sellers so nobody flips it onto the doubling TEXT path; the
-                router also ignores the flag for users who can't see this card. */}
-            {showClassicToggle && (
+                router also ignores the flag for users who can't see this card.
+                Printer setup v2 hides the card (its stored behaviour is unchanged). */}
+            {showClassicToggle && !v2 && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_classic_text}</div>

@@ -1020,6 +1020,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     // Phase 1 generic BLE printer: "generic" only when the seller saved a non-D520BT
     // BLE printer through the test-gated flow. ABSENT → the unchanged D520BT path.
     private static let bleModelKey = "sellerflow_ble_label_model"
+    // Printer setup v2: the command language a generic printer printed its test sticker
+    // with ("tspl" | "escpos"). Stored ONLY next to model "generic"; ABSENT → "tspl"
+    // (every Phase-1 generic save printed TSPL). The web routes real orders on it.
+    private static let bleLangKey = "sellerflow_ble_label_lang"
     private let bleTransport = BleStickerTransport()
     // Generic BLE label printer transport (Phase 1, test-gated) — separate from
     // bleTransport so the D520BT path is untouched.
@@ -1027,6 +1031,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func isGenericSaved() -> Bool {
         return !savedBleId().isEmpty && defaults.string(forKey: SellerFlowPrinterPlugin.bleModelKey) == "generic"
+    }
+
+    /// "escpos" only when saved so by the v2 flow; anything else → "tspl".
+    private func savedGenericLang() -> String {
+        return defaults.string(forKey: SellerFlowPrinterPlugin.bleLangKey) == "escpos" ? "escpos" : "tspl"
     }
 
     /// Send ready TSPL bytes to a generic BLE printer and resolve with the printer's answer.
@@ -1067,7 +1076,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             "address": id, // iOS has no MAC access; the BLE identifier UUID plays the address role
             "name": name.isEmpty ? "Bluetooth printer" : name,
             "paired": true,
-        ].merging(isGenericSaved() ? ["model": "generic"] : [:]) { a, _ in a }
+        ].merging(isGenericSaved() ? ["model": "generic", "lang": savedGenericLang()] : [:]) { a, _ in a }
     }
 
     private func savedBlePrinterOrNull() -> Any {
@@ -1118,10 +1127,18 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         defaults.set(name, forKey: SellerFlowPrinterPlugin.bleNameKey)
         // Generic only when saved through the test-gated flow; anything else
         // (D520BT, old web without the field) clears it → D520BT path.
-        if call.getString("model") == "generic" {
+        let generic = call.getString("model") == "generic"
+        if generic {
             defaults.set("generic", forKey: SellerFlowPrinterPlugin.bleModelKey)
         } else {
             defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleModelKey)
+        }
+        // v2: the language that printed the test sticker rides with a generic save only.
+        let lang = call.getString("lang") ?? ""
+        if generic && (lang == "tspl" || lang == "escpos") {
+            defaults.set(lang, forKey: SellerFlowPrinterPlugin.bleLangKey)
+        } else {
+            defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleLangKey)
         }
         call.resolve(["ok": true, "savedPrinter": savedBlePrinterOrNull(), "message": "Saved Bluetooth printer: \(name.isEmpty ? address : name)"])
     }
@@ -1130,6 +1147,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleIdKey)
         defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleNameKey)
         defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleModelKey)
+        defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleLangKey)
         call.resolve(["ok": true, "savedPrinter": NSNull(), "message": "Bluetooth printer cleared"])
     }
 
@@ -1259,10 +1277,20 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// before saving. Params: address (the peripheral identifier), payload (the
     /// web's test sticker payload, with labelWidthMm/labelHeightMm from the seller's
     /// sticker size). Saves nothing. Mirror of Android testGenericPrinter.
+    /// v2: `data` (base64) = ready bytes the web built (its ESC/POS raster try) — sent
+    /// as-is instead of the TSPL payload build. Nothing is ever re-sent.
     @objc func testGenericPrinter(_ call: CAPPluginCall) {
         let address = (call.getString("address") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if address.isEmpty {
             call.reject("Bluetooth address is required", "BT_ADDR_REQUIRED")
+            return
+        }
+        if let b64 = call.getString("data"), !b64.isEmpty {
+            guard let raw = Data(base64Encoded: b64, options: [.ignoreUnknownCharacters]), !raw.isEmpty else {
+                call.reject("testGenericPrinter: missing or invalid base64 data", "BT_PRINT_FAILED")
+                return
+            }
+            printGeneric(call, data: raw, identifier: address, what: "testGenericPrinter")
             return
         }
         let payload = call.getObject("payload") ?? [:]
