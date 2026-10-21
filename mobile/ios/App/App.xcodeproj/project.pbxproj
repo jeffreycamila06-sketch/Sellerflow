@@ -21,6 +21,7 @@
 		9FA000000000000000000011 /* AppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000001 /* AppTests.swift */; };
 		9FA000000000000000000012 /* MobileTsplBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000002 /* MobileTsplBuilderTests.swift */; };
 		9FA000000000000000000013 /* CjkEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000003 /* CjkEncodingTests.swift */; };
+		9FA000000000000000000014 /* BleStickerLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000005 /* BleStickerLogicTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +51,7 @@
 		9FA000000000000000000001 /* AppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTests.swift; sourceTree = "<group>"; };
 		9FA000000000000000000002 /* MobileTsplBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTsplBuilderTests.swift; sourceTree = "<group>"; };
 		9FA000000000000000000003 /* CjkEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CjkEncodingTests.swift; sourceTree = "<group>"; };
+		9FA000000000000000000005 /* BleStickerLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BleStickerLogicTests.swift; sourceTree = "<group>"; };
 		9FA000000000000000000004 /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -97,6 +99,7 @@
 				9FA000000000000000000001 /* AppTests.swift */,
 				9FA000000000000000000002 /* MobileTsplBuilderTests.swift */,
 				9FA000000000000000000003 /* CjkEncodingTests.swift */,
+				9FA000000000000000000005 /* BleStickerLogicTests.swift */,
 			);
 			path = AppTests;
 			sourceTree = "<group>";
@@ -244,6 +247,7 @@
 				9FA000000000000000000011 /* AppTests.swift in Sources */,
 				9FA000000000000000000012 /* MobileTsplBuilderTests.swift in Sources */,
 				9FA000000000000000000013 /* CjkEncodingTests.swift in Sources */,
+				9FA000000000000000000014 /* BleStickerLogicTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

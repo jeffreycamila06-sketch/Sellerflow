@@ -47,6 +47,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // Phase 1 generic BLE printer: "generic" only when the seller saved a non-D520BT
     // BLE printer through the test-gated flow. ABSENT → the unchanged D520BT path.
     private static final String PREF_BT_MODEL = "bt_label_model";
+    // Printer setup v2: the command language a generic printer printed its test sticker
+    // with ("tspl" | "escpos"). Stored ONLY next to model "generic"; ABSENT → "tspl"
+    // (every Phase-1 generic save printed TSPL). The web routes real orders on it.
+    private static final String PREF_BT_LANG = "bt_label_lang";
     private static final int DEFAULT_PORT = 9100;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     // Receipt printer (XP-N160II) resident character set is Big5 (Traditional
@@ -104,6 +108,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
     private boolean isGenericSaved() {
         return "ble".equals(prefs().getString(PREF_BT_TRANSPORT, "spp"))
             && "generic".equals(prefs().getString(PREF_BT_MODEL, ""));
+    }
+
+    /** "escpos" only when saved so by the v2 flow; anything else → "tspl". */
+    private String savedGenericLang() {
+        return "escpos".equals(prefs().getString(PREF_BT_LANG, "")) ? "escpos" : "tspl";
     }
 
     /** Send ready TSPL bytes to a generic BLE printer and resolve with the printer's answer. */
@@ -344,6 +353,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
             .putString(PREF_BT_TRANSPORT, transport);
         if (genericModel) edit.putString(PREF_BT_MODEL, "generic");
         else edit.remove(PREF_BT_MODEL);
+        // v2: the language that printed the test sticker rides with a generic save only.
+        String lang = call.getString("lang", "");
+        if (genericModel && ("tspl".equals(lang) || "escpos".equals(lang))) edit.putString(PREF_BT_LANG, lang);
+        else edit.remove(PREF_BT_LANG);
         edit.apply();
         JSObject ret = new JSObject();
         ret.put("ok", true);
@@ -355,7 +368,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
     @PluginMethod
     public void clearBluetoothLabelPrinter(PluginCall call) {
-        prefs().edit().remove(PREF_BT_ADDR).remove(PREF_BT_NAME).remove(PREF_BT_TRANSPORT).remove(PREF_BT_MODEL).apply();
+        prefs().edit().remove(PREF_BT_ADDR).remove(PREF_BT_NAME).remove(PREF_BT_TRANSPORT).remove(PREF_BT_MODEL).remove(PREF_BT_LANG).apply();
         JSObject ret = new JSObject();
         ret.put("ok", true);
         ret.put("savedPrinter", JSObject.NULL);
@@ -644,6 +657,8 @@ public class SellerFlowPrinterPlugin extends Plugin {
      * the seller has NOT saved yet, so they can confirm it prints correctly before
      * saving. Params: address, payload (the web's test sticker payload, with
      * labelWidthMm/labelHeightMm from the seller's sticker size). Saves nothing.
+     * v2: `data` (base64) = ready bytes the web built (its ESC/POS raster try) — sent
+     * as-is instead of the TSPL payload build. Nothing is ever re-sent.
      */
     @PluginMethod
     public void testGenericPrinter(PluginCall call) {
@@ -659,8 +674,15 @@ public class SellerFlowPrinterPlugin extends Plugin {
         }
         final JSObject jsPayload = call.getObject("payload", new JSObject());
         final String addr = address.trim();
+        final String b64 = call.getString("data", "");
         executor.execute(() -> {
             try {
+                if (b64 != null && !b64.isEmpty()) {
+                    byte[] raw = android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+                    if (raw == null || raw.length == 0) { call.reject("testGenericPrinter: empty data", "BT_PRINT_FAILED"); return; }
+                    printGeneric(call, raw, addr, "testGenericPrinter");
+                    return;
+                }
                 JSONObject payload = new JSONObject(jsPayload == null ? "{}" : jsPayload.toString());
                 byte[] tspl = TsplBuilder.forStickerNative(payload,
                     payload.optInt("labelWidthMm", LABEL_WIDTH_MM), payload.optInt("labelHeightMm", LABEL_HEIGHT_MM));
@@ -699,7 +721,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
         p.put("name", name == null || name.isEmpty() ? "Bluetooth printer" : name);
         p.put("paired", true);
         p.put("transport", prefs().getString(PREF_BT_TRANSPORT, "spp"));
-        if (isGenericSaved()) p.put("model", "generic");
+        if (isGenericSaved()) { p.put("model", "generic"); p.put("lang", savedGenericLang()); }
         return p;
     }
 

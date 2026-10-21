@@ -10,16 +10,19 @@ import { previewPayload, exactPreviewPayload } from "../adapters/stickerPreview"
 import type { RasterSettings } from "../adapters/stickerRaster";
 import { LATIN_ATLAS } from "../adapters/glyphAtlas.latin";
 import { loadCjkAtlas } from "../adapters/cjkAtlasLoader";
+import type { Buyer } from "../../lib/orderTypes";
 
 // `flags` (sticker spacing sellers): the real image-only flags this seller prints with (QR only
 // when it really prints, spacing choice) instead of the admin view's forced QR.
-export default function ExactStickerPreview({ settings, cur, shopName, v2, flags }: { settings: Settings; cur: string; shopName: string; v2: boolean; flags?: RasterSettings }) {
+// `buyer` (printer setup v2, with `flags`): draw THIS buyer — the test sticker's — instead of the sample.
+export default function ExactStickerPreview({ settings, cur, shopName, v2, flags, buyer }: { settings: Settings; cur: string; shopName: string; v2: boolean; flags?: RasterSettings; buyer?: Buyer }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const key = JSON.stringify(settings); // redraw only when the settings actually change
   const flagsKey = flags ? JSON.stringify(flags) : "";
+  const buyerKey = buyer ? JSON.stringify(buyer) : "";
   useEffect(() => {
     let live = true;
-    const { payload, w, h } = flagsKey ? exactPreviewPayload(JSON.parse(key) as Settings, cur, shopName, JSON.parse(flagsKey) as RasterSettings) : previewPayload(JSON.parse(key) as Settings, cur, shopName, v2);
+    const { payload, w, h } = flagsKey ? exactPreviewPayload(JSON.parse(key) as Settings, cur, shopName, JSON.parse(flagsKey) as RasterSettings, buyerKey ? JSON.parse(buyerKey) as Buyer : undefined) : previewPayload(JSON.parse(key) as Settings, cur, shopName, v2);
     void loadCjkAtlas().catch(() => undefined).then((cjk) => {
       const c = ref.current;
       if (!live || !c) return;
@@ -36,6 +39,6 @@ export default function ExactStickerPreview({ settings, cur, shopName, v2, flags
       ctx.putImageData(data, 0, 0);
     });
     return () => { live = false; };
-  }, [key, flagsKey, cur, shopName, v2]);
+  }, [key, flagsKey, buyerKey, cur, shopName, v2]);
   return <canvas ref={ref} data-testid="pp-exact-preview" style={{ width: "100%", imageRendering: "pixelated", display: "block", border: "1px dashed #c9c7d9", borderRadius: 4 }} />;
 }

@@ -14,7 +14,9 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas, type RasterSettings } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas, type RasterSettings, type RasterPayload } from "./stickerRaster";
+import { escposRasterBytes } from "./escposRaster";
+import { savedGenericLang } from "./savedPrinter";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
@@ -353,7 +355,7 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 // reasons through them, and support can read getLastStickerRouteNotice() /
 // window.__sflPrintTiming from an inspector. Genuine print FAILURES surface to
 // sellers via setNativePrintFailureHandler above (unchanged) — never via this.
-export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed";
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed" | "generic-tspl" | "generic-escpos";
 // AUDIT F2 safety net: the native reject code for an SPP-transport bitmap send
 // that failed at the socket level — the router retries that print through the
 // unchanged TEXT path, so an SPP-incompatible unit degrades to today's behavior.
@@ -411,6 +413,7 @@ export function hasBitmapStickerMethod(): boolean {
 export function printsStickerViaImage(cfg: Settings): boolean {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge || !shouldUseBluetoothSticker(cfg.printerType, !!bridge.printStickerNative)) return false;
+  if (savedGenericLang() === "tspl") return false; // generic TSPL printer → the text sticker, never the D520 image stream
   if (!bitmapBridgeFn(bridge)) return false;
   return !(classicTextAllowed && isClassicTextSticker());
 }
@@ -428,6 +431,17 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
 // -> the no-printer wording) while inheriting the bitmap-default routing.
 export interface BtRouteResult { ok: boolean; code: string; message: string }
 
+// The image-path raster payload: the native payload + the bitmap-only flags.
+// QR is a bitmap-only concern (the native TSPL text builders can't render it), so
+// the "Print QR on sticker" toggle enters HERE, not in the byte-parity native payload.
+// fbName: a Facebook buyer's name is printed ONCE (no @name line), with half-letter word gaps and,
+// when it is too long, continued on the freed line (stickerRaster). Absent for every other buyer →
+// the raster settings are byte-identical to before. Shared by the D520 SDK stream and the
+// generic ESC/POS raster (printer setup v2) so both print the SAME image.
+export function imageStickerPayload(payload: NativeStickerPayload, platform?: string, fbName = false): RasterPayload {
+  return { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags() } };
+}
+
 async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string, fbName = false): Promise<BtRouteResult> {
   const t0 = nowMs();
   // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
@@ -436,12 +450,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // mode-0 band emission (rasterizeToBitmapTspl) stays golden-tested but dormant.
   // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
   // only when the payload actually contains CJK).
-  // QR is a bitmap-only concern (the native TSPL text builders can't render it), so
-  // the "Print QR on sticker" toggle enters HERE, not in the byte-parity native payload.
-  // fbName: a Facebook buyer's name is printed ONCE (no @name line), with half-letter word gaps and,
-  // when it is too long, continued on the freed line (stickerRaster). Absent for every other buyer →
-  // the raster settings are byte-identical to before.
-  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags() } };
+  const qrPayload = imageStickerPayload(payload, platform, fbName);
   const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
@@ -469,14 +478,54 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   }
 }
 
+// ── Generic printer, ESC/POS language (printer setup v2) ─────────────────────
+// The seller's saved printer printed its test sticker in ESC/POS: real orders send the
+// SAME sticker image (imageStickerPayload → renderStickerBitmap) as an ESC/POS raster
+// through the raw-bytes passthrough, which the native side diverts to the generic
+// transport for a saved generic printer. ONE bridge call; a completed write is "sent" —
+// never re-sent. ⚠️ UNVERIFIED ON HARDWARE (no ESC/POS label printer yet).
+export async function buildEscposStickerBytes(payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string, fbName = false): Promise<Uint8Array> {
+  const full = renderStickerBitmap(imageStickerPayload(payload, platform, fbName), payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
+  return escposRasterBytes(full);
+}
+async function printStickerViaEscpos(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
+  const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
+  if (typeof raw !== "function") return { ok: false, code: "", message: "" };
+  const t0 = nowMs();
+  let cjk: GlyphAtlas = {};
+  if (payloadNeedsCjk(payload)) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
+  const bytes = await buildEscposStickerBytes(payload, cjk, platform, fbName);
+  const t1 = nowMs();
+  try {
+    const result = await raw({ data: bytesToBase64(bytes) });
+    const t2 = nowMs();
+    recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes: bytes.length, bands: 1 });
+    if (result?.ok) { reportStickerRoute({ via: "bitmap", ok: true, reason: "generic-escpos", detail: "", payloadBytes: bytes.length, totalMs: t2 - t0 }); return { ok: true, code: "", message: "" }; }
+    const { code, message } = readFailure(result);
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "generic-escpos", detail: message || code || "print failed", payloadBytes: bytes.length, totalMs: t2 - t0 });
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("[BT escpos sticker] print failed:", message || "check pairing/selection.");
+    return { ok: false, code, message };
+  } catch (err) {
+    const { code, message } = readFailure(err);
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "generic-escpos", detail: message || code || String(err), payloadBytes: bytes.length, totalMs: nowMs() - t0 });
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("printRawTspl (escpos) bridge call failed:", err);
+    return { ok: false, code, message };
+  }
+}
+
 async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName = false, at?: number): Promise<BtRouteResult> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
+  // Printer setup v2 — a saved GENERIC printer prints in the language its test sticker
+  // printed with: "escpos" → the ESC/POS raster above; "tspl" → the TEXT sticker below
+  // (never the D520-only SDK image stream). A D520BT (or nothing learned) = unchanged.
+  const genericLang = savedGenericLang();
+  if (genericLang === "escpos") return printStickerViaEscpos(bridge, buildNativeStickerPayload(buyer, cur, storeName, cfg, at), buyer.platform, fbName);
   // BITMAP default: fires only when the new native passthrough exists AND the
   // seller hasn't flipped "Classic text mode". Everything else (old binaries,
   // classic mode) takes the UNCHANGED TEXT path below — with the reason recorded
   // so the fallback is VISIBLE in-app, never silent (the Phase-1 field lesson).
-  const bmpFn = bitmapBridgeFn(bridge);
+  const bmpFn = genericLang === "tspl" ? undefined : bitmapBridgeFn(bridge);
   // Visibility-gated: the flag only counts for users who can SEE the toggle
   // (admin/test account — see canUseClassicText above). Everyone else routes
   // bitmap even with a stray localStorage flag on the device.
@@ -503,7 +552,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
       sppFailed = true;
     }
   }
-  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : sppFailed ? "bitmap-spp-failed" : "bitmap-method-missing";
+  const fallbackReason: StickerFallbackReason = genericLang === "tspl" ? "generic-tspl" : classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : sppFailed ? "bitmap-spp-failed" : "bitmap-method-missing";
   try {
     const t0 = nowMs();
     const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg, at));
