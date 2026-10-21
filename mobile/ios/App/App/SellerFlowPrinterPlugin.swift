@@ -163,7 +163,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         return "window.SFL_SERVER_URL = " + String(arr.dropFirst().dropLast()) + ";"
     }()
 
-    private static let bridgeShimJS = """
+    // Internal (not private) so AppTests can pin the Niimbot OS-flag line.
+    static let bridgeShimJS = """
     (function(){
       \(serverUrlShimLine)
       var cap = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SellerFlowPrinter;

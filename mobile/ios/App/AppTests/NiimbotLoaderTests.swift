@@ -40,5 +40,18 @@ final class NiimbotLoaderTests: XCTestCase {
         XCTAssertTrue(["NIIMBOT_UNAVAILABLE", "NIIMBOT_OS_TOO_OLD"].contains(result?.code ?? ""), "got \(result?.code ?? "nil")")
     }
 
+    // The web decides what a Niimbot row shows from this shim flag: present on iOS < 17.2 (the
+    // row says "needs iOS 17" before any print), absent on 17.2+ (the normal driver flow).
+    func testShimFlagsOldIosForNiimbotRows() {
+        let shim = SellerFlowPrinterPlugin.bridgeShimJS
+        if NiimbotLoader.osSupported {
+            XCTAssertFalse(shim.contains("niimbotOsTooOld = true"), "17.2+: no OS flag")
+        } else {
+            XCTAssertTrue(shim.contains("window.SellerFlowPrinter.niimbotOsTooOld = true;"), "iOS < 17.2 must flag the web")
+            XCTAssertFalse(NiimbotLoader.osSupported)
+            XCTAssertNil(NiimbotLoader.driver(), "the framework is never loaded on iOS < 17.2")
+        }
+    }
+
     private static var loaded = false
 }
