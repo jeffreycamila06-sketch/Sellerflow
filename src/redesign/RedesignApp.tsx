@@ -88,7 +88,7 @@ import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { createDeferredAutoQueue } from "./adapters/deferredAuto";
 import { useOrders } from "./adapters/useOrders";
-import { useOutbox } from "./adapters/outbox";
+import { useOutbox, queuedOutboxRows } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
 import { adjustStockLogged, logStockMovement, loadProductStock, decrementStockAndTouch, adjustProductStock } from "./adapters/productsDb";
@@ -411,7 +411,7 @@ export default function RedesignApp() {
   // window/session_date path. `ready` waits for BOTH config reads so the first load
   // picks the correct path once (no legacy-then-session double load).
   const sessionInstance = useSessionInstance(sessionHooksOn, sessionFix);
-  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded && sessionGate !== "wait", windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId, fix: sessionFix, sessionKnown: sessionInstance.known, windowKnown: sessionWindow.known });
+  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded && sessionGate !== "wait", windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId, fix: sessionFix, sessionKnown: sessionInstance.known, windowKnown: sessionWindow.known, queued: () => queuedOutboxRows(auth.profile?.authUserId) });
   // "Same price for all items" — per-seller fixed unit price (DB-backed, cross-device,
   // no auto-clear on new session). Applied at the order call sites below (1-Click / Pin /
   // Auto override the price INPUT; Enterprise pre-fills but the seller-typed price wins).
@@ -738,7 +738,8 @@ export default function RedesignApp() {
   const outbox = useOutbox({
     write: saveLiveSessionOrder,
     onExhausted: () => setOrderWriteErrs((c) => c + 1),
-    drainSignal: liveFeed.ttConnected || liveFeed.fbConnected,
+    // Audit Oct 22 (1): any platform's connection rising (TikTok, Facebook, Shopee, Instagram) retries now.
+    drainSignal: [liveFeed.ttConnected, liveFeed.fbConnected, liveFeed.shopeeConnected, liveFeed.igConnected].join(),
     ownerId: auth.status === "authed" ? auth.profile?.authUserId ?? null : null, // Audit Oct 13 (5): items are tagged + drained per user
   });
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure

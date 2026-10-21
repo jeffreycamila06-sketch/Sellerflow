@@ -44,7 +44,7 @@ describe("isRetryableError — ALLOW-LIST (network/timeout/5xx); default termina
   });
   it("TERMINAL (default): cap, auth, 4xx, unknown", () => {
     expect(isRetryableError(new Error("free_tier_cap_reached"))).toBe(false); // cap
-    expect(isRetryableError(new Error("Not authenticated"))).toBe(false);     // auth
+    expect(isRetryableError(new Error("Not authenticated"))).toBe(false);     // auth (not retryable — but HELD, see classifyOutcome)
     expect(isRetryableError({ status: 400 })).toBe(false);                    // 4xx
     expect(isRetryableError({ status: 409 })).toBe(false);
     expect(isRetryableError({ message: "something weird happened" })).toBe(false); // unknown → terminal
@@ -62,10 +62,12 @@ describe("classifyOutcome — throw vs returned {success:false} (Trap 1)", () =>
   it("returned {success:false} with the dup error → duplicate (idempotent success)", () => {
     expect(classifyOutcome({ success: false, error: dupErr }, undefined)).toBe("duplicate");
   });
-  it("returned {success:false} network → retryable; cap/auth/unknown → terminal", () => {
+  it("returned {success:false} network → retryable; cap/unknown → terminal; expired login → auth (held)", () => {
     expect(classifyOutcome({ success: false, error: { message: "Failed to fetch" } }, undefined)).toBe("retryable");
     expect(classifyOutcome({ success: false, error: new Error("free_tier_cap_reached") }, undefined)).toBe("terminal");
-    expect(classifyOutcome({ success: false, error: new Error("Not authenticated") }, undefined)).toBe("terminal");
+    expect(classifyOutcome({ success: false, error: new Error("Not authenticated") }, undefined)).toBe("auth");
+    expect(classifyOutcome({ success: false, error: { status: 401, message: "Unauthorized" } }, undefined)).toBe("auth");
+    expect(classifyOutcome({ success: false, error: { code: "PGRST301", message: "JWT expired" } }, undefined)).toBe("auth");
   });
   it("THROWN network → retryable; thrown dup → duplicate; thrown unknown → terminal", () => {
     expect(classifyOutcome(undefined, new Error("Failed to fetch"))).toBe("retryable");
@@ -117,7 +119,7 @@ describe("useOutbox hook — drain / dequeue / retry / terminal", () => {
   });
 
   it("terminal error → dequeued + onExhausted('terminal'), never loops", async () => {
-    const write = vi.fn(async () => ({ success: false, error: new Error("Not authenticated") }));
+    const write = vi.fn(async () => ({ success: false, error: new Error("free_tier_cap_reached") }));
     const onExhausted = vi.fn();
     const { result } = renderHook(() => useOutbox({ write, onExhausted }));
     act(() => result.current.enqueue(payload(), "M1"));
