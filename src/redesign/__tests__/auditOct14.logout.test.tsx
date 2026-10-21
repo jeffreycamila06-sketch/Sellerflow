@@ -93,12 +93,13 @@ describe("Logout", () => {
 });
 
 describe("other ways out", () => {
-  it("session expired / logout in another tab (authed → anon) → one full reload", async () => {
+  it("session expired / logout in another tab (authed → anon) → analytics reset + one full reload", async () => {
     const r = render(<RedesignApp />);
     await flush();
     expect(reload).not.toHaveBeenCalled();
     H.status = "anon"; r.rerender(<RedesignApp />); await flush();
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(H.order).toEqual(["resetAnalytics", "reload"]); // Audit Oct 22 (4)
   });
   it("opening the app signed out never reloads (no loop)", async () => {
     H.status = "anon";

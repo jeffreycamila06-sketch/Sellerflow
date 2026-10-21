@@ -2288,7 +2288,7 @@ export default function RedesignApp() {
   useEffect(() => {
     const prev = prevAuthStatusRef.current;
     prevAuthStatusRef.current = auth.status;
-    if (sessionEnded(prev, auth.status) && !leavingRef.current) { leavingRef.current = true; appReload.run(); }
+    if (sessionEnded(prev, auth.status) && !leavingRef.current) { leavingRef.current = true; resetAnalytics(); appReload.run(); } // Audit Oct 22 (4): same analytics reset as Logout
   }, [auth.status]);
   // Self-delete: the same cleanups as Logout once the account is gone, then the full reload.
   // leavingRef holds the automatic reload back until the cleanups ran (released on failure).
