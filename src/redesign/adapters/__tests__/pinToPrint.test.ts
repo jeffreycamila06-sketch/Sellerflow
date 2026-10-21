@@ -52,14 +52,14 @@ describe("wiring pins (source contracts)", () => {
     expect(PIN_PRINT_LS_KEY).toBe("sfl_rd_pin_print");
     expect(app).toContain('pinPrint: "sfl_rd_pin_print"');
     expect(app).toContain('readLS(LS.pinPrint, "0") === "1"'); // default OFF
-    expect(app).toContain("if (!pinPrint) return;"); // toggle gate, fresh closure via the effect mirror
+    expect(app).toContain("if (!pinPrint) return false;"); // toggle gate, fresh closure via the effect mirror (false = not seen, Audit Oct 22 item 2)
     expect(app).toContain("useEffect(() => { pinHandlerRef.current = handlePinned; });"); // effect mirror — no render-time ref write
   });
 
   it("the consumer routes through the REAL createOrder (dedup/cap for free) and skips sold-out", () => {
     const i = app.indexOf("PIN-TO-PRINT (Phase 2, Option A)");
     const block = app.slice(i, app.indexOf("const onOpenEnt", i));
-    expect(block).toContain("if (!isActionablePin(p)) return;");
+    expect(block).toContain("if (!isActionablePin(p)) return true;");
     expect(block).toContain("shouldSkipPin(soldOutCodeForComment(c.comment))");
     // Same-price override (seller_same_price): the pin is a 1-Click equivalent — base
     // price 0, replaced by the active fixed price when "Same price" is ON. Still the
@@ -117,9 +117,9 @@ describe("DOGFOOD GATE — pinPrintAllowed (allowlist + admin; NOT plan-gated)",
     expect(app).toContain("const pinAllowed = pinPrintAllowed(auth.profile?.email, auth.profile?.role);");
     const i = app.indexOf("const handlePinned");
     const block = app.slice(i, i + 900);
-    expect(block).toContain("if (!liveSession.orderedLoaded) return;"); // audit F2 — the E1 gate for unattended orders
-    expect(block.indexOf("if (!pinAllowed) return;")).toBeGreaterThan(-1);
-    expect(block.indexOf("if (!pinAllowed) return;")).toBeLessThan(block.indexOf("if (!pinPrint) return;")); // gate before toggle
+    expect(block).toContain("if (!liveSession.orderedLoaded || liveSession.state === \"loading\" || !liveSession.canOrder()) {"); // audit F2 — the E1 gate for unattended orders (Audit Oct 22: held, not dropped)
+    expect(block.indexOf("if (!pinAllowed) return false;")).toBeGreaterThan(-1);
+    expect(block.indexOf("if (!pinAllowed) return false;")).toBeLessThan(block.indexOf("if (!pinPrint) return false;")); // gate before toggle
     // Platform worlds (adapters/platformWorld.ts) may only AND-hide the row on top of this gate.
     expect(app).toContain("onTogglePinPrint={pinAllowed && !hidePinPrint ? togglePinPrint : undefined}");
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");

@@ -438,7 +438,10 @@ export default function RedesignApp() {
   // Audit Oct 13 (2): Auto Mode comments held while the session board (re)loads; replayed
   // through autoCommentRef once it is ready. Cleared when a new session starts / the platform changes.
   const [deferredAuto] = useState(() => createDeferredAutoQueue<ProdComment>());
-  const pinHandlerRef = useRef<(p: PinPayload) => void>(() => {}); // PIN-TO-PRINT seam (mirror kept fresh by an effect below)
+  const pinHandlerRef = useRef<(p: PinPayload) => boolean>(() => false); // PIN-TO-PRINT seam (mirror kept fresh by an effect below); true = the pin is done (seen)
+  // Audit Oct 22 (2): pins that arrive while orders are paused (board (re)loading) are held
+  // here and replayed through the same handler once the board is ready — like deferredAuto.
+  const [deferredPins] = useState(() => createDeferredAutoQueue<PinPayload>());
   const autoCodesRef = useRef<AutoCode[]>([]);
   const productsGenRef = useRef(0);                              // stock_refresh_v2: bumped by every sign-in products load
   const codesReadyRef = useRef(false);                           // I3: false until the products auth-load resolves (no auto match before codes exist)
@@ -1329,7 +1332,7 @@ export default function RedesignApp() {
   const sessionPlatformRef = useRef<string | null>(null);
   const noteSessionPlatform = (p: string | null | undefined) => {
     const next = p ? String(p) : null;
-    if (next !== sessionPlatformRef.current) deferredAuto.clear(); // platform switch → held comments are not for this session
+    if (next !== sessionPlatformRef.current) { deferredAuto.clear(); deferredPins.clear(); } // platform switch → held comments / pins are not for this session
     sessionPlatformRef.current = next;
   };
   // H4 — single start_session per confirm. A same-tick double-tap of "Switch" (before
@@ -1564,7 +1567,7 @@ export default function RedesignApp() {
         v2: featureSw.fbConnectV2,
         stopOld: () => stopOtherPlatforms(target.platform),
         start: () => sessionInstance.startSession(days, target.platform, true),
-        reset: () => { deferredAuto.clear(); liveSession.reset(); },
+        reset: () => { deferredAuto.clear(); deferredPins.clear(); liveSession.reset(); },
         connect: () => { noteSessionPlatform(target.platform); runTargetConnect(target); },
         startFailed: () => setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }),
       });
@@ -1724,7 +1727,7 @@ export default function RedesignApp() {
     const sid = await sessionInstance.startSession(SESSION_V2_DAYS, platformOfPending(pending), false);
     if (sid === SESSION_SWITCH_NEEDED) { askSwitch(targetOfPending(pending), SESSION_V2_DAYS); return; }
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
-    deferredAuto.clear(); // new session → nothing held from the old one
+    deferredAuto.clear(); deferredPins.clear(); // new session → nothing held from the old one
     liveSession.reset();
     connectPending(pending);
   };
@@ -1735,7 +1738,7 @@ export default function RedesignApp() {
     setEndConfirm(false);
     const ok = await sessionInstance.endSession();
     if (!ok) { setToast({ msg: tApp.rd_os_end_failed, kind: "err" }); return; }
-    deferredAuto.clear();
+    deferredAuto.clear(); deferredPins.clear();
     liveSession.reset();
     setToast({ msg: tApp.rd_os_ended, kind: "ok" });
   };
@@ -1753,7 +1756,7 @@ export default function RedesignApp() {
     // (empty → buyer# restarts at #1). The load effect re-runs on the sessionId
     // change; reset() clears the prior session's rows so the hydrate-on-empty
     // guard lets the fresh (empty) session load.
-    deferredAuto.clear(); // new session → nothing held from the old one
+    deferredAuto.clear(); deferredPins.clear(); // new session → nothing held from the old one
     liveSession.reset();
     connectPending(pending);
   };
@@ -2053,20 +2056,27 @@ export default function RedesignApp() {
     setWlBusy(r.id);
     void setWaitlistStatus(r.id, "skipped").then(() => { setWlBusy(null); reloadWaitlist(); });
   };
-  const handlePinned = (p: PinPayload) => {
-    if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
-    if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
+  // Returns true when the pin is DONE (ordered, or nothing to do) — only then does useLiveFeed
+  // mark it seen. false = not handled yet (gate off, or held while orders are paused).
+  const handlePinned = (p: PinPayload): boolean => {
+    if (!pinAllowed) return false;                          // dogfood gate — non-allowlisted: pins ignored entirely
+    if (!pinPrint) return false;                            // toggle OFF → observe nothing (fresh closure via the effect mirror)
     // Audit F2 — E1 gate: until the window load resolves, isMsgIdOrdered can't
     // see prior orders, so a pin of an already-ordered older comment on a
     // freshly reloaded device would duplicate. Same rule as the history
     // buttons: no ordered data → no unattended action.
-    if (!liveSession.orderedLoaded) return;
-    if (!isActionablePin(p)) return;
+    // Audit Oct 22 (2): while orders are paused (board loading / reload) the pin is HELD and
+    // replayed once the board is ready, instead of being dropped.
+    if (!liveSession.orderedLoaded || liveSession.state === "loading" || !liveSession.canOrder()) {
+      deferredPins.push(String(p?.msgId || ""), p);
+      return false;
+    }
+    if (!isActionablePin(p)) return true;
     const c = buildPinComment(p);
-    if (shouldSkipPin(soldOutCodeForComment(c.comment))) return;
+    if (shouldSkipPin(soldOutCodeForComment(c.comment))) return true;
     const order = orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.active)); // 1-Click equivalent
 
-    if (!order) return;                                     // dup / capped / blocked — createOrder already dedups the msgId
+    if (!order) return true;                                // dup / capped / blocked — createOrder already dedups the msgId
     const pid = `pin:${c.msgId}`;
     const snap = snapshotFromCreate(c, order);
     reprintByIdRef.current.set(pid, snap);
@@ -2081,6 +2091,7 @@ export default function RedesignApp() {
       setPrinted((pr) => ({ ...pr, [row.id]: "order" }));
       reprintByIdRef.current.set(row.id, snap);
     }
+    return true;
   };
   useEffect(() => { pinHandlerRef.current = handlePinned; }); // effect mirror — freshest closure, no render-time ref write
 
@@ -2223,11 +2234,19 @@ export default function RedesignApp() {
   // the order gate is open), in arrival order, through the SAME handler. A failed load keeps
   // them for the next successful one.
   useEffect(() => {
-    if (liveSession.state === "loading" || !liveSession.canOrder() || deferredAuto.size() === 0) return;
-    const held = deferredAuto.take();
-    log.info("[auto] replaying held comments", held.length);
-    for (const c of held) autoCommentRef.current(c);
-  }, [liveSession, deferredAuto]);
+    if (liveSession.state === "loading" || !liveSession.canOrder()) return;
+    if (deferredAuto.size() > 0) {
+      const held = deferredAuto.take();
+      log.info("[auto] replaying held comments", held.length);
+      for (const c of held) autoCommentRef.current(c);
+    }
+    // Audit Oct 22 (2): held pins replay the same way (the E1 gate must be open too).
+    if (liveSession.orderedLoaded && deferredPins.size() > 0) {
+      const pins = deferredPins.take();
+      log.info("[pin] replaying held pins", pins.length);
+      for (const p of pins) pinHandlerRef.current(p);
+    }
+  }, [liveSession, deferredAuto, deferredPins]);
 
   // Persist appearance (redesign-namespaced keys; never touches existing keys).
   useEffect(() => { try { localStorage.setItem(LS.theme, theme); } catch { /* ignore */ } }, [theme]);
