@@ -356,6 +356,8 @@ export function createShopeeRuntime(deps) {
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2 — idle + max-session caps
       accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4 — cached token (no getShop per tick)
     };
+    // Audit Oct 22 (6): same Shopee live session restarted → carry the emitted ids, next fetch = live.
+    if (prev && prev.shopSessionId === entry.shopSessionId) { entry.emitted = prev.emitted; entry.firstPollDone = true; }
     pollers.set(key, entry);
     statusEmit(sellerId, { connected: true, shopId: Number(shopId), sessionId: entry.sessionId, shopSessionId: entry.shopSessionId });
     scheduleNext(entry, 0);

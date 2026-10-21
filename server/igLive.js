@@ -314,6 +314,7 @@ export function createIgRuntime(deps) {
   function startPoller({ sellerId, userId, igUserId, igUsername, liveMediaId, sessionId = "" }) {
     const scopeKey = String(igUsername || igUserId);
     const key = liveKey(sellerId, IG_PLATFORM, igUserId);
+    const prev = pollers.get(key);
     stopPoller(key, "restart");
     const nowMs = now();
     const entry = {
@@ -321,6 +322,8 @@ export function createIgRuntime(deps) {
       emitted: new Set(), authFails: 0, fetchErrors: 0, rateLimited: false, timer: null, stopped: false,
       idleUnreadable: 0, idleRecheckAtMs: 0, firstPollDone: false, startedAtMs: nowMs, lastActivityMs: nowMs, token: null, reauth: false,
     };
+    // Audit Oct 22 (6): same live media restarted → carry the emitted ids, next fetch = live.
+    if (prev && String(prev.liveMediaId) === entry.liveMediaId) { entry.emitted = prev.emitted; entry.firstPollDone = true; }
     pollers.set(key, entry);
     log(`[IG] poller start ig=${entry.igUserId} media=${entry.liveMediaId}`);
     statusEmit(sellerId, { connected: true, scopeKey, sessionId: entry.sessionId });
