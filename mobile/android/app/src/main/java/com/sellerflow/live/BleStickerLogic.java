@@ -160,6 +160,22 @@ final class BleStickerLogic {
     /** True when the device name is a Niimbot model. */
     static boolean isNiimbotName(String name) { return startsWithAny(name, NIIMBOT_NAME_PREFIXES); }
 
+    /**
+     * Generic BLE write STALL budget: a print fails only when NO chunk reached the stack for this
+     * long — never a cap on the whole transfer (a ~96 KB label at 8 ms pacing takes longer than
+     * 12 s and must still print).
+     */
+    static final long WRITE_STALL_MS = 12000;
+
+    /**
+     * Stall watchdog (pure): how long to wait before checking again, or 0 = stalled (no progress
+     * for {@code stallMs}). Re-evaluated from the LAST accepted chunk, not from the first.
+     */
+    static long stallWaitMs(long nowMs, long lastProgressMs, long stallMs) {
+        long remaining = lastProgressMs + stallMs - nowMs;
+        return remaining > 0 ? remaining : 0;
+    }
+
     static final class Chr {
         final String uuid;
         final int props;
