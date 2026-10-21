@@ -28,7 +28,7 @@ const ago = (h: number) => new Date(NOW - h * 3600_000).toISOString();
 const row = (id: string, over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
   id, trackingNo: `F${id}`, cmOrderNo: null, buyerUsername: "maria", recipientName: null, storeId: "S", recStore: null,
   status: "in_transit", statusMessage: null, pickupDeadline: null, arrivedAt: null, shipType: "C2C", specialType: null,
-  terminal: false, lastPolledAt: ago(2), ...over,
+  terminal: false, orderAmount: null, lastPolledAt: ago(2), ...over,
 });
 const st = (over: Partial<TrackingStatus> = {}): TrackingStatus => ({
   last_completed_at: null, next_available_at: null, used_today: false, urgent_used_today: false, active_job: null, last_job: null, ...over,

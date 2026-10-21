@@ -12,7 +12,7 @@ let n = 0;
 const mk = (over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
   id: `r${++n}`, trackingNo: `F${n}`, cmOrderNo: null, buyerUsername: `buyer${n}`, recipientName: null,
   storeId: "Store A", recStore: null, status: "at_store", statusMessage: null, pickupDeadline: null,
-  arrivedAt: null, shipType: "C2C", specialType: null, terminal: false, ...over,
+  arrivedAt: null, shipType: "C2C", specialType: null, terminal: false, orderAmount: null, ...over,
 });
 
 describe("rowTab — mirrors groupParcels' bucketing (parity)", () => {

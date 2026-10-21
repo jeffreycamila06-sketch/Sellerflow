@@ -27,6 +27,7 @@ function row(p: Partial<ParcelTrackingRow>): ParcelTrackingRow {
     shipType: p.shipType ?? "C2C",
     specialType: p.specialType ?? null,
     terminal: p.terminal ?? false,
+    orderAmount: p.orderAmount ?? null,
   };
 }
 
