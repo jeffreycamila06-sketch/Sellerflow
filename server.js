@@ -990,6 +990,10 @@ const helpGuide = createGuideSource({
   log: (line) => console.log(line),
 });
 const supportLastAsk = new Map(); // ponytail: in-memory, per server instance
+// Audit Oct 22 (8): questions being answered right now, per seller and in total (in memory —
+// the saved rows the daily/monthly limits count only exist once an answer is done).
+const supportInFlight = new Map();
+let supportInFlightTotal = 0;
 async function readSetting(key) {
   const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", key).maybeSingle();
   if (error) throw error;
@@ -1030,7 +1034,14 @@ app.post("/support/ask", requireAuth, async (req, res) => {
     if (now - (supportLastAsk.get(req.authUserId) || 0) < 2000) return res.status(429).json({ success: false, error: "too_fast" });
     supportLastAsk.set(req.authUserId, now);
     const [cap, daily] = await Promise.all([readSetting("support_ai_monthly_cap_usd"), readSetting("support_ai_daily_per_seller")]);
-    const r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang, platform }, {
+    // Audit Oct 22 (8): count this question as in flight (per seller + total) until it is answered.
+    const inFlight = { seller: supportInFlight.get(req.authUserId) || 0, total: supportInFlightTotal };
+    supportInFlight.set(req.authUserId, inFlight.seller + 1);
+    supportInFlightTotal += 1;
+    const release = () => { const n = (supportInFlight.get(req.authUserId) || 1) - 1; if (n > 0) supportInFlight.set(req.authUserId, n); else supportInFlight.delete(req.authUserId); supportInFlightTotal = Math.max(0, supportInFlightTotal - 1); };
+    let r;
+    try {
+      r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang, platform, inFlight }, {
       settings: { capUsd: Number(cap ?? 15), dailyPerSeller: Number(daily ?? 20) },
       matchFaq: async (q) => {
         const { data, error } = await serviceSb.rpc("support_faq_match", { p_q: q });
@@ -1056,7 +1067,8 @@ app.post("/support/ask", requireAuth, async (req, res) => {
         return data.id;
       },
       log: (line) => console.log(line),
-    });
+      });
+    } finally { release(); }
     if (r.error) return res.status(400).json({ success: false, error: r.error });
     return res.json({ success: true, id: r.id, source: r.source, answer: r.answer, saved: r.saved, contact: r.contact, kind: r.kind || null });
   } catch (e) {
