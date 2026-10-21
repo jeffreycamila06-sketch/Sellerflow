@@ -319,7 +319,7 @@ final class BleStickerTransport {
             return;
         }
         boolean target = BleStickerLogic.isTargetPrinter(name, services);
-        boolean likely = target || BleStickerLogic.isLikelyPrinter(services);
+        boolean likely = target || BleStickerLogic.isLikelyPrinter(services) || BleStickerLogic.isPrinterName(name);
         boolean named = name != null && !name.trim().isEmpty();
         if (!target && !(scanIncludeGeneric && likely) && !(scanShowAll && named)) return;
         String addr = device.getAddress();

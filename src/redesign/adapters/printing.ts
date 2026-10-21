@@ -14,14 +14,17 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas, type RasterSettings, type RasterPayload } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas, type RasterSettings, type RasterPayload } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
-import { savedGenericLang } from "./savedPrinter";
+import { cpclRasterBytes } from "./cpclRaster";
+import { savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
+import type { NiimbotImage } from "./printerBridge";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
 import { fbNameOnly, printableBuyer } from "./fbName";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
+import { CYRILLIC_ATLAS } from "./glyphAtlas.cyrillic"; // generic-printer / Niimbot image paths only
 import { log } from "../../lib/log";
 import { hasFeature } from "./featureAccess";
 
@@ -42,6 +45,7 @@ const STICKER_LABELS: Record<string, { w: number; h: number }> = {
   "80x50": { w: 80, h: 50 },
   "70x50": { w: 70, h: 50 },
   "60x40": { w: 60, h: 40 },
+  "50x30": { w: 50, h: 30 }, // printer setup v2 only (image paths; stickerRaster draw50x30) — the native text builders have no 50×30
 };
 const STICKER_SIZE_FALLBACK = "100x60";
 function stickerSizeKey(size: string | undefined): string {
@@ -247,6 +251,14 @@ export function isPrinterNotSetup(code: string, message: string): boolean {
   return /no\s+(?:bluetooth\s+)?(?:wifi\s+)?printer\s+saved|enter\s+printer\s+ip|no\s+printer\s+selected/i.test(message || "");
 }
 
+// PURE — a Niimbot driver failure the seller can fix themselves → the i18n key to show
+// (plain words, no codes). Any other code = the usual print-failed wording.
+const NIIMBOT_ERROR_KEYS = { NIIMBOT_NO_PAPER: "rd_nb_no_paper", NIIMBOT_COVER_OPEN: "rd_nb_cover_open", NIIMBOT_PAPER_TYPE: "rd_nb_paper_type", NIIMBOT_LOW_BATTERY: "rd_nb_low_battery" } as const;
+export type NiimbotErrorKey = (typeof NIIMBOT_ERROR_KEYS)[keyof typeof NIIMBOT_ERROR_KEYS];
+export function niimbotErrorKey(code: string): NiimbotErrorKey | null {
+  return (NIIMBOT_ERROR_KEYS as Record<string, NiimbotErrorKey>)[code] ?? null;
+}
+
 // ── Native bridge — copied verbatim from App.tsx:445-451, 475-509, 591-618 ───
 function hasNativeMobilePrinter(): boolean {
   if (typeof window === "undefined") return false;
@@ -355,7 +367,7 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 // reasons through them, and support can read getLastStickerRouteNotice() /
 // window.__sflPrintTiming from an inspector. Genuine print FAILURES surface to
 // sellers via setNativePrintFailureHandler above (unchanged) — never via this.
-export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed" | "generic-tspl" | "generic-escpos";
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed" | "generic-tspl" | "generic-escpos" | "generic-cpcl" | "niimbot";
 // AUDIT F2 safety net: the native reject code for an SPP-transport bitmap send
 // that failed at the socket level — the router retries that print through the
 // unchanged TEXT path, so an SPP-incompatible unit degrades to today's behavior.
@@ -413,7 +425,7 @@ export function hasBitmapStickerMethod(): boolean {
 export function printsStickerViaImage(cfg: Settings): boolean {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge || !shouldUseBluetoothSticker(cfg.printerType, !!bridge.printStickerNative)) return false;
-  if (savedGenericLang() === "tspl") return false; // generic TSPL printer → the text sticker, never the D520 image stream
+  if (savedIsNiimbot() || savedGenericLang()) return true; // a saved generic / Niimbot printer always prints the sticker image
   if (!bitmapBridgeFn(bridge)) return false;
   return !(classicTextAllowed && isClassicTextSticker());
 }
@@ -478,37 +490,88 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   }
 }
 
-// ── Generic printer, ESC/POS language (printer setup v2) ─────────────────────
-// The seller's saved printer printed its test sticker in ESC/POS: real orders send the
-// SAME sticker image (imageStickerPayload → renderStickerBitmap) as an ESC/POS raster
-// through the raw-bytes passthrough, which the native side diverts to the generic
-// transport for a saved generic printer. ONE bridge call; a completed write is "sent" —
-// never re-sent. ⚠️ UNVERIFIED ON HARDWARE (no ESC/POS label printer yet).
-export async function buildEscposStickerBytes(payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string, fbName = false): Promise<Uint8Array> {
-  const full = renderStickerBitmap(imageStickerPayload(payload, platform, fbName), payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
-  return escposRasterBytes(full);
-}
-async function printStickerViaEscpos(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
-  const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
-  if (typeof raw !== "function") return { ok: false, code: "", message: "" };
-  const t0 = nowMs();
+// ── Generic printers (printer setup v2) — ALWAYS the sticker IMAGE ───────────
+// A saved GENERIC printer prints the SAME sticker image the D520BT image path draws
+// (imageStickerPayload → stickerRaster), wrapped in the language its test sticker
+// printed with, and sent as ready bytes through the raw-bytes passthrough (the native
+// side diverts it to the generic transport for a saved generic printer):
+//   tspl   → rasterizeToBitmapTspl (standard TSPL BITMAP mode-0, full-width bands —
+//            golden-tested; never the D520-only LZO stream, never the TEXT builder whose
+//            printer fonts have no CJK — the Y41BT "blank Chinese name" bug)
+//   escpos → escposRasterBytes (ESC @ + GS v 0)     ⚠️ unverified on hardware
+//   cpcl   → cpclRasterBytes (! 0 200 200 … EG …)  ⚠️ unverified on hardware
+// Chinese = the CJK atlas (loaded here when the payload needs it), Vietnamese = the
+// Latin atlas, Cyrillic = the Cyrillic atlas, QR = the same placement. ONE bridge call;
+// a completed write is "sent" — never re-sent. Payload size is logged: a BLE link moves
+// roughly 8–15 KB/s, so a 60×40 sticker (~10 KB of bands) prints in about a second.
+export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<Uint8Array> {
   let cjk: GlyphAtlas = {};
   if (payloadNeedsCjk(payload)) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
-  const bytes = await buildEscposStickerBytes(payload, cjk, platform, fbName);
+  const img = imageStickerPayload(payload, platform, fbName);
+  const atlases = { latin: LATIN_ATLAS, cjk, cyrillic: CYRILLIC_ATLAS }; // + Cyrillic/"…" — never passed on the D520BT stream
+  if (lang === "tspl") return rasterizeToBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases).bytes;
+  const full = renderStickerBitmap(img, payload.labelWidthMm, payload.labelHeightMm, atlases);
+  return lang === "cpcl" ? cpclRasterBytes(full) : escposRasterBytes(full);
+}
+async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlowPrinter"]>, lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
+  const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
+  if (typeof raw !== "function") return { ok: false, code: "", message: "" };
+  const reason: StickerFallbackReason = lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos";
+  const t0 = nowMs();
+  const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName);
   const t1 = nowMs();
+  log.log(`[GENERIC-STICKER] lang=${lang} bytes=${bytes.length} (~${(bytes.length / 10000).toFixed(1)}s over BLE at ~10 KB/s)`);
   try {
     const result = await raw({ data: bytesToBase64(bytes) });
     const t2 = nowMs();
     recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes: bytes.length, bands: 1 });
-    if (result?.ok) { reportStickerRoute({ via: "bitmap", ok: true, reason: "generic-escpos", detail: "", payloadBytes: bytes.length, totalMs: t2 - t0 }); return { ok: true, code: "", message: "" }; }
+    if (result?.ok) { reportStickerRoute({ via: "bitmap", ok: true, reason, detail: "", payloadBytes: bytes.length, totalMs: t2 - t0 }); return { ok: true, code: "", message: "" }; }
     const { code, message } = readFailure(result);
-    reportStickerRoute({ via: "bitmap", ok: false, reason: "generic-escpos", detail: message || code || "print failed", payloadBytes: bytes.length, totalMs: t2 - t0 });
-    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("[BT escpos sticker] print failed:", message || "check pairing/selection.");
+    reportStickerRoute({ via: "bitmap", ok: false, reason, detail: message || code || "print failed", payloadBytes: bytes.length, totalMs: t2 - t0 });
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn(`[BT ${lang} sticker] print failed:`, message || "check pairing/selection.");
     return { ok: false, code, message };
   } catch (err) {
     const { code, message } = readFailure(err);
-    reportStickerRoute({ via: "bitmap", ok: false, reason: "generic-escpos", detail: message || code || String(err), payloadBytes: bytes.length, totalMs: nowMs() - t0 });
-    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("printRawTspl (escpos) bridge call failed:", err);
+    reportStickerRoute({ via: "bitmap", ok: false, reason, detail: message || code || String(err), payloadBytes: bytes.length, totalMs: nowMs() - t0 });
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn(`printRawTspl (${lang}) bridge call failed:`, err);
+    return { ok: false, code, message };
+  }
+}
+
+// ── Niimbot (vendor SDK) — printer setup v2 Part 8 — ALWAYS the sticker IMAGE ──
+// A saved Niimbot prints the SAME sticker image through the native driver (the SDK takes
+// a picture — no printer language). The label is ALWAYS the 50×30 layout (Niimbot's
+// common label), whatever sticker size the seller picked. ONE bridge call; the driver
+// reports completion or a seller-level code (NIIMBOT_NO_PAPER …). ⚠️ unverified on hardware.
+export const NIIMBOT_LABEL = { w: 50, h: 30 } as const;
+export async function buildNiimbotImage(payload: NativeStickerPayload, platform?: string, fbName = false): Promise<NiimbotImage> {
+  let cjk: GlyphAtlas = {};
+  if (payloadNeedsCjk(payload)) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
+  const p: NativeStickerPayload = { ...payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
+  const full = renderStickerBitmap(imageStickerPayload(p, platform, fbName), p.labelWidthMm, p.labelHeightMm, { latin: LATIN_ATLAS, cjk, cyrillic: CYRILLIC_ATLAS });
+  return { w: full.w, h: full.h, rowBytes: full.rowBytes, data: bytesToBase64(full.buf), labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
+}
+async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
+  const fn = (bridge as unknown as { printStickerImage?: (a: { image: NiimbotImage }) => Promise<unknown> }).printStickerImage;
+  if (typeof fn !== "function") return { ok: false, code: "", message: "" };
+  const t0 = nowMs();
+  const image = await buildNiimbotImage(payload, platform, fbName);
+  const payloadBytes = image.rowBytes * image.h;
+  const t1 = nowMs();
+  log.log(`[NIIMBOT-STICKER] ${image.w}x${image.h} ${payloadBytes} bytes`);
+  try {
+    const result = (await fn({ image })) as Record<string, unknown> | null;
+    const t2 = nowMs();
+    recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes, bands: 1 });
+    if (result?.ok) { reportStickerRoute({ via: "bitmap", ok: true, reason: "niimbot", detail: "", payloadBytes, totalMs: t2 - t0 }); return { ok: true, code: "", message: "" }; }
+    const { code, message } = readFailure(result);
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "niimbot", detail: message || code || "print failed", payloadBytes, totalMs: t2 - t0 });
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("[Niimbot sticker] print failed:", message || code || "check the printer.");
+    return { ok: false, code, message };
+  } catch (err) {
+    const { code, message } = readFailure(err);
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "niimbot", detail: message || code || String(err), payloadBytes, totalMs: nowMs() - t0 });
+    if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("printStickerImage (niimbot) bridge call failed:", err);
     return { ok: false, code, message };
   }
 }
@@ -516,16 +579,17 @@ async function printStickerViaEscpos(bridge: NonNullable<Window["SellerFlowPrint
 async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName = false, at?: number): Promise<BtRouteResult> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
-  // Printer setup v2 — a saved GENERIC printer prints in the language its test sticker
-  // printed with: "escpos" → the ESC/POS raster above; "tspl" → the TEXT sticker below
-  // (never the D520-only SDK image stream). A D520BT (or nothing learned) = unchanged.
+  // Printer setup v2 — a saved Niimbot prints the sticker IMAGE through its driver; a saved
+  // GENERIC printer prints the sticker IMAGE in its saved language (both above). A D520BT
+  // (or nothing learned) = the unchanged paths below.
+  if (savedIsNiimbot()) return printStickerViaNiimbot(bridge, buildNativeStickerPayload(buyer, cur, storeName, cfg, at), buyer.platform, fbName);
   const genericLang = savedGenericLang();
-  if (genericLang === "escpos") return printStickerViaEscpos(bridge, buildNativeStickerPayload(buyer, cur, storeName, cfg, at), buyer.platform, fbName);
+  if (genericLang) return printStickerViaGenericImage(bridge, genericLang, buildNativeStickerPayload(buyer, cur, storeName, cfg, at), buyer.platform, fbName);
   // BITMAP default: fires only when the new native passthrough exists AND the
   // seller hasn't flipped "Classic text mode". Everything else (old binaries,
   // classic mode) takes the UNCHANGED TEXT path below — with the reason recorded
   // so the fallback is VISIBLE in-app, never silent (the Phase-1 field lesson).
-  const bmpFn = genericLang === "tspl" ? undefined : bitmapBridgeFn(bridge);
+  const bmpFn = bitmapBridgeFn(bridge);
   // Visibility-gated: the flag only counts for users who can SEE the toggle
   // (admin/test account — see canUseClassicText above). Everyone else routes
   // bitmap even with a stray localStorage flag on the device.
@@ -552,7 +616,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
       sppFailed = true;
     }
   }
-  const fallbackReason: StickerFallbackReason = genericLang === "tspl" ? "generic-tspl" : classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : sppFailed ? "bitmap-spp-failed" : "bitmap-method-missing";
+  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : sppFailed ? "bitmap-spp-failed" : "bitmap-method-missing";
   try {
     const t0 = nowMs();
     const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg, at));

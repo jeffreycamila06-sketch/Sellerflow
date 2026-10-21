@@ -184,4 +184,34 @@ public class BleStickerLogicTest {
         assertEquals(256, BleStickerLogic.toHexCapped(new byte[400], 256).length());
         assertEquals("", BleStickerLogic.toHexCapped(null, 256));
     }
+
+    // ── Printer-name list (printer setup v2) ─────────────────────────────────
+
+    @Test
+    public void isPrinterName_matchesListCaseInsensitive() {
+        for (String n : new String[] {"B1-I603042141", "b21-ABC", "D110-1234", "XP-P323B", "Xprinter_58", "Printer_8A2F",
+                "PRT-200", "PT-210", "MPT-II", "GP-1324D", "HM-A300", "M110-C9", "M02S", "Q30_01", "T02-xx",
+                "HPRT N41", "Munbyn ITPP941", "RPP02N", "Gprinter GP-3120", "Zjiang ZJ-5802"}) {
+            assertTrue(n, BleStickerLogic.isPrinterName(n));
+        }
+    }
+
+    @Test
+    public void isPrinterName_excludesHeartRateHeadphonesWatchLaptop() {
+        for (String n : new String[] {"Polar H10 1234", "WH-1000XM4", "Galaxy Watch4", "Jeff MacBook Pro", "Pixel 8", "AirPods Pro", "Mi Band 7", "", "   "}) {
+            assertFalse(n, BleStickerLogic.isPrinterName(n));
+        }
+        assertFalse(BleStickerLogic.isPrinterName(null));
+    }
+
+    @Test
+    public void isNiimbotName_onlyNiimbotModels() {
+        assertTrue(BleStickerLogic.isNiimbotName("B1-I603042141"));
+        assertTrue(BleStickerLogic.isNiimbotName("d11-0001"));
+        assertFalse(BleStickerLogic.isNiimbotName("XP-P323B"));
+        assertFalse(BleStickerLogic.isNiimbotName("Y41BT-0FC4_LE"));
+        assertFalse(BleStickerLogic.isNiimbotName(null));
+        // every Niimbot prefix is also on the printer list
+        for (String p : BleStickerLogic.NIIMBOT_NAME_PREFIXES) assertTrue(p, Arrays.asList(BleStickerLogic.PRINTER_NAME_PREFIXES).contains(p));
+    }
 }

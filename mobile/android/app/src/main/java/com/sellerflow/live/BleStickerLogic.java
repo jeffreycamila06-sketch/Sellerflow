@@ -129,6 +129,37 @@ final class BleStickerLogic {
         return false;
     }
 
+    // ── Printer-name list — ONE place on Android (printer setup v2) ───────────
+    // A device whose NAME starts with one of these is a printer row even when it
+    // advertises no printer service (Niimbot, most classic receipt printers).
+    // Case-insensitive prefix match. Pinned equal to the web (printerModels.ts
+    // PRINTER_NAME_PREFIXES) and iOS (BleStickerLogic.printerNamePrefixes) copies by
+    // printerNames.contract.test.ts — change all three together.
+    static final String[] PRINTER_NAME_PREFIXES = {
+        "B1-", "B18-", "B21-", "B203-", "B3S-", "D11-", "D110-", "D101-", "H1S-",
+        "XP-", "Xprinter", "Printer", "PRT", "PT-", "MPT", "GP-", "HM-",
+        "M02", "M110", "M120", "M200", "M220", "M221", "Q30", "T02",
+        "HPRT", "Munbyn", "RP", "Gprinter", "Zjiang",
+    };
+    /** Niimbot models (vendor SDK driver, not a command language). */
+    static final String[] NIIMBOT_NAME_PREFIXES = {
+        "B1-", "B18-", "B21-", "B203-", "B3S-", "D11-", "D110-", "D101-", "H1S-",
+    };
+
+    private static boolean startsWithAny(String name, String[] prefixes) {
+        if (name == null) return false;
+        String n = name.trim().toUpperCase(Locale.US);
+        if (n.isEmpty()) return false;
+        for (String p : prefixes) if (n.startsWith(p.toUpperCase(Locale.US))) return true;
+        return false;
+    }
+
+    /** True when the device name is on the printer-name list (never matches by service). */
+    static boolean isPrinterName(String name) { return startsWithAny(name, PRINTER_NAME_PREFIXES); }
+
+    /** True when the device name is a Niimbot model. */
+    static boolean isNiimbotName(String name) { return startsWithAny(name, NIIMBOT_NAME_PREFIXES); }
+
     static final class Chr {
         final String uuid;
         final int props;

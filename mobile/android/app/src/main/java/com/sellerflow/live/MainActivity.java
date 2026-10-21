@@ -92,7 +92,14 @@ public class MainActivity extends BridgeActivity {
         String buildNumberLine = versionCode > 0
             ? "window.SellerFlowPrinter.getBuildNumber=function(){return " + versionCode + ";};"
             : "";
+        // Offline screen (www/offline.html, Capacitor server.errorPath): the page retries THIS
+        // url — the configured server.url — so a preview/test shell retries its own site.
+        String serverUrl = bridge != null ? bridge.getServerUrl() : null;
+        String serverUrlLine = serverUrl != null && !serverUrl.isEmpty()
+            ? "window.SFL_SERVER_URL=" + JSONObject.quote(serverUrl) + ";"
+            : "";
         String js = "(function(){"
+            + serverUrlLine
             + "var cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SellerFlowPrinter;"
             + "window.SellerFlowPrinter=window.SellerFlowPrinter||{};"
             + buildNumberLine
@@ -128,6 +135,9 @@ public class MainActivity extends BridgeActivity {
             // Phase 1 generic BLE printer: one sample sticker to an unsaved printer (test-gated web flow).
             // The web shows the generic-printer UI only when this method exists.
             + "window.SellerFlowPrinter.testGenericPrinter=function(p){return cap.testGenericPrinter(p||{});};"
+            // Printer setup v2 Part 8: the sticker IMAGE on a saved Niimbot (vendor SDK). The web
+            // shows the Niimbot flow only when this method exists (hasNiimbotBridge).
+            + "window.SellerFlowPrinter.printStickerImage=function(p){return cap.printStickerImage(p||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"

@@ -22,6 +22,10 @@
 		9FA000000000000000000012 /* MobileTsplBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000002 /* MobileTsplBuilderTests.swift */; };
 		9FA000000000000000000013 /* CjkEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000003 /* CjkEncodingTests.swift */; };
 		9FA000000000000000000014 /* BleStickerLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA000000000000000000005 /* BleStickerLogicTests.swift */; };
+		9F0000100000000000000B01 /* NiimbotTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0000200000000000000B01 /* NiimbotTransport.swift */; };
+		9F0000100000000000000B12 /* FONT.json in Resources */ = {isa = PBXBuildFile; fileRef = 9F0000200000000000000B12 /* FONT.json */; };
+		9F0000100000000000000B13 /* ZT001.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9F0000200000000000000B13 /* ZT001.ttf */; };
+		9F0000100000000000000B14 /* ZT002.otf in Resources */ = {isa = PBXBuildFile; fileRef = 9F0000200000000000000B14 /* ZT002.otf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,6 +57,15 @@
 		9FA000000000000000000003 /* CjkEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CjkEncodingTests.swift; sourceTree = "<group>"; };
 		9FA000000000000000000005 /* BleStickerLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BleStickerLogicTests.swift; sourceTree = "<group>"; };
 		9FA000000000000000000004 /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9F0000200000000000000B01 /* NiimbotTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NiimbotTransport.swift; sourceTree = "<group>"; };
+		9F0000200000000000000B02 /* App-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "App-Bridging-Header.h"; sourceTree = "<group>"; };
+		9F0000200000000000000B11 /* JCAPI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JCAPI.h; sourceTree = "<group>"; };
+		9F0000200000000000000B12 /* FONT.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = FONT.json; sourceTree = "<group>"; };
+		9F0000200000000000000B13 /* ZT001.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ZT001.ttf; sourceTree = "<group>"; };
+		9F0000200000000000000B14 /* ZT002.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ZT002.otf; sourceTree = "<group>"; };
+		9F0000200000000000000B15 /* libJCAPI.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libJCAPI.a; sourceTree = "<group>"; };
+		9F0000200000000000000B16 /* libJCLPAPI.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libJCLPAPI.a; sourceTree = "<group>"; };
+		9F0000200000000000000B17 /* libSkiaRenderLibrary.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libSkiaRenderLibrary.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +117,20 @@
 			path = AppTests;
 			sourceTree = "<group>";
 		};
+		9F0000200000000000000B10 /* Niimbot */ = {
+			isa = PBXGroup;
+			children = (
+				9F0000200000000000000B11 /* JCAPI.h */,
+				9F0000200000000000000B12 /* FONT.json */,
+				9F0000200000000000000B13 /* ZT001.ttf */,
+				9F0000200000000000000B14 /* ZT002.otf */,
+				9F0000200000000000000B15 /* libJCAPI.a */,
+				9F0000200000000000000B16 /* libJCLPAPI.a */,
+				9F0000200000000000000B17 /* libSkiaRenderLibrary.a */,
+			);
+			path = Niimbot;
+			sourceTree = "<group>";
+		};
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -112,6 +139,9 @@
 				9F00002000000000000000A1 /* SellerFlowPrinterPlugin.swift */,
 				9F00002000000000000000A2 /* SellerFlowBridgeViewController.swift */,
 				9F00002000000000000000A3 /* SellerFlowAuthPlugin.swift */,
+				9F0000200000000000000B01 /* NiimbotTransport.swift */,
+				9F0000200000000000000B02 /* App-Bridging-Header.h */,
+				9F0000200000000000000B10 /* Niimbot */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -223,6 +253,9 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				9F0000100000000000000B12 /* FONT.json in Resources */,
+				9F0000100000000000000B13 /* ZT001.ttf in Resources */,
+				9F0000100000000000000B14 /* ZT002.otf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -237,6 +270,7 @@
 				9F00001000000000000000A1 /* SellerFlowPrinterPlugin.swift in Sources */,
 				9F00001000000000000000A2 /* SellerFlowBridgeViewController.swift in Sources */,
 				9F00001000000000000000A3 /* SellerFlowAuthPlugin.swift in Sources */,
+				9F0000100000000000000B01 /* NiimbotTransport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -409,6 +443,26 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/App/Niimbot",
+				);
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-ObjC",
+					"-lJCAPI",
+					"-lJCLPAPI",
+					"-lSkiaRenderLibrary",
+					"-liconv",
+					"-lc++",
+					"-framework",
+					CoreMedia,
+					"-framework",
+					AVFoundation,
+					"-framework",
+					CoreBluetooth,
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h";
 				MARKETING_VERSION = 1.8;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sellerflow.live;
@@ -434,6 +488,26 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/App/Niimbot",
+				);
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-ObjC",
+					"-lJCAPI",
+					"-lJCLPAPI",
+					"-lSkiaRenderLibrary",
+					"-liconv",
+					"-lc++",
+					"-framework",
+					CoreMedia,
+					"-framework",
+					AVFoundation,
+					"-framework",
+					CoreBluetooth,
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h";
 				MARKETING_VERSION = 1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.sellerflow.live;
 				PRODUCT_NAME = "$(TARGET_NAME)";

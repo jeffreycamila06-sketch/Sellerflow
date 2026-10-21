@@ -15,12 +15,12 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer,
-  hasGenericPrinterBridge, testGenericPrinter, genericDebugLine,
+  hasGenericPrinterBridge, testGenericPrinter, genericDebugLine, hasNiimbotBridge,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { buildNativeStickerPayload, buildEscposStickerBytes, printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { buildNativeStickerPayload, buildGenericStickerBytes, buildNiimbotImage, niimbotErrorKey, printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
 import { bytesToBase64 } from "../adapters/stickerRaster";
-import { isKnownPrinter, isPrinterOnlyRow, knownPrinterLang, nextLang, type PrinterLang } from "../adapters/printerModels";
+import { isKnownPrinter, isPrinterOnlyRow, knownPrinterLang, nextLang, brandOf, type PrinterLang } from "../adapters/printerModels";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { useT } from "../i18n";
@@ -35,7 +35,7 @@ const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", b
 const rowBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
 const pill = (known: boolean): CSSProperties => ({ flexShrink: 0, whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 800, padding: "4px 8px", borderRadius: 999, border: `1px solid ${known ? "var(--ok)" : "var(--accent)"}`, color: known ? "var(--ok)" : "var(--accent-fg)", background: "var(--surface-2)" });
 
-type V2Stage = "idle" | "saving" | "testing" | "retry" | "ask" | "unsupported";
+type V2Stage = "idle" | "saving" | "testing" | "retry" | "ask" | "unsupported" | "brand" | "fail";
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
@@ -74,10 +74,12 @@ export default function PrinterSettings({
   // Older apps (and the web, which has no bridge) keep today's screen exactly.
   const v2 = flowV2 && hasGenericPrinterBridge();
   const [btScanned, setBtScanned] = useState(false);
+  const [btShowAll, setBtShowAll] = useState(false);
   const [v2Pick, setV2Pick] = useState<BluetoothPrinterDevice | null>(null);
   const [v2Stage, setV2Stage] = useState<V2Stage>("idle");
   const [v2Lang, setV2Lang] = useState<PrinterLang>("tspl");
   const [v2Debug, setV2Debug] = useState("");
+  const [v2Fail, setV2Fail] = useState(""); // a Niimbot test failure, in the seller's words
   const v2PictureBuyer = useMemo(() => testBuyer(), [testComment]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Classic text mode" — mirrors the localStorage flag printing.ts routes on.
   const [classicText, setClassicText] = useState(() => isClassicTextSticker());
@@ -101,14 +103,14 @@ export default function PrinterSettings({
   async function testConn() { const r = await callMobilePrinterBridge("testConnection", { host: host.trim(), port: clampPort() }); setStatus(r); if (r.ok) await saveLan(); }
   async function testPrint() { setStatus(await callMobilePrinterBridge("testPrint")); }
 
-  async function scanBt() {
+  async function scanBt(showAll = false) {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_scan); return; }
     setBtScanning(true); setBtMsg("");
     const r = v2
-      ? await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters", { includeGenericPrinters: true, showAllDevices: false })
+      ? await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters", { includeGenericPrinters: true, showAllDevices: showAll })
       : await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
     setBtScanning(false);
-    if (v2) { setBtScanned(true); setV2Pick(null); setV2Stage("idle"); }
+    if (v2) { setBtScanned(true); setBtShowAll(showAll); setV2Pick(null); setV2Stage("idle"); }
     if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.ok === false ? t.rd_ps_scan_unavail : ""); } // never the raw printer text
     else setBtMsg(t.rd_ps_scan_unavail);
   }
@@ -137,17 +139,21 @@ export default function PrinterSettings({
 
   // ── Printer setup v2 ────────────────────────────────────────────────────────
   // Known printer (D520BT or a listed model): save at once, then one test sticker through
-  // the SAME route a real order takes. New printer: one test sticker in TSPL, ask, retry
-  // once in ESC/POS, ask, then "not supported yet". Every test = ONE native call; a
-  // completed write is "sent" — nothing is ever re-sent on its own.
+  // the SAME route a real order takes. New printer: one test sticker per language (TSPL,
+  // ESC/POS, CPCL — the same sticker image each time), ask after each, then "not supported
+  // yet". A Niimbot (by name) goes through the vendor-SDK driver when the app has it (one test
+  // label = the same sticker image, 50×30, then the same question); an app without the driver
+  // → "not supported yet". Every test = ONE native call; nothing is re-sent on its own.
+  const genericTransport = (p: BluetoothPrinterDevice) => (p.transport === "spp" ? "spp" : "ble"); // Android paired classic printers keep RFCOMM
   async function pickV2(p: BluetoothPrinterDevice) {
     if (v2Stage !== "idle" || !settings) return;
     setV2Pick(p); setV2Debug(""); setBtMsg("");
+    if (brandOf(p) === "niimbot") { if (hasNiimbotBridge()) await tryNiimbot(p); else setV2Stage("brand"); return; }
     if (isKnownPrinter(p)) {
       setV2Stage("saving");
       const save = p.model === "D520BT"
         ? { address: p.address, name: p.name, transport: p.transport }
-        : { address: p.address, name: p.name, transport: "ble", model: "generic", lang: knownPrinterLang(p.name) ?? "tspl" };
+        : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: knownPrinterLang(p.name) ?? "tspl" };
       const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
       setBtSaved(r?.savedPrinter || p);
       const printed = await printStickerBtRouted(testBuyer(), cur, storeName, settings);
@@ -160,13 +166,22 @@ export default function PrinterSettings({
   async function tryLang(p: BluetoothPrinterDevice, lang: PrinterLang) {
     if (!settings) return;
     setV2Lang(lang); setV2Stage(lang === "tspl" ? "testing" : "retry");
+    // Every try = the SAME sticker image real orders will print, in that language (ready bytes).
     const payload = buildNativeStickerPayload(testBuyer(), cur, storeName, settings);
-    const r = lang === "tspl"
-      ? await testGenericPrinter(p.address, { payload })
-      : await testGenericPrinter(p.address, { data: bytesToBase64(await buildEscposStickerBytes(payload, {}, payload.buyer.platform)) });
+    const r = await testGenericPrinter(p.address, { data: bytesToBase64(await buildGenericStickerBytes(lang, payload, payload.buyer.platform)), ...(p.transport === "spp" ? { transport: "spp" } : {}) });
     setV2Debug(genericDebugLine(r));
     if (r.ok) { setV2Stage("ask"); return; }
     await nextOrGiveUp(p, lang);
+  }
+  async function tryNiimbot(p: BluetoothPrinterDevice) {
+    if (!settings) return;
+    setV2Stage("testing");
+    const payload = buildNativeStickerPayload(testBuyer(), cur, storeName, settings);
+    const r = await testGenericPrinter(p.address, { transport: "niimbot", name: p.name, image: await buildNiimbotImage(payload, payload.buyer.platform) });
+    setV2Debug(genericDebugLine(r));
+    if (r.ok) { setV2Stage("ask"); return; }
+    const k = niimbotErrorKey(r.code);
+    setV2Fail(k ? t[k] : t.rd_ps_test_failed); setV2Stage("fail");
   }
   async function nextOrGiveUp(p: BluetoothPrinterDevice, lang: PrinterLang) {
     const n = nextLang(lang);
@@ -176,8 +191,12 @@ export default function PrinterSettings({
   async function answerV2(yes: boolean) {
     const p = v2Pick;
     if (!p) return;
-    if (!yes) { await nextOrGiveUp(p, v2Lang); return; }
-    const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: "ble", model: "generic", lang: v2Lang });
+    const niimbot = brandOf(p) === "niimbot";
+    if (!yes) { if (niimbot) setV2Stage("brand"); else await nextOrGiveUp(p, v2Lang); return; }
+    const save = niimbot
+      ? { address: p.address, name: p.name, transport: "niimbot", model: "generic" } // no language: the driver takes the image
+      : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: v2Lang };
+    const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
     setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
     setV2Pick(null); setV2Stage("idle");
   }
@@ -185,12 +204,13 @@ export default function PrinterSettings({
     const known = isKnownPrinter(p);
     return (
       <button key={p.id || p.address} data-testid="ps-v2-row" onClick={() => void pickV2(p)} disabled={v2Stage !== "idle"} style={{ ...rowBtn, opacity: v2Stage !== "idle" ? 0.6 : 1 }}>
-        <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.address}</span></span>
+        <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.address}{p.transport === "spp" ? <span data-testid="ps-v2-classic" style={{ fontFamily: "var(--font-ui)", marginLeft: 6 }}>· {t.rd_ps_v2_classic}</span> : null}</span></span>
         <span data-testid={known ? "ps-v2-known" : "ps-v2-new"} style={pill(known)}>{known ? t.rd_ps_v2_works : t.rd_ps_v2_new}</span>
       </button>
     );
   };
-  const v2Printers = btPrinters.filter(isPrinterOnlyRow);
+  // Printers only — or, after "Show all Bluetooth devices", every named device the scan returned.
+  const v2Printers = btShowAll ? btPrinters.filter((p) => !!(p.name || "").trim()) : btPrinters.filter(isPrinterOnlyRow);
 
   const dot = status.ok ? "var(--ok)" : nativeReady ? "var(--warn)" : "var(--text-muted)";
 
@@ -251,7 +271,7 @@ export default function PrinterSettings({
               </button>
               {psSizeOpen && (
                 <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
-                  {PS_SIZES.map((z) => {
+                  {(v2 ? [...PS_SIZES, "50x30mm"] : PS_SIZES).map((z) => {
                     const on = z === psSize;
                     return (
                       <button key={z} onClick={() => onPickPsSize(z)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
@@ -284,6 +304,9 @@ export default function PrinterSettings({
                 {v2Printers.length > 0
                   ? <div style={listBox}>{v2Printers.map(v2Row)}</div>
                   : <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{t.rd_ps_v2_none}</div>}
+                {!btShowAll && (
+                  <button data-testid="ps-v2-show-all" onClick={() => void scanBt(true)} disabled={btScanning || v2Stage !== "idle"} style={{ display: "block", width: "100%", marginTop: 10, padding: "12px 6px", border: "none", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "underline" }}>{t.rd_ps_v2_show_all}</button>
+                )}
               </div>
             )}
             {v2 && v2Pick && (
@@ -294,7 +317,7 @@ export default function PrinterSettings({
                 {v2Stage === "retry" && <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_ps_v2_other}</div>}
                 {v2Stage === "ask" && settings && (
                   <div style={{ marginTop: 10 }}>
-                    <div style={{ maxWidth: 220 }}><ExactStickerPreview settings={settings} cur={cur} shopName={storeName} v2={!!testComment} flags={{}} buyer={v2PictureBuyer} /></div>
+                    <div style={{ maxWidth: 220 }}><ExactStickerPreview settings={brandOf(v2Pick) === "niimbot" ? { ...settings, stickerSize: "50x30" } : settings} cur={cur} shopName={storeName} v2={!!testComment} flags={{}} buyer={v2PictureBuyer} extraAtlas /></div>
                     <div data-testid="ps-v2-ask" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginTop: 10 }}>{t.rd_ps_v2_ask}</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 8 }}>
                       <button data-testid="ps-v2-yes" onClick={() => void answerV2(true)} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_ps_v2_yes}</button>
@@ -302,9 +325,9 @@ export default function PrinterSettings({
                     </div>
                   </div>
                 )}
-                {v2Stage === "unsupported" && (
+                {(v2Stage === "unsupported" || v2Stage === "brand" || v2Stage === "fail") && (
                   <div style={{ marginTop: 10 }}>
-                    <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{t.rd_ps_gen_unsupported}</div>
+                    <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.45 }}>{v2Stage === "brand" ? t.rd_ps_v2_brand_soon : v2Stage === "fail" ? v2Fail : t.rd_ps_gen_unsupported}</div>
                     {/* A real anchor, tapped directly — the only external open that works in the iOS shell. */}
                     <a data-testid="ps-v2-contact" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ ...gridBtn, display: "block", textAlign: "center", textDecoration: "none", marginTop: 10 }}>{t.rd_ps_v2_contact}</a>
                   </div>

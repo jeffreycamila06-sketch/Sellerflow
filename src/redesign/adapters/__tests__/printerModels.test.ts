@@ -40,10 +40,11 @@ describe("known-model lookup", () => {
 });
 
 describe("language retry order", () => {
-  it("TSPL first, ESC/POS second, then nothing", () => {
-    expect(LANG_ORDER).toEqual(["tspl", "escpos"]);
+  it("TSPL first, ESC/POS second, CPCL third, then nothing", () => {
+    expect(LANG_ORDER).toEqual(["tspl", "escpos", "cpcl"]);
     expect(nextLang("tspl")).toBe("escpos");
-    expect(nextLang("escpos")).toBeNull();
+    expect(nextLang("escpos")).toBe("cpcl");
+    expect(nextLang("cpcl")).toBeNull();
   });
 });
 

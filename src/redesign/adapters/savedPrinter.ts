@@ -3,8 +3,11 @@
 // printerBridge.btCall), mirrored to localStorage so a cold open before the first native
 // answer still routes right. The native side is the truth; this is only its last echo.
 // Zero imports so printing.ts and printerBridge.ts can both read it without a cycle.
-export type PrinterLang = "tspl" | "escpos";
-export interface SavedBtPrinter { address: string; name: string; model?: "D520BT" | "generic"; lang?: PrinterLang }
+export type PrinterLang = "tspl" | "escpos" | "cpcl";
+export const PRINTER_LANGS: readonly PrinterLang[] = ["tspl", "escpos", "cpcl"];
+export const isPrinterLang = (v: unknown): v is PrinterLang => (PRINTER_LANGS as readonly unknown[]).includes(v);
+// transport: "ble" (GATT), "spp" (Android classic RFCOMM), "niimbot" (vendor SDK)
+export interface SavedBtPrinter { address: string; name: string; model?: "D520BT" | "generic"; lang?: PrinterLang; transport?: string }
 
 const LS_KEY = "sfl_rd_bt_printer";
 let saved: SavedBtPrinter | null | undefined; // undefined = nothing learned yet this session
@@ -16,7 +19,8 @@ function normalize(raw: unknown): SavedBtPrinter | null {
   if (!address) return null;
   const out: SavedBtPrinter = { address, name: typeof r.name === "string" ? r.name : "" };
   if (r.model === "generic" || r.model === "D520BT") out.model = r.model;
-  if (r.lang === "tspl" || r.lang === "escpos") out.lang = r.lang;
+  if (isPrinterLang(r.lang)) out.lang = r.lang;
+  if (typeof r.transport === "string" && r.transport) out.transport = r.transport;
   return out;
 }
 
@@ -39,7 +43,13 @@ export function savedBtPrinter(): SavedBtPrinter | null {
 export function savedGenericLang(): PrinterLang | null {
   const p = savedBtPrinter();
   if (!p || p.model !== "generic") return null;
-  return p.lang === "escpos" ? "escpos" : "tspl";
+  return p.lang && isPrinterLang(p.lang) ? p.lang : "tspl";
+}
+
+// A saved Niimbot (vendor-SDK driver, printer setup v2 Part 8): real orders print the
+// sticker IMAGE through the driver — checked BEFORE the language route.
+export function savedIsNiimbot(): boolean {
+  return savedBtPrinter()?.transport === "niimbot";
 }
 
 export function __resetSavedPrinter(): void { saved = undefined; try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ } }

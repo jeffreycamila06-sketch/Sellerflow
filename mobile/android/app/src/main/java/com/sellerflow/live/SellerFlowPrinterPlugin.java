@@ -105,14 +105,106 @@ public class SellerFlowPrinterPlugin extends Plugin {
         return genericTransport;
     }
 
+    /** Model "generic" saved through the v2 flow — on ANY transport (the web then routes the sticker IMAGE). */
+    private boolean isGenericModel() {
+        return "generic".equals(prefs().getString(PREF_BT_MODEL, ""));
+    }
+
+    // Niimbot (vendor SDK) — printer setup v2, Part 8. Separate transport; nothing else changes.
+    private NiimbotTransport niimbotTransport;
+    private synchronized NiimbotTransport niimbot() {
+        if (niimbotTransport == null) niimbotTransport = new NiimbotTransport(getContext());
+        return niimbotTransport;
+    }
+    private boolean isNiimbotSaved() { return "niimbot".equals(prefs().getString(PREF_BT_TRANSPORT, "spp")); }
+
+    /** The web's 1-bit sticker image ({w,h,rowBytes,data base64}) → one Niimbot label. */
+    private void printNiimbotImage(PluginCall call, String address, String name, String what) {
+        if (!NiimbotTransport.isAvailable()) { call.reject("Niimbot driver is not in this build.", "NIIMBOT_UNAVAILABLE"); return; }
+        JSObject img = call.getObject("image", null);
+        if (img == null) { call.reject(what + ": missing image", "BT_PRINT_FAILED"); return; }
+        final int w = img.optInt("w", 0), h = img.optInt("h", 0), rowBytes = img.optInt("rowBytes", 0);
+        final float wMm = (float) img.optDouble("labelWidthMm", 50), hMm = (float) img.optDouble("labelHeightMm", 30);
+        byte[] packed;
+        try { packed = android.util.Base64.decode(img.optString("data", ""), android.util.Base64.DEFAULT); }
+        catch (IllegalArgumentException e) { call.reject(what + ": invalid image data", "BT_PRINT_FAILED"); return; }
+        if (w <= 0 || h <= 0 || rowBytes <= 0 || packed == null || packed.length < rowBytes * h) { call.reject(what + ": bad image size", "BT_PRINT_FAILED"); return; }
+        niimbot().printImage(address, name, packed, w, h, rowBytes, wMm, hMm, r -> {
+            if (!r.ok) { Log.e(TAG, what + " (niimbot) failed: " + r.code + " " + r.message); call.reject(r.message, r.code); return; }
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            ret.put("model", "generic");
+            ret.put("transport", "niimbot");
+            ret.put("confirmed", true); // the SDK reports print completion
+            ret.put("statusHex", "");
+            ret.put("service", "niimbot");
+            ret.put("characteristic", "sdk");
+            ret.put("message", "Sent to printer");
+            call.resolve(ret);
+        });
+    }
+
+    /**
+     * Printer setup v2 (Part 8): print the web's sticker IMAGE on the saved printer.
+     * Only a saved Niimbot has an image driver; every other printer prints through the
+     * command-language paths (printRawTspl / printStickerBitmap / printStickerNative).
+     */
+    @PluginMethod
+    public void printStickerImage(PluginCall call) {
+        String address = prefs().getString(PREF_BT_ADDR, "");
+        if (address == null || address.isEmpty()) {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
+            return;
+        }
+        if (!isNiimbotSaved()) { call.reject("The saved printer has no image driver.", "NOT_NIIMBOT"); return; }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then print again.", "BT_PERMISSION");
+            return;
+        }
+        printNiimbotImage(call, address, prefs().getString(PREF_BT_NAME, ""), "printStickerImage");
+    }
+
+    /** Generic over BLE → the GenericBleTransport divert. A generic CLASSIC (spp) printer keeps the RFCOMM writer. */
     private boolean isGenericSaved() {
-        return "ble".equals(prefs().getString(PREF_BT_TRANSPORT, "spp"))
-            && "generic".equals(prefs().getString(PREF_BT_MODEL, ""));
+        return "ble".equals(prefs().getString(PREF_BT_TRANSPORT, "spp")) && isGenericModel();
     }
 
     /** "escpos" only when saved so by the v2 flow; anything else → "tspl". */
     private String savedGenericLang() {
-        return "escpos".equals(prefs().getString(PREF_BT_LANG, "")) ? "escpos" : "tspl";
+        String l = prefs().getString(PREF_BT_LANG, "");
+        return ("escpos".equals(l) || "cpcl".equals(l)) ? l : "tspl";
+    }
+
+    /**
+     * Send ready bytes to a PAIRED classic (RFCOMM/SPP) printer — printer setup v2, Android
+     * only. Same writer as the D520BT-over-SPP path (sendViaBluetoothSpp: connect, write,
+     * tail-out, close). Resolves "sent" after the write (classic printers send no DONE);
+     * never re-sends. Honest codes: BT_OFF / BT_UNAVAILABLE / BT_NOT_FOUND / BT_PRINT_FAILED.
+     */
+    private void printClassic(PluginCall call, byte[] data, String address, String what) {
+        try {
+            sendViaBluetoothSpp(address, data);
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            ret.put("bytes", data.length);
+            ret.put("model", "generic");
+            ret.put("transport", "spp");
+            ret.put("confirmed", false);
+            ret.put("statusHex", "");
+            ret.put("service", "spp");
+            ret.put("characteristic", "rfcomm");
+            ret.put("message", "Sent to printer");
+            call.resolve(ret);
+        } catch (Exception e) {
+            String m = e.getMessage() == null ? "" : e.getMessage();
+            Log.e(TAG, what + " (classic) failed: " + m);
+            String lm = m.toLowerCase(Locale.US);
+            String code = lm.contains("bluetooth is off") ? "BT_OFF"
+                : (lm.contains("not supported") ? "BT_UNAVAILABLE"
+                : ((lm.contains("read failed") || lm.contains("connect")) ? "BT_NOT_FOUND" : "BT_PRINT_FAILED"));
+            call.reject("Bluetooth print failed: " + m, code);
+        }
     }
 
     /** Send ready TSPL bytes to a generic BLE printer and resolve with the printer's answer. */
@@ -291,6 +383,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
                         if (tagRows) {
                             row.put("model", p.target ? "D520BT" : "generic");
                             row.put("likely", p.likely);
+                            if (BleStickerLogic.isNiimbotName(p.name)) row.put("brand", "niimbot");
                         }
                         merged.put(row);
                         if (p.address != null) bleSeen.put(p.address.toUpperCase(Locale.US), true);
@@ -302,9 +395,12 @@ public class SellerFlowPrinterPlugin extends Plugin {
                     String a = d.optString("address", "").toUpperCase(Locale.US);
                     if (bleSeen.containsKey(a)) continue; // BLE-preferred on MAC clash
                     if (tagRows) {
-                        boolean target = BleStickerLogic.isTargetPrinter(d.optString("name", ""), null);
+                        String bn = d.optString("name", "");
+                        boolean target = BleStickerLogic.isTargetPrinter(bn, null);
                         d.put("model", target ? "D520BT" : "generic");
-                        d.put("likely", target);
+                        // Classic (paired) printers advertise nothing — the printer-name list decides.
+                        d.put("likely", target || BleStickerLogic.isPrinterName(bn));
+                        if (BleStickerLogic.isNiimbotName(bn)) d.put("brand", "niimbot");
                     }
                     merged.put(d);
                 }
@@ -343,10 +439,13 @@ public class SellerFlowPrinterPlugin extends Plugin {
         // Transport comes from the scan row the seller picked (web forwards it):
         // "ble" for a BLE-discovered printer, else "spp". Anything unrecognized
         // (or absent — iOS/old web) falls back to "spp" = the unchanged path.
-        String transport = "ble".equals(call.getString("transport", "")) ? "ble" : "spp";
+        String tIn = call.getString("transport", "");
+        // "niimbot" (vendor SDK, v2 Part 8) rides the same slot; anything else = the old rule.
+        String transport = "ble".equals(tIn) ? "ble" : ("niimbot".equals(tIn) ? "niimbot" : "spp");
         // Generic only for a BLE printer saved through the test-gated flow; anything
         // else (D520BT, SPP, old web without the field) clears it → D520BT path.
-        boolean genericModel = "ble".equals(transport) && "generic".equals(call.getString("model", ""));
+        // v2: a generic printer may be BLE or classic (spp) — the web routes the sticker IMAGE for both.
+        boolean genericModel = "generic".equals(call.getString("model", ""));
         android.content.SharedPreferences.Editor edit = prefs().edit()
             .putString(PREF_BT_ADDR, address.trim())
             .putString(PREF_BT_NAME, name == null ? "" : name.trim())
@@ -355,7 +454,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
         else edit.remove(PREF_BT_MODEL);
         // v2: the language that printed the test sticker rides with a generic save only.
         String lang = call.getString("lang", "");
-        if (genericModel && ("tspl".equals(lang) || "escpos".equals(lang))) edit.putString(PREF_BT_LANG, lang);
+        if (genericModel && ("tspl".equals(lang) || "escpos".equals(lang) || "cpcl".equals(lang))) edit.putString(PREF_BT_LANG, lang);
         else edit.remove(PREF_BT_LANG);
         edit.apply();
         JSObject ret = new JSObject();
@@ -675,11 +774,20 @@ public class SellerFlowPrinterPlugin extends Plugin {
         final JSObject jsPayload = call.getObject("payload", new JSObject());
         final String addr = address.trim();
         final String b64 = call.getString("data", "");
+        // v2 classic printers (Android only): "spp" = a PAIRED device → the RFCOMM writer, one
+        // connect + write + close; no BLE scan, no GATT. Anything else = BLE.
+        final boolean classic = "spp".equals(call.getString("transport", ""));
+        if ("niimbot".equals(call.getString("transport", ""))) {
+            // v2 Part 8: a Niimbot test label through the vendor SDK (no save).
+            printNiimbotImage(call, addr, call.getString("name", ""), "testGenericPrinter");
+            return;
+        }
         executor.execute(() -> {
             try {
                 if (b64 != null && !b64.isEmpty()) {
                     byte[] raw = android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
                     if (raw == null || raw.length == 0) { call.reject("testGenericPrinter: empty data", "BT_PRINT_FAILED"); return; }
+                    if (classic) { printClassic(call, raw, addr, "testGenericPrinter"); return; }
                     printGeneric(call, raw, addr, "testGenericPrinter");
                     return;
                 }
@@ -721,7 +829,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
         p.put("name", name == null || name.isEmpty() ? "Bluetooth printer" : name);
         p.put("paired", true);
         p.put("transport", prefs().getString(PREF_BT_TRANSPORT, "spp"));
-        if (isGenericSaved()) { p.put("model", "generic"); p.put("lang", savedGenericLang()); }
+        if (isGenericModel()) { p.put("model", "generic"); p.put("lang", savedGenericLang()); }
         return p;
     }
 
