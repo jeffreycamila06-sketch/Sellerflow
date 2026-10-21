@@ -80,7 +80,11 @@
   document.getElementById("tip").textContent = s.tip;
 
   var PROD = "https://www.sellerflowlive.com/?apk=20260523-dark-mobile";
-  var target = (typeof window.SFL_SERVER_URL === "string" && window.SFL_SERVER_URL) ? window.SFL_SERVER_URL : PROD;
+  // Read at RETRY time (not page load): the native shim injects window.SFL_SERVER_URL, and the
+  // injection can land after this script ran. Production URL when it is still missing.
+  function retryTarget() {
+    return (typeof window.SFL_SERVER_URL === "string" && window.SFL_SERVER_URL) ? window.SFL_SERVER_URL : PROD;
+  }
 
   // Failed tries within the last 2 minutes (this local page reloads on every failure).
   var KEY = "sfl_offline_tries";
@@ -103,7 +107,7 @@
   function go() {
     if (timer) clearTimeout(timer);
     document.getElementById("c").textContent = s.c.replace("{n}", "0");
-    window.location.replace(target);
+    window.location.replace(retryTarget());
   }
   document.getElementById("b").addEventListener("click", go);
   tick();
