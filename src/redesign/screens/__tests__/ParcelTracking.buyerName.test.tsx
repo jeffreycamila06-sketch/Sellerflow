@@ -29,7 +29,7 @@ let n = 0;
 const mk = (over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
   id: `r${++n}`, trackingNo: `F0000${n}`, cmOrderNo: null, buyerUsername: `buyer${n}`, recipientName: null,
   storeId: "Store A", recStore: null, status: "at_store", statusMessage: null, pickupDeadline: "2026-09-28",
-  arrivedAt: null, shipType: "C2C", specialType: null, terminal: false, ...over,
+  arrivedAt: null, shipType: "C2C", specialType: null, terminal: false, orderAmount: null, ...over,
 });
 const ROWS = [
   mk({ buyerUsername: "@Maria_Shop" }), // matched (case + @ differ from the customer notes)

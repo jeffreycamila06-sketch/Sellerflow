@@ -14,7 +14,7 @@ function row(id: string, pickupDeadline: string | null): ParcelTrackingRow {
   return {
     id, trackingNo: id, cmOrderNo: null, buyerUsername: null, recipientName: null,
     storeId: null, recStore: null, status: "at_store", statusMessage: null,
-    pickupDeadline, arrivedAt: null, shipType: "C2C", specialType: null, terminal: false,
+    pickupDeadline, arrivedAt: null, shipType: "C2C", specialType: null, terminal: false, orderAmount: null,
   };
 }
 
