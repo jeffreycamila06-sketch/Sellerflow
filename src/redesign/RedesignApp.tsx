@@ -2292,6 +2292,29 @@ export default function RedesignApp() {
   }, [auth.status]);
   // Self-delete: the same cleanups as Logout once the account is gone, then the full reload.
   // leavingRef holds the automatic reload back until the cleanups ran (released on failure).
+  // Audit Oct 13 (5): a shared device keeps nothing of this shop for the next one.
+  // Audit Oct 14 (1): then sign out (awaited, time-boxed) and reload the whole app, so no
+  // in-memory state (feed, buyers, report caches, Buyer Alert, products) reaches the next account.
+  // Audit Oct 22 (3): with orders still unsaved, one final save first; if any remain, the seller
+  // is warned (modal) and only "Log out anyway" proceeds — and then the queued orders are KEPT
+  // (owner-tagged: written when this seller signs in again, never for another account).
+  const [logoutWarn, setLogoutWarn] = useState<number | null>(null);
+  const doLogout = (keepQueued: boolean) => {
+    const me = auth.profile?.authUserId;
+    if (!keepQueued) outbox.dropOwner(me);
+    clearProductsCacheFor(me);
+    resetAnalytics();
+    leavingRef.current = true;
+    setLogoutWarn(null);
+    setScreen("login");
+    void signOutAndReload(auth.signOut);
+  };
+  const requestLogout = async () => {
+    if (outbox.pendingMine() > 0) { try { await outbox.flush(); } catch { /* the count below decides */ } }
+    const n = outbox.pendingMine();
+    if (n > 0) { setLogoutWarn(n); return; }
+    doLogout(false);
+  };
   const onDeleteAccount = async () => {
     const me = auth.profile?.authUserId;
     leavingRef.current = true;
@@ -2530,19 +2553,7 @@ export default function RedesignApp() {
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
-              onLogout={() => {
-                // Audit Oct 13 (5): a shared device keeps nothing of this shop for the next one.
-                // Audit Oct 14 (1): then sign out (awaited, time-boxed) and reload the whole app,
-                // so no in-memory state (feed, buyers, report caches, Buyer Alert, products)
-                // reaches the next account.
-                const me = auth.profile?.authUserId;
-                outbox.dropOwner(me);
-                clearProductsCacheFor(me);
-                resetAnalytics();
-                leavingRef.current = true;
-                setScreen("login");
-                void signOutAndReload(auth.signOut);
-              }}
+              onLogout={() => { void requestLogout(); }}
               isAdmin={isAdmin}
               onParcelScan={parcelAllowed ? openParcelScan : undefined}
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}
@@ -2763,6 +2774,18 @@ export default function RedesignApp() {
             onConnectShopee={(shopId, sessionId) => commitLiveConnect({ platform: "Shopee", shopId, sessionId })}
             onUpsell={() => { setLiveConnectPlatform(null); if (ios) setIosExpired(true); else setUpsellOpen(true); }}
           />
+        )}
+        {logoutWarn !== null && (
+          <div onClick={() => setLogoutWarn(null)} style={{ position: "fixed", inset: 0, zIndex: 1350, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} data-testid="logout-warn-overlay">
+            <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, background: "var(--surface)", borderRadius: 18, padding: "22px 20px 18px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{tApp.rd_sh_logout}</div>
+              <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, marginBottom: 18 }}>{tpl(tApp.rd_outbox_logout_warn, { n: logoutWarn })}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setLogoutWarn(null)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="logout-warn-cancel">{tApp.rd_ls_switch_cancel}</button>
+                <button onClick={() => doLogout(true)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="logout-warn-anyway">{tApp.rd_outbox_logout_anyway}</button>
+              </div>
+            </div>
+          </div>
         )}
         {switchConfirm && (
           <div onClick={() => setSwitchConfirm(null)} style={{ position: "fixed", inset: 0, zIndex: 1350, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} data-testid="livesource-switch-overlay">
