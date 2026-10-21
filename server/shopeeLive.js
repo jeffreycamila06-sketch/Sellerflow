@@ -346,6 +346,7 @@ export function createShopeeRuntime(deps) {
   // "" (old client / missing) → the client's `c.sessionId && …` filter passes it through.
   function startPoller({ sellerId, userId, shopId, shopUsername, shopSessionId, sessionId = "" }) {
     const key = liveKey(sellerId, "Shopee", String(shopId));
+    const prev = pollers.get(key);
     stopPoller(key, "restart"); // single poller per shop
     const nowMs = now();
     const entry = {
@@ -407,7 +408,8 @@ export function createShopeeRuntime(deps) {
     app.post("/shopee/connect", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
       const userId = req.authUserId;
       const sellerId = req.sellerId;
-      const shopId = String(req.body.shop_id || "");
+      const body = req.body || {};
+      const shopId = String(body.shop_id || "");
       // ⚠️ SESSION DETECTION: no confirmed "current live session for shop" endpoint,
       // so the client supplies session_id (from the seller's Shopee live). If a
       // detect endpoint is confirmed later, resolve it here and ignore the body.
@@ -415,7 +417,7 @@ export function createShopeeRuntime(deps) {
       //   session_id = the SHOPEE live session (what we poll)        → shopSessionId
       //   sessionId  = the connecting BROWSER session (like TikTok/FB) → stamped on every
       //                comment + status so only the tapping device receives the live flow.
-      const shopSessionId = String(req.body.session_id || "");
+      const shopSessionId = String(body.session_id || "");
       if (!shopId) return res.status(400).json({ ok: false, error: "shop_id required" });
       let shop;
       try { shop = await store.getShop(userId, shopId); } catch { shop = null; }
@@ -425,12 +427,13 @@ export function createShopeeRuntime(deps) {
         if (!v.allow) return res.status(403).json({ ok: false, error: "account_not_covered" });
       }
       if (!shopSessionId) return res.json({ ok: false, reason: "not_live" });
-      startPoller({ sellerId, userId, shopId, shopUsername: String(shopId), shopSessionId, sessionId: String(req.body.sessionId || "") });
+      startPoller({ sellerId, userId, shopId, shopUsername: String(shopId), shopSessionId, sessionId: String(body.sessionId || "") });
       return res.json({ ok: true, session_id: shopSessionId });
     });
 
     app.post("/shopee/disconnect", requireAuth, (req, res) => {
-      const shopId = String(req.body.shop_id || "");
+      const body = req.body || {};
+      const shopId = String(body.shop_id || "");
       const key = liveKey(req.sellerId, "Shopee", shopId);
       const stopped = stopPoller(key, "disconnect");
       return res.json({ ok: true, stopped });

@@ -842,18 +842,19 @@ app.post("/disconnect/tiktok", requireAuth, async (req, res) => {
 app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
   // Build 2 — only a NEW connect is checked: a live already running for this account (the
   // reuse path) is never asked about; health reconnects never come through this route.
-  const tkKey = liveKey(req.sellerId, "TikTok", req.body.username);
-  const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(tkKey);
+  const body = req.body || {};
+  const tkKey = liveKey(req.sellerId, "TikTok", body.username);
+  const isNew = !!cleanAccountKey(body.username) && !tiktokConnections.has(tkKey);
   if (isNew) liveAdmissions.forget(tkKey);
-  const live = isNew ? await accountLiveCheck(req, "tiktok", req.body.username) : null;
+  const live = isNew ? await accountLiveCheck(req, "tiktok", body.username) : null;
   // Reuse path (live already running): the options it was admitted with, no database call.
-  const reject = accountCapReject(req, "TikTok", req.body.username, live || liveAdmissions.optionsFor(tkKey));
+  const reject = accountCapReject(req, "TikTok", body.username, live || liveAdmissions.optionsFor(tkKey));
   if (reject) return res.status(403).json(reject);
   if (live && !live.allow) return res.status(403).json(ACCOUNT_LIVE_REFUSAL);
   if (live) liveAdmissions.remember(tkKey, live, (k) => tiktokConnections.has(k));
-  return connectTikTok(req.body.username, res, {
+  return connectTikTok(body.username, res, {
     sellerId: req.sellerId,
-    sessionId: req.body.sessionId,
+    sessionId: body.sessionId,
     // Concurrency cap (server-authoritative plan from requirePlanActive → checkPlanActive;
     // undefined on a fail-open DB error → concurrencyCap returns null → no cap).
     plan: req.sellerPlan,
@@ -863,8 +864,9 @@ app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, 
 
 app.post("/connect/facebook", requireAuth, requireConnectRate, requirePlanActive, (req, res) => {
   const sellerId = req.sellerId;
-  const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
-  const sessionId = String(req.body.sessionId || "");
+  const body = req.body || {};
+  const username = cleanAccountKey(body.username || body.liveVideoId || body.pageName);
+  const sessionId = String(body.sessionId || "");
 
   if (!sellerId) {
     return res.status(400).json({
