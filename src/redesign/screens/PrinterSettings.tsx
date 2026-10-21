@@ -188,7 +188,7 @@ export default function PrinterSettings({
     setV2Fail(k ? t[k] : t.rd_ps_test_failed); setV2Stage("fail");
   }
   async function nextOrGiveUp(p: BluetoothPrinterDevice, lang: PrinterLang) {
-    const n = nextLang(lang);
+    const n = nextLang(lang, hasNiimbotBridge()); // CPCL only on a build that can store it
     if (n) { await tryLang(p, n); return; }
     setV2Stage("unsupported");
   }
@@ -201,6 +201,14 @@ export default function PrinterSettings({
       ? { address: p.address, name: p.name, transport: "niimbot", model: "generic" } // no language: the driver takes the image
       : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: v2Lang };
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
+    // The language the seller just confirmed must be the one native STORED (an older build
+    // that only knows tspl/escpos echoes tspl, or nothing): never keep a wrong language —
+    // clear the save and say "not supported yet" instead.
+    if (!niimbot && (r?.savedPrinter?.lang ?? "tspl") !== v2Lang) {
+      await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter");
+      setBtSaved(null); setBtMsg(""); setV2Stage("unsupported");
+      return;
+    }
     setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
     setV2Pick(null); setV2Stage("idle");
   }

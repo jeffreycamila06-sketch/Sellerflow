@@ -33,6 +33,7 @@ function installBridge(opts: { generic?: boolean; niimbot?: boolean; osTooOld?: 
   const b: Bridge = {
     scanBluetoothLabelPrinters: vi.fn(async () => ({ ok: true, printers: [D520, Y41, NEW, WATCH, NIIMBOT, CLASSIC] })),
     getBluetoothLabelPrinter: vi.fn(async () => ({ ok: true, savedPrinter: null })),
+    clearBluetoothLabelPrinter: vi.fn(async () => ({ ok: true, savedPrinter: null })),
     setBluetoothLabelPrinter: vi.fn(async (p: BluetoothPrinterDevice) => ({ ok: true, savedPrinter: { ...p, paired: true } })),
     getPrinter: vi.fn(async () => ({ ok: false })),
     printStickerNative: vi.fn(async () => ({ ok: true, confirmed: false })),
@@ -181,7 +182,7 @@ describe("v2 new printer", () => {
   });
 
   it("No → ESC/POS → No → CPCL → Yes saves generic/cpcl (one sticker + one question per language)", async () => {
-    const b = installBridge();
+    const b = installBridge({ niimbot: true }); // a NEW build (has printStickerImage) → CPCL is allowed
     renderBT({ flowV2: true });
     await scan();
     fireEvent.click(screen.getByText("LabelThing-9"));
@@ -200,7 +201,7 @@ describe("v2 new printer", () => {
   });
 
   it("No three times → not supported yet + Contact Admin (a real Telegram anchor); nothing saved", async () => {
-    const b = installBridge();
+    const b = installBridge({ niimbot: true }); // new build → 3 languages
     renderBT({ flowV2: true });
     await scan();
     fireEvent.click(screen.getByText("LabelThing-9"));
@@ -217,7 +218,7 @@ describe("v2 new printer", () => {
   });
 
   it("a printer with nothing to write to (BT_NOT_SUPPORTED) skips the questions and ends unsupported after the 3 tries", async () => {
-    const b = installBridge({ test: async () => { throw Object.assign(new Error("not supported"), { code: "BT_NOT_SUPPORTED" }); } });
+    const b = installBridge({ niimbot: true, test: async () => { throw Object.assign(new Error("not supported"), { code: "BT_NOT_SUPPORTED" }); } });
     renderBT({ flowV2: true });
     await scan();
     fireEvent.click(screen.getByText("LabelThing-9"));
@@ -225,6 +226,34 @@ describe("v2 new printer", () => {
     expect(b.testGenericPrinter).toHaveBeenCalledTimes(3);
     expect(screen.queryByTestId("ps-v2-ask")).toBeNull();
     expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
+  });
+
+  it("OLD build (no printStickerImage): TSPL → ESC/POS → not supported; CPCL is never tried", async () => {
+    const b = installBridge();
+    renderBT({ flowV2: true });
+    await scan();
+    fireEvent.click(screen.getByText("LabelThing-9"));
+    fireEvent.click(await screen.findByTestId("ps-v2-no"));
+    await waitFor(() => expect(b.testGenericPrinter).toHaveBeenCalledTimes(2));
+    expect(Array.from(dataOf(b.testGenericPrinter.mock.calls[1][0]).subarray(0, 2))).toEqual([0x1b, 0x40]); // ESC/POS
+    fireEvent.click(await screen.findByTestId("ps-v2-no"));
+    expect(await screen.findByText(t.rd_ps_gen_unsupported)).toBeTruthy();
+    expect(b.testGenericPrinter).toHaveBeenCalledTimes(2); // no CPCL on an old build
+    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
+  });
+
+  it("the language native echoes back differs from the confirmed one → not supported, the save is cleared", async () => {
+    const b = installBridge({ niimbot: true });
+    b.setBluetoothLabelPrinter = vi.fn(async (p: BluetoothPrinterDevice) => ({ ok: true, savedPrinter: { ...p, lang: "tspl", paired: true } })); // native only knows tspl
+    renderBT({ flowV2: true });
+    await scan();
+    fireEvent.click(screen.getByText("LabelThing-9"));
+    fireEvent.click(await screen.findByTestId("ps-v2-no")); // → ESC/POS
+    fireEvent.click(await screen.findByTestId("ps-v2-yes")); // seller confirms ESC/POS
+    expect(await screen.findByText(t.rd_ps_gen_unsupported)).toBeTruthy();
+    expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith(expect.objectContaining({ lang: "escpos" }));
+    expect(b.clearBluetoothLabelPrinter).toHaveBeenCalledTimes(1); // the wrong-language save never stays
+    expect(screen.queryByText(t.rd_ps_bt_saved)).toBeNull();
   });
 
   it("classic (paired, Android): the test goes over spp and the save keeps transport spp", async () => {

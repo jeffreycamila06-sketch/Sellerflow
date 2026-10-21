@@ -72,10 +72,14 @@ export function brandOf(p: Pick<BluetoothPrinterDevice, "name" | "brand">): Prin
 }
 
 // New printer: TSPL first (the D520BT/Y41BT language), ESC/POS second, CPCL third; then give up.
+// CPCL only when the app build can STORE it (`cpclSupported` — the settings screen passes
+// hasNiimbotBridge(), the marker of a build new enough to know the third language); an older
+// build stops after ESC/POS instead of saving a language it would silently turn into tspl.
 export const LANG_ORDER: readonly PrinterLang[] = ["tspl", "escpos", "cpcl"];
-export function nextLang(tried: PrinterLang): PrinterLang | null {
+export function nextLang(tried: PrinterLang, cpclSupported = true): PrinterLang | null {
   const i = LANG_ORDER.indexOf(tried);
-  return i >= 0 && i + 1 < LANG_ORDER.length ? LANG_ORDER[i + 1] : null;
+  const n = i >= 0 && i + 1 < LANG_ORDER.length ? LANG_ORDER[i + 1] : null;
+  return n === "cpcl" && !cpclSupported ? null : n;
 }
 
 // The gate: app_settings `printer_flow_v2` for everyone; admins and the test_printers

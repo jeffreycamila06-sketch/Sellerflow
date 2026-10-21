@@ -45,6 +45,9 @@ describe("language retry order", () => {
     expect(nextLang("tspl")).toBe("escpos");
     expect(nextLang("escpos")).toBe("cpcl");
     expect(nextLang("cpcl")).toBeNull();
+    // an app build that cannot store CPCL stops after ESC/POS
+    expect(nextLang("tspl", false)).toBe("escpos");
+    expect(nextLang("escpos", false)).toBeNull();
   });
 });
 
