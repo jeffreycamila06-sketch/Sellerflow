@@ -207,7 +207,8 @@ public class BleStickerLogicTest {
     @Test
     public void isNiimbotName_onlyNiimbotModels() {
         assertTrue(BleStickerLogic.isNiimbotName("B1-I603042141"));
-        assertTrue(BleStickerLogic.isNiimbotName("d11-0001"));
+        assertTrue(BleStickerLogic.isNiimbotName("b21-0001"));
+        assertFalse(BleStickerLogic.isNiimbotName("D11-0001")); // narrow-head models are not listed for now
         assertFalse(BleStickerLogic.isNiimbotName("XP-P323B"));
         assertFalse(BleStickerLogic.isNiimbotName("Y41BT-0FC4_LE"));
         assertFalse(BleStickerLogic.isNiimbotName(null));

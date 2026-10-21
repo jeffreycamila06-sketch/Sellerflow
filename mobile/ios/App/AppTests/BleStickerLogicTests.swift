@@ -212,7 +212,8 @@ final class BleStickerLogicTests: XCTestCase {
 
     func testIsNiimbotNameOnlyNiimbotModels() {
         XCTAssertTrue(BleStickerLogic.isNiimbotName("B1-I603042141"))
-        XCTAssertTrue(BleStickerLogic.isNiimbotName("d11-0001"))
+        XCTAssertTrue(BleStickerLogic.isNiimbotName("b21-0001"))
+        XCTAssertFalse(BleStickerLogic.isNiimbotName("D11-0001")) // narrow-head models are not listed for now
         XCTAssertFalse(BleStickerLogic.isNiimbotName("XP-P323B"))
         XCTAssertFalse(BleStickerLogic.isNiimbotName("Y41BT-0FC4_LE"))
         XCTAssertFalse(BleStickerLogic.isNiimbotName(nil))
