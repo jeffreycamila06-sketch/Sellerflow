@@ -120,6 +120,10 @@ export function genericDebugLine(r: Pick<GenericPrintResult, "confirmed" | "serv
 export interface NiimbotImage { w: number; h: number; rowBytes: number; data: string; labelWidthMm: number; labelHeightMm: number }
 export const hasNiimbotBridge = (): boolean =>
   typeof window !== "undefined" && typeof (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.printStickerImage === "function";
+// iOS only: the Niimbot driver lives in an embedded framework that needs iOS 17.2+; the shell
+// sets this flag on older iOS so the settings screen says so BEFORE any test print.
+export const niimbotOsTooOld = (): boolean =>
+  typeof window !== "undefined" && (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.niimbotOsTooOld === true;
 
 // One test sticker to a printer that is NOT saved. `job` = the native TSPL text sticker
 // ({ payload }), ready bytes the web built ({ data: base64 } — the sticker image in the

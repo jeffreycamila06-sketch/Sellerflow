@@ -94,6 +94,8 @@ describe("transport selection", () => {
     expect(niimbotErrorKey("NIIMBOT_COVER_OPEN")).toBe("rd_nb_cover_open");
     expect(niimbotErrorKey("NIIMBOT_PAPER_TYPE")).toBe("rd_nb_paper_type");
     expect(niimbotErrorKey("NIIMBOT_LOW_BATTERY")).toBe("rd_nb_low_battery");
+    expect(niimbotErrorKey("NIIMBOT_OS_TOO_OLD")).toBe("rd_nb_os_too_old"); // iOS < 17.2 (the driver framework is never loaded)
+    expect(niimbotErrorKey("NIIMBOT_UNAVAILABLE")).toBe("rd_nb_os_too_old"); // the framework could not be loaded
     expect(niimbotErrorKey("BT_NOT_FOUND")).toBeNull();
     expect(niimbotErrorKey("NIIMBOT_ERROR")).toBeNull();
     expect(niimbotErrorKey("")).toBeNull();

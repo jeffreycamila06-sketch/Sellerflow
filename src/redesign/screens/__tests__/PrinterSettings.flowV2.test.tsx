@@ -29,7 +29,7 @@ const NIIMBOT: BluetoothPrinterDevice = { id: "bluetooth:NN", address: "NN:NN", 
 const CLASSIC: BluetoothPrinterDevice = { id: "bluetooth:EE", address: "EE:EE", name: "XP-P323B", transport: "spp", model: "generic", likely: false, paired: true }; // Android paired receipt printer
 
 type Bridge = Record<string, ReturnType<typeof vi.fn>>;
-function installBridge(opts: { generic?: boolean; niimbot?: boolean; test?: (a: unknown) => Promise<unknown> } = {}): Bridge {
+function installBridge(opts: { generic?: boolean; niimbot?: boolean; osTooOld?: boolean; test?: (a: unknown) => Promise<unknown> } = {}): Bridge {
   const b: Bridge = {
     scanBluetoothLabelPrinters: vi.fn(async () => ({ ok: true, printers: [D520, Y41, NEW, WATCH, NIIMBOT, CLASSIC] })),
     getBluetoothLabelPrinter: vi.fn(async () => ({ ok: true, savedPrinter: null })),
@@ -41,6 +41,7 @@ function installBridge(opts: { generic?: boolean; niimbot?: boolean; test?: (a: 
   };
   if (opts.generic !== false) b.testGenericPrinter = vi.fn(opts.test ?? (async () => ({ ok: true, confirmed: false, statusHex: "0107", service: "FF00", characteristic: "FF02" })));
   if (opts.niimbot) b.printStickerImage = vi.fn(async () => ({ ok: true, confirmed: true })); // the app build has the Niimbot driver
+  if (opts.osTooOld) (b as unknown as Record<string, unknown>).niimbotOsTooOld = true; // iOS < 17.2: the shell flags it
   (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter = b;
   return b;
 }
@@ -292,6 +293,23 @@ describe("v2 new printer", () => {
     await screen.findByText(/D520BT-Z/);
     fireEvent.click(screen.getByText("B1-I603042141"));
     expect(await screen.findByText(t.rd_ps_test_failed)).toBeTruthy();
+  });
+
+  it("Niimbot on iOS < 17.2: no test print, the 'needs iOS 17' message + Contact Admin, nothing saved", async () => {
+    const b = installBridge({ niimbot: true, osTooOld: true });
+    renderBT({ flowV2: true });
+    await scan();
+    fireEvent.click(screen.getByText("B1-I603042141"));
+    expect(await screen.findByText(t.rd_nb_os_too_old)).toBeTruthy();
+    expect(screen.getByTestId("ps-v2-contact").getAttribute("href")).toBe(TELEGRAM_URL);
+    expect(b.testGenericPrinter).not.toHaveBeenCalled();
+    expect(b.printStickerImage).not.toHaveBeenCalled();
+    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
+    // the other rows are untouched by the flag: a generic printer still tests normally
+    fireEvent.click(screen.getByText(new RegExp(t.rd_ps_scan)));
+    await screen.findByText(/D520BT-Z/);
+    fireEvent.click(screen.getByText("LabelThing-9"));
+    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
   });
 
   it("admin sees the debug line after a test print", async () => {

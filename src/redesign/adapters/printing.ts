@@ -253,7 +253,11 @@ export function isPrinterNotSetup(code: string, message: string): boolean {
 
 // PURE — a Niimbot driver failure the seller can fix themselves → the i18n key to show
 // (plain words, no codes). Any other code = the usual print-failed wording.
-const NIIMBOT_ERROR_KEYS = { NIIMBOT_NO_PAPER: "rd_nb_no_paper", NIIMBOT_COVER_OPEN: "rd_nb_cover_open", NIIMBOT_PAPER_TYPE: "rd_nb_paper_type", NIIMBOT_LOW_BATTERY: "rd_nb_low_battery" } as const;
+const NIIMBOT_ERROR_KEYS = {
+  NIIMBOT_NO_PAPER: "rd_nb_no_paper", NIIMBOT_COVER_OPEN: "rd_nb_cover_open", NIIMBOT_PAPER_TYPE: "rd_nb_paper_type", NIIMBOT_LOW_BATTERY: "rd_nb_low_battery",
+  // iOS: the driver framework needs iOS 17.2+ (NIIMBOT_OS_TOO_OLD) or could not be loaded (NIIMBOT_UNAVAILABLE) — same seller message
+  NIIMBOT_OS_TOO_OLD: "rd_nb_os_too_old", NIIMBOT_UNAVAILABLE: "rd_nb_os_too_old",
+} as const;
 export type NiimbotErrorKey = (typeof NIIMBOT_ERROR_KEYS)[keyof typeof NIIMBOT_ERROR_KEYS];
 export function niimbotErrorKey(code: string): NiimbotErrorKey | null {
   return (NIIMBOT_ERROR_KEYS as Record<string, NiimbotErrorKey>)[code] ?? null;

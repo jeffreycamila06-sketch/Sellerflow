@@ -143,6 +143,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     private static let buildNumberShimLine = iosBuildNumber > 0
         ? "window.SellerFlowPrinter.getBuildNumber = function(){ return \(iosBuildNumber); };"
         : ""
+    // Niimbot (printer setup v2 Part 8): the driver is an embedded framework for iOS 17.2+.
+    // On older iOS the web shows "needs iOS 17" on a Niimbot row instead of trying to print.
+    private static let niimbotOsShimLine = NiimbotTransport.isAvailable
+        ? ""
+        : "window.SellerFlowPrinter.niimbotOsTooOld = true;"
 
     // Offline screen (www/offline.html, Capacitor server.errorPath): the page retries THIS
     // url — the configured server.url — so a preview/test shell retries its own site.
@@ -164,6 +169,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
       var cap = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SellerFlowPrinter;
       if (!cap) return;
       window.SellerFlowPrinter = window.SellerFlowPrinter || {};
+      \(niimbotOsShimLine)
       \(buildNumberShimLine)
       window.SellerFlowPrinter.setPrinter = function(c){ return cap.setPrinter(c || {}); };
       window.SellerFlowPrinter.getPrinter = function(){ return cap.getPrinter(); };
@@ -1051,7 +1057,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// The web's 1-bit sticker image ({w,h,rowBytes,data base64,labelWidthMm,labelHeightMm}) → one Niimbot label.
     private func printNiimbotImage(_ call: CAPPluginCall, name: String, what: String) {
-        guard NiimbotTransport.isAvailable else { call.reject("Niimbot driver is not in this build.", "NIIMBOT_UNAVAILABLE"); return }
+        // The driver is an embedded framework that needs iOS 17.2+; on older iOS it is never loaded.
+        guard NiimbotTransport.isAvailable else { call.reject("This printer needs iOS 17.2 or newer.", "NIIMBOT_OS_TOO_OLD"); return }
         guard let img = call.getObject("image") else { call.reject("\(what): missing image", "BT_PRINT_FAILED"); return }
         let w = (img["w"] as? NSNumber)?.intValue ?? 0
         let h = (img["h"] as? NSNumber)?.intValue ?? 0

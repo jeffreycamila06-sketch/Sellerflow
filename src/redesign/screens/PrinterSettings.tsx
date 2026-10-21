@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer,
-  hasGenericPrinterBridge, testGenericPrinter, genericDebugLine, hasNiimbotBridge,
+  hasGenericPrinterBridge, testGenericPrinter, genericDebugLine, hasNiimbotBridge, niimbotOsTooOld,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
 import { buildNativeStickerPayload, buildGenericStickerBytes, buildNiimbotImage, niimbotErrorKey, printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
@@ -148,7 +148,11 @@ export default function PrinterSettings({
   async function pickV2(p: BluetoothPrinterDevice) {
     if (v2Stage !== "idle" || !settings) return;
     setV2Pick(p); setV2Debug(""); setBtMsg("");
-    if (brandOf(p) === "niimbot") { if (hasNiimbotBridge()) await tryNiimbot(p); else setV2Stage("brand"); return; }
+    if (brandOf(p) === "niimbot") {
+      if (niimbotOsTooOld()) { setV2Fail(t.rd_nb_os_too_old); setV2Stage("fail"); return; } // iOS < 17.2: no test print, say why
+      if (hasNiimbotBridge()) await tryNiimbot(p); else setV2Stage("brand");
+      return;
+    }
     if (isKnownPrinter(p)) {
       setV2Stage("saving");
       const save = p.model === "D520BT"
