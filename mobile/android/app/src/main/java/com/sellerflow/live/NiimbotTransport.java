@@ -58,10 +58,8 @@ final class NiimbotTransport {
         try { Class.forName("com.gengcon.www.jcprintersdk.JCPrintApi"); return true; } catch (Throwable t) { return false; }
     }
 
-    /** Print density per model family (SDK docs: B-series 1–5 default 3; D-series / B18 1–3 default 2). */
+    /** Print density: only B-series 50 mm models are listed (SDK docs: B-series 1–5, default 3). */
     static int densityFor(String name) {
-        String n = name == null ? "" : name.trim().toUpperCase(Locale.US);
-        if (n.startsWith("D11") || n.startsWith("D110") || n.startsWith("D101") || n.startsWith("B18")) return 2;
         return 3;
     }
 

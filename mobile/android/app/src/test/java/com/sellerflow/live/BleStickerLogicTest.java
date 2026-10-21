@@ -189,9 +189,9 @@ public class BleStickerLogicTest {
 
     @Test
     public void isPrinterName_matchesListCaseInsensitive() {
-        for (String n : new String[] {"B1-I603042141", "b21-ABC", "D110-1234", "XP-P323B", "Xprinter_58", "Printer_8A2F",
-                "PRT-200", "PT-210", "MPT-II", "GP-1324D", "HM-A300", "M110-C9", "M02S", "Q30_01", "T02-xx",
-                "HPRT N41", "Munbyn ITPP941", "RPP02N", "Gprinter GP-3120", "Zjiang ZJ-5802"}) {
+        for (String n : new String[] {"B1-I603042141", "b21-ABC", "B203-77", "XP-P323B", "Xprinter_58", "Printer_8A2F",
+                "PRT-200", "PT-210", "MPT-II", "GP-1324D", "M110-C9", "M02S", "Q30_01", "T02-xx",
+                "HPRT N41", "Munbyn ITPP941", "Gprinter GP-3120", "Zjiang ZJ-5802"}) {
             assertTrue(n, BleStickerLogic.isPrinterName(n));
         }
     }

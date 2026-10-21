@@ -13,16 +13,17 @@ export type { PrinterLang };
 // (BleStickerLogic.printerNamePrefixes) copies are pinned equal to this list by
 // printerNames.contract.test.ts — change all three together.
 export const PRINTER_NAME_PREFIXES: readonly string[] = [
-  // Niimbot (vendor SDK driver — see isNiimbotName)
-  "B1-", "B18-", "B21-", "B203-", "B3S-", "D11-", "D110-", "D101-", "H1S-",
-  // Xprinter / generic receipt + label printers
-  "XP-", "Xprinter", "Printer", "PRT", "PT-", "MPT", "GP-", "HM-",
+  // Niimbot B-series 50 mm models (vendor SDK driver — see isNiimbotName). The narrow-head
+  // D11/D110/D101/H1S/B18 are NOT listed for now: they take the normal "not found / show all" path.
+  "B1-", "B21-", "B203-", "B3S-",
+  // Xprinter / generic receipt + label printers ("HM-" and "RP" were dropped: they match non-printers)
+  "XP-", "Xprinter", "Printer", "PRT", "PT-", "MPT", "GP-",
   // Phomemo M-series + Q30/T02
   "M02", "M110", "M120", "M200", "M220", "M221", "Q30", "T02",
   // HPRT, Munbyn, Rongta (RP), Gprinter, Zjiang
-  "HPRT", "Munbyn", "RP", "Gprinter", "Zjiang",
+  "HPRT", "Munbyn", "Gprinter", "Zjiang",
 ];
-export const NIIMBOT_NAME_PREFIXES: readonly string[] = ["B1-", "B18-", "B21-", "B203-", "B3S-", "D11-", "D110-", "D101-", "H1S-"];
+export const NIIMBOT_NAME_PREFIXES: readonly string[] = ["B1-", "B21-", "B203-", "B3S-"];
 
 const startsWithAny = (name: string | undefined | null, prefixes: readonly string[]): boolean => {
   const n = String(name || "").trim().toUpperCase();

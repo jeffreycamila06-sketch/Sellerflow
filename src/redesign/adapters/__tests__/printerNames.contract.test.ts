@@ -26,17 +26,19 @@ describe("printer-name list parity", () => {
 
 describe("name match", () => {
   it("printers by name, case-insensitive", () => {
-    for (const n of ["B1-I603042141", "b21-ABC", "D110-1234", "XP-P323B", "Xprinter_58", "Printer_8A2F", "PRT-200", "PT-210", "MPT-II", "GP-1324D", "HM-A300", "M110-C9", "M02S", "Q30_01", "T02-xx", "HPRT N41", "Munbyn ITPP941", "RPP02N", "Gprinter GP-3120", "Zjiang ZJ-5802"]) {
+    for (const n of ["B1-I603042141", "b21-ABC", "B203-77", "B3S-01", "XP-P323B", "Xprinter_58", "Printer_8A2F", "PRT-200", "PT-210", "MPT-II", "GP-1324D", "M110-C9", "M02S", "Q30_01", "T02-xx", "HPRT N41", "Munbyn ITPP941", "Gprinter GP-3120", "Zjiang ZJ-5802"]) {
       expect(matchesPrinterName(n), n).toBe(true);
     }
   });
   it("never a heart-rate band, headphones, watch, laptop, phone", () => {
-    for (const n of ["Polar H10 1234", "WH-1000XM4", "Galaxy Watch4", "Jeff MacBook Pro", "Pixel 8", "AirPods Pro", "Mi Band 7", "", undefined]) {
+    for (const n of ["Polar H10 1234", "WH-1000XM4", "Galaxy Watch4", "Jeff MacBook Pro", "Pixel 8", "AirPods Pro", "Mi Band 7", "HM-A300", "RPP02N", "", undefined]) {
       expect(matchesPrinterName(n), String(n)).toBe(false);
     }
   });
   it("Niimbot by name → brand niimbot; others no brand", () => {
     expect(isNiimbotName("B1-I603042141")).toBe(true);
+    // narrow-head models are not listed for now → normal "not found / show all" path
+    for (const n of ["D11-1234", "D110-1234", "D101-1", "H1S-1", "B18-1"]) { expect(isNiimbotName(n), n).toBe(false); expect(matchesPrinterName(n), n).toBe(false); }
     expect(isNiimbotName("XP-P323B")).toBe(false);
     expect(brandOf({ name: "B1-I603042141" })).toBe("niimbot");
     expect(brandOf({ name: "XP-P323B", brand: "niimbot" })).toBe("niimbot"); // native tag wins

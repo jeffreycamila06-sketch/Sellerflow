@@ -136,14 +136,14 @@ final class BleStickerLogic {
     // PRINTER_NAME_PREFIXES) and iOS (BleStickerLogic.printerNamePrefixes) copies by
     // printerNames.contract.test.ts — change all three together.
     static final String[] PRINTER_NAME_PREFIXES = {
-        "B1-", "B18-", "B21-", "B203-", "B3S-", "D11-", "D110-", "D101-", "H1S-",
-        "XP-", "Xprinter", "Printer", "PRT", "PT-", "MPT", "GP-", "HM-",
+        "B1-", "B21-", "B203-", "B3S-",
+        "XP-", "Xprinter", "Printer", "PRT", "PT-", "MPT", "GP-",
         "M02", "M110", "M120", "M200", "M220", "M221", "Q30", "T02",
-        "HPRT", "Munbyn", "RP", "Gprinter", "Zjiang",
+        "HPRT", "Munbyn", "Gprinter", "Zjiang",
     };
     /** Niimbot models (vendor SDK driver, not a command language). */
     static final String[] NIIMBOT_NAME_PREFIXES = {
-        "B1-", "B18-", "B21-", "B203-", "B3S-", "D11-", "D110-", "D101-", "H1S-",
+        "B1-", "B21-", "B203-", "B3S-",
     };
 
     private static boolean startsWithAny(String name, String[] prefixes) {

@@ -18,10 +18,8 @@ import Foundation
 import UIKit
 
 enum NiimbotKitLogic {
-    /// Print density per model family (SDK docs: B-series 1–5 default 3; D-series / B18 1–3 default 2).
+    /// Print density: only B-series 50 mm models are listed (SDK docs: B-series 1–5, default 3).
     static func density(forName name: String?) -> Int {
-        let n = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if n.hasPrefix("D11") || n.hasPrefix("D110") || n.hasPrefix("D101") || n.hasPrefix("B18") { return 2 }
         return 3
     }
 
