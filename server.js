@@ -1817,6 +1817,7 @@ async function connectTikTok(username, res, meta = {}) {
   let sessionId = "";
   let cleanUsername = "";
   let forcedFresh = false; // B2 — a stale existing connection was replaced on this tap
+  let acquired = false;    // Audit Oct 22 (7): this call holds the per-key connect lock (+ reservation)
   try {
     if (!username) {
       return res.status(400).json({
@@ -1970,6 +1971,7 @@ async function connectTikTok(username, res, meta = {}) {
     // kick-await window below. Released in the finally. (The concurrency reservation
     // below guards the CROSS-account race; this key lock guards the same-account race.)
     tiktokConnectLocks.add(key);
+    acquired = true; // Audit Oct 22 (7): only the tap that took the lock releases it (a 429'd double tap must not free the first tap's lock + reservation)
 
     // ── PER-SELLER CONCURRENCY CAP (kick-oldest) — NEW accounts only. Synchronous
     // critical section: snapshot → decide → RESERVE (before any await) so parallel
@@ -2068,8 +2070,8 @@ async function connectTikTok(username, res, meta = {}) {
       error: error.message,
     });
   } finally {
-    if (key) tiktokConnectLocks.delete(key);
-    if (key) liveConnectReservations.delete(key); // release the concurrency reservation (success or failure)
+    if (acquired) tiktokConnectLocks.delete(key);
+    if (acquired) liveConnectReservations.delete(key); // release the concurrency reservation (success or failure)
   }
 }
 
