@@ -98,14 +98,15 @@ describe("TikTok /connect route (server.js source contract)", () => {
   const src = readFileSync("server.js", "utf8");
   const route = src.slice(src.indexOf('app.post("/connect/tiktok"'), src.indexOf('app.post("/connect/facebook"'));
   it("asks only for a NEW connect (no running connection, non-empty name)", () => {
-    expect(route).toContain('const tkKey = liveKey(req.sellerId, "TikTok", req.body.username);');
-    expect(route).toContain("const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(tkKey);");
-    expect(route).toContain('const live = isNew ? await accountLiveCheck(req, "tiktok", req.body.username) : null;');
+    expect(route).toContain("const body = req.body || {};"); // Audit Oct 22 (9)
+    expect(route).toContain('const tkKey = liveKey(req.sellerId, "TikTok", body.username);');
+    expect(route).toContain("const isNew = !!cleanAccountKey(body.username) && !tiktokConnections.has(tkKey);");
+    expect(route).toContain('const live = isNew ? await accountLiveCheck(req, "tiktok", body.username) : null;');
   });
   it("reuse path: the remembered options, no database call; a new connect forgets then remembers", () => {
     const i = (x: string) => route.indexOf(x);
     expect(route).toContain("if (isNew) liveAdmissions.forget(tkKey);");
-    expect(route).toContain('accountCapReject(req, "TikTok", req.body.username, live || liveAdmissions.optionsFor(tkKey))');
+    expect(route).toContain('accountCapReject(req, "TikTok", body.username, live || liveAdmissions.optionsFor(tkKey))');
     expect(route).toContain("if (live) liveAdmissions.remember(tkKey, live, (k) => tiktokConnections.has(k));");
     expect(i("liveAdmissions.forget(")).toBeLessThan(i("accountLiveCheck("));
     expect(i("if (live && !live.allow)")).toBeLessThan(i("liveAdmissions.remember("));

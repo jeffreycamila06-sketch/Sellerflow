@@ -47,7 +47,7 @@ describe("(8) in-flight questions", () => {
   });
   it("chat save fails after the AI answered → the cost row is still recorded, the seller still gets the answer", async () => {
     let calls = 0;
-    const save = vi.fn(async (row: Record<string, unknown>) => { calls++; if (calls === 1) throw Object.assign(new Error("boom"), { code: "23514" }); return "cost-1"; });
+    const save = vi.fn(async (_row: Record<string, unknown>) => { calls++; if (calls === 1) throw Object.assign(new Error("boom"), { code: "23514" }); return "cost-1"; });
     const { d, logs } = deps({ save });
     const r = await ask(d);
     expect(r.answer).toBe("Tap Print.");
