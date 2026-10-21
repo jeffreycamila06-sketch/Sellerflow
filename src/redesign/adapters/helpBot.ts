@@ -17,6 +17,17 @@ export interface AskResult { ok: boolean; id?: string; source?: HelpSource; answ
 export const helpBotVisible = (switchOn: boolean, preview: boolean, isAdmin: boolean, ios = false, iosOn = false): boolean =>
   switchOn && (!ios || iosOn) && (preview || isAdmin);
 
+// Audit Oct 22 (10): the help bot is for PAID sellers — basic / plus / pro / master, not expired
+// (status, and plan_expiry when set). Free sellers don't see it. The server checks the same rule
+// (server/helpBot.js isPaidPlanRow) before answering.
+export const HELP_BOT_PAID_PLANS = ["basic", "plus", "pro", "master"];
+export function helpBotPaid(plan: string | null | undefined, planStatus: string | null | undefined, planExpiry: string | null | undefined, nowMs = Date.now()): boolean {
+  if (!HELP_BOT_PAID_PLANS.includes(String(plan || "").trim().toLowerCase())) return false;
+  if (String(planStatus || "").trim().toLowerCase() === "expired") return false;
+  if (planExpiry) { const t = new Date(planExpiry).getTime(); if (Number.isFinite(t) && t <= nowMs) return false; }
+  return true;
+}
+
 // The platform sent with every question — the server answers iPhone with stricter rules.
 export function helpBotPlatform(ios: boolean): "ios" | "android" | "web" {
   if (ios) return "ios";

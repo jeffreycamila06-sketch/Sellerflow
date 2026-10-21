@@ -295,6 +295,18 @@ export const parseOutputCheck = (text) => {
 
 export const HANDOFF_ANSWER = "Admin will help you with this on Telegram.";
 export const LIMIT_ANSWER = "Help chat limit reached for now. Admin can help you on Telegram.";
+
+// Audit Oct 22 (10): the help bot is for PAID sellers — basic / plus / pro / master, not
+// expired (status, and plan_expiry when set). Admin and the support_ai_preview list are
+// checked by the caller before this. Same rule on the client (adapters/helpBot.ts helpBotPaid).
+export const PAID_PLANS = ["basic", "plus", "pro", "master"];
+export function isPaidPlanRow(row, nowMs = Date.now()) {
+  if (!row) return false;
+  if (!PAID_PLANS.includes(String(row.plan || "").trim().toLowerCase())) return false;
+  if (String(row.plan_status || "").trim().toLowerCase() === "expired") return false;
+  if (row.plan_expiry) { const t = new Date(row.plan_expiry).getTime(); if (Number.isFinite(t) && t <= nowMs) return false; }
+  return true;
+}
 export const ERROR_ANSWER = "Sorry, I couldn't answer that right now. Admin can help you on Telegram.";
 
 // deps: { settings, matchFaq(q), usage(userId), faqs(), guide(), callModel(args), save(row) }

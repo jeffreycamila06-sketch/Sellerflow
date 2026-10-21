@@ -6,7 +6,7 @@ import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { readFile } from "fs/promises";
-import { answerQuestion, callClaude, createGuideSource } from "./server/helpBot.js";
+import { answerQuestion, callClaude, createGuideSource, isPaidPlanRow } from "./server/helpBot.js";
 import { normPlatform } from "./src/lib/helpBotGuard.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
@@ -973,7 +973,8 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
 });
 
 // Help bot (sql/116). OFF unless app_settings.support_ai_enabled = 'true' AND the caller is an
-// admin or on the 'support_ai_preview' list (feature_access_emails). user_id comes from the JWT
+// admin, on the 'support_ai_preview' list (feature_access_emails), or a PAID seller — plan
+// basic/plus/pro/master, not expired (Audit Oct 22, 10; same rule as the app). user_id comes from the JWT
 // only. The answer logic lives in server/helpBot.js (tested); this is wiring. Logs: counts and
 // codes only — never question/answer text, emails or tokens.
 // The bot's knowledge = support_guide rows (sql/116, seeded by sql/116b), cached 5 minutes, so
@@ -1013,8 +1014,10 @@ async function helpBotAllowed(req) {
   const email = String(req.userEmail || "").trim().toLowerCase();
   if (!email) return false;
   const { data, error } = await serviceSb.from("feature_access_emails").select("email,is_prefix").eq("feature", "support_ai_preview");
-  if (error) return false;
-  return (data || []).some((r) => r.email === email || (r.is_prefix && email.startsWith(r.email)));
+  if (!error && (data || []).some((r) => r.email === email || (r.is_prefix && email.startsWith(r.email)))) return true;
+  // Paid sellers (Audit Oct 22, 10). A read error = not allowed (fail closed — it is a cost gate).
+  const prof = await serviceSb.from("seller_profiles").select("plan, plan_status, plan_expiry").eq("auth_user_id", String(req.authUserId || "")).maybeSingle();
+  return !prof.error && isPaidPlanRow(prof.data);
 }
 
 app.post("/support/ask", requireAuth, async (req, res) => {

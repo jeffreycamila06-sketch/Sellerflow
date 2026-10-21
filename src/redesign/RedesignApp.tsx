@@ -64,7 +64,7 @@ import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthS
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
 import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
-import { helpBotVisible, useHelpBotSwitch } from "./adapters/helpBot";
+import { helpBotVisible, helpBotPaid, useHelpBotSwitch } from "./adapters/helpBot";
 import { tiktokSendAllowed } from "./adapters/tiktokSend";
 import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -2564,7 +2564,7 @@ export default function RedesignApp() {
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
-              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios, helpBotIosOn)}
+              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview") || helpBotPaid(auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry), isAdmin, ios, helpBotIosOn)}
             />
           )}
           {screen === "settings" && (
