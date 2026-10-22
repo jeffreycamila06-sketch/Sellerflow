@@ -66,6 +66,7 @@ import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformVie
 import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
 import { helpBotVisible, helpBotPaid, useHelpBotSwitch } from "./adapters/helpBot";
 import { tiktokSendAllowed } from "./adapters/tiktokSend";
+import { pastSessionsAllowed } from "./adapters/pastSessions";
 import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
@@ -2545,6 +2546,7 @@ export default function RedesignApp() {
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
             tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
+            pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
             sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}

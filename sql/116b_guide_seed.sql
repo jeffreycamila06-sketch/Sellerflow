@@ -202,6 +202,11 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - You can edit each item before you send.
 - When it''s ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don''t see **Send**, ask Admin.'),
+  ('past-sessions', 'See orders from past lives', '2026-10-23'::date, 'past sessions, past live, previous session, old orders, reprint old sticker, nakaraang session, lumang orders, i-reprint, 过去的场次, 之前的直播, 過去場次, 舊訂單, 重印', '- On **Orders**, tap **🗓 Sessions ▾**, then pick a past session (its dates and order count are shown).
+- You see that session''s orders and buyer totals; type a buyer number to see one buyer.
+- Tap **Reprint** on an order to print its sticker again; confirm once per past session.
+- Past sessions are read-only. Tap **This session** to go back to today.
+- If you don''t see **🗓 Sessions ▾** yet, it''s not turned on for your account.'),
   ('sales', 'Sales screen', '2026-10-15'::date, 'sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额', 'Open **Sales** in the bottom bar.
 
 - Pick a range: **Today**, **This session**, **Last 7 days** or **Custom**.
@@ -416,5 +421,5 @@ on conflict (id) do update set
   body = excluded.body, updated_at = now()
 where (support_guide.title, support_guide.checked, support_guide.keywords, support_guide.body)
   is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body);
-delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support');
+delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support');
 commit;

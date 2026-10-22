@@ -48,7 +48,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping, shippingSoon = false,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
-  tiktokSend = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow,
+  tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   shippingSoon?: boolean; // Build 16: non-admin seller → the 🚚 button shows "Coming soon" and never opens Shipping
@@ -81,6 +81,10 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // boolean; false/absent = the card exactly as before). Read-only: copies a message + opens the
   // buyer's profile; nothing is written. sellerId keys the saved note.
   tiktokSend?: boolean; sellerId?: string;
+  // The "This session + Past sessions" picker (read-only, incl. past-session Reprint) — admin,
+  // the "tiktok_send" list, or every seller while the past_sessions_public switch is on
+  // (RedesignApp passes pastSessionsAllowed). A Send to TikTok user always has it too.
+  pastSessions?: boolean;
   // The current session's start + length → the Send message date ("10/08 → 10/10" when multi-day).
   sessionStartedAt?: string | null; sessionWindowDays?: number | null;
   // Past-session Reprint: prints the STORED row of that order (zero-write, like onReprintOrder).
@@ -94,9 +98,11 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // A hidden Facebook pill can never stay selected (an admin switching "View as platform").
   const platformFilter: PlatformFilter = hideFbPill && platformFilterRaw === "Facebook" ? "all" : platformFilterRaw;
   const [range, setRange] = useState<DateRange>("session");                    // F4 (default = today's behavior)
-  // Send to TikTok testers only have "This session" + past sessions: if the switch/feature turns
-  // on after another range was picked, go back to This session.
-  if (tiktokSend && range !== "session") setRange("session");
+  // Sessions mode = the picker (This session + past sessions) — for pastSessions users and, as
+  // today, every Send to TikTok user. If it turns on after another range was picked, go back
+  // to This session.
+  const sessionsMode = pastSessions || tiktokSend;
+  if (sessionsMode && range !== "session") setRange("session");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -119,9 +125,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // A pure-digit query that EXACTLY matches a buyer# → show the receipt box ONLY
   // (Option A). EXACT `num ===`, so "1" is buyer #1, never #10/#11 (contains).
   const trimmed = query.trim();
-  // Past-session picker (tiktokSend testers only): a picked past session feeds ONLY this
-  // numeric buyer-# card — read-only, separate state (pastSessions.ts). null = Current.
-  const past = usePastSessions(tiktokSend, sessionId);
+  // Past-session picker (sessions mode): a picked past session feeds ONLY this numeric
+  // buyer-# card — read-only, separate state (pastSessions.ts). null = Current.
+  const past = usePastSessions(sessionsMode, sessionId);
   const pastSel = past.selected;
   const pastShow = pastSel && pastLimit?.id === pastSel.id ? pastLimit.n : PAST_PAGE;
   const receiptBuyers = pastSel ? past.buyers : buyers;
@@ -181,8 +187,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // it is byte-identical to today; when a filter is active the summary bar carries
   // the accurate counts.
   const defaultView = range === "session" && platformFilter === "all" && !pastSel;
-  // Send to TikTok users count by session ("Session · N"); everyone else keeps "Today · N".
-  const badgeWord = tiktokSend ? t.rd_ord_badge_session : t.rd_ord_today;
+  // Sessions mode counts by session ("Session · N"); everyone else keeps "Today · N".
+  const badgeWord = sessionsMode ? t.rd_ord_badge_session : t.rd_ord_today;
   const badge = state === "loading" ? `${badgeWord} · …`
     : searching ? `${receipt ? receipt.count : matchCount}` : `${badgeWord} · ${orders.length}`;
 
@@ -389,14 +395,14 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </div>
           {/* date-range selector — pill button → menu (custom reveals two date inputs) */}
           <div style={{ position: "relative", marginLeft: "auto", flexShrink: 0 }}>
-            <button className="sfl-tap44" onClick={() => { const opening = !rangeOpen; setRangeOpen(opening); if (opening && tiktokSend) void past.ensureList(); }} data-testid="ord-range" aria-haspopup="menu" aria-expanded={rangeOpen}
-              style={pastSel ? { ...rangeBtn, border: "1px solid #f59e0b", background: "#fef3c7", color: "#92400e" } : rangeBtn}>🗓 {tiktokSend ? t.rd_ord_sessions_btn : rangeLabel} ▾</button>
+            <button className="sfl-tap44" onClick={() => { const opening = !rangeOpen; setRangeOpen(opening); if (opening && sessionsMode) void past.ensureList(); }} data-testid="ord-range" aria-haspopup="menu" aria-expanded={rangeOpen}
+              style={pastSel ? { ...rangeBtn, border: "1px solid #f59e0b", background: "#fef3c7", color: "#92400e" } : rangeBtn}>🗓 {sessionsMode ? t.rd_ord_sessions_btn : rangeLabel} ▾</button>
             {rangeOpen && (
               <>
                 <div onClick={() => setRangeOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                {tiktokSend ? (
-                  /* Send to TikTok testers: session-only menu — This session + past sessions
-                     (read-only, separate state — pastSessions.ts). */
+                {sessionsMode ? (
+                  /* Sessions mode: session-only menu — This session + past sessions
+                     (read-only, separate state — pastSessions.ts). Scrolls when long. */
                   <div role="menu" style={{ ...rangeMenu, minWidth: 250, maxHeight: 360, overflowY: "auto" }}>
                     <button role="menuitem" onClick={() => pickRange("session")} data-testid="ord-range-session" style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: !pastSel ? "var(--accent-soft)" : "transparent", border: "none", color: !pastSel ? "var(--accent-fg)" : "var(--text)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ord_range_session}</button>
                     <div data-testid="ord-past-heading" style={{ borderTop: "1px solid var(--border)", padding: "9px 14px 4px", fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em", color: "var(--text-muted)" }}>{t.rd_psn_past}</div>
@@ -562,7 +568,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           <>
             {paidFlag && paidErr && <div role="alert" data-testid="ord-paid-error" style={{ ...noteStyle, color: "var(--danger)" }}>{t.rd_ord_paid_failed}</div>}
             {state === "loading" && <div style={noteStyle}>{t.rd_ord_loading}</div>}
-            {state === "empty" && !searching && <div style={noteStyle}>{tiktokSend ? t.rd_ord_empty_session : t.rd_ord_empty}</div>}
+            {state === "empty" && !searching && <div style={noteStyle}>{sessionsMode ? t.rd_ord_empty_session : t.rd_ord_empty}</div>}
             {shown.map((o, idx) => row(o, idx, false))}
             {shownHist.map((o, idx) => row(o, idx, true))}
             {/* Search states below the results: still-fetching chip · the 7-day

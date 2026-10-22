@@ -308,6 +308,16 @@ Keywords: send to tiktok, send message, message buyer, copy message, edit item, 
 - When it's ready, tap **Copy and open TikTok**, then **Send** in TikTok.
 - Some accounts only — if you don't see **Send**, ask Admin.
 
+## past-sessions — See orders from past lives
+Last checked: 2026-10-23
+Keywords: past sessions, past live, previous session, old orders, reprint old sticker, nakaraang session, lumang orders, i-reprint, 过去的场次, 之前的直播, 過去場次, 舊訂單, 重印
+
+- On **Orders**, tap **🗓 Sessions ▾**, then pick a past session (its dates and order count are shown).
+- You see that session's orders and buyer totals; type a buyer number to see one buyer.
+- Tap **Reprint** on an order to print its sticker again; confirm once per past session.
+- Past sessions are read-only. Tap **This session** to go back to today.
+- If you don't see **🗓 Sessions ▾** yet, it's not turned on for your account.
+
 ## sales — Sales screen
 Last checked: 2026-10-15
 Keywords: sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额

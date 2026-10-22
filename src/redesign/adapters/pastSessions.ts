@@ -1,4 +1,7 @@
-// Past sessions in Orders (Send to TikTok testers: admin OR "tiktok_send", switch on).
+// Past sessions in Orders — the "This session + Past sessions" picker. Who sees it
+// (pastSessionsAllowed): an admin, a seller on the "tiktok_send" list, or EVERY signed-in seller
+// (any plan, free included) while the app_settings switch past_sessions_public is 'true'
+// (sql/134). Separate from Send to TikTok, which keeps its own gate (tiktokSendAllowed).
 // READ-ONLY and SEPARATE STATE: these rows never reach liveSession, buyer numbering, Auto
 // Mode, Sales or shipping. They feed only the Orders screen's past-session view: the order
 // list, the buyer-# card + Send, Export, and Reprint (which prints the STORED row, found by its
@@ -15,6 +18,10 @@ import type { Order } from "../data";
 import type { Buyer } from "../../lib/orderTypes";
 import { loadLiveSessionBySessionId } from "./useSessionWindow";
 import { log } from "../../lib/log";
+
+/** Who sees the past-session picker: admin, the "tiktok_send" preview list, or anyone while the
+ *  past_sessions_public switch is on. Independent of the Send to TikTok gate. PURE. */
+export const pastSessionsAllowed = (isAdmin: boolean, listed: boolean, publicSwitch: boolean): boolean => isAdmin || listed || publicSwitch;
 
 export interface SessionSummary {
   id: string;
