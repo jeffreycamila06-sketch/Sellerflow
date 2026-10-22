@@ -26,6 +26,11 @@ const HTML_RETURNED = `var searchResults = [{"paymentNo":"E79829464311","recStor
 //     at_store + returning_soon (must NOT be classified returned).
 const HTML_AT_STORE_WARN = `var searchResults = [{"paymentNo":"F11122233344","recStore":"中壢華強","recDate":"2026/09/20","orderAmount":200,"status":1,"statusMessage":"包裹配達取件門市","shipStatusDetails":[{"notificationName":"包裹今日23:59後將退回物流中心"},{"notificationName":"包裹配達取件門市"},{"notificationName":"包裹等待配送中"},{"notificationName":"貨運已取件，包裹將送往物流中心"},{"notificationName":"寄件門市已收件"},{"notificationName":"訂單已成立，尚未至門市寄件"}],"shipType":"C2C","specialType":null}];`;
 
+// (6) PICKED UP ON THE LAST-CHANCE DAY — the newest step is the pickup, the 將退回 warning
+//     sits right below it, NO RETURNED_KW anywhere. Must be picked_up (terminal), not
+//     at_store/"Returning" forever (84 production parcels were stuck like this).
+const HTML_PICKED_UP_LAST_DAY = `var searchResults = [{"paymentNo":"F99988877766","recStore":"中壢華強","recDate":"2026/10/20","orderAmount":280,"status":1,"statusMessage":"已完成包裹取件","shipStatusDetails":[{"notificationName":"已完成包裹取件"},{"notificationName":"包裹今日23:59後將退回物流中心"},{"notificationName":"包裹配達取件門市"},{"notificationName":"包裹等待配送中"},{"notificationName":"貨運已取件，包裹將送往物流中心"},{"notificationName":"寄件門市已收件"},{"notificationName":"訂單已成立，尚未至門市寄件"}],"shipType":"C2C","specialType":null}];`;
+
 // (5) HOME DELIVERY — C2C but specialType present → chaseable=false.
 const HTML_HOME_DELIVERY = `var searchResults = [{"paymentNo":"F55566677788","recStore":"","recDate":"","orderAmount":300,"status":1,"statusMessage":"包裹進行配送中","shipStatusDetails":[{"notificationName":"包裹進行配送中"}],"shipType":"C2C","specialType":"4.店到宅服務單"}];`;
 
@@ -76,6 +81,15 @@ describe("mapStatus — locked from the 3 real samples", () => {
   it("(d) at_store + 將退回物流 warning → at_store + returning_soon (NOT returned)", () => {
     const r = one(HTML_AT_STORE_WARN);
     expect(mapStatus(r.statusMessage, r.shipStatusDetails)).toMatchObject({ status: "at_store", terminal: false, known: true, returning_soon: true });
+  });
+  it("(e) picked up ON the last-chance day (newest = 已完成包裹取件 above the 將退回 warning, no 退) → picked_up terminal, step = the pickup", () => {
+    const r = one(HTML_PICKED_UP_LAST_DAY);
+    expect(r.shipType).toBe("C2C");
+    const m = mapStatus(r.statusMessage, r.shipStatusDetails);
+    expect(m).toEqual({ status: "picked_up", terminal: true, known: true, returning_soon: true, step: "已完成包裹取件" });
+    // the fix sits in step 2 only: (c) stays returned and (d) stays at_store (checked above too)
+    expect(mapStatus(one(HTML_RETURNED).statusMessage, one(HTML_RETURNED).shipStatusDetails).status).toBe("returned");
+    expect(mapStatus(one(HTML_AT_STORE_WARN).statusMessage, one(HTML_AT_STORE_WARN).shipStatusDetails).status).toBe("at_store");
   });
   it("the in_transit 貨運已取件 step is never misread as picked_up", () => {
     expect(mapStatus("貨運已取件，包裹將送往物流中心", [{ notificationName: "貨運已取件，包裹將送往物流中心" }]).status).toBe("in_transit");
