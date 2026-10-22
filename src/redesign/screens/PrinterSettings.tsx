@@ -217,7 +217,7 @@ export default function PrinterSettings({
     return (
       <button key={p.id || p.address} data-testid="ps-v2-row" onClick={() => void pickV2(p)} disabled={v2Stage !== "idle"} style={{ ...rowBtn, opacity: v2Stage !== "idle" ? 0.6 : 1 }}>
         <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.address}{p.transport === "spp" ? <span data-testid="ps-v2-classic" style={{ fontFamily: "var(--font-ui)", marginLeft: 6 }}>· {t.rd_ps_v2_classic}</span> : null}</span></span>
-        <span data-testid={known ? "ps-v2-known" : "ps-v2-new"} style={pill(known)}>{known ? t.rd_ps_v2_works : t.rd_ps_v2_new}</span>
+        <span data-testid={known ? "ps-v2-known" : brandOf(p) === "niimbot" ? "ps-v2-brand" : "ps-v2-new"} style={pill(known)}>{known ? t.rd_ps_v2_works : brandOf(p) === "niimbot" ? "Niimbot" : t.rd_ps_v2_new}</span>
       </button>
     );
   };

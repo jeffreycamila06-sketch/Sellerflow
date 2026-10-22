@@ -99,7 +99,8 @@ describe("v2 scan list", () => {
     expect(screen.getByText("XP-P323B")).toBeTruthy();
     expect(screen.getByTestId("ps-v2-classic").textContent).toContain(t.rd_ps_v2_classic); // Android paired = classic tag
     expect(screen.getAllByTestId("ps-v2-known")).toHaveLength(2); // D520BT + Y41BT
-    expect(screen.getAllByTestId("ps-v2-new")).toHaveLength(3);
+    expect(screen.getAllByTestId("ps-v2-new")).toHaveLength(2); // NEW + classic XP
+    expect(screen.getByTestId("ps-v2-brand").textContent).toBe("Niimbot"); // the Niimbot row is named, not "New"
     expect(screen.queryByText(/\(Test\)/)).toBeNull();
     expect(screen.queryByText(t.rd_ps_classic_text)).toBeNull();
   });
@@ -282,6 +283,7 @@ describe("v2 new printer", () => {
     const b = installBridge({ niimbot: true });
     renderBT({ flowV2: true });
     await scan();
+    expect(screen.getByTestId("ps-v2-brand").textContent).toBe("Niimbot"); // the row says what it is, not "New"
     fireEvent.click(screen.getByText("B1-I603042141"));
     expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
     expect(b.testGenericPrinter).toHaveBeenCalledTimes(1);

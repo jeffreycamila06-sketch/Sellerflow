@@ -53,5 +53,35 @@ final class NiimbotLoaderTests: XCTestCase {
         }
     }
 
+    // The image the SDK gets: a plain RGBA PNG with black ink on white, same pixel geometry as
+    // the 1-bit sticker image. A blank label is exactly what a wrong polarity / unreadable
+    // format would produce, so the conversion is pinned here.
+    func testPackedBitsBecomeBlackOnWhiteRgbaPng() {
+        let w = 384, h = 240, rowBytes = 48
+        var packed = Data(count: rowBytes * h)
+        packed[0] = 0x80            // (0,0) ink
+        packed[10 * rowBytes + 3] = 0x01 // (31,10) ink
+        guard let png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes), let img = UIImage(data: png), let cg = img.cgImage else {
+            return XCTFail("png conversion failed")
+        }
+        XCTAssertEqual(cg.width, w); XCTAssertEqual(cg.height, h)
+        XCTAssertEqual(NiimbotImage.inkPixels(in: img), 2)
+        // pixel probe through a gray context: ink = 0, paper = 255
+        var gray = [UInt8](repeating: 9, count: w * h)
+        gray.withUnsafeMutableBytes { buf in
+            let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        XCTAssertEqual(gray[0], 0)                       // (0,0) black
+        XCTAssertEqual(gray[10 * w + 31], 0)             // (31,10) black
+        XCTAssertEqual(gray[1], 255); XCTAssertEqual(gray[w * h - 1], 255) // paper white
+        XCTAssertNil(NiimbotImage.png(packed: Data(count: 10), w: w, h: h, rowBytes: rowBytes)) // short data → nil, never a blank label
+    }
+
+    func testAllWhiteImageHasZeroInk() {
+        let png = NiimbotImage.png(packed: Data(count: 48 * 240), w: 384, h: 240, rowBytes: 48)!
+        XCTAssertEqual(NiimbotImage.inkPixels(in: UIImage(data: png)!), 0)
+    }
+
     private static var loaded = false
 }
