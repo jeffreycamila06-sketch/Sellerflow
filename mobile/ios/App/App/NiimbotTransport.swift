@@ -8,10 +8,12 @@
 // print answers a seller-level code (NIIMBOT_OS_TOO_OLD / NIIMBOT_UNAVAILABLE) — never a crash.
 //
 // The web sends the 1-bit sticker image (rows packed MSB first, bit 1 = ink); NiimbotImage turns
-// it into a plain RGBA PNG (black ink on white) — the form the SDK's DrawLableImage decodes —
-// BEFORE the framework is involved, so the conversion is unit-tested in AppTests.
+// it into an OPAQUE 8-bit RGB PNG with no alpha (black ink on white) BEFORE the framework is
+// involved, so the conversion is unit-tested in AppTests. A calibration pattern can replace the
+// sticker (see NiimbotImage.calibrationKey) to prove on paper whether any image prints.
 import Foundation
 import UIKit
+import ImageIO
 
 struct NiimbotResult {
     let ok: Bool
@@ -20,24 +22,82 @@ struct NiimbotResult {
 }
 
 enum NiimbotImage {
-    /// Packed 1-bit rows → RGBA PNG bytes (opaque, black = ink, white = paper). nil = bad geometry.
+    /// Calibration switch (B1 field test): launch with the Xcode scheme argument
+    /// `-sfl_niimbot_calibration YES` (Edit Scheme → Run → Arguments Passed On Launch) and
+    /// every Niimbot print sends the thick-border + centre-box pattern instead of the sticker,
+    /// so the paper proves whether ANY image prints. Remove the argument to switch it off.
+    static let calibrationKey = "sfl_niimbot_calibration"
+    static var calibrationOn: Bool { UserDefaults.standard.bool(forKey: calibrationKey) }
+
+    /// Packed 1-bit rows → an OPAQUE 8-bit RGB PNG, no alpha channel, black ink (0,0,0) on
+    /// white (255,255,255). Polarity = the rasterizer's full buffer (stickerRaster.ts
+    /// renderStickerBitmap: MSB-first, bit 1 = INK) — exactly what the web sends for Niimbot.
+    /// nil = bad geometry.
     static func png(packed: Data, w: Int, h: Int, rowBytes: Int) -> Data? {
         guard w > 0, h > 0, rowBytes > 0, packed.count >= rowBytes * h else { return nil }
-        var rgba = [UInt8](repeating: 255, count: w * h * 4) // white, alpha 255
-        packed.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            for y in 0..<h {
-                for x in 0..<w where (raw[y * rowBytes + (x >> 3)] & UInt8(0x80 >> (x & 7))) != 0 {
-                    let i = (y * w + x) * 4
-                    rgba[i] = 0; rgba[i + 1] = 0; rgba[i + 2] = 0 // ink: black
-                }
+        return rgbPng(w: w, h: h) { x, y in
+            packed.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in (raw[y * rowBytes + (x >> 3)] & UInt8(0x80 >> (x & 7))) != 0 }
+        }
+    }
+
+    /// The calibration pattern for a 50×30 label at 8 dots/mm (400×240): a 20-dot black
+    /// border and a 160×96 black box in the centre. Opaque RGB, no alpha.
+    static func calibrationPattern(w: Int = 400, h: Int = 240) -> Data? {
+        let border = 20, boxW = 160, boxH = 96
+        let bx0 = (w - boxW) / 2, by0 = (h - boxH) / 2
+        return rgbPng(w: w, h: h) { x, y in
+            x < border || y < border || x >= w - border || y >= h - border
+                || (x >= bx0 && x < bx0 + boxW && y >= by0 && y < by0 + boxH)
+        }
+    }
+
+    /// Opaque RGB PNG writer: an `ink(x,y)` predicate → black on white, 8 bits/channel, no
+    /// alpha (kCGImageAlphaNoneSkipLast context, written through ImageIO so the file's IHDR
+    /// colour type is 2 = RGB, not 6 = RGBA).
+    static func rgbPng(w: Int, h: Int, ink: (Int, Int) -> Bool) -> Data? {
+        guard w > 0, h > 0,
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+              let px = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let stride = ctx.bytesPerRow
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = y * stride + x * 4
+                let v: UInt8 = ink(x, y) ? 0 : 255
+                px[i] = v; px[i + 1] = v; px[i + 2] = v; px[i + 3] = 255
             }
         }
-        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
-              let cg = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
-                               space: CGColorSpaceCreateDeviceRGB(),
-                               bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
-                               provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return nil }
-        return UIImage(cgImage: cg).pngData()
+        guard let cg = ctx.makeImage() else { return nil }
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, cg, nil)
+        return CGImageDestinationFinalize(dest) ? data as Data : nil
+    }
+
+    /// Log-safe statistics of a PNG (never the pixels): size, colour space, alpha, alpha
+    /// range and how many pixels are dark (luminance < 128).
+    static func stats(png: Data) -> String {
+        guard let img = UIImage(data: png), let cg = img.cgImage, cg.width > 0, cg.height > 0 else { return "undecodable png (\(png.count) bytes)" }
+        let w = cg.width, h = cg.height
+        let alphaInfo = cg.alphaInfo
+        let hasAlpha = !(alphaInfo == .none || alphaInfo == .noneSkipLast || alphaInfo == .noneSkipFirst)
+        var rgba = [UInt8](repeating: 0, count: w * h * 4)
+        let drawn: Bool = rgba.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard drawn else { return "png \(w)x\(h) (could not read pixels)" }
+        var aMin = 255, aMax = 0, dark = 0
+        for i in stride(from: 0, to: rgba.count, by: 4) {
+            let a = Int(rgba[i + 3]); aMin = min(aMin, a); aMax = max(aMax, a)
+            let lum = (299 * Int(rgba[i]) + 587 * Int(rgba[i + 1]) + 114 * Int(rgba[i + 2])) / 1000
+            if lum < 128 { dark += 1 }
+        }
+        let model = cg.colorSpace?.model
+        let space = model == .rgb ? "rgb" : model == .monochrome ? "gray" : model == .indexed ? "indexed" : "other"
+        return "png \(w)x\(h) \(png.count) bytes, space=\(space), bpp=\(cg.bitsPerPixel), alpha=\(hasAlpha ? "yes" : "none") (info \(alphaInfo.rawValue)), alphaMin=\(aMin) alphaMax=\(aMax), dark=\(dark)/\(w * h) (\(String(format: "%.1f", Double(dark) * 100 / Double(w * h)))%)"
     }
 
     /// Dark pixels (gray < 128) in a decoded image. -1 = could not read the image.
@@ -106,11 +166,19 @@ final class NiimbotTransport {
         guard let driver = NiimbotLoader.driver() else {
             completion(NiimbotResult(ok: false, code: "NIIMBOT_UNAVAILABLE", message: "The Niimbot driver could not be loaded")); return
         }
-        guard let png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes) else {
+        let png: Data?
+        if NiimbotImage.calibrationOn {
+            NSLog("[Niimbot] app: CALIBRATION pattern instead of the sticker (-%@ YES)", NiimbotImage.calibrationKey)
+            png = NiimbotImage.calibrationPattern()
+        } else {
+            png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes)
+        }
+        guard let png = png else {
             NSLog("[Niimbot] app: bad image geometry w=%d h=%d rowBytes=%d bytes=%d", w, h, rowBytes, packed.count)
             completion(NiimbotResult(ok: false, code: "BT_PRINT_FAILED", message: "Bad image data")); return
         }
-        NSLog("[Niimbot] app: %dx%d 1-bit → RGBA png %d bytes, label %.0fx%.0f mm", w, h, png.count, wMm, hMm)
+        NSLog("[Niimbot] app: %dx%d 1-bit (bit 1 = ink) → opaque RGB png, label %.0fx%.0f mm", w, h, wMm, hMm)
+        NSLog("[Niimbot] app: image stats: %@", NiimbotImage.stats(png: png))
         driver.printLabel(withName: name, png: png, labelWidthMm: wMm, labelHeightMm: hMm) { ok, code, message in
             completion(NiimbotResult(ok: ok, code: code, message: message))
         }

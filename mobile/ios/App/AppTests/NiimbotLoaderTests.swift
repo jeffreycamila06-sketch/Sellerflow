@@ -53,18 +53,20 @@ final class NiimbotLoaderTests: XCTestCase {
         }
     }
 
-    // The image the SDK gets: a plain RGBA PNG with black ink on white, same pixel geometry as
-    // the 1-bit sticker image. A blank label is exactly what a wrong polarity / unreadable
-    // format would produce, so the conversion is pinned here.
-    func testPackedBitsBecomeBlackOnWhiteRgbaPng() {
+    // The image the SDK gets: an OPAQUE 8-bit RGB PNG (IHDR colour type 2, no alpha), black
+    // ink on white, with the rasterizer's polarity (stickerRaster.ts renderStickerBitmap: rows
+    // MSB-first, bit 1 = INK) — the convention the web sends for Niimbot. A blank label is
+    // exactly what a wrong polarity / an alpha-only image would produce, so this is pinned.
+    func testPackedBitsBecomeBlackOnWhiteOpaqueRgbPng() {
         let w = 384, h = 240, rowBytes = 48
         var packed = Data(count: rowBytes * h)
-        packed[0] = 0x80            // (0,0) ink
-        packed[10 * rowBytes + 3] = 0x01 // (31,10) ink
+        packed[0] = 0x80            // (0,0) ink  — MSB of the first byte = leftmost dot
+        packed[10 * rowBytes + 3] = 0x01 // (31,10) ink — LSB of byte 3 = dot 31
         guard let png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes), let img = UIImage(data: png), let cg = img.cgImage else {
             return XCTFail("png conversion failed")
         }
         XCTAssertEqual(cg.width, w); XCTAssertEqual(cg.height, h)
+        XCTAssertEqual(png[25], 2, "PNG IHDR colour type must be 2 = RGB (no alpha); got \(png[25])")
         XCTAssertEqual(NiimbotImage.inkPixels(in: img), 2)
         // pixel probe through a gray context: ink = 0, paper = 255
         var gray = [UInt8](repeating: 9, count: w * h)
@@ -76,11 +78,25 @@ final class NiimbotLoaderTests: XCTestCase {
         XCTAssertEqual(gray[10 * w + 31], 0)             // (31,10) black
         XCTAssertEqual(gray[1], 255); XCTAssertEqual(gray[w * h - 1], 255) // paper white
         XCTAssertNil(NiimbotImage.png(packed: Data(count: 10), w: w, h: h, rowBytes: rowBytes)) // short data → nil, never a blank label
+        let stats = NiimbotImage.stats(png: png)
+        XCTAssertTrue(stats.contains("alpha=none"), stats)
+        XCTAssertTrue(stats.contains("dark=2/92160"), stats)
     }
 
     func testAllWhiteImageHasZeroInk() {
         let png = NiimbotImage.png(packed: Data(count: 48 * 240), w: 384, h: 240, rowBytes: 48)!
         XCTAssertEqual(NiimbotImage.inkPixels(in: UIImage(data: png)!), 0)
+        XCTAssertTrue(NiimbotImage.stats(png: png).contains("dark=0/92160"))
+    }
+
+    // Calibration pattern: 400×240, 20-dot border + 160×96 centre box, opaque RGB.
+    func testCalibrationPatternIsOpaqueRgbWithBorderAndBox() {
+        guard let png = NiimbotImage.calibrationPattern(), let img = UIImage(data: png) else { return XCTFail("no pattern") }
+        XCTAssertEqual(png[25], 2, "colour type 2 = RGB, no alpha")
+        let border = 2 * 20 * 400 + 2 * 20 * (240 - 40), box = 160 * 96
+        XCTAssertEqual(NiimbotImage.inkPixels(in: img), border + box)
+        XCTAssertTrue(NiimbotImage.stats(png: png).contains("alpha=none"))
+        XCTAssertFalse(NiimbotImage.calibrationOn, "off by default (no -sfl_niimbot_calibration launch argument)")
     }
 
     private static var loaded = false
