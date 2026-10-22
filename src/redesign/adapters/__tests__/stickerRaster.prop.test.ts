@@ -12,19 +12,21 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderStickerBitmap, rasterizeToBitmapTspl, propQrPlacement, propQrInkLeft, propFitLine, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
+import { renderStickerBitmap, rasterizeToBitmapTspl, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "../glyphAtlas.cyrillic";
 import { CJK_ATLAS } from "../glyphAtlas.cjk";
 import { PROP_ATLAS } from "../glyphAtlas.prop";
 import { CJK_BOLD_ATLAS as B24 } from "../glyphAtlas.cjkBold24";
 import { CJK_BOLD_ATLAS as B32 } from "../glyphAtlas.cjkBold32";
+import { CJK_BOLD_ATLAS as B20 } from "../glyphAtlas.cjkBold20";
+import { CJK_BOLD_ATLAS as B18 } from "../glyphAtlas.cjkBold18";
 import { buildNativeStickerPayload, imageStickerPayload, DEF_SETTINGS } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const GOLD = JSON.parse(readFileSync(join(process.cwd(), "src/redesign/adapters/__tests__/stickerRasterPropGoldens.json"), "utf8")) as Record<string, string>;
 const AT = Date.UTC(2026, 9, 22, 12, 15); // 10/22/2026 20:15 Taipei
-const ATL: RasterAtlases = { latin: LATIN_ATLAS, cjk: CJK_ATLAS, cyrillic: CYRILLIC_ATLAS, proportional: PROP_ATLAS, cjkBold: { 24: B24, 32: B32 } };
+const ATL: RasterAtlases = { latin: LATIN_ATLAS, cjk: CJK_ATLAS, cyrillic: CYRILLIC_ATLAS, proportional: PROP_ATLAS, cjkBold: { 18: B18, 20: B20, 24: B24, 32: B32 } };
 const FIXED: RasterAtlases = { latin: LATIN_ATLAS, cjk: CJK_ATLAS, cyrillic: CYRILLIC_ATLAS }; // what the image paths passed before font C
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
@@ -101,10 +103,53 @@ describe("font C layout rules", () => {
     expect(rightmost(off)).toBeLessThanOrEqual(STICKER_LAYOUTS["50x30"].wDots - propSizes(50, false).edge);
     expect(propSizes(50, false).num).toBeGreaterThan(propSizes(50, true).num);
     expect(propSizes(60, false).num).toBe(64);
-    // the long handle is cut next to the QR but whole-er without it
+    // the long handle is cut next to the QR (even at 18 px) but whole without it
     const col = propQrInkLeft(qr) - PROP_TEXT_QR_GAP - propSizes(50, true).edge;
-    expect(propFitLine("@verylongusername_shop2026", 24, col, ATL).text.endsWith("…")).toBe(true);
-    expect(propFitLine("@verylongusername_shop2026", 24, 376 - 4, ATL).text.length).toBeGreaterThan(propFitLine("@verylongusername_shop2026", 24, col, ATL).text.length);
+    expect(propFitShrinking("@verylongusername_shop2026", 24, col, ATL)!.line.cut).toBe(true);
+    expect(propFitShrinking("@verylongusername_shop2026", 24, 376 - 4, ATL)!.line.text).toBe("@verylongusername_shop2026");
+  });
+  it("shrink before cut: username / name / comment step 24 → 20 → 18 and only then get '…'; number and date keep their size", () => {
+    expect(propShrinkLadder(24)).toEqual([24, 20, 18]);
+    expect(propShrinkLadder(32)).toEqual([32, 24, 20, 18]);
+    expect(propShrinkLadder(18)).toEqual([18]);
+    const rp = payloadFor(S1, "50x30", true);
+    const { lines, qr } = propLayoutLines(rp, 50, 30, ATL);
+    const col = propQrInkLeft(qr!) - PROP_TEXT_QR_GAP - propSizes(50, true).edge;
+    const byText = (t: string) => lines.find((l) => l.line.text === t);
+    expect(byText("12")!.size).toBe(46);                       // buyer number: unchanged size
+    expect(byText("10/22 20:15")!.size).toBe(18);              // date-time: unchanged size
+    const handle = byText("@wangxiaoming88")!;                 // was "@wangxiaomi…" at 24 → now whole, one step down
+    expect(handle.line.cut).toBe(false);
+    expect(handle.size).toBe(20);
+    expect(propFitLine("@wangxiaoming88", 24, col, ATL).cut).toBe(true);
+    expect(byText("王小明")!.size).toBe(24);                    // fits at the normal size → no shrink
+    expect(byText("A12 +1 $350")!.size).toBe(24);
+    // sample 2: the price is no longer cut ("B7 +2 好看 $…" before)
+    const l2 = propLayoutLines(payloadFor(S2, "50x30", true), 50, 30, ATL).lines;
+    const comment = l2.find((l) => l.line.text.startsWith("B7"))!;
+    expect(comment.line.text).toBe("B7 +2 好看 $1,280");
+    expect([20, 18]).toContain(comment.size);
+    const name2 = l2.find((l) => l.line.text.startsWith("陳"))!;
+    expect(name2.line.text).toBe("陳美玲 Amy Chen");
+    expect(name2.line.cut).toBe(false);
+    const handle2 = l2.find((l) => l.line.text.startsWith("@"))!;
+    expect(handle2.size).toBe(18);                              // too long even at 18 → the only line still cut
+    expect(handle2.line.cut).toBe(true);
+    // 60×40: the same lines fit at 32 → no shrink needed for sample 2's name; the comment steps down to fit whole
+    const l60 = propLayoutLines(payloadFor(S2, "60x40", true), 60, 40, ATL).lines;
+    expect(l60.find((l) => l.line.text.startsWith("B7"))!.line.text).toBe("B7 +2 好看 $1,280");
+    expect(l60.find((l) => l.line.text === "135")!.size).toBe(64);
+  });
+  it("the CJK sizes a label needs are known from widths alone (loader plan) and match what is painted", () => {
+    expect(propPlanCjkSizes(payloadFor(S1, "50x30", true), 50, 30, PROP_ATLAS)).toEqual([24]);           // 王小明 at 24
+    const s2 = propPlanCjkSizes(payloadFor(S2, "50x30", true), 50, 30, PROP_ATLAS);
+    expect(s2.length).toBeGreaterThan(0);
+    expect(s2.every((x) => x === 20 || x === 18)).toBe(true);                                             // both mixed lines shrank below 24 next to the QR
+    expect(propPlanCjkSizes(payloadFor(buyer(1, "abc", "Plain Name", "no cjk"), "50x30", true), 50, 30, PROP_ATLAS)).toEqual([]);
+    // the plan is computed WITHOUT CJK atlases and lands on the same sizes as the real layout
+    const planned = propPlanCjkSizes(payloadFor(S2, "60x40", true), 60, 40, PROP_ATLAS);
+    const painted = propLayoutLines(payloadFor(S2, "60x40", true), 60, 40, ATL).lines.filter((l) => l.line.cjk).map((l) => l.size);
+    expect([...new Set(painted)].sort()).toEqual([...planned].sort());
   });
   it("per-glyph widths: Latin narrow, CJK one full cell each — 'Test Print' is never CJK-spaced", () => {
     const line = propFitLine("測試 Test Print", 24, 10_000, ATL);

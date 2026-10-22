@@ -14,7 +14,7 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, isPropCompactSize, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
 import { savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
@@ -513,7 +513,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
 // passed on the D520BT stream) + CJK when the payload needs it + font C (proportional
 // DejaVu Sans Bold + CJK bold cells) for the compact sizes 50×30 / 60×40. A font-C atlas
 // that fails to load leaves the fixed-cell layout in charge — never a blank label.
-export async function imagePathAtlases(payload: NativeStickerPayload): Promise<RasterAtlases> {
+export async function imagePathAtlases(payload: NativeStickerPayload, img: RasterPayload): Promise<RasterAtlases> {
   const needsCjk = payloadNeedsCjk(payload);
   let cjk: GlyphAtlas = {};
   if (needsCjk) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
@@ -521,15 +521,18 @@ export async function imagePathAtlases(payload: NativeStickerPayload): Promise<R
   if (isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm)) {
     try { atlases.proportional = await loadPropAtlas(); } catch { atlases.proportional = undefined; }
     if (atlases.proportional && needsCjk) {
-      const size = payload.labelWidthMm === 50 ? 24 : 32;
-      try { atlases.cjkBold = { [size]: await loadCjkBoldAtlas(size) }; } catch { atlases.cjkBold = undefined; }
+      // only the CJK sizes this label's lines land on (the shrink ladder is width-based, so it is known before any CJK atlas is fetched)
+      const sizes = propPlanCjkSizes(img, payload.labelWidthMm, payload.labelHeightMm, atlases.proportional);
+      const bold: NonNullable<RasterAtlases["cjkBold"]> = {};
+      for (const size of sizes) { try { bold[size] = await loadCjkBoldAtlas(size); } catch { /* that size paints from the regular CJK atlas */ } }
+      atlases.cjkBold = bold;
     }
   }
   return atlases;
 }
 export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<Uint8Array> {
   const img = imageStickerPayload(payload, platform, fbName);
-  const atlases = await imagePathAtlases(payload);
+  const atlases = await imagePathAtlases(payload, img);
   if (lang === "tspl") return rasterizeToBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases).bytes;
   const full = renderStickerBitmap(img, payload.labelWidthMm, payload.labelHeightMm, atlases);
   return lang === "cpcl" ? cpclRasterBytes(full) : escposRasterBytes(full);
@@ -567,7 +570,8 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
 export const NIIMBOT_LABEL = { w: 50, h: 30 } as const;
 export async function buildNiimbotImage(payload: NativeStickerPayload, platform?: string, fbName = false): Promise<NiimbotImage> {
   const p: NativeStickerPayload = { ...payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
-  const full = renderStickerBitmap(imageStickerPayload(p, platform, fbName), p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p));
+  const img = imageStickerPayload(p, platform, fbName);
+  const full = renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img));
   return { w: full.w, h: full.h, rowBytes: full.rowBytes, data: bytesToBase64(full.buf), labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
 }
 async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {

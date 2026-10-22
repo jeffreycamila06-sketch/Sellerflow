@@ -212,7 +212,7 @@ export const CYRILLIC_ATLAS: GlyphAtlas = ${JSON.stringify(fonts)};
 // full width. Text sizes 18/24/32 px (em) carry Latin + Cyrillic + "…"; the buyer-number
 // sizes 46/64 carry printable ASCII only.
 //   node scripts/gen-glyph-atlas.mjs prop /path/to/DejaVuSans-Bold.ttf
-const PROP_TEXT_SIZES = [18, 24, 32];
+const PROP_TEXT_SIZES = [18, 20, 24, 32];
 const PROP_BIG_SIZES = [46, 64];
 const PROP_TEXT_RANGES = [...LATIN_RANGES, ...CYRILLIC_RANGES];
 const PROP_BIG_RANGES = [[0x20, 0x7e], [0x2026, 0x2026]];
