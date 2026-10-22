@@ -9,6 +9,8 @@ import { buildTestBuyer, btCall, hasNiimbotBridge, type BluetoothScanResult } fr
 import { rememberSavedPrinter, savedBtPrinter, savedIsNiimbot, savedGenericLang, __resetSavedPrinter } from "../savedPrinter";
 
 vi.mock("../cjkAtlasLoader", () => ({ loadCjkAtlas: vi.fn(async () => ({})), prefetchCjkAtlas: () => {}, getCjkAtlasSync: () => null }));
+// The font-C atlases are real dynamic imports (slow); a failed load = the fixed-cell layout, which is what these ROUTE tests look at.
+vi.mock("../propAtlasLoader", () => ({ loadPropAtlas: vi.fn(async () => { throw new Error("no font C in this test"); }), loadCjkBoldAtlas: vi.fn(async () => { throw new Error("no font C in this test"); }) }));
 
 const cfg: Settings = { ...DEF_SETTINGS, printerType: "bluetooth", stickerSize: "60x40" };
 const buyer = buildTestBuyer();

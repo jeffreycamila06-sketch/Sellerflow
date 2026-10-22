@@ -14,7 +14,7 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas, type RasterSettings, type RasterPayload } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, isPropCompactSize, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
 import { savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
@@ -22,6 +22,7 @@ import type { NiimbotImage } from "./printerBridge";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
+import { loadPropAtlas, loadCjkBoldAtlas } from "./propAtlasLoader"; // font C — image paths only
 import { fbNameOnly, printableBuyer } from "./fbName";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "./glyphAtlas.cyrillic"; // generic-printer / Niimbot image paths only
@@ -508,11 +509,27 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
 // Latin atlas, Cyrillic = the Cyrillic atlas, QR = the same placement. ONE bridge call;
 // a completed write is "sent" — never re-sent. Payload size is logged: a BLE link moves
 // roughly 8–15 KB/s, so a 60×40 sticker (~10 KB of bands) prints in about a second.
-export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<Uint8Array> {
+// The atlases of the generic-printer / Niimbot IMAGE paths: Latin + Cyrillic/"…" (never
+// passed on the D520BT stream) + CJK when the payload needs it + font C (proportional
+// DejaVu Sans Bold + CJK bold cells) for the compact sizes 50×30 / 60×40. A font-C atlas
+// that fails to load leaves the fixed-cell layout in charge — never a blank label.
+export async function imagePathAtlases(payload: NativeStickerPayload): Promise<RasterAtlases> {
+  const needsCjk = payloadNeedsCjk(payload);
   let cjk: GlyphAtlas = {};
-  if (payloadNeedsCjk(payload)) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
+  if (needsCjk) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
+  const atlases: RasterAtlases = { latin: LATIN_ATLAS, cjk, cyrillic: CYRILLIC_ATLAS };
+  if (isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm)) {
+    try { atlases.proportional = await loadPropAtlas(); } catch { atlases.proportional = undefined; }
+    if (atlases.proportional && needsCjk) {
+      const size = payload.labelWidthMm === 50 ? 24 : 32;
+      try { atlases.cjkBold = { [size]: await loadCjkBoldAtlas(size) }; } catch { atlases.cjkBold = undefined; }
+    }
+  }
+  return atlases;
+}
+export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<Uint8Array> {
   const img = imageStickerPayload(payload, platform, fbName);
-  const atlases = { latin: LATIN_ATLAS, cjk, cyrillic: CYRILLIC_ATLAS }; // + Cyrillic/"…" — never passed on the D520BT stream
+  const atlases = await imagePathAtlases(payload);
   if (lang === "tspl") return rasterizeToBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases).bytes;
   const full = renderStickerBitmap(img, payload.labelWidthMm, payload.labelHeightMm, atlases);
   return lang === "cpcl" ? cpclRasterBytes(full) : escposRasterBytes(full);
@@ -549,10 +566,8 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
 // reports completion or a seller-level code (NIIMBOT_NO_PAPER …). ⚠️ unverified on hardware.
 export const NIIMBOT_LABEL = { w: 50, h: 30 } as const;
 export async function buildNiimbotImage(payload: NativeStickerPayload, platform?: string, fbName = false): Promise<NiimbotImage> {
-  let cjk: GlyphAtlas = {};
-  if (payloadNeedsCjk(payload)) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
   const p: NativeStickerPayload = { ...payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
-  const full = renderStickerBitmap(imageStickerPayload(p, platform, fbName), p.labelWidthMm, p.labelHeightMm, { latin: LATIN_ATLAS, cjk, cyrillic: CYRILLIC_ATLAS });
+  const full = renderStickerBitmap(imageStickerPayload(p, platform, fbName), p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p));
   return { w: full.w, h: full.h, rowBytes: full.rowBytes, data: bytesToBase64(full.buf), labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
 }
 async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
