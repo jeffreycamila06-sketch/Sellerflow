@@ -161,7 +161,11 @@ describe("separation (source contract)", () => {
   it("past-session data never reaches liveSession / numbering / Auto Mode / printing / Sales / shipping", () => {
     const src = readFileSync("src/redesign/adapters/pastSessions.ts", "utf8").replace(/\/\/.*$/gm, "");
     expect(src).not.toMatch(/useLiveSession|applyOrder|createOrder|useOrders|printSlip|printing|salesTab|shipping|insert\(|update\(|upsert\(|delete\(/);
-    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    // RedesignApp passes the GATE boolean only (pastSessionsAllowed) — never the data; everything
+    // else that mentions pastSessions lives in Orders.
+    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8")
+      .replace('import { pastSessionsAllowed } from "./adapters/pastSessions";', "")
+      .replace('pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}', "");
     expect(app).not.toMatch(/pastSessions/);                       // only Orders uses it
   });
 });
