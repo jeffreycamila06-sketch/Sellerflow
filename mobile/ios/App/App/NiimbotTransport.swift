@@ -32,13 +32,23 @@ enum NiimbotImage {
     /// Packed 1-bit rows → an OPAQUE 8-bit RGB PNG, no alpha channel, black ink (0,0,0) on
     /// white (255,255,255). Polarity = the rasterizer's full buffer (stickerRaster.ts
     /// renderStickerBitmap: MSB-first, bit 1 = INK) — exactly what the web sends for Niimbot.
-    /// nil = bad geometry.
-    static func png(packed: Data, w: Int, h: Int, rowBytes: Int) -> Data? {
+    /// `canvasW`/`canvasH` = the label's dot size (B1 field test: 50×30 mm at 8 dots/mm =
+    /// 400×240, while the sticker raster is 384×240 = the 48 mm printable width of the D520
+    /// layout); a smaller image is CENTRED on white so the PNG has the label's exact size and
+    /// aspect. A canvas smaller than the image never crops it. nil = bad geometry.
+    static func png(packed: Data, w: Int, h: Int, rowBytes: Int, canvasW: Int = 0, canvasH: Int = 0) -> Data? {
         guard w > 0, h > 0, rowBytes > 0, packed.count >= rowBytes * h else { return nil }
-        return rgbPng(w: w, h: h) { x, y in
-            packed.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in (raw[y * rowBytes + (x >> 3)] & UInt8(0x80 >> (x & 7))) != 0 }
+        let cw = max(canvasW, w), ch = max(canvasH, h)
+        let ox = (cw - w) / 2, oy = (ch - h) / 2
+        return rgbPng(w: cw, h: ch) { x, y in
+            let sx = x - ox, sy = y - oy
+            guard sx >= 0, sy >= 0, sx < w, sy < h else { return false }
+            return packed.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in (raw[sy * rowBytes + (sx >> 3)] & UInt8(0x80 >> (sx & 7))) != 0 }
         }
     }
+
+    /// Dots per mm of the B-series 203 dpi head (the reference's printMultiple for a B1 = 8.0).
+    static let dotsPerMm = 8
 
     /// The calibration pattern for a 50×30 label at 8 dots/mm (400×240): a 20-dot black
     /// border and a 160×96 black box in the centre. Opaque RGB, no alpha.
@@ -171,13 +181,15 @@ final class NiimbotTransport {
             NSLog("[Niimbot] app: CALIBRATION pattern instead of the sticker (-%@ YES)", NiimbotImage.calibrationKey)
             png = NiimbotImage.calibrationPattern()
         } else {
-            png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes)
+            png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes,
+                                   canvasW: Int((wMm * Float(NiimbotImage.dotsPerMm)).rounded()), canvasH: Int((hMm * Float(NiimbotImage.dotsPerMm)).rounded()))
         }
         guard let png = png else {
             NSLog("[Niimbot] app: bad image geometry w=%d h=%d rowBytes=%d bytes=%d", w, h, rowBytes, packed.count)
             completion(NiimbotResult(ok: false, code: "BT_PRINT_FAILED", message: "Bad image data")); return
         }
-        NSLog("[Niimbot] app: %dx%d 1-bit (bit 1 = ink) → opaque RGB png, label %.0fx%.0f mm", w, h, wMm, hMm)
+        NSLog("[Niimbot] app: %dx%d 1-bit (bit 1 = ink) → opaque RGB png on the label's %dx%d-dot canvas, label %.0fx%.0f mm",
+              w, h, Int((wMm * Float(NiimbotImage.dotsPerMm)).rounded()), Int((hMm * Float(NiimbotImage.dotsPerMm)).rounded()), wMm, hMm)
         NSLog("[Niimbot] app: image stats: %@", NiimbotImage.stats(png: png))
         driver.printLabel(withName: name, png: png, labelWidthMm: wMm, labelHeightMm: hMm) { ok, code, message in
             completion(NiimbotResult(ok: ok, code: code, message: message))
