@@ -37,6 +37,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "printRawTspl", returnType: CAPPluginReturnPromise),
         // Generic BLE label printers (Phase 1, test-gated) — Android parity.
         CAPPluginMethod(name: "testGenericPrinter", returnType: CAPPluginReturnPromise),
+        // Printer setup v2 Part 8: the sticker IMAGE on a saved Niimbot (vendor SDK).
+        CAPPluginMethod(name: "printStickerImage", returnType: CAPPluginReturnPromise),
     ]
 
     /// Default AIMO-class sticker stock: 100x60mm @ 203 DPI (800x480 dots).
@@ -141,12 +143,34 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     private static let buildNumberShimLine = iosBuildNumber > 0
         ? "window.SellerFlowPrinter.getBuildNumber = function(){ return \(iosBuildNumber); };"
         : ""
+    // Niimbot (printer setup v2 Part 8): the driver is an embedded framework for iOS 17.2+.
+    // On older iOS the web shows "needs iOS 17" on a Niimbot row instead of trying to print.
+    private static let niimbotOsShimLine = NiimbotTransport.isAvailable
+        ? ""
+        : "window.SellerFlowPrinter.niimbotOsTooOld = true;"
 
-    private static let bridgeShimJS = """
+    // Offline screen (www/offline.html, Capacitor server.errorPath): the page retries THIS
+    // url — the configured server.url — so a preview/test shell retries its own site.
+    private static let serverUrlShimLine: String = {
+        guard let url = Bundle.main.url(forResource: "capacitor.config", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let cfg = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = cfg["server"] as? [String: Any],
+              let s = server["url"] as? String, !s.isEmpty,
+              let json = try? JSONSerialization.data(withJSONObject: [s]),
+              let arr = String(data: json, encoding: .utf8) else { return "" }
+        // arr = ["<url>"] → strip the brackets → a safely quoted JS string literal
+        return "window.SFL_SERVER_URL = " + String(arr.dropFirst().dropLast()) + ";"
+    }()
+
+    // Internal (not private) so AppTests can pin the Niimbot OS-flag line.
+    static let bridgeShimJS = """
     (function(){
+      \(serverUrlShimLine)
       var cap = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SellerFlowPrinter;
       if (!cap) return;
       window.SellerFlowPrinter = window.SellerFlowPrinter || {};
+      \(niimbotOsShimLine)
       \(buildNumberShimLine)
       window.SellerFlowPrinter.setPrinter = function(c){ return cap.setPrinter(c || {}); };
       window.SellerFlowPrinter.getPrinter = function(){ return cap.getPrinter(); };
@@ -178,6 +202,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
       // Generic BLE label printers (Phase 1, test-gated): the web shows the generic
       // picker only when this method exists (hasGenericPrinterBridge).
       window.SellerFlowPrinter.testGenericPrinter = function(p){ return cap.testGenericPrinter(p || {}); };
+      window.SellerFlowPrinter.printStickerImage = function(p){ return cap.printStickerImage(p || {}); };
       window.SellerFlowPrinter.status = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.printerStatus = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.scanPrinters = function(){ return cap.getPrinter(); };
@@ -1024,6 +1049,42 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     // with ("tspl" | "escpos"). Stored ONLY next to model "generic"; ABSENT → "tspl"
     // (every Phase-1 generic save printed TSPL). The web routes real orders on it.
     private static let bleLangKey = "sellerflow_ble_label_lang"
+    // v2 Part 8: "niimbot" when the saved printer prints through the vendor SDK; absent = BLE.
+    private static let bleTransportKey = "sellerflow_ble_label_transport"
+    private let niimbotTransport = NiimbotTransport()
+    private func isNiimbotSaved() -> Bool {
+        return !savedBleId().isEmpty && defaults.string(forKey: SellerFlowPrinterPlugin.bleTransportKey) == "niimbot"
+    }
+
+    /// The web's 1-bit sticker image ({w,h,rowBytes,data base64,labelWidthMm,labelHeightMm}) → one Niimbot label.
+    private func printNiimbotImage(_ call: CAPPluginCall, name: String, what: String) {
+        // The driver is an embedded framework that needs iOS 17.2+; on older iOS it is never loaded.
+        guard NiimbotTransport.isAvailable else { call.reject("This printer needs iOS 17.2 or newer.", "NIIMBOT_OS_TOO_OLD"); return }
+        guard let img = call.getObject("image") else { call.reject("\(what): missing image", "BT_PRINT_FAILED"); return }
+        let w = (img["w"] as? NSNumber)?.intValue ?? 0
+        let h = (img["h"] as? NSNumber)?.intValue ?? 0
+        let rowBytes = (img["rowBytes"] as? NSNumber)?.intValue ?? 0
+        let wMm = (img["labelWidthMm"] as? NSNumber)?.floatValue ?? 50
+        let hMm = (img["labelHeightMm"] as? NSNumber)?.floatValue ?? 30
+        guard let b64 = img["data"] as? String, let packed = Data(base64Encoded: b64, options: [.ignoreUnknownCharacters]),
+              w > 0, h > 0, rowBytes > 0, packed.count >= rowBytes * h else {
+            call.reject("\(what): bad image data", "BT_PRINT_FAILED"); return
+        }
+        niimbotTransport.printImage(name: name, packed: packed, w: w, h: h, rowBytes: rowBytes, wMm: wMm, hMm: hMm) { r in
+            if !r.ok { NSLog("[SellerFlowPrinter] %@ (niimbot) failed: %@ %@", what, r.code, r.message); call.reject(r.message, r.code); return }
+            call.resolve(["ok": true, "model": "generic", "transport": "niimbot", "confirmed": true, "statusHex": "", "service": "niimbot", "characteristic": "sdk", "message": "Sent to printer"])
+        }
+    }
+
+    /// Printer setup v2 (Part 8): the web's sticker IMAGE on the saved printer — only a saved
+    /// Niimbot has an image driver; every other printer prints through the language paths.
+    @objc func printStickerImage(_ call: CAPPluginCall) {
+        let savedId = savedBleId()
+        if savedId.isEmpty { call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET"); return }
+        if !isNiimbotSaved() { call.reject("The saved printer has no image driver.", "NOT_NIIMBOT"); return }
+        let name = (defaults.string(forKey: SellerFlowPrinterPlugin.bleNameKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        printNiimbotImage(call, name: name, what: "printStickerImage")
+    }
     private let bleTransport = BleStickerTransport()
     // Generic BLE label printer transport (Phase 1, test-gated) — separate from
     // bleTransport so the D520BT path is untouched.
@@ -1035,7 +1096,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// "escpos" only when saved so by the v2 flow; anything else → "tspl".
     private func savedGenericLang() -> String {
-        return defaults.string(forKey: SellerFlowPrinterPlugin.bleLangKey) == "escpos" ? "escpos" : "tspl"
+        let l = defaults.string(forKey: SellerFlowPrinterPlugin.bleLangKey) ?? ""
+        return (l == "escpos" || l == "cpcl") ? l : "tspl"
     }
 
     /// Send ready TSPL bytes to a generic BLE printer and resolve with the printer's answer.
@@ -1077,6 +1139,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             "name": name.isEmpty ? "Bluetooth printer" : name,
             "paired": true,
         ].merging(isGenericSaved() ? ["model": "generic", "lang": savedGenericLang()] : [:]) { a, _ in a }
+         .merging(isNiimbotSaved() ? ["transport": "niimbot"] : [:]) { a, _ in a }
     }
 
     private func savedBlePrinterOrNull() -> Any {
@@ -1102,6 +1165,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     row["model"] = $0.target ? "D520BT" : "generic"
                     row["likely"] = $0.likely
                     row["transport"] = "ble" // iOS is BLE-only; the web's isGenericRow needs it
+                    if BleStickerLogic.isNiimbotName($0.name) { row["brand"] = "niimbot" }
                 }
                 return row
             }
@@ -1125,6 +1189,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         defaults.set(address, forKey: SellerFlowPrinterPlugin.bleIdKey)
         defaults.set(name, forKey: SellerFlowPrinterPlugin.bleNameKey)
+        // v2 Part 8: a Niimbot is saved with transport "niimbot" (vendor SDK); anything else = BLE.
+        if call.getString("transport") == "niimbot" {
+            defaults.set("niimbot", forKey: SellerFlowPrinterPlugin.bleTransportKey)
+        } else {
+            defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleTransportKey)
+        }
         // Generic only when saved through the test-gated flow; anything else
         // (D520BT, old web without the field) clears it → D520BT path.
         let generic = call.getString("model") == "generic"
@@ -1135,7 +1205,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         // v2: the language that printed the test sticker rides with a generic save only.
         let lang = call.getString("lang") ?? ""
-        if generic && (lang == "tspl" || lang == "escpos") {
+        if generic && (lang == "tspl" || lang == "escpos" || lang == "cpcl") {
             defaults.set(lang, forKey: SellerFlowPrinterPlugin.bleLangKey)
         } else {
             defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleLangKey)
@@ -1148,6 +1218,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleNameKey)
         defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleModelKey)
         defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleLangKey)
+        defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleTransportKey)
         call.resolve(["ok": true, "savedPrinter": NSNull(), "message": "Bluetooth printer cleared"])
     }
 
@@ -1283,6 +1354,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let address = (call.getString("address") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if address.isEmpty {
             call.reject("Bluetooth address is required", "BT_ADDR_REQUIRED")
+            return
+        }
+        if call.getString("transport") == "niimbot" {
+            // v2 Part 8: a Niimbot test label through the vendor SDK (no save). The SDK connects by NAME.
+            printNiimbotImage(call, name: call.getString("name") ?? "", what: "testGenericPrinter")
             return
         }
         if let b64 = call.getString("data"), !b64.isEmpty {
@@ -1567,6 +1643,37 @@ enum BleStickerLogic {
         for raw in services where likelyPrinterServices.contains(normUuid(raw)) { return true }
         return false
     }
+
+    // ── Printer-name list — ONE place on iOS (printer setup v2) ───────────────
+    // A device whose NAME starts with one of these is a printer row even when it
+    // advertises no printer service (Niimbot, most classic receipt printers).
+    // Case-insensitive prefix match. Pinned equal to the web (printerModels.ts
+    // PRINTER_NAME_PREFIXES) and Android (BleStickerLogic.PRINTER_NAME_PREFIXES) by
+    // printerNames.contract.test.ts — change all three together.
+    static let printerNamePrefixes: [String] = [
+        "B1-", "B21-", "B203-", "B3S-",
+        "XP-", "Xprinter", "Printer", "PRT", "PT-", "MPT", "GP-",
+        "M02", "M110", "M120", "M200", "M220", "M221", "Q30", "T02",
+        "HPRT", "Munbyn", "Gprinter", "Zjiang",
+    ]
+    /// Niimbot models (vendor SDK driver, not a command language).
+    static let niimbotNamePrefixes: [String] = [
+        "B1-", "B21-", "B203-", "B3S-",
+    ]
+
+    private static func startsWithAny(_ name: String?, _ prefixes: [String]) -> Bool {
+        guard let name = name else { return false }
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if n.isEmpty { return false }
+        for p in prefixes where n.hasPrefix(p.uppercased()) { return true }
+        return false
+    }
+
+    /// True when the device name is on the printer-name list (never matches by service).
+    static func isPrinterName(_ name: String?) -> Bool { return startsWithAny(name, printerNamePrefixes) }
+
+    /// True when the device name is a Niimbot model.
+    static func isNiimbotName(_ name: String?) -> Bool { return startsWithAny(name, niimbotNamePrefixes) }
 
     struct Chr {
         let uuid: String
@@ -1926,7 +2033,7 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
     /// keep D520BTs, likely printers (includeGeneric) and named devices (showAll);
     /// advert and scan response can carry different fields — keep what either said.
     private func recordTaggedScanRow(_ peripheral: CBPeripheral, name: String?, services: [String], isTarget: Bool, rssi: Int) {
-        let likely = isTarget || BleStickerLogic.isLikelyPrinter(services)
+        let likely = isTarget || BleStickerLogic.isLikelyPrinter(services) || BleStickerLogic.isPrinterName(name)
         let named = !(name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if !isTarget && !(scanIncludeGeneric && likely) && !(scanShowAll && named) { return }
         let id = peripheral.identifier.uuidString

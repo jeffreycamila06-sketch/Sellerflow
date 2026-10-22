@@ -2,12 +2,17 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.sellerflow.live",
-  appName: "SellerFlow",
+  appName: "SellerFlowLive",
   webDir: "www",
   server: {
     url: "https://www.sellerflowlive.com/?apk=20260523-dark-mobile",
     cleartext: false,
-    androidScheme: "https"
+    androidScheme: "https",
+    // Offline screen (Fix B): when the main frame cannot load the site (no network, DNS,
+    // timeout), Capacitor loads THIS page from the bundled www instead of the raw
+    // Android/iOS error page — https://localhost/offline.html on Android,
+    // capacitor://localhost/offline.html on iOS. Fully local; retries the site itself.
+    errorPath: "offline.html"
   },
   ios: {
     // backgroundColor = brand indigo: shown while the remote site loads

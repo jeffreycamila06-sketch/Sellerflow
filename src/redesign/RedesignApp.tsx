@@ -109,7 +109,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { sessionKeyFor, shippingSessionKey } from "./adapters/shipping";
 import { setStickerLayoutV2Allowed, stickerV2Allowed, stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, printsStickerViaImage } from "./adapters/printing";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -959,11 +959,17 @@ export default function RedesignApp() {
   useEffect(() => { screenRef.current = screen; }, [screen]); // ref write in an effect (react-hooks/refs)
   const btOff = useBtOffModal();
   const reportBtOff = btOff.report; // stable (refs only) — safe in the once-registered handler
+  const tAppRef = useRef(tApp);
+  useEffect(() => { tAppRef.current = tApp; }, [tApp]); // ref write in an effect (react-hooks/refs)
   useEffect(() => {
     setNativePrintFailureHandler(({ code, message, via }) => {
       // Phone Bluetooth OFF (order sticker / reprint / Test Print) → ONE simple
       // modal per burst, on every screen. Display-only: the order is already saved.
       if (reportBtOff(code, message)) return true;
+      // Niimbot driver (printer setup v2 Part 8): no paper / cover open / wrong label /
+      // low battery → the seller's own words, no codes. The order is already saved.
+      const nb = niimbotErrorKey(code);
+      if (nb) { setToast({ msg: tAppRef.current[nb], kind: "err" }); return true; }
       if (!isPrinterNotSetup(code, message)) return false; // other codes keep their legacy path
       // Consume (suppress the legacy alert) but don't nag while they're setting up.
       if (screenRef.current === "printersettings" || screenRef.current === "printpattern") return true;

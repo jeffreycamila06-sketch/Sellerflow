@@ -184,4 +184,58 @@ public class BleStickerLogicTest {
         assertEquals(256, BleStickerLogic.toHexCapped(new byte[400], 256).length());
         assertEquals("", BleStickerLogic.toHexCapped(null, 256));
     }
+
+    // ── Printer-name list (printer setup v2) ─────────────────────────────────
+
+    @Test
+    public void isPrinterName_matchesListCaseInsensitive() {
+        for (String n : new String[] {"B1-I603042141", "b21-ABC", "B203-77", "XP-P323B", "Xprinter_58", "Printer_8A2F",
+                "PRT-200", "PT-210", "MPT-II", "GP-1324D", "M110-C9", "M02S", "Q30_01", "T02-xx",
+                "HPRT N41", "Munbyn ITPP941", "Gprinter GP-3120", "Zjiang ZJ-5802"}) {
+            assertTrue(n, BleStickerLogic.isPrinterName(n));
+        }
+    }
+
+    @Test
+    public void isPrinterName_excludesHeartRateHeadphonesWatchLaptop() {
+        for (String n : new String[] {"Polar H10 1234", "WH-1000XM4", "Galaxy Watch4", "Jeff MacBook Pro", "Pixel 8", "AirPods Pro", "Mi Band 7", "", "   "}) {
+            assertFalse(n, BleStickerLogic.isPrinterName(n));
+        }
+        assertFalse(BleStickerLogic.isPrinterName(null));
+    }
+
+    @Test
+    public void isNiimbotName_onlyNiimbotModels() {
+        assertTrue(BleStickerLogic.isNiimbotName("B1-I603042141"));
+        assertTrue(BleStickerLogic.isNiimbotName("b21-0001"));
+        assertFalse(BleStickerLogic.isNiimbotName("D11-0001")); // narrow-head models are not listed for now
+        assertFalse(BleStickerLogic.isNiimbotName("XP-P323B"));
+        assertFalse(BleStickerLogic.isNiimbotName("Y41BT-0FC4_LE"));
+        assertFalse(BleStickerLogic.isNiimbotName(null));
+        // every Niimbot prefix is also on the printer list
+        for (String p : BleStickerLogic.NIIMBOT_NAME_PREFIXES) assertTrue(p, Arrays.asList(BleStickerLogic.PRINTER_NAME_PREFIXES).contains(p));
+    }
+
+    // Audit item 2: the generic BLE write budget is a STALL budget, not a total-time cap. A ~96 KB
+    // label (≈547 chunks of 180 bytes) that keeps moving must never time out even though the
+    // whole transfer takes longer than WRITE_STALL_MS; a real stall still fails.
+    @Test
+    public void writeStallWatchdogIsAboutProgressNotTotalTime() {
+        byte[] payload = new byte[96 * 1024];
+        java.util.List<byte[]> chunks = BleStickerLogic.chunks(payload, 180);
+        assertTrue(chunks.size() > 500);
+        long perChunkMs = 25; // ≈13.7 s in total — longer than the 12 s budget
+        long now = 0, lastProgress = 0;
+        for (int i = 0; i < chunks.size(); i++) {
+            now += perChunkMs;
+            // had the watchdog fired now it would see fresh progress and wait, not fail
+            assertTrue("chunk " + i, BleStickerLogic.stallWaitMs(now, lastProgress, BleStickerLogic.WRITE_STALL_MS) > 0);
+            lastProgress = now; // the stack accepted the chunk
+        }
+        assertTrue(now > BleStickerLogic.WRITE_STALL_MS);
+        // a real stall: nothing accepted for the whole budget → 0 = fail
+        assertEquals(0L, BleStickerLogic.stallWaitMs(lastProgress + BleStickerLogic.WRITE_STALL_MS, lastProgress, BleStickerLogic.WRITE_STALL_MS));
+        assertEquals(1L, BleStickerLogic.stallWaitMs(lastProgress + BleStickerLogic.WRITE_STALL_MS - 1, lastProgress, BleStickerLogic.WRITE_STALL_MS));
+        assertEquals(BleStickerLogic.WRITE_STALL_MS, BleStickerLogic.stallWaitMs(lastProgress, lastProgress, BleStickerLogic.WRITE_STALL_MS));
+    }
 }

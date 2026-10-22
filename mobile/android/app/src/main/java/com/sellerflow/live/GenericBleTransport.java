@@ -15,6 +15,7 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.SystemClock;
 import android.util.Log;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -45,7 +46,6 @@ final class GenericBleTransport {
     private static final long SERVICES_TIMEOUT_MS = 6000;
     private static final long SUBSCRIBE_TIMEOUT_MS = 3000; // per characteristic; a slow one is skipped, not fatal
     private static final long MTU_TIMEOUT_MS = 3000;
-    private static final long WRITE_TIMEOUT_MS = 12000;
     private static final long SETTLE_MS = 1500;
     private static final long OVERALL_CAP_MS = 30000;
     private static final long PACING_MS = 8;
@@ -88,6 +88,7 @@ final class GenericBleTransport {
     private String pickedChar = "";
     private int mtu;
     private Runnable overallTimer, phaseTimer, pacingTimer, settleTimer;
+    private long lastWriteProgressAt; // uptime of the last chunk the stack accepted (stall watchdog)
 
     GenericBleTransport(Context context) {
         this.context = context.getApplicationContext();
@@ -319,8 +320,24 @@ final class GenericBleTransport {
         writesStarted = true;
         chunks = BleStickerLogic.chunks(payload, chunkSize);
         nextChunk = 0;
-        armPhase(WRITE_TIMEOUT_MS, "Printer stopped accepting data.");
+        lastWriteProgressAt = SystemClock.uptimeMillis();
+        armWriteStall();
         pump();
+    }
+
+    // Stall watchdog (audit item 2): the write phase fails only when NO chunk was accepted for
+    // BleStickerLogic.WRITE_STALL_MS — never because the whole transfer took longer than that.
+    private void armWriteStall() {
+        cancelPhase();
+        phaseTimer = this::checkWriteStall;
+        handler.postDelayed(phaseTimer, BleStickerLogic.WRITE_STALL_MS);
+    }
+
+    private void checkWriteStall() {
+        if (!jobActive || allSent || phaseTimer == null) return;
+        long wait = BleStickerLogic.stallWaitMs(SystemClock.uptimeMillis(), lastWriteProgressAt, BleStickerLogic.WRITE_STALL_MS);
+        if (wait > 0) { handler.postDelayed(phaseTimer, wait); return; } // progress since the last check → keep waiting
+        finish(new BleStickerTransport.BtError("Printer stopped accepting data.", "BT_PRINT_FAILED"));
     }
 
     @SuppressLint("MissingPermission")
@@ -347,6 +364,7 @@ final class GenericBleTransport {
         }
         if (!started) { schedulePacing(); return; } // stack busy — retry the SAME chunk
         nextChunk++;
+        lastWriteProgressAt = SystemClock.uptimeMillis(); // a chunk went out: the stall clock restarts
         if (writeNoResponse && Build.VERSION.SDK_INT < SDK_TIRAMISU) {
             if (nextChunk < chunks.size()) schedulePacing();
             else onAllSent();

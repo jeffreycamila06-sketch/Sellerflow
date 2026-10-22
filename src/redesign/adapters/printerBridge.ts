@@ -15,7 +15,9 @@ import { rememberSavedPrinter, type PrinterLang } from "./savedPrinter";
 export interface MobilePrinterDevice { id: string; type: "bluetooth" | "lan"; name: string; address?: string; host?: string; port?: number; paired?: boolean; online?: boolean; signal?: number; distance?: string; hint?: string }
 export interface MobilePrinterResult { ok?: boolean; message?: string; online?: boolean; host?: string; port?: number; savedPrinter?: MobilePrinterDevice | null; printers?: MobilePrinterDevice[] }
 export interface PrinterLanConfig { host: string; port?: number }
-export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number; transport?: "ble" | "spp"; model?: "D520BT" | "generic"; likely?: boolean; lang?: PrinterLang }
+// transport: "ble" (GATT), "spp" (Android classic RFCOMM — paired in phone settings), "niimbot" (vendor SDK).
+// brand: set by the native scan for a device whose NAME is a known vendor model (e.g. Niimbot).
+export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number; transport?: "ble" | "spp" | "niimbot"; model?: "D520BT" | "generic"; likely?: boolean; lang?: PrinterLang; brand?: "niimbot" }
 export interface BluetoothScanResult { ok?: boolean; message?: string; printers?: BluetoothPrinterDevice[]; savedPrinter?: BluetoothPrinterDevice | null }
 export interface StickerPrintResult { ok?: boolean; message?: string }
 
@@ -111,10 +113,24 @@ export function genericDebugLine(r: Pick<GenericPrintResult, "confirmed" | "serv
   return `confirmed: ${r.confirmed ? "yes" : "no"} · via ${r.service || "?"}/${r.characteristic || "?"} · status: ${r.statusHex || "none"}`;
 }
 
+// ── Niimbot (vendor SDK) — printer setup v2 Part 8 ──────────────────────────
+// The sticker IMAGE the native Niimbot driver prints as one label: 1-bit rows (MSB first,
+// bit 1 = ink), `data` = the packed rows base64, plus the label size in mm. The driver is
+// in an app build only when the native printStickerImage method exists.
+export interface NiimbotImage { w: number; h: number; rowBytes: number; data: string; labelWidthMm: number; labelHeightMm: number }
+export const hasNiimbotBridge = (): boolean =>
+  typeof window !== "undefined" && typeof (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.printStickerImage === "function";
+// iOS only: the Niimbot driver lives in an embedded framework that needs iOS 17.2+; the shell
+// sets this flag on older iOS so the settings screen says so BEFORE any test print.
+export const niimbotOsTooOld = (): boolean =>
+  typeof window !== "undefined" && (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.niimbotOsTooOld === true;
+
 // One test sticker to a printer that is NOT saved. `job` = the native TSPL text sticker
-// ({ payload }) or ready bytes the web built ({ data: base64 } — the ESC/POS try).
-// ONE bridge call per test; a completed write is "sent" — never re-sent.
-export async function testGenericPrinter(address: string, job: { payload: unknown } | { data: string }): Promise<GenericPrintResult> {
+// ({ payload }), ready bytes the web built ({ data: base64 } — the sticker image in the
+// language being tried), or the sticker image for the Niimbot driver ({ image, name } with
+// `transport: "niimbot"`). `transport: "spp"` = an Android PAIRED classic printer (RFCOMM);
+// absent = BLE. ONE bridge call per test; a completed write is "sent" — never re-sent.
+export async function testGenericPrinter(address: string, job: ({ payload: unknown } | { data: string } | { image: NiimbotImage; name: string }) & { transport?: string }): Promise<GenericPrintResult> {
   const fail = (code: string): GenericPrintResult => ({ ok: false, code, confirmed: false, statusHex: "", service: "", characteristic: "" });
   const fn = typeof window !== "undefined" ? (window.SellerFlowPrinter as Record<string, ((a?: unknown) => Promise<unknown>) | undefined> | undefined)?.testGenericPrinter : undefined;
   if (typeof fn !== "function") return fail("");
