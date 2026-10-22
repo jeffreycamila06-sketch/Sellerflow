@@ -23,11 +23,9 @@
 
 + (void)printImageBase64:(NSString *)imageData widthMm:(float)widthMm heightMm:(float)heightMm completion:(SFLReferencePrintCompletion)completion {
     // NiimbotImageElement.toJson() + NiimbotLabelLayout() defaults, as the Dart side sends them.
-    // FRAME: inset 1 mm on every side (48×28 on a 50×30 label). The reference's image
-    // examples never draw full-bleed — README (2,2,20×20), example app (10,3,30×24) and
-    // (5,3,40×24) — and the B1 field test's full-board frame (0,0,50×30) always came back
-    // "drawing reported success=NO" + a blank label, the BMP/PNG having been decoded and
-    // thresholded by the SDK first (its own log lines) = a bounds rejection after compose.
+    // FRAME: inset 1 mm on every side (48×28 on a 50×30 label) — REQUIRED. The reference's
+    // image examples never draw full-bleed, and on the B1 a full-board frame (0,0,50×30) is
+    // decoded and thresholded by the SDK but the draw returns NO and the label feeds BLANK.
     const float inset = 1.0f;
     NSDictionary *frame = @{@"x": @(inset), @"y": @(inset), @"width": @(widthMm - 2 * inset), @"height": @(heightMm - 2 * inset)};
     NSDictionary *element = @{

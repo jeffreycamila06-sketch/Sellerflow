@@ -15,7 +15,7 @@ typedef void (^SFLNiimbotCompletion)(BOOL ok, NSString *code, NSString *message)
 
 @protocol SFLNiimbotDriving <NSObject>
 
-/// Print ONE label from a ready PNG (RGBA, black ink on white, built by the app from its 1-bit
+/// Print ONE label from a ready image file (24-bit BMP, black ink on white, built by the app from its 1-bit
 /// sticker image). The SDK's DrawLableImage takes an image file's bytes, base64-encoded.
 - (void)printLabelWithName:(NSString *)name
                        png:(NSData *)png

@@ -80,16 +80,12 @@ final class NiimbotLoaderTests: XCTestCase {
         XCTAssertEqual(Array(bmp[row10 + 31 * 3..<row10 + 31 * 3 + 3]), [0, 0, 0])
         // decoded by ImageIO the same way
         XCTAssertEqual(cg.width, w); XCTAssertEqual(cg.height, h)
-        XCTAssertEqual(NiimbotImage.inkPixels(in: img), 2)
+        XCTAssertEqual(inkPixels(in: img), 2)
         XCTAssertNil(NiimbotImage.image(packed: Data(count: 10), w: w, h: h, rowBytes: rowBytes)) // short data → nil
-        let stats = NiimbotImage.stats(image: bmp)
-        XCTAssertTrue(stats.hasPrefix("bmp 384x240"), stats)
-        XCTAssertTrue(stats.contains("alpha=none"), stats)
-        XCTAssertTrue(stats.contains("dark=2/92160"), stats)
     }
 
-    // The B1 field fix: the 384×240 sticker is centred on the label's 400×240 dot canvas
-    // (50×30 mm × 8 dots/mm) — same ink, shifted 8 dots right, white padding, never cropped.
+    // The 384×240 sticker is centred on the label's 400×240 dot canvas (50×30 mm × 8 dots/mm)
+    // — same ink, shifted 8 dots right, white padding, never cropped.
     func testStickerIsCentredOnTheLabelDotCanvas() {
         let w = 384, h = 240, rowBytes = 48
         var packed = Data(count: rowBytes * h)
@@ -98,7 +94,7 @@ final class NiimbotLoaderTests: XCTestCase {
               let img = UIImage(data: bmp), let cg = img.cgImage else { return XCTFail("bmp conversion failed") }
         XCTAssertEqual(cg.width, 400); XCTAssertEqual(cg.height, 240)
         XCTAssertEqual(le32(bmp, 18), 400); XCTAssertEqual(le32(bmp, 22), 240)
-        XCTAssertEqual(NiimbotImage.inkPixels(in: img), 1)
+        XCTAssertEqual(inkPixels(in: img), 1)
         let rowSize = ((400 * 3 + 3) / 4) * 4, row0 = 54 + 239 * rowSize
         XCTAssertEqual(Array(bmp[row0 + 8 * 3..<row0 + 8 * 3 + 3]), [0, 0, 0], "dot (0,0) lands at x=8 — centred in the 16 dots of padding")
         XCTAssertEqual(Array(bmp[row0..<row0 + 3]), [255, 255, 255]); XCTAssertEqual(Array(bmp[row0 + 7 * 3..<row0 + 7 * 3 + 3]), [255, 255, 255])
@@ -109,18 +105,22 @@ final class NiimbotLoaderTests: XCTestCase {
 
     func testAllWhiteImageHasZeroInk() {
         let bmp = NiimbotImage.image(packed: Data(count: 48 * 240), w: 384, h: 240, rowBytes: 48)!
-        XCTAssertEqual(NiimbotImage.inkPixels(in: UIImage(data: bmp)!), 0)
-        XCTAssertTrue(NiimbotImage.stats(image: bmp).contains("dark=0/92160"))
+        XCTAssertEqual(inkPixels(in: UIImage(data: bmp)!), 0)
     }
 
-    // Calibration pattern: 400×240, 20-dot border + 160×96 centre box, 24-bit BMP.
-    func testCalibrationPatternIsBmpWithBorderAndBox() {
-        guard let bmp = NiimbotImage.calibrationPattern(), let img = UIImage(data: bmp) else { return XCTFail("no pattern") }
-        XCTAssertEqual(Array(bmp[0..<2]), [0x42, 0x4D]); XCTAssertEqual(Int(bmp[28]) | Int(bmp[29]) << 8, 24)
-        let border = 2 * 20 * 400 + 2 * 20 * (240 - 40), box = 160 * 96
-        XCTAssertEqual(NiimbotImage.inkPixels(in: img), border + box)
-        XCTAssertTrue(NiimbotImage.stats(image: bmp).contains("alpha=none"))
-        XCTAssertFalse(NiimbotImage.calibrationOn, "off by default (no -sfl_niimbot_calibration launch argument)")
+    /// Dark pixels (gray < 128) in a decoded image — a test probe through a gray context.
+    private func inkPixels(in image: UIImage) -> Int {
+        guard let cg = image.cgImage, cg.width > 0, cg.height > 0 else { return -1 }
+        let w = cg.width, h = cg.height
+        var gray = [UInt8](repeating: 255, count: w * h)
+        gray.withUnsafeMutableBytes { buf in
+            let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        var n = 0
+        for v in gray where v < 128 { n += 1 }
+        return n
     }
 
     private func le32(_ d: Data, _ at: Int) -> Int { Int(d[at]) | Int(d[at + 1]) << 8 | Int(d[at + 2]) << 16 | Int(d[at + 3]) << 24 }

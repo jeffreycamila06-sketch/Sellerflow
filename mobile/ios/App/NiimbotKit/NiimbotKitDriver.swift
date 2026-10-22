@@ -15,7 +15,9 @@
 // "[Niimbot] …" NSLog lines, a single-flight guard, and closePrinter on EVERY exit
 // (success, error, timeout). The SDK libraries have no simulator slice → the simulator build
 // of this framework is a stub (NIIMBOT_UNAVAILABLE).
-// ⚠️ UNVERIFIED ON HARDWARE until NIIMBOT's SDK usage permission arrives.
+// ✅ HARDWARE-VERIFIED 2026-10-22: a B1 printed the full 50×30 sticker (buyer #, @username,
+// name, comment/price, date-time, QR) from this path. Store release still waits for NIIMBOT's
+// SDK usage permission.
 import Foundation
 import UIKit
 
@@ -42,7 +44,7 @@ enum NiimbotKitLogic {
 @objc(NiimbotKitDriver) public final class NiimbotKitDriver: NSObject, SFLNiimbotDriving {
     public override init() { super.init() }
     public func printLabel(withName name: String, png: Data, labelWidthMm: Float, labelHeightMm: Float, completion: @escaping SFLNiimbotCompletion) {
-        NSLog("[Niimbot] simulator stub: no SDK slice (png=%d bytes)", png.count)
+        NSLog("[Niimbot] simulator stub: no SDK slice (image=%d bytes)", png.count)
         completion(false, "NIIMBOT_UNAVAILABLE", "Niimbot driver is not available in the simulator")
     }
 }
@@ -82,7 +84,7 @@ enum NiimbotKitLogic {
                     }
                 }
             }
-            NSLog("[Niimbot] job start: label %.0fx%.0f mm, png=%d bytes (reference path)", wMm, hMm, png.count)
+            NSLog("[Niimbot] job start: label %.0fx%.0f mm, image=%d bytes (reference path)", wMm, hMm, png.count)
             guard png.count > 0 else { finish(false, "BT_PRINT_FAILED", "Bad image data"); return }
             DispatchQueue.main.async {
                 var answered = false
