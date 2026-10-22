@@ -86,6 +86,10 @@ export function mapStatus(statusMessage, shipStatusDetails) {
   //    ladder entry (sample 4). Buyer can still collect until tonight. status_message
   //    = the 將退回 step (the actionable last-chance warning).
   if (returning_soon) {
+    // …unless the buyer collected it ON the last-chance day: the newest step is then the
+    // pickup (已完成包裹取件) with the 將退回 warning still below it and no RETURNED_KW anywhere
+    // (84 parcels sat as at_store/"Returning" forever before this). Terminal pickup.
+    if (newest && isPickedUpMsg(newest)) return { status: "picked_up", terminal: true, known: true, returning_soon: true, step: newest };
     return { status: "at_store", terminal: false, known: true, returning_soon: true, step: stepWith(RETURNING_SOON_KW) || newest };
   }
 
