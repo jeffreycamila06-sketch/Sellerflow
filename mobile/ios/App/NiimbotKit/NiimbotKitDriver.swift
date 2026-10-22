@@ -22,9 +22,13 @@
 // • The draw BOOL is only LOGGED. Like the reference ("some JCAPI versions report NO even when
 //   the drawing command was accepted"), acceptance = GenerateLableJson non-empty AND it
 //   contains the image element (see NiimbotKitLogic.describeLabelJson).
-// • DIAGNOSTIC LADDER: one tap tries a text sanity draw, then image variants b–f (RGB-no-alpha
-//   PNG / JPEG / data-URL / main thread / 400-dot canvas), logs "[Niimbot] try <name> …" for
-//   each and prints with the first whose JSON carries the image (remembered for later taps).
+// • NO TEXT CALLS. drawLableText with a font FILE name ("ZT001.ttf") aborts inside the SDK
+//   (C++ rapidjson assert — SIGABRT, not catchable by @try); the reference passes the font
+//   NAME ("宋体") and @[bold,italic,underline,strikethrough]. We only draw the image, so the
+//   text sanity try was removed. Never call an SDK API with values the reference never uses.
+// • DIAGNOSTIC LADDER: one tap tries image variants b–f (RGB-no-alpha PNG / JPEG / data-URL /
+//   main thread / 400-dot canvas), logs "[Niimbot] try <name> …" for each and prints with the
+//   first whose JSON carries the image (remembered for later taps).
 // Every step logs "[Niimbot] …" (codes, sizes, keys — never the image data or buyer data).
 // The printer is CLOSED on every exit (success, error, timeout). Single-flight. The SDK
 // libraries have no simulator slice → the simulator build of this framework is a stub.
@@ -132,7 +136,6 @@ enum NiimbotKitLogic {
         "openPrinter:completion:", "closePrinter", "connectingPrinterName", "isConnectingState", "cancelJob:",
         "initImageProcessing:error:", "setPrintWithCache:",
         "initDrawingBoard:withHeight:withHorizontalShift:withVerticalShift:rotate:fontArray:",
-        "drawLableText:withY:withWidth:withHeight:withString:withFontFamily:withFontSize:withRotate:withTextAlignHorizonral:withTextAlignVertical:withLineMode:withLetterSpacing:withLineSpacing:withFontStyle:",
         "DrawLableImage:withY:withWidth:withHeight:withImageData:withRotate:withImageProcessingType:withImageProcessingValue:",
         "GenerateLableJson", "getPrintingErrorInfo:", "getPrintingCountInfo:", "setTotalQuantityOfPrints:",
         "startJob:withPaperStyle:withCompletion:", "commit:withOnePageNumbers:withComplete:", "endPrint:",
@@ -221,11 +224,10 @@ enum NiimbotKitLogic {
     }
 
     // ── DIAGNOSTIC LADDER (B1 field test: DrawLableImage → 0 on the RGBA PNG) ──────────
-    // One tap tries, in order, (a) a text sanity draw, then image variants (b)–(f); each try
-    // logs "[Niimbot] try <name> → drawn=0/1 accepted=0/1 <json summary>". The draw BOOL is
-    // only logged; accepted = the label JSON carries the image element. The job prints with
-    // the FIRST accepted image variant and remembers it for the next taps. No image variant
-    // accepted but the text was → the TEST text label is printed (paper proof the board works).
+    // One tap tries image variants (b)–(f) in order; each try logs
+    // "[Niimbot] try <name> → drawn=0/1 accepted=0/1 <json summary>". The draw BOOL is only
+    // logged; accepted = the label JSON carries the image element. The job prints with the
+    // FIRST accepted variant and remembers it for the next taps; none accepted → NIIMBOT_ERROR.
     private struct ImageTry { let name: String; let base64: String?; let onMain: Bool }
     private static var workingVariant: String?
 
@@ -254,9 +256,6 @@ enum NiimbotKitLogic {
         let b64 = png.base64EncodedString()
         NSLog("[Niimbot] base64 length=%d first30=%@", b64.count, String(b64.prefix(30)))
 
-        // (a) sanity: text on a fresh board
-        let textOk = drawTextTry(wMm: wMm, hMm: hMm, emptyLen: emptyLen) != nil
-
         let decoded = UIImage(data: png)
         let tries: [ImageTry] = [
             ImageTry(name: "b-rgb-png-noalpha-srgb", base64: decoded.flatMap { NiimbotKitLogic.rgbPng($0, width: nil) }?.base64EncodedString(), onMain: false),
@@ -277,16 +276,12 @@ enum NiimbotKitLogic {
             let result: String? = (t.onMain && !Thread.isMainThread) ? DispatchQueue.main.sync(execute: run) : run()
             if let j = result { json = j; winner = t.name; break }
         }
-        if let w = winner {
-            NiimbotKitDriver.workingVariant = w
-            NSLog("[Niimbot] printing with variant %@ (remembered)", w)
-        } else if textOk {
-            NSLog("[Niimbot] no image variant accepted — printing the TEST text label instead")
-            json = drawTextTry(wMm: wMm, hMm: hMm, emptyLen: emptyLen)
+        guard let w = winner, let labelJson = json, !labelJson.isEmpty else {
+            NSLog("[Niimbot] no image variant accepted")
+            finish(false, "NIIMBOT_ERROR", "The label image was not accepted"); return
         }
-        guard let labelJson = json, !labelJson.isEmpty else {
-            finish(false, "NIIMBOT_ERROR", "The label image was not accepted (text sanity=\(textOk ? 1 : 0))"); return
-        }
+        NiimbotKitDriver.workingVariant = w
+        NSLog("[Niimbot] printing with variant %@ (remembered)", w)
         startPrint(json: labelJson, name: name, finish: finish)
     }
 
@@ -298,22 +293,6 @@ enum NiimbotKitLogic {
             json = JCAPI.generateLableJson()
         }) { NSLog("[Niimbot] initDrawingBoard/GenerateLableJson threw: %@", ex); return nil }
         return json ?? ""
-    }
-
-    /// Fresh board + "TEST" text (try a). Returns the label JSON when the board accepted it.
-    private func drawTextTry(wMm: Float, hMm: Float, emptyLen: Int) -> String? {
-        guard freshBoard(wMm: wMm, hMm: hMm) != nil else { return nil }
-        var drawn = false, json: String?
-        if let ex = SFLSdkCall({
-            drawn = JCAPI.drawLableText(0, withY: 0, withWidth: 50, withHeight: 10, with: "TEST", withFontFamily: "ZT001.ttf", withFontSize: 4, withRotate: 0,
-                                        withTextAlignHorizonral: 0, withTextAlignVertical: 1, withLineMode: 6, withLetterSpacing: 0, withLineSpacing: 1, withFontStyle: [0, 0, 0, 0])
-            json = JCAPI.generateLableJson()
-        }) { NSLog("[Niimbot] try a-text threw: %@", ex); return nil }
-        let j = json ?? ""
-        let d = NiimbotKitLogic.describeLabelJson(j, emptyLength: emptyLen)
-        let accepted = j.count > emptyLen
-        NSLog("[Niimbot] try a-text → drawn=%d accepted=%d %@", drawn ? 1 : 0, accepted ? 1 : 0, d.summary)
-        return accepted ? j : nil
     }
 
     /// Fresh board + the image variant. Returns the label JSON when it carries the image.
