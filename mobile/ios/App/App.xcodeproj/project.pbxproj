@@ -426,6 +426,9 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				9F0000100000000000000B12 /* FONT.json in Resources */,
+				9F0000100000000000000B13 /* ZT001.ttf in Resources */,
+				9F0000100000000000000B14 /* ZT002.otf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -433,9 +436,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9F0000100000000000000B12 /* FONT.json in Resources */,
-				9F0000100000000000000B13 /* ZT001.ttf in Resources */,
-				9F0000100000000000000B14 /* ZT002.otf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
