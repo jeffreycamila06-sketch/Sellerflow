@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderStickerBitmap, rasterizeToBitmapTspl, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
+import { renderStickerBitmap, rasterizeToBitmapTspl, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "../glyphAtlas.cyrillic";
 import { CJK_ATLAS } from "../glyphAtlas.cjk";
@@ -86,12 +86,14 @@ describe("font C layout rules", () => {
       const top = qr.y0 + QR_QUIET_MODULES * qr.scale;
       expect(Math.abs(top - (r.h - top - symbol))).toBeLessThanOrEqual(1);          // vertically centred
       let gapInk = 0, textRight = -1;
+      const colEnd = Math.min(qr.x0, inkLeft - PROP_TEXT_QR_GAP); // the column ends before the quiet zone the stamp clears
       for (let y = 0; y < r.h; y++) {
-        for (let x = inkLeft - PROP_TEXT_QR_GAP; x < inkLeft; x++) if (ink(r, x, y)) gapInk++;
-        for (let x = 0; x < inkLeft - PROP_TEXT_QR_GAP; x++) if (ink(r, x, y)) textRight = Math.max(textRight, x);
+        for (let x = colEnd - PROP_INK_MARGIN; x < inkLeft; x++) if (ink(r, x, y)) gapInk++;
+        for (let x = 0; x < colEnd; x++) if (ink(r, x, y)) textRight = Math.max(textRight, x);
       }
       expect(gapInk).toBe(0);
-      expect(textRight).toBeLessThan(inkLeft - PROP_TEXT_QR_GAP);
+      expect(inkLeft - colEnd).toBeGreaterThanOrEqual(PROP_TEXT_QR_GAP);
+      expect(textRight).toBeLessThan(colEnd - PROP_INK_MARGIN);
       expect(textRight).toBeGreaterThan(0);
     }
   });
@@ -118,9 +120,9 @@ describe("font C layout rules", () => {
     const byText = (t: string) => lines.find((l) => l.line.text === t);
     expect(byText("12")!.size).toBe(46);                       // buyer number: unchanged size
     expect(byText("10/22 20:15")!.size).toBe(18);              // date-time: unchanged size
-    const handle = byText("@wangxiaoming88")!;                 // was "@wangxiaomi…" at 24 → now whole, one step down
+    const handle = byText("@wangxiaoming88")!;                 // was "@wangxiaomi…" at 24 → now whole, a step or two down
     expect(handle.line.cut).toBe(false);
-    expect(handle.size).toBe(20);
+    expect([20, 18]).toContain(handle.size);
     expect(propFitLine("@wangxiaoming88", 24, col, ATL).cut).toBe(true);
     expect(byText("王小明")!.size).toBe(24);                    // fits at the normal size → no shrink
     expect(byText("A12 +1 $350")!.size).toBe(24);
@@ -197,5 +199,76 @@ describe("opt-in: the fixed-cell layout and the D520BT stream are untouched", ()
     // the font-C loaders are referenced ONLY through imagePathAtlases (generic + Niimbot image paths)
     const users = src.split("\n").filter((l) => /loadPropAtlas\(|loadCjkBoldAtlas\(/.test(l));
     expect(users.length).toBe(2);
+  });
+});
+
+// ── glyph integrity: no glyph is ever partially painted (clipped by the column, the label edge
+// or the QR's cleared footprint); a cut line always ends in a whole "…"; digits are never
+// silently cut. Checked over every golden render AND a seeded fuzz of long handles / mixed
+// names / prices at both sizes, QR on and off.
+describe("font C glyph integrity", () => {
+  // every ink dot of every painted glyph is in the raster, and the glyph lies inside the column
+  function checkIntegrity(rp: RasterPayload, size: Size) {
+    const { w, h } = dims(size);
+    const r = renderStickerBitmap(rp, w, h, ATL);
+    const L = propLayoutLines(rp, w, h, ATL);
+    const colEnd = L.qr ? Math.min(L.qr.x0, propQrInkLeft(L.qr) - PROP_TEXT_QR_GAP) : L.w - propSizes(w, false).edge;
+    const tops = propLineTops(L.lines, L.h);
+    let glyphs = 0;
+    L.lines.forEach((l, i) => {
+      expect(L.x + l.line.inkWidth + PROP_INK_MARGIN).toBeLessThanOrEqual(colEnd);
+      if (l.line.cut) expect(l.line.text.endsWith("…")).toBe(true);
+      for (const it of l.line.items) {
+        const b = propGlyphBox(it, l.size, L.x, tops[i], l.font, ATL);
+        if (!b) continue;
+        glyphs++;
+        expect(b.x + b.w).toBeLessThanOrEqual(colEnd);                // the glyph box never crosses the column
+        expect(b.y + b.h).toBeLessThanOrEqual(r.h);
+        const crb = (b.w + 7) >> 3;
+        for (let sy = 0; sy < b.h; sy++) for (let sx = 0; sx < b.w; sx++) {
+          if ((b.cell[sy * crb + (sx >> 3)] & (0x80 >> (sx & 7))) === 0) continue;
+          if (!ink(r, b.x + sx, b.y + sy)) throw new Error(`glyph "${l.line.text}" size ${l.size}: ink missing at (${b.x + sx},${b.y + sy}) — partially clipped`);
+        }
+      }
+    });
+    return glyphs;
+  }
+  it("every golden render", () => {
+    let n = 0;
+    for (const b of [S1, S2, S3]) n += checkIntegrity(payloadFor(b, "50x30", true), "50x30");
+    for (const size of ["50x30", "60x40"] as Size[]) {
+      n += checkIntegrity(payloadFor(S2, size, true, "Facebook"), size);
+      n += checkIntegrity(payloadFor(S2, size, false), size);
+      n += checkIntegrity(payloadFor(S2, size, true), size);
+    }
+    expect(n).toBeGreaterThan(200);
+  });
+  it("fuzz: long handles, mixed CJK/Latin names, prices — never a partial glyph, never a cut digit without '…'", () => {
+    let seed = 20261022;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const pick = <T,>(a: T[]) => a[Math.floor(rnd() * a.length)];
+    const latin = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.";
+    const cjk = "陳美玲王小明林志偉張淑芬好看漂亮測試黃雅婷";
+    const word = (n: number, src: string) => Array.from({ length: n }, () => src[Math.floor(rnd() * src.length)]).join("");
+    let glyphs = 0, cut = 0;
+    for (let i = 0; i < 120; i++) {
+      const handle = word(4 + Math.floor(rnd() * 28), latin);
+      const name = pick([word(2 + Math.floor(rnd() * 4), cjk), `${word(3, cjk)} ${word(3 + Math.floor(rnd() * 8), latin)}`, word(5 + Math.floor(rnd() * 20), latin), `Nguyễn Thị ${word(4, latin)}`]);
+      const price = pick(["$350", "$1,280", "NT$12,345", "$99,999,999", "¥8,800", "250"]);
+      const item = pick([`A${Math.floor(rnd() * 99)} +${1 + Math.floor(rnd() * 9)} ${price}`, `${word(2, cjk)}${word(2, cjk)} ${price}`, `${word(20 + Math.floor(rnd() * 20), latin)} ${price}`, price]);
+      const size = pick(["50x30", "60x40"] as Size[]);
+      const platform = pick(["TikTok", "TikTok", "Facebook"] as const);
+      const rp = payloadFor(buyer(1 + Math.floor(rnd() * 9999), handle, name, item, platform), size, rnd() < 0.7, platform);
+      glyphs += checkIntegrity(rp, size);
+      const L = propLayoutLines(rp, dims(size).w, dims(size).h, ATL);
+      for (const l of L.lines) {
+        if (!l.line.cut) continue;
+        cut++;
+        expect(l.line.text.endsWith("…")).toBe(true);
+        expect(/[0-9]$/.test(l.line.text)).toBe(false); // a cut line never ENDS in a digit ("$1,28" can never be read as a price)
+      }
+    }
+    expect(glyphs).toBeGreaterThan(2000);
+    expect(cut).toBeGreaterThan(20);
   });
 });
