@@ -13,12 +13,16 @@
 //   threshold 127) → GenerateLableJson → [preview ink check] → getPrintingErrorInfo /
 //   getPrintingCountInfo → setTotalQuantityOfPrints(1) → startJob(density, paper 1 = gap) →
 //   commit(json, 1) → count callback totalCount ≥ 1 → endPrint → done.
+// DIAGNOSTIC BUILD (B1 field test: DrawLableImage → 0): one tap tries a text sanity draw
+// then image variants b–f (RGB-no-alpha PNG / JPEG / data-URL / main thread / 400-dot canvas),
+// logs "[Niimbot] try <name> → 0/1 (json= ink=)" for each and prints with the first accepted.
 // Every step logs "[Niimbot] …" (codes and sizes only, never buyer data). The printer is
 // CLOSED on every exit (success, error, timeout). Single-flight. The SDK libraries have no
 // simulator slice → the simulator build of this framework is a stub (NIIMBOT_UNAVAILABLE).
 // ⚠️ UNVERIFIED ON HARDWARE until NIIMBOT's SDK usage permission arrives.
 import Foundation
 import UIKit
+import ImageIO
 
 enum NiimbotKitLogic {
     /// Print density: only B-series 50 mm models are listed (SDK docs: B-series 1–5, default 3).
@@ -56,6 +60,29 @@ enum NiimbotKitLogic {
         for v in gray where v < 128 { n += 1 }
         return n
     }
+
+    /// Re-encode an image as a plain 8-bit RGB PNG — NO alpha channel (kCGImageAlphaNoneSkipLast
+    /// context, sRGB, scale 1), written through ImageIO so the file really has no alpha
+    /// (UIImage.pngData() re-adds one). `width` = place the image centred on a wider white
+    /// canvas of that many dots (diagnostic (f): the B1's real 203 dpi dots, 400 for 50 mm).
+    static func rgbPng(_ image: UIImage, width: Int?) -> Data? {
+        guard let cg = image.cgImage, cg.width > 0, cg.height > 0 else { return nil }
+        let w = width ?? cg.width, h = cg.height
+        guard w >= cg.width,
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.interpolationQuality = .none
+        ctx.draw(cg, in: CGRect(x: (w - cg.width) / 2, y: 0, width: cg.width, height: cg.height))
+        guard let out = ctx.makeImage() else { return nil }
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, out, nil)
+        return CGImageDestinationFinalize(dest) ? data as Data : nil
+    }
+
 }
 
 #if targetEnvironment(simulator)
@@ -75,7 +102,6 @@ enum NiimbotKitLogic {
 @objc(NiimbotKitDriver) public final class NiimbotKitDriver: NSObject, SFLNiimbotDriving {
     private static let printTimeout: TimeInterval = 30
     private static let openTimeout: TimeInterval = 15
-    private static var imageProcessingReady = false
     private let queue = DispatchQueue(label: "com.sellerflow.niimbotkit")
     private var busy = false
 
@@ -110,7 +136,7 @@ enum NiimbotKitLogic {
                 self.open(name: name) { ok in
                     NSLog("[Niimbot] openPrinter → %d (state=%d)", ok ? 1 : 0, JCAPI.isConnectingState())
                     if !ok { finish(false, "BT_NOT_FOUND", "Could not connect to the printer"); return }
-                    self.printLabel(pngBase64: png.base64EncodedString(), name: name, wMm: wMm, hMm: hMm, finish: finish)
+                    self.printLabel(png: png, name: name, wMm: wMm, hMm: hMm, finish: finish)
                 }
             }
             self.queue.asyncAfter(deadline: .now() + NiimbotKitDriver.printTimeout + NiimbotKitDriver.openTimeout) {
@@ -140,45 +166,107 @@ enum NiimbotKitLogic {
         }
     }
 
-    private func printLabel(pngBase64: String, name: String, wMm: Float, hMm: Float, finish: @escaping (Bool, String, String) -> Void) {
-        // Font resources (FONT.json + ZT001.ttf/ZT002.otf) live in THIS framework's bundle —
-        // the SDK's drawing board needs its image/font processor initialised once.
-        if !NiimbotKitDriver.imageProcessingReady {
-            let bundle = Bundle(for: NiimbotKitDriver.self)
-            guard let path = bundle.resourcePath, bundle.path(forResource: "FONT", ofType: "json") != nil, bundle.path(forResource: "ZT001", ofType: "ttf") != nil else {
-                NSLog("[Niimbot] font resources missing in the framework bundle")
-                finish(false, "NIIMBOT_ERROR", "Resources missing"); return
-            }
-            var initErr: NSError?
-            JCAPI.initImageProcessing(path, error: &initErr) // void + NSError** in JCAPI.h (not a throwing import)
-            if let e = initErr {
-                NSLog("[Niimbot] initImageProcessing FAILED: %@", e.localizedDescription)
-                finish(false, "NIIMBOT_ERROR", "Label renderer failed: \(e.localizedDescription)"); return
-            }
-            NSLog("[Niimbot] initImageProcessing ok")
-            NiimbotKitDriver.imageProcessingReady = true
+    // ── DIAGNOSTIC LADDER (B1 field test: DrawLableImage → 0 on the RGBA PNG) ──────────
+    // One tap tries, in order, (a) a text sanity draw, then image variants (b)–(f); each
+    // try logs "[Niimbot] try <name> → 0/1 (json=N ink=M)". The job prints with the FIRST
+    // image variant the board accepts (drawn BOOL, or — the reference's rule: "some JCAPI
+    // versions report NO even when the drawing command was accepted" — a non-empty JSON whose
+    // preview carries ink) and remembers it for the next taps. No image variant accepted but
+    // the text was → the TEST text label is printed (paper proof that the board works).
+    private struct ImageTry { let name: String; let base64: String?; let onMain: Bool }
+    private static var workingVariant: String?
+
+    private func printLabel(png: Data, name: String, wMm: Float, hMm: Float, finish: @escaping (Bool, String, String) -> Void) {
+        NSLog("[Niimbot] drawing thread: main=%d", Thread.isMainThread ? 1 : 0)
+        // Font resources (FONT.json + ZT001.ttf/ZT002.otf) live in THIS framework's bundle.
+        // Like the reference, initImageProcessing runs on EVERY job (the second tap of the
+        // field test skipped it — removed the once-flag so each job logs its error object).
+        let bundle = Bundle(for: NiimbotKitDriver.self)
+        guard let path = bundle.resourcePath, bundle.path(forResource: "FONT", ofType: "json") != nil, bundle.path(forResource: "ZT001", ofType: "ttf") != nil else {
+            NSLog("[Niimbot] font resources missing in the framework bundle (resourcePath=%@)", bundle.resourcePath ?? "nil")
+            finish(false, "NIIMBOT_ERROR", "Resources missing"); return
         }
+        var initErr: NSError?
+        JCAPI.initImageProcessing(path, error: &initErr) // void + NSError** in JCAPI.h (not a throwing import)
+        NSLog("[Niimbot] initImageProcessing resourcePath=%@ error=%@", path, initErr.map { "\($0.domain)#\($0.code) \($0.localizedDescription) \($0.userInfo)" } ?? "nil")
+        if let e = initErr { finish(false, "NIIMBOT_ERROR", "Label renderer failed: \(e.localizedDescription)"); return }
         JCAPI.setPrintWithCache(true)
-        JCAPI.initDrawingBoard(wMm, withHeight: hMm, withHorizontalShift: 0, withVerticalShift: 0, rotate: 0, fontArray: ["ZT001.ttf"])
-        NSLog("[Niimbot] initDrawingBoard %.0fx%.0f mm rotate 0", wMm, hMm)
-        let drawn = JCAPI.drawLableImage(0, withY: 0, withWidth: wMm, withHeight: hMm, withImageData: pngBase64, withRotate: 0, withImageProcessingType: 1, withImageProcessingValue: 127)
-        NSLog("[Niimbot] DrawLableImage → %d", drawn ? 1 : 0)
-        guard drawn else { finish(false, "NIIMBOT_ERROR", "The label image was not accepted"); return }
-        guard let json = JCAPI.generateLableJson(), !json.isEmpty else {
-            NSLog("[Niimbot] GenerateLableJson → empty")
-            finish(false, "NIIMBOT_ERROR", "Could not prepare the label"); return
+
+        let b64 = png.base64EncodedString()
+        NSLog("[Niimbot] base64 length=%d first30=%@", b64.count, String(b64.prefix(30)))
+
+        // (a) sanity: text on a fresh board
+        let textOk = drawTextTry(wMm: wMm, hMm: hMm)
+
+        let decoded = UIImage(data: png)
+        let tries: [ImageTry] = [
+            ImageTry(name: "b-rgb-png-noalpha-srgb", base64: decoded.flatMap { NiimbotKitLogic.rgbPng($0, width: nil) }?.base64EncodedString(), onMain: false),
+            ImageTry(name: "c-jpeg-0.9", base64: decoded?.jpegData(compressionQuality: 0.9)?.base64EncodedString(), onMain: false),
+            ImageTry(name: "d-data-url-png", base64: "data:image/png;base64," + b64, onMain: false),
+            ImageTry(name: "e-main-thread-png", base64: b64, onMain: true),
+            ImageTry(name: "f-400x240-rgb-png", base64: decoded.flatMap { NiimbotKitLogic.rgbPng($0, width: 400) }?.base64EncodedString(), onMain: true),
+        ]
+        var ordered = tries
+        if let known = NiimbotKitDriver.workingVariant, let i = tries.firstIndex(where: { $0.name == known }) {
+            ordered = [tries[i]] + tries.enumerated().filter { $0.offset != i }.map { $0.element } // remembered winner first
         }
-        NSLog("[Niimbot] GenerateLableJson → %d chars", json.count)
-        // The SDK's own preview of the board: if it carries no ink, nothing would print — stop
-        // here instead of feeding a blank label (this is the exact symptom to diagnose).
+        var json: String?
+        var winner: String?
+        for t in ordered {
+            guard let data = t.base64 else { NSLog("[Niimbot] try %@ → skipped (could not encode)", t.name); continue }
+            let run = { self.drawImageTry(t.name, base64: data, wMm: wMm, hMm: hMm) }
+            let result: String? = (t.onMain && !Thread.isMainThread) ? DispatchQueue.main.sync(execute: run) : run()
+            if let j = result { json = j; winner = t.name; break }
+        }
+        if let w = winner {
+            NiimbotKitDriver.workingVariant = w
+            NSLog("[Niimbot] printing with variant %@ (remembered)", w)
+        } else if textOk {
+            NSLog("[Niimbot] no image variant accepted — printing the TEST text label instead")
+            _ = drawTextTry(wMm: wMm, hMm: hMm)
+            json = JCAPI.generateLableJson()
+        }
+        guard let labelJson = json, !labelJson.isEmpty else {
+            finish(false, "NIIMBOT_ERROR", "The label image was not accepted (text sanity=\(textOk ? 1 : 0))"); return
+        }
+        startPrint(json: labelJson, name: name, finish: finish)
+    }
+
+    /// Fresh board + "TEST" text. Logged as "try a-text".
+    private func drawTextTry(wMm: Float, hMm: Float) -> Bool {
+        JCAPI.initDrawingBoard(wMm, withHeight: hMm, withHorizontalShift: 0, withVerticalShift: 0, rotate: 0, fontArray: ["ZT001.ttf"])
+        let drawn = JCAPI.drawLableText(0, withY: 0, withWidth: 50, withHeight: 10, with: "TEST", withFontFamily: "ZT001.ttf", withFontSize: 4, withRotate: 0,
+                                        withTextAlignHorizonral: 0, withTextAlignVertical: 1, withLineMode: 6, withLetterSpacing: 0, withLineSpacing: 1, withFontStyle: [0, 0, 0, 0])
+        let (jsonLen, ink) = boardState()
+        NSLog("[Niimbot] try a-text → %d (json=%d ink=%d)", drawn ? 1 : 0, jsonLen, ink)
+        return drawn || (jsonLen > 0 && ink > 0)
+    }
+
+    /// Fresh board + the image variant. Returns the label JSON when the board accepted it.
+    private func drawImageTry(_ name: String, base64: String, wMm: Float, hMm: Float) -> String? {
+        JCAPI.initDrawingBoard(wMm, withHeight: hMm, withHorizontalShift: 0, withVerticalShift: 0, rotate: 0, fontArray: ["ZT001.ttf"])
+        let drawn = JCAPI.drawLableImage(0, withY: 0, withWidth: wMm, withHeight: hMm, withImageData: base64, withRotate: 0, withImageProcessingType: 1, withImageProcessingValue: 127)
+        let (jsonLen, ink) = boardState()
+        NSLog("[Niimbot] try %@ → %d (json=%d ink=%d main=%d b64=%d)", name, drawn ? 1 : 0, jsonLen, ink, Thread.isMainThread ? 1 : 0, base64.count)
+        guard drawn || (jsonLen > 0 && ink > 0) else { return nil }
+        guard let json = JCAPI.generateLableJson(), !json.isEmpty else { return nil }
+        return json
+    }
+
+    /// (label JSON length, preview ink pixels) of the current board; -1 ink = no preview.
+    private func boardState() -> (Int, Int) {
+        let jsonLen = JCAPI.generateLableJson()?.count ?? 0
+        var ink = -1
         do {
             let preview = try JCAPI.generateImagePreviewImage(1.0) // UIImage* + NSError** → a throwing import
-            let ink = NiimbotKitLogic.inkPixels(in: preview)
-            NSLog("[Niimbot] preview %dx%d px, ink pixels=%d", Int(preview.size.width * preview.scale), Int(preview.size.height * preview.scale), ink)
-            if ink == 0 { finish(false, "NIIMBOT_ERROR", "The label image did not reach the printer board"); return }
+            ink = NiimbotKitLogic.inkPixels(in: preview)
         } catch {
             NSLog("[Niimbot] preview unavailable: %@", error.localizedDescription)
         }
+        return (jsonLen, ink)
+    }
+
+    private func startPrint(json: String, name: String, finish: @escaping (Bool, String, String) -> Void) {
         JCAPI.getPrintingErrorInfo { info in
             let code = Int((info ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
             NSLog("[Niimbot] printing error callback: %d", code)
