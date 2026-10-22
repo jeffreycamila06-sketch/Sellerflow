@@ -53,32 +53,37 @@ final class NiimbotLoaderTests: XCTestCase {
         }
     }
 
-    // The image the SDK gets: an OPAQUE 8-bit RGB PNG (IHDR colour type 2, no alpha), black
-    // ink on white, with the rasterizer's polarity (stickerRaster.ts renderStickerBitmap: rows
-    // MSB-first, bit 1 = INK) — the convention the web sends for Niimbot. A blank label is
-    // exactly what a wrong polarity / an alpha-only image would produce, so this is pinned.
-    func testPackedBitsBecomeBlackOnWhiteOpaqueRgbPng() {
+    // The image the SDK gets: the reference's 24-bit BMP (zh4dev _encodeMonochromeBmp, ported
+    // 1:1 — "BM", 54-byte header, bottom-up rows padded to 4 bytes, no alpha), black ink on
+    // white, with the rasterizer's polarity (stickerRaster.ts renderStickerBitmap: rows
+    // MSB-first, bit 1 = INK) — the convention the web sends for Niimbot.
+    func testPackedBitsBecomeTheReferenceBmp() {
         let w = 384, h = 240, rowBytes = 48
         var packed = Data(count: rowBytes * h)
         packed[0] = 0x80            // (0,0) ink  — MSB of the first byte = leftmost dot
         packed[10 * rowBytes + 3] = 0x01 // (31,10) ink — LSB of byte 3 = dot 31
-        guard let png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes), let img = UIImage(data: png), let cg = img.cgImage else {
-            return XCTFail("png conversion failed")
+        guard let bmp = NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes), let img = UIImage(data: bmp), let cg = img.cgImage else {
+            return XCTFail("bmp conversion failed")
         }
+        // header exactly as the reference writes it
+        XCTAssertEqual(Array(bmp[0..<2]), [0x42, 0x4D])
+        let rowSize = ((w * 3 + 3) / 4) * 4
+        XCTAssertEqual(bmp.count, 54 + rowSize * h)
+        XCTAssertEqual(le32(bmp, 2), bmp.count); XCTAssertEqual(le32(bmp, 10), 54); XCTAssertEqual(le32(bmp, 14), 40)
+        XCTAssertEqual(le32(bmp, 18), w); XCTAssertEqual(le32(bmp, 22), h)
+        XCTAssertEqual(Int(bmp[26]) | Int(bmp[27]) << 8, 1); XCTAssertEqual(Int(bmp[28]) | Int(bmp[29]) << 8, 24)
+        XCTAssertEqual(le32(bmp, 34), rowSize * h)
+        // raw bytes: bottom-up → image row 0 is the LAST stored row; (0,0) ink = 0,0,0; neighbour white
+        let row0 = 54 + (h - 1) * rowSize
+        XCTAssertEqual(Array(bmp[row0..<row0 + 6]), [0, 0, 0, 255, 255, 255])
+        let row10 = 54 + (h - 1 - 10) * rowSize
+        XCTAssertEqual(Array(bmp[row10 + 31 * 3..<row10 + 31 * 3 + 3]), [0, 0, 0])
+        // decoded by ImageIO the same way
         XCTAssertEqual(cg.width, w); XCTAssertEqual(cg.height, h)
-        XCTAssertEqual(png[25], 2, "PNG IHDR colour type must be 2 = RGB (no alpha); got \(png[25])")
         XCTAssertEqual(NiimbotImage.inkPixels(in: img), 2)
-        // pixel probe through a gray context: ink = 0, paper = 255
-        var gray = [UInt8](repeating: 9, count: w * h)
-        gray.withUnsafeMutableBytes { buf in
-            let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
-            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-        }
-        XCTAssertEqual(gray[0], 0)                       // (0,0) black
-        XCTAssertEqual(gray[10 * w + 31], 0)             // (31,10) black
-        XCTAssertEqual(gray[1], 255); XCTAssertEqual(gray[w * h - 1], 255) // paper white
-        XCTAssertNil(NiimbotImage.png(packed: Data(count: 10), w: w, h: h, rowBytes: rowBytes)) // short data → nil, never a blank label
-        let stats = NiimbotImage.stats(png: png)
+        XCTAssertNil(NiimbotImage.image(packed: Data(count: 10), w: w, h: h, rowBytes: rowBytes)) // short data → nil
+        let stats = NiimbotImage.stats(image: bmp)
+        XCTAssertTrue(stats.hasPrefix("bmp 384x240"), stats)
         XCTAssertTrue(stats.contains("alpha=none"), stats)
         XCTAssertTrue(stats.contains("dark=2/92160"), stats)
     }
@@ -89,38 +94,36 @@ final class NiimbotLoaderTests: XCTestCase {
         let w = 384, h = 240, rowBytes = 48
         var packed = Data(count: rowBytes * h)
         packed[0] = 0x80 // (0,0) ink
-        guard let png = NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes, canvasW: 400, canvasH: 240),
-              let img = UIImage(data: png), let cg = img.cgImage else { return XCTFail("png conversion failed") }
+        guard let bmp = NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes, canvasW: 400, canvasH: 240),
+              let img = UIImage(data: bmp), let cg = img.cgImage else { return XCTFail("bmp conversion failed") }
         XCTAssertEqual(cg.width, 400); XCTAssertEqual(cg.height, 240)
-        XCTAssertEqual(png[25], 2, "still RGB, no alpha")
+        XCTAssertEqual(le32(bmp, 18), 400); XCTAssertEqual(le32(bmp, 22), 240)
         XCTAssertEqual(NiimbotImage.inkPixels(in: img), 1)
-        var gray = [UInt8](repeating: 9, count: 400 * 240)
-        gray.withUnsafeMutableBytes { buf in
-            let ctx = CGContext(data: buf.baseAddress, width: 400, height: 240, bitsPerComponent: 8, bytesPerRow: 400, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
-            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 400, height: 240))
-        }
-        XCTAssertEqual(gray[8], 0, "dot (0,0) lands at x=8 — centred in the 16 dots of padding")
-        XCTAssertEqual(gray[0], 255); XCTAssertEqual(gray[7], 255); XCTAssertEqual(gray[399], 255)
+        let rowSize = ((400 * 3 + 3) / 4) * 4, row0 = 54 + 239 * rowSize
+        XCTAssertEqual(Array(bmp[row0 + 8 * 3..<row0 + 8 * 3 + 3]), [0, 0, 0], "dot (0,0) lands at x=8 — centred in the 16 dots of padding")
+        XCTAssertEqual(Array(bmp[row0..<row0 + 3]), [255, 255, 255]); XCTAssertEqual(Array(bmp[row0 + 7 * 3..<row0 + 7 * 3 + 3]), [255, 255, 255])
         // a canvas smaller than the image never crops
-        XCTAssertEqual(UIImage(data: NiimbotImage.png(packed: packed, w: w, h: h, rowBytes: rowBytes, canvasW: 100, canvasH: 100)!)!.cgImage!.width, 384)
+        XCTAssertEqual(le32(NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes, canvasW: 100, canvasH: 100)!, 18), 384)
         XCTAssertEqual(NiimbotImage.dotsPerMm * 50, 400); XCTAssertEqual(NiimbotImage.dotsPerMm * 30, 240)
     }
 
     func testAllWhiteImageHasZeroInk() {
-        let png = NiimbotImage.png(packed: Data(count: 48 * 240), w: 384, h: 240, rowBytes: 48)!
-        XCTAssertEqual(NiimbotImage.inkPixels(in: UIImage(data: png)!), 0)
-        XCTAssertTrue(NiimbotImage.stats(png: png).contains("dark=0/92160"))
+        let bmp = NiimbotImage.image(packed: Data(count: 48 * 240), w: 384, h: 240, rowBytes: 48)!
+        XCTAssertEqual(NiimbotImage.inkPixels(in: UIImage(data: bmp)!), 0)
+        XCTAssertTrue(NiimbotImage.stats(image: bmp).contains("dark=0/92160"))
     }
 
-    // Calibration pattern: 400×240, 20-dot border + 160×96 centre box, opaque RGB.
-    func testCalibrationPatternIsOpaqueRgbWithBorderAndBox() {
-        guard let png = NiimbotImage.calibrationPattern(), let img = UIImage(data: png) else { return XCTFail("no pattern") }
-        XCTAssertEqual(png[25], 2, "colour type 2 = RGB, no alpha")
+    // Calibration pattern: 400×240, 20-dot border + 160×96 centre box, 24-bit BMP.
+    func testCalibrationPatternIsBmpWithBorderAndBox() {
+        guard let bmp = NiimbotImage.calibrationPattern(), let img = UIImage(data: bmp) else { return XCTFail("no pattern") }
+        XCTAssertEqual(Array(bmp[0..<2]), [0x42, 0x4D]); XCTAssertEqual(Int(bmp[28]) | Int(bmp[29]) << 8, 24)
         let border = 2 * 20 * 400 + 2 * 20 * (240 - 40), box = 160 * 96
         XCTAssertEqual(NiimbotImage.inkPixels(in: img), border + box)
-        XCTAssertTrue(NiimbotImage.stats(png: png).contains("alpha=none"))
+        XCTAssertTrue(NiimbotImage.stats(image: bmp).contains("alpha=none"))
         XCTAssertFalse(NiimbotImage.calibrationOn, "off by default (no -sfl_niimbot_calibration launch argument)")
     }
+
+    private func le32(_ d: Data, _ at: Int) -> Int { Int(d[at]) | Int(d[at + 1]) << 8 | Int(d[at + 2]) << 16 | Int(d[at + 3]) << 24 }
 
     private static var loaded = false
 }
