@@ -192,4 +192,31 @@ final class BleStickerLogicTests: XCTestCase {
         XCTAssertEqual(BleStickerLogic.toHexCapped(Data(count: 400), maxChars: 256).count, 256)
         XCTAssertEqual(BleStickerLogic.toHexCapped(nil, maxChars: 256), "")
     }
+
+    // MARK: Printer-name list (printer setup v2)
+
+    func testIsPrinterNameMatchesListCaseInsensitive() {
+        for n in ["B1-I603042141", "b21-ABC", "B203-77", "XP-P323B", "Xprinter_58", "Printer_8A2F",
+                  "PRT-200", "PT-210", "MPT-II", "GP-1324D", "M110-C9", "M02S", "Q30_01", "T02-xx",
+                  "HPRT N41", "Munbyn ITPP941", "Gprinter GP-3120", "Zjiang ZJ-5802"] {
+            XCTAssertTrue(BleStickerLogic.isPrinterName(n), n)
+        }
+    }
+
+    func testIsPrinterNameExcludesHeartRateHeadphonesWatchLaptop() {
+        for n in ["Polar H10 1234", "WH-1000XM4", "Galaxy Watch4", "Jeff MacBook Pro", "Pixel 8", "AirPods Pro", "Mi Band 7", "", "   "] {
+            XCTAssertFalse(BleStickerLogic.isPrinterName(n), n)
+        }
+        XCTAssertFalse(BleStickerLogic.isPrinterName(nil))
+    }
+
+    func testIsNiimbotNameOnlyNiimbotModels() {
+        XCTAssertTrue(BleStickerLogic.isNiimbotName("B1-I603042141"))
+        XCTAssertTrue(BleStickerLogic.isNiimbotName("b21-0001"))
+        XCTAssertFalse(BleStickerLogic.isNiimbotName("D11-0001")) // narrow-head models are not listed for now
+        XCTAssertFalse(BleStickerLogic.isNiimbotName("XP-P323B"))
+        XCTAssertFalse(BleStickerLogic.isNiimbotName("Y41BT-0FC4_LE"))
+        XCTAssertFalse(BleStickerLogic.isNiimbotName(nil))
+        for p in BleStickerLogic.niimbotNamePrefixes { XCTAssertTrue(BleStickerLogic.printerNamePrefixes.contains(p), p) }
+    }
 }

@@ -168,20 +168,26 @@ function stripUnrenderable(s: string): string {
 //              with no atlas (Thai/Arabic/Korean/…) keep the legacy fallback
 //              (handle / Buyer #N) — never tofu.
 export type ScriptMode = "legacy" | "extended";
-const isAtlasLatin = (cp: number): boolean =>
-  (cp >= 0xa1 && cp <= 0xff) || (cp >= 0x100 && cp <= 0x24f) || (cp >= 0x1e00 && cp <= 0x1eff);
-function stripUnrenderableExt(s: string): string {
+// `extraAtlas` = the Cyrillic atlas is in hand (RasterAtlases.cyrillic — glyphAtlas.cyrillic.ts, a
+// separate file so the Latin atlas and its goldens never change): Cyrillic (U+0400–04FF) and
+// "…" then join the atlas-covered tier — a Bulgarian/Russian name prints from that atlas on the
+// same cell geometry instead of falling back to the handle. Only the generic-printer / Niimbot
+// IMAGE paths pass that atlas; the D520BT stream never does, so its bytes stay byte-identical
+// to main (stickerSpacing.offPins pins all 360 labels).
+const isAtlasLatin = (cp: number, extra = false): boolean =>
+  (cp >= 0xa1 && cp <= 0xff) || (cp >= 0x100 && cp <= 0x24f) || (cp >= 0x1e00 && cp <= 0x1eff) || (extra && ((cp >= 0x400 && cp <= 0x4ff) || cp === 0x2026));
+function stripUnrenderableExt(s: string, extra = false): string {
   let out = "";
-  for (const ch of s) { const cp = ch.codePointAt(0) ?? 0; if (cp <= 127 || isCjkIdeograph(cp) || isAtlasLatin(cp)) out += ch; }
+  for (const ch of s) { const cp = ch.codePointAt(0) ?? 0; if (cp <= 127 || isCjkIdeograph(cp) || isAtlasLatin(cp, extra)) out += ch; }
   return out;
 }
 // Extended classification: atlas-covered Latin counts as the ASCII tier (same
 // font/cell/reflow as ASCII — only the painted glyph differs).
-function classifyScriptExt(s: string): number {
+function classifyScriptExt(s: string, extra = false): number {
   let hasCjk = false;
   for (const ch of s) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (cp <= 127 || isAtlasLatin(cp)) continue;
+    if (cp <= 127 || isAtlasLatin(cp, extra)) continue;
     if (isCjkIdeograph(cp)) { hasCjk = true; continue; }
     return SCRIPT_UNSUPPORTED;
   }
@@ -222,6 +228,9 @@ export const STICKER_LAYOUTS: Record<string, SizeConfig> = {
   "80x50":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 250, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
   "70x50":  { wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 170, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
   "60x40":  { wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6,  sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, showTotal: false, totalY: 0, totalAmountX: 0, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
+  // 50×30 (printer setup v2): its OWN fixed layout (draw50x30) — only wDots/rightEdge are read.
+  // 384 dots = 48 mm printable at 203 dpi on a 50 mm label.
+  "50x30":  { wDots: 384, rightEdge: 376, storeGap: 0, buyerNumYMul: 2, buyerNumGap: 0, nameGap: 0, usernameGap: 0, sepGap: 0, sepWidth: 0, orderEntryGuard: 0, orderLoopGuard: 0, showTotal: false, totalY: 0, totalAmountX: 0, nameCjkXMul: 1, nameCjkYMul: 1, nameCjkGap: 0 },
 };
 // Sticker spacing "compact" (printSpacing): smaller white gaps between the store name, "Buyer N",
 // the name and the @ line. Only these keys change; 60×40 is unchanged.
@@ -264,14 +273,15 @@ export interface DrawResult { ops: DrawOp[]; wDots: number; hDots: number; wMm: 
 // pinned by the parity test (emitTextTspl always uses legacy). "extended" is
 // the bitmap-production mode (see ScriptMode above): same geometry, wider
 // character retention.
-export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode = "extended", qr: QrPlacement | null = null): DrawResult {
-  const two = drawOpsInner(payload, labelWidthMm, labelHeightMm, mode, qr, 2);
+// `extraAtlas`: the caller holds the Cyrillic atlas (see isAtlasLatin) — false = main's tiers exactly.
+export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode = "extended", qr: QrPlacement | null = null, extraAtlas = false): DrawResult {
+  const two = drawOpsInner(payload, labelWidthMm, labelHeightMm, mode, qr, 2, extraAtlas);
   if (two.nameLines < 2) return two.result;
   // Facebook name on 2 lines: kept ONLY when everything else on the label (time, comment, price
   // code…) prints exactly as with the name on one line — the 2nd line must never push the price
   // code or the comment off the label (e.g. 60×40 at name size 2×). Otherwise: one line, cut.
   // Also: the 2nd line must not push anything (comment, order rows, Total…) past the bottom edge.
-  const one = drawOpsInner(payload, labelWidthMm, labelHeightMm, mode, qr, 1);
+  const one = drawOpsInner(payload, labelWidthMm, labelHeightMm, mode, qr, 1, extraAtlas);
   return restKey(two) === restKey(one) && lowestOpBottom(two.result.ops) <= two.result.hDots ? two.result : one.result;
 }
 // Glyph cell heights (glyphAtlas.latin.ts cells; CJK atlas = 24-cell).
@@ -296,7 +306,8 @@ function restKey(r: { result: DrawResult; nameIdx: Set<number> }): string {
   // + each op's xm/ym: a 2nd name line that makes the comment print SMALLER (R4 step-down) is a change
   return r.result.ops.map((o, i) => (r.nameIdx.has(i) || o.k === "bar" ? "" : `${o.k === "txt" ? o.font : "cjk"}:${o.xm}x${o.ym}:${o.s}`)).filter(Boolean).join("\n");
 }
-function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode, qr: QrPlacement | null, fbMaxLines: number): { result: DrawResult; nameLines: number; nameIdx: Set<number> } {
+function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode, qr: QrPlacement | null, fbMaxLines: number, extraAtlas = false): { result: DrawResult; nameLines: number; nameIdx: Set<number> } {
+  if (is50x30(labelWidthMm, labelHeightMm)) return { result: draw50x30(payload, mode, qr, extraAtlas), nameLines: 0, nameIdx: new Set<number>() };
   const ops: DrawOp[] = [];
   const nameIdx = new Set<number>();
   let nameLines = 0;
@@ -310,8 +321,8 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   const c: SizeConfig = !legacy && payload.settings?.printSpacing === "compact" && !usesOrderRows
     ? { ...baseCfg, ...(COMPACT_GAPS[`${labelWidthMm}x${labelHeightMm}`] ?? {}) } : baseCfg;
   const halfGap = !legacy && payload.settings?.printHalfWordGap === true;
-  const narrow = legacy ? (s: string) => stripUnrenderable(transliterateLatin(s)) : stripUnrenderableExt;
-  const classify = legacy ? classifyScript : classifyScriptExt;
+  const narrow = legacy ? (s: string) => stripUnrenderable(transliterateLatin(s)) : (s: string) => stripUnrenderableExt(s, extraAtlas);
+  const classify = legacy ? classifyScript : (s: string) => classifyScriptExt(s, extraAtlas);
 
   const textSmart = (x: number, y: number, asciiFont: "2" | "3" | "4", rawContent: string, xm: number, ym: number, cjkXm: number, cjkYm: number) => {
     const content = narrow(rawContent);
@@ -642,6 +653,88 @@ function layoutV2Order(
   });
 }
 
+// ── 50×30 mm — fixed compact layout (printer setup v2, image paths only) ────────
+// Left column, top → bottom: buyer number (largest) / @username / buyer name / the comment
+// on ONE line / date + time on one line. Right: the buyer QR, as tall as the label allows.
+// One fixed size (the pattern size controls are ignored), no "SellerFlowLive" line, every
+// text cut with "…" at the column edge — nothing ever runs under the QR or off the label.
+// 384 dots wide (48 mm printable on a 50 mm label), 240 dots tall.
+export const W50 = 384;
+export const H50 = 240;
+export const QR_MODULE_DOTS_50 = 5; // ≈18 mm symbol (+quiet zone ≈23 mm) — bigger than the 14.5 mm that scans in the field
+export const is50x30 = (wMm: number, hMm: number): boolean => wMm === 50 && hMm === 30;
+// Cut to `max` characters, the last one "…" when something was cut. PURE.
+export function ellipsize(s: string, max: number): string {
+  const a = [...s];
+  if (a.length <= max) return s;
+  return max <= 1 ? "…" : a.slice(0, max - 1).join("") + "…";
+}
+function draw50x30(payload: RasterPayload, mode: ScriptMode, qr: QrPlacement | null, extraAtlas = false): DrawResult {
+  const legacy = mode === "legacy";
+  const narrow = legacy ? (s: string) => stripUnrenderable(transliterateLatin(s)) : (s: string) => stripUnrenderableExt(s, extraAtlas);
+  const classify = legacy ? classifyScript : (s: string) => classifyScriptExt(s, extraAtlas);
+  const ops: DrawOp[] = [];
+  const buyer = payload.buyer ?? {};
+  const settings = payload.settings;
+  const flag = (key: keyof RasterSettings) => (settings == null ? true : settings[key] !== false);
+  const orders = buyer.orders ?? [];
+  const X = 16;
+  const right = qr ? qr.x0 - QR_TEXT_KEEPOUT_GAP : W50 - 8;
+  const width = right - X;
+
+  // one text line at (X, y): Latin/Cyrillic/Vietnamese from the Latin font, CJK from the 24-cell
+  // atlas (both 24 dots tall for font "3"). A font-"3" line that does not fit steps down to
+  // font "2" (12×20) when that makes it whole; otherwise cut with "…" at the column edge.
+  const line = (y: number, font: "2" | "3", raw: string) => {
+    const content = narrow(safe(raw)).replace(/\s+/g, " ").trim();
+    if (!content) return;
+    const cjk = legacy ? hasNonAscii(content) : hasCjkChar(content);
+    if (cjk) {
+      const max = Math.max(1, Math.floor(width / 24));
+      const chars = [...content];
+      if (chars.length <= max) { ops.push({ k: "cjk", x: X, y, s: content, xm: 1, ym: 1 }); return; }
+      const keep = Math.max(0, max - 1);
+      if (keep > 0) ops.push({ k: "cjk", x: X, y, s: chars.slice(0, keep).join(""), xm: 1, ym: 1 });
+      ops.push({ k: "txt", x: X + keep * 24, y, font: "3", s: "…", xm: 1, ym: 1 });
+      return;
+    }
+    const n = [...content].length;
+    const fits = (f: "2" | "3") => n <= Math.floor(width / CELL_OF[f][0]);
+    const f: "2" | "3" = font === "3" && !fits("3") && fits("2") ? "2" : font;
+    ops.push({ k: "txt", x: X, y, font: f, s: ellipsize(content, Math.max(1, Math.floor(width / CELL_OF[f][0]))), xm: 1, ym: 1 });
+  };
+
+  // 1. buyer number — the biggest thing on the label (font "4" at 2×2; 4+ digits narrow to 1×2)
+  const num = String(buyer.num ?? buyer.bNum ?? 0);
+  if (flag("printBuyerNumber")) ops.push({ k: "txt", x: X, y: 6, font: "4", s: num, xm: num.length <= 3 ? 2 : 1, ym: 2 });
+
+  // 2. @username
+  const handle = stripEmoji(buyer.handle ?? "");
+  if (flag("printBuyerUsername") && handle) line(82, "3", "@" + handle);
+
+  // 3. buyer name — the same never-tofu fallback as every other size (handle, else "Buyer #N")
+  const cleanName = stripEmoji(buyer.name ?? "");
+  let nameOut = cleanName;
+  if ((buyer.name ?? "") && !cleanName) nameOut = handle ? handle : `Buyer #${num}`;
+  if (legacy) nameOut = transliterateLatin(nameOut);
+  if (nameOut && classify(nameOut) === SCRIPT_UNSUPPORTED) {
+    const h = legacy ? transliterateLatin(handle) : handle;
+    nameOut = h && classify(h) === SCRIPT_ASCII ? h : "";
+  }
+  if (nameOut) line(114, "3", nameOut);
+
+  // 4. the comment (first order), one line
+  if (flag("printOrderItems") && orders.length > 0) line(148, "2", stripEmoji(orders[0]?.item ?? ""));
+
+  // 5. date + time on one line — "MM/DD HH:MM" (the payload's MM/DD/YYYY without the year)
+  const date = String(payload.sessionDate ?? "").replace(/^(\d{2}\/\d{2})\/\d{4}$/, "$1");
+  const time = orders[0]?.time ?? "";
+  const when = [date, time].filter(Boolean).join(" ");
+  if (when) line(184, "2", when);
+
+  return { ops, wDots: W50, hDots: H50, wMm: 50, hMm: 30 };
+}
+
 // ── TEST-ONLY backend: ops → the exact TEXT/BAR TSPL stream (parity proof) ────
 // ALWAYS legacy mode: this exists solely to prove the layout equals the frozen
 // TEXT reference byte-for-byte, which is defined in terms of the old narrowing.
@@ -703,11 +796,14 @@ const b64ToBytes = (b64: string): Uint8Array => {
   return out;
 };
 
-export interface RasterAtlases { latin: GlyphAtlas; cjk?: GlyphAtlas }
+// cyrillic: the extra atlas (Cyrillic + "…", glyphAtlas.cyrillic.ts) — passed by the generic-printer
+// and Niimbot image paths only; absent = main's glyph set exactly (the D520BT stream).
+export interface RasterAtlases { latin: GlyphAtlas; cjk?: GlyphAtlas; cyrillic?: GlyphAtlas }
 
 function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
   const latin = atlases.latin;
   const cjkFont = atlases.cjk?.cjk;
+  const extra = atlases.cyrillic;
   for (const op of ops) {
     if (op.k === "bar") { bmp.fillRect(op.x, op.y, op.w, op.h); continue; }
     if (op.k === "txt") {
@@ -718,8 +814,8 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
         // Per-char never-tofu fallback: a codepoint the atlas lacks paints as
         // its transliterated base form (ễ→e, đ→d) — the base ASCII set is
         // always present, so a letter can never come out blank.
-        let g = f.glyphs[cp];
-        if (!g) { const alt = translitCp(cp); if (alt != null) g = f.glyphs[alt]; }
+        let g = f.glyphs[cp] ?? extra?.[op.font]?.glyphs[cp];
+        if (!g) { const alt = translitCp(cp); if (alt != null) g = f.glyphs[alt] ?? extra?.[op.font]?.glyphs[alt]; }
         if (g) bmp.blit(b64ToBytes(g), f.w, f.h, penX, op.y, op.xm, op.ym);
         penX += f.w * op.xm; // fixed advance (mono cell), even for a missing glyph
       }
@@ -763,7 +859,7 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
   // the comment before it AND the stamp renders it, from the SAME footprint.
   const cfg = stickerConfig(wMm, hMm);
   const qr = mode === "legacy" ? null : stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm);
-  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode, qr);
+  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode, qr, !!atlases.cyrillic);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
   stampHandleQr(bmp, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
@@ -795,7 +891,8 @@ export function stickerQrSupported(hMm: number): boolean { return hMm > 40; }
 // on, non-blank handle.
 export interface QrPlacement { matrix: boolean[][]; x0: number; y0: number; foot: number; scale: number }
 export function stickerQrPlacement(payload: RasterPayload, wDots: number, hDots: number, hMm: number): QrPlacement | null {
-  if (!stickerQrSupported(hMm)) return null;                                  // 60×40 → never a QR
+  const compact = wDots === W50 && hMm === 30;                               // the 50×30 layout: QR on the right, label-tall
+  if (!stickerQrSupported(hMm) && !compact) return null;                      // 60×40 → never a QR
   if (!payload.settings || payload.settings.printStickerQr !== true) return null; // toggle DEFAULT OFF
   if (payload.settings.printBuyerUsername === false) return null;             // follows the @username toggle
   const handle = payload.buyer?.handle ? String(payload.buyer.handle).trim() : "";
@@ -804,6 +901,18 @@ export function stickerQrPlacement(payload: RasterPayload, wDots: number, hDots:
   if (!url) return null;
   const m = qrMatrix(url, "M"); // ECC M keeps the ≤37-byte URL at QR v3 (29 modules)
   if (!m) return null;
+  if (compact) {
+    // as tall as the label allows: 5 dots/module (≈18 mm symbol), else 4; centred vertically.
+    // The symbol ends 8 dots before the raster's right edge — its right quiet zone is those
+    // 8 dots + the label's own unprinted 2 mm (384 of 400 dots are printed), so the text
+    // column keeps 187 dots instead of losing 20 to white on the right.
+    let scale = QR_MODULE_DOTS_50;
+    let foot = (m.length + QR_QUIET_MODULES * 2) * scale;
+    if (foot > H50 - 2 * QR_EDGE_MARGIN_DOTS) { scale = QR_MODULE_DOTS; foot = (m.length + QR_QUIET_MODULES * 2) * scale; }
+    if (foot > H50) return null;
+    const x0 = Math.max(0, wDots - (m.length + QR_QUIET_MODULES) * scale - QR_EDGE_MARGIN_DOTS);
+    return { matrix: m, x0, y0: Math.max(0, Math.floor((H50 - foot) / 2)), foot, scale };
+  }
   const foot = (m.length + QR_QUIET_MODULES * 2) * QR_MODULE_DOTS;
   let x0 = wDots - foot - QR_EDGE_MARGIN_DOTS; if (x0 < 0) x0 = 0;
   let y0 = hDots - foot - QR_EDGE_MARGIN_DOTS; if (y0 < 0) y0 = 0;
@@ -823,7 +932,7 @@ function stampHandleQr(bmp: Bitmap, qr: QrPlacement | null): void {
 export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
   const cfg = stickerConfig(wMm, hMm);
   const qr = stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm); // this path is always extended/production
-  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr);
+  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr, !!atlases.cyrillic);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
   stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
