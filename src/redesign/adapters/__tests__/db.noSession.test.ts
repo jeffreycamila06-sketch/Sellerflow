@@ -69,10 +69,10 @@ describe("outbox keeps / drops", () => {
     expect(classifyOutcome(r, undefined)).toBe("retryable");
     expect(await runOneDrain()).toBe(1);
   });
-  it("online + signed out → terminal, item dropped", async () => {
+  it("online + signed out → auth (expired login): item KEPT for the next sign-in, not retried by timer", async () => {
     S.session = null; setOnline(true);
     const r = await saveLiveSessionOrder(order);
-    expect(classifyOutcome(r, undefined)).toBe("terminal");
-    expect(await runOneDrain()).toBe(0);
+    expect(classifyOutcome(r, undefined)).toBe("auth"); // Audit Oct 22 (1): was terminal (dropped)
+    expect(await runOneDrain()).toBe(1);
   });
 });

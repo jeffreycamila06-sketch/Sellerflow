@@ -11,6 +11,7 @@ const H = vi.hoisted(() => ({
   order: [] as string[],
   signOut: null as null | (() => Promise<void>),
   del: null as null | (() => Promise<{ ok: boolean }>),
+  queued: 0, queuedAfterFlush: 0, // Audit Oct 22 (3): orders still in the retry outbox
 }));
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 
@@ -44,7 +45,7 @@ vi.mock("../adapters/useLiveSession", async (orig) => ({
 }));
 vi.mock("../adapters/outbox", async (orig) => {
   const o = await orig() as { useOutbox: (...a: unknown[]) => Record<string, unknown> };
-  return { ...o, useOutbox: (...a: unknown[]) => ({ ...o.useOutbox(...a), dropOwner: (id: string) => H.order.push(`dropOwner:${id}`) }) };
+  return { ...o, useOutbox: (...a: unknown[]) => ({ ...o.useOutbox(...a), dropOwner: (id: string) => H.order.push(`dropOwner:${id}`), pendingMine: () => H.queued, flush: async () => { H.order.push("flush"); H.queued = H.queuedAfterFlush; } }) };
 });
 vi.mock("../adapters/products", async (orig) => ({ ...(await orig() as object), clearProductsCacheFor: (id: string) => H.order.push(`clearProducts:${id}`) }));
 vi.mock("../analytics", async (orig) => ({ ...(await orig() as object), resetAnalytics: () => H.order.push("resetAnalytics") }));
@@ -56,7 +57,7 @@ const t = buildT("en");
 const nav = (label: string) => { fireEvent.click(screen.getAllByText(label).find((el) => el.closest("button"))!.closest("button")!); };
 let reload: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
-  localStorage.clear(); H.status = "authed"; H.order = [];
+  localStorage.clear(); H.status = "authed"; H.order = []; H.queued = 0; H.queuedAfterFlush = 0;
   H.signOut = async () => { H.order.push("signOut"); };
   H.del = async () => { H.order.push("deleteAccount"); return { ok: true }; };
   reload?.mockRestore();
@@ -92,13 +93,51 @@ describe("Logout", () => {
   });
 });
 
+describe("Logout with unsaved orders (Audit Oct 22, 3)", () => {
+  beforeEach(() => { H.queued = 2; H.queuedAfterFlush = 2; });
+  it("tries one final save; items remain → warning, no sign-out; Cancel keeps the session", async () => {
+    render(<RedesignApp />);
+    await flush();
+    nav(t.rd_nav_settings);
+    fireEvent.click(screen.getByText(t.rd_sh_logout).closest("button")!);
+    await flush();
+    expect(H.order).toEqual(["flush"]);
+    expect(screen.getByTestId("logout-warn-overlay").textContent).toContain("2 order(s) not saved yet");
+    fireEvent.click(screen.getByTestId("logout-warn-cancel"));
+    await flush();
+    expect(screen.queryByTestId("logout-warn-overlay")).toBeNull();
+    expect(H.order).toEqual(["flush"]); // nothing signed out, nothing dropped
+  });
+  it("Log out anyway → signs out WITHOUT dropping the queued orders (kept for this seller's next sign-in)", async () => {
+    render(<RedesignApp />);
+    await flush();
+    nav(t.rd_nav_settings);
+    fireEvent.click(screen.getByText(t.rd_sh_logout).closest("button")!);
+    await flush();
+    fireEvent.click(screen.getByTestId("logout-warn-anyway"));
+    await flush();
+    expect(H.order).toEqual(["flush", "clearProducts:user-A", "resetAnalytics", "signOut", "reload"]);
+  });
+  it("the final save empties the queue → normal logout, no warning", async () => {
+    H.queuedAfterFlush = 0;
+    render(<RedesignApp />);
+    await flush();
+    nav(t.rd_nav_settings);
+    fireEvent.click(screen.getByText(t.rd_sh_logout).closest("button")!);
+    await flush();
+    expect(screen.queryByTestId("logout-warn-overlay")).toBeNull();
+    expect(H.order).toEqual(["flush", "dropOwner:user-A", "clearProducts:user-A", "resetAnalytics", "signOut", "reload"]);
+  });
+});
+
 describe("other ways out", () => {
-  it("session expired / logout in another tab (authed → anon) → one full reload", async () => {
+  it("session expired / logout in another tab (authed → anon) → analytics reset + one full reload", async () => {
     const r = render(<RedesignApp />);
     await flush();
     expect(reload).not.toHaveBeenCalled();
     H.status = "anon"; r.rerender(<RedesignApp />); await flush();
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(H.order).toEqual(["resetAnalytics", "reload"]); // Audit Oct 22 (4)
   });
   it("opening the app signed out never reloads (no loop)", async () => {
     H.status = "anon";

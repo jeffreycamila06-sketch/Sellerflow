@@ -295,12 +295,30 @@ export const parseOutputCheck = (text) => {
 
 export const HANDOFF_ANSWER = "Admin will help you with this on Telegram.";
 export const LIMIT_ANSWER = "Help chat limit reached for now. Admin can help you on Telegram.";
+// Audit Oct 22 (8): questions already being answered right now (not yet saved, so not in the
+// usage counts). More than this many across all sellers at once → 'limit' without the AI.
+export const MAX_IN_FLIGHT_TOTAL = 8;
+
+// Audit Oct 22 (10): the help bot is for PAID sellers — basic / plus / pro / master, not
+// expired (status, and plan_expiry when set). Admin and the support_ai_preview list are
+// checked by the caller before this. Same rule on the client (adapters/helpBot.ts helpBotPaid).
+export const PAID_PLANS = ["basic", "plus", "pro", "master"];
+export function isPaidPlanRow(row, nowMs = Date.now()) {
+  if (!row) return false;
+  if (!PAID_PLANS.includes(String(row.plan || "").trim().toLowerCase())) return false;
+  if (String(row.plan_status || "").trim().toLowerCase() === "expired") return false;
+  if (row.plan_expiry) { const t = new Date(row.plan_expiry).getTime(); if (Number.isFinite(t) && t <= nowMs) return false; }
+  return true;
+}
 export const ERROR_ANSWER = "Sorry, I couldn't answer that right now. Admin can help you on Telegram.";
 
 // deps: { settings, matchFaq(q), usage(userId), faqs(), guide(), callModel(args), save(row) }
 //   settings = { capUsd, dailyPerSeller }; save returns the new chat id.
 // platform: 'ios' | 'android' | 'web' (anything else → 'web'). Android and web are unchanged.
-export async function answerQuestion({ userId, question, appLang, platform = "web" }, deps) {
+// inFlight (Audit Oct 22, 8): { seller, total } = OTHER questions being answered right now
+// (counted in memory by the route); they count against the seller's daily limit, and the
+// global ceiling MAX_IN_FLIGHT_TOTAL refuses before any AI call.
+export async function answerQuestion({ userId, question, appLang, platform = "web", inFlight = { seller: 0, total: 0 } }, deps) {
   const q = redact(question);
   if (!q) return { error: "empty" };
   const lang = detectLang(q, appLang);
@@ -313,7 +331,17 @@ export async function answerQuestion({ userId, question, appLang, platform = "we
       row = { ...row, answer: planAnswer(lang) };
       extra = { ...extra, contact: true, kind: "plan", saved: false };
     }
-    const id = await deps.save({ ...base, ...row });
+    let id = null;
+    try { id = await deps.save({ ...base, ...row }); } catch (e) {
+      // Audit Oct 22 (8): the AI was already paid for — never lose the cost row. One retry with
+      // the cost columns only (no answer text); the seller still gets the answer (saved:false).
+      deps.log?.(`[SUPPORT] save_fail code=${(e && e.code) || "error"}`);
+      if (row.model) {
+        const costRow = { ...base, question: "[unsaved]", source: row.source, needs_admin: row.needs_admin && row.needs_admin !== "blocked" ? row.needs_admin : null, model: row.model, tokens_in: row.tokens_in || 0, tokens_out: row.tokens_out || 0, cache_read_tokens: row.cache_read_tokens || 0, cost_usd: row.cost_usd || 0 };
+        try { id = await deps.save(costRow); } catch (e2) { deps.log?.(`[SUPPORT] cost_row_fail code=${(e2 && e2.code) || "error"}`); }
+      }
+      extra = { ...extra, saved: false, id: null };
+    }
     deps.log?.(`[SUPPORT] src=${row.source}${row.needs_admin ? ` need=${row.needs_admin}` : ""} model=${row.model || "-"} in=${row.tokens_in || 0} out=${row.tokens_out || 0} cache=${row.cache_read_tokens || 0} cost=${(row.cost_usd || 0).toFixed(6)}`);
     return { id, source: row.source, answer: row.answer, saved: row.source === "faq" || row.source === "faq_ai_match", contact: !!extra.contact, ...extra };
   };
@@ -334,7 +362,8 @@ export async function answerQuestion({ userId, question, appLang, platform = "we
   const use = await deps.usage(userId);
   const cap = Number(deps.settings.capUsd) || 0;
   const monthCost = Number(use.month_cost) || 0;
-  if (Number(use.day_count) >= Number(deps.settings.dailyPerSeller) || monthCost >= cap) {
+  const flight = inFlight || { seller: 0, total: 0 };
+  if (Number(use.day_count) + Number(flight.seller || 0) >= Number(deps.settings.dailyPerSeller) || monthCost >= cap || Number(flight.total || 0) >= MAX_IN_FLIGHT_TOTAL) {
     return done({ source: "limit", answer: LIMIT_ANSWER }, { contact: true });
   }
 

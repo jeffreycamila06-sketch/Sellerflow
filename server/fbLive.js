@@ -1087,6 +1087,7 @@ export function createFbRuntime(deps) {
   function startPoller({ sellerId, userId, pageId, pageUsername, liveVideoId, sessionId = "", videoMode = false, identityV2 = false }) {
     const scopeKey = String(pageUsername || pageId); // the select_account scoping key
     const key = liveKey(sellerId, "Facebook", pageId);
+    const prev = pollers.get(key);
     stopPoller(key, "restart"); // single poller per page
     const nowMs = now();
     const entry = {
@@ -1099,6 +1100,10 @@ export function createFbRuntime(deps) {
       videoMode: videoMode === true,
       identityV2: identityV2 === true,
     };
+    // Audit Oct 22 (6): a reconnect mid-live (same page, SAME live video) carries the old
+    // poller's emitted ids over and treats the next fetch as live comments, not history —
+    // a comment posted in the gap becomes an order exactly once (never initial:true twice).
+    if (prev && String(prev.liveVideoId) === entry.liveVideoId) { entry.emitted = prev.emitted; entry.firstPollDone = true; }
     pollers.set(key, entry);
     log(`[FB] poller start page=${String(pageId)} lv=${String(liveVideoId)} status=LIVE`);
     holdWaitingReceipt(entry);

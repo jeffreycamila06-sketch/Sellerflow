@@ -16,12 +16,14 @@
 // (a comment without a stable id — Facebook — cannot be deduped, so it is never
 // retried; the caller writes it once, fire-and-forget). The index MUST exist
 // before the queue drains for real — it is the whole safety proof.
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LiveSessionOrderInput } from "../../db";
 import { NO_SESSION_ERROR } from "../../lib/noSession";
 
 export const OUTBOX_KEY = "sfl_rd_outbox_v1";
-export const MAX_RETRIES = 8;
+// Audit Oct 22 (1): a network / retryable failure is retried with backoff for up to 24 h (was 8
+// attempts ≈ 1 minute — a 3-minute outage dropped the order). Real terminal errors still drop.
+export const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const MAX_QUEUE = 200;
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_CAP_MS = 30_000;
@@ -42,6 +44,17 @@ export function itemWritableBy(item: OutboxItem, currentUserId: string | null | 
   return !!currentUserId && item.ownerId === currentUserId;
 }
 export type ExhaustKind = "terminal" | "exhausted" | "overflow";
+
+// Audit Oct 22 (1): the login expired (401 / JWT expired / no local session while online). NOT
+// terminal — the item waits, untouched, until the seller signs in again (the ownerId change
+// drains it). Checked BEFORE the retryable allow-list.
+export function isAuthExpiredError(err: unknown): boolean {
+  const e = err as { message?: string; code?: string; status?: number; name?: string } | undefined;
+  if (!e) return false;
+  if (e.name === NO_SESSION_ERROR) return typeof navigator === "undefined" || navigator.onLine !== false;
+  if (e.status === 401 || e.code === "PGRST301") return true;
+  return /jwt expired|invalid jwt|not authenticated|unauthorized/i.test(String(e.message || ""));
+}
 
 // ── Pure classification (unit-tested; the highest-risk logic — wrong here = an
 //    infinite loop OR silent loss) ─────────────────────────────────────────────
@@ -77,23 +90,23 @@ export function isRetryableError(err: unknown): boolean {
   return false;
 }
 
-export type Outcome = "ok" | "duplicate" | "retryable" | "terminal";
+export type Outcome = "ok" | "duplicate" | "retryable" | "terminal" | "auth";
 
 // Classify a single write attempt. A THROW is inspected the same way as a
 // RETURNED {success:false} (db.ts returns errors, it does not throw them —
 // Trap 1). undefined/void result = success (defensive; the real fn always
 // returns an object, and the test mocks return void).
 export function classifyOutcome(result: WriteResult | void, error: unknown): Outcome {
-  if (error !== undefined && error !== null) {
-    if (isDuplicateMsgId(error)) return "duplicate";
-    return isRetryableError(error) ? "retryable" : "terminal";
-  }
+  if (error !== undefined && error !== null) return classifyError(error);
   if (!result) return "ok";
-  if (result.success === false) {
-    if (isDuplicateMsgId(result.error)) return "duplicate";
-    return isRetryableError(result.error) ? "retryable" : "terminal";
-  }
+  if (result.success === false) return classifyError(result.error);
   return "ok"; // success:true or skipped
+}
+function classifyError(err: unknown): Outcome {
+  if (isDuplicateMsgId(err)) return "duplicate";
+  if (isRetryableError(err)) return "retryable";
+  if (isAuthExpiredError(err)) return "auth";
+  return "terminal";
 }
 
 // Exponential backoff + equal jitter, capped. (App runtime — Math.random/Date.now
@@ -113,8 +126,21 @@ export function loadQueue(): OutboxItem[] {
     return Array.isArray(arr) ? (arr as OutboxItem[]).filter((i) => i && i.payload && i.msgId) : [];
   } catch { return []; }
 }
+// The hook's live queue (same array it mutates) — queuedOutboxRows reads it without the hook.
+let liveQueue: OutboxItem[] | null = null;
 export function saveQueue(items: OutboxItem[]): void {
+  liveQueue = items;
   try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(items)); } catch { /* best-effort */ }
+}
+
+// Audit Oct 22 (1): the still-queued orders as session rows, so a board (re)load can count them
+// (next buyer number) and the "already ordered" check knows their msgId. created_at = when they
+// were queued (the order's own time); `queued` marks them for callers that care.
+export type QueuedRow = LiveSessionOrderInput & { created_at: string; comment_msg_id: string; queued: true };
+export function queuedOutboxRows(ownerId: string | null | undefined): QueuedRow[] {
+  return (liveQueue ?? loadQueue())
+    .filter((i) => itemWritableBy(i, ownerId))
+    .map((i) => ({ ...i.payload, comment_msg_id: i.msgId, created_at: new Date(i.firstAt || Date.now()).toISOString(), queued: true as const }));
 }
 
 const uid = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -125,14 +151,19 @@ export interface UseOutbox {
   // (the caller only enqueues msgId-bearing writes; FB has none → written direct).
   enqueue: (payload: LiveSessionOrderInput, msgId: string) => void;
   pending: () => number;
+  /** Items the CURRENT owner still has queued (what a logout would leave unsaved). */
+  pendingMine: () => number;
+  /** One drain now (awaits the one in flight if any) — the "final save" before logout. */
+  flush: () => Promise<void>;
   /** Logout: drop the signing-out user's queued items (memory + storage). */
   dropOwner: (ownerId: string | null | undefined) => void;
 }
 
 export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKind) => void; drainSignal?: unknown; ownerId?: string | null }): UseOutbox {
   const { write, onExhausted, drainSignal, ownerId } = opts;
-  const queueRef = useRef<OutboxItem[]>(loadQueue());
-  const drainingRef = useRef(false);
+  const [initialQueue] = useState(() => { const q = loadQueue(); liveQueue = q; return q; });
+  const queueRef = useRef<OutboxItem[]>(initialQueue);
+  const drainingRef = useRef<Promise<void> | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keep the latest callbacks without re-creating drain each render. The
   // useRef initializer sets .current for the first render; the effect refreshes
@@ -144,18 +175,18 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
 
   const scheduleDrain = useCallback((drain: () => void) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    const minRetries = queueRef.current.reduce((m, i) => Math.min(m, i.retries), MAX_RETRIES);
+    const minRetries = queueRef.current.reduce((m, i) => Math.min(m, i.retries), 30);
     timerRef.current = setTimeout(drain, backoffMs(Number.isFinite(minRetries) ? minRetries : 0));
   }, []);
 
-  const drain = useCallback(async function run(): Promise<void> {
-    if (drainingRef.current) return;
-    if (!queueRef.current.length) return;
-    drainingRef.current = true;
-    try {
+  const drain = useCallback(function run(): Promise<void> {
+    if (drainingRef.current) return drainingRef.current;
+    if (!queueRef.current.length) return Promise.resolve();
+    const p = (async () => {
       const me = ownerRef.current;
       const batch = queueRef.current.filter((i) => itemWritableBy(i, me)); // another user's items wait for them
       const done = new Set<string>();               // ok / duplicate / terminal / exhausted → remove
+      const held = new Set<string>();               // auth: waits for a sign-in, no backoff timer
       const retryUpdates = new Map<string, number>(); // id → new retry count
       for (const item of batch) {
         let result: WriteResult | void; let error: unknown;
@@ -163,9 +194,10 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
         const outcome = classifyOutcome(result, error);
         if (outcome === "ok" || outcome === "duplicate") { done.add(item.id); continue; }
         if (outcome === "terminal") { done.add(item.id); exhaustRef.current?.("terminal"); continue; }
-        const retries = item.retries + 1; // retryable
-        if (retries >= MAX_RETRIES) { done.add(item.id); exhaustRef.current?.("exhausted"); continue; }
-        retryUpdates.set(item.id, retries);
+        if (outcome === "auth") { held.add(item.id); continue; }
+        // retryable: keep for up to MAX_AGE_MS since it was queued, then surface + drop
+        if (Date.now() - (item.firstAt || Date.now()) >= MAX_AGE_MS) { done.add(item.id); exhaustRef.current?.("exhausted"); continue; }
+        retryUpdates.set(item.id, item.retries + 1);
       }
       // Rebuild from the LIVE ref so items enqueued DURING the drain survive.
       const next = queueRef.current
@@ -173,10 +205,11 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
         .map((i) => (retryUpdates.has(i.id) ? { ...i, retries: retryUpdates.get(i.id)! } : i));
       queueRef.current = next;
       saveQueue(next);
-      if (next.some((i) => itemWritableBy(i, ownerRef.current))) scheduleDrain(run); // backoff self-reschedule while OUR items remain
-    } finally {
-      drainingRef.current = false;
-    }
+      // backoff self-reschedule while OUR retryable items remain (auth-held ones wait for a sign-in)
+      if (next.some((i) => !held.has(i.id) && itemWritableBy(i, ownerRef.current))) scheduleDrain(() => { void run(); });
+    })().finally(() => { drainingRef.current = null; });
+    drainingRef.current = p;
+    return p;
   }, [scheduleDrain]);
 
   const enqueue = useCallback((payload: LiveSessionOrderInput, msgId: string) => {
@@ -189,13 +222,17 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
     void drain();                                    // attempt immediately (common path = inline success)
   }, [drain]);
 
-  // Drain triggers: mount, return-to-visible, and a reconnect signal.
+  // Drain triggers: mount, return-to-visible, the browser's `online` event, and a reconnect
+  // signal (any platform's connection rising — the caller passes a value that changes on each).
   useEffect(() => {
     void drain();
     const onVis = () => { if (document.visibilityState === "visible") void drain(); };
+    const onOnline = () => { void drain(); };
     document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("online", onOnline);
     return () => {
       document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("online", onOnline);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [drain, drainSignal, ownerId]); // a new user signing in drains their own items
@@ -206,5 +243,6 @@ export function useOutbox(opts: { write: WriteFn; onExhausted?: (kind: ExhaustKi
     saveQueue(queueRef.current);
   }, []);
 
-  return { enqueue, pending: () => queueRef.current.length, dropOwner };
+  const pendingMine = useCallback(() => queueRef.current.filter((i) => itemWritableBy(i, ownerRef.current)).length, []);
+  return { enqueue, pending: () => queueRef.current.length, pendingMine, flush: drain, dropOwner };
 }

@@ -6,7 +6,7 @@ import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { readFile } from "fs/promises";
-import { answerQuestion, callClaude, createGuideSource } from "./server/helpBot.js";
+import { answerQuestion, callClaude, createGuideSource, isPaidPlanRow } from "./server/helpBot.js";
 import { normPlatform } from "./src/lib/helpBotGuard.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
@@ -842,18 +842,19 @@ app.post("/disconnect/tiktok", requireAuth, async (req, res) => {
 app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
   // Build 2 — only a NEW connect is checked: a live already running for this account (the
   // reuse path) is never asked about; health reconnects never come through this route.
-  const tkKey = liveKey(req.sellerId, "TikTok", req.body.username);
-  const isNew = !!cleanAccountKey(req.body.username) && !tiktokConnections.has(tkKey);
+  const body = req.body || {};
+  const tkKey = liveKey(req.sellerId, "TikTok", body.username);
+  const isNew = !!cleanAccountKey(body.username) && !tiktokConnections.has(tkKey);
   if (isNew) liveAdmissions.forget(tkKey);
-  const live = isNew ? await accountLiveCheck(req, "tiktok", req.body.username) : null;
+  const live = isNew ? await accountLiveCheck(req, "tiktok", body.username) : null;
   // Reuse path (live already running): the options it was admitted with, no database call.
-  const reject = accountCapReject(req, "TikTok", req.body.username, live || liveAdmissions.optionsFor(tkKey));
+  const reject = accountCapReject(req, "TikTok", body.username, live || liveAdmissions.optionsFor(tkKey));
   if (reject) return res.status(403).json(reject);
   if (live && !live.allow) return res.status(403).json(ACCOUNT_LIVE_REFUSAL);
   if (live) liveAdmissions.remember(tkKey, live, (k) => tiktokConnections.has(k));
-  return connectTikTok(req.body.username, res, {
+  return connectTikTok(body.username, res, {
     sellerId: req.sellerId,
-    sessionId: req.body.sessionId,
+    sessionId: body.sessionId,
     // Concurrency cap (server-authoritative plan from requirePlanActive → checkPlanActive;
     // undefined on a fail-open DB error → concurrencyCap returns null → no cap).
     plan: req.sellerPlan,
@@ -863,8 +864,9 @@ app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, 
 
 app.post("/connect/facebook", requireAuth, requireConnectRate, requirePlanActive, (req, res) => {
   const sellerId = req.sellerId;
-  const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
-  const sessionId = String(req.body.sessionId || "");
+  const body = req.body || {};
+  const username = cleanAccountKey(body.username || body.liveVideoId || body.pageName);
+  const sessionId = String(body.sessionId || "");
 
   if (!sellerId) {
     return res.status(400).json({
@@ -971,7 +973,8 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
 });
 
 // Help bot (sql/116). OFF unless app_settings.support_ai_enabled = 'true' AND the caller is an
-// admin or on the 'support_ai_preview' list (feature_access_emails). user_id comes from the JWT
+// admin, on the 'support_ai_preview' list (feature_access_emails), or a PAID seller — plan
+// basic/plus/pro/master, not expired (Audit Oct 22, 10; same rule as the app). user_id comes from the JWT
 // only. The answer logic lives in server/helpBot.js (tested); this is wiring. Logs: counts and
 // codes only — never question/answer text, emails or tokens.
 // The bot's knowledge = support_guide rows (sql/116, seeded by sql/116b), cached 5 minutes, so
@@ -987,6 +990,10 @@ const helpGuide = createGuideSource({
   log: (line) => console.log(line),
 });
 const supportLastAsk = new Map(); // ponytail: in-memory, per server instance
+// Audit Oct 22 (8): questions being answered right now, per seller and in total (in memory —
+// the saved rows the daily/monthly limits count only exist once an answer is done).
+const supportInFlight = new Map();
+let supportInFlightTotal = 0;
 async function readSetting(key) {
   const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", key).maybeSingle();
   if (error) throw error;
@@ -1011,8 +1018,10 @@ async function helpBotAllowed(req) {
   const email = String(req.userEmail || "").trim().toLowerCase();
   if (!email) return false;
   const { data, error } = await serviceSb.from("feature_access_emails").select("email,is_prefix").eq("feature", "support_ai_preview");
-  if (error) return false;
-  return (data || []).some((r) => r.email === email || (r.is_prefix && email.startsWith(r.email)));
+  if (!error && (data || []).some((r) => r.email === email || (r.is_prefix && email.startsWith(r.email)))) return true;
+  // Paid sellers (Audit Oct 22, 10). A read error = not allowed (fail closed — it is a cost gate).
+  const prof = await serviceSb.from("seller_profiles").select("plan, plan_status, plan_expiry").eq("auth_user_id", String(req.authUserId || "")).maybeSingle();
+  return !prof.error && isPaidPlanRow(prof.data);
 }
 
 app.post("/support/ask", requireAuth, async (req, res) => {
@@ -1025,7 +1034,14 @@ app.post("/support/ask", requireAuth, async (req, res) => {
     if (now - (supportLastAsk.get(req.authUserId) || 0) < 2000) return res.status(429).json({ success: false, error: "too_fast" });
     supportLastAsk.set(req.authUserId, now);
     const [cap, daily] = await Promise.all([readSetting("support_ai_monthly_cap_usd"), readSetting("support_ai_daily_per_seller")]);
-    const r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang, platform }, {
+    // Audit Oct 22 (8): count this question as in flight (per seller + total) until it is answered.
+    const inFlight = { seller: supportInFlight.get(req.authUserId) || 0, total: supportInFlightTotal };
+    supportInFlight.set(req.authUserId, inFlight.seller + 1);
+    supportInFlightTotal += 1;
+    const release = () => { const n = (supportInFlight.get(req.authUserId) || 1) - 1; if (n > 0) supportInFlight.set(req.authUserId, n); else supportInFlight.delete(req.authUserId); supportInFlightTotal = Math.max(0, supportInFlightTotal - 1); };
+    let r;
+    try {
+      r = await answerQuestion({ userId: req.authUserId, question: req.body && req.body.question, appLang: req.body && req.body.lang, platform, inFlight }, {
       settings: { capUsd: Number(cap ?? 15), dailyPerSeller: Number(daily ?? 20) },
       matchFaq: async (q) => {
         const { data, error } = await serviceSb.rpc("support_faq_match", { p_q: q });
@@ -1051,7 +1067,8 @@ app.post("/support/ask", requireAuth, async (req, res) => {
         return data.id;
       },
       log: (line) => console.log(line),
-    });
+      });
+    } finally { release(); }
     if (r.error) return res.status(400).json({ success: false, error: r.error });
     return res.json({ success: true, id: r.id, source: r.source, answer: r.answer, saved: r.saved, contact: r.contact, kind: r.kind || null });
   } catch (e) {
@@ -1817,6 +1834,7 @@ async function connectTikTok(username, res, meta = {}) {
   let sessionId = "";
   let cleanUsername = "";
   let forcedFresh = false; // B2 — a stale existing connection was replaced on this tap
+  let acquired = false;    // Audit Oct 22 (7): this call holds the per-key connect lock (+ reservation)
   try {
     if (!username) {
       return res.status(400).json({
@@ -1970,6 +1988,7 @@ async function connectTikTok(username, res, meta = {}) {
     // kick-await window below. Released in the finally. (The concurrency reservation
     // below guards the CROSS-account race; this key lock guards the same-account race.)
     tiktokConnectLocks.add(key);
+    acquired = true; // Audit Oct 22 (7): only the tap that took the lock releases it (a 429'd double tap must not free the first tap's lock + reservation)
 
     // ── PER-SELLER CONCURRENCY CAP (kick-oldest) — NEW accounts only. Synchronous
     // critical section: snapshot → decide → RESERVE (before any await) so parallel
@@ -2068,8 +2087,8 @@ async function connectTikTok(username, res, meta = {}) {
       error: error.message,
     });
   } finally {
-    if (key) tiktokConnectLocks.delete(key);
-    if (key) liveConnectReservations.delete(key); // release the concurrency reservation (success or failure)
+    if (acquired) tiktokConnectLocks.delete(key);
+    if (acquired) liveConnectReservations.delete(key); // release the concurrency reservation (success or failure)
   }
 }
 

@@ -30,10 +30,11 @@ export function initAnalytics(): void {
   });
 }
 
-// Seller identify — mirrors App.tsx:735/757 (email + plan/store_name/role).
+// Seller identify — by the auth user id (Audit Oct 22, item 5: the email is no longer the
+// distinct id nor a property), with plan/store_name/role.
 export function identifySeller(profile: AccountUser): void {
-  if (!enabled() || !profile?.email) return;
-  posthog.identify(profile.email, {
+  if (!enabled() || !profile?.authUserId) return;
+  posthog.identify(profile.authUserId, {
     plan: profile.plan,
     store_name: profile.profile.storeName,
     role: profile.role || "seller",

@@ -1,22 +1,10 @@
 import { Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import posthog from "posthog-js";
 import "./index.css";
 import App from "./App.tsx";
 
-// PostHog analytics initialization. Reads env vars at build time via Vite.
-// Silently skips init if the key is missing (e.g. local dev without .env)
-// so the app never crashes due to missing analytics config.
-const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
-const POSTHOG_HOST = import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
-if (typeof window !== "undefined" && POSTHOG_KEY) {
-  posthog.init(POSTHOG_KEY, {
-    api_host: POSTHOG_HOST,
-    person_profiles: "identified_only",
-    capture_pageview: true,
-    capture_pageleave: true,
-  });
-}
+// Analytics: none here. This entry (app.html, the rollback app) is no longer built; the live app
+// (src/redesign/main.tsx) initialises PostHog through src/redesign/analytics.ts (Audit Oct 22, 5).
 
 // Platform styling/behavior hooks. Sets body.platform-ios / body.platform-android
 // so platform-scoped CSS and UI gating can match the running container:

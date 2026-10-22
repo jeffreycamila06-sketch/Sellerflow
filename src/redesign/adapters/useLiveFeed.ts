@@ -169,7 +169,7 @@ export interface UseLiveFeed {
   igConnected: boolean;
 }
 
-export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts, onPinned?: (p: PinPayload) => void): UseLiveFeed {
+export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts, onPinned?: (p: PinPayload) => boolean | void): UseLiveFeed {
   const [feed, setFeed] = useState<ProdComment[]>([]);
   // Approach A — the display-only initial history block, SEPARATE from `feed`
   // (never in feedRef, never through the Auto-Mode seam).
@@ -602,8 +602,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (acct && acct !== tracked) return;
       const msgId = String(p.msgId || "");
       if (!msgId || pinSeenRef.current.has(msgId)) return;
-      pinSeenRef.current.add(msgId);
-      try { onPinnedRef.current?.(p); } catch (err) { log.warn("onPinned handler failed", err); }
+      // Audit Oct 22 (2): seen ONLY once the handler is done with it (order created / nothing to
+      // do). A pin held while orders are paused, or ignored by a gate, may come again.
+      try { if (onPinnedRef.current?.(p) === true) pinSeenRef.current.add(msgId); } catch (err) { log.warn("onPinned handler failed", err); }
     });
     s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
       if (e.sellerId && e.sellerId !== sellerId) return;

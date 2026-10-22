@@ -64,7 +64,7 @@ import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthS
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
 import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
-import { helpBotVisible, useHelpBotSwitch } from "./adapters/helpBot";
+import { helpBotVisible, helpBotPaid, useHelpBotSwitch } from "./adapters/helpBot";
 import { tiktokSendAllowed } from "./adapters/tiktokSend";
 import { platformOptions, usePlatformSales } from "./adapters/salesByPlatform";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -88,7 +88,7 @@ import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { createDeferredAutoQueue } from "./adapters/deferredAuto";
 import { useOrders } from "./adapters/useOrders";
-import { useOutbox } from "./adapters/outbox";
+import { useOutbox, queuedOutboxRows } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, matchCode, type AutoCode } from "./adapters/autoMode";
 import { adjustStockLogged, logStockMovement, loadProductStock, decrementStockAndTouch, adjustProductStock } from "./adapters/productsDb";
@@ -411,7 +411,7 @@ export default function RedesignApp() {
   // window/session_date path. `ready` waits for BOTH config reads so the first load
   // picks the correct path once (no legacy-then-session double load).
   const sessionInstance = useSessionInstance(sessionHooksOn, sessionFix);
-  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded && sessionGate !== "wait", windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId, fix: sessionFix, sessionKnown: sessionInstance.known, windowKnown: sessionWindow.known });
+  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded && sessionGate !== "wait", windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId, fix: sessionFix, sessionKnown: sessionInstance.known, windowKnown: sessionWindow.known, queued: () => queuedOutboxRows(auth.profile?.authUserId) });
   // "Same price for all items" — per-seller fixed unit price (DB-backed, cross-device,
   // no auto-clear on new session). Applied at the order call sites below (1-Click / Pin /
   // Auto override the price INPUT; Enterprise pre-fills but the seller-typed price wins).
@@ -438,7 +438,10 @@ export default function RedesignApp() {
   // Audit Oct 13 (2): Auto Mode comments held while the session board (re)loads; replayed
   // through autoCommentRef once it is ready. Cleared when a new session starts / the platform changes.
   const [deferredAuto] = useState(() => createDeferredAutoQueue<ProdComment>());
-  const pinHandlerRef = useRef<(p: PinPayload) => void>(() => {}); // PIN-TO-PRINT seam (mirror kept fresh by an effect below)
+  const pinHandlerRef = useRef<(p: PinPayload) => boolean>(() => false); // PIN-TO-PRINT seam (mirror kept fresh by an effect below); true = the pin is done (seen)
+  // Audit Oct 22 (2): pins that arrive while orders are paused (board (re)loading) are held
+  // here and replayed through the same handler once the board is ready — like deferredAuto.
+  const [deferredPins] = useState(() => createDeferredAutoQueue<PinPayload>());
   const autoCodesRef = useRef<AutoCode[]>([]);
   const productsGenRef = useRef(0);                              // stock_refresh_v2: bumped by every sign-in products load
   const codesReadyRef = useRef(false);                           // I3: false until the products auth-load resolves (no auto match before codes exist)
@@ -738,7 +741,8 @@ export default function RedesignApp() {
   const outbox = useOutbox({
     write: saveLiveSessionOrder,
     onExhausted: () => setOrderWriteErrs((c) => c + 1),
-    drainSignal: liveFeed.ttConnected || liveFeed.fbConnected,
+    // Audit Oct 22 (1): any platform's connection rising (TikTok, Facebook, Shopee, Instagram) retries now.
+    drainSignal: [liveFeed.ttConnected, liveFeed.fbConnected, liveFeed.shopeeConnected, liveFeed.igConnected].join(),
     ownerId: auth.status === "authed" ? auth.profile?.authUserId ?? null : null, // Audit Oct 13 (5): items are tagged + drained per user
   });
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
@@ -1334,7 +1338,7 @@ export default function RedesignApp() {
   const sessionPlatformRef = useRef<string | null>(null);
   const noteSessionPlatform = (p: string | null | undefined) => {
     const next = p ? String(p) : null;
-    if (next !== sessionPlatformRef.current) deferredAuto.clear(); // platform switch → held comments are not for this session
+    if (next !== sessionPlatformRef.current) { deferredAuto.clear(); deferredPins.clear(); } // platform switch → held comments / pins are not for this session
     sessionPlatformRef.current = next;
   };
   // H4 — single start_session per confirm. A same-tick double-tap of "Switch" (before
@@ -1569,7 +1573,7 @@ export default function RedesignApp() {
         v2: featureSw.fbConnectV2,
         stopOld: () => stopOtherPlatforms(target.platform),
         start: () => sessionInstance.startSession(days, target.platform, true),
-        reset: () => { deferredAuto.clear(); liveSession.reset(); },
+        reset: () => { deferredAuto.clear(); deferredPins.clear(); liveSession.reset(); },
         connect: () => { noteSessionPlatform(target.platform); runTargetConnect(target); },
         startFailed: () => setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }),
       });
@@ -1729,7 +1733,7 @@ export default function RedesignApp() {
     const sid = await sessionInstance.startSession(SESSION_V2_DAYS, platformOfPending(pending), false);
     if (sid === SESSION_SWITCH_NEEDED) { askSwitch(targetOfPending(pending), SESSION_V2_DAYS); return; }
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
-    deferredAuto.clear(); // new session → nothing held from the old one
+    deferredAuto.clear(); deferredPins.clear(); // new session → nothing held from the old one
     liveSession.reset();
     connectPending(pending);
   };
@@ -1740,7 +1744,7 @@ export default function RedesignApp() {
     setEndConfirm(false);
     const ok = await sessionInstance.endSession();
     if (!ok) { setToast({ msg: tApp.rd_os_end_failed, kind: "err" }); return; }
-    deferredAuto.clear();
+    deferredAuto.clear(); deferredPins.clear();
     liveSession.reset();
     setToast({ msg: tApp.rd_os_ended, kind: "ok" });
   };
@@ -1758,7 +1762,7 @@ export default function RedesignApp() {
     // (empty → buyer# restarts at #1). The load effect re-runs on the sessionId
     // change; reset() clears the prior session's rows so the hydrate-on-empty
     // guard lets the fresh (empty) session load.
-    deferredAuto.clear(); // new session → nothing held from the old one
+    deferredAuto.clear(); deferredPins.clear(); // new session → nothing held from the old one
     liveSession.reset();
     connectPending(pending);
   };
@@ -2058,20 +2062,27 @@ export default function RedesignApp() {
     setWlBusy(r.id);
     void setWaitlistStatus(r.id, "skipped").then(() => { setWlBusy(null); reloadWaitlist(); });
   };
-  const handlePinned = (p: PinPayload) => {
-    if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
-    if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
+  // Returns true when the pin is DONE (ordered, or nothing to do) — only then does useLiveFeed
+  // mark it seen. false = not handled yet (gate off, or held while orders are paused).
+  const handlePinned = (p: PinPayload): boolean => {
+    if (!pinAllowed) return false;                          // dogfood gate — non-allowlisted: pins ignored entirely
+    if (!pinPrint) return false;                            // toggle OFF → observe nothing (fresh closure via the effect mirror)
     // Audit F2 — E1 gate: until the window load resolves, isMsgIdOrdered can't
     // see prior orders, so a pin of an already-ordered older comment on a
     // freshly reloaded device would duplicate. Same rule as the history
     // buttons: no ordered data → no unattended action.
-    if (!liveSession.orderedLoaded) return;
-    if (!isActionablePin(p)) return;
+    // Audit Oct 22 (2): while orders are paused (board loading / reload) the pin is HELD and
+    // replayed once the board is ready, instead of being dropped.
+    if (!liveSession.orderedLoaded || liveSession.state === "loading" || !liveSession.canOrder()) {
+      deferredPins.push(String(p?.msgId || ""), p);
+      return false;
+    }
+    if (!isActionablePin(p)) return true;
     const c = buildPinComment(p);
-    if (shouldSkipPin(soldOutCodeForComment(c.comment))) return;
+    if (shouldSkipPin(soldOutCodeForComment(c.comment))) return true;
     const order = orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.active)); // 1-Click equivalent
 
-    if (!order) return;                                     // dup / capped / blocked — createOrder already dedups the msgId
+    if (!order) return true;                                // dup / capped / blocked — createOrder already dedups the msgId
     const pid = `pin:${c.msgId}`;
     const snap = snapshotFromCreate(c, order);
     reprintByIdRef.current.set(pid, snap);
@@ -2086,6 +2097,7 @@ export default function RedesignApp() {
       setPrinted((pr) => ({ ...pr, [row.id]: "order" }));
       reprintByIdRef.current.set(row.id, snap);
     }
+    return true;
   };
   useEffect(() => { pinHandlerRef.current = handlePinned; }); // effect mirror — freshest closure, no render-time ref write
 
@@ -2228,11 +2240,19 @@ export default function RedesignApp() {
   // the order gate is open), in arrival order, through the SAME handler. A failed load keeps
   // them for the next successful one.
   useEffect(() => {
-    if (liveSession.state === "loading" || !liveSession.canOrder() || deferredAuto.size() === 0) return;
-    const held = deferredAuto.take();
-    log.info("[auto] replaying held comments", held.length);
-    for (const c of held) autoCommentRef.current(c);
-  }, [liveSession, deferredAuto]);
+    if (liveSession.state === "loading" || !liveSession.canOrder()) return;
+    if (deferredAuto.size() > 0) {
+      const held = deferredAuto.take();
+      log.info("[auto] replaying held comments", held.length);
+      for (const c of held) autoCommentRef.current(c);
+    }
+    // Audit Oct 22 (2): held pins replay the same way (the E1 gate must be open too).
+    if (liveSession.orderedLoaded && deferredPins.size() > 0) {
+      const pins = deferredPins.take();
+      log.info("[pin] replaying held pins", pins.length);
+      for (const p of pins) pinHandlerRef.current(p);
+    }
+  }, [liveSession, deferredAuto, deferredPins]);
 
   // Persist appearance (redesign-namespaced keys; never touches existing keys).
   useEffect(() => { try { localStorage.setItem(LS.theme, theme); } catch { /* ignore */ } }, [theme]);
@@ -2274,10 +2294,33 @@ export default function RedesignApp() {
   useEffect(() => {
     const prev = prevAuthStatusRef.current;
     prevAuthStatusRef.current = auth.status;
-    if (sessionEnded(prev, auth.status) && !leavingRef.current) { leavingRef.current = true; appReload.run(); }
+    if (sessionEnded(prev, auth.status) && !leavingRef.current) { leavingRef.current = true; resetAnalytics(); appReload.run(); } // Audit Oct 22 (4): same analytics reset as Logout
   }, [auth.status]);
   // Self-delete: the same cleanups as Logout once the account is gone, then the full reload.
   // leavingRef holds the automatic reload back until the cleanups ran (released on failure).
+  // Audit Oct 13 (5): a shared device keeps nothing of this shop for the next one.
+  // Audit Oct 14 (1): then sign out (awaited, time-boxed) and reload the whole app, so no
+  // in-memory state (feed, buyers, report caches, Buyer Alert, products) reaches the next account.
+  // Audit Oct 22 (3): with orders still unsaved, one final save first; if any remain, the seller
+  // is warned (modal) and only "Log out anyway" proceeds — and then the queued orders are KEPT
+  // (owner-tagged: written when this seller signs in again, never for another account).
+  const [logoutWarn, setLogoutWarn] = useState<number | null>(null);
+  const doLogout = (keepQueued: boolean) => {
+    const me = auth.profile?.authUserId;
+    if (!keepQueued) outbox.dropOwner(me);
+    clearProductsCacheFor(me);
+    resetAnalytics();
+    leavingRef.current = true;
+    setLogoutWarn(null);
+    setScreen("login");
+    void signOutAndReload(auth.signOut);
+  };
+  const requestLogout = async () => {
+    if (outbox.pendingMine() > 0) { try { await outbox.flush(); } catch { /* the count below decides */ } }
+    const n = outbox.pendingMine();
+    if (n > 0) { setLogoutWarn(n); return; }
+    doLogout(false);
+  };
   const onDeleteAccount = async () => {
     const me = auth.profile?.authUserId;
     leavingRef.current = true;
@@ -2516,19 +2559,7 @@ export default function RedesignApp() {
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
-              onLogout={() => {
-                // Audit Oct 13 (5): a shared device keeps nothing of this shop for the next one.
-                // Audit Oct 14 (1): then sign out (awaited, time-boxed) and reload the whole app,
-                // so no in-memory state (feed, buyers, report caches, Buyer Alert, products)
-                // reaches the next account.
-                const me = auth.profile?.authUserId;
-                outbox.dropOwner(me);
-                clearProductsCacheFor(me);
-                resetAnalytics();
-                leavingRef.current = true;
-                setScreen("login");
-                void signOutAndReload(auth.signOut);
-              }}
+              onLogout={() => { void requestLogout(); }}
               isAdmin={isAdmin}
               onParcelScan={parcelAllowed ? openParcelScan : undefined}
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}
@@ -2539,7 +2570,7 @@ export default function RedesignApp() {
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
-              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview"), isAdmin, ios, helpBotIosOn)}
+              helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview") || helpBotPaid(auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry), isAdmin, ios, helpBotIosOn)}
             />
           )}
           {screen === "settings" && (
@@ -2749,6 +2780,18 @@ export default function RedesignApp() {
             onConnectShopee={(shopId, sessionId) => commitLiveConnect({ platform: "Shopee", shopId, sessionId })}
             onUpsell={() => { setLiveConnectPlatform(null); if (ios) setIosExpired(true); else setUpsellOpen(true); }}
           />
+        )}
+        {logoutWarn !== null && (
+          <div onClick={() => setLogoutWarn(null)} style={{ position: "fixed", inset: 0, zIndex: 1350, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} data-testid="logout-warn-overlay">
+            <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, background: "var(--surface)", borderRadius: 18, padding: "22px 20px 18px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{tApp.rd_sh_logout}</div>
+              <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, marginBottom: 18 }}>{tpl(tApp.rd_outbox_logout_warn, { n: logoutWarn })}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setLogoutWarn(null)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="logout-warn-cancel">{tApp.rd_ls_switch_cancel}</button>
+                <button onClick={() => doLogout(true)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="logout-warn-anyway">{tApp.rd_outbox_logout_anyway}</button>
+              </div>
+            </div>
+          </div>
         )}
         {switchConfirm && (
           <div onClick={() => setSwitchConfirm(null)} style={{ position: "fixed", inset: 0, zIndex: 1350, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} data-testid="livesource-switch-overlay">

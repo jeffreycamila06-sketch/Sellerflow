@@ -44,7 +44,7 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(src).toMatch(/const refreshDashboard[\s\S]*?liveSession\.reset\(\);\s+\/\/ reload today/);
   });
   it("a platform change clears them", () => {
-    expect(src).toMatch(/if \(next !== sessionPlatformRef\.current\) deferredAuto\.clear\(\);/);
+    expect(src).toMatch(/if \(next !== sessionPlatformRef\.current\) \{ deferredAuto\.clear\(\); deferredPins\.clear\(\); \}/); // + held pins (Audit Oct 22, 2)
   });
   it("the auto handler holds (not drops) while loading or the order gate is closed", () => {
     expect(src).toMatch(/if \(liveSession\.state === "loading" \|\| !liveSession\.canOrder\(\)\) \{[\s\S]{0,400}deferredAuto\.push\(commentKey\(c\), c\)/);

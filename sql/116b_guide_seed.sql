@@ -198,10 +198,10 @@ If you see the **Not printed** tag or "Some labels didn''t print — tap Reprint
 - **⬇ Export** downloads Excel or PDF.
 - The **Miners** tab shows your top buyers.
 - Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don''t see them, they aren''t turned on for your account yet — ask Admin.'),
-  ('tiktok-send', 'Send to TikTok', '2026-10-15'::date, 'send to tiktok, send message, message buyer, copy message, edit item, ipadala sa tiktok, i-message ang buyer, i-edit ang item, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品', '- On **Orders**, type the buyer number, then tap **Send**.
+  ('tiktok-send', 'Send to TikTok', '2026-10-22'::date, 'send to tiktok, send message, message buyer, copy message, edit item, ipadala sa tiktok, i-message ang buyer, i-edit ang item, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品', '- On **Orders**, type the buyer number, then tap **Send**.
 - You can edit each item before you send.
 - When it''s ready, tap **Copy and open TikTok**, then **Send** in TikTok.
-- Some accounts only — ask Admin.'),
+- Some accounts only — if you don''t see **Send**, ask Admin.'),
   ('sales', 'Sales screen', '2026-10-15'::date, 'sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额', 'Open **Sales** in the bottom bar.
 
 - Pick a range: **Today**, **This session**, **Last 7 days** or **Custom**.
@@ -304,7 +304,7 @@ Both:
 - **Undo last export** puts the last exported parcels back. **Clear exported** removes exported parcels.
 - On a phone, turn on **Export on this phone** first (it is off by default).
 - A field with a mistake shows a short message under it.'),
-  ('pickup-status', 'Pickup Status', '2026-10-15'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
+  ('pickup-status', 'Pickup Status', '2026-10-22'::date, 'pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export', '**Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
 
 Who has it:
 - **Plus / Pro / Master** in Taiwan. If you just upgraded, close the app fully and open it again.
@@ -319,6 +319,7 @@ Who has it:
 3. Upload a new file whenever you want newer statuses.
 
 - 7-11 and 全家 parcels are in one list. Each row has a small **7-11** or **全家** label.
+- Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
 - Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
 - "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
 - "This isn''t a 全家 Order export" — pick the Order export file from 好賣+ and try again.'),
@@ -403,11 +404,11 @@ Text cut off or too big? Pick a bigger sticker size or turn off some fields in *
 4. On a computer browser, close the tab and open sellerflowlive.com again.
 
 Do this on **every device** you use for the same account, especially after a plan change.'),
-  ('support', 'Contact support', '2026-10-11'::date, 'support, help, contact, telegram, admin, customer service, tulong, paano kontakin, 客服, 联系, 聯絡, 帮助', 'Message Admin on **Telegram @SellerFlowLive** (https://t.me/SellerFlowLive).
+  ('support', 'Contact support', '2026-10-22'::date, 'support, help, contact, telegram, admin, customer service, tulong, paano kontakin, 客服, 联系, 聯絡, 帮助', 'Message Admin on **Telegram @SellerFlowLive** (https://t.me/SellerFlowLive).
 
 In the app: **Settings → Need help? Contact us**, or **Settings → General Settings → Support & user guide**, which also has a short user guide.
 
-Some accounts have a **help chat** instead: a round chat bubble on the **Settings** screen. Tap it (or the "Do you have a question?" hint next to it) and type your question. You can drag the bubble to the left or right edge.
+Paid plans (Basic, Plus, Pro, Master) also have a **help chat**: a round chat bubble on the **Settings** screen. Tap it (or the "Do you have a question?" hint next to it) and type your question. You can drag the bubble to the left or right edge.
 
 When you message, include your account email, your TikTok username, what you were doing, and the exact message you saw. A screenshot helps.')
 on conflict (id) do update set

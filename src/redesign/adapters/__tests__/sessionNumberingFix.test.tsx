@@ -120,7 +120,7 @@ describe("the gate decision (email only)", () => {
     expect(src).toContain('const sessionHooksOn = authed && sessionGate !== "wait";');
     expect(src).toContain("useSessionWindow(sessionHooksOn, sessionFix)");
     expect(src).toContain("useSessionInstance(sessionHooksOn, sessionFix)");
-    expect(src).toMatch(/useLiveSession\(authed, \{ ready: sessionWindow\.loaded && sessionInstance\.loaded && sessionGate !== "wait",[^}]*fix: sessionFix, sessionKnown: sessionInstance\.known, windowKnown: sessionWindow\.known \}\)/);
+    expect(src).toMatch(/useLiveSession\(authed, \{ ready: sessionWindow\.loaded && sessionInstance\.loaded && sessionGate !== "wait",[^}]*fix: sessionFix, sessionKnown: sessionInstance\.known, windowKnown: sessionWindow\.known, queued: \(\) => queuedOutboxRows\(auth\.profile\?\.authUserId\) \}\)/); // + the Audit Oct 22 (1) queued-rows option
     expect(src).toContain("...(sessionFix ? { canOrder: liveSession.canOrder, onOrderBlocked: () => setOrderBlocked((c) => c + 1) } : {}),");
     // the notice + Retry render only for the gate-on account, only when failed / unknown
     expect(src).toContain('{screen === "dashboard" && sessionFix && (liveSession.loadStatus === "failed" || liveSession.loadStatus === "unknown") && (');

@@ -18,6 +18,7 @@ import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogi
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
 import { chooseSessionLoad, loadLiveSessionWindow, loadLiveSessionDay, loadLiveSessionBySessionId, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
 import type { ReprintRow } from "./reprint";
+import type { QueuedRow } from "./outbox";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
 // "live" = today's session hydrated · "empty" = no session rows today.
@@ -112,7 +113,22 @@ export const RESYNC_FRESH_MS = 30000;
 // fix / sessionKnown / windowKnown: the session-numbering fix (sessionNumberingGate). With
 // fix, nothing is loaded while the session id is unknown, or (no session) while the window
 // config is unknown — the board is never guessed from a failed read. Absent → today's path.
-export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; windowStart: string | null; sessionId?: string | null; fix?: boolean; sessionKnown?: boolean; windowKnown?: boolean }
+// queued (Audit Oct 22, item 1): the orders this device still has in its retry outbox, as rows.
+// Read at every (re)load and merged into the loaded rows (withQueuedRows) so the next buyer
+// number counts them and the "already ordered" check knows their msgId.
+export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; windowStart: string | null; sessionId?: string | null; fix?: boolean; sessionKnown?: boolean; windowKnown?: boolean; queued?: () => QueuedRow[] }
+
+// PURE (unit-tested). Queued rows that belong to the loaded scope and are not in the database
+// rows yet (by comment_msg_id) are appended. Scope: a session id when the board is a session,
+// else (legacy) a session_date within [start, end]. The database row always wins.
+export function withQueuedRows(rows: unknown[], queued: QueuedRow[], scope: { sessionId: string | null; start: string; end: string }): unknown[] {
+  if (!queued.length) return rows;
+  const have = new Set((rows as Array<{ comment_msg_id?: string | null }>).map((r) => String(r?.comment_msg_id || "")).filter(Boolean));
+  const inScope = (q: QueuedRow) => (scope.sessionId ? q.session_id === scope.sessionId
+    : !q.session_id && !!q.session_date && q.session_date >= scope.start && q.session_date <= scope.end);
+  const add = queued.filter((q) => q.comment_msg_id && !have.has(q.comment_msg_id) && inScope(q));
+  return add.length ? [...rows, ...add] : rows;
+}
 
 // Orderable earlier-comments (sql/18) — PURE: the ordered-check map from raw
 // window rows. E3 hygiene: empty/null msgIds NEVER enter the map (an order
@@ -209,6 +225,8 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   const resyncRef = useRef(false);
   const lastLoadedAtRef = useRef(0);
   useEffect(() => { winSessionIdRef.current = winSessionId; }, [winSessionId]);
+  const queuedRef = useRef(win?.queued);
+  useEffect(() => { queuedRef.current = win?.queued; });
 
   useEffect(() => {
     if (!enabled || !isSupabaseConfigured) { setState("idle"); return; }
@@ -231,6 +249,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     // window/session_date path runs BYTE-UNCHANGED (both coexist per-seller).
     if (fix) { setFetchStatus("pending"); setLoadKind(correcting ? "correction" : "load"); }
     let loader;
+    let scope = { sessionId: winSessionId, start: dayId, end: dayId };
     if (winSessionId) {
       loader = fix ? loadLiveSessionBySessionId(winSessionId, true) : loadLiveSessionBySessionId(winSessionId); // fix: a missing user id is a failed read (null), not "no rows"
     } else {
@@ -240,10 +259,13 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
       // columns/filter/order as the old db.ts single-day path.
       const choice = chooseSessionLoad(dayId, winStart, winDays);
       loader = choice.mode === "range" ? loadLiveSessionWindow(choice.start, choice.end) : loadLiveSessionDay(dayId);
+      if (choice.mode === "range") scope = { sessionId: null, start: choice.start, end: choice.end };
     }
     loader
-      .then((rows) => {
+      .then((loaded) => {
         if (!active) return;
+        // Audit Oct 22 (1): the orders still waiting in the retry outbox count on the board too.
+        const rows = loaded === null ? null : withQueuedRows(loaded, queuedRef.current ? queuedRef.current() : [], scope);
         // Batch D (#8): null = the READ FAILED (network/db error). Display keeps
         // the pre-fix behavior (an errored load looked "empty") so no screen
         // changes mode — but loadError now tells the app to warn the seller,
@@ -271,7 +293,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
         }
         setOrderedMsgIds(buildOrderedMsgIds(rows));
         setOrderedLoaded(true); // E1 gate opens only on a RESOLVED load
-        const rebuilt = rebuildSessionFromRows(rows); // UNCHANGED — handles multi-day rows
+        const rebuilt = rebuildSessionFromRows(rows as Parameters<typeof rebuildSessionFromRows>[0]); // UNCHANGED — handles multi-day rows
         if (rebuilt.orders.length) { setSession(rebuilt); setState("live"); }
         else setState("empty");
         if (fix) { hydratedFromRef.current = target; localNewRef.current = []; resyncRef.current = false; lastLoadedAtRef.current = Date.now(); }

@@ -2,6 +2,7 @@
 // (email + plan/store_name/role) and forwards events when configured. posthog-js
 // is mocked; the key is toggled via vi.stubEnv (enabled() reads env at call time).
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
 
 const { init, identify, capture, reset } = vi.hoisted(() => ({
   init: vi.fn(), identify: vi.fn(), capture: vi.fn(), reset: vi.fn(),
@@ -36,20 +37,26 @@ describe("analytics — no-op when no PostHog key", () => {
 });
 
 describe("analytics — when VITE_PUBLIC_POSTHOG_KEY is set", () => {
-  it("identifySeller maps email + plan/store_name/role", () => {
+  it("identifySeller identifies by the auth user id (never the email) + plan/store_name/role", () => {
     vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "phc_test");
     identifySeller(profile());
-    expect(identify).toHaveBeenCalledWith("Seller@X.com", { plan: "pro", store_name: "My Shop", role: "seller" });
+    expect(identify).toHaveBeenCalledWith("a", { plan: "pro", store_name: "My Shop", role: "seller" });
+    expect(JSON.stringify(identify.mock.calls)).not.toContain("Seller@X.com");
   });
   it("role falls back to 'seller' when empty", () => {
     vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "phc_test");
     identifySeller({ ...profile(), role: "" } as unknown as AccountUser);
-    expect(identify).toHaveBeenCalledWith("Seller@X.com", expect.objectContaining({ role: "seller" }));
+    expect(identify).toHaveBeenCalledWith("a", expect.objectContaining({ role: "seller" }));
   });
-  it("identifySeller no-ops when the profile has no email", () => {
+  it("identifySeller no-ops when the profile has no auth user id", () => {
     vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "phc_test");
-    identifySeller({ ...profile(), email: "" } as AccountUser);
+    identifySeller({ ...profile(), authUserId: "" } as AccountUser);
     expect(identify).not.toHaveBeenCalled();
+  });
+  it("the rollback entry (src/main.tsx) no longer initialises PostHog — one init, in the redesign", () => {
+    const main = readFileSync("src/main.tsx", "utf8");
+    expect(main).not.toMatch(/posthog-js|posthog\.init|import posthog/);
+    expect(readFileSync("src/redesign/main.tsx", "utf8")).toContain("initAnalytics()");
   });
   it("track forwards event + props; reset + init forward to posthog", () => {
     vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "phc_test");
