@@ -22,7 +22,7 @@ import type { NiimbotImage } from "./printerBridge";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
-import { loadPropAtlas, loadCjkBoldAtlas } from "./propAtlasLoader"; // font C — image paths only
+import { loadPropAtlas, loadCjkRegAtlas } from "./propAtlasLoader"; // font C — image paths only
 import { fbNameOnly, printableBuyer } from "./fbName";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "./glyphAtlas.cyrillic"; // generic-printer / Niimbot image paths only
@@ -511,7 +511,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
 // roughly 8–15 KB/s, so a 60×40 sticker (~10 KB of bands) prints in about a second.
 // The atlases of the generic-printer / Niimbot IMAGE paths: Latin + Cyrillic/"…" (never
 // passed on the D520BT stream) + CJK when the payload needs it + font C (proportional
-// DejaVu Sans Bold + CJK bold cells) for the compact sizes 50×30 / 60×40. A font-C atlas
+// DejaVu Sans Regular + CJK regular cells) for the compact sizes 50×30 / 60×40. A font-C atlas
 // that fails to load leaves the fixed-cell layout in charge — never a blank label.
 export async function imagePathAtlases(payload: NativeStickerPayload, img: RasterPayload): Promise<RasterAtlases> {
   const needsCjk = payloadNeedsCjk(payload);
@@ -523,9 +523,9 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
     if (atlases.proportional && needsCjk) {
       // only the CJK sizes this label's lines land on (the shrink ladder is width-based, so it is known before any CJK atlas is fetched)
       const sizes = propPlanCjkSizes(img, payload.labelWidthMm, payload.labelHeightMm, atlases.proportional);
-      const bold: NonNullable<RasterAtlases["cjkBold"]> = {};
-      for (const size of sizes) { try { bold[size] = await loadCjkBoldAtlas(size); } catch { /* that size paints from the regular CJK atlas */ } }
-      atlases.cjkBold = bold;
+      const reg: NonNullable<RasterAtlases["cjkReg"]> = {};
+      for (const size of sizes) { try { reg[size] = await loadCjkRegAtlas(size); } catch { /* that size paints from the 24-cell CJK atlas */ } }
+      atlases.cjkReg = reg;
     }
   }
   return atlases;

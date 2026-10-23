@@ -12,21 +12,21 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderStickerBitmap, rasterizeToBitmapTspl, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
+import { renderStickerBitmap, rasterizeToBitmapTspl, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, PROP_CJK_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "../glyphAtlas.cyrillic";
 import { CJK_ATLAS } from "../glyphAtlas.cjk";
 import { PROP_ATLAS } from "../glyphAtlas.prop";
-import { CJK_BOLD_ATLAS as B24 } from "../glyphAtlas.cjkBold24";
-import { CJK_BOLD_ATLAS as B32 } from "../glyphAtlas.cjkBold32";
-import { CJK_BOLD_ATLAS as B20 } from "../glyphAtlas.cjkBold20";
-import { CJK_BOLD_ATLAS as B18 } from "../glyphAtlas.cjkBold18";
+import { CJK_REG_ATLAS as R24 } from "../glyphAtlas.cjkReg24";
+import { CJK_REG_ATLAS as R32 } from "../glyphAtlas.cjkReg32";
+import { CJK_REG_ATLAS as R20 } from "../glyphAtlas.cjkReg20";
+import { CJK_REG_ATLAS as R18 } from "../glyphAtlas.cjkReg18";
 import { buildNativeStickerPayload, imageStickerPayload, DEF_SETTINGS } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const GOLD = JSON.parse(readFileSync(join(process.cwd(), "src/redesign/adapters/__tests__/stickerRasterPropGoldens.json"), "utf8")) as Record<string, string>;
 const AT = Date.UTC(2026, 9, 22, 12, 15); // 10/22/2026 20:15 Taipei
-const ATL: RasterAtlases = { latin: LATIN_ATLAS, cjk: CJK_ATLAS, cyrillic: CYRILLIC_ATLAS, proportional: PROP_ATLAS, cjkBold: { 18: B18, 20: B20, 24: B24, 32: B32 } };
+const ATL: RasterAtlases = { latin: LATIN_ATLAS, cjk: CJK_ATLAS, cyrillic: CYRILLIC_ATLAS, proportional: PROP_ATLAS, cjkReg: { 18: R18, 20: R20, 24: R24, 32: R32 } };
 const FIXED: RasterAtlases = { latin: LATIN_ATLAS, cjk: CJK_ATLAS, cyrillic: CYRILLIC_ATLAS }; // what the image paths passed before font C
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
@@ -110,22 +110,25 @@ describe("font C layout rules", () => {
     expect(propFitShrinking("@verylongusername_shop2026", 24, col, ATL)!.line.cut).toBe(true);
     expect(propFitShrinking("@verylongusername_shop2026", 24, 376 - 4, ATL)!.line.text).toBe("@verylongusername_shop2026");
   });
-  it("shrink before cut: username / name / comment step 24 → 20 → 18 and only then get '…'; number and date keep their size", () => {
-    expect(propShrinkLadder(24)).toEqual([24, 20, 18]);
-    expect(propShrinkLadder(32)).toEqual([32, 24, 20, 18]);
+  it("shrink before cut: 50×30 lines 20 → 18, 60×40 lines 24 → 20 → 18, and only then '…'; number and date keep their size", () => {
+    expect(propShrinkLadder(20)).toEqual([20, 18]);                 // 50×30 lines
+    expect(propShrinkLadder(24)).toEqual([24, 20, 18]);             // 60×40 lines
     expect(propShrinkLadder(18)).toEqual([18]);
+    expect(propSizes(50, true)).toEqual({ num: 46, line: 20, time: 18, edge: 4 });
+    expect(propSizes(50, false)).toEqual({ num: 64, line: 20, time: 18, edge: 4 });
+    expect(propSizes(60, true)).toEqual({ num: 64, line: 24, time: 20, edge: 12 });
     const rp = payloadFor(S1, "50x30", true);
     const { lines, qr } = propLayoutLines(rp, 50, 30, ATL);
     const col = propQrInkLeft(qr!) - PROP_TEXT_QR_GAP - propSizes(50, true).edge;
     const byText = (t: string) => lines.find((l) => l.line.text === t);
     expect(byText("12")!.size).toBe(46);                       // buyer number: unchanged size
     expect(byText("10/22 20:15")!.size).toBe(18);              // date-time: unchanged size
-    const handle = byText("@wangxiaoming88")!;                 // was "@wangxiaomi…" at 24 → now whole, a step or two down
+    const handle = byText("@wangxiaoming88")!;                 // whole at the normal 20 (regular weight is narrower)
     expect(handle.line.cut).toBe(false);
     expect([20, 18]).toContain(handle.size);
-    expect(propFitLine("@wangxiaoming88", 24, col, ATL).cut).toBe(true);
-    expect(byText("王小明")!.size).toBe(24);                    // fits at the normal size → no shrink
-    expect(byText("A12 +1 $350")!.size).toBe(24);
+    expect(propFitLine("@wangxiaoming88", 24, col, ATL).cut).toBe(true); // at the old 24 it would still have been cut
+    expect(byText("王小明")!.size).toBe(20);                    // fits at the normal size → no shrink
+    expect(byText("A12 +1 $350")!.size).toBe(20);
     // sample 2: the price is no longer cut ("B7 +2 好看 $…" before)
     const l2 = propLayoutLines(payloadFor(S2, "50x30", true), 50, 30, ATL).lines;
     const comment = l2.find((l) => l.line.text.startsWith("B7"))!;
@@ -143,7 +146,7 @@ describe("font C layout rules", () => {
     expect(l60.find((l) => l.line.text === "135")!.size).toBe(64);
   });
   it("the CJK sizes a label needs are known from widths alone (loader plan) and match what is painted", () => {
-    expect(propPlanCjkSizes(payloadFor(S1, "50x30", true), 50, 30, PROP_ATLAS)).toEqual([24]);           // 王小明 at 24
+    expect(propPlanCjkSizes(payloadFor(S1, "50x30", true), 50, 30, PROP_ATLAS)).toEqual([20]);           // 王小明 at 20
     const s2 = propPlanCjkSizes(payloadFor(S2, "50x30", true), 50, 30, PROP_ATLAS);
     expect(s2.length).toBeGreaterThan(0);
     expect(s2.every((x) => x === 20 || x === 18)).toBe(true);                                             // both mixed lines shrank below 24 next to the QR
@@ -153,14 +156,28 @@ describe("font C layout rules", () => {
     const painted = propLayoutLines(payloadFor(S2, "60x40", true), 60, 40, ATL).lines.filter((l) => l.line.cjk).map((l) => l.size);
     expect([...new Set(painted)].sort()).toEqual([...planned].sort());
   });
-  it("per-glyph widths: Latin narrow, CJK one full cell each — 'Test Print' is never CJK-spaced", () => {
+  it("per-glyph widths: Latin narrow, CJK one full cell + PROP_CJK_GAP each — 'Test Print' is never CJK-spaced", () => {
     const line = propFitLine("測試 Test Print", 24, 10_000, ATL);
     expect(line.text).toBe("測試 Test Print");
     const latin = propFitLine("Test Print", 24, 10_000, ATL).width;
-    expect(line.width).toBe(24 * 2 + PROP_ATLAS["24"].glyphs[32].adv + latin);
+    expect(line.width).toBe((24 + PROP_CJK_GAP) * 2 + PROP_ATLAS["24"].glyphs[32].adv + latin);
     expect(latin).toBeLessThan(10 * 24 * 0.7);                               // 10 glyphs far narrower than 10 CJK cells
     expect(PROP_ATLAS["24"].glyphs[105].adv).toBeLessThan(PROP_ATLAS["24"].glyphs[87].adv); // i narrower than W
-    expect(propFitLine("陳美玲 Amy Chen", 32, 10_000, ATL).width).toBe(32 * 3 + propFitLine(" Amy Chen", 32, 10_000, ATL).width);
+    expect(propFitLine("陳美玲 Amy Chen", 32, 10_000, ATL).width).toBe((32 + PROP_CJK_GAP) * 3 + propFitLine(" Amy Chen", 32, 10_000, ATL).width);
+  });
+  it("CJK glyphs never touch: 1 dot of advance after every CJK cell, in the layout and on the raster", () => {
+    expect(PROP_CJK_GAP).toBe(1);
+    for (const size of [18, 20, 24, 32]) {
+      const l = propFitLine("好看", size, 10_000, ATL);
+      expect(l.items.map((i) => i.x)).toEqual([0, size + 1]);
+      expect(l.width).toBe((size + 1) * 2);
+      expect(l.inkWidth).toBe((size + 1) * 2);                                // the fit counts the gap too
+      const b0 = propGlyphBox(l.items[0], size, 0, 0, PROP_ATLAS[String(size)], ATL)!, b1 = propGlyphBox(l.items[1], size, 0, 0, PROP_ATLAS[String(size)], ATL)!;
+      expect(b1.x - (b0.x + b0.w)).toBe(1);                                  // one white column between the cells
+    }
+    // the regular text sizes are DejaVu Sans Regular (thinner stems than the bold number sizes)
+    const stem = (size: string, cp: number) => { const g = PROP_ATLAS[size].glyphs[cp]; const rows = Buffer.from(g.rows, "base64"); const rb = (g.w + 7) >> 3; let max = 0; for (let y = 0; y < PROP_ATLAS[size].h; y++) { let run = 0, best = 0; for (let x = 0; x < g.w; x++) { if (rows[y * rb + (x >> 3)] & (0x80 >> (x & 7))) { run++; best = Math.max(best, run); } else run = 0; } max = Math.max(max, best); } return max / g.adv; };
+    expect(stem("24", 0x6c)).toBeLessThan(stem("46", 0x31) * 0.8);          // "l" at 24 (regular) vs "1" at 46 (bold): relative stem is thinner
   });
   it("too long → cut with '…' inside the limit; Chinese first stays visible; a tiny limit is just '…'", () => {
     const cut = propFitLine("測試 Test Print", 24, 120, ATL);
@@ -194,10 +211,10 @@ describe("opt-in: the fixed-cell layout and the D520BT stream are untouched", ()
     expect(sdk.length).toBeGreaterThan(0);
     for (const l of sdk) {
       expect(l).toContain("{ latin: LATIN_ATLAS, cjk }");
-      expect(l).not.toMatch(/cyrillic|proportional|cjkBold|imagePathAtlases/);
+      expect(l).not.toMatch(/cyrillic|proportional|cjkReg|cjkBold|imagePathAtlases/);
     }
     // the font-C loaders are referenced ONLY through imagePathAtlases (generic + Niimbot image paths)
-    const users = src.split("\n").filter((l) => /loadPropAtlas\(|loadCjkBoldAtlas\(/.test(l));
+    const users = src.split("\n").filter((l) => /loadPropAtlas\(|loadCjkRegAtlas\(/.test(l));
     expect(users.length).toBe(2);
   });
 });

@@ -19,7 +19,7 @@ import type { BluetoothPrinterDevice } from "../../adapters/printerBridge";
 
 vi.mock("../../adapters/cjkAtlasLoader", () => ({ loadCjkAtlas: async () => ({}), prefetchCjkAtlas: () => {}, getCjkAtlasSync: () => null }));
 // The font-C atlases are real (slow) dynamic imports; a failed load = the fixed-cell layout — these are ROUTE tests.
-vi.mock("../../adapters/propAtlasLoader", () => ({ loadPropAtlas: async () => { throw new Error("no font C in this test"); }, loadCjkBoldAtlas: async () => { throw new Error("no font C in this test"); } }));
+vi.mock("../../adapters/propAtlasLoader", () => ({ loadPropAtlas: async () => { throw new Error("no font C in this test"); }, loadCjkRegAtlas: async () => { throw new Error("no font C in this test"); } }));
 
 const t = buildT("en") as unknown as Record<string, string>;
 const noop = () => {};
