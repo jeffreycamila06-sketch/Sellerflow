@@ -798,7 +798,10 @@ const b64ToBytes = (b64: string): Uint8Array => {
 
 // cyrillic: the extra atlas (Cyrillic + "…", glyphAtlas.cyrillic.ts) — passed by the generic-printer
 // and Niimbot image paths only; absent = main's glyph set exactly (the D520BT stream).
-export interface RasterAtlases { latin: GlyphAtlas; cjk?: GlyphAtlas; cyrillic?: GlyphAtlas }
+// proportional + cjkBold: font C (DejaVu Sans Bold / Noto Sans CJK TC Bold) for the compact
+// sizes of the generic-printer and Niimbot image paths — see "PROPORTIONAL (font C)" below.
+// Absent = the fixed-cell layouts exactly (the D520BT stream passes neither).
+export interface RasterAtlases { latin: GlyphAtlas; cjk?: GlyphAtlas; cyrillic?: GlyphAtlas; proportional?: PropAtlas; cjkBold?: CjkBoldAtlases }
 
 function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
   const latin = atlases.latin;
@@ -855,6 +858,10 @@ export interface BandOptions { horizontalCrop?: boolean }
 // invariant test can recompose the emitted BITMAP blocks against it.
 export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: number }
 export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended"): FullRaster {
+  if (atlases.proportional && mode !== "legacy" && isPropCompactSize(wMm, hMm)) { // font C, image paths only
+    const bmp = renderPropCompact(payload, wMm, hMm, atlases);
+    return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
+  }
   // Compute the QR placement ONCE (legacy/parity mode never has a QR) → the layout wraps
   // the comment before it AND the stamp renders it, from the SAME footprint.
   const cfg = stickerConfig(wMm, hMm);
@@ -931,11 +938,17 @@ function stampHandleQr(bmp: Bitmap, qr: QrPlacement | null): void {
 // x=0 BITMAP blocks → TSPL. See BandOptions for why full-width is the default.
 export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
   const cfg = stickerConfig(wMm, hMm);
-  const qr = stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm); // this path is always extended/production
-  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr, !!atlases.cyrillic);
-  const bmp = new Bitmap(wDots, hDots);
-  paint(bmp, ops, atlases);
-  stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
+  let bmp: Bitmap;
+  if (atlases.proportional && isPropCompactSize(wMm, hMm)) {
+    bmp = renderPropCompact(payload, wMm, hMm, atlases); // font C, image paths only (== renderStickerBitmap)
+  } else {
+    const qr = stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm); // this path is always extended/production
+    const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr, !!atlases.cyrillic);
+    bmp = new Bitmap(wDots, hDots);
+    paint(bmp, ops, atlases);
+    stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
+  }
+  const wDots = bmp.w, hDots = bmp.h;
 
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };
@@ -1094,4 +1107,213 @@ export function bytesToBase64(bytes: Uint8Array): string {
   let bin = ""; const CH = 0x8000;
   for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CH)));
   return btoa(bin);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// PROPORTIONAL (font C) compact layout — generic-printer and Niimbot IMAGE paths only.
+// Opt-in: used when `atlases.proportional` is passed (printing.ts passes it on those two
+// paths for the compact sizes; the D520BT SDK stream never does → byte-identical).
+//   • Proportional DejaVu Sans Bold for Latin / digits / symbols / Cyrillic (per-glyph
+//     advances), Noto Sans CJK TC Bold cells for CJK → mixed lines ("陳美玲 Amy Chen",
+//     "測試 Test Print") read normally; Latin never gets CJK spacing.
+//   • Lines: buyer number (big) · @username · buyer name · comment · date-time, evenly
+//     spaced over the label height. The username / name / comment lines SHRINK before they
+//     are cut: the normal size, then 24 → 20 → 18 px, and "…" only if 18 still overflows.
+//     The buyer number and the date-time keep their size.
+//   • QR (TikTok + sticker-QR ON + @username on): label-tall on the right, 5 dots/module,
+//     vertically centred, `edge` dots from the right. The text column ends BEFORE the QR's
+//     quiet zone (the stamp clears that footprint, so nothing may be painted there) — i.e.
+//     ≥ 20 dots before the QR's first ink column, more than PROP_TEXT_QR_GAP. No QR
+//     (Facebook, or QR off): the text uses the full width and the buyer number steps up.
+//   • Fit = the real INK extent of a line (advances + the last glyph's right overhang, or
+//     the "…" itself) + PROP_INK_MARGIN ≤ the column — a glyph is never partially painted.
+//   • 50×30 (raster 384 = the 48 mm printable width) and 60×40 (raster 480 = the label).
+//   • The size choice depends on glyph ADVANCES only (CJK = one cell = the size), never on
+//     which CJK atlas is loaded → propPlanCjkSizes() tells the loader which CJK sizes a
+//     label needs before any CJK atlas is fetched, and the paint lands on the same sizes.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+export interface PropGlyph { w: number; adv: number; rows: string } // rows: base64, ceil(w/8) B/row × font.h, bit 1 = ink; "" = blank (space)
+export interface PropFont { h: number; base: number; glyphs: Record<number, PropGlyph> }
+export type PropAtlas = Record<string, PropFont>;          // keys = px sizes ("18" "20" "24" "32" "46" "64")
+export type CjkBoldSize = 18 | 20 | 24 | 32;
+export type CjkBoldAtlases = Partial<Record<CjkBoldSize, GlyphAtlas>>;
+export const CJK_BOLD_SIZES: CjkBoldSize[] = [18, 20, 24, 32];
+
+export const isPropCompactSize = (wMm: number, hMm: number): boolean => (wMm === 50 && hMm === 30) || (wMm === 60 && hMm === 40);
+export const PROP_QR_MODULE_DOTS = 5;   // 29 modules → 145-dot symbol (≈18 mm — the size the B1 scans)
+export const PROP_TEXT_QR_GAP = 10;     // minimum white between the text column and the QR's first ink column (the quiet zone gives 20)
+export const PROP_INK_MARGIN = 2;       // a line's painted ink (last glyph's overhang / the "…" included) ends ≥ this many dots before the column edge
+export const PROP_SHRINK_STEPS = [24, 20, 18]; // the shrink ladder below a line's normal size
+
+interface PropSizes { num: number; line: number; time: number; edge: number }
+// px sizes per label (em px of the atlas); `edge` = left/right margin in RASTER dots.
+export function propSizes(wMm: number, qr: boolean): PropSizes {
+  if (wMm === 50) return { num: qr ? 46 : 64, line: 24, time: 18, edge: 4 }; // 4 raster dots = 12 on the 400-dot label
+  return { num: 64, line: 32, time: 24, edge: 12 };
+}
+/** The sizes a shrinkable line tries, biggest first: its normal size, then every step below it. */
+export const propShrinkLadder = (base: number): number[] => [base, ...PROP_SHRINK_STEPS.filter((s) => s < base)];
+
+// The label-tall right-side QR of the proportional layout (same gates as stickerQrPlacement).
+export function propQrPlacement(payload: RasterPayload, wDots: number, hDots: number, edge: number): QrPlacement | null {
+  if (!payload.settings || payload.settings.printStickerQr !== true) return null;
+  if (payload.settings.printBuyerUsername === false) return null;
+  const handle = payload.buyer?.handle ? String(payload.buyer.handle).trim() : "";
+  if (!handle) return null;
+  const url = tiktokProfileUrl(handle);
+  if (!url) return null;
+  const m = qrMatrix(url, "M");
+  if (!m) return null;
+  const scale = PROP_QR_MODULE_DOTS, n = m.length;
+  const foot = (n + 2 * QR_QUIET_MODULES) * scale;
+  if (foot > hDots) return null;
+  const x0 = wDots - edge - (n + QR_QUIET_MODULES) * scale; // quiet-zone start; the symbol's ink ends `edge` dots before the right edge
+  if (x0 < 0) return null;
+  return { matrix: m, x0, y0: Math.max(0, Math.floor((hDots - foot) / 2)), foot, scale };
+}
+/** First ink column of a placed QR (its left quiet zone is white). */
+export const propQrInkLeft = (qr: QrPlacement): number => qr.x0 + QR_QUIET_MODULES * qr.scale;
+
+interface PropItem { x: number; latin?: PropGlyph; cjk?: number } // cjk = the codepoint, painted from the size's CJK atlas
+export interface PropLine { items: PropItem[]; width: number; inkWidth: number; text: string; cut: boolean; cjk: boolean } // width = Σ advances; inkWidth = painted extent (last glyph's overhang included)
+
+const isIdeograph = (cp: number) => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff);
+function propCjkFont(atlases: RasterAtlases, size: number): GlyphFont | null {
+  const bold = atlases.cjkBold?.[size as CjkBoldSize];
+  return bold?.cjk ?? atlases.cjk?.cjk ?? null;
+}
+
+/** Lay one line out in font `size`, cutting with "…" so it fits `maxW`. PURE; widths never
+ *  depend on which CJK atlas is present (an ideograph is always one `size`-wide cell). */
+export function propFitLine(text: string, size: number, maxW: number, atlases: RasterAtlases): PropLine {
+  const font = atlases.proportional?.[String(size)];
+  if (!font) return { items: [], width: 0, inkWidth: 0, text: "", cut: false, cjk: false };
+  const cjkFont = propCjkFont(atlases, size); // only consulted for NON-ideographs the Latin font lacks (fullwidth punctuation, kana…)
+  type Piece = { ch: string; adv: number; latin?: PropGlyph; cjk?: number };
+  const pieces: Piece[] = [];
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: size, cjk: cp }); continue; }
+    let g = font.glyphs[cp];
+    if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
+    if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w, cjk: cp }); continue; }
+    if (!g) continue; // never tofu: a glyph neither font has is dropped
+    pieces.push({ ch, adv: g.adv, latin: g });
+  }
+  const widthOf = (ps: Piece[]) => ps.reduce((a, p) => a + p.adv, 0);
+  // painted extent: every advance but the last glyph's, then the WIDER of its advance and its ink box
+  const inkOf = (ps: Piece[]) => (ps.length === 0 ? 0 : widthOf(ps.slice(0, -1)) + Math.max(ps[ps.length - 1].adv, ps[ps.length - 1].latin?.rows ? ps[ps.length - 1].latin!.w : ps[ps.length - 1].adv));
+  const fits = (ps: Piece[]) => inkOf(ps) + PROP_INK_MARGIN <= maxW;
+  let kept = pieces;
+  let suffix: Piece | null = null;
+  const cut = !fits(pieces);
+  if (cut) {
+    const ell = font.glyphs[0x2026];
+    const ellPiece: Piece | null = ell ? { ch: "…", adv: ell.adv, latin: ell } : null;
+    let k = pieces.length;
+    while (k > 0 && !fits(ellPiece ? [...pieces.slice(0, k), ellPiece] : pieces.slice(0, k))) k--;
+    while (k > 0 && pieces[k - 1].ch === " ") k--; // no space right before the "…"
+    kept = pieces.slice(0, k);
+    suffix = ellPiece;
+  }
+  const out = suffix ? [...kept, suffix] : kept;
+  const items: PropItem[] = [];
+  let x = 0;
+  for (const p of out) { items.push({ x, latin: p.latin, cjk: p.cjk }); x += p.adv; }
+  return { items, width: x, inkWidth: inkOf(out), text: out.map((p) => p.ch).join(""), cut, cjk: out.some((p) => p.cjk != null) };
+}
+
+/** A shrinkable line: the first ladder size that fits whole, else the smallest (cut). */
+export function propFitShrinking(text: string, base: number, maxW: number, atlases: RasterAtlases): { size: number; line: PropLine } | null {
+  let last: { size: number; line: PropLine } | null = null;
+  for (const size of propShrinkLadder(base)) {
+    if (!atlases.proportional?.[String(size)]) continue;
+    last = { size, line: propFitLine(text, size, maxW, atlases) };
+    if (!last.line.cut) return last;
+  }
+  return last;
+}
+
+interface PropLaidLine { size: number; font: PropFont; line: PropLine }
+/** All the label's lines with their final sizes (PURE; CJK atlases not needed). */
+export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): { lines: PropLaidLine[]; qr: QrPlacement | null; x: number; w: number; h: number } {
+  const W = stickerConfig(wMm, hMm).wDots, H = hMm * 8;
+  const prop = atlases.proportional;
+  const buyer = payload.buyer ?? {};
+  const settings = payload.settings;
+  const flag = (key: keyof RasterSettings) => (settings == null ? true : settings[key] !== false);
+  const orders = buyer.orders ?? [];
+  const narrow = (s: string) => stripUnrenderableExt(safe(s), true).replace(/\s+/g, " ").trim();
+
+  const qrProbe = propQrPlacement(payload, W, H, propSizes(wMm, true).edge);
+  const sizes = propSizes(wMm, !!qrProbe);
+  const qr = qrProbe ? propQrPlacement(payload, W, H, sizes.edge) : null;
+  const X = sizes.edge;
+  const right = qr ? Math.min(qr.x0, propQrInkLeft(qr) - PROP_TEXT_QR_GAP) : W - sizes.edge; // never inside the quiet zone the stamp clears
+  const maxW = Math.max(1, right - X);
+  if (!prop) return { lines: [], qr, x: X, w: W, h: H };
+
+  // the lines, top → bottom (empties and switched-off fields drop out; spacing re-flows)
+  const spec: { text: string; size: number; shrink: boolean }[] = [];
+  const num = String(buyer.num ?? buyer.bNum ?? 0);
+  if (flag("printBuyerNumber")) spec.push({ text: num, size: sizes.num, shrink: false });
+  const handle = stripEmoji(buyer.handle ?? "");
+  if (flag("printBuyerUsername") && handle) spec.push({ text: "@" + handle, size: sizes.line, shrink: true });
+  const cleanName = stripEmoji(buyer.name ?? "");
+  let nameOut = cleanName;
+  if ((buyer.name ?? "") && !cleanName) nameOut = handle ? handle : `Buyer #${num}`;
+  if (nameOut && classifyScriptExt(nameOut, true) === SCRIPT_UNSUPPORTED) nameOut = handle && classifyScriptExt(handle, true) === SCRIPT_ASCII ? handle : "";
+  if (nameOut) spec.push({ text: nameOut, size: sizes.line, shrink: true });
+  if (flag("printOrderItems") && orders.length > 0) { const c = stripEmoji(orders[0]?.item ?? ""); if (c.trim()) spec.push({ text: c, size: sizes.line, shrink: true }); }
+  const date = String(payload.sessionDate ?? "").replace(/^(\d{2}\/\d{2})\/\d{4}$/, "$1");
+  const time = orders[0]?.time ?? "";
+  const when = [date, time].filter(Boolean).join(" ");
+  if (when) spec.push({ text: when, size: sizes.time, shrink: false });
+
+  const lines: PropLaidLine[] = [];
+  for (const l of spec) {
+    const t = narrow(l.text);
+    if (!t) continue;
+    const fit = l.shrink ? propFitShrinking(t, l.size, maxW, atlases) : (prop[String(l.size)] ? { size: l.size, line: propFitLine(t, l.size, maxW, atlases) } : null);
+    if (!fit || !fit.line.text) continue;
+    lines.push({ size: fit.size, font: prop[String(fit.size)], line: fit.line });
+  }
+  return { lines, qr, x: X, w: W, h: H };
+}
+
+/** The CJK atlas sizes this label will paint with (for the loader — before any CJK atlas is fetched). */
+export function propPlanCjkSizes(payload: RasterPayload, wMm: number, hMm: number, prop: PropAtlas): CjkBoldSize[] {
+  const { lines } = propLayoutLines(payload, wMm, hMm, { latin: {}, proportional: prop });
+  const sizes = new Set<CjkBoldSize>();
+  for (const l of lines) if (l.line.cjk && (CJK_BOLD_SIZES as number[]).includes(l.size)) sizes.add(l.size as CjkBoldSize);
+  return CJK_BOLD_SIZES.filter((s) => sizes.has(s));
+}
+
+/** The top row of every line: evenly spaced over the height (PURE, shared with the tests). */
+export function propLineTops(lines: { font: PropFont }[], h: number): number[] {
+  const total = lines.reduce((a, l) => a + l.font.h, 0);
+  const gap = Math.max(0, Math.floor((h - total) / (lines.length + 1)));
+  const tops: number[] = [];
+  let y = gap;
+  for (const l of lines) { tops.push(y); y += l.font.h + gap; }
+  return tops;
+}
+/** Where one item's glyph is painted (x, top, w, h) — PURE, shared with the glyph-integrity tests. */
+export function propGlyphBox(item: PropItem, size: number, x0: number, top: number, font: PropFont, atlases: RasterAtlases): { x: number; y: number; w: number; h: number; cell: Uint8Array } | null {
+  if (item.latin) return item.latin.rows ? { x: x0 + item.x, y: top, w: item.latin.w, h: font.h, cell: b64ToBytes(item.latin.rows) } : null;
+  if (item.cjk == null) return null;
+  const cjkFont = propCjkFont(atlases, size);
+  const g = cjkFont?.glyphs[item.cjk];
+  if (!g || !cjkFont) return null;
+  return { x: x0 + item.x + Math.round((size - cjkFont.w) / 2), y: top + Math.round((font.h - cjkFont.h) / 2), w: cjkFont.w, h: cjkFont.h, cell: b64ToBytes(g) };
+}
+
+/** The whole compact label as a 1-bit bitmap (the only painter of the font-C layout). */
+export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): Bitmap {
+  const { lines, qr, x, w, h } = propLayoutLines(payload, wMm, hMm, atlases);
+  const bmp = new Bitmap(w, h);
+  const tops = propLineTops(lines, h);
+  lines.forEach((l, i) => { for (const it of l.line.items) { const b = propGlyphBox(it, l.size, x, tops[i], l.font, atlases); if (b) bmp.blit(b.cell, b.w, b.h, b.x, b.y, 1, 1); } });
+  stampHandleQr(bmp, qr);
+  return bmp;
 }

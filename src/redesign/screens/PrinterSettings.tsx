@@ -14,7 +14,7 @@
 // language, then says it isn't supported yet. Everyone else keeps today's screen.
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer, buildTestBuyerV2,
   hasGenericPrinterBridge, testGenericPrinter, genericDebugLine, hasNiimbotBridge, niimbotOsTooOld,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
@@ -80,7 +80,7 @@ export default function PrinterSettings({
   const [v2Lang, setV2Lang] = useState<PrinterLang>("tspl");
   const [v2Debug, setV2Debug] = useState("");
   const [v2Fail, setV2Fail] = useState(""); // a Niimbot test failure, in the seller's words
-  const v2PictureBuyer = useMemo(() => testBuyer(), [testComment]); // eslint-disable-line react-hooks/exhaustive-deps
+  const v2PictureBuyer = useMemo(() => buildTestBuyerV2(), []); // the "Did it look like this?" picture = the Chinese test sticker that was just printed (generic / Niimbot only reach it)
   // "Classic text mode" — mirrors the localStorage flag printing.ts routes on.
   const [classicText, setClassicText] = useState(() => isClassicTextSticker());
   // "Print QR on sticker" — per-device, DEFAULT OFF (localStorage; printing.ts threads it
@@ -160,7 +160,8 @@ export default function PrinterSettings({
         : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: knownPrinterLang(p.name) ?? "tspl" };
       const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
       setBtSaved(r?.savedPrinter || p);
-      const printed = await printStickerBtRouted(testBuyer(), cur, storeName, settings);
+      // D520BT = today's test buyer (its stream is golden-pinned); a listed generic model = the v2 test sticker with Chinese
+      const printed = await printStickerBtRouted(p.model === "D520BT" ? testBuyer() : buildTestBuyerV2(), cur, storeName, settings);
       setBtMsg(printed.ok ? t.rd_ps_test_sent : t.rd_ps_test_failed);
       setV2Stage("idle"); setV2Pick(null);
       return;
@@ -170,8 +171,9 @@ export default function PrinterSettings({
   async function tryLang(p: BluetoothPrinterDevice, lang: PrinterLang) {
     if (!settings) return;
     setV2Lang(lang); setV2Stage(lang === "tspl" ? "testing" : "retry");
-    // Every try = the SAME sticker image real orders will print, in that language (ready bytes).
-    const payload = buildNativeStickerPayload(testBuyer(), cur, storeName, settings);
+    // Every try = the SAME sticker image real orders will print, in that language (ready bytes);
+    // the v2 test buyer carries Chinese (name + comment) so CJK support shows on paper.
+    const payload = buildNativeStickerPayload(buildTestBuyerV2(), cur, storeName, settings);
     const r = await testGenericPrinter(p.address, { data: bytesToBase64(await buildGenericStickerBytes(lang, payload, payload.buyer.platform)), ...(p.transport === "spp" ? { transport: "spp" } : {}) });
     setV2Debug(genericDebugLine(r));
     if (r.ok) { setV2Stage("ask"); return; }
@@ -180,7 +182,7 @@ export default function PrinterSettings({
   async function tryNiimbot(p: BluetoothPrinterDevice) {
     if (!settings) return;
     setV2Stage("testing");
-    const payload = buildNativeStickerPayload(testBuyer(), cur, storeName, settings);
+    const payload = buildNativeStickerPayload(buildTestBuyerV2(), cur, storeName, settings); // Chinese test sticker (image path)
     const r = await testGenericPrinter(p.address, { transport: "niimbot", name: p.name, image: await buildNiimbotImage(payload, payload.buyer.platform) });
     setV2Debug(genericDebugLine(r));
     if (r.ok) { setV2Stage("ask"); return; }
@@ -217,7 +219,7 @@ export default function PrinterSettings({
     return (
       <button key={p.id || p.address} data-testid="ps-v2-row" onClick={() => void pickV2(p)} disabled={v2Stage !== "idle"} style={{ ...rowBtn, opacity: v2Stage !== "idle" ? 0.6 : 1 }}>
         <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.address}{p.transport === "spp" ? <span data-testid="ps-v2-classic" style={{ fontFamily: "var(--font-ui)", marginLeft: 6 }}>· {t.rd_ps_v2_classic}</span> : null}</span></span>
-        <span data-testid={known ? "ps-v2-known" : "ps-v2-new"} style={pill(known)}>{known ? t.rd_ps_v2_works : t.rd_ps_v2_new}</span>
+        <span data-testid={known ? "ps-v2-known" : brandOf(p) === "niimbot" ? "ps-v2-brand" : "ps-v2-new"} style={pill(known)}>{known ? t.rd_ps_v2_works : brandOf(p) === "niimbot" ? "Niimbot" : t.rd_ps_v2_new}</span>
       </button>
     );
   };

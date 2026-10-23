@@ -149,6 +149,18 @@ export async function testGenericPrinter(address: string, job: ({ payload: unkno
 // SAME test pattern via printSlip (no BT bridge). The sample item prints in the
 // comment/price-code column (12-char truncate) — "PRICE" per Jeff 2026-07-22
 // (the old "SellerFlowLive sticker test" printed as a confusing "SellerFlowLi").
+// Printer setup v2 — the test sticker for GENERIC and NIIMBOT printers only (image paths):
+// Chinese in the name and the comment so a seller sees at once whether CJK prints. The
+// Chinese comes FIRST because the 50×30 layout cuts a mixed line with "…" next to the QR
+// (7 CJK-wide cells): "測試 Tes…" still shows the Chinese; "Test Print 測…" would not.
+// The D520BT test sticker keeps buildTestBuyer() byte-for-byte (its stream is golden-pinned).
+export const TEST_NAME_V2 = "測試 Test Print";
+export const TEST_COMMENT_V2 = "好 COMMENT / PRICE";
+export function buildTestBuyerV2(): Buyer {
+  const b = buildTestBuyer();
+  return { ...b, name: TEST_NAME_V2, orders: [{ ...b.orders[0], item: TEST_COMMENT_V2, name: TEST_NAME_V2 }] };
+}
+
 export function buildTestBuyer(): Buyer {
   return { handle: "sellerflow", name: "Test Print", platform: "TikTok", num: 88, orders: [{ orderNum: 1, item: "PRICE", qty: 1, price: 350, total: 350, time: new Date().toLocaleTimeString(), handle: "sellerflow", name: "Test Print", bNum: 88, platform: "TikTok", status: "New", date: new Date().toISOString().slice(0, 10) }], totalSpent: 350, totalOrders: 1 } as Buyer;
 }

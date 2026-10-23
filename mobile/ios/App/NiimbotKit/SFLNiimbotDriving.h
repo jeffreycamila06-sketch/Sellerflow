@@ -15,12 +15,10 @@ typedef void (^SFLNiimbotCompletion)(BOOL ok, NSString *code, NSString *message)
 
 @protocol SFLNiimbotDriving <NSObject>
 
-/// Print ONE label from the app's 1-bit sticker image (rows packed MSB first, bit 1 = ink).
-- (void)printImageWithName:(NSString *)name
-                    packed:(NSData *)packed
-                     width:(NSInteger)width
-                    height:(NSInteger)height
-                  rowBytes:(NSInteger)rowBytes
+/// Print ONE label from a ready image file (24-bit BMP, black ink on white, built by the app from its 1-bit
+/// sticker image). The SDK's DrawLableImage takes an image file's bytes, base64-encoded.
+- (void)printLabelWithName:(NSString *)name
+                       png:(NSData *)png
               labelWidthMm:(float)labelWidthMm
              labelHeightMm:(float)labelHeightMm
                 completion:(SFLNiimbotCompletion)completion;
