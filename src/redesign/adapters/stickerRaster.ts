@@ -798,10 +798,11 @@ const b64ToBytes = (b64: string): Uint8Array => {
 
 // cyrillic: the extra atlas (Cyrillic + "…", glyphAtlas.cyrillic.ts) — passed by the generic-printer
 // and Niimbot image paths only; absent = main's glyph set exactly (the D520BT stream).
-// proportional + cjkBold: font C (DejaVu Sans Bold / Noto Sans CJK TC Bold) for the compact
-// sizes of the generic-printer and Niimbot image paths — see "PROPORTIONAL (font C)" below.
-// Absent = the fixed-cell layouts exactly (the D520BT stream passes neither).
-export interface RasterAtlases { latin: GlyphAtlas; cjk?: GlyphAtlas; cyrillic?: GlyphAtlas; proportional?: PropAtlas; cjkBold?: CjkBoldAtlases }
+// proportional + cjkReg: font C (DejaVu Sans Regular text + Bold buyer number / Noto Sans CJK TC
+// Regular) for the compact sizes of the generic-printer and Niimbot image paths — see
+// "PROPORTIONAL (font C)" below. Absent = the fixed-cell layouts exactly (the D520BT stream
+// passes neither).
+export interface RasterAtlases { latin: GlyphAtlas; cjk?: GlyphAtlas; cyrillic?: GlyphAtlas; proportional?: PropAtlas; cjkReg?: CjkRegAtlases }
 
 function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
   const latin = atlases.latin;
@@ -1113,13 +1114,14 @@ export function bytesToBase64(bytes: Uint8Array): string {
 // PROPORTIONAL (font C) compact layout — generic-printer and Niimbot IMAGE paths only.
 // Opt-in: used when `atlases.proportional` is passed (printing.ts passes it on those two
 // paths for the compact sizes; the D520BT SDK stream never does → byte-identical).
-//   • Proportional DejaVu Sans Bold for Latin / digits / symbols / Cyrillic (per-glyph
-//     advances), Noto Sans CJK TC Bold cells for CJK → mixed lines ("陳美玲 Amy Chen",
-//     "測試 Test Print") read normally; Latin never gets CJK spacing.
+//   • Proportional DejaVu Sans REGULAR for Latin / digits / symbols / Cyrillic (per-glyph
+//     advances; the buyer number alone is DejaVu Sans Bold), Noto Sans CJK TC REGULAR cells
+//     for CJK with PROP_CJK_GAP (1 dot) after every CJK glyph so characters never touch →
+//     mixed lines ("陳美玲 Amy Chen", "測試 Test Print") read normally.
 //   • Lines: buyer number (big) · @username · buyer name · comment · date-time, evenly
 //     spaced over the label height. The username / name / comment lines SHRINK before they
-//     are cut: the normal size, then 24 → 20 → 18 px, and "…" only if 18 still overflows.
-//     The buyer number and the date-time keep their size.
+//     are cut: 50×30 lines 20 → 18 px, 60×40 lines 24 → 20 → 18 px, and "…" only if 18 still
+//     overflows. The buyer number and the date-time keep their size.
 //   • QR (TikTok + sticker-QR ON + @username on): label-tall on the right, 5 dots/module,
 //     vertically centred, `edge` dots from the right. The text column ends BEFORE the QR's
 //     quiet zone (the stamp clears that footprint, so nothing may be painted there) — i.e.
@@ -1135,21 +1137,22 @@ export function bytesToBase64(bytes: Uint8Array): string {
 export interface PropGlyph { w: number; adv: number; rows: string } // rows: base64, ceil(w/8) B/row × font.h, bit 1 = ink; "" = blank (space)
 export interface PropFont { h: number; base: number; glyphs: Record<number, PropGlyph> }
 export type PropAtlas = Record<string, PropFont>;          // keys = px sizes ("18" "20" "24" "32" "46" "64")
-export type CjkBoldSize = 18 | 20 | 24 | 32;
-export type CjkBoldAtlases = Partial<Record<CjkBoldSize, GlyphAtlas>>;
-export const CJK_BOLD_SIZES: CjkBoldSize[] = [18, 20, 24, 32];
+export type CjkRegSize = 18 | 20 | 24 | 32;
+export type CjkRegAtlases = Partial<Record<CjkRegSize, GlyphAtlas>>;
+export const CJK_REG_SIZES: CjkRegSize[] = [18, 20, 24, 32];
 
 export const isPropCompactSize = (wMm: number, hMm: number): boolean => (wMm === 50 && hMm === 30) || (wMm === 60 && hMm === 40);
 export const PROP_QR_MODULE_DOTS = 5;   // 29 modules → 145-dot symbol (≈18 mm — the size the B1 scans)
 export const PROP_TEXT_QR_GAP = 10;     // minimum white between the text column and the QR's first ink column (the quiet zone gives 20)
 export const PROP_INK_MARGIN = 2;       // a line's painted ink (last glyph's overhang / the "…" included) ends ≥ this many dots before the column edge
 export const PROP_SHRINK_STEPS = [24, 20, 18]; // the shrink ladder below a line's normal size
+export const PROP_CJK_GAP = 1;          // dots of advance added after every CJK glyph (characters never touch)
 
 interface PropSizes { num: number; line: number; time: number; edge: number }
 // px sizes per label (em px of the atlas); `edge` = left/right margin in RASTER dots.
 export function propSizes(wMm: number, qr: boolean): PropSizes {
-  if (wMm === 50) return { num: qr ? 46 : 64, line: 24, time: 18, edge: 4 }; // 4 raster dots = 12 on the 400-dot label
-  return { num: 64, line: 32, time: 24, edge: 12 };
+  if (wMm === 50) return { num: qr ? 46 : 64, line: 20, time: 18, edge: 4 }; // 4 raster dots = 12 on the 400-dot label
+  return { num: 64, line: 24, time: 20, edge: 12 };
 }
 /** The sizes a shrinkable line tries, biggest first: its normal size, then every step below it. */
 export const propShrinkLadder = (base: number): number[] => [base, ...PROP_SHRINK_STEPS.filter((s) => s < base)];
@@ -1179,8 +1182,8 @@ export interface PropLine { items: PropItem[]; width: number; inkWidth: number; 
 
 const isIdeograph = (cp: number) => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff);
 function propCjkFont(atlases: RasterAtlases, size: number): GlyphFont | null {
-  const bold = atlases.cjkBold?.[size as CjkBoldSize];
-  return bold?.cjk ?? atlases.cjk?.cjk ?? null;
+  const reg = atlases.cjkReg?.[size as CjkRegSize];
+  return reg?.cjk ?? atlases.cjk?.cjk ?? null;
 }
 
 /** Lay one line out in font `size`, cutting with "…" so it fits `maxW`. PURE; widths never
@@ -1193,15 +1196,16 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
   const pieces: Piece[] = [];
   for (const ch of text) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (isIdeograph(cp)) { pieces.push({ ch, adv: size, cjk: cp }); continue; }
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: size + PROP_CJK_GAP, cjk: cp }); continue; }
     let g = font.glyphs[cp];
     if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
-    if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w, cjk: cp }); continue; }
+    if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w + PROP_CJK_GAP, cjk: cp }); continue; }
     if (!g) continue; // never tofu: a glyph neither font has is dropped
     pieces.push({ ch, adv: g.adv, latin: g });
   }
   const widthOf = (ps: Piece[]) => ps.reduce((a, p) => a + p.adv, 0);
-  // painted extent: every advance but the last glyph's, then the WIDER of its advance and its ink box
+  // painted extent: every advance but the last glyph's (CJK advances include PROP_CJK_GAP), then
+  // the WIDER of the last glyph's advance and its ink box (a CJK cell's ink is the cell itself)
   const inkOf = (ps: Piece[]) => (ps.length === 0 ? 0 : widthOf(ps.slice(0, -1)) + Math.max(ps[ps.length - 1].adv, ps[ps.length - 1].latin?.rows ? ps[ps.length - 1].latin!.w : ps[ps.length - 1].adv));
   const fits = (ps: Piece[]) => inkOf(ps) + PROP_INK_MARGIN <= maxW;
   let kept = pieces;
@@ -1282,11 +1286,11 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
 }
 
 /** The CJK atlas sizes this label will paint with (for the loader — before any CJK atlas is fetched). */
-export function propPlanCjkSizes(payload: RasterPayload, wMm: number, hMm: number, prop: PropAtlas): CjkBoldSize[] {
+export function propPlanCjkSizes(payload: RasterPayload, wMm: number, hMm: number, prop: PropAtlas): CjkRegSize[] {
   const { lines } = propLayoutLines(payload, wMm, hMm, { latin: {}, proportional: prop });
-  const sizes = new Set<CjkBoldSize>();
-  for (const l of lines) if (l.line.cjk && (CJK_BOLD_SIZES as number[]).includes(l.size)) sizes.add(l.size as CjkBoldSize);
-  return CJK_BOLD_SIZES.filter((s) => sizes.has(s));
+  const sizes = new Set<CjkRegSize>();
+  for (const l of lines) if (l.line.cjk && (CJK_REG_SIZES as number[]).includes(l.size)) sizes.add(l.size as CjkRegSize);
+  return CJK_REG_SIZES.filter((s) => sizes.has(s));
 }
 
 /** The top row of every line: evenly spaced over the height (PURE, shared with the tests). */
@@ -1305,7 +1309,7 @@ export function propGlyphBox(item: PropItem, size: number, x0: number, top: numb
   const cjkFont = propCjkFont(atlases, size);
   const g = cjkFont?.glyphs[item.cjk];
   if (!g || !cjkFont) return null;
-  return { x: x0 + item.x + Math.round((size - cjkFont.w) / 2), y: top + Math.round((font.h - cjkFont.h) / 2), w: cjkFont.w, h: cjkFont.h, cell: b64ToBytes(g) };
+  return { x: x0 + item.x + Math.max(0, Math.round((size - cjkFont.w) / 2)), y: top + Math.round((font.h - cjkFont.h) / 2), w: cjkFont.w, h: cjkFont.h, cell: b64ToBytes(g) };
 }
 
 /** The whole compact label as a 1-bit bitmap (the only painter of the font-C layout). */
