@@ -21,11 +21,7 @@ public class NiimbotTransportTest {
     public void frameInsetMatchesIosAndWeb() {
         assertEquals(1f, NiimbotTransport.FRAME_INSET_MM, 0f);   // iOS NiimbotImage.frameInsetMm / web NIIMBOT_FRAME_INSET_MM
         assertEquals(8, NiimbotTransport.DOTS_PER_MM);
-        // Android-only: the frame starts at canvas x = 0 (the SDK left-anchors the canvas on the
-        // 48 mm head — calibration-measured Oct 26); its width is still the full head = 1:1
-        assertEquals(0f, NiimbotTransport.FRAME_X_MM, 0f);
-        assertEquals(384, Math.round((50f - 2 * NiimbotTransport.FRAME_INSET_MM) * NiimbotTransport.DOTS_PER_MM));
-        assertEquals(48f, NiimbotTransport.FRAME_X_MM + (50f - 2 * NiimbotTransport.FRAME_INSET_MM), 0f); // frame right edge = 48 mm = the head's last dot
+        assertEquals(384, Math.round((50f - 2 * NiimbotTransport.FRAME_INSET_MM) * NiimbotTransport.DOTS_PER_MM)); // the frame = the whole 48 mm head, 1:1
     }
 
     @Test

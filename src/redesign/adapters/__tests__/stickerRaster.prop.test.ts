@@ -255,6 +255,26 @@ describe("font C on a caller-supplied canvas (the Niimbot frame)", () => {
     expect([...rowsWithInk].some((y) => y >= tops[last] && y < tops[last] + L.lines[last].font.h)).toBe(true);
     expect([...rowsWithInk].some((y) => y >= tops[0] && y < tops[0] + L.lines[0].font.h)).toBe(true);
   });
+  it("canvas edge (the Niimbot 16-dot safe margin): no ink in the outer 16 columns, QR ink ends 16 before the right edge, same 5-dot modules, text keeps shrink-before-cut", () => {
+    const SAFE = { w: 384, h: 224, edge: 16 };
+    for (const [b, qr] of [[S1, true], [S2, true], [S2, false], [S3, true], [S3, false]] as const) {
+      const rp = payloadFor(b, "50x30", qr);
+      const r = renderStickerBitmap(rp, 50, 30, ATL, "extended", SAFE);
+      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (x < 16 || x >= 368) expect(ink(r, x, y)).toBe(false);
+      const L = propLayoutLines(rp, 50, 30, ATL, SAFE);
+      expect(L.x).toBe(16);
+      if (qr) {
+        expect(L.qr).not.toBeNull();
+        expect(L.qr!.scale).toBe(5);                                                     // same module size
+        expect(propQrInkLeft(L.qr!) + L.qr!.matrix.length * L.qr!.scale).toBe(384 - 16);  // ink ends 16 dots before the edge
+        expect(L.qr!.y0).toBeGreaterThanOrEqual(0); expect(L.qr!.y0 + L.qr!.foot).toBeLessThanOrEqual(224);
+      }
+      for (const l of L.lines) { expect(l.line.inkWidth + PROP_INK_MARGIN).toBeLessThanOrEqual((L.qr ? Math.min(L.qr.x0, propQrInkLeft(L.qr) - PROP_TEXT_QR_GAP) : 384 - 16) - 16); }
+      const some = r.buf.some((v) => v !== 0); expect(some).toBe(true);
+    }
+    // the 4-dot default edge (label raster, generic paths) is untouched by the option
+    expect(propLayoutLines(payloadFor(S1, "50x30", true), 50, 30, ATL).x).toBe(4);
+  });
   it("fitRaster: identity at the same size, centred crop when bigger, centred white pad when smaller — ink never scaled", () => {
     const rp = payloadFor(S1, "50x30", true);
     const label = renderStickerBitmap(rp, 50, 30, ATL);

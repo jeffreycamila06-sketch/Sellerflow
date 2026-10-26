@@ -60,15 +60,11 @@ final class NiimbotTransport {
      * image and thin CJK strokes merged into blobs. The three MUST agree.
      */
     static final float FRAME_INSET_MM = 1f;
-    /**
-     * ANDROID ONLY — frame X. Measured with the calibration label (Oct 26, B1 + Samsung A31, same
-     * 384×224 image / printMultiple 8 / offsets 0 as iOS): left border 2 mm from the label edge,
-     * right border cut off, top and bottom 1 mm — the Android SDK anchors the 50 mm canvas to the
-     * head's LEFT dot (iOS centres it on the 48 mm head). So on Android the 48 mm frame starts at
-     * canvas x = 0: dots 0..383 = the whole head, landing 1..49 mm on the label like iOS. The
-     * image is still exactly the frame's dots (1:1); y, width and height keep FRAME_INSET_MM.
-     */
-    static final float FRAME_X_MM = 0f;
+    // Oct 26 position note: a "shifted right on Android" reading came from the PAPER sliding
+    // between prints (the B1 has no paper lock), not from the app — a controlled same-paper test
+    // (iPhone print, then Android at x=0) showed Android 1 mm too far LEFT. The frame is the
+    // same as iOS: x = y = FRAME_INSET_MM. The ±1 mm paper slack is absorbed by a 2 mm safe
+    // margin inside the image instead (web printing.ts NIIMBOT_SAFE_EDGE_DOTS).
 
     /** The frame's size in dots for a label — what the image must measure for a true 1:1 print. */
     static int[] frameDots(float wMm, float hMm) {
@@ -335,10 +331,9 @@ final class NiimbotTransport {
                         try {
                             JCPrintApi p = api();
                             p.drawEmptyLabel(wMm, hMm, 0, "");
-                            // the inset frame: the image's pixels == the frame's dots → drawn 1:1, never scaled
-                            // (x = FRAME_X_MM: the Android SDK left-anchors the canvas on the head — see the constant)
-                            p.drawLabelImage(png, FRAME_X_MM, FRAME_INSET_MM, wMm - 2 * FRAME_INSET_MM, hMm - 2 * FRAME_INSET_MM, 0, 1, 127f);
-                            Log.i(TAG, "drawLabelImage frame x=" + FRAME_X_MM + " y=" + FRAME_INSET_MM + " w=" + (wMm - 2 * FRAME_INSET_MM) + " h=" + (hMm - 2 * FRAME_INSET_MM) + " mm");
+                            // the inset frame (same as iOS): the image's pixels == the frame's dots → drawn 1:1, never scaled
+                            p.drawLabelImage(png, FRAME_INSET_MM, FRAME_INSET_MM, wMm - 2 * FRAME_INSET_MM, hMm - 2 * FRAME_INSET_MM, 0, 1, 127f);
+                            Log.i(TAG, "drawLabelImage frame x=" + FRAME_INSET_MM + " y=" + FRAME_INSET_MM + " w=" + (wMm - 2 * FRAME_INSET_MM) + " h=" + (hMm - 2 * FRAME_INSET_MM) + " mm");
                             String labelJson = new String(p.generateLabelJson(), StandardCharsets.UTF_8);
                             float multiple = p.getMultiple();
                             if (multiple <= 0f) multiple = 8f; // 203 dpi

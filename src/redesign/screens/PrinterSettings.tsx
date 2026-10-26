@@ -25,8 +25,6 @@ import { TELEGRAM_URL } from "../../lib/telegram";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { useT } from "../i18n";
 import { isAppShell } from "../adapters/appShell";
-import { isCapacitorAndroid } from "../adapters/platform";
-import { niimbotCalibrationImage } from "../adapters/niimbotCalibration";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
 const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -131,20 +129,6 @@ export default function PrinterSettings({
   );
   const listBox: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, marginTop: 12, overflow: "hidden" };
   async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); }
-  // TEMPORARY admin-only (Android Niimbot position investigation, Oct 26): the calibration label
-  // through the SAME native path as a real order — the SAVED Niimbot (printStickerImage), or,
-  // when none is saved (the pick flow clears the save on "No, try again"), the first Niimbot row
-  // of the scan list through testGenericPrinter (no save). Literal English on purpose (admin).
-  const niimbotCalRow = btSaved?.transport === "niimbot" ? null : btPrinters.find((p) => brandOf(p) === "niimbot") ?? null;
-  const showNiimbotCal = isAdmin && isCapacitorAndroid() && (btSaved?.transport === "niimbot" || !!niimbotCalRow);
-  async function printNiimbotCalibration() {
-    setBtMsg("Sending calibration label…");
-    const image = niimbotCalibrationImage();
-    const r = niimbotCalRow
-      ? await testGenericPrinter(niimbotCalRow.address, { transport: "niimbot", name: niimbotCalRow.name, image })
-      : await btCall<MobilePrinterResult>("printStickerImage", { image });
-    setBtMsg(r?.ok ? "Calibration label sent — count the 1 mm ticks (long = 5 mm, longest = 10 mm) cut on each side." : `Calibration failed: ${(r as { message?: string } | null)?.message || (r as { code?: string } | null)?.code || "no result"}`);
-  }
   async function testBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }
     if (!settings) return;
@@ -326,9 +310,6 @@ export default function PrinterSettings({
               <button onClick={() => void scanBt()} disabled={btScanning} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
               {btSaved && <button onClick={() => void testBt()} style={gridBtn}>{t.rd_ps_test_print}</button>}
             </div>
-            {showNiimbotCal && (
-              <button data-testid="ps-niimbot-cal" onClick={() => void printNiimbotCalibration()} style={{ ...gridBtn, width: "100%", marginTop: 9, borderStyle: "dashed" }}>📐 Calibration label (admin)</button>
-            )}
             {!v2 && btPrinters.length > 0 && (
               <div style={listBox}>
                 {btPrinters.map(btRow)}
