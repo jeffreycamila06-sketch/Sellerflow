@@ -48,19 +48,29 @@ async function pollLive(input) {
     const d = body.data || {};
     if (typeof d.poll_interval === "number") { interval = Math.max(2, d.poll_interval); stat.intervals.add(d.poll_interval); }
     if (typeof d.timestamp === "number") timestamp = d.timestamp;
+    // shape seen 2026-10-27 (TW): data.message = [ { msgs: [ … ], timestamp }, … ] — an array of
+    // BATCHES, each with its own msgs[]; data.system = {} or a batch; e2e_message likewise.
+    const toMs = (ts) => (typeof ts === "number" ? (ts > 1e12 ? ts : ts * 1000) : null);
     for (const kind of ["message", "e2e_message", "system"]) {
       const bucket = d[kind];
-      const msgs = Array.isArray(bucket?.msgs) ? bucket.msgs : Array.isArray(bucket) ? bucket : [];
-      if (!msgs.length) continue;
-      stat.msgs += msgs.length; stat.msgTypes[kind] = (stat.msgTypes[kind] || 0) + msgs.length;
-      if (!stat.firstMsgAt) stat.firstMsgAt = Date.now();
-      for (const m of msgs) {
-        const t = m?.type ?? m?.msg_type; stat.msgTypes[`type:${t}`] = (stat.msgTypes[`type:${t}`] || 0) + 1;
-        if (stat.samples.length < 3) {
-          const user = m?.nickname ?? m?.username ?? m?.user_name ?? m?.name ?? m?.from_user?.nickname ?? "";
-          const text = m?.content ?? m?.text ?? m?.message ?? m?.msg ?? "";
-          const ts = m?.timestamp ?? m?.ts ?? m?.create_time ?? null;
-          stat.samples.push({ kind, type: t, user: mask(user), text: String(text).slice(0, 40), delayMs: typeof ts === "number" ? Date.now() - (ts > 1e12 ? ts : ts * 1000) : null, keys: Object.keys(m || {}).slice(0, 14) });
+      const batches = Array.isArray(bucket) ? bucket : bucket && typeof bucket === "object" && Object.keys(bucket).length ? [bucket] : [];
+      for (const b of batches) {
+        const msgs = Array.isArray(b?.msgs) ? b.msgs : Array.isArray(b) ? b : [];
+        if (!msgs.length) continue;
+        stat.msgs += msgs.length; stat.msgTypes[kind] = (stat.msgTypes[kind] || 0) + msgs.length;
+        if (!stat.firstMsgAt) stat.firstMsgAt = Date.now();
+        const batchMs = toMs(b?.timestamp);
+        for (const m of msgs) {
+          const t = m?.type ?? m?.msg_type ?? m?.message_type; stat.msgTypes[`type:${t}`] = (stat.msgTypes[`type:${t}`] || 0) + 1;
+          const user = m?.nickname ?? m?.username ?? m?.user_name ?? m?.name ?? m?.from_user?.nickname ?? m?.user?.nickname ?? m?.user?.username ?? "";
+          // m.content is a JSON STRING: {"type":101,"content":"<the comment>","content_v2":…} (type 101 = chat text, seen 2026-10-27)
+          let c = m?.content; if (typeof c === "string" && c.startsWith("{")) { try { c = JSON.parse(c); } catch { /* keep the string */ } }
+          const text = typeof c === "string" ? c : c?.content ?? c?.text ?? m?.text ?? m?.message ?? m?.msg ?? (c ? JSON.stringify(c) : "");
+          const ctype = typeof c === "object" && c ? c.type : undefined;
+          const msgMs = toMs(m?.timestamp ?? m?.ts ?? m?.create_time ?? m?.time) ?? batchMs;
+          const row = { kind, type: t ?? ctype, user: mask(user), text: String(text).slice(0, 40), delayMs: msgMs == null ? null : Date.now() - msgMs, keys: Object.keys(m || {}).slice(0, 16) };
+          log(`MSG ${JSON.stringify(row)}`);
+          if (stat.samples.length < 3) stat.samples.push(row);
         }
       }
     }

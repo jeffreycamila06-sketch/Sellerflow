@@ -7,7 +7,10 @@ faster than the server's own interval, runs capped at 5 minutes, no buyer data s
 policy classifier and dropped: spoofing Chrome client hints, and probing other session
 sub-resources for a host id after the session endpoint said no.
 
-## Verdict so far: FEASIBLE WITH CONDITIONS — for a seller's OWN live (message test still pending)
+## Verdict: FEASIBLE WITH CONDITIONS — for a seller's OWN live (message test PASSED on TW, 2026-10-27)
+Live comments were read from a plain Node process with no login, no cookie, no token and no
+spoofing: 41 comments in 3 minutes, every one logged, 1–4 s behind the moment they were sent
+(= the server's 3 s poll interval), zero errors. Details in §3.
 
 ## 1. How the viewer page works (from its own JS, `live.shopee.<cc>/multipages/…/pages/share-*.js` + chunk `7b32c417…`)
 - The share page is a real web player (hls.js) in a Next.js app on `live.shopee.<cc>`;
@@ -42,14 +45,28 @@ sub-resources for a host id after the session endpoint said no.
 `error 90309999` + `is_login:false` is Shopee's anti-fraud gate; it guards the live LIST and the
 per-session metadata endpoint. It does not guard `host_session?uid=` or the chat-room service.
 
-## 3. What is proven and what is not
-- **Proven:** share link → `session_id`; `host_session?uid=` → `chatroom_id` (no cookie, no token);
-  the chat-room poll works with no cookie, no token, no signature, from a non-PH IP; the server
-  dictates the interval (3 s); no block or rate-limit signal in 5 minutes of single-room polling.
-- **Not yet proven:** an actual comment arriving through the poll (the host's own 5-minute test
-  room carried 0 messages — comments were posted before the poller joined; the poll only returns
-  messages after its first `timestamp=0` call — and that live then ended, `status 2`). So
-  message shape, Chinese/emoji handling and app-vs-server delay are still open.
+## 3. The live message test (host's own test live, TW, session 8092367, 16:54–16:57 UTC)
+`poll.mjs --lives <share link> --minutes 3 --cc tw`, plain Node fetch, one uuid:
+- **59 polls / 3 min (19.7 per min), 59 × HTTP 200 / code 0, 0 blocked, 0 errors**; latency
+  p50 73 ms, p90 87 ms, max 229 ms (first call 668 ms); `poll_interval` stayed 3.
+- **41 comments received — every comment the host typed arrived**, including `mine 1`, `👍3`
+  (emoji intact), `hello 2` and a run of numbers; nothing missing or duplicated.
+- **Delay:** 1.0–4.0 s between the comment's server timestamp and the poll that carried it
+  (median ≈ 2.3 s) — i.e. the 3 s poll interval, nothing more. The very first poll
+  (`timestamp=0`) also returned the last comment posted ~6 s before the poller joined.
+- An earlier run on the same room (before the parser understood the batch shape) showed the
+  same health: 59/59 ok, 8 batches of comments, no errors. The first test live (no comments
+  posted during the window) showed 71/71 ok and 0 messages — the feed carries only what is
+  posted after the poller joins (plus a few seconds of backlog).
+- **Payload shape** (`data.message` = array of batches):
+  ```
+  data.message[i] = { msgs: [ { id, uid, nickname, display_name, avatar, content, ts, privacy_type } ], timestamp }
+  msg.content     = JSON string: {"type":101,"content":"<comment text>","content_v2":…}   (101 = chat text)
+  msg.ts          = seconds;  data.timestamp = the cursor to send back
+  ```
+- Proven overall: share link → `session_id`; `host_session?uid=` → `chatroom_id` (no cookie,
+  no token); the chat-room poll works with no cookie, token or signature from a Taiwan IP; the
+  server dictates the interval; no block or rate-limit signal across ~190 polls today.
 - **Known limit — host uid:** the share link's `share_user_id` is the SHARER's uid, not the host's.
   For **SellerFlow's case this is fine**: the seller is the host and shares their own link (or we
   store the seller's Shopee uid once), so `host_session?uid=` gives their current live every time.
@@ -88,6 +105,9 @@ suggests a PH IP is required. Render (US) is untested; the `.ph` edge may geo-va
 `emitCommentScoped` relay (sanitize, msgId dedup) the TikTok reader feeds. The seller's Shopee
 uid is captured once from their own share link in Settings.
 
-## Next test (needs the host)
-Start a test live, give the link, and have a SECOND account post 3–5 comments (incl. Chinese +
-emoji) AFTER the poll is announced running; `poll.mjs --lives <link> --minutes 5 --cc tw`.
+## Still open
+- Chinese text: the planned `我要 2` was not typed in the measured window (emoji and Latin were);
+  the payload is plain JSON/UTF-8, so no reason to expect a difference — re-check in the next run.
+- The concurrent 2–3-live read from one IP (`poll.mjs --lives a,b,c`) and a run from Render.
+- PH: the same routes exist on `live.shopee.ph` / `chatroom-live.shopee.ph` (bogus-uid and
+  bogus-room probes answered normally, not the anti-fraud 403) — a PH live has not been read yet.
