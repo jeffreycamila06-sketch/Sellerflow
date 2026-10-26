@@ -8,6 +8,7 @@ import { supabase } from "../../supabase";
 import { USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
+import { shopeeBetaAccess } from "../adapters/shopeeBeta";
 import { getParcelScanOverview, revenueNT, costNT, profitNT, SCAN_COST_NT, type AdminActions, type Plan, type ParcelScanOverview } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import { VIEW_AS_OPTIONS, type ViewAs } from "../adapters/market";
@@ -940,6 +941,15 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
   const [credIdx, setCredIdx] = useState<number | null>(null);
   const [credVal, setCredVal] = useState("");
   const [credBal, setCredBal] = useState<Record<string, number | null>>({});
+  // Shopee Live beta rows (authUserId → expires_at), one RPC when the sellers panel opens.
+  const [shopeeBeta, setShopeeBeta] = useState<Record<string, string>>({});
+  const listShopeeBeta = actions?.shopeeBetaList;
+  useEffect(() => {
+    if (panel !== "sellers" || !listShopeeBeta) return;
+    let alive = true;
+    void listShopeeBeta().then((m) => { if (alive) setShopeeBeta(m); });
+    return () => { alive = false; };
+  }, [panel, listShopeeBeta]);
   // Client-side seller search — email + connected @handles + contact note + PHONE.
   // Filters the already-loaded users array (rawByEmail carries the real handles AND
   // the phone from listUsers select("*")); no new query, admin-only panel.
@@ -1206,6 +1216,24 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                           <button onClick={() => { setPwIdx(null); setPwVal(""); }} style={actBtn}>{t.rd_prd_cancel}</button>
                         </div>
                       )}
+                      {/* Shopee Live beta (sql/135): 30-day windows, admin-managed. Days left from the
+                          same helper the seller's tile uses. */}
+                      {(() => {
+                        const uid = rawByEmail[u.email]?.authUserId || "";
+                        const exp = uid ? shopeeBeta[uid] : undefined;
+                        const dl = exp ? shopeeBetaAccess({ isAdmin: false, row: { expiresAt: exp, shopeeUid: null } }).daysLeft : null;
+                        const start = () => { if (uid) void run(t.rd_adm_shopee_beta_start, u.email, () => actions!.shopeeBetaStart(u.email, uid).then((r) => { if (r.ok && r.expiresAt) setShopeeBeta((m) => ({ ...m, [uid]: r.expiresAt! })); return r; })); };
+                        const remove = () => { if (uid) void run(t.rd_adm_shopee_beta_remove, u.email, () => actions!.shopeeBetaRemove(u.email, uid), () => setShopeeBeta((m) => { const n = { ...m }; delete n[uid]; return n; })); };
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11, color: "var(--text-dim)" }}>
+                            <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_shopee_beta}</span> <span style={{ fontWeight: 700, color: "var(--text)" }} data-testid="adm-shopee-beta">{dl == null ? "—" : tpl(t.rd_sh_days_left, { n: dl })}</span></span>
+                            <span style={{ display: "flex", gap: 5, marginLeft: "auto" }}>
+                              <button onClick={start} disabled={!actions || !uid || busy} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>{t.rd_adm_shopee_beta_start}</button>
+                              {dl != null && <button onClick={remove} disabled={!actions || busy} style={{ ...actBtn, color: "var(--danger)" }}>{t.rd_adm_shopee_beta_remove}</button>}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6, paddingTop: 9, borderTop: "1px solid var(--border)" }}>
                         <button onClick={() => openEdit(u.email)} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }} disabled={!actions}>{t.rd_set_edit}</button>
                         <button onClick={() => { setPwIdx(pwIdx === i ? null : i); setPwVal(""); }} style={actBtn} disabled={!actions}>{t.rd_adm_reset_pw}</button>

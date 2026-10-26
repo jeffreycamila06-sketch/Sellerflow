@@ -10,6 +10,7 @@ import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
 import { normHandle, type BuyerAlertView } from "../adapters/buyerAlert";
 import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
 import BuyerTagPill from "../components/BuyerTagPill";
+import ShopeeLinkForm, { type ShopeeLinkProps } from "../components/ShopeeLinkForm";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
 import { computeRaffleEntries, type RaffleEntry } from "../adapters/raffle";
@@ -169,7 +170,7 @@ export default function Dashboard({
   // ≥1 authorized shop → zero Shopee UI otherwise = byte-unchanged TT/FB header).
   shopeeEnabled = false, shopeeShops = [], shopeeOpen = false, onToggleShopee,
   shopeeIdx = 0, onPickShopee, shopeeConnected = false, shopeeConnecting = false,
-  onConnectShopee, onManageShopee,
+  onConnectShopee, onManageShopee, shopeeLink, platformLocks,
   // Option E — Live Source single button (owner-gated). When liveSourceMode is on the
   // 3 chips are REPLACED by one compact button that opens the LiveSourceSheet; off =
   // the classic 3-chip header, byte-for-byte unchanged.
@@ -252,6 +253,12 @@ export default function Dashboard({
   shopeeIdx?: number; onPickShopee?: (i: number) => void;
   shopeeConnected?: boolean; shopeeConnecting?: boolean;
   onConnectShopee?: () => void | Promise<unknown>; onManageShopee?: () => void;
+  // Shopee Live BETA (share-link reader, sql/135). Present = this seller may use it: the
+  // Shopee tile is active and its panel is the paste-link form (no shop list, no Disconnect —
+  // the reader stops when the live ends). platformLocks = tiles locked by the beta rule,
+  // text already translated (e.g. TikTok for a beta user on a free plan).
+  shopeeLink?: ShopeeLinkProps;
+  platformLocks?: Partial<Record<PickerPlatform, string>>;
   // Option E — Live Source single button (owner-gated). liveSourcePlatform/Name drive
   // the compact button's icon + label; connected/connecting drive its status dot.
   liveSourceMode?: boolean;
@@ -435,7 +442,7 @@ export default function Dashboard({
   // and manage action goes through the menus above (the classic callbacks).
   const ttChipName = ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : t.rd_dash_connect_tiktok;
   const fbChipName = fbConnectEnabled ? (fbPages.length ? (fbPages[fbPageIdx]?.name || fbPages[0]?.name || t.rd_dash_connect_facebook) : t.rd_dash_connect_facebook) : (fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook);
-  const shChipName = shName ? (shName.shopName || t.rd_shp_shop_name_fallback) : t.rd_shp_connect_shopee;
+  const shChipName = shName ? (shName.shopName || t.rd_shp_shop_name_fallback) : shopeeLink ? t.rd_ls_shopee : t.rd_shp_connect_shopee;
   const [chosen, setChosen] = useState<PickerPlatform | null>(null);
   // The chosen slot's height at the tap — it is held exactly there until the collapse
   // starts (no flex re-size → the four tiles don't move), then shrinks (CSS animation).
@@ -476,7 +483,7 @@ export default function Dashboard({
     "--lpk-iter": LIVE_PICKER_MOTION === "once" ? String(LIVE_PICKER_ONCE_ITERATIONS) : "infinite",
   } as CSSProperties;
   const lpkSlug: Record<PickerPlatform, string> = { TikTok: "tt", Facebook: "fb", Instagram: "ig", Shopee: "sh" };
-  const lpkEnabled = (p: PickerPlatform) => p === "TikTok" || p === "Facebook" || (p === "Shopee" && shShow) || (p === "Instagram" && !!ig);
+  const lpkEnabled = (p: PickerPlatform) => !platformLocks?.[p] && (p === "TikTok" || p === "Facebook" || (p === "Shopee" && (shShow || !!shopeeLink)) || (p === "Instagram" && !!ig));
   const lpkConnecting = (p: PickerPlatform) =>
     p === "TikTok" ? ttConnecting && !ttConnected
     : p === "Facebook" ? fbConnecting && !fbConnected
@@ -490,7 +497,7 @@ export default function Dashboard({
     setChosen(p);
   };
   const lpkMenu = (p: PickerPlatform) =>
-    p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : p === "Instagram" ? igMenu() : shMenu();
+    p === "TikTok" ? ttMenu() : p === "Facebook" ? fbMenu(() => setChosen(null)) : p === "Instagram" ? igMenu() : shopeeLink ? <ShopeeLinkForm {...shopeeLink} connecting={shopeeConnecting} /> : shMenu();
   // Emblems: the chips' own letter marks + brand colours, one shape per platform.
   // Emblems: the chips' own letter marks + brand colours, one shape per platform. All
   // sizes come from redesign.css (.sfl-lpk-shape--*), scaled to the tile height.
@@ -515,7 +522,9 @@ export default function Dashboard({
         const isChosen = chosen === p;
         const hidden = chosen !== null && !isChosen;
         const connecting = isChosen && lpkConnecting(p);
-        const sub = !enabled ? t.rd_ls_soon : connecting ? t.rd_dash_connecting : isChosen ? t.rd_lpk_choose_acct : t.rd_lpk_tap;
+        const lock = platformLocks?.[p];
+        const sub = lock ? lock : !enabled ? t.rd_ls_soon : connecting ? t.rd_dash_connecting : isChosen ? t.rd_lpk_choose_acct
+          : p === "Shopee" && shopeeLink && shopeeLink.daysLeft != null ? tpl(t.rd_sh_days_left, { n: shopeeLink.daysLeft }) : t.rd_lpk_tap;
         return (
           <Fragment key={p}>
           <div data-testid={`lpk-slot-${slug}`} className={`sfl-lpk-slot${hidden ? " is-hidden" : ""}${isChosen ? " is-chosen" : ""}`}
@@ -535,7 +544,7 @@ export default function Dashboard({
                 <span className="sfl-lpk-tag"><span className="sfl-lpk-blink" />LIVE</span>
               </span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-                <span><span className={`sfl-lpk-name sfl-lpk-name--${slug}`} style={{ display: "inline-block", transformOrigin: "left center", fontSize: 23, fontWeight: 800, color: "var(--text)" }}>{p}</span></span>
+                <span><span className={`sfl-lpk-name sfl-lpk-name--${slug}`} style={{ display: "inline-block", transformOrigin: "left center", fontSize: 23, fontWeight: 800, color: "var(--text)" }}>{p}</span>{p === "Shopee" && shopeeLink && <span data-testid="lpk-beta" style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, letterSpacing: ".08em", padding: "1px 5px", borderRadius: 5, border: "1px solid #ee4d2d", color: "#ee4d2d", verticalAlign: "middle" }}>{t.rd_sh_beta}</span>}</span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>
                   {connecting && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#fbbf24", flexShrink: 0 }} />}
                   {sub}
@@ -749,11 +758,11 @@ export default function Dashboard({
                   <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: ic.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{ic.ch}</span>
                   <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p === "TikTok" ? ttChipName : p === "Facebook" ? fbChipName : shChipName}</span>
                   <span className={st.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: st.dotBg, flexShrink: 0, boxShadow: st.dotGlow }} />
-                  <span style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 700 }}>{t.rd_ls_change}</span>
+                  <span style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 700 }}>{p === "Shopee" && shopeeLink ? t.rd_sh_change_link : t.rd_ls_change}</span>
                 </button>
                 {p === "TikTok" && ttOpen && <div style={dropdown("left")}>{ttMenu()}</div>}
                 {p === "Facebook" && fbOpen && <div style={dropdown("right")}>{fbMenu(onToggleFB)}</div>}
-                {p === "Shopee" && shopeeOpen && <div style={dropdown("right")}>{shMenu()}</div>}
+                {p === "Shopee" && shopeeOpen && <div style={shopeeLink ? { ...dropdown("right"), width: "min(320px, calc(100vw - 32px))" } : dropdown("right")}>{shopeeLink ? <ShopeeLinkForm {...shopeeLink} connecting={shopeeConnecting} /> : shMenu()}</div>}
               </div>
             </div>
           );

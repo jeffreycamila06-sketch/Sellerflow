@@ -131,7 +131,7 @@ export function stickerQrEffective(): boolean { return isStickerQrOn() && sticke
 // orders with no platform are unchanged.
 export function stickerQrAllowedFor(platform: string | undefined | null): boolean {
   const p = String(platform ?? "").trim().toLowerCase();
-  return p !== "facebook" && p !== "instagram"; // Instagram (phase 1): the QR is a TikTok link → none
+  return p !== "facebook" && p !== "instagram" && p !== "shopee"; // Instagram (phase 1) / Shopee beta: the QR is a TikTok link → none
 }
 
 // ── LIVE sticker layout v2 (order time up top, full-width comment) ───────────

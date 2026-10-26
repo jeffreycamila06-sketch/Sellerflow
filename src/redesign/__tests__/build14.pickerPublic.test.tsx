@@ -104,7 +104,9 @@ describe("a normal seller (not admin) gets the picker", () => {
     cleanup();
     H.role = "admin";
     await mount();
-    expect(ids()).toEqual(seller);
+    const admin = ids();
+    expect(admin.filter((s) => !s.startsWith("lpk-tile-sh"))).toEqual(seller.filter((s) => !s.startsWith("lpk-tile-sh")));
+    expect(admin[3]).toMatch(/^lpk-tile-sh\|.*\|false$/); // Shopee Live beta: always open for admins
   });
 
   it("Instagram and Shopee: \"Coming soon\", not tappable", async () => {

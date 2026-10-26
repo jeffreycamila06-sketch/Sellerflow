@@ -21,9 +21,9 @@ vi.stubGlobal("localStorage", {
 const btCfg: Settings = { ...DEF_SETTINGS, printerType: "bluetooth", stickerSize: "100x60" };
 
 describe("stickerQrAllowedFor", () => {
-  it("Facebook (any case) → false; TikTok, Shopee, missing → true", () => {
-    for (const p of ["Facebook", "facebook", " FACEBOOK "]) expect(stickerQrAllowedFor(p)).toBe(false);
-    for (const p of ["TikTok", "Shopee", "", undefined, null]) expect(stickerQrAllowedFor(p)).toBe(true);
+  it("Facebook / Shopee (any case) → false; TikTok, missing → true", () => {
+    for (const p of ["Facebook", "facebook", " FACEBOOK ", "Shopee", "shopee"]) expect(stickerQrAllowedFor(p)).toBe(false);
+    for (const p of ["TikTok", "", undefined, null]) expect(stickerQrAllowedFor(p)).toBe(true);
   });
 });
 

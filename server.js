@@ -39,6 +39,7 @@ import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } 
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
+import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
 import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
 
@@ -741,6 +742,10 @@ io.on("connection", (socket) => {
     replayFbStatus(fbRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
     // Instagram pollers (server/igLive.js) — same replay; igRuntime is null while IG is off.
     replayIgStatus(igRuntime, cleanId, emailIdOf(cleanId), (payload) => socket.emit("platform_status", payload));
+    // Shopee beta pollers (server/shopeeLiveLink.js) — same replay so the Shopee pill is right after a socket reconnect.
+    if (shopeeLinkRuntime) {
+      for (const p of shopeeLinkRuntime.listPollers()) if (p.sellerId === cleanId) socket.emit("platform_status", { platform: "Shopee", connected: true, sellerId: emailIdOf(cleanId), username: String(p.scopeKey || ""), sessionId: String(p.sessionId || "") });
+    }
   }));
 
   // Per-socket comment scoping. The client tells the server which account it is
@@ -2519,6 +2524,55 @@ try {
   fbRuntime = null;
   console.error("[FB] init failed — Facebook disabled, TikTok/Shopee unaffected:", e && e.message);
 }
+// ───────────────────────────────────────────────────────────────────────────
+// SHOPEE LIVE BETA — share-link reader (server/shopeeLiveLink.js, 2026-10-27).
+// Separate from the dormant official-API Shopee runtime above. Fail-closed on
+// app_settings.shopee_live_enabled (service role, cached 60 s) and on the seller's
+// shopee_beta row (admin OR expires_at > now). Comments go through the SAME
+// emitCommentScoped relay as TikTok/FB with the connecting browser's sessionId.
+// An init failure must NEVER take down the server — same guard as the FB block.
+let shopeeLinkRuntime = null;
+try {
+  if (serviceSb) {
+    const shopeeLiveEnabled = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "shopee_live_enabled").maybeSingle();
+        if (error) throw new Error("shopee_live_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
+    shopeeLinkRuntime = createShopeeLinkRuntime({
+      enabled: () => shopeeLiveEnabled(),
+      // admin OR an unexpired shopee_beta row; any read error → false (fail-closed)
+      betaAllowed: async (userId) => {
+        const uid = String(userId || "");
+        if (!uid) return false;
+        const prof = await serviceSb.from("seller_profiles").select("role").eq("auth_user_id", uid).maybeSingle();
+        if (!prof.error && prof.data && String(prof.data.role || "").toLowerCase() === "admin") return true;
+        const row = await serviceSb.from("shopee_beta").select("expires_at").eq("user_id", uid).maybeSingle();
+        if (row.error || !row.data || !row.data.expires_at) return false;
+        return new Date(row.data.expires_at).getTime() > Date.now();
+      },
+      // the seller's Shopee account key lives on their beta row (NOT account_seats — the beta
+      // account does not count against the plan's account limit); admins without a row are not written
+      rememberAccount: async (userId, region, shopeeUid) => {
+        const { error } = await serviceSb.from("shopee_beta").update({ shopee_uid: String(shopeeUid), shopee_region: region, last_connect_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_id", String(userId || ""));
+        if (error) throw new Error("shopee_beta_update_failed");
+      },
+      liveKey,
+      emitComment: (sellerId, scopeKey, payload) => { void emitCommentScoped(sellerId, "Shopee", scopeKey, { ...payload, sellerId: emailIdOf(sellerId) }); },
+      statusEmit: (sellerId, { connected, scopeKey, sessionId, reason }) => {
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Shopee", connected, sellerId: emailIdOf(sellerId), username: String(scopeKey || ""), sessionId: String(sessionId || ""), ...(!connected && reason ? { reason: String(reason) } : {}) });
+      },
+      log: (line) => console.log(line),
+    });
+    shopeeLinkRuntime.registerRoutes(app, requireAuth, { requireConnectRate });
+    console.log("[SHOPEE-LINK] routes registered (switch: app_settings.shopee_live_enabled)");
+  }
+} catch (e) {
+  shopeeLinkRuntime = null;
+  console.error("[SHOPEE-LINK] init failed — Shopee beta disabled, everything else unaffected:", e && e.message);
+}
 // B1 automatic receipt: one small job claim per minute (no-op while the Facebook block did not
 // create the runner). Never throws; unref'd.
 {
@@ -2671,6 +2725,7 @@ process.on("SIGTERM", () => {
   if (shopeeRuntime) { try { shopeeRuntime.stopAll(); } catch { /* best effort */ } }
   if (fbRuntime) { try { fbRuntime.stopAll(); } catch { /* best effort */ } }
   if (igRuntime) { try { igRuntime.stopAll(); } catch { /* best effort */ } }
+  if (shopeeLinkRuntime) { try { shopeeLinkRuntime.stopAll(); } catch { /* best effort */ } }
   if (stopReceiptCleanup) { try { stopReceiptCleanup(); } catch { /* best effort */ } }
   const forceExit = setTimeout(() => process.exit(0), 5000);
   if (typeof forceExit.unref === "function") forceExit.unref();

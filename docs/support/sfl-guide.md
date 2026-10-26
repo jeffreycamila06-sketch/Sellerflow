@@ -172,14 +172,35 @@ Common messages:
 - "Facebook needs you to connect your Page again. Go to Settings → Facebook." Authorize the Page again in Facebook pages.
 - "This Page was connected on another phone, so this one stopped receiving."
 
-## other-platforms — Instagram and Shopee
-Last checked: 2026-10-14
-Keywords: instagram, ig, shopee, other platform, coming soon, wala pa, kailan, 虾皮, 蝦皮, ig直播, 即将推出
+## connect-shopee — Shopee Live (beta)
+Last checked: 2026-10-27
+Keywords: shopee, shopee live, share link, copy link, beta, paste link, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph
+
+Shopee Live is a **beta**. Admin turns it on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
+
+When Shopee is on for you:
+1. Start your live in the Shopee app.
+2. In the Shopee app open your live, tap **Share**, then **Copy link**.
+3. In SellerFlowLive tap **Live**, tap the **Shopee** tile, paste the link, then tap **Connect**.
+4. Comments show within a few seconds. 1-Click, Enterprise, buyer numbers and stickers work the same as TikTok.
+5. When your live ends, the app stops by itself. For a new live, tap **Change link** and paste the new link.
+
+Messages:
+- "Paste the link of YOUR OWN live." Only the link you copied from your own live works.
+- "Live has ended." Start a new live and paste its link.
+- "That doesn't look like a Shopee live link." Copy the link again from the Shopee app.
+- "Shopee is not responding, try again." Wait a moment, then tap Connect once.
+- "Shopee Beta only — upgrade to use TikTok/Facebook." During the beta, a free plan can use Shopee only. Message Admin to upgrade.
+- "Shopee Beta ended — contact Admin." Your 30 days are over. Message Admin to continue.
+
+## other-platforms — Instagram
+Last checked: 2026-10-27
+Keywords: instagram, ig, other platform, coming soon, wala pa, kailan, ig直播, 即将推出
 
 On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shopee.
 
-- **Instagram** and **Shopee** show **Coming soon** for most sellers and cannot be tapped.
-- There is no date yet.
+- **Instagram** shows **Coming soon** for most sellers and cannot be tapped. There is no date yet.
+- **Shopee** is a beta — see "Shopee Live (beta)".
 
 ## session-length — Choosing the session length
 Last checked: 2026-10-15
