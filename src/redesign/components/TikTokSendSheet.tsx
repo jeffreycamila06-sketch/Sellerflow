@@ -6,7 +6,7 @@
 // own): it auto-rebuilds from items / total / note until the seller types in it; from then on
 // it is theirs, with "↺ Reset message" to go back to the auto text (and auto-updates). Every
 // buyer opens fresh in auto mode (the sheet is keyed per buyer).
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useT, tpl } from "../i18n";
 import { chaseTarget } from "../adapters/parcelTracking";
@@ -152,20 +152,20 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
 // A textarea that grows down with its text (no scrollbar): height = content on every value
 // change, re-measured when the width settles after the sheet lays out (and on rotate).
 function useGrow(ref: RefObject<HTMLTextAreaElement | null>, value: string) {
-  const fit = () => {
+  const fit = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight + 2}px`; // + the 1px top/bottom border
-  };
-  useLayoutEffect(fit, [ref, value]); // eslint exhaustive-deps: the ref object is stable; listed because it is a hook parameter
+  }, [ref]); // the ref object is stable — listed because it is a hook parameter
+  useLayoutEffect(fit, [fit, value]);
   useEffect(() => {
     if (typeof ResizeObserver === "undefined" || !ref.current) return;
     let w = 0;
     const ro = new ResizeObserver(([e]) => { if (e.contentRect.width !== w) { w = e.contentRect.width; fit(); } });
     ro.observe(ref.current);
     return () => ro.disconnect();
-  }, [ref]);
+  }, [fit, ref]);
 }
 
 // The whole message: multi-line, grows with the text, same look as the other fields.
