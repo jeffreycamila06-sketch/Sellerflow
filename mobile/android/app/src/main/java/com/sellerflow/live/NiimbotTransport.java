@@ -38,6 +38,28 @@ final class NiimbotTransport {
     private static final String TAG = "SellerFlowNiimbot";
     private static final long PAIR_TIMEOUT_MS = 20_000L;
     private static final long PRINT_TIMEOUT_MS = 30_000L;
+    /** Dots per mm of the B-series 203 dpi head (the SDK's printMultiple for a B1 = 8). */
+    static final int DOTS_PER_MM = 8;
+    /**
+     * The label image is drawn into a frame inset this much on every side (x=y=1, w=label−2,
+     * h=label−2 on a 50×30 → 48×28 mm): the iOS twin is NiimbotImage.frameInsetMm, the web twin
+     * printing.ts NIIMBOT_FRAME_INSET_MM. The web renders the sticker at EXACTLY the frame's dots
+     * (384×224), so the SDK scales by 1.0 — a full-bleed frame made it rescale + re-threshold the
+     * image and thin CJK strokes merged into blobs. The three MUST agree.
+     */
+    static final float FRAME_INSET_MM = 1f;
+
+    /** The frame's size in dots for a label — what the image must measure for a true 1:1 print. */
+    static int[] frameDots(float wMm, float hMm) {
+        return new int[] { Math.round((wMm - 2 * FRAME_INSET_MM) * DOTS_PER_MM), Math.round((hMm - 2 * FRAME_INSET_MM) * DOTS_PER_MM) };
+    }
+    /** null when the image is exactly the frame's dots; otherwise the SIZE MISMATCH line to log (the SDK will scale). */
+    static String sizeMismatch(int w, int h, float wMm, float hMm) {
+        int[] f = frameDots(wMm, hMm);
+        if (w == f[0] && h == f[1]) return null;
+        return String.format(Locale.US, "SIZE MISMATCH image %dx%d != frame %dx%d dots (label %.0fx%.0f mm, inset %.0f mm) - the SDK will scale it",
+            w, h, f[0], f[1], wMm, hMm, FRAME_INSET_MM);
+    }
 
     static final class Result {
         final boolean ok; final String code; final String message;
@@ -143,6 +165,8 @@ final class NiimbotTransport {
                 }
 
                 final String png = imageBase64(packed, w, h, rowBytes);
+                final String mismatch = sizeMismatch(w, h, wMm, hMm);
+                if (mismatch != null) Log.w(TAG, mismatch); else Log.i(TAG, "image " + w + "x" + h + " = the frame's dots (1:1)");
                 final int density = densityFor(name);
                 final AtomicBoolean committed = new AtomicBoolean(false);
                 a.setTotalPrintQuantity(1);
@@ -164,7 +188,8 @@ final class NiimbotTransport {
                         try {
                             JCPrintApi p = api();
                             p.drawEmptyLabel(wMm, hMm, 0, "");
-                            p.drawLabelImage(png, 0f, 0f, wMm, hMm, 0, 1, 127f);
+                            // the inset frame: the image's pixels == the frame's dots → drawn 1:1, never scaled
+                            p.drawLabelImage(png, FRAME_INSET_MM, FRAME_INSET_MM, wMm - 2 * FRAME_INSET_MM, hMm - 2 * FRAME_INSET_MM, 0, 1, 127f);
                             String labelJson = new String(p.generateLabelJson(), StandardCharsets.UTF_8);
                             float multiple = p.getMultiple();
                             if (multiple <= 0f) multiple = 8f; // 203 dpi
