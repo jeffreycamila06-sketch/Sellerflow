@@ -1,0 +1,183 @@
+{
+  "_note": "Shopee Live beta — seller-facing strings, all 8 app languages. Keys are proposals for src/redesign/i18n (rd_sh_*). Existing keys reused: rd_ls_shopee (Shopee Live), rd_ls_connected, rd_ls_connecting, rd_ls_not_connected, rd_ls_title.",
+  "rd_sh_beta": {
+    "en": "Beta",
+    "fil": "Beta",
+    "zh": "测试版",
+    "zh-TW": "測試版",
+    "vi": "Beta",
+    "th": "เบต้า",
+    "id": "Beta",
+    "bg": "Бета"
+  },
+  "rd_sh_paste_label": {
+    "en": "Paste your Shopee live link",
+    "fil": "I-paste ang link ng Shopee live mo",
+    "zh": "粘贴你的 Shopee 直播链接",
+    "zh-TW": "貼上你的蝦皮直播連結",
+    "vi": "Dán link live Shopee của bạn",
+    "th": "วางลิงก์ไลฟ์ Shopee ของคุณ",
+    "id": "Tempel link live Shopee kamu",
+    "bg": "Постави линка към своя Shopee лайв"
+  },
+  "rd_sh_placeholder": {
+    "en": "https://tw.shp.ee/… or https://ph.shp.ee/…",
+    "fil": "https://ph.shp.ee/… o https://tw.shp.ee/…",
+    "zh": "https://tw.shp.ee/… 或 https://ph.shp.ee/…",
+    "zh-TW": "https://tw.shp.ee/… 或 https://ph.shp.ee/…",
+    "vi": "https://tw.shp.ee/… hoặc https://ph.shp.ee/…",
+    "th": "https://tw.shp.ee/… หรือ https://ph.shp.ee/…",
+    "id": "https://tw.shp.ee/… atau https://ph.shp.ee/…",
+    "bg": "https://tw.shp.ee/… или https://ph.shp.ee/…"
+  },
+  "rd_sh_connect": {
+    "en": "Connect",
+    "fil": "I-connect",
+    "zh": "连接",
+    "zh-TW": "連接",
+    "vi": "Kết nối",
+    "th": "เชื่อมต่อ",
+    "id": "Hubungkan",
+    "bg": "Свържи"
+  },
+  "rd_sh_connecting": {
+    "en": "Connecting to your Shopee live…",
+    "fil": "Kumokonekta sa Shopee live mo…",
+    "zh": "正在连接你的 Shopee 直播…",
+    "zh-TW": "正在連接你的蝦皮直播…",
+    "vi": "Đang kết nối live Shopee của bạn…",
+    "th": "กำลังเชื่อมต่อไลฟ์ Shopee ของคุณ…",
+    "id": "Menghubungkan ke live Shopee kamu…",
+    "bg": "Свързване с твоя Shopee лайв…"
+  },
+  "rd_sh_live_comments": {
+    "en": "Shopee live comments",
+    "fil": "Mga komento sa Shopee live",
+    "zh": "Shopee 直播评论",
+    "zh-TW": "蝦皮直播留言",
+    "vi": "Bình luận live Shopee",
+    "th": "คอมเมนต์ไลฟ์ Shopee",
+    "id": "Komentar live Shopee",
+    "bg": "Коментари от Shopee лайва"
+  },
+  "rd_sh_err_not_own": {
+    "en": "Paste the link of YOUR OWN live",
+    "fil": "I-paste ang link ng SARILI MONG live",
+    "zh": "请粘贴你自己直播的链接",
+    "zh-TW": "請貼上你自己直播的連結",
+    "vi": "Hãy dán link live CỦA CHÍNH BẠN",
+    "th": "วางลิงก์ไลฟ์ของคุณเองเท่านั้น",
+    "id": "Tempel link live MILIKMU SENDIRI",
+    "bg": "Постави линк към СВОЯ лайв"
+  },
+  "rd_sh_err_ended": {
+    "en": "Live has ended",
+    "fil": "Tapos na ang live",
+    "zh": "直播已结束",
+    "zh-TW": "直播已結束",
+    "vi": "Live đã kết thúc",
+    "th": "ไลฟ์จบแล้ว",
+    "id": "Live sudah berakhir",
+    "bg": "Лайвът приключи"
+  },
+  "rd_sh_err_unreach": {
+    "en": "Shopee is not responding, try again",
+    "fil": "Hindi sumasagot ang Shopee, subukan ulit",
+    "zh": "Shopee 没有响应，请重试",
+    "zh-TW": "蝦皮沒有回應，請再試一次",
+    "vi": "Shopee không phản hồi, hãy thử lại",
+    "th": "Shopee ไม่ตอบสนอง ลองอีกครั้ง",
+    "id": "Shopee tidak merespons, coba lagi",
+    "bg": "Shopee не отговаря, опитай пак"
+  },
+  "rd_sh_err_bad_link": {
+    "en": "That doesn't look like a Shopee live link",
+    "fil": "Mukhang hindi iyan link ng Shopee live",
+    "zh": "这看起来不是 Shopee 直播链接",
+    "zh-TW": "這看起來不是蝦皮直播連結",
+    "vi": "Đây không giống link live Shopee",
+    "th": "ดูเหมือนไม่ใช่ลิงก์ไลฟ์ Shopee",
+    "id": "Itu sepertinya bukan link live Shopee",
+    "bg": "Това не изглежда като линк към Shopee лайв"
+  },
+  "rd_sh_lock_beta_only": {
+    "en": "Shopee Beta only — upgrade to use TikTok/Facebook",
+    "fil": "Shopee Beta lang — mag-upgrade para magamit ang TikTok/Facebook",
+    "zh": "仅限 Shopee 测试版 — 升级后可使用 TikTok/Facebook",
+    "zh-TW": "僅限蝦皮測試版 — 升級後可使用 TikTok/Facebook",
+    "vi": "Chỉ Shopee Beta — nâng cấp để dùng TikTok/Facebook",
+    "th": "เฉพาะ Shopee เบต้า — อัปเกรดเพื่อใช้ TikTok/Facebook",
+    "id": "Hanya Shopee Beta — upgrade untuk memakai TikTok/Facebook",
+    "bg": "Само Shopee Бета — надгради, за да ползваш TikTok/Facebook"
+  },
+  "rd_sh_lock_ended": {
+    "en": "Shopee Beta ended — contact Admin",
+    "fil": "Tapos na ang Shopee Beta — kontakin ang Admin",
+    "zh": "Shopee 测试版已结束 — 请联系管理员",
+    "zh-TW": "蝦皮測試版已結束 — 請聯絡管理員",
+    "vi": "Shopee Beta đã kết thúc — liên hệ Admin",
+    "th": "Shopee เบต้าสิ้นสุดแล้ว — ติดต่อแอดมิน",
+    "id": "Shopee Beta sudah berakhir — hubungi Admin",
+    "bg": "Shopee Бета приключи — свържи се с администратор"
+  },
+  "rd_sh_days_left": {
+    "en": "Shopee Beta · {n} days left",
+    "fil": "Shopee Beta · {n} araw na lang",
+    "zh": "Shopee 测试版 · 剩余 {n} 天",
+    "zh-TW": "蝦皮測試版 · 剩 {n} 天",
+    "vi": "Shopee Beta · còn {n} ngày",
+    "th": "Shopee เบต้า · เหลือ {n} วัน",
+    "id": "Shopee Beta · {n} hari lagi",
+    "bg": "Shopee Бета · остават {n} дни"
+  },
+  "rd_sh_upgrade": {
+    "en": "Upgrade",
+    "fil": "Mag-upgrade",
+    "zh": "升级",
+    "zh-TW": "升級",
+    "vi": "Nâng cấp",
+    "th": "อัปเกรด",
+    "id": "Upgrade",
+    "bg": "Надгради"
+  },
+  "rd_sh_contact_admin": {
+    "en": "Contact Admin",
+    "fil": "Kontakin ang Admin",
+    "zh": "联系管理员",
+    "zh-TW": "聯絡管理員",
+    "vi": "Liên hệ Admin",
+    "th": "ติดต่อแอดมิน",
+    "id": "Hubungi Admin",
+    "bg": "Свържи се с администратор"
+  },
+  "rd_sh_change_link": {
+    "en": "Change link",
+    "fil": "Palitan ang link",
+    "zh": "更换链接",
+    "zh-TW": "更換連結",
+    "vi": "Đổi link",
+    "th": "เปลี่ยนลิงก์",
+    "id": "Ganti link",
+    "bg": "Смени линка"
+  },
+  "rd_sh_own_only": {
+    "en": "Only your own live can be connected. Comments show here within a few seconds.",
+    "fil": "Sarili mong live lang ang pwedeng i-connect. Lalabas dito ang mga komento sa loob ng ilang segundo.",
+    "zh": "只能连接你自己的直播。评论会在几秒内显示在这里。",
+    "zh-TW": "只能連接你自己的直播。留言會在幾秒內顯示在這裡。",
+    "vi": "Chỉ kết nối được live của chính bạn. Bình luận sẽ hiện ở đây sau vài giây.",
+    "th": "เชื่อมต่อได้เฉพาะไลฟ์ของคุณเอง คอมเมนต์จะแสดงที่นี่ภายในไม่กี่วินาที",
+    "id": "Hanya live milikmu sendiri yang bisa dihubungkan. Komentar muncul di sini dalam beberapa detik.",
+    "bg": "Може да се свърже само твоят собствен лайв. Коментарите се показват тук след няколко секунди."
+  },
+  "rd_sh_link_help": {
+    "en": "Shopee app → your Live → Share → Copy link",
+    "fil": "Shopee app → ang Live mo → Share → Copy link",
+    "zh": "Shopee 应用 → 你的直播 → 分享 → 复制链接",
+    "zh-TW": "蝦皮 App → 你的直播 → 分享 → 複製連結",
+    "vi": "Ứng dụng Shopee → Live của bạn → Chia sẻ → Sao chép link",
+    "th": "แอป Shopee → ไลฟ์ของคุณ → แชร์ → คัดลอกลิงก์",
+    "id": "Aplikasi Shopee → Live kamu → Bagikan → Salin link",
+    "bg": "Приложение Shopee → твоят лайв → Сподели → Копирай линка"
+  }
+}

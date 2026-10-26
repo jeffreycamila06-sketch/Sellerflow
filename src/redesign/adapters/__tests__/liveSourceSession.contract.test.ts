@@ -120,7 +120,7 @@ describe("Session-safety contract — sql/86 switch needed", () => {
   });
   it("targetOfPending maps every pending kind back to its connect target", () => {
     const t = src.slice(src.indexOf("const targetOfPending"), src.indexOf("\n", src.indexOf("const targetOfPending")));
-    expect(t).toContain('{ platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId }');
+    expect(t).toContain('{ platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId, shareLink: p.shareLink }');
     expect(t).toContain('{ platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey }');
     expect(t).toContain('{ platform: "TikTok", username: p.acct, register: p.register }');
   });

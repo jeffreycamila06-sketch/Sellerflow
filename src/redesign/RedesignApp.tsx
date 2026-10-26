@@ -44,6 +44,8 @@ import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
+import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo, type LockPlatform } from "./adapters/shopeeBeta";
+import { shopeeLinkConnect, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
 import FbChannels from "./screens/FbChannels";
 import IgChannels from "./screens/IgChannels";
 import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText, parseIgReturn, igReturnText, igScopeKey, type IgAccount } from "./adapters/ig";
@@ -172,7 +174,7 @@ function OrdersMinersTabs({ tab, onTab, ordersLabel }: { tab: "orders" | "miners
 // onPickSessionLength / onOwnerStart → startSession → the matching connect.
 type PendingConnect =
   | { kind: "tt"; platform: Platform; acct: string; register?: boolean }
-  | { kind: "shopee"; shopId: number; sessionId: string }
+  | { kind: "shopee"; shopId: number; sessionId: string; shareLink?: string } // shareLink = the Shopee Live BETA paste-link connect
   | { kind: "fb"; pageId: string; scopeKey: string } // F-P3 — Facebook page connect
   | { kind: "ig"; igUserId: string; scopeKey: string }; // Instagram (phase 1)
 // The Live Source connect target the new modal commits (before the session gate).
@@ -180,7 +182,7 @@ type PendingConnect =
 type TakenPiece = { lid: number; left: number };
 type LiveConnectTarget =
   | { platform: "TikTok"; username: string; register?: boolean }
-  | { platform: "Shopee"; shopId: number; sessionId: string }
+  | { platform: "Shopee"; shopId: number; sessionId: string; shareLink?: string }
   | { platform: "Facebook"; pageId: string; scopeKey: string } // F-P3
   | { platform: "Instagram"; igUserId: string; scopeKey: string }; // Instagram (phase 1)
 // The platform a pending/target connect is FOR — passed to start_session so the new
@@ -188,7 +190,7 @@ type LiveConnectTarget =
 const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.kind === "fb" ? "Facebook" : p.kind === "ig" ? "Instagram" : p.platform);
 // The connect target as a pending first-connect (picker / owner Start).
 const pendingOfTarget = (t: LiveConnectTarget): PendingConnect => (t.platform === "Shopee"
-  ? { kind: "shopee", shopId: t.shopId, sessionId: t.sessionId }
+  ? { kind: "shopee", shopId: t.shopId, sessionId: t.sessionId, shareLink: t.shareLink }
   : t.platform === "Facebook"
   ? { kind: "fb", pageId: t.pageId, scopeKey: t.scopeKey } // F-P3
   : t.platform === "Instagram"
@@ -196,7 +198,7 @@ const pendingOfTarget = (t: LiveConnectTarget): PendingConnect => (t.platform ==
   : { kind: "tt", platform: "TikTok", acct: t.username, register: t.register });
 // sql/86 — a first-connect start_session answered "switch needed" (another device started a
 // session on a different platform meanwhile) → route the same connect through the switch confirm.
-const targetOfPending = (p: PendingConnect): LiveConnectTarget => (p.kind === "shopee" ? { platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId } : p.kind === "fb" ? { platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey } : p.kind === "ig" ? { platform: "Instagram", igUserId: p.igUserId, scopeKey: p.scopeKey } : { platform: "TikTok", username: p.acct, register: p.register });
+const targetOfPending = (p: PendingConnect): LiveConnectTarget => (p.kind === "shopee" ? { platform: "Shopee", shopId: p.shopId, sessionId: p.sessionId, shareLink: p.shareLink } : p.kind === "fb" ? { platform: "Facebook", pageId: p.pageId, scopeKey: p.scopeKey } : p.kind === "ig" ? { platform: "Instagram", igUserId: p.igUserId, scopeKey: p.scopeKey } : { platform: "TikTok", username: p.acct, register: p.register });
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -259,6 +261,15 @@ export default function RedesignApp() {
   // silently treated every seller as TW (fixed 2026-09-29).
   const profileCountry = auth.profile?.profile?.country ?? null;
   const market = effectiveMarket({ role: auth.profile?.role, country: profileCountry, viewAs: adminViewAs });
+  // SHOPEE LIVE BETA (sql/135): the seller's beta row (one RPC per sign-in), the access verdict,
+  // the TW/PH market gate and the platform locks (beta on a free/expired plan → TikTok/FB/IG
+  // locked; beta ended → Shopee locked). Admin: always allowed, never locked.
+  const shopeeBetaRow = useShopeeBeta(authed, auth.profile?.authUserId ?? "");
+  const shopeeBetaAcc = shopeeBetaAccess({ isAdmin, row: shopeeBetaRow });
+  const shopeeLinkOn = shopeeBetaAcc.allowed && shopeeBetaMarketOk(market);
+  const platformLocks = shopeeBetaLocks({ isAdmin, access: shopeeBetaAcc, paidActive: isShopeeEligible(auth.profile) });
+  // sql/136: the free cap skips Shopee orders while the beta ROW is active (row-based like the trigger, not the admin bypass).
+  const shopeeBetaRowActive = shopeeBetaAccess({ isAdmin: false, row: shopeeBetaRow }).allowed;
   const hideParcelScan = marketHides("parcelScan", market);
   const hidePickup = marketHides("pickupStatus", market);
   const hideStickerQr = marketHides("stickerQr", market);
@@ -488,6 +499,10 @@ export default function RedesignApp() {
   const [shopeeShops, setShopeeShops] = useState<ShopeeShop[]>([]);
   const [shopeeIdx, setShopeeIdx] = useState(0);
   const selectedShop = shopeeShops[shopeeIdx] || shopeeShops[0] || null;
+  // Shopee beta: the uid the server returned at Connect (else the one remembered on the beta
+  // row) = the comment-scoping key; the last connect failure (i18n key) shown on the paste form.
+  const [shopeeLinkUid, setShopeeLinkUid] = useState("");
+  const [shopeeLinkErr, setShopeeLinkErr] = useState<string | null>(null);
   // Shopee global kill switch (app_settings shopee_enabled, fail-closed — same
   // pattern as parcel: defaults false, flips true only once loaded AND "true").
   useEffect(() => {
@@ -583,7 +598,7 @@ export default function RedesignApp() {
   const ttAccounts = auth.profile
     ? coveredTikTokNames(accountList(auth.profile.profile.tiktok), liveCoverage) ?? registeredAccountsFor(auth.profile, "TikTok")
     : [];
-  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbEnabled ? fbScopeKey : (fbAccounts[fbIdx] || ""), Shopee: selectedShop ? String(selectedShop.shopId) : "", ...(igEnabled && selectedIg ? { Instagram: igScopeKey(selectedIg) } : {}) };
+  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbEnabled ? fbScopeKey : (fbAccounts[fbIdx] || ""), Shopee: shopeeLinkUid || shopeeBetaRow?.shopeeUid || (selectedShop ? String(selectedShop.shopId) : ""), ...(igEnabled && selectedIg ? { Instagram: igScopeKey(selectedIg) } : {}) };
 
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e). The 3rd arg is the
@@ -755,7 +770,7 @@ export default function RedesignApp() {
     sessionDate: liveSession.dayId,
     sessionId: sessionInstance.currentSessionId, // explicit session stamp (sql/20); additive, numbering unchanged
 
-    isCapped: () => freeCap.freeCapped,
+    isCapped: (platform) => freeCap.freeCapped && freeCapAppliesTo(platform, shopeeBetaRowActive), // sql/136 mirror
     onCapBlocked: () => freeCap.setCapPopup("hard"),
     onCapReached: freeCap.noteCapError,
     onWriteError: () => setOrderWriteErrs((c) => c + 1), // Batch D #7 — toast below
@@ -861,6 +876,9 @@ export default function RedesignApp() {
   // Memoized (audit #2): buildT merges ~1,100 keys — rebuilding that object on
   // EVERY app render (which happens per incoming live comment) was pure waste.
   const tApp = useMemo(() => buildT(lang), [lang]);
+  // Shopee beta locks as text (Dashboard tiles + the connect guards).
+  const lockText = (p: LockPlatform): string => { const k = platformLocks[p]; return k ? (tApp as Record<string, string>)[k] : ""; };
+  const lockTexts: Partial<Record<LockPlatform, string>> = Object.fromEntries((Object.keys(platformLocks) as LockPlatform[]).map((p) => [p, lockText(p)]));
   // F-batch i18n: localize the native-printer failure alert (printing.ts module
   // fallback — the one string that module generates itself).
   useEffect(() => { setNativePrintAlertText(tApp.rd_print_native_failed); }, [tApp]);
@@ -1379,6 +1397,22 @@ export default function RedesignApp() {
       return r;
     } finally { setShopeeConnecting(false); }
   };
+  // Shopee Live BETA — the paste-link connect (server/shopeeLiveLink.js). Reached only through
+  // commitLiveConnect → runSessionAware (the same session / platform-switch rules as TikTok).
+  const doShopeeLinkConnect = async (shareLink: string) => {
+    if (platformLocks.Shopee) { setShopeeLinkErr(platformLocks.Shopee); return; }
+    setShopeeLinkErr(null);
+    setShopeeConnecting(true);
+    track("connect_attempt", { platform: "Shopee" });
+    try {
+      liveFeed.ensureJoined();
+      const r = await shopeeLinkConnect(shareLink);
+      if (r.ok === false) { const code = r.error; setShopeeLinkErr(SHOPEE_LINK_ERR_KEY[code]); track("connect_failed", { platform: "Shopee", reason: errCodeOf(code) }); return; }
+      setShopeeLinkUid(r.uid);
+      track("connect_success", { platform: "Shopee" });
+      setToast({ msg: tApp.rd_shp_connected_toast, kind: "ok" });
+    } finally { setShopeeConnecting(false); }
+  };
   // F-P3 — Facebook connect eligibility (any active plan, free or paid; admin bypass; server
   // also enforces requirePlanActive on /fb/connect). Shaped like shopeeEligible.
   const fbEligible = isFbEligible(auth.profile);
@@ -1388,6 +1422,7 @@ export default function RedesignApp() {
   // → fresh #1, and vice-versa via doConnect's guard). No page → the authorize screen.
   const onConnectFacebook = () => {
     setFbOpen(false);
+    if (platformLocks.Facebook) { setToast({ msg: lockText("Facebook"), kind: "err" }); return; } // Shopee beta lock
     // Disconnect stops the Page that is really connected (not merely the selected one).
     if (fbChip.action.kind === "disconnect") { setFbOff(true); void fbDisconnect(fbChip.action.pageId); return; }
     if (fbEff && fbChip.action.kind !== "switch") { // connected, nothing attributable to stop
@@ -1445,6 +1480,7 @@ export default function RedesignApp() {
     return commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
   };
   const doIgConnect = async (igUserId: string) => {
+    if (platformLocks.Instagram) { setToast({ msg: lockText("Instagram"), kind: "err" }); return; } // Shopee beta lock
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
     setIgConnecting(true);
     track("connect_attempt", { platform: "Instagram" });
@@ -1477,7 +1513,7 @@ export default function RedesignApp() {
   };
   // Run a target's socket connect once its session is guaranteed (running or just-started).
   const runTargetConnect = (target: LiveConnectTarget) => {
-    if (target.platform === "Shopee") void doShopeeConnect(target.shopId, target.sessionId);
+    if (target.platform === "Shopee") void (target.shareLink ? doShopeeLinkConnect(target.shareLink) : doShopeeConnect(target.shopId, target.sessionId));
     else if (target.platform === "Facebook") void doFbConnect(target.pageId, target.scopeKey); // F-P3
     else if (target.platform === "Instagram") void doIgConnect(target.igUserId);
     else void performConnect("TikTok", target.username, { register: target.register });
@@ -1667,6 +1703,7 @@ export default function RedesignApp() {
     } finally { setConnecting(false); }
   };
   const doConnect = async (platform: Platform) => {
+    if (platformLocks[platform]) { setToast({ msg: lockText(platform), kind: "err" }); return; } // Shopee beta lock
     const eff = platform === "TikTok" ? ttEff : fbEff;
     const setOff = platform === "TikTok" ? setTtOff : setFbOff;
     const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
@@ -1717,7 +1754,7 @@ export default function RedesignApp() {
   // the union so a Shopee-first connect gets a real session, same as TikTok.
   const connectPending = (p: PendingConnect) => {
     noteSessionPlatform(platformOfPending(p)); // Build 11 (M3): the new session's platform
-    if (p.kind === "shopee") void doShopeeConnect(p.shopId, p.sessionId);
+    if (p.kind === "shopee") void (p.shareLink ? doShopeeLinkConnect(p.shareLink) : doShopeeConnect(p.shopId, p.sessionId));
     else if (p.kind === "fb") void doFbConnect(p.pageId, p.scopeKey); // F-P3
     else if (p.kind === "ig") void doIgConnect(p.igUserId);
     else void performConnect(p.platform, p.acct, { register: p.register });
@@ -2460,6 +2497,9 @@ export default function RedesignApp() {
               shopeeConnected={shopeeEff} shopeeConnecting={shopeeConnecting}
               onConnectShopee={onConnectShopee}
               onManageShopee={() => { setShopeeOpen(false); setChanBack("dashboard"); setScreen("shopeechannels"); }}
+              /* Shopee Live BETA — paste-link connect + the beta locks (sql/135). */
+              shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, onConnect: (shareLink: string) => { void commitLiveConnect({ platform: "Shopee", shopId: 0, sessionId: "", shareLink }); } } : undefined}
+              platformLocks={lockTexts}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */
               onManageTT={() => { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); }}

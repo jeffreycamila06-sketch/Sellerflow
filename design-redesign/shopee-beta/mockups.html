@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shopee Live beta — 360px mockups</title>
+<style>
+  :root{--accent:#4f46e5;--accent-soft:rgba(79,70,229,.14);--accent-fg:#4338ca;--surface:#fff;--surface-2:#f6f7fc;--surface-3:#eef0f9;--border:rgba(28,26,53,.09);--border-strong:rgba(28,26,53,.16);--text:#1c1a35;--text-dim:#5a5872;--text-muted:#9795ad;--ok:#059669;--warn:#d97706;--danger:#e11d48;--danger-soft:rgba(225,29,72,.1);--warn-soft:rgba(217,119,6,.1);--shopee:#ee4d2d}
+  body{margin:0;background:#2a2740;font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans TC",sans-serif;color:var(--text)}
+  .grid{display:flex;flex-wrap:wrap;gap:24px;padding:24px}
+  .phone{width:360px;min-height:640px;background:var(--surface-2);border-radius:28px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.45);position:relative;display:flex;flex-direction:column}
+  .cap{position:absolute;top:-22px;left:0;color:#cfd0e6;font:600 12px sans-serif}
+  .phoneWrap{position:relative;margin-top:22px}
+  .hdr{background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;padding:14px 14px 12px;display:flex;align-items:center;gap:9px}
+  .hdr b{font-size:15px;font-weight:800}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--border-strong);display:inline-block}
+  .dot.on{background:#4ade80;box-shadow:0 0 6px rgba(74,222,128,.9)}
+  .dot.amber{background:#fbbf24}
+  .body{padding:14px;flex:1}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface-2);border-radius:20px 20px 0 0;padding:10px 14px 22px;box-shadow:0 -14px 40px rgba(0,0,0,.35)}
+  .dim{position:absolute;inset:0;background:rgba(9,7,24,.5)}
+  .handle{width:40px;height:4px;border-radius:2px;background:var(--border-strong);margin:0 auto 12px}
+  .sheetT{font-size:12.5px;font-weight:800;letter-spacing:.04em;color:var(--text-muted);margin:0 2px 12px}
+  .row{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--border);border-radius:13px;background:var(--surface);margin-bottom:9px;min-height:44px;box-sizing:border-box}
+  .row.active{border:1.5px solid var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .row.locked{opacity:.55}
+  .chip{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0}
+  .nm{font-size:14px;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{font-size:11.5px;color:var(--text-muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub.lock{color:var(--warn);white-space:normal}
+  .beta{font-size:10px;font-weight:800;letter-spacing:.04em;color:var(--shopee);border:1px solid var(--shopee);border-radius:999px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:0 6px 18px rgba(28,26,53,.06)}
+  .lbl{display:block;font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--text-muted);margin:0 2px 6px}
+  .in{box-sizing:border-box;width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border-strong);background:var(--surface);font-size:14px;color:var(--text-muted);min-height:44px}
+  .in.err{border-color:var(--danger)}
+  .help{font-size:11.5px;color:var(--text-dim);margin:8px 2px 0;line-height:1.45}
+  .btn{display:block;box-sizing:border-box;width:100%;margin-top:12px;padding:12px 0;border-radius:12px;font-size:14px;font-weight:800;text-align:center;border:none;background:var(--accent);color:#fff;min-height:44px}
+  .btn.ghost{background:var(--surface);color:var(--text);border:1px solid var(--border-strong)}
+  .btn.shopee{background:var(--shopee)}
+  .errbox{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--danger-soft);color:var(--danger);font-size:13px;font-weight:700;line-height:1.4}
+  .warnbox{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--warn-soft);color:#92400e;font-size:13px;font-weight:700;line-height:1.4}
+  .feedT{display:flex;align-items:center;gap:8px;margin:12px 2px 8px;font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--text-muted)}
+  .c{display:flex;gap:9px;padding:10px 11px;background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:8px}
+  .av{width:34px;height:34px;border-radius:50%;background:#fde7e1;color:#b7361d;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+  .h{font-size:11.5px;color:#7c3aed;font-weight:700}
+  .tx{font-size:14px;color:var(--text);margin:2px 0 7px;line-height:1.3}
+  .acts{display:flex;gap:6px}
+  .a1{flex:1;padding:9px 0;border-radius:10px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:800;text-align:center;min-height:38px;box-sizing:border-box}
+  .a2{flex:1;padding:9px 0;border-radius:10px;background:var(--surface-3);color:var(--text);font-size:12.5px;font-weight:800;text-align:center;min-height:38px;box-sizing:border-box}
+  .bk{padding:9px 10px;border-radius:10px;background:var(--surface-3);font-size:12.5px;font-weight:800;min-height:38px;box-sizing:border-box}
+  .today{display:flex;gap:8px;margin:0 0 10px}
+  .kpi{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 10px}
+  .kpi b{display:block;font-size:16px}.kpi span{font-size:10.5px;color:var(--text-muted);font-weight:700;letter-spacing:.04em}
+  .toast{position:absolute;left:14px;right:14px;bottom:18px;background:#1c1a35;color:#fff;border-radius:12px;padding:11px 13px;font-size:13px;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .toast.err{background:var(--danger)}
+  .note{color:#cfd0e6;font:13px/1.5 sans-serif;padding:0 24px 24px;max-width:900px}
+  table{border-collapse:collapse;background:#fff;font-size:12px;margin:0 24px 40px}
+  td,th{border:1px solid #ddd;padding:5px 8px;vertical-align:top;max-width:220px}
+  th{background:#eef0f9;text-align:left}
+</style></head><body>
+<div class="grid">
+
+<!-- (a) Live picker with the Shopee tile active -->
+<div class="phoneWrap"><div class="cap">(a) Live picker — Shopee tile active (TW/PH, beta user)</div>
+<div class="phone" id="f-a">
+  <div class="hdr"><b>LIVE</b><span class="pill"><span class="dot on"></span>Shopee Live</span><span style="margin-left:auto" class="pill">Session 1d ▾</span></div>
+  <div class="body"><div class="today"><div class="kpi"><b>12</b><span>BUYERS</span></div><div class="kpi"><b>18</b><span>ORDERS</span></div><div class="kpi"><b>NT$6,480</b><span>SALES</span></div></div>
+    <div class="feedT">LIVE COMMENTS</div><div class="c"><div class="av">M</div><div style="flex:1"><div class="h">@m***i</div><div class="tx">mine 2</div></div></div></div>
+  <div class="dim"></div>
+  <div class="sheet"><div class="handle"></div><div class="sheetT">CHOOSE LIVE SOURCE</div>
+    <div class="row"><span class="chip" style="background:#000">t</span><span style="flex:1;min-width:0"><span class="nm">TikTok Live</span><span class="sub">Not connected</span></span><span class="dot"></span></div>
+    <div class="row"><span class="chip" style="background:#1877f2">f</span><span style="flex:1;min-width:0"><span class="nm">Facebook Live</span><span class="sub">Activation required</span></span><span style="font-size:11px;font-weight:700;color:#0088cc">Set up →</span></div>
+    <div class="row active"><span class="chip" style="background:var(--shopee)">S</span><span style="flex:1;min-width:0"><span class="nm">Shopee Live<span class="beta">BETA</span></span><span class="sub">Connected · 23 days left</span></span><span class="dot on"></span></div>
+    <div class="row" style="opacity:.6"><span class="chip" style="background:#e1306c">ig</span><span style="flex:1;min-width:0"><span class="nm">Instagram Live</span><span class="sub">Coming soon</span></span></div>
+  </div>
+</div></div>
+
+<!-- (b) Shopee connect screen -->
+<div class="phoneWrap"><div class="cap">(b) Shopee connect — paste the share link</div>
+<div class="phone" id="f-b">
+  <div class="hdr"><b>‹ Back</b><span class="pill" style="margin-left:4px"><span class="chip" style="width:20px;height:20px;border-radius:6px;font-size:11px;background:var(--shopee)">S</span>Shopee Live <span class="beta" style="border-color:#fff;color:#fff">BETA</span></span></div>
+  <div class="body">
+    <div class="card">
+      <span class="lbl">PASTE YOUR SHOPEE LIVE LINK</span>
+      <div class="in">https://tw.shp.ee/… or https://ph.shp.ee/…</div>
+      <div class="help">Shopee app → your Live → Share → Copy link</div>
+      <div class="btn shopee">Connect</div>
+    </div>
+    <div class="help" style="margin-top:14px">Only your own live can be connected. Comments show here within a few seconds.</div>
+  </div>
+</div></div>
+
+<!-- (c) connected state with comments -->
+<div class="phoneWrap"><div class="cap">(c) Connected — Shopee comments flowing (1-Click / Enterprise / basket as TikTok)</div>
+<div class="phone" id="f-c">
+  <div class="hdr"><b>LIVE</b><span class="pill"><span class="dot on"></span>Shopee Live</span><span style="margin-left:auto" class="pill">👥 141</span></div>
+  <div class="body">
+    <div class="today"><div class="kpi"><b>3</b><span>BUYERS</span></div><div class="kpi"><b>4</b><span>ORDERS</span></div><div class="kpi"><b>NT$1,250</b><span>SALES</span></div></div>
+    <div class="feedT">SHOPEE LIVE COMMENTS <span style="margin-left:auto;color:var(--ok)">● Connected</span></div>
+    <div class="c"><div class="av">J</div><div style="flex:1"><div class="h">j***l</div><div class="tx">mine 1</div><div class="acts"><div class="a1">1-Click</div><div class="a2">Enterprise</div><div class="bk">🛒1</div></div></div></div>
+    <div class="c"><div class="av" style="background:#e0f2fe;color:#0369a1">A</div><div style="flex:1"><div class="h">a***y</div><div class="tx">我要 2</div><div class="acts"><div class="a1">1-Click</div><div class="a2">Enterprise</div><div class="bk">🛒</div></div></div></div>
+    <div class="c"><div class="av" style="background:#ecfccb;color:#3f6212">K</div><div style="flex:1"><div class="h">k***n</div><div class="tx">👍 3</div><div class="acts"><div class="a1">1-Click</div><div class="a2">Enterprise</div><div class="bk">🛒</div></div></div></div>
+    <div class="help" style="margin-top:10px;text-align:center;color:var(--shopee);font-weight:700">Change link</div>
+  </div>
+</div></div>
+
+<!-- (d) errors -->
+<div class="phoneWrap"><div class="cap">(d) Errors on the connect screen (three states, one at a time)</div>
+<div class="phone" id="f-d">
+  <div class="hdr"><b>‹ Back</b><span class="pill" style="margin-left:4px">Shopee Live <span class="beta" style="border-color:#fff;color:#fff">BETA</span></span></div>
+  <div class="body">
+    <div class="card">
+      <span class="lbl">PASTE YOUR SHOPEE LIVE LINK</span>
+      <div class="in err" style="color:var(--text)">https://tw.shp.ee/KWsCc5Vu</div>
+      <div class="errbox">Paste the link of YOUR OWN live</div>
+      <div class="help">Shopee app → your Live → Share → Copy link</div>
+      <div class="btn shopee">Connect</div>
+    </div>
+    <div class="card" style="margin-top:12px"><div class="errbox" style="margin:0">Live has ended</div></div>
+    <div class="card" style="margin-top:12px"><div class="errbox" style="margin:0">Shopee is not responding, try again</div></div>
+    <div class="card" style="margin-top:12px"><div class="errbox" style="margin:0">That doesn't look like a Shopee live link</div></div>
+  </div>
+</div></div>
+
+<!-- (e) locked states -->
+<div class="phoneWrap"><div class="cap">(e1) Locked — beta user on a free/expired plan: TikTok/Facebook locked, Shopee open</div>
+<div class="phone" id="f-e1">
+  <div class="hdr"><b>LIVE</b><span class="pill"><span class="dot"></span>Choose live source</span></div>
+  <div class="body"></div>
+  <div class="dim"></div>
+  <div class="sheet"><div class="handle"></div><div class="sheetT">CHOOSE LIVE SOURCE</div>
+    <div class="row locked"><span class="chip" style="background:#000">t</span><span style="flex:1;min-width:0"><span class="nm">TikTok Live 🔒</span><span class="sub lock">Shopee Beta only — upgrade to use TikTok/Facebook</span></span></div>
+    <div class="row locked"><span class="chip" style="background:#1877f2">f</span><span style="flex:1;min-width:0"><span class="nm">Facebook Live 🔒</span><span class="sub lock">Shopee Beta only — upgrade to use TikTok/Facebook</span></span></div>
+    <div class="row active"><span class="chip" style="background:var(--shopee)">S</span><span style="flex:1;min-width:0"><span class="nm">Shopee Live<span class="beta">BETA</span></span><span class="sub">Not connected · 23 days left</span></span><span class="dot"></span></div>
+    <div class="btn" style="margin-top:4px">Upgrade</div>
+  </div>
+</div></div>
+
+<div class="phoneWrap"><div class="cap">(e2) Locked — Shopee beta expired</div>
+<div class="phone" id="f-e2">
+  <div class="hdr"><b>LIVE</b><span class="pill"><span class="dot"></span>Choose live source</span></div>
+  <div class="body"></div>
+  <div class="dim"></div>
+  <div class="sheet"><div class="handle"></div><div class="sheetT">CHOOSE LIVE SOURCE</div>
+    <div class="row"><span class="chip" style="background:#000">t</span><span style="flex:1;min-width:0"><span class="nm">TikTok Live</span><span class="sub">Not connected</span></span><span class="dot"></span></div>
+    <div class="row"><span class="chip" style="background:#1877f2">f</span><span style="flex:1;min-width:0"><span class="nm">Facebook Live</span><span class="sub">Activation required</span></span><span style="font-size:11px;font-weight:700;color:#0088cc">Set up →</span></div>
+    <div class="row locked"><span class="chip" style="background:var(--shopee)">S</span><span style="flex:1;min-width:0"><span class="nm">Shopee Live 🔒<span class="beta">BETA</span></span><span class="sub lock">Shopee Beta ended — contact Admin</span></span></div>
+    <div class="btn ghost" style="margin-top:4px">Contact Admin</div>
+  </div>
+</div></div>
+
+</div>
+<div class="note">360 px frames · app tokens (indigo header, surface cards, Shopee orange #ee4d2d chip, Beta pill) · tap targets ≥ 44 px · usernames masked in the mock feed. Strings for all 8 languages: <code>design-redesign/shopee-beta/strings.json</code> (table below).</div>
+<table id="strings"><thead><tr><th>key</th><th>en</th><th>fil</th><th>zh</th><th>zh-TW</th><th>vi</th><th>th</th><th>id</th><th>bg</th></tr></thead><tbody></tbody></table>
+<script>
+fetch("strings.json").then(r=>r.json()).then(j=>{const tb=document.querySelector("#strings tbody");for(const [k,v] of Object.entries(j)){if(k.startsWith("_"))continue;const tr=document.createElement("tr");tr.innerHTML="<th>"+k+"</th>"+["en","fil","zh","zh-TW","vi","th","id","bg"].map(l=>"<td>"+(v[l]||"")+"</td>").join("");tb.appendChild(tr);}}).catch(()=>{});
+</script>
+</body></html>

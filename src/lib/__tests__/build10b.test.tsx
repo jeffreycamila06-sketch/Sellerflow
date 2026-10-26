@@ -182,7 +182,7 @@ describe("TikTok cooldown minutes and the analytics code", () => {
     expect(errCodeOf(undefined)).toBe("E0");
     const app = readFileSync(join(ROOT, "src/redesign/RedesignApp.tsx"), "utf8");
     const tracks = [...app.matchAll(/track\("connect_failed", \{[^}]*\}\)/g)].map((m) => m[0]);
-    expect(tracks.length).toBe(5);
+    expect(tracks.length).toBe(6); // TikTok ×3, Facebook, Shopee (shop), Shopee Live beta (link)
     for (const x of tracks) expect(x).toMatch(/reason: errCodeOf\(/);
   });
 });

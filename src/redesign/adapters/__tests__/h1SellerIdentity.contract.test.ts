@@ -57,7 +57,7 @@ describe("H1 — payload fields still carry the email id (zero client changes)",
   });
 
   it("platform_status / live_session / join-snapshot / initial-batch emits all use emailIdOf", () => {
-    expect(server.match(/sellerId: emailIdOf\(cleanId\)/g)?.length).toBe(2);          // join snapshots (TT + FB)
+    expect(server.match(/sellerId: emailIdOf\(cleanId\)/g)?.length).toBe(3);          // join snapshots (TT + FB + Shopee beta replay)
     expect(server.match(/sellerId: emailIdOf\(sellerId\)/g)?.length).toBeGreaterThanOrEqual(8); // status/started/ended/initial/chat/Shopee/FB
     expect(server).toContain("sellerId: emailIdOf(active.sellerId),");                 // disconnect-path ended
   });

@@ -53,7 +53,8 @@ describe("name-once rule + sticker QR: identical for every non-Instagram platfor
     for (const p of OLD_PLATFORMS) for (const n of NAMES) expect(fbNameOnly(p, n)).toBe(fbNameOnlyBefore(p, n));
   });
   it("stickerQrAllowedFor", () => {
-    for (const p of OLD_PLATFORMS) expect(stickerQrAllowedFor(p)).toBe(stickerQrAllowedForBefore(p));
+    for (const p of OLD_PLATFORMS) if (p !== "Shopee") expect(stickerQrAllowedFor(p)).toBe(stickerQrAllowedForBefore(p));
+    expect(stickerQrAllowedFor("Shopee")).toBe(false); // Shopee Live beta (2026-10-27): name (+ @username), no QR
   });
   it("Instagram: username printed once, no QR (owner decision 3)", () => {
     for (const p of ["Instagram", "instagram", " INSTAGRAM "]) {

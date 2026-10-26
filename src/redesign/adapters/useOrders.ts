@@ -150,7 +150,7 @@ export interface UseOrdersDeps {
   // does NOT change this step's numbering or feed loading (still the old path).
   sessionId?: string | null;
   // 5f free-cap integration (optional):
-  isCapped?: () => boolean;                                // soft block before creating
+  isCapped?: (platform?: string) => boolean;               // soft block before creating (platform: sql/136 Shopee-beta exemption)
   onCapBlocked?: () => void;                               // show hard popup when blocked
   onCapReached?: (err: unknown) => void;                   // DB trigger rejected (over cap)
   onWriteError?: (err: unknown) => void;                   // Batch D (#7): non-cap background write failed — surface it
@@ -213,7 +213,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     if (msgId && (processedMsgIdsRef.current.has(msgId) || isMsgIdOrdered?.(msgId))) return null;
     // 0b) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
     //    authoritative; this is the friendly block before we try.
-    if (isCapped?.()) { onCapBlocked?.(); return null; }
+    if (isCapped?.(c.platform)) { onCapBlocked?.(); return null; }
     // 0c) Multi-day: open the window if none active (writes window_start once per
     //     window; N=1 → no-op). Does NOT affect this order's numbering (that comes
     //     from the loaded window buyers); fire-and-forget, like the DB writes.
