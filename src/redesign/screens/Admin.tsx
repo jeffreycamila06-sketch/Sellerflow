@@ -1217,13 +1217,15 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                         </div>
                       )}
                       {/* Shopee Live beta (sql/135): 30-day windows, admin-managed. Days left from the
-                          same helper the seller's tile uses. */}
+                          same helper the seller's tile uses. Remove = the beta ends NOW (the row is
+                          expired, not deleted) → the seller's Shopee locks as "Beta ended". */}
                       {(() => {
                         const uid = rawByEmail[u.email]?.authUserId || "";
                         const exp = uid ? shopeeBeta[uid] : undefined;
-                        const dl = exp ? shopeeBetaAccess({ isAdmin: false, row: { expiresAt: exp, shopeeUid: null } }).daysLeft : null;
+                        const acc = exp ? shopeeBetaAccess({ isAdmin: false, row: { expiresAt: exp, shopeeUid: null } }) : null;
+                        const dl = acc && acc.allowed ? acc.daysLeft : null; // ended (Remove) or no row → "—"
                         const start = () => { if (uid) void run(t.rd_adm_shopee_beta_start, u.email, () => actions!.shopeeBetaStart(u.email, uid).then((r) => { if (r.ok && r.expiresAt) setShopeeBeta((m) => ({ ...m, [uid]: r.expiresAt! })); return r; })); };
-                        const remove = () => { if (uid) void run(t.rd_adm_shopee_beta_remove, u.email, () => actions!.shopeeBetaRemove(u.email, uid), () => setShopeeBeta((m) => { const n = { ...m }; delete n[uid]; return n; })); };
+                        const remove = () => { if (uid) void run(t.rd_adm_shopee_beta_remove, u.email, () => actions!.shopeeBetaRemove(u.email, uid), () => setShopeeBeta((m) => ({ ...m, [uid]: new Date().toISOString() }))); };
                         return (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11, color: "var(--text-dim)" }}>
                             <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_shopee_beta}</span> <span style={{ fontWeight: 700, color: "var(--text)" }} data-testid="adm-shopee-beta">{dl == null ? "—" : tpl(t.rd_sh_days_left, { n: dl })}</span></span>

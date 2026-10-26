@@ -1,7 +1,7 @@
 -- ============================================================================
 -- sql/136 — FREE-TIER ORDER CAP: exempt Shopee orders of an ACTIVE Shopee-beta seller.
--- MIRROR ONLY — NOT APPLIED. chat-Claude applies via MCP after review. Needs sql/135 first
--- (the shopee_beta table). Rollback: sql/136_free_cap_shopee_beta_exempt_rollback.sql.
+-- APPLIED in production 2026-10-27 (chat-Claude via MCP); this file mirrors the live definition.
+-- Needs sql/135 first (the shopee_beta table). Rollback: sql/136_free_cap_shopee_beta_exempt_rollback.sql.
 -- ============================================================================
 -- Owner decision (2026-10-27): during the Shopee Live beta, an order with platform = 'Shopee'
 -- by a user who has a shopee_beta row with expires_at > now() is NEITHER blocked by the free

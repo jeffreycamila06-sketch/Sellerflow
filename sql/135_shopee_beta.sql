@@ -1,6 +1,6 @@
 -- ============================================================================
--- sql/135 — SHOPEE LIVE BETA (share-link reader). MIRROR ONLY — NOT APPLIED.
--- chat-Claude applies via MCP after review. Additive and idempotent.
+-- sql/135 — SHOPEE LIVE BETA (share-link reader). APPLIED in production 2026-10-27 (chat-Claude
+-- via MCP); this file mirrors the live definitions. Additive and idempotent.
 -- ============================================================================
 -- What it adds
 --   • public.shopee_beta — who may use the Shopee Live beta (30-day windows, admin-managed):
@@ -12,7 +12,8 @@
 --     role (the server, at Connect).
 --   • RPC admin_shopee_beta_start(p_user uuid) — starts or EXTENDS by 30 days (an active window
 --     is extended from its current expires_at; an expired/missing one restarts from now()).
---   • RPC admin_shopee_beta_remove(p_user uuid) — deletes the row (Shopee locked at once).
+--   • RPC admin_shopee_beta_remove(p_user uuid) — ENDS the beta now (expires_at = now(); the row
+--     stays, so the seller sees "Shopee Beta ended — contact Admin" at once; Start/extend restarts it).
 --   • RPC admin_shopee_beta_list() — every row (admin only) for the seller cards' "days left".
 --   • RPC my_shopee_beta() — the caller's own row (SECURITY INVOKER, auth.uid() filter) for the
 --     client gate; the server re-checks the same row with the service role.
@@ -72,7 +73,7 @@ $$;
 revoke all on function public.admin_shopee_beta_start(uuid, text) from public, anon;
 grant execute on function public.admin_shopee_beta_start(uuid, text) to authenticated; -- admins ARE 'authenticated'; the guard is is_admin() inside
 
--- Remove (admin only).
+-- Remove = end the beta now (admin only). Expires the row rather than deleting it.
 create or replace function public.admin_shopee_beta_remove(p_user uuid)
 returns boolean
 language plpgsql
@@ -83,7 +84,7 @@ begin
   if not public.is_admin() then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  delete from public.shopee_beta where user_id = p_user;
+  update public.shopee_beta set expires_at = now(), updated_at = now() where user_id = p_user;
   return found;
 end;
 $$;

@@ -100,7 +100,8 @@ export interface AdminActions {
   // Grant Scan Credits (manual Wise/Telegram top-up). Calls the is_admin()-gated
   // grant_parcel_credit RPC + writes an audit row. Returns the new balance.
   addCredits: (email: string, amount: number) => Promise<AdminResult & { balance?: number }>;
-  // Shopee Live beta (sql/135): start/extend a 30-day window, remove it, list every row
+  // Shopee Live beta (sql/135): start/extend a 30-day window, end it now (expires_at = now(),
+  // the row stays → the seller's Shopee locks as "Beta ended"), list every row
   // (authUserId → expires_at) for the seller cards. is_admin()-gated RPCs + audit rows.
   shopeeBetaStart: (email: string, userId: string) => Promise<AdminResult & { expiresAt?: string }>;
   shopeeBetaRemove: (email: string, userId: string) => Promise<AdminResult>;
@@ -328,7 +329,7 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     try {
       const { error } = await supabase.rpc("admin_shopee_beta_remove", { p_user: userId });
       if (error) return { ok: false, error: error.message };
-      audit("shopee beta removed", email, "");
+      audit("shopee beta ended", email, "expires_at = now()");
       return { ok: true };
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);

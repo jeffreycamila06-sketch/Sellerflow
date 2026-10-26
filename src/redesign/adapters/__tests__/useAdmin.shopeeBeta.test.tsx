@@ -27,12 +27,13 @@ describe("shopee beta admin actions", () => {
     expect(rpcMock).toHaveBeenCalledWith("admin_shopee_beta_start", { p_user: "u1" });
     expect((saveAuditLogMock.mock.calls[0][0] as { action: string }).action).toBe("shopee beta started");
   });
-  it("remove → admin_shopee_beta_remove(p_user), audits; RPC error → honest failure, no audit", async () => {
+  it("remove (= end now, the row is expired not deleted) → admin_shopee_beta_remove(p_user), audits; RPC error → honest failure, no audit", async () => {
     rpcMock.mockResolvedValueOnce({ data: true, error: null });
     const { result } = renderHook(() => useAdmin("admin@x.com"));
     await act(async () => { expect(await result.current.shopeeBetaRemove("s@x.com", "u1")).toEqual({ ok: true }); });
     expect(rpcMock).toHaveBeenCalledWith("admin_shopee_beta_remove", { p_user: "u1" });
     expect(saveAuditLogMock).toHaveBeenCalledTimes(1);
+    expect((saveAuditLogMock.mock.calls[0][0] as { action: string }).action).toBe("shopee beta ended");
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: "forbidden" } });
     await act(async () => { expect(await result.current.shopeeBetaStart("s@x.com", "u1")).toEqual({ ok: false, error: "forbidden" }); });
     expect(saveAuditLogMock).toHaveBeenCalledTimes(1);
