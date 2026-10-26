@@ -30,7 +30,7 @@ const openSheet = () => {
 };
 const q = (sel: string) => document.querySelector(`[data-testid='${sel}']`) as HTMLElement | null;
 const qa = (sel: string) => Array.from(document.querySelectorAll(`[data-testid='${sel}']`)) as HTMLTextAreaElement[];
-const preview = () => q("tts-preview")!.textContent || "";
+const preview = () => (q("tts-preview") as HTMLTextAreaElement).value;
 const edit = (i: number, value: string) => fireEvent.change(qa("tts-text-order")[i], { target: { value } });
 
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); ios.v = false; });

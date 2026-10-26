@@ -2,7 +2,11 @@
 // profile (the SAME chaseTarget rule as Pickup Status Chase), then Message → Paste → Send in
 // TikTok. Every edit here is message-only and is discarded on close — nothing is written to
 // orders, live_session_orders, products or Sales. Only the note is remembered (per seller).
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+// The Message box is EDITABLE (buyers abroad don't read Tagalog — the seller writes their
+// own): it auto-rebuilds from items / total / note until the seller types in it; from then on
+// it is theirs, with "↺ Reset message" to go back to the auto text (and auto-updates). Every
+// buyer opens fresh in auto mode (the sheet is keyed per buyer).
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useT, tpl } from "../i18n";
 import { chaseTarget } from "../adapters/parcelTracking";
@@ -27,6 +31,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   const [lines, setLines] = useState<SendLine[]>(() => initialSendLines(receipt.lines));
   const [totalOverride, setTotalOverride] = useState<string | null>(null);
   const [note, setNote] = useState(() => loadSendNote(sellerId));
+  const [draft, setDraft] = useState<string | null>(null); // null = auto mode (rebuilt from the fields); a string = the seller's own text
   const [status, setStatus] = useState("");
   const [oldOk, setOldOk] = useState(!pastRange); // past session: copy buttons only after one confirm
   const nextId = useRef(0);
@@ -35,10 +40,11 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
 
   const sum = sumLines(lines);
   const total = messageTotal(lines, totalOverride);
-  const message = buildSendMessage({
+  const autoMessage = buildSendMessage({
     name: receipt.name, date, lines, total, cur, note,
     labels: { hi: t.rd_tts_msg_hi, order: t.rd_tts_msg_order, total: t.rd_tts_msg_total },
   });
+  const message = draft ?? autoMessage; // what the box shows = exactly what Copy copies
 
   const setLine = (key: string, patch: Partial<SendLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   // Any change to the items' money (a price, a removed line, an added line) drops the Total
@@ -107,8 +113,16 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
           <span style={label}>{t.rd_tts_note}</span>
           <textarea data-testid="tts-note" value={note} maxLength={500} placeholder={t.rd_tts_note_ph} onChange={(e) => setNote(e.target.value)} style={{ ...input, width: "100%", minHeight: 64, resize: "vertical" }} />
 
-          <span style={label}>{t.rd_tts_preview}</span>
-          <pre data-testid="tts-preview" style={{ margin: 0, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "var(--font-ui)" }}>{message}</pre>
+          <span style={{ ...label, display: "flex", alignItems: "center" }}>
+            {t.rd_tts_preview}
+            {draft !== null && (
+              <button type="button" data-testid="tts-reset" onClick={() => setDraft(null)}
+                style={{ marginLeft: "auto", margin: "-10px 0 -10px auto", minHeight: 44, padding: "0 8px", border: "none", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 700, letterSpacing: 0, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                ↺ {t.rd_tts_reset}
+              </button>
+            )}
+          </span>
+          <GrowArea value={message} label={t.rd_tts_preview} onChange={setDraft} />
         </div>
 
         <div style={{ flex: "0 0 auto", padding: "0 14px calc(18px + env(safe-area-inset-bottom))" }}>
@@ -135,26 +149,41 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   return createPortal(node, (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body);
 }
 
-// Order line text: one line that grows down with the text (no scrollbar). Enter adds no new
-// line (the message is one line per item) — except while an IME (zh / th keyboard) is composing,
-// where Enter picks the word; pasted line breaks become spaces.
-function GrowText({ value, placeholder, label: aria, onChange }: { value: string; placeholder?: string; label: string; onChange: (v: string) => void }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+// A textarea that grows down with its text (no scrollbar): height = content on every value
+// change, re-measured when the width settles after the sheet lays out (and on rotate).
+function useGrow(ref: RefObject<HTMLTextAreaElement | null>, value: string) {
   const fit = () => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight + 2}px`; // + the 1px top/bottom border
   };
-  useLayoutEffect(fit, [value]);
-  // The width settles after the sheet lays out (and changes on rotate) → measure again.
+  useLayoutEffect(fit, [ref, value]); // eslint exhaustive-deps: the ref object is stable; listed because it is a hook parameter
   useEffect(() => {
     if (typeof ResizeObserver === "undefined" || !ref.current) return;
     let w = 0;
     const ro = new ResizeObserver(([e]) => { if (e.contentRect.width !== w) { w = e.contentRect.width; fit(); } });
     ro.observe(ref.current);
     return () => ro.disconnect();
-  }, []);
+  }, [ref]);
+}
+
+// The whole message: multi-line, grows with the text, same look as the other fields.
+function GrowArea({ value, label: aria, onChange }: { value: string; label: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useGrow(ref, value);
+  return (
+    <textarea ref={ref} data-testid="tts-preview" aria-label={aria} rows={3} value={value} onChange={(e) => onChange(e.target.value)}
+      style={{ ...input, width: "100%", resize: "none", overflow: "hidden", fontSize: 13, lineHeight: 1.45, overflowWrap: "anywhere" }} />
+  );
+}
+
+// Order line text: one line that grows down with the text (no scrollbar). Enter adds no new
+// line (the message is one line per item) — except while an IME (zh / th keyboard) is composing,
+// where Enter picks the word; pasted line breaks become spaces.
+function GrowText({ value, placeholder, label: aria, onChange }: { value: string; placeholder?: string; label: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useGrow(ref, value);
   return (
     <textarea ref={ref} data-testid="tts-text-order" aria-label={aria} rows={1} value={value} placeholder={placeholder}
       onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault(); }}

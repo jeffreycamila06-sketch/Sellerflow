@@ -121,8 +121,8 @@ describe("the picker", () => {
     expect(box.textContent).not.toContain("Today Buyer");
     expect(q("receipt-session")!.textContent).toBe("Session 10/08 → 10/10");
     fireEvent.click(q("tt-send-btn")!);
-    const msg = q("tts-preview")!.textContent || "";
-    expect(msg).toContain("Order mo sa live (10/08 → 10/10):");
+    const msg = (q("tts-preview") as HTMLTextAreaElement).value;
+    expect(msg).toContain("Here's your invoice (10/08 → 10/10):");
     expect(msg).toContain("1. A12 Pink blouse x3 — NT$750");
     expect(q("tts-copy-open")).toBeNull();                 // an OLD session asks one confirm first
     fireEvent.click(q("tts-old-yes")!);
