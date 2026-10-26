@@ -256,6 +256,8 @@ export function isPrinterNotSetup(code: string, message: string): boolean {
 // (plain words, no codes). Any other code = the usual print-failed wording.
 const NIIMBOT_ERROR_KEYS = {
   NIIMBOT_NO_PAPER: "rd_nb_no_paper", NIIMBOT_COVER_OPEN: "rd_nb_cover_open", NIIMBOT_PAPER_TYPE: "rd_nb_paper_type", NIIMBOT_LOW_BATTERY: "rd_nb_low_battery",
+  // Android: the classic (SPP) printer was not seen nearby / the pairing prompt was declined or failed
+  NIIMBOT_NOT_FOUND: "rd_nb_not_found", NIIMBOT_PAIR_DECLINED: "rd_nb_pair_declined", NIIMBOT_PAIR_FAILED: "rd_nb_pair_declined",
   // iOS: the driver framework needs iOS 17.2+ (NIIMBOT_OS_TOO_OLD) or could not be loaded (NIIMBOT_UNAVAILABLE) — same seller message
   NIIMBOT_OS_TOO_OLD: "rd_nb_os_too_old", NIIMBOT_UNAVAILABLE: "rd_nb_os_too_old",
 } as const;

@@ -98,6 +98,9 @@ describe("transport selection", () => {
     expect(niimbotErrorKey("NIIMBOT_LOW_BATTERY")).toBe("rd_nb_low_battery");
     expect(niimbotErrorKey("NIIMBOT_OS_TOO_OLD")).toBe("rd_nb_os_too_old"); // iOS < 17.2 (the driver framework is never loaded)
     expect(niimbotErrorKey("NIIMBOT_UNAVAILABLE")).toBe("rd_nb_os_too_old"); // the framework could not be loaded
+    expect(niimbotErrorKey("NIIMBOT_NOT_FOUND")).toBe("rd_nb_not_found");         // Android: no classic device nearby
+    expect(niimbotErrorKey("NIIMBOT_PAIR_DECLINED")).toBe("rd_nb_pair_declined"); // Android: BONDING → NONE
+    expect(niimbotErrorKey("NIIMBOT_PAIR_FAILED")).toBe("rd_nb_pair_declined");   // Android: pairing never confirmed
     expect(niimbotErrorKey("BT_NOT_FOUND")).toBeNull();
     expect(niimbotErrorKey("NIIMBOT_ERROR")).toBeNull();
     expect(niimbotErrorKey("")).toBeNull();
