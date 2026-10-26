@@ -100,6 +100,10 @@ describe("RedesignApp wiring (source pins)", () => {
     expect(app).toContain('if (platformLocks.Instagram) { setToast({ msg: lockText("Instagram"), kind: "err" }); return; }');
     expect(app).toContain("if (platformLocks.Shopee) { setShopeeLinkErr(platformLocks.Shopee); return; }");
   });
+  it("the free-cap soft block receives the order's platform and skips Shopee while the beta row is active (sql/136)", () => {
+    expect(app).toContain("isCapped: (platform) => freeCap.freeCapped && freeCapAppliesTo(platform, shopeeBetaRowActive)");
+    expect(readFileSync("src/redesign/adapters/useOrders.ts", "utf8")).toContain("if (isCapped?.(c.platform)) { onCapBlocked?.(); return null; }");
+  });
   it("the tile shows only for allowed sellers in TW/PH", () => {
     expect(app).toContain("const shopeeLinkOn = shopeeBetaAcc.allowed && shopeeBetaMarketOk(market);");
   });

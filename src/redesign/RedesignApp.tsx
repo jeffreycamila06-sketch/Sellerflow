@@ -44,7 +44,7 @@ import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
-import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, type LockPlatform } from "./adapters/shopeeBeta";
+import { useShopeeBeta, shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo, type LockPlatform } from "./adapters/shopeeBeta";
 import { shopeeLinkConnect, SHOPEE_LINK_ERR_KEY } from "./adapters/shopeeLink";
 import FbChannels from "./screens/FbChannels";
 import IgChannels from "./screens/IgChannels";
@@ -268,6 +268,8 @@ export default function RedesignApp() {
   const shopeeBetaAcc = shopeeBetaAccess({ isAdmin, row: shopeeBetaRow });
   const shopeeLinkOn = shopeeBetaAcc.allowed && shopeeBetaMarketOk(market);
   const platformLocks = shopeeBetaLocks({ isAdmin, access: shopeeBetaAcc, paidActive: isShopeeEligible(auth.profile) });
+  // sql/136: the free cap skips Shopee orders while the beta ROW is active (row-based like the trigger, not the admin bypass).
+  const shopeeBetaRowActive = shopeeBetaAccess({ isAdmin: false, row: shopeeBetaRow }).allowed;
   const hideParcelScan = marketHides("parcelScan", market);
   const hidePickup = marketHides("pickupStatus", market);
   const hideStickerQr = marketHides("stickerQr", market);
@@ -768,7 +770,7 @@ export default function RedesignApp() {
     sessionDate: liveSession.dayId,
     sessionId: sessionInstance.currentSessionId, // explicit session stamp (sql/20); additive, numbering unchanged
 
-    isCapped: () => freeCap.freeCapped,
+    isCapped: (platform) => freeCap.freeCapped && freeCapAppliesTo(platform, shopeeBetaRowActive), // sql/136 mirror
     onCapBlocked: () => freeCap.setCapPopup("hard"),
     onCapReached: freeCap.noteCapError,
     onWriteError: () => setOrderWriteErrs((c) => c + 1), // Batch D #7 — toast below

@@ -2,7 +2,7 @@
 //   allowed = admin OR (row AND expires_at > now); beta on a non-paid plan → TikTok/FB/IG
 //   locked; paid plan keeps everything; beta ended → Shopee locked; TW + PH markets only.
 import { describe, it, expect } from "vitest";
-import { shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk } from "../shopeeBeta";
+import { shopeeBetaAccess, shopeeBetaLocks, shopeeBetaMarketOk, freeCapAppliesTo } from "../shopeeBeta";
 
 const now = Date.parse("2026-10-27T00:00:00Z");
 const row = (daysFromNow: number) => ({ expiresAt: new Date(now + daysFromNow * 86_400_000).toISOString(), shopeeUid: "123" });
@@ -46,6 +46,17 @@ describe("shopeeBetaLocks", () => {
   it("never in the beta → nothing locked; admin → nothing locked even on a free plan", () => {
     expect(shopeeBetaLocks({ isAdmin: false, access: none, paidActive: false })).toEqual({});
     expect(shopeeBetaLocks({ isAdmin: true, access: active, paidActive: false })).toEqual({});
+  });
+});
+
+describe("freeCapAppliesTo (sql/136 mirror)", () => {
+  it("Shopee order + active beta row → the cap does not apply; everything else → it does", () => {
+    expect(freeCapAppliesTo("Shopee", true)).toBe(false);
+    expect(freeCapAppliesTo("Shopee", false)).toBe(true);     // beta ended / no row
+    expect(freeCapAppliesTo("TikTok", true)).toBe(true);      // other platforms still capped
+    expect(freeCapAppliesTo("Facebook", true)).toBe(true);
+    expect(freeCapAppliesTo(undefined, true)).toBe(true);     // legacy / unknown platform
+    expect(freeCapAppliesTo(null, true)).toBe(true);
   });
 });
 

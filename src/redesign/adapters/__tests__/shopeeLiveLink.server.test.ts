@@ -93,6 +93,24 @@ function runtime(over: Record<string, unknown> = {}) {
 }
 const fetchByUrl = (map: Record<string, (u: string) => unknown>) => vi.fn(async (u: string) => { for (const [k, f] of Object.entries(map)) if (u.includes(k)) return f(u); return mkRes(404, { error: "error_not_found" }); });
 
+describe("resolveLink — redirects stay on Shopee hosts", () => {
+  it("a redirect to a non-Shopee host → bad_link, and that host is never fetched", async () => {
+    const h = runtime();
+    h.fetchImpl.mockImplementation(fetchByUrl({ "tw.shp.ee/": () => mkRes(302, null, "https://evil.example/landing?session=1&share_user_id=2") }));
+    expect(await h.rt.resolveLink("https://tw.shp.ee/abc")).toEqual({ ok: false, error: "bad_link" });
+    expect(h.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(String(h.fetchImpl.mock.calls[0][0])).toContain("tw.shp.ee/abc");
+  });
+  it("a Shopee-host hop (shp.ee → live.shopee.tw) is still followed", async () => {
+    const h = runtime();
+    h.fetchImpl.mockImplementation(fetchByUrl({
+      "tw.shp.ee/": () => mkRes(302, null, "https://live.shopee.tw/share?session=8092367&share_user_id=254298659"),
+    }));
+    const r = await h.rt.resolveLink("https://tw.shp.ee/abc");
+    expect(r).toMatchObject({ ok: true, region: "tw", sessionId: "8092367", shareUserId: "254298659" });
+  });
+});
+
 describe("connect (HTTP-free decision)", () => {
   const base = { sellerId: "seller-1", userId: "u1", email: "s@x", sessionId: "browser-abc" };
   it("short link → session + sharer → host_session → chatroom → poller; remembers the account; status emitted with the browser sessionId", async () => {

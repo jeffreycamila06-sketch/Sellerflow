@@ -147,8 +147,11 @@ export function createShopeeLinkRuntime(deps) {
     for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
       let r;
       try { r = await get(url); } catch { return { ok: false, error: "unreachable" }; }
-      if (!r.location) return { ok: false, error: p.region ? "bad_link" : "bad_link" };
+      if (!r.location) return { ok: false, error: "bad_link" };
       url = new URL(r.location, url).toString();
+      // Only Shopee hosts are followed (live.shopee.tw/ph, *.shp.ee): a redirect anywhere else
+      // ends the resolve with bad_link and that host is never fetched.
+      if (!looksLikeShopeeLink(url)) return { ok: false, error: "bad_link" };
       p = parseShareUrl(url);
       if (p.sessionId && p.region) return { ok: true, ...p };
     }

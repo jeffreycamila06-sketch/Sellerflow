@@ -17,6 +17,12 @@ export type ShopeeBetaLocks = Partial<Record<LockPlatform, LockKey>>;
 
 const DAY_MS = 86_400_000;
 
+// sql/136 mirror: the free-tier cap does NOT apply to a Shopee order while the seller's beta
+// row is active (the DB trigger neither blocks nor counts it). Every other order: unchanged.
+export function freeCapAppliesTo(platform: string | undefined | null, betaRowActive: boolean): boolean {
+  return !(betaRowActive && String(platform ?? "").trim() === "Shopee");
+}
+
 export function shopeeBetaAccess(o: { isAdmin: boolean; row: ShopeeBetaRow | null; now?: number }): ShopeeBetaAccess {
   if (o.isAdmin) return { allowed: true, expired: false, daysLeft: null };
   const exp = o.row ? Date.parse(o.row.expiresAt) : NaN;
