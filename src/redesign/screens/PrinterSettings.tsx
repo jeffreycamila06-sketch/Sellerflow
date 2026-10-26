@@ -33,7 +33,9 @@ const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWe
 const gridBtn: CSSProperties = { padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", borderRadius: 11, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textAlign: "center", border: "none", ...(active ? { background: "var(--surface)", color: "var(--accent-fg)", boxShadow: "var(--shadow)" } : { background: "transparent", color: "var(--text-dim)" }) });
 const rowBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
-const pill = (known: boolean): CSSProperties => ({ flexShrink: 0, whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 800, padding: "4px 8px", borderRadius: 999, border: `1px solid ${known ? "var(--ok)" : "var(--accent)"}`, color: known ? "var(--ok)" : "var(--accent-fg)", background: "var(--surface-2)" });
+// The only row pill: a Niimbot is named (its own driver). Every other row = printer name + id —
+// no "Works with SFL" / "New" badges (sellers don't know what SFL means; the flow finds out itself).
+const niimbotPill: CSSProperties = { flexShrink: 0, whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 800, padding: "4px 8px", borderRadius: 999, border: "1px solid var(--accent)", color: "var(--accent-fg)", background: "var(--surface-2)" };
 
 type V2Stage = "idle" | "saving" | "testing" | "retry" | "ask" | "unsupported" | "brand" | "fail";
 
@@ -52,7 +54,7 @@ export default function PrinterSettings({
   stickerQrMoved?: boolean; // admins (LIVE layout v2 gate): the toggle lives in LIVE print pattern instead
   testComment?: string; // LIVE layout v2 users: the test sticker's comment ("COMMENT / PRICE"); others keep buildTestBuyer's "PRICE"
   flowV2?: boolean; // printer setup v2 (printerFlowV2Enabled): admin / test_printers / the printer_flow_v2 switch
-  isAdmin?: boolean; // admin-only debug line after a generic test print
+  isAdmin?: boolean; // admin-only: the "Show all Bluetooth devices" link + the debug line after a generic test print
 }) {
   const t = useT();
   const wifi = psType === "wifi";
@@ -215,11 +217,10 @@ export default function PrinterSettings({
     setV2Pick(null); setV2Stage("idle");
   }
   const v2Row = (p: BluetoothPrinterDevice) => {
-    const known = isKnownPrinter(p);
     return (
       <button key={p.id || p.address} data-testid="ps-v2-row" onClick={() => void pickV2(p)} disabled={v2Stage !== "idle"} style={{ ...rowBtn, opacity: v2Stage !== "idle" ? 0.6 : 1 }}>
         <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.address}{p.transport === "spp" ? <span data-testid="ps-v2-classic" style={{ fontFamily: "var(--font-ui)", marginLeft: 6 }}>· {t.rd_ps_v2_classic}</span> : null}</span></span>
-        <span data-testid={known ? "ps-v2-known" : brandOf(p) === "niimbot" ? "ps-v2-brand" : "ps-v2-new"} style={pill(known)}>{known ? t.rd_ps_v2_works : brandOf(p) === "niimbot" ? "Niimbot" : t.rd_ps_v2_new}</span>
+        {brandOf(p) === "niimbot" && <span data-testid="ps-v2-brand" style={niimbotPill}>Niimbot</span>}
       </button>
     );
   };
@@ -318,7 +319,11 @@ export default function PrinterSettings({
                 {v2Printers.length > 0
                   ? <div style={listBox}>{v2Printers.map(v2Row)}</div>
                   : <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{t.rd_ps_v2_none}</div>}
-                {!btShowAll && (
+                {/* "Show all Bluetooth devices" lists AirPods/laptops too — admin-only (sellers got confused); a seller is pointed to Admin instead */}
+                {!btShowAll && !isAdmin && (
+                  <a data-testid="ps-v2-not-listed" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 10, padding: "10px 6px", fontSize: 12, color: "var(--text-dim)", textAlign: "center", textDecoration: "none" }}>{t.rd_ps_v2_not_listed}</a>
+                )}
+                {!btShowAll && isAdmin && (
                   <button data-testid="ps-v2-show-all" onClick={() => void scanBt(true)} disabled={btScanning || v2Stage !== "idle"} style={{ display: "block", width: "100%", marginTop: 10, padding: "12px 6px", border: "none", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "underline" }}>{t.rd_ps_v2_show_all}</button>
                 )}
               </div>

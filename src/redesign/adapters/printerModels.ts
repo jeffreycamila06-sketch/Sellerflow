@@ -52,7 +52,8 @@ export function knownPrinterLang(name: string | undefined | null): PrinterLang |
   return null;
 }
 
-// "✓ Works with SFL": the D520BT (AIMO / Phomemo) or a listed model. Everything else is "New".
+// A known printer: the D520BT (AIMO / Phomemo) or a listed model. (No longer shown as a row
+// badge — rows are name + id only; the flow finds out by printing.)
 export function isKnownPrinter(p: Pick<BluetoothPrinterDevice, "name" | "model">): boolean {
   return p.model === "D520BT" || knownPrinterLang(p.name) !== null;
 }

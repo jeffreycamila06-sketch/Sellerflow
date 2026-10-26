@@ -1,8 +1,9 @@
 // Printer setup v2 ("no switch, fewer taps") — the Printer settings screen:
 //   gate OFF (or an app without the generic method) = today's screen, byte-for-byte behaviour;
-//   gate ON = printers only (service OR name list), ✓ Works with SFL / New pills, known →
+//   gate ON = printers only (service OR name list), rows = name + id (Niimbot pill only), known →
 //   save + auto test sticker, new → one sticker per language (TSPL → ESC/POS → CPCL, each
-//   "Did it look like this?") → not supported + Contact Admin; "Show all Bluetooth devices";
+//   "Did it look like this?") → not supported + Contact Admin; "Show all Bluetooth devices" (admin only;
+//   a seller sees "Printer not listed? Contact Admin." instead);
 //   Niimbot by name → the vendor-SDK driver when the app has it (one test label, the 50×30 image,
 //   "Did it look like this?", saved as transport niimbot; seller-level errors in plain words), else
 //   not supported yet; classic (paired) rows on Android.
@@ -90,7 +91,7 @@ describe("gate", () => {
 });
 
 describe("v2 scan list", () => {
-  it("printers only — by service OR by name — with pills; no (Test) tag, no Simple print card", async () => {
+  it("printers only — by service OR by name — rows = name + id, only the Niimbot pill; no (Test) tag, no Simple print card", async () => {
     const b = installBridge();
     renderBT({ flowV2: true, showClassicToggle: true });
     await scan();
@@ -100,16 +101,31 @@ describe("v2 scan list", () => {
     expect(screen.getByText("B1-I603042141")).toBeTruthy();
     expect(screen.getByText("XP-P323B")).toBeTruthy();
     expect(screen.getByTestId("ps-v2-classic").textContent).toContain(t.rd_ps_v2_classic); // Android paired = classic tag
-    expect(screen.getAllByTestId("ps-v2-known")).toHaveLength(2); // D520BT + Y41BT
-    expect(screen.getAllByTestId("ps-v2-new")).toHaveLength(2); // NEW + classic XP
-    expect(screen.getByTestId("ps-v2-brand").textContent).toBe("Niimbot"); // the Niimbot row is named, not "New"
+    expect(screen.queryByTestId("ps-v2-known")).toBeNull(); // no "✓ Works with SFL" badge on any row (sellers don't know what SFL means)
+    expect(screen.queryByText(/Works with SFL/)).toBeNull();
+    expect(screen.queryByTestId("ps-v2-new")).toBeNull();   // and no "New" badge either — rows are name + id
+    expect(screen.queryByText(/^New$/)).toBeNull();
+    expect(screen.getAllByTestId("ps-v2-brand")).toHaveLength(1);
+    expect(screen.getByTestId("ps-v2-brand").textContent).toBe("Niimbot"); // the Niimbot pill stays
     expect(screen.queryByText(/\(Test\)/)).toBeNull();
     expect(screen.queryByText(t.rd_ps_classic_text)).toBeNull();
   });
-  it("'Show all Bluetooth devices' rescans with showAllDevices and lists every named device", async () => {
-    const b = installBridge();
+  it("seller (non-admin): no 'Show all Bluetooth devices' link — a muted 'Printer not listed? Contact Admin.' Telegram line instead", async () => {
+    installBridge();
     renderBT({ flowV2: true });
     await scan();
+    expect(screen.queryByTestId("ps-v2-show-all")).toBeNull();
+    expect(screen.queryByText(new RegExp(t.rd_ps_v2_show_all))).toBeNull();
+    const line = screen.getByTestId("ps-v2-not-listed");
+    expect(line.textContent).toBe(t.rd_ps_v2_not_listed);
+    expect(line.getAttribute("href")).toBe("https://t.me/SellerFlowLive");
+    expect(screen.getAllByTestId("ps-v2-row")).toHaveLength(5); // the printer-only list is unchanged
+  });
+  it("admin: 'Show all Bluetooth devices' rescans with showAllDevices and lists every named device (no Contact Admin line)", async () => {
+    const b = installBridge();
+    renderBT({ flowV2: true, isAdmin: true });
+    await scan();
+    expect(screen.queryByTestId("ps-v2-not-listed")).toBeNull();
     fireEvent.click(screen.getByTestId("ps-v2-show-all"));
     await screen.findByText(/Some Watch/);
     expect(b.scanBluetoothLabelPrinters).toHaveBeenLastCalledWith({ includeGenericPrinters: true, showAllDevices: true });
