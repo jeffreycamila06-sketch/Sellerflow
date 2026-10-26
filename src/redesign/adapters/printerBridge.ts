@@ -9,7 +9,7 @@
 // the APK. (The slip/sticker payload builders live in printing.ts, byte-parity.)
 import { buildNativeStickerPayload, type Settings } from "./printing";
 import type { Buyer } from "../../lib/orderTypes";
-import { rememberSavedPrinter, type PrinterLang } from "./savedPrinter";
+import { rememberSavedPrinter, savedIsNiimbot, savedGenericLang, type PrinterLang } from "./savedPrinter";
 
 // Result/config shapes — structurally identical to App.tsx:39-54.
 export interface MobilePrinterDevice { id: string; type: "bluetooth" | "lan"; name: string; address?: string; host?: string; port?: number; paired?: boolean; online?: boolean; signal?: number; distance?: string; hint?: string }
@@ -27,7 +27,7 @@ export type LanBridgeAction = "scanPrinters" | "printerStatus" | "testPrint" | "
 // print-probe harness that used it was removed pre-merge; the native method
 // stays for future diagnostics). Both route through the SAME native BLE/SPP
 // transport as testStickerPrint; the TEXT path (printStickerNative) is unaffected.
-export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative" | "printStickerBitmap" | "printRawTspl" | "testGenericPrinter";
+export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative" | "printStickerBitmap" | "printRawTspl" | "testGenericPrinter" | "printStickerImage";
 
 export const hasNativePrinter = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter;
 export const hasBtBridge = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
@@ -159,6 +159,17 @@ export const TEST_COMMENT_V2 = "好 COMMENT / PRICE";
 export function buildTestBuyerV2(): Buyer {
   const b = buildTestBuyer();
   return { ...b, name: TEST_NAME_V2, orders: [{ ...b.orders[0], item: TEST_COMMENT_V2, name: TEST_NAME_V2 }] };
+}
+
+/**
+ * The test sticker for the SAVED printer (the Settings / Print Pattern "Test print" buttons):
+ * a saved generic or Niimbot printer prints the Chinese v2 sticker (image path) — the same as
+ * the pick flow printed when it was set up; the D520BT keeps buildTestBuyer() (golden-pinned
+ * stream). Issue B (Oct 26): these buttons used buildTestBuyer() for every printer, so a saved
+ * Niimbot printed "Test Print / PRICE" while the pick flow printed "測試 Test Print".
+ */
+export function savedTestBuyer(): Buyer {
+  return savedIsNiimbot() || savedGenericLang() !== null ? buildTestBuyerV2() : buildTestBuyer();
 }
 
 export function buildTestBuyer(): Buyer {

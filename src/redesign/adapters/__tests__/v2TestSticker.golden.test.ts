@@ -7,7 +7,7 @@
 // Time is pinned (buildTestBuyer stamps the clock) so the bytes are deterministic.
 import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
-import { buildNativeStickerPayload, buildGenericStickerBytes, buildNiimbotImage, imageStickerPayload, DEF_SETTINGS, NIIMBOT_LABEL, NIIMBOT_FRAME_INSET_MM, NIIMBOT_FRAME_DOTS } from "../printing";
+import { buildNativeStickerPayload, buildGenericStickerBytes, buildNiimbotImage, imageStickerPayload, DEF_SETTINGS, NIIMBOT_LABEL, NIIMBOT_FRAME_INSET_MM, NIIMBOT_FRAME_DOTS, NIIMBOT_CANVAS, NIIMBOT_SAFE_EDGE_DOTS } from "../printing";
 import { buildTestBuyer, buildTestBuyerV2, TEST_NAME_V2, TEST_COMMENT_V2 } from "../printerBridge";
 import { renderStickerBitmap, propLayoutLines, type RasterPayload, type RasterAtlases } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
@@ -29,8 +29,8 @@ const GOLDEN = {
   tspl: "fb1dfe0e35fd6444a07ae81301c16d71e68a3527827965f59d3a8148afdc8b55",
   escpos: "c59408e1255a3f4eb5bb0d2a8619fb77b544e1ebd019037f5eafa32d78b98f51",
   cpcl: "babf5c714903e23ab6ebcfa80356a4351af30f22efdf594b51d18284ae0ab4f4",
-  niimbot: "5830f3d3acb5b5c8095415d2627eb66be76e5521f0501467bbfea508ca1c68b1", // 384×224 = the raster on the SDK frame with the QR off
-  frameQrOn: "24e5ffc8fab80866f738ec60fbb28230c3099426a405d85122ade126134b1035", // the same frame with the QR on (= the niimbot_1to1_test_sticker render)
+  niimbot: "f032d5d84ed3716e46684ae02687abecb77bb0d424ad1d16a4470b04489d8534", // 384×224 = the raster on the SDK frame, 16-dot safe margin, QR off
+  frameQrOn: "1f205edff3e257811f333b67493f8ad461435c26b7ebd0210132a316c4015e29", // the same with the QR on (= the niimbot_safe_margin_test_sticker_qron render)
   rasterQrOn: "b9904df840270621026457b8cb26e7bf7a909128f212d855e31a8f047a310b1f",   // label-sized 384×240 (the generic image paths)
   rasterQrOff: "b6689b0493b0c95418dbf5cf21f21eac299d43529c9a676c4845f064a49d515b",
 };
@@ -51,8 +51,13 @@ describe("v2 test sticker goldens (generic + Niimbot, production functions)", ()
     expect(Buffer.from(img.data, "base64")).toHaveLength(48 * 224);
     expect(sha(Buffer.from(img.data, "base64"))).toBe(GOLDEN.niimbot);
     const rp = imageStickerPayload(payload(), "TikTok");
-    expect(sha(renderStickerBitmap(withQr(rp, false), 50, 30, ATL, "extended", NIIMBOT_FRAME_DOTS).buf)).toBe(GOLDEN.niimbot);
-    expect(sha(renderStickerBitmap(withQr(rp, true), 50, 30, ATL, "extended", NIIMBOT_FRAME_DOTS).buf)).toBe(GOLDEN.frameQrOn);
+    expect(NIIMBOT_SAFE_EDGE_DOTS).toBe(16); // 2 mm of paper slack on each side (the B1 has no paper lock)
+    expect(NIIMBOT_CANVAS).toEqual({ w: 384, h: 224, edge: 16 });
+    expect(sha(renderStickerBitmap(withQr(rp, false), 50, 30, ATL, "extended", NIIMBOT_CANVAS).buf)).toBe(GOLDEN.niimbot);
+    expect(sha(renderStickerBitmap(withQr(rp, true), 50, 30, ATL, "extended", NIIMBOT_CANVAS).buf)).toBe(GOLDEN.frameQrOn);
+    // nothing inked in the outer 16 columns of the Niimbot image
+    const bits = Buffer.from(img.data, "base64");
+    for (let y = 0; y < 224; y++) for (let x = 0; x < 384; x++) if (x < 16 || x >= 368) expect((bits[y * 48 + (x >> 3)] & (0x80 >> (x & 7))) !== 0).toBe(false);
     // the label-sized raster (generic image paths) is NOT what Niimbot gets any more
     expect(sha(renderStickerBitmap(withQr(rp, false), 50, 30, ATL).buf)).not.toBe(GOLDEN.niimbot);
   });

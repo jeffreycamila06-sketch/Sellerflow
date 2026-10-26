@@ -14,7 +14,7 @@
 // language, then says it isn't supported yet. Everyone else keeps today's screen.
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer, buildTestBuyerV2,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyerV2, savedTestBuyer,
   hasGenericPrinterBridge, testGenericPrinter, genericDebugLine, hasNiimbotBridge, niimbotOsTooOld,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
@@ -58,7 +58,8 @@ export default function PrinterSettings({
 }) {
   const t = useT();
   const wifi = psType === "wifi";
-  const testBuyer = () => { const b = buildTestBuyer(); return testComment ? { ...b, orders: [{ ...b.orders[0], item: testComment }] } : b; };
+  // the saved printer's test sticker (D520BT = the old one; generic / Niimbot = the Chinese v2); the admin sample comment rides either
+  const testBuyer = () => { const b = savedTestBuyer(); return testComment ? { ...b, orders: [{ ...b.orders[0], item: testComment }] } : b; };
   const nativeReady = hasNativePrinter();
   // PHONE APP only: sticker QR is excluded on 60×40 (too small to scan fast). On WEB
   // (no native bridge) the browser-print QR follows the seller's own paper/driver

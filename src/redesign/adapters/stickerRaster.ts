@@ -860,8 +860,10 @@ export interface BandOptions { horizontalCrop?: boolean }
 export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: number }
 /** A raster size in dots that differs from the label's (the Niimbot SDK frame = the label minus
  *  its inset). Only the font-C painter lays out to it; the fixed-cell layouts are label-sized and
- *  get fitted afterwards (fitRaster). */
-export interface RasterCanvas { w: number; h: number }
+ *  get fitted afterwards (fitRaster). `edge` = a left/right margin in dots that replaces the
+ *  size's own (the Niimbot safe margin: the B1 has no paper lock, so ±1 mm of paper slack must
+ *  never cut the buyer number, the text or the QR). */
+export interface RasterCanvas { w: number; h: number; edge?: number }
 export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended", canvas?: RasterCanvas): FullRaster {
   if (atlases.proportional && mode !== "legacy" && isPropCompactSize(wMm, hMm)) { // font C, image paths only
     const bmp = renderPropCompact(payload, wMm, hMm, atlases, canvas);
@@ -1266,11 +1268,12 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
   const orders = buyer.orders ?? [];
   const narrow = (s: string) => stripUnrenderableExt(safe(s), true).replace(/\s+/g, " ").trim();
 
-  const qrProbe = propQrPlacement(payload, W, H, propSizes(wMm, true).edge);
+  const qrProbe = propQrPlacement(payload, W, H, canvas?.edge ?? propSizes(wMm, true).edge);
   const sizes = propSizes(wMm, !!qrProbe);
-  const qr = qrProbe ? propQrPlacement(payload, W, H, sizes.edge) : null;
-  const X = sizes.edge;
-  const right = qr ? Math.min(qr.x0, propQrInkLeft(qr) - PROP_TEXT_QR_GAP) : W - sizes.edge; // never inside the quiet zone the stamp clears
+  const edge = canvas?.edge ?? sizes.edge;
+  const qr = qrProbe ? propQrPlacement(payload, W, H, edge) : null;
+  const X = edge;
+  const right = qr ? Math.min(qr.x0, propQrInkLeft(qr) - PROP_TEXT_QR_GAP) : W - edge; // never inside the quiet zone the stamp clears
   const maxW = Math.max(1, right - X);
   if (!prop) return { lines: [], qr, x: X, w: W, h: H };
 

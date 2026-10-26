@@ -256,6 +256,8 @@ export function isPrinterNotSetup(code: string, message: string): boolean {
 // (plain words, no codes). Any other code = the usual print-failed wording.
 const NIIMBOT_ERROR_KEYS = {
   NIIMBOT_NO_PAPER: "rd_nb_no_paper", NIIMBOT_COVER_OPEN: "rd_nb_cover_open", NIIMBOT_PAPER_TYPE: "rd_nb_paper_type", NIIMBOT_LOW_BATTERY: "rd_nb_low_battery",
+  // Android: the classic (SPP) printer was not seen nearby / the pairing prompt was declined or failed
+  NIIMBOT_NOT_FOUND: "rd_nb_not_found", NIIMBOT_PAIR_DECLINED: "rd_nb_pair_declined", NIIMBOT_PAIR_FAILED: "rd_nb_pair_declined",
   // iOS: the driver framework needs iOS 17.2+ (NIIMBOT_OS_TOO_OLD) or could not be loaded (NIIMBOT_UNAVAILABLE) — same seller message
   NIIMBOT_OS_TOO_OLD: "rd_nb_os_too_old", NIIMBOT_UNAVAILABLE: "rd_nb_os_too_old",
 } as const;
@@ -577,11 +579,19 @@ export const NIIMBOT_LABEL = { w: 50, h: 30 } as const;
 export const NIIMBOT_FRAME_INSET_MM = 1;
 export const NIIMBOT_DOTS_PER_MM = 8;
 export const NIIMBOT_FRAME_DOTS = { w: (NIIMBOT_LABEL.w - 2 * NIIMBOT_FRAME_INSET_MM) * NIIMBOT_DOTS_PER_MM, h: (NIIMBOT_LABEL.h - 2 * NIIMBOT_FRAME_INSET_MM) * NIIMBOT_DOTS_PER_MM } as const;
+// SAFE MARGIN (Oct 26, controlled same-paper test): the B1 has no paper lock, so the label can
+// sit ±1 mm sideways from print to print (that slack, not the app, produced the "shifted right"
+// and then "shifted left" readings). A 2 mm (16-dot) left/right margin INSIDE the 384×224 image
+// keeps the buyer number, the text and the QR on paper either way. The QR keeps its 5-dot
+// modules (29 + 8 quiet = 185 dots still fit: 16 + 165 ink + 16 ≤ 384); text keeps
+// shrink-before-cut in the narrower column. Niimbot image only — iOS + Android alike.
+export const NIIMBOT_SAFE_EDGE_DOTS = 16;
+export const NIIMBOT_CANVAS = { ...NIIMBOT_FRAME_DOTS, edge: NIIMBOT_SAFE_EDGE_DOTS } as const;
 export async function buildNiimbotImage(payload: NativeStickerPayload, platform?: string, fbName = false): Promise<NiimbotImage> {
   const p: NativeStickerPayload = { ...payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
   const img = imageStickerPayload(p, platform, fbName);
   // font C lays out to the frame; the fixed-cell fallback (no font-C atlas) is label-sized and is centred-cropped to it
-  const full = fitRaster(renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img), "extended", NIIMBOT_FRAME_DOTS), NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h);
+  const full = fitRaster(renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img), "extended", NIIMBOT_CANVAS), NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h);
   return { w: full.w, h: full.h, rowBytes: full.rowBytes, data: bytesToBase64(full.buf), labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
 }
 async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {

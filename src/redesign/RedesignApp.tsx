@@ -114,7 +114,7 @@ import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePr
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
-import { hasBtBridge, hasNativePrinter, buildTestBuyer } from "./adapters/printerBridge";
+import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from "./adapters/printerBridge";
 import { printerFlowV2Enabled } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, type Platform, ttDisconnect } from "./adapters/connect";
@@ -1825,7 +1825,7 @@ export default function RedesignApp() {
   // bridge, with a toast for the result. No-op-safe off-device (no BT bridge).
   // Admin test of the LIVE layout v2: the normal test sticker with a long comment.
   const testBuyerWithComment = (item: string): Buyer => { const b = buildTestBuyer(); return { ...b, orders: [{ ...b.orders[0], item, time: "14:05" }] }; };
-  const onTestPrint = async (testBuyer: Buyer = buildTestBuyer()) => {
+  const onTestPrint = async (testBuyer: Buyer = savedTestBuyer()) => { // the saved printer's sticker: D520BT = old, generic / Niimbot = the Chinese v2
     const storeName = printShopName;
     const settings = buildSettingsFromRedesign({ pp, psType, psOut, psSize });
     // No BT bridge (web/desktop) → browser-print the SAME test pattern through
