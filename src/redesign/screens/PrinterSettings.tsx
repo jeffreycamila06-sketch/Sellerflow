@@ -132,12 +132,18 @@ export default function PrinterSettings({
   const listBox: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, marginTop: 12, overflow: "hidden" };
   async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); }
   // TEMPORARY admin-only (Android Niimbot position investigation, Oct 26): the calibration label
-  // through the SAME printStickerImage bridge as a real order. Literal English on purpose (admin).
-  const showNiimbotCal = isAdmin && isCapacitorAndroid() && btSaved?.transport === "niimbot";
+  // through the SAME native path as a real order — the SAVED Niimbot (printStickerImage), or,
+  // when none is saved (the pick flow clears the save on "No, try again"), the first Niimbot row
+  // of the scan list through testGenericPrinter (no save). Literal English on purpose (admin).
+  const niimbotCalRow = btSaved?.transport === "niimbot" ? null : btPrinters.find((p) => brandOf(p) === "niimbot") ?? null;
+  const showNiimbotCal = isAdmin && isCapacitorAndroid() && (btSaved?.transport === "niimbot" || !!niimbotCalRow);
   async function printNiimbotCalibration() {
     setBtMsg("Sending calibration label…");
-    const r = await btCall<MobilePrinterResult>("printStickerImage", { image: niimbotCalibrationImage() });
-    setBtMsg(r?.ok ? "Calibration label sent — measure the ticks." : `Calibration failed: ${r?.message || "no result"}`);
+    const image = niimbotCalibrationImage();
+    const r = niimbotCalRow
+      ? await testGenericPrinter(niimbotCalRow.address, { transport: "niimbot", name: niimbotCalRow.name, image })
+      : await btCall<MobilePrinterResult>("printStickerImage", { image });
+    setBtMsg(r?.ok ? "Calibration label sent — count the 1 mm ticks (long = 5 mm, longest = 10 mm) cut on each side." : `Calibration failed: ${(r as { message?: string } | null)?.message || (r as { code?: string } | null)?.code || "no result"}`);
   }
   async function testBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }

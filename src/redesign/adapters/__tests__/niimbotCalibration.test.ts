@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calibrationBits, calibrationInk as ink, niimbotCalibrationImage, CAL_TICK_SHORT, CAL_TICK_LONG, CAL_MARKER } from "../niimbotCalibration";
+import { calibrationBits, calibrationInk as ink, niimbotCalibrationImage, CAL_TICK_SHORT, CAL_TICK_LONG, CAL_TICK_XL, CAL_MARKER } from "../niimbotCalibration";
 import { NIIMBOT_FRAME_DOTS } from "../printing";
 import { savedTestBuyer, buildTestBuyerV2, buildTestBuyer, TEST_NAME_V2 } from "../printerBridge";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
@@ -21,6 +21,8 @@ describe("Niimbot calibration label (Android position investigation)", () => {
     expect(ink(b, 16, CAL_TICK_SHORT)).toBe(true); expect(ink(b, 16, CAL_TICK_SHORT + 1)).toBe(false);
     expect(ink(b, 16, b.h - 1 - CAL_TICK_SHORT)).toBe(true); expect(ink(b, 16, b.h - 2 - CAL_TICK_SHORT)).toBe(false);
     expect(ink(b, 40, CAL_TICK_LONG)).toBe(true); expect(ink(b, 40, CAL_TICK_LONG + 1)).toBe(false);
+    expect(ink(b, 80, CAL_TICK_XL)).toBe(true); expect(ink(b, 80, CAL_TICK_XL + 1)).toBe(false);   // 10 mm = longest
+    expect(ink(b, 120, CAL_TICK_LONG)).toBe(true); expect(ink(b, 120, CAL_TICK_LONG + 1)).toBe(false); // 15 mm = long, not longest
     // left/right at y = 16 (short) and y = 40 (long)
     expect(ink(b, CAL_TICK_SHORT, 16)).toBe(true); expect(ink(b, CAL_TICK_SHORT + 1, 16)).toBe(false);
     expect(ink(b, b.w - 1 - CAL_TICK_SHORT, 16)).toBe(true); expect(ink(b, b.w - 2 - CAL_TICK_SHORT, 16)).toBe(false);
