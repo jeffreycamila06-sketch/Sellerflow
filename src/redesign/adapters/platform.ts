@@ -27,6 +27,17 @@ export function isCapacitorIOS(): boolean {
   }
 }
 
+// REAL Capacitor Android app only (the Niimbot vendor-SDK path is Android-native).
+export function isCapacitorAndroid(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const cap = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+    return cap?.getPlatform?.() === "android";
+  } catch {
+    return false;
+  }
+}
+
 // ── iOS native-quality display (canonical Capacitor pattern) ────────────────
 // The iOS shell is FULL-BLEED (`ios.contentInset` = default "never" — the
 // "always" experiment and its hasNativeTopInset() heuristic are gone): the

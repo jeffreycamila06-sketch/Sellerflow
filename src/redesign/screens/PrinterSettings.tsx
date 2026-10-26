@@ -14,7 +14,7 @@
 // language, then says it isn't supported yet. Everyone else keeps today's screen.
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer, buildTestBuyerV2,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyerV2, savedTestBuyer,
   hasGenericPrinterBridge, testGenericPrinter, genericDebugLine, hasNiimbotBridge, niimbotOsTooOld,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
@@ -25,6 +25,8 @@ import { TELEGRAM_URL } from "../../lib/telegram";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { useT } from "../i18n";
 import { isAppShell } from "../adapters/appShell";
+import { isCapacitorAndroid } from "../adapters/platform";
+import { niimbotCalibrationImage } from "../adapters/niimbotCalibration";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
 const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -58,7 +60,8 @@ export default function PrinterSettings({
 }) {
   const t = useT();
   const wifi = psType === "wifi";
-  const testBuyer = () => { const b = buildTestBuyer(); return testComment ? { ...b, orders: [{ ...b.orders[0], item: testComment }] } : b; };
+  // the saved printer's test sticker (D520BT = the old one; generic / Niimbot = the Chinese v2); the admin sample comment rides either
+  const testBuyer = () => { const b = savedTestBuyer(); return testComment ? { ...b, orders: [{ ...b.orders[0], item: testComment }] } : b; };
   const nativeReady = hasNativePrinter();
   // PHONE APP only: sticker QR is excluded on 60×40 (too small to scan fast). On WEB
   // (no native bridge) the browser-print QR follows the seller's own paper/driver
@@ -128,6 +131,14 @@ export default function PrinterSettings({
   );
   const listBox: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, marginTop: 12, overflow: "hidden" };
   async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); }
+  // TEMPORARY admin-only (Android Niimbot position investigation, Oct 26): the calibration label
+  // through the SAME printStickerImage bridge as a real order. Literal English on purpose (admin).
+  const showNiimbotCal = isAdmin && isCapacitorAndroid() && btSaved?.transport === "niimbot";
+  async function printNiimbotCalibration() {
+    setBtMsg("Sending calibration label…");
+    const r = await btCall<MobilePrinterResult>("printStickerImage", { image: niimbotCalibrationImage() });
+    setBtMsg(r?.ok ? "Calibration label sent — measure the ticks." : `Calibration failed: ${r?.message || "no result"}`);
+  }
   async function testBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }
     if (!settings) return;
@@ -309,6 +320,9 @@ export default function PrinterSettings({
               <button onClick={() => void scanBt()} disabled={btScanning} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
               {btSaved && <button onClick={() => void testBt()} style={gridBtn}>{t.rd_ps_test_print}</button>}
             </div>
+            {showNiimbotCal && (
+              <button data-testid="ps-niimbot-cal" onClick={() => void printNiimbotCalibration()} style={{ ...gridBtn, width: "100%", marginTop: 9, borderStyle: "dashed" }}>📐 Calibration label (admin)</button>
+            )}
             {!v2 && btPrinters.length > 0 && (
               <div style={listBox}>
                 {btPrinters.map(btRow)}

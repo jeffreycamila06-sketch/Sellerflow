@@ -334,6 +334,7 @@ final class NiimbotTransport {
                             String info = "{\"printerImageProcessingInfo\":{\"orientation\":0,\"margin\":[0,0,0,0],\"printQuantity\":1,"
                                 + "\"horizontalOffset\":0,\"verticalOffset\":0,\"width\":" + wMm + ",\"height\":" + hMm
                                 + ",\"printMultiple\":" + multiple + ",\"epc\":\"\"}}";
+                            Log.i(TAG, "commit: labelJson=" + labelJson.length() + " chars, getMultiple()=" + p.getMultiple() + " → printMultiple=" + multiple + ", info=" + info);
                             p.commitData(Collections.singletonList(labelJson), Collections.singletonList(info));
                         } catch (Throwable t) {
                             Log.e(TAG, "commit failed", t);

@@ -49,7 +49,7 @@ describe("test print comment", () => {
   it("RedesignApp: v2 users' LIVE print pattern test and Printer settings test use COMMENT / PRICE; others the default buyer", () => {
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain("onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}");
-    expect(app).toContain("const onTestPrint = async (testBuyer: Buyer = buildTestBuyer()) => {");
+    expect(app).toContain("const onTestPrint = async (testBuyer: Buyer = savedTestBuyer()) => {"); // the SAVED printer decides: D520BT = buildTestBuyer, generic / Niimbot = the Chinese v2
     expect(app).toContain("testComment={stickerV2On ? PREVIEW_COMMENT : undefined}");
     expect(app).toContain("onTestPrintSample={stickerV2On && isAdmin ? (item) =>"); // long-comment buttons still admin-only
   });
