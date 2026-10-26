@@ -75,7 +75,7 @@ export function buildSendMessage(o: {
     fill(o.labels.total, { total: `${o.cur}${fmt(o.total)}` }),
   ];
   const note = o.note.trim();
-  if (note) out.push(note);
+  if (note) out.push("", note); // a blank line, then the note
   return out.join("\n");
 }
 

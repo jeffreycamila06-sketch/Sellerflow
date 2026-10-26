@@ -100,7 +100,7 @@ describe("1 — duplicate buyer # (B1)", () => {
     expect(q("buyer-receipt")!.textContent).toContain("Bea");
     expect(q("buyer-receipt")!.textContent).not.toContain("Ann");
     fireEvent.click(q("tt-send-btn")!);
-    expect(q("tts-preview")!.textContent).toContain("Hi Bea!");
+    expect((q("tts-preview") as HTMLTextAreaElement).value).toContain("Hi Bea!");
     fireEvent.click(q("dup-back")!);                      // back to the chooser
     expect(q("buyer-receipt")).toBeNull();
     expect(qa("dup-option")).toHaveLength(2);
@@ -167,7 +167,7 @@ describe("6 — Send total = the printed lines (A11)", () => {
     fireEvent.click(q("tts-add")!);
     fireEvent.change(qa("tts-price")[2], { target: { value: "500" } });
     expect((q("tts-total") as HTMLInputElement).value).toBe("630");
-    expect(q("tts-preview")!.textContent).toContain("Total: NT$630");
+    expect((q("tts-preview") as HTMLTextAreaElement).value).toContain("Total: NT$630");
   });
 });
 
@@ -278,7 +278,7 @@ describe("9 — small items", () => {
     const r = renderOrders([ANN], { sessionStartedAt: started, sessionWindowDays: 3 });
     r.type("3");
     fireEvent.click(q("tt-send-btn")!);
-    expect(q("tts-preview")!.textContent).toContain("Order mo sa live (10/12 → 10/14):");
+    expect((q("tts-preview") as HTMLTextAreaElement).value).toContain("Here's your invoice (10/12 → 10/14):");
   });
 });
 

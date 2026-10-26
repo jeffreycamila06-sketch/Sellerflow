@@ -37,7 +37,7 @@ const renderOrders = (b: Buyer, tiktokSend: boolean) => {
 };
 const q = (sel: string) => document.querySelector(`[data-testid='${sel}']`) as HTMLElement | null;
 const qa = (sel: string) => Array.from(document.querySelectorAll(`[data-testid='${sel}']`)) as HTMLInputElement[];
-const preview = () => q("tts-preview")!.textContent || "";
+const preview = () => (q("tts-preview") as HTMLTextAreaElement).value;
 
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); ios.v = false; });
 
@@ -65,7 +65,7 @@ describe("the message", () => {
     fireEvent.click(q("tt-send-btn")!);
     expect(preview()).toBe([
       "Hi Ann Reyes! 😊",
-      "Order mo sa live (10/13):",
+      "Here's your invoice (10/13):",
       "1. A1 dress — NT$350",
       "2. freebie — NT$0",
       "3. B2 top — NT$280",
@@ -86,7 +86,7 @@ describe("the message", () => {
     fireEvent.change(q("tts-total")!, { target: { value: "350" } });
     expect(q("tts-edited")).not.toBeNull();
     fireEvent.change(q("tts-note")!, { target: { value: "GCash 0917…" } });
-    expect(preview()).toMatch(/Total: NT\$350\nGCash 0917…$/);
+    expect(preview()).toMatch(/Total: NT\$350\n\nGCash 0917…$/); // a blank line before the note
   });
   it("an added line can be removed again", () => {
     renderOrders(buyer("TikTok"), true);
