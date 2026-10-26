@@ -2,9 +2,9 @@
 // for one or more lives in parallel from plain Node, exactly like the viewer page does, and log
 // counts / timings / status codes. Never stores buyer data: at most 3 sample comments per live
 // with usernames masked. Stops after --minutes (default 5).
-//   node scripts/probes/shopee/poll.mjs --lives <sessionId[,sessionId…]> [--minutes 5] [--cc ph] [--uuid-per-live]
+//   node scripts/probes/shopee/poll.mjs --lives <share link|uid:<hostUid>|sessionId>[,…] [--minutes 5] [--cc ph] [--uuid-per-live]
 import { randomUUID } from "node:crypto";
-import { sessionMeta } from "./resolve.mjs";
+import { resolveSessionId, anySessionMeta } from "./resolve.mjs";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => (a.startsWith("--") ? [a.slice(2), all[i + 1] && !all[i + 1].startsWith("--") ? all[i + 1] : "1"] : [])).filter((x) => x.length));
@@ -17,12 +17,14 @@ if (!lives.length) { console.error("usage: poll.mjs --lives <id,id> [--minutes 5
 const mask = (u) => { const s = String(u ?? ""); return s.length <= 2 ? "*".repeat(s.length || 1) : s[0] + "*".repeat(Math.max(1, s.length - 2)) + s[s.length - 1]; };
 const sharedUuid = randomUUID();
 
-async function pollLive(sessionId) {
-  const meta = await sessionMeta(sessionId, cc);
+async function pollLive(input) {
+  const ids = await resolveSessionId(input);
+  const meta = await anySessionMeta(ids, cc);
   const s = meta.body?.data?.session;
+  const sessionId = s?.session_id ?? ids.sessionId ?? input;
   const log = (m) => console.log(`[${sessionId}] ${new Date().toISOString().slice(11, 19)} ${m}`);
-  if (!s?.chatroom_id) { log(`session API HTTP ${meta.status}: no chatroom_id (${JSON.stringify(meta.body).slice(0, 160)})`); return null; }
-  log(`chatroom ${s.chatroom_id} status=${s.status} viewers=${s.viewer_count ?? s.member_cnt ?? "?"} (session API ${meta.ms} ms)`);
+  if (!s?.chatroom_id) { log(`${meta.route} API HTTP ${meta.status}: no chatroom_id (${JSON.stringify(meta.body).slice(0, 160)})`); return null; }
+  log(`chatroom ${s.chatroom_id} status=${s.status} viewers=${s.viewer_count ?? s.member_cnt ?? "?"} (${meta.route} API ${meta.ms} ms, via ${ids.via})`);
   const uuid = uuidPerLive ? randomUUID() : sharedUuid;
   const stat = { sessionId, chatroom: s.chatroom_id, requests: 0, ok: 0, codes: {}, httpStatuses: {}, msgs: 0, msgTypes: {}, latencies: [], intervals: new Set(), samples: [], errors: 0, firstMsgAt: null, cookiesSeen: false };
   let timestamp = 0, interval = 3;

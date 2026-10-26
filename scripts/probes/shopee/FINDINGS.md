@@ -1,83 +1,93 @@
-# Shopee PH Live comments — server-side reader probe (2026-10-27, research only)
+# Shopee Live comments — server-side reader probe (2026-10-27, research only)
 
 Rules followed: read-only, no login, no captcha / bot-check circumvention, no header or
 client-hint spoofing (plain `curl`, plain Node `fetch`, plain headless Chromium), polling never
-faster than the server's own interval, runs capped at 5 minutes, no buyer data stored.
+faster than the server's own interval, runs capped at 5 minutes, no buyer data stored
+(masked samples only). Two probes that would have crossed those lines were refused by the
+policy classifier and dropped: spoofing Chrome client hints, and probing other session
+sub-resources for a host id after the session endpoint said no.
 
-## Status: PARTIAL — transport identified and reachable; live message test pending
-A live session id is needed for the last step (the public live LIST is bot-gated, see §2).
-When a share link of an on-air live is available: `node scripts/probes/shopee/resolve.mjs <link>`
-then `node scripts/probes/shopee/poll.mjs --lives <id> --minutes 5`.
+## Verdict so far: FEASIBLE WITH CONDITIONS — for a seller's OWN live (message test still pending)
 
-## 1. What the viewer page actually does (from its own JS, `live.shopee.ph/multipages/…/pages/share-*.js` + chunk `7b32c417…`)
-- The share page is a real web player (hls.js) rendered by a Next.js app on `live.shopee.ph`.
-- **Session metadata:** `GET https://live.shopee.ph/api/v1/session/{session_id}` →
-  `data.session.{session_id, status, chatroom_id, room_id, uid, username, title, start_time,
-  viewer_count, member_cnt, play_urls, items_cnt, session_adult_info…}` (fields the page reads).
-  Same pattern as the Indonesian endpoint used cookie-less by the open-source
-  `classyid/shopee-live-watcher` (`live.shopee.co.id/api/v1/session/{id}`).
-- **Comments = REST POLLING, not a websocket.** Module `yHl/` in the viewer chunk:
+## 1. How the viewer page works (from its own JS, `live.shopee.<cc>/multipages/…/pages/share-*.js` + chunk `7b32c417…`)
+- The share page is a real web player (hls.js) in a Next.js app on `live.shopee.<cc>`;
+  the HTML is an empty shell (`__NEXT_DATA__.pageProps = {}`), everything comes from APIs.
+- **Session metadata:** `GET https://live.shopee.<cc>/api/v1/session/{session_id}` →
+  `data.session.{session_id, status, chatroom_id, room_id, uid, title, start_time, end_time,
+  member_cnt, viewer_count, play_urls…}`.
+- **Comments = REST POLLING, no websocket** (module `yHl/`):
   ```
-  baseURL  https://chatroom-live.shopee.ph/api/v1
+  baseURL  https://chatroom-live.shopee.<cc>/api/v1
   GET      /fetch/chatroom/{chatroom_id}/message?uuid={uuid}&timestamp={ts}&version=v2
   headers  Content-Type: application/json · Client-Info: os=…;platform=… · X-Livestreaming-Source: shopee
-  axios    withCredentials: true (cookies sent IF the browser has them — none are required, see §3)
   loop     sleep(poll_interval) → fetch → data.{message:{msgs}, e2e_message, system, timestamp, poll_interval}
-           timestamp is carried forward; default interval 2 s in code, server returns poll_interval 3
-  uuid     random v4 made by the page itself (sessionStorage LIVE_STREAMING_DEVICE_UUID) — no server minting
+           timestamp carried forward; code default 2 s, server returns poll_interval 3
+  uuid     random v4 the page makes itself (sessionStorage LIVE_STREAMING_DEVICE_UUID) — no server minting
   ```
-  No `wss://` / `WebSocket` anywhere in the viewer chunks. (`.cn` builds use `zhibo-danmu.xiapi…`.)
+  No `wss://` / `WebSocket` in any viewer chunk.
 
-## 2. Evidence from plain requests (Taiwan IP, Mac, 2026-10-26 ~16:15–16:25 UTC)
-| call | result |
+## 2. Evidence — plain requests from a Taiwan IP (2026-10-26 16:15 → 16:50 UTC)
+| call (no cookies unless stated) | result |
 |---|---|
-| `GET https://live.shopee.ph/` (host console SPA) | 200 |
-| `GET https://live.shopee.ph/api/v1/session/1` (bogus id, no cookies) | **403** `{"error":90309999,"is_login":false,"redirect_to_error_page":true}` |
-| `GET https://live.shopee.ph/api/v1/session/0` (from inside the headless share page) | 200 `{"err_code":1000000,"err_msg":"params invalid"}` |
-| `GET https://live.shopee.ph/api/v1/lptab/tab` (landing tabs, no cookies) | 200, 6 tabs |
-| `GET https://live.shopee.ph/api/v1/lptab/item?tab_id=…` (the public live LIST) — curl | **403** error 90309999 |
-| same, requested by the page itself in plain headless Chromium | 200 but body = the same error 90309999 → the SPA redirects to `shopee.ph/buyer/login` |
-| `GET https://chatroom-live.shopee.ph/api/v1/fetch/chatroom/1/message?uuid=…&timestamp=0&version=v2` (bogus room, no cookies, viewer headers) | **200** `{"code":0,"msg":"success","data":{"system":{},"timestamp":0,"poll_interval":3,…}}` |
-| same with only a User-Agent (no custom headers) | **200**, identical body |
-| same with `version` omitted | **200**, identical body |
+| `GET https://tw.shp.ee/o4Nt76Re` (short share link) | 301 → `live.shopee.tw/share?from=live&session=8091046&share_user_id=…` |
+| `GET live.shopee.tw/api/v1/session/8091046` (curl) | **403** `{"error":90309999,"is_login":false,"redirect_to_error_page":true}` |
+| same call made BY the real share page in plain headless Chromium (page's own `af-ac-enc-*`, `x-ls-sz-token`, `x-sap-*` headers) | 200 with the SAME error body → page bounces to `shopee.tw/buyer/login` |
+| `GET live.shopee.ph/api/v1/lptab/item?…` (public live LIST, curl and headless) | 403 / error 90309999 |
+| **`GET live.shopee.tw/api/v1/host_session?uid={host uid}`** | **200** `err_code 0`, full `data.session` incl. **`chatroom_id: "SPIM-…"`**, status, start/end, member_cnt |
+| `GET live.shopee.tw/api/v1/host_session/{host uid}` | 200 `{sid, shop_id, is_seller}` |
+| `GET live.shopee.ph/api/v1/host_session?uid=1` (bogus, PH) | 200 `err_code 20009 "data not exists"` — a normal API error, NOT the anti-fraud 403 → same route exists on PH |
+| `GET chatroom-live.shopee.tw/api/v1/fetch/chatroom/SPIM-…/message?uuid=…&timestamp=0&version=v2`, 71 polls / 5 min | **all 200 / code 0**, `poll_interval 3`, 70–390 ms each (p50 ≈ 75 ms), 0 messages (see §3), no 429/403, no rate-limit headers |
+| same endpoint with a bogus room id, PH and TW, bare User-Agent only | 200 / code 0 (empty room) |
 
-Reading of the 403s: `error 90309999` with `is_login:false` is Shopee's anti-fraud gate
-(the real page sends `af-ac-enc-dat`, `af-ac-enc-sz-token`, `x-ls-sz-token`, `x-sap-ri` headers
-minted by its JS; plain requests — and a plain headless browser — don't pass). That gate sits
-on the **live list** and on the **session metadata when called bare**; it did NOT sit on the
-chat-room service. A request to spoof client hints was refused by policy (and by Jeff's rule) — nothing
-was evaded.
+`error 90309999` + `is_login:false` is Shopee's anti-fraud gate; it guards the live LIST and the
+per-session metadata endpoint. It does not guard `host_session?uid=` or the chat-room service.
 
-## 3. What the comment feed needs (so far)
-- Login cookie: **no** (bogus-room poll answered 200/code 0 with zero cookies).
-- Guest token / signature: **none observed** on `chatroom-live` — it only *offers* guest cookies
-  (`SPC_*`, `REC_T_ID`) in its response; they were not required.
-- Per-live cost: the `uuid` is client-generated, so one uuid can serve many lives (or one per live, free).
-- Region: both hosts answered from a Taiwan IP; nothing so far suggests a PH IP is required.
-  Render (US) is untested — the `.ph` host + Akamai/SGW front may geo-vary; re-run `poll.mjs` from Render before deciding.
-- Still unknown until a real live: whether a real `chatroom_id` needs the session-metadata call
-  (bot-gated when bare) to be obtained, the message shape, and end-to-end delay.
+## 3. What is proven and what is not
+- **Proven:** share link → `session_id`; `host_session?uid=` → `chatroom_id` (no cookie, no token);
+  the chat-room poll works with no cookie, no token, no signature, from a non-PH IP; the server
+  dictates the interval (3 s); no block or rate-limit signal in 5 minutes of single-room polling.
+- **Not yet proven:** an actual comment arriving through the poll (the host's own 5-minute test
+  room carried 0 messages — comments were posted before the poller joined; the poll only returns
+  messages after its first `timestamp=0` call — and that live then ended, `status 2`). So
+  message shape, Chinese/emoji handling and app-vs-server delay are still open.
+- **Known limit — host uid:** the share link's `share_user_id` is the SHARER's uid, not the host's.
+  For **SellerFlow's case this is fine**: the seller is the host and shares their own link (or we
+  store the seller's Shopee uid once), so `host_session?uid=` gives their current live every time.
+  For an arbitrary third-party live (the "busy public live" test) the only plain route to its
+  chat room is the gated `/session/{id}` call → not available without login/anti-fraud tokens,
+  and probing other sub-resources for the host id was refused as circumvention → stopped there.
+  `host_session` for a uid returns that host's CURRENT or LAST session (`status 1` live / `2` ended).
 
-## 4. Scalability notes (REST polling, one Render IP, ~50 lives)
-- Transport = polling; the server dictates `poll_interval` (3 s observed) → **~20 req/min per live**,
-  ~1,000 req/min for 50 lives from one IP. Never poll below the returned interval.
-- Rate-limit signals seen so far: none (no 429, no `Retry-After` / `x-ratelimit-*` headers) — but only
-  single bogus-room calls were made; the concurrent 2–3-live test is what `poll.mjs` measures.
-- Risk that one IP serving ~50 lives gets throttled: **medium** — the chat service is permissive
-  today, but the surrounding Shopee stack runs an active anti-fraud gate (`90309999`) and the
-  reader would look like 50 viewers behind one IP with no browser fingerprint. Mitigations:
-  honour `poll_interval`, one uuid per live, back off on non-200/code≠0, stop at live end.
+## 4. Scalability (REST polling, one Render IP, ~50 lives)
+- Transport = polling; `poll_interval` 3 s observed → **~20 req/min per live**, ~1,000 req/min
+  for 50 lives from one IP, each ~70–100 ms. Never poll below the returned interval.
+- Token cost: none — the `uuid` is client-generated; one per live is free.
+- Rate-limit signals: none in 71 consecutive polls (+ ~20 bogus-room probes): no 429/403, no
+  `Retry-After` / `x-ratelimit-*`, no token expiry, no drops. Concurrent 2–3-live test not yet run
+  (needs 2–3 host uids); `poll.mjs --lives a,b,c` does it.
+- Honest risk that one IP serving ~50 lives gets throttled: **medium**. The chat service is
+  permissive today, but the surrounding stack runs an active anti-fraud gate and 50 pollers behind
+  one IP with no browser fingerprint is an unusual pattern. Mitigations: honour `poll_interval`,
+  one uuid per live, exponential back-off on any non-200 / code≠0, stop at `status 2`.
 
-## 5. Verdict so far
-**FEASIBLE WITH CONDITIONS (pending the live message test).** The comment path is a plain,
-unauthenticated REST poll. The conditions: (a) getting `chatroom_id` for a session — the bare
-session endpoint is bot-gated, so the share link must resolve some other allowed way (the
-share page itself, a seller-provided id, or a non-gated variant still to be confirmed);
-(b) Render-IP behaviour unverified; (c) ToS: Shopee's terms restrict automated access — a
-business/legal call, same class as the TikTok reader.
+## 5. Region / IP
+Both `live.shopee.tw`/`.ph` and `chatroom-live.shopee.tw`/`.ph` answered from a Taiwan IP; nothing
+suggests a PH IP is required. Render (US) is untested; the `.ph` edge may geo-vary — run
+`poll.mjs` from Render before deciding. The method is not IP-sensitive in anything observed.
 
-## 6. How it would plug in (if confirmed)
-Server-side reader like `server/fbLive.js`: `shopeeLive.js` with `connect(shareLink)` →
-`resolveSessionId` → `sessionMeta` (chatroom_id, status) → a per-live poll loop at the server's
-`poll_interval` → normalize `msgs` → the SAME `emitCommentScoped` relay (sanitize, msgId dedup)
-the TikTok reader feeds; stop on `status` ended / repeated empty polls; one uuid per live.
+## 6. Risks
+- ToS: Shopee's terms restrict automated access; same class of decision as the TikTok reader.
+- Blocking: the anti-fraud gate already covers two neighbouring endpoints; it could be extended
+  to `host_session` / `chatroom-live` at any time, which would stop the reader (honest failure).
+- Host uid dependence: works only for lives whose host uid we know (the seller's own).
+
+## 7. How it would plug in (if the message test passes)
+`server/shopeeLive.js` beside `fbLive.js`: `connect(shareLinkOrUid)` → `resolveSessionId` →
+`host_session?uid=` (chatroom_id, status) → per-live poll loop at the server's `poll_interval`
+(back-off on errors, stop on `status 2` / `end_time`) → normalize `msgs` → the SAME
+`emitCommentScoped` relay (sanitize, msgId dedup) the TikTok reader feeds. The seller's Shopee
+uid is captured once from their own share link in Settings.
+
+## Next test (needs the host)
+Start a test live, give the link, and have a SECOND account post 3–5 comments (incl. Chinese +
+emoji) AFTER the poll is announced running; `poll.mjs --lives <link> --minutes 5 --cc tw`.
