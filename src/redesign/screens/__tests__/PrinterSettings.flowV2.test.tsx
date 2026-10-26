@@ -291,8 +291,8 @@ describe("v2 new printer", () => {
     expect(b.testGenericPrinter).toHaveBeenCalledTimes(1);
     const job = b.testGenericPrinter.mock.calls[0][0] as { address: string; transport: string; name: string; data?: string; image: { w: number; h: number; rowBytes: number; data: string; labelWidthMm: number; labelHeightMm: number } };
     expect([job.address, job.transport, job.name, job.data]).toEqual(["NN:NN", "niimbot", "B1-I603042141", undefined]);
-    expect([job.image.w, job.image.h, job.image.rowBytes, job.image.labelWidthMm, job.image.labelHeightMm]).toEqual([384, 240, 48, 50, 30]); // 50×30, not the seller's 60×40
-    expect(Buffer.from(job.image.data, "base64")).toHaveLength(48 * 240);
+    expect([job.image.w, job.image.h, job.image.rowBytes, job.image.labelWidthMm, job.image.labelHeightMm]).toEqual([384, 224, 48, 50, 30]); // 50×30 (the SDK frame's dots, 1:1), not the seller's 60×40
+    expect(Buffer.from(job.image.data, "base64")).toHaveLength(48 * 224);
     expect(b.printRawTspl).not.toHaveBeenCalled();
     expect(b.printStickerImage).not.toHaveBeenCalled(); // the test goes through testGenericPrinter (no save yet)
     fireEvent.click(screen.getByTestId("ps-v2-yes"));

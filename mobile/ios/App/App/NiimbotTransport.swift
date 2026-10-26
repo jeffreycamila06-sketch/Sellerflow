@@ -8,8 +8,8 @@
 // print answers a seller-level code (NIIMBOT_OS_TOO_OLD / NIIMBOT_UNAVAILABLE) — never a crash.
 //
 // The web sends the 1-bit sticker image (rows packed MSB first, bit 1 = ink); NiimbotImage turns
-// it into the reference's 24-bit BMP (black ink on white) on the label's dot canvas BEFORE the
-// framework is involved, so the conversion is unit-tested in AppTests.
+// it into the reference's 24-bit BMP (black ink on white) of EXACTLY the SDK frame's dot size
+// BEFORE the framework is involved, so the conversion is unit-tested in AppTests.
 import Foundation
 import UIKit
 
@@ -22,16 +22,25 @@ struct NiimbotResult {
 enum NiimbotImage {
     /// Dots per mm of the B-series 203 dpi head (the reference's printMultiple for a B1 = 8.0).
     static let dotsPerMm = 8
+    /// The SDK image frame is inset this much on every side (SFLReferencePrint.m draws the ONE
+    /// image element at x=y=1, w=label−2, h=label−2 — a full-bleed frame prints BLANK). Web twin:
+    /// printing.ts NIIMBOT_FRAME_INSET_MM. The two MUST agree: the frame's dots are the BMP's
+    /// pixels, so the SDK scales by exactly 1.0 (its rescale + re-threshold turned CJK into blobs).
+    static let frameInsetMm: Float = 1
+    /// The frame's size in dots for a label — what the BMP must measure, 1:1.
+    static func frameDots(wMm: Float, hMm: Float) -> (w: Int, h: Int) {
+        (Int(((wMm - 2 * frameInsetMm) * Float(dotsPerMm)).rounded()), Int(((hMm - 2 * frameInsetMm) * Float(dotsPerMm)).rounded()))
+    }
 
     /// Packed 1-bit rows → the reference's 24-bit BMP (see `bmp`), black ink on white.
     /// Polarity = the rasterizer's full buffer (stickerRaster.ts renderStickerBitmap: rows
-    /// MSB-first, bit 1 = INK) — exactly what the web sends for Niimbot. `canvasW`/`canvasH` =
-    /// the label's dot size (50×30 mm × 8 = 400×240; the sticker raster is 384×240 = the 48 mm
-    /// printable width of the D520 layout): a smaller image is CENTRED on white so the image
-    /// has the label's exact size and aspect, never cropped. nil = bad geometry.
-    static func image(packed: Data, w: Int, h: Int, rowBytes: Int, canvasW: Int = 0, canvasH: Int = 0) -> Data? {
+    /// MSB-first, bit 1 = INK) — exactly what the web sends for Niimbot. `frameW`/`frameH` = the
+    /// BMP's size (the frame's dots; 0 = the image's own size). The web renders to the frame, so
+    /// normally image == frame; an image of another size is FITTED centred — cropped when bigger,
+    /// white-padded when smaller — never scaled (the caller logs that). nil = bad geometry.
+    static func image(packed: Data, w: Int, h: Int, rowBytes: Int, frameW: Int = 0, frameH: Int = 0) -> Data? {
         guard w > 0, h > 0, rowBytes > 0, packed.count >= rowBytes * h else { return nil }
-        let cw = max(canvasW, w), ch = max(canvasH, h)
+        let cw = frameW > 0 ? frameW : w, ch = frameH > 0 ? frameH : h
         let ox = (cw - w) / 2, oy = (ch - h) / 2
         return bmp(w: cw, h: ch) { x, y in
             let sx = x - ox, sy = y - oy
@@ -120,12 +129,16 @@ final class NiimbotTransport {
         guard let driver = NiimbotLoader.driver() else {
             completion(NiimbotResult(ok: false, code: "NIIMBOT_UNAVAILABLE", message: "The Niimbot driver could not be loaded")); return
         }
-        let canvasW = Int((wMm * Float(NiimbotImage.dotsPerMm)).rounded()), canvasH = Int((hMm * Float(NiimbotImage.dotsPerMm)).rounded())
-        guard let bmp = NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes, canvasW: canvasW, canvasH: canvasH) else {
+        let frame = NiimbotImage.frameDots(wMm: wMm, hMm: hMm)
+        if w != frame.w || h != frame.h {
+            // 1:1 broken (an older web bundle?): fitted to the frame so the SDK still never scales
+            NSLog("[Niimbot] app: SIZE MISMATCH image %dx%d ≠ frame %dx%d dots (label %.0fx%.0f mm, inset %.0f mm) — fitted centred", w, h, frame.w, frame.h, wMm, hMm, NiimbotImage.frameInsetMm)
+        }
+        guard let bmp = NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes, frameW: frame.w, frameH: frame.h) else {
             NSLog("[Niimbot] app: bad image geometry w=%d h=%d rowBytes=%d bytes=%d", w, h, rowBytes, packed.count)
             completion(NiimbotResult(ok: false, code: "BT_PRINT_FAILED", message: "Bad image data")); return
         }
-        NSLog("[Niimbot] app: %dx%d 1-bit → 24-bit BMP on the %dx%d-dot canvas, label %.0fx%.0f mm", w, h, canvasW, canvasH, wMm, hMm)
+        NSLog("[Niimbot] app: %dx%d 1-bit → 24-bit BMP %dx%d = the SDK frame's dots (1:1), label %.0fx%.0f mm", w, h, frame.w, frame.h, wMm, hMm)
         driver.printLabel(withName: name, png: bmp, labelWidthMm: wMm, labelHeightMm: hMm) { ok, code, message in
             completion(NiimbotResult(ok: ok, code: code, message: message))
         }

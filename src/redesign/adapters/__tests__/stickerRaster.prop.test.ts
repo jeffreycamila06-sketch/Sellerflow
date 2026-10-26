@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderStickerBitmap, rasterizeToBitmapTspl, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, PROP_CJK_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
+import { renderStickerBitmap, rasterizeToBitmapTspl, fitRaster, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, PROP_CJK_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "../glyphAtlas.cyrillic";
 import { CJK_ATLAS } from "../glyphAtlas.cjk";
@@ -223,6 +223,54 @@ describe("opt-in: the fixed-cell layout and the D520BT stream are untouched", ()
 // or the QR's cleared footprint); a cut line always ends in a whole "…"; digits are never
 // silently cut. Checked over every golden render AND a seeded fuzz of long handles / mixed
 // names / prices at both sizes, QR on and off.
+// The Niimbot SDK frame (the label minus a 1 mm inset = 384×224 on 50×30): the font-C layout
+// takes that canvas directly — same lines, sizes, QR rule and shrink ladder as the 384×240
+// label raster, only the vertical spacing is tighter — so the BMP is 1:1 with the frame's dots.
+describe("font C on a caller-supplied canvas (the Niimbot frame)", () => {
+  const FRAME = { w: 384, h: 224 };
+  const ink = (r: { buf: Uint8Array; w: number; h: number; rowBytes: number }, x: number, y: number) => (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0;
+  it("renders exactly the canvas with the same lines/sizes as the label raster; every glyph and the QR stay inside it", () => {
+    for (const [b, qr] of [[S1, true], [S2, true], [S2, false], [S3, true]] as const) {
+      const rp = payloadFor(b, "50x30", qr);
+      const label = propLayoutLines(rp, 50, 30, ATL), frame = propLayoutLines(rp, 50, 30, ATL, FRAME);
+      expect([frame.w, frame.h]).toEqual([384, 224]);
+      expect(frame.lines.map((l) => [l.size, l.line.text, l.line.cut])).toEqual(label.lines.map((l) => [l.size, l.line.text, l.line.cut]));
+      expect(!!frame.qr).toBe(!!label.qr);
+      if (frame.qr) { expect(frame.qr.x0).toBe(label.qr!.x0); expect(frame.qr.y0 + frame.qr.foot).toBeLessThanOrEqual(224); expect(frame.qr.y0).toBeGreaterThanOrEqual(0); }
+      const tops = propLineTops(frame.lines, 224);
+      frame.lines.forEach((l, i) => { expect(tops[i]).toBeGreaterThanOrEqual(0); expect(tops[i] + l.font.h).toBeLessThanOrEqual(224); if (i > 0) expect(tops[i]).toBeGreaterThanOrEqual(tops[i - 1] + frame.lines[i - 1].font.h); });
+      const r = renderStickerBitmap(rp, 50, 30, ATL, "extended", FRAME);
+      expect([r.w, r.h, r.rowBytes]).toEqual([384, 224, 48]);
+      expect(r.buf.some((v) => v !== 0)).toBe(true);
+    }
+  });
+  it("the frame raster is the label raster's content re-spaced — not a crop of it (no line is lost)", () => {
+    const rp = payloadFor(S3, "50x30", true);
+    const frame = renderStickerBitmap(rp, 50, 30, ATL, "extended", FRAME);
+    // first and last line rows carry ink (the date line is not pushed off the bottom)
+    const rowsWithInk = new Set<number>();
+    for (let y = 0; y < frame.h; y++) for (let x = 0; x < 180; x++) if (ink(frame, x, y)) { rowsWithInk.add(y); break; }
+    const L = propLayoutLines(rp, 50, 30, ATL, FRAME), tops = propLineTops(L.lines, 224);
+    const last = L.lines.length - 1;
+    expect([...rowsWithInk].some((y) => y >= tops[last] && y < tops[last] + L.lines[last].font.h)).toBe(true);
+    expect([...rowsWithInk].some((y) => y >= tops[0] && y < tops[0] + L.lines[0].font.h)).toBe(true);
+  });
+  it("fitRaster: identity at the same size, centred crop when bigger, centred white pad when smaller — ink never scaled", () => {
+    const rp = payloadFor(S1, "50x30", true);
+    const label = renderStickerBitmap(rp, 50, 30, ATL);
+    expect(fitRaster(label, label.w, label.h)).toBe(label);
+    const cropped = fitRaster(label, 384, 224);
+    expect([cropped.w, cropped.h, cropped.rowBytes]).toEqual([384, 224, 48]);
+    for (let y = 0; y < 224; y += 7) for (let x = 0; x < 384; x += 5) expect(ink(cropped, x, y)).toBe(ink(label, x, y + 8)); // 8 dots off the top (and bottom)
+    const padded = fitRaster(cropped, 400, 240);
+    expect([padded.w, padded.h, padded.rowBytes]).toEqual([400, 240, 50]);
+    for (let y = 0; y < 224; y += 7) for (let x = 0; x < 384; x += 5) expect(ink(padded, x + 8, y + 8)).toBe(ink(cropped, x, y));
+    for (let y = 0; y < 240; y++) for (const x of [0, 7, 392, 399]) expect(ink(padded, x, y)).toBe(false); // the padding is white
+    const count = (r: typeof label) => { let n = 0; for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (ink(r, x, y)) n++; return n; };
+    expect(count(padded)).toBe(count(cropped));
+  });
+});
+
 describe("font C glyph integrity", () => {
   // every ink dot of every painted glyph is in the raster, and the glyph lies inside the column
   function checkIntegrity(rp: RasterPayload, size: Size) {

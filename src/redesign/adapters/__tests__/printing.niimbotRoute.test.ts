@@ -41,9 +41,9 @@ describe("transport selection", () => {
     await flush();
     expect(b.printStickerImage).toHaveBeenCalledTimes(1);
     const { image } = b.printStickerImage.mock.calls[0][0] as { image: Img };
-    // 50×30 (384×240 dots) even though the seller's sticker size is 60×40
-    expect([image.w, image.h, image.rowBytes, image.labelWidthMm, image.labelHeightMm]).toEqual([384, 240, 48, 50, 30]);
-    expect(Buffer.from(image.data, "base64")).toHaveLength(48 * 240);
+    // 50×30 label, image = the SDK frame's dots (48×28 mm × 8 = 384×224) even though the seller's sticker size is 60×40
+    expect([image.w, image.h, image.rowBytes, image.labelWidthMm, image.labelHeightMm]).toEqual([384, 224, 48, 50, 30]);
+    expect(Buffer.from(image.data, "base64")).toHaveLength(48 * 224);
     expect(b.printRawTspl).not.toHaveBeenCalled();
     expect(b.printStickerNative).not.toHaveBeenCalled();
     expect(b.printStickerBitmap).not.toHaveBeenCalled();
@@ -87,8 +87,8 @@ describe("transport selection", () => {
   it("buildNiimbotImage ignores the seller's sticker size — the label is 50×30", async () => {
     const p = buildNativeStickerPayload(buyer, "NT$", "Store", { ...DEF_SETTINGS, stickerSize: "100x60" });
     const img = await buildNiimbotImage(p, "TikTok");
-    expect([img.w, img.h, img.rowBytes, img.labelWidthMm, img.labelHeightMm]).toEqual([384, 240, 48, 50, 30]);
-    expect(Buffer.from(img.data, "base64").some((v) => v !== 0)).toBe(true); // ink present
+    expect([img.w, img.h, img.rowBytes, img.labelWidthMm, img.labelHeightMm]).toEqual([384, 224, 48, 50, 30]);
+    expect(Buffer.from(img.data, "base64").some((v) => v !== 0)).toBe(true); // ink present (the fixed-cell fallback here, centred-cropped to the frame)
   });
 
   it("seller-level codes map to plain words; everything else is the usual print-failed wording", () => {

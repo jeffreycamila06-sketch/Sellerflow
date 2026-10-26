@@ -14,7 +14,7 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
 import { savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
@@ -566,12 +566,22 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
 // A saved Niimbot prints the SAME sticker image through the native driver (the SDK takes
 // a picture — no printer language). The label is ALWAYS the 50×30 layout (Niimbot's
 // common label), whatever sticker size the seller picked. ONE bridge call; the driver
-// reports completion or a seller-level code (NIIMBOT_NO_PAPER …). ⚠️ unverified on hardware.
+// reports completion or a seller-level code (NIIMBOT_NO_PAPER …).
+// 1:1 RULE: the SDK draws the image into a frame inset NIIMBOT_FRAME_INSET_MM on every side
+// (a full-bleed frame prints BLANK on the B1), rescaling + re-thresholding whatever it gets.
+// The image is therefore rendered at EXACTLY the frame's dots — (50−2)×(30−2) mm × 8 =
+// 384×224 — so the SDK scales by 1.0 and thin CJK strokes stay apart (a 400×240 canvas
+// came out as ~0.96×0.93 blobs). The native side mirrors the same inset (NiimbotTransport.swift
+// / SFLReferencePrint.m) and logs if the dots ever differ.
 export const NIIMBOT_LABEL = { w: 50, h: 30 } as const;
+export const NIIMBOT_FRAME_INSET_MM = 1;
+export const NIIMBOT_DOTS_PER_MM = 8;
+export const NIIMBOT_FRAME_DOTS = { w: (NIIMBOT_LABEL.w - 2 * NIIMBOT_FRAME_INSET_MM) * NIIMBOT_DOTS_PER_MM, h: (NIIMBOT_LABEL.h - 2 * NIIMBOT_FRAME_INSET_MM) * NIIMBOT_DOTS_PER_MM } as const;
 export async function buildNiimbotImage(payload: NativeStickerPayload, platform?: string, fbName = false): Promise<NiimbotImage> {
   const p: NativeStickerPayload = { ...payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
   const img = imageStickerPayload(p, platform, fbName);
-  const full = renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img));
+  // font C lays out to the frame; the fixed-cell fallback (no font-C atlas) is label-sized and is centred-cropped to it
+  const full = fitRaster(renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img), "extended", NIIMBOT_FRAME_DOTS), NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h);
   return { w: full.w, h: full.h, rowBytes: full.rowBytes, data: bytesToBase64(full.buf), labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
 }
 async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {

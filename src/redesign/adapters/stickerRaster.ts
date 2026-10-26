@@ -858,9 +858,13 @@ export interface BandOptions { horizontalCrop?: boolean }
 // Full uncropped 1-bit raster (bit 1 = ink) — exported so the band-crop lossless
 // invariant test can recompose the emitted BITMAP blocks against it.
 export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: number }
-export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended"): FullRaster {
+/** A raster size in dots that differs from the label's (the Niimbot SDK frame = the label minus
+ *  its inset). Only the font-C painter lays out to it; the fixed-cell layouts are label-sized and
+ *  get fitted afterwards (fitRaster). */
+export interface RasterCanvas { w: number; h: number }
+export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended", canvas?: RasterCanvas): FullRaster {
   if (atlases.proportional && mode !== "legacy" && isPropCompactSize(wMm, hMm)) { // font C, image paths only
-    const bmp = renderPropCompact(payload, wMm, hMm, atlases);
+    const bmp = renderPropCompact(payload, wMm, hMm, atlases, canvas);
     return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
   }
   // Compute the QR placement ONCE (legacy/parity mode never has a QR) → the layout wraps
@@ -872,6 +876,17 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
   paint(bmp, ops, atlases);
   stampHandleQr(bmp, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
+}
+
+/** The raster on a `w`×`h` canvas, centred: a bigger raster is cropped, a smaller one padded
+ *  with white (PURE). Same ink, never scaled — used when a layout was drawn label-sized but the
+ *  printer needs exactly the frame's dots. */
+export function fitRaster(r: FullRaster, w: number, h: number): FullRaster {
+  if (r.w === w && r.h === h) return r;
+  const out = new Bitmap(w, h);
+  const ox = Math.floor((w - r.w) / 2), oy = Math.floor((h - r.h) / 2);
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) out.fillRect(x + ox, y + oy, 1, 1);
+  return { buf: out.buf, w, h, rowBytes: out.rowBytes };
 }
 
 // ── Buyer TikTok-profile QR (bitmap path only) ───────────────────────────────
@@ -1130,6 +1145,8 @@ export function bytesToBase64(bytes: Uint8Array): string {
 //   • Fit = the real INK extent of a line (advances + the last glyph's right overhang, or
 //     the "…" itself) + PROP_INK_MARGIN ≤ the column — a glyph is never partially painted.
 //   • 50×30 (raster 384 = the 48 mm printable width) and 60×40 (raster 480 = the label).
+//     A caller may pass its own canvas in dots (the Niimbot SDK frame 384×224 = the label minus
+//     a 1 mm inset): same lines, QR rule and shrink ladder; only the vertical spacing changes.
 //   • The size choice depends on glyph ADVANCES only (CJK = one cell = the size), never on
 //     which CJK atlas is loaded → propPlanCjkSizes() tells the loader which CJK sizes a
 //     label needs before any CJK atlas is fetched, and the paint lands on the same sizes.
@@ -1240,8 +1257,8 @@ export function propFitShrinking(text: string, base: number, maxW: number, atlas
 
 interface PropLaidLine { size: number; font: PropFont; line: PropLine }
 /** All the label's lines with their final sizes (PURE; CJK atlases not needed). */
-export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): { lines: PropLaidLine[]; qr: QrPlacement | null; x: number; w: number; h: number } {
-  const W = stickerConfig(wMm, hMm).wDots, H = hMm * 8;
+export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas): { lines: PropLaidLine[]; qr: QrPlacement | null; x: number; w: number; h: number } {
+  const W = canvas?.w ?? stickerConfig(wMm, hMm).wDots, H = canvas?.h ?? hMm * 8;
   const prop = atlases.proportional;
   const buyer = payload.buyer ?? {};
   const settings = payload.settings;
@@ -1313,8 +1330,8 @@ export function propGlyphBox(item: PropItem, size: number, x0: number, top: numb
 }
 
 /** The whole compact label as a 1-bit bitmap (the only painter of the font-C layout). */
-export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): Bitmap {
-  const { lines, qr, x, w, h } = propLayoutLines(payload, wMm, hMm, atlases);
+export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas): Bitmap {
+  const { lines, qr, x, w, h } = propLayoutLines(payload, wMm, hMm, atlases, canvas);
   const bmp = new Bitmap(w, h);
   const tops = propLineTops(lines, h);
   lines.forEach((l, i) => { for (const it of l.line.items) { const b = propGlyphBox(it, l.size, x, tops[i], l.font, atlases); if (b) bmp.blit(b.cell, b.w, b.h, b.x, b.y, 1, 1); } });
