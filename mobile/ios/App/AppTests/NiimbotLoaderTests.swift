@@ -58,7 +58,7 @@ final class NiimbotLoaderTests: XCTestCase {
     // white, with the rasterizer's polarity (stickerRaster.ts renderStickerBitmap: rows
     // MSB-first, bit 1 = INK) — the convention the web sends for Niimbot.
     func testPackedBitsBecomeTheReferenceBmp() {
-        let w = 384, h = 240, rowBytes = 48
+        let w = 384, h = 224, rowBytes = 48
         var packed = Data(count: rowBytes * h)
         packed[0] = 0x80            // (0,0) ink  — MSB of the first byte = leftmost dot
         packed[10 * rowBytes + 3] = 0x01 // (31,10) ink — LSB of byte 3 = dot 31
@@ -84,27 +84,54 @@ final class NiimbotLoaderTests: XCTestCase {
         XCTAssertNil(NiimbotImage.image(packed: Data(count: 10), w: w, h: h, rowBytes: rowBytes)) // short data → nil
     }
 
-    // The 384×240 sticker is centred on the label's 400×240 dot canvas (50×30 mm × 8 dots/mm)
-    // — same ink, shifted 8 dots right, white padding, never cropped.
-    func testStickerIsCentredOnTheLabelDotCanvas() {
+    // 1:1 — the BMP measures exactly the SDK frame's dots: a 50×30 label with the 1 mm inset
+    // = 48×28 mm × 8 = 384×224, which is what the web renders (printing.ts NIIMBOT_FRAME_DOTS).
+    // The image is passed through untouched; the SDK then scales by 1.0 (never re-samples).
+    func testBmpIsExactlyTheFrameDots() {
+        XCTAssertEqual(NiimbotImage.frameInsetMm, 1)
+        let frame = NiimbotImage.frameDots(wMm: 50, hMm: 30)
+        XCTAssertEqual(frame.w, 384); XCTAssertEqual(frame.h, 224)
+        XCTAssertEqual(frame.w, (50 - 2) * NiimbotImage.dotsPerMm); XCTAssertEqual(frame.h, (30 - 2) * NiimbotImage.dotsPerMm)
+        let rowBytes = 48
+        var packed = Data(count: rowBytes * frame.h)
+        packed[0] = 0x80 // (0,0) ink
+        packed[223 * rowBytes + 47] = 0x01 // (383,223) ink — the last dot
+        guard let bmp = NiimbotImage.image(packed: packed, w: frame.w, h: frame.h, rowBytes: rowBytes, frameW: frame.w, frameH: frame.h),
+              let img = UIImage(data: bmp), let cg = img.cgImage else { return XCTFail("bmp conversion failed") }
+        XCTAssertEqual(cg.width, 384); XCTAssertEqual(cg.height, 224)
+        XCTAssertEqual(le32(bmp, 18), 384); XCTAssertEqual(le32(bmp, 22), 224)
+        XCTAssertEqual(inkPixels(in: img), 2)
+        let rowSize = ((384 * 3 + 3) / 4) * 4, row0 = 54 + 223 * rowSize, rowLast = 54
+        XCTAssertEqual(Array(bmp[row0..<row0 + 3]), [0, 0, 0], "no offset: dot (0,0) stays at (0,0)")
+        XCTAssertEqual(Array(bmp[rowLast + 383 * 3..<rowLast + 383 * 3 + 3]), [0, 0, 0], "the last dot stays the last dot")
+    }
+
+    // An image of another size (an older web bundle's 384×240 label-sized raster) is fitted to
+    // the frame centred — cropped or white-padded, never scaled — so the SDK still gets 1:1 dots.
+    func testOtherSizesAreFittedToTheFrameNeverScaled() {
         let w = 384, h = 240, rowBytes = 48
         var packed = Data(count: rowBytes * h)
-        packed[0] = 0x80 // (0,0) ink
-        guard let bmp = NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes, canvasW: 400, canvasH: 240),
+        packed[8 * rowBytes] = 0x80 // (0,8) ink — the first row that survives an 8-dot crop
+        packed[0] = 0x80            // (0,0) ink — cropped away
+        guard let bmp = NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes, frameW: 384, frameH: 224),
               let img = UIImage(data: bmp), let cg = img.cgImage else { return XCTFail("bmp conversion failed") }
-        XCTAssertEqual(cg.width, 400); XCTAssertEqual(cg.height, 240)
-        XCTAssertEqual(le32(bmp, 18), 400); XCTAssertEqual(le32(bmp, 22), 240)
+        XCTAssertEqual(cg.width, 384); XCTAssertEqual(cg.height, 224)
         XCTAssertEqual(inkPixels(in: img), 1)
-        let rowSize = ((400 * 3 + 3) / 4) * 4, row0 = 54 + 239 * rowSize
-        XCTAssertEqual(Array(bmp[row0 + 8 * 3..<row0 + 8 * 3 + 3]), [0, 0, 0], "dot (0,0) lands at x=8 — centred in the 16 dots of padding")
-        XCTAssertEqual(Array(bmp[row0..<row0 + 3]), [255, 255, 255]); XCTAssertEqual(Array(bmp[row0 + 7 * 3..<row0 + 7 * 3 + 3]), [255, 255, 255])
-        // a canvas smaller than the image never crops
-        XCTAssertEqual(le32(NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes, canvasW: 100, canvasH: 100)!, 18), 384)
-        XCTAssertEqual(NiimbotImage.dotsPerMm * 50, 400); XCTAssertEqual(NiimbotImage.dotsPerMm * 30, 240)
+        let rowSize = ((384 * 3 + 3) / 4) * 4, row0 = 54 + 223 * rowSize
+        XCTAssertEqual(Array(bmp[row0..<row0 + 3]), [0, 0, 0], "dot (0,8) lands at (0,0) after the centred 8-dot crop")
+        // smaller than the frame → white-padded, centred
+        var small = Data(count: 13 * 100); small[0] = 0x80
+        let padded = NiimbotImage.image(packed: small, w: 100, h: 100, rowBytes: 13, frameW: 384, frameH: 224)!
+        XCTAssertEqual(le32(padded, 18), 384); XCTAssertEqual(le32(padded, 22), 224)
+        XCTAssertEqual(inkPixels(in: UIImage(data: padded)!), 1)
+        let prow = 54 + (223 - 62) * rowSize // (0,0) of the small image → (142, 62)
+        XCTAssertEqual(Array(padded[prow + 142 * 3..<prow + 142 * 3 + 3]), [0, 0, 0])
+        // no frame given = the image's own size
+        XCTAssertEqual(le32(NiimbotImage.image(packed: packed, w: w, h: h, rowBytes: rowBytes)!, 22), 240)
     }
 
     func testAllWhiteImageHasZeroInk() {
-        let bmp = NiimbotImage.image(packed: Data(count: 48 * 240), w: 384, h: 240, rowBytes: 48)!
+        let bmp = NiimbotImage.image(packed: Data(count: 48 * 224), w: 384, h: 224, rowBytes: 48)!
         XCTAssertEqual(inkPixels(in: UIImage(data: bmp)!), 0)
     }
 
