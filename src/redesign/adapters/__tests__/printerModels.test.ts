@@ -26,7 +26,7 @@ describe("known-model lookup", () => {
     expect(knownPrinterLang("")).toBeNull();
     expect(knownPrinterLang(undefined)).toBeNull();
   });
-  it("✓ Works with SFL = D520BT (by model) or a listed name; everything else is New", () => {
+  it("known printer = D520BT (by model) or a listed name; everything else is not", () => {
     expect(isKnownPrinter(D520)).toBe(true);
     expect(isKnownPrinter(Y41)).toBe(true);
     expect(isKnownPrinter(UNKNOWN)).toBe(false);
