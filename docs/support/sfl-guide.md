@@ -172,6 +172,26 @@ Common messages:
 - "Facebook needs you to connect your Page again. Go to Settings → Facebook." Authorize the Page again in Facebook pages.
 - "This Page was connected on another phone, so this one stopped receiving."
 
+## post-sales — Sell on a Facebook post (Posts tab)
+Last checked: 2026-10-27
+Keywords: post, posts, facebook post, sell on a post, comment code, +1, post orders, print new, my posts, magbenta sa post, 帖子, 貼文, 留言下单, 貼文賣貨
+
+If your Facebook Page is connected, the **Orders** screen has a **Live | Posts** switch at the top. **Live** is your live orders, as before. **Posts** is for selling on a normal Facebook post: buyers comment a code under your post and the order is made for you. (If you don't see Posts yet, message Admin on Telegram @SellerFlowLive.)
+
+**Start selling on a post**
+1. **Orders → Posts → ＋ Sell on a post**.
+2. Pick one of your Page's recent posts.
+3. Choose how buyers order: **Comment a code** (each item has a code like A, B, C) or **"+1" for one item** (buyers comment +1, +2, +3…).
+4. Add your items: name, code, price and stock (leave stock empty for no limit). **Pick from Products** fills an item from your Products list.
+5. Set when it **Ends** (7 days by default) and tap **Start selling**.
+
+A buyer's comment must be **only the code** (for example "A" or "+1") to count as an order. A code can be used on one selling post at a time. When an item is sold out, later buyers go to the waitlist.
+
+**Post orders**
+- Orders show in **Posts** as one card per buyer, with the items, the total and a **New** or **Printed** pill.
+- Tap **Print new** to print stickers for the new buyers. Post stickers have **no buyer number** and show "Post" on each item line. Nothing prints by itself.
+- **My posts** shows each post as **Selling**, **Sold out** or **Ended**, with the orders, buyers and waiting counts. There you can **End now** or **Edit** an item's price and stock.
+
 ## connect-shopee — Shopee Live (beta)
 Last checked: 2026-10-27
 Keywords: shopee, shopee live, share link, copy link, beta, paste link, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph

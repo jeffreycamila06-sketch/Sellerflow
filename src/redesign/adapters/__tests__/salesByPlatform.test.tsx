@@ -32,8 +32,8 @@ describe("feature switches — fail closed", () => {
     expect(parseSwitches(null)).toEqual(SWITCHES_OFF);
     expect(parseSwitches([{ key: "other", value: "true" }])).toEqual(SWITCHES_OFF);
   });
-  it("the keys are the sql/93 + sql/95 names (+ sql/113 build11_enabled, sql/128 tiktok_send_enabled, sql/130 printer_flow_v2, sql/134 past_sessions_public)", () => {
-    expect(Object.values(FEATURE_SWITCH_KEYS).sort()).toEqual(["build11_enabled", "fb_auto_receipt_enabled", "fb_connect_v2", "fb_identity_v2", "fb_polish_v2", "fb_soldout_enabled", "fb_stop_reasons", "fb_waitlist_enabled", "fm_pickup_enabled", "fm_scan_enabled", "inventory_v2_enabled", "orders_paid_flag_enabled", "past_sessions_public", "printer_flow_v2", "product_images_enabled", "sales_platform_enabled", "stock_refresh_v2", "tiktok_send_enabled"]);
+  it("the keys are the sql/93 + sql/95 names (+ sql/113 build11_enabled, sql/128 tiktok_send_enabled, sql/130 printer_flow_v2, sql/134 past_sessions_public, sql/137 fb_post_sales_enabled)", () => {
+    expect(Object.values(FEATURE_SWITCH_KEYS).sort()).toEqual(["build11_enabled", "fb_auto_receipt_enabled", "fb_connect_v2", "fb_identity_v2", "fb_polish_v2", "fb_post_sales_enabled", "fb_soldout_enabled", "fb_stop_reasons", "fb_waitlist_enabled", "fm_pickup_enabled", "fm_scan_enabled", "inventory_v2_enabled", "orders_paid_flag_enabled", "past_sessions_public", "printer_flow_v2", "product_images_enabled", "sales_platform_enabled", "stock_refresh_v2", "tiktok_send_enabled"]);
   });
   it("signed out → no read, all off; error → all off", async () => {
     renderHook(() => useFeatureSwitches(""));
