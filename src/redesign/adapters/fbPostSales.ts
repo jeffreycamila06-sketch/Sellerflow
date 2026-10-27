@@ -86,6 +86,7 @@ export function groupPostOrders(orders: PostOrder[], sales: PostSale[]): BuyerGr
     if (label && !g.posts.includes(label)) g.posts.push(label);
     groups.set(key, g);
   }
+  for (const g of groups.values()) { g.orders.reverse(); g.posts.reverse(); } // lines oldest → newest inside the card
   return [...groups.values()];
 }
 export function postLabel(s: PostSale | undefined): string {
@@ -104,6 +105,11 @@ export function postItemStock(sales: PostSale[], code: string): number {
   return 0;
 }
 export const itemName = (o: PostOrder, sales: PostSale[]): string => sales.flatMap((s) => s.items).find((i) => i.id === o.itemId)?.name || "";
+// The card line "A1 Black jacket": the item's code (never the "+1" keyword) + name.
+export function itemCodeAndName(o: PostOrder, sales: PostSale[]): { code: string; name: string } {
+  const it = sales.flatMap((s) => s.items).find((i) => i.id === o.itemId);
+  return { code: it && it.code !== "+1" ? it.code : "", name: it?.name || "" };
+}
 
 // ── print (MANUAL only — "Print new") ───────────────────────────────────────────────────────
 // A buyer's new post orders → the Buyer shape printSlip expects. No buyer number (num 0 AND the

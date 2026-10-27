@@ -378,20 +378,6 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </div>
         </div>
         {topTabs}
-        {posts && (
-          <div data-testid="ord-live-posts" role="tablist" style={{ display: "flex", gap: 4, marginTop: 11, background: "rgba(255,255,255,.16)", borderRadius: 10, padding: 3 }}>
-            {(["live", "posts"] as const).map((v) => {
-              const on = postsView === v;
-              return (
-                <button key={v} type="button" role="tab" className="sfl-tap44" aria-selected={on} data-testid={`ord-seg-${v}`} onClick={() => (v === "posts" ? openPosts() : setPostsView("live"))}
-                  style={{ flex: 1, position: "relative", padding: "7px 0", borderRadius: 8, border: "none", fontWeight: 800, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--font-ui)", background: on ? "#fff" : "transparent", color: on ? "var(--accent-fg)" : "var(--on-header)", minHeight: 32 }}>
-                  {v === "live" ? t.rd_fps_tab_live : t.rd_fps_tab_posts}
-                  {v === "posts" && postsDot && <span data-testid="ord-posts-dot" aria-hidden="true" style={{ position: "absolute", top: 5, right: "calc(50% - 30px)", width: 7, height: 7, borderRadius: 999, background: "#e11d48" }} />}
-                </button>
-              );
-            })}
-          </div>
-        )}
         {!showPosts && <>
         {/* Unified search — sits where the old (dead) status-chip row was. */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, background: "rgba(255,255,255,.14)", borderRadius: 11, padding: "8px 12px" }}>
@@ -481,7 +467,21 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           {tpl(t.rd_psn_banner, { range: sessionRange(pastSel) })}
         </div>
       )}
-      {showPosts && posts && <div style={{ padding: "14px 14px 22px" }}><PostsBody ui={posts} cur={cur} /></div>}
+        {posts && (
+          <div data-testid="ord-live-posts" role="tablist" style={{ display: "flex", gap: 4, margin: "14px 14px 0", background: "var(--accent-soft)", borderRadius: 14, padding: 4 }}>
+            {(["live", "posts"] as const).map((v) => {
+              const on = postsView === v;
+              return (
+                <button key={v} type="button" role="tab" aria-selected={on} data-testid={`ord-seg-${v}`} onClick={() => (v === "posts" ? openPosts() : setPostsView("live"))}
+                  style={{ flex: 1, minHeight: 44, borderRadius: 11, border: "none", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "var(--font-ui)", background: on ? "var(--surface)" : "transparent", color: on ? "var(--accent-fg)" : "var(--text-dim)", boxShadow: on ? "var(--shadow)" : "none", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+                  {v === "live" ? t.rd_fps_tab_live : posts.orders.length ? `${t.rd_fps_tab_posts} · ${posts.orders.length}` : t.rd_fps_tab_posts}
+                  {v === "posts" && postsDot && <span data-testid="ord-posts-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: "#e11d48" }} />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      {showPosts && posts && <div style={{ padding: "12px 14px 22px" }}><PostsBody ui={posts} cur={cur} /></div>}
       {!showPosts && <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
         {waitlist && !pastSel && <WaitlistSection w={waitlist} />}
         {/* F3 summary bar — count · total · unique buyers · AOV over the visible set. */}

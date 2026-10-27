@@ -63,47 +63,58 @@ describe("Orders with the posts prop", () => {
     fireEvent.click(screen.getByTestId("ord-seg-live"));
     expect(screen.getByTestId("ord-chips")).toBeTruthy();
   });
-  it("empty state = one line + ONE button", () => {
+  it("empty state (preview B) = tile + title + one line + ONE button", () => {
     view({ posts: ui({ sales: [] }) });
     fireEvent.click(screen.getByTestId("ord-seg-posts"));
-    expect(screen.getByTestId("posts-empty")).toBeTruthy();
-    expect(screen.getByTestId("posts-sell-btn").textContent).toBe("＋ Sell on a post");
-    expect(screen.getByTestId("posts-empty").querySelectorAll("button")).toHaveLength(1);
+    const empty = screen.getByTestId("posts-empty");
+    expect(empty.textContent).toContain("Sell from your Facebook posts");
+    expect(empty.textContent).toContain("even when you're not live");
+    expect(screen.getByTestId("posts-sell-btn").textContent).toBe("+ Sell on a post");
+    expect(empty.querySelectorAll("button")).toHaveLength(1);
   });
   it("with orders: Print new (N) + My posts, one card per buyer, New/Printed pill, total", () => {
     const orders = [order(), order({ id: 2, itemId: 12, price: 200, commentId: "c2", createdAt: "2026-10-27T02:05:00Z" }), order({ id: 3, buyerFbId: "B2", buyerName: "Ben", commentId: "c3", printedAt: "2026-10-27T03:00:00Z" })];
     const u = ui({ orders });
     view({ posts: u });
     fireEvent.click(screen.getByTestId("ord-seg-posts"));
-    expect(screen.getByTestId("posts-print-new").textContent).toContain("Print new (2)");
+    expect(screen.getByTestId("ord-seg-posts").textContent).toContain("Posts · 3"); // the count on the tab (preview C)
+    expect(screen.getByTestId("posts-print-new").textContent).toContain("Print new (1)"); // = new BUYERS (Ana), not orders
     const cards = screen.getAllByTestId("posts-buyer-card");
     expect(cards).toHaveLength(2);
+    expect(cards[0].textContent).toContain("AC");                        // round initials avatar
     expect(cards[0].textContent).toContain("Ana Cruz");
+    expect(cards[0].textContent).toContain("Weekend sale! Comment the code"); // which post(s)
+    expect(cards[0].textContent).toContain("A Red dress");                // code-prefixed line
     expect(cards[0].textContent).toContain("NT$550");
     expect(screen.getAllByTestId("posts-pill").map((p) => p.textContent)).toEqual(["New", "Printed"]);
     fireEvent.click(screen.getByTestId("posts-print-new"));
     expect(u.onPrintNew).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId("posts-my-btn"));
     expect(screen.getByTestId("my-posts")).toBeTruthy();
-    expect(screen.getByTestId("my-post-status").textContent).toBe("Selling");
-    expect(screen.getByTestId("my-post-card").textContent).toContain("3 orders · 2 buyers · 0 waiting");
+    expect(screen.getByTestId("my-post-status").textContent).toBe("● Selling");
+    const my = screen.getByTestId("my-post-card");
+    expect(my.textContent).toContain("Ends Nov 3 · 2 items");
+    expect(my.textContent).toMatch(/3\s*orders.*2\s*buyers.*0\s*waitlist/);
+    expect(screen.queryByTestId("my-post-detail")).toBeNull();           // collapsed = the preview card
+    fireEvent.click(screen.getByTestId("my-post-toggle"));
+    expect(screen.getByTestId("my-post-detail")).toBeTruthy();           // items + Edit + End now
+    expect(screen.getByTestId("my-post-end")).toBeTruthy();
   });
-  it("Sell on a post: post picker → mode → items → ends → Start calls onCreate", async () => {
+  it("Sell on a post (preview ②): one form — pick the post, mode, items table, Start selling → onCreate", async () => {
     const u = ui({ sales: [], loadPosts: vi.fn(async () => ({ ok: true as const, posts: [{ id: "P1_9", message: "New arrivals", createdTime: "2026-10-26T10:00:00Z", picture: "", url: "" }] })) });
     view({ posts: u });
     fireEvent.click(screen.getByTestId("ord-seg-posts"));
     fireEvent.click(screen.getByTestId("posts-sell-btn"));
     expect(await screen.findByTestId("sell-post-row")).toBeTruthy();
-    expect((screen.getByTestId("sell-next") as HTMLButtonElement).disabled).toBe(true);
+    const start = screen.getByTestId("sell-start") as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
     fireEvent.click(screen.getByTestId("sell-post-row"));
-    fireEvent.click(screen.getByTestId("sell-next"));
-    fireEvent.click(screen.getByTestId("sell-mode-code"));
-    fireEvent.click(screen.getByTestId("sell-next"));
+    expect(screen.getByTestId("sell-mode-code").getAttribute("aria-checked")).toBe("true"); // default
     fireEvent.change(screen.getByTestId("sell-item-name"), { target: { value: "Red dress" } });
-    fireEvent.change(screen.getByTestId("sell-item-code"), { target: { value: "A" } });
+    fireEvent.change(screen.getByTestId("sell-item-code"), { target: { value: "a" } });
     fireEvent.change(screen.getByTestId("sell-item-price"), { target: { value: "350" } });
-    fireEvent.click(screen.getByTestId("sell-next"));
-    fireEvent.click(screen.getByTestId("sell-next")); // Start selling
+    expect(start.disabled).toBe(false);
+    fireEvent.click(start);
     await vi.waitFor(() => expect(u.onCreate).toHaveBeenCalledTimes(1));
     expect(u.onCreate).toHaveBeenCalledWith(expect.objectContaining({ pageId: "P1", postId: "P1_9", mode: "code", items: [expect.objectContaining({ name: "Red dress", code: "A", price: 350, stock: null })] }));
   });
@@ -113,6 +124,7 @@ describe("pure", () => {
   it("groups per buyer, newest first; posts listed; printed only when all printed", () => {
     const g = groupPostOrders([order(), order({ id: 2, buyerFbId: "B2", buyerName: "Ben", commentId: "c2", createdAt: "2026-10-27T03:00:00Z", printedAt: "x" }), order({ id: 3, commentId: "c3", printedAt: "x" })], [sale()]);
     expect(g.map((x) => [x.buyerName, x.orders.length, x.printed, x.total])).toEqual([["Ben", 1, true, 350], ["Ana Cruz", 2, false, 700]]);
+    expect(g[1].orders.map((o) => o.id)).toEqual([1, 3]); // lines inside a card: oldest first
     expect(g[1].posts).toEqual(["Weekend sale! Comment the code"]);
   });
   it("print Buyer: no buyer number, Post on every line, Facebook platform, new orders only", () => {
