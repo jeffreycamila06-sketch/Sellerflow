@@ -13,8 +13,11 @@
 --   • fb_post_sales / fb_post_sale_items / fb_post_orders — SEPARATE from live_session_orders.
 --     Post orders carry NO buyer number and never touch live numbering.
 --   • fb_waitlist.source ('live' | 'post') — a sold-out post comment joins the same waitlist.
---   • RPCs (seller, SECURITY INVOKER, own rows): fb_post_sale_create / fb_post_sale_end /
---     fb_post_sale_item_update / fb_post_orders_mark_printed.
+--   • RPCs (seller, SECURITY DEFINER — the tables have NO browser write grants — with explicit
+--     auth.uid() ownership checks): fb_post_sale_create (also gated: the switch must be 'true' AND
+--     the caller is admin or on the 'fb_post_sales' list → else 'not_allowed') / fb_post_sale_end /
+--     fb_post_sale_item_update / fb_post_orders_mark_printed / fb_post_waitlist_give (a waiting
+--     fb_waitlist row with source 'post' → one post order, same item row lock as the claim).
 --   • RPC (server only, service role): fb_post_order_claim — the ATOMIC stock claim + order
 --     insert (row lock on the item → no overselling under concurrent comments; one order per
 --     comment id; one order per buyer per item).
@@ -130,7 +133,8 @@ alter table public.fb_waitlist add column if not exists source text not null def
 alter table public.fb_waitlist drop constraint if exists fb_waitlist_source;
 alter table public.fb_waitlist add constraint fb_waitlist_source check (source in ('live', 'post'));
 
--- ── seller RPCs (SECURITY INVOKER: RLS select applies; writes check auth.uid() explicitly) ──
+-- ── seller RPCs (SECURITY DEFINER: the tables grant authenticated SELECT only, so every write
+--    goes through these; each one checks auth.uid() ownership explicitly) ──
 -- p_items = jsonb array of { name, code, price, stock (null = unlimited), product_id (optional) }.
 -- Rules: mode 'plus_one' = exactly one item, code '+1'; a code must be unique among the seller's
 -- SELLING sales (case-insensitive); at most 20 selling sales per seller.
@@ -139,7 +143,7 @@ create or replace function public.fb_post_sale_create(
   p_mode text, p_ends_at timestamptz, p_items jsonb
 ) returns bigint
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
 declare
@@ -150,6 +154,13 @@ declare
   v_n int;
 begin
   if v_uid is null then raise exception 'not_signed_in' using errcode = '42501'; end if;
+  -- gate: the switch must be on AND the caller is admin or on the 'fb_post_sales' list
+  if coalesce((select a.value from public.app_settings a where a.key = 'fb_post_sales_enabled'), '') <> 'true' then
+    raise exception 'not_allowed' using errcode = '42501';
+  end if;
+  if not (public.is_admin() or coalesce((public.my_feature_access()->>'fb_post_sales')::boolean, false)) then
+    raise exception 'not_allowed' using errcode = '42501';
+  end if;
   if not exists (select 1 from public.fb_pages p where p.user_id = v_uid and p.page_id = p_page_id) then
     raise exception 'page_not_yours' using errcode = '42501';
   end if;
@@ -183,9 +194,9 @@ revoke all on function public.fb_post_sale_create(text, text, text, text, text, 
 grant execute on function public.fb_post_sale_create(text, text, text, text, text, timestamptz, jsonb) to authenticated;
 
 create or replace function public.fb_post_sale_end(p_sale_id bigint) returns boolean
-language sql security invoker set search_path = public as $$
+language sql security definer set search_path = public as $$
   update public.fb_post_sales set status = 'ended', ends_at = least(ends_at, now())
-   where id = p_sale_id and user_id = auth.uid() and status = 'selling'
+   where id = p_sale_id and auth.uid() is not null and user_id = auth.uid() and status = 'selling'
   returning true;
 $$;
 revoke all on function public.fb_post_sale_end(bigint) from public, anon;
@@ -193,18 +204,20 @@ grant execute on function public.fb_post_sale_end(bigint) to authenticated;
 
 -- Edit price / stock of one item (null stock = unlimited). Own sale only.
 create or replace function public.fb_post_sale_item_update(p_item_id bigint, p_price numeric, p_stock integer) returns boolean
-language sql security invoker set search_path = public as $$
+language sql security definer set search_path = public as $$
   update public.fb_post_sale_items i set price = greatest(0, p_price), stock = case when p_stock is null then null else greatest(0, p_stock) end
-   where i.id = p_item_id and exists (select 1 from public.fb_post_sales s where s.id = i.sale_id and s.user_id = auth.uid())
+   where i.id = p_item_id and auth.uid() is not null
+     and exists (select 1 from public.fb_post_sales s where s.id = i.sale_id and s.user_id = auth.uid())
   returning true;
 $$;
 revoke all on function public.fb_post_sale_item_update(bigint, numeric, integer) from public, anon;
 grant execute on function public.fb_post_sale_item_update(bigint, numeric, integer) to authenticated;
 
 create or replace function public.fb_post_orders_mark_printed(p_ids bigint[]) returns integer
-language plpgsql security invoker set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
 declare n int;
 begin
+  if auth.uid() is null then raise exception 'not_signed_in' using errcode = '42501'; end if;
   update public.fb_post_orders set printed_at = now()
    where id = any(p_ids) and user_id = auth.uid() and printed_at is null;
   get diagnostics n = row_count;
@@ -213,6 +226,48 @@ end;
 $$;
 revoke all on function public.fb_post_orders_mark_printed(bigint[]) from public, anon;
 grant execute on function public.fb_post_orders_mark_printed(bigint[]) to authenticated;
+
+-- Waitlist "Give" for a post row: the seller hands one piece to a waiting buyer (fb_waitlist row
+-- with source 'post', status 'waiting', own). Finds the SELLING post item with that code, locks it
+-- (the same row lock as fb_post_order_claim), checks stock, inserts the post order (no buyer
+-- number, never live_session_orders), counts the piece, marks the row 'given'.
+-- Returns 'ordered' | 'sold_out' | 'ended' (no selling item with that code) | 'not_found' | 'dup'.
+create or replace function public.fb_post_waitlist_give(p_waitlist_id bigint) returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  w public.fb_waitlist;
+  v_item public.fb_post_sale_items;
+  v_sale public.fb_post_sales;
+begin
+  if v_uid is null then raise exception 'not_signed_in' using errcode = '42501'; end if;
+  select * into w from public.fb_waitlist where id = p_waitlist_id and user_id = v_uid and status = 'waiting' and source = 'post';
+  if w.id is null then return 'not_found'; end if;
+  select i.* into v_item from public.fb_post_sale_items i join public.fb_post_sales s on s.id = i.sale_id
+   where s.user_id = v_uid and s.status = 'selling' and lower(i.code) = lower(w.code)
+   order by s.created_at desc limit 1 for update of i;
+  if v_item.id is null then return 'ended'; end if;
+  select * into v_sale from public.fb_post_sales where id = v_item.sale_id;
+  if exists (select 1 from public.fb_post_orders where comment_id = w.comment_id) then
+    update public.fb_waitlist set status = 'given' where id = w.id;
+    return 'dup';
+  end if;
+  if v_item.stock is not null and v_item.stock - v_item.sold < 1 then return 'sold_out'; end if;
+  insert into public.fb_post_orders (user_id, sale_id, item_id, buyer_fb_id, buyer_name, qty, price, comment_id, comment_text, created_at)
+  values (v_uid, v_sale.id, v_item.id, coalesce(w.commenter_id, ''), left(coalesce(w.commenter_name, w.handle, ''), 200), 1, v_item.price,
+          w.comment_id, w.code, now());
+  update public.fb_post_sale_items set sold = sold + 1 where id = v_item.id;
+  update public.fb_waitlist set status = 'given' where id = w.id;
+  return 'ordered';
+exception when unique_violation then
+  return 'dup';
+end;
+$$;
+revoke all on function public.fb_post_waitlist_give(bigint) from public, anon;
+grant execute on function public.fb_post_waitlist_give(bigint) to authenticated;
 
 -- ── server RPC — the atomic claim (service role ONLY) ───────────────────────
 -- Returns 'ordered' | 'dup' (comment or buyer already ordered this item) | 'sold_out' | 'ended'.

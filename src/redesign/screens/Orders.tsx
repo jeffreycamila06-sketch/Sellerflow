@@ -615,8 +615,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
 // ── F3 — Facebook waitlist (this session's line per code, oldest first) ─────────────────────
 export interface WaitlistUi {
   state: "loading" | "ready" | "error";
-  groups: { code: string; rows: WaitlistRow[] }[];
-  stockFor: (code: string) => number;     // this device's live stock for the code
+  groups: { code: string; source?: "live" | "post"; rows: WaitlistRow[] }[];
+  stockFor: (code: string, source?: "live" | "post") => number; // this device's live stock for the code (post rows: the post item's stock)
   onGive: (r: WaitlistRow) => void;
   onSkip: (r: WaitlistRow) => void;
   busyId: number | null;
@@ -632,11 +632,12 @@ function WaitlistSection({ w }: { w: WaitlistUi }) {
       {w.state === "error" && <div data-testid="waitlist-error" style={{ fontSize: 12.5, color: "var(--danger)" }}>{t.rd_wl_load_failed}</div>}
       {w.note && <div role="status" data-testid="waitlist-note" style={{ fontSize: 12, color: "var(--danger)", fontWeight: 600, margin: "4px 0" }}>{w.note}</div>}
       {w.groups.map((g) => {
-        const inStock = w.stockFor(g.code) > 0;
+        const inStock = w.stockFor(g.code, g.source) > 0;
         return (
-          <div key={g.code} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
+          <div key={`${g.source || "live"}:${g.code}`} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>
               <span style={{ fontFamily: mono }}>{g.code}</span>
+              {g.source === "post" && <span data-testid="waitlist-post-tag" style={{ fontSize: 10, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_fps_tab_post_one}</span>}
               <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "var(--ok)" : "var(--text-muted)" }}>{inStock ? t.rd_wl_in_stock : t.rd_wl_out}</span>
             </div>
             {g.rows.map((r, i) => {

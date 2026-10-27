@@ -154,7 +154,7 @@ export function SellOnPost({ ui, cur, onClose }: { ui: PostsUi; cur: string; onC
     const r = await ui.onCreate({ pageId, postId: post.id, postMessage: post.message, postPicture: post.picture, mode, endsAt: new Date(endsAt).toISOString(), items: rows.map((x) => ({ ...x, code: mode === "plus_one" ? "+1" : x.code.trim(), name: x.name.trim() })) });
     setSaving(false);
     if (!("error" in r)) { onClose(); return; }
-    setErr(r.error === "code_in_use" ? tpl(t.rd_fps_err_code_in_use, { code: r.code || "" }) : r.error === "too_many" ? t.rd_fps_err_too_many : r.error === "post_in_use" ? t.rd_fps_err_post_in_use : t.rd_fps_err_failed);
+    setErr(r.error === "code_in_use" ? tpl(t.rd_fps_err_code_in_use, { code: r.code || "" }) : r.error === "too_many" ? t.rd_fps_err_too_many : r.error === "post_in_use" ? t.rd_fps_err_post_in_use : r.error === "not_allowed" ? t.rd_fps_err_not_allowed : t.rd_fps_err_failed);
   };
 
   const head = (title: string, sub?: string) => (

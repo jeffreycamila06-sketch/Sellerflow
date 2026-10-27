@@ -145,6 +145,33 @@ describe("sql/137 contract", () => {
     expect(sql).toMatch(/grant execute on function public\.fb_post_order_claim[^;]*to service_role;/);
     expect(sql).toContain("if v_item.stock is not null and v_item.stock - v_item.sold < v_qty then return 'sold_out'");
   });
+  it("seller RPCs are SECURITY DEFINER (the tables have no browser write grants) with explicit auth.uid() checks", () => {
+    expect(sql).not.toContain("security invoker");
+    for (const fn of ["fb_post_sale_create", "fb_post_sale_end", "fb_post_sale_item_update", "fb_post_orders_mark_printed", "fb_post_waitlist_give"]) {
+      const body = sql.slice(sql.indexOf(`create or replace function public.${fn}(`));
+      const head = body.slice(0, body.indexOf("$$") + 2);
+      expect(head, fn).toMatch(/security definer/);
+      expect(head, fn).toMatch(/set search_path = public/);
+      expect(body.slice(0, body.indexOf("\n$$;")), fn).toMatch(/auth\.uid\(\)/);
+      expect(sql).toMatch(new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to authenticated;`));
+    }
+  });
+  it("create RPC is gated: switch 'true' AND (is_admin() OR my_feature_access()->>'fb_post_sales') → else 'not_allowed'", () => {
+    const body = sql.slice(sql.indexOf("create or replace function public.fb_post_sale_create("), sql.indexOf("create or replace function public.fb_post_sale_end("));
+    expect(body).toContain("a.key = 'fb_post_sales_enabled'), '') <> 'true' then\n    raise exception 'not_allowed'");
+    expect(body).toContain("if not (public.is_admin() or coalesce((public.my_feature_access()->>'fb_post_sales')::boolean, false)) then\n    raise exception 'not_allowed'");
+    expect(body.indexOf("'not_allowed'")).toBeLessThan(body.indexOf("'page_not_yours'")); // gate before any work
+  });
+  it("waitlist Give (post rows): own waiting source='post' row → selling item locked FOR UPDATE → stock check → post order + sold+1 + 'given'", () => {
+    const body = sql.slice(sql.indexOf("create or replace function public.fb_post_waitlist_give("), sql.indexOf("-- ── server RPC"));
+    expect(body).toContain("status = 'waiting' and source = 'post'");
+    expect(body).toMatch(/s\.status = 'selling' and lower\(i\.code\) = lower\(w\.code\)[\s\S]*for update of i;/);
+    expect(body).toContain("if v_item.stock is not null and v_item.stock - v_item.sold < 1 then return 'sold_out'");
+    expect(body).toContain("insert into public.fb_post_orders");
+    expect(body).toContain("update public.fb_post_sale_items set sold = sold + 1");
+    expect(body).toContain("update public.fb_waitlist set status = 'given'");
+    expect(body).not.toContain("live_session_orders");
+  });
   it("create RPC: own page, plus_one = one item, code unique among SELLING sales, cap 20; retention 3 months; waitlist source", () => {
     expect(sql).toContain("raise exception 'page_not_yours'");
     expect(sql).toContain("if p_mode = 'plus_one' and jsonb_array_length(p_items) <> 1 then raise exception 'plus_one_one_item'");

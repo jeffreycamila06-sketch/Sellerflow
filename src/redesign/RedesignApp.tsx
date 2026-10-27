@@ -146,7 +146,7 @@ import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
 import { useFeatureAccess, hasFeature } from "./adapters/featureAccess";
 import { usePostSales } from "./adapters/usePostSales";
-import { postSalesGate, postPrintSettings } from "./adapters/fbPostSales";
+import { postSalesGate, postPrintSettings, givePostWaitlist, postItemStock } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
 
 type Screen =
@@ -2057,6 +2057,20 @@ export default function RedesignApp() {
   // NO autoCode / productLocalId (the sticker shows the code via itemOverride). No message is sent.
   const onWaitlistGive = (r: WaitlistRow) => {
     if (wlGiveRef.current.has(r.id) || wlBusy != null) return;
+    // POST SALES row (sql/137): one post order through fb_post_waitlist_give (same item lock as the
+    // server claim) — NEVER the live order path below (no buyer number, no live_session_orders).
+    if (r.source === "post") {
+      wlGiveRef.current.add(r.id);
+      setWlBusy(r.id);
+      void givePostWaitlist(r.id).then((v) => {
+        setWlBusy(null);
+        if (v !== "ordered") { wlGiveRef.current.delete(r.id); setWlNote(v === "sold_out" ? tApp.rd_wl_out : tApp.rd_wl_give_failed); }
+        else setWlNote(null);
+        reloadWaitlist();
+        postSales?.onReload();
+      });
+      return;
+    }
     const who = r.commenterName || r.handle;
     if (nameHasBuyer(who, liveSession.session.buyers) && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_wl_same_name, { name: who }))) return;
     wlGiveRef.current.add(r.id);
@@ -2593,7 +2607,7 @@ export default function RedesignApp() {
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
-          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string) => { const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
+          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post") => { if (source === "post") return postItemStock(postSales?.sales ?? [], code); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}

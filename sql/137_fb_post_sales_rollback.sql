@@ -4,6 +4,7 @@
 select cron.unschedule('purge-old-fb-post-sales');
 drop function if exists public.fb_post_order_claim(bigint, bigint, text, text, integer, text, text, timestamptz);
 drop function if exists public.fb_post_orders_mark_printed(bigint[]);
+drop function if exists public.fb_post_waitlist_give(bigint);
 drop function if exists public.fb_post_sale_item_update(bigint, numeric, integer);
 drop function if exists public.fb_post_sale_end(bigint);
 drop function if exists public.fb_post_sale_create(text, text, text, text, text, timestamptz, jsonb);

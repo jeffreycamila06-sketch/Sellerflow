@@ -93,6 +93,16 @@ export function postLabel(s: PostSale | undefined): string {
   const m = s.postMessage.trim().replace(/\s+/g, " ");
   return m ? (m.length > 40 ? `${m.slice(0, 40)}…` : m) : `#${s.postId.split("_").pop()}`;
 }
+// Stock left for a code on the seller's SELLING post sales (waitlist "Give" button): no stock limit → 1.
+export function postItemStock(sales: PostSale[], code: string): number {
+  const k = code.trim().toLowerCase();
+  for (const s of sales) {
+    if (s.status !== "selling") continue;
+    const it = s.items.find((i) => i.code.trim().toLowerCase() === k);
+    if (it) return it.stock == null ? 1 : Math.max(0, it.stock - it.sold);
+  }
+  return 0;
+}
 export const itemName = (o: PostOrder, sales: PostSale[]): string => sales.flatMap((s) => s.items).find((i) => i.id === o.itemId)?.name || "";
 
 // ── print (MANUAL only — "Print new") ───────────────────────────────────────────────────────
@@ -164,11 +174,23 @@ export async function createPostSale(a: { pageId: string; postId: string; postMe
       const m = msg.match(/code_in_use:(.+)$/);
       if (m) return { ok: false, error: "code_in_use", code: m[1].trim() };
       if (/too_many_sales/.test(msg)) return { ok: false, error: "too_many" };
+      if (/not_allowed/.test(msg)) return { ok: false, error: "not_allowed" };
       if (/duplicate key|fb_post_sales_user_id_post_id/.test(msg)) return { ok: false, error: "post_in_use" };
       return { ok: false, error: "failed" };
     }
     return { ok: true, id: Number(data) };
   } catch { return { ok: false, error: "failed" }; }
+}
+// Waitlist "Give" for a post row (sql/137 fb_post_waitlist_give): one post order, same item lock as the
+// server claim. Returns the RPC verdict, or null on any failure.
+export async function givePostWaitlist(waitlistId: number): Promise<"ordered" | "sold_out" | "ended" | "not_found" | "dup" | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data, error } = await supabase.rpc("fb_post_waitlist_give", { p_waitlist_id: waitlistId });
+    if (error) return null;
+    const v = String(data ?? "");
+    return v === "ordered" || v === "sold_out" || v === "ended" || v === "not_found" || v === "dup" ? v : null;
+  } catch { return null; }
 }
 export async function endPostSale(id: number): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;

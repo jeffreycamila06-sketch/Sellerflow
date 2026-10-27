@@ -9,10 +9,13 @@ import { TProvider, REDESIGN_STRINGS } from "../../i18n";
 import Orders from "../../screens/Orders";
 import type { PostsUi } from "../../screens/PostSales";
 import {
-  postSalesGate, groupPostOrders, postBuyerForPrint, postPrintSettings, saleStatus, saleCounts, mapSale, mapOrder, LS_POSTS_SEEN,
+  postSalesGate, groupPostOrders, postBuyerForPrint, postPrintSettings, saleStatus, saleCounts, mapSale, mapOrder, LS_POSTS_SEEN, postItemStock,
   type PostSale, type PostOrder,
 } from "../fbPostSales";
 import { DEF_SETTINGS } from "../printing";
+import { groupWaitlist, type WaitlistRow } from "../fbWaitlist";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const sale = (o: Partial<PostSale> = {}): PostSale => ({
   id: 1, pageId: "P1", postId: "P1_777", postMessage: "Weekend sale! Comment the code", postPicture: null, mode: "code",
@@ -136,6 +139,19 @@ describe("pure", () => {
   it("row mappers are defensive", () => {
     expect(mapSale({ id: "5", mode: "weird", status: "x", items: null }).mode).toBe("code");
     expect(mapOrder({ id: 1, qty: "3", printed_at: null })).toMatchObject({ qty: 3, printedAt: null });
+  });
+  it("waitlist: post rows group apart from live rows of the same code; Give routes to the post RPC, never the live order path", () => {
+    const wl = (o: Partial<WaitlistRow>): WaitlistRow => ({ id: 1, sessionId: null, code: "A", productLocalId: null, commentId: "c1", pageId: "P1", liveVideoId: null, commenterId: "B1", commenterName: "Ana", handle: "Ana", createdAt: "2026-10-27T02:00:00Z", status: "waiting", source: "live", ...o });
+    const g = groupWaitlist([wl({ id: 1 }), wl({ id: 2, commentId: "c2", source: "post" }), wl({ id: 3, commentId: "c3", code: "a", source: "post" })]);
+    expect(g.map((x) => [x.code, x.source, x.rows.map((r) => r.id)])).toEqual([["A", "live", [1]], ["A", "post", [2, 3]]]);
+    expect(postItemStock([sale()], "a")).toBe(2);       // stock 2 − sold 0
+    expect(postItemStock([sale()], "B")).toBe(1);       // no limit → giveable
+    expect(postItemStock([sale({ status: "ended" })], "A")).toBe(0);
+    const app = readFileSync(resolve(__dirname, "../../RedesignApp.tsx"), "utf8");
+    const give = app.slice(app.indexOf("const onWaitlistGive = "), app.indexOf("const onWaitlistSkip = "));
+    expect(give.indexOf('r.source === "post"')).toBeGreaterThan(-1);
+    expect(give.indexOf("givePostWaitlist(r.id)")).toBeLessThan(give.indexOf("orders.createOrder("));
+    expect(give.slice(give.indexOf('r.source === "post"'), give.indexOf("return;"))).not.toContain("createOrder"); // the post branch returns before the live path
   });
   it("every rd_fps_* key is filled in all 8 languages", () => {
     const keys = Object.keys(REDESIGN_STRINGS.en).filter((k) => k.startsWith("rd_fps_"));
