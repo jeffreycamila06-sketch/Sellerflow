@@ -106,6 +106,7 @@ describe("splitScansForExport — READY vs NEEDS-ATTENTION gate", () => {
   });
   it("invalid name / phone / store → EXCLUDED with the matching reason", () => {
     expect(splitScansForExport([row({ customerName: "王小明123" })], 38).attention[0].reason).toBe("bad_name"); // digits forbidden
+    expect(splitScansForExport([row({ customerName: "A" })], 38).attention[0].reason).toBe("bad_name"); // template 1.5: min 2
     expect(splitScansForExport([row({ phone: "12345" })], 38).attention[0].reason).toBe("bad_phone");
     expect(splitScansForExport([row({ storeId: "12" })], 38).attention[0].reason).toBe("bad_store");
   });

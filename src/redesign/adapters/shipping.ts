@@ -147,11 +147,14 @@ export function nameLength(s: string): number {
 }
 // Forbidden in col A: digits + ~!@#$%^&*()/\|,.<>'?"();:_+-=[]{} and backtick.
 const NAME_FORBIDDEN = /[0-9~!@#$%^&*()/\\|,.<>'?"();:_+\-=[\]{}`]/;
-export type NameError = "" | "required" | "too_long" | "forbidden";
+// Template 1.5 (2026-10-27) adds 「最少2字」: at least 2 (same CJK=2 counting).
+export const SHIP_NAME_MIN = 2;
+export type NameError = "" | "required" | "too_short" | "too_long" | "forbidden";
 export function validateRecipientName(s: string): NameError {
   const v = s.trim();
   if (!v) return "required";
   if (NAME_FORBIDDEN.test(v)) return "forbidden";
+  if (nameLength(v) < SHIP_NAME_MIN) return "too_short";
   if (nameLength(v) > SHIP_NAME_BUDGET) return "too_long";
   return "";
 }
