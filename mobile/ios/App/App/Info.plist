@@ -32,6 +32,14 @@
 	<string>SellerFlowLive connects to your Bluetooth label printer to print order stickers.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>SellerFlowLive needs this to print on your WiFi printer.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SellerFlowLive does not use your microphone. The printer component included in the app lists this permission, but the app never asks for it.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>SellerFlowLive does not use speech recognition. The printer component included in the app lists this permission, but the app never asks for it.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SellerFlowLive does not access your photos. The printer component included in the app lists this permission, but the app never asks for it.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>SellerFlowLive does not save anything to your photos. The printer component included in the app lists this permission, but the app never asks for it.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
