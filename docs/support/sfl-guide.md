@@ -480,7 +480,7 @@ Keywords: bluetooth off, bluetooth, printer busy, another app, other phone, naka
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.
 
 ## parcel-scan — Parcel Scan (7-11) and Customer Details
-Last checked: 2026-10-15
+Last checked: 2026-10-27
 Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家
 
 **Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
@@ -492,7 +492,7 @@ Who sees what:
 - Sellers outside Taiwan do not see it.
 
 **Parcel Scan 7-11**
-1. Tap **Manual encode (no camera)** and type the customer name, phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
+1. Tap **Manual encode (no camera)** and type the customer name (2 to 10 letters — a Chinese character counts as 2, so 1 to 5 Chinese characters; no numbers or symbols), phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
 2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo.
 3. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel.
 4. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.

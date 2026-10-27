@@ -76,13 +76,13 @@ describe("buildXlsmFromTemplate — 賣貨便 template round-trip (real file)", 
     ["陳大文", "0987654321", "654321", "冷凍", "#2 商品x1", "1200", "0", "2026/7/3", "", "user2"],
   ];
 
-  it("preserves both sheets, the VBA project, 填寫說明 B1=1.4, and the row-6 headers; writes rows at A7 as strings", async () => {
+  it("preserves both sheets, the VBA project, 填寫說明 B1=1.5, and the row-6 headers; writes rows at A7 as strings", async () => {
     const out = await buildXlsmFromTemplate(new Uint8Array(template), rows);
     const XLSX = await import("xlsx");
     const rt = XLSX.read(out, { type: "array", bookVBA: true });
     expect(rt.SheetNames).toEqual(["訂單匯入", "填寫說明"]);
     expect((rt as { vbaraw?: unknown }).vbaraw).toBeTruthy();           // 驗證 macro survives
-    expect(rt.Sheets["填寫說明"]["B1"].v).toBe("1.4");                   // version cell untouched
+    expect(rt.Sheets["填寫說明"]["B1"].v).toBe("1.5");                   // version cell untouched (template 1.5, 2026-10-27)
     const ws = rt.Sheets[SHIP_DATA_SHEET];
     expect(ws["A6"].v).toBe("＊取件人姓名");                             // headers untouched
     expect(ws["A7"]).toMatchObject({ t: "s", v: "王小明" });             // data starts row 7
@@ -91,6 +91,24 @@ describe("buildXlsmFromTemplate — 賣貨便 template round-trip (real file)", 
     expect(ws["G8"]).toMatchObject({ t: "s", v: "0" });                  // free shipping row 2
     expect(ws["J7"].v).toBe("testuser");                                 // username in col J
     expect(ws["!ref"]).toBe("A1:K8");                                    // extended by 2 rows only
+  });
+
+  it("is the 1.5 template byte-for-byte (sha256 + size pinned — never re-save it in Excel)", async () => {
+    const { createHash } = await import("node:crypto");
+    expect(template.length).toBe(30_368);
+    expect(createHash("sha256").update(template).digest("hex")).toBe("cffc789837a3900d11913994ada7f6b1bad1c66f0ba258fd5b5954e871d2f63f");
+  });
+
+  it("ZIP PATCH: the sheet's <dataValidations> (D7:D1048576 常溫/冷凍) survives the row insert, after </sheetData>", async () => {
+    const { parseZip, readEntryText } = await import("../shippingXlsmPatch");
+    const out = await buildXlsmFromTemplate(new Uint8Array(template), rows);
+    const sheet = parseZip(out).find((e) => e.name === "xl/worksheets/sheet1.xml")!;
+    const xml = await readEntryText(out, sheet);
+    const dv = xml.indexOf("<dataValidations count=\"1\">");
+    expect(dv).toBeGreaterThan(xml.indexOf("</sheetData>"));
+    expect(xml).toContain('sqref="D7:D1048576"');
+    expect(xml).toContain("<formula1>\"常溫,冷凍\"</formula1>");
+    expect(xml.indexOf("<row r=\"7\"")).toBeLessThan(xml.indexOf("</sheetData>"));
   });
 
   it("ZIP PATCH: output stays near the original size (no SheetJS rebuild bloat)", async () => {

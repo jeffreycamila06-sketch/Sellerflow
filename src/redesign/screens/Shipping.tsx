@@ -43,7 +43,7 @@ async function loadShipEntries(sessionKey: string, legacyKey: string | undefined
 
 // Error-code → localized message (validators return codes, not copy).
 const nameErrText = (t: RedesignT, e: EntryErrors["name"]): string =>
-  e === "required" ? t.rd_shp_err_required : e === "too_long" ? t.rd_shp_err_name_len : e === "forbidden" ? t.rd_shp_err_name_chars : "";
+  e === "required" ? t.rd_shp_err_required : e === "too_short" ? t.rd_shp_err_name_short : e === "too_long" ? t.rd_shp_err_name_len : e === "forbidden" ? t.rd_shp_err_name_chars : "";
 const amountErrText = (t: RedesignT, e: EntryErrors["amounts"]): string =>
   e === "fee_range" ? t.rd_shp_err_fee : e === "order_range" ? t.rd_shp_err_order : e === "total_low" ? t.rd_shp_err_total_low : e === "total_high" ? t.rd_shp_err_total_high : "";
 

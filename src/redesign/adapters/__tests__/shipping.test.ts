@@ -78,6 +78,13 @@ describe("取件人姓名 validator — width budget + forbidden chars", () => {
   it("empty → required", () => {
     expect(validateRecipientName("  ")).toBe("required");
   });
+  it("too_short — template 1.5 「最少2字」: 1 half-width char rejected, 1 CJK (=2) accepted", () => {
+    expect(validateRecipientName("A")).toBe("too_short");
+    expect(validateRecipientName(" A ")).toBe("too_short");
+    expect(validateRecipientName("王")).toBe("");                // 1 CJK = width 2
+    expect(validateRecipientName("Ab")).toBe("");
+    expect(validateRecipientName("1")).toBe("forbidden");       // forbidden wins over too_short
+  });
 });
 
 describe("phone / store validators", () => {
