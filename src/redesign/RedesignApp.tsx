@@ -145,6 +145,8 @@ import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
 import { useFeatureAccess, hasFeature } from "./adapters/featureAccess";
+import { usePostSales } from "./adapters/usePostSales";
+import { postSalesGate, postPrintSettings, givePostWaitlist, postItemStock } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
 
 type Screen =
@@ -2030,6 +2032,16 @@ export default function RedesignApp() {
     })();
   };
   // F3 — the Orders "Waitlist" section: this session's line, loaded when Orders opens.
+  // FACEBOOK POST SALES (sql/137): the Orders "Posts" side. Gate = ONE place (postSalesGate):
+  // switch on + admin / 'fb_post_sales' key + a connected Page. Print = the existing printSlip
+  // with the buyer-number line OFF (post orders have no buyer number); manual only.
+  const postSalesOn = postSalesGate({ switchOn: featureSw.fbPostSales, isAdmin, hasKey: hasFeature("fb_post_sales"), pageCount: fbPages.length });
+  const postSales = usePostSales({
+    enabled: postSalesOn, active: screen === "orders",
+    pages: fbPages.map((p) => ({ pageId: p.pageId, name: p.name || p.username || p.pageId })),
+    print: (buyer) => { const pc = printCfgRef.current; if (!pc) return false; const r = printSlip(buyer, pc.cur, pc.storeName, postPrintSettings(pc.settings)); track("print", { via: r.via, kind: "post" }); return r.ok; },
+    texts: { printed: (n) => tpl(tApp.rd_fps_print_done, { n }), nothingNew: tApp.rd_fps_print_none, started: tApp.rd_fps_started, printFailed: tApp.rd_fps_print_failed },
+  });
   const [wlRows, setWlRows] = useState<WaitlistRow[] | null | "loading">("loading");
   const [wlBusy, setWlBusy] = useState<number | null>(null);
   const [wlNote, setWlNote] = useState<string | null>(null);
@@ -2045,6 +2057,20 @@ export default function RedesignApp() {
   // NO autoCode / productLocalId (the sticker shows the code via itemOverride). No message is sent.
   const onWaitlistGive = (r: WaitlistRow) => {
     if (wlGiveRef.current.has(r.id) || wlBusy != null) return;
+    // POST SALES row (sql/137): one post order through fb_post_waitlist_give (same item lock as the
+    // server claim) — NEVER the live order path below (no buyer number, no live_session_orders).
+    if (r.source === "post") {
+      wlGiveRef.current.add(r.id);
+      setWlBusy(r.id);
+      void givePostWaitlist(r.id).then((v) => {
+        setWlBusy(null);
+        if (v !== "ordered") { wlGiveRef.current.delete(r.id); setWlNote(v === "sold_out" ? tApp.rd_wl_out : tApp.rd_wl_give_failed); }
+        else setWlNote(null);
+        reloadWaitlist();
+        postSales?.onReload();
+      });
+      return;
+    }
     const who = r.commenterName || r.handle;
     if (nameHasBuyer(who, liveSession.session.buyers) && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_wl_same_name, { name: who }))) return;
     wlGiveRef.current.add(r.id);
@@ -2581,13 +2607,13 @@ export default function RedesignApp() {
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
-          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string) => { const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
+          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post") => { if (source === "post") return postItemStock(postSales?.sales ?? [], code); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
             tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
             pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
-            sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} />}
+            sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(postSales ? { posts: postSales } : {})} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}
           {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}

@@ -9,6 +9,7 @@ export interface WaitlistRow {
   id: number; sessionId: string | null; code: string; productLocalId: number | null;
   commentId: string; pageId: string; liveVideoId: string | null; commenterId: string | null;
   commenterName: string; handle: string; createdAt: string; status: "waiting" | "given" | "skipped";
+  source: "live" | "post"; // sql/137: a post-sales row ("Give" = fb_post_waitlist_give, never the live order path)
 }
 
 export function mapWaitlistRow(r: Record<string, unknown>): WaitlistRow {
@@ -20,18 +21,19 @@ export function mapWaitlistRow(r: Record<string, unknown>): WaitlistRow {
     liveVideoId: r.live_video_id == null ? null : String(r.live_video_id), commenterId: r.commenter_id == null ? null : String(r.commenter_id),
     commenterName: String(r.commenter_name ?? ""), handle: String(r.handle ?? ""), createdAt: String(r.created_at ?? ""),
     status: s === "given" || s === "skipped" ? s : "waiting",
+    source: r.source === "post" ? "post" : "live",
   };
 }
 
-// Waiting rows grouped by code (case-insensitive), each group oldest first; groups in the order
-// their first row arrived. Pure.
-export function groupWaitlist(rows: WaitlistRow[]): { code: string; rows: WaitlistRow[] }[] {
+// Waiting rows grouped by code (case-insensitive) AND source (live vs post), each group oldest
+// first; groups in the order their first row arrived. Pure.
+export function groupWaitlist(rows: WaitlistRow[]): { code: string; source: "live" | "post"; rows: WaitlistRow[] }[] {
   const waiting = rows.filter((r) => r.status === "waiting").sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
-  const out: { code: string; rows: WaitlistRow[] }[] = [];
+  const out: { code: string; source: "live" | "post"; rows: WaitlistRow[] }[] = [];
   for (const r of waiting) {
     const k = r.code.trim().toLowerCase();
-    const g = out.find((x) => x.code.trim().toLowerCase() === k);
-    if (g) g.rows.push(r); else out.push({ code: r.code, rows: [r] });
+    const g = out.find((x) => x.code.trim().toLowerCase() === k && x.source === r.source);
+    if (g) g.rows.push(r); else out.push({ code: r.code, source: r.source, rows: [r] });
   }
   return out;
 }

@@ -69,7 +69,7 @@ describe("sql/117 my_feature_access", () => {
     const body = readFileSync(file, "utf8");
     return [...body.slice(body.indexOf("keys(k) as (")).split("\n  )")[0].matchAll(/\('([a-z0-9_]+)'\)/g)].map((m) => m[1]);
   };
-  it("keys = the sql/116 list plus parcel_cap_70 / fm_pickup / test_printers / tiktok_send; the latest (sql/126) matches the app's FEATURE_KEYS", () => {
+  it("keys = the sql/116 list plus parcel_cap_70 / fm_pickup / test_printers / tiktok_send; the latest (sql/137 fb_post_sales) matches the app's FEATURE_KEYS", () => {
     const k116 = keysOf("sql/116_help_bot.sql");
     const k117 = keysOf("sql/117_parcel_cap_70.sql");
     expect(k116[k116.length - 1]).toBe("support_ai_preview");
@@ -78,9 +78,12 @@ describe("sql/117 my_feature_access", () => {
     expect(k119).toEqual([...k117, "fm_pickup"]);
     const k123 = keysOf("sql/123_test_printers_feature.sql");
     expect(k123).toEqual([...k119, "test_printers"]);
-    const k126 = keysOf("sql/126_tiktok_send_feature.sql"); // the LATEST my_feature_access list
+    const k126 = keysOf("sql/126_tiktok_send_feature.sql");
     expect(k126).toEqual([...k123, "tiktok_send"]);
-    expect([...k126].sort()).toEqual([...FEATURE_KEYS].sort());
+    const k137 = keysOf("sql/137_fb_post_sales.sql"); // the LATEST my_feature_access list (Facebook Post Sales)
+    expect(k137).toEqual([...k126, "fb_post_sales"]);
+    expect([...k137].sort()).toEqual([...FEATURE_KEYS].sort());
+    expect(keysOf("sql/137_fb_post_sales_rollback.sql")).toEqual(k126);
     // sql/126: no email rows; its rollback = the sql/123 list
     const sql126 = readFileSync("sql/126_tiktok_send_feature.sql", "utf8");
     expect(sql126).not.toMatch(/^\s*insert/im);

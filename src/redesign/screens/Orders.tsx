@@ -34,6 +34,8 @@ import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 import { buyerTagFor, type BuyerTagMap } from "../adapters/buyerTag";
 import BuyerTagPill from "../components/BuyerTagPill";
 import { usePaidFlags, isPaidExpired, orderKey } from "../adapters/ordersPaid";
+import PostsBody, { type PostsUi } from "./PostSales";
+import { markPostsSeen, postsSeen } from "../adapters/fbPostSales";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -48,7 +50,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping, shippingSoon = false,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
   buyers = [], seller, initialQuery = "", topTabs, fbReceipt = false, sessionId = null, hideFbPill = false, waitlist, paidFlag = false, buyerTags = null, fbPolish = false,
-  tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow,
+  tiktokSend = false, pastSessions = false, sellerId = "", sessionStartedAt = null, sessionWindowDays = null, onReprintRow, posts,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   shippingSoon?: boolean; // Build 16: non-admin seller → the 🚚 button shows "Coming soon" and never opens Shipping
@@ -89,9 +91,18 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   sessionStartedAt?: string | null; sessionWindowDays?: number | null;
   // Past-session Reprint: prints the STORED row of that order (zero-write, like onReprintOrder).
   onReprintRow?: (row: LiveSessionRow) => void;
+  // FACEBOOK POST SALES (sql/137): present ONLY when the seller has a connected Facebook Page (and
+  // the switch / access allow) → a "Live | Posts" segment appears, Live stays the default. Absent
+  // (every seller without a Page) = the screen exactly as before: no segment, nothing new.
+  posts?: PostsUi;
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
+  // Live | Posts (post sales). A red dot sits on "Posts" until it is opened once on this device.
+  const [postsView, setPostsView] = useState<"live" | "posts">("live");
+  const [postsDot, setPostsDot] = useState(() => !postsSeen());
+  const showPosts = !!posts && postsView === "posts";
+  const openPosts = () => { setPostsView("posts"); if (postsDot) { markPostsSeen(); setPostsDot(false); } };
   const [reprintingKey, setReprintingKey] = useState("");
   // Batch 1 — TOP-OF-SCREEN view controls (all additive; rows/Reprint untouched).
   const [platformFilterRaw, setPlatformFilter] = useState<PlatformFilter>("all"); // F2
@@ -367,6 +378,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           </div>
         </div>
         {topTabs}
+        {!showPosts && <>
         {/* Unified search — sits where the old (dead) status-chip row was. */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, background: "rgba(255,255,255,.14)", borderRadius: 11, padding: "8px 12px" }}>
           <span style={{ fontSize: 13, opacity: 0.8 }}>🔍</span>
@@ -436,6 +448,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             <input type="date" value={customTo} max={todayId || undefined} onChange={(e) => setCustomTo(e.target.value)} data-testid="ord-custom-to" style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.14)", color: "var(--on-header)", fontFamily: "var(--font-ui)" }} />
           </div>
         )}
+        </>}
       </div>
       {pastSel && reprintAsk && (
         <div data-testid="reprint-old-overlay" onClick={() => setReprintAsk(null)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -454,7 +467,22 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
           {tpl(t.rd_psn_banner, { range: sessionRange(pastSel) })}
         </div>
       )}
-      <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
+        {posts && (
+          <div data-testid="ord-live-posts" role="tablist" style={{ display: "flex", gap: 4, margin: "14px 14px 0", background: "var(--accent-soft)", borderRadius: 14, padding: 4 }}>
+            {(["live", "posts"] as const).map((v) => {
+              const on = postsView === v;
+              return (
+                <button key={v} type="button" role="tab" aria-selected={on} data-testid={`ord-seg-${v}`} onClick={() => (v === "posts" ? openPosts() : setPostsView("live"))}
+                  style={{ flex: 1, minHeight: 44, borderRadius: 11, border: "none", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "var(--font-ui)", background: on ? "var(--surface)" : "transparent", color: on ? "var(--accent-fg)" : "var(--text-dim)", boxShadow: on ? "var(--shadow)" : "none", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+                  {v === "live" ? t.rd_fps_tab_live : posts.orders.length ? `${t.rd_fps_tab_posts} · ${posts.orders.length}` : t.rd_fps_tab_posts}
+                  {v === "posts" && postsDot && <span data-testid="ord-posts-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: "#e11d48" }} />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      {showPosts && posts && <div style={{ padding: "12px 14px 22px" }}><PostsBody ui={posts} cur={cur} /></div>}
+      {!showPosts && <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
         {waitlist && !pastSel && <WaitlistSection w={waitlist} />}
         {/* F3 summary bar — count · total · unique buyers · AOV over the visible set. */}
         {live && !receipt && !chooser && (
@@ -579,7 +607,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             {searching && historyState === "error" && <div style={{ ...noteStyle, padding: "6px 0", color: "var(--danger)" }}>{t.rd_ord_hist_error}</div>}
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -587,8 +615,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
 // ── F3 — Facebook waitlist (this session's line per code, oldest first) ─────────────────────
 export interface WaitlistUi {
   state: "loading" | "ready" | "error";
-  groups: { code: string; rows: WaitlistRow[] }[];
-  stockFor: (code: string) => number;     // this device's live stock for the code
+  groups: { code: string; source?: "live" | "post"; rows: WaitlistRow[] }[];
+  stockFor: (code: string, source?: "live" | "post") => number; // this device's live stock for the code (post rows: the post item's stock)
   onGive: (r: WaitlistRow) => void;
   onSkip: (r: WaitlistRow) => void;
   busyId: number | null;
@@ -604,11 +632,12 @@ function WaitlistSection({ w }: { w: WaitlistUi }) {
       {w.state === "error" && <div data-testid="waitlist-error" style={{ fontSize: 12.5, color: "var(--danger)" }}>{t.rd_wl_load_failed}</div>}
       {w.note && <div role="status" data-testid="waitlist-note" style={{ fontSize: 12, color: "var(--danger)", fontWeight: 600, margin: "4px 0" }}>{w.note}</div>}
       {w.groups.map((g) => {
-        const inStock = w.stockFor(g.code) > 0;
+        const inStock = w.stockFor(g.code, g.source) > 0;
         return (
-          <div key={g.code} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
+          <div key={`${g.source || "live"}:${g.code}`} data-testid={`waitlist-code-${g.code}`} style={{ marginTop: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>
               <span style={{ fontFamily: mono }}>{g.code}</span>
+              {g.source === "post" && <span data-testid="waitlist-post-tag" style={{ fontSize: 10, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_fps_tab_post_one}</span>}
               <span style={{ fontSize: 11, fontWeight: 700, color: inStock ? "var(--ok)" : "var(--text-muted)" }}>{inStock ? t.rd_wl_in_stock : t.rd_wl_out}</span>
             </div>
             {g.rows.map((r, i) => {

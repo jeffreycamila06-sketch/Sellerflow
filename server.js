@@ -37,6 +37,7 @@ import { finalErrorHandler } from "./server/finalErrorHandler.js";
 import { registerHealthRoutes } from "./server/healthRoutes.js";
 import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } from "./server/fbAutoReceipt.js";
 import { createFbSoldout } from "./server/fbSoldout.js";
+import { createFbPostSales } from "./server/fbPostSales.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
@@ -2472,6 +2473,67 @@ try {
       },
     });
     fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive, requireFbAvailable, requireFbPlan, accountLiveCheck });
+    // ── POST SALES (server/fbPostSales.js, sql/137) — a SEPARATE module from the live path ──
+    // Buyers comment a code on a Page post → the poller (60 s) creates fb_post_orders through the
+    // atomic claim RPC. OFF unless app_settings.fb_post_sales_enabled = 'true' (cached 60 s).
+    const fbPostSalesEnabled = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "fb_post_sales_enabled").maybeSingle();
+        if (error) throw new Error("fb_post_sales_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
+    const postSales = createFbPostSales({
+      config: fbCfg,
+      enabled: fbPostSalesEnabled,
+      log: (line) => console.log(line),
+      store: {
+        getPage: (userId, pageId) => store.getPage(userId, pageId),
+        // Selling sales whose window may be open, each with its items + the Page token (service role).
+        async listActiveSales() {
+          const { data, error } = await serviceSb.from("fb_post_sales")
+            .select("id, user_id, page_id, post_id, mode, starts_at, ends_at, status, last_comment_cursor, items:fb_post_sale_items(id, code, name, price, stock, sold, product_id)")
+            .eq("status", "selling").lte("starts_at", new Date().toISOString());
+          if (error) throw new Error("fb_post_sales_read");
+          const sales = data || [];
+          if (!sales.length) return [];
+          const keys = [...new Set(sales.map((s) => `${s.user_id}|${s.page_id}`))];
+          const pages = new Map();
+          for (const k of keys) {
+            const [uid, pid] = k.split("|");
+            const p = await store.getPage(uid, pid);
+            if (p && p.active !== false) pages.set(k, p.access_token);
+          }
+          return sales.filter((s) => pages.has(`${s.user_id}|${s.page_id}`)).map((s) => ({ ...s, access_token: pages.get(`${s.user_id}|${s.page_id}`) }));
+        },
+        async markEnded(id) { await serviceSb.from("fb_post_sales").update({ status: "ended" }).eq("id", id); },
+        async saveCursor(id, cursor) { await serviceSb.from("fb_post_sales").update({ last_comment_cursor: cursor, last_polled_at: new Date().toISOString() }).eq("id", id); },
+        async claimOrder(a) {
+          const { data, error } = await serviceSb.rpc("fb_post_order_claim", {
+            p_sale_id: a.saleId, p_item_id: a.itemId, p_buyer_fb_id: a.buyerFbId, p_buyer_name: a.buyerName,
+            p_qty: a.qty, p_comment_id: a.commentId, p_comment_text: a.commentText, p_created_at: a.createdAt,
+          });
+          if (error) throw new Error("fb_post_order_claim");
+          return String(data || "error");
+        },
+        // Sold out → the same waitlist as the live path (sql/92), source 'post'. Idempotent per comment.
+        async joinWaitlist(row) {
+          const { error } = await serviceSb.from("fb_waitlist").upsert(row, { onConflict: "user_id,comment_id", ignoreDuplicates: true });
+          if (error) throw new Error("fb_waitlist_insert");
+        },
+      },
+    });
+    postSales.start();
+    // The "Sell on a post" picker: the seller's OWN Page's recent posts (the token stays here).
+    app.get("/fb/post-sales/posts", requireAuth, requireFbAvailable, async (req, res) => {
+      if (!(await fbPostSalesEnabled())) return res.status(404).json({ ok: false, error: "off" });
+      const pageId = String(req.query.pageId || "").trim();
+      if (!/^\d{1,40}$/.test(pageId)) return res.status(400).json({ ok: false, error: "bad_page" });
+      try {
+        const r = await postSales.recentPosts(req.authUserId, pageId);
+        return res.status(r.ok ? 200 : 502).json(r);
+      } catch { return res.status(502).json({ ok: false, error: "fb_failed" }); }
+    });
     // Messenger receipt (fb_receipt_access only) — reads/writes its own rows; never the poller.
     // Isolated: a throw here must never null fbRuntime or skip the refresh timer below.
     let fbReceiptApi = null; // one instance: the manual send and the automatic receipt share its buyer lock

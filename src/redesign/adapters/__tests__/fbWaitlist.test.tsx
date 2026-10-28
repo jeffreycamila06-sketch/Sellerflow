@@ -17,7 +17,7 @@ import Orders, { type WaitlistUi } from "../../screens/Orders";
 
 const row = (o: Partial<WaitlistRow>): WaitlistRow => ({
   id: 1, sessionId: "s1", code: "A1", productLocalId: 7, commentId: "100_1", pageId: "555", liveVideoId: "LV", commenterId: "C9",
-  commenterName: "Ana Cruz", handle: "Ana Cruz", createdAt: "2026-10-08T03:00:00Z", status: "waiting", ...o,
+  commenterName: "Ana Cruz", handle: "Ana Cruz", createdAt: "2026-10-08T03:00:00Z", status: "waiting", source: "live", ...o,
 });
 
 describe("pure helpers", () => {
