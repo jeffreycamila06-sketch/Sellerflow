@@ -3,7 +3,7 @@
 SellerFlowLive helps you take orders and print stickers while you're live. If something here does not match what you see, or you need help, message Admin on Telegram @SellerFlowLive.
 
 ## about — What SellerFlowLive does
-Last checked: 2026-10-11
+Last checked: 2026-10-28
 Keywords: about, what is, sellerflowlive, app, live selling, tiktok, facebook, ano ito, paano gumagana, 是什么, 功能, 介紹
 
 SellerFlowLive helps you sell on live video without writing orders in a notebook.
@@ -17,7 +17,7 @@ SellerFlowLive helps you sell on live video without writing orders in a notebook
 The app works in English, Filipino, Bahasa Indonesia, Tiếng Việt, 中文 (简体), 中文 (繁體), ไทย and Български. Printer connection and live connect work in the SellerFlowLive phone app; some things (like exporting files) work better in a browser on a computer.
 
 ## screens — Main screens and the bottom bar
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: screens, menu, bottom bar, tabs, navigation, where, nasaan, saan makikita, live, orders, products, sales, settings, 在哪里, 選單, 页面
 
 The bar at the bottom of the app has five buttons:
@@ -29,7 +29,7 @@ The bar at the bottom of the app has five buttons:
 - **Settings** — shop tools and your account (see the "Settings screen" section).
 
 ## settings-tiles — The Settings screen
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: settings, tiles, shop tools, account, general settings, customers, log out, setting, ayos, 设置, 設定, 账号
 
 Tap **Settings** in the bottom bar. You will see tiles:
@@ -45,7 +45,7 @@ Tap **Settings** in the bottom bar. You will see tiles:
 - **Log out** — logs out this device only.
 
 ## general-settings — General Settings
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: general settings, profile, shop name, phone, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料
 
 **Settings → General Settings** has these parts:
@@ -79,7 +79,7 @@ There are five plans. What the app shows per plan:
 - This guide does not quote prices. For prices, message Admin.
 
 ## account-limit — Account limit per plan
-Last checked: 2026-10-11
+Last checked: 2026-10-28
 Keywords: account limit, accounts, multi account, add account, limit reached, ilang account, dagdag account, 账号上限, 多帳號, 帳號數量
 
 Your plan sets how many live accounts you can have **in total across all live platforms**: Free 1, Basic 1, Plus 2, Pro 3, Master 5.
@@ -95,7 +95,7 @@ What to do:
 3. To add an extra TikTok account beyond your plan, tap **Add TikTok — Multi Account** and message Admin on Telegram.
 
 ## free-order-limit — Free plan order limit
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: free, free plan, 20 orders, order limit, cap, limit reached, reset, upgrade, libre, naubos, 免费, 免費額度, 订单上限
 
 On the **Free** plan you can create **20 orders in total**. They **do not reset** — there is no monthly refill. Upgrade for unlimited orders. Paid plans do not have this limit.
@@ -123,7 +123,7 @@ To renew:
 On iPhone the messages say "Your account expires…" and "Contact support".
 
 ## payment — Paying for a plan
-Last checked: 2026-10-11
+Last checked: 2026-10-28
 Keywords: payment, pay, renew, upgrade, telegram, bayad, magbayad, paano magbayad, 付款, 付费, 續訂
 
 Payment is not done inside the app.
@@ -173,7 +173,7 @@ Common messages:
 - "This Page was connected on another phone, so this one stopped receiving."
 
 ## post-sales — Sell on a Facebook post (Posts tab)
-Last checked: 2026-10-27
+Last checked: 2026-10-28
 Keywords: post, posts, facebook post, sell on a post, comment code, +1, post orders, print new, my posts, magbenta sa post, 帖子, 貼文, 留言下单, 貼文賣貨
 
 If your Facebook Page is connected, the **Orders** screen has a **Live | Posts** switch at the top. **Live** is your live orders, as before. **Posts** is for selling on a normal Facebook post: buyers comment a code under your post and the order is made for you. (If you don't see Posts yet, message Admin on Telegram @SellerFlowLive.)
@@ -193,7 +193,7 @@ A buyer's comment must be **only the code** (for example "A" or "+1") to count a
 - **My posts** shows each post as **Selling**, **Sold out** or **Ended**, with the orders, buyers and waiting counts. There you can **End now** or **Edit** an item's price and stock.
 
 ## connect-shopee — Shopee Live (beta)
-Last checked: 2026-10-27
+Last checked: 2026-10-28
 Keywords: shopee, shopee live, share link, copy link, beta, paste link, 虾皮, 蝦皮, 蝦皮直播, shopee tw, shopee ph
 
 Shopee Live is a **beta**. Admin turns it on for you for 30 days at a time. If the Shopee tile shows "Coming soon", message Admin on Telegram @SellerFlowLive to ask for it.
@@ -223,7 +223,7 @@ On the **Live** screen you see four tiles: TikTok, Facebook, Instagram and Shope
 - **Shopee** is a beta — see "Shopee Live (beta)".
 
 ## session-length — Choosing the session length
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: session, session length, days, multi-day, 1 day, 3 days, start session, ilang araw, haba ng session, 场次, 天数, 直播天數
 
 When you tap **Connect** and no session is running, the app asks **Start a live session** and you choose: **1 day** ("Ship same day") up to **5 days** ("N-day live before sending").
@@ -237,7 +237,7 @@ Buyer numbers stay continuous for the whole session. The day you start counts as
 Switching to another live platform asks "Switch live source?". Tap **Switch** to start a new session at #1.
 
 ## buyer-numbers — Buyer numbers
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: buyer number, buyer #, numbering, reset, restart, number 1, numero, bumalik sa 1, 买家编号, 買家編號, 號碼重置
 
 - Each buyer gets **one number for the whole session**. Buyer #5 stays #5 on every order in that session.
@@ -265,7 +265,7 @@ If the comment is a sold-out Auto mode code, the app asks "{code} is sold out. C
 Tags like **NEW** or **CHECK** warn you about risky buyers.
 
 ## same-price — Same price for all items
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: same price, fixed price, all items, price, isang presyo, pare-pareho presyo, 统一价, 同價, 固定價格
 
 **Settings → General Settings → LIVE SESSION → Same price for all items**.
@@ -275,7 +275,7 @@ Keywords: same price, fixed price, all items, price, isang presyo, pare-pareho p
 3. Turn it off with the switch in Settings, or tap **×** on the "All items …" chip on the Live screen. The app remembers the price for next time.
 
 ## auto-mode — Auto mode (live codes)
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: auto mode, auto, code, live code, automatic order, sold out, awtomatiko, code ng item, 自动, 自動下單, 代码, 口令
 
 Auto mode turns comments into orders by itself.
@@ -315,7 +315,7 @@ Open **Products** in the bottom bar.
 Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live session settings. Admin turns these on per account. If you don't see one, it isn't turned on for your account yet — ask Admin.
 
 ## reprint — Reprint a sticker
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: reprint, print again, sticker, copy, missed print, i-print ulit, ulitin print, 重印, 補印, 重新打印
 
 A reprint prints a copy of the order's sticker. **No new order is created.**
@@ -341,7 +341,7 @@ Open **Orders** in the bottom bar.
 - Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don't see them, they aren't turned on for your account yet — ask Admin.
 
 ## tiktok-send — Send to TikTok
-Last checked: 2026-10-26
+Last checked: 2026-10-28
 Keywords: send to tiktok, send message, message buyer, copy message, edit item, edit message, reset message, ipadala sa tiktok, i-message ang buyer, i-edit ang item, i-edit ang message, 发送到TikTok, 傳送到TikTok, 私信买家, 編輯商品, 編輯訊息
 
 - On **Orders**, type the buyer number, then tap **Send**.
@@ -351,7 +351,7 @@ Keywords: send to tiktok, send message, message buyer, copy message, edit item, 
 - Some accounts only — if you don't see **Send**, ask Admin.
 
 ## past-sessions — See orders from past lives
-Last checked: 2026-10-23
+Last checked: 2026-10-28
 Keywords: past sessions, past live, previous session, old orders, reprint old sticker, nakaraang session, lumang orders, i-reprint, 过去的场次, 之前的直播, 過去場次, 舊訂單, 重印
 
 - On **Orders**, tap **🗓 Sessions ▾**, then pick a past session (its dates and order count are shown).
@@ -361,7 +361,7 @@ Keywords: past sessions, past live, previous session, old orders, reprint old st
 - If you don't see **🗓 Sessions ▾** yet, it's not turned on for your account.
 
 ## sales — Sales screen
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额
 
 Open **Sales** in the bottom bar.
@@ -379,7 +379,7 @@ Keywords: miners, top buyers, customers, loyal, repeat buyer, suki, mamimili, �
 - **Customers** (Settings → Customers) lists buyers you've had. Use **Search loaded customers (name or @handle)** and **Load more**.
 
 ## raffle-games — Games (raffle)
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: games, raffle, spin, wheel, winner, giveaway, roleta, pa-raffle, 抽奖, 抽獎, 转盘
 
 On the **Live** screen, switch **Games** on. Orders placed while Games is on join the raffle.
@@ -389,7 +389,7 @@ On the **Live** screen, switch **Games** on. Orders placed while Games is on joi
 - **Print winner** prints it. **Reset** clears the winner and the excluded list.
 
 ## keep-screen-awake — Keep the screen awake
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: screen awake, sleep, screen off, lock screen, keep awake, namamatay screen, natutulog phone, 屏幕常亮, 螢幕休眠, 熄屏
 
 A sleeping phone stops capturing orders. **Keep screen awake while live** is on by default (**Settings → General Settings → Live session**). If it is off, turn it on and tap **Turn on**.
@@ -397,7 +397,7 @@ A sleeping phone stops capturing orders. **Keep screen awake while live** is on 
 It keeps the phone awake while you are connected. Keep the app open on screen during your live. Also keep the phone charging for long lives. Some older phones don't support it.
 
 ## language-theme — Language, theme and currency
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: language, english, chinese, tagalog, theme, dark mode, light, currency, wika, palitan wika, 语言, 語言, 深色模式, 货币
 
 **Settings → General Settings → APPEARANCE**:
@@ -407,7 +407,7 @@ Keywords: language, english, chinese, tagalog, theme, dark mode, light, currency
 - **Currency** — applies to all prices.
 
 ## printer-overview — Which printers work
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: printer, printers, which printer, supported, aimo, phomemo, d520bt, brand, xprinter, sticker, receipt, anong printer, 打印机, 印表機, 列印, 支援
 
 SellerFlowLive prints two kinds of labels:
@@ -453,7 +453,7 @@ Keywords: wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, networ
 "Printer didn't respond. Check it's on." — check the printer is on, the phone and printer are on the same WiFi, and the number is right (it can change after the router restarts).
 
 ## stickers — Sticker sizes, layout, Chinese names and QR
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: sticker size, paper size, 100x60, 60x40, layout, chinese name, qr, print pattern, laki ng sticker, 贴纸尺寸, 标签尺寸, 中文名, 二维码
 
 **Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer.
@@ -465,7 +465,7 @@ Keywords: sticker size, paper size, 100x60, 60x40, layout, chinese name, qr, pri
 **Print QR on sticker** — scan it in Parcel Scan to fill in the buyer quickly. It is off by default and does not work on **60×40** stickers.
 
 ## laptop-printing — Printing from a laptop
-Last checked: 2026-10-15
+Last checked: 2026-10-28
 Keywords: laptop, computer, windows, mac, chrome, silent print, kiosk, auto-print, browser, kompyuter, 电脑, 電腦列印, 静默打印
 
 1. Install your label printer's driver, set it as the default printer, and set the paper size to your label (at least 60×40mm).
@@ -500,7 +500,7 @@ Keywords: bluetooth off, bluetooth, printer busy, another app, other phone, naka
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.
 
 ## parcel-scan — Parcel Scan (7-11) and Customer Details
-Last checked: 2026-10-27
+Last checked: 2026-10-28
 Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家
 
 **Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
@@ -517,7 +517,7 @@ Who sees what:
 3. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel.
 4. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.
 
-**Parcel Scan FamilyMart (全家)** — only when it is turned on for your account.
+**Parcel Scan FamilyMart (全家)** — in **Settings**, next to Parcel Scan 7-11.
 1. Tap **✏️ Add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
 2. **▣ Scan QR** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
 3. Tap **Export N parcel(s)**, then **Export**, and upload the file on 好賣+ → 大量匯單.
@@ -665,7 +665,7 @@ Check in this order:
 Text cut off or too big? Pick a bigger sticker size or turn off some fields in **LIVE print pattern**.
 
 ## stale-app — App acting strange or old
-Last checked: 2026-10-11
+Last checked: 2026-10-28
 Keywords: app old, not updating, stale, bug, glitch, refresh, restart, reopen, update, luma, nagloloko, 卡住, 更新, 重启, 舊版
 
 If the app looks old, misses a new feature, shows the wrong plan, or behaves strangely:
