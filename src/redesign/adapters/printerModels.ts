@@ -52,10 +52,32 @@ export function knownPrinterLang(name: string | undefined | null): PrinterLang |
   return null;
 }
 
-// A known printer: the D520BT (AIMO / Phomemo) or a listed model. (No longer shown as a row
-// badge — rows are name + id only; the flow finds out by printing.)
+// A known printer: the D520BT (AIMO / Phomemo) or a listed model.
 export function isKnownPrinter(p: Pick<BluetoothPrinterDevice, "name" | "model">): boolean {
   return p.model === "D520BT" || knownPrinterLang(p.name) !== null;
+}
+
+// ── THE WHITELIST (printer setup polish) — the scan list shows ONLY these ──────────────────
+// The printers Jeff tested on paper. Brand = the row pill, model = the row's second line.
+// Match = the native D520BT tag or a device-name prefix (case-insensitive). Anything else
+// never appears for a seller ("Printer not listed? Contact Admin."); the admin "Show all"
+// still lists every named device for Jeff's own testing.
+export type KnownBrand = "AIMO" | "Flash" | "Niimbot";
+export interface KnownPrinterInfo { brand: KnownBrand; model: string }
+export const WHITELIST: readonly { prefix: string; brand: KnownBrand; model: string }[] = [
+  { prefix: "D520BT", brand: "AIMO", model: "D520BT" },   // AIMO / Phomemo D520BT — scans as "D520BT-Z"
+  { prefix: "Y41BT", brand: "Flash", model: "Y41BT" },    // FLASH LABEL Y41BT — scans as "Y41BT-0FC4_LE"
+  { prefix: "B1-", brand: "Niimbot", model: "B1" },       // Niimbot B1 — scans as "B1-I603042141"
+  { prefix: "B21-", brand: "Niimbot", model: "B21" },
+  { prefix: "B203-", brand: "Niimbot", model: "B203" },
+  { prefix: "B3S-", brand: "Niimbot", model: "B3S" },
+];
+export function knownPrinterInfo(p: Pick<BluetoothPrinterDevice, "name" | "model" | "brand">): KnownPrinterInfo | null {
+  if (p.model === "D520BT") return { brand: "AIMO", model: "D520BT" };
+  const n = String(p.name || "").trim().toUpperCase();
+  for (const w of WHITELIST) if (n && n.startsWith(w.prefix.toUpperCase())) return { brand: w.brand, model: w.model };
+  if (p.brand === "niimbot") return { brand: "Niimbot", model: "" };
+  return null;
 }
 
 // v2 scan list = PRINTERS ONLY: a D520BT, a device advertising a printer service (native
@@ -70,17 +92,6 @@ export type PrinterBrand = "niimbot";
 export function brandOf(p: Pick<BluetoothPrinterDevice, "name" | "brand">): PrinterBrand | null {
   if (p.brand === "niimbot") return "niimbot";
   return isNiimbotName(p.name) ? "niimbot" : null;
-}
-
-// New printer: TSPL first (the D520BT/Y41BT language), ESC/POS second, CPCL third; then give up.
-// CPCL only when the app build can STORE it (`cpclSupported` — the settings screen passes
-// hasNiimbotBridge(), the marker of a build new enough to know the third language); an older
-// build stops after ESC/POS instead of saving a language it would silently turn into tspl.
-export const LANG_ORDER: readonly PrinterLang[] = ["tspl", "escpos", "cpcl"];
-export function nextLang(tried: PrinterLang, cpclSupported = true): PrinterLang | null {
-  const i = LANG_ORDER.indexOf(tried);
-  const n = i >= 0 && i + 1 < LANG_ORDER.length ? LANG_ORDER[i + 1] : null;
-  return n === "cpcl" && !cpclSupported ? null : n;
 }
 
 // The gate: app_settings `printer_flow_v2` for everyone; admins and the test_printers

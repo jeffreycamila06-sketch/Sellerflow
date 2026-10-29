@@ -1,20 +1,20 @@
-// Printer setup v2 ("no switch, fewer taps") — the Printer settings screen:
+// Printer setup v2 — the Printer settings screen, approved flow (Oct 30):
 //   gate OFF (or an app without the generic method) = today's screen, byte-for-byte behaviour;
-//   gate ON = printers only (service OR name list), rows = name + id (Niimbot pill only), known →
-//   save + auto test sticker, new → one sticker per language (TSPL → ESC/POS → CPCL, each
-//   "Did it look like this?") → not supported + Contact Admin; "Show all Bluetooth devices" (admin only;
-//   a seller sees "Printer not listed? Contact Admin." instead);
-//   Niimbot by name → the vendor-SDK driver when the app has it (one test label, the 50×30 image,
-//   "Did it look like this?", saved as transport niimbot; seller-level errors in plain words), else
-//   not supported yet; classic (paired) rows on Android.
+//   gate ON = Bluetooth checked the moment the screen opens (before any Scan) — OFF → red card +
+//   Scan greyed, NOT ALLOWED → amber card, unclear → one silent retry then the red "isn't ready"
+//   card, ready after a fix → green note + Scan active; Scan lists ONLY the whitelist (AIMO D520BT,
+//   Flash Y41BT, Niimbot B-series) with a brand pill + "Printer not listed? Contact Admin" (admin
+//   keeps "Show all"); tap → saved at once + one test sticker → green "Printer saved" card with
+//   Test print — no "Did it look like this?" question, no language tries.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import PrinterSettings from "../PrinterSettings";
 import { TProvider, buildT } from "../../i18n";
 import { DEF_SETTINGS } from "../../adapters/printing";
 import { __resetSavedPrinter } from "../../adapters/savedPrinter";
 import { FEATURE_KEYS } from "../../adapters/featureAccess";
 import { FEATURE_SWITCH_KEYS } from "../../adapters/featureSwitches";
+import { BT_RECHECK_MS, BT_RETRY_MS } from "../../adapters/btState";
 import { TELEGRAM_URL } from "../../../lib/telegram";
 import type { BluetoothPrinterDevice } from "../../adapters/printerBridge";
 
@@ -26,15 +26,20 @@ const t = buildT("en") as unknown as Record<string, string>;
 const noop = () => {};
 const D520: BluetoothPrinterDevice = { id: "bluetooth:AA", address: "AA:AA", name: "D520BT-Z", transport: "ble", model: "D520BT", likely: true };
 const Y41: BluetoothPrinterDevice = { id: "bluetooth:BB", address: "BB:BB", name: "Y41BT-0FC4_LE", transport: "ble", model: "generic", likely: true };
-const NEW: BluetoothPrinterDevice = { id: "bluetooth:DD", address: "DD:DD", name: "LabelThing-9", transport: "ble", model: "generic", likely: true };
+const NEW: BluetoothPrinterDevice = { id: "bluetooth:DD", address: "DD:DD", name: "LabelThing-9", transport: "ble", model: "generic", likely: true }; // a label printer we never tested
 const WATCH: BluetoothPrinterDevice = { id: "bluetooth:CC", address: "CC:CC", name: "Some Watch", transport: "ble", model: "generic", likely: false, paired: true };
 const NIIMBOT: BluetoothPrinterDevice = { id: "bluetooth:NN", address: "NN:NN", name: "B1-I603042141", transport: "ble", model: "generic", likely: false }; // advertises no printer service
 const CLASSIC: BluetoothPrinterDevice = { id: "bluetooth:EE", address: "EE:EE", name: "XP-P323B", transport: "spp", model: "generic", likely: false, paired: true }; // Android paired receipt printer
+const ALL = [D520, Y41, NEW, WATCH, NIIMBOT, CLASSIC];
+
+const OFF = Object.assign(new Error("Bluetooth is off. Turn it on in Android Settings then try again."), { code: "BT_DISABLED" });
+const PERM = Object.assign(new Error("Bluetooth permission needed. Allow it in the system prompt and tap Scan again."), { code: "BT_PERMISSION" });
+const UNCLEAR = Object.assign(new Error("Bluetooth did not become ready."), { code: "BT_UNAVAILABLE" });
 
 type Bridge = Record<string, ReturnType<typeof vi.fn>>;
-function installBridge(opts: { generic?: boolean; niimbot?: boolean; osTooOld?: boolean; test?: (a: unknown) => Promise<unknown> } = {}): Bridge {
+function installBridge(opts: { generic?: boolean; niimbot?: boolean; osTooOld?: boolean; scan?: () => Promise<unknown> } = {}): Bridge {
   const b: Bridge = {
-    scanBluetoothLabelPrinters: vi.fn(async () => ({ ok: true, printers: [D520, Y41, NEW, WATCH, NIIMBOT, CLASSIC] })),
+    scanBluetoothLabelPrinters: vi.fn(opts.scan ?? (async () => ({ ok: true, printers: ALL }))),
     getBluetoothLabelPrinter: vi.fn(async () => ({ ok: true, savedPrinter: null })),
     clearBluetoothLabelPrinter: vi.fn(async () => ({ ok: true, savedPrinter: null })),
     setBluetoothLabelPrinter: vi.fn(async (p: BluetoothPrinterDevice) => ({ ok: true, savedPrinter: { ...p, paired: true } })),
@@ -43,13 +48,13 @@ function installBridge(opts: { generic?: boolean; niimbot?: boolean; osTooOld?: 
     printStickerBitmap: vi.fn(async () => ({ ok: true })),
     printRawTspl: vi.fn(async () => ({ ok: true, confirmed: false })),
   };
-  if (opts.generic !== false) b.testGenericPrinter = vi.fn(opts.test ?? (async () => ({ ok: true, confirmed: false, statusHex: "0107", service: "FF00", characteristic: "FF02" })));
+  if (opts.generic !== false) b.testGenericPrinter = vi.fn(async () => { throw new Error("the web never calls this any more"); }); // = a build new enough for v2
   if (opts.niimbot) b.printStickerImage = vi.fn(async () => ({ ok: true, confirmed: true })); // the app build has the Niimbot driver
   if (opts.osTooOld) (b as unknown as Record<string, unknown>).niimbotOsTooOld = true; // iOS < 17.2: the shell flags it
   (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter = b;
   return b;
 }
-afterEach(() => { delete (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter; __resetSavedPrinter(); });
+afterEach(() => { delete (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter; __resetSavedPrinter(); vi.useRealTimers(); });
 
 const renderBT = (props: { flowV2?: boolean; isAdmin?: boolean; showClassicToggle?: boolean } = {}) =>
   render(
@@ -58,21 +63,29 @@ const renderBT = (props: { flowV2?: boolean; isAdmin?: boolean; showClassicToggl
         onTogglePsSize={noop} onPickPsSize={noop} settings={{ ...DEF_SETTINGS, stickerSize: "60x40" }} {...props} />
     </TProvider>,
   );
-const scan = async () => { fireEvent.click(screen.getByText(new RegExp(t.rd_ps_scan))); await screen.findByText(/D520BT-Z/); };
+const scanBtn = () => screen.getByTestId("ps-scan") as HTMLButtonElement;
+const ready = () => waitFor(() => expect(scanBtn().disabled).toBe(false));
+const scan = async () => { await ready(); fireEvent.click(scanBtn()); await screen.findByText(/D520BT-Z/); };
 const dataOf = (call: unknown) => Buffer.from((call as { data?: string }).data || "", "base64");
+// fake-timer helpers (RTL's waitFor can't see vitest's fake clock)
+const flush = () => act(async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); });
+const advance = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); for (let i = 0; i < 12; i++) await Promise.resolve(); });
 
 describe("gate", () => {
   it("keys exist: feature list + app_settings switch", () => {
     expect(FEATURE_KEYS).toContain("test_printers");
     expect(FEATURE_SWITCH_KEYS.printerFlowV2).toBe("printer_flow_v2");
   });
-  it("OFF: today's screen — plain scan, no pills, rows save at once, Simple print card stays", async () => {
+  it("OFF: today's screen — no Bluetooth check on open, plain scan, every row, rows save at once, Simple print card stays", async () => {
     const b = installBridge();
     renderBT({ showClassicToggle: true });
-    await scan();
+    await flush();
+    expect(b.scanBluetoothLabelPrinters).not.toHaveBeenCalled(); // no probe for the old screen
+    expect(scanBtn().disabled).toBe(false);
+    fireEvent.click(scanBtn());
+    await screen.findByText(/D520BT-Z/);
     expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledWith();
     expect(screen.queryByTestId("ps-v2-list")).toBeNull();
-    expect(screen.queryByTestId("ps-v2-known")).toBeNull();
     expect(screen.getByText(t.rd_ps_classic_text)).toBeTruthy();
     expect(screen.getByText(/Some Watch/)).toBeTruthy(); // today's list shows every row the native side returned
     fireEvent.click(screen.getByText("D520BT-Z"));
@@ -83,45 +96,145 @@ describe("gate", () => {
   it("ON but an old app (no generic method) → today's screen too", async () => {
     const b = installBridge({ generic: false });
     renderBT({ flowV2: true, isAdmin: true, showClassicToggle: true });
-    await scan();
+    fireEvent.click(scanBtn());
+    await screen.findByText(/D520BT-Z/);
     expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledWith();
     expect(screen.queryByTestId("ps-v2-list")).toBeNull();
     expect(screen.getByText(t.rd_ps_classic_text)).toBeTruthy();
   });
 });
 
-describe("v2 scan list", () => {
-  it("printers only — by service OR by name — rows = name + id, only the Niimbot pill; no (Test) tag, no Simple print card", async () => {
+describe("Bluetooth check on open", () => {
+  it("runs the moment the screen opens — BEFORE any Scan tap; Scan is greyed until the answer; a ready phone = Scan active, no green note", async () => {
     const b = installBridge();
-    renderBT({ flowV2: true, showClassicToggle: true });
-    await scan();
-    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledWith({ includeGenericPrinters: true, showAllDevices: false });
-    expect(screen.getAllByTestId("ps-v2-row")).toHaveLength(5); // D520, Y41, NEW, Niimbot (by name), classic XP (by name)
-    expect(screen.queryByText(/Some Watch/)).toBeNull(); // paired, but not a printer
-    expect(screen.getByText("B1-I603042141")).toBeTruthy();
-    expect(screen.getByText("XP-P323B")).toBeTruthy();
-    expect(screen.getByTestId("ps-v2-classic").textContent).toContain(t.rd_ps_v2_classic); // Android paired = classic tag
-    expect(screen.queryByTestId("ps-v2-known")).toBeNull(); // no "✓ Works with SFL" badge on any row (sellers don't know what SFL means)
-    expect(screen.queryByText(/Works with SFL/)).toBeNull();
-    expect(screen.queryByTestId("ps-v2-new")).toBeNull();   // and no "New" badge either — rows are name + id
-    expect(screen.queryByText(/^New$/)).toBeNull();
-    expect(screen.getAllByTestId("ps-v2-brand")).toHaveLength(1);
-    expect(screen.getByTestId("ps-v2-brand").textContent).toBe("Niimbot"); // the Niimbot pill stays
-    expect(screen.queryByText(/\(Test\)/)).toBeNull();
-    expect(screen.queryByText(t.rd_ps_classic_text)).toBeNull();
+    renderBT({ flowV2: true });
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledTimes(1);
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledWith({ includeGenericPrinters: true });
+    expect(scanBtn().disabled).toBe(true);
+    expect(screen.getByTestId("ps-bt-checking")).toBeTruthy();
+    await ready();
+    expect(screen.queryByTestId("ps-bt-checking")).toBeNull();
+    expect(screen.queryByTestId("ps-bt-ready")).toBeNull();
+    expect(screen.queryByTestId("ps-v2-list")).toBeNull(); // the probe's printers are not a list — Scan is
+    expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("amber"); // ready, no printer yet
+    expect(screen.getByText(t.rd_bts_st_none)).toBeTruthy();
   });
-  it("seller (non-admin): no 'Show all Bluetooth devices' link — a muted 'Printer not listed? Contact Admin.' Telegram line instead", async () => {
+
+  it("Bluetooth OFF → red alert card with the iPhone + Android steps, Scan disabled, status dot red; turned on → green note + Scan active", async () => {
+    vi.useFakeTimers();
+    const b = installBridge({ scan: async () => { throw OFF; } });
+    renderBT({ flowV2: true });
+    await flush();
+    const card = screen.getByTestId("ps-bt-off");
+    expect(card.getAttribute("role")).toBe("alert");
+    expect(card.textContent).toContain(t.rd_bts_off_title);
+    expect(card.textContent).toContain(t.rd_bts_off_line);
+    expect(card.textContent).toContain(t.rd_bts_off_ios);
+    expect(card.textContent).toContain(t.rd_bts_off_android);
+    expect(card.textContent).toContain(t.rd_bts_auto);
+    expect(card.textContent).not.toMatch(/BT_DISABLED|Android Settings/); // never the raw native text
+    expect(scanBtn().disabled).toBe(true);
+    expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("red");
+    expect(screen.getByText(t.rd_bts_st_attention)).toBeTruthy();
+    // re-checked by itself every 3 s
+    await advance(BT_RECHECK_MS);
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("ps-bt-off")).toBeTruthy();
+    b.scanBluetoothLabelPrinters.mockImplementation(async () => ({ ok: true, printers: ALL }));
+    await advance(BT_RECHECK_MS);
+    expect(screen.queryByTestId("ps-bt-off")).toBeNull();
+    expect(screen.getByTestId("ps-bt-ready").textContent).toBe(t.rd_bts_ready);
+    expect(scanBtn().disabled).toBe(false);
+    expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("amber");
+  });
+
+  it("Bluetooth NOT ALLOWED → amber card with the Settings paths, Scan disabled; allowed → green note", async () => {
+    vi.useFakeTimers();
+    const b = installBridge({ scan: async () => { throw PERM; } });
+    renderBT({ flowV2: true });
+    await flush();
+    const card = screen.getByTestId("ps-bt-perm");
+    expect(card.getAttribute("role")).toBe("alert");
+    expect(card.textContent).toContain(t.rd_bts_perm_title);
+    expect(card.textContent).toContain(t.rd_bts_perm_line);
+    expect(card.textContent).toContain(t.rd_bts_perm_ios);
+    expect(card.textContent).toContain(t.rd_bts_perm_android);
+    expect(card.textContent).toContain(t.rd_bts_perm_auto);
+    expect(card.textContent).not.toMatch(/BT_PERMISSION|system prompt/);
+    expect(scanBtn().disabled).toBe(true);
+    expect(screen.queryByTestId("ps-bt-off")).toBeNull();
+    b.scanBluetoothLabelPrinters.mockImplementation(async () => ({ ok: true, printers: ALL }));
+    await advance(BT_RECHECK_MS);
+    expect(screen.queryByTestId("ps-bt-perm")).toBeNull();
+    expect(screen.getByTestId("ps-bt-ready")).toBeTruthy();
+    expect(scanBtn().disabled).toBe(false);
+  });
+
+  it("iOS shape (resolves ok:false with a message, no code) → the same cards", async () => {
+    installBridge({ scan: async () => ({ ok: false, printers: [], savedPrinter: null, message: "Bluetooth permission denied. Allow Bluetooth for SellerFlowLive in iPhone Settings." }) });
+    renderBT({ flowV2: true });
+    expect(await screen.findByTestId("ps-bt-perm")).toBeTruthy();
+    expect(scanBtn().disabled).toBe(true);
+  });
+
+  it("unclear answer → retried ONCE after 2 s silently (no card yet) → still failing → red 'isn't ready' card", async () => {
+    vi.useFakeTimers();
+    const b = installBridge({ scan: async () => { throw UNCLEAR; } });
+    renderBT({ flowV2: true });
+    await flush();
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("ps-bt-notready")).toBeNull();
+    expect(screen.getByTestId("ps-bt-checking")).toBeTruthy();
+    await advance(BT_RETRY_MS);
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledTimes(2);
+    const card = screen.getByTestId("ps-bt-notready");
+    expect(card.getAttribute("role")).toBe("alert");
+    expect(card.textContent).toContain(t.rd_bts_notready);
+    expect(card.textContent).not.toMatch(/BT_UNAVAILABLE|did not become/);
+    expect(scanBtn().disabled).toBe(true);
+    expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("red");
+  });
+
+  it("a Scan that fails with Bluetooth off brings the red card back (ready → off)", async () => {
+    const b = installBridge();
+    renderBT({ flowV2: true });
+    await ready();
+    b.scanBluetoothLabelPrinters.mockImplementation(async () => { throw OFF; });
+    fireEvent.click(scanBtn());
+    expect(await screen.findByTestId("ps-bt-off")).toBeTruthy();
+    expect(scanBtn().disabled).toBe(true);
+    expect(screen.queryByTestId("ps-bt-msg")).toBeNull(); // the card says it — no second line
+  });
+});
+
+describe("scan list = the whitelist", () => {
+  it("only Jeff's tested printers: AIMO D520BT, Flash Y41BT, Niimbot — name + model line + brand pill; unknown printers never appear", async () => {
+    const b = installBridge();
+    renderBT({ flowV2: true });
+    await scan();
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenLastCalledWith({ includeGenericPrinters: true, showAllDevices: false });
+    const rows = screen.getAllByTestId("ps-row");
+    expect(rows.map((r) => r.querySelector("span > span")?.textContent)).toEqual(["D520BT-Z", "Y41BT-0FC4_LE", "B1-I603042141"]);
+    expect(screen.getAllByTestId("ps-row-model").map((m) => m.textContent)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1"]);
+    expect(screen.getAllByTestId("ps-row-brand").map((p) => p.textContent)).toEqual(["AIMO", "Flash", "Niimbot"]);
+    expect(screen.queryByText("LabelThing-9")).toBeNull(); // an untested label printer
+    expect(screen.queryByText("XP-P323B")).toBeNull();     // an untested paired receipt printer
+    expect(screen.queryByText(/Some Watch/)).toBeNull();
+    expect(screen.queryByText(/Works with SFL|^New$|\(Test\)/)).toBeNull();
+    expect(screen.queryByText(t.rd_ps_classic_text)).toBeNull(); // v2 hides the Simple print card
+  });
+  it("seller: 'Printer not listed? Contact Admin.' is a real Telegram anchor under the list; no 'Show all'", async () => {
     installBridge();
     renderBT({ flowV2: true });
     await scan();
-    expect(screen.queryByTestId("ps-v2-show-all")).toBeNull();
-    expect(screen.queryByText(new RegExp(t.rd_ps_v2_show_all))).toBeNull();
-    const line = screen.getByTestId("ps-v2-not-listed");
+    const line = screen.getByTestId("ps-v2-not-listed") as HTMLAnchorElement;
+    expect(line.tagName).toBe("A");
     expect(line.textContent).toBe(t.rd_ps_v2_not_listed);
-    expect(line.getAttribute("href")).toBe("https://t.me/SellerFlowLive");
-    expect(screen.getAllByTestId("ps-v2-row")).toHaveLength(5); // the printer-only list is unchanged
+    expect(line.getAttribute("href")).toBe(TELEGRAM_URL);
+    expect(line.getAttribute("target")).toBe("_blank");
+    expect(screen.queryByTestId("ps-v2-show-all")).toBeNull();
   });
-  it("admin: 'Show all Bluetooth devices' rescans with showAllDevices and lists every named device (no Contact Admin line)", async () => {
+  it("admin: 'Show all Bluetooth devices' rescans with showAllDevices and lists every named device (unknown ones too)", async () => {
     const b = installBridge();
     renderBT({ flowV2: true, isAdmin: true });
     await scan();
@@ -129,37 +242,46 @@ describe("v2 scan list", () => {
     fireEvent.click(screen.getByTestId("ps-v2-show-all"));
     await screen.findByText(/Some Watch/);
     expect(b.scanBluetoothLabelPrinters).toHaveBeenLastCalledWith({ includeGenericPrinters: true, showAllDevices: true });
-    expect(screen.getAllByTestId("ps-v2-row")).toHaveLength(6);
+    expect(screen.getAllByTestId("ps-row")).toHaveLength(6);
+    expect(screen.getAllByTestId("ps-row-brand")).toHaveLength(3); // only the whitelisted rows carry a pill
     expect(screen.queryByTestId("ps-v2-show-all")).toBeNull();
-    // a device from "show all" runs the same new-printer flow
-    fireEvent.click(screen.getByText("Some Watch"));
-    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
-    expect(b.testGenericPrinter).toHaveBeenCalledWith(expect.objectContaining({ address: "CC:CC" }));
   });
-  it("nothing found → a plain note", async () => {
-    const b = installBridge();
-    b.scanBluetoothLabelPrinters.mockResolvedValue({ ok: true, printers: [WATCH] });
+  it("nothing listed → a plain note", async () => {
+    installBridge({ scan: async () => ({ ok: true, printers: [WATCH, NEW] }) });
     renderBT({ flowV2: true });
-    fireEvent.click(screen.getByText(new RegExp(t.rd_ps_scan)));
+    await ready();
+    fireEvent.click(scanBtn());
     expect(await screen.findByText(t.rd_ps_v2_none)).toBeTruthy();
   });
 });
 
-describe("v2 known printer", () => {
-  it("D520BT: saved at once (same call as today) + one test sticker through the unchanged D520 route, no question", async () => {
+describe("tap a printer → saved + one test sticker → green card (no question)", () => {
+  it("D520BT: 'Printing a test sticker on…' → saved with the unchanged D520 call → one D520 test sticker → green 'Printer saved' card with name · size + Test print", async () => {
     const b = installBridge();
     renderBT({ flowV2: true });
     await scan();
     fireEvent.click(screen.getByText("D520BT-Z"));
-    expect(await screen.findByText(t.rd_ps_v2_saved_testing)).toBeTruthy();
+    expect((await screen.findByTestId("ps-printing")).textContent).toContain("D520BT-Z");
     await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "AA:AA", name: "D520BT-Z", transport: "ble" }));
     await waitFor(() => expect(b.printStickerBitmap).toHaveBeenCalledTimes(1)); // D520 SDK image stream, as always
+    const card = await screen.findByTestId("ps-saved");
+    expect(card.getAttribute("role")).toBe("status");
+    expect(card.textContent).toContain(t.rd_bts_saved_title);
+    expect(card.textContent).toContain("D520BT-Z · sticker 60x40mm");
+    expect(card.textContent).toContain(t.rd_bts_saved_line);
+    expect(screen.getByTestId("ps-saved-test").textContent).toBe(t.rd_ps_test_print);
+    expect(screen.queryByText(/Did it look like this/)).toBeNull();
+    expect(screen.queryByTestId("pp-exact-preview")).toBeNull(); // no preview picture
     expect(b.testGenericPrinter).not.toHaveBeenCalled();
     expect(b.printRawTspl).not.toHaveBeenCalled();
-    expect(await screen.findByText(t.rd_ps_test_sent)).toBeTruthy();
-    expect(screen.queryByTestId("ps-v2-ask")).toBeNull();
+    expect(screen.queryByTestId("ps-v2-list")).toBeNull(); // the list makes way for the card
+    expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("green");
+    expect(screen.getByText("Connected: D520BT-Z")).toBeTruthy();
+    // Test print on the card = the saved printer's test sticker
+    fireEvent.click(screen.getByTestId("ps-saved-test"));
+    await waitFor(() => expect(b.printStickerBitmap).toHaveBeenCalledTimes(2));
   });
-  it("Y41BT: saved as generic/tspl + one test sticker as a TSPL BITMAP image (never the text sticker)", async () => {
+  it("Y41BT (Flash): saved as generic/tspl + one TSPL BITMAP test sticker (never the text sticker), no question", async () => {
     const b = installBridge();
     renderBT({ flowV2: true });
     await scan();
@@ -171,201 +293,68 @@ describe("v2 known printer", () => {
     expect(bytes.includes(Buffer.from("TEXT "))).toBe(false);
     expect(b.printStickerNative).not.toHaveBeenCalled();
     expect(b.testGenericPrinter).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("ps-v2-ask")).toBeNull();
+    expect((await screen.findByTestId("ps-saved")).textContent).toContain("Y41BT-0FC4_LE");
+    expect(screen.queryByText(/Did it look like this/)).toBeNull();
   });
-});
-
-describe("v2 new printer", () => {
-  it("test (TSPL image) → ask → Yes saves generic/tspl; nothing saved before", async () => {
-    const b = installBridge();
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
-    expect(b.testGenericPrinter).toHaveBeenCalledTimes(1);
-    const first = b.testGenericPrinter.mock.calls[0][0] as { address: string; data?: string; payload?: unknown; transport?: string };
-    expect(first.address).toBe("DD:DD");
-    expect(first.payload).toBeUndefined();
-    expect(first.transport).toBeUndefined();
-    const bytes = dataOf(first);
-    expect(bytes.subarray(0, 16).toString("ascii")).toBe("SIZE 60 mm, 40 m");
-    expect(bytes.includes(Buffer.from("BITMAP 0,"))).toBe(true);
-    expect(bytes.includes(Buffer.from("TEXT "))).toBe(false);
-    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-    expect(screen.getByTestId("pp-exact-preview")).toBeTruthy(); // the picture of the correct sticker
-    expect(screen.queryByTestId("ps-v2-debug")).toBeNull(); // not admin
-    fireEvent.click(screen.getByTestId("ps-v2-yes"));
-    await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "DD:DD", name: "LabelThing-9", transport: "ble", model: "generic", lang: "tspl" }));
-    expect(await screen.findByText(t.rd_ps_bt_saved)).toBeTruthy();
-    expect(b.testGenericPrinter).toHaveBeenCalledTimes(1); // never re-sent
-  });
-
-  it("No → ESC/POS → No → CPCL → Yes saves generic/cpcl (one sticker + one question per language)", async () => {
-    const b = installBridge({ niimbot: true }); // a NEW build (has printStickerImage) → CPCL is allowed
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    fireEvent.click(await screen.findByTestId("ps-v2-no"));
-    await waitFor(() => expect(b.testGenericPrinter).toHaveBeenCalledTimes(2));
-    const second = dataOf(b.testGenericPrinter.mock.calls[1][0]);
-    expect(Array.from(second.subarray(0, 6))).toEqual([0x1b, 0x40, 0x1d, 0x76, 0x30, 0x00]); // ESC @ + GS v 0
-    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("ps-v2-no"));
-    await waitFor(() => expect(b.testGenericPrinter).toHaveBeenCalledTimes(3));
-    const third = dataOf(b.testGenericPrinter.mock.calls[2][0]).toString("ascii");
-    expect(third.startsWith("! 0 200 200 320 1\r\n")).toBe(true); // CPCL
-    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("ps-v2-yes"));
-    await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "DD:DD", name: "LabelThing-9", transport: "ble", model: "generic", lang: "cpcl" }));
-  });
-
-  it("No three times → not supported yet + Contact Admin (a real Telegram anchor); nothing saved", async () => {
-    const b = installBridge({ niimbot: true }); // new build → 3 languages
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    fireEvent.click(await screen.findByTestId("ps-v2-no"));
-    fireEvent.click(await screen.findByTestId("ps-v2-no"));
-    fireEvent.click(await screen.findByTestId("ps-v2-no"));
-    expect(await screen.findByText(t.rd_ps_gen_unsupported)).toBeTruthy();
-    const a = screen.getByTestId("ps-v2-contact") as HTMLAnchorElement;
-    expect(a.tagName).toBe("A");
-    expect(a.getAttribute("href")).toBe(TELEGRAM_URL);
-    expect(a.getAttribute("target")).toBe("_blank");
-    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-    expect(b.testGenericPrinter).toHaveBeenCalledTimes(3); // TSPL, ESC/POS, CPCL — and no more
-  });
-
-  it("a printer with nothing to write to (BT_NOT_SUPPORTED) skips the questions and ends unsupported after the 3 tries", async () => {
-    const b = installBridge({ niimbot: true, test: async () => { throw Object.assign(new Error("not supported"), { code: "BT_NOT_SUPPORTED" }); } });
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    expect(await screen.findByText(t.rd_ps_gen_unsupported)).toBeTruthy();
-    expect(b.testGenericPrinter).toHaveBeenCalledTimes(3);
-    expect(screen.queryByTestId("ps-v2-ask")).toBeNull();
-    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-  });
-
-  it("OLD build (no printStickerImage): TSPL → ESC/POS → not supported; CPCL is never tried", async () => {
-    const b = installBridge();
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    fireEvent.click(await screen.findByTestId("ps-v2-no"));
-    await waitFor(() => expect(b.testGenericPrinter).toHaveBeenCalledTimes(2));
-    expect(Array.from(dataOf(b.testGenericPrinter.mock.calls[1][0]).subarray(0, 2))).toEqual([0x1b, 0x40]); // ESC/POS
-    fireEvent.click(await screen.findByTestId("ps-v2-no"));
-    expect(await screen.findByText(t.rd_ps_gen_unsupported)).toBeTruthy();
-    expect(b.testGenericPrinter).toHaveBeenCalledTimes(2); // no CPCL on an old build
-    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-  });
-
-  it("the language native echoes back differs from the confirmed one → not supported, the save is cleared", async () => {
-    const b = installBridge({ niimbot: true });
-    b.setBluetoothLabelPrinter = vi.fn(async (p: BluetoothPrinterDevice) => ({ ok: true, savedPrinter: { ...p, lang: "tspl", paired: true } })); // native only knows tspl
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    fireEvent.click(await screen.findByTestId("ps-v2-no")); // → ESC/POS
-    fireEvent.click(await screen.findByTestId("ps-v2-yes")); // seller confirms ESC/POS
-    expect(await screen.findByText(t.rd_ps_gen_unsupported)).toBeTruthy();
-    expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith(expect.objectContaining({ lang: "escpos" }));
-    expect(b.clearBluetoothLabelPrinter).toHaveBeenCalledTimes(1); // the wrong-language save never stays
-    expect(screen.queryByText(t.rd_ps_bt_saved)).toBeNull();
-  });
-
-  it("classic (paired, Android): the test goes over spp and the save keeps transport spp", async () => {
-    const b = installBridge();
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("XP-P323B"));
-    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
-    expect(b.testGenericPrinter).toHaveBeenCalledWith(expect.objectContaining({ address: "EE:EE", transport: "spp" }));
-    fireEvent.click(screen.getByTestId("ps-v2-yes"));
-    await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "EE:EE", name: "XP-P323B", transport: "spp", model: "generic", lang: "tspl" }));
-  });
-
-  it("Niimbot (by name) on an app WITHOUT the driver: no test print, 'not supported yet' + Contact Admin, nothing saved", async () => {
-    const b = installBridge();
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("B1-I603042141"));
-    expect(await screen.findByText(t.rd_ps_v2_brand_soon)).toBeTruthy();
-    expect(screen.getByTestId("ps-v2-contact").getAttribute("href")).toBe(TELEGRAM_URL);
-    expect(b.testGenericPrinter).not.toHaveBeenCalled();
-    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-  });
-
-  it("Niimbot with the driver: one test label through the SDK (the 50×30 image), 'Did it look like this?', Yes → saved as transport niimbot", async () => {
+  it("Niimbot with the driver: saved as transport niimbot at once → one label through the SDK → the same green card (no question)", async () => {
     const b = installBridge({ niimbot: true });
     renderBT({ flowV2: true });
     await scan();
-    expect(screen.getByTestId("ps-v2-brand").textContent).toBe("Niimbot"); // the row says what it is, not "New"
     fireEvent.click(screen.getByText("B1-I603042141"));
-    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
-    expect(b.testGenericPrinter).toHaveBeenCalledTimes(1);
-    const job = b.testGenericPrinter.mock.calls[0][0] as { address: string; transport: string; name: string; data?: string; image: { w: number; h: number; rowBytes: number; data: string; labelWidthMm: number; labelHeightMm: number } };
-    expect([job.address, job.transport, job.name, job.data]).toEqual(["NN:NN", "niimbot", "B1-I603042141", undefined]);
-    expect([job.image.w, job.image.h, job.image.rowBytes, job.image.labelWidthMm, job.image.labelHeightMm]).toEqual([384, 224, 48, 50, 30]); // 50×30 (the SDK frame's dots, 1:1), not the seller's 60×40
-    expect(Buffer.from(job.image.data, "base64")).toHaveLength(48 * 224);
-    expect(b.printRawTspl).not.toHaveBeenCalled();
-    expect(b.printStickerImage).not.toHaveBeenCalled(); // the test goes through testGenericPrinter (no save yet)
-    fireEvent.click(screen.getByTestId("ps-v2-yes"));
     await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "NN:NN", name: "B1-I603042141", transport: "niimbot", model: "generic" }));
-    expect(screen.queryByTestId("ps-v2-panel")).toBeNull();
+    await waitFor(() => expect(b.printStickerImage).toHaveBeenCalledTimes(1));
+    expect((await screen.findByTestId("ps-saved")).textContent).toContain("B1-I603042141");
+    expect(screen.queryByText(/Did it look like this/)).toBeNull();
+    expect(b.testGenericPrinter).not.toHaveBeenCalled();
   });
-
-  it("Niimbot with the driver: 'No' → not supported yet + Contact Admin (no language loop), nothing saved", async () => {
-    const b = installBridge({ niimbot: true });
+  it("Niimbot on an app WITHOUT the driver: 'not supported yet' + Contact Admin, nothing saved", async () => {
+    const b = installBridge();
     renderBT({ flowV2: true });
     await scan();
     fireEvent.click(screen.getByText("B1-I603042141"));
-    fireEvent.click(await screen.findByTestId("ps-v2-no"));
     expect(await screen.findByText(t.rd_ps_v2_brand_soon)).toBeTruthy();
     expect(screen.getByTestId("ps-v2-contact").getAttribute("href")).toBe(TELEGRAM_URL);
-    expect(b.testGenericPrinter).toHaveBeenCalledTimes(1); // no ESC/POS / CPCL tries for a Niimbot
     expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
   });
-
-  it("Niimbot with the driver: a seller-level failure shows plain words + Contact Admin; another code = the usual wording", async () => {
-    const b = installBridge({ niimbot: true, test: async () => { throw { code: "NIIMBOT_NO_PAPER", message: "Printer error 2" }; } });
-    renderBT({ flowV2: true });
-    await scan();
-    fireEvent.click(screen.getByText("B1-I603042141"));
-    expect(await screen.findByText(t.rd_nb_no_paper)).toBeTruthy();
-    expect(screen.getByTestId("ps-v2-contact")).toBeTruthy();
-    expect(screen.queryByText(/NIIMBOT_NO_PAPER|Printer error 2/)).toBeNull(); // never a code
-    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-    b.testGenericPrinter.mockImplementation(async () => { throw { code: "BT_NOT_FOUND", message: "Could not connect" }; });
-    fireEvent.click(screen.getByText(new RegExp(t.rd_ps_scan)));
-    await screen.findByText(/D520BT-Z/);
-    fireEvent.click(screen.getByText("B1-I603042141"));
-    expect(await screen.findByText(t.rd_ps_test_failed)).toBeTruthy();
-  });
-
-  it("Niimbot on iOS < 17.2: no test print, the 'needs iOS 17' message + Contact Admin, nothing saved", async () => {
+  it("Niimbot on iOS < 17.2: the 'needs iOS 17' message + Contact Admin, nothing saved", async () => {
     const b = installBridge({ niimbot: true, osTooOld: true });
     renderBT({ flowV2: true });
     await scan();
     fireEvent.click(screen.getByText("B1-I603042141"));
     expect(await screen.findByText(t.rd_nb_os_too_old)).toBeTruthy();
-    expect(screen.getByTestId("ps-v2-contact").getAttribute("href")).toBe(TELEGRAM_URL);
-    expect(b.testGenericPrinter).not.toHaveBeenCalled();
     expect(b.printStickerImage).not.toHaveBeenCalled();
     expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-    // the other rows are untouched by the flag: a generic printer still tests normally
-    fireEvent.click(screen.getByText(new RegExp(t.rd_ps_scan)));
-    await screen.findByText(/D520BT-Z/);
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    expect(await screen.findByTestId("ps-v2-ask")).toBeTruthy();
   });
-
-  it("admin sees the debug line after a test print", async () => {
-    installBridge();
+  it("the test sticker fails for another reason → the printer stays saved, one plain line (never the raw text)", async () => {
+    const b = installBridge();
+    b.printStickerBitmap = vi.fn(async () => { throw Object.assign(new Error("read failed, socket might closed"), { code: "BT_NOT_FOUND" }); });
+    b.printStickerNative = vi.fn(async () => { throw Object.assign(new Error("read failed, socket might closed"), { code: "BT_NOT_FOUND" }); });
+    renderBT({ flowV2: true });
+    await scan();
+    fireEvent.click(screen.getByText("D520BT-Z"));
+    expect(await screen.findByTestId("ps-saved")).toBeTruthy();
+    expect(screen.getByTestId("ps-bt-msg").textContent).toBe(t.rd_ps_test_failed);
+    expect(screen.queryByText(/socket|BT_NOT_FOUND/)).toBeNull();
+  });
+  it("the test sticker fails because Bluetooth went OFF → the red card returns (the printer stays saved)", async () => {
+    const b = installBridge();
+    b.printStickerBitmap = vi.fn(async () => { throw Object.assign(new Error("Bluetooth is off"), { code: "BT_OFF" }); });
+    renderBT({ flowV2: true });
+    await scan();
+    fireEvent.click(screen.getByText("D520BT-Z"));
+    expect(await screen.findByTestId("ps-bt-off")).toBeTruthy();
+    expect(b.setBluetoothLabelPrinter).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("red");
+  });
+  it("admin 'Show all': an unknown device is saved as a generic TSPL printer + one test sticker (Jeff's testing path)", async () => {
+    const b = installBridge();
     renderBT({ flowV2: true, isAdmin: true });
     await scan();
-    fireEvent.click(screen.getByText("LabelThing-9"));
-    expect((await screen.findByTestId("ps-v2-debug")).textContent).toBe("confirmed: no · via FF00/FF02 · status: 0107");
+    fireEvent.click(screen.getByTestId("ps-v2-show-all"));
+    await screen.findByText(/Some Watch/);
+    fireEvent.click(screen.getByText("XP-P323B"));
+    await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "EE:EE", name: "XP-P323B", transport: "spp", model: "generic", lang: "tspl" }));
+    await waitFor(() => expect(b.printRawTspl).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId("ps-saved")).toBeTruthy();
   });
 });

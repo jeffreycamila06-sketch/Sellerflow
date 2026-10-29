@@ -270,17 +270,18 @@ Not sure of your model? Check the sticker under the printer — it must say **D5
 Choose it in **Settings → General Settings → Printer → CHOOSE PRINTER**: tap **Bluetooth sticker printer** or **WiFi receipt printer**. If it isn''t set up yet, read the short steps and tap **Got it**.
 
 Printer connection runs in the **SellerFlowLive phone app**. In a web browser you see "Printer connection runs in the SellerFlowLive app — these controls work on your phone, not in the web preview." For a laptop, see "Laptop auto-print".'),
-  ('printer-bluetooth', 'Bluetooth sticker printer (AIMO / Phomemo D520BT)', '2026-10-15'::date, 'bluetooth, bt, aimo, phomemo, d520bt, sticker printer, pair, scan, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸', '1. Turn on the printer and keep it close to the phone.
-2. Make sure it is **not connected to another app or phone**.
-3. Turn on your phone''s **Bluetooth**.
-4. Go to **Settings → General Settings → Printer** and tap **Bluetooth sticker printer**. If it isn''t set up yet, read the steps and tap **Got it**.
-5. Tap **Scan**, then pick your printer from the list (**Paired** or **Nearby**). You see "Printer saved."
-6. Choose your **Sticker size**.
-7. Tap **Test Print**. "Test sticker sent." means it works. (**Test Print** and **Clear** appear after a printer is saved.)
+  ('printer-bluetooth', 'Bluetooth sticker printer (AIMO / Flash / Niimbot)', '2026-10-30'::date, 'bluetooth, bt, aimo, phomemo, d520bt, flash, y41bt, niimbot, b1, sticker printer, pair, scan, allow bluetooth, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸', '1. Turn on the printer and keep it close to the phone. Make sure it is **not connected to another app or phone**.
+2. Go to **Settings → General Settings → Printer** and tap **Bluetooth sticker printer**.
+3. The app checks your phone''s Bluetooth by itself the moment the screen opens — no need to tap anything:
+   - **"Bluetooth is OFF on your phone"** (red) — turn Bluetooth on. iPhone: **Settings → Bluetooth → ON** (not only Control Center). Android / tablet: swipe down from the top → tap **Bluetooth**.
+   - **"Allow Bluetooth for SellerFlowLive"** (amber) — your phone asked one time; if you tapped "Don''t Allow", turn it on. iPhone: **Settings → Privacy & Security → Bluetooth → SellerFlowLive ON**. Android: **Settings → Apps → SellerFlowLive → Permissions → Nearby devices → Allow**. Then come back to this screen.
+   - **"Bluetooth isn''t ready"** — turn Bluetooth off and on, then come back.
+   The app checks again by itself; when Bluetooth is ready you see **"Bluetooth is ready. Tap Scan to find your printer."** and **Scan** turns active.
+4. Tap **Scan** and pick your printer from the list. The list shows the printers that work with the app: **AIMO D520BT**, **Flash Y41BT** and **Niimbot B1 / B21 / B203 / B3S**, each with its brand. Printer not in the list? Tap **Printer not listed? Contact Admin**.
+5. A test sticker prints and the printer is saved by itself. You see **"Printer saved. Ready to print."** with the printer name and your sticker size. If the sticker looks wrong, check the paper and tap **Test print**.
+6. Choose your **Sticker size**. **Test print** and **Clear** appear while a printer is saved; **Clear** removes it so you can pick it again.
 
-"Bluetooth scan unavailable." — turn on Bluetooth, allow **Bluetooth** / **Nearby devices** for the app in your phone settings, then tap **Scan** again.
-
-"Test sticker failed — check pairing" — turn the printer off and on, close other apps that use it, then **Scan** again. **Clear** removes the saved printer so you can pick it again.'),
+The status card at the top shows a red dot when Bluetooth needs your attention, an amber dot when there is no printer yet, and a green dot with **Connected: <printer name>** when a printer is saved.'),
   ('printer-wifi', 'WiFi receipt (slip) printer', '2026-10-15'::date, 'wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, network printer, resibo, 小票, 收据打印机, 網路印表機', '1. Connect the receipt printer to the **same WiFi** as your phone.
 2. Print the printer''s own test page. It shows the printer''s number (like 192.168.x.x).
 3. Go to **Settings → General Settings → Printer** and tap **WiFi receipt printer**. If it isn''t set up yet, read the steps and tap **Got it**.
