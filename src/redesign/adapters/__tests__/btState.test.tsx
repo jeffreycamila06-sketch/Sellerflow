@@ -1,5 +1,6 @@
 // Bluetooth readiness for the Printer settings screen (btState): what one bridge answer
-// means (pure), and the hook's timing — check on open, re-check every 3 s while not ready,
+// means (pure), and the hook's timing — check on open, re-check every 3 s while off / not ready
+// (not allowed = foreground return only),
 // one silent 2 s retry on an unclear answer, foreground re-check, failures reported back.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
@@ -62,14 +63,27 @@ describe("useBluetoothState", () => {
     expect(probe).toHaveBeenCalledTimes(3); // ready = no polling (a ready probe is a full scan)
   });
 
-  it("not allowed → notAllowed, re-checked every 3 s", async () => {
+  it("not allowed → notAllowed with NO timer (every probe re-asks the Android permission); re-checked only when the app comes back to the foreground", async () => {
     vi.useFakeTimers();
     const probe = vi.fn(async () => PERM);
     const { result } = renderHook(() => useBluetoothState(true, probe));
     await flush();
     expect(result.current.state).toBe("notAllowed");
-    await advance(BT_RECHECK_MS);
+    await advance(10_000);
+    expect(probe).toHaveBeenCalledTimes(1); // no popup loop
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); for (let i = 0; i < 10; i++) await Promise.resolve(); });
+    expect(probe).toHaveBeenCalledTimes(2); // one probe on return
+    expect(result.current.state).toBe("notAllowed");
+    await advance(10_000);
     expect(probe).toHaveBeenCalledTimes(2);
+    // a reported permission failure does not start a timer either
+    probe.mockResolvedValue(OK);
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); for (let i = 0; i < 10; i++) await Promise.resolve(); });
+    expect(result.current.state).toBe("ready");
+    act(() => { result.current.report("BT_PERMISSION", "Bluetooth permission needed."); });
+    expect(result.current.state).toBe("notAllowed");
+    await advance(10_000);
+    expect(probe).toHaveBeenCalledTimes(3);
   });
 
   it("an unclear answer is retried ONCE after 2 s silently (state stays checking); still unclear → notReady, then the 3 s re-check", async () => {

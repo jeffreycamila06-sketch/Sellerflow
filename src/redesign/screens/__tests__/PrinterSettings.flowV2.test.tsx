@@ -148,7 +148,7 @@ describe("Bluetooth check on open", () => {
     expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("amber");
   });
 
-  it("Bluetooth NOT ALLOWED → amber card with the Settings paths, Scan disabled; allowed → green note", async () => {
+  it("Bluetooth NOT ALLOWED → amber card with the Settings paths, Scan disabled; NO 3 s re-check (it would re-ask the permission); allowed + back to the app → green note", async () => {
     vi.useFakeTimers();
     const b = installBridge({ scan: async () => { throw PERM; } });
     renderBT({ flowV2: true });
@@ -164,7 +164,11 @@ describe("Bluetooth check on open", () => {
     expect(scanBtn().disabled).toBe(true);
     expect(screen.queryByTestId("ps-bt-off")).toBeNull();
     b.scanBluetoothLabelPrinters.mockImplementation(async () => ({ ok: true, printers: ALL }));
-    await advance(BT_RECHECK_MS);
+    await advance(10_000);
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledTimes(1); // no timer while not allowed
+    expect(screen.getByTestId("ps-bt-perm")).toBeTruthy();
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); for (let i = 0; i < 12; i++) await Promise.resolve(); });
+    expect(b.scanBluetoothLabelPrinters).toHaveBeenCalledTimes(2); // one check on foreground return
     expect(screen.queryByTestId("ps-bt-perm")).toBeNull();
     expect(screen.getByTestId("ps-bt-ready")).toBeTruthy();
     expect(scanBtn().disabled).toBe(false);
@@ -270,6 +274,7 @@ describe("tap a printer → saved + one test sticker → green card (no question
     expect(card.textContent).toContain("D520BT-Z · sticker 60x40mm");
     expect(card.textContent).toContain(t.rd_bts_saved_line);
     expect(screen.getByTestId("ps-saved-test").textContent).toBe(t.rd_ps_test_print);
+    expect(screen.queryByTestId("ps-saved-warn")).toBeNull(); // green = the test sticker really printed (printed.ok)
     expect(screen.queryByText(/Did it look like this/)).toBeNull();
     expect(screen.queryByTestId("pp-exact-preview")).toBeNull(); // no preview picture
     expect(b.testGenericPrinter).not.toHaveBeenCalled();
@@ -325,16 +330,29 @@ describe("tap a printer → saved + one test sticker → green card (no question
     expect(b.printStickerImage).not.toHaveBeenCalled();
     expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
   });
-  it("the test sticker fails for another reason → the printer stays saved, one plain line (never the raw text)", async () => {
+  it("the test sticker fails for another reason → the printer stays saved, AMBER 'saved, but the test sticker didn't print' card + Test print (never green, never the raw text); a later Test print that works turns it green", async () => {
     const b = installBridge();
-    b.printStickerBitmap = vi.fn(async () => { throw Object.assign(new Error("read failed, socket might closed"), { code: "BT_NOT_FOUND" }); });
-    b.printStickerNative = vi.fn(async () => { throw Object.assign(new Error("read failed, socket might closed"), { code: "BT_NOT_FOUND" }); });
+    const fail = vi.fn(async () => { throw Object.assign(new Error("read failed, socket might closed"), { code: "BT_NOT_FOUND" }); });
+    b.printStickerBitmap = fail; b.printStickerNative = fail;
     renderBT({ flowV2: true });
     await scan();
     fireEvent.click(screen.getByText("D520BT-Z"));
-    expect(await screen.findByTestId("ps-saved")).toBeTruthy();
-    expect(screen.getByTestId("ps-bt-msg").textContent).toBe(t.rd_ps_test_failed);
+    const card = await screen.findByTestId("ps-saved-warn");
+    expect(b.setBluetoothLabelPrinter).toHaveBeenCalledTimes(1); // saved anyway
+    expect(card.getAttribute("role")).toBe("alert");
+    expect(card.textContent).toContain(t.rd_bts_saved_warn_title);
+    expect(card.textContent).toContain(t.rd_bts_saved_warn_line);
+    expect(card.textContent).toContain("D520BT-Z · sticker 60x40mm");
+    expect(card.textContent).not.toContain(t.rd_bts_saved_title);
+    expect(screen.queryByTestId("ps-saved")).toBeNull();
+    expect(screen.queryByTestId("ps-bt-msg")).toBeNull(); // the card says it — no second line
     expect(screen.queryByText(/socket|BT_NOT_FOUND/)).toBeNull();
+    expect(screen.getByTestId("ps-status-dot").getAttribute("data-tone")).toBe("green"); // a printer IS saved
+    expect(screen.getByTestId("ps-saved-test").textContent).toBe(t.rd_ps_test_print);
+    b.printStickerBitmap = vi.fn(async () => ({ ok: true }));
+    fireEvent.click(screen.getByTestId("ps-saved-test"));
+    expect(await screen.findByTestId("ps-saved")).toBeTruthy();
+    expect(screen.queryByTestId("ps-saved-warn")).toBeNull();
   });
   it("the test sticker fails because Bluetooth went OFF → the red card returns (the printer stays saved)", async () => {
     const b = installBridge();

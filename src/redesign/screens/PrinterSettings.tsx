@@ -110,6 +110,7 @@ export default function PrinterSettings({
   const [btShowAll, setBtShowAll] = useState(false);
   const [pick, setPick] = useState<BluetoothPrinterDevice | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
+  const [testPrinted, setTestPrinted] = useState(false); // the saved card is green only when the test sticker really printed
   const [failText, setFailText] = useState(""); // a printer we can't drive yet, in the seller's words
   // "Classic text mode" — mirrors the localStorage flag printing.ts routes on.
   const [classicText, setClassicText] = useState(() => isClassicTextSticker());
@@ -180,7 +181,7 @@ export default function PrinterSettings({
     // Routed like a real order: bitmap SDK stream by default, TEXT only when
     // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
     const r = await printStickerBtRouted(testBuyer(), cur, storeName, settings);
-    if (r.ok) { setBtMsg(t.rd_ps_test_sent); return; }
+    if (r.ok) { setBtMsg(t.rd_ps_test_sent); setTestPrinted(true); return; } // an amber "didn't print" card turns green
     if (v2 && bt.report(r.code, r.message)) { setBtMsg(""); return; } // Bluetooth off / not allowed → the card says what to do
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
   }
@@ -209,7 +210,8 @@ export default function PrinterSettings({
     // Save first (the print router reads the saved printer), print one test sticker, THEN show it as saved.
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
     const printed = await printStickerBtRouted(d520 ? testBuyer() : buildTestBuyerV2(), cur, storeName, settings);
-    if (!printed.ok && !bt.report(printed.code, printed.message)) setBtMsg(t.rd_ps_test_failed);
+    if (!printed.ok) bt.report(printed.code, printed.message); // Bluetooth off / not allowed → that card; anything else → the amber saved card
+    setTestPrinted(printed.ok);
     setBtSaved(r?.savedPrinter || p);
     setBtPrinters([]); setBtScanned(false);
     setStage("saved");
@@ -347,7 +349,7 @@ export default function PrinterSettings({
                   <a data-testid="ps-v2-not-listed" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 10, padding: "12px 6px", fontSize: 12.5, color: "var(--accent-fg)", fontWeight: 600, textAlign: "center", textDecoration: "none" }}>{t.rd_ps_v2_not_listed}</a>
                 )}
                 {!btShowAll && isAdmin && (
-                  <button data-testid="ps-v2-show-all" onClick={() => void scanBt(true)} disabled={btScanning || stage === "printing"} style={{ display: "block", width: "100%", marginTop: 10, padding: "12px 6px", border: "none", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "underline" }}>{t.rd_ps_v2_show_all}</button>
+                  <button data-testid="ps-v2-show-all" onClick={() => void scanBt(true)} disabled={btScanning} style={{ display: "block", width: "100%", marginTop: 10, padding: "12px 6px", border: "none", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "underline" }}>{t.rd_ps_v2_show_all}</button>
                 )}
               </div>
             )}
@@ -358,7 +360,7 @@ export default function PrinterSettings({
               </div>
             )}
             {v2 && pick && stage === "saved" && btSaved && (
-              <BtCard tone="green" testid="ps-saved" title={t.rd_bts_saved_title} line={tpl(t.rd_bts_saved_sub, { name: btSaved.name || pick.name || t.rd_ps_bt_device, size: psSize.replace(/\s*\(.*\)$/, "") })} small={t.rd_bts_saved_line}>
+              <BtCard tone={testPrinted ? "green" : "amber"} testid={testPrinted ? "ps-saved" : "ps-saved-warn"} title={testPrinted ? t.rd_bts_saved_title : t.rd_bts_saved_warn_title} line={tpl(t.rd_bts_saved_sub, { name: btSaved.name || pick.name || t.rd_ps_bt_device, size: psSize.replace(/\s*\(.*\)$/, "") })} small={testPrinted ? t.rd_bts_saved_line : t.rd_bts_saved_warn_line}>
                 <button data-testid="ps-saved-test" onClick={() => void testBt()} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 12 }}>{t.rd_ps_test_print}</button>
               </BtCard>
             )}

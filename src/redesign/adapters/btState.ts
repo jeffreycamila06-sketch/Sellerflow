@@ -6,9 +6,11 @@
 // allowed (Android rejects BT_DISABLED / BT_PERMISSION before scanning and asks for the
 // permission; iOS resolves {ok:false, message}) and only runs a real scan when ready.
 //
-// While the phone is NOT ready we re-check every BT_RECHECK_MS and when the app comes back
-// to the foreground; an unclear answer is retried once after BT_RETRY_MS before it is shown
-// as "not ready". Once ready there is no polling (a ready probe = a full scan; a later
+// While the phone is OFF or NOT READY we re-check every BT_RECHECK_MS and when the app comes
+// back to the foreground; an unclear answer is retried once after BT_RETRY_MS before it is
+// shown as "not ready". NOT ALLOWED is re-checked ONLY on foreground return — on Android every
+// probe re-asks the system permission, so a timer would pop the dialog every 3 s after
+// "Don't allow". Once ready there is no polling (a ready probe = a full scan; a later
 // scan/print failure reports its code back through `report` and the cards return).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isBluetoothOff } from "./btOff";
@@ -68,7 +70,7 @@ export function useBluetoothState(enabled: boolean, probe: () => Promise<BtProbe
     if (r === "ready") { if (btBlocked(stateRef.current)) setRecovered(true); retried.current = false; apply("ready"); return; }
     if (r === "unknown" && !retried.current) { retried.current = true; schedule(BT_RETRY_MS); return; } // silent retry, state unchanged
     apply(r === "unknown" ? "notReady" : r);
-    schedule(BT_RECHECK_MS);
+    if (r !== "notAllowed") schedule(BT_RECHECK_MS); // not allowed: foreground return only (no permission popup loop)
   }, [apply, schedule]);
   useEffect(() => { runRef.current = run; }, [run]);
 
@@ -91,7 +93,7 @@ export function useBluetoothState(enabled: boolean, probe: () => Promise<BtProbe
     if (r !== "off" && r !== "notAllowed") return false;
     setRecovered(false);
     apply(r);
-    if (enabledRef.current) schedule(BT_RECHECK_MS);
+    if (enabledRef.current && r !== "notAllowed") schedule(BT_RECHECK_MS);
     return true;
   }, [apply, schedule]);
 
