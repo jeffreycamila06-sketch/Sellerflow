@@ -22,6 +22,7 @@ import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobil
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { loadFrozenState, saveParcelMode, FROZEN_LOADING, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, isFrozenLayer, xlsOptsForRow, type FrozenState, type TempLayer } from "../adapters/parcelFrozen";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
+import { isAndroid } from "../adapters/platform";
 import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
@@ -191,6 +192,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const exportGenRef = useRef(0);
   const releaseRef = useRef<Promise<void>>(Promise.resolve());
   const [mobileExportFail, setMobileExportFail] = useState(false);
+  const [androidSaved, setAndroidSaved] = useState(false); // Android browser download landed → "saved to Downloads" line
 
   // Saved list — ONE read on screen open; saves append locally (no refetch).
   const [rows, setRows] = useState<ParcelScanRow[]>([]);
@@ -237,6 +239,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const onMobile = isAppShell() || narrow;
+  // Phone export delivery: the share sheet (iPhone, and the Android APP shell — share first,
+  // honest "use Chrome" message when unsupported). An Android BROWSER (Chrome etc.) cannot
+  // share .xlsm (Web Share allows images/video/audio/pdf/text only) → it takes the desktop
+  // blob-download path: the file lands in Downloads, rows marked exported, Undo works.
+  const shareExport = onMobile && !(isAndroid() && !isAppShell());
   const [phoneExport, setPhoneExport] = useState(() => readPhoneExport());
   const enablePhoneExport = () => { writePhoneExport(true); setPhoneExport(true); setConfirm(null); };
   const disablePhoneExport = () => { writePhoneExport(false); setPhoneExport(false); };
@@ -737,6 +744,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       const bytes = await buildExportBytes(c.won);
       const d = await deliverXlsm(bytes, exportFilename(Date.now()));
       if (!d.ok) { releaseClaim(c.batchId); setExportErr(d.error || "export_failed"); return; }
+      if (d.via === "browser" && isAndroid()) setAndroidSaved(true);
       await applyExportSuccess(c);
     } catch (e) {
       if (c) releaseClaim(c.batchId);
@@ -863,8 +871,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Mobile opens the dialog AND kicks off the prebuild (so the Export tap can share ready
   // bytes synchronously). Desktop just opens the dialog (runExport builds on confirm).
   const openExportDialog = () => {
-    setDeleteErr(""); setExportErr(""); setMobileExportFail(false);
-    if (onMobile) { setExportPrep("idle"); void prebuildExport(); }
+    setDeleteErr(""); setExportErr(""); setMobileExportFail(false); setAndroidSaved(false);
+    if (shareExport) { setExportPrep("idle"); void prebuildExport(); }
     setConfirm({ kind: "export" });
   };
   // Export-time guard: parcels still "⏳ Checking…" (phone OR store half unresolved)
@@ -1410,7 +1418,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-export-err">{t.rd_ps2_x_failed}</div>}
           {/* Honest failure on the phone (Web Share unsupported/failed) — point to Safari.
               We never fall back to the blob no-op, so rows are NOT marked exported here. */}
-          {mobileExportFail && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 11px", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-export-appfail">{t.rd_ps2_x_app_fail}</div>}
+          {mobileExportFail && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 11px", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-export-appfail">{isAndroid() ? t.rd_ps2_x_app_fail_android : t.rd_ps2_x_app_fail}</div>}
+          {androidSaved && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok, #16a34a)", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-export-saved">{t.rd_ps2_x_saved_android}</div>}
           {/* Undo last export (FIX 5) — reverts the run just exported so an
               accidental export is recoverable. */}
           {lastExportBatch && (
@@ -1595,10 +1604,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 : confirm.kind === "pending"
                 ? <button onClick={openExportDialog} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export-anyway">{t.rd_ps2_pending_anyway}</button>
                 : confirm.kind === "export"
-                ? (onMobile
-                    // MOBILE: share the PRE-BUILT bytes synchronously in this tap (no await before share).
+                ? (shareExport
+                    // MOBILE share sheet: the PRE-BUILT bytes synchronously in this tap (no await before share).
                     ? <button onClick={() => runExportMobile()} disabled={exportPrep !== "ready"} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: exportPrep === "ready" ? "var(--accent)" : "var(--border-strong)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: exportPrep === "ready" ? "pointer" : "default" }} data-testid="ps-confirm-export">📄 {exportPrep === "building" ? t.rd_ps2_x_preparing : t.rd_ps2_x_confirm_go}</button>
-                    // DESKTOP: build on confirm, blob download.
+                    // DESKTOP + Android browser: build on confirm, blob download.
                     : <button onClick={() => { setConfirm(null); void runExport(); }} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>)
                 : confirm.kind === "undo"
                   ? <button onClick={() => void doUndo()} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-undo">↩ {t.rd_ps2_undo_go}</button>

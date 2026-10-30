@@ -501,7 +501,7 @@ Keywords: bluetooth off, bluetooth, printer busy, another app, other phone, naka
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.
 
 ## parcel-scan — Parcel Scan (7-11) and Customer Details
-Last checked: 2026-10-28
+Last checked: 2026-10-31
 Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家
 
 **Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
@@ -526,6 +526,7 @@ Who sees what:
 Both:
 - **Undo last export** puts the last exported parcels back. **Clear exported** removes exported parcels.
 - On a phone, turn on **Export on this phone** first (it is off by default).
+- Android: the file is saved to Downloads — use Chrome.
 - A field with a mistake shows a short message under it.
 
 ## pickup-status — Pickup Status
