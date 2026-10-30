@@ -38,6 +38,20 @@ export function isCapacitorAndroid(): boolean {
   }
 }
 
+// Android — the real app (Capacitor) OR an Android browser (Chrome etc.) by user agent.
+// Used for file delivery: Android Chrome cannot share .xlsm/.xlsx files (Web Share allows
+// only images/video/audio/pdf/text), so Android browsers download instead and the Android
+// app shell gets a "use Chrome" message. iPhone (any browser) is never Android.
+export function isAndroid(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (isCapacitorAndroid()) return true;
+    return /android/i.test(typeof navigator !== "undefined" ? navigator.userAgent || "" : "");
+  } catch {
+    return false;
+  }
+}
+
 // ── iOS native-quality display (canonical Capacitor pattern) ────────────────
 // The iOS shell is FULL-BLEED (`ios.contentInset` = default "never" — the
 // "always" experiment and its hasNativeTopInset() heuristic are gone): the

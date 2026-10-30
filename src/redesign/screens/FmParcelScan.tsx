@@ -10,6 +10,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
+import { isAndroid } from "../adapters/platform";
 import { decodeQrFromFile } from "../adapters/qrDecode";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import { validHandle } from "../adapters/parcelScan";
@@ -72,6 +73,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
   const [exportBusy, setExportBusy] = useState(false);
   const [exportErr, setExportErr] = useState(false);
   const [appFail, setAppFail] = useState(false);
+  const [androidSaved, setAndroidSaved] = useState(false); // Android browser download landed → "saved to Downloads" line
   const [exportSummary, setExportSummary] = useState<{ exported: number; attention: { name: string; reason: FmScanError }[] } | null>(null);
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState(false);
@@ -186,7 +188,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
   // Parcels are marked exported ONLY after the files were really delivered.
   const runExport = () => {
     if (exportBusy || !readyCount) return;
-    setExportErr(false); setAppFail(false); setExportSummary(null); setUndoErr(false);
+    setExportErr(false); setAppFail(false); setAndroidSaved(false); setExportSummary(null); setUndoErr(false);
     const ready = readyRows;
     const attention = pending.filter((r) => problemOf(r)).map((r) => ({ name: r.recipientName || r.phone || "—", reason: problemOf(r)! }));
     const { files, nowMs } = buildFmExport(ready);
@@ -206,6 +208,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
       setRows((list) => list.map((x) => (ids.includes(x.id) ? { ...x, exportedAt: at, exportBatchId: batch } : x)));
       setLastExportBatch({ id: batch, ids });
       setExportSummary({ exported: ids.length, attention });
+      if (!appShell && isAndroid()) setAndroidSaved(true); // blob download on an Android browser
       flash(tpl(t.rd_fms_exported_toast, { n: ids.length, f: files.length }), 6000);
     }).finally(() => { if (aliveRef.current) setExportBusy(false); });
   };
@@ -354,7 +357,8 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
               style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 ? "default" : "pointer" }}
               data-testid="fms-export-btn">📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
             {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="fms-export-err">{t.rd_ps2_x_failed}</div>}
-            {appFail && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 11px", marginTop: 8, lineHeight: 1.5 }} data-testid="fms-export-appfail">{t.rd_ps2_x_app_fail}</div>}
+            {appFail && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 11px", marginTop: 8, lineHeight: 1.5 }} data-testid="fms-export-appfail">{isAndroid() ? t.rd_ps2_x_app_fail_android : t.rd_ps2_x_app_fail}</div>}
+            {androidSaved && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok, #16a34a)", marginTop: 8, lineHeight: 1.5 }} data-testid="fms-export-saved">{t.rd_ps2_x_saved_android_fm}</div>}
             {lastExportBatch && (
               <button onClick={() => { setUndoErr(false); ask({ kind: "undo" }); }} style={{ width: "100%", marginTop: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="fms-undo-btn">↩ {tpl(t.rd_ps2_undo_btn, { n: String(lastExportBatch.ids.length) })}</button>
             )}
