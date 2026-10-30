@@ -1,7 +1,7 @@
 // Printer setup v2 — pure helpers: printer-only scan filter, known-model lookup (Part-1
-// built-in list, swappable source for Part 2), language retry order, the gate.
+// built-in list, swappable source for Part 2), the WHITELIST (what the scan list shows), the gate.
 import { describe, it, expect, afterEach } from "vitest";
-import { knownPrinterLang, isKnownPrinter, isPrinterOnlyRow, nextLang, LANG_ORDER, printerFlowV2Enabled, __setKnownSource } from "../printerModels";
+import { knownPrinterLang, isKnownPrinter, isPrinterOnlyRow, knownPrinterInfo, WHITELIST, printerFlowV2Enabled, __setKnownSource } from "../printerModels";
 import type { BluetoothPrinterDevice } from "../printerBridge";
 
 const D520: BluetoothPrinterDevice = { id: "bluetooth:AA", address: "AA:AA", name: "D520BT-Z", transport: "ble", model: "D520BT", likely: true };
@@ -39,15 +39,20 @@ describe("known-model lookup", () => {
   });
 });
 
-describe("language retry order", () => {
-  it("TSPL first, ESC/POS second, CPCL third, then nothing", () => {
-    expect(LANG_ORDER).toEqual(["tspl", "escpos", "cpcl"]);
-    expect(nextLang("tspl")).toBe("escpos");
-    expect(nextLang("escpos")).toBe("cpcl");
-    expect(nextLang("cpcl")).toBeNull();
-    // an app build that cannot store CPCL stops after ESC/POS
-    expect(nextLang("tspl", false)).toBe("escpos");
-    expect(nextLang("escpos", false)).toBeNull();
+describe("whitelist (the scan list shows ONLY these)", () => {
+  it("AIMO D520BT by native tag or by name, Flash Y41BT by name, Niimbot B-series by name — with brand + model", () => {
+    expect(knownPrinterInfo(D520)).toEqual({ brand: "AIMO", model: "D520BT" });
+    expect(knownPrinterInfo({ name: "d520bt-z", model: "generic" })).toEqual({ brand: "AIMO", model: "D520BT" }); // an old app build tags nothing
+    expect(knownPrinterInfo(Y41)).toEqual({ brand: "Flash", model: "Y41BT" });
+    expect(knownPrinterInfo({ name: "B1-I603042141" })).toEqual({ brand: "Niimbot", model: "B1" });
+    expect(knownPrinterInfo({ name: "B21-ABC" })).toEqual({ brand: "Niimbot", model: "B21" });
+    expect(knownPrinterInfo({ name: "Some label", brand: "niimbot" })).toEqual({ brand: "Niimbot", model: "" }); // native said Niimbot
+  });
+  it("anything else is NOT listed: an unknown label printer, a watch, a paired laptop, no name", () => {
+    for (const p of [UNKNOWN, WATCH, BONDED_LAPTOP, { name: "", model: "generic" as const }, { name: "XP-P323B", model: "generic" as const }]) expect(knownPrinterInfo(p), p.name).toBeNull();
+  });
+  it("the list itself: exactly the tested models, each with a brand pill word", () => {
+    expect(WHITELIST.map((w) => `${w.brand} ${w.model}`)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1", "Niimbot B21", "Niimbot B203", "Niimbot B3S"]);
   });
 });
 

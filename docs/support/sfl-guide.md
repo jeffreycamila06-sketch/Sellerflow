@@ -421,21 +421,22 @@ Choose it in **Settings → General Settings → Printer → CHOOSE PRINTER**: t
 
 Printer connection runs in the **SellerFlowLive phone app**. In a web browser you see "Printer connection runs in the SellerFlowLive app — these controls work on your phone, not in the web preview." For a laptop, see "Laptop auto-print".
 
-## printer-bluetooth — Bluetooth sticker printer (AIMO / Phomemo D520BT)
-Last checked: 2026-10-15
-Keywords: bluetooth, bt, aimo, phomemo, d520bt, sticker printer, pair, scan, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸
+## printer-bluetooth — Bluetooth sticker printer (AIMO / Flash / Niimbot)
+Last checked: 2026-10-30
+Keywords: bluetooth, bt, aimo, phomemo, d520bt, flash, y41bt, niimbot, b1, sticker printer, pair, scan, allow bluetooth, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸
 
-1. Turn on the printer and keep it close to the phone.
-2. Make sure it is **not connected to another app or phone**.
-3. Turn on your phone's **Bluetooth**.
-4. Go to **Settings → General Settings → Printer** and tap **Bluetooth sticker printer**. If it isn't set up yet, read the steps and tap **Got it**.
-5. Tap **Scan**, then pick your printer from the list (**Paired** or **Nearby**). You see "Printer saved."
-6. Choose your **Sticker size**.
-7. Tap **Test Print**. "Test sticker sent." means it works. (**Test Print** and **Clear** appear after a printer is saved.)
+1. Turn on the printer and keep it close to the phone. Make sure it is **not connected to another app or phone**.
+2. Go to **Settings → General Settings → Printer** and tap **Bluetooth sticker printer**.
+3. The app checks your phone's Bluetooth by itself the moment the screen opens — no need to tap anything:
+   - **"Bluetooth is OFF on your phone"** (red) — turn Bluetooth on. iPhone: **Settings → Bluetooth → ON** (not only Control Center). Android / tablet: swipe down from the top → tap **Bluetooth**.
+   - **"Allow Bluetooth for SellerFlowLive"** (amber) — your phone asked one time; if you tapped "Don't Allow", turn it on. iPhone: **Settings → Privacy & Security → Bluetooth → SellerFlowLive ON**. Android: **Settings → Apps → SellerFlowLive → Permissions → Nearby devices → Allow**. Then come back to this screen.
+   - **"Bluetooth isn't ready"** — turn Bluetooth off and on, then come back.
+   The app checks again by itself (for "Allow Bluetooth", it checks again when you come back to the app); when Bluetooth is ready you see **"Bluetooth is ready. Tap Scan to find your printer."** and **Scan** turns active.
+4. Tap **Scan** and pick your printer from the list. The list shows the printers that work with the app: **AIMO D520BT**, **Flash Y41BT** and **Niimbot B1 / B21 / B203 / B3S**, each with its brand. Printer not in the list? Tap **Printer not listed? Contact Admin**.
+5. A test sticker prints and the printer is saved by itself. You see **"Printer saved. Ready to print."** with the printer name and your sticker size. If the sticker looks wrong, check the paper and tap **Test print**. If the test sticker did not print, you see **"Printer saved, but the test sticker didn't print."** (amber) — the printer is still saved: check it is on and has paper, then tap **Test print**.
+6. Choose your **Sticker size**. **Test print** and **Clear** appear while a printer is saved; **Clear** removes it so you can pick it again.
 
-"Bluetooth scan unavailable." — turn on Bluetooth, allow **Bluetooth** / **Nearby devices** for the app in your phone settings, then tap **Scan** again.
-
-"Test sticker failed — check pairing" — turn the printer off and on, close other apps that use it, then **Scan** again. **Clear** removes the saved printer so you can pick it again.
+The status card at the top shows a red dot when Bluetooth needs your attention, an amber dot when there is no printer yet, and a green dot with **Connected: <printer name>** when a printer is saved.
 
 ## printer-wifi — WiFi receipt (slip) printer
 Last checked: 2026-10-15

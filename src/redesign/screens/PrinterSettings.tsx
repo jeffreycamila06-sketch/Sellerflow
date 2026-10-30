@@ -7,23 +7,26 @@
 // action returns the friendly "open the app" status (safe no-op). Only verifiable in
 // a real APK.
 //
-// PRINTER SETUP v2 ("no switch, fewer taps" — flowV2 + an app build with the generic
-// printer method): the scan list shows PRINTERS ONLY with a "✓ Works with SFL" / "New"
-// pill; a known printer saves at once and prints one test sticker; a new printer prints
-// one test sticker, asks "Did it look like this?", retries once in the other command
-// language, then says it isn't supported yet. Everyone else keeps today's screen.
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+// PRINTER SETUP v2 (flowV2 + an app build new enough to store a generic printer — the
+// approved flow, Oct 30): the phone's Bluetooth is checked the moment the Bluetooth screen
+// opens (btState) — OFF → red card, NOT ALLOWED → amber card, not ready → red card, Scan
+// greyed; ready → Scan active (+ a green note after a fix). Scan lists ONLY the tested
+// printers (printerModels.WHITELIST: AIMO D520BT, Flash Y41BT, Niimbot B-series) with a brand
+// pill; "Printer not listed? Contact Admin" under it (admin keeps "Show all" for testing).
+// Tap a printer → saved at once + one test sticker → green "Printer saved" card with Test
+// print. No "Did it look like this?" question, no language tries. Everyone else keeps
+// today's screen.
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyerV2, savedTestBuyer,
-  hasGenericPrinterBridge, testGenericPrinter, genericDebugLine, hasNiimbotBridge, niimbotOsTooOld,
+  callMobilePrinterBridge, btCall, btScanOutcome, hasNativePrinter, hasBtBridge, buildTestBuyerV2, savedTestBuyer,
+  hasGenericPrinterBridge, hasNiimbotBridge, niimbotOsTooOld,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { buildNativeStickerPayload, buildGenericStickerBytes, buildNiimbotImage, niimbotErrorKey, printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
-import { bytesToBase64 } from "../adapters/stickerRaster";
-import { isKnownPrinter, isPrinterOnlyRow, knownPrinterLang, nextLang, brandOf, type PrinterLang } from "../adapters/printerModels";
+import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
+import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
-import ExactStickerPreview from "../components/ExactStickerPreview";
-import { useT } from "../i18n";
+import { useT, tpl } from "../i18n";
 import { isAppShell } from "../adapters/appShell";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
@@ -33,11 +36,38 @@ const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWe
 const gridBtn: CSSProperties = { padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", borderRadius: 11, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textAlign: "center", border: "none", ...(active ? { background: "var(--surface)", color: "var(--accent-fg)", boxShadow: "var(--shadow)" } : { background: "transparent", color: "var(--text-dim)" }) });
 const rowBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
-// The only row pill: a Niimbot is named (its own driver). Every other row = printer name + id —
-// no "Works with SFL" / "New" badges (sellers don't know what SFL means; the flow finds out itself).
-const niimbotPill: CSSProperties = { flexShrink: 0, whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 800, padding: "4px 8px", borderRadius: 999, border: "1px solid var(--accent)", color: "var(--accent-fg)", background: "var(--surface-2)" };
+const brandPill: CSSProperties = { flexShrink: 0, whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 800, padding: "4px 8px", borderRadius: 999, border: "1px solid var(--accent)", color: "var(--accent-fg)", background: "var(--surface-2)" };
+const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12 };
 
-type V2Stage = "idle" | "saving" | "testing" | "retry" | "ask" | "unsupported" | "brand" | "fail";
+// Bluetooth / saved-printer cards — one shape, three tones. Red = the phone's Bluetooth is
+// off or not ready, amber = Bluetooth not allowed for the app, green = printer saved.
+type Tone = "red" | "amber" | "green";
+const TONES: Record<Tone, { bg: string; border: string; fg: string }> = {
+  red: { bg: "var(--danger-soft)", border: "var(--danger)", fg: "var(--danger)" },
+  amber: { bg: "var(--warn-soft)", border: "var(--warn)", fg: "var(--warn)" },
+  green: { bg: "var(--ok-soft, rgba(5,150,105,.1))", border: "var(--ok)", fg: "var(--ok)" },
+};
+function BtCard({ tone, title, line, steps, small, testid, children }: { tone: Tone; title: string; line?: string; steps?: string[]; small?: string; testid: string; children?: ReactNode }) {
+  const c = TONES[tone];
+  return (
+    <div role={tone === "green" ? "status" : "alert"} data-testid={testid} style={{ ...card, background: c.bg, border: `1px solid ${c.border}`, boxShadow: "none" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: c.fg, flexShrink: 0 }} />
+        <div style={{ fontSize: 14.5, fontWeight: 800, color: "var(--text)", lineHeight: 1.3 }}>{title}</div>
+      </div>
+      {line && <div style={{ fontSize: 13, color: "var(--text)", marginTop: 8, lineHeight: 1.45 }}>{line}</div>}
+      {steps && steps.length > 0 && (
+        <ul style={{ margin: "6px 0 0", padding: "0 0 0 18px", display: "flex", flexDirection: "column", gap: 4 }}>
+          {steps.map((s) => <li key={s} style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.45 }}>{s}</li>)}
+        </ul>
+      )}
+      {small && <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.45 }}>{small}</div>}
+      {children}
+    </div>
+  );
+}
+
+type Stage = "idle" | "printing" | "saved" | "fail";
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
@@ -54,7 +84,7 @@ export default function PrinterSettings({
   stickerQrMoved?: boolean; // admins (LIVE layout v2 gate): the toggle lives in LIVE print pattern instead
   testComment?: string; // LIVE layout v2 users: the test sticker's comment ("COMMENT / PRICE"); others keep buildTestBuyer's "PRICE"
   flowV2?: boolean; // printer setup v2 (printerFlowV2Enabled): admin / test_printers / the printer_flow_v2 switch
-  isAdmin?: boolean; // admin-only: the "Show all Bluetooth devices" link + the debug line after a generic test print
+  isAdmin?: boolean; // admin-only: the "Show all Bluetooth devices" link (unknown printers, for testing)
 }) {
   const t = useT();
   const wifi = psType === "wifi";
@@ -73,23 +103,31 @@ export default function PrinterSettings({
   const [btPrinters, setBtPrinters] = useState<BluetoothPrinterDevice[]>([]);
   const [btSaved, setBtSaved] = useState<BluetoothPrinterDevice | null>(null);
   const [btMsg, setBtMsg] = useState("");
-  // Printer setup v2: gated accounts on an app build with the native generic-printer method.
+  // Printer setup v2: gated accounts on an app build new enough to store a generic printer.
   // Older apps (and the web, which has no bridge) keep today's screen exactly.
   const v2 = flowV2 && hasGenericPrinterBridge();
   const [btScanned, setBtScanned] = useState(false);
   const [btShowAll, setBtShowAll] = useState(false);
-  const [v2Pick, setV2Pick] = useState<BluetoothPrinterDevice | null>(null);
-  const [v2Stage, setV2Stage] = useState<V2Stage>("idle");
-  const [v2Lang, setV2Lang] = useState<PrinterLang>("tspl");
-  const [v2Debug, setV2Debug] = useState("");
-  const [v2Fail, setV2Fail] = useState(""); // a Niimbot test failure, in the seller's words
-  const v2PictureBuyer = useMemo(() => buildTestBuyerV2(), []); // the "Did it look like this?" picture = the Chinese test sticker that was just printed (generic / Niimbot only reach it)
+  const [pick, setPick] = useState<BluetoothPrinterDevice | null>(null);
+  const [stage, setStage] = useState<Stage>("idle");
+  const [testPrinted, setTestPrinted] = useState(false); // the saved card is green only when the test sticker really printed
+  const [failText, setFailText] = useState(""); // a printer we can't drive yet, in the seller's words
   // "Classic text mode" — mirrors the localStorage flag printing.ts routes on.
   const [classicText, setClassicText] = useState(() => isClassicTextSticker());
   // "Print QR on sticker" — per-device, DEFAULT OFF (localStorage; printing.ts threads it
   // into the sticker raster). Stamps a QR of the buyer @username so Parcel Scan can read
   // the handle back off the printed label.
   const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
+
+  // v2 Bluetooth check — runs the moment the Bluetooth screen opens (the probe is the scan
+  // call: instant answer when off / not allowed; the OS permission prompt appears now).
+  const probe = useCallback(async (): Promise<BtProbeOutcome> => {
+    const r = await btScanOutcome({ includeGenericPrinters: true });
+    return { ok: r.ok, code: r.code, message: r.message };
+  }, []);
+  const bt = useBluetoothState(v2 && !wifi && btReady, probe);
+  const blocked = btBlocked(bt.state);
+  const scanEnabled = !v2 || (bt.state === "ready" && !btScanning);
 
   // On mount: hydrate the saved LAN printer + BT printer from the native bridge
   // (App.tsx refreshMobilePrinterStatus + getBluetoothLabelPrinter). No-op on web.
@@ -109,13 +147,20 @@ export default function PrinterSettings({
   async function scanBt(showAll = false) {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_scan); return; }
     setBtScanning(true); setBtMsg("");
-    const r = v2
-      ? await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters", { includeGenericPrinters: true, showAllDevices: showAll })
-      : await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
-    setBtScanning(false);
-    if (v2) { setBtScanned(true); setBtShowAll(showAll); setV2Pick(null); setV2Stage("idle"); }
-    if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.ok === false ? t.rd_ps_scan_unavail : ""); } // never the raw printer text
-    else setBtMsg(t.rd_ps_scan_unavail);
+    if (!v2) {
+      const r = await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
+      setBtScanning(false);
+      if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.ok === false ? t.rd_ps_scan_unavail : ""); } // never the raw printer text
+      else setBtMsg(t.rd_ps_scan_unavail);
+      return;
+    }
+    const r = await btScanOutcome({ includeGenericPrinters: true, showAllDevices: showAll });
+    setBtScanning(false); bt.clearRecovered();
+    setBtScanned(true); setBtShowAll(showAll); setPick(null); setStage("idle");
+    if (r.savedPrinter) setBtSaved(r.savedPrinter);
+    if (r.ok) { setBtPrinters(r.printers); return; }
+    setBtPrinters([]);
+    if (!bt.report(r.code, r.message)) setBtMsg(t.rd_ps_scan_unavail); // off / not allowed → the card; anything else = one plain line
   }
   async function selectBt(p: BluetoothPrinterDevice) {
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: p.transport });
@@ -128,7 +173,7 @@ export default function PrinterSettings({
     </button>
   );
   const listBox: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, marginTop: 12, overflow: "hidden" };
-  async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); }
+  async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); setStage("idle"); setPick(null); }
   async function testBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }
     if (!settings) return;
@@ -136,99 +181,62 @@ export default function PrinterSettings({
     // Routed like a real order: bitmap SDK stream by default, TEXT only when
     // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
     const r = await printStickerBtRouted(testBuyer(), cur, storeName, settings);
-    if (r.ok) { setBtMsg(t.rd_ps_test_sent); return; }
+    if (r.ok) { setBtMsg(t.rd_ps_test_sent); setTestPrinted(true); return; } // an amber "didn't print" card turns green
+    if (v2 && bt.report(r.code, r.message)) { setBtMsg(""); return; } // Bluetooth off / not allowed → the card says what to do
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
   }
 
-  // ── Printer setup v2 ────────────────────────────────────────────────────────
-  // Known printer (D520BT or a listed model): save at once, then one test sticker through
-  // the SAME route a real order takes. New printer: one test sticker per language (TSPL,
-  // ESC/POS, CPCL — the same sticker image each time), ask after each, then "not supported
-  // yet". A Niimbot (by name) goes through the vendor-SDK driver when the app has it (one test
-  // label = the same sticker image, 50×30, then the same question); an app without the driver
-  // → "not supported yet". Every test = ONE native call; nothing is re-sent on its own.
+  // ── Printer setup v2: tap a printer → saved at once → one test sticker → green card ────────
+  // D520BT = the unchanged D520 save + today's test buyer (golden-pinned stream). A listed
+  // generic model (Y41BT) = generic save in its known language + the Chinese v2 test sticker.
+  // A Niimbot = the vendor-SDK driver when the app has it (iOS 17.2+), else "not supported yet".
+  // An unknown device (admin "Show all" only) is saved as a generic TSPL printer.
   const genericTransport = (p: BluetoothPrinterDevice) => (p.transport === "spp" ? "spp" : "ble"); // Android paired classic printers keep RFCOMM
-  async function pickV2(p: BluetoothPrinterDevice) {
-    if (v2Stage !== "idle" || !settings) return;
-    setV2Pick(p); setV2Debug(""); setBtMsg("");
-    if (brandOf(p) === "niimbot") {
-      if (niimbotOsTooOld()) { setV2Fail(t.rd_nb_os_too_old); setV2Stage("fail"); return; } // iOS < 17.2: no test print, say why
-      if (hasNiimbotBridge()) await tryNiimbot(p); else setV2Stage("brand");
-      return;
+  async function pickPrinter(p: BluetoothPrinterDevice) {
+    if (stage === "printing" || !settings) return;
+    const info = knownPrinterInfo(p);
+    setPick(p); setBtMsg("");
+    if (info?.brand === "Niimbot") {
+      if (niimbotOsTooOld()) { setFailText(t.rd_nb_os_too_old); setStage("fail"); return; } // iOS < 17.2: no test print, say why
+      if (!hasNiimbotBridge()) { setFailText(t.rd_ps_v2_brand_soon); setStage("fail"); return; }
     }
-    if (isKnownPrinter(p)) {
-      setV2Stage("saving");
-      const save = p.model === "D520BT"
-        ? { address: p.address, name: p.name, transport: p.transport }
+    setStage("printing");
+    const d520 = p.model === "D520BT" || info?.brand === "AIMO";
+    const save = d520
+      ? { address: p.address, name: p.name, transport: p.transport }
+      : info?.brand === "Niimbot"
+        ? { address: p.address, name: p.name, transport: "niimbot", model: "generic" } // no language: the driver takes the image
         : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: knownPrinterLang(p.name) ?? "tspl" };
-      const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
-      setBtSaved(r?.savedPrinter || p);
-      // D520BT = today's test buyer (its stream is golden-pinned); a listed generic model = the v2 test sticker with Chinese
-      const printed = await printStickerBtRouted(p.model === "D520BT" ? testBuyer() : buildTestBuyerV2(), cur, storeName, settings);
-      setBtMsg(printed.ok ? t.rd_ps_test_sent : t.rd_ps_test_failed);
-      setV2Stage("idle"); setV2Pick(null);
-      return;
-    }
-    await tryLang(p, "tspl");
-  }
-  async function tryLang(p: BluetoothPrinterDevice, lang: PrinterLang) {
-    if (!settings) return;
-    setV2Lang(lang); setV2Stage(lang === "tspl" ? "testing" : "retry");
-    // Every try = the SAME sticker image real orders will print, in that language (ready bytes);
-    // the v2 test buyer carries Chinese (name + comment) so CJK support shows on paper.
-    const payload = buildNativeStickerPayload(buildTestBuyerV2(), cur, storeName, settings);
-    const r = await testGenericPrinter(p.address, { data: bytesToBase64(await buildGenericStickerBytes(lang, payload, payload.buyer.platform)), ...(p.transport === "spp" ? { transport: "spp" } : {}) });
-    setV2Debug(genericDebugLine(r));
-    if (r.ok) { setV2Stage("ask"); return; }
-    await nextOrGiveUp(p, lang);
-  }
-  async function tryNiimbot(p: BluetoothPrinterDevice) {
-    if (!settings) return;
-    setV2Stage("testing");
-    const payload = buildNativeStickerPayload(buildTestBuyerV2(), cur, storeName, settings); // Chinese test sticker (image path)
-    const r = await testGenericPrinter(p.address, { transport: "niimbot", name: p.name, image: await buildNiimbotImage(payload, payload.buyer.platform) });
-    setV2Debug(genericDebugLine(r));
-    if (r.ok) { setV2Stage("ask"); return; }
-    const k = niimbotErrorKey(r.code);
-    setV2Fail(k ? t[k] : t.rd_ps_test_failed); setV2Stage("fail");
-  }
-  async function nextOrGiveUp(p: BluetoothPrinterDevice, lang: PrinterLang) {
-    const n = nextLang(lang, hasNiimbotBridge()); // CPCL only on a build that can store it
-    if (n) { await tryLang(p, n); return; }
-    setV2Stage("unsupported");
-  }
-  async function answerV2(yes: boolean) {
-    const p = v2Pick;
-    if (!p) return;
-    const niimbot = brandOf(p) === "niimbot";
-    if (!yes) { if (niimbot) setV2Stage("brand"); else await nextOrGiveUp(p, v2Lang); return; }
-    const save = niimbot
-      ? { address: p.address, name: p.name, transport: "niimbot", model: "generic" } // no language: the driver takes the image
-      : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: v2Lang };
+    // Save first (the print router reads the saved printer), print one test sticker, THEN show it as saved.
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
-    // The language the seller just confirmed must be the one native STORED (an older build
-    // that only knows tspl/escpos echoes tspl, or nothing): never keep a wrong language —
-    // clear the save and say "not supported yet" instead.
-    if (!niimbot && (r?.savedPrinter?.lang ?? "tspl") !== v2Lang) {
-      await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter");
-      setBtSaved(null); setBtMsg(""); setV2Stage("unsupported");
-      return;
-    }
-    setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
-    setV2Pick(null); setV2Stage("idle");
+    const printed = await printStickerBtRouted(d520 ? testBuyer() : buildTestBuyerV2(), cur, storeName, settings);
+    if (!printed.ok) bt.report(printed.code, printed.message); // Bluetooth off / not allowed → that card; anything else → the amber saved card
+    setTestPrinted(printed.ok);
+    setBtSaved(r?.savedPrinter || p);
+    setBtPrinters([]); setBtScanned(false);
+    setStage("saved");
   }
-  const v2Row = (p: BluetoothPrinterDevice) => {
+  const printerRow = (p: BluetoothPrinterDevice) => {
+    const info = knownPrinterInfo(p);
     return (
-      <button key={p.id || p.address} data-testid="ps-v2-row" onClick={() => void pickV2(p)} disabled={v2Stage !== "idle"} style={{ ...rowBtn, opacity: v2Stage !== "idle" ? 0.6 : 1 }}>
-        <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span><span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.address}{p.transport === "spp" ? <span data-testid="ps-v2-classic" style={{ fontFamily: "var(--font-ui)", marginLeft: 6 }}>· {t.rd_ps_v2_classic}</span> : null}</span></span>
-        {brandOf(p) === "niimbot" && <span data-testid="ps-v2-brand" style={niimbotPill}>Niimbot</span>}
+      <button key={p.id || p.address} data-testid="ps-row" onClick={() => void pickPrinter(p)} disabled={stage === "printing"} style={{ ...rowBtn, minHeight: 56, opacity: stage === "printing" ? 0.6 : 1 }}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span>
+          <span data-testid="ps-row-model" style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: info ? "var(--font-ui)" : "var(--font-mono)" }}>{info ? `${info.brand} ${info.model}`.trim() : p.address}</span>
+        </span>
+        {info && <span data-testid="ps-row-brand" style={brandPill}>{info.brand}</span>}
       </button>
     );
   };
-  // Printers only — or, after "Show all Bluetooth devices", every named device the scan returned.
-  const v2Printers = btShowAll ? btPrinters.filter((p) => !!(p.name || "").trim()) : btPrinters.filter(isPrinterOnlyRow);
+  // The whitelist — or, after the admin's "Show all Bluetooth devices", every named device the scan returned.
+  const listedPrinters = btShowAll ? btPrinters.filter((p) => !!(p.name || "").trim()) : btPrinters.filter((p) => knownPrinterInfo(p) !== null);
 
-  const dot = status.ok ? "var(--ok)" : nativeReady ? "var(--warn)" : "var(--text-muted)";
+  // Top status: v2 Bluetooth = red (Bluetooth problem) / amber (ready, no printer) / green (printer saved).
+  const v2Bt = v2 && !wifi;
+  const dot = v2Bt
+    ? (blocked ? "var(--danger)" : btSaved ? "var(--ok)" : "var(--warn)")
+    : status.ok ? "var(--ok)" : nativeReady ? "var(--warn)" : "var(--text-muted)";
+  const v2Title = blocked ? t.rd_bts_st_attention : btSaved ? tpl(t.rd_bts_st_connected, { name: btSaved.name || t.rd_ps_aimo }) : t.rd_bts_st_none;
 
   return (
     <div>
@@ -238,15 +246,15 @@ export default function PrinterSettings({
       </div>
 
       <div style={{ padding: "16px 14px 24px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: 14, boxShadow: "var(--shadow)" }}>
-          <span style={{ width: 13, height: 13, borderRadius: "50%", background: dot, flexShrink: 0, boxShadow: `0 0 7px ${dot}` }} />
+        <div data-testid="ps-status" style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: 14, boxShadow: "var(--shadow)" }}>
+          <span data-testid="ps-status-dot" data-tone={v2Bt ? (blocked ? "red" : btSaved ? "green" : "amber") : undefined} style={{ width: 13, height: 13, borderRadius: "50%", background: dot, flexShrink: 0, boxShadow: `0 0 7px ${dot}` }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{wifi ? t.rd_ps_wifi_printer : t.rd_ps_bt_printer}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v2Bt ? v2Title : wifi ? t.rd_ps_wifi_printer : t.rd_ps_bt_printer}</div>
             {/* Task D: the BT subtitle must never show the WiFi getPrinter
                 message (`status` is populated by the LAN bridge on mount). WiFi
                 keeps its own status.message; BT shows its paired device or the
                 Bluetooth-accurate "No Bluetooth printer paired". */}
-            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{wifi ? (status.message || t.rd_ps_not_connected) : (btSaved ? (btSaved.name || t.rd_ps_aimo) : t.rd_ps_bt_none)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{v2Bt ? t.rd_ps_bt_printer : wifi ? (status.message || t.rd_ps_not_connected) : (btSaved ? (btSaved.name || t.rd_ps_aimo) : t.rd_ps_bt_none)}</div>
           </div>
         </div>
         {!nativeReady && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps_native_note}</div>}
@@ -273,6 +281,21 @@ export default function PrinterSettings({
           </div>
         ) : (
           <div>
+            {/* v2: the Bluetooth cards — checked on open, re-checked by themselves. */}
+            {v2 && bt.state === "off" && (
+              <BtCard tone="red" testid="ps-bt-off" title={t.rd_bts_off_title} line={t.rd_bts_off_line} steps={[t.rd_bts_off_ios, t.rd_bts_off_android]} small={t.rd_bts_auto} />
+            )}
+            {v2 && bt.state === "notAllowed" && (
+              <BtCard tone="amber" testid="ps-bt-perm" title={t.rd_bts_perm_title} line={t.rd_bts_perm_line} steps={[t.rd_bts_perm_ios, t.rd_bts_perm_android]} small={t.rd_bts_perm_auto} />
+            )}
+            {v2 && bt.state === "notReady" && (
+              <BtCard tone="red" testid="ps-bt-notready" title={t.rd_bts_notready} small={t.rd_bts_auto} />
+            )}
+            {v2 && bt.state === "ready" && bt.recovered && (
+              <div role="status" data-testid="ps-bt-ready" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, padding: "10px 13px", borderRadius: 12, background: "var(--ok-soft, rgba(5,150,105,.1))", border: "1px solid var(--ok)", fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>
+                <span aria-hidden style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--ok)", flexShrink: 0 }} />{t.rd_bts_ready}
+              </div>
+            )}
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 16 }}>
               <label style={label}>{t.rd_ps_sticker_size}</label>
               {/* WEB (laptop): the browser print follows the Windows driver's paper
@@ -306,56 +329,50 @@ export default function PrinterSettings({
                 </div>
               )}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: btSaved ? "1fr 1fr" : "1fr", gap: 9, marginTop: 12 }}>
-              <button onClick={() => void scanBt()} disabled={btScanning} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
-              {btSaved && <button onClick={() => void testBt()} style={gridBtn}>{t.rd_ps_test_print}</button>}
+            <div style={{ display: "grid", gridTemplateColumns: btSaved && stage !== "saved" ? "1fr 1fr" : "1fr", gap: 9, marginTop: 12 }}>
+              <button data-testid="ps-scan" onClick={() => void scanBt()} disabled={!scanEnabled} aria-disabled={!scanEnabled} style={{ ...gridBtn, minHeight: 46, border: "none", background: scanEnabled ? "var(--accent)" : "var(--surface-2)", color: scanEnabled ? "var(--accent-text)" : "var(--text-muted)", boxShadow: scanEnabled ? "0 4px 14px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", cursor: scanEnabled ? "pointer" : "not-allowed", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
+              {btSaved && stage !== "saved" && <button data-testid="ps-test-print" onClick={() => void testBt()} style={{ ...gridBtn, minHeight: 46 }}>{t.rd_ps_test_print}</button>}
             </div>
+            {v2 && bt.state === "checking" && <div data-testid="ps-bt-checking" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{t.rd_bts_checking}</div>}
             {!v2 && btPrinters.length > 0 && (
               <div style={listBox}>
                 {btPrinters.map(btRow)}
               </div>
             )}
-            {v2 && btScanned && (
+            {v2 && btScanned && stage !== "printing" && (
               <div data-testid="ps-v2-list">
-                {v2Printers.length > 0
-                  ? <div style={listBox}>{v2Printers.map(v2Row)}</div>
+                {listedPrinters.length > 0
+                  ? <div style={listBox}>{listedPrinters.map(printerRow)}</div>
                   : <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{t.rd_ps_v2_none}</div>}
                 {/* "Show all Bluetooth devices" lists AirPods/laptops too — admin-only (sellers got confused); a seller is pointed to Admin instead */}
                 {!btShowAll && !isAdmin && (
-                  <a data-testid="ps-v2-not-listed" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 10, padding: "10px 6px", fontSize: 12, color: "var(--text-dim)", textAlign: "center", textDecoration: "none" }}>{t.rd_ps_v2_not_listed}</a>
+                  <a data-testid="ps-v2-not-listed" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 10, padding: "12px 6px", fontSize: 12.5, color: "var(--accent-fg)", fontWeight: 600, textAlign: "center", textDecoration: "none" }}>{t.rd_ps_v2_not_listed}</a>
                 )}
                 {!btShowAll && isAdmin && (
-                  <button data-testid="ps-v2-show-all" onClick={() => void scanBt(true)} disabled={btScanning || v2Stage !== "idle"} style={{ display: "block", width: "100%", marginTop: 10, padding: "12px 6px", border: "none", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "underline" }}>{t.rd_ps_v2_show_all}</button>
+                  <button data-testid="ps-v2-show-all" onClick={() => void scanBt(true)} disabled={btScanning} style={{ display: "block", width: "100%", marginTop: 10, padding: "12px 6px", border: "none", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "underline" }}>{t.rd_ps_v2_show_all}</button>
                 )}
               </div>
             )}
-            {v2 && v2Pick && (
-              <div data-testid="ps-v2-panel" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v2Pick.name || t.rd_ps_bt_device}</div>
-                {v2Stage === "saving" && <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_ps_v2_saved_testing}</div>}
-                {v2Stage === "testing" && <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_ps_gen_testing}</div>}
-                {v2Stage === "retry" && <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_ps_v2_other}</div>}
-                {v2Stage === "ask" && settings && (
-                  <div style={{ marginTop: 10 }}>
-                    <div style={{ maxWidth: 220 }}><ExactStickerPreview settings={brandOf(v2Pick) === "niimbot" ? { ...settings, stickerSize: "50x30" } : settings} cur={cur} shopName={storeName} v2={!!testComment} flags={{}} buyer={v2PictureBuyer} extraAtlas /></div>
-                    <div data-testid="ps-v2-ask" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginTop: 10 }}>{t.rd_ps_v2_ask}</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 8 }}>
-                      <button data-testid="ps-v2-yes" onClick={() => void answerV2(true)} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)" }}>{t.rd_ps_v2_yes}</button>
-                      <button data-testid="ps-v2-no" onClick={() => void answerV2(false)} style={gridBtn}>{t.rd_ps_v2_no}</button>
-                    </div>
-                  </div>
-                )}
-                {(v2Stage === "unsupported" || v2Stage === "brand" || v2Stage === "fail") && (
-                  <div style={{ marginTop: 10 }}>
-                    <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.45 }}>{v2Stage === "brand" ? t.rd_ps_v2_brand_soon : v2Stage === "fail" ? v2Fail : t.rd_ps_gen_unsupported}</div>
-                    {/* A real anchor, tapped directly — the only external open that works in the iOS shell. */}
-                    <a data-testid="ps-v2-contact" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ ...gridBtn, display: "block", textAlign: "center", textDecoration: "none", marginTop: 10 }}>{t.rd_ps_v2_contact}</a>
-                  </div>
-                )}
-                {isAdmin && v2Debug && <div data-testid="ps-v2-debug" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text-muted)", marginTop: 8, wordBreak: "break-all" }}>{v2Debug}</div>}
+            {v2 && pick && stage === "printing" && (
+              <div data-testid="ps-printing" role="status" style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
+                <span aria-hidden style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--accent)", flexShrink: 0, animation: "sflDot 1s ease-in-out infinite" }} />
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{tpl(t.rd_bts_printing, { name: pick.name || t.rd_ps_bt_device })}</div>
               </div>
             )}
-            {btMsg && <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{btMsg}</div>}
+            {v2 && pick && stage === "saved" && btSaved && (
+              <BtCard tone={testPrinted ? "green" : "amber"} testid={testPrinted ? "ps-saved" : "ps-saved-warn"} title={testPrinted ? t.rd_bts_saved_title : t.rd_bts_saved_warn_title} line={tpl(t.rd_bts_saved_sub, { name: btSaved.name || pick.name || t.rd_ps_bt_device, size: psSize.replace(/\s*\(.*\)$/, "") })} small={testPrinted ? t.rd_bts_saved_line : t.rd_bts_saved_warn_line}>
+                <button data-testid="ps-saved-test" onClick={() => void testBt()} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 12 }}>{t.rd_ps_test_print}</button>
+              </BtCard>
+            )}
+            {v2 && pick && stage === "fail" && (
+              <div data-testid="ps-v2-panel" style={card}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pick.name || t.rd_ps_bt_device}</div>
+                <div data-testid="ps-v2-msg" style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.45, marginTop: 8 }}>{failText}</div>
+                {/* A real anchor, tapped directly — the only external open that works in the iOS shell. */}
+                <a data-testid="ps-v2-contact" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ ...gridBtn, display: "block", textAlign: "center", textDecoration: "none", marginTop: 10 }}>{t.rd_ps_v2_contact}</a>
+              </div>
+            )}
+            {btMsg && <div data-testid="ps-bt-msg" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{btMsg}</div>}
             {/* BITMAP-vs-TEXT escape hatch (new-board fix). Default OFF = bitmap
                 mode (when the native passthrough exists — method-presence gated in
                 printing.ts); ON = the byte-frozen classic TEXT path. Per-device

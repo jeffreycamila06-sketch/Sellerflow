@@ -101,17 +101,32 @@ export async function btCallOutcome(action: BtBridgeAction, arg?: unknown): Prom
   }
 }
 
+// The Bluetooth scan with its FAILURE kept: Android REJECTS with a code (BT_DISABLED /
+// BT_PERMISSION / BT_NO_ADAPTER…), iOS RESOLVES {ok:false, message}. Both end up as
+// {ok:false, code, message} so btState can tell "off" / "not allowed" apart. A saved printer
+// echoed back is remembered like btCall does.
+export interface BtScanOutcome { ok: boolean; code: string; message: string; printers: BluetoothPrinterDevice[]; savedPrinter: BluetoothPrinterDevice | null }
+export async function btScanOutcome(arg?: unknown): Promise<BtScanOutcome> {
+  const none = (code = "", message = ""): BtScanOutcome => ({ ok: false, code, message, printers: [], savedPrinter: null });
+  if (typeof window === "undefined") return none();
+  const fn = (window.SellerFlowPrinter as Record<string, ((a?: unknown) => Promise<unknown>) | undefined> | undefined)?.scanBluetoothLabelPrinters;
+  if (typeof fn !== "function") return none();
+  try {
+    const r = (arg === undefined ? await fn() : await fn(arg)) as BluetoothScanResult | null;
+    if (r && typeof r === "object" && "savedPrinter" in r) rememberSavedPrinter(r.savedPrinter);
+    return { ok: r?.ok !== false, code: "", message: typeof r?.message === "string" ? r.message : "", printers: r?.printers || [], savedPrinter: r?.savedPrinter || null };
+  } catch (err) {
+    const e = (err && typeof err === "object" ? err : {}) as { code?: unknown; message?: unknown };
+    return none(typeof e.code === "string" ? e.code : "", typeof e.message === "string" ? e.message : "");
+  }
+}
+
 // ── Generic BLE label printers (printer setup v2) ────────────────────────────
-// The v2 Printer settings flow (printerModels.printerFlowV2Enabled) needs an app build
-// with the native testGenericPrinter method; older apps keep today's screen.
+// The v2 Printer settings flow (printerModels.printerFlowV2Enabled) needs an app build new
+// enough to STORE a generic printer (marker: the native testGenericPrinter method exists);
+// older apps keep today's screen. The web never calls that method any more.
 export const hasGenericPrinterBridge = (): boolean =>
   typeof window !== "undefined" && typeof (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.testGenericPrinter === "function";
-
-export interface GenericPrintResult { ok: boolean; code: string; confirmed: boolean; statusHex: string; service: string; characteristic: string }
-// Admin-only line after a generic print. Printer data only.
-export function genericDebugLine(r: Pick<GenericPrintResult, "confirmed" | "service" | "characteristic" | "statusHex">): string {
-  return `confirmed: ${r.confirmed ? "yes" : "no"} · via ${r.service || "?"}/${r.characteristic || "?"} · status: ${r.statusHex || "none"}`;
-}
 
 // ── Niimbot (vendor SDK) — printer setup v2 Part 8 ──────────────────────────
 // The sticker IMAGE the native Niimbot driver prints as one label: 1-bit rows (MSB first,
@@ -124,25 +139,6 @@ export const hasNiimbotBridge = (): boolean =>
 // sets this flag on older iOS so the settings screen says so BEFORE any test print.
 export const niimbotOsTooOld = (): boolean =>
   typeof window !== "undefined" && (window.SellerFlowPrinter as Record<string, unknown> | undefined)?.niimbotOsTooOld === true;
-
-// One test sticker to a printer that is NOT saved. `job` = the native TSPL text sticker
-// ({ payload }), ready bytes the web built ({ data: base64 } — the sticker image in the
-// language being tried), or the sticker image for the Niimbot driver ({ image, name } with
-// `transport: "niimbot"`). `transport: "spp"` = an Android PAIRED classic printer (RFCOMM);
-// absent = BLE. ONE bridge call per test; a completed write is "sent" — never re-sent.
-export async function testGenericPrinter(address: string, job: ({ payload: unknown } | { data: string } | { image: NiimbotImage; name: string }) & { transport?: string }): Promise<GenericPrintResult> {
-  const fail = (code: string): GenericPrintResult => ({ ok: false, code, confirmed: false, statusHex: "", service: "", characteristic: "" });
-  const fn = typeof window !== "undefined" ? (window.SellerFlowPrinter as Record<string, ((a?: unknown) => Promise<unknown>) | undefined> | undefined)?.testGenericPrinter : undefined;
-  if (typeof fn !== "function") return fail("");
-  try {
-    const raw = (await fn({ address, ...job })) as Record<string, unknown> | null;
-    const str = (v: unknown) => (typeof v === "string" ? v : "");
-    return { ok: raw?.ok === true, code: "", confirmed: raw?.confirmed === true, statusHex: str(raw?.statusHex), service: str(raw?.service), characteristic: str(raw?.characteristic) };
-  } catch (err) {
-    const code = err && typeof err === "object" && typeof (err as { code?: unknown }).code === "string" ? (err as { code: string }).code : "";
-    return fail(code);
-  }
-}
 
 // Test-sticker buyer — copied from App.tsx:2086 (rollback app keeps its own
 // string by convention). Exported so the web Printer Test can browser-print the
