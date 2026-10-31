@@ -257,7 +257,7 @@ export interface RasterSettings {
   // name + v2 comment and never a zero-line comment; "compact" = smaller vertical gaps (R1).
   printHalfWordGap?: boolean; printSpacing?: "compact" | "normal";
   printFacebookName?: boolean; // Facebook buyer: name once, half-letter word gaps, 2nd line when needed — bitmap/extended only, default OFF
-  printCompactV2?: boolean; // PREVIEW compact layout v2 (50×30 / 60×40 font-C: "Buyer 88", date top-right, 3-line comment) — printing.ts STICKER_COMPACT_V2_PREVIEW, default OFF
+  printCompactV2?: boolean; // sticker layout v2 (50×30 / 60×40 font-C: "Buyer 88", name first, date top-right, 3-line comment; 70×50+: shop-name header) — printing.ts stickerCompactV2Allowed, default OFF
 }
 export interface RasterPayload { storeName?: string; sessionDate?: string; currency?: string; buyer?: RasterBuyer; settings?: RasterSettings | null }
 
@@ -369,7 +369,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   const lvlComment = lvl("printCommentScale");
   const lvlTotal = lvl("printTotalScale");
 
-  // Layout v2 PREVIEW (settings.printCompactV2, bitmap/extended only): the header carries the seller's OWN
+  // Layout v2 (settings.printCompactV2, bitmap/extended only): the header carries the seller's OWN
   // shop name (never "SellerFlowLive") and date + time on the right; the separate shop-name line and the
   // v2 time slot are then not drawn. No shop name → date + time only. Flag absent = today's header.
   const v2hdr = !legacy && settings?.printCompactV2 === true;
@@ -1371,7 +1371,7 @@ export function propGlyphBox(item: PropItem, size: number, x0: number, top: numb
 
 /** The whole compact label as a 1-bit bitmap (the only painter of the font-C layout). */
 export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas, bold = false): Bitmap {
-  if (payload.settings?.printCompactV2) { // PREVIEW layout v2 (flag OFF = the lines below, byte-identical)
+  if (payload.settings?.printCompactV2) { // layout v2 (flag OFF = the lines below, byte-identical)
     const v2 = propLayoutLinesV2(payload, wMm, hMm, atlases, canvas);
     const b = new Bitmap(v2.w, v2.h);
     for (const l of v2.lines) for (const it of l.line.items) { const g = propGlyphBox(it, l.size, l.x, l.top, l.font, atlases); if (g) b.blit(g.cell, g.w, g.h, g.x, g.y, 1, 1); }
@@ -1389,8 +1389,9 @@ export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: numb
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
-// COMPACT LAYOUT v2 — PREVIEW (2026-10-31), flag `settings.printCompactV2` (printing.ts
-// STICKER_COMPACT_V2_PREVIEW, default OFF = every path byte-identical to today). Same fonts,
+// COMPACT LAYOUT v2 (2026-10-31), flag `settings.printCompactV2` (printing.ts stickerCompactV2Allowed:
+// admins + feature "sticker_v2", everyone with app_settings sticker_layout_v2; OFF = every path
+// byte-identical to today). Same fonts,
 // sizes and shrink ladder as the compact layout above; line order Buyer → NAME → @username →
 // comment (the big sizes already print the name first; the same flag gives them the shop-name
 // header — see `v2hdr` in drawOpsInner). Three changes:
@@ -1399,8 +1400,9 @@ export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: numb
 //   • date+time TOP-RIGHT (time size, ink ends `edge` dots before the right edge). With a QR the
 //     QR moves DOWN below the date band (when it still fits); without one the text keeps the full
 //     width and only the buyer line stops before the date.
-//   • comment: shrink first (the same ladder), then WRAP at the smallest size into as many lines
-//     as the height allows (max COMPACT_V2_MAX_COMMENT_LINES), the last one cut with "…".
+//   • comment: WRAP FIRST at the normal size (≤ COMPACT_V2_MAX_COMMENT_LINES lines, as the height
+//     allows), the next ladder size only when that still cuts, the last line cut with "…". A
+//     Facebook name wraps the same way (≤ 2 lines).
 // ═══════════════════════════════════════════════════════════════════════════════════════
 export const COMPACT_V2_MAX_COMMENT_LINES = 3;
 export const COMPACT_V2_GAP = 4;   // min white: date band ↔ QR block, rows of the stack, "Buyer" ↔ number
@@ -1501,21 +1503,28 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   let nameOut = cleanName;
   if ((buyer.name ?? "") && !cleanName) nameOut = handle ? handle : `Buyer #${num}`;
   if (nameOut && classifyScriptExt(nameOut, true) === SCRIPT_UNSUPPORTED) nameOut = handle && classifyScriptExt(handle, true) === SCRIPT_ASCII ? handle : "";
-  if (nameOut) shrinkRow(nameOut);                                 // v2: the NAME first, then the @username (swapped vs today)
-  if (flag("printBuyerUsername") && handle) shrinkRow("@" + handle);
-  // comment: shrink first; still cut → wrap at the smallest ladder size, as many lines as fit (≤ 3)
-  const comment = flag("printOrderItems") && orders.length > 0 ? narrow(stripEmoji(orders[0]?.item ?? "")) : "";
-  if (comment) {
-    const fit = propFitShrinking(comment, sizes.line, maxW, atlases);
-    if (fit && !fit.line.cut) rows.push({ h: prop[String(fit.size)].h, parts: [{ size: fit.size, font: prop[String(fit.size)], line: fit.line, dx: 0, dy: 0 }] });
-    else if (fit) {
-      const small = fit.size, smallFont = prop[String(small)];
-      const otherH = rows.reduce((a, r) => a + r.h, 0);
-      const roomLines = Math.floor((H - otherH - COMPACT_V2_GAP * (rows.length + 1)) / (smallFont.h + COMPACT_V2_GAP));
-      const maxLines = Math.max(1, Math.min(COMPACT_V2_MAX_COMMENT_LINES, roomLines));
-      for (const line of propWrapLines(comment, small, maxW, atlases, maxLines)) if (line.text) rows.push({ h: smallFont.h, parts: [{ size: small, font: smallFont, line, dx: 0, dy: 0 }] });
+  // WRAP FIRST (Jeff, Oct 31): the normal line size with up to `maxLines` lines; only when those still
+  // cut, the next ladder size; at the smallest size the last line is cut with "…". The line count is
+  // limited by the height left (`reserveH` = room kept for the rows that follow, e.g. one comment line).
+  const wrapFirst = (text: string, maxLines: number, reserveH: number) => {
+    const otherH = rows.reduce((a, r) => a + r.h, 0) + reserveH;
+    const nOther = rows.length + (reserveH > 0 ? 1 : 0);
+    const roomFor = (h: number) => Math.floor((H - otherH - COMPACT_V2_GAP * (nOther + 1)) / (h + COMPACT_V2_GAP));
+    let last: { size: number; lines: PropLine[] } | null = null;
+    for (const size of propShrinkLadder(sizes.line)) {
+      const f = prop[String(size)]; if (!f) continue;
+      last = { size, lines: propWrapLines(text, size, maxW, atlases, Math.max(1, Math.min(maxLines, roomFor(f.h)))) };
+      if (!last.lines.some((l) => l.cut)) break;
     }
-  }
+    if (last) { const f = prop[String(last.size)]; for (const l of last.lines) if (l.text) rows.push({ h: f.h, parts: [{ size: last.size, font: f, line: l, dx: 0, dy: 0 }] }); }
+  };
+  const comment = flag("printOrderItems") && orders.length > 0 ? narrow(stripEmoji(orders[0]?.item ?? "")) : "";
+  const smallestH = prop[String(propShrinkLadder(sizes.line).slice(-1)[0])]?.h ?? 0;
+  // v2: the NAME first, then the @username (swapped vs today). A Facebook name may take 2 lines (wrap
+  // first), keeping room for one comment line; every other name shrinks on one line as today.
+  if (nameOut) { if (settings?.printFacebookName === true) wrapFirst(narrow(nameOut), 2, comment ? smallestH : 0); else shrinkRow(nameOut); }
+  if (flag("printBuyerUsername") && handle) shrinkRow("@" + handle);
+  if (comment) wrapFirst(comment, COMPACT_V2_MAX_COMMENT_LINES, 0);
   const tops = propLineTops(rows.map((r) => ({ font: { h: r.h } as PropFont })), H);
   const lines: PropLaidLineV2[] = [];
   rows.forEach((r, i) => { for (const p of r.parts) lines.push({ size: p.size, font: p.font, line: p.line, x: X + p.dx, top: tops[i] + p.dy }); });

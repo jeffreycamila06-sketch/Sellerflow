@@ -72,8 +72,9 @@ type Stage = "idle" | "printing" | "saved" | "fail";
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
-  stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false,
+  stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false,
 }: {
+  compactV2?: boolean; // sticker layout v2 ON (printing.ts stickerCompactV2Allowed): the QR prints on every size → no 60×40 lock, v2 hint
   onBack: () => void;
   psType: "wifi" | "bt";
   psOut: "receipt" | "sticker"; onSetPsOut: (o: "receipt" | "sticker") => void;
@@ -94,7 +95,7 @@ export default function PrinterSettings({
   // PHONE APP only: sticker QR is excluded on 60×40 (too small to scan fast). On WEB
   // (no native bridge) the browser-print QR follows the seller's own paper/driver
   // settings, so there is no size gate and no 60×40 note there.
-  const qrUnsupportedSize = nativeReady && /^60x40/.test(psSize);
+  const qrUnsupportedSize = nativeReady && /^60x40/.test(psSize) && !compactV2; // layout v2 prints the QR on every size
   const btReady = hasBtBridge();
   const [status, setStatus] = useState<MobilePrinterResult>({ ok: false, message: nativeReady ? t.rd_ps_tap_find : t.rd_ps_open_app_connect });
   const [host, setHost] = useState("");
@@ -407,7 +408,7 @@ export default function PrinterSettings({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
                 {/* 60×40 is too small to hold a fast-scanning QR → toggle disabled + hint. */}
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }} data-testid="ps-sticker-qr-hint">{qrUnsupportedSize ? t.rd_ps_sticker_qr_unavail : t.rd_ps_sticker_qr_desc}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }} data-testid="ps-sticker-qr-hint">{compactV2 ? t.rd_ps_sticker_qr_v2_desc : qrUnsupportedSize ? t.rd_ps_sticker_qr_unavail : t.rd_ps_sticker_qr_desc}</div>
               </div>
               <button
                 aria-pressed={qrUnsupportedSize ? false : stickerQr}

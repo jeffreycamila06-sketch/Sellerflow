@@ -2,26 +2,44 @@
 // (the payload carries no flag, today's goldens stay green); flag ON (settings.printCompactV2) =
 // "Buyer" + the big number, date top-right above the QR, comment wrapped to ≤3 lines, QR decodes.
 import { describe, it, expect, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import jsQR from "jsqr";
-import { STICKER_COMPACT_V2_PREVIEW, setStickerCompactV2, imageStickerPayload, imagePathAtlases, buildNativeStickerPayload, buildSettingsFromRedesign, setStickerQrEntitled, setStickerQrOn, NIIMBOT_CANVAS } from "../printing";
-import { renderStickerBitmap, stickerDrawOps, propLayoutLinesV2, propLayoutLines, propQrInkLeft, COMPACT_V2_MAX_COMMENT_LINES, COMPACT_V2_GAP, type RasterPayload, type RasterAtlases } from "../stickerRaster";
+import { stickerCompactV2Allowed, setStickerCompactV2, imagePathAtlases as loadImageAtlases, imageStickerPayload, imagePathAtlases, buildNativeStickerPayload, buildSettingsFromRedesign, setStickerQrEntitled, setStickerQrOn, NIIMBOT_CANVAS, type NativeStickerPayload } from "../printing";
+import { renderStickerBitmap, stickerDrawOps, propLayoutLinesV2, propLayoutLines, propQrInkLeft, COMPACT_V2_MAX_COMMENT_LINES, COMPACT_V2_GAP, type RasterPayload, type RasterAtlases, type FullRaster } from "../stickerRaster";
+import { setFeatureAccess } from "../featureAccess";
+import { SWITCHES_OFF, parseSwitches } from "../featureSwitches";
+import { LATIN_ATLAS } from "../glyphAtlas.latin";
+import { loadCjkAtlas } from "../cjkAtlasLoader";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const AT = Date.UTC(2026, 9, 31, 12, 15);
 const buyerOf = (item: string, name = "陳美玲 Amy"): Buyer => ({ handle: "amy.ukay2026", name, platform: "TikTok", num: 88, totalSpent: 350, totalOrders: 1,
   orders: [{ orderNum: AT, item, qty: 1, price: 350, total: 350, time: "20:15", handle: "amy.ukay2026", name, bNum: 88, platform: "TikTok", status: "New", date: "2026-10-31" }] } as Buyer);
 const cfg = (w: number, h: number) => buildSettingsFromRedesign({ pp: { shopName: true, shopNameSize: 1, dateTime: true, dateTimeSize: 1, buyerNum: true, buyerNumSize: 1, tiktokName: true, tiktokNameSize: 1, tiktokUser: true, tiktokUserSize: 1, comment: true, commentSize: 1 }, psType: "bt", psOut: "sticker", psSize: `${w}x${h}mm` });
-async function make(w: number, h: number, item: string, qr: boolean, v2: boolean): Promise<{ img: RasterPayload; atl: RasterAtlases }> {
+async function make(w: number, h: number, item: string, qr: boolean, v2: boolean): Promise<{ np: NativeStickerPayload; img: RasterPayload; atl: RasterAtlases }> {
   setStickerQrEntitled(true); setStickerQrOn(qr); setStickerCompactV2(v2);
   const np = buildNativeStickerPayload(buyerOf(item), "NT$", "Jeff Live Shop", cfg(w, h), AT);
   const img = imageStickerPayload(np, "TikTok");
-  return { img, atl: await imagePathAtlases(np, img) };
+  return { np, img, atl: await imagePathAtlases(np, img) };
 }
 beforeEach(() => { setStickerCompactV2(false); });
 
 describe("compact v2 preview flag", () => {
-  it("is OFF by default and the payload then carries no printCompactV2 (today's bytes)", async () => {
-    expect(STICKER_COMPACT_V2_PREVIEW).toBe(false);
+  it("switch: OFF for a plain seller; ON for admins, for feature 'sticker_v2', and for everyone with app_settings sticker_layout_v2", () => {
+    setFeatureAccess(null);
+    expect(stickerCompactV2Allowed("seller@x.com", "seller", false)).toBe(false);
+    expect(stickerCompactV2Allowed("seller@x.com", "admin", false)).toBe(true);
+    expect(stickerCompactV2Allowed("seller@x.com", "seller", true)).toBe(true);
+    setFeatureAccess({ sticker_v2: true });
+    expect(stickerCompactV2Allowed("seller@x.com", "seller", false)).toBe(true);
+    expect(stickerCompactV2Allowed("", "seller", false)).toBe(false);
+    setFeatureAccess(null);
+    expect(SWITCHES_OFF.stickerLayoutV2).toBe(false);
+    expect(parseSwitches([{ key: "sticker_layout_v2", value: "true" }]).stickerLayoutV2).toBe(true);
+    expect(parseSwitches([{ key: "sticker_layout_v2", value: "TRUE" }]).stickerLayoutV2).toBe(false);
+  });
+  it("OFF: the payload carries no printCompactV2 (today's bytes — the goldens stay green)", async () => {
     const { img } = await make(60, 40, "黑色洋裝 M NT$350", true, false);
     expect(img.settings?.printCompactV2).toBeUndefined();
   });
@@ -54,27 +72,43 @@ describe("compact v2 preview flag", () => {
     expect(num.x + num.line.inkWidth + 2 * COMPACT_V2_GAP).toBeLessThanOrEqual(date.x);
     expect(date.x + date.line.inkWidth).toBe(v2.w - 12);
   });
-  it("ON: a long comment shrinks first, then wraps to at most 3 lines, the last cut with '…'", async () => {
+  it("ON: a long comment WRAPS FIRST at the normal size, shrinks only when 3 lines still cut, the last line cut with '…'", async () => {
+    const mid = "Black dress M size 350, pa-reserve po 2 pcs";
+    for (const [w, h] of [[50, 30], [60, 40]] as const) {
+      const { img, atl } = await make(w, h, mid, true, true);
+      const v2 = propLayoutLinesV2(img, w, h, atl);
+      const normal = w === 50 ? 20 : 24;
+      const comment = v2.lines.filter((l) => !["Buyer", "88", "Amy Santos", "@amy.ukay2026", "10/31 20:15"].includes(l.line.text));
+      expect(comment.length).toBeGreaterThan(1);               // wrapped…
+      for (const l of comment) { expect(l.size).toBe(normal); expect(l.line.cut).toBe(false); } // …at the NORMAL size, nothing cut
+    }
     const long = "黑色洋裝 M NT$350 at isa pang 白色上衣 size L para sa ate ko salamat po, saka yung 紅色裙子 size S at 藍色外套 XL para kay mama, bayad na lahat";
     for (const [w, h] of [[50, 30], [60, 40]] as const) {
       const { img, atl } = await make(w, h, long, true, true);
       const v2 = propLayoutLinesV2(img, w, h, atl);
       const comment = v2.lines.filter((l) => l.size === 18 && l.line.text !== "10/31 20:15");
-      expect(comment.length).toBeGreaterThan(1);
+      expect(comment.length).toBeGreaterThan(1);                // shrunk to the smallest size only because 3 normal-size lines still cut
       expect(comment.length).toBeLessThanOrEqual(COMPACT_V2_MAX_COMMENT_LINES);
       expect(comment[comment.length - 1].line.text.endsWith("…")).toBe(true);
       for (let i = 1; i < comment.length; i++) expect(comment[i].top).toBeGreaterThan(comment[i - 1].top);
       expect(propLayoutLines(img, w, h, atl).lines.filter((l) => l.line.cut).length).toBe(1); // today: one cut line
     }
   });
-  it("ON: the QR still decodes to the buyer's TikTok link (60×40 and the Niimbot frame)", async () => {
-    for (const canvas of [undefined, NIIMBOT_CANVAS]) {
-      const { img, atl } = await make(canvas ? 50 : 60, canvas ? 30 : 40, "黑色洋裝 M NT$350", true, true);
-      const r = renderStickerBitmap(img, canvas ? 50 : 60, canvas ? 30 : 40, atl, "extended", canvas);
-      const rgba = new Uint8ClampedArray(r.w * r.h * 4);
-      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) { const ink = (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0; const v = ink ? 0 : 255; const i = (y * r.w + x) * 4; rgba[i] = rgba[i + 1] = rgba[i + 2] = v; rgba[i + 3] = 255; }
-      expect(jsQR(rgba, r.w, r.h)?.data).toBe("https://tiktok.com/@amy.ukay2026");
+  it("ON: the QR decodes on EVERY size, on the Niimbot frame, and on the AIMO D520BT stream's atlases at 60×40", async () => {
+    const decode = (r: FullRaster) => { const rgba = new Uint8ClampedArray(r.w * r.h * 4); for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) { const ink = (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0; const v = ink ? 0 : 255; const i = (y * r.w + x) * 4; rgba[i] = rgba[i + 1] = rgba[i + 2] = v; rgba[i + 3] = 255; } return jsQR(rgba, r.w, r.h)?.data; };
+    for (const [w, h] of [[50, 30], [60, 40], [70, 50], [80, 50], [80, 60], [100, 60]] as const) {
+      const { img, atl } = await make(w, h, "Black dress M 350", true, true);
+      expect(decode(renderStickerBitmap(img, w, h, atl)), `${w}x${h}`).toBe("https://tiktok.com/@amy.ukay2026");
     }
+    const nii = await make(50, 30, "Black dress M 350", true, true);
+    expect(decode(renderStickerBitmap(nii.img, 50, 30, nii.atl, "extended", NIIMBOT_CANVAS))).toBe("https://tiktok.com/@amy.ukay2026");
+    // AIMO 60×40: today = {latin, cjk} → fixed-cell, NO QR; ON = the imagePathAtlases the SDK path now loads → compact v2 WITH the QR
+    const aimo = await make(60, 40, "Black dress M 350", true, true);
+    const todayAtl: RasterAtlases = { latin: LATIN_ATLAS, cjk: await loadCjkAtlas() };
+    expect(decode(renderStickerBitmap({ ...aimo.img, settings: { ...aimo.img.settings, printCompactV2: undefined } }, 60, 40, todayAtl))).toBeUndefined();
+    expect(decode(renderStickerBitmap(aimo.img, 60, 40, await loadImageAtlases(aimo.np, aimo.img)))).toBe("https://tiktok.com/@amy.ukay2026");
+    const src = readFileSync(join(process.cwd(), "src/redesign/adapters/printing.ts"), "utf8");
+    expect(src).toMatch(/stickerCompactV2Effective\(\) && isPropCompactSize\(payload\.labelWidthMm, payload\.labelHeightMm\) \? await imagePathAtlases\(payload, qrPayload\) : null/);
   });
 });
 
@@ -109,5 +143,21 @@ describe("layout v2 preview — line order and the big-size header", () => {
     const texts = stickerDrawOps(imageStickerPayload(np, "TikTok"), 80, 50, "extended", null).ops.filter((o) => o.k === "txt").map((o) => o.s);
     expect(texts[0]).toBe("10/31/2026 20:15");
     expect(texts).not.toContain("SellerFlowLive");
+  });
+});
+
+describe("layout v2 — Facebook long name wraps first", () => {
+  it("a long Facebook name takes 2 lines at the normal size; the comment keeps a line", async () => {
+    setStickerQrEntitled(true); setStickerQrOn(true); setStickerCompactV2(true);
+    const b = buyerOf("Black dress M 350", "Maria Cristina Dela Cruz Santos Reyes Villanueva");
+    b.platform = "Facebook"; b.handle = b.name; b.orders[0].platform = "Facebook"; b.orders[0].handle = b.name;
+    const np = buildNativeStickerPayload(b, "NT$", "BudgetUkay", { ...cfg(50, 30), printBuyerUsername: false }, AT);
+    const img = imageStickerPayload(np, "Facebook", true);
+    const v2 = propLayoutLinesV2(img, 50, 30, await imagePathAtlases(np, img));
+    const name = v2.lines.filter((l) => /^(Maria|Cristina|Dela|Cruz|Santos|Reyes|Villanueva)/.test(l.line.text));
+    expect(name.length).toBe(2);
+    for (const l of name) { expect(l.size).toBe(20); expect(l.line.cut).toBe(false); }
+    expect(v2.lines.some((l) => l.line.text === "Black dress M 350")).toBe(true);
+    expect(v2.qr).toBeNull(); // Facebook → no QR
   });
 });
