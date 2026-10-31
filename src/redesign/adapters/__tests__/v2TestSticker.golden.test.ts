@@ -39,6 +39,14 @@ describe("v2 test sticker goldens (generic + Niimbot, production functions)", ()
   it("the three generic language streams", async () => {
     const p = payload();
     expect(sha(await buildGenericStickerBytes("tspl", p, "TikTok"))).toBe(GOLDEN.tspl);
+    // the compact (font C) layout bolds too: more ink, same length; no job = the golden exactly
+    const plain = await buildGenericStickerBytes("tspl", p, "TikTok", false, {});
+    const bold = await buildGenericStickerBytes("tspl", p, "TikTok", false, { bold: true });
+    expect(sha(plain)).toBe(GOLDEN.tspl);
+    expect(bold.length).toBe(plain.length);
+    expect(sha(bold)).not.toBe(GOLDEN.tspl);
+    const zeros = (b: Uint8Array) => b.reduce((n, v) => n + (v === 0 ? 1 : 0), 0); // all-ink bytes (ink = 0)
+    expect(zeros(bold)).toBeGreaterThan(zeros(plain));
     expect(sha(await buildGenericStickerBytes("escpos", p, "TikTok"))).toBe(GOLDEN.escpos);
     expect(sha(await buildGenericStickerBytes("cpcl", p, "TikTok"))).toBe(GOLDEN.cpcl);
   });

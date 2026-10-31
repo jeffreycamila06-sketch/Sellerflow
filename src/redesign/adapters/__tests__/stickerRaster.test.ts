@@ -16,9 +16,10 @@ import { createHash } from "node:crypto";
 import {
   stickerDrawOps, emitTextTspl, rasterizeToBitmapTspl, renderStickerBitmap,
   bytesToBase64, INK_IS_ZERO, STICKER_LAYOUTS, translitCp, stickerQrSupported,
-  stickerQrPlacement, wrapWords,
+  stickerQrPlacement, wrapWords, boldenRaster,
   type RasterPayload, type GlyphAtlas, type RasterAtlases,
 } from "../stickerRaster";
+import jsQR from "jsqr";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import { extraBitmapFixtures } from "./bitmapFixtures";
 import { buildTsplStickerReference, type RefPayload } from "../../../lib/__tests__/tsplReference";
@@ -459,5 +460,66 @@ describe("stickerDrawOps — QR keep-out: comment wraps, never crosses the QR", 
       for (const l of commentOps(ops) as Extract<typeof ops[number], { k: "txt" }>[])
         expect(l.x + l.s.length * 48).toBeLessThanOrEqual(qr.x0);
     }
+  });
+});
+
+// ── BOLD (BandOptions.bold — the Y41BT / XP-420B heavier ink) ───────────────────────────
+// Recompose the BITMAP bands of one job onto a white RGBA canvas (1 px per dot) — what the
+// printer puts on paper — so jsQR can read the QR off it.
+function recomposeRgba(bytes: Uint8Array, w: number, h: number): Uint8ClampedArray {
+  const px = new Uint8ClampedArray(w * h * 4).fill(255);
+  for (const b of parseBitmapStream(bytes).bands) {
+    for (let ry = 0; ry < b.h; ry++) for (let bit = 0; bit < b.rowBytes * 8; bit++) {
+      const v = (b.data[ry * b.rowBytes + (bit >> 3)] & (0x80 >> (bit & 7))) !== 0;
+      if (!(INK_IS_ZERO ? !v : v)) continue;
+      const i = ((b.y + ry) * w + b.x + bit) * 4;
+      px[i] = px[i + 1] = px[i + 2] = 0;
+    }
+  }
+  return px;
+}
+const inkDots = (bytes: Uint8Array): number => { let n = 0; for (const b of parseBitmapStream(bytes).bands) for (const v of b.data) for (let k = 0; k < 8; k++) if (((v >> k) & 1) === (INK_IS_ZERO ? 0 : 1)) n++; return n; };
+
+describe("bold ink (BandOptions.bold)", () => {
+  it("boldenRaster: a 1-dot stroke becomes 2 dots to the right — across a byte boundary too, never past the raster width", () => {
+    // 20 dots wide (3 bytes, last byte 4 valid bits), 3 rows: strokes at x=2, x=7 (last bit of byte 0), x=19 (right edge)
+    const w = 20, rowBytes = 3, buf = new Uint8Array(rowBytes * 3);
+    const set = (x: number, y: number) => { buf[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7); };
+    const get = (x: number, y: number) => (buf[y * rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0;
+    set(2, 0); set(7, 1); set(19, 2);
+    boldenRaster(buf, w, 3, rowBytes);
+    const row = (y: number) => Array.from({ length: w }, (_, x) => (get(x, y) ? 1 : 0)).join("");
+    expect(row(0)).toBe("00110000000000000000"); // x=2 → x=2,3
+    expect(row(1)).toBe("00000001100000000000"); // x=7 → x=7,8 (carry into byte 1)
+    expect(row(2)).toBe("00000000000000000001"); // x=19 = last column: no dot past the width
+    expect(buf[2 * rowBytes + 2] & 0x0f).toBe(0);  // the padding bits of the last byte stay 0
+  });
+
+  it("bold ON thickens the flagship job (more ink, same bands, same layout); bold OFF / absent == today's bytes", () => {
+    const p = flagshipPayload();
+    const plain = rasterizeToBitmapTspl(p, FLAGSHIP.w, FLAGSHIP.h, ATLASES);
+    const off = rasterizeToBitmapTspl(p, FLAGSHIP.w, FLAGSHIP.h, ATLASES, { bold: false });
+    const on = rasterizeToBitmapTspl(p, FLAGSHIP.w, FLAGSHIP.h, ATLASES, { bold: true });
+    expect(toHex(off.bytes)).toBe(toHex(plain.bytes));
+    expect(on.bands).toBe(plain.bands);
+    expect(on.bytes.length).toBe(plain.bytes.length); // a horizontal dilation never adds a row → same band sizes
+    expect(inkDots(on.bytes)).toBeGreaterThan(inkDots(plain.bytes) * 1.05); // scaled (2×/3×) glyphs grow a third to a half per stroke, solid bars barely
+    expect(inkDots(on.bytes)).toBeLessThan(inkDots(plain.bytes) * 2);
+    // every original ink dot is still ink (the stroke only grows)
+    const a = recomposeRgba(plain.bytes, FLAGSHIP.w * 8, FLAGSHIP.h * 8), b = recomposeRgba(on.bytes, FLAGSHIP.w * 8, FLAGSHIP.h * 8);
+    for (let i = 0; i < a.length; i += 4) if (a[i] === 0) expect(b[i]).toBe(0);
+  });
+
+  it("the QR still decodes after bold — its module grid is stamped after the dilation, so it is byte-identical to the unbolded QR", () => {
+    const p: RasterPayload = { ...flagshipPayload(), settings: { ...flagshipPayload().settings, printStickerQr: true } };
+    const W = FLAGSHIP.w * 8, H = FLAGSHIP.h * 8;
+    const qr = stickerQrPlacement(p, W, H, FLAGSHIP.h)!;
+    expect(qr).not.toBeNull();
+    const plain = recomposeRgba(rasterizeToBitmapTspl(p, FLAGSHIP.w, FLAGSHIP.h, ATLASES).bytes, W, H);
+    const bold = recomposeRgba(rasterizeToBitmapTspl(p, FLAGSHIP.w, FLAGSHIP.h, ATLASES, { bold: true }).bytes, W, H);
+    expect(jsQR(plain, W, H)?.data).toBe("https://tiktok.com/@maria_s");
+    expect(jsQR(bold, W, H)?.data).toBe("https://tiktok.com/@maria_s");
+    // the QR footprint (modules + quiet zone) is pixel-identical between the two jobs
+    for (let y = qr.y0; y < qr.y0 + qr.foot; y++) for (let x = qr.x0; x < qr.x0 + qr.foot; x++) { const i = (y * W + x) * 4; expect(bold[i]).toBe(plain[i]); }
   });
 });

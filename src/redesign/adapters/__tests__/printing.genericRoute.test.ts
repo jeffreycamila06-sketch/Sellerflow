@@ -52,24 +52,31 @@ describe("saved generic printer routing", () => {
     expect(getLastStickerRouteNotice()).toMatchObject({ via: "bitmap", ok: true, reason: "generic-tspl" });
   });
 
-  it("a saved XP-420B prints the same BITMAP job with its own header (SPEED 3, DENSITY 12); a saved Y41BT keeps DENSITY 8 and no SPEED (bytes unchanged)", async () => {
+  it("a saved XP-420B and a saved Y41BT print the BITMAP job with SPEED 2 + DENSITY 15 and bold ink; an unknown generic printer keeps today's header AND today's body bytes", async () => {
     const header = (bytes: Buffer) => bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii");
-    let b = bridge();
-    rememberSavedPrinter({ address: "FF:FF", name: "XP-420B", model: "generic", lang: "tspl" });
-    printSlip(buyer, "NT$", "Store", cfg);
-    await flush();
-    const xp = sent(b.printRawTspl);
-    expect(header(xp)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 3\r\nDENSITY 12\r\n");
+    const body = (bytes: Buffer) => bytes.subarray(header(bytes).length);
+    const print = async (saved: { address: string; name: string }) => {
+      delete (window as W).SellerFlowPrinter; __resetSavedPrinter();
+      const b = bridge();
+      rememberSavedPrinter({ ...saved, model: "generic", lang: "tspl" });
+      printSlip(buyer, "NT$", "Store", cfg);
+      await flush();
+      return sent(b.printRawTspl);
+    };
+    const xp = await print({ address: "FF:FF", name: "XP-420B" });
+    expect(header(xp)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 2\r\nDENSITY 15\r\n");
     expect(xp.includes(Buffer.from("BITMAP 0,"))).toBe(true);
-    delete (window as W).SellerFlowPrinter; __resetSavedPrinter();
-    b = bridge();
-    rememberSavedPrinter({ address: "BB:BB", name: "Y41BT-0FC4_LE", model: "generic", lang: "tspl" });
-    printSlip(buyer, "NT$", "Store", cfg);
-    await flush();
-    const y41 = sent(b.printRawTspl);
-    expect(header(y41)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nDENSITY 8\r\n");
-    // identical bytes after the header too: the body does not depend on the model
-    expect(Buffer.compare(xp.subarray(header(xp).length), y41.subarray(header(y41).length))).toBe(0);
+    const y41 = await print({ address: "BB:BB", name: "Y41BT-0FC4_LE" });
+    expect(header(y41)).toBe(header(xp).replace("100 mm, 60 mm", "100 mm, 60 mm"));
+    expect(Buffer.compare(body(xp), body(y41))).toBe(0); // same model settings → same (bold) body
+    // a printer with no settings = exactly the bytes buildGenericStickerBytes makes with no job
+    const other = await print({ address: "CC:CC", name: "LabelThing-9" });
+    expect(header(other)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nDENSITY 8\r\n");
+    const plain = Buffer.from(await buildGenericStickerBytes("tspl", buildNativeStickerPayload(buyer, "NT$", "Store", cfg), buyer.platform));
+    expect(Buffer.compare(other, plain)).toBe(0);
+    // bold changed the body (heavier ink), nothing else
+    expect(Buffer.compare(body(xp), body(plain))).not.toBe(0);
+    expect(xp.length).toBe(plain.length + "SPEED 2\r\n".length + 1); // same bands, same sizes (DENSITY 15 is one char longer)
   });
 
   it("a Chinese buyer name on a generic tspl printer loads the CJK atlas (drawn as image, not blank)", async () => {

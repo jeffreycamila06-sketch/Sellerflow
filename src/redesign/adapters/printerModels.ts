@@ -37,13 +37,16 @@ export const isNiimbotName = (name: string | undefined | null): boolean => start
 // KNOWN MODELS — Part 1 source: a built-in list keyed by device-name prefix. Part 2 moves
 // this to the database and learns from sellers' saves: swap `knownSource` only; every
 // caller goes through knownPrinterLang / isKnownPrinter and never reads the list.
-// `density` / `speed` = the TSPL job header for THIS model only (DENSITY n / SPEED n). Absent =
-// the generic job's defaults (DENSITY 8, no SPEED line) — every other printer's bytes unchanged.
-export interface TsplJobSettings { density?: number; speed?: number }
+// `density` / `speed` = the TSPL job header for THIS model only (DENSITY n / SPEED n); `bold` =
+// 1-dot heavier ink in the generic BITMAP job (stickerRaster BandOptions.bold). Absent = the
+// generic job's defaults (DENSITY 8, no SPEED line, no bold) — every other printer's bytes unchanged.
+export interface TsplJobSettings { density?: number; speed?: number; bold?: boolean }
 interface KnownModel extends TsplJobSettings { prefix: string; lang: PrinterLang }
+// Oct 31: side by side, the AIMO D520BT sticker is very dark/clear; the Y41BT and the XP-420B
+// (even at DENSITY 12 / SPEED 3) are clearly lighter → max density, slow, and bold for both.
 const BUILT_IN: KnownModel[] = [
-  { prefix: "Y41BT", lang: "tspl" }, // FLASH LABEL Y41BT — printed a clean TSPL sticker on the owner's iPhone (Oct 21)
-  { prefix: "XP-420B", lang: "tspl", density: 12, speed: 3 }, // Xprinter XP-420B — clean 60x40 TSPL sticker on the owner's iPhone (Oct 31) but faint at DENSITY 8
+  { prefix: "Y41BT", lang: "tspl", density: 15, speed: 2, bold: true }, // FLASH LABEL Y41BT — clean TSPL sticker on the owner's iPhone (Oct 21), light at DENSITY 8
+  { prefix: "XP-420B", lang: "tspl", density: 15, speed: 2, bold: true }, // Xprinter XP-420B — clean 60x40 TSPL sticker on the owner's iPhone (Oct 31), light at DENSITY 12
 ];
 let knownSource: () => KnownModel[] = () => BUILT_IN;
 export function __setKnownSource(fn: (() => KnownModel[]) | null): void { knownSource = fn ?? (() => BUILT_IN); }
@@ -56,11 +59,11 @@ export function knownPrinterLang(name: string | undefined | null): PrinterLang |
   return null;
 }
 
-// The per-model TSPL job header (density / speed) of a known model; {} = defaults.
+// The per-model TSPL job (density / speed / bold) of a known model; {} = defaults.
 export function knownTsplJob(name: string | undefined | null): TsplJobSettings {
   const n = String(name || "").trim().toUpperCase();
   if (!n) return {};
-  for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return { ...(m.density != null && { density: m.density }), ...(m.speed != null && { speed: m.speed }) };
+  for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return { ...(m.density != null && { density: m.density }), ...(m.speed != null && { speed: m.speed }), ...(m.bold && { bold: true }) };
   return {};
 }
 
