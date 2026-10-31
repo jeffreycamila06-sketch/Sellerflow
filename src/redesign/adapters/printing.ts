@@ -17,7 +17,8 @@ import type { Buyer } from "../../lib/orderTypes";
 import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
-import { savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
+import { savedBtPrinter, savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
+import { knownTsplJob, type TsplJobSettings } from "./printerModels";
 import type { NiimbotImage } from "./printerBridge";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
@@ -532,10 +533,11 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
   }
   return atlases;
 }
-export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<Uint8Array> {
+// `job` = the saved model's TSPL header (density / speed); {} = today's header for every other printer.
+export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false, job: TsplJobSettings = {}): Promise<Uint8Array> {
   const img = imageStickerPayload(payload, platform, fbName);
   const atlases = await imagePathAtlases(payload, img);
-  if (lang === "tspl") return rasterizeToBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases).bytes;
+  if (lang === "tspl") return rasterizeToBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases, job).bytes;
   const full = renderStickerBitmap(img, payload.labelWidthMm, payload.labelHeightMm, atlases);
   return lang === "cpcl" ? cpclRasterBytes(full) : escposRasterBytes(full);
 }
@@ -544,7 +546,7 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
   if (typeof raw !== "function") return { ok: false, code: "", message: "" };
   const reason: StickerFallbackReason = lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos";
   const t0 = nowMs();
-  const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName);
+  const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, knownTsplJob(savedBtPrinter()?.name));
   const t1 = nowMs();
   log.log(`[GENERIC-STICKER] lang=${lang} bytes=${bytes.length} (~${(bytes.length / 10000).toFixed(1)}s over BLE at ~10 KB/s)`);
   try {

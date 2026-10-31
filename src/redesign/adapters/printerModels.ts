@@ -37,9 +37,13 @@ export const isNiimbotName = (name: string | undefined | null): boolean => start
 // KNOWN MODELS — Part 1 source: a built-in list keyed by device-name prefix. Part 2 moves
 // this to the database and learns from sellers' saves: swap `knownSource` only; every
 // caller goes through knownPrinterLang / isKnownPrinter and never reads the list.
-interface KnownModel { prefix: string; lang: PrinterLang }
+// `density` / `speed` = the TSPL job header for THIS model only (DENSITY n / SPEED n). Absent =
+// the generic job's defaults (DENSITY 8, no SPEED line) — every other printer's bytes unchanged.
+export interface TsplJobSettings { density?: number; speed?: number }
+interface KnownModel extends TsplJobSettings { prefix: string; lang: PrinterLang }
 const BUILT_IN: KnownModel[] = [
   { prefix: "Y41BT", lang: "tspl" }, // FLASH LABEL Y41BT — printed a clean TSPL sticker on the owner's iPhone (Oct 21)
+  { prefix: "XP-420B", lang: "tspl", density: 12, speed: 3 }, // Xprinter XP-420B — clean 60x40 TSPL sticker on the owner's iPhone (Oct 31) but faint at DENSITY 8
 ];
 let knownSource: () => KnownModel[] = () => BUILT_IN;
 export function __setKnownSource(fn: (() => KnownModel[]) | null): void { knownSource = fn ?? (() => BUILT_IN); }
@@ -52,6 +56,14 @@ export function knownPrinterLang(name: string | undefined | null): PrinterLang |
   return null;
 }
 
+// The per-model TSPL job header (density / speed) of a known model; {} = defaults.
+export function knownTsplJob(name: string | undefined | null): TsplJobSettings {
+  const n = String(name || "").trim().toUpperCase();
+  if (!n) return {};
+  for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return { ...(m.density != null && { density: m.density }), ...(m.speed != null && { speed: m.speed }) };
+  return {};
+}
+
 // A known printer: the D520BT (AIMO / Phomemo) or a listed model.
 export function isKnownPrinter(p: Pick<BluetoothPrinterDevice, "name" | "model">): boolean {
   return p.model === "D520BT" || knownPrinterLang(p.name) !== null;
@@ -62,7 +74,7 @@ export function isKnownPrinter(p: Pick<BluetoothPrinterDevice, "name" | "model">
 // Match = the native D520BT tag or a device-name prefix (case-insensitive). Anything else
 // never appears for a seller ("Printer not listed? Contact Admin."); the admin "Show all"
 // still lists every named device for Jeff's own testing.
-export type KnownBrand = "AIMO" | "Flash" | "Niimbot";
+export type KnownBrand = "AIMO" | "Flash" | "Niimbot" | "Xprinter";
 export interface KnownPrinterInfo { brand: KnownBrand; model: string }
 export const WHITELIST: readonly { prefix: string; brand: KnownBrand; model: string }[] = [
   { prefix: "D520BT", brand: "AIMO", model: "D520BT" },   // AIMO / Phomemo D520BT — scans as "D520BT-Z"
@@ -71,6 +83,7 @@ export const WHITELIST: readonly { prefix: string; brand: KnownBrand; model: str
   { prefix: "B21-", brand: "Niimbot", model: "B21" },
   { prefix: "B203-", brand: "Niimbot", model: "B203" },
   { prefix: "B3S-", brand: "Niimbot", model: "B3S" },
+  { prefix: "XP-420B", brand: "Xprinter", model: "XP-420B" }, // Xprinter XP-420B — scans as "XP-420B"; exact model only (no generic "XP-")
 ];
 export function knownPrinterInfo(p: Pick<BluetoothPrinterDevice, "name" | "model" | "brand">): KnownPrinterInfo | null {
   if (p.model === "D520BT") return { brand: "AIMO", model: "D520BT" };
