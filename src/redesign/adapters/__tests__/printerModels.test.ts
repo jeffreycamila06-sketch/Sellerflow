@@ -34,9 +34,10 @@ describe("known-model lookup", () => {
     expect(isKnownPrinter(Y41)).toBe(true);
     expect(isKnownPrinter(UNKNOWN)).toBe(false);
   });
-  it("per-model TSPL job header: XP-420B = DENSITY 12 + SPEED 3; every other printer (D520BT, Y41BT, unknown, nothing saved) = {} → today's header", () => {
-    expect(knownTsplJob("XP-420B")).toEqual({ density: 12, speed: 3 });
-    for (const n of ["Y41BT-0FC4_LE", "D520BT-Z", "LabelThing-9", "XP-365B", "", undefined, null]) expect(knownTsplJob(n), String(n)).toEqual({});
+  it("per-model TSPL job: Y41BT + XP-420B = DENSITY 15 + SPEED 2 + bold; every other printer (D520BT, unknown, nothing saved) = {} → today's header and ink", () => {
+    expect(knownTsplJob("XP-420B")).toEqual({ density: 15, speed: 2, bold: true });
+    expect(knownTsplJob("Y41BT-0FC4_LE")).toEqual({ density: 15, speed: 2, bold: true });
+    for (const n of ["D520BT-Z", "LabelThing-9", "XP-365B", "B1-I603042141", "", undefined, null]) expect(knownTsplJob(n), String(n)).toEqual({});
   });
   it("Part 2 only swaps the source — callers see the new list at once", () => {
     __setKnownSource(() => [{ prefix: "LabelThing", lang: "escpos" }]);

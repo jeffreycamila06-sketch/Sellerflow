@@ -289,7 +289,7 @@ describe("tap a printer → saved + one test sticker → green card (no question
     fireEvent.click(screen.getByTestId("ps-saved-test"));
     await waitFor(() => expect(b.printStickerBitmap).toHaveBeenCalledTimes(2));
   });
-  it("Y41BT (Flash): saved as generic/tspl + one TSPL BITMAP test sticker (never the text sticker), no question", async () => {
+  it("Y41BT (Flash): saved as generic/tspl + one TSPL BITMAP test sticker (never the text sticker) with the darker header SPEED 2 + DENSITY 15, no question", async () => {
     const b = installBridge();
     renderBT({ flowV2: true });
     await scan();
@@ -299,14 +299,14 @@ describe("tap a printer → saved + one test sticker → green card (no question
     const bytes = dataOf(b.printRawTspl.mock.calls[0][0]);
     expect(bytes.includes(Buffer.from("BITMAP 0,"))).toBe(true);
     expect(bytes.includes(Buffer.from("TEXT "))).toBe(false);
-    // today's job header, byte-for-byte — the XP-420B's DENSITY 12 / SPEED 3 never leaks onto other printers
-    expect(bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii")).toBe("SIZE 60 mm, 40 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nDENSITY 8\r\n");
+    // the Y41BT prints light at DENSITY 8 (Oct 31, side by side with the AIMO) → its own header
+    expect(bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii")).toBe("SIZE 60 mm, 40 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 2\r\nDENSITY 15\r\n");
     expect(b.printStickerNative).not.toHaveBeenCalled();
     expect(b.testGenericPrinter).not.toHaveBeenCalled();
     expect((await screen.findByTestId("ps-saved")).textContent).toContain("Y41BT-0FC4_LE");
     expect(screen.queryByText(/Did it look like this/)).toBeNull();
   });
-  it("XP-420B (Xprinter): saved as generic/tspl + one TSPL BITMAP test sticker whose job header is SPEED 3 + DENSITY 12 (the faint-print fix)", async () => {
+  it("XP-420B (Xprinter): saved as generic/tspl + one TSPL BITMAP test sticker whose job header is SPEED 2 + DENSITY 15 (still light at 12/3 on Oct 31)", async () => {
     const b = installBridge();
     renderBT({ flowV2: true });
     await scan();
@@ -314,7 +314,7 @@ describe("tap a printer → saved + one test sticker → green card (no question
     await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "FF:FF", name: "XP-420B", transport: "ble", model: "generic", lang: "tspl" }));
     await waitFor(() => expect(b.printRawTspl).toHaveBeenCalledTimes(1));
     const bytes = dataOf(b.printRawTspl.mock.calls[0][0]);
-    expect(bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii")).toBe("SIZE 60 mm, 40 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 3\r\nDENSITY 12\r\n");
+    expect(bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii")).toBe("SIZE 60 mm, 40 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 2\r\nDENSITY 15\r\n");
     expect(bytes.includes(Buffer.from("BITMAP 0,"))).toBe(true);
     expect(bytes.includes(Buffer.from("TEXT "))).toBe(false);
     expect((await screen.findByTestId("ps-saved")).textContent).toContain("XP-420B");

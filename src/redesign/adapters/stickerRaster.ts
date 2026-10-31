@@ -853,9 +853,29 @@ export interface BitmapTsplResult { bytes: Uint8Array; bands: number; inkBytes: 
 // roughly doubles vs horizontal crop but stays far under the naive full
 // raster. `horizontalCrop: true` re-enables the old tighter crop — kept for
 // the probe triad; flip the default only if the probe proves arbitrary-x safe.
-// density / speed = a per-model TSPL job header (printerModels.knownTsplJob). Unset = DENSITY 8
-// and no SPEED line — the bytes every golden-pinned printer (D520BT text path, Y41BT) gets today.
-export interface BandOptions { horizontalCrop?: boolean; density?: number; speed?: number }
+// density / speed / bold = a per-model TSPL job (printerModels.knownTsplJob). Unset = DENSITY 8,
+// no SPEED line, no bold — the bytes every golden-pinned printer (D520BT text path, Niimbot,
+// any printer without a setting) gets today. bold = boldenRaster before banding (QR untouched).
+export interface BandOptions { horizontalCrop?: boolean; density?: number; speed?: number; bold?: boolean }
+
+// BOLD (lighter-printing heads: Y41BT, XP-420B): every inked dot also inks the dot to its RIGHT —
+// a 1-dot stroke becomes 2 dots, text and lines print heavier (closer to the AIMO D520BT), the
+// layout does not move. Runs BEFORE the QR is stamped: stampHandleQr clears the QR footprint
+// (modules + quiet zone) and repaints the module grid, so the QR is never thickened. PURE on the
+// packed MSB-first rows; bits never spill past the raster width.
+export function boldenRaster(buf: Uint8Array, w: number, h: number, rowBytes: number): void {
+  const lastMask = w % 8 === 0 ? 0xff : (0xff00 >> (w % 8)) & 0xff;
+  for (let y = 0; y < h; y++) {
+    const off = y * rowBytes;
+    let carry = 0;
+    for (let b = 0; b < rowBytes; b++) {
+      const v = buf[off + b];
+      buf[off + b] = v | (v >>> 1) | carry;
+      carry = (v & 1) << 7;
+    }
+    buf[off + rowBytes - 1] &= lastMask;
+  }
+}
 
 // Full uncropped 1-bit raster (bit 1 = ink) — exported so the band-crop lossless
 // invariant test can recompose the emitted BITMAP blocks against it.
@@ -960,12 +980,13 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   const cfg = stickerConfig(wMm, hMm);
   let bmp: Bitmap;
   if (atlases.proportional && isPropCompactSize(wMm, hMm)) {
-    bmp = renderPropCompact(payload, wMm, hMm, atlases); // font C, image paths only (== renderStickerBitmap)
+    bmp = renderPropCompact(payload, wMm, hMm, atlases, undefined, !!opts.bold); // font C, image paths only (== renderStickerBitmap)
   } else {
     const qr = stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm); // this path is always extended/production
     const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr, !!atlases.cyrillic);
     bmp = new Bitmap(wDots, hDots);
     paint(bmp, ops, atlases);
+    if (opts.bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
     stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
   }
   const wDots = bmp.w, hDots = bmp.h;
@@ -1336,11 +1357,12 @@ export function propGlyphBox(item: PropItem, size: number, x0: number, top: numb
 }
 
 /** The whole compact label as a 1-bit bitmap (the only painter of the font-C layout). */
-export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas): Bitmap {
+export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas, bold = false): Bitmap {
   const { lines, qr, x, w, h } = propLayoutLines(payload, wMm, hMm, atlases, canvas);
   const bmp = new Bitmap(w, h);
   const tops = propLineTops(lines, h);
   lines.forEach((l, i) => { for (const it of l.line.items) { const b = propGlyphBox(it, l.size, x, tops[i], l.font, atlases); if (b) bmp.blit(b.cell, b.w, b.h, b.x, b.y, 1, 1); } });
+  if (bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
   stampHandleQr(bmp, qr);
   return bmp;
 }
