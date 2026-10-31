@@ -197,6 +197,17 @@ export function stickerSpacingFlags(choiceVisible: boolean = STICKER_SPACING_CHO
   return spacingFlagsFor(stickerSpacingOn, effectiveSpacing(stickerSpacingChoice, choiceVisible));
 }
 
+// ── Compact layout v2 — PREVIEW (2026-10-31) ──────────────────────────────────
+// 50×30 / 60×40 only: "Buyer 88" (small word + today's big number), date+time top-right above the
+// QR, the comment wraps to ≤3 lines (stickerRaster propLayoutLinesV2). ON = the generic-printer and
+// Niimbot image paths AND the AIMO D520BT stream draw it (the D520BT then loads the font-C
+// atlases for the compact sizes). OFF (default) = no flag reaches the raster, no atlas is loaded on
+// the D520BT path → every sticker byte-identical to today. Preview-only: not wired to any UI.
+export const STICKER_COMPACT_V2_PREVIEW = false;
+let stickerCompactV2 = STICKER_COMPACT_V2_PREVIEW;
+export function setStickerCompactV2(on: boolean): void { stickerCompactV2 = on === true; }
+export function stickerCompactV2Effective(): boolean { return stickerCompactV2; }
+
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
 export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings, at?: number): NativePrinterPayload {
   const when = at != null ? new Date(at) : new Date(); // at: past-session Reprint only (see buildNativeStickerPayload)
@@ -459,7 +470,7 @@ export interface BtRouteResult { ok: boolean; code: string; message: string }
 // the raster settings are byte-identical to before. Shared by the D520 SDK stream and the
 // generic ESC/POS raster (printer setup v2) so both print the SAME image.
 export function imageStickerPayload(payload: NativeStickerPayload, platform?: string, fbName = false): RasterPayload {
-  return { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags() } };
+  return { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags(), ...(stickerCompactV2Effective() ? { printCompactV2: true } : {}) } };
 }
 
 async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string, fbName = false): Promise<BtRouteResult> {
@@ -471,7 +482,9 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
   // only when the payload actually contains CJK).
   const qrPayload = imageStickerPayload(payload, platform, fbName);
-  const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
+  // Compact v2 PREVIEW: the D520BT draws the font-C layout on 50×30 / 60×40 (flag OFF = {latin, cjk} exactly as before)
+  const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm) ? await imagePathAtlases(payload, qrPayload) : null;
+  const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {

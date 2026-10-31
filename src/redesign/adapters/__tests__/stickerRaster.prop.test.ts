@@ -205,7 +205,7 @@ describe("opt-in: the fixed-cell layout and the D520BT stream are untouched", ()
     expect(isPropCompactSize(50, 30) && isPropCompactSize(60, 40)).toBe(true);
     expect(isPropCompactSize(100, 60) || isPropCompactSize(80, 50) || isPropCompactSize(70, 50) || isPropCompactSize(80, 60)).toBe(false);
   });
-  it("the D520BT SDK stream passes latin + cjk only — never cyrillic, proportional or cjkBold (source pin)", () => {
+  it("the D520BT SDK stream passes latin + cjk only — never cyrillic, proportional or cjkBold (source pin; the compact-v2 PREVIEW flag, OFF, is the one gated exception)", () => {
     const src = readFileSync(join(process.cwd(), "src/redesign/adapters/printing.ts"), "utf8");
     const sdk = src.split("\n").filter((l) => l.includes("rasterizeToSdkBitmapTspl("));
     expect(sdk.length).toBeGreaterThan(0);
