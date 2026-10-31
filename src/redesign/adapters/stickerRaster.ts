@@ -369,8 +369,19 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   const lvlComment = lvl("printCommentScale");
   const lvlTotal = lvl("printTotalScale");
 
-  ops.push({ k: "txt", x: 16, y: 10, font: "3", s: "SellerFlowLive", xm: 1, ym: 1 });
-  if (sessionDate) ops.push({ k: "txt", x: 290, y: 18, font: "2", s: safe(truncate(sessionDate, 12)), xm: 1, ym: 1 });
+  // Layout v2 PREVIEW (settings.printCompactV2, bitmap/extended only): the header carries the seller's OWN
+  // shop name (never "SellerFlowLive") and date + time on the right; the separate shop-name line and the
+  // v2 time slot are then not drawn. No shop name → date + time only. Flag absent = today's header.
+  const v2hdr = !legacy && settings?.printCompactV2 === true;
+  if (v2hdr) {
+    const shop = stripEmoji(storeName);
+    if (flag("printStoreName") && shop) textSmart(16, 10, "3", safe(truncate(shop, 20)), 1, 1, 1, 1);
+    const when = [sessionDate, orders[0]?.time ?? ""].filter(Boolean).join(" ");
+    if (when) ops.push({ k: "txt", x: 290, y: 18, font: "2", s: safe(truncate(when, 16)), xm: 1, ym: 1 });
+  } else {
+    ops.push({ k: "txt", x: 16, y: 10, font: "3", s: "SellerFlowLive", xm: 1, ym: 1 });
+    if (sessionDate) ops.push({ k: "txt", x: 290, y: 18, font: "2", s: safe(truncate(sessionDate, 12)), xm: 1, ym: 1 });
+  }
   ops.push({ k: "bar", x: 0, y: 48, w: c.wDots, h: 3 });
 
   const cleanStoreName = stripEmoji(storeName);
@@ -392,7 +403,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
 
   let extra = 0;
   let y = 60;
-  if (printStoreName && cleanStoreName) {
+  if (printStoreName && cleanStoreName && !v2hdr) {
     const m = cmul(lvlStore);
     textSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), m, m, m, m);
     const d = (m - 1) * F3; y += c.storeGap + d; extra += d;
@@ -478,7 +489,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   // layout). Absent/false flag → the original branch below runs, byte-identical.
   const layoutV2 = !legacy && settings?.printCommentFullWidth === true && printOrderItems && orders.length === 1;
   if (layoutV2) {
-    layoutV2Order(ops, c, orders[0], y, extra, labelHeightMm * 8, lvlOrder, lvlComment, qr, narrow, halfGap,
+    layoutV2Order(ops, c, v2hdr ? { ...orders[0], time: undefined } : orders[0], y, extra, labelHeightMm * 8, lvlOrder, lvlComment, qr, narrow, halfGap, // v2 header already shows the time
       printTotal && totalSpent > 0 && c.showTotal);
   } else if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard + extra) {
     ops.push({ k: "bar", x: 16, y, w: c.sepWidth, h: 2 });
@@ -1380,7 +1391,9 @@ export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: numb
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // COMPACT LAYOUT v2 — PREVIEW (2026-10-31), flag `settings.printCompactV2` (printing.ts
 // STICKER_COMPACT_V2_PREVIEW, default OFF = every path byte-identical to today). Same fonts,
-// sizes and shrink ladder as the compact layout above; three changes:
+// sizes and shrink ladder as the compact layout above; line order Buyer → NAME → @username →
+// comment (the big sizes already print the name first; the same flag gives them the shop-name
+// header — see `v2hdr` in drawOpsInner). Three changes:
 //   • buyer line = small "Buyer" (line size) + the big number (num size, as today); the word is
 //     dropped when the two do not fit the column — the number never shrinks for it.
 //   • date+time TOP-RIGHT (time size, ink ends `edge` dots before the right edge). With a QR the
@@ -1484,12 +1497,12 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
     if (fit && fit.line.text) rows.push({ h: prop[String(fit.size)].h, parts: [{ size: fit.size, font: prop[String(fit.size)], line: fit.line, dx: 0, dy: 0 }] });
   };
   const handle = stripEmoji(buyer.handle ?? "");
-  if (flag("printBuyerUsername") && handle) shrinkRow("@" + handle);
   const cleanName = stripEmoji(buyer.name ?? "");
   let nameOut = cleanName;
   if ((buyer.name ?? "") && !cleanName) nameOut = handle ? handle : `Buyer #${num}`;
   if (nameOut && classifyScriptExt(nameOut, true) === SCRIPT_UNSUPPORTED) nameOut = handle && classifyScriptExt(handle, true) === SCRIPT_ASCII ? handle : "";
-  if (nameOut) shrinkRow(nameOut);
+  if (nameOut) shrinkRow(nameOut);                                 // v2: the NAME first, then the @username (swapped vs today)
+  if (flag("printBuyerUsername") && handle) shrinkRow("@" + handle);
   // comment: shrink first; still cut → wrap at the smallest ladder size, as many lines as fit (≤ 3)
   const comment = flag("printOrderItems") && orders.length > 0 ? narrow(stripEmoji(orders[0]?.item ?? "")) : "";
   if (comment) {

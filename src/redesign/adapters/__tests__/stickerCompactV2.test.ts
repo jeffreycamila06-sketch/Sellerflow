@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import jsQR from "jsqr";
 import { STICKER_COMPACT_V2_PREVIEW, setStickerCompactV2, imageStickerPayload, imagePathAtlases, buildNativeStickerPayload, buildSettingsFromRedesign, setStickerQrEntitled, setStickerQrOn, NIIMBOT_CANVAS } from "../printing";
-import { renderStickerBitmap, propLayoutLinesV2, propLayoutLines, propQrInkLeft, COMPACT_V2_MAX_COMMENT_LINES, COMPACT_V2_GAP, type RasterPayload, type RasterAtlases } from "../stickerRaster";
+import { renderStickerBitmap, stickerDrawOps, propLayoutLinesV2, propLayoutLines, propQrInkLeft, COMPACT_V2_MAX_COMMENT_LINES, COMPACT_V2_GAP, type RasterPayload, type RasterAtlases } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const AT = Date.UTC(2026, 9, 31, 12, 15);
@@ -75,5 +75,39 @@ describe("compact v2 preview flag", () => {
       for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) { const ink = (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0; const v = ink ? 0 : 255; const i = (y * r.w + x) * 4; rgba[i] = rgba[i + 1] = rgba[i + 2] = v; rgba[i + 3] = 255; }
       expect(jsQR(rgba, r.w, r.h)?.data).toBe("https://tiktok.com/@amy.ukay2026");
     }
+  });
+});
+
+describe("layout v2 preview — line order and the big-size header", () => {
+  it("compact: name BEFORE @username (today: @username first)", async () => {
+    const { img, atl } = await make(60, 40, "Black dress M 350", true, true);
+    const v2 = propLayoutLinesV2(img, 60, 40, atl);
+    const name = v2.lines.find((l) => l.line.text === "陳美玲 Amy")!, handle = v2.lines.find((l) => l.line.text === "@amy.ukay2026")!;
+    expect(name.top).toBeLessThan(handle.top);
+    const today = propLayoutLines(img, 60, 40, atl).lines.map((l) => l.line.text);
+    expect(today.indexOf("@amy.ukay2026")).toBeLessThan(today.indexOf("陳美玲 Amy"));
+  });
+  it("big sizes ON: header = the seller's shop name + date and time, no 'SellerFlowLive', no second shop line; OFF = today", async () => {
+    for (const [w, h] of [[70, 50], [100, 60]] as const) {
+      const on = (await make(w, h, "Black dress M 350", true, true)).img;
+      const ops = stickerDrawOps(on, w, h, "extended", null).ops.filter((o) => o.k === "txt");
+      const texts = ops.map((o) => o.s);
+      expect(texts).not.toContain("SellerFlowLive");
+      expect(texts.filter((t) => t === "Jeff Live Shop")).toHaveLength(1);
+      expect(ops.find((o) => o.s === "Jeff Live Shop")!.y).toBe(10);
+      expect(texts).toContain("10/31/2026 20:15");
+      expect(texts).not.toContain("20:15"); // the v2 time slot is not drawn twice
+      expect(ops.find((o) => o.s === "Buyer")!.y).toBe(60); // the stack starts right under the bar
+      const off = stickerDrawOps((await make(w, h, "Black dress M 350", true, false)).img, w, h, "extended", null).ops.filter((o) => o.k === "txt").map((o) => o.s);
+      expect(off).toContain("SellerFlowLive");
+      expect(off).toContain("10/31/2026");
+    }
+  });
+  it("big sizes ON, no shop name: date + time only in the header", async () => {
+    setStickerQrEntitled(true); setStickerQrOn(false); setStickerCompactV2(true);
+    const np = buildNativeStickerPayload(buyerOf("Black dress M 350"), "NT$", "", cfg(80, 50), AT);
+    const texts = stickerDrawOps(imageStickerPayload(np, "TikTok"), 80, 50, "extended", null).ops.filter((o) => o.k === "txt").map((o) => o.s);
+    expect(texts[0]).toBe("10/31/2026 20:15");
+    expect(texts).not.toContain("SellerFlowLive");
   });
 });

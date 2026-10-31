@@ -198,8 +198,10 @@ export function stickerSpacingFlags(choiceVisible: boolean = STICKER_SPACING_CHO
 }
 
 // ── Compact layout v2 — PREVIEW (2026-10-31) ──────────────────────────────────
-// 50×30 / 60×40 only: "Buyer 88" (small word + today's big number), date+time top-right above the
-// QR, the comment wraps to ≤3 lines (stickerRaster propLayoutLinesV2). ON = the generic-printer and
+// 50×30 / 60×40: "Buyer 88" (small word + today's big number), name before @username, date+time
+// top-right above the QR, the comment wraps to ≤3 lines (stickerRaster propLayoutLinesV2).
+// 70×50 and up: the header shows the seller's own shop name (never "SellerFlowLive") + date and
+// time; the separate shop-name line goes (drawOpsInner `v2hdr`). ON = the generic-printer and
 // Niimbot image paths AND the AIMO D520BT stream draw it (the D520BT then loads the font-C
 // atlases for the compact sizes). OFF (default) = no flag reaches the raster, no atlas is loaded on
 // the D520BT path → every sticker byte-identical to today. Preview-only: not wired to any UI.
