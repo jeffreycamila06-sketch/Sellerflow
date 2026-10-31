@@ -52,7 +52,7 @@ describe("saved generic printer routing", () => {
     expect(getLastStickerRouteNotice()).toMatchObject({ via: "bitmap", ok: true, reason: "generic-tspl" });
   });
 
-  it("a saved XP-420B and a saved Y41BT print the BITMAP job with SPEED 2 + DENSITY 15 and bold ink; an unknown generic printer keeps today's header AND today's body bytes", async () => {
+  it("a saved XP-420B and a saved Y41BT print the BITMAP job with SPEED 4 + DENSITY 15 and bold ink; an unknown generic printer keeps today's header AND today's body bytes", async () => {
     const header = (bytes: Buffer) => bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii");
     const body = (bytes: Buffer) => bytes.subarray(header(bytes).length);
     const print = async (saved: { address: string; name: string }) => {
@@ -64,7 +64,7 @@ describe("saved generic printer routing", () => {
       return sent(b.printRawTspl);
     };
     const xp = await print({ address: "FF:FF", name: "XP-420B" });
-    expect(header(xp)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 2\r\nDENSITY 15\r\n");
+    expect(header(xp)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 4\r\nDENSITY 15\r\n");
     expect(xp.includes(Buffer.from("BITMAP 0,"))).toBe(true);
     const y41 = await print({ address: "BB:BB", name: "Y41BT-0FC4_LE" });
     expect(header(y41)).toBe(header(xp).replace("100 mm, 60 mm", "100 mm, 60 mm"));
@@ -76,7 +76,7 @@ describe("saved generic printer routing", () => {
     expect(Buffer.compare(other, plain)).toBe(0);
     // bold changed the body (heavier ink), nothing else
     expect(Buffer.compare(body(xp), body(plain))).not.toBe(0);
-    expect(xp.length).toBe(plain.length + "SPEED 2\r\n".length + 1); // same bands, same sizes (DENSITY 15 is one char longer)
+    expect(xp.length).toBe(plain.length + "SPEED 4\r\n".length + 1); // same bands, same sizes (DENSITY 15 is one char longer)
   });
 
   it("a Chinese buyer name on a generic tspl printer loads the CJK atlas (drawn as image, not blank)", async () => {
