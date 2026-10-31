@@ -454,16 +454,18 @@ Keywords: wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, networ
 "Printer didn't respond. Check it's on." — check the printer is on, the phone and printer are on the same WiFi, and the number is right (it can change after the router restarts).
 
 ## stickers — Sticker sizes, layout, Chinese names and QR
-Last checked: 2026-10-28
-Keywords: sticker size, paper size, 100x60, 60x40, layout, chinese name, qr, print pattern, laki ng sticker, 贴纸尺寸, 标签尺寸, 中文名, 二维码
+Last checked: 2026-10-31
+Keywords: sticker size, paper size, 100x60, 60x40, 50x30, layout, chinese name, qr, print pattern, laki ng sticker, buyer number, shop name, 贴纸尺寸, 标签尺寸, 中文名, 二维码
 
-**Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer.
+**Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm, and 50x30mm on the newer printers. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer. A Niimbot always prints the 50x30 sticker.
 
-**Layout**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Choose what prints and its size: Shop name, Date & time, Buyer #, TikTok name, TikTok username, Comment / Price, SellerFlowLive logo. Date & time and the logo are a fixed size. Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
+**What is on the sticker**: the buyer number (**Buyer 88**, the biggest thing), the buyer's name, the @username, the comment (up to 3 lines — long comments get smaller before they are cut), and the date and time at the top right. On 70x50 and bigger stickers your **shop name** prints at the top (turn it on or off in the print pattern). Facebook buyers show their name only.
+
+**Layout settings**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Choose what prints and its size: Shop name, Date & time, Buyer #, TikTok name, TikTok username, Comment / Price, SellerFlowLive logo. Date & time and the logo are a fixed size. Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
 
 **Chinese names** print correctly; no extra setting needed.
 
-**Print QR on sticker** — scan it in Parcel Scan to fill in the buyer quickly. It is off by default and does not work on **60×40** stickers.
+**Print QR on sticker** — scan it in Parcel Scan to fill in the buyer quickly. It is off by default and prints on every sticker size (on 50x30 and 60x40 it sits on the right, next to the text).
 
 ## laptop-printing — Printing from a laptop
 Last checked: 2026-10-28

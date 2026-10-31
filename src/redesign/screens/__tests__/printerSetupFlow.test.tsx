@@ -106,13 +106,22 @@ const withPhoneBridge = () => {
 };
 describe("PrinterSettings sticker-QR toggle vs sticker size (phone app)", () => {
   withPhoneBridge();
-  const renderBT = (psSize: string, stickerQrAllowed = true) =>
+  const renderBT = (psSize: string, stickerQrAllowed = true, compactV2 = false) =>
     render(
       <TProvider lang="en">
         <PrinterSettings onBack={noop} psType="bt" psOut="sticker" onSetPsOut={noop}
-          psSize={psSize} psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} stickerQrAllowed={stickerQrAllowed} />
+          psSize={psSize} psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} stickerQrAllowed={stickerQrAllowed} compactV2={compactV2} />
       </TProvider>,
     );
+
+  it("sticker layout v2 ON → the QR prints on every size: 60×40 toggle ENABLED, the v2 hint on every size (OFF = the two cases below)", () => {
+    for (const z of ["60x40mm", "50x30mm", "70x50mm", "100x60mm (Standard)"]) {
+      const r = renderBT(z, true, true);
+      expect((screen.getByTestId("ps-sticker-qr-toggle") as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.getByTestId("ps-sticker-qr-hint").textContent).toBe(t.rd_ps_sticker_qr_v2_desc);
+      r.unmount();
+    }
+  });
 
   it("60×40 → toggle disabled + 'available on 70×50, 80×50, 80×60 only' hint", () => {
     renderBT("60x40mm");

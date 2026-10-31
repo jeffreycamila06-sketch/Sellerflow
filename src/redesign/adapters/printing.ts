@@ -197,6 +197,27 @@ export function stickerSpacingFlags(choiceVisible: boolean = STICKER_SPACING_CHO
   return spacingFlagsFor(stickerSpacingOn, effectiveSpacing(stickerSpacingChoice, choiceVisible));
 }
 
+// ── Sticker layout v2 (2026-10-31) ─────────────────────────────────────────────
+// 50×30 / 60×40: "Buyer 88" (small word + today's big number), name before @username, date+time
+// top-right above the QR, the comment wraps to ≤3 lines (stickerRaster propLayoutLinesV2).
+// 70×50 and up: the header shows the seller's own shop name (never "SellerFlowLive") + date and
+// time; the separate shop-name line goes (drawOpsInner `v2hdr`). ON = the generic-printer and
+// Niimbot image paths AND the AIMO D520BT stream draw it (the D520BT then loads the font-C
+// atlases for the compact sizes). OFF (default) = no flag reaches the raster, no atlas is loaded on
+// the D520BT path → every sticker byte-identical to today.
+// SWITCH (same pattern as the other switches): ON for admins and for feature_access_emails "sticker_v2";
+// ON for everyone when app_settings "sticker_layout_v2" = 'true' (featureSwitches.stickerLayoutV2).
+// RedesignApp computes it per sign-in and calls setStickerCompactV2; PrinterSettings gets it as a prop.
+export function stickerCompactV2Allowed(email: string | undefined | null, role: string | undefined | null, switchOn: boolean): boolean {
+  if (switchOn) return true;
+  if (isAdminRole(role)) return true;
+  const e = String(email || "").trim().toLowerCase();
+  return e !== "" && hasFeature("sticker_v2");
+}
+let stickerCompactV2 = false;
+export function setStickerCompactV2(on: boolean): void { stickerCompactV2 = on === true; }
+export function stickerCompactV2Effective(): boolean { return stickerCompactV2; }
+
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
 export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings, at?: number): NativePrinterPayload {
   const when = at != null ? new Date(at) : new Date(); // at: past-session Reprint only (see buildNativeStickerPayload)
@@ -459,7 +480,7 @@ export interface BtRouteResult { ok: boolean; code: string; message: string }
 // the raster settings are byte-identical to before. Shared by the D520 SDK stream and the
 // generic ESC/POS raster (printer setup v2) so both print the SAME image.
 export function imageStickerPayload(payload: NativeStickerPayload, platform?: string, fbName = false): RasterPayload {
-  return { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags() } };
+  return { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags(), ...(stickerCompactV2Effective() ? { printCompactV2: true } : {}) } };
 }
 
 async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string, fbName = false): Promise<BtRouteResult> {
@@ -471,7 +492,9 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
   // only when the payload actually contains CJK).
   const qrPayload = imageStickerPayload(payload, platform, fbName);
-  const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
+  // Layout v2 ON: the D520BT draws the font-C layout on 50×30 / 60×40 (OFF = {latin, cjk} exactly as before)
+  const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm) ? await imagePathAtlases(payload, qrPayload) : null;
+  const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {

@@ -24,10 +24,11 @@ export const FEATURE_SWITCH_KEYS = {
   printerFlowV2: "printer_flow_v2", // Printer setup v2 — no language switch, fewer taps (sql/130)
   pastSessionsPublic: "past_sessions_public", // Orders "Past sessions" picker for EVERY seller, any plan (sql/134, seeded 'false')
   fbPostSales: "fb_post_sales_enabled", // Facebook Post Sales — comment a code on a Page post (sql/137, seeded 'false')
+  stickerLayoutV2: "sticker_layout_v2", // sticker layout v2 for EVERY seller (row created by chat-Claude; admins + feature "sticker_v2" see it before)
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {
