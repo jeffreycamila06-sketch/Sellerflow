@@ -30,7 +30,9 @@ const NEW: BluetoothPrinterDevice = { id: "bluetooth:DD", address: "DD:DD", name
 const WATCH: BluetoothPrinterDevice = { id: "bluetooth:CC", address: "CC:CC", name: "Some Watch", transport: "ble", model: "generic", likely: false, paired: true };
 const NIIMBOT: BluetoothPrinterDevice = { id: "bluetooth:NN", address: "NN:NN", name: "B1-I603042141", transport: "ble", model: "generic", likely: false }; // advertises no printer service
 const CLASSIC: BluetoothPrinterDevice = { id: "bluetooth:EE", address: "EE:EE", name: "XP-P323B", transport: "spp", model: "generic", likely: false, paired: true }; // Android paired receipt printer
-const ALL = [D520, Y41, NEW, WATCH, NIIMBOT, CLASSIC];
+const XP420: BluetoothPrinterDevice = { id: "bluetooth:FF", address: "FF:FF", name: "XP-420B", transport: "ble", model: "generic", likely: true }; // Xprinter XP-420B (Oct 31)
+const XP365: BluetoothPrinterDevice = { id: "bluetooth:GG", address: "GG:GG", name: "XP-365B", transport: "ble", model: "generic", likely: true }; // another Xprinter — NOT tested, stays hidden
+const ALL = [D520, Y41, NEW, WATCH, NIIMBOT, CLASSIC, XP420, XP365];
 
 const OFF = Object.assign(new Error("Bluetooth is off. Turn it on in Android Settings then try again."), { code: "BT_DISABLED" });
 const PERM = Object.assign(new Error("Bluetooth permission needed. Allow it in the system prompt and tap Scan again."), { code: "BT_PERMISSION" });
@@ -212,17 +214,18 @@ describe("Bluetooth check on open", () => {
 });
 
 describe("scan list = the whitelist", () => {
-  it("only Jeff's tested printers: AIMO D520BT, Flash Y41BT, Niimbot — name + model line + brand pill; unknown printers never appear", async () => {
+  it("only Jeff's tested printers: AIMO D520BT, Flash Y41BT, Niimbot, Xprinter XP-420B — name + model line + brand pill; unknown printers never appear", async () => {
     const b = installBridge();
     renderBT({ flowV2: true });
     await scan();
     expect(b.scanBluetoothLabelPrinters).toHaveBeenLastCalledWith({ includeGenericPrinters: true, showAllDevices: false });
     const rows = screen.getAllByTestId("ps-row");
-    expect(rows.map((r) => r.querySelector("span > span")?.textContent)).toEqual(["D520BT-Z", "Y41BT-0FC4_LE", "B1-I603042141"]);
-    expect(screen.getAllByTestId("ps-row-model").map((m) => m.textContent)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1"]);
-    expect(screen.getAllByTestId("ps-row-brand").map((p) => p.textContent)).toEqual(["AIMO", "Flash", "Niimbot"]);
+    expect(rows.map((r) => r.querySelector("span > span")?.textContent)).toEqual(["D520BT-Z", "Y41BT-0FC4_LE", "B1-I603042141", "XP-420B"]);
+    expect(screen.getAllByTestId("ps-row-model").map((m) => m.textContent)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1", "Xprinter XP-420B"]);
+    expect(screen.getAllByTestId("ps-row-brand").map((p) => p.textContent)).toEqual(["AIMO", "Flash", "Niimbot", "Xprinter"]);
     expect(screen.queryByText("LabelThing-9")).toBeNull(); // an untested label printer
     expect(screen.queryByText("XP-P323B")).toBeNull();     // an untested paired receipt printer
+    expect(screen.queryByText("XP-365B")).toBeNull();      // another Xprinter model — exact "XP-420B" only, no "XP-" family match
     expect(screen.queryByText(/Some Watch/)).toBeNull();
     expect(screen.queryByText(/Works with SFL|^New$|\(Test\)/)).toBeNull();
     expect(screen.queryByText(t.rd_ps_classic_text)).toBeNull(); // v2 hides the Simple print card
@@ -246,8 +249,8 @@ describe("scan list = the whitelist", () => {
     fireEvent.click(screen.getByTestId("ps-v2-show-all"));
     await screen.findByText(/Some Watch/);
     expect(b.scanBluetoothLabelPrinters).toHaveBeenLastCalledWith({ includeGenericPrinters: true, showAllDevices: true });
-    expect(screen.getAllByTestId("ps-row")).toHaveLength(6);
-    expect(screen.getAllByTestId("ps-row-brand")).toHaveLength(3); // only the whitelisted rows carry a pill
+    expect(screen.getAllByTestId("ps-row")).toHaveLength(8);
+    expect(screen.getAllByTestId("ps-row-brand")).toHaveLength(4); // only the whitelisted rows carry a pill
     expect(screen.queryByTestId("ps-v2-show-all")).toBeNull();
   });
   it("nothing listed → a plain note", async () => {
@@ -296,10 +299,25 @@ describe("tap a printer → saved + one test sticker → green card (no question
     const bytes = dataOf(b.printRawTspl.mock.calls[0][0]);
     expect(bytes.includes(Buffer.from("BITMAP 0,"))).toBe(true);
     expect(bytes.includes(Buffer.from("TEXT "))).toBe(false);
+    // today's job header, byte-for-byte — the XP-420B's DENSITY 12 / SPEED 3 never leaks onto other printers
+    expect(bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii")).toBe("SIZE 60 mm, 40 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nDENSITY 8\r\n");
     expect(b.printStickerNative).not.toHaveBeenCalled();
     expect(b.testGenericPrinter).not.toHaveBeenCalled();
     expect((await screen.findByTestId("ps-saved")).textContent).toContain("Y41BT-0FC4_LE");
     expect(screen.queryByText(/Did it look like this/)).toBeNull();
+  });
+  it("XP-420B (Xprinter): saved as generic/tspl + one TSPL BITMAP test sticker whose job header is SPEED 3 + DENSITY 12 (the faint-print fix)", async () => {
+    const b = installBridge();
+    renderBT({ flowV2: true });
+    await scan();
+    fireEvent.click(screen.getByText("XP-420B"));
+    await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "FF:FF", name: "XP-420B", transport: "ble", model: "generic", lang: "tspl" }));
+    await waitFor(() => expect(b.printRawTspl).toHaveBeenCalledTimes(1));
+    const bytes = dataOf(b.printRawTspl.mock.calls[0][0]);
+    expect(bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii")).toBe("SIZE 60 mm, 40 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 3\r\nDENSITY 12\r\n");
+    expect(bytes.includes(Buffer.from("BITMAP 0,"))).toBe(true);
+    expect(bytes.includes(Buffer.from("TEXT "))).toBe(false);
+    expect((await screen.findByTestId("ps-saved")).textContent).toContain("XP-420B");
   });
   it("Niimbot with the driver: saved as transport niimbot at once → one label through the SDK → the same green card (no question)", async () => {
     const b = installBridge({ niimbot: true });

@@ -421,9 +421,9 @@ Choose it in **Settings → General Settings → Printer → CHOOSE PRINTER**: t
 
 Printer connection runs in the **SellerFlowLive phone app**. In a web browser you see "Printer connection runs in the SellerFlowLive app — these controls work on your phone, not in the web preview." For a laptop, see "Laptop auto-print".
 
-## printer-bluetooth — Bluetooth sticker printer (AIMO / Flash / Niimbot)
-Last checked: 2026-10-30
-Keywords: bluetooth, bt, aimo, phomemo, d520bt, flash, y41bt, niimbot, b1, sticker printer, pair, scan, allow bluetooth, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸
+## printer-bluetooth — Bluetooth sticker printer (AIMO / Flash / Niimbot / Xprinter)
+Last checked: 2026-10-31
+Keywords: bluetooth, bt, aimo, phomemo, d520bt, flash, y41bt, niimbot, b1, xprinter, xp-420b, sticker printer, pair, scan, allow bluetooth, ayaw mag-print, i-connect printer, 蓝牙, 藍牙, 打印, 列印, 贴纸
 
 1. Turn on the printer and keep it close to the phone. Make sure it is **not connected to another app or phone**.
 2. Go to **Settings → General Settings → Printer** and tap **Bluetooth sticker printer**.
@@ -432,7 +432,7 @@ Keywords: bluetooth, bt, aimo, phomemo, d520bt, flash, y41bt, niimbot, b1, stick
    - **"Allow Bluetooth for SellerFlowLive"** (amber) — your phone asked one time; if you tapped "Don't Allow", turn it on. iPhone: **Settings → Privacy & Security → Bluetooth → SellerFlowLive ON**. Android: **Settings → Apps → SellerFlowLive → Permissions → Nearby devices → Allow**. Then come back to this screen.
    - **"Bluetooth isn't ready"** — turn Bluetooth off and on, then come back.
    The app checks again by itself (for "Allow Bluetooth", it checks again when you come back to the app); when Bluetooth is ready you see **"Bluetooth is ready. Tap Scan to find your printer."** and **Scan** turns active.
-4. Tap **Scan** and pick your printer from the list. The list shows the printers that work with the app: **AIMO D520BT**, **Flash Y41BT** and **Niimbot B1 / B21 / B203 / B3S**, each with its brand. Printer not in the list? Tap **Printer not listed? Contact Admin**.
+4. Tap **Scan** and pick your printer from the list. The list shows the printers that work with the app: **AIMO D520BT**, **Flash Y41BT**, **Niimbot B1 / B21 / B203 / B3S** and **Xprinter XP-420B**, each with its brand. Printer not in the list? Tap **Printer not listed? Contact Admin**.
 5. A test sticker prints and the printer is saved by itself. You see **"Printer saved. Ready to print."** with the printer name and your sticker size. If the sticker looks wrong, check the paper and tap **Test print**. If the test sticker did not print, you see **"Printer saved, but the test sticker didn't print."** (amber) — the printer is still saved: check it is on and has paper, then tap **Test print**.
 6. Choose your **Sticker size**. **Test print** and **Clear** appear while a printer is saved; **Clear** removes it so you can pick it again.
 

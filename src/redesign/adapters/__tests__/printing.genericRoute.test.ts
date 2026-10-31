@@ -52,6 +52,26 @@ describe("saved generic printer routing", () => {
     expect(getLastStickerRouteNotice()).toMatchObject({ via: "bitmap", ok: true, reason: "generic-tspl" });
   });
 
+  it("a saved XP-420B prints the same BITMAP job with its own header (SPEED 3, DENSITY 12); a saved Y41BT keeps DENSITY 8 and no SPEED (bytes unchanged)", async () => {
+    const header = (bytes: Buffer) => bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii");
+    let b = bridge();
+    rememberSavedPrinter({ address: "FF:FF", name: "XP-420B", model: "generic", lang: "tspl" });
+    printSlip(buyer, "NT$", "Store", cfg);
+    await flush();
+    const xp = sent(b.printRawTspl);
+    expect(header(xp)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nSPEED 3\r\nDENSITY 12\r\n");
+    expect(xp.includes(Buffer.from("BITMAP 0,"))).toBe(true);
+    delete (window as W).SellerFlowPrinter; __resetSavedPrinter();
+    b = bridge();
+    rememberSavedPrinter({ address: "BB:BB", name: "Y41BT-0FC4_LE", model: "generic", lang: "tspl" });
+    printSlip(buyer, "NT$", "Store", cfg);
+    await flush();
+    const y41 = sent(b.printRawTspl);
+    expect(header(y41)).toBe("SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nDENSITY 8\r\n");
+    // identical bytes after the header too: the body does not depend on the model
+    expect(Buffer.compare(xp.subarray(header(xp).length), y41.subarray(header(y41).length))).toBe(0);
+  });
+
   it("a Chinese buyer name on a generic tspl printer loads the CJK atlas (drawn as image, not blank)", async () => {
     const b = bridge();
     rememberSavedPrinter({ address: "BB:BB", name: "Y41BT-0FC4_LE", model: "generic", lang: "tspl" });

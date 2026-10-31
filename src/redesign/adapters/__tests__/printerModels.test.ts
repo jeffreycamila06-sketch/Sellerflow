@@ -1,7 +1,7 @@
 // Printer setup v2 — pure helpers: printer-only scan filter, known-model lookup (Part-1
 // built-in list, swappable source for Part 2), the WHITELIST (what the scan list shows), the gate.
 import { describe, it, expect, afterEach } from "vitest";
-import { knownPrinterLang, isKnownPrinter, isPrinterOnlyRow, knownPrinterInfo, WHITELIST, printerFlowV2Enabled, __setKnownSource } from "../printerModels";
+import { knownPrinterLang, knownTsplJob, isKnownPrinter, isPrinterOnlyRow, knownPrinterInfo, WHITELIST, printerFlowV2Enabled, __setKnownSource } from "../printerModels";
 import type { BluetoothPrinterDevice } from "../printerBridge";
 
 const D520: BluetoothPrinterDevice = { id: "bluetooth:AA", address: "AA:AA", name: "D520BT-Z", transport: "ble", model: "D520BT", likely: true };
@@ -19,9 +19,12 @@ describe("printer-only filter", () => {
 });
 
 describe("known-model lookup", () => {
-  it("Y41BT* → TSPL (case-insensitive prefix); unknown names → null", () => {
+  it("Y41BT* / XP-420B → TSPL (case-insensitive prefix); unknown names → null", () => {
     expect(knownPrinterLang("Y41BT-0FC4_LE")).toBe("tspl");
     expect(knownPrinterLang("y41bt_12")).toBe("tspl");
+    expect(knownPrinterLang("XP-420B")).toBe("tspl");
+    expect(knownPrinterLang("xp-420b_1F")).toBe("tspl");
+    expect(knownPrinterLang("XP-365B")).toBeNull(); // exact model only — no "XP-" family
     expect(knownPrinterLang("LabelThing-9")).toBeNull();
     expect(knownPrinterLang("")).toBeNull();
     expect(knownPrinterLang(undefined)).toBeNull();
@@ -30,6 +33,10 @@ describe("known-model lookup", () => {
     expect(isKnownPrinter(D520)).toBe(true);
     expect(isKnownPrinter(Y41)).toBe(true);
     expect(isKnownPrinter(UNKNOWN)).toBe(false);
+  });
+  it("per-model TSPL job header: XP-420B = DENSITY 12 + SPEED 3; every other printer (D520BT, Y41BT, unknown, nothing saved) = {} → today's header", () => {
+    expect(knownTsplJob("XP-420B")).toEqual({ density: 12, speed: 3 });
+    for (const n of ["Y41BT-0FC4_LE", "D520BT-Z", "LabelThing-9", "XP-365B", "", undefined, null]) expect(knownTsplJob(n), String(n)).toEqual({});
   });
   it("Part 2 only swaps the source — callers see the new list at once", () => {
     __setKnownSource(() => [{ prefix: "LabelThing", lang: "escpos" }]);
@@ -49,10 +56,11 @@ describe("whitelist (the scan list shows ONLY these)", () => {
     expect(knownPrinterInfo({ name: "Some label", brand: "niimbot" })).toEqual({ brand: "Niimbot", model: "" }); // native said Niimbot
   });
   it("anything else is NOT listed: an unknown label printer, a watch, a paired laptop, no name", () => {
-    for (const p of [UNKNOWN, WATCH, BONDED_LAPTOP, { name: "", model: "generic" as const }, { name: "XP-P323B", model: "generic" as const }]) expect(knownPrinterInfo(p), p.name).toBeNull();
+    for (const p of [UNKNOWN, WATCH, BONDED_LAPTOP, { name: "", model: "generic" as const }, { name: "XP-P323B", model: "generic" as const }, { name: "XP-365B", model: "generic" as const }]) expect(knownPrinterInfo(p), p.name).toBeNull();
+    expect(knownPrinterInfo({ name: "XP-420B", model: "generic" })).toEqual({ brand: "Xprinter", model: "XP-420B" });
   });
   it("the list itself: exactly the tested models, each with a brand pill word", () => {
-    expect(WHITELIST.map((w) => `${w.brand} ${w.model}`)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1", "Niimbot B21", "Niimbot B203", "Niimbot B3S"]);
+    expect(WHITELIST.map((w) => `${w.brand} ${w.model}`)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1", "Niimbot B21", "Niimbot B203", "Niimbot B3S", "Xprinter XP-420B"]);
   });
 });
 

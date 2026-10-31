@@ -853,7 +853,9 @@ export interface BitmapTsplResult { bytes: Uint8Array; bands: number; inkBytes: 
 // roughly doubles vs horizontal crop but stays far under the naive full
 // raster. `horizontalCrop: true` re-enables the old tighter crop — kept for
 // the probe triad; flip the default only if the probe proves arbitrary-x safe.
-export interface BandOptions { horizontalCrop?: boolean }
+// density / speed = a per-model TSPL job header (printerModels.knownTsplJob). Unset = DENSITY 8
+// and no SPEED line — the bytes every golden-pinned printer (D520BT text path, Y41BT) gets today.
+export interface BandOptions { horizontalCrop?: boolean; density?: number; speed?: number }
 
 // Full uncropped 1-bit raster (bit 1 = ink) — exported so the band-crop lossless
 // invariant test can recompose the emitted BITMAP blocks against it.
@@ -974,7 +976,8 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   line("GAP 2 mm, 0");
   line("DIRECTION 1");
   line("REFERENCE 0,0");
-  line("DENSITY 8");
+  if (opts.speed != null) line(`SPEED ${opts.speed}`);
+  line(`DENSITY ${opts.density ?? 8}`);
   line("CLS");
 
   // Vertical ink-band crop: maximal runs of inked rows → one BITMAP each. Runs
