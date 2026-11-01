@@ -282,6 +282,15 @@ Printer connection runs in the **SellerFlowLive phone app**. In a web browser yo
 6. Choose your **Sticker size**. **Test print** and **Clear** appear while a printer is saved; **Clear** removes it so you can pick it again.
 
 The status card at the top shows a red dot when Bluetooth needs your attention, an amber dot when there is no printer yet, and a green dot with **Connected: <printer name>** when a printer is saved.'),
+  ('tiktok-videos', 'TikTok videos: sell from comments (coming)', '2026-11-02'::date, 'tiktok videos, sell from comments, no live, business account, connect tiktok, disconnect, personal account, magbenta mula sa comments, TikTok 影片, 留言下單, 评论下单', 'When this is switched on for your account, a card **TikTok videos — sell from comments** appears in **Settings → Manage TikTok accounts**. It lets you sell from the comments under your TikTok videos without going live.
+
+1. Tap **Connect TikTok videos**. TikTok asks you to allow SellerFlowLive. Use the same TikTok account you registered as a TikTok ID in the app.
+2. The card then shows your **@username**, follower count and **Connected**.
+3. **Connect again** appears when TikTok ended the connection (for example after a password change) — tap it to reconnect.
+4. **This TikTok account is a personal account** means the account is not a Business account yet. In the TikTok app: Profile → ☰ → Settings and privacy → Account → **Switch to Business Account**, then tap Connect again.
+5. **Disconnect** removes the connection; you can connect again any time.
+
+Selling from a video (picking the video, codes and prices) comes in the next update.'),
   ('printer-wifi', 'WiFi receipt (slip) printer', '2026-10-15'::date, 'wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, network printer, resibo, 小票, 收据打印机, 網路印表機', '1. Connect the receipt printer to the **same WiFi** as your phone.
 2. Print the printer''s own test page. It shows the printer''s number (like 192.168.x.x).
 3. Go to **Settings → General Settings → Printer** and tap **WiFi receipt printer**. If it isn''t set up yet, read the steps and tap **Got it**.
@@ -457,5 +466,5 @@ on conflict (id) do update set
   body = excluded.body, updated_at = now()
 where (support_guide.title, support_guide.checked, support_guide.keywords, support_guide.body)
   is distinct from (excluded.title, excluded.checked, excluded.keywords, excluded.body);
-delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support');
+delete from public.support_guide where id not in ('about', 'screens', 'settings-tiles', 'general-settings', 'plans', 'account-limit', 'free-order-limit', 'plan-expired', 'payment', 'connect-tiktok', 'connect-facebook', 'post-sales', 'connect-shopee', 'other-platforms', 'session-length', 'buyer-numbers', 'one-click-orders', 'same-price', 'auto-mode', 'auto-print-pinned', 'products-stock', 'reprint', 'orders-search', 'tiktok-send', 'past-sessions', 'sales', 'miners-customers', 'raffle-games', 'keep-screen-awake', 'language-theme', 'printer-overview', 'printer-bluetooth', 'tiktok-videos', 'printer-wifi', 'stickers', 'laptop-printing', 'no-printer-connected', 'bluetooth-off', 'parcel-scan', 'pickup-status', 'buyer-alert', 'shipping', 'manage-accounts', 'password-reset', 'signup', 'delete-account', 'trouble-connect', 'trouble-printer', 'stale-app', 'support');
 commit;

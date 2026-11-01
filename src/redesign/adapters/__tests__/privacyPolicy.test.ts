@@ -20,7 +20,7 @@ describe("public privacy pages", () => {
   it("privacy policy keeps the Meta sentences, operator and contact", () => {
     expect(privacy).toContain("Data from Facebook is the list of Pages you manage and the comments on your Page's live video, including each commenter's public name, profile ID and profile picture. It is used only to show those comments in your dashboard and create orders. If you send a Messenger receipt, your Page sends that commenter one message with the receipt picture.");
     expect(privacy).toContain("without a tap. It is never sold or used for advertising."); // Build 8 sentences sit in between
-    expect(privacy).toContain("Last updated: October 14, 2026"); // Build 8 privacy sentences
+    expect(privacy).toContain("Last updated: November 2, 2026"); // TikTok data paragraph (Branch 1)
     expect(privacy).toContain("Meta Platform Terms</a>. You can remove our access in Facebook Settings &rarr; Apps and Websites.");
     expect(privacy).toContain("We do not sell your data.");
     expect(privacy).toContain("SELLERFLOWLIVE PRINTER TRADING &middot; <a href=\"mailto:jeffreycamila06@gmail.com\">");
@@ -44,6 +44,20 @@ describe("public privacy pages", () => {
     expect(deletion).toContain("within <strong>30 days</strong>");
     expect(deletion).not.toMatch(/backup/i);
     expect(deletion + privacy).not.toContain("privacy@sellerflowlive");
+  });
+});
+
+describe("TikTok data (TikTok API Branch 1) — user-level words on all three pages", () => {
+  it("privacy: what TikTok shares, what it is used for, how to disconnect, never sold", () => {
+    expect(privacy).toContain("<h2>TikTok data</h2>");
+    expect(privacy).toContain("TikTok Business account's username, display name, profile picture and follower count, and the comments on your videos");
+    expect(privacy).toContain("Settings &rarr; Manage TikTok accounts &rarr; TikTok videos");
+    expect(privacy).toContain("Settings and privacy &rarr; Security &amp; permissions &rarr; Apps and services");
+    expect(privacy).toContain("TikTok data is never sold or used for advertising.");
+  });
+  it("data deletion + delete account: removing the app in TikTok / disconnecting / deleting the account", () => {
+    expect(deletion).toContain("your TikTok videos connection stops working and is removed from SellerFlowLive");
+    expect(account).toContain("we tell TikTok to end our access and delete the access key we kept");
   });
 });
 

@@ -11,6 +11,7 @@ import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersS
 import { shopeeBetaAccess } from "../adapters/shopeeBeta";
 import { getParcelScanOverview, revenueNT, costNT, profitNT, SCAN_COST_NT, type AdminActions, type Plan, type ParcelScanOverview } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
+import { loadTtAdminAccounts, type TtAccount } from "../adapters/tiktokApi";
 import { VIEW_AS_OPTIONS, type ViewAs } from "../adapters/market";
 import { PLATFORM_VIEW_AS_OPTIONS, PLATFORM_VIEW_AS_LABEL, type PlatformViewAs } from "../adapters/platformWorld";
 import { loadGlobalShippingFeeMeta, saveGlobalShippingFee, validGlobalFee } from "../adapters/shippingSettings";
@@ -41,7 +42,7 @@ const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 
 
 export type AdminPanelKind =
   | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee" | "parcelsw"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "tiktok";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -142,6 +143,8 @@ export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr
           {/* Live Pulse — WEB-ONLY (hidden in the APK / phone shell, incl. iOS which
               carries Capacitor → isAppShell()). Activity counts only, no revenue. */}
           {!isAppShell() && <Ctrl icon={cic.pulse} label={t.rd_pulse_ctrl} onClick={() => onOpenPanel("pulse")} />}
+          {/* TikTok API, Branch 1 — the health line per connected TikTok Business account (server GET /tiktok/admin/accounts). */}
+          <Ctrl icon={cic.audit} label={t.rd_adm_tt_ctrl} onClick={() => onOpenPanel("tiktok")} />
           <Ctrl icon={cic.sellers} label={t.rd_adm_ctrl_sellers} onClick={() => onOpenPanel("sellers")} />
           {/* C2 (audit) — the Plans/Payments panels were removed: they only ever
               rendered fabricated sample data (no payments backend by design —
@@ -825,6 +828,41 @@ function ParcelSwitchPanel() {
 // Business Pulse — WEB-ONLY admin activity view. Counts + timestamps only (NO
 // prices/revenue → coexists with the iOS payment-hiding gate). Data from the
 // admin_business_pulse RPC; read-on-open + manual Refresh (zero polling).
+// TikTok API, Branch 1: one line per connected TikTok Business account — seller email, @username, status,
+// last poll, last webhook, token expiry. One read on open + Refresh (never polls). 404 "off" → the
+// "none" line (the feature is switched off on the server).
+function ttHealthWhen(iso: string | null | undefined): string { if (!iso) return "—"; const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString() : "—"; }
+function TikTokPanel() {
+  const t = useT();
+  const [rows, setRows] = useState<TtAccount[] | null>(null);
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
+  const load = async () => { const r = await loadTtAdminAccounts(); setRows(r); setState(r ? "ok" : "error"); };
+  const refresh = () => { setState("loading"); void load(); };
+  /* eslint-disable react-hooks/set-state-in-effect -- one read on open (the repo's convention; the answer sets state after the await) */
+  useEffect(() => { void load(); }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  return (
+    <div data-testid="admin-tiktok-panel">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "2px 2px 10px" }}>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>{t.rd_adm_tt_ctrl}</div>
+        <button onClick={refresh} style={{ border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", borderRadius: 9, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_tt_retry}</button>
+      </div>
+      {state === "loading" && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_loading}</div>}
+      {state === "error" && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_adm_tt_none}</div>}
+      {state === "ok" && (!rows || rows.length === 0) && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_adm_tt_none}</div>}
+      {state === "ok" && rows && rows.map((r) => (
+        <div key={r.id} style={{ ...card, display: "block", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text)" }}></span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: r.status === "active" ? "var(--ok)" : "var(--warn)" }}>{r.status}</span>
+            <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email || ""}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>{tpl(t.rd_adm_tt_health, { poll: ttHealthWhen(r.lastPollAt), hook: ttHealthWhen(r.lastWebhookAt), exp: ttHealthWhen(r.expiresAt) })}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; state: PulseState; onRefresh?: () => void }) {
   const t = useT();
   const s = pulse?.summary;
@@ -1514,6 +1552,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           {/* WEB-ONLY (defensive: the tile is hidden in the app shell, but guard the
               body too so the panel never renders on a phone / APK / iOS). */}
           {panel === "pulse" && !isAppShell() && <PulsePanel pulse={pulse} state={pulseState} onRefresh={onRefreshPulse} />}
+          {panel === "tiktok" && <TikTokPanel />}
 
         </div>
       </div>

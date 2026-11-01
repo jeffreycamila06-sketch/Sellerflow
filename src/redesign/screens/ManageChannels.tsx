@@ -24,7 +24,10 @@ const input: CSSProperties = { flex: 1, minWidth: 0, border: "none", background:
 const inputWrap = (invalid: boolean): CSSProperties => ({ flex: 1, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${invalid ? "var(--warn)" : "var(--border-strong)"}`, borderRadius: 12, background: "var(--surface-2)", padding: "0 13px" });
 const badge = (locked: boolean): CSSProperties => ({ display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, background: locked ? "var(--surface-3)" : "var(--accent-soft)", color: locked ? "var(--text-muted)" : "var(--accent-fg)", fontSize: 12, fontWeight: 800, letterSpacing: ".04em", flexShrink: 0 });
 
-export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages, onInstagram, fbActivationOnly = false, fbSwitchesLoading = false }: {
+export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee, fbPagesEnabled = false, onFbPages, onInstagram, fbActivationOnly = false, fbSwitchesLoading = false, onTikTokVideos }: {
+  // TikTok API, Branch 1: the "TikTok videos — sell from comments" tile (→ TikTokVideos). Passed ONLY while the
+  // tiktok_api gate is on → absent = zero TikTok-videos UI here (byte-unchanged). TikTok screen only.
+  onTikTokVideos?: () => void;
   platform: "tiktok" | "facebook";
   account?: AccountUser | null;
   onBack: () => void;
@@ -140,6 +143,14 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
         )}
         <button onClick={() => setAddOpen(true)} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, letterSpacing: ".02em", cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>{addLabel}</button>
         </>)}
+
+        {isTT && onTikTokVideos && (
+          <button data-testid="mc-tiktok-videos" onClick={onTikTokVideos} style={{ width: "100%", marginTop: 12, padding: "14px 15px", border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface)", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "var(--shadow)" }}>
+            <span aria-hidden style={{ width: 30, height: 30, borderRadius: 8, background: "var(--text)", color: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, flexShrink: 0 }}>♪</span>
+            <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_tt_card_title}</span><span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{t.rd_tt_card_sub}</span></span>
+            <span style={{ fontSize: 15, color: "var(--text-muted)" }}>›</span>
+          </button>
+        )}
 
         {/* P3 — Shopee shops section (flag-gated). A separate live source with its
             own authorize/remove screen; NOT part of the tiktok/facebook cap. */}

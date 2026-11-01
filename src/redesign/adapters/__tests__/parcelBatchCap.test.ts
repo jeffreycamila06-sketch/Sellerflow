@@ -80,10 +80,13 @@ describe("sql/117 my_feature_access", () => {
     expect(k123).toEqual([...k119, "test_printers"]);
     const k126 = keysOf("sql/126_tiktok_send_feature.sql");
     expect(k126).toEqual([...k123, "tiktok_send"]);
-    const k137 = keysOf("sql/137_fb_post_sales.sql"); // the LATEST my_feature_access list (Facebook Post Sales)
+    const k137 = keysOf("sql/137_fb_post_sales.sql"); // Facebook Post Sales
     expect(k137).toEqual([...k126, "fb_post_sales"]);
-    expect([...k137].sort()).toEqual([...FEATURE_KEYS].sort());
     expect(keysOf("sql/137_fb_post_sales_rollback.sql")).toEqual(k126);
+    const k138 = keysOf("sql/138_tiktok_business.sql"); // the LATEST my_feature_access list (TikTok API, Branch 1)
+    expect(k138).toEqual([...k137, "tiktok_api"]);
+    expect([...k138].sort()).toEqual([...FEATURE_KEYS].sort());
+    expect(keysOf("sql/138_tiktok_business_rollback.sql")).toEqual(k137);
     // sql/126: no email rows; its rollback = the sql/123 list
     const sql126 = readFileSync("sql/126_tiktok_send_feature.sql", "utf8");
     expect(sql126).not.toMatch(/^\s*insert/im);

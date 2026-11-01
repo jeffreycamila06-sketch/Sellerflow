@@ -438,6 +438,20 @@ Keywords: bluetooth, bt, aimo, phomemo, d520bt, flash, y41bt, niimbot, b1, xprin
 
 The status card at the top shows a red dot when Bluetooth needs your attention, an amber dot when there is no printer yet, and a green dot with **Connected: <printer name>** when a printer is saved.
 
+## tiktok-videos — TikTok videos: sell from comments (coming)
+Last checked: 2026-11-02
+Keywords: tiktok videos, sell from comments, no live, business account, connect tiktok, disconnect, personal account, magbenta mula sa comments, TikTok 影片, 留言下單, 评论下单
+
+When this is switched on for your account, a card **TikTok videos — sell from comments** appears in **Settings → Manage TikTok accounts**. It lets you sell from the comments under your TikTok videos without going live.
+
+1. Tap **Connect TikTok videos**. TikTok asks you to allow SellerFlowLive. Use the same TikTok account you registered as a TikTok ID in the app.
+2. The card then shows your **@username**, follower count and **Connected**.
+3. **Connect again** appears when TikTok ended the connection (for example after a password change) — tap it to reconnect.
+4. **This TikTok account is a personal account** means the account is not a Business account yet. In the TikTok app: Profile → ☰ → Settings and privacy → Account → **Switch to Business Account**, then tap Connect again.
+5. **Disconnect** removes the connection; you can connect again any time.
+
+Selling from a video (picking the video, codes and prices) comes in the next update.
+
 ## printer-wifi — WiFi receipt (slip) printer
 Last checked: 2026-10-15
 Keywords: wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, network printer, resibo, 小票, 收据打印机, 網路印表機

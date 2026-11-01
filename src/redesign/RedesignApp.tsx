@@ -52,6 +52,8 @@ import { useIgAccess, listIgAccounts, igConnect, igDisconnect, igConnectFailText
 import { loadFbEnabled, listFbPages, fbConnect, fbLiveCheck, fbDisconnect, parseFbReturn, isFbEligible, fbConnectFailText, fbReturnText, FB_RETURN_PARAMS, fbLivePageOf, fbChipState, fbPageScopeKey, type FbPage } from "./adapters/fb";
 import { fbPreviewEnabled } from "./adapters/fbPreview";
 import { useFbAccess, fbUiGates } from "./adapters/fbAccess";
+import TikTokVideos from "./screens/TikTokVideos";
+import { tiktokApiGate, parseTtReturn, ttReturnText, TT_RETURN_PARAMS } from "./adapters/tiktokApi";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import BuyerAlertSheet from "./components/BuyerAlertSheet";
 import ReceiptFormat from "./screens/ReceiptFormat";
@@ -153,10 +155,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts" | "tiktokvideos";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "tiktokvideos"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -837,6 +839,9 @@ export default function RedesignApp() {
   // Sticker layout v2 (printing.ts): admins + feature "sticker_v2", or everyone with the sticker_layout_v2 switch.
   const stickerCompactV2On = stickerCompactV2Allowed(auth.profile?.email, auth.profile?.role, featureSw.stickerLayoutV2);
   useEffect(() => { setStickerCompactV2(stickerCompactV2On); }, [stickerCompactV2On]);
+  // TikTok API, Branch 1 (sql/138): the "TikTok videos — sell from comments" card. ONE gate (tiktokApiGate):
+  // the tiktok_api_enabled switch, admins, or the 'tiktok_api' preview key. The server has its own lock.
+  const tiktokApiOn = tiktokApiGate({ switchOn: featureSw.tiktokApi, isAdmin, hasKey: hasFeature("tiktok_api") });
   // Parcel Scan FamilyMart: the 7-11 manual Parcel Scan rule (parcelAllowed) AND the fm_scan_enabled
   // switch or the fm_pickup preview list (sql/120). Off → the FamilyMart tile stays "Soon".
   const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));
@@ -1188,6 +1193,25 @@ export default function RedesignApp() {
   // Where "Back" returns from the ManageChannels screen — depends on origin
   // (Change 3): Settings → "settings" (unchanged), Live dashboard → "dashboard".
   const [chanBack, setChanBack] = useState<Screen>("settings");
+  // TikTok videos (Branch 1): the OAuth callback bounces back with ?tt=connected | ?tt=error&code=… →
+  // toast in seller words, remember a refused code for the card's state, open the card, strip the query.
+  const [ttReturnCode, setTtReturnCode] = useState("");
+  /* eslint-disable react-hooks/set-state-in-effect -- the one-shot OAuth return on load (the FB return effect above does the same) */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ret = parseTtReturn(window.location.search);
+    if (!ret) return;
+    const msg = ttReturnText(ret, tApp);
+    if (msg) setToast({ msg, kind: ret.status === "connected" ? "ok" : "err" });
+    setTtReturnCode(ret.status === "error" ? ret.code || "" : "");
+    if (ret.status === "connected" || ret.code === "not_business") { setChanBack("settings"); setScreen("tiktokvideos"); }
+    try {
+      const url = new URL(window.location.href);
+      for (const k of TT_RETURN_PARAMS) url.searchParams.delete(k);
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch { /* ignore */ }
+  }, [tApp]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
@@ -2688,7 +2712,12 @@ export default function RedesignApp() {
               fbPagesEnabled={fbEnabled} onFbPages={() => { setChanBack("settings"); setScreen("fbpages"); }}
               fbActivationOnly={featureSw.fbPolishV2 && !fbEnabled}
               fbSwitchesLoading={!featureSwReady}
+              {...(tiktokApiOn ? { onTikTokVideos: () => { setChanBack("ttchannels"); setScreen("tiktokvideos"); } } : {})}
               {...(igEnabled ? { onInstagram: () => { setChanBack("settings"); setScreen("igaccounts"); } } : {})} />
+          )}
+          {/* TikTok API, Branch 1 — the "TikTok videos" card (gate tiktokApiOn; the server answers "off" until the switch/env are on). */}
+          {screen === "tiktokvideos" && tiktokApiOn && (
+            <TikTokVideos onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} lastReturnCode={ttReturnCode} />
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
               Shopee chip's Manage row). Origin-aware Back via chanBack. */}

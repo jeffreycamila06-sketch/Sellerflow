@@ -29,6 +29,8 @@ import { shopeeConfig } from "./server/shopeeConfig.js";
 import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
+import { tiktokConfig, TT_WEBHOOK_MAX_BODY } from "./server/tiktokConfig.js";
+import { createTiktokRuntime, OFF_BODY as TT_OFF_BODY, WEBHOOK_PATH as TT_WEBHOOK_PATH } from "./server/tiktokBiz.js";
 import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
@@ -146,7 +148,7 @@ const defaultJsonParser = express.json();
 // token check runs before any body handling (the B1 auth-before-parser discipline).
 // /fb/receipt/send carries a base64 receipt picture (≤ 4 MB) — it parses its own body with a
 // 6mb limit AFTER auth + its rate limit (server/fbReceipt.js), same discipline as parcel-scan.
-app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)));
+app.use((req, res, next) => (req.path === "/tiktok/webhook" || req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)));
 // Build 10 — error/reason words leave as short codes on the app-facing routes (server/errorCodes.js).
 app.use(opaqueErrors());
 
@@ -2585,6 +2587,107 @@ try {
 } catch (e) {
   fbRuntime = null;
   console.error("[FB] init failed — Facebook disabled, TikTok/Shopee unaffected:", e && e.message);
+}
+
+// ── TIKTOK API (docs/plans/tiktok-api.md, Branch 1) — SEPARATE from the Facebook block ──────────
+// OFF unless TIKTOK_API_ENABLED="true" + every secret (server/tiktokConfig.js) + the service-role
+// client + the sql/138 table (probed once at start; missing → stays off). While OFF every /tiktok/*
+// route answers 404 { ok:false, error:"off" } so the app hides the card. An init failure can never
+// block Facebook / live startup (own try/catch, logged). Live TikTok connect (/connect) is untouched.
+let tiktokRuntime = null;
+let tiktokReady = false;
+app.use(/^\/tiktok(\/|$)/, (req, res, next) => (tiktokReady ? next() : res.status(404).json(TT_OFF_BODY)));
+try {
+  const ttCfg = tiktokConfig();
+  if (ttCfg.enabled && serviceSb) {
+    const ttSwitch = createFbFlagReader({
+      readFlag: async () => {
+        const { data, error } = await serviceSb.from("app_settings").select("value").eq("key", "tiktok_api_enabled").maybeSingle();
+        if (error) throw new Error("tiktok_api_enabled_read_failed");
+        return data ? data.value : null;
+      },
+    });
+    // feature_access_emails 'tiktok_api' (sql/138) — the same key the app reads through my_feature_access().
+    const isTtPreview = createFbTesterReader({
+      readTester: async (email) => {
+        const { data, error } = await serviceSb.from("feature_access_emails").select("email").eq("feature", "tiktok_api").eq("email", email).maybeSingle();
+        if (error) throw new Error("tiktok_preview_read_failed");
+        return !!data;
+      },
+    });
+    const requireTtAvailable = async (req, res, next) => {
+      try { if ((await ttSwitch()) === true) return next(); } catch { /* switch unreadable → not on */ }
+      try { if ((await isTtPreview(req.userEmail)) === true) return next(); } catch { /* no */ }
+      return res.status(403).json({ ok: false, error: "tiktok_not_available" });
+    };
+    const withEmails = async (rows) => {
+      const ids = [...new Set(rows.map((r) => r.user_id))];
+      if (!ids.length) return rows;
+      const { data } = await serviceSb.from("seller_profiles").select("auth_user_id, email").in("auth_user_id", ids);
+      const email = new Map((data || []).map((p) => [p.auth_user_id, p.email || ""]));
+      return rows.map((r) => ({ ...r, email: email.get(r.user_id) || "" }));
+    };
+    const store = {
+      async getAccount(userId) {
+        const { data, error } = await serviceSb.from("tiktok_business_accounts").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (error) throw new Error("tt_account_read_failed");
+        return data || null;
+      },
+      async listAccountsOf(userId) {
+        const { data, error } = await serviceSb.from("tiktok_business_accounts").select("*").eq("user_id", userId);
+        if (error) throw new Error("tt_account_read_failed");
+        return data || [];
+      },
+      async listAccounts({ status } = {}) {
+        let q = serviceSb.from("tiktok_business_accounts").select("*").order("created_at", { ascending: false }).limit(500);
+        if (status) q = q.eq("status", status);
+        const { data, error } = await q;
+        if (error) throw new Error("tt_account_read_failed");
+        return withEmails(data || []);
+      },
+      async upsertAccount(cols) {
+        const { error } = await serviceSb.from("tiktok_business_accounts").upsert(cols, { onConflict: "user_id,tt_account_id" });
+        if (error) throw new Error(error.message || "tt_account_save_failed");
+      },
+      async updateAccount(id, patch) {
+        const { error } = await serviceSb.from("tiktok_business_accounts").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
+        if (error) throw new Error("tt_account_update_failed");
+      },
+      async deleteAccount(id) {
+        const { error } = await serviceSb.from("tiktok_business_accounts").delete().eq("id", id);
+        if (error) throw new Error("tt_account_delete_failed");
+      },
+      // The seller's registered TikTok usernames (the same field the live connect checks). Throws on error.
+      async getRegistered(userId) {
+        const { data, error } = await serviceSb.from("seller_profiles").select("tiktok").eq("auth_user_id", String(userId || "")).maybeSingle();
+        if (error) throw new Error("tt_registered_read_failed");
+        return data ? String(data.tiktok || "") : "";
+      },
+      async markWebhook(ttAccountId) {
+        await serviceSb.from("tiktok_business_accounts").update({ last_webhook_at: new Date().toISOString() }).eq("tt_account_id", ttAccountId);
+      },
+      async userIdOf(email) {
+        const { data } = await serviceSb.from("seller_profiles").select("auth_user_id").eq("email", email).maybeSingle();
+        return data ? data.auth_user_id : null;
+      },
+    };
+    tiktokRuntime = createTiktokRuntime({ config: ttCfg, store, log: (line) => console.log(line) });
+    tiktokRuntime.registerRoutes(app, {
+      requireAuth, requireAdmin, requirePlanActive, requireTtAvailable,
+      rawParser: express.raw({ type: () => true, limit: TT_WEBHOOK_MAX_BODY }),
+    });
+    // Fail closed on a missing table: the routes stay 404 "off" until the probe passes.
+    serviceSb.from("tiktok_business_accounts").select("id").limit(1).then(({ error }) => {
+      if (error) { console.error("[TT-AUTH] off — tiktok_business_accounts not readable (apply sql/138):", error.message); return; }
+      tiktokReady = true;
+      tiktokRuntime.start();
+      console.log(`[TT-AUTH] on — webhook ${TT_WEBHOOK_PATH}, callback ${ttCfg.bizRedirectUri}`);
+    }, (e) => console.error("[TT-AUTH] off — probe failed:", e && e.message));
+  } else {
+    console.log("[TT-AUTH] off (TIKTOK_API_ENABLED unset or secrets missing) — /tiktok/* answer 404 off");
+  }
+} catch (e) {
+  console.error("[TT-AUTH] init failed — TikTok API disabled, Facebook/live unaffected:", e && e.message);
 }
 // ───────────────────────────────────────────────────────────────────────────
 // SHOPEE LIVE BETA — share-link reader (server/shopeeLiveLink.js, 2026-10-27).

@@ -4,6 +4,7 @@
 // server-side in the edge function; this only invokes it and surfaces the result.
 import { supabase } from "../../supabase";
 import { readEdgeError } from "./edgeError";
+import { ttRevokeAll, ttAdminRevokeUser } from "./tiktokApi";
 
 export interface HardDeleteResult {
   ok: boolean;
@@ -37,6 +38,7 @@ export function confirmEmailMatches(typed: string, targetEmail: string): boolean
 export async function hardDeleteUser(email: string): Promise<HardDeleteResult> {
   if (!supabase) return { ok: false, error: "unavailable" };
   try {
+    try { await ttAdminRevokeUser({ email: email.trim().toLowerCase() }); } catch { /* best effort: TikTok tokens are revoked before the cascade deletes them */ }
     const { data, error } = await supabase.functions.invoke("admin-delete-user", {
       body: { mode: "user", email: email.trim().toLowerCase() },
     });
@@ -58,6 +60,7 @@ export async function hardDeleteUser(email: string): Promise<HardDeleteResult> {
 export async function selfDeleteAccount(): Promise<HardDeleteResult> {
   if (!supabase) return { ok: false, error: "unavailable" };
   try {
+    try { await ttRevokeAll(); } catch { /* best effort: TikTok tokens are revoked before the cascade deletes them */ }
     const { data, error } = await supabase.functions.invoke("admin-delete-user", { body: { mode: "self" } });
     // Build 10b: the answer is { ok: true } or { ok: false, code } — no table names, no text.
     // (success = the answer before the edge function is redeployed.)
