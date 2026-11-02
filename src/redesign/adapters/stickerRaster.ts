@@ -1370,11 +1370,11 @@ export function propGlyphBox(item: PropItem, size: number, x0: number, top: numb
 }
 
 /** The whole compact label as a 1-bit bitmap (the only painter of the font-C layout). */
-export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas, bold = false): Bitmap {
+export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas, bold = false, v2opts: { shopLine?: boolean } = {}): Bitmap {
   if (payload.settings?.printCompactV2) { // layout v2 (flag OFF = the lines below, byte-identical)
-    const v2 = propLayoutLinesV2(payload, wMm, hMm, atlases, canvas);
+    const v2 = propLayoutLinesV2(payload, wMm, hMm, atlases, canvas, v2opts);
     const b = new Bitmap(v2.w, v2.h);
-    for (const l of v2.lines) for (const it of l.line.items) { const g = propGlyphBox(it, l.size, l.x, l.top, l.font, atlases); if (g) b.blit(g.cell, g.w, g.h, g.x, g.y, 1, 1); }
+    for (const l of v2.lines) for (const it of l.line.items) { const g = propGlyphBox(it, l.size, l.x, l.top, l.font, atlases); if (g) { b.blit(g.cell, g.w, g.h, g.x, g.y, 1, 1); if (l.bold) b.blit(g.cell, g.w, g.h, g.x + 1, g.y, 1, 1); } } // bold = the glyph again 1 dot right (no bold face below the number sizes)
     if (bold) boldenRaster(b.buf, b.w, b.h, b.rowBytes);
     stampHandleQr(b, v2.qr);
     return b;
@@ -1407,7 +1407,7 @@ export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: numb
 export const COMPACT_V2_MAX_COMMENT_LINES = 3;
 export const COMPACT_V2_GAP = 4;   // min white: date band ↔ QR block, rows of the stack, "Buyer" ↔ number
 export const COMPACT_V2_DATE_TOP = 6;
-export interface PropLaidLineV2 { size: number; font: PropFont; line: PropLine; x: number; top: number }
+export interface PropLaidLineV2 { size: number; font: PropFont; line: PropLine; x: number; top: number; bold?: boolean }
 
 /** Greedy word wrap at ONE size: tokens are spaces, single ideographs (break anywhere) and
  *  words; every line but the last holds only tokens that fit whole, the last is cut with "…"
@@ -1441,8 +1441,11 @@ export function propWrapLines(text: string, size: number, maxW: number, atlases:
 }
 
 /** All the lines of the v2 compact label with their final x / top (PURE; CJK atlases not needed). */
-export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas): { lines: PropLaidLineV2[]; qr: QrPlacement | null; w: number; h: number } {
+// opts.shopLine: the SHOP NAME on the top line (left, bold, same line as the date). Default = 60×40 only
+// (Jeff, Nov 3): 50×30 and the Niimbot frame keep the v2 layout without it until approved.
+export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas, opts: { shopLine?: boolean } = {}): { lines: PropLaidLineV2[]; qr: QrPlacement | null; w: number; h: number } {
   const W = canvas?.w ?? stickerConfig(wMm, hMm).wDots, H = canvas?.h ?? hMm * 8;
+  const shopLine = opts.shopLine ?? (wMm === 60 && hMm === 40 && !canvas);
   const prop = atlases.proportional;
   const buyer = payload.buyer ?? {};
   const settings = payload.settings;
@@ -1466,20 +1469,39 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
     const line = propFitLine(when, sizes.time, W - 2 * edge, atlases);
     dateLine = { size: sizes.time, font: timeFont, line, x: W - edge - line.inkWidth, top: COMPACT_V2_DATE_TOP };
   }
-  if (qr && dateLine) {
-    const y0 = Math.max(qr.y0, dateLine.top + dateLine.font.h + COMPACT_V2_GAP); // the QR moves down below the date band
-    if (y0 + qr.foot <= H) qr = { ...qr, y0 };
-  }
   const right = qr ? Math.min(qr.x0, propQrInkLeft(qr) - PROP_TEXT_QR_GAP) : W - edge;
   const maxW = Math.max(1, right - X);
 
-  // the left stack: rows of one or two parts (the buyer row = "Buyer" + number)
-  interface Row { h: number; parts: { size: number; font: PropFont; line: PropLine; dx: number; dy: number }[] }
+  // the left stack: rows of one or two parts (the buyer row = "Buyer" + number; the shop row = shop name + date)
+  interface Row { h: number; parts: { size: number; font: PropFont; line: PropLine; dx: number; dy: number; bold?: boolean }[] }
   const rows: Row[] = [];
+  // SHOP NAME (Settings → "Shop name" ON, the same name as the big sizes): the top row, left, BOLD, on the
+  // date's line. One step larger than the date when it fits whole, else the date's size, cut with "…"
+  // before the gap to the date — it can never reach the date. The date then rides this row (baselines
+  // aligned) instead of its own band.
+  let dateInShop = false;
+  const shopText = narrow(stripEmoji(String(payload.storeName ?? "")));
+  if (shopLine && dateLine && flag("printStoreName") && shopText) {
+    // The QR moves below this row (see the end), so the line may run under the date's column — unless the
+    // label is too short for a QR under a top row: then the line stops at the text column like every row.
+    const qrFitsBelow = !qr || qr.foot + prop[String(sizes.line)].h + COMPACT_V2_DATE_TOP + 2 * COMPACT_V2_GAP <= H;
+    const shopMaxW = Math.max(1, (qrFitsBelow ? dateLine.x - 2 * COMPACT_V2_GAP : Math.min(dateLine.x - 2 * COMPACT_V2_GAP, right)) - X);
+    const big = propFitLine(shopText, sizes.line, shopMaxW, atlases);
+    const pick = !big.cut ? { size: sizes.line, line: big } : { size: sizes.time, line: propFitLine(shopText, sizes.time, shopMaxW, atlases) };
+    const sf = prop[String(pick.size)];
+    if (sf && pick.line.text) {
+      const dy = Math.max(0, sf.base - dateLine.font.base);
+      rows.push({ h: Math.max(sf.h, dy + dateLine.font.h), parts: [
+        { size: pick.size, font: sf, line: pick.line, dx: 0, dy: 0, bold: true },
+        { size: dateLine.size, font: dateLine.font, line: dateLine.line, dx: dateLine.x - X, dy },
+      ] });
+      dateInShop = true;
+    }
+  }
   const num = String(buyer.num ?? buyer.bNum ?? 0);
   const numFont = prop[String(sizes.num)], lineFont = prop[String(sizes.line)];
   if (flag("printBuyerNumber") && numFont) {
-    const buyerMaxW = Math.max(1, Math.min(maxW, (dateLine ? dateLine.x - 2 * COMPACT_V2_GAP : W) - X));
+    const buyerMaxW = Math.max(1, Math.min(maxW, (dateLine && !dateInShop ? dateLine.x - 2 * COMPACT_V2_GAP : W) - X)); // the date shares the buyer line only without a shop row
     const n = propFitLine(num, sizes.num, buyerMaxW, atlases);
     const parts: Row["parts"] = [{ size: sizes.num, font: numFont, line: n, dx: 0, dy: 0 }];
     if (lineFont) {
@@ -1527,7 +1549,13 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   if (comment) wrapFirst(comment, COMPACT_V2_MAX_COMMENT_LINES, 0);
   const tops = propLineTops(rows.map((r) => ({ font: { h: r.h } as PropFont })), H);
   const lines: PropLaidLineV2[] = [];
-  rows.forEach((r, i) => { for (const p of r.parts) lines.push({ size: p.size, font: p.font, line: p.line, x: X + p.dx, top: tops[i] + p.dy }); });
-  if (dateLine) lines.push(dateLine);
+  rows.forEach((r, i) => { for (const p of r.parts) lines.push({ size: p.size, font: p.font, line: p.line, x: X + p.dx, top: tops[i] + p.dy, ...(p.bold ? { bold: true } : {}) }); });
+  if (dateLine && !dateInShop) lines.push(dateLine);
+  // the QR moves down below the date band (its own band, or the shop row) when it still fits
+  if (qr && dateLine) {
+    const dateBottom = dateInShop ? tops[0] + rows[0].h : dateLine.top + dateLine.font.h; // the whole shop row stays above the QR
+    const y0 = Math.max(qr.y0, dateBottom + COMPACT_V2_GAP);
+    if (y0 + qr.foot <= H) qr = { ...qr, y0 };
+  }
   return { lines, qr, w: W, h: H };
 }
