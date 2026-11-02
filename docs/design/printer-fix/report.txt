@@ -1,0 +1,14 @@
+aimo_50x30_v2-off: 18 cells
+aimo_50x30_v2-on: 18 cells
+aimo_60x40_v2-off: 18 cells
+aimo_60x40_v2-on: 18 cells
+aimo_70x50_v2-off: 18 cells
+aimo_70x50_v2-on: 18 cells
+generic_50x30_v2-off: 18 cells
+generic_50x30_v2-on: 18 cells
+generic_60x40_v2-off: 18 cells
+generic_60x40_v2-on: 18 cells
+generic_70x50_v2-off: 18 cells
+generic_70x50_v2-on: 18 cells
+niimbot_50x30_v2-off: 18 cells
+niimbot_50x30_v2-on: 18 cells
