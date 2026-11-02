@@ -48,7 +48,10 @@ describe("stickerDrawOps layout parity (emitTextTspl == frozen tsplReference)", 
   it("covers the full existing fixture matrix", () => {
     expect(manifest.fixtures.length).toBeGreaterThanOrEqual(8);
   });
-  for (const fx of manifest.fixtures) {
+  // 50x30 (Nov 3): the raster's 50x30 is the BITMAP layout (draw50x30, QR beside the text); the TEXT fallback's
+  // 50x30 table lives in the three native builders and is pinned Java == Swift == TS reference by
+  // src/lib/__tests__/tspl.test.ts + the Mac XCTest gate. emitTextTspl is test-only and has no 50x30 TEXT table.
+  for (const fx of manifest.fixtures.filter((f) => !(f.labelWidthMm === 50 && f.labelHeightMm === 30))) {
     it(`byte-identical for "${fx.name}" (${fx.labelWidthMm}x${fx.labelHeightMm})`, () => {
       const payload = readPayload(fx.name);
       const ref = buildTsplStickerReference(payload, fx.labelWidthMm, fx.labelHeightMm, gbk);

@@ -14,7 +14,7 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
+import { sdkStreamFromRaster, bandTsplFromRaster, renderStickerBitmap, renderStickerBitmapForJob, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload, type FullRaster, type StickerPath } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
 import { savedBtPrinter, savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
@@ -34,7 +34,7 @@ import { hasFeature } from "./featureAccess";
 export interface Settings {
   darkMode: boolean; autoprint: boolean; soundAlert: boolean; stockAlert: boolean; dailyEmail: boolean; keywords: string; currency: string; paperSize: string; printerType: "auto" | "usb" | "bluetooth" | "lan"; lanFormat: "receipt" | "sticker"; stickerSize: string; printStoreName: boolean; printBuyerNumber: boolean; printBuyerUsername: boolean; printOrderItems: boolean; printTotal: boolean; printAutoClose: boolean; printLogo: boolean; printDateTime: boolean; printBuyerName: boolean; printLabelScale: number; printStoreScale: number; printBuyerNumberScale: number; printBuyerNameScale: number; printUsernameScale: number; printOrderScale: number; printCommentScale: number; printTotalScale: number; printStoreX: number; printStoreY: number; printBuyerLabelX: number; printBuyerLabelY: number; printBuyerNumberX: number; printBuyerNumberY: number; printBuyerNameX: number; printBuyerNameY: number; printUsernameX: number; printUsernameY: number; printSessionX: number; printSessionY: number; printOrderX: number; printOrderY: number; printTotalX: number; printTotalY: number;
 }
-export interface NativeStickerPayload { storeName: string; sessionDate: string; currency: string; buyer: Buyer; labelWidthMm: number; labelHeightMm: number; settings: Pick<Settings, "printStoreName" | "printBuyerNumber" | "printBuyerUsername" | "printOrderItems" | "printTotal" | "printStoreScale" | "printBuyerNumberScale" | "printBuyerNameScale" | "printUsernameScale" | "printOrderScale" | "printCommentScale" | "printTotalScale">; }
+export interface NativeStickerPayload { storeName: string; sessionDate: string; currency: string; buyer: Buyer; labelWidthMm: number; labelHeightMm: number; settings: Pick<Settings, "printStoreName" | "printBuyerNumber" | "printBuyerUsername" | "printOrderItems" | "printTotal" | "printBuyerName" | "printDateTime" | "printStoreScale" | "printBuyerNumberScale" | "printBuyerNameScale" | "printUsernameScale" | "printOrderScale" | "printCommentScale" | "printTotalScale">; }
 export interface NativePrinterPayload { type: "sellerflow.printSlip"; buyer: Buyer; currency: string; storeName: string; settings: Settings; sessionDate: string; createdAt: string; }
 
 // ── DEF_SETTINGS — copied verbatim from App.tsx:175 ──────────────────────────
@@ -89,6 +89,10 @@ export function buildNativeStickerPayload(buyer: Buyer, cur: string, storeName: 
       // (buildSlipPayload passes the full cfg) and production main + the shared
       // native builder are untouched.
       printTotal: false,
+      // Nov 3 (item 2): the "TikTok name" and "Date & time" switches reach every print path. Absent in old
+      // payloads = on (the native builders default them to true) → every golden stays byte-identical.
+      printBuyerName: cfg.printBuyerName !== false,
+      printDateTime: cfg.printDateTime !== false,
       printStoreScale: cfg.printStoreScale,
       printBuyerNumberScale: cfg.printBuyerNumberScale,
       printBuyerNameScale: cfg.printBuyerNameScale,
@@ -232,6 +236,11 @@ export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, c
 // still pass through untouched.
 let nativeFailAlertText = "Native printer failed.";
 export function setNativePrintAlertText(text: string): void { if (text) nativeFailAlertText = text; }
+// Nov 3 (item 11): a saved generic / Niimbot printer on an app build without that driver used to fail with
+// no reason. The seller now gets this line (RedesignApp sets it per language).
+export const PLUGIN_MISSING = "PLUGIN_MISSING";
+let updateAppText = "Update the app to print with this printer.";
+export function setUpdateAppText(text: string): void { if (text) updateAppText = text; }
 
 // ── No-printer-connected surfacing ───────────────────────────────────────────
 // The native bridge fails an order-print SILENTLY today (console.warn for the
@@ -491,10 +500,9 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // mode-0 band emission (rasterizeToBitmapTspl) stays golden-tested but dormant.
   // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
   // only when the payload actually contains CJK).
-  const qrPayload = imageStickerPayload(payload, platform, fbName);
-  // Layout v2 ON: the D520BT draws the font-C layout on 50×30 / 60×40 (OFF = {latin, cjk} exactly as before)
-  const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm) ? await imagePathAtlases(payload, qrPayload) : null;
-  const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk });
+  // The one sticker bitmap (item 5) → the SDK stream. Layout v2 ON: the D520BT draws the font-C layout on
+  // 50×30 / 60×40 (OFF = { latin: LATIN_ATLAS, cjk } exactly as before — the goldens).
+  const raster = sdkStreamFromRaster(await stickerBitmapFor({ path: "aimo", payload, platform, fbName, cjk }), payload.labelWidthMm, payload.labelHeightMm);
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {
@@ -556,17 +564,43 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
   }
   return atlases;
 }
-// `job` = the saved model's TSPL header (density / speed); {} = today's header for every other printer.
+// ── THE ONE STICKER BITMAP (Nov 3, item 5) ────────────────────────────────────────────────
+// "The sticker bitmap for the saved printer + size + switches": the three bitmap print paths build their
+// bytes FROM this raster and the LIVE print pattern preview SHOWS this raster, so preview = print by
+// construction. The path decides the atlases + bold: AIMO = Latin + CJK (font C only with layout v2 ON on
+// 50×30 / 60×40); generic (Flash Y41BT / Xprinter XP-420B / …) = the image atlases + the model's bold;
+// Niimbot = the 50×30 compact frame (384×224, 16-dot safe edge) whatever size is picked.
+export type { StickerPath };
+export function savedPrinterPath(): StickerPath { return savedIsNiimbot() ? "niimbot" : savedGenericLang() ? "generic" : "aimo"; }
+export interface StickerBitmapArgs { path: StickerPath; payload: NativeStickerPayload; platform?: string; fbName?: boolean; cjk?: GlyphAtlas; bold?: boolean }
+export async function stickerBitmapFor(a: StickerBitmapArgs): Promise<FullRaster> {
+  if (a.path === "niimbot") {
+    const p: NativeStickerPayload = { ...a.payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
+    const img = imageStickerPayload(p, a.platform, a.fbName);
+    // font C lays out to the frame; the fixed-cell fallback (no font-C atlas) is label-sized and is centred-cropped to it
+    return fitRaster(renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img), "extended", NIIMBOT_CANVAS), NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h);
+  }
+  const img = imageStickerPayload(a.payload, a.platform, a.fbName);
+  const w = a.payload.labelWidthMm, h = a.payload.labelHeightMm;
+  if (a.path === "generic") {
+    const bold = a.bold ?? !!knownTsplJob(savedBtPrinter()?.name).bold;
+    return renderStickerBitmapForJob(img, w, h, await imagePathAtlases(a.payload, img), bold);
+  }
+  // AIMO D520BT: layout v2 ON → the font-C layout on the compact sizes; OFF → Latin + CJK exactly as before
+  const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(w, h) ? await imagePathAtlases(a.payload, img) : null;
+  let cjk = a.cjk;
+  if (!cjk) { try { cjk = payloadNeedsCjk(a.payload) ? await loadCjkAtlas() : {}; } catch { cjk = {}; } }
+  return renderStickerBitmap(img, w, h, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk });
+}
+// `job` = the saved model's TSPL header (density / speed / bold); {} = today's header for every other printer.
 export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false, job: TsplJobSettings = {}): Promise<Uint8Array> {
-  const img = imageStickerPayload(payload, platform, fbName);
-  const atlases = await imagePathAtlases(payload, img);
-  if (lang === "tspl") return rasterizeToBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases, job).bytes;
-  const full = renderStickerBitmap(img, payload.labelWidthMm, payload.labelHeightMm, atlases);
+  const full = await stickerBitmapFor({ path: "generic", payload, platform, fbName, bold: !!job.bold });
+  if (lang === "tspl") return bandTsplFromRaster(full, payload.labelWidthMm, payload.labelHeightMm, job).bytes;
   return lang === "cpcl" ? cpclRasterBytes(full) : escposRasterBytes(full);
 }
 async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlowPrinter"]>, lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
   const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
-  if (typeof raw !== "function") return { ok: false, code: "", message: "" };
+  if (typeof raw !== "function") { reportNativePrintFailure("bluetooth", PLUGIN_MISSING, updateAppText); return { ok: false, code: PLUGIN_MISSING, message: updateAppText }; }
   const reason: StickerFallbackReason = lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos";
   const t0 = nowMs();
   const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, knownTsplJob(savedBtPrinter()?.name));
@@ -613,15 +647,12 @@ export const NIIMBOT_FRAME_DOTS = { w: (NIIMBOT_LABEL.w - 2 * NIIMBOT_FRAME_INSE
 export const NIIMBOT_SAFE_EDGE_DOTS = 16;
 export const NIIMBOT_CANVAS = { ...NIIMBOT_FRAME_DOTS, edge: NIIMBOT_SAFE_EDGE_DOTS } as const;
 export async function buildNiimbotImage(payload: NativeStickerPayload, platform?: string, fbName = false): Promise<NiimbotImage> {
-  const p: NativeStickerPayload = { ...payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
-  const img = imageStickerPayload(p, platform, fbName);
-  // font C lays out to the frame; the fixed-cell fallback (no font-C atlas) is label-sized and is centred-cropped to it
-  const full = fitRaster(renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img), "extended", NIIMBOT_CANVAS), NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h);
+  const full = await stickerBitmapFor({ path: "niimbot", payload, platform, fbName }); // the one sticker bitmap (item 5)
   return { w: full.w, h: full.h, rowBytes: full.rowBytes, data: bytesToBase64(full.buf), labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
 }
 async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
   const fn = (bridge as unknown as { printStickerImage?: (a: { image: NiimbotImage }) => Promise<unknown> }).printStickerImage;
-  if (typeof fn !== "function") return { ok: false, code: "", message: "" };
+  if (typeof fn !== "function") { reportNativePrintFailure("bluetooth", PLUGIN_MISSING, updateAppText); return { ok: false, code: PLUGIN_MISSING, message: updateAppText }; }
   const t0 = nowMs();
   const image = await buildNiimbotImage(payload, platform, fbName);
   const payloadBytes = image.rowBytes * image.h;
@@ -1000,6 +1031,73 @@ export function webStickerQrSvg(handle: string | undefined | null): { svg: strin
   return { svg, sizeMm: total * WEB_QR_MODULE_MM };
 }
 
+// ── The laptop / browser sticker page (Nov 3, item 5 + 7): ONE function for the print AND the
+// LIVE print pattern preview frame. Size levels and the "TikTok name" / "Date & time" switches apply.
+export function browserStickerHtml(a: { buyer: Buyer; cur: string; storeName: string; cfg: Settings; fbName?: boolean; at?: number }): string {
+  const { buyer, storeName, cfg } = a;
+  const fbName = a.fbName === true, at = a.at;
+  const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
+  const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(at != null ? new Date(at) : new Date()), 12);
+  // The order this sticker prints (onPrint passes a single-order buyer; reprint
+  // rebuilds one). item = the CODE ("A2" / "A2 x2") for auto orders, else the
+  // price string for manual — rendered LARGE at the bottom, mirroring native.
+  const codeItem = buyer.orders?.[0]?.item;
+  const codeTime = buyer.orders?.[0]?.time;
+  // QR (same content rules as the phone): toggle on (+ entitled), not a Facebook buyer, @username line on,
+  // handle not blank. Bottom-right; the lines that can reach that corner (name,
+  // @handle, time + big code) get right padding so text never runs under it.
+  const qr = stickerQrEffective() && stickerQrAllowedFor(buyer.platform) && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
+  const qrCss = qr
+    ? `body{position:relative}` +
+      `.qr{position:absolute;right:clamp(1mm,2.5vw,2.5mm);bottom:clamp(1mm,2.5vh,2mm);width:${qr.sizeMm}mm;height:${qr.sizeMm}mm}` +
+      `.name,.user,.foot{padding-right:${qr.sizeMm + 1.5}mm}`
+    : "";
+  // DRIVER-DRIVEN + AUTO-FIT (web only; native tiers UNTOUCHED): NO forced @page
+  // size — the Windows printer driver's paper size decides. The body is exactly
+  // ONE page tall with overflow:hidden, so content can NEVER spill to a 2nd label
+  // at any size ≥60×40. Fonts scale with the page height (vh, clamped so they stay
+  // readable at 60×40 and grow on taller labels). Field order mirrors the native
+  // TSPL sticker: header + date, Buyer #, name, @handle, then time + the CODE big
+  // at the bottom (margin-top:auto). Per-field scale multipliers are NOT applied on
+  // web (they don't fit the auto-fit model; native keeps them). Names/handles are
+  // single-line + ellipsis so they can't push a second page (overflow:hidden is the
+  // hard guarantee regardless).
+  // Nov 3 (item 7): the per-field size levels apply on the laptop too (1×/2×/3× of the auto-fit size — a
+  // size that does not fit is clipped by overflow:hidden, exactly like the bitmap paths clip at the edge).
+  const L = (v: unknown) => Math.max(1, Math.min(8, Number(v) || 1));
+  const lvStore = L(cfg.printStoreScale), lvNum = L(cfg.printBuyerNumberScale), lvName = L(cfg.printBuyerNameScale), lvUser = L(cfg.printUsernameScale), lvCode = L(cfg.printCommentScale);
+  const html = `<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>` +
+    `@page{size:auto;margin:0}` +
+    `*{box-sizing:border-box;margin:0;padding:0}` +
+    `html,body{height:100%}` +
+    `body{width:100%;height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:clamp(1mm,2.5vh,2mm) clamp(1mm,2.5vw,2.5mm);font-family:Arial,Helvetica,sans-serif;color:#000}` +
+    `.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm;flex-shrink:0}` +
+    `.brand{font-size:clamp(2.6mm,7vh,4mm);font-weight:800;white-space:nowrap}` +
+    `.date{font-size:clamp(2mm,5.5vh,3mm);font-weight:600;white-space:nowrap}` +
+    `.bar{height:.6mm;background:#000;margin:.6mm 0 clamp(1mm,2.5vh,2.4mm);flex-shrink:0}` +
+    `.store{font-size:calc(clamp(2.6mm,7vh,4.2mm) * ${lvStore});font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
+    `.bnum{font-size:calc(clamp(5mm,15vh,10mm) * ${lvNum});font-weight:900;line-height:1.02;white-space:nowrap;flex-shrink:0}` +
+    `.name{font-size:calc(clamp(3mm,9vh,5.6mm) * ${lvName});font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;margin-top:1mm}` +
+    `.user{font-size:calc(clamp(2.4mm,6.5vh,3.8mm) * ${lvUser});font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
+    `.foot{margin-top:auto;display:flex;flex-direction:column;min-height:0}` +
+    `.ftime{font-size:clamp(2mm,5vh,2.8mm);font-weight:600}` +
+    `.code{font-size:calc(clamp(5.5mm,17vh,12mm) * ${lvCode});font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
+    qrCss +
+    // Facebook name only: up to 2 lines at the same size instead of one line cut with "…"
+    (fbName ? `.fbname{white-space:normal;text-overflow:clip;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}` : "") +
+    `</style></head><body>` +
+    `<div class="head"><span class="brand">SellerFlowLive</span>${cfg.printDateTime !== false ? `<span class="date">${esc(sess)}</span>` : ""}</div>` +
+    `<div class="bar"></div>` +
+    (cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : "") +
+    (cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : "") +
+    (buyer.name && (cfg.printBuyerName !== false || fbName) ? (fbName ? `<div class="name fbname">${esc(trunc(buyer.name, 60))}</div>` : `<div class="name">${esc(trunc(buyer.name, 30))}</div>`) : "") +
+    (cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : "") +
+    (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime && cfg.printDateTime !== false ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
+    (qr ? qr.svg : "") +
+    `</body></html>`;
+  return html;
+}
+
 // opts.at (OPTIONAL — passed ONLY by the past-session Reprint): the original order's instant, so
 // the header date (and the slip's Created line) is that order's own Taipei date — an exact copy
 // of the original. Absent = now, byte-identical to before on every route.
@@ -1044,63 +1142,9 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
   // order (buyer.orders[0].orderNum = the order's unique epoch-ms id). Missing
   // (e.g. a synthetic buyer) → a fallback id that simply won't map to a row.
   const jobId = String(buyer.orders?.[0]?.orderNum ?? `web-${++webFallbackId}`);
-  const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
   // Taipei date, same source/format family as buildNativeStickerPayload + the
   // native truncate(12) — NOT the old en-PH long date.
-  const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(at != null ? new Date(at) : new Date()), 12);
-  // The order this sticker prints (onPrint passes a single-order buyer; reprint
-  // rebuilds one). item = the CODE ("A2" / "A2 x2") for auto orders, else the
-  // price string for manual — rendered LARGE at the bottom, mirroring native.
-  const codeItem = buyer.orders?.[0]?.item;
-  const codeTime = buyer.orders?.[0]?.time;
-  // QR (same content rules as the phone): toggle on (+ entitled), not a Facebook buyer, @username line on,
-  // handle not blank. Bottom-right; the lines that can reach that corner (name,
-  // @handle, time + big code) get right padding so text never runs under it.
-  const qr = stickerQrEffective() && stickerQrAllowedFor(buyer.platform) && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
-  const qrCss = qr
-    ? `body{position:relative}` +
-      `.qr{position:absolute;right:clamp(1mm,2.5vw,2.5mm);bottom:clamp(1mm,2.5vh,2mm);width:${qr.sizeMm}mm;height:${qr.sizeMm}mm}` +
-      `.name,.user,.foot{padding-right:${qr.sizeMm + 1.5}mm}`
-    : "";
-  // DRIVER-DRIVEN + AUTO-FIT (web only; native tiers UNTOUCHED): NO forced @page
-  // size — the Windows printer driver's paper size decides. The body is exactly
-  // ONE page tall with overflow:hidden, so content can NEVER spill to a 2nd label
-  // at any size ≥60×40. Fonts scale with the page height (vh, clamped so they stay
-  // readable at 60×40 and grow on taller labels). Field order mirrors the native
-  // TSPL sticker: header + date, Buyer #, name, @handle, then time + the CODE big
-  // at the bottom (margin-top:auto). Per-field scale multipliers are NOT applied on
-  // web (they don't fit the auto-fit model; native keeps them). Names/handles are
-  // single-line + ellipsis so they can't push a second page (overflow:hidden is the
-  // hard guarantee regardless).
-  const html = `<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>` +
-    `@page{size:auto;margin:0}` +
-    `*{box-sizing:border-box;margin:0;padding:0}` +
-    `html,body{height:100%}` +
-    `body{width:100%;height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:clamp(1mm,2.5vh,2mm) clamp(1mm,2.5vw,2.5mm);font-family:Arial,Helvetica,sans-serif;color:#000}` +
-    `.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm;flex-shrink:0}` +
-    `.brand{font-size:clamp(2.6mm,7vh,4mm);font-weight:800;white-space:nowrap}` +
-    `.date{font-size:clamp(2mm,5.5vh,3mm);font-weight:600;white-space:nowrap}` +
-    `.bar{height:.6mm;background:#000;margin:.6mm 0 clamp(1mm,2.5vh,2.4mm);flex-shrink:0}` +
-    `.store{font-size:clamp(2.6mm,7vh,4.2mm);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
-    `.bnum{font-size:clamp(5mm,15vh,10mm);font-weight:900;line-height:1.02;white-space:nowrap;flex-shrink:0}` +
-    `.name{font-size:clamp(3mm,9vh,5.6mm);font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;margin-top:1mm}` +
-    `.user{font-size:clamp(2.4mm,6.5vh,3.8mm);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
-    `.foot{margin-top:auto;display:flex;flex-direction:column;min-height:0}` +
-    `.ftime{font-size:clamp(2mm,5vh,2.8mm);font-weight:600}` +
-    `.code{font-size:clamp(5.5mm,17vh,12mm);font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
-    qrCss +
-    // Facebook name only: up to 2 lines at the same size instead of one line cut with "…"
-    (fbName ? `.fbname{white-space:normal;text-overflow:clip;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}` : "") +
-    `</style></head><body>` +
-    `<div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>` +
-    `<div class="bar"></div>` +
-    (cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : "") +
-    (cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : "") +
-    (buyer.name ? (fbName ? `<div class="name fbname">${esc(trunc(buyer.name, 60))}</div>` : `<div class="name">${esc(trunc(buyer.name, 30))}</div>`) : "") +
-    (cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : "") +
-    (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
-    (qr ? qr.svg : "") +
-    `</body></html>`;
+  const html = browserStickerHtml({ buyer, cur, storeName, cfg, fbName, at });
   enqueueWebPrint({ id: jobId, html });
   return { ok: true, via: "browser" };
 }

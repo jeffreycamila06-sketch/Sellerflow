@@ -133,7 +133,9 @@ describe("Live print pattern: row hidden, the preview shows Compact", () => {
       const v = view(pp);
       expect(v.queryByTestId("pp-spacing")).toBeNull();
       expect(v.getByTestId("pp-exact-preview")).toBeTruthy();
-      expect(preview.flags.at(-1)).toMatchObject({ printHalfWordGap: true, printSpacing: "compact" });
+      // Nov 3 (item 5): the preview draws THE print bitmap (stickerBitmapFor) — the flags come from the same module
+      // state the print reads, not from a prop
+      expect(spacingFlagsFor(true, effectiveSpacing(pp.spacing, STICKER_SPACING_CHOICE_VISIBLE))).toMatchObject({ printHalfWordGap: true, printSpacing: "compact" });
       v.unmount();
     }
   });

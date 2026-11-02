@@ -174,6 +174,16 @@ doesn't match the guide file.
 - Walang paliwanag kung paano gumagana sa loob (logic, rules, data, admin o technical na detalye).
 - Maikli lang, para walang makuhang idea ang ibang SaaS owner na babasa nito o magtatanong sa help bot.
 
+## 🖨 Printing rule (Nov 3 2026) — every control changes the print, with evidence
+Whenever printing code, printer models (`printerModels.ts`), label sizes, or Settings → Printer / LIVE print
+pattern change, run the **printer-auditor** agent (`.claude/agents/printer-auditor.md`). The permanent guard
+`src/redesign/adapters/__tests__/printControls.matrix.test.ts` must stay green: every size step (1×→2×→3×) and
+every switch must change the printed bitmap on every path (AIMO, generic TSPL, Niimbot) × size × layout v2
+OFF/ON, and the LIVE print pattern preview must BE the print (`printing.stickerBitmapFor`). A control that
+changes nothing is a bug unless it is an explicit, commented allow-list entry there. Rendered evidence
+(`printControls.evidence.test.ts` sheets) is required before calling printing work done. A size that does not
+fit prints at the chosen size and shows the red line under its control — never silently shrinks or ignores it.
+
 ## UI / design rules
 
 ### Mobile-first rule (Jeff, Oct 14 2026)

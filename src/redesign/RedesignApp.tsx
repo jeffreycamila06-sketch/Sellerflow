@@ -112,7 +112,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { sessionKeyFor, shippingSessionKey } from "./adapters/shipping";
 import { setStickerLayoutV2Allowed, stickerV2Allowed, stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, printsStickerViaImage, stickerCompactV2Allowed, setStickerCompactV2 } from "./adapters/printing";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setUpdateAppText, PLUGIN_MISSING, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -886,7 +886,7 @@ export default function RedesignApp() {
   const lockTexts: Partial<Record<LockPlatform, string>> = Object.fromEntries((Object.keys(platformLocks) as LockPlatform[]).map((p) => [p, lockText(p)]));
   // F-batch i18n: localize the native-printer failure alert (printing.ts module
   // fallback — the one string that module generates itself).
-  useEffect(() => { setNativePrintAlertText(tApp.rd_print_native_failed); }, [tApp]);
+  useEffect(() => { setNativePrintAlertText(tApp.rd_print_native_failed); setUpdateAppText(tApp.rd_prn_update_app); }, [tApp]);
   // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
   // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
@@ -994,6 +994,8 @@ export default function RedesignApp() {
       // low battery → the seller's own words, no codes. The order is already saved.
       const nb = niimbotErrorKey(code);
       if (nb) { setToast({ msg: tAppRef.current[nb], kind: "err" }); return true; }
+      // Nov 3 (item 11): a saved generic / Niimbot printer on an app build without that driver → the reason.
+      if (code === PLUGIN_MISSING) { setToast({ msg: message || tAppRef.current.rd_prn_update_app, kind: "err" }); return true; }
       if (!isPrinterNotSetup(code, message)) return false; // other codes keep their legacy path
       // Consume (suppress the legacy alert) but don't nag while they're setting up.
       if (screenRef.current === "printersettings" || screenRef.current === "printpattern") return true;

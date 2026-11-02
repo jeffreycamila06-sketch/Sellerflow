@@ -24,6 +24,11 @@
     {"name": "scaled_name2_num3", "labelWidthMm": 100, "labelHeightMm": 60},
     {"name": "scaled_mixed", "labelWidthMm": 100, "labelHeightMm": 60},
     {"name": "scaled_cjk_name2", "labelWidthMm": 100, "labelHeightMm": 60},
-    {"name": "scaled_max_100x60", "labelWidthMm": 100, "labelHeightMm": 60}
+    {"name": "scaled_max_100x60", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "name_date_off", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "ascii_full_50x30", "labelWidthMm": 50, "labelHeightMm": 30},
+    {"name": "chinese_50x30", "labelWidthMm": 50, "labelHeightMm": 30},
+    {"name": "settings_off_50x30", "labelWidthMm": 50, "labelHeightMm": 30},
+    {"name": "scaled_50x30", "labelWidthMm": 50, "labelHeightMm": 30}
   ]
 }

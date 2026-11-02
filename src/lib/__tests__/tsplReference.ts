@@ -29,6 +29,8 @@ interface RefSettings {
   printBuyerUsername?: boolean;
   printOrderItems?: boolean;
   printTotal?: boolean;
+  printBuyerName?: boolean;   // Nov 3 (item 2): the "TikTok name" switch
+  printDateTime?: boolean;    // Nov 3 (item 2): the "Date & time" switch
   // Per-element size LEVELS (1-8 integer, TSPL multiplier). Absent/1 => base
   // size => byte-identical to the legacy goldens.
   printStoreScale?: number;
@@ -185,17 +187,24 @@ export interface SizeConfig {
   // is its y advance; the layout below shifts by (nameCjkGap - nameGap) only when
   // the name is CJK, so English fixtures stay byte-identical.
   nameCjkXMul: number; nameCjkYMul: number; nameCjkGap: number;
+  // 50x30 (Nov 3): no shop line (showStore=false — "50x30 gets NO shop name"), the date at dateX so MM/DD/YYYY
+  // ends inside the 400-dot label, the BARE buyer number at buyerNumX=16 without the "Buyer" word
+  // (buyerWord=false) so 4 digits fit. Every other size keeps the old literals (true/290/true/280).
+  showStore: boolean; dateX: number; buyerWord: boolean; buyerNumX: number;
 }
 export const STICKER_LAYOUTS: Record<string, SizeConfig> = {
   // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
-  "100x60": { wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, showTotal: true, totalY: 445, totalAmountX: 410, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
-  "80x60":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, showTotal: true, totalY: 395, totalAmountX: 250, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
+  "100x60": { wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, showTotal: true, totalY: 445, totalAmountX: 410, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280 },
+  "80x60":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, showTotal: true, totalY: 395, totalAmountX: 250, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280 },
   // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
-  "80x50":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 250, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
-  "70x50":  { wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 170, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
+  "80x50":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 250, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280 },
+  "70x50":  { wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 170, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280 },
   // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
   // (swapped for @username); order row uses the freed bottom space.
-  "60x40":  { wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6,  sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, showTotal: false, totalY: 0, totalAmountX: 0, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
+  "60x40":  { wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6,  sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, showTotal: false, totalY: 0, totalAmountX: 0, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280 },
+  // 240-dot height tier (30mm), 400 wide (Nov 3, item 10): no shop line, bare buyer number 2x1 at x=16,
+  // name, @username, one order row; date at x=264 so "MM/DD/YYYY" ends at 384. No Total.
+  "50x30":  { wDots: 400, rightEdge: 384, storeGap: 0, buyerNumYMul: 1, buyerNumGap: 40, nameGap: 34, usernameGap: 28, sepGap: 6, sepWidth: 200, orderEntryGuard: 170, orderLoopGuard: 176, showTotal: false, totalY: 0, totalAmountX: 0, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: false, dateX: 264, buyerWord: false, buyerNumX: 16 },
 };
 function stickerConfig(wMm: number, hMm: number): SizeConfig {
   return STICKER_LAYOUTS[`${wMm}x${hMm}`] ?? STICKER_LAYOUTS["100x60"];
@@ -250,6 +259,8 @@ export function buildTsplStickerReference(
   const printBuyerUsername = flag("printBuyerUsername");
   const printOrderItems = flag("printOrderItems");
   const printTotal = flag("printTotal");
+  const printBuyerName = flag("printBuyerName");
+  const printDateTime = flag("printDateTime");
 
   // ── Per-element size scaling (mirrors TsplBuilder.java / Swift) ─────────────
   // Each element has an integer LEVEL 1-8 = the seller's size adjuster. The
@@ -282,8 +293,8 @@ export function buildTsplStickerReference(
   writeAscii("CLS");
 
   writeAscii('TEXT 16,10,"3",0,1,1,"SellerFlowLive"');
-  if (sessionDate) {
-    writeAscii(`TEXT 290,18,"2",0,1,1,"${safe(truncate(sessionDate, 12))}"`);
+  if (sessionDate && printDateTime) {
+    writeAscii(`TEXT ${c.dateX},18,"2",0,1,1,"${safe(truncate(sessionDate, 12))}"`);
   }
   writeAscii(`BAR 0,48,${c.wDots},3`);
 
@@ -319,7 +330,7 @@ export function buildTsplStickerReference(
   // stays 0 (or the legacy CJK delta), keeping every fixture byte-identical.
   let extra = 0;
   let y = 60;
-  if (printStoreName && cleanStoreName) {
+  if (printStoreName && c.showStore && cleanStoreName) {
     const m = cmul(lvlStore);
     writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), m, m, m, m);
     const d = (m - 1) * F3;
@@ -335,8 +346,8 @@ export function buildTsplStickerReference(
   // identical. Mirrors TsplBuilder.java/Swift — keep all three byte-identical.
   if (printBuyerNumber) {
     const ym = cmul(c.buyerNumYMul * lvlBuyerNum);
-    writeAscii(`TEXT 16,${y},"4",0,2,${ym},"Buyer"`);
-    writeAscii(`TEXT 280,${y},"4",0,2,${ym},"${buyerNum}"`);
+    if (c.buyerWord) writeAscii(`TEXT 16,${y},"4",0,2,${ym},"Buyer"`);
+    writeAscii(`TEXT ${c.buyerNumX},${y},"4",0,2,${ym},"${buyerNum}"`);
     const d = (ym - c.buyerNumYMul) * F4;
     y += c.buyerNumGap + d;
     extra += d;
@@ -344,7 +355,7 @@ export function buildTsplStickerReference(
 
   // Buyer name — scaled on both axes (left-aligned, has width budget). CJK
   // renders via TSS24.BF2 (base cjkXMul x cjkYMul); ASCII via font "4" (base 1x1).
-  if (nameOut) {
+  if (nameOut && printBuyerName) {
     const cjkName = nameTier === SCRIPT_CJK;
     const asciiX = cmul(lvlName), asciiY = cmul(lvlName);
     const cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
@@ -371,7 +382,7 @@ export function buildTsplStickerReference(
     const maxOrders = 2;
     for (let i = 0; i < Math.min(orders.length, maxOrders) && y < c.orderLoopGuard + extra; i++) {
       const order = orders[i] ?? {};
-      const time = order.time ?? "";
+      const time = printDateTime ? (order.time ?? "") : ""; // "Date & time" OFF = no row time either
       const item = order.item ?? "";
       const cleanItem = stripEmoji(item);
       const tm = cmul(lvlOrder);

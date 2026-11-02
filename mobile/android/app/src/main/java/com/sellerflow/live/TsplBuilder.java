@@ -48,10 +48,18 @@ class TsplBuilder {
         // (nameCjkGap - nameGap) only when the name is CJK (see forStickerNative),
         // so English fixtures stay byte-identical.
         final int nameCjkXMul, nameCjkYMul, nameCjkGap;
+        // 50x30 (Nov 3): the 400-dot label has no room for a shop line (showStore=false — "50x30 gets NO shop
+        // name"), the date starts at dateX so MM/DD/YYYY ends inside the label, and the buyer line is the
+        // BARE number at buyerNumX=16 without the "Buyer" word (buyerWord=false) so 4 digits fit (16+4x48=208).
+        // Every other size keeps showStore=true, dateX=290, buyerWord=true, buyerNumX=280 = the old literals.
+        final boolean showStore, buyerWord;
+        final int dateX, buyerNumX;
         SizeConfig(int wDots, int rightEdge, int storeGap, int buyerNumYMul, int buyerNumGap,
                    int nameGap, int usernameGap, int sepGap, int sepWidth, int orderEntryGuard,
                    int orderLoopGuard, boolean showTotal, int totalY, int totalAmountX,
-                   int nameCjkXMul, int nameCjkYMul, int nameCjkGap) {
+                   int nameCjkXMul, int nameCjkYMul, int nameCjkGap,
+                   boolean showStore, int dateX, boolean buyerWord, int buyerNumX) {
+            this.showStore=showStore; this.dateX=dateX; this.buyerWord=buyerWord; this.buyerNumX=buyerNumX;
             this.wDots=wDots; this.rightEdge=rightEdge; this.storeGap=storeGap;
             this.buyerNumYMul=buyerNumYMul; this.buyerNumGap=buyerNumGap; this.nameGap=nameGap;
             this.usernameGap=usernameGap; this.sepGap=sepGap; this.sepWidth=sepWidth;
@@ -63,14 +71,17 @@ class TsplBuilder {
     private static final java.util.Map<String, SizeConfig> LAYOUTS = java.util.Map.of(
         // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
         // CJK name 2x2 (48 tall); nameCjkGap 58 -> extra 0 on 100x60 (gap already 58).
-        "100x60", new SizeConfig(800, 784, 55, 2, 110, 58, 58, 10, 520, 390, 400, true, 445, 410, 2, 2, 58),
-        "80x60",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, true, 395, 250, 2, 2, 58),
+        "100x60", new SizeConfig(800, 784, 55, 2, 110, 58, 58, 10, 520, 390, 400, true, 445, 410, 2, 2, 58, true, 290, true, 280),
+        "80x60",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, true, 395, 250, 2, 2, 58, true, 290, true, 280),
         // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
-        "80x50",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, true, 315, 250, 2, 2, 58),
-        "70x50",  new SizeConfig(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, true, 315, 170, 2, 2, 58),
+        "80x50",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, true, 315, 250, 2, 2, 58, true, 290, true, 280),
+        "70x50",  new SizeConfig(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, true, 315, 170, 2, 2, 58, true, 290, true, 280),
         // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
         // (swapped for @username); order row uses the freed bottom space.
-        "60x40",  new SizeConfig(480, 464, 30, 1, 46, 34, 30,  6, 200, 240, 264, false,  0,   0, 2, 2, 58)
+        "60x40",  new SizeConfig(480, 464, 30, 1, 46, 34, 30,  6, 200, 240, 264, false,  0,   0, 2, 2, 58, true, 290, true, 280),
+        // 240-dot height tier (30mm), 400 wide (Nov 3, item 10): no shop line, bare buyer number 2x1 at x=16,
+        // name, @username, one order row; date at x=264 so "MM/DD/YYYY" ends at 384. No Total.
+        "50x30",  new SizeConfig(400, 384,  0, 1, 40, 34, 28,  6, 200, 170, 176, false,  0,   0, 2, 2, 58, false, 264, false, 16)
     );
     private static SizeConfig stickerConfig(int wMm, int hMm) {
         SizeConfig c = LAYOUTS.get(wMm + "x" + hMm);
@@ -186,6 +197,9 @@ class TsplBuilder {
         boolean printBuyerUsername= settings == null || settings.optBoolean("printBuyerUsername", true);
         boolean printOrderItems   = settings == null || settings.optBoolean("printOrderItems", true);
         boolean printTotal        = settings == null || settings.optBoolean("printTotal", true);
+        // Nov 3 (item 2): the LIVE print pattern "TikTok name" and "Date & time" switches reach this path too.
+        boolean printBuyerName    = settings == null || settings.optBoolean("printBuyerName", true);
+        boolean printDateTime     = settings == null || settings.optBoolean("printDateTime", true);
 
         // ── Per-element size scaling (mirrors tsplReference.ts / Swift) ─────────
         // Each element has an integer LEVEL 1-8 = the seller's size adjuster. The
@@ -221,8 +235,8 @@ class TsplBuilder {
         // font-3 brand is ~240 dots wide on every label width). No "Session:"
         // prefix — it overflowed into the brand on every size.
         writeAscii(out, "TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"");
-        if (!sessionDate.isEmpty()) {
-            writeAscii(out, "TEXT 290,18,\"2\",0,1,1,\"" + safe(truncate(sessionDate, 12)) + "\"");
+        if (!sessionDate.isEmpty() && printDateTime) {
+            writeAscii(out, "TEXT " + c.dateX + ",18,\"2\",0,1,1,\"" + safe(truncate(sessionDate, 12)) + "\"");
         }
         writeAscii(out, "BAR 0,48," + c.wDots + ",3");
 
@@ -264,7 +278,7 @@ class TsplBuilder {
         // = 1 it stays 0 (or the legacy CJK delta), keeping fixtures identical.
         int extra = 0;
         int y = 60;
-        if (printStoreName && !cleanStoreName.isEmpty()) {
+        if (printStoreName && c.showStore && !cleanStoreName.isEmpty()) {
             int m = cmul(lvlStore);
             writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), m, m, m, m, c.rightEdge);
             int d = (m - 1) * F3;
@@ -287,8 +301,8 @@ class TsplBuilder {
         // three builders (Java/Swift/TS reference) byte-identical.
         if (printBuyerNumber) {
             int ym = cmul(c.buyerNumYMul * lvlBuyerNum);
-            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + ym + ",\"Buyer\"");
-            writeAscii(out, "TEXT 280," + y + ",\"4\",0,2," + ym + ",\"" + buyerNum + "\"");
+            if (c.buyerWord) writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + ym + ",\"Buyer\"");
+            writeAscii(out, "TEXT " + c.buyerNumX + "," + y + ",\"4\",0,2," + ym + ",\"" + buyerNum + "\"");
             int d = (ym - c.buyerNumYMul) * F4;
             y += c.buyerNumGap + d;
             extra += d;
@@ -298,7 +312,7 @@ class TsplBuilder {
         // When the name is CJK it renders taller (base 2x = 48 vs ASCII 32), so
         // the whole layout BELOW it shifts down by `extra`. ASCII names at level
         // 1 -> extra 0, keeping every English fixture byte-identical.
-        if (!nameOut.isEmpty()) {
+        if (!nameOut.isEmpty() && printBuyerName) {
             boolean cjkName = nameTier == SCRIPT_CJK;
             int asciiX = cmul(lvlName), asciiY = cmul(lvlName);
             int cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
@@ -331,7 +345,7 @@ class TsplBuilder {
             for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < c.orderLoopGuard + extra; i++) {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
-                String time = order.optString("time", "");
+                String time = printDateTime ? order.optString("time", "") : ""; // "Date & time" OFF = no row time either
                 String item = order.optString("item", "");
                 String cleanItem = stripEmoji(item);
                 int tm = cmul(lvlOrder);

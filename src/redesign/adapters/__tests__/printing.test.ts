@@ -19,7 +19,7 @@ function refSticker(buyer: Buyer, cur: string, storeName: string, cfg: Settings)
     return { ...o, time };
   });
   const label = refLabel(cfg.stickerSize);
-  return { storeName, sessionDate, currency: cur, buyer: { ...buyer, orders: localizedOrders }, labelWidthMm: label.w, labelHeightMm: label.h, settings: { printStoreName: cfg.printStoreName, printBuyerNumber: cfg.printBuyerNumber, printBuyerUsername: cfg.printBuyerUsername, printOrderItems: cfg.printOrderItems, printTotal: false, printStoreScale: cfg.printStoreScale, printBuyerNumberScale: cfg.printBuyerNumberScale, printBuyerNameScale: cfg.printBuyerNameScale, printUsernameScale: cfg.printUsernameScale, printOrderScale: cfg.printOrderScale, printCommentScale: cfg.printCommentScale, printTotalScale: cfg.printTotalScale } };
+  return { storeName, sessionDate, currency: cur, buyer: { ...buyer, orders: localizedOrders }, labelWidthMm: label.w, labelHeightMm: label.h, settings: { printStoreName: cfg.printStoreName, printBuyerNumber: cfg.printBuyerNumber, printBuyerUsername: cfg.printBuyerUsername, printOrderItems: cfg.printOrderItems, printTotal: false, printBuyerName: cfg.printBuyerName !== false, printDateTime: cfg.printDateTime !== false, /* Nov 3 item 2: the two switches ride the payload (native builders default them to true) */ printStoreScale: cfg.printStoreScale, printBuyerNumberScale: cfg.printBuyerNumberScale, printBuyerNameScale: cfg.printBuyerNameScale, printUsernameScale: cfg.printUsernameScale, printOrderScale: cfg.printOrderScale, printCommentScale: cfg.printCommentScale, printTotalScale: cfg.printTotalScale } };
 }
 function refSlip(buyer: Buyer, cur: string, storeName: string, cfg: Settings) {
   const sess = new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
@@ -163,12 +163,12 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
     expect(html).not.toContain("@annc");
   });
 
-  it("auto-fits ONE label: one-page overflow-hidden body + vh-clamped fonts (per-field mm multipliers NOT applied on web)", () => {
+  it("auto-fits ONE label: one-page overflow-hidden body + vh-clamped fonts × the per-field size levels (Nov 3, item 7)", () => {
     printSlip(buyer(), "NT$", "Shop", cfg({ printBuyerNumberScale: 2, printBuyerNameScale: 2 }));
     const html = webHtml();
     expect(html).toContain("height:100vh");            // body is exactly one page tall
     expect(html).toContain("overflow:hidden");         // hard guarantee: never a 2nd label
-    expect(html).toMatch(/\.bnum\{font-size:clamp\(/); // vh clamp, not a fixed mm × multiplier
+    expect(html).toMatch(/\.bnum\{font-size:calc\(clamp\(/); // vh clamp, not a fixed mm × multiplier
     expect(html).not.toContain("font-size:18mm");      // the ×2 multiplier is ignored on web
   });
 

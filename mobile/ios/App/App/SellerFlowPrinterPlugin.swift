@@ -91,17 +91,27 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // name shifts by (nameCjkGap - nameGap) only when the name is CJK, so
         // English fixtures stay byte-identical. Mirrors Java SizeConfig.
         let nameCjkXMul, nameCjkYMul, nameCjkGap: Int
+        // 50x30 (Nov 3): no shop line (showStore=false — "50x30 gets NO shop name"), the date at dateX so
+        // MM/DD/YYYY ends inside the 400-dot label, the BARE buyer number at buyerNumX=16 without the "Buyer"
+        // word (buyerWord=false) so 4 digits fit. Every other size keeps the old literals (true/290/true/280).
+        let showStore: Bool
+        let dateX: Int
+        let buyerWord: Bool
+        let buyerNumX: Int
     }
     private static let stickerLayouts: [String: SizeConfig] = [
         // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
-        "100x60": SizeConfig(wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, totalY: 445, totalAmountX: 410, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
-        "80x60":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 250, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
+        "100x60": SizeConfig(wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, totalY: 445, totalAmountX: 410, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280),
+        "80x60":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 250, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280),
         // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
-        "80x50":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 250, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
-        "70x50":  SizeConfig(wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 170, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
+        "80x50":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 250, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280),
+        "70x50":  SizeConfig(wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 170, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280),
         // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
         // (swapped for @username); order row uses the freed bottom space.
-        "60x40":  SizeConfig(wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6, sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, totalY: 0, totalAmountX: 0, showTotal: false, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
+        "60x40":  SizeConfig(wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6, sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, totalY: 0, totalAmountX: 0, showTotal: false, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: true, dateX: 290, buyerWord: true, buyerNumX: 280),
+        // 240-dot height tier (30mm), 400 wide (Nov 3, item 10): no shop line, bare buyer number 2x1 at x=16,
+        // name, @username, one order row; date at x=264 so "MM/DD/YYYY" ends at 384. No Total.
+        "50x30":  SizeConfig(wDots: 400, rightEdge: 384, storeGap: 0, buyerNumYMul: 1, buyerNumGap: 40, nameGap: 34, usernameGap: 28, sepGap: 6, sepWidth: 200, orderEntryGuard: 170, orderLoopGuard: 176, totalY: 0, totalAmountX: 0, showTotal: false, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58, showStore: false, dateX: 264, buyerWord: false, buyerNumX: 16),
     ]
     private func stickerConfig(_ wMm: Int, _ hMm: Int) -> SizeConfig {
         return SellerFlowPrinterPlugin.stickerLayouts["\(wMm)x\(hMm)"]
@@ -659,6 +669,9 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let printBuyerUsername = boolSetting("printBuyerUsername")
         let printOrderItems = boolSetting("printOrderItems")
         let printTotal = boolSetting("printTotal")
+        // Nov 3 (item 2): the LIVE print pattern "TikTok name" and "Date & time" switches reach this path too.
+        let printBuyerName = boolSetting("printBuyerName")
+        let printDateTime = boolSetting("printDateTime")
 
         // ── Per-element size scaling (mirrors tsplReference.ts / TsplBuilder.java)
         // Each element has an integer LEVEL 1-8 = the seller's size adjuster. The
@@ -700,8 +713,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // Header row: brand at left (font 3 so it can't reach the date), the
         // compact MM/DD/YYYY date grouped right after it. No "Session:" prefix.
         writeAscii("TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"")
-        if !sessionDate.isEmpty {
-            writeAscii("TEXT 290,18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
+        if !sessionDate.isEmpty && printDateTime {
+            writeAscii("TEXT \(c.dateX),18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
         }
         writeAscii("BAR 0,48,\(c.wDots),3")
 
@@ -738,7 +751,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // stays 0 (or the legacy CJK delta), keeping fixtures byte-identical.
         var extra = 0
         var y = 60
-        if printStoreName && !cleanStoreName.isEmpty {
+        if printStoreName && c.showStore && !cleanStoreName.isEmpty {
             let m = cmul(lvlStore)
             writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), m, m, m, m, c.rightEdge)
             let d = (m - 1) * F3
@@ -756,8 +769,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // three builders byte-identical.
         if printBuyerNumber {
             let ym = cmul(c.buyerNumYMul * lvlBuyerNum)
-            writeAscii("TEXT 16,\(y),\"4\",0,2,\(ym),\"Buyer\"")
-            writeAscii("TEXT 280,\(y),\"4\",0,2,\(ym),\"\(buyerNum)\"")
+            if c.buyerWord { writeAscii("TEXT 16,\(y),\"4\",0,2,\(ym),\"Buyer\"") }
+            writeAscii("TEXT \(c.buyerNumX),\(y),\"4\",0,2,\(ym),\"\(buyerNum)\"")
             let d = (ym - c.buyerNumYMul) * F4
             y += c.buyerNumGap + d
             extra += d
@@ -766,7 +779,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // Buyer name — scaled on both axes (left-aligned, has width budget). When
         // the name is CJK it renders taller (base 2x = 48 vs ASCII 32) so the
         // layout below shifts down by `extra`. ASCII at level 1 -> byte-identical.
-        if !nameOut.isEmpty {
+        if !nameOut.isEmpty && printBuyerName {
             let cjkName = nameTier == SellerFlowPrinterPlugin.scriptCjk
             let asciiX = cmul(lvlName), asciiY = cmul(lvlName)
             let cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName)
@@ -796,7 +809,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             var i = 0
             while i < min(orders.count, maxOrders) && y < c.orderLoopGuard + extra {
                 let order = orders[i]
-                let time = (order["time"] as? String) ?? ""
+                let time = printDateTime ? ((order["time"] as? String) ?? "") : "" // "Date & time" OFF = no row time either
                 let item = (order["item"] as? String) ?? ""
                 let cleanItem = stripEmoji(item)
                 let tm = cmul(lvlOrder)

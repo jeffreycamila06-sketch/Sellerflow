@@ -60,13 +60,13 @@ describe("(b) source contracts — Java and Swift mirrors carry the same split",
   const swift = readFileSync(join(REPO, "mobile/ios/App/App/SellerFlowPrinterPlugin.swift"), "utf-8");
   it("Java: split present, old TSPL single-command form absent, name fallback untouched", () => {
     expect(java).toContain('",\\"Buyer\\"");');
-    expect(java).toContain('"TEXT 280," + y + ",\\"4\\",0,2," + ym + ",\\"" + buyerNum + "\\"");');
+    expect(java).toContain('"TEXT " + c.buyerNumX + "," + y + ",\\"4\\",0,2," + ym + ",\\"" + buyerNum + "\\"");'); // buyerNumX = 280 on every size but 50x30 (Nov 3)
     expect(java).not.toContain(',\\"Buyer #');            // old TEXT form (comma-quote prefix = inside a TSPL command)
     expect(java).toContain('"Buyer #" + buyerNum;');      // pure-emoji NAME fallback stays (different element)
   });
   it("Swift: split present, old TSPL single-command form absent, ESC/POS slip untouched", () => {
     expect(swift).toContain('writeAscii("TEXT 16,\\(y),\\"4\\",0,2,\\(ym),\\"Buyer\\"")');
-    expect(swift).toContain('writeAscii("TEXT 280,\\(y),\\"4\\",0,2,\\(ym),\\"\\(buyerNum)\\"")');
+    expect(swift).toContain('writeAscii("TEXT \\(c.buyerNumX),\\(y),\\"4\\",0,2,\\(ym),\\"\\(buyerNum)\\"")'); // buyerNumX = 280 on every size but 50x30 (Nov 3)
     expect(swift).not.toContain(',\\"Buyer #');           // old TSPL TEXT form gone
     expect(swift).toContain('text("Buyer #\\(buyerNum)")'); // ESC/POS receipt slip line stays (different printer/format)
   });

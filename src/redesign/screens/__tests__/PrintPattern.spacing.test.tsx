@@ -34,14 +34,27 @@ describe("PrintPattern — sticker spacing", () => {
     expect(v.getByTestId("pp-approx").textContent).toBe("Approximate — Simple print is on, so the layout may differ"); // Build 10b wording
     expect(v.queryByTestId("pp-fit-warning")).toBeNull();
   });
-  it("comment 3× on 60x40: the warning says which scale will print", () => {
+  // Nov 3 (item 14): the warning is RED, sits under the control that causes it, appears on the tap (measured,
+  // no print), says what will happen, and the print still follows the chosen size.
+  it("comment 3× on 60x40: a red line under the Comment control saying what happens", async () => {
     const pp = { ...DEFAULT_PP, commentSize: 3 };
     const v = view({ spacingAllowed: true, imagePath: true, pp, previewSettings: settings(pp) });
-    expect(v.getByTestId("pp-fit-warning").textContent).toContain("it will print at 2×");
+    const line = await v.findByTestId("pp-fit-comment");
+    expect(line.textContent).toMatch(/^Too big — (other lines get pushed off the sticker|the name or comment will be cut on this sticker)\. It still prints at this size\.$/);
+    expect(line.getAttribute("role")).toBe("alert");
+    expect(line.style.color).toBe("var(--danger)");
+    expect(v.queryByTestId("pp-fit-tiktokName")).toBeNull(); // only the control that causes it
+    expect(v.queryByTestId("pp-fit-warning")).toBeNull();    // no second, general box
   });
-  it("name 2× on 70x50: the information note (less of the name or comment fits)", () => {
+  it("name 2× on 70x50: a red line under the TikTok name control (the name pushes the lines below off)", async () => {
     const pp = { ...DEFAULT_PP, tiktokNameSize: 2 };
     const v = view({ spacingAllowed: true, imagePath: true, pp, previewSettings: settings(pp, "70x50mm") });
-    expect(v.getByTestId("pp-fit-warning").textContent).toContain("At these sizes less of the name or comment fits. Long ones will be cut.");
+    expect((await v.findByTestId("pp-fit-tiktokName")).textContent).toContain("Too big — other lines get pushed off the sticker");
+    expect(v.queryByTestId("pp-fit-comment")).toBeNull();
+  });
+  it("without spacing allowed / image path the line still shows (any seller, any printer)", async () => {
+    const pp = { ...DEFAULT_PP, commentSize: 3 };
+    const v = view({ pp, previewSettings: settings(pp), appShell: true });
+    expect(await v.findByTestId("pp-fit-comment")).toBeTruthy();
   });
 });

@@ -25,14 +25,14 @@
 // PrintPattern.honestSteps.test.tsx source contract), so the const governs
 // everything. The false branch is behaviorally tested against the verbatim
 // old formulas. Print output is identical either way (printing.ts quantizes).
-import { Fragment, useState, type CSSProperties } from "react";
-import { printScaleLevel, isStickerQrOn, setStickerQrOn, isStickerQrEntitled, spacingFlagsFor, effectiveSpacing, STICKER_SPACING_CHOICE_VISIBLE, type Settings, type StickerSpacing } from "../adapters/printing";
-import { stickerFit } from "../adapters/stickerFit";
-import type { RasterSettings } from "../adapters/stickerRaster";
-import { stickerQrSupported } from "../adapters/stickerRaster";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
+import { printScaleLevel, isStickerQrOn, setStickerQrOn, effectiveSpacing, STICKER_SPACING_CHOICE_VISIBLE, type Settings, type StickerSpacing } from "../adapters/printing";
+import { stickerFit, type StickerFit, type FitControl } from "../adapters/stickerFit";
+import { savedPrinterPath, stickerCompactV2Effective, type StickerPath } from "../adapters/printing";
+import { stickerQrPrints } from "../adapters/stickerRaster";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { PREVIEW_COMMENT } from "../adapters/stickerPreview";
-import { useT, tpl, type RedesignT } from "../i18n";
+import { useT, type RedesignT } from "../i18n";
 
 // ⚠️ ROLLBACK = flip to false (one-line change, Vercel-only). Do not delete
 // the legacy branches while this switch exists.
@@ -54,6 +54,7 @@ export const DEFAULT_PP: PrintPatternState = { shopName: true, shopNameSize: 1, 
 // fixedSize: the print path has no scale for this element (prints at base
 // size always) → render the "Fixed size" note instead of a lying stepper.
 // Gated: legacy mode shows the old (dead) Date & time stepper again.
+const FIT_OF: Record<PpSizeKey, FitControl> = { shopNameSize: "printStoreScale", dateTimeSize: "printStoreScale" /* fixed size — never looked up */, buyerNumSize: "printBuyerNumberScale", tiktokNameSize: "printBuyerNameScale", tiktokUserSize: "printUsernameScale", commentSize: "printCommentScale" };
 const rowsFor = (t: RedesignT): { key: PpBoolKey; sizeKey: PpSizeKey; label: string; fixedSize?: boolean }[] => [
   { key: "shopName", sizeKey: "shopNameSize", label: t.rd_set_shop_name },
   { key: "dateTime", sizeKey: "dateTimeSize", label: t.rd_pp_date_time, fixedSize: HONEST_SIZE_STEPS },
@@ -99,12 +100,26 @@ const stepBtn: CSSProperties = { width: 28, height: 28, borderRadius: "50%", bor
 export const V2_SAMPLE_LATIN = "ako   si  jeff pa reserve po yung black na dress size M thank you po";
 export const V2_SAMPLE_CJK = "+1 我要這件黑色 size M 2件 pls reserve 老闆娘 thank you so much";
 
+// The async fit of the saved printer's print (null while loading / when not shown).
+function useStickerFit(settings: Settings | null, cur: string, shopName: string, path: StickerPath): StickerFit | null {
+  const [fit, setFit] = useState<{ key: string; fit: StickerFit } | null>(null);
+  const key = settings ? JSON.stringify(settings) : "";
+  useEffect(() => {
+    let live = true;
+    if (!key) return;
+    void stickerFit(JSON.parse(key) as Settings, cur, shopName, path).then((f) => { if (live) setFit({ key, fit: f }); }).catch(() => { if (live) setFit(null); });
+    return () => { live = false; };
+  }, [key, cur, shopName, path]);
+  return key && fit && fit.key === key ? fit.fit : null; // stale / no settings → nothing shown (no setState in the effect)
+}
+
 export default function PrintPattern({
   onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop", layoutV2 = false, onTestPrintSample,
   stickerQrAllowed = false, psSize = "100x60mm (Standard)", appShell = false, previewSettings, cur = "NT$",
-  spacingAllowed = false, onSpacing, imagePath = false, spacingChoiceVisible = STICKER_SPACING_CHOICE_VISIBLE,
+  spacingAllowed = false, onSpacing, imagePath = false, spacingChoiceVisible = STICKER_SPACING_CHOICE_VISIBLE, printerPath,
 }: {
   onBack: () => void;
+  printerPath?: StickerPath; // the saved printer's path (tests); default = this device's saved printer
   pp: PrintPatternState;
   // The seller's real Shop name — the SAME value every print path puts in the slip's
   // center (RedesignApp printShopName). Default = the old sample, for standalone renders.
@@ -135,17 +150,27 @@ export default function PrintPattern({
   const t = useT();
   const ROWS = rowsFor(t);
   const showQrRow = layoutV2 && stickerQrAllowed;
-  const qrSizeBlocked = appShell && /^60x40/.test(psSize);
+  // Nov 3 (item 9): THE ONE QR RULE — the toggle is blocked exactly where the saved printer's layout prints no QR.
+  const sizeWh = psSize.match(/^(\d+)x(\d+)/);
+  const path = printerPath ?? savedPrinterPath();
+  const qrSizeBlocked = appShell && !stickerQrPrints({ path, wMm: Number(sizeWh?.[1] ?? 100), hMm: Number(sizeWh?.[2] ?? 60), compactV2: stickerCompactV2Effective() });
   const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
   const toggleQr = () => { if (qrSizeBlocked) return; const next = !stickerQr; setStickerQrOn(next); setStickerQr(next); };
   // exact preview: QR on, a size that prints a QR (50 mm+ tall), and the @username on (QR follows it)
-  const hMm = Number(psSize.match(/\d+x(\d+)/)?.[1] ?? 60);
-  const showExact = showQrRow && stickerQr && !qrSizeBlocked && stickerQrSupported(hMm) && pp.tiktokUser && !!previewSettings;
+  const showExact = showQrRow && stickerQr && !qrSizeBlocked && pp.tiktokUser && !!previewSettings;
   // Sticker spacing sellers: the image flags exactly as their print builds them.
   const spacing: StickerSpacing = effectiveSpacing(pp.spacing, spacingChoiceVisible); // row hidden → the fixed spacing
-  const imageFlags: RasterSettings = { printStickerQr: stickerQr && isStickerQrEntitled(), ...(layoutV2 ? { printCommentFullWidth: true } : {}), ...spacingFlagsFor(true, spacing) };
   const spacingExact = spacingAllowed && imagePath && !!previewSettings;
-  const fit = spacingExact && previewSettings ? stickerFit(previewSettings, cur, shopName, imageFlags) : null;
+  // Nov 3 (item 8): the warning measures the layout that will PRINT for the saved printer (async — the font-C
+  // atlases load on demand). Nov 3 (item 5): the preview is THE print bitmap (ExactStickerPreview →
+  // stickerBitmapFor), or the browser print page on a laptop.
+  // Nov 3 (item 14): measured on EVERY tap (no print needed), shown in red next to the control it belongs to.
+  const fit = useStickerFit(previewSettings ?? null, cur, shopName, path);
+  const fitOf = (k: PpSizeKey): "push" | "cut" | undefined => fit?.controls[FIT_OF[k]];
+  const fitText = (v: "push" | "cut") => (v === "push" ? t.rd_pp_fit_push : t.rd_pp_fit_cutoff);
+  const anyUp = (["shopNameSize", "buyerNumSize", "tiktokNameSize", "tiktokUserSize", "commentSize"] as PpSizeKey[]).some((k) => printScaleLevel(pp[k]) > 1);
+  const unattributed = !!fit && (fit.overflow || fit.cut) && Object.keys(fit.controls).length === 0 && anyUp; // silent at all-1× (nothing to turn down)
+  const exactBrowser = !appShell && !imagePath; // a laptop prints the browser page; a phone prints the bitmap
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -158,11 +183,11 @@ export default function PrintPattern({
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
           {spacingExact && previewSettings ? (
             <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
-              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} flags={imageFlags} />
+              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={path} browser={exactBrowser} />
             </div>
           ) : !spacingAllowed && showExact && previewSettings ? (
             <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
-              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} />
+              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={path} browser={exactBrowser} />
             </div>
           ) : (
           <div style={{ background: "#fff", borderRadius: 11, padding: "12px 14px", textAlign: "center" }}>
@@ -188,10 +213,9 @@ export default function PrintPattern({
         {spacingAllowed && !spacingExact && (
           <div style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", textAlign: "center" }} data-testid="pp-approx">{t.rd_pp_approx}</div>
         )}
-        {fit && (fit.overflow || fit.commentScale != null || fit.cut) && (
-          <div style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12, lineHeight: 1.45 }} data-testid="pp-fit-warning">
+        {unattributed && fit && (
+          <div style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12, lineHeight: 1.45 }} data-testid="pp-fit-warning">
             {fit.overflow && <div>{t.rd_pp_fit_overflow}</div>}
-            {fit.commentScale != null && <div>{tpl(t.rd_pp_fit_scale, { n: String(fit.commentScale) })}</div>}
             {fit.cut && <div>{t.rd_pp_fit_cut}</div>}
           </div>
         )}
@@ -241,6 +265,9 @@ export default function PrintPattern({
                   </span>
                 </button>
               </div>
+              {!r.fixedSize && fitOf(r.sizeKey) && (
+                <div role="alert" data-testid={`pp-fit-${r.key}`} style={{ padding: "6px 13px 8px", borderBottom: "1px solid var(--border)", background: "var(--danger-soft)", color: "var(--danger)", fontSize: 11.5, fontWeight: 600, lineHeight: 1.35 }}>{fitText(fitOf(r.sizeKey)!)}</div>
+              )}
               {r.key === "tiktokUser" && showQrRow && (
                 <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", borderBottom: "1px solid var(--border)" }} data-testid="pp-sticker-qr-row">
                   <div style={{ flex: 1, minWidth: 0 }}>

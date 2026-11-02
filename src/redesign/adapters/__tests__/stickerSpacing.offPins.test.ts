@@ -40,20 +40,22 @@ export function pinDigest(platform: string, w: number, h: number, extra: RasterS
   }
   return all.digest("hex").slice(0, 24);
 }
-// captured on origin/main 954f599 before any change
+// captured on origin/main 954f599 before any change; SIX re-captured on 2026-11-03 (item 4: the comment
+// keeps its chosen 3× size instead of stepping down, so the scale-3 labels of these six digests changed —
+// every scale-1 / scale-2 label is still byte-identical; the other nine digests did not move)
 const MAIN: Record<string, string> = {
   "TikTok 100x60": "329a215a18d65258976e4e39",
-  "TikTok 80x60": "fbd5d93680aac48424d37ba1",
+  "TikTok 80x60": "38e3bb483438489bcb137b0e",
   "TikTok 80x50": "aea2a8551be4951d1bbdd173",
   "TikTok 70x50": "ba05658f75f9de61d3f5d459",
   "TikTok 60x40": "b8bce2c926cb0db9d2edc56d",
-  "Facebook 100x60": "0781d9d2c5f139240c99e63c",
+  "Facebook 100x60": "955b2ad835f07bed64940fb7",
   "Facebook 80x60": "263197f1a525c601096c8ec9",
-  "Facebook 80x50": "9cc13a13ff6bc9e0897e1f63",
-  "Facebook 70x50": "a2fec4011683841b4b4f2689",
-  "Facebook 60x40": "29f6032cbf1ae6a0abfc6d76",
+  "Facebook 80x50": "c1ca2f3ca93953c8bc8d76b8",
+  "Facebook 70x50": "b91c426f2532a3048a22b656",
+  "Facebook 60x40": "198be78134bc2282065334bd",
   "none 100x60": "ee9cf76d7f77584b7d1ff019",
-  "none 80x60": "57d3a9178a17c75fc4e4f723",
+  "none 80x60": "00665400bc6df55e0ac8d849",
   "none 80x50": "e760bc8d62458f8fa9abb1ca",
   "none 70x50": "4a957a3175bbba4e52b053e4",
   "none 60x40": "4de2600cf76b5ac5924fd39c",

@@ -9,7 +9,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const rasterCalls = vi.hoisted(() => [] as { settings?: Record<string, unknown>; buyer?: { name?: string } }[]);
 vi.mock("../stickerRaster", async (importOriginal) => {
   const m = await importOriginal<typeof import("../stickerRaster")>();
-  return { ...m, rasterizeToSdkBitmapTspl: (...a: Parameters<typeof m.rasterizeToSdkBitmapTspl>) => { rasterCalls.push(a[0] as never); return m.rasterizeToSdkBitmapTspl(...a); } };
+  // Nov 3 (item 5): every bitmap print goes through printing.stickerBitmapFor → renderStickerBitmap (one function
+  // for the AIMO stream, the generic bands, the Niimbot frame and the preview) — capture the payload there.
+  return { ...m, renderStickerBitmap: (...a: Parameters<typeof m.renderStickerBitmap>) => { rasterCalls.push(a[0] as never); return m.renderStickerBitmap(...a); } };
 });
 
 import { fbNameOnly, isFacebookPlatform } from "../fbName";
@@ -332,13 +334,17 @@ describe("web/laptop print", () => {
 
 // ── TikTok byte-identical to main on every print path ───────────────────────
 // sha256 (first 16 hex) captured on origin/main 711bc20, clock pinned to 2026-10-06T04:00Z.
+// Nov 3 re-capture (printer fix): the BITMAP digests are the Oct 6 ones (the phone label is byte-identical);
+// text / lan / slip carry the two new payload switches `printBuyerName` + `printDateTime` (item 2 — the
+// native TEXT builders read them, default true = same bytes on paper); web = the browser print page now
+// applies the size levels (item 7: `font-size: calc(… * lv)`, lv = 1 here).
 const MAIN = {
-  "tt.bitmap.60x40": "9f883b9e6d084b92", "tt.text.60x40": "9d0098f7f201e803", "tt.lan.60x40": "9d0098f7f201e803",
-  "tt.bitmap.100x60": "c075d0d1c03717e5", "tt.text.100x60": "2cbeb8b0ae2b0493", "tt.lan.100x60": "2cbeb8b0ae2b0493",
-  "tt.slip": "f1475d670fae6c07", "tt.web": "978a7b9c9c94435a",
-  "ttSame.bitmap.60x40": "4b90980d555e4239", "ttSame.text.60x40": "01fe8c0cfe96af20", "ttSame.lan.60x40": "01fe8c0cfe96af20",
-  "ttSame.bitmap.100x60": "d029b5c39c6eb89e", "ttSame.text.100x60": "befa95083c11e399", "ttSame.lan.100x60": "befa95083c11e399",
-  "ttSame.slip": "2bf7d480b1459997", "ttSame.web": "3584f16d41138639",
+  "tt.bitmap.60x40": "9f883b9e6d084b92", "tt.text.60x40": "443c78e387d18c45", "tt.lan.60x40": "443c78e387d18c45",
+  "tt.bitmap.100x60": "c075d0d1c03717e5", "tt.text.100x60": "def58cb4df125c3c", "tt.lan.100x60": "def58cb4df125c3c",
+  "tt.slip": "5faf1e403611e828", "tt.web": "0097a504412e6ab0",
+  "ttSame.bitmap.60x40": "4b90980d555e4239", "ttSame.text.60x40": "dfb4c87d75b4833c", "ttSame.lan.60x40": "dfb4c87d75b4833c",
+  "ttSame.bitmap.100x60": "d029b5c39c6eb89e", "ttSame.text.100x60": "18de72914bb4e28c", "ttSame.lan.100x60": "18de72914bb4e28c",
+  "ttSame.slip": "8fbff80e4e22ef4e", "ttSame.web": "116a6e1b3fb2ead3",
 } as const;
 const sha16 = async (s: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 16);
 

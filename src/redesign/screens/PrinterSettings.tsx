@@ -23,6 +23,9 @@ import {
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { savedPrinterPath } from "../adapters/printing";
+import { savedIsNiimbot } from "../adapters/savedPrinter";
+import { stickerQrPrints } from "../adapters/stickerRaster";
 import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
@@ -95,7 +98,10 @@ export default function PrinterSettings({
   // PHONE APP only: sticker QR is excluded on 60×40 (too small to scan fast). On WEB
   // (no native bridge) the browser-print QR follows the seller's own paper/driver
   // settings, so there is no size gate and no 60×40 note there.
-  const qrUnsupportedSize = nativeReady && /^60x40/.test(psSize) && !compactV2; // layout v2 prints the QR on every size
+  // Nov 3 (item 9): THE ONE QR RULE (stickerQrPrints) — the toggle is blocked exactly where the saved printer's
+  // layout prints no QR (today: the AIMO fixed-cell layout on 60×40 with layout v2 OFF).
+  const sizeWh = psSize.match(/^(\d+)x(\d+)/);
+  const qrUnsupportedSize = nativeReady && !stickerQrPrints({ path: savedPrinterPath(), wMm: Number(sizeWh?.[1] ?? 100), hMm: Number(sizeWh?.[2] ?? 60), compactV2 });
   const btReady = hasBtBridge();
   const [status, setStatus] = useState<MobilePrinterResult>({ ok: false, message: nativeReady ? t.rd_ps_tap_find : t.rd_ps_open_app_connect });
   const [host, setHost] = useState("");
@@ -305,7 +311,11 @@ export default function PrinterSettings({
               {!isAppShell() ? (
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11 }}>{t.rd_ps_web_driver_size}</div>
               ) : (<>
-              <button onClick={onTogglePsSize} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+              {savedIsNiimbot() ? (
+                /* Nov 3 (item 3): a Niimbot always prints its 50×30 frame — show that instead of a picker that changes nothing */
+                <div data-testid="ps-size-fixed" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", padding: "13px 14px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11 }}>{t.rd_ps_size_fixed_niimbot}</div>
+              ) : (<>
+              <button onClick={onTogglePsSize} data-testid="ps-size" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{psSize}</span>
                 <span style={{ color: "var(--text-muted)", transition: "transform .2s", transform: psSizeOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
               </button>
@@ -322,6 +332,7 @@ export default function PrinterSettings({
                   })}
                 </div>
               )}
+              </>)}
               </>)}
               {btSaved && (
                 <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>

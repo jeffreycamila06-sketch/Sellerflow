@@ -6,16 +6,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const rasterCalls = vi.hoisted(() => [] as { settings?: Record<string, unknown> }[]);
 vi.mock("../stickerRaster", async (importOriginal) => {
   const m = await importOriginal<typeof import("../stickerRaster")>();
-  return { ...m, rasterizeToSdkBitmapTspl: (...a: Parameters<typeof m.rasterizeToSdkBitmapTspl>) => { rasterCalls.push(a[0] as never); return m.rasterizeToSdkBitmapTspl(...a); } };
+  // Nov 3: the AIMO path renders through stickerBitmapFor → renderStickerBitmap (payload = arg 0), then sdkStreamFromRaster
+  return { ...m, renderStickerBitmap: (...a: Parameters<typeof m.renderStickerBitmap>) => { rasterCalls.push(a[0] as never); return m.renderStickerBitmap(...a); } };
 });
 
-import { stickerDrawOps, lowestOpBottom, STICKER_LAYOUTS, COMPACT_GAPS, V2_BOTTOM_MARGIN, type DrawOp, type RasterPayload, type RasterSettings } from "../stickerRaster";
+import { stickerDrawOps, lowestOpBottom, STICKER_LAYOUTS, COMPACT_GAPS, type DrawOp, type RasterPayload, type RasterSettings } from "../stickerRaster";
 import {
   printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetNativePrintQueue, buildNativeStickerPayload,
   stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, stickerSpacingFlags, spacingFlagsFor, STICKER_SPACING_PUBLIC,
   buildSettingsFromRedesign, type Settings,
 } from "../printing";
 import { stickerFit, FIT_SAMPLE_NAME, FIT_SAMPLE_COMMENT } from "../stickerFit";
+import { setStickerCompactV2 } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 import { setFeatureAccess } from "../featureAccess";
 import { seedEmails } from "./featureSeed";
@@ -119,17 +121,17 @@ describe("R3 — v2 comment with half-letter gaps", () => {
   });
 });
 
-describe("R4 — never a zero-line comment", () => {
+describe("R4 → Nov 3 (item 4): the comment prints at the CHOSEN size — 3× is bigger than 2× on every label", () => {
+  // The old halfGap step-down ("never a zero-line comment") is gone: a raised size that does not fit prints its
+  // first line clipped at the bottom and the LIVE print pattern shows the "doesn't fit" warning (stickerFit).
   for (const [w, h] of SIZES) for (const compact of [false, true]) for (const cs of [1, 2, 3]) {
-    it(`${w}x${h} comment ${cs}× ${compact ? "compact" : "normal"}: at least one line, stepped down only when needed`, () => {
+    it(`${w}x${h} comment ${cs}× ${compact ? "compact" : "normal"}: at least one line, at exactly ${2 * cs}× glyphs`, () => {
       const r = stickerDrawOps(pay({ ...HALF, ...(compact ? COMPACT : {}) }, { cs }), w, h);
       const sep = r.ops.find((o) => o.k === "bar" && o.x === 16)!;
-      let pm = cs;
-      while (pm > 1 && sep.y + STICKER_LAYOUTS[`${w}x${h}`].sepGap + 48 * pm > h * 8 - V2_BOTTOM_MARGIN) pm--;
       const ops = txt(r.ops).filter((o) => o.font === "3" && o.y > sep.y);
       expect(ops.length).toBeGreaterThan(0);
-      expect(new Set(ops.map((o) => o.xm))).toEqual(new Set([2 * pm]));
-      expect(lowestOpBottom(r.ops)).toBeLessThanOrEqual(h * 8);
+      expect(new Set(ops.map((o) => o.xm))).toEqual(new Set([2 * cs]));
+      if (cs === 1) expect(lowestOpBottom(r.ops)).toBeLessThanOrEqual(h * 8); // 1× never overflows (as before)
     });
   }
 });
@@ -243,28 +245,38 @@ describe("Facebook 2-line name never goes past the bottom — Compact", () => {
 // ── the Live print pattern fit warning (layout step only) ─────────────────────
 const PP = { shopName: true, shopNameSize: 1, dateTime: true, dateTimeSize: 1, buyerNum: true, buyerNumSize: 1, tiktokName: true, tiktokNameSize: 1, tiktokUser: true, tiktokUserSize: 1, comment: true, commentSize: 1 };
 const cfgFor = (w: number, h: number, pp: Partial<typeof PP> = {}) => buildSettingsFromRedesign({ pp: { ...PP, ...pp }, psType: "bt", psOut: "sticker", psSize: `${w}x${h}mm` });
-const flags = (compact: boolean): RasterSettings => ({ printStickerQr: false, printCommentFullWidth: true, ...spacingFlagsFor(true, compact ? "compact" : "normal") });
-describe("fit warning", () => {
+describe("fit warning (Nov 3, item 8: measures the layout that prints for the saved printer)", () => {
   it("the fixed sample: a 20-letter three-word name and a 27-character six-word comment", () => {
     expect(FIT_SAMPLE_NAME.split(" ")).toHaveLength(3);
     expect(FIT_SAMPLE_NAME.replace(/ /g, "")).toHaveLength(20);
     expect(FIT_SAMPLE_COMMENT).toHaveLength(27);
     expect(FIT_SAMPLE_COMMENT.split(" ")).toHaveLength(6);
   });
-  it("silent at the default pattern on every size, Normal and Compact", () => {
-    for (const [w, h] of SIZES) for (const compact of [false, true]) {
-      expect(stickerFit(cfgFor(w, h), "NT$", "My Shop", flags(compact)), `${w}x${h} ${compact}`).toEqual({ overflow: false, commentScale: null, cut: false });
-    }
+  it("silent at the default pattern on every size (AIMO, layout v2 off)", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true);
+    for (const [w, h] of SIZES) expect(await stickerFit(cfgFor(w, h), "NT$", "My Shop", "aimo"), `${w}x${h}`).toEqual({ overflow: false, commentScale: null, cut: false, controls: {} });
   });
-  it("comment 3× on 60x40 → says which scale will print", () => {
-    const f = stickerFit(cfgFor(60, 40, { commentSize: 3 }), "NT$", "My Shop", flags(false));
-    expect(f.commentScale).toBe(2);
+  it("comment 3× on 60x40 → overflow (the comment now keeps its size and runs past the bottom), blamed on the Comment control (item 14)", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true);
+    const f = await stickerFit(cfgFor(60, 40, { commentSize: 3 }), "NT$", "My Shop", "aimo");
+    expect(f.overflow).toBe(true);
+    expect(f.controls).toEqual({ printCommentScale: "push" });
   });
-  it("name 2× on 70x50 → fewer name letters than at 1×", () => {
-    expect(stickerFit(cfgFor(70, 50, { tiktokNameSize: 2 }), "NT$", "My Shop", flags(false)).cut).toBe(true);
+  it("name 2× on 70x50 → fewer name letters than at 1× (cut), blamed on the TikTok name control; at 1× nothing is blamed", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true);
+    const f = await stickerFit(cfgFor(70, 50, { tiktokNameSize: 2 }), "NT$", "My Shop", "aimo");
+    expect(f.cut).toBe(true);
+    expect(Object.keys(f.controls)).toEqual(["printBuyerNameScale"]);
+    expect((await stickerFit(cfgFor(70, 50), "NT$", "My Shop", "aimo")).controls).toEqual({});
   });
-  it("past the right edge → overflow (@username 3× on 60x40 is wider than the label)", () => {
-    expect(stickerFit(cfgFor(60, 40, { tiktokUserSize: 3 }), "NT$", "My Shop", flags(false)).overflow).toBe(true);
-    expect(stickerFit(cfgFor(60, 40), "NT$", "My Shop", flags(false)).overflow).toBe(false);
+  it("50×30: the buyer number at 3× runs into the QR column → overflow blamed on the Buyer # control", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true);
+    const f = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
+    expect(f.controls.printBuyerNumberScale).toBeDefined();
+  });
+  it("past the right edge → overflow (@username 3× on 60x40 is wider than the label)", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true);
+    expect((await stickerFit(cfgFor(60, 40, { tiktokUserSize: 3 }), "NT$", "My Shop", "aimo")).overflow).toBe(true);
+    expect((await stickerFit(cfgFor(60, 40), "NT$", "My Shop", "aimo")).overflow).toBe(false);
   });
 });

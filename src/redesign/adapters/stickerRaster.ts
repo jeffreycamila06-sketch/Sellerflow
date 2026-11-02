@@ -257,6 +257,8 @@ export interface RasterSettings {
   // name + v2 comment and never a zero-line comment; "compact" = smaller vertical gaps (R1).
   printHalfWordGap?: boolean; printSpacing?: "compact" | "normal";
   printFacebookName?: boolean; // Facebook buyer: name once, half-letter word gaps, 2nd line when needed — bitmap/extended only, default OFF
+  printBuyerName?: boolean;    // Settings → "TikTok name" (absent = on): the buyer-name line on every path
+  printDateTime?: boolean;     // Settings → "Date & time" (absent = on): the header date / date-time line / order time on every path
   printCompactV2?: boolean; // sticker layout v2 (50×30 / 60×40 font-C: "Buyer 88", name first, date top-right, 3-line comment; 70×50+: shop-name header) — printing.ts stickerCompactV2Allowed, default OFF
 }
 export interface RasterPayload { storeName?: string; sessionDate?: string; currency?: string; buyer?: RasterBuyer; settings?: RasterSettings | null }
@@ -354,6 +356,8 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   const printBuyerUsername = flag("printBuyerUsername");
   const printOrderItems = flag("printOrderItems");
   const printTotal = flag("printTotal");
+  const printBuyerName = flag("printBuyerName"); // "TikTok name" switch (Nov 3) — absent = on, so every golden payload is unchanged
+  const printDateTime = flag("printDateTime");   // "Date & time" switch (Nov 3) — header date, v2 time, order-row time
 
   const F2 = 24, F3 = 24, F4 = 32;
   const cmul = (m: number) => Math.max(1, Math.min(8, m));
@@ -373,16 +377,20 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   // shop name (never "SellerFlowLive") and date + time on the right; the separate shop-name line and the
   // v2 time slot are then not drawn. No shop name → date + time only. Flag absent = today's header.
   const v2hdr = !legacy && settings?.printCompactV2 === true;
+  // v2 header: the shop name takes its OWN size level (Settings → Shop name 1×/2×/3×, Nov 3): the header grows
+  // with it (bar + everything below move down by the extra rows) and the name is cut before the date column.
+  const hdrM = v2hdr ? cmul(lvlStore) : 1;
+  const hdrExtra = (hdrM - 1) * F3;
   if (v2hdr) {
     const shop = stripEmoji(storeName);
-    if (flag("printStoreName") && shop) textSmart(16, 10, "3", safe(truncate(shop, 20)), 1, 1, 1, 1);
-    const when = [sessionDate, orders[0]?.time ?? ""].filter(Boolean).join(" ");
+    if (flag("printStoreName") && shop) textSmart(16, 10, "3", safe(truncate(shop, Math.max(1, Math.min(20, Math.floor((290 - 16) / (16 * hdrM)))))), hdrM, hdrM, hdrM, hdrM);
+    const when = printDateTime ? [sessionDate, orders[0]?.time ?? ""].filter(Boolean).join(" ") : "";
     if (when) ops.push({ k: "txt", x: 290, y: 18, font: "2", s: safe(truncate(when, 16)), xm: 1, ym: 1 });
   } else {
     ops.push({ k: "txt", x: 16, y: 10, font: "3", s: "SellerFlowLive", xm: 1, ym: 1 });
-    if (sessionDate) ops.push({ k: "txt", x: 290, y: 18, font: "2", s: safe(truncate(sessionDate, 12)), xm: 1, ym: 1 });
+    if (sessionDate && printDateTime) ops.push({ k: "txt", x: 290, y: 18, font: "2", s: safe(truncate(sessionDate, 12)), xm: 1, ym: 1 });
   }
-  ops.push({ k: "bar", x: 0, y: 48, w: c.wDots, h: 3 });
+  ops.push({ k: "bar", x: 0, y: 48 + hdrExtra, w: c.wDots, h: 3 });
 
   const cleanStoreName = stripEmoji(storeName);
   const cleanBuyerName = stripEmoji(buyerName);
@@ -401,8 +409,8 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
     else nameOut = "";
   }
 
-  let extra = 0;
-  let y = 60;
+  let extra = hdrExtra;
+  let y = 60 + hdrExtra;
   if (printStoreName && cleanStoreName && !v2hdr) {
     const m = cmul(lvlStore);
     textSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), m, m, m, m);
@@ -419,7 +427,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   // (the line the "@name" used to take; printing.ts already turned that line off). Absent flag →
   // the original single-line branch below, byte-identical.
   const fbName = !legacy && settings?.printFacebookName === true;
-  if (nameOut && fbName) {
+  if (nameOut && fbName) { // rule 4 (Oct 6): the "TikTok name" switch never hides a Facebook buyer's name
     const cjkName = nameTier === SCRIPT_CJK;
     const asciiX = cmul(lvlName), asciiY = cmul(lvlName);
     const cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
@@ -459,7 +467,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
       // the 2nd name line takes the place of the "@name" line it replaces
       if (lineCount > 1) extra += step - c.usernameGap;
     }
-  } else if (nameOut) {
+  } else if (nameOut && printBuyerName) {
     const cjkName = nameTier === SCRIPT_CJK;
     const asciiX = cmul(lvlName), asciiY = cmul(lvlName);
     const cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
@@ -489,7 +497,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   // layout). Absent/false flag → the original branch below runs, byte-identical.
   const layoutV2 = !legacy && settings?.printCommentFullWidth === true && printOrderItems && orders.length === 1;
   if (layoutV2) {
-    layoutV2Order(ops, c, v2hdr ? { ...orders[0], time: undefined } : orders[0], y, extra, labelHeightMm * 8, lvlOrder, lvlComment, qr, narrow, halfGap, // v2 header already shows the time
+    layoutV2Order(ops, c, v2hdr || !printDateTime ? { ...orders[0], time: undefined } : orders[0], y, extra, labelHeightMm * 8, lvlOrder, lvlComment, qr, narrow, halfGap, // v2 header already shows the time; "Date & time" off = no time
       printTotal && totalSpent > 0 && c.showTotal);
   } else if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard + extra) {
     ops.push({ k: "bar", x: 16, y, w: c.sepWidth, h: 2 });
@@ -497,7 +505,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
     const maxOrders = 2;
     for (let i = 0; i < Math.min(orders.length, maxOrders) && y < c.orderLoopGuard + extra; i++) {
       const order = orders[i] ?? {};
-      const time = order.time ?? "";
+      const time = printDateTime ? (order.time ?? "") : ""; // "Date & time" OFF = no row time (price takes the no-time x, as the native builders)
       const item = order.item ?? "";
       const cleanItem = stripEmoji(item);
       const tm = cmul(lvlOrder);
@@ -622,7 +630,7 @@ function layoutV2Order(
 ): void {
   const cmul = (m: number) => Math.max(1, Math.min(8, m));
   const tm = cmul(lvlOrder);
-  let pm = cmul(lvlComment);
+  const pm = cmul(lvlComment);
   const timeStr = order.time ? safe(truncate(order.time, 10)) : "";
   const timeOp: DrawOp | null = timeStr ? { k: "txt", x: V2_TIME_X, y: V2_TIME_Y, font: "2", s: timeStr, xm: tm, ym: tm } : null;
   const timeUp = !!timeOp && opBox(timeOp).x + opBox(timeOp).w <= c.wDots && !ops.some((op) => boxesOverlap(opBox(op), opBox(timeOp)));
@@ -631,8 +639,9 @@ function layoutV2Order(
   const content = narrow(safe(stripEmoji(order.item ?? ""))).replace(/\s+/g, " ").trim();
   ops.push({ k: "bar", x: 16, y: yStart, w: c.sepWidth, h: 2 }); // the separator, exactly as today
   const top = yStart + c.sepGap;
-  // printHalfWordGap: never a zero-line comment — step the comment scale down until one line fits.
-  if (halfGap) while (pm > 1 && yStart + c.sepGap + 48 * pm > hDots - V2_BOTTOM_MARGIN) pm--;
+  // Nov 3 (Jeff): the comment prints at the CHOSEN size — 3× is bigger than 2× on every label. A size that
+  // does not fit is clipped at the bottom and the print pattern shows the "doesn't fit" warning instead
+  // of silently stepping down (the old halfGap step-down is gone; at least one line always prints).
   const m = 2 * pm;                          // both scripts at 2×pm in BOTH directions (normal shape)
   const glyphH = 24 * m;                     // CJK 24-cell and font "3" 24-row cell → 48×pm tall
   const step = glyphH + 6;
@@ -644,6 +653,7 @@ function layoutV2Order(
   const limitX = (y: number) => (qr && y + glyphH > qr.y0 - QR_TEXT_KEEPOUT_GAP ? qr.x0 - QR_TEXT_KEEPOUT_GAP : c.rightEdge);
   let maxLines = 0;
   while (lineY(maxLines) + glyphH <= bottom) maxLines++;
+  if (maxLines === 0 && pm > 1) maxLines = 1; // a RAISED size that overflows: print the first line (clipped) rather than nothing (1× = as before)
   if (timeOp && !timeUp && maxLines > 0) ops.push({ ...timeOp, x: 16, y: top });
   const lines = wrapCommentV2(content, (i) => limitX(lineY(i)) - (i === 0 ? inlineTimeX : 16), maxLines, charW);
   lines.forEach((line, i) => {
@@ -697,34 +707,44 @@ function draw50x30(payload: RasterPayload, mode: ScriptMode, qr: QrPlacement | n
   // one text line at (X, y): Latin/Cyrillic/Vietnamese from the Latin font, CJK from the 24-cell
   // atlas (both 24 dots tall for font "3"). A font-"3" line that does not fit steps down to
   // font "2" (12×20) when that makes it whole; otherwise cut with "…" at the column edge.
-  const line = (y: number, font: "2" | "3", raw: string) => {
+  const line = (y: number, font: "2" | "3", raw: string, lv = 1) => {
     const content = narrow(safe(raw)).replace(/\s+/g, " ").trim();
     if (!content) return;
     const cjk = legacy ? hasNonAscii(content) : hasCjkChar(content);
     if (cjk) {
-      const max = Math.max(1, Math.floor(width / 24));
+      const max = Math.max(1, Math.floor(width / (24 * lv)));
       const chars = [...content];
-      if (chars.length <= max) { ops.push({ k: "cjk", x: X, y, s: content, xm: 1, ym: 1 }); return; }
+      if (chars.length <= max) { ops.push({ k: "cjk", x: X, y, s: content, xm: lv, ym: lv }); return; }
       const keep = Math.max(0, max - 1);
-      if (keep > 0) ops.push({ k: "cjk", x: X, y, s: chars.slice(0, keep).join(""), xm: 1, ym: 1 });
-      ops.push({ k: "txt", x: X + keep * 24, y, font: "3", s: "…", xm: 1, ym: 1 });
+      if (keep > 0) ops.push({ k: "cjk", x: X, y, s: chars.slice(0, keep).join(""), xm: lv, ym: lv });
+      ops.push({ k: "txt", x: X + keep * 24 * lv, y, font: "3", s: "…", xm: lv, ym: lv });
       return;
     }
     const n = [...content].length;
-    const fits = (f: "2" | "3") => n <= Math.floor(width / CELL_OF[f][0]);
+    const fits = (f: "2" | "3") => n <= Math.floor(width / (CELL_OF[f][0] * lv));
     const f: "2" | "3" = font === "3" && !fits("3") && fits("2") ? "2" : font;
-    ops.push({ k: "txt", x: X, y, font: f, s: ellipsize(content, Math.max(1, Math.floor(width / CELL_OF[f][0]))), xm: 1, ym: 1 });
+    ops.push({ k: "txt", x: X, y, font: f, s: ellipsize(content, Math.max(1, Math.floor(width / (CELL_OF[f][0] * lv)))), xm: lv, ym: lv });
   };
 
-  // 1. buyer number — the biggest thing on the label (font "4" at 2×2; 4+ digits narrow to 1×2)
+  // Size levels (Nov 3, Jeff's rule: every control changes the print): each line scales by its own
+  // level (1×/2×/3×, integer magnification) and the lines below move down by the extra height; the
+  // "TikTok name" and "Date & time" switches drop their lines. At every level 1 the positions are exactly
+  // the old fixed ones (6 / 82 / 114 / 148 / 184).
+  const cm = (v: unknown) => Math.max(1, Math.min(8, Number(v) || 1));
+  const lvNum = settings == null ? 1 : cm(settings.printBuyerNumberScale), lvUser = settings == null ? 1 : cm(settings.printUsernameScale);
+  const lvName = settings == null ? 1 : cm(settings.printBuyerNameScale), lvCom = settings == null ? 1 : cm(settings.printCommentScale);
+  let extra = 0;
+  // 1. buyer number — the biggest thing on the label (font "4" at 2×2; 4+ digits narrow to 1×2), × its level
   const num = String(buyer.num ?? buyer.bNum ?? 0);
-  if (flag("printBuyerNumber")) ops.push({ k: "txt", x: X, y: 6, font: "4", s: num, xm: num.length <= 3 ? 2 : 1, ym: 2 });
-
+  if (flag("printBuyerNumber")) {
+    const xm = (num.length <= 3 ? 2 : 1) * lvNum, ym = 2 * lvNum;
+    ops.push({ k: "txt", x: X, y: 6, font: "4", s: num, xm, ym });
+    extra += (ym - 2) * 32;
+  }
   // 2. @username
   const handle = stripEmoji(buyer.handle ?? "");
-  if (flag("printBuyerUsername") && handle) line(82, "3", "@" + handle);
-
-  // 3. buyer name — the same never-tofu fallback as every other size (handle, else "Buyer #N")
+  if (flag("printBuyerUsername") && handle) { line(82 + extra, "3", "@" + handle, lvUser); extra += (lvUser - 1) * 24; }
+  // 3. buyer name — the same never-tofu fallback as every other size (handle, else "Buyer #N"); "TikTok name" switch
   const cleanName = stripEmoji(buyer.name ?? "");
   let nameOut = cleanName;
   if ((buyer.name ?? "") && !cleanName) nameOut = handle ? handle : `Buyer #${num}`;
@@ -733,16 +753,14 @@ function draw50x30(payload: RasterPayload, mode: ScriptMode, qr: QrPlacement | n
     const h = legacy ? transliterateLatin(handle) : handle;
     nameOut = h && classify(h) === SCRIPT_ASCII ? h : "";
   }
-  if (nameOut) line(114, "3", nameOut);
-
+  if (nameOut && (flag("printBuyerName") || settings?.printFacebookName === true)) { line(114 + extra, "3", nameOut, lvName); extra += (lvName - 1) * 24; }
   // 4. the comment (first order), one line
-  if (flag("printOrderItems") && orders.length > 0) line(148, "2", stripEmoji(orders[0]?.item ?? ""));
-
-  // 5. date + time on one line — "MM/DD HH:MM" (the payload's MM/DD/YYYY without the year)
+  if (flag("printOrderItems") && orders.length > 0) { line(148 + extra, "2", stripEmoji(orders[0]?.item ?? ""), lvCom); extra += (lvCom - 1) * 20; }
+  // 5. date + time on one line — "MM/DD HH:MM" (the payload's MM/DD/YYYY without the year); "Date & time" switch
   const date = String(payload.sessionDate ?? "").replace(/^(\d{2}\/\d{2})\/\d{4}$/, "$1");
   const time = orders[0]?.time ?? "";
   const when = [date, time].filter(Boolean).join(" ");
-  if (when) line(184, "2", when);
+  if (when && flag("printDateTime")) line(184 + extra, "2", when, 1);
 
   return { ops, wDots: W50, hDots: H50, wMm: 50, hMm: 30 };
 }
@@ -773,7 +791,8 @@ export function emitTextTspl(payload: RasterPayload, wMm: number, hMm: number, g
 // ── 1-bit raster buffer ─────────────────────────────────────────────────────
 class Bitmap {
   readonly w: number; readonly h: number; readonly rowBytes: number; readonly buf: Uint8Array;
-  constructor(w: number, h: number) { this.w = w; this.h = h; this.rowBytes = (w + 7) >> 3; this.buf = new Uint8Array(this.rowBytes * h); }
+  constructor(w: number, h: number, buf?: Uint8Array) { this.w = w; this.h = h; this.rowBytes = (w + 7) >> 3; this.buf = buf ?? new Uint8Array(this.rowBytes * h); }
+  static from(r: FullRaster): Bitmap { return new Bitmap(r.w, r.h, r.buf); }
   private set(x: number, y: number) { if (x < 0 || y < 0 || x >= this.w || y >= this.h) return; this.buf[y * this.rowBytes + (x >> 3)] |= 0x80 >> (x & 7); }
   private clr(x: number, y: number) { if (x < 0 || y < 0 || x >= this.w || y >= this.h) return; this.buf[y * this.rowBytes + (x >> 3)] &= ~(0x80 >> (x & 7)); }
   private get1(x: number, y: number): boolean { return (this.buf[y * this.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0; }
@@ -941,8 +960,19 @@ export const QR_QUIET_MODULES = 4;
 export const QR_EDGE_MARGIN_DOTS = 8;
 export const QR_TEXT_KEEPOUT_GAP = 8; // horizontal buffer between wrapped comment text and the QR block
 export const MAX_COMMENT_LINES = 4;   // hard cap on the wrapped order-comment (then ellipsise)
-// 60×40 (the only ≤40 mm-tall label) prints no QR at all — every larger size gets one.
+// 60×40 (the only ≤40 mm-tall label) prints no QR on the FIXED-CELL layout — every larger size gets one.
 export function stickerQrSupported(hMm: number): boolean { return hMm > 40; }
+// THE ONE QR RULE (Nov 3, item 9) — shared by the Settings toggles and the print: the QR prints wherever
+// the layout that will draw has a place for it. The font-C compact layout (generic printers / Niimbot on
+// 50×30 / 60×40, and the AIMO with layout v2 ON) always has one; the fixed-cell layout has one on every
+// size but 60×40; the 50×30 fixed layout has one. So the only "no" is the AIMO on 60×40 with v2 OFF.
+export type StickerPath = "aimo" | "generic" | "niimbot";
+export function stickerQrPrints(a: { path: StickerPath; wMm: number; hMm: number; compactV2: boolean }): boolean {
+  if (a.path === "niimbot") return true;                                   // always the 50×30 compact layout
+  const compactLayout = isPropCompactSize(a.wMm, a.hMm) && (a.path === "generic" || a.compactV2);
+  if (compactLayout) return true;
+  return stickerQrSupported(a.hMm) || (a.wMm === 50 && a.hMm === 30);
+}
 
 // The QR block placement for this label, or null when no QR will print. SINGLE SOURCE
 // for both the layout keep-out (stickerDrawOps wraps the comment before x0) and the
@@ -988,19 +1018,29 @@ function stampHandleQr(bmp: Bitmap, qr: QrPlacement | null): void {
 
 // PRODUCTION path: payload → 1-bit raster → vertical ink-band crop → full-width
 // x=0 BITMAP blocks → TSPL. See BandOptions for why full-width is the default.
-export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
+// The ONE raster a job prints (Nov 3, item 5): the same picture the preview shows. bold = the per-model
+// 1-dot dilation BEFORE the QR is stamped (the QR grid stays exact). Fixed-cell or font-C like renderStickerBitmap.
+export function renderStickerBitmapForJob(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, bold = false): FullRaster {
   const cfg = stickerConfig(wMm, hMm);
   let bmp: Bitmap;
   if (atlases.proportional && isPropCompactSize(wMm, hMm)) {
-    bmp = renderPropCompact(payload, wMm, hMm, atlases, undefined, !!opts.bold); // font C, image paths only (== renderStickerBitmap)
+    bmp = renderPropCompact(payload, wMm, hMm, atlases, undefined, bold); // font C, image paths only (== renderStickerBitmap)
   } else {
     const qr = stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm); // this path is always extended/production
     const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr, !!atlases.cyrillic);
     bmp = new Bitmap(wDots, hDots);
     paint(bmp, ops, atlases);
-    if (opts.bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
+    if (bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
     stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
   }
+  return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
+}
+export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
+  return bandTsplFromRaster(renderStickerBitmapForJob(payload, wMm, hMm, atlases, !!opts.bold), wMm, hMm, opts);
+}
+// Mode-0 full-width BITMAP bands from a finished raster (the generic TSPL printers).
+export function bandTsplFromRaster(full: FullRaster, wMm: number, hMm: number, opts: BandOptions = {}): BitmapTsplResult {
+  const bmp = Bitmap.from(full);
   const wDots = bmp.w, hDots = bmp.h;
 
   const out: number[] = [];
@@ -1146,7 +1186,10 @@ export function buildSdkBitmapStream(printerRaster: Uint8Array, rowBytes: number
 // compositor is the doubling + 4s-done culprit on fw V1.1.7; Labelife uses THIS
 // path and is clean + fast on both boards).
 export function rasterizeToSdkBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): BitmapTsplResult {
-  const full = renderStickerBitmap(payload, wMm, hMm, atlases);
+  return sdkStreamFromRaster(renderStickerBitmap(payload, wMm, hMm, atlases), wMm, hMm);
+}
+// The D520BT SDK image stream from a finished raster (the same raster the preview shows).
+export function sdkStreamFromRaster(full: FullRaster, wMm: number, hMm: number): BitmapTsplResult {
   // 180° app-side (field fix): DIRECTION 0,0 feeds out inverted vs the old
   // TEXT stickers — rotate the whole label so the output matches the TEXT
   // path's orientation exactly. Full-label rotation (no cropping on this path).
@@ -1211,6 +1254,21 @@ export function propSizes(wMm: number, qr: boolean): PropSizes {
 }
 /** The sizes a shrinkable line tries, biggest first: its normal size, then every step below it. */
 export const propShrinkLadder = (base: number): number[] => [base, ...PROP_SHRINK_STEPS.filter((s) => s < base)];
+// Size levels (Nov 3): the atlas sizes, smallest first. Level 2 / 3 of a line = the next / second-next atlas
+// size above its base (24 → 32 → 46 on 60×40, 20 → 24 → 32 on 50×30); the buyer number keeps its bold face
+// and is magnified 2× / 3× instead (no bigger atlas). The shrink ladder below a raised size walks the same
+// list down, so shrink-before-cut keeps working from the chosen size.
+export const PROP_ATLAS_SIZES = [18, 20, 24, 32, 46, 64];
+export function propLevelSize(base: number, level: number): number {
+  const i = PROP_ATLAS_SIZES.indexOf(base);
+  if (i < 0) return base;
+  return PROP_ATLAS_SIZES[Math.min(PROP_ATLAS_SIZES.length - 1, i + Math.max(0, Math.min(8, Math.round(level)) - 1))];
+}
+// A LEVELED size (2× / 3× — anything above the 24-dot base) prints at exactly that size and is cut with "…"
+// when it does not fit (the LIVE print pattern shows the red line, item 14): shrinking it back down would make
+// 3× print like 2× — the control would be ignored (Jeff's rule). Only the 1× base keeps today's shrink-before-cut.
+export const propLadderFrom = (size: number): number[] => [size];
+export const settingLevel = (v: unknown): number => Math.max(1, Math.min(8, Number(v) || 1));
 
 // The label-tall right-side QR of the proportional layout (same gates as stickerQrPlacement).
 export function propQrPlacement(payload: RasterPayload, wDots: number, hDots: number, edge: number): QrPlacement | null {
@@ -1283,9 +1341,10 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
 }
 
 /** A shrinkable line: the first ladder size that fits whole, else the smallest (cut). */
-export function propFitShrinking(text: string, base: number, maxW: number, atlases: RasterAtlases): { size: number; line: PropLine } | null {
+// `normal` = the label's 1× line size: a line ABOVE it is a leveled size (2× / 3×) and never shrinks.
+export function propFitShrinking(text: string, base: number, maxW: number, atlases: RasterAtlases, normal = 24): { size: number; line: PropLine } | null {
   let last: { size: number; line: PropLine } | null = null;
-  for (const size of propShrinkLadder(base)) {
+  for (const size of (base > normal ? propLadderFrom(base) : propShrinkLadder(base))) {
     if (!atlases.proportional?.[String(size)]) continue;
     last = { size, line: propFitLine(text, size, maxW, atlases) };
     if (!last.line.cut) return last;
@@ -1293,7 +1352,7 @@ export function propFitShrinking(text: string, base: number, maxW: number, atlas
   return last;
 }
 
-interface PropLaidLine { size: number; font: PropFont; line: PropLine }
+interface PropLaidLine { size: number; font: PropFont; line: PropLine; scale?: number }
 /** All the label's lines with their final sizes (PURE; CJK atlases not needed). */
 export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas): { lines: PropLaidLine[]; qr: QrPlacement | null; x: number; w: number; h: number } {
   const W = canvas?.w ?? stickerConfig(wMm, hMm).wDots, H = canvas?.h ?? hMm * 8;
@@ -1313,30 +1372,37 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
   const maxW = Math.max(1, right - X);
   if (!prop) return { lines: [], qr, x: X, w: W, h: H };
 
-  // the lines, top → bottom (empties and switched-off fields drop out; spacing re-flows)
-  const spec: { text: string; size: number; shrink: boolean }[] = [];
+  // the lines, top → bottom (empties and switched-off fields drop out; spacing re-flows). Size levels
+  // (Nov 3): each line's base size is raised by its Settings level (propLevelSize); the number is magnified.
+  const lv = (k: keyof RasterSettings) => (settings == null ? 1 : settingLevel(settings[k]));
+  const spec: { text: string; size: number; shrink: boolean; scale?: number }[] = [];
   const num = String(buyer.num ?? buyer.bNum ?? 0);
-  if (flag("printBuyerNumber")) spec.push({ text: num, size: sizes.num, shrink: false });
+  if (flag("printBuyerNumber")) spec.push({ text: num, size: sizes.num, shrink: false, scale: lv("printBuyerNumberScale") });
   const handle = stripEmoji(buyer.handle ?? "");
-  if (flag("printBuyerUsername") && handle) spec.push({ text: "@" + handle, size: sizes.line, shrink: true });
+  if (flag("printBuyerUsername") && handle) spec.push({ text: "@" + handle, size: propLevelSize(sizes.line, lv("printUsernameScale")), shrink: true });
   const cleanName = stripEmoji(buyer.name ?? "");
   let nameOut = cleanName;
   if ((buyer.name ?? "") && !cleanName) nameOut = handle ? handle : `Buyer #${num}`;
   if (nameOut && classifyScriptExt(nameOut, true) === SCRIPT_UNSUPPORTED) nameOut = handle && classifyScriptExt(handle, true) === SCRIPT_ASCII ? handle : "";
-  if (nameOut) spec.push({ text: nameOut, size: sizes.line, shrink: true });
-  if (flag("printOrderItems") && orders.length > 0) { const c = stripEmoji(orders[0]?.item ?? ""); if (c.trim()) spec.push({ text: c, size: sizes.line, shrink: true }); }
+  if (nameOut && (flag("printBuyerName") || settings?.printFacebookName === true)) spec.push({ text: nameOut, size: propLevelSize(sizes.line, lv("printBuyerNameScale")), shrink: true });
+  if (flag("printOrderItems") && orders.length > 0) { const c = stripEmoji(orders[0]?.item ?? ""); if (c.trim()) spec.push({ text: c, size: propLevelSize(sizes.line, lv("printCommentScale")), shrink: true }); }
   const date = String(payload.sessionDate ?? "").replace(/^(\d{2}\/\d{2})\/\d{4}$/, "$1");
   const time = orders[0]?.time ?? "";
   const when = [date, time].filter(Boolean).join(" ");
-  if (when) spec.push({ text: when, size: sizes.time, shrink: false });
+  if (when && flag("printDateTime")) spec.push({ text: when, size: sizes.time, shrink: false });
 
   const lines: PropLaidLine[] = [];
   for (const l of spec) {
     const t = narrow(l.text);
     if (!t) continue;
-    const fit = l.shrink ? propFitShrinking(t, l.size, maxW, atlases) : (prop[String(l.size)] ? { size: l.size, line: propFitLine(t, l.size, maxW, atlases) } : null);
+    const sc = l.scale ?? 1;
+    // the buyer number (the `scale` entry) is NEVER cut to "…": at a size that does not fit it runs into the QR
+    // column / off the edge and the LIVE print pattern shows the red line (item 14) — a sorting team must never
+    // get "…" for a buyer number
+    const numW = l.scale != null ? W - X : maxW;
+    const fit = l.shrink ? propFitShrinking(t, l.size, maxW, atlases, sizes.line) : (prop[String(l.size)] ? { size: l.size, line: propFitLine(t, l.size, Math.max(1, Math.floor(numW / sc)), atlases) } : null);
     if (!fit || !fit.line.text) continue;
-    lines.push({ size: fit.size, font: prop[String(fit.size)], line: fit.line });
+    lines.push({ size: fit.size, font: prop[String(fit.size)], line: fit.line, ...(sc > 1 ? { scale: sc } : {}) });
   }
   return { lines, qr, x: X, w: W, h: H };
 }
@@ -1374,15 +1440,15 @@ export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: numb
   if (payload.settings?.printCompactV2) { // layout v2 (flag OFF = the lines below, byte-identical)
     const v2 = propLayoutLinesV2(payload, wMm, hMm, atlases, canvas, v2opts);
     const b = new Bitmap(v2.w, v2.h);
-    for (const l of v2.lines) for (const it of l.line.items) { const g = propGlyphBox(it, l.size, l.x, l.top, l.font, atlases); if (g) { b.blit(g.cell, g.w, g.h, g.x, g.y, 1, 1); if (l.bold) b.blit(g.cell, g.w, g.h, g.x + 1, g.y, 1, 1); } } // bold = the glyph again 1 dot right (no bold face below the number sizes)
+    for (const l of v2.lines) { const sc = l.scale ?? 1; for (const it of l.line.items) { const g = propGlyphBox(it, l.size, 0, 0, l.font, atlases); if (g) { b.blit(g.cell, g.w, g.h, l.x + g.x * sc, l.top + g.y * sc, sc, sc); if (l.bold) b.blit(g.cell, g.w, g.h, l.x + g.x * sc + 1, l.top + g.y * sc, sc, sc); } } } // bold = the glyph again 1 dot right (no bold face below the number sizes); scale = the magnified buyer number
     if (bold) boldenRaster(b.buf, b.w, b.h, b.rowBytes);
     stampHandleQr(b, v2.qr);
     return b;
   }
   const { lines, qr, x, w, h } = propLayoutLines(payload, wMm, hMm, atlases, canvas);
   const bmp = new Bitmap(w, h);
-  const tops = propLineTops(lines, h);
-  lines.forEach((l, i) => { for (const it of l.line.items) { const b = propGlyphBox(it, l.size, x, tops[i], l.font, atlases); if (b) bmp.blit(b.cell, b.w, b.h, b.x, b.y, 1, 1); } });
+  const tops = propLineTops(lines.map((l) => ({ font: { h: l.font.h * (l.scale ?? 1) } as PropFont })), h);
+  lines.forEach((l, i) => { const sc = l.scale ?? 1; for (const it of l.line.items) { const b = propGlyphBox(it, l.size, 0, 0, l.font, atlases); if (b) bmp.blit(b.cell, b.w, b.h, x + b.x * sc, tops[i] + b.y * sc, sc, sc); } });
   if (bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
   stampHandleQr(bmp, qr);
   return bmp;
@@ -1407,7 +1473,7 @@ export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: numb
 export const COMPACT_V2_MAX_COMMENT_LINES = 3;
 export const COMPACT_V2_GAP = 4;   // min white: date band ↔ QR block, rows of the stack, "Buyer" ↔ number
 export const COMPACT_V2_DATE_TOP = 6;
-export interface PropLaidLineV2 { size: number; font: PropFont; line: PropLine; x: number; top: number; bold?: boolean }
+export interface PropLaidLineV2 { size: number; font: PropFont; line: PropLine; x: number; top: number; bold?: boolean; scale?: number }
 
 /** Greedy word wrap at ONE size: tokens are spaces, single ideographs (break anywhere) and
  *  words; every line but the last holds only tokens that fit whole, the last is cut with "…"
@@ -1460,9 +1526,10 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   if (!prop) return { lines: [], qr, w: W, h: H };
   const X = edge;
 
-  // date + time, top-right
+  const lv = (k: keyof RasterSettings) => (settings == null ? 1 : settingLevel(settings[k])); // size levels (Nov 3)
+  // date + time, top-right ("Date & time" switch)
   const date = String(payload.sessionDate ?? "").replace(/^(\d{2}\/\d{2})\/\d{4}$/, "$1");
-  const when = narrow([date, orders[0]?.time ?? ""].filter(Boolean).join(" "));
+  const when = flag("printDateTime") ? narrow([date, orders[0]?.time ?? ""].filter(Boolean).join(" ")) : "";
   const timeFont = prop[String(sizes.time)];
   let dateLine: PropLaidLineV2 | null = null;
   if (when && timeFont) {
@@ -1473,7 +1540,7 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   const maxW = Math.max(1, right - X);
 
   // the left stack: rows of one or two parts (the buyer row = "Buyer" + number; the shop row = shop name + date)
-  interface Row { h: number; parts: { size: number; font: PropFont; line: PropLine; dx: number; dy: number; bold?: boolean }[] }
+  interface Row { h: number; parts: { size: number; font: PropFont; line: PropLine; dx: number; dy: number; bold?: boolean; scale?: number }[] }
   const rows: Row[] = [];
   // SHOP NAME (Settings → "Shop name" ON, the same name as the big sizes): the top row, left, BOLD, on the
   // date's line. One step larger than the date when it fits whole, else the date's size, cut with "…"
@@ -1486,8 +1553,11 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
     // label is too short for a QR under a top row: then the line stops at the text column like every row.
     const qrFitsBelow = !qr || qr.foot + prop[String(sizes.line)].h + COMPACT_V2_DATE_TOP + 2 * COMPACT_V2_GAP <= H;
     const shopMaxW = Math.max(1, (qrFitsBelow ? dateLine.x - 2 * COMPACT_V2_GAP : Math.min(dateLine.x - 2 * COMPACT_V2_GAP, right)) - X);
-    const big = propFitLine(shopText, sizes.line, shopMaxW, atlases);
-    const pick = !big.cut ? { size: sizes.line, line: big } : { size: sizes.time, line: propFitLine(shopText, sizes.time, shopMaxW, atlases) };
+    // its own size level: 1× = one step above the date when it fits, else the date's size; 2× / 3× = the
+    // next atlas sizes above that (cut with "…" when they do not fit — the control is never ignored)
+    const shopLv = lv("printStoreScale");
+    const big = propFitLine(shopText, propLevelSize(sizes.line, shopLv), shopMaxW, atlases);
+    const pick = shopLv > 1 || !big.cut ? { size: propLevelSize(sizes.line, shopLv), line: big } : { size: sizes.time, line: propFitLine(shopText, sizes.time, shopMaxW, atlases) };
     const sf = prop[String(pick.size)];
     if (sf && pick.line.text) {
       const dy = Math.max(0, sf.base - dateLine.font.base);
@@ -1501,23 +1571,25 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   const num = String(buyer.num ?? buyer.bNum ?? 0);
   const numFont = prop[String(sizes.num)], lineFont = prop[String(sizes.line)];
   if (flag("printBuyerNumber") && numFont) {
+    const sc = lv("printBuyerNumberScale"); // the number keeps its bold face, magnified 2× / 3×
     const buyerMaxW = Math.max(1, Math.min(maxW, (dateLine && !dateInShop ? dateLine.x - 2 * COMPACT_V2_GAP : W) - X)); // the date shares the buyer line only without a shop row
-    const n = propFitLine(num, sizes.num, buyerMaxW, atlases);
-    const parts: Row["parts"] = [{ size: sizes.num, font: numFont, line: n, dx: 0, dy: 0 }];
+    // never cut the number to "…" (see propLayoutLines): the whole number at the chosen scale, clipped at the edge
+    const n = propFitLine(num, sizes.num, Math.max(1, Math.floor((W - X) / sc)), atlases);
+    const parts: Row["parts"] = [{ size: sizes.num, font: numFont, line: n, dx: 0, dy: 0, ...(sc > 1 ? { scale: sc } : {}) }];
     if (lineFont) {
       const word = propFitLine("Buyer", sizes.line, buyerMaxW, atlases);
       const dx = word.width + COMPACT_V2_GAP;
-      if (!word.cut && dx + n.inkWidth + PROP_INK_MARGIN <= buyerMaxW) {
+      if (!word.cut && dx + n.inkWidth * sc + PROP_INK_MARGIN <= buyerMaxW) {
         parts[0].dx = dx;
-        parts.unshift({ size: sizes.line, font: lineFont, line: word, dx: 0, dy: numFont.base - lineFont.base }); // baselines aligned
+        parts.unshift({ size: sizes.line, font: lineFont, line: word, dx: 0, dy: numFont.base * sc - lineFont.base }); // baselines aligned
       }
     }
-    rows.push({ h: numFont.h, parts });
+    rows.push({ h: numFont.h * sc, parts });
   }
-  const shrinkRow = (text: string) => {
+  const shrinkRow = (text: string, base = sizes.line) => {
     const t = narrow(text);
     if (!t) return;
-    const fit = propFitShrinking(t, sizes.line, maxW, atlases);
+    const fit = propFitShrinking(t, base, maxW, atlases, sizes.line);
     if (fit && fit.line.text) rows.push({ h: prop[String(fit.size)].h, parts: [{ size: fit.size, font: prop[String(fit.size)], line: fit.line, dx: 0, dy: 0 }] });
   };
   const handle = stripEmoji(buyer.handle ?? "");
@@ -1528,12 +1600,12 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   // WRAP FIRST (Jeff, Oct 31): the normal line size with up to `maxLines` lines; only when those still
   // cut, the next ladder size; at the smallest size the last line is cut with "…". The line count is
   // limited by the height left (`reserveH` = room kept for the rows that follow, e.g. one comment line).
-  const wrapFirst = (text: string, maxLines: number, reserveH: number) => {
+  const wrapFirst = (text: string, maxLines: number, reserveH: number, base = sizes.line) => {
     const otherH = rows.reduce((a, r) => a + r.h, 0) + reserveH;
     const nOther = rows.length + (reserveH > 0 ? 1 : 0);
     const roomFor = (h: number) => Math.floor((H - otherH - COMPACT_V2_GAP * (nOther + 1)) / (h + COMPACT_V2_GAP));
     let last: { size: number; lines: PropLine[] } | null = null;
-    for (const size of propShrinkLadder(sizes.line)) {
+    for (const size of (base > sizes.line ? propLadderFrom(base) : propShrinkLadder(base))) {
       const f = prop[String(size)]; if (!f) continue;
       last = { size, lines: propWrapLines(text, size, maxW, atlases, Math.max(1, Math.min(maxLines, roomFor(f.h)))) };
       if (!last.lines.some((l) => l.cut)) break;
@@ -1544,12 +1616,13 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   const smallestH = prop[String(propShrinkLadder(sizes.line).slice(-1)[0])]?.h ?? 0;
   // v2: the NAME first, then the @username (swapped vs today). A Facebook name may take 2 lines (wrap
   // first), keeping room for one comment line; every other name shrinks on one line as today.
-  if (nameOut) { if (settings?.printFacebookName === true) wrapFirst(narrow(nameOut), 2, comment ? smallestH : 0); else shrinkRow(nameOut); }
-  if (flag("printBuyerUsername") && handle) shrinkRow("@" + handle);
-  if (comment) wrapFirst(comment, COMPACT_V2_MAX_COMMENT_LINES, 0);
+  const nameSize = propLevelSize(sizes.line, lv("printBuyerNameScale")), userSize = propLevelSize(sizes.line, lv("printUsernameScale")), commentSize = propLevelSize(sizes.line, lv("printCommentScale"));
+  if (nameOut && (flag("printBuyerName") || settings?.printFacebookName === true)) { if (settings?.printFacebookName === true) wrapFirst(narrow(nameOut), 2, comment ? smallestH : 0, nameSize); else shrinkRow(nameOut, nameSize); }
+  if (flag("printBuyerUsername") && handle) shrinkRow("@" + handle, userSize);
+  if (comment) wrapFirst(comment, COMPACT_V2_MAX_COMMENT_LINES, 0, commentSize);
   const tops = propLineTops(rows.map((r) => ({ font: { h: r.h } as PropFont })), H);
   const lines: PropLaidLineV2[] = [];
-  rows.forEach((r, i) => { for (const p of r.parts) lines.push({ size: p.size, font: p.font, line: p.line, x: X + p.dx, top: tops[i] + p.dy, ...(p.bold ? { bold: true } : {}) }); });
+  rows.forEach((r, i) => { for (const p of r.parts) lines.push({ size: p.size, font: p.font, line: p.line, x: X + p.dx, top: tops[i] + p.dy, ...(p.bold ? { bold: true } : {}), ...(p.scale && p.scale > 1 ? { scale: p.scale } : {}) }); });
   if (dateLine && !dateInShop) lines.push(dateLine);
   // the QR moves down below the date band (its own band, or the shop row) when it still fits
   if (qr && dateLine) {

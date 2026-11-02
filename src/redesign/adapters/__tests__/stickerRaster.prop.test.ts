@@ -207,12 +207,12 @@ describe("opt-in: the fixed-cell layout and the D520BT stream are untouched", ()
   });
   it("the D520BT SDK stream passes latin + cjk only — never cyrillic, proportional or cjkBold (source pin; the compact-v2 PREVIEW flag, OFF, is the one gated exception)", () => {
     const src = readFileSync(join(process.cwd(), "src/redesign/adapters/printing.ts"), "utf8");
-    const sdk = src.split("\n").filter((l) => l.includes("rasterizeToSdkBitmapTspl("));
+    // Nov 3 (item 5): the D520BT stream is built from stickerBitmapFor's AIMO branch — latin + cjk, with the
+    // layout-v2 compact sizes as the one gated exception (compactV2Atlases).
+    const sdk = src.split("\n").filter((l) => l.includes("compactV2Atlases ?? { latin: LATIN_ATLAS, cjk }"));
     expect(sdk.length).toBeGreaterThan(0);
-    for (const l of sdk) {
-      expect(l).toContain("{ latin: LATIN_ATLAS, cjk }");
-      expect(l).not.toMatch(/cyrillic|proportional|cjkReg|cjkBold|imagePathAtlases/);
-    }
+    for (const l of sdk) expect(l).not.toMatch(/cyrillic|cjkReg|cjkBold|imagePathAtlases/);
+    expect(src).toContain("sdkStreamFromRaster(await stickerBitmapFor({ path: \"aimo\"");
     // the font-C loaders are referenced ONLY through imagePathAtlases (generic + Niimbot image paths)
     const users = src.split("\n").filter((l) => /loadPropAtlas\(|loadCjkRegAtlas\(/.test(l));
     expect(users.length).toBe(2);

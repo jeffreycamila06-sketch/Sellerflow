@@ -88,9 +88,10 @@ describe("flags ON vs OFF — matrix", () => {
       }
     expect(count).toBe(34560);
     expect(bad.length + "\n" + bad.slice(0, 25).join("\n")).toBe("0\n");
-    // the R4 "comment restored instead of a 2nd Facebook name line" cases — all Facebook, pinned
-    // by count so any change in this trade-off is noticed (owner decision pending)
+    // Nov 3 (item 4): the halfGap step-down is gone — flags ON and OFF now print the comment at the SAME chosen
+    // size (clipped when it does not fit, with the print-pattern warning), so the 210 "comment restored instead
+    // of a 2nd Facebook name line" trade-off cases no longer exist. Pinned at 0 so any return is noticed.
     expect(restored.every((l) => l.includes(" FB "))).toBe(true);
-    expect(restored.length).toBe(210);
+    expect(restored.length).toBe(0);
   }, 600000);
 });

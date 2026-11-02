@@ -281,7 +281,51 @@ public final class GoldenGen {
                 order("14:02", "150")),
             settingsScaled(1, 4, 4, 1, 1, 1, 1))));
 
+        // ── Nov 3: the LIVE print pattern "TikTok name" / "Date & time" switches reach the TEXT path (item 2)
+        // and the 50x30 label has its own layout (item 10) — no shop line, bare buyer number at x=16, date at x=264.
+        // 26. 100x60 with the name and the date OFF (every other field on).
+        list.add(new Fixture("name_date_off", payload(
+            "My Shop", "06/18/2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150"),
+                order("14:05", "250")),
+            settingsNameDate(false, false))));
+        // 27. 50x30 ASCII, all on: Buyer # 1002 (4 digits) must end inside the 400-dot label.
+        list.add(new Fixture("ascii_full_50x30", payload(
+            "My Shop", "06/18/2026", "NT$",
+            buyer(1002, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150")),
+            settings(true, true, true, true, true)), 50, 30));
+        // 28. 50x30 Chinese — CJK clamp at rightEdge 384.
+        list.add(new Fixture("chinese_50x30", payload(
+            "小店", "2026-06-18", "NT$",
+            buyer(12, "陳小美", "meimei", 1280.5,
+                order("09:30", "紅色洋裝")),
+            settings(true, true, true, true, true)), 50, 30));
+        // 29. 50x30 every setting OFF incl. name + date: only the brand + bar remain.
+        JSONObject allOff = settingsNameDate(false, false);
+        allOff.put("printStoreName", false); allOff.put("printBuyerNumber", false);
+        allOff.put("printBuyerUsername", false); allOff.put("printOrderItems", false); allOff.put("printTotal", false);
+        list.add(new Fixture("settings_off_50x30", payload(
+            "Big Store", "2026-06-18", "NT$",
+            buyer(9, "John Doe", "johnd", 500.0, order("10:00", "300")),
+            allOff), 50, 30));
+        // 30. 50x30 with size levels: buyer# 2x, name 2x, username 2x, price 2x — the reflow on the short label.
+        list.add(new Fixture("scaled_50x30", payload(
+            "My Shop", "06/18/2026", "NT$",
+            buyer(88, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150")),
+            settingsScaled(1, 2, 2, 2, 1, 2, 1)), 50, 30));
+
         return list;
+    }
+
+    // Every print field ON plus the two Nov 3 switches ("TikTok name" / "Date & time").
+    private static JSONObject settingsNameDate(boolean name, boolean date) {
+        JSONObject s = settings(true, true, true, true, true);
+        s.put("printBuyerName", name);
+        s.put("printDateTime", date);
+        return s;
     }
 
     // ── payload builders ────────────────────────────────────────────────────

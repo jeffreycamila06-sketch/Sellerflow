@@ -1,38 +1,35 @@
-// LIVE print pattern — EXACT sticker preview (admin, while "Print QR on sticker" is on).
-// Draws the REAL sticker image with the same renderer the phone printer path uses
-// (stickerRaster.renderStickerBitmap): the chosen size, the seller's pattern toggles and
-// sizes, the QR at its real size/position (bottom-right), and the comment wrapping
-// around it exactly like the print (v2 layout when on). Display only — nothing printed.
-import { useEffect, useRef } from "react";
-import type { Settings } from "../adapters/printing";
-import { renderStickerBitmap } from "../adapters/stickerRaster";
-import { previewPayload, exactPreviewPayload } from "../adapters/stickerPreview";
-import type { RasterSettings } from "../adapters/stickerRaster";
-import { LATIN_ATLAS } from "../adapters/glyphAtlas.latin";
-import { CYRILLIC_ATLAS } from "../adapters/glyphAtlas.cyrillic";
-import { loadCjkAtlas } from "../adapters/cjkAtlasLoader";
-import { savedGenericLang, savedIsNiimbot } from "../adapters/savedPrinter";
+// LIVE print pattern — EXACT sticker preview: THE SAME bitmap the saved printer will print (Nov 3,
+// item 5: printing.stickerBitmapFor is the one function behind the three bitmap print paths and this
+// canvas — AIMO stream, generic TSPL with the model's bold, the Niimbot 50×30 frame, layout v2 ON/OFF,
+// every switch and size level). On a laptop (no native printer) it shows the browser print page
+// itself (printing.browserStickerHtml) in a frame. Display only — nothing printed.
+import { useEffect, useMemo, useRef } from "react";
+import { buildNativeStickerPayload, stickerBitmapFor, savedPrinterPath, browserStickerHtml, type Settings, type StickerPath } from "../adapters/printing";
+import { previewBuyer } from "../adapters/stickerPreview";
 import type { Buyer } from "../../lib/orderTypes";
+import { hasNativePrinter } from "../adapters/printerBridge";
 
-// `flags` (sticker spacing sellers): the real image-only flags this seller prints with (QR only
-// when it really prints, spacing choice) instead of the admin view's forced QR.
-// `buyer` (printer setup v2, with `flags`): draw THIS buyer — the test sticker's — instead of the sample.
-// `extraAtlas` (printer setup v2): draw with the Cyrillic/"…" atlas the generic-printer / Niimbot image
-// paths print with. Default = whether THIS device's saved printer prints that way; a D520BT device
-// previews exactly what its stream paints (no extra atlas).
-export default function ExactStickerPreview({ settings, cur, shopName, v2, flags, buyer, extraAtlas }: { settings: Settings; cur: string; shopName: string; v2: boolean; flags?: RasterSettings; buyer?: Buyer; extraAtlas?: boolean }) {
+export default function ExactStickerPreview({ settings, cur, shopName, buyer, path, browser }: {
+  settings: Settings; cur: string; shopName: string;
+  buyer?: Buyer;          // printer setup v2: draw THIS buyer (the test sticker's) instead of the sample
+  path?: StickerPath;     // default = this device's saved printer
+  browser?: boolean;      // default = no native printer on this device → the browser print page
+  // kept for callers: the real flags come from the module state the print reads (QR toggle, layout, spacing)
+  v2?: boolean; flags?: unknown; extraAtlas?: boolean;
+}) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const extra = extraAtlas ?? (savedGenericLang() != null || savedIsNiimbot());
   const key = JSON.stringify(settings); // redraw only when the settings actually change
-  const flagsKey = flags ? JSON.stringify(flags) : "";
   const buyerKey = buyer ? JSON.stringify(buyer) : "";
+  const asBrowser = browser ?? !hasNativePrinter();
+  const printerPath = path ?? savedPrinterPath();
   useEffect(() => {
     let live = true;
-    const { payload, w, h } = flagsKey ? exactPreviewPayload(JSON.parse(key) as Settings, cur, shopName, JSON.parse(flagsKey) as RasterSettings, buyerKey ? JSON.parse(buyerKey) as Buyer : undefined) : previewPayload(JSON.parse(key) as Settings, cur, shopName, v2);
-    void loadCjkAtlas().catch(() => undefined).then((cjk) => {
+    const b = buyerKey ? JSON.parse(buyerKey) as Buyer : previewBuyer();
+    const payload = buildNativeStickerPayload(b, cur, shopName, JSON.parse(key) as Settings);
+    if (asBrowser) return; // the browser page is derived below (no state)
+    void stickerBitmapFor({ path: printerPath, payload, platform: b.platform }).then((img) => {
       const c = ref.current;
       if (!live || !c) return;
-      const img = renderStickerBitmap(payload, w, h, { latin: LATIN_ATLAS, cjk: cjk ?? undefined, cyrillic: extra ? CYRILLIC_ATLAS : undefined });
       c.width = img.w; c.height = img.h;
       const ctx = c.getContext?.("2d");
       if (!ctx) return;
@@ -45,6 +42,8 @@ export default function ExactStickerPreview({ settings, cur, shopName, v2, flags
       ctx.putImageData(data, 0, 0);
     });
     return () => { live = false; };
-  }, [key, flagsKey, buyerKey, cur, shopName, v2, extra]);
-  return <canvas ref={ref} data-testid="pp-exact-preview" style={{ width: "100%", imageRendering: "pixelated", display: "block", border: "1px dashed #c9c7d9", borderRadius: 4 }} />;
+  }, [key, buyerKey, cur, shopName, printerPath, asBrowser]);
+  const html = useMemo(() => (asBrowser ? browserStickerHtml({ buyer: buyerKey ? JSON.parse(buyerKey) as Buyer : previewBuyer(), cur, storeName: shopName, cfg: JSON.parse(key) as Settings }) : ""), [asBrowser, buyerKey, cur, shopName, key]);
+  if (asBrowser) return <iframe title="sticker" data-testid="pp-exact-preview-browser" srcDoc={html} style={{ width: "100%", height: 180, border: "1px dashed #c9c7d9", borderRadius: 4, background: "#fff" }} />;
+  return <canvas ref={ref} data-testid="pp-exact-preview" data-path={printerPath} style={{ width: "100%", imageRendering: "pixelated", display: "block", border: "1px dashed #c9c7d9", borderRadius: 4 }} />;
 }

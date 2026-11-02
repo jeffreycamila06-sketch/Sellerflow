@@ -108,7 +108,7 @@ describe("compact v2 preview flag", () => {
     expect(decode(renderStickerBitmap({ ...aimo.img, settings: { ...aimo.img.settings, printCompactV2: undefined } }, 60, 40, todayAtl))).toBeUndefined();
     expect(decode(renderStickerBitmap(aimo.img, 60, 40, await loadImageAtlases(aimo.np, aimo.img)))).toBe("https://tiktok.com/@amy.ukay2026");
     const src = readFileSync(join(process.cwd(), "src/redesign/adapters/printing.ts"), "utf8");
-    expect(src).toMatch(/stickerCompactV2Effective\(\) && isPropCompactSize\(payload\.labelWidthMm, payload\.labelHeightMm\) \? await imagePathAtlases\(payload, qrPayload\) : null/);
+    expect(src).toMatch(/stickerCompactV2Effective\(\) && isPropCompactSize\(w, h\) \? await imagePathAtlases\(a\.payload, img\) : null/); // stickerBitmapFor, the one sticker bitmap (Nov 3)
   });
 });
 
