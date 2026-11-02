@@ -1,7 +1,7 @@
 aimo 50x30 v2-off shopNameSize 2x: fits
 aimo 50x30 v2-off shopNameSize 3x: fits
 aimo 50x30 v2-off buyerNumSize 2x: printBuyerNumberScale=push
-aimo 50x30 v2-off buyerNumSize 3x: printBuyerNumberScale=push
+aimo 50x30 v2-off buyerNumSize 3x: printBuyerNumberScale=limit
 aimo 50x30 v2-off tiktokNameSize 2x: fits
 aimo 50x30 v2-off tiktokNameSize 3x: printBuyerNameScale=push
 aimo 50x30 v2-off tiktokUserSize 2x: printUsernameScale=cut
@@ -78,8 +78,8 @@ generic 50x30 v2-on tiktokUserSize 2x: fits
 generic 50x30 v2-on tiktokUserSize 3x: printUsernameScale=cut
 generic 50x30 v2-on commentSize 2x: printCommentScale=cut
 generic 50x30 v2-on commentSize 3x: printCommentScale=cut
-generic 60x40 v2-off shopNameSize 2x: fits
-generic 60x40 v2-off shopNameSize 3x: fits
+generic 60x40 v2-off shopNameSize 2x: printStoreScale=cut
+generic 60x40 v2-off shopNameSize 3x: printStoreScale=cut
 generic 60x40 v2-off buyerNumSize 2x: fits
 generic 60x40 v2-off buyerNumSize 3x: printBuyerNumberScale=push
 generic 60x40 v2-off tiktokNameSize 2x: printBuyerNameScale=cut
@@ -121,7 +121,7 @@ generic 70x50 v2-on commentSize 3x: printCommentScale=cut
 niimbot 50x30 v2-off shopNameSize 2x: fits
 niimbot 50x30 v2-off shopNameSize 3x: fits
 niimbot 50x30 v2-off buyerNumSize 2x: fits
-niimbot 50x30 v2-off buyerNumSize 3x: printBuyerNumberScale=push
+niimbot 50x30 v2-off buyerNumSize 3x: printBuyerNumberScale=limit
 niimbot 50x30 v2-off tiktokNameSize 2x: printBuyerNameScale=cut
 niimbot 50x30 v2-off tiktokNameSize 3x: printBuyerNameScale=cut
 niimbot 50x30 v2-off tiktokUserSize 2x: printUsernameScale=cut
@@ -131,7 +131,7 @@ niimbot 50x30 v2-off commentSize 3x: printCommentScale=cut
 niimbot 50x30 v2-on shopNameSize 2x: fits
 niimbot 50x30 v2-on shopNameSize 3x: fits
 niimbot 50x30 v2-on buyerNumSize 2x: fits
-niimbot 50x30 v2-on buyerNumSize 3x: printBuyerNumberScale=push
+niimbot 50x30 v2-on buyerNumSize 3x: printBuyerNumberScale=limit
 niimbot 50x30 v2-on tiktokNameSize 2x: printBuyerNameScale=cut
 niimbot 50x30 v2-on tiktokNameSize 3x: printBuyerNameScale=cut
 niimbot 50x30 v2-on tiktokUserSize 2x: printUsernameScale=cut
