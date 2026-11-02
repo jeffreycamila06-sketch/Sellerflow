@@ -60,13 +60,16 @@ describe("value + storage", () => {
     setStickerQrEntitled(true);
     expect(stickerQrEffective()).toBe(true);
   });
-  it("60×40 in the phone app: row disabled with the same note as Printer settings; web: no size gate (same rule)", () => {
-    const app = pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "60x40mm", appShell: true });
-    expect((app.getByTestId("pp-sticker-qr-toggle") as HTMLButtonElement).disabled).toBe(true);
-    expect(app.getByTestId("pp-sticker-qr-hint").textContent).toBe("QR available on 70×50, 80×50, 80×60 only.");
+  // Nov 3 round 2 (item 4): where the QR cannot print (the AIMO 60×40 with layout v2 OFF) the row shows
+  // "Not printed on this size" instead of a greyed toggle; the laptop page prints it → the toggle stays
+  it("60×40 in the phone app: the 'Not printed on this size' note, no toggle; web: no size gate (same rule)", () => {
+    const app = pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "60x40mm", appShell: true, printerPath: "aimo" });
+    expect(app.queryByTestId("pp-sticker-qr-toggle")).toBeNull();
+    expect(app.getByTestId("pp-not-printed-stickerQr").textContent).toBe("Not printed on this size");
     app.unmount();
     const web = pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "60x40mm", appShell: false });
     expect((web.getByTestId("pp-sticker-qr-toggle") as HTMLButtonElement).disabled).toBe(false);
+    expect(web.queryByTestId("pp-not-printed-stickerQr")).toBeNull();
   });
 });
 

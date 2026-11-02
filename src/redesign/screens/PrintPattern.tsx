@@ -27,9 +27,9 @@
 // old formulas. Print output is identical either way (printing.ts quantizes).
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { printScaleLevel, isStickerQrOn, setStickerQrOn, effectiveSpacing, STICKER_SPACING_CHOICE_VISIBLE, type Settings, type StickerSpacing } from "../adapters/printing";
-import { stickerFit, type StickerFit, type FitControl } from "../adapters/stickerFit";
+import { stickerFit, type StickerFit, type FitControl, type FitPath } from "../adapters/stickerFit";
 import { savedPrinterPath, stickerCompactV2Effective, type StickerPath } from "../adapters/printing";
-import { stickerQrPrints } from "../adapters/stickerRaster";
+import { stickerQrPrints, stickerControlPrints } from "../adapters/stickerRaster";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { PREVIEW_COMMENT } from "../adapters/stickerPreview";
 import { useT, type RedesignT } from "../i18n";
@@ -101,7 +101,7 @@ export const V2_SAMPLE_LATIN = "ako   si  jeff pa reserve po yung black na dress
 export const V2_SAMPLE_CJK = "+1 我要這件黑色 size M 2件 pls reserve 老闆娘 thank you so much";
 
 // The async fit of the saved printer's print (null while loading / when not shown).
-function useStickerFit(settings: Settings | null, cur: string, shopName: string, path: StickerPath): StickerFit | null {
+function useStickerFit(settings: Settings | null, cur: string, shopName: string, path: FitPath): StickerFit | null {
   const [fit, setFit] = useState<{ key: string; fit: StickerFit } | null>(null);
   const key = settings ? JSON.stringify(settings) : "";
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function PrintPattern({
   spacingAllowed = false, onSpacing, imagePath = false, spacingChoiceVisible = STICKER_SPACING_CHOICE_VISIBLE, printerPath,
 }: {
   onBack: () => void;
-  printerPath?: StickerPath; // the saved printer's path (tests); default = this device's saved printer
+  printerPath?: FitPath; // the saved printer's path (tests); default = this device's saved printer, "browser" on a laptop
   pp: PrintPatternState;
   // The seller's real Shop name — the SAME value every print path puts in the slip's
   // center (RedesignApp printShopName). Default = the old sample, for standalone renders.
@@ -152,8 +152,13 @@ export default function PrintPattern({
   const showQrRow = layoutV2 && stickerQrAllowed;
   // Nov 3 (item 9): THE ONE QR RULE — the toggle is blocked exactly where the saved printer's layout prints no QR.
   const sizeWh = psSize.match(/^(\d+)x(\d+)/);
-  const path = printerPath ?? savedPrinterPath();
-  const qrSizeBlocked = appShell && !stickerQrPrints({ path, wMm: Number(sizeWh?.[1] ?? 100), hMm: Number(sizeWh?.[2] ?? 60), compactV2: stickerCompactV2Effective() });
+  const wMm = Number(sizeWh?.[1] ?? 100), hMm = Number(sizeWh?.[2] ?? 60);
+  // item 5 (round 2): a laptop (no native printer) prints the browser page → preview + fit measure follow it
+  const path: FitPath = printerPath ?? (appShell || imagePath ? savedPrinterPath() : "browser"); // imagePath = a phone that prints images
+  const where = { path, wMm, hMm, compactV2: stickerCompactV2Effective() };
+  const qrSizeBlocked = path !== "browser" && !stickerQrPrints({ ...where, path });
+  // item 4 (round 2): a control that cannot print on this size / printer shows "Not printed on this size"
+  const notPrinted = (k: PpBoolKey): boolean => k === "shopName" && !stickerControlPrints("shopName", where);
   const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
   const toggleQr = () => { if (qrSizeBlocked) return; const next = !stickerQr; setStickerQrOn(next); setStickerQr(next); };
   // exact preview: QR on, a size that prints a QR (50 mm+ tall), and the @username on (QR follows it)
@@ -166,11 +171,14 @@ export default function PrintPattern({
   // stickerBitmapFor), or the browser print page on a laptop.
   // Nov 3 (item 14): measured on EVERY tap (no print needed), shown in red next to the control it belongs to.
   const fit = useStickerFit(previewSettings ?? null, cur, shopName, path);
-  const fitOf = (k: PpSizeKey): "push" | "cut" | undefined => fit?.controls[FIT_OF[k]];
-  const fitText = (v: "push" | "cut") => (v === "push" ? t.rd_pp_fit_push : t.rd_pp_fit_cutoff);
+  const fitOf = (k: PpSizeKey): "push" | "cut" | "limit" | undefined => fit?.controls[FIT_OF[k]];
+  const fitText = (v: "push" | "cut" | "limit") => (v === "push" ? t.rd_pp_fit_push : v === "limit" ? t.rd_pp_fit_num_limit : t.rd_pp_fit_cutoff);
   const anyUp = (["shopNameSize", "buyerNumSize", "tiktokNameSize", "tiktokUserSize", "commentSize"] as PpSizeKey[]).some((k) => printScaleLevel(pp[k]) > 1);
   const unattributed = !!fit && (fit.overflow || fit.cut) && Object.keys(fit.controls).length === 0 && anyUp; // silent at all-1× (nothing to turn down)
-  const exactBrowser = !appShell && !imagePath; // a laptop prints the browser page; a phone prints the bitmap
+  const exactBrowser = path === "browser"; // a laptop prints the browser page; a phone prints the bitmap
+  const bitmapPath: StickerPath | undefined = path === "browser" ? undefined : path;
+  // the preview: the print bitmap (image paths), the browser page (laptop), else today's mock (phone text mode)
+  const showPreview = !!previewSettings && (spacingExact || (!spacingAllowed && showExact) || exactBrowser);
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -181,13 +189,9 @@ export default function PrintPattern({
       <div style={{ padding: "12px 14px 16px" }}>
         {/* Live slip preview (paper — literal colors) */}
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
-          {spacingExact && previewSettings ? (
+          {showPreview && previewSettings ? (
             <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
-              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={path} browser={exactBrowser} />
-            </div>
-          ) : !spacingAllowed && showExact && previewSettings ? (
-            <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
-              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={path} browser={exactBrowser} />
+              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={bitmapPath} browser={exactBrowser} />
             </div>
           ) : (
           <div style={{ background: "#fff", borderRadius: 11, padding: "12px 14px", textAlign: "center" }}>
@@ -210,7 +214,7 @@ export default function PrintPattern({
           </div>
           )}
         </div>
-        {spacingAllowed && !spacingExact && (
+        {spacingAllowed && !spacingExact && !exactBrowser && (
           <div style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", textAlign: "center" }} data-testid="pp-approx">{t.rd_pp_approx}</div>
         )}
         {unattributed && fit && (
@@ -250,7 +254,9 @@ export default function PrintPattern({
               <Fragment key={r.key}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{r.label}</span>
-                {r.fixedSize ? (
+                {notPrinted(r.key) ? (
+                  <span data-testid={`pp-not-printed-${r.key}`} style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_pp_not_printed}</span>
+                ) : r.fixedSize ? (
                   <span style={{ fontSize: 11.5, fontStyle: "italic", color: "var(--text-muted)" }}>{t.rd_pp_fixed_size}</span>
                 ) : (
                   <>
@@ -259,26 +265,30 @@ export default function PrintPattern({
                     <button onClick={() => onStep(r.sizeKey, 1)} style={stepBtn}>+</button>
                   </>
                 )}
-                <button onClick={() => onToggle(r.key)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0, marginLeft: 3 }}>
+                {!notPrinted(r.key) && <button onClick={() => onToggle(r.key)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0, marginLeft: 3 }}>
                   <span style={{ width: 40, height: 23, borderRadius: 12, background: on ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
                     <span style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
                   </span>
-                </button>
+                </button>}
               </div>
-              {!r.fixedSize && fitOf(r.sizeKey) && (
+              {!r.fixedSize && !notPrinted(r.key) && fitOf(r.sizeKey) && (
                 <div role="alert" data-testid={`pp-fit-${r.key}`} style={{ padding: "6px 13px 8px", borderBottom: "1px solid var(--border)", background: "var(--danger-soft)", color: "var(--danger)", fontSize: 11.5, fontWeight: 600, lineHeight: 1.35 }}>{fitText(fitOf(r.sizeKey)!)}</div>
               )}
               {r.key === "tiktokUser" && showQrRow && (
                 <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", borderBottom: "1px solid var(--border)" }} data-testid="pp-sticker-qr-row">
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, lineHeight: 1.4 }} data-testid="pp-sticker-qr-hint">{qrSizeBlocked ? t.rd_ps_sticker_qr_unavail : t.rd_ps_sticker_qr_desc}</div>
+                    {!qrSizeBlocked && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, lineHeight: 1.4 }} data-testid="pp-sticker-qr-hint">{t.rd_ps_sticker_qr_desc}</div>}
                   </div>
-                  <button onClick={toggleQr} disabled={qrSizeBlocked} aria-pressed={qrSizeBlocked ? false : stickerQr} data-testid="pp-sticker-qr-toggle" style={{ background: "none", border: "none", cursor: qrSizeBlocked ? "not-allowed" : "pointer", padding: 0, flexShrink: 0, marginLeft: 3, opacity: qrSizeBlocked ? 0.4 : 1 }}>
-                    <span style={{ width: 40, height: 23, borderRadius: 12, background: !qrSizeBlocked && stickerQr ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                      <span style={{ position: "absolute", top: 3, left: !qrSizeBlocked && stickerQr ? 21 : 3, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                  {qrSizeBlocked ? (
+                    <span data-testid="pp-not-printed-stickerQr" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_pp_not_printed}</span>
+                  ) : (
+                  <button onClick={toggleQr} aria-pressed={stickerQr} data-testid="pp-sticker-qr-toggle" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0, marginLeft: 3 }}>
+                    <span style={{ width: 40, height: 23, borderRadius: 12, background: stickerQr ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                      <span style={{ position: "absolute", top: 3, left: stickerQr ? 21 : 3, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
                     </span>
                   </button>
+                  )}
                 </div>
               )}
               </Fragment>

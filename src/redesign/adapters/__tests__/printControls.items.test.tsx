@@ -5,6 +5,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import PrinterSettings from "../../screens/PrinterSettings";
+import PrintPattern, { DEFAULT_PP } from "../../screens/PrintPattern";
+import { buildSettingsFromRedesign, setStickerQrEntitled, setStickerCompactV2, setStickerLayoutV2Allowed } from "../printing";
 import { TProvider, buildT } from "../../i18n";
 import { printSlip, DEF_SETTINGS, PLUGIN_MISSING, setNativePrintFailureHandler, type Settings } from "../printing";
 import { buildTestBuyer } from "../printerBridge";
@@ -63,5 +65,34 @@ describe("item 11 — missing print method = a reason, never a bare failure", ()
     await flush();
     expect(failures.map((f) => f.code)).toEqual([PLUGIN_MISSING]);
     expect(failures[0].message).toContain("Update the app");
+  });
+});
+
+// ── item 4 (round 2): a control that cannot print here shows "Not printed on this size" instead of a switch ──
+describe("item 4 — 'Not printed on this size' replaces controls that cannot print", () => {
+  const pattern = (props: Partial<Parameters<typeof PrintPattern>[0]>) =>
+    render(<TProvider lang="en"><PrintPattern onBack={noop} pp={DEFAULT_PP} onToggle={noop} onStep={noop} layoutV2 shopName="My Shop" appShell previewSettings={buildSettingsFromRedesign({ pp: DEFAULT_PP, psType: "bt", psOut: "sticker", psSize: "60x40mm" })} {...props} /></TProvider>);
+  it("Shop name on 50×30 (AIMO) and on a Niimbot: the note, no stepper, no toggle; 60×40 keeps the controls", () => {
+    for (const [printerPath, psSize] of [["aimo", "50x30mm"], ["niimbot", "50x30mm"], ["niimbot", "60x40mm"], ["generic", "50x30mm"]] as const) {
+      const v = pattern({ printerPath, psSize, previewSettings: buildSettingsFromRedesign({ pp: DEFAULT_PP, psType: "bt", psOut: "sticker", psSize }) });
+      expect(v.getByTestId("pp-not-printed-shopName").textContent, `${printerPath} ${psSize}`).toBe(t.rd_pp_not_printed);
+      expect(v.queryByTestId("pp-fit-shopName")).toBeNull();
+      v.unmount();
+    }
+    const v = pattern({ printerPath: "aimo", psSize: "60x40mm" });
+    expect(v.queryByTestId("pp-not-printed-shopName")).toBeNull();
+  });
+  it("Print QR on sticker on the AIMO 60×40 with layout v2 OFF: the note instead of a greyed toggle", () => {
+    setStickerQrEntitled(true); setStickerLayoutV2Allowed(true); setStickerCompactV2(false);
+    const v = pattern({ printerPath: "aimo", psSize: "60x40mm", stickerQrAllowed: true });
+    expect(v.getByTestId("pp-not-printed-stickerQr").textContent).toBe(t.rd_pp_not_printed);
+    expect(v.queryByTestId("pp-sticker-qr-toggle")).toBeNull();
+    v.unmount();
+    const w = pattern({ printerPath: "aimo", psSize: "70x50mm", stickerQrAllowed: true, previewSettings: buildSettingsFromRedesign({ pp: DEFAULT_PP, psType: "bt", psOut: "sticker", psSize: "70x50mm" }) });
+    expect(w.queryByTestId("pp-not-printed-stickerQr")).toBeNull();
+    expect(w.getByTestId("pp-sticker-qr-toggle")).toBeTruthy();
+  });
+  it("the note is translated in all 8 languages", () => {
+    for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"]) expect((buildT(lang as "en") as unknown as Record<string, string>).rd_pp_not_printed, lang).toMatch(/\S/);
   });
 });

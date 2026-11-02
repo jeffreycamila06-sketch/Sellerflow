@@ -11,6 +11,7 @@ import { buildGenericStickerBytes, buildNiimbotImage, buildNativeStickerPayload 
 import { stickerFit } from "../stickerFit";
 import type { FullRaster } from "../stickerRaster";
 import type { PpBoolKey, PpSizeKey } from "../../screens/PrintPattern";
+import type { Buyer } from "../../../lib/orderTypes";
 
 const OUT = process.env.PRINTER_FIX_OUT || "";
 const LABEL: Record<string, string> = { aimo: "AIMO D520BT", generic: "FLASH Y41BT / XPRINTER XP-420B (generic TSPL, bold)", niimbot: "NIIMBOT B1 (always 50x30)" };
@@ -34,6 +35,27 @@ it("renders the print-controls evidence", async () => {
     rows.forEach((r, i) => { const x = m + (i % cols) * (cellW + 24), y = m + 60 + Math.floor(i / cols) * (cellH + lab + 24); sheet.text(r.label, x, y, 1, "2", 50); sheet.frame(x, y + lab, rasters[i].w, rasters[i].h); sheet.raster(rasters[i], x, y + lab); });
     sheet.save(join(OUT, `sheet_${tag}.png`));
     report.push(`${tag}: ${rows.length} cells`);
+  }
+  // round 2 — item 1: a Chinese buyer (王小明 / 我要黑色) at 1× / 2× / 3× name and comment; item 2: the buyer number
+  // 7 / 88 / 123 / 1002 at 1× / 2× / 3× (QR on) — whole digits, the largest size that fits beside the QR
+  const cjk: Buyer = { ...sampleBuyer(), name: "王小明", handle: "wangxiaoming", orders: [{ ...sampleBuyer().orders[0], item: "我要黑色" }] } as Buyer;
+  for (const path of PATHS) for (const psSize of (path === "niimbot" ? ["50x30mm"] : SIZES_SHORT)) for (const v2 of [false, true]) {
+    const tag = `${path}_${psSize.replace(/mm.*/, "")}_v2-${v2 ? "on" : "off"}`;
+    const rowsC: { label: string; c: CaseSpec; file: string }[] = [];
+    for (const k of ["tiktokNameSize", "commentSize"] as const) for (const lv of [1, 2, 3]) rowsC.push({ label: `${k} ${lv}x (王小明 / 我要黑色)`, c: { path, psSize, v2, buyer: cjk, pp: { [k]: lv } }, file: `cjk_${k}-${lv}x` });
+    const rowsN: { label: string; c: CaseSpec; file: string }[] = [];
+    for (const num of [7, 88, 123, 1002]) for (const lv of [1, 2, 3]) rowsN.push({ label: `#${num} buyerNumSize ${lv}x`, c: { path, psSize, v2, buyer: { ...sampleBuyer(), num } as Buyer, pp: { buyerNumSize: lv } }, file: `num${num}-${lv}x` });
+    for (const [kind, rows2] of [["cjk", rowsC], ["number", rowsN]] as const) {
+      const rasters2: FullRaster[] = [];
+      for (const r of rows2) { const ras = await renderCase(r.c); rasters2.push(ras); savePng(ras, join(OUT, "cells", `${tag}_${r.file}.png`)); }
+      const cellW = Math.max(...rasters2.map((r) => r.w)), cellH = Math.max(...rasters2.map((r) => r.h)), cols = 3, m = 30, lab = 26;
+      const nRows = Math.ceil(rows2.length / cols);
+      const sheet = new Sheet(m * 2 + cols * (cellW + 24), m + 60 + nRows * (cellH + lab + 24) + m);
+      sheet.text(`${LABEL[path]} - ${psSize} - layout v2 ${v2 ? "ON" : "OFF"} - ${kind === "cjk" ? "CHINESE name / comment 1x 2x 3x" : "BUYER NUMBER whole, never cut"} - 1 px = 1 dot`, m, m, 1, "4");
+      rows2.forEach((r, i) => { const x = m + (i % cols) * (cellW + 24), y = m + 60 + Math.floor(i / cols) * (cellH + lab + 24); sheet.text(r.label.replace(/[^\x20-\x7e]/g, "?"), x, y, 1, "2", 50); sheet.frame(x, y + lab, rasters2[i].w, rasters2[i].h); sheet.raster(rasters2[i], x, y + lab); });
+      sheet.save(join(OUT, `sheet_${kind}_${tag}.png`));
+      report.push(`sheet_${kind}_${tag}: ${rows2.length} cells`);
+    }
   }
   // preview-vs-print pairs: the print bytes recomposed next to the preview bitmap (same function → identical)
   for (const v2 of [false, true]) {

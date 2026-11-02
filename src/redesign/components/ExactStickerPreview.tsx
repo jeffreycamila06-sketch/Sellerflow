@@ -44,6 +44,8 @@ export default function ExactStickerPreview({ settings, cur, shopName, buyer, pa
     return () => { live = false; };
   }, [key, buyerKey, cur, shopName, printerPath, asBrowser]);
   const html = useMemo(() => (asBrowser ? browserStickerHtml({ buyer: buyerKey ? JSON.parse(buyerKey) as Buyer : previewBuyer(), cur, storeName: shopName, cfg: JSON.parse(key) as Settings }) : ""), [asBrowser, buyerKey, cur, shopName, key]);
-  if (asBrowser) return <iframe title="sticker" data-testid="pp-exact-preview-browser" srcDoc={html} style={{ width: "100%", height: 180, border: "1px dashed #c9c7d9", borderRadius: 4, background: "#fff" }} />;
+  const wh = String(settings.stickerSize ?? "100x60").match(/^(\d+)x(\d+)/);
+  const aspect = `${Number(wh?.[1] ?? 100)} / ${Number(wh?.[2] ?? 60)}`; // item 5: the frame keeps the label's aspect ratio
+  if (asBrowser) return <iframe title="sticker" data-testid="pp-exact-preview-browser" data-aspect={aspect} srcDoc={html} style={{ width: "100%", aspectRatio: aspect, height: "auto", border: "1px dashed #c9c7d9", borderRadius: 4, background: "#fff" }} />;
   return <canvas ref={ref} data-testid="pp-exact-preview" data-path={printerPath} style={{ width: "100%", imageRendering: "pixelated", display: "block", border: "1px dashed #c9c7d9", borderRadius: 4 }} />;
 }

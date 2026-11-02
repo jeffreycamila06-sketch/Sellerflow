@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderStickerBitmap, rasterizeToBitmapTspl, fitRaster, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, PROP_CJK_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases } from "../stickerRaster";
+import { renderStickerBitmap, rasterizeToBitmapTspl, fitRaster, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, PROP_CJK_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases, propStackTops, type PropFont, type PropLine } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "../glyphAtlas.cyrillic";
 import { CJK_ATLAS } from "../glyphAtlas.cjk";
@@ -52,6 +52,8 @@ describe("font C goldens", () => {
     expect(sha(render(payloadFor(S2, "50x30", true), "50x30").buf)).toBe(GOLD.s2_chen_50x30_qron);
     expect(sha(render(payloadFor(S3, "50x30", true), "50x30").buf)).toBe(GOLD.s3_test_50x30_qron);
   });
+  // Nov 3 round 2 (item 3): the three 60x40 goldens were regenerated — the compact-v1 label now carries the shop
+  // row (shop name bold + date top-right) like layout v2; the 50x30 goldens are unchanged.
   it.each(["50x30", "60x40"] as Size[])("the space rule at %s: Facebook / TikTok QR off / TikTok QR on", (size) => {
     expect(sha(render(payloadFor(S2, size, true, "Facebook"), size).buf)).toBe(GOLD[`fb_${size}`]);
     expect(sha(render(payloadFor(S2, size, false), size).buf)).toBe(GOLD[`tiktok_qroff_${size}`]);
@@ -298,24 +300,31 @@ describe("font C glyph integrity", () => {
     const r = renderStickerBitmap(rp, w, h, ATL);
     const L = propLayoutLines(rp, w, h, ATL);
     const colEnd = L.qr ? Math.min(L.qr.x0, propQrInkLeft(L.qr) - PROP_TEXT_QR_GAP) : L.w - propSizes(w, false).edge;
-    const tops = propLineTops(L.lines, L.h);
+    const tops = propStackTops(L.lines, L.h, L.header); // below the 60×40 shop row (item 3, Nov 3 round 2) when there is one
     let glyphs = 0;
-    L.lines.forEach((l, i) => {
-      expect(L.x + l.line.inkWidth + PROP_INK_MARGIN).toBeLessThanOrEqual(colEnd);
-      if (l.line.cut) expect(l.line.text.endsWith("…")).toBe(true);
+    // every painted glyph (the stack + the shop row): a CJK glyph above the 32-dot atlas is the 24 / 32-dot glyph
+    // magnified (`b.mag`, item 1), so its ink is at (x + sx·mag, y + sy·mag)
+    const check = (l: { size: number; font: PropFont; line: PropLine }, x: number, top: number, sc = 1) => {
       for (const it of l.line.items) {
-        const b = propGlyphBox(it, l.size, L.x, tops[i], l.font, ATL);
+        const b = propGlyphBox(it, l.size, x, top, l.font, ATL);
         if (!b) continue;
         glyphs++;
-        expect(b.x + b.w).toBeLessThanOrEqual(colEnd);                // the glyph box never crosses the column
-        expect(b.y + b.h).toBeLessThanOrEqual(r.h);
+        const m = b.mag * sc;
+        expect(b.x + b.w * m).toBeLessThanOrEqual(colEnd);            // the glyph box never crosses the column
+        expect(b.y + b.h * m).toBeLessThanOrEqual(r.h);
         const crb = (b.w + 7) >> 3;
         for (let sy = 0; sy < b.h; sy++) for (let sx = 0; sx < b.w; sx++) {
           if ((b.cell[sy * crb + (sx >> 3)] & (0x80 >> (sx & 7))) === 0) continue;
-          if (!ink(r, b.x + sx, b.y + sy)) throw new Error(`glyph "${l.line.text}" size ${l.size}: ink missing at (${b.x + sx},${b.y + sy}) — partially clipped`);
+          if (!ink(r, b.x + sx * m, b.y + sy * m)) throw new Error(`glyph "${l.line.text}" size ${l.size}: ink missing at (${b.x + sx * m},${b.y + sy * m}) — partially clipped`);
         }
       }
+    };
+    L.lines.forEach((l, i) => {
+      expect(L.x + l.line.inkWidth * (l.scale ?? 1) + PROP_INK_MARGIN).toBeLessThanOrEqual(colEnd);
+      if (l.line.cut) expect(l.line.text.endsWith("…")).toBe(true);
+      check(l, L.x, tops[i], l.scale ?? 1);
     });
+    for (const l of L.header?.lines ?? []) { if (l.line.cut) expect(l.line.text.endsWith("…")).toBe(true); check(l, l.x, l.top); }
     return glyphs;
   }
   it("every golden render", () => {

@@ -269,10 +269,29 @@ describe("fit warning (Nov 3, item 8: measures the layout that prints for the sa
     expect(Object.keys(f.controls)).toEqual(["printBuyerNameScale"]);
     expect((await stickerFit(cfgFor(70, 50), "NT$", "My Shop", "aimo")).controls).toEqual({});
   });
-  it("50×30: the buyer number at 3× runs into the QR column → overflow blamed on the Buyer # control", async () => {
+  // item 6 (round 2): several sizes raised together — EVERY control that causes overflow / cuts gets its own line
+  it("name 3× AND comment 3× on 60x40 → both controls blamed, not just one", async () => {
     setStickerCompactV2(false); setStickerSpacingAllowed(true);
-    const f = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
-    expect(f.controls.printBuyerNumberScale).toBeDefined();
+    const f = await stickerFit(cfgFor(60, 40, { tiktokNameSize: 3, commentSize: 3 }), "NT$", "My Shop", "aimo");
+    expect(Object.keys(f.controls).sort()).toEqual(["printBuyerNameScale", "printCommentScale"]);
+    const g = await stickerFit(cfgFor(60, 40, { tiktokNameSize: 3, commentSize: 3, tiktokUserSize: 3 }), "NT$", "My Shop", "aimo");
+    expect(Object.keys(g.controls).sort()).toEqual(["printBuyerNameScale", "printCommentScale", "printUsernameScale"]);
+  });
+  // item 5 (round 2): the laptop print page has its own measure (printing.BROWSER_STICKER_FONTS)
+  it("browser mode: silent at the default pattern; comment 3× on 60x40 is blamed", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true);
+    expect((await stickerFit(cfgFor(60, 40), "NT$", "My Shop", "browser")).controls).toEqual({});
+    const f = await stickerFit(cfgFor(60, 40, { commentSize: 3 }), "NT$", "My Shop", "browser");
+    expect(f.controls.printCommentScale).toBeDefined();
+  });
+  it("50×30: the buyer number at 3× beside the QR → 'limit' (printed whole at the largest size that fits); QR off → it pushes", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true); setStickerQrEntitled(true); setStickerQrOn(true);
+    try {
+      const f = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
+      expect(f.controls.printBuyerNumberScale).toBe("limit"); // item 2 (round 2)
+    } finally { setStickerQrOn(false); setStickerQrEntitled(false); }
+    const g = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
+    expect(g.controls.printBuyerNumberScale).toBe("push");
   });
   it("past the right edge → overflow (@username 3× on 60x40 is wider than the label)", async () => {
     setStickerCompactV2(false); setStickerSpacingAllowed(true);

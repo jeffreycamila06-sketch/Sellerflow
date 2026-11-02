@@ -28,11 +28,24 @@ describe("PrintPattern — sticker spacing", () => {
     expect(onSpacing).toHaveBeenCalledWith("compact");
     expect(v.queryByTestId("pp-fit-warning")).toBeNull(); // default pattern → silent
   });
-  it("allowed, text mode / web: the mock, labelled approximate, no warning", () => {
-    const v = view({ spacingAllowed: true, imagePath: false });
+  it("allowed, PHONE text mode (Simple print): the mock, labelled approximate, no warning", () => {
+    const v = view({ spacingAllowed: true, imagePath: false, appShell: true });
     expect(v.queryByTestId("pp-exact-preview")).toBeNull();
+    expect(v.queryByTestId("pp-exact-preview-browser")).toBeNull();
     expect(v.getByTestId("pp-approx").textContent).toBe("Approximate — Simple print is on, so the layout may differ"); // Build 10b wording
     expect(v.queryByTestId("pp-fit-warning")).toBeNull();
+  });
+  // item 5 (round 2): a laptop (no native printer) prints the browser page → the preview IS that page, in a
+  // frame with the label's aspect ratio, never the mock / "approximate" note
+  it("LAPTOP (no native printer): the browser print page in a label-shaped frame, no approximate note", () => {
+    const v = view({ spacingAllowed: true, imagePath: false });
+    const frame = v.getByTestId("pp-exact-preview-browser");
+    expect(frame.getAttribute("data-aspect")).toBe("60 / 40"); // = the frame's CSS aspect-ratio (jsdom does not expose it)
+    expect(v.queryByTestId("pp-approx")).toBeNull();
+    expect(v.queryByTestId("pp-exact-preview")).toBeNull();
+    v.unmount();
+    const v2 = view({ previewSettings: settings(DEFAULT_PP, "100x60mm (Standard)") }); // any seller, any allowlist
+    expect(v2.getByTestId("pp-exact-preview-browser").getAttribute("data-aspect")).toBe("100 / 60");
   });
   // Nov 3 (item 14): the warning is RED, sits under the control that causes it, appears on the tap (measured,
   // no print), says what will happen, and the print still follows the chosen size.

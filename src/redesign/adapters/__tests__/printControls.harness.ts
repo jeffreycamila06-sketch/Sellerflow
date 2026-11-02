@@ -83,7 +83,9 @@ export function pngBytes(gray: Uint8Array, w: number, h: number): Buffer {
 }
 export class Sheet {
   g: Uint8Array;
-  constructor(public w: number, public h: number, bg = 232) { this.g = new Uint8Array(w * h).fill(bg); }
+  w: number;
+  h: number;
+  constructor(w: number, h: number, bg = 232) { this.w = w; this.h = h; this.g = new Uint8Array(w * h).fill(bg); }
   px(x: number, y: number, v: number) { if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.g[y * this.w + x] = v; }
   rect(x: number, y: number, w: number, h: number, v: number) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.px(x + i, y + j, v); }
   frame(x: number, y: number, w: number, h: number, v = 90) { this.rect(x - 1, y - 1, w + 2, 1, v); this.rect(x - 1, y + h, w + 2, 1, v); this.rect(x - 1, y - 1, 1, h + 2, v); this.rect(x + w, y - 1, 1, h + 2, v); }

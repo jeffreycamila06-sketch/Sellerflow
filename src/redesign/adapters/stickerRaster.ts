@@ -737,7 +737,13 @@ function draw50x30(payload: RasterPayload, mode: ScriptMode, qr: QrPlacement | n
   // 1. buyer number — the biggest thing on the label (font "4" at 2×2; 4+ digits narrow to 1×2), × its level
   const num = String(buyer.num ?? buyer.bNum ?? 0);
   if (flag("printBuyerNumber")) {
-    const xm = (num.length <= 3 ? 2 : 1) * lvNum, ym = 2 * lvNum;
+    // item 2: never a partial digit — the largest level (from the chosen one down) at which the whole number ends
+    // before the QR column; at level 1 it prints whole even if it runs under the QR
+    const xb = num.length <= 3 ? 2 : 1;
+    const numRight = qr ? qr.x0 : W50 - 8; // whole digits up to the QR's quiet zone (the quiet zone itself stays white)
+    let lv = lvNum;
+    while (lv > 1 && X + num.length * 24 * xb * lv > numRight) lv--;
+    const xm = xb * lv, ym = 2 * lv;
     ops.push({ k: "txt", x: X, y: 6, font: "4", s: num, xm, ym });
     extra += (ym - 2) * 32;
   }
@@ -972,6 +978,16 @@ export function stickerQrPrints(a: { path: StickerPath; wMm: number; hMm: number
   const compactLayout = isPropCompactSize(a.wMm, a.hMm) && (a.path === "generic" || a.compactV2);
   if (compactLayout) return true;
   return stickerQrSupported(a.hMm) || (a.wMm === 50 && a.hMm === 30);
+}
+
+// Item 4 (Nov 3 round 2): which LIVE print pattern controls print at all for the saved printer + size. The
+// Print pattern shows "Not printed on this size" instead of a switch / stepper that could change nothing.
+// "browser" = the laptop print page (every control prints there). Shop name: never on 50×30 / the Niimbot.
+export type ControlPath = StickerPath | "browser";
+export function stickerControlPrints(control: "shopName" | "stickerQr", a: { path: ControlPath; wMm: number; hMm: number; compactV2: boolean }): boolean {
+  if (a.path === "browser") return true;
+  if (control === "shopName") return a.path !== "niimbot" && !(a.wMm === 50 && a.hMm === 30);
+  return stickerQrPrints({ ...a, path: a.path });
 }
 
 // The QR block placement for this label, or null when no QR will print. SINGLE SOURCE
@@ -1294,8 +1310,18 @@ interface PropItem { x: number; latin?: PropGlyph; cjk?: number } // cjk = the c
 export interface PropLine { items: PropItem[]; width: number; inkWidth: number; text: string; cut: boolean; cjk: boolean } // width = Σ advances; inkWidth = painted extent (last glyph's overhang included)
 
 const isIdeograph = (cp: number) => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff);
+// Item 1 (Nov 3 round 2): the CJK atlases stop at 32 dots, so a 46 / 64-dot line (a 3× name / comment, or the
+// number size) paints its ideographs from the 24 / 32-dot CJK font MAGNIFIED 2× (48 / 64 dots) — ink height then
+// grows 1× < 2× < 3× (24 → 32 → 48 on 60×40, 20 → 24 → 32 on 50×30) instead of falling back small. PURE.
+export function propCjkSpec(size: number): { regSize: CjkRegSize; mag: number } {
+  if (size >= 64) return { regSize: 32, mag: 2 };
+  if (size > 32) return { regSize: 24, mag: 2 };
+  return { regSize: (CJK_REG_SIZES.includes(size as CjkRegSize) ? size : 24) as CjkRegSize, mag: 1 };
+}
+/** The painted cell of one ideograph at `size` (a CJK cell is square). */
+export const propCjkCell = (size: number): number => { const c = propCjkSpec(size); return c.regSize * c.mag; };
 function propCjkFont(atlases: RasterAtlases, size: number): GlyphFont | null {
-  const reg = atlases.cjkReg?.[size as CjkRegSize];
+  const reg = atlases.cjkReg?.[propCjkSpec(size).regSize];
   return reg?.cjk ?? atlases.cjk?.cjk ?? null;
 }
 
@@ -1309,10 +1335,10 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
   const pieces: Piece[] = [];
   for (const ch of text) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (isIdeograph(cp)) { pieces.push({ ch, adv: size + PROP_CJK_GAP, cjk: cp }); continue; }
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: propCjkCell(size) + PROP_CJK_GAP, cjk: cp }); continue; }
     let g = font.glyphs[cp];
     if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
-    if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w + PROP_CJK_GAP, cjk: cp }); continue; }
+    if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w * propCjkSpec(size).mag + PROP_CJK_GAP, cjk: cp }); continue; }
     if (!g) continue; // never tofu: a glyph neither font has is dropped
     pieces.push({ ch, adv: g.adv, latin: g });
   }
@@ -1353,8 +1379,29 @@ export function propFitShrinking(text: string, base: number, maxW: number, atlas
 }
 
 interface PropLaidLine { size: number; font: PropFont; line: PropLine; scale?: number }
+/** Item 2 (Nov 3 round 2): the buyer number is NEVER cut — not "…", not a partial digit. From the chosen scale
+ *  down, the largest scale at which the WHOLE number fits `maxW` (the text column beside the QR); at 1× the
+ *  whole label width (a 5-digit number may then run under the QR rather than lose a digit). PURE. */
+export function propNumberScale(num: string, size: number, maxW: number, fullW: number, wanted: number, atlases: RasterAtlases): { scale: number; line: PropLine } {
+  for (let sc = Math.max(1, Math.round(wanted)); sc > 1; sc--) {
+    const line = propFitLine(num, size, Math.max(1, Math.floor(maxW / sc)), atlases);
+    if (!line.cut) return { scale: sc, line };
+  }
+  const one = propFitLine(num, size, maxW, atlases);
+  return { scale: 1, line: one.cut ? propFitLine(num, size, Math.max(maxW, fullW), atlases) : one };
+}
+/** Tops of the v1 stack: below the header row (item 3) when there is one. PURE, shared with stickerFit. */
+export function propStackTops(lines: { font: PropFont; scale?: number }[], h: number, header?: { h: number } | null): number[] {
+  const hh = header?.h ?? 0;
+  return propLineTops(lines.map((l) => ({ font: { h: l.font.h * (l.scale ?? 1) } as PropFont })), h - hh).map((t) => t + hh);
+}
 /** All the label's lines with their final sizes (PURE; CJK atlases not needed). */
-export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas): { lines: PropLaidLine[]; qr: QrPlacement | null; x: number; w: number; h: number } {
+// header (item 3, Nov 3 round 2): on the 60×40 label (not the Niimbot frame) with Settings → Shop name ON, the
+// same top row as layout v2 — the shop name bold, left, at its own size level, cut with "…" before the date
+// column; the date + time top-right (when "Date & time" is on) instead of the bottom line. Shop name OFF → the
+// layout of today, byte-identical.
+export interface PropV1Header { lines: PropLaidLineV2[]; h: number }
+export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, canvas?: RasterCanvas): { lines: PropLaidLine[]; qr: QrPlacement | null; x: number; w: number; h: number; header: PropV1Header | null } {
   const W = canvas?.w ?? stickerConfig(wMm, hMm).wDots, H = canvas?.h ?? hMm * 8;
   const prop = atlases.proportional;
   const buyer = payload.buyer ?? {};
@@ -1370,7 +1417,33 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
   const X = edge;
   const right = qr ? Math.min(qr.x0, propQrInkLeft(qr) - PROP_TEXT_QR_GAP) : W - edge; // never inside the quiet zone the stamp clears
   const maxW = Math.max(1, right - X);
-  if (!prop) return { lines: [], qr, x: X, w: W, h: H };
+  if (!prop) return { lines: [], qr, x: X, w: W, h: H, header: null };
+
+  // item 3: the shop row (60×40 only, Shop name ON, a name to print)
+  let header: PropV1Header | null = null;
+  const shopText = narrow(stripEmoji(String(payload.storeName ?? "")));
+  if (wMm === 60 && hMm === 40 && !canvas && flag("printStoreName") && shopText) {
+    const date0 = String(payload.sessionDate ?? "").replace(/^(\d{2}\/\d{2})\/\d{4}$/, "$1");
+    const when0 = flag("printDateTime") ? narrow([date0, orders[0]?.time ?? ""].filter(Boolean).join(" ")) : "";
+    const timeFont = prop[String(sizes.time)];
+    let dateLine: PropLaidLineV2 | null = null;
+    if (when0 && timeFont) {
+      const line = propFitLine(when0, sizes.time, maxW, atlases);
+      dateLine = { size: sizes.time, font: timeFont, line, x: right - line.inkWidth, top: COMPACT_V2_DATE_TOP }; // stays left of the QR column
+    }
+    const shopLv = settings == null ? 1 : settingLevel(settings.printStoreScale);
+    const shopMaxW = Math.max(1, (dateLine ? dateLine.x - 2 * COMPACT_V2_GAP : right) - X);
+    const big = propFitLine(shopText, propLevelSize(sizes.line, shopLv), shopMaxW, atlases);
+    const pick = shopLv > 1 || !big.cut ? { size: propLevelSize(sizes.line, shopLv), line: big } : { size: sizes.time, line: propFitLine(shopText, sizes.time, shopMaxW, atlases) };
+    const sf = prop[String(pick.size)];
+    if (sf && pick.line.text) {
+      const dy = dateLine ? Math.max(0, sf.base - dateLine.font.base) : 0;
+      const rowH = Math.max(sf.h, dateLine ? dy + dateLine.font.h : 0);
+      const hl: PropLaidLineV2[] = [{ size: pick.size, font: sf, line: pick.line, x: X, top: COMPACT_V2_DATE_TOP, bold: true }];
+      if (dateLine) hl.push({ ...dateLine, top: COMPACT_V2_DATE_TOP + dy });
+      header = { lines: hl, h: COMPACT_V2_DATE_TOP + rowH };
+    }
+  }
 
   // the lines, top → bottom (empties and switched-off fields drop out; spacing re-flows). Size levels
   // (Nov 3): each line's base size is raised by its Settings level (propLevelSize); the number is magnified.
@@ -1389,30 +1462,32 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
   const date = String(payload.sessionDate ?? "").replace(/^(\d{2}\/\d{2})\/\d{4}$/, "$1");
   const time = orders[0]?.time ?? "";
   const when = [date, time].filter(Boolean).join(" ");
-  if (when && flag("printDateTime")) spec.push({ text: when, size: sizes.time, shrink: false });
+  if (when && flag("printDateTime") && !header) spec.push({ text: when, size: sizes.time, shrink: false }); // with a shop row the date is up there
 
   const lines: PropLaidLine[] = [];
   for (const l of spec) {
     const t = narrow(l.text);
     if (!t) continue;
-    const sc = l.scale ?? 1;
-    // the buyer number (the `scale` entry) is NEVER cut to "…": at a size that does not fit it runs into the QR
-    // column / off the edge and the LIVE print pattern shows the red line (item 14) — a sorting team must never
-    // get "…" for a buyer number
-    const numW = l.scale != null ? W - X : maxW;
-    const fit = l.shrink ? propFitShrinking(t, l.size, maxW, atlases, sizes.line) : (prop[String(l.size)] ? { size: l.size, line: propFitLine(t, l.size, Math.max(1, Math.floor(numW / sc)), atlases) } : null);
+    let sc = l.scale ?? 1;
+    let fit: { size: number; line: PropLine } | null;
+    if (l.scale != null) { // the buyer number: never cut (item 2) — the largest scale that fits whole beside the QR
+      if (!prop[String(l.size)]) continue;
+      const n = propNumberScale(t, l.size, maxW, W - X, sc, atlases);
+      sc = n.scale; fit = { size: l.size, line: n.line };
+    } else fit = l.shrink ? propFitShrinking(t, l.size, maxW, atlases, sizes.line) : (prop[String(l.size)] ? { size: l.size, line: propFitLine(t, l.size, maxW, atlases) } : null);
     if (!fit || !fit.line.text) continue;
     lines.push({ size: fit.size, font: prop[String(fit.size)], line: fit.line, ...(sc > 1 ? { scale: sc } : {}) });
   }
-  return { lines, qr, x: X, w: W, h: H };
+  return { lines, qr, x: X, w: W, h: H, header };
 }
 
 /** The CJK atlas sizes this label will paint with (for the loader — before any CJK atlas is fetched). */
 export function propPlanCjkSizes(payload: RasterPayload, wMm: number, hMm: number, prop: PropAtlas): CjkRegSize[] {
   const atl: RasterAtlases = { latin: {}, proportional: prop };
-  const { lines } = payload.settings?.printCompactV2 ? propLayoutLinesV2(payload, wMm, hMm, atl) : propLayoutLines(payload, wMm, hMm, atl);
+  const L = payload.settings?.printCompactV2 ? propLayoutLinesV2(payload, wMm, hMm, atl) : propLayoutLines(payload, wMm, hMm, atl);
+  const { lines } = L;
   const sizes = new Set<CjkRegSize>();
-  for (const l of lines) if (l.line.cjk && (CJK_REG_SIZES as number[]).includes(l.size)) sizes.add(l.size as CjkRegSize);
+  for (const l of [...lines, ...("header" in L ? L.header?.lines ?? [] : [])]) if (l.line.cjk) sizes.add(propCjkSpec(l.size).regSize);
   return CJK_REG_SIZES.filter((s) => sizes.has(s));
 }
 
@@ -1426,13 +1501,15 @@ export function propLineTops(lines: { font: PropFont }[], h: number): number[] {
   return tops;
 }
 /** Where one item's glyph is painted (x, top, w, h) — PURE, shared with the glyph-integrity tests. */
-export function propGlyphBox(item: PropItem, size: number, x0: number, top: number, font: PropFont, atlases: RasterAtlases): { x: number; y: number; w: number; h: number; cell: Uint8Array } | null {
-  if (item.latin) return item.latin.rows ? { x: x0 + item.x, y: top, w: item.latin.w, h: font.h, cell: b64ToBytes(item.latin.rows) } : null;
+// `mag` = the CJK magnification of this glyph (item 1: 2 above the 32-dot atlas); the painters multiply it into the blit.
+export function propGlyphBox(item: PropItem, size: number, x0: number, top: number, font: PropFont, atlases: RasterAtlases): { x: number; y: number; w: number; h: number; cell: Uint8Array; mag: number } | null {
+  if (item.latin) return item.latin.rows ? { x: x0 + item.x, y: top, w: item.latin.w, h: font.h, cell: b64ToBytes(item.latin.rows), mag: 1 } : null;
   if (item.cjk == null) return null;
   const cjkFont = propCjkFont(atlases, size);
   const g = cjkFont?.glyphs[item.cjk];
   if (!g || !cjkFont) return null;
-  return { x: x0 + item.x + Math.max(0, Math.round((size - cjkFont.w) / 2)), y: top + Math.round((font.h - cjkFont.h) / 2), w: cjkFont.w, h: cjkFont.h, cell: b64ToBytes(g) };
+  const mag = propCjkSpec(size).mag;
+  return { x: x0 + item.x + Math.max(0, Math.round((propCjkCell(size) - cjkFont.w * mag) / 2)), y: top + Math.round((font.h - cjkFont.h * mag) / 2), w: cjkFont.w, h: cjkFont.h, cell: b64ToBytes(g), mag };
 }
 
 /** The whole compact label as a 1-bit bitmap (the only painter of the font-C layout). */
@@ -1440,15 +1517,17 @@ export function renderPropCompact(payload: RasterPayload, wMm: number, hMm: numb
   if (payload.settings?.printCompactV2) { // layout v2 (flag OFF = the lines below, byte-identical)
     const v2 = propLayoutLinesV2(payload, wMm, hMm, atlases, canvas, v2opts);
     const b = new Bitmap(v2.w, v2.h);
-    for (const l of v2.lines) { const sc = l.scale ?? 1; for (const it of l.line.items) { const g = propGlyphBox(it, l.size, 0, 0, l.font, atlases); if (g) { b.blit(g.cell, g.w, g.h, l.x + g.x * sc, l.top + g.y * sc, sc, sc); if (l.bold) b.blit(g.cell, g.w, g.h, l.x + g.x * sc + 1, l.top + g.y * sc, sc, sc); } } } // bold = the glyph again 1 dot right (no bold face below the number sizes); scale = the magnified buyer number
+    for (const l of v2.lines) { const sc = l.scale ?? 1; for (const it of l.line.items) { const g = propGlyphBox(it, l.size, 0, 0, l.font, atlases); if (g) { const m = sc * g.mag; b.blit(g.cell, g.w, g.h, l.x + g.x * sc, l.top + g.y * sc, m, m); if (l.bold) b.blit(g.cell, g.w, g.h, l.x + g.x * sc + 1, l.top + g.y * sc, m, m); } } } // bold = the glyph again 1 dot right (no bold face below the number sizes); scale = the magnified buyer number
     if (bold) boldenRaster(b.buf, b.w, b.h, b.rowBytes);
     stampHandleQr(b, v2.qr);
     return b;
   }
-  const { lines, qr, x, w, h } = propLayoutLines(payload, wMm, hMm, atlases, canvas);
+  const { lines, qr, x, w, h, header } = propLayoutLines(payload, wMm, hMm, atlases, canvas);
   const bmp = new Bitmap(w, h);
-  const tops = propLineTops(lines.map((l) => ({ font: { h: l.font.h * (l.scale ?? 1) } as PropFont })), h);
-  lines.forEach((l, i) => { const sc = l.scale ?? 1; for (const it of l.line.items) { const b = propGlyphBox(it, l.size, 0, 0, l.font, atlases); if (b) bmp.blit(b.cell, b.w, b.h, x + b.x * sc, tops[i] + b.y * sc, sc, sc); } });
+  const tops = propStackTops(lines, h, header);
+  lines.forEach((l, i) => { const sc = l.scale ?? 1; for (const it of l.line.items) { const b = propGlyphBox(it, l.size, 0, 0, l.font, atlases); if (b) bmp.blit(b.cell, b.w, b.h, x + b.x * sc, tops[i] + b.y * sc, sc * b.mag, sc * b.mag); } });
+  // item 3: the 60×40 compact-v1 shop line + date (top row), painted at their own x / top — bold = the glyph again 1 dot right
+  for (const l of header?.lines ?? []) for (const it of l.line.items) { const g = propGlyphBox(it, l.size, 0, 0, l.font, atlases); if (g) { bmp.blit(g.cell, g.w, g.h, l.x + g.x, l.top + g.y, g.mag, g.mag); if (l.bold) bmp.blit(g.cell, g.w, g.h, l.x + g.x + 1, l.top + g.y, g.mag, g.mag); } }
   if (bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
   stampHandleQr(bmp, qr);
   return bmp;
@@ -1571,10 +1650,10 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   const num = String(buyer.num ?? buyer.bNum ?? 0);
   const numFont = prop[String(sizes.num)], lineFont = prop[String(sizes.line)];
   if (flag("printBuyerNumber") && numFont) {
-    const sc = lv("printBuyerNumberScale"); // the number keeps its bold face, magnified 2× / 3×
     const buyerMaxW = Math.max(1, Math.min(maxW, (dateLine && !dateInShop ? dateLine.x - 2 * COMPACT_V2_GAP : W) - X)); // the date shares the buyer line only without a shop row
-    // never cut the number to "…" (see propLayoutLines): the whole number at the chosen scale, clipped at the edge
-    const n = propFitLine(num, sizes.num, Math.max(1, Math.floor((W - X) / sc)), atlases);
+    // item 2: the number keeps its bold face, magnified up to the chosen level — the largest scale at which the WHOLE
+    // number fits beside the QR / date (never "…", never a partial digit)
+    const { scale: sc, line: n } = propNumberScale(num, sizes.num, buyerMaxW, W - X, lv("printBuyerNumberScale"), atlases);
     const parts: Row["parts"] = [{ size: sizes.num, font: numFont, line: n, dx: 0, dy: 0, ...(sc > 1 ? { scale: sc } : {}) }];
     if (lineFont) {
       const word = propFitLine("Buyer", sizes.line, buyerMaxW, atlases);

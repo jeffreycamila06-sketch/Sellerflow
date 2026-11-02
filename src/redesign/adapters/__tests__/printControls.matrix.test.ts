@@ -7,7 +7,11 @@
 // in the ALLOWED list below, each entry with its reason.
 import { describe, it, expect } from "vitest";
 import { PATHS, SIZES, screenControls, renderCase, rasterKey, recomposeBands, sampleBuyer, settingsFor, applyModuleState, AT, type CaseSpec } from "./printControls.harness";
-import { buildGenericStickerBytes, buildNiimbotImage, buildNativeStickerPayload, NIIMBOT_LABEL } from "../printing";
+import { stickerFit } from "../stickerFit";
+import { buildNativeStickerPayload, imageStickerPayload, imagePathAtlases, NIIMBOT_CANVAS, NIIMBOT_LABEL } from "../printing";
+import { stickerDrawOps, stickerQrPlacement, propLayoutLines, propLayoutLinesV2, isPropCompactSize, STICKER_LAYOUTS, type FullRaster } from "../stickerRaster";
+import type { Buyer } from "../../../lib/orderTypes";
+import { buildGenericStickerBytes, buildNiimbotImage } from "../printing";
 import type { PpBoolKey } from "../../screens/PrintPattern";
 import { readFileSync } from "node:fs";
 
@@ -20,10 +24,6 @@ const ALLOWED: Record<string, string> = {
   "*|50x30mm|*|shopNameSize": "50x30 has no shop name line",
   "niimbot|*|*|shopName": "Niimbot always prints the 50x30 layout — no shop name line",
   "niimbot|*|*|shopNameSize": "Niimbot always prints the 50x30 layout — no shop name line",
-  // The 60×40 compact layout (font-C, v2 OFF — today's layout Jeff likes) has no shop line either; the shop
-  // row exists on 60×40 only with layout v2 ON (the Nov 3 shop-name branch).
-  "generic|60x40mm|v2-off|shopName": "60x40 compact v1 has no shop name line",
-  "generic|60x40mm|v2-off|shopNameSize": "60x40 compact v1 has no shop name line",
   // AIMO 60×40 with layout v2 OFF never prints a QR (stickerQrPrints → "no": the fixed-cell 60×40 has no room).
   "aimo|60x40mm|v2-off|stickerQr": "AIMO 60x40 v2 OFF prints no QR",
 };
@@ -50,7 +50,22 @@ describe("print controls matrix — every control changes the print (or is expli
       const noEffect: string[] = [];
       for (const k of sizes) {
         const k2 = rasterKey(await renderCase({ ...c, pp: { [k]: 2 } })), k3 = rasterKey(await renderCase({ ...c, pp: { [k]: 3 } }));
-        if (base === k2 || k2 === k3) { if (!allowed(c, k)) noEffect.push(`${k} (1x=${base} 2x=${k2} 3x=${k3})`); }
+        if (base === k2 || k2 === k3) {
+          // item 2 (round 2): the buyer number is the ONE control allowed to stop growing — only where it would not
+          // fit whole beside the QR, and only with the red "largest size that fits whole" line on that level
+          if (k === "buyerNumSize") {
+            for (const lv of [2, 3] as const) {
+              const same = lv === 2 ? base === k2 : k2 === k3;
+              if (!same) continue;
+              const cc: CaseSpec = { ...c, pp: { [k]: lv } };
+              applyModuleState(cc);
+              const f = await stickerFit(settingsFor(cc), "NT$", "BudgetUkay", c.path);
+              expect(f.controls.printBuyerNumberScale, `${name(c)} buyerNumSize ${lv}x did not change the print and no 'limit' line explains it`).toBe("limit");
+            }
+            continue;
+          }
+          if (!allowed(c, k)) noEffect.push(`${k} (1x=${base} 2x=${k2} 3x=${k3})`);
+        }
         else expect(allowed(c, k), `${name(c)} ${k} is ALLOWED but it does change the print — drop the allow entry`).toBeUndefined();
       }
       for (const k of switches) {
@@ -92,4 +107,61 @@ describe("preview = print", () => {
     expect(preview).toMatch(/stickerBitmapFor\(\{ path: printerPath, payload/);
     expect(preview).not.toMatch(/renderStickerBitmap\(/); // never its own layout
   });
+});
+
+// ── item 1 (round 2): Chinese names and comments grow 1× < 2× < 3× on every path / size / layout ──────────────
+const cjkBuyer = (): Buyer => ({ ...sampleBuyer(), name: "王小明", handle: "wangxiaoming", orders: [{ ...sampleBuyer().orders[0], item: "我要黑色" }] } as Buyer);
+// the vertical ink extent (last − first ink row + 1) below the fixed header band (the 48-dot bar on the fixed-cell sizes)
+const inkExtent = (r: FullRaster, fromY: number): number => {
+  let first = -1, last = -1;
+  for (let y = fromY; y < r.h; y++) { let any = false; for (let i = 0; i < r.rowBytes && !any; i++) if (r.buf[y * r.rowBytes + i]) any = true; if (any) { if (first < 0) first = y; last = y; } }
+  return first < 0 ? 0 : last - first + 1;
+};
+describe("item 1 — Chinese name 王小明 / comment 我要黑色: ink height strictly grows 1×→2×→3×", () => {
+  for (const c of cases) for (const [k, pp] of [["tiktokNameSize", { shopName: false, dateTime: false, buyerNum: false, tiktokUser: false, comment: false }], ["commentSize", { shopName: false, dateTime: false, buyerNum: false, tiktokUser: false, tiktokName: false }]] as const) {
+    it(`${name(c)} ${k}`, async () => {
+      const heights: number[] = [];
+      for (const lv of [1, 2, 3]) {
+        const r = await renderCase({ ...c, qr: false, buyer: cjkBuyer(), pp: { ...pp, [k]: lv } });
+        heights.push(inkExtent(r, isPropCompactSize(Number(c.psSize.match(/^(\d+)/)![1]), Number(c.psSize.match(/x(\d+)/)![1])) ? 0 : 52));
+      }
+      expect(heights[0], `${name(c)} ${k} 1x prints nothing`).toBeGreaterThan(0);
+      expect(heights[1], `${name(c)} ${k} 2x (${heights.join("<")}) is not taller than 1x`).toBeGreaterThan(heights[0]);
+      expect(heights[2], `${name(c)} ${k} 3x (${heights.join("<")}) is not taller than 2x`).toBeGreaterThan(heights[1]);
+    }, 60_000);
+  }
+});
+
+// ── item 2 (round 2): the buyer number is NEVER cut — whole digits, never "…", never a partial digit ─────────
+describe("item 2 — the buyer number prints whole on every path / size / level (largest scale that fits beside the QR)", () => {
+  for (const c of cases) {
+    it(`${name(c)}`, async () => {
+      for (const num of [7, 88, 123, 1002, 12345]) for (const lv of [1, 2, 3]) {
+        const cc: CaseSpec = { ...c, buyer: { ...sampleBuyer(), num } as Buyer, pp: { buyerNumSize: lv } };
+        applyModuleState(cc);
+        const np0 = buildNativeStickerPayload(cc.buyer!, "NT$", "BudgetUkay", settingsFor(cc), AT);
+        const np = c.path === "niimbot" ? { ...np0, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h } : np0;
+        const img = imageStickerPayload(np, "TikTok");
+        const w = np.labelWidthMm, h = np.labelHeightMm;
+        const compact = c.path !== "aimo" || c.v2 ? isPropCompactSize(w, h) : false; // AIMO v2 OFF = the fixed layouts
+        const tag = `${name(c)} #${num} ${lv}x`;
+        if (compact) {
+          const atl = await imagePathAtlases(np, img);
+          const canvas = c.path === "niimbot" ? NIIMBOT_CANVAS : undefined;
+          const L = c.v2 ? propLayoutLinesV2(img, w, h, atl, canvas) : propLayoutLines(img, w, h, atl, canvas);
+          const line = L.lines.find((l) => l.line.text === String(num));
+          expect(line, `${tag}: the whole number is not on the label`).toBeTruthy();
+          expect(line!.line.cut).toBe(false);
+          const x = "x" in L ? L.x : (line as unknown as { x: number }).x;
+          if ((line!.scale ?? 1) > 1 && L.qr) expect(x + line!.line.inkWidth * (line!.scale ?? 1), `${tag}: a magnified number reaches the QR`).toBeLessThanOrEqual(L.qr.x0);
+        } else {
+          const cfg = STICKER_LAYOUTS[`${w}x${h}`];
+          const r = stickerDrawOps(img, w, h, "extended", stickerQrPlacement(img, cfg.wDots, h * 8, h));
+          const op = r.ops.find((o) => o.k === "txt" && o.s === String(num));
+          expect(op, `${tag}: the whole number is not on the label`).toBeTruthy();
+          expect(r.ops.some((o) => o.k === "txt" && o.font === "4" && o.s.includes("…") && /\d/.test(o.s)), `${tag}: a digit was cut`).toBe(false);
+        }
+      }
+    }, 60_000);
+  }
 });
