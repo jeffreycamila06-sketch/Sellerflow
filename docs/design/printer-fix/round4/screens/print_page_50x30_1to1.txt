@@ -1,0 +1,6 @@
+Chromium 1:1 measure of the laptop print page for 50x30 (round 4, item 2), dev server, viewport 1280x800:
+  @page{size:50mm 30mm;margin:0}
+  img{display:block;width:48mm;height:30mm;image-rendering:pixelated;image-rendering:crisp-edges}
+  body rect  = 188.97 x 113.38 px  (= 50 x 30 mm at 96 dpi)
+  img rect   = 181.41 x 113.38 px  (= 48 x 30 mm)
+  img natural = 384 x 240 dots     (384 / 8 = 48 mm → the image is 1:1, the 2 mm on the right stay white)
