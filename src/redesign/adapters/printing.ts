@@ -1078,20 +1078,6 @@ export function printLaptopTestSticker(buyer: Buyer, cur: string, storeName: str
 // NO label-size check on web: the seller's own browser/printer-driver settings decide
 // the paper size (the phone path keeps its own 60×40 exclusion). null = no QR.
 export const WEB_QR_MODULE_MM = 0.5;
-// Item 5 (Nov 3 round 2): the laptop page's font rules, ONE table for the HTML below and the fit measure
-// (stickerFit.measureBrowserPage) — mm sizes = clamp(min, vh·H/100, max) × level. `lh` = CSS line-height.
-export const BROWSER_STICKER_FONTS = {
-  brand: { min: 2.6, vh: 7, max: 4, lh: 1.15 }, date: { min: 2, vh: 5.5, max: 3, lh: 1.15 },
-  store: { min: 2.6, vh: 7, max: 4.2, lh: 1.15 }, bnum: { min: 5, vh: 15, max: 10, lh: 1.02 },
-  name: { min: 3, vh: 9, max: 5.6, lh: 1.1 }, user: { min: 2.4, vh: 6.5, max: 3.8, lh: 1.15 },
-  ftime: { min: 2, vh: 5, max: 2.8, lh: 1.15 }, code: { min: 5.5, vh: 17, max: 12, lh: 1.02 },
-} as const;
-export const BROWSER_STICKER_PAD = { y: { min: 1, vh: 2.5, max: 2 }, x: { min: 1, vw: 2.5, max: 2.5 } } as const;
-const fontCss = (f: { min: number; vh: number; max: number }, lv?: number) => (lv != null ? `calc(clamp(${f.min}mm,${f.vh}vh,${f.max}mm) * ${lv})` : `clamp(${f.min}mm,${f.vh}vh,${f.max}mm)`);
-// The QR the laptop page prints for this buyer (same gates as the page), or null.
-export function browserStickerQr(buyer: Pick<Buyer, "platform" | "handle">, cfg: Settings): { svg: string; sizeMm: number } | null {
-  return stickerQrEffective() && stickerQrAllowedFor(buyer.platform) && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
-}
 export function webStickerQrSvg(handle: string | undefined | null): { svg: string; sizeMm: number } | null {
   const h = String(handle ?? "").trim();
   if (!h) return null;
@@ -1106,12 +1092,16 @@ export function webStickerQrSvg(handle: string | undefined | null): { svg: strin
   return { svg, sizeMm: total * WEB_QR_MODULE_MM };
 }
 
-// ── The laptop / browser sticker page (Nov 3, item 5 + 7): ONE function for the print AND the
-// LIVE print pattern preview frame. Size levels and the "TikTok name" / "Date & time" switches apply.
+// ── The OLD laptop page = origin/main's browser print (4abe581), VERBATIM (round 5, item 1): the body below is
+// main's printSlip web-fallback block, unchanged — no size levels, no TikTok-name / Date&time switches, driver-sized
+// page. It prints on a laptop until a sticker size is chosen (laptopSizeChosen). The fixture copy in
+// __tests__/fixtures/mainBrowserPage.ts pins it byte-for-byte for every size × control.
 export function browserStickerHtml(a: { buyer: Buyer; cur: string; storeName: string; cfg: Settings; fbName?: boolean; at?: number }): string {
   const { buyer, storeName, cfg } = a;
   const fbName = a.fbName === true, at = a.at;
   const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
+  // Taipei date, same source/format family as buildNativeStickerPayload + the
+  // native truncate(12) — NOT the old en-PH long date.
   const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(at != null ? new Date(at) : new Date()), 12);
   // The order this sticker prints (onPrint passes a single-order buyer; reprint
   // rebuilds one). item = the CODE ("A2" / "A2 x2") for auto orders, else the
@@ -1121,7 +1111,7 @@ export function browserStickerHtml(a: { buyer: Buyer; cur: string; storeName: st
   // QR (same content rules as the phone): toggle on (+ entitled), not a Facebook buyer, @username line on,
   // handle not blank. Bottom-right; the lines that can reach that corner (name,
   // @handle, time + big code) get right padding so text never runs under it.
-  const qr = browserStickerQr(buyer, cfg);
+  const qr = stickerQrEffective() && stickerQrAllowedFor(buyer.platform) && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
   const qrCss = qr
     ? `body{position:relative}` +
       `.qr{position:absolute;right:clamp(1mm,2.5vw,2.5mm);bottom:clamp(1mm,2.5vh,2mm);width:${qr.sizeMm}mm;height:${qr.sizeMm}mm}` +
@@ -1137,37 +1127,33 @@ export function browserStickerHtml(a: { buyer: Buyer; cur: string; storeName: st
   // web (they don't fit the auto-fit model; native keeps them). Names/handles are
   // single-line + ellipsis so they can't push a second page (overflow:hidden is the
   // hard guarantee regardless).
-  // Nov 3 (item 7): the per-field size levels apply on the laptop too (1×/2×/3× of the auto-fit size — a
-  // size that does not fit is clipped by overflow:hidden, exactly like the bitmap paths clip at the edge).
-  const L = (v: unknown) => Math.max(1, Math.min(8, Number(v) || 1));
-  const lvStore = L(cfg.printStoreScale), lvNum = L(cfg.printBuyerNumberScale), lvName = L(cfg.printBuyerNameScale), lvUser = L(cfg.printUsernameScale), lvCode = L(cfg.printCommentScale);
   const html = `<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>` +
     `@page{size:auto;margin:0}` +
     `*{box-sizing:border-box;margin:0;padding:0}` +
     `html,body{height:100%}` +
     `body{width:100%;height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:clamp(1mm,2.5vh,2mm) clamp(1mm,2.5vw,2.5mm);font-family:Arial,Helvetica,sans-serif;color:#000}` +
     `.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm;flex-shrink:0}` +
-    `.brand{font-size:${fontCss(BROWSER_STICKER_FONTS.brand)};font-weight:800;white-space:nowrap}` +
-    `.date{font-size:${fontCss(BROWSER_STICKER_FONTS.date)};font-weight:600;white-space:nowrap}` +
+    `.brand{font-size:clamp(2.6mm,7vh,4mm);font-weight:800;white-space:nowrap}` +
+    `.date{font-size:clamp(2mm,5.5vh,3mm);font-weight:600;white-space:nowrap}` +
     `.bar{height:.6mm;background:#000;margin:.6mm 0 clamp(1mm,2.5vh,2.4mm);flex-shrink:0}` +
-    `.store{font-size:${fontCss(BROWSER_STICKER_FONTS.store, lvStore)};font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
-    `.bnum{font-size:${fontCss(BROWSER_STICKER_FONTS.bnum, lvNum)};font-weight:900;line-height:1.02;white-space:nowrap;flex-shrink:0}` +
-    `.name{font-size:${fontCss(BROWSER_STICKER_FONTS.name, lvName)};font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;margin-top:1mm}` +
-    `.user{font-size:${fontCss(BROWSER_STICKER_FONTS.user, lvUser)};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
+    `.store{font-size:clamp(2.6mm,7vh,4.2mm);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
+    `.bnum{font-size:clamp(5mm,15vh,10mm);font-weight:900;line-height:1.02;white-space:nowrap;flex-shrink:0}` +
+    `.name{font-size:clamp(3mm,9vh,5.6mm);font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;margin-top:1mm}` +
+    `.user{font-size:clamp(2.4mm,6.5vh,3.8mm);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
     `.foot{margin-top:auto;display:flex;flex-direction:column;min-height:0}` +
-    `.ftime{font-size:${fontCss(BROWSER_STICKER_FONTS.ftime)};font-weight:600}` +
-    `.code{font-size:${fontCss(BROWSER_STICKER_FONTS.code, lvCode)};font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
+    `.ftime{font-size:clamp(2mm,5vh,2.8mm);font-weight:600}` +
+    `.code{font-size:clamp(5.5mm,17vh,12mm);font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
     qrCss +
     // Facebook name only: up to 2 lines at the same size instead of one line cut with "…"
     (fbName ? `.fbname{white-space:normal;text-overflow:clip;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}` : "") +
     `</style></head><body>` +
-    `<div class="head"><span class="brand">SellerFlowLive</span>${cfg.printDateTime !== false ? `<span class="date">${esc(sess)}</span>` : ""}</div>` +
+    `<div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>` +
     `<div class="bar"></div>` +
     (cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : "") +
     (cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : "") +
-    (buyer.name && (cfg.printBuyerName !== false || fbName) ? (fbName ? `<div class="name fbname">${esc(trunc(buyer.name, 60))}</div>` : `<div class="name">${esc(trunc(buyer.name, 30))}</div>`) : "") +
+    (buyer.name ? (fbName ? `<div class="name fbname">${esc(trunc(buyer.name, 60))}</div>` : `<div class="name">${esc(trunc(buyer.name, 30))}</div>`) : "") +
     (cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : "") +
-    (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime && cfg.printDateTime !== false ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
+    (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
     (qr ? qr.svg : "") +
     `</body></html>`;
   return html;
@@ -1177,8 +1163,12 @@ export function browserStickerHtml(a: { buyer: Buyer; cur: string; storeName: st
 // laptop sticker size — the "Choose your sticker size" sheet. The flag is per device (localStorage); the
 // sheet is asked for AFTER the old page is queued (never before a print, never blocking it).
 export const LAPTOP_SIZE_CHOSEN_KEY = "sfl_rd_laptop_size_chosen";
-export function laptopSizeChosen(): boolean { try { return localStorage.getItem(LAPTOP_SIZE_CHOSEN_KEY) === "1"; } catch { return false; } }
-export function markLaptopSizeChosen(): void { try { localStorage.setItem(LAPTOP_SIZE_CHOSEN_KEY, "1"); } catch { /* ignore */ } }
+// Round 5 (item 3): the flag also lives in memory for this session — with storage blocked (private mode) the choice
+// still holds for every print until the app closes; the print path reads the same value the sheet set.
+let laptopSizeChosenMem = false;
+export function laptopSizeChosen(): boolean { if (laptopSizeChosenMem) return true; try { return localStorage.getItem(LAPTOP_SIZE_CHOSEN_KEY) === "1"; } catch { return false; } }
+export function markLaptopSizeChosen(): void { laptopSizeChosenMem = true; try { localStorage.setItem(LAPTOP_SIZE_CHOSEN_KEY, "1"); } catch { /* ignore */ } }
+export function __resetLaptopSizeChosen(): void { laptopSizeChosenMem = false; try { localStorage.removeItem(LAPTOP_SIZE_CHOSEN_KEY); } catch { /* ignore */ } }
 let laptopSizeNeededHandler: (() => void) | null = null;
 // The app shows the sheet (after the print). Called once per laptop print while no size is chosen.
 export function setLaptopSizeNeededHandler(fn: (() => void) | null): void { laptopSizeNeededHandler = fn; }

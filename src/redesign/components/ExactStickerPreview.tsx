@@ -6,16 +6,17 @@
 // Laptop (round 3, item 1): the bitmap is drawn at the label's REAL size (mm → CSS px) and the frame scales
 // it with a CSS transform, so what the frame shows is the printed page at every screen width.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { buildNativeStickerPayload, stickerBitmapFor, savedPrinterPath, type Settings, type StickerPath } from "../adapters/printing";
+import { buildNativeStickerPayload, stickerBitmapFor, savedPrinterPath, browserStickerHtml, type Settings, type StickerPath } from "../adapters/printing";
 import { previewBuyer, labelPx, labelMm } from "../adapters/stickerPreview";
 import type { Buyer } from "../../lib/orderTypes";
 import { hasNativePrinter } from "../adapters/printerBridge";
 
-export default function ExactStickerPreview({ settings, cur, shopName, buyer, path, browser }: {
+export default function ExactStickerPreview({ settings, cur, shopName, buyer, path, browser, legacy }: {
   settings: Settings; cur: string; shopName: string;
   buyer?: Buyer;          // printer setup v2: draw THIS buyer (the test sticker's) instead of the sample
   path?: StickerPath;     // default = this device's saved printer
   browser?: boolean;      // default = no native printer on this device → the laptop print page (path "browser")
+  legacy?: boolean;       // round 5 (item 2): laptop with NO sticker size chosen → the OLD page (origin/main's) in a frame
   // kept for callers: the real flags come from the module state the print reads (QR toggle, layout, spacing)
   v2?: boolean; flags?: unknown; extraAtlas?: boolean;
 }) {
@@ -25,7 +26,9 @@ export default function ExactStickerPreview({ settings, cur, shopName, buyer, pa
   const buyerKey = buyer ? JSON.stringify(buyer) : "";
   const asBrowser = browser ?? !hasNativePrinter();
   const printerPath: StickerPath = path ?? (asBrowser ? "browser" : savedPrinterPath());
+  const legacyPage = asBrowser && !!legacy;
   useEffect(() => {
+    if (legacyPage) return; // the old page is derived below (no bitmap)
     let live = true;
     const b = buyerKey ? JSON.parse(buyerKey) as Buyer : previewBuyer();
     const payload = buildNativeStickerPayload(b, cur, shopName, JSON.parse(key) as Settings);
@@ -44,7 +47,7 @@ export default function ExactStickerPreview({ settings, cur, shopName, buyer, pa
       ctx.putImageData(data, 0, 0);
     });
     return () => { live = false; };
-  }, [key, buyerKey, cur, shopName, printerPath]);
+  }, [key, buyerKey, cur, shopName, printerPath, legacyPage]);
   // laptop frame: the label's size in CSS px and the scale that fits it into the frame's width
   const mm = useMemo(() => labelMm(settings.stickerSize), [settings.stickerSize]);
   const px = labelPx(mm.w, mm.h);
@@ -60,6 +63,10 @@ export default function ExactStickerPreview({ settings, cur, shopName, buyer, pa
     return () => window.removeEventListener("resize", read);
   }, [asBrowser]);
   const scale = frameW > 0 ? frameW / px.w : 1;
+  if (legacyPage) {
+    const html = browserStickerHtml({ buyer: buyerKey ? JSON.parse(buyerKey) as Buyer : previewBuyer(), cur, storeName: shopName, cfg: JSON.parse(key) as Settings });
+    return <iframe title="sticker" data-testid="pp-exact-preview-legacy" data-aspect={`${mm.w} / ${mm.h}`} srcDoc={html} style={{ width: "100%", aspectRatio: `${mm.w} / ${mm.h}`, height: "auto", border: "1px dashed #c9c7d9", borderRadius: 4, background: "#fff" }} />;
+  }
   const canvasStyle = { imageRendering: "pixelated" as const, display: "block" as const };
   if (asBrowser) {
     return (

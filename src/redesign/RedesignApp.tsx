@@ -112,7 +112,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { sessionKeyFor, shippingSessionKey } from "./adapters/shipping";
 import { setStickerLayoutV2Allowed, stickerV2Allowed, stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, printsStickerViaImage, stickerCompactV2Allowed, setStickerCompactV2 } from "./adapters/printing";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setUpdateAppText, PLUGIN_MISSING, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, setLaptopSizeNeededHandler, laptopSizeChosen, markLaptopSizeChosen, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setUpdateAppText, PLUGIN_MISSING, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, setLaptopSizeNeededHandler, laptopSizeChosen, markLaptopSizeChosen, LAPTOP_SIZE_CHOSEN_KEY, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -138,7 +138,7 @@ import ExpiryModal from "./components/ExpiryModal";
 import PrinterModal from "./components/PrinterModal";
 import BtOffModal from "./components/BtOffModal";
 import LaptopSizeSheet from "./components/LaptopSizeSheet";
-import { laptopSizeSheetSeen, markLaptopSizeSheetSeen } from "./adapters/laptopSize";
+import { laptopSizeSheetSeen, markLaptopSizeSheetSeen, laptopChoiceFromStorage } from "./adapters/laptopSize";
 import { useBtOffModal } from "./adapters/btOff";
 import PrinterGuideModal from "./components/PrinterGuideModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
@@ -990,11 +990,15 @@ export default function RedesignApp() {
   // size is chosen the laptop prints the old page; "Use this size" (or a pick in Printer settings) switches it.
   const [laptopChosen, setLaptopChosen] = useState(() => laptopSizeChosen());
   const [laptopSheet, setLaptopSheet] = useState(false);
-  const openLaptopSheet = useCallback(() => { if (hasNativePrinter() || laptopSizeChosen() || laptopSizeSheetSeen()) return; setLaptopSheet(true); }, []);
+  // Round 5 (items 3/4): at most ONCE per session — the seen flag is set when the sheet OPENS (session storage +
+  // memory); "Later" / tap outside / Escape = ask again on the next app open. The Live print pattern's "Choose size"
+  // button opens it on purpose at any time.
+  const openLaptopSheet = useCallback(() => { if (hasNativePrinter() || laptopSizeChosen() || laptopSizeSheetSeen()) return; markLaptopSizeSheetSeen(); setLaptopSheet(true); }, []);
+  const openLaptopSheetNow = useCallback(() => { if (hasNativePrinter()) return; markLaptopSizeSheetSeen(); setLaptopSheet(true); }, []);
   useEffect(() => { setLaptopSizeNeededHandler(openLaptopSheet); return () => setLaptopSizeNeededHandler(null); }, [openLaptopSheet]);
   useEffect(() => { if (screen === "printersettings") openLaptopSheet(); }, [screen, openLaptopSheet]);
-  const chooseLaptopSize = useCallback(() => { markLaptopSizeChosen(); setLaptopChosen(true); markLaptopSizeSheetSeen(); setLaptopSheet(false); }, []);
-  const laterLaptopSize = useCallback(() => { markLaptopSizeSheetSeen(); setLaptopSheet(false); }, []);
+  const chooseLaptopSize = useCallback(() => { markLaptopSizeChosen(); setLaptopChosen(true); setLaptopSheet(false); }, []);
+  const laterLaptopSize = useCallback(() => { setLaptopSheet(false); }, []);
   const tAppRef = useRef(tApp);
   useEffect(() => { tAppRef.current = tApp; }, [tApp]); // ref write in an effect (react-hooks/refs)
   useEffect(() => {
@@ -1845,6 +1849,17 @@ export default function RedesignApp() {
   const [psType, setPsType] = useState<"wifi" | "bt">(printerInit.psType);
   const [psOut, setPsOut] = useState<"receipt" | "sticker">(printerInit.psOut);
   const [psSize, setPsSize] = useState(printerInit.psSize);
+  // Round 5 (item 4): another tab chose a size → apply it here (flag + the size it saved) and close an open sheet.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      const c = laptopChoiceFromStorage(LAPTOP_SIZE_CHOSEN_KEY, e, (() => { try { return localStorage.getItem(LS.printer); } catch { return null; } })());
+      if (!c.chosen) return;
+      markLaptopSizeChosen(); setLaptopChosen(true); setLaptopSheet(false);
+      if (c.psSize) setPsSize(c.psSize);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   const [psSizeOpen, setPsSizeOpen] = useState(false);
   useEffect(() => { try { localStorage.setItem(LS.printer, JSON.stringify({ psType, psOut, psSize })); } catch { /* ignore */ } }, [psType, psOut, psSize]);
 
@@ -2756,6 +2771,7 @@ export default function RedesignApp() {
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}
               layoutV2={stickerV2On} onTestPrintSample={stickerV2On && isAdmin ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
               stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur} maxBuyerNum={Math.max(0, ...liveSession.session.buyers.map((b) => Number(b.num) || 0))}
+              laptopSizeChosen={laptopChosen} onChooseLaptopSize={openLaptopSheetNow}
               previewSettings={stickerV2On ? buildSettingsFromRedesign({ pp, psType, psOut, psSize }) : undefined}
               spacingAllowed={stickerSpacingOn} onSpacing={(v) => setPp((p) => ({ ...p, spacing: v }))}
               imagePath={stickerSpacingOn && printsStickerViaImage(buildSettingsFromRedesign({ pp, psType, psOut, psSize }))} />

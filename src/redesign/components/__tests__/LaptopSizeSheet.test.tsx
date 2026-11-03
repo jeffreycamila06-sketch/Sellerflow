@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { TProvider, REDESIGN_STRINGS } from "../../i18n";
 import LaptopSizeSheet from "../LaptopSizeSheet";
-import { LAPTOP_SIZES, LAPTOP_SIZE_SHEET_SEEN_KEY, laptopSizeSheetSeen, markLaptopSizeSheetSeen, sizeKeyOf } from "../../adapters/laptopSize";
+import { LAPTOP_SIZES, LAPTOP_SIZE_SHEET_SEEN_KEY, laptopSizeSheetSeen, markLaptopSizeSheetSeen, __resetLaptopSizeSheetSeen, sizeKeyOf, isTypingTarget } from "../../adapters/laptopSize";
 import { DEF_SETTINGS, __resetWebPrintQueue, __webPrintIdle } from "../../adapters/printing";
 
 vi.mock("../../adapters/cjkAtlasLoader", () => ({ loadCjkAtlas: async () => ({}), prefetchCjkAtlas: () => {}, getCjkAtlasSync: () => null }));
@@ -15,7 +15,7 @@ const view = (over: Partial<Parameters<typeof LaptopSizeSheet>[0]> = {}) => {
   render(<TProvider lang="en"><LaptopSizeSheet {...p} /></TProvider>);
   return p;
 };
-beforeEach(() => { localStorage.clear(); __resetWebPrintQueue(); });
+beforeEach(() => { localStorage.clear(); sessionStorage.clear(); __resetLaptopSizeSheetSeen(); __resetWebPrintQueue(); });
 afterEach(() => { cleanup(); __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
 
 describe("LaptopSizeSheet", () => {
@@ -55,9 +55,33 @@ describe("LaptopSizeSheet", () => {
     expect(p.onChoose).toHaveBeenCalledTimes(1);
     expect(laptopSizeSheetSeen()).toBe(false);
     markLaptopSizeSheetSeen();
-    expect(localStorage.getItem(LAPTOP_SIZE_SHEET_SEEN_KEY)).toBe("1");
+    expect(sessionStorage.getItem(LAPTOP_SIZE_SHEET_SEEN_KEY)).toBe("1"); // round 5: per session — asks again on the next app open
     expect(laptopSizeSheetSeen()).toBe(true);
     expect(sizeKeyOf("100x60mm (Standard)")).toBe("100x60");
+  });
+  // round 5 (item 4)
+  it("Escape = Later", () => {
+    const p = view();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(p.onLater).toHaveBeenCalledTimes(1);
+  });
+  it("focus moves into the sheet and returns to the previous element after", () => {
+    const btn = document.createElement("button"); document.body.appendChild(btn); btn.focus();
+    expect(document.activeElement).toBe(btn);
+    const { unmount } = render(<TProvider lang="en"><LaptopSizeSheet psSize="60x40mm" onPick={() => {}} settings={{ ...DEF_SETTINGS, stickerSize: "60x40" }} cur="NT$" storeName="My Shop" onChoose={() => {}} onLater={() => {}} /></TProvider>);
+    expect(document.activeElement).toBe(screen.getByTestId("laptop-size-box"));
+    unmount();
+    expect(document.activeElement).toBe(btn);
+    btn.remove();
+  });
+  it("never steals focus from a typing field (a live in progress)", () => {
+    const input = document.createElement("input"); document.body.appendChild(input); input.focus();
+    render(<TProvider lang="en"><LaptopSizeSheet psSize="60x40mm" onPick={() => {}} settings={{ ...DEF_SETTINGS, stickerSize: "60x40" }} cur="NT$" storeName="My Shop" onChoose={() => {}} onLater={() => {}} /></TProvider>);
+    expect(document.activeElement).toBe(input);
+    input.remove();
+    expect(isTypingTarget(document.createElement("textarea"))).toBe(true);
+    expect(isTypingTarget(document.createElement("div"))).toBe(false);
+    expect(isTypingTarget(null)).toBe(false);
   });
   it("every string in all 8 languages, none blank", () => {
     const langs = Object.keys(REDESIGN_STRINGS);

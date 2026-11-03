@@ -115,7 +115,7 @@ function useStickerFit(settings: Settings | null, cur: string, shopName: string,
 
 export default function PrintPattern({
   onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop", layoutV2 = false, onTestPrintSample,
-  stickerQrAllowed = false, psSize = "100x60mm (Standard)", appShell = false, previewSettings, cur = "NT$",
+  stickerQrAllowed = false, psSize = "100x60mm (Standard)", appShell = false, previewSettings, cur = "NT$", laptopSizeChosen = true, onChooseLaptopSize,
   spacingAllowed = false, onSpacing, imagePath = false, spacingChoiceVisible = STICKER_SPACING_CHOICE_VISIBLE, printerPath, maxBuyerNum = 0,
 }: {
   onBack: () => void;
@@ -139,6 +139,8 @@ export default function PrintPattern({
   stickerQrAllowed?: boolean;
   psSize?: string;           // the chosen sticker size (Printer settings)
   appShell?: boolean;        // phone app: QR is not available on 60×40 (same rule as Printer settings)
+  laptopSizeChosen?: boolean; // round 5 (item 2): laptop only — false = orders print origin/main's page, the levels/switches below don't apply yet
+  onChooseLaptopSize?: () => void; // opens the "Choose your sticker size" sheet
   previewSettings?: Settings; // the print settings the exact preview renders with
   cur?: string;
   // Sticker spacing (allowlist): Normal/Compact choice, the exact preview with the seller's real
@@ -157,9 +159,12 @@ export default function PrintPattern({
   // item 5 (round 2): a laptop (no native printer) prints the browser page → preview + fit measure follow it
   const path: FitPath = printerPath ?? (appShell || imagePath ? savedPrinterPath() : "browser"); // imagePath = a phone that prints images
   const where = { path, wMm, hMm, compactV2: stickerCompactV2Effective() };
-  const qrSizeBlocked = !stickerQrPrints({ ...where, path });
+  // round 5 (item 2): a laptop with no sticker size chosen prints the OLD page — no size gates, no red lines, the old page
+  // as the preview, one line + a button to choose the size.
+  const legacyLaptop = path === "browser" && !laptopSizeChosen;
+  const qrSizeBlocked = !legacyLaptop && !stickerQrPrints({ ...where, path });
   // item 4 (round 2): a control that cannot print on this size / printer shows "Not printed on this size"
-  const notPrinted = (k: PpBoolKey): boolean => k === "shopName" && !stickerControlPrints("shopName", where);
+  const notPrinted = (k: PpBoolKey): boolean => !legacyLaptop && k === "shopName" && !stickerControlPrints("shopName", where);
   const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
   const toggleQr = () => { if (qrSizeBlocked) return; const next = !stickerQr; setStickerQrOn(next); setStickerQr(next); };
   // exact preview: QR on, a size that prints a QR (50 mm+ tall), and the @username on (QR follows it)
@@ -171,7 +176,7 @@ export default function PrintPattern({
   // atlases load on demand). Nov 3 (item 5): the preview is THE print bitmap (ExactStickerPreview →
   // stickerBitmapFor), or the browser print page on a laptop.
   // Nov 3 (item 14): measured on EVERY tap (no print needed), shown in red next to the control it belongs to.
-  const fit = useStickerFit(previewSettings ?? null, cur, shopName, path, maxBuyerNum);
+  const fit = useStickerFit(legacyLaptop ? null : previewSettings ?? null, cur, shopName, path, maxBuyerNum);
   const fitOf = (k: PpSizeKey): "push" | "cut" | "limit" | undefined => fit?.controls[FIT_OF[k]];
   const fitText = (v: "push" | "cut" | "limit") => (v === "push" ? t.rd_pp_fit_push : v === "limit" ? t.rd_pp_fit_num_limit : t.rd_pp_fit_cutoff);
   const anyUp = (["shopNameSize", "buyerNumSize", "tiktokNameSize", "tiktokUserSize", "commentSize"] as PpSizeKey[]).some((k) => printScaleLevel(pp[k]) > 1);
@@ -191,7 +196,7 @@ export default function PrintPattern({
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
           {showPreview && previewSettings ? (
             <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
-              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={path} browser={exactBrowser} />
+              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={path} browser={exactBrowser} legacy={legacyLaptop} />
             </div>
           ) : (
           <div style={{ background: "#fff", borderRadius: 11, padding: "12px 14px", textAlign: "center" }}>
@@ -235,6 +240,12 @@ export default function PrintPattern({
           </div>
         )}
 
+        {legacyLaptop && (
+          <div data-testid="pp-laptop-choose" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 11, padding: "10px 13px", borderRadius: 12, background: "var(--accent-softer)", border: "1px solid var(--border)" }}>
+            <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: "var(--text)", lineHeight: 1.4 }}>{t.rd_pp_lsize_line}</span>
+            <button type="button" data-testid="pp-laptop-choose-btn" onClick={onChooseLaptopSize} style={{ padding: "9px 13px", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", flexShrink: 0, minHeight: 40 }}>{t.rd_pp_lsize_btn}</button>
+          </div>
+        )}
         <button onClick={onTestPrint} style={{ width: "100%", marginTop: 11, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.8" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.8" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.8" /></svg>
           {t.rd_pp_printer_test}

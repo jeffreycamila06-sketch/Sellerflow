@@ -5,7 +5,8 @@
 //   item 1: one failed bitmap build settles ITS job as not printed and the next orders still print, in order.
 //   item 2: the page image is shown at its own size (dots ÷ 8 mm) — 50×30's 384-dot bitmap is 48 mm on the 50 mm page.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { printSlip, setWebPrintOutcomeHandler, setLaptopSizeNeededHandler, markLaptopSizeChosen, laptopSizeChosen, LAPTOP_SIZE_CHOSEN_KEY, browserStickerPage, __resetWebPrintQueue, __webPrintIdle, DEF_SETTINGS, type Settings } from "../printing";
+import { printSlip, setWebPrintOutcomeHandler, setLaptopSizeNeededHandler, markLaptopSizeChosen, laptopSizeChosen, __resetLaptopSizeChosen, LAPTOP_SIZE_CHOSEN_KEY, browserStickerPage, __resetWebPrintQueue, __webPrintIdle, DEF_SETTINGS, type Settings } from "../printing";
+import { laptopChoiceFromStorage, laptopSizeSheetSeen, markLaptopSizeSheetSeen, __resetLaptopSizeSheetSeen, LAPTOP_SIZE_SHEET_SEEN_KEY } from "../laptopSize";
 import { rasterFromBmpDataUrl } from "./printControls.harness";
 import type { Buyer } from "../../../lib/orderTypes";
 import { readFileSync } from "node:fs";
@@ -23,7 +24,7 @@ const buyer = (num: number): Buyer => ({ handle: "annc", name: "Ann Cruz", platf
 const frame = () => document.querySelector("iframe") as HTMLIFrameElement | null;
 const pageHtml = () => frame()?.contentDocument?.documentElement.outerHTML || "";
 
-beforeEach(() => { localStorage.removeItem(LAPTOP_SIZE_CHOSEN_KEY); __resetWebPrintQueue(); setWebPrintOutcomeHandler(null); setLaptopSizeNeededHandler(null); vi.useFakeTimers(); failBuilds = 0; });
+beforeEach(() => { __resetLaptopSizeChosen(); __resetLaptopSizeSheetSeen(); __resetWebPrintQueue(); setWebPrintOutcomeHandler(null); setLaptopSizeNeededHandler(null); vi.useFakeTimers(); failBuilds = 0; });
 afterEach(() => { __resetWebPrintQueue(); setWebPrintOutcomeHandler(null); setLaptopSizeNeededHandler(null); vi.useRealTimers(); vi.restoreAllMocks(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
 
 describe("item 5 — the old laptop page until a size is chosen; the sheet never blocks a print", () => {
@@ -37,6 +38,7 @@ describe("item 5 — the old laptop page until a size is chosen; the sheet never
     expect(seen[0]).toContain("@page{size:auto;margin:0}");        // the old page was ALREADY written when the sheet was asked for
     expect(seen[0]).toContain('class="bnum">Buyer 12');
     expect(seen[0]).not.toContain("data:image/bmp");
+    expect(seen[0]).not.toContain("<img");                         // no bitmap at all: origin/main's text page
   });
   it("a handler that throws never breaks the print", async () => {
     setLaptopSizeNeededHandler(() => { throw new Error("sheet exploded"); });
@@ -66,7 +68,54 @@ describe("item 5 — the old laptop page until a size is chosen; the sheet never
     const app = readFileSync(resolve(__dirname, "../../RedesignApp.tsx"), "utf8");
     expect(app).toContain("setLaptopSizeNeededHandler(openLaptopSheet)");
     expect(app).toContain('if (screen === "printersettings") openLaptopSheet();');
-    expect(app).toMatch(/openLaptopSheet = useCallback\(\(\) => \{ if \(hasNativePrinter\(\) \|\| laptopSizeChosen\(\) \|\| laptopSizeSheetSeen\(\)\) return; setLaptopSheet\(true\); \}/);
+    expect(app).toMatch(/openLaptopSheet = useCallback\(\(\) => \{ if \(hasNativePrinter\(\) \|\| laptopSizeChosen\(\) \|\| laptopSizeSheetSeen\(\)\) return; markLaptopSizeSheetSeen\(\); setLaptopSheet\(true\); \}/);
+    expect(app).toContain('window.addEventListener("storage", onStorage)'); // round 5 (item 4): another tab's choice applies here
+  });
+});
+
+describe("round 5 (item 3) — storage blocked: the choice and the seen flag live in memory for the session", () => {
+  const blocked = () => {
+    const boom = () => { throw new Error("SecurityError: storage disabled"); };
+    vi.stubGlobal("localStorage", { getItem: boom, setItem: boom, removeItem: boom, clear: boom, key: boom, length: 0 });
+    vi.stubGlobal("sessionStorage", { getItem: boom, setItem: boom, removeItem: boom, clear: boom, key: boom, length: 0 });
+  };
+  afterEach(() => { vi.unstubAllGlobals(); });
+  it("localStorage / sessionStorage throw → mark + read still agree; the print reads the same in-memory value", async () => {
+    blocked();
+    expect(laptopSizeChosen()).toBe(false);
+    expect(() => markLaptopSizeChosen()).not.toThrow();
+    expect(laptopSizeChosen()).toBe(true);
+    const handler = vi.fn();
+    setLaptopSizeNeededHandler(handler);
+    printSlip(buyer(4), "NT$", "My Shop", cfg({ stickerSize: "60x40" }));
+    await __webPrintIdle();
+    expect(handler).not.toHaveBeenCalled();                       // chosen → the bitmap page, no sheet
+    expect(pageHtml()).toContain("@page{size:60mm 40mm;margin:0}");
+  });
+  it("the sheet-seen flag: at most once per session even with storage throwing; a new session (reset) asks again", () => {
+    blocked();
+    expect(laptopSizeSheetSeen()).toBe(false);
+    expect(() => markLaptopSizeSheetSeen()).not.toThrow();
+    expect(laptopSizeSheetSeen()).toBe(true);
+    __resetLaptopSizeSheetSeen();
+    expect(laptopSizeSheetSeen()).toBe(false);
+  });
+  it("with storage working the seen flag is per SESSION (sessionStorage), the chosen flag per device (localStorage)", () => {
+    markLaptopSizeSheetSeen();
+    expect(sessionStorage.getItem(LAPTOP_SIZE_SHEET_SEEN_KEY)).toBe("1");
+    expect(localStorage.getItem(LAPTOP_SIZE_SHEET_SEEN_KEY)).toBeNull();
+    markLaptopSizeChosen();
+    expect(localStorage.getItem(LAPTOP_SIZE_CHOSEN_KEY)).toBe("1");
+  });
+});
+
+describe("round 5 (item 4) — another tab's choice", () => {
+  it("laptopChoiceFromStorage: only the chosen key set to '1' applies; carries the saved size when readable", () => {
+    expect(laptopChoiceFromStorage("k", { key: "k", newValue: "1" }, JSON.stringify({ psType: "bt", psOut: "sticker", psSize: "50x30mm" }))).toEqual({ chosen: true, psSize: "50x30mm" });
+    expect(laptopChoiceFromStorage("k", { key: "k", newValue: "1" }, null)).toEqual({ chosen: true });
+    expect(laptopChoiceFromStorage("k", { key: "k", newValue: "1" }, "{not json")).toEqual({ chosen: true });
+    expect(laptopChoiceFromStorage("k", { key: "k", newValue: null }, null)).toEqual({ chosen: false });
+    expect(laptopChoiceFromStorage("k", { key: "other", newValue: "1" }, null)).toEqual({ chosen: false });
   });
 });
 

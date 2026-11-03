@@ -4,12 +4,12 @@
 // settings opens on a laptop. Size list + the live preview (the bitmap the new page prints) + Test print.
 // "Use this size" = chosen → the new bitmap page from the next print; "Later" / tap outside = dismissed for good
 // (the Printer settings size picker chooses too).
-import { type CSSProperties } from "react";
+import { type CSSProperties, useEffect, useRef } from "react";
 import { useT } from "../i18n";
 import ExactStickerPreview from "./ExactStickerPreview";
 import { printLaptopTestSticker, type Settings } from "../adapters/printing";
 import { buildTestBuyer } from "../adapters/printerBridge";
-import { LAPTOP_SIZES, sizeKeyOf } from "../adapters/laptopSize";
+import { LAPTOP_SIZES, sizeKeyOf, isTypingTarget } from "../adapters/laptopSize";
 
 export default function LaptopSizeSheet({ psSize, onPick, settings, cur, storeName, onChoose, onLater }: {
   psSize: string; onPick: (s: string) => void;
@@ -18,12 +18,28 @@ export default function LaptopSizeSheet({ psSize, onPick, settings, cur, storeNa
 }) {
   const t = useT() as unknown as Record<string, string>;
   const preview: Settings = { ...settings, stickerSize: sizeKeyOf(psSize) };
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  // Round 5 (item 4): Escape = Later; focus moves into the sheet and returns to where it was after — unless a typing
+  // field had it (a live in progress): then focus is left alone.
+  const onLaterRef = useRef(onLater);
+  useEffect(() => { onLaterRef.current = onLater; }, [onLater]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onLaterRef.current(); } };
+    window.addEventListener("keydown", onKey);
+    const prev = document.activeElement as HTMLElement | null;
+    const moved = !isTypingTarget(prev);
+    if (moved) boxRef.current?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (moved && prev && prev.isConnected && typeof prev.focus === "function") prev.focus();
+    };
+  }, []);
   const overlay: CSSProperties = { position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" };
   const sheet: CSSProperties = { width: "100%", maxWidth: 520, maxHeight: "92vh", overflowY: "auto", background: "var(--surface)", borderRadius: "20px 20px 0 0", padding: "18px 18px 16px", boxShadow: "0 -12px 40px rgba(9,7,24,.35)", fontFamily: "var(--font-ui)" };
   const btn: CSSProperties = { padding: "12px 0", borderRadius: 12, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)", minHeight: 46 };
   return (
     <div style={overlay} role="dialog" aria-label={t.rd_ps_lsize_title} data-testid="laptop-size-sheet" onClick={onLater}>
-      <div style={sheet} onClick={(e) => e.stopPropagation()}>
+      <div ref={boxRef} tabIndex={-1} data-testid="laptop-size-box" style={{ ...sheet, outline: "none" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_lsize_title}</div>
         <p style={{ fontSize: 13, color: "var(--text-dim)", margin: "6px 0 12px", lineHeight: 1.5 }}>{t.rd_ps_lsize_intro}</p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} data-testid="laptop-size-list">
