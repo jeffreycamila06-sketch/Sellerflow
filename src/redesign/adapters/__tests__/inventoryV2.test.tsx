@@ -90,8 +90,7 @@ describe("switch ON", () => {
   it("edit form: stock written as a LOGGED DELTA after a stock-less save (no overwrite)", async () => {
     view({ inventoryV2: true });
     fireEvent.click(screen.getByText("Edit"));
-    const inputs = document.querySelectorAll("form input[type=number]");
-    fireEvent.change(inputs[1], { target: { value: "8" } });   // stock 5 → 8
+    fireEvent.change(screen.getByTestId("prd-stock"), { target: { value: "8" } });   // stock 5 → 8
     fireEvent.submit(document.querySelector("form")!);
     await waitFor(() => expect(saveProductDbResult).toHaveBeenCalled());
     expect((saveProductDbResult as Mock).mock.calls[0][1]).toEqual({ skipStock: true });
@@ -102,9 +101,8 @@ describe("switch ON", () => {
     fireEvent.click(screen.getByText("+ Add"));
     const form = document.querySelector("form") as HTMLFormElement;
     fireEvent.change(form.querySelector("input") as HTMLInputElement, { target: { value: "Bag" } });
-    const nums = form.querySelectorAll("input[type=number]");
-    fireEvent.change(nums[0], { target: { value: "100" } });
-    fireEvent.change(nums[1], { target: { value: "4" } });
+    fireEvent.change(screen.getByTestId("prd-price"), { target: { value: "100" } }); // price is a text input now (decimal prices)
+    fireEvent.change(screen.getByTestId("prd-stock"), { target: { value: "4" } });
     fireEvent.submit(form);
     await waitFor(() => expect(logStockMovement).toHaveBeenCalledTimes(1));
     expect((logStockMovement as Mock).mock.calls[0].slice(1)).toEqual([4, "manual_edit"]);

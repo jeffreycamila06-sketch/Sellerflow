@@ -26,6 +26,7 @@ import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
 import { platformRange, platformRangeFor, platformRpcFor, type SalesPlatform, type UsePlatformSales } from "../adapters/salesByPlatform";
 import { looksLikeFbId } from "../adapters/fbName";
 import { fmt } from "../data";
+import { moneyText } from "../../lib/money";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
@@ -319,7 +320,7 @@ function PlatformView({ data, state, cur }: { data: UsePlatformSales["data"]; st
         {data.best.map((b, i) => (
           <div key={`${b.kind}-${b.label}`} data-testid={`sales-plat-best-${i}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 2px", borderTop: i ? "1px solid var(--border)" : "none" }}>
             <div style={{ width: 20, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textAlign: "right" }}>{i + 1}</div>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.kind === "price" ? `${cur}${b.label}` : b.label}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.kind === "price" ? `${cur}${b.label !== "" && Number.isFinite(Number(b.label)) ? moneyText(Number(b.label)) : b.label}` : b.label}</div>
             <div style={{ textAlign: "right", flexShrink: 0 }}>
               <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{b.qty} {t.rd_sal_pcs}</div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{cur}{fmt(b.rev)}</div>

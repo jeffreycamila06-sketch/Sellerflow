@@ -5,6 +5,7 @@
 // visual-only — real account switching / order creation is Phase 5.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { avColor, initials, fmt, type Comment } from "../data";
+import { hasCents } from "../../lib/money";
 import { basketCountFor } from "../adapters/basketCounts";
 import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
 import { normHandle, type BuyerAlertView } from "../adapters/buyerAlert";
@@ -1081,7 +1082,7 @@ export default function Dashboard({
                           {/* NO onBlur — deliberate and test-pinned: blur (keyboard
                               dismiss / row unmount in a fast feed) must never print
                               NOR clear the typed price (ghost-print protection). */}
-                          <input value={entPrice} onChange={(e) => onEntPrice(e.target.value)} onKeyDown={onEntKey} inputMode="decimal" autoFocus style={{ width: 48, border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, padding: "5px 0", outline: "none" }} />
+                          <input value={entPrice} onChange={(e) => onEntPrice(e.target.value)} onKeyDown={onEntKey} inputMode={hasCents(cur) ? "decimal" : "numeric"} autoFocus style={{ width: 48, border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, padding: "5px 0", outline: "none" }} />
                           {/* iPhone fix — in-app ✓ submit, ALWAYS visible while the
                               price flow is open (the iOS number pad has no return
                               key). onPointerDown + preventDefault: fires BEFORE any

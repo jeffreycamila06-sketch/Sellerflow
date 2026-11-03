@@ -1,5 +1,6 @@
 import { saveOrderToDatabase, saveCustomerToDatabase, saveLiveSessionOrder, loadTodaysLiveSession } from "./db";
 import { supabase } from "./supabase";
+import { priceInput, hasCents, moneyText } from "./lib/money";
 import {
   type AccountAuditLog,
   adminUpdateContactNote,
@@ -1343,7 +1344,7 @@ function Products({cur,t}:{cur:string;t:T}){
                 <Fg label={t.sku_label}><input value={form.sku} onChange={e=>setForm(f=>({...f,sku:e.target.value}))}/></Fg>
               </div>
               <div className="auth-row2">
-                <Fg label={`${t.price_label} (${cur})`}><input type="number" value={form.price} onChange={e=>setForm(f=>({...f,price:e.target.value}))} min="0" step="0.01" inputMode="decimal" required/></Fg>
+                <Fg label={`${t.price_label} (${cur})`}><input type="text" value={form.price} onChange={e=>setForm(f=>({...f,price:priceInput(e.target.value,hasCents(cur))}))} inputMode={hasCents(cur)?"decimal":"numeric"} required/></Fg>
                 <Fg label={t.stock_label}><input type="number" value={form.stock} onChange={e=>setForm(f=>({...f,stock:e.target.value}))} min="0" required/></Fg>
               </div>
               <Fg label={t.platform_label}><select value={form.platform} onChange={e=>setForm(f=>({...f,platform:e.target.value}))}><option>TikTok</option><option>Facebook</option><option>TikTok / FB</option></select></Fg>
@@ -1390,7 +1391,7 @@ function Orders({orders,setOrders,onPersist,cur,t}:{orders:LiveOrder[];setOrders
     <div className="subpage">
       <div className="subpage-hd">
         <div><h2>{t.nav_orders}</h2><p>{t.orders_sub}</p></div>
-        <button className="btn-out" onClick={()=>csvDL(`orders-${new Date().toISOString().slice(0,10)}.csv`,[t.order_num,"#",t.customer_col,t.item_col,t.qty_col,t.total_col,t.platform_label,t.time_col,t.status_col],filtered.map(o=>[`#SF${o.orderNum}`,o.bNum,`@${o.handle}`,o.item,o.qty,`${cur}${o.total}`,o.platform,o.time,o.status]))}>⬇ {t.export_csv}</button>
+        <button className="btn-out" onClick={()=>csvDL(`orders-${new Date().toISOString().slice(0,10)}.csv`,[t.order_num,"#",t.customer_col,t.item_col,t.qty_col,t.total_col,t.platform_label,t.time_col,t.status_col],filtered.map(o=>[`#SF${o.orderNum}`,o.bNum,`@${o.handle}`,o.item,o.qty,`${cur}${moneyText(o.total)}`,o.platform,o.time,o.status]))}>⬇ {t.export_csv}</button>
       </div>
       <div className="grid4">
         <div className="mstat"><div className="ms-l">{t.orders_stat}</div><div className="ms-v">{c.all}</div></div>
@@ -1777,7 +1778,7 @@ function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
         <div><h2>{t.nav_customers}</h2><p>{t.customers_sub}</p></div>
         <div style={{display:"flex",gap:8}}>
           <input placeholder={t.search_customers} value={q} onChange={e=>setQ(e.target.value)} className="search-inp" style={{maxWidth:200}}/>
-          <button className="btn-out" onClick={()=>csvDL(`customers-${new Date().toISOString().slice(0,10)}.csv`,["#","Name","Username","Platform","Orders",`Total`],buyers.map(b=>[b.num,b.name,`@${b.handle}`,b.platform,b.totalOrders,`${cur}${b.totalSpent}`]))}>⬇ {t.export_csv}</button>
+          <button className="btn-out" onClick={()=>csvDL(`customers-${new Date().toISOString().slice(0,10)}.csv`,["#","Name","Username","Platform","Orders",`Total`],buyers.map(b=>[b.num,b.name,`@${b.handle}`,b.platform,b.totalOrders,`${cur}${moneyText(b.totalSpent)}`]))}>⬇ {t.export_csv}</button>
         </div>
       </div>
       <div className="grid4">
@@ -1989,7 +1990,7 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
     <div className="subpage">
       <div className="subpage-hd">
         <div><h2>{t.nav_sales}</h2><p>{t.sales_sub}</p></div>
-        <button className="btn-out" onClick={()=>csvDL(`sales-${new Date().toISOString().slice(0,10)}.csv`,[t.order_num,t.sales_csv_buyer,t.item_col,t.qty_col,t.total_col,t.platform_label,t.time_col],orders.map(o=>[`#SF${o.orderNum}`,o.name,o.item,o.qty,`${cur}${o.total}`,o.platform,o.time]))}>⬇ {t.export_csv}</button>
+        <button className="btn-out" onClick={()=>csvDL(`sales-${new Date().toISOString().slice(0,10)}.csv`,[t.order_num,t.sales_csv_buyer,t.item_col,t.qty_col,t.total_col,t.platform_label,t.time_col],orders.map(o=>[`#SF${o.orderNum}`,o.name,o.item,o.qty,`${cur}${moneyText(o.total)}`,o.platform,o.time]))}>⬇ {t.export_csv}</button>
       </div>
       <div className="grid4">
         <div className="mstat"><div className="ms-l">{t.revenue_stat}</div><div className="ms-v" style={{fontSize:22,color:"#1D9E75"}}>{cur}{tot.toLocaleString()}</div></div>

@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fmtMoney, moneyText, priceInput } from "../money";
+import { fmtMoney, moneyText, priceInput, hasCents } from "../money";
 import { buildOrderFromComment, rebuildSessionFromRows } from "../orderLogic";
 import { formatAmount, receiptTotalText } from "../receiptLayout.js";
 import { upsertProduct } from "../../redesign/adapters/products";
@@ -26,15 +26,49 @@ describe("fmtMoney / moneyText / priceInput", () => {
     expect(fmtMoney(1234.5)).toBe("1,234.50");
     expect(fmt).toBe(fmtMoney);                   // data.ts fmt = the shared rule (Orders/Products/SalesTab/exports)
     expect(moneyText(350)).toBe("350");
+    expect(moneyText(1200)).toBe("1200");
     expect(moneyText(2.9)).toBe("2.90");
+    expect(moneyText(2.9 * 3)).toBe("8.70");      // CSV / badge: no float noise
   });
-  it("accepts a comma as the decimal separator; digits + ONE dot", () => {
+  it("no-cents currencies (NT$) keep origin/main's digits-only rule verbatim", () => {
+    for (const c of ["NT$", "₫", "Rp", "¥", "₩"]) expect(hasCents(c)).toBe(false);
+    for (const c of ["RM", "₱", "$", "€", "฿", "A$"]) expect(hasCents(c)).toBe(true);
+    const main = (v: string) => v.replace(/[^0-9]/g, "");   // origin/main RedesignApp onEntPrice
+    for (const v of ["1,200", "1200", "2.90", "2,90", "12.", "-5", "abc", "", "1.200", " 3 5 "]) expect(priceInput(v, false)).toBe(main(v));
+    expect(priceInput("1,200", false)).toBe("1200");
+  });
+  it("cent currencies: ',' is a decimal point only with 1–2 trailing digits; 3 = thousands; capped at 2; no negatives", () => {
     expect(priceInput("2,90")).toBe("2.90");
+    expect(priceInput("2,9")).toBe("2.9");
     expect(priceInput("2.90")).toBe("2.90");
-    expect(priceInput("12.5.0")).toBe("12.50");
+    expect(priceInput("1,200")).toBe("1200");
+    expect(priceInput("1.200")).toBe("1200");
+    expect(priceInput("1,234.50")).toBe("1234.50");
+    expect(priceInput("2.")).toBe("2.");           // pending decimal while typing
+    expect(priceInput("2,")).toBe("2.");
+    expect(priceInput("12.5.")).toBe("12.5");      // a 2nd dot is dropped
+    expect(priceInput("12.5.0")).toBe("12.50");    // first dot wins (origin/main tiktokSend rule)
+    expect(priceInput("1..2")).toBe("1.2");
+    expect(priceInput(".5")).toBe(".5");
+    expect(priceInput("2.9051")).toBe("2.90");     // cap 2 decimals
+    expect(priceInput("-2.90")).toBe("2.90");      // negatives rejected
     expect(priceInput("RM 2,9")).toBe("2.9");
     expect(priceInput("350")).toBe("350");
+    expect(priceInput("abc")).toBe("");
     expect(Number(priceInput("2,90"))).toBe(2.9);
+    expect(Number(priceInput("1,200"))).toBe(1200);
+  });
+});
+
+describe("NT$ whole-number output = origin/main, byte for byte", () => {
+  const whole = [0, 1, 7, 38, 100, 350, 999, 1000, 1200, 12345, 99999, 1000000];
+  it("display / text / receipt / item", () => {
+    for (const n of whole) {
+      expect(fmtMoney(n)).toBe(n.toLocaleString("en-US"));                       // data.ts fmt (main)
+      expect(moneyText(n)).toBe(String(n));                                        // orderLogic item (main) + CSV `${cur}${total}`
+      expect(formatAmount("NT$", n)).toBe(`NT$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`); // receiptLayout (main)
+      expect(buildOrderFromComment(comment, [], n, NOW).order.item).toBe(n > 0 ? String(n) : "mine");
+    }
   });
 });
 
@@ -78,24 +112,32 @@ describe("every money input accepts decimals (source pins)", () => {
   it("step=0.01 + inputMode=decimal on the number inputs; priceInput on the text inputs", () => {
     const products = src("src/redesign/screens/Products.tsx");
     expect(products).toMatch(/data-testid="prd-price"[^\n]*/);
-    expect(products).toMatch(/type="number" min="0" step="0\.01" inputMode="decimal" value=\{form\.price\}/);
+    expect(products).toMatch(/type="text" inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{form\.price\} onChange=\{\(e\) => setForm\(\(f\) => \(\{ \.\.\.f, price: priceInput\(e\.target\.value, hasCents\(cur\)\) \}\)\)\} required/);
     expect(products).toMatch(/type="number" min="0" inputMode="numeric" value=\{form\.stock\}/); // stock: whole only (no step)
     const post = src("src/redesign/screens/PostSales.tsx");
-    expect(post).toMatch(/inputMode="decimal" min=\{0\} step="0\.01" value=\{r\.price \|\| ""\}/);
-    expect(post).toMatch(/inputMode="decimal" min=\{0\} step="0\.01" value=\{draft\.price\}/);
+    expect(post).toMatch(/type="text" inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{r\.priceText \?\? \(r\.price \|\| ""\)\}/);
+    expect(post).toMatch(/type="text" inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{draft\.priceText\}/);
+    expect(post.match(/priceInput\(e\.target\.value, hasCents\(cur\)\)/g)?.length).toBe(2);
     expect(post).toMatch(/inputMode="numeric" min=\{0\} placeholder="∞" value=\{r\.stock/); // stock whole
-    expect(src("src/redesign/screens/Dashboard.tsx")).toMatch(/value=\{entPrice\} onChange=\{\(e\) => onEntPrice\(e\.target\.value\)\} onKeyDown=\{onEntKey\} inputMode="decimal"/);
-    expect(src("src/redesign/RedesignApp.tsx")).toContain("onEntPrice={(v) => setEntPrice(priceInput(v))}");
+    expect(src("src/redesign/screens/Dashboard.tsx")).toMatch(/value=\{entPrice\} onChange=\{\(e\) => onEntPrice\(e\.target\.value\)\} onKeyDown=\{onEntKey\} inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\}/);
+    const app = src("src/redesign/RedesignApp.tsx");
+    expect(app).toContain("onEntPrice={(v) => setEntPrice(priceInput(v, hasCents(cur)))}");
+    expect(app).toContain("[id]: cur + moneyText(price)");          // printed badge
+    expect(app).toContain("[key]: cur + moneyText(autoPrice)");
+    expect(app).toContain("`${cur}${moneyText(Number(c.spent) || 0)}`"); // customers CSV
+    expect(src("src/redesign/components/TikTokSendSheet.tsx")).toContain("value={totalOverride ?? moneyText(sum)}");
+    expect(src("src/redesign/screens/SalesTab.tsx")).toContain("moneyText(Number(b.label))");
     const gs = src("src/redesign/screens/GeneralSettings.tsx");
     expect(gs).toMatch(/ref=\{spInputRef\} inputMode="decimal"/);
-    expect(gs).toContain("setSpDraft(priceInput(e.target.value))");
-    expect(src("src/redesign/screens/FmCustomerDetails.tsx")).toMatch(/setPrice\(priceInput\(e\.target\.value\)\); setImportErr\(""\); \}\} inputMode="decimal"/);
-    const cd = src("src/redesign/screens/CustomerDetails.tsx");
-    expect(cd).toContain("setPrice(priceInput(e.target.value))");
-    expect(cd).toMatch(/setPrice\(priceInput\(e\.target\.value\)\); setImportErr\(""\); \}\}\s+inputMode="decimal"/);
-    expect(src("src/redesign/components/ReceiptSheet.tsx")).toContain("setLine(l.id, { price: priceInput(e.target.value) })");
-    expect(src("src/redesign/components/TikTokSendSheet.tsx")).toMatch(/inputMode="decimal" value=\{l\.price\} onChange=\{\(e\) => setPrice\(l\.key, priceInput\(e\.target\.value\)\)\}/);
-    expect(src("src/App.tsx")).toContain('<input type="number" value={form.price} onChange={e=>setForm(f=>({...f,price:e.target.value}))} min="0" step="0.01" inputMode="decimal" required/>');
+    expect(gs).toContain("setSpDraft(priceInput(e.target.value, hasCents(cur)))");
+    expect(src("src/redesign/screens/FmCustomerDetails.tsx")).toMatch(/setPrice\(priceInput\(e\.target\.value, hasCents\(cur\)\)\); setImportErr\(""\); \}\} inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\}/);
+    expect(src("src/redesign/screens/CustomerDetails.tsx")).toMatch(/setPrice\(priceInput\(e\.target\.value, hasCents\(cur\)\)\); setImportErr\(""\); \}\}\s+inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\}/);
+    expect(src("src/redesign/components/ReceiptSheet.tsx")).toContain("setLine(l.id, { price: priceInput(e.target.value, hasCents(cur)) })");
+    expect(src("src/redesign/components/TikTokSendSheet.tsx")).toMatch(/inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{l\.price\} onChange=\{\(e\) => setPrice\(l\.key, priceInput\(e\.target\.value, hasCents\(cur\)\)\)\}/);
+    expect(src("src/redesign/components/ReceiptSheet.tsx")).toMatch(/inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\} value=\{l\.price\}/);
+    const legacy = src("src/App.tsx");
+    expect(legacy).toContain('<input type="text" value={form.price} onChange={e=>setForm(f=>({...f,price:priceInput(e.target.value,hasCents(cur))}))} inputMode={hasCents(cur)?"decimal":"numeric"} required/>');
+    expect(legacy.match(/\$\{cur\}\$\{moneyText\((o\.total|b\.totalSpent)\)\}/g)?.length).toBe(3); // the 3 CSV exports
   });
   it("no integer rounding on the price save path", () => {
     expect(src("src/redesign/adapters/products.ts")).toMatch(/const price = parseFloat\(form\.price\) \|\| 0;/);

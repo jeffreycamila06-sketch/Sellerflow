@@ -27,20 +27,35 @@ async function addProduct(cur: string, price: string) {
 }
 
 describe("Products — decimal price", () => {
-  it("price input: type=number step=0.01 inputMode=decimal; stock input: whole numbers only", async () => {
+  it("RM: text input with the decimal keypad; ',' typed → '.'; stock stays a whole-number input", async () => {
     render(<TProvider lang="en"><Products cur="RM" /></TProvider>);
     fireEvent.click(screen.getByText("+ Add"));
     const price = (await screen.findByTestId("prd-price")) as HTMLInputElement;
-    expect(price.type).toBe("number");
-    expect(price.step).toBe("0.01");
+    expect(price.type).toBe("text");
     expect(price.inputMode).toBe("decimal");
+    expect(price.required).toBe(true);
+    fireEvent.change(price, { target: { value: "2,90" } });
+    expect(price.value).toBe("2.90");
+    fireEvent.change(price, { target: { value: "1,200" } });
+    expect(price.value).toBe("1200");
     const stock = screen.getByTestId("prd-stock") as HTMLInputElement;
-    expect(stock.step).toBe("");
+    expect(stock.type).toBe("number");
     expect(stock.inputMode).toBe("numeric");
   });
 
-  it("RM 2.90 saves and shows RM2.90", async () => {
-    await addProduct("RM", "2.90");
+  it("NT$: numeric keypad, digits only (origin/main behaviour)", async () => {
+    render(<TProvider lang="en"><Products cur="NT$" /></TProvider>);
+    fireEvent.click(screen.getByText("+ Add"));
+    const price = (await screen.findByTestId("prd-price")) as HTMLInputElement;
+    expect(price.inputMode).toBe("numeric");
+    fireEvent.change(price, { target: { value: "1,200" } });
+    expect(price.value).toBe("1200");
+    fireEvent.change(price, { target: { value: "2.90" } });
+    expect(price.value).toBe("290");
+  });
+
+  it("RM 2,90 (comma keypad) saves as 2.9 and shows RM2.90", async () => {
+    await addProduct("RM", "2,90");
     expect(await screen.findByText("RM2.90")).toBeTruthy();
     expect(screen.queryByText("RM2.9")).toBeNull();
     expect(screen.queryByText("RM3")).toBeNull();
