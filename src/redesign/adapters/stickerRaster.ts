@@ -418,8 +418,16 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   }
   if (printBuyerNumber) {
     const ym = cmul(c.buyerNumYMul * lvlBuyerNum);
-    ops.push({ k: "txt", x: 16, y, font: "4", s: "Buyer", xm: 2, ym });
-    ops.push({ k: "txt", x: 280, y, font: "4", s: String(buyerNum), xm: 2, ym });
+    // item 2 (round 3): never a partial digit (12345 printed "1234" on 60×40). The number ends before the right
+    // edge — or before the QR column when the QR shares its rows: wide digits (xm 2) when they fit, else the narrow
+    // ones (xm 1), else the number alone from the left edge. Legacy = the frozen TEXT reference, untouched.
+    const numS = String(buyerNum);
+    const numH = F4 * ym;
+    const numLimit = qr && y < qr.y0 + qr.foot && y + numH > qr.y0 ? Math.min(c.rightEdge, qr.x0) : c.rightEdge;
+    const numXm = legacy || 280 + numS.length * 24 * 2 <= numLimit ? 2 : 1;
+    const numX = legacy || 280 + numS.length * 24 * numXm <= numLimit ? 280 : 16;
+    if (numX === 280) ops.push({ k: "txt", x: 16, y, font: "4", s: "Buyer", xm: 2, ym });
+    ops.push({ k: "txt", x: numX, y, font: "4", s: numS, xm: numXm, ym });
     const d = (ym - c.buyerNumYMul) * F4; y += c.buyerNumGap + d; extra += d;
   }
   // Facebook buyer (printFacebookName, bitmap/extended only): the name is printed ONCE — words a
@@ -739,10 +747,14 @@ function draw50x30(payload: RasterPayload, mode: ScriptMode, qr: QrPlacement | n
   if (flag("printBuyerNumber")) {
     // item 2: never a partial digit — the largest level (from the chosen one down) at which the whole number ends
     // before the QR column; at level 1 it prints whole even if it runs under the QR
-    const xb = num.length <= 3 ? 2 : 1;
+    // item 4 (round 3): at every level the wide digits (xm 2 — up to 3 digits) first, then the narrow ones (xm 1 —
+    // what 4+ digits always use), THEN the next level down — so "123" grows 1× < 2× ≤ 3× like "1002" instead of
+    // falling back to 1× because its wide digits no longer fit
     const numRight = qr ? qr.x0 : W50 - 8; // whole digits up to the QR's quiet zone (the quiet zone itself stays white)
-    let lv = lvNum;
-    while (lv > 1 && X + num.length * 24 * xb * lv > numRight) lv--;
+    let lv = lvNum, xb = num.length <= 3 ? 2 : 1;
+    const fitsNum = (b: number, l: number) => X + num.length * 24 * b * l <= numRight;
+    while (lv > 1 && !fitsNum(xb, lv)) { if (xb === 2) xb = 1; else { lv--; xb = num.length <= 3 ? 2 : 1; } }
+    if (lv === 1 && xb === 2 && !fitsNum(2, 1)) xb = 1;
     const xm = xb * lv, ym = 2 * lv;
     ops.push({ k: "txt", x: X, y: 6, font: "4", s: num, xm, ym });
     extra += (ym - 2) * 32;
@@ -858,6 +870,7 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
         let g = f.glyphs[cp] ?? extra?.[op.font]?.glyphs[cp];
         if (!g) { const alt = translitCp(cp); if (alt != null) g = f.glyphs[alt] ?? extra?.[op.font]?.glyphs[alt]; }
         if (g) bmp.blit(b64ToBytes(g), f.w, f.h, penX, op.y, op.xm, op.ym);
+        else if (cp === 0x2026) blitEllipsis(bmp, penX, op.y, f.w, f.h, op.xm, op.ym); // item 5 (round 3): no "…" glyph in the cell fonts
         penX += f.w * op.xm; // fixed advance (mono cell), even for a missing glyph
       }
       continue;
@@ -872,9 +885,17 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
       let g = cjkFont.glyphs[cp];
       if (!g) { const alt = translitCp(cp); if (alt != null) g = cjkFont.glyphs[alt]; }
       if (g) bmp.blit(b64ToBytes(g), cjkFont.w, cjkFont.h, penX, op.y, op.xm, op.ym);
+      else if (cp === 0x2026) blitEllipsis(bmp, penX, op.y, cjkFont.w, cjkFont.h, op.xm, op.ym);
       penX += cjkFont.w * op.xm;
     }
   }
+}
+// Item 5 (Nov 3 round 3): the fixed-cell fonts ("2"/"3"/"4", the 24-cell CJK atlas) carry no "…" — a cut line
+// painted NOTHING where its "…" should be (王小明 at 3× on 50×30 printed a bare "王"). Three dots on the baseline
+// of the cell, each 2×2 dots × the magnification, a sixth of the cell apart.
+function blitEllipsis(bmp: Bitmap, x: number, y: number, cw: number, ch: number, xm: number, ym: number): void {
+  const d = 2, top = y + (ch - 4) * ym;
+  for (const k of [1, 3, 5]) bmp.fillRect(x + Math.floor((cw * k) / 6 - 1) * xm, top, d * xm, d * ym);
 }
 
 export interface BitmapTsplResult { bytes: Uint8Array; bands: number; inkBytes: number }
@@ -972,20 +993,20 @@ export function stickerQrSupported(hMm: number): boolean { return hMm > 40; }
 // the layout that will draw has a place for it. The font-C compact layout (generic printers / Niimbot on
 // 50×30 / 60×40, and the AIMO with layout v2 ON) always has one; the fixed-cell layout has one on every
 // size but 60×40; the 50×30 fixed layout has one. So the only "no" is the AIMO on 60×40 with v2 OFF.
-export type StickerPath = "aimo" | "generic" | "niimbot";
+// "browser" (Nov 3 round 3, item 7) = a laptop: the image atlases printed as one picture — the generic rules.
+export type StickerPath = "aimo" | "generic" | "niimbot" | "browser";
 export function stickerQrPrints(a: { path: StickerPath; wMm: number; hMm: number; compactV2: boolean }): boolean {
   if (a.path === "niimbot") return true;                                   // always the 50×30 compact layout
-  const compactLayout = isPropCompactSize(a.wMm, a.hMm) && (a.path === "generic" || a.compactV2);
+  const compactLayout = isPropCompactSize(a.wMm, a.hMm) && (a.path === "generic" || a.path === "browser" || a.compactV2);
   if (compactLayout) return true;
   return stickerQrSupported(a.hMm) || (a.wMm === 50 && a.hMm === 30);
 }
 
 // Item 4 (Nov 3 round 2): which LIVE print pattern controls print at all for the saved printer + size. The
 // Print pattern shows "Not printed on this size" instead of a switch / stepper that could change nothing.
-// "browser" = the laptop print page (every control prints there). Shop name: never on 50×30 / the Niimbot.
-export type ControlPath = StickerPath | "browser";
+// "browser" = the laptop (the same image layouts as a generic printer). Shop name: never on 50×30 / the Niimbot.
+export type ControlPath = StickerPath;
 export function stickerControlPrints(control: "shopName" | "stickerQr", a: { path: ControlPath; wMm: number; hMm: number; compactV2: boolean }): boolean {
-  if (a.path === "browser") return true;
   if (control === "shopName") return a.path !== "niimbot" && !(a.wMm === 50 && a.hMm === 30);
   return stickerQrPrints({ ...a, path: a.path });
 }
@@ -1413,7 +1434,7 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
   const qrProbe = propQrPlacement(payload, W, H, canvas?.edge ?? propSizes(wMm, true).edge);
   const sizes = propSizes(wMm, !!qrProbe);
   const edge = canvas?.edge ?? sizes.edge;
-  const qr = qrProbe ? propQrPlacement(payload, W, H, edge) : null;
+  let qr = qrProbe ? propQrPlacement(payload, W, H, edge) : null;
   const X = edge;
   const right = qr ? Math.min(qr.x0, propQrInkLeft(qr) - PROP_TEXT_QR_GAP) : W - edge; // never inside the quiet zone the stamp clears
   const maxW = Math.max(1, right - X);
@@ -1427,12 +1448,15 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
     const when0 = flag("printDateTime") ? narrow([date0, orders[0]?.time ?? ""].filter(Boolean).join(" ")) : "";
     const timeFont = prop[String(sizes.time)];
     let dateLine: PropLaidLineV2 | null = null;
+    // item 6 (round 3): the date is TOP-RIGHT at the label's edge (as in layout v2); the QR moves below the row when
+    // it still fits (see the end) — only when it cannot does the date stop at the text column
+    const qrFitsBelow = !qr || qr.foot + prop[String(sizes.line)].h + COMPACT_V2_DATE_TOP + 2 * COMPACT_V2_GAP <= H;
     if (when0 && timeFont) {
-      const line = propFitLine(when0, sizes.time, maxW, atlases);
-      dateLine = { size: sizes.time, font: timeFont, line, x: right - line.inkWidth, top: COMPACT_V2_DATE_TOP }; // stays left of the QR column
+      const line = propFitLine(when0, sizes.time, qrFitsBelow ? W - 2 * edge : maxW, atlases);
+      dateLine = { size: sizes.time, font: timeFont, line, x: (qrFitsBelow ? W - edge : right) - line.inkWidth, top: COMPACT_V2_DATE_TOP };
     }
     const shopLv = settings == null ? 1 : settingLevel(settings.printStoreScale);
-    const shopMaxW = Math.max(1, (dateLine ? dateLine.x - 2 * COMPACT_V2_GAP : right) - X);
+    const shopMaxW = Math.max(1, (dateLine ? (qrFitsBelow ? dateLine.x - 2 * COMPACT_V2_GAP : Math.min(dateLine.x - 2 * COMPACT_V2_GAP, right)) : right) - X);
     const big = propFitLine(shopText, propLevelSize(sizes.line, shopLv), shopMaxW, atlases);
     const pick = shopLv > 1 || !big.cut ? { size: propLevelSize(sizes.line, shopLv), line: big } : { size: sizes.time, line: propFitLine(shopText, sizes.time, shopMaxW, atlases) };
     const sf = prop[String(pick.size)];
@@ -1442,6 +1466,8 @@ export function propLayoutLines(payload: RasterPayload, wMm: number, hMm: number
       const hl: PropLaidLineV2[] = [{ size: pick.size, font: sf, line: pick.line, x: X, top: COMPACT_V2_DATE_TOP, bold: true }];
       if (dateLine) hl.push({ ...dateLine, top: COMPACT_V2_DATE_TOP + dy });
       header = { lines: hl, h: COMPACT_V2_DATE_TOP + rowH };
+      // item 6: the QR moves below the shop row (as in layout v2) so the date can sit at the label's right edge
+      if (qr && qrFitsBelow) { const y0 = Math.max(qr.y0, header.h + COMPACT_V2_GAP); if (y0 + qr.foot <= H) qr = { ...qr, y0 }; }
     }
   }
 

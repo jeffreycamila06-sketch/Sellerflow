@@ -14,7 +14,7 @@ import type { PpBoolKey, PpSizeKey } from "../../screens/PrintPattern";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const OUT = process.env.PRINTER_FIX_OUT || "";
-const LABEL: Record<string, string> = { aimo: "AIMO D520BT", generic: "FLASH Y41BT / XPRINTER XP-420B (generic TSPL, bold)", niimbot: "NIIMBOT B1 (always 50x30)" };
+const LABEL: Record<string, string> = { aimo: "AIMO D520BT", generic: "FLASH Y41BT / XPRINTER XP-420B (generic TSPL, bold)", niimbot: "NIIMBOT B1 (always 50x30)", browser: "LAPTOP (browser print = this image on a label-sized page)" };
 it("renders the print-controls evidence", async () => {
   if (!OUT) return;
   const { switches, sizes } = screenControls();
@@ -44,7 +44,7 @@ it("renders the print-controls evidence", async () => {
     const rowsC: { label: string; c: CaseSpec; file: string }[] = [];
     for (const k of ["tiktokNameSize", "commentSize"] as const) for (const lv of [1, 2, 3]) rowsC.push({ label: `${k} ${lv}x (王小明 / 我要黑色)`, c: { path, psSize, v2, buyer: cjk, pp: { [k]: lv } }, file: `cjk_${k}-${lv}x` });
     const rowsN: { label: string; c: CaseSpec; file: string }[] = [];
-    for (const num of [7, 88, 123, 1002]) for (const lv of [1, 2, 3]) rowsN.push({ label: `#${num} buyerNumSize ${lv}x`, c: { path, psSize, v2, buyer: { ...sampleBuyer(), num } as Buyer, pp: { buyerNumSize: lv } }, file: `num${num}-${lv}x` });
+    for (const num of [7, 88, 123, 1002, 12345]) for (const lv of [1, 2, 3]) rowsN.push({ label: `#${num} buyerNumSize ${lv}x`, c: { path, psSize, v2, buyer: { ...sampleBuyer(), num } as Buyer, pp: { buyerNumSize: lv } }, file: `num${num}-${lv}x` });
     for (const [kind, rows2] of [["cjk", rowsC], ["number", rowsN]] as const) {
       const rasters2: FullRaster[] = [];
       for (const r of rows2) { const ras = await renderCase(r.c); rasters2.push(ras); savePng(ras, join(OUT, "cells", `${tag}_${r.file}.png`)); }
@@ -78,10 +78,12 @@ it("renders the print-controls evidence", async () => {
     pairN.frame(20, 60, np.w, np.h); pairN.raster(np, 20, 60); pairN.frame(60 + np.w, 60, printedN.w, printedN.h); pairN.raster(printedN, 60 + np.w, 60);
     pairN.save(join(OUT, `pair_niimbot_v2-${v2 ? "on" : "off"}.png`));
   }
-  // browser page: one HTML per size level (+ switches off) — open in Chrome → Print to see the laptop sticker
+  // laptop print page (round 3, item 7): one HTML per size level (+ switches off) — open in Chrome → Print: the page IS
+  // the label (@page = its size) holding the sticker bitmap; the .png next to it is that bitmap
   mkdirSync(join(OUT, "browser"), { recursive: true });
-  for (const k of sizes as PpSizeKey[]) for (const lv of [1, 2, 3]) writeFileSync(join(OUT, "browser", `browser_${k}-${lv}x.html`), browserCase({ path: "aimo", psSize: "60x40mm", v2: false, pp: { [k]: lv } }));
-  for (const k of switches) if (k !== "stickerQr") writeFileSync(join(OUT, "browser", `browser_${k}-off.html`), browserCase({ path: "aimo", psSize: "60x40mm", v2: false, pp: { [k as PpBoolKey]: false } }));
+  const bc = async (file: string, c: CaseSpec) => { const r = await browserCase(c); writeFileSync(join(OUT, "browser", `${file}.html`), r.html); savePng(r.raster, join(OUT, "browser", `${file}.png`)); };
+  for (const psSize of ["60x40mm", "100x60mm (Standard)"]) for (const k of sizes as PpSizeKey[]) for (const lv of [1, 2, 3]) await bc(`browser_${psSize.replace(/mm.*/, "")}_${k}-${lv}x`, { path: "browser", psSize, v2: false, pp: { [k]: lv } });
+  for (const k of switches) if (k !== "stickerQr") await bc(`browser_60x40_${k}-off`, { path: "browser", psSize: "60x40mm", v2: false, pp: { [k as PpBoolKey]: false } });
   writeFileSync(join(OUT, "report.txt"), report.join("\n") + "\n");
   // item 14: the red line each size control gets at 2× / 3× (what the LIVE print pattern shows the moment it is tapped)
   const warn: string[] = [];
@@ -95,4 +97,4 @@ it("renders the print-controls evidence", async () => {
     }
   }
   writeFileSync(join(OUT, "warnings.txt"), warn.join("\n") + "\n");
-});
+}, 900_000);

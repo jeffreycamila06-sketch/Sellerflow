@@ -14,9 +14,9 @@ vi.mock("../stickerRaster", async (importOriginal) => {
   return { ...m, renderStickerBitmap: (...a: Parameters<typeof m.renderStickerBitmap>) => { rasterCalls.push(a[0] as never); return m.renderStickerBitmap(...a); } };
 });
 
-import { fbNameOnly, isFacebookPlatform } from "../fbName";
+import { fbNameOnly, isFacebookPlatform, printableBuyer } from "../fbName";
 import { fbNameLines, lowestOpBottom, stickerDrawOps, STICKER_LAYOUTS, type DrawOp, type RasterPayload } from "../stickerRaster";
-import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __resetNativePrintQueue, type Settings } from "../printing";
+import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __resetNativePrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload, type Settings } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const mem = new Map<string, string>();
@@ -303,6 +303,8 @@ describe("printSlip: Instagram prints the username once, no QR; TikTok unchanged
 });
 
 describe("web/laptop print", () => {
+  // Round 3 (item 7): the laptop prints the sticker IMAGE (stickerBitmapFor "browser") on a label-sized page — the page
+  // carries exactly the bitmap the Facebook / TikTok rules produce (printableBuyer + the fbName flag), no text layout.
   let frame: HTMLIFrameElement | null = null;
   beforeEach(() => {
     __resetWebPrintQueue(); setStickerQrOn(false);
@@ -310,25 +312,26 @@ describe("web/laptop print", () => {
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => { const el = orig(tag); if (tag === "iframe") frame = el as HTMLIFrameElement; return el; });
   });
   afterEach(() => { vi.restoreAllMocks(); __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
-  const html = (b: Buyer, cfg: Settings = { ...DEF_SETTINGS }) => { printSlip(b, "NT$", "My Shop", cfg); return frame?.contentDocument?.documentElement.outerHTML || ""; };
-  it("Facebook: no @ line; the name may take 2 lines (no '…' cut)", () => {
-    const out = html(mk("Facebook", FB, FB));
-    expect(out).not.toContain('class="user"');
-    expect(out).toContain(`<div class="name fbname">${FB}</div>`);
-    expect(out).toContain("-webkit-line-clamp:2");
+  const html = async (b: Buyer, cfg: Settings = { ...DEF_SETTINGS }) => { __resetWebPrintQueue(); printSlip(b, "NT$", "My Shop", cfg); await __webPrintIdle(); return frame?.contentDocument?.documentElement.outerHTML || ""; };
+  const image = async (b: Buyer, cfg: Settings, fbName: boolean) => bitmapBmpDataUrl(await stickerBitmapFor({ path: "browser", payload: buildNativeStickerPayload(printableBuyer(b), "NT$", "My Shop", cfg), platform: b.platform, fbName }));
+  it("Facebook: the page is the name-only image (no @ line, the name may take 2 lines — the fbName raster rules)", async () => {
+    const b = mk("Facebook", FB, FB);
+    const out = await html(b);
+    expect(out).toContain(await image(b, { ...DEF_SETTINGS, printBuyerUsername: false }, true));
+    expect(out).not.toMatch(/<(div|span)[ >]/);
   });
-  it("TikTok: the @ line stays, no Facebook CSS", () => {
-    const out = html(mk("TikTok", "Joy M", "kaldag_queenpocket_oo"));
-    expect(out).toContain('<div class="user">@kaldag_queenpocket_oo</div>');
-    expect(out).not.toContain("fbname");
+  it("TikTok: the page is the plain image (the @ line stays, no Facebook rule)", async () => {
+    const b = mk("TikTok", "Joy M", "kaldag_queenpocket_oo");
+    expect(await html(b)).toContain(await image(b, { ...DEF_SETTINGS }, false));
   });
   // Build 11 (M1): a Facebook commenter id is never printed — "Unknown" + id prints no @line, no name.
-  it("Facebook 'Unknown' prints no id; username-off keeps today's page", () => {
-    const unknown = html(mk("Facebook", "Unknown", ID));
+  it("Facebook 'Unknown' prints no id; username-off keeps today's page", async () => {
+    const unknown = await html(mk("Facebook", "Unknown", ID));
     expect(unknown).not.toContain(ID);
-    expect(unknown).not.toContain('<div class="user">');
-    const off = html(mk("Facebook", FB, FB), { ...DEF_SETTINGS, printBuyerUsername: false });
-    expect(off).not.toContain("fbname");
+    expect(printableBuyer(mk("Facebook", "Unknown", ID)).name).toBe("");
+    const b = mk("Facebook", FB, FB);
+    const off = await html(b, { ...DEF_SETTINGS, printBuyerUsername: false });
+    expect(off).toContain(await image(b, { ...DEF_SETTINGS, printBuyerUsername: false }, false));
   });
 });
 
@@ -336,15 +339,15 @@ describe("web/laptop print", () => {
 // sha256 (first 16 hex) captured on origin/main 711bc20, clock pinned to 2026-10-06T04:00Z.
 // Nov 3 re-capture (printer fix): the BITMAP digests are the Oct 6 ones (the phone label is byte-identical);
 // text / lan / slip carry the two new payload switches `printBuyerName` + `printDateTime` (item 2 — the
-// native TEXT builders read them, default true = same bytes on paper); web = the browser print page now
-// applies the size levels (item 7: `font-size: calc(… * lv)`, lv = 1 here).
+// native TEXT builders read them, default true = same bytes on paper); web = re-captured Nov 3 round 3 (item 7):
+// the laptop page is the sticker image on a label-sized page.
 const MAIN = {
   "tt.bitmap.60x40": "9f883b9e6d084b92", "tt.text.60x40": "443c78e387d18c45", "tt.lan.60x40": "443c78e387d18c45",
   "tt.bitmap.100x60": "c075d0d1c03717e5", "tt.text.100x60": "def58cb4df125c3c", "tt.lan.100x60": "def58cb4df125c3c",
-  "tt.slip": "5faf1e403611e828", "tt.web": "0097a504412e6ab0",
+  "tt.slip": "5faf1e403611e828", "tt.web": "4384a98d27ea0602", // .web re-captured Nov 3 round 3 (item 7): the laptop page is now the sticker image
   "ttSame.bitmap.60x40": "4b90980d555e4239", "ttSame.text.60x40": "dfb4c87d75b4833c", "ttSame.lan.60x40": "dfb4c87d75b4833c",
   "ttSame.bitmap.100x60": "d029b5c39c6eb89e", "ttSame.text.100x60": "18de72914bb4e28c", "ttSame.lan.100x60": "18de72914bb4e28c",
-  "ttSame.slip": "8fbff80e4e22ef4e", "ttSame.web": "116a6e1b3fb2ead3",
+  "ttSame.slip": "8fbff80e4e22ef4e", "ttSame.web": "8374f26b14b7f293",
 } as const;
 const sha16 = async (s: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 16);
 
@@ -379,6 +382,7 @@ describe("TikTok output is byte-identical to main (phone label, text, WiFi, slip
         const orig = document.createElement.bind(document);
         const spy = vi.spyOn(document, "createElement").mockImplementation((tag: string) => { const el = orig(tag); if (tag === "iframe") frame = el as HTMLIFrameElement; return el; });
         printSlip(b, "NT$", "My Shop", { ...DEF_SETTINGS });
+        await __webPrintIdle(); // round 3 (item 7): the laptop page is the sticker image, rendered async
         got[`${k}.web`] = await sha16((frame as HTMLIFrameElement | null)?.contentDocument?.documentElement.outerHTML || "");
         spy.mockRestore(); __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());
       }

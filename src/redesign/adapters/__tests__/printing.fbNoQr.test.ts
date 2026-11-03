@@ -4,9 +4,11 @@
 // Both QR decision points: the phone bitmap path and the browser-print path.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  printSlip, setStickerQrOn, setStickerQrEntitled, stickerQrAllowedFor, __resetWebPrintQueue, LS_CLASSIC_TEXT,
+  printSlip, setStickerQrOn, setStickerQrEntitled, stickerQrAllowedFor, __resetWebPrintQueue, __webPrintIdle, LS_CLASSIC_TEXT,
   DEF_SETTINGS, type Settings,
 } from "../printing";
+import jsQR from "jsqr";
+import { pageSrc, rasterFromBmpDataUrl } from "./printControls.harness";
 import type { Buyer } from "../../../lib/orderTypes";
 
 type W = { SellerFlowPrinter?: unknown; Capacitor?: unknown };
@@ -90,12 +92,13 @@ describe("phone (bitmap) sticker", () => {
   });
 });
 
+// Round 3 (item 7): the laptop prints the sticker IMAGE on a label-sized page — the QR is the phone's QR inside
+// that image (decoded back with jsQR), and a Facebook buyer's page is byte-identical with the toggle on or off.
 describe("browser-print sticker", () => {
   let captured: HTMLIFrameElement | null;
   beforeEach(() => {
     captured = null;
     __resetWebPrintQueue();
-    vi.useFakeTimers();
     const orig = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
       const el = orig(tag);
@@ -106,22 +109,32 @@ describe("browser-print sticker", () => {
   });
   afterEach(() => {
     setStickerQrOn(false); setStickerQrEntitled(false);
-    __resetWebPrintQueue(); vi.restoreAllMocks(); vi.useRealTimers();
+    __resetWebPrintQueue(); vi.restoreAllMocks();
     document.querySelectorAll("iframe").forEach((f) => f.remove());
   });
-  const html = (platform: string, qrOn: boolean) => {
+  const html = async (platform: string, qrOn: boolean) => {
     setStickerQrOn(qrOn);
     __resetWebPrintQueue();
     printSlip(buyer(platform), "NT$", "My Shop", { ...DEF_SETTINGS });
+    await __webPrintIdle();
     return captured?.contentDocument?.documentElement.outerHTML || "";
   };
+  const decode = (page: string): string | null => {
+    const r = rasterFromBmpDataUrl(pageSrc(page));
+    const px = 2, w = r.w * px, h = r.h * px;
+    const data = new Uint8ClampedArray(w * h * 4).fill(255);
+    for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) {
+      for (let j = 0; j < px; j++) for (let i = 0; i < px; i++) { const k = ((y * px + j) * w + x * px + i) * 4; data[k] = data[k + 1] = data[k + 2] = 0; }
+    }
+    return jsQR(data, w, h)?.data ?? null;
+  };
 
-  it("TikTok + QR on → the QR is there (unchanged)", () => {
-    expect(html("TikTok", true)).toContain('<svg class="qr"');
+  it("TikTok + QR on → the QR is in the printed image (unchanged)", async () => {
+    expect(decode(await html("TikTok", true))).toBe("https://tiktok.com/@annc");
   });
-  it("Facebook + QR on → no QR and the same page as QR off", () => {
-    const fbOn = html("Facebook", true);
-    expect(fbOn).not.toContain('class="qr"');
-    expect(fbOn).toBe(html("Facebook", false));
+  it("Facebook + QR on → no QR and the same page as QR off", async () => {
+    const fbOn = await html("Facebook", true);
+    expect(decode(fbOn)).toBeNull();
+    expect(fbOn).toBe(await html("Facebook", false));
   });
 });

@@ -81,12 +81,18 @@ describe("preview", () => {
     expect(v.getByTestId("pp-exact-preview")).toBeTruthy();
     expect(v.queryByTestId("pp-v2-comment")).toBeNull();
   });
-  it("QR off, 60×40 (no QR on the phone), or @username off → the normal preview, no QR", () => {
-    expect(pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "80x50mm", previewSettings: settings80x50 }).queryByTestId("pp-exact-preview")).toBeNull();
+  it("QR off, 60×40 (no QR on the phone), or @username off → the normal preview on a phone; a laptop always shows its print bitmap", () => {
+    // round 3 (item 7): no native printer = a laptop → the preview is the print bitmap in the label-sized frame, QR or not
+    // (render queries are bound to document.body → unmount between renders)
+    let v = pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "80x50mm", previewSettings: settings80x50 });
+    expect(v.queryByTestId("pp-exact-preview-browser")).not.toBeNull(); v.unmount();
     on();
-    expect(pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "60x40mm", appShell: true, previewSettings: settings80x50 }).queryByTestId("pp-exact-preview")).toBeNull();
-    expect(pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "60x40mm", appShell: false, previewSettings: settings80x50 }).queryByTestId("pp-exact-preview")).toBeNull();
-    expect(pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "80x50mm", previewSettings: settings80x50, pp: { ...DEFAULT_PP, tiktokUser: false } }).queryByTestId("pp-exact-preview")).toBeNull();
+    v = pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "60x40mm", appShell: true, previewSettings: settings80x50 });
+    expect(v.queryByTestId("pp-exact-preview")).toBeNull(); v.unmount();
+    v = pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "60x40mm", appShell: false, previewSettings: settings80x50 });
+    expect(v.queryByTestId("pp-exact-preview-browser")).not.toBeNull(); v.unmount();
+    v = pattern({ layoutV2: true, stickerQrAllowed: true, psSize: "80x50mm", previewSettings: settings80x50, pp: { ...DEFAULT_PP, tiktokUser: false } });
+    expect(v.queryByTestId("pp-exact-preview-browser")).not.toBeNull(); v.unmount();
   });
   it("the preview image is the real print layout: QR at the real placement, comment rows stop left of it", () => {
     for (const size of ["70x50", "80x50", "80x60"]) {

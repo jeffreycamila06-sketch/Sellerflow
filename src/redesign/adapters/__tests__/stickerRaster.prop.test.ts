@@ -10,7 +10,7 @@
 //     untouched (tspl.test.ts + the stickerRaster golden suites run unchanged).
 import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderStickerBitmap, rasterizeToBitmapTspl, fitRaster, propQrPlacement, propQrInkLeft, propFitLine, propFitShrinking, propShrinkLadder, propLayoutLines, propLineTops, propGlyphBox, propPlanCjkSizes, propSizes, isPropCompactSize, PROP_TEXT_QR_GAP, PROP_INK_MARGIN, PROP_CJK_GAP, STICKER_LAYOUTS, QR_QUIET_MODULES, type RasterPayload, type RasterAtlases, propStackTops, type PropFont, type PropLine } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
@@ -54,7 +54,13 @@ describe("font C goldens", () => {
   });
   // Nov 3 round 2 (item 3): the three 60x40 goldens were regenerated — the compact-v1 label now carries the shop
   // row (shop name bold + date top-right) like layout v2; the 50x30 goldens are unchanged.
+  // Nov 3 round 3 (item 6): tiktok_qron_60x40 regenerated again — with a QR the date now sits at the label's right
+  // edge and the QR moves below the shop row (= layout v2). Regenerate with UPDATE_PROP_GOLDENS=1 (writes the file).
   it.each(["50x30", "60x40"] as Size[])("the space rule at %s: Facebook / TikTok QR off / TikTok QR on", (size) => {
+    if (process.env.UPDATE_PROP_GOLDENS === "1") {
+      GOLD[`fb_${size}`] = sha(render(payloadFor(S2, size, true, "Facebook"), size).buf); GOLD[`tiktok_qroff_${size}`] = sha(render(payloadFor(S2, size, false), size).buf); GOLD[`tiktok_qron_${size}`] = sha(render(payloadFor(S2, size, true), size).buf);
+      writeFileSync(join(process.cwd(), "src/redesign/adapters/__tests__/stickerRasterPropGoldens.json"), JSON.stringify(GOLD, null, 2) + "\n");
+    }
     expect(sha(render(payloadFor(S2, size, true, "Facebook"), size).buf)).toBe(GOLD[`fb_${size}`]);
     expect(sha(render(payloadFor(S2, size, false), size).buf)).toBe(GOLD[`tiktok_qroff_${size}`]);
     expect(sha(render(payloadFor(S2, size, true), size).buf)).toBe(GOLD[`tiktok_qron_${size}`]);
@@ -304,13 +310,15 @@ describe("font C glyph integrity", () => {
     let glyphs = 0;
     // every painted glyph (the stack + the shop row): a CJK glyph above the 32-dot atlas is the 24 / 32-dot glyph
     // magnified (`b.mag`, item 1), so its ink is at (x + sx·mag, y + sy·mag)
-    const check = (l: { size: number; font: PropFont; line: PropLine }, x: number, top: number, sc = 1) => {
+    // round 3 (item 6): the shop row's date sits at the label's right edge (the QR moved below the row) → the header
+    // lines are bounded by the label edge, the stack by the text column
+    const check = (l: { size: number; font: PropFont; line: PropLine }, x: number, top: number, sc = 1, limit = colEnd) => {
       for (const it of l.line.items) {
         const b = propGlyphBox(it, l.size, x, top, l.font, ATL);
         if (!b) continue;
         glyphs++;
         const m = b.mag * sc;
-        expect(b.x + b.w * m).toBeLessThanOrEqual(colEnd);            // the glyph box never crosses the column
+        expect(b.x + b.w * m).toBeLessThanOrEqual(limit);             // the glyph box never crosses the column
         expect(b.y + b.h * m).toBeLessThanOrEqual(r.h);
         const crb = (b.w + 7) >> 3;
         for (let sy = 0; sy < b.h; sy++) for (let sx = 0; sx < b.w; sx++) {
@@ -324,7 +332,7 @@ describe("font C glyph integrity", () => {
       if (l.line.cut) expect(l.line.text.endsWith("…")).toBe(true);
       check(l, L.x, tops[i], l.scale ?? 1);
     });
-    for (const l of L.header?.lines ?? []) { if (l.line.cut) expect(l.line.text.endsWith("…")).toBe(true); check(l, l.x, l.top); }
+    for (const l of L.header?.lines ?? []) { if (l.line.cut) expect(l.line.text.endsWith("…")).toBe(true); check(l, l.x, l.top, 1, L.w - propSizes(w, false).edge); }
     return glyphs;
   }
   it("every golden render", () => {

@@ -2,7 +2,9 @@
 // redesign adapter produces output byte-for-byte identical to a VERBATIM copy of
 // App.tsx's builders (the native TSPL/ESC-POS payload shape is DO-NOT-TOUCH).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, printSlip, __resetWebPrintQueue, DEF_SETTINGS, type Settings } from "../printing";
+import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, printSlip, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, DEF_SETTINGS, type Settings } from "../printing";
+import { rasterFromBmpDataUrl } from "./printControls.harness";
+import type { FullRaster } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
 
 // ── VERBATIM reference from src/App.tsx:519-585, 658-659. If App.tsx changes,
@@ -74,7 +76,7 @@ describe("buildSlipPayload — byte-parity with App.tsx", () => {
   });
 });
 
-describe("printSlip — web browser print MIRRORS the native TSPL sticker layout", () => {
+describe("printSlip — the laptop prints THE sticker bitmap as one image on a label-sized page (round 3, item 7)", () => {
   // Capture the iframe printSlip creates so we can spy its contentWindow.print.
   let captured: HTMLIFrameElement | null;
   beforeEach(() => {
@@ -91,91 +93,46 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
   afterEach(() => { __resetWebPrintQueue(); vi.restoreAllMocks(); vi.useRealTimers(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
   const webHtml = () => captured?.contentDocument?.documentElement.outerHTML || "";
 
-  it("appends a hidden iframe, writes the sticker-mirror HTML, calls win.print(), returns via:'browser'", () => {
+  it("appends a hidden iframe, writes the label-sized page holding the sticker image, calls win.print(), returns via:'browser'", async () => {
     // jsdom has no window.SellerFlowPrinter → native paths skip → browser fallback runs.
-    const r = printSlip(buyer({ num: 1, name: "Ann Cruz", handle: "annc", totalSpent: 320 }), "NT$", "My Shop", cfg());
+    const b = buyer({ num: 1, name: "Ann Cruz", handle: "annc", totalSpent: 320 }), c = cfg({ stickerSize: "60x40" });
+    const r = printSlip(b, "NT$", "My Shop", c);
     expect(r).toEqual({ ok: true, via: "browser" });
+    await __webPrintIdle();
     expect(captured).not.toBeNull();
     expect(document.body.contains(captured)).toBe(true);
     const html = webHtml();
-    // Sticker content parity: brand header, dominant Buyer #, name, @username.
-    expect(html).toContain("SellerFlowLive");
-    expect(html).toContain("Buyer 1");   // no "#" — mirrors the split native buyer line (4-digit fit)
-    expect(html).not.toContain("Buyer #");
-    expect(html).toContain("Ann Cruz");
-    expect(html).toContain("@annc");
-    // Driver-driven + auto-fit: no forced size, one-page overflow-hidden body.
-    expect(html).toContain("@page{size:auto");
-    expect(html).toContain("overflow:hidden");
-    expect(html).toContain('class="code"'); // the CODE line renders (order.item)
+    expect(html).toContain("@page{size:60mm 40mm;margin:0}"); // the page IS the label
+    expect(html).toContain("width:60mm;height:40mm");
+    expect(html).toMatch(/<img alt="" src="data:image\/bmp;base64,/);
+    expect(html).not.toMatch(/<(div|span|p)[ >]/);              // no browser text layout — preview == print by construction
+    // the image IS the preview bitmap: stickerBitmapFor, path "browser", the same payload
+    const expected = await stickerBitmapFor({ path: "browser", payload: buildNativeStickerPayload(b, "NT$", "My Shop", c), platform: "TikTok" });
+    expect(html).toContain(bitmapBmpDataUrl(expected));
     // window.print fires after the (trimmed) pre-print timeout
     const printSpy = vi.spyOn(captured!.contentWindow as Window, "print").mockImplementation(() => {});
-    vi.advanceTimersByTime(60);
+    await vi.advanceTimersByTimeAsync(60);
     expect(printSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("NO Total and NO 'Order here' — the old 2-column slip layout is gone", () => {
-    printSlip(buyer({ totalSpent: 999, num: 3 }), "NT$", "Shop", cfg({ printTotal: true }));
-    const html = webHtml();
-    expect(html).not.toContain("Total");   // sticker parity (printTotal forced off)
-    expect(html).not.toContain("Order here");
-    expect(html).not.toContain("999");     // no amount anywhere
-  });
-
-  it("renders the order CODE (item) large + anchored at the bottom, truncated to 14", () => {
-    const b = buyer();
-    b.orders = [{ ...b.orders[0], item: "A2 x2" }];
-    printSlip(b, "NT$", "Shop", cfg());
-    const html = webHtml();
-    expect(html).toContain('class="code"');
-    expect(html).toContain("A2 x2");           // the auto CODE renders (was missing before)
-    expect(html).toContain("margin-top:auto"); // .foot anchors the code at the bottom
-    __resetWebPrintQueue();
-    const b2 = buyer(); b2.orders = [{ ...b2.orders[0], item: "ABCDEFGHIJKLMNOPQRST" }];
-    printSlip(b2, "NT$", "Shop", cfg());
-    expect(webHtml()).toContain("ABCDEFGHIJKLMN");     // truncate(14)
-    expect(webHtml()).not.toContain("ABCDEFGHIJKLMNO"); // 15th char dropped
-  });
-
-  it("@page is driver-driven (size:auto), NOT a forced label size", () => {
-    printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "60x40" }));
-    const html = webHtml();
-    expect(html).toContain("@page{size:auto");
-    expect(html).not.toContain("size:60mm");
-    __resetWebPrintQueue();
+  it("the page is the label's size for every sticker size; the string-settings overload too", async () => {
     printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "80x50" }));
-    expect(webHtml()).toContain("@page{size:auto"); // ignores the tier on web
-    expect(webHtml()).not.toContain("size:80mm");
-  });
-
-  it("prints the Taipei date (MM/DD/YYYY family), not the old en-PH long date", () => {
-    printSlip(buyer(), "NT$", "Shop", cfg());
-    const html = webHtml();
-    expect(html).toMatch(/\d{2}\/\d{2}\/\d{4}/); // en-US Taipei date
-    expect(html).not.toContain("Session:");        // old slip header removed
-  });
-
-  it("respects the print-pattern toggles (store name / buyer# / username off)", () => {
-    printSlip(buyer({ handle: "annc" }), "NT$", "My Shop", cfg({ printStoreName: false, printBuyerNumber: false, printBuyerUsername: false }));
-    const html = webHtml();
-    expect(html).not.toContain("My Shop");
-    expect(html).not.toContain("Buyer #");
-    expect(html).not.toContain("@annc");
-  });
-
-  it("auto-fits ONE label: one-page overflow-hidden body + vh-clamped fonts × the per-field size levels (Nov 3, item 7)", () => {
-    printSlip(buyer(), "NT$", "Shop", cfg({ printBuyerNumberScale: 2, printBuyerNameScale: 2 }));
-    const html = webHtml();
-    expect(html).toContain("height:100vh");            // body is exactly one page tall
-    expect(html).toContain("overflow:hidden");         // hard guarantee: never a 2nd label
-    expect(html).toMatch(/\.bnum\{font-size:calc\(clamp\(/); // vh clamp, not a fixed mm × multiplier
-    expect(html).not.toContain("font-size:18mm");      // the ×2 multiplier is ignored on web
-  });
-
-  it("string-settings overload also browser-prints", () => {
-    const r = printSlip(buyer(), "NT$", "Shop", "80x50");
+    await __webPrintIdle();
+    expect(webHtml()).toContain("@page{size:80mm 50mm;margin:0}");
+    __resetWebPrintQueue();
+    const r = printSlip(buyer(), "NT$", "Shop", "100x60");
     expect(r).toEqual({ ok: true, via: "browser" });
-    expect(captured).not.toBeNull();
+    await __webPrintIdle();
+    expect(webHtml()).toContain("@page{size:100mm 60mm;margin:0}");
+  });
+
+  it("the BMP data URL round-trips the raster exactly (1-bit, bottom-up rows padded to 4 bytes)", () => {
+    const r: FullRaster = { w: 13, h: 3, rowBytes: 2, buf: new Uint8Array([0b10100000, 0b00001000, 0b11111111, 0b11111000, 0b00000001, 0b00000000]) };
+    const src = bitmapBmpDataUrl(r);
+    expect(src.startsWith("data:image/bmp;base64,Qk")).toBe(true); // "BM"
+    const back = rasterFromBmpDataUrl(src);
+    expect([back.w, back.h, back.rowBytes]).toEqual([13, 3, 2]);
+    expect(Array.from(back.buf)).toEqual(Array.from(r.buf));
   });
 });
 

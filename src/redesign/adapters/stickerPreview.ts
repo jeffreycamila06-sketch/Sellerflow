@@ -27,3 +27,8 @@ export function exactPreviewPayload(settings: Settings, cur: string, shopName: s
   const np = buildNativeStickerPayload(buyer, cur, shopName, settings);
   return { payload: { ...np, settings: { ...np.settings, ...flags } }, w: np.labelWidthMm, h: np.labelHeightMm };
 }
+
+// Round 3 (item 1): the laptop preview draws the label at its REAL size — mm → CSS px (1 in = 96 px).
+export const MM_TO_PX = 96 / 25.4;
+export const labelPx = (wMm: number, hMm: number): { w: number; h: number } => ({ w: wMm * MM_TO_PX, h: hMm * MM_TO_PX });
+export const labelMm = (stickerSize: unknown): { w: number; h: number } => { const m = String(stickerSize ?? "100x60").match(/^(\d+)x(\d+)/); return { w: Number(m?.[1] ?? 100), h: Number(m?.[2] ?? 60) }; };

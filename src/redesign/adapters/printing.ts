@@ -14,14 +14,12 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { sdkStreamFromRaster, bandTsplFromRaster, renderStickerBitmap, renderStickerBitmapForJob, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload, type FullRaster, type StickerPath } from "./stickerRaster";
+import { sdkStreamFromRaster, bandTsplFromRaster, renderStickerBitmap, renderStickerBitmapForJob, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload, type FullRaster, type StickerPath } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
 import { savedBtPrinter, savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
 import { knownTsplJob, type TsplJobSettings } from "./printerModels";
 import type { NiimbotImage } from "./printerBridge";
-import { qrMatrix } from "../../lib/qr";
-import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
 import { loadPropAtlas, loadCjkRegAtlas } from "./propAtlasLoader"; // font C — image paths only
 import { fbNameOnly, printableBuyer } from "./fbName";
@@ -569,7 +567,8 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
 // bytes FROM this raster and the LIVE print pattern preview SHOWS this raster, so preview = print by
 // construction. The path decides the atlases + bold: AIMO = Latin + CJK (font C only with layout v2 ON on
 // 50×30 / 60×40); generic (Flash Y41BT / Xprinter XP-420B / …) = the image atlases + the model's bold;
-// Niimbot = the 50×30 compact frame (384×224, 16-dot safe edge) whatever size is picked.
+// Niimbot = the 50×30 compact frame (384×224, 16-dot safe edge) whatever size is picked; browser (a laptop,
+// Nov 3 round 3) = the image atlases with no bold, printed as one image on a label-sized page.
 export type { StickerPath };
 export function savedPrinterPath(): StickerPath { return savedIsNiimbot() ? "niimbot" : savedGenericLang() ? "generic" : "aimo"; }
 export interface StickerBitmapArgs { path: StickerPath; payload: NativeStickerPayload; platform?: string; fbName?: boolean; cjk?: GlyphAtlas; bold?: boolean }
@@ -582,8 +581,8 @@ export async function stickerBitmapFor(a: StickerBitmapArgs): Promise<FullRaster
   }
   const img = imageStickerPayload(a.payload, a.platform, a.fbName);
   const w = a.payload.labelWidthMm, h = a.payload.labelHeightMm;
-  if (a.path === "generic") {
-    const bold = a.bold ?? !!knownTsplJob(savedBtPrinter()?.name).bold;
+  if (a.path === "generic" || a.path === "browser") { // browser (Nov 3 round 3, item 7) = the laptop print page's image, never bold
+    const bold = a.path === "generic" && (a.bold ?? !!knownTsplJob(savedBtPrinter()?.name).bold);
     return renderStickerBitmapForJob(img, w, h, await imagePathAtlases(a.payload, img), bold);
   }
   // AIMO D520BT: layout v2 ON → the font-C layout on the compact sizes; OFF → Latin + CJK exactly as before
@@ -790,7 +789,7 @@ export interface PrintResult { ok: boolean; via: PrintVia; }
 //     doesn't confirm within KIOSK_HINT_MS, the print dialog is likely open
 //     (kiosk mode not active) → a one-time guidance notice fires.
 // Native BT/LAN/TSPL paths are untouched; this affects ONLY the browser path.
-interface WebPrintJob { id: string; html: string; }
+interface WebPrintJob { id: string; html: string | Promise<string>; }
 const WEB_PRINT_DELAY_MS = 40;           // brief settle before print() (was 120 — trimmed)
 const WEB_ADVANCE_MS = 1300;             // advance the queue after this if onafterprint never fires (silent kiosk) — WITHOUT marking not-printed
 const WEB_KIOSK_HINT_MS = 6000;          // first job unconfirmed by now ⇒ dialog likely open
@@ -879,7 +878,12 @@ function startWebJob(job: WebPrintJob): void {
   const win = frame?.contentWindow;
   if (!win) { settle(false); return; } // no iframe → REAL failure → NOT printed (reported)
   const doc = win.document;
-  try { doc.open(); doc.write(job.html); doc.close(); }
+  // Round 3 (item 7): the page is the sticker image, rendered in order → the job runs once its page is ready
+  // (a string page runs at once, as before). A page that fails to render = a REAL failure → NOT printed.
+  if (typeof job.html === "string") runWebJob(job.html);
+  else job.html.then((html) => { if (!settled && !advanced) runWebJob(html); }, () => settle(false));
+  function runWebJob(html: string): void {
+  try { doc.open(); doc.write(html); doc.close(); }
   catch { settle(false); return; }     // write threw → REAL failure → NOT printed
   // onafterprint = positive confirmation (real print completed / dialog dismissed).
   // A stale afterprint from a previous job that reused this frame is harmless: it
@@ -901,10 +905,11 @@ function startWebJob(job: WebPrintJob): void {
   webAdvanceTimer = setTimeout(advance, WEB_ADVANCE_MS);
   setTimeout(() => {
     try {
-      if (typeof document === "undefined" || !document.hidden) win.focus(); // never steal focus from a hidden tab
-      win.print();
+      if (typeof document === "undefined" || !document.hidden) win!.focus(); // never steal focus from a hidden tab
+      win!.print();
     } catch { settle(false); }         // print threw → REAL failure → NOT printed
   }, WEB_PRINT_DELAY_MS);
+  }
 }
 
 function enqueueWebPrint(job: WebPrintJob): void {
@@ -1010,106 +1015,51 @@ async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
 // Test-only: reset the native queue state between cases.
 export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; }
 
-// WEB STICKER QR — the browser-print twin of the phone's stickerQrPlacement: the SAME
-// link (tiktokProfileUrl), the SAME ECC "M", drawn as an inline SVG (crisp vector
-// squares) with the same 4-module quiet zone. Each module is 0.5 mm = the phone's
-// 4 dots at 203 dpi, so a typical handle (QR v3, 29 modules) is an 18.5 mm block.
-// NO label-size check on web: the seller's own browser/printer-driver settings decide
-// the paper size (the phone path keeps its own 60×40 exclusion). null = no QR.
-export const WEB_QR_MODULE_MM = 0.5;
-// Item 5 (Nov 3 round 2): the laptop page's font rules, ONE table for the HTML below and the fit measure
-// (stickerFit.measureBrowserPage) — mm sizes = clamp(min, vh·H/100, max) × level. `lh` = CSS line-height.
-export const BROWSER_STICKER_FONTS = {
-  brand: { min: 2.6, vh: 7, max: 4, lh: 1.15 }, date: { min: 2, vh: 5.5, max: 3, lh: 1.15 },
-  store: { min: 2.6, vh: 7, max: 4.2, lh: 1.15 }, bnum: { min: 5, vh: 15, max: 10, lh: 1.02 },
-  name: { min: 3, vh: 9, max: 5.6, lh: 1.1 }, user: { min: 2.4, vh: 6.5, max: 3.8, lh: 1.15 },
-  ftime: { min: 2, vh: 5, max: 2.8, lh: 1.15 }, code: { min: 5.5, vh: 17, max: 12, lh: 1.02 },
-} as const;
-export const BROWSER_STICKER_PAD = { y: { min: 1, vh: 2.5, max: 2 }, x: { min: 1, vw: 2.5, max: 2.5 } } as const;
-const fontCss = (f: { min: number; vh: number; max: number }, lv?: number) => (lv != null ? `calc(clamp(${f.min}mm,${f.vh}vh,${f.max}mm) * ${lv})` : `clamp(${f.min}mm,${f.vh}vh,${f.max}mm)`);
-// The QR the laptop page prints for this buyer (same gates as the page), or null.
-export function browserStickerQr(buyer: Pick<Buyer, "platform" | "handle">, cfg: Settings): { svg: string; sizeMm: number } | null {
-  return stickerQrEffective() && stickerQrAllowedFor(buyer.platform) && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
+// ── THE LAPTOP PRINT PAGE (Nov 3 round 3, item 7) ────────────────────────────────────────────
+// A laptop prints THE SAME sticker bitmap as the phone (stickerBitmapFor path "browser" = the image
+// atlases, no bold): one page exactly the label's size (@page size = W×H mm, margin 0) holding one image
+// of the bitmap at the label's size — no browser text layout, so preview == print by construction.
+// The image is a 1-bit BMP data URL (pure, no canvas): rows bottom-up, padded to 4 bytes, palette
+// 0 = white / 1 = black (the raster's ink bit). ~20–50 KB per label.
+export function bitmapBmpDataUrl(r: FullRaster): string {
+  const stride = ((r.w + 31) >> 5) << 2, pix = stride * r.h, off = 14 + 40 + 8;
+  const b = new Uint8Array(off + pix);
+  const u32 = (i: number, v: number) => { b[i] = v & 255; b[i + 1] = (v >>> 8) & 255; b[i + 2] = (v >>> 16) & 255; b[i + 3] = (v >>> 24) & 255; };
+  b[0] = 0x42; b[1] = 0x4d; u32(2, off + pix); u32(10, off);
+  u32(14, 40); u32(18, r.w); u32(22, r.h); b[26] = 1; b[28] = 1; u32(34, pix); u32(38, 8000); u32(42, 8000); u32(46, 2); u32(50, 2); // 203 dpi ≈ 8000 px/m
+  b[54] = b[55] = b[56] = 255; // palette 0 = white; palette 1 (bytes 58–61) = black (zero)
+  for (let y = 0; y < r.h; y++) b.set(r.buf.subarray(y * r.rowBytes, y * r.rowBytes + r.rowBytes), off + (r.h - 1 - y) * stride);
+  return "data:image/bmp;base64," + bytesToBase64(b);
 }
-export function webStickerQrSvg(handle: string | undefined | null): { svg: string; sizeMm: number } | null {
-  const h = String(handle ?? "").trim();
-  if (!h) return null;
-  const url = tiktokProfileUrl(h);
-  if (!url) return null;
-  const m = qrMatrix(url, "M");
-  if (!m) return null;
-  const q = QR_QUIET_MODULES, n = m.length, total = n + 2 * q;
-  let d = "";
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) d += `M${c + q} ${r + q}h1v1h-1z`;
-  const svg = `<svg class="qr" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" shape-rendering="crispEdges"><rect width="${total}" height="${total}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
-  return { svg, sizeMm: total * WEB_QR_MODULE_MM };
+// The laptop TEST PRINT border: a thin frame on the label's edge (px dots) so a wrong scale / margin shows.
+export function frameRaster(r: FullRaster, px = 2): FullRaster {
+  const buf = new Uint8Array(r.buf);
+  const set = (x: number, y: number) => { buf[y * r.rowBytes + (x >> 3)] |= 0x80 >> (x & 7); };
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (x < px || y < px || x >= r.w - px || y >= r.h - px) set(x, y);
+  return { ...r, buf };
 }
-
-// ── The laptop / browser sticker page (Nov 3, item 5 + 7): ONE function for the print AND the
-// LIVE print pattern preview frame. Size levels and the "TikTok name" / "Date & time" switches apply.
-export function browserStickerHtml(a: { buyer: Buyer; cur: string; storeName: string; cfg: Settings; fbName?: boolean; at?: number }): string {
-  const { buyer, storeName, cfg } = a;
-  const fbName = a.fbName === true, at = a.at;
-  const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
-  const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(at != null ? new Date(at) : new Date()), 12);
-  // The order this sticker prints (onPrint passes a single-order buyer; reprint
-  // rebuilds one). item = the CODE ("A2" / "A2 x2") for auto orders, else the
-  // price string for manual — rendered LARGE at the bottom, mirroring native.
-  const codeItem = buyer.orders?.[0]?.item;
-  const codeTime = buyer.orders?.[0]?.time;
-  // QR (same content rules as the phone): toggle on (+ entitled), not a Facebook buyer, @username line on,
-  // handle not blank. Bottom-right; the lines that can reach that corner (name,
-  // @handle, time + big code) get right padding so text never runs under it.
-  const qr = browserStickerQr(buyer, cfg);
-  const qrCss = qr
-    ? `body{position:relative}` +
-      `.qr{position:absolute;right:clamp(1mm,2.5vw,2.5mm);bottom:clamp(1mm,2.5vh,2mm);width:${qr.sizeMm}mm;height:${qr.sizeMm}mm}` +
-      `.name,.user,.foot{padding-right:${qr.sizeMm + 1.5}mm}`
-    : "";
-  // DRIVER-DRIVEN + AUTO-FIT (web only; native tiers UNTOUCHED): NO forced @page
-  // size — the Windows printer driver's paper size decides. The body is exactly
-  // ONE page tall with overflow:hidden, so content can NEVER spill to a 2nd label
-  // at any size ≥60×40. Fonts scale with the page height (vh, clamped so they stay
-  // readable at 60×40 and grow on taller labels). Field order mirrors the native
-  // TSPL sticker: header + date, Buyer #, name, @handle, then time + the CODE big
-  // at the bottom (margin-top:auto). Per-field scale multipliers are NOT applied on
-  // web (they don't fit the auto-fit model; native keeps them). Names/handles are
-  // single-line + ellipsis so they can't push a second page (overflow:hidden is the
-  // hard guarantee regardless).
-  // Nov 3 (item 7): the per-field size levels apply on the laptop too (1×/2×/3× of the auto-fit size — a
-  // size that does not fit is clipped by overflow:hidden, exactly like the bitmap paths clip at the edge).
-  const L = (v: unknown) => Math.max(1, Math.min(8, Number(v) || 1));
-  const lvStore = L(cfg.printStoreScale), lvNum = L(cfg.printBuyerNumberScale), lvName = L(cfg.printBuyerNameScale), lvUser = L(cfg.printUsernameScale), lvCode = L(cfg.printCommentScale);
-  const html = `<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>` +
-    `@page{size:auto;margin:0}` +
-    `*{box-sizing:border-box;margin:0;padding:0}` +
-    `html,body{height:100%}` +
-    `body{width:100%;height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:clamp(1mm,2.5vh,2mm) clamp(1mm,2.5vw,2.5mm);font-family:Arial,Helvetica,sans-serif;color:#000}` +
-    `.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm;flex-shrink:0}` +
-    `.brand{font-size:${fontCss(BROWSER_STICKER_FONTS.brand)};font-weight:800;white-space:nowrap}` +
-    `.date{font-size:${fontCss(BROWSER_STICKER_FONTS.date)};font-weight:600;white-space:nowrap}` +
-    `.bar{height:.6mm;background:#000;margin:.6mm 0 clamp(1mm,2.5vh,2.4mm);flex-shrink:0}` +
-    `.store{font-size:${fontCss(BROWSER_STICKER_FONTS.store, lvStore)};font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
-    `.bnum{font-size:${fontCss(BROWSER_STICKER_FONTS.bnum, lvNum)};font-weight:900;line-height:1.02;white-space:nowrap;flex-shrink:0}` +
-    `.name{font-size:${fontCss(BROWSER_STICKER_FONTS.name, lvName)};font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;margin-top:1mm}` +
-    `.user{font-size:${fontCss(BROWSER_STICKER_FONTS.user, lvUser)};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
-    `.foot{margin-top:auto;display:flex;flex-direction:column;min-height:0}` +
-    `.ftime{font-size:${fontCss(BROWSER_STICKER_FONTS.ftime)};font-weight:600}` +
-    `.code{font-size:${fontCss(BROWSER_STICKER_FONTS.code, lvCode)};font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
-    qrCss +
-    // Facebook name only: up to 2 lines at the same size instead of one line cut with "…"
-    (fbName ? `.fbname{white-space:normal;text-overflow:clip;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}` : "") +
-    `</style></head><body>` +
-    `<div class="head"><span class="brand">SellerFlowLive</span>${cfg.printDateTime !== false ? `<span class="date">${esc(sess)}</span>` : ""}</div>` +
-    `<div class="bar"></div>` +
-    (cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : "") +
-    (cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : "") +
-    (buyer.name && (cfg.printBuyerName !== false || fbName) ? (fbName ? `<div class="name fbname">${esc(trunc(buyer.name, 60))}</div>` : `<div class="name">${esc(trunc(buyer.name, 30))}</div>`) : "") +
-    (cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : "") +
-    (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime && cfg.printDateTime !== false ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
-    (qr ? qr.svg : "") +
-    `</body></html>`;
-  return html;
+export function browserStickerPage(a: { wMm: number; hMm: number; src: string; title: string }): string {
+  const { wMm, hMm } = a;
+  return `<!DOCTYPE html><html><head><title>${esc(a.title)}</title><style>` +
+    `@page{size:${wMm}mm ${hMm}mm;margin:0}` +
+    `*{margin:0;padding:0}html,body{width:${wMm}mm;height:${hMm}mm;overflow:hidden;background:#fff}` +
+    `img{display:block;width:${wMm}mm;height:${hMm}mm;image-rendering:pixelated;image-rendering:crisp-edges}` +
+    `</style></head><body><img alt="" src="${a.src}"></body></html>`;
+}
+// Bitmaps are prepared in ORDER (one chain) so a burst of orders prints in the order it was placed.
+let webPrepareChain: Promise<unknown> = Promise.resolve();
+// Test hook: resolves once every web job enqueued so far has written its page into the print frame.
+export function __webPrintIdle(): Promise<void> { return webPrepareChain.then(() => undefined, () => undefined); }
+function enqueueBrowserSticker(a: { id: string; buyer: Buyer; cur: string; storeName: string; cfg: Settings; at?: number; fbName?: boolean; frame?: boolean }): void {
+  const np = buildNativeStickerPayload(a.buyer, a.cur, a.storeName, a.cfg, a.at);
+  const html = webPrepareChain = webPrepareChain.then(() => stickerBitmapFor({ path: "browser", payload: np, platform: a.buyer.platform, fbName: a.fbName }))
+    .then((img) => browserStickerPage({ wMm: np.labelWidthMm, hMm: np.labelHeightMm, src: bitmapBmpDataUrl(a.frame ? frameRaster(img) : img), title: `Sticker #${a.buyer.num}` }));
+  enqueueWebPrint({ id: a.id, html: html as Promise<string> });
+}
+// Laptop "Test print" (Printer settings): the test sticker with a thin border on the label's edge.
+export function printLaptopTestSticker(buyer: Buyer, cur: string, storeName: string, cfg: Settings): void {
+  if (typeof document === "undefined") return;
+  enqueueBrowserSticker({ id: `laptop-test-${++webFallbackId}`, buyer: printableBuyer(buyer), cur, storeName, cfg, frame: true });
 }
 
 // opts.at (OPTIONAL — passed ONLY by the past-session Reprint): the original order's instant, so
@@ -1156,10 +1106,9 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
   // order (buyer.orders[0].orderNum = the order's unique epoch-ms id). Missing
   // (e.g. a synthetic buyer) → a fallback id that simply won't map to a row.
   const jobId = String(buyer.orders?.[0]?.orderNum ?? `web-${++webFallbackId}`);
-  // Taipei date, same source/format family as buildNativeStickerPayload + the
-  // native truncate(12) — NOT the old en-PH long date.
-  const html = browserStickerHtml({ buyer, cur, storeName, cfg, fbName, at });
-  enqueueWebPrint({ id: jobId, html });
+  // Nov 3 round 3 (item 7): the laptop prints THE sticker bitmap (stickerBitmapFor "browser") as one image on a
+  // page of exactly the label's size — the same picture the LIVE print pattern preview shows.
+  enqueueBrowserSticker({ id: jobId, buyer, cur, storeName, cfg, at, fbName });
   return { ok: true, via: "browser" };
 }
 

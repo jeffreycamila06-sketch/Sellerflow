@@ -18,11 +18,11 @@
 // today's screen.
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  callMobilePrinterBridge, btCall, btScanOutcome, hasNativePrinter, hasBtBridge, buildTestBuyerV2, savedTestBuyer,
+  callMobilePrinterBridge, btCall, btScanOutcome, hasNativePrinter, hasBtBridge, buildTestBuyerV2, savedTestBuyer, buildTestBuyer,
   hasGenericPrinterBridge, hasNiimbotBridge, niimbotOsTooOld,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, printLaptopTestSticker, DEF_SETTINGS, type Settings } from "../adapters/printing";
 import { savedPrinterPath } from "../adapters/printing";
 import { savedIsNiimbot } from "../adapters/savedPrinter";
 import { stickerQrPrints } from "../adapters/stickerRaster";
@@ -30,7 +30,6 @@ import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { useT, tpl } from "../i18n";
-import { isAppShell } from "../adapters/appShell";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
 const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -71,6 +70,7 @@ function BtCard({ tone, title, line, steps, small, testid, children }: { tone: T
 }
 
 type Stage = "idle" | "printing" | "saved" | "fail";
+export const LAPTOP_SETUP_SEEN_KEY = "sfl_rd_laptop_print_setup_seen";
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
@@ -125,6 +125,11 @@ export default function PrinterSettings({
   // into the sticker raster). Stamps a QR of the buyer @username so Parcel Scan can read
   // the handle back off the printed label.
   const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
+  // Laptop (round 3, item 7): the one-time print-window setup card (Scale 100% / margins none / headers off /
+  // paper = the label) — dismissed per device; the test print = the test sticker with a thin border.
+  const [laptopSetupSeen, setLaptopSetupSeen] = useState(() => { try { return localStorage.getItem(LAPTOP_SETUP_SEEN_KEY) === "1"; } catch { return false; } });
+  const dismissLaptopSetup = () => { try { localStorage.setItem(LAPTOP_SETUP_SEEN_KEY, "1"); } catch { /* ignore */ } setLaptopSetupSeen(true); };
+  const laptopTestPrint = () => printLaptopTestSticker(buildTestBuyer(), cur, storeName, settings ?? { ...DEF_SETTINGS, stickerSize: psSize.match(/\d+x\d+/)?.[0] || "100x60" });
 
   // v2 Bluetooth check — runs the moment the Bluetooth screen opens (the probe is the scan
   // call: instant answer when off / not allowed; the OS permission prompt appears now).
@@ -245,6 +250,27 @@ export default function PrinterSettings({
     : status.ok ? "var(--ok)" : nativeReady ? "var(--warn)" : "var(--text-muted)";
   const v2Title = blocked ? t.rd_bts_st_attention : btSaved ? tpl(t.rd_bts_st_connected, { name: btSaved.name || t.rd_ps_aimo }) : t.rd_bts_st_none;
 
+  const sizePicker = (
+    <>
+      <button onClick={onTogglePsSize} data-testid="ps-size" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{psSize}</span>
+        <span style={{ color: "var(--text-muted)", transition: "transform .2s", transform: psSizeOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
+      </button>
+      {psSizeOpen && (
+        <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
+          {(v2 || !nativeReady ? [...PS_SIZES, "50x30mm"] : PS_SIZES).map((z) => {
+            const on = z === psSize;
+            return (
+              <button key={z} onClick={() => onPickPsSize(z)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{z}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -265,6 +291,25 @@ export default function PrinterSettings({
           </div>
         </div>
         {!nativeReady && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps_native_note}</div>}
+        {!nativeReady && (
+          /* LAPTOP (round 3, item 7): the sticker size picker, the one-time print-window setup card, a bordered test print */
+          <div data-testid="ps-laptop" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 16 }}>
+            <label style={label}>{t.rd_ps_sticker_size}</label>
+            {sizePicker}
+            {!laptopSetupSeen && (
+              <div data-testid="ps-laptop-setup" style={{ marginTop: 12, padding: "11px 13px", borderRadius: 12, background: "var(--accent-softer)", border: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_laptop_title}</div>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps_laptop_intro}</div>
+                <ol style={{ margin: "7px 0 0", paddingLeft: 18, fontSize: 12.5, color: "var(--text)", lineHeight: 1.6 }}>
+                  <li>{t.rd_ps_laptop_s1}</li><li>{t.rd_ps_laptop_s2}</li><li>{t.rd_ps_laptop_s3}</li><li>{tpl(t.rd_ps_laptop_s4, { size: psSize.replace(/\s*\(.*\)$/, "") })}</li>
+                </ol>
+                <button data-testid="ps-laptop-setup-done" onClick={dismissLaptopSetup} style={{ ...gridBtn, width: "100%", marginTop: 10, padding: "10px 0" }}>{t.rd_wp_kiosk_dismiss}</button>
+              </div>
+            )}
+            <button data-testid="ps-laptop-test" onClick={laptopTestPrint} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 12, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)" }}>{t.rd_ps_test_print}</button>
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7, lineHeight: 1.5 }}>{t.rd_ps_laptop_test_hint}</div>
+          </div>
+        )}
 
         {wifi ? (
           <div>
@@ -303,44 +348,21 @@ export default function PrinterSettings({
                 <span aria-hidden style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--ok)", flexShrink: 0 }} />{t.rd_bts_ready}
               </div>
             )}
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 16 }}>
+            {/* PHONE (native thermal): the size selector + the tiers. A laptop picks its size in the laptop card above
+                (round 3, item 7 — the print page is the label's size). */}
+            {nativeReady && <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 16 }}>
               <label style={label}>{t.rd_ps_sticker_size}</label>
-              {/* WEB (laptop): the browser print follows the Windows driver's paper
-                  size and SellerFlow auto-fits one label — no in-app size to pick.
-                  PHONE (native thermal): keep the size selector + the tiers. */}
-              {!isAppShell() ? (
-                <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11 }}>{t.rd_ps_web_driver_size}</div>
-              ) : (<>
               {savedIsNiimbot() ? (
                 /* Nov 3 (item 3): a Niimbot always prints its 50×30 frame — show that instead of a picker that changes nothing */
                 <div data-testid="ps-size-fixed" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", padding: "13px 14px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11 }}>{t.rd_ps_size_fixed_niimbot}</div>
-              ) : (<>
-              <button onClick={onTogglePsSize} data-testid="ps-size" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{psSize}</span>
-                <span style={{ color: "var(--text-muted)", transition: "transform .2s", transform: psSizeOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
-              </button>
-              {psSizeOpen && (
-                <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
-                  {(v2 ? [...PS_SIZES, "50x30mm"] : PS_SIZES).map((z) => {
-                    const on = z === psSize;
-                    return (
-                      <button key={z} onClick={() => onPickPsSize(z)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-                        <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{z}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              </>)}
-              </>)}
+              ) : sizePicker}
               {btSaved && (
                 <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
                   <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{btSaved.name}</div><div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>{btSaved.address}</div></div>
                   <button onClick={() => void clearBt()} style={{ ...gridBtn, padding: "7px 12px" }}>{t.rd_ps_clear}</button>
                 </div>
               )}
-            </div>
+            </div>}
             <div style={{ display: "grid", gridTemplateColumns: btSaved && stage !== "saved" ? "1fr 1fr" : "1fr", gap: 9, marginTop: 12 }}>
               <button data-testid="ps-scan" onClick={() => void scanBt()} disabled={!scanEnabled} aria-disabled={!scanEnabled} style={{ ...gridBtn, minHeight: 46, border: "none", background: scanEnabled ? "var(--accent)" : "var(--surface-2)", color: scanEnabled ? "var(--accent-text)" : "var(--text-muted)", boxShadow: scanEnabled ? "0 4px 14px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", cursor: scanEnabled ? "pointer" : "not-allowed", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
               {btSaved && stage !== "saved" && <button data-testid="ps-test-print" onClick={() => void testBt()} style={{ ...gridBtn, minHeight: 46 }}>{t.rd_ps_test_print}</button>}

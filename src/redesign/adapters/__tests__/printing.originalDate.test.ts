@@ -4,7 +4,7 @@
 // output printed on day T without it (bytes / payload / HTML). Without opts every route prints
 // today, as before.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { printSlip, buildNativeStickerPayload, buildSlipPayload, __resetWebPrintQueue, DEF_SETTINGS, type Settings } from "../printing";
+import { printSlip, buildNativeStickerPayload, buildSlipPayload, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, DEF_SETTINGS, type Settings } from "../printing";
 import { performReprint, originalPrintInstant } from "../reprint";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -33,7 +33,7 @@ async function run(route: "bitmap" | "text" | "lan" | "slip" | "web", opts?: { a
   const cfg = route === "bitmap" || route === "text" ? bt : route === "lan" ? lan : slip;
   if (opts) printSlip(buyer, "NT$", "Shop", cfg, opts); else printSlip(buyer, "NT$", "Shop", cfg);
   await flush();
-  if (route === "web") return (document.querySelector("iframe") as HTMLIFrameElement).contentDocument!.documentElement.outerHTML;
+  if (route === "web") { await __webPrintIdle(); return (document.querySelector("iframe") as HTMLIFrameElement).contentDocument!.documentElement.outerHTML; }
   return JSON.parse(JSON.stringify(seen[0]));
 }
 
@@ -63,11 +63,14 @@ describe("opts.at = the original order's instant (past-session Reprint)", () => 
     expect(buildSlipPayload(buyer, "NT$", "Shop", slip, ORDER_AT).createdAt).toBe(new Date(ORDER_AT).toISOString());
     expect(buildNativeStickerPayload(buyer, "NT$", "Shop", bt).sessionDate).toBe("10/14/2026"); // default = today
   });
-  it("web/kiosk HTML shows the order's date", async () => {
+  it("web/kiosk page carries the sticker image of the order's date (round 3: the laptop prints the bitmap)", async () => {
     at(NOW);
-    expect(await run("web", { at: ORDER_AT })).toContain("10/08/2026");
+    const page = await run("web", { at: ORDER_AT });
+    const img = await stickerBitmapFor({ path: "browser", payload: buildNativeStickerPayload(buyer, "NT$", "Shop", slip, ORDER_AT), platform: "TikTok" });
+    expect(page).toContain(bitmapBmpDataUrl(img)); // the 10/08/2026 sticker
     __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());
-    expect(await run("web", { at: NEXT_DAY })).toContain("10/09/2026");
+    const next = await run("web", { at: NEXT_DAY });
+    expect(next).not.toEqual(page);              // 10/09/2026
   });
 });
 

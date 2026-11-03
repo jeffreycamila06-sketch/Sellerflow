@@ -2742,7 +2742,7 @@ export default function RedesignApp() {
           {screen === "printpattern" && (
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}
               layoutV2={stickerV2On} onTestPrintSample={stickerV2On && isAdmin ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
-              stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur}
+              stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur} maxBuyerNum={Math.max(0, ...liveSession.session.buyers.map((b) => Number(b.num) || 0))}
               previewSettings={stickerV2On ? buildSettingsFromRedesign({ pp, psType, psOut, psSize }) : undefined}
               spacingAllowed={stickerSpacingOn} onSpacing={(v) => setPp((p) => ({ ...p, spacing: v }))}
               imagePath={stickerSpacingOn && printsStickerViaImage(buildSettingsFromRedesign({ pp, psType, psOut, psSize }))} />

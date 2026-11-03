@@ -1,55 +1,35 @@
 // WEB STICKER QR — "Print QR on sticker" also works through the browser print dialog.
-// printSlip's web path adds an inline SVG QR (bottom-right) using the SAME link
-// (tiktokProfileUrl), the SAME ECC "M" and the same content rules as the phone:
-// toggle on (+ entitled), @username line on, handle not blank. NO label-size check on
-// web — the seller's browser/printer-driver settings decide the paper size.
+// Round 3 (item 7): the laptop prints THE sticker bitmap as one image, so the QR is the SAME QR the phone
+// stamps (stickerRaster stampHandleQr — same link, same ECC "M", same module size), with the same content
+// rules: toggle on (+ entitled), @username line on, handle not blank. The image layouts carry a QR on every
+// size (the generic rules), so 60×40 gets one on a laptop.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import jsQR from "jsqr";
-import { printSlip, webStickerQrSvg, setStickerQrOn, setStickerQrEntitled, __resetWebPrintQueue, DEF_SETTINGS, type Settings } from "../printing";
-import { qrMatrix } from "../../../lib/qr";
+import { printSlip, setStickerQrOn, setStickerQrEntitled, __resetWebPrintQueue, __webPrintIdle, DEF_SETTINGS, type Settings } from "../printing";
+import { pageSrc, rasterFromBmpDataUrl } from "./printControls.harness";
+import type { FullRaster } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
 
 const order = (over: Record<string, unknown> = {}) => ({ orderNum: 1750000000000, item: "A01", qty: 1, price: 320, total: 320, time: "9:41 PM", handle: "annc", name: "Ann Cruz", bNum: 12, platform: "TikTok", status: "New", date: "2026-09-26", ...over });
 const buyer = (over: Partial<Buyer> = {}): Buyer => ({ handle: "annc", name: "Ann Cruz", platform: "TikTok", num: 12, orders: [order()], totalOrders: 1, totalSpent: 320, ...over } as Buyer);
 const cfg = (over: Partial<Settings> = {}): Settings => ({ ...DEF_SETTINGS, ...over });
 
-// Decode the SVG back to text: parse the "M{x} {y}h1v1h-1z" modules, paint them at
-// 4 px/module on white, and run jsQR — proves the printed QR really encodes the URL.
-function decodeSvg(svg: string): string | null {
-  const total = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)![1]);
-  const px = 4, w = total * px;
-  const data = new Uint8ClampedArray(w * w * 4).fill(255);
-  for (const [, xs, ys] of svg.matchAll(/M(\d+) (\d+)h1v1h-1z/g)) {
-    const x0 = Number(xs) * px, y0 = Number(ys) * px;
-    for (let y = y0; y < y0 + px; y++) for (let x = x0; x < x0 + px; x++) { const i = (y * w + x) * 4; data[i] = data[i + 1] = data[i + 2] = 0; }
+// Decode the printed image back to text: paint the 1-bit raster at 2 px/dot on white and run jsQR —
+// proves the printed QR really encodes the URL.
+function decodeRaster(r: FullRaster): string | null {
+  const px = 2, w = r.w * px, h = r.h * px;
+  const data = new Uint8ClampedArray(w * h * 4).fill(255);
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) {
+    for (let j = 0; j < px; j++) for (let i = 0; i < px; i++) { const k = ((y * px + j) * w + x * px + i) * 4; data[k] = data[k + 1] = data[k + 2] = 0; }
   }
-  return jsQR(data, w, w)?.data ?? null;
+  return jsQR(data, w, h)?.data ?? null;
 }
 
-describe("webStickerQrSvg — same link + ECC as the phone", () => {
-  it("encodes https://tiktok.com/@<handle> (decodes back), strips a leading @", () => {
-    for (const h of ["annc", "@annc"]) expect(decodeSvg(webStickerQrSvg(h)!.svg)).toBe("https://tiktok.com/@annc");
-  });
-  it("is the SAME matrix the phone uses (qrMatrix(url, 'M')) with the 4-module quiet zone, 0.5 mm/module", () => {
-    const m = qrMatrix("https://tiktok.com/@annc", "M")!;
-    const q = webStickerQrSvg("annc")!;
-    const dark = m.flat().filter(Boolean).length;
-    expect(q.svg.match(/h1v1h-1z/g)?.length).toBe(dark);
-    expect(q.svg).toContain(`viewBox="0 0 ${m.length + 8} ${m.length + 8}"`);
-    expect(q.sizeMm).toBe((m.length + 8) * 0.5);            // e.g. v2 (25) → 16.5 mm · v3 (29) → 18.5 mm
-    expect(q.svg).toContain('shape-rendering="crispEdges"');
-  });
-  it("blank handle → null", () => {
-    for (const h of ["", "   ", "@", null, undefined]) expect(webStickerQrSvg(h as string)).toBeNull();
-  });
-});
-
-describe("printSlip web path — the QR in the browser-print sticker", () => {
+describe("printSlip web path — the QR in the laptop sticker image", () => {
   let captured: HTMLIFrameElement | null;
   beforeEach(() => {
     captured = null;
     __resetWebPrintQueue();
-    vi.useFakeTimers();
     const orig = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
       const el = orig(tag);
@@ -61,65 +41,39 @@ describe("printSlip web path — the QR in the browser-print sticker", () => {
   });
   afterEach(() => {
     setStickerQrOn(false); setStickerQrEntitled(false);
-    __resetWebPrintQueue(); vi.restoreAllMocks(); vi.useRealTimers();
+    __resetWebPrintQueue(); vi.restoreAllMocks();
     document.querySelectorAll("iframe").forEach((f) => f.remove());
   });
-  const webHtml = () => captured?.contentDocument?.documentElement.outerHTML || "";
-
-  it("toggle ON → the QR is in the printed sticker, bottom-right, and decodes to the buyer's TikTok link", () => {
-    const r = printSlip(buyer(), "NT$", "My Shop", cfg());
+  const printed = async (b: Buyer, c: Settings): Promise<FullRaster> => {
+    const r = printSlip(b, "NT$", "My Shop", c);
     expect(r).toEqual({ ok: true, via: "browser" });
-    const html = webHtml();
-    const svg = /<svg class="qr"[\s\S]*?<\/svg>/.exec(html)?.[0] ?? "";
-    expect(svg).not.toBe("");
-    expect(decodeSvg(svg)).toBe("https://tiktok.com/@annc");
-    const size = webStickerQrSvg("annc")!.sizeMm;
-    expect(html).toContain(`width:${size}mm;height:${size}mm}`);
-    expect(html).toMatch(/\.qr\{position:absolute;right:[^;]+;bottom:[^;]+;width:/); // bottom-right corner
-  });
+    await __webPrintIdle();
+    const html = captured?.contentDocument?.documentElement.outerHTML || "";
+    expect(html).toContain("@page{size:");
+    return rasterFromBmpDataUrl(pageSrc(html));
+  };
 
-  it("text stays clear of the QR: name, @handle and the big code get right padding = QR width + 1.5 mm", () => {
-    printSlip(buyer(), "NT$", "My Shop", cfg());
-    const size = webStickerQrSvg("annc")!.sizeMm;
-    expect(webHtml()).toContain(`.name,.user,.foot{padding-right:${size + 1.5}mm}`);
+  it("toggle ON → the QR is in the printed image and decodes to the buyer's TikTok link (100×60)", async () => {
+    expect(decodeRaster(await printed(buyer(), cfg({ stickerSize: "100x60" })))).toBe("https://tiktok.com/@annc");
   });
-
-  it("NO label-size check on web — a 60×40 setting still gets the QR (the driver decides the paper)", () => {
-    printSlip(buyer(), "NT$", "My Shop", cfg({ stickerSize: "60x40" }));
-    expect(webHtml()).toContain('<svg class="qr"');
-    expect(webHtml()).not.toMatch(/@media[^{]*height/);
+  it("60×40 too — the laptop uses the image layouts, which carry a QR on every size", async () => {
+    expect(decodeRaster(await printed(buyer(), cfg({ stickerSize: "60x40" })))).toBe("https://tiktok.com/@annc");
   });
-
-  it("toggle OFF → no QR and no QR layout rules (sticker unchanged)", () => {
+  it("a leading @ in the handle is stripped from the link", async () => {
+    expect(decodeRaster(await printed(buyer({ handle: "@annc" }), cfg({ stickerSize: "100x60" })))).toBe("https://tiktok.com/@annc");
+  });
+  it("toggle OFF → no QR in the image", async () => {
     setStickerQrOn(false);
-    printSlip(buyer(), "NT$", "My Shop", cfg());
-    const html = webHtml();
-    expect(html).not.toContain("<svg");
-    expect(html).not.toContain(".qr{");
-    expect(html).not.toContain("padding-right");
+    expect(decodeRaster(await printed(buyer(), cfg({ stickerSize: "100x60" })))).toBeNull();
   });
-
-  it("toggle on but NOT entitled (off-market) → no QR", () => {
+  it("toggle on but NOT entitled (off-market) → no QR", async () => {
     setStickerQrEntitled(false);
-    printSlip(buyer(), "NT$", "My Shop", cfg());
-    expect(webHtml()).not.toContain("<svg");
+    expect(decodeRaster(await printed(buyer(), cfg({ stickerSize: "100x60" })))).toBeNull();
   });
-
-  it("blank handle → no QR", () => {
-    printSlip(buyer({ handle: "" }), "NT$", "My Shop", cfg());
-    expect(webHtml()).not.toContain("<svg");
+  it("blank handle → no QR", async () => {
+    expect(decodeRaster(await printed(buyer({ handle: "" }), cfg({ stickerSize: "100x60" })))).toBeNull();
   });
-
-  it("@username line OFF → no QR (same rule as the phone)", () => {
-    printSlip(buyer(), "NT$", "My Shop", cfg({ printBuyerUsername: false }));
-    expect(webHtml()).not.toContain("<svg");
-  });
-});
-
-describe("QR block size stays scannable and bounded", () => {
-  it("short handle → v2 16.5 mm; typical TikTok handle → v3 18.5 mm; max-length handle ≤ 22.5 mm", () => {
-    expect(webStickerQrSvg("annc")!.sizeMm).toBe(16.5);
-    expect(webStickerQrSvg("budgetukay_shop")!.sizeMm).toBe(18.5);
-    expect(webStickerQrSvg("a".repeat(24))!.sizeMm).toBeLessThanOrEqual(22.5); // TikTok caps usernames at 24 chars
+  it("@username line OFF → no QR (same rule as the phone)", async () => {
+    expect(decodeRaster(await printed(buyer(), cfg({ stickerSize: "100x60", printBuyerUsername: false })))).toBeNull();
   });
 });

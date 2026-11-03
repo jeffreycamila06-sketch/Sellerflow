@@ -35,14 +35,17 @@ describe("PrintPattern — sticker spacing", () => {
     expect(v.getByTestId("pp-approx").textContent).toBe("Approximate — Simple print is on, so the layout may differ"); // Build 10b wording
     expect(v.queryByTestId("pp-fit-warning")).toBeNull();
   });
-  // item 5 (round 2): a laptop (no native printer) prints the browser page → the preview IS that page, in a
-  // frame with the label's aspect ratio, never the mock / "approximate" note
-  it("LAPTOP (no native printer): the browser print page in a label-shaped frame, no approximate note", () => {
+  // round 3 (items 1 + 7): a laptop (no native printer) prints THE sticker bitmap as one image → the preview is that
+  // bitmap drawn at the label's real size inside a label-shaped frame that scales it; never the mock / "approximate" note
+  it("LAPTOP (no native printer): the print bitmap at the label's real size in a label-shaped frame, no approximate note", () => {
     const v = view({ spacingAllowed: true, imagePath: false });
     const frame = v.getByTestId("pp-exact-preview-browser");
     expect(frame.getAttribute("data-aspect")).toBe("60 / 40"); // = the frame's CSS aspect-ratio (jsdom does not expose it)
     expect(v.queryByTestId("pp-approx")).toBeNull();
-    expect(v.queryByTestId("pp-exact-preview")).toBeNull();
+    const canvas = v.getByTestId("pp-exact-preview");
+    expect(canvas.getAttribute("data-path")).toBe("browser");
+    expect(canvas.style.width).toBe("60mm");
+    expect(canvas.style.height).toBe("40mm");
     v.unmount();
     const v2 = view({ previewSettings: settings(DEFAULT_PP, "100x60mm (Standard)") }); // any seller, any allowlist
     expect(v2.getByTestId("pp-exact-preview-browser").getAttribute("data-aspect")).toBe("100 / 60");

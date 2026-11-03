@@ -95,8 +95,10 @@ describe("print: no stored choice / stored Normal → identical to explicit Comp
   });
 });
 
+// round 3 (item 7): the laptop (web) print is an IMAGE path now (the phone's bitmap on a label-sized page), so it
+// follows the spacing flags like the Bluetooth bitmap and is no longer in this non-image group.
 describe("non-image print paths never see the flags (byte-identical with spacing on or off)", () => {
-  it("text fallback, WiFi/LAN sticker, slip and web print", async () => {
+  it("text fallback, WiFi/LAN sticker and slip", async () => {
     const run = async () => {
       const out: string[] = [];
       for (const size of ["60x40", "100x60"]) {
@@ -104,13 +106,6 @@ describe("non-image print paths never see the flags (byte-identical with spacing
         out.push(await viaBridge(mk("TikTok"), { ...bt(size), printerType: "lan", lanFormat: "sticker" }, { printStickerLan: vi.fn().mockResolvedValue({ ok: true }) }, "printStickerLan"));
       }
       out.push(await viaBridge(mk("TikTok"), { ...DEF_SETTINGS, printerType: "lan", lanFormat: "receipt" }, { printSlip: vi.fn().mockResolvedValue({ ok: true }) }, "printSlip"));
-      __resetWebPrintQueue();
-      let frame: HTMLIFrameElement | null = null;
-      const orig = document.createElement.bind(document);
-      const spy = vi.spyOn(document, "createElement").mockImplementation((tag: string) => { const el = orig(tag); if (tag === "iframe") frame = el as HTMLIFrameElement; return el; });
-      printSlip(mk("TikTok"), "NT$", "My Shop", { ...DEF_SETTINGS });
-      out.push((frame as HTMLIFrameElement | null)?.contentDocument?.documentElement.outerHTML || "");
-      spy.mockRestore(); __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());
       return out;
     };
     setStickerSpacingAllowed(false);

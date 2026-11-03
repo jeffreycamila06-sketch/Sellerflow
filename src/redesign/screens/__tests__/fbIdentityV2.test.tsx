@@ -40,7 +40,8 @@ import { fbHandleIsId, looksLikeFbId } from "../../adapters/fbName";
 import { buyerTagFor, buyerTagKey, parseBuyerTags } from "../../adapters/buyerTag";
 import { buildBasketCounts, basketCountFor } from "../../adapters/basketCounts";
 import { normHandle, type BuyerAlertView } from "../../adapters/buyerAlert";
-import { printSlip, setStickerQrOn, DEF_SETTINGS, __resetWebPrintQueue } from "../../adapters/printing";
+import { printSlip, setStickerQrOn, DEF_SETTINGS, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload } from "../../adapters/printing";
+import { printableBuyer } from "../../adapters/fbName";
 import Dashboard from "../Dashboard";
 import Orders from "../Orders";
 import Miners from "../Miners";
@@ -168,11 +169,16 @@ describe("(d) sticker (web print) — the name, never the id", () => {
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => { const el = orig(tag); if (tag === "iframe") frame = el as HTMLIFrameElement; return el; });
   });
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
-  it("Facebook v2 buyer: name printed, id nowhere on the sticker", () => {
+  it("Facebook v2 buyer: name printed, id nowhere on the sticker", async () => {
     const [b] = order([v2("LV1_1", { id: ID1, name: MARIA })]);
     printSlip(b, "NT$", "My Shop", { ...DEF_SETTINGS });
+    await __webPrintIdle();
     const out = frame?.contentDocument?.documentElement.outerHTML || "";
-    expect(out).toContain(MARIA);
+    // round 3 (item 7): the laptop prints the sticker IMAGE — the page is the name-only buyer's bitmap (printableBuyer)
+    const pb = printableBuyer(b);
+    expect(pb.name).toBe(MARIA);
+    const img = await stickerBitmapFor({ path: "browser", payload: buildNativeStickerPayload(pb, "NT$", "My Shop", { ...DEF_SETTINGS }), platform: pb.platform, fbName: true });
+    expect(out).toContain(bitmapBmpDataUrl(img));
     expect(out).not.toContain(ID1);
   });
 });

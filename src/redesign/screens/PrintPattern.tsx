@@ -28,7 +28,7 @@
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { printScaleLevel, isStickerQrOn, setStickerQrOn, effectiveSpacing, STICKER_SPACING_CHOICE_VISIBLE, type Settings, type StickerSpacing } from "../adapters/printing";
 import { stickerFit, type StickerFit, type FitControl, type FitPath } from "../adapters/stickerFit";
-import { savedPrinterPath, stickerCompactV2Effective, type StickerPath } from "../adapters/printing";
+import { savedPrinterPath, stickerCompactV2Effective } from "../adapters/printing";
 import { stickerQrPrints, stickerControlPrints } from "../adapters/stickerRaster";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { PREVIEW_COMMENT } from "../adapters/stickerPreview";
@@ -101,25 +101,26 @@ export const V2_SAMPLE_LATIN = "ako   si  jeff pa reserve po yung black na dress
 export const V2_SAMPLE_CJK = "+1 我要這件黑色 size M 2件 pls reserve 老闆娘 thank you so much";
 
 // The async fit of the saved printer's print (null while loading / when not shown).
-function useStickerFit(settings: Settings | null, cur: string, shopName: string, path: FitPath): StickerFit | null {
+function useStickerFit(settings: Settings | null, cur: string, shopName: string, path: FitPath, maxBuyerNum: number): StickerFit | null {
   const [fit, setFit] = useState<{ key: string; fit: StickerFit } | null>(null);
-  const key = settings ? JSON.stringify(settings) : "";
+  const key = settings ? JSON.stringify(settings) + "|" + maxBuyerNum : "";
   useEffect(() => {
     let live = true;
     if (!key) return;
-    void stickerFit(JSON.parse(key) as Settings, cur, shopName, path).then((f) => { if (live) setFit({ key, fit: f }); }).catch(() => { if (live) setFit(null); });
+    void stickerFit(JSON.parse(key.slice(0, key.lastIndexOf("|"))) as Settings, cur, shopName, path, { maxBuyerNum }).then((f) => { if (live) setFit({ key, fit: f }); }).catch(() => { if (live) setFit(null); });
     return () => { live = false; };
-  }, [key, cur, shopName, path]);
+  }, [key, cur, shopName, path, maxBuyerNum]);
   return key && fit && fit.key === key ? fit.fit : null; // stale / no settings → nothing shown (no setState in the effect)
 }
 
 export default function PrintPattern({
   onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop", layoutV2 = false, onTestPrintSample,
   stickerQrAllowed = false, psSize = "100x60mm (Standard)", appShell = false, previewSettings, cur = "NT$",
-  spacingAllowed = false, onSpacing, imagePath = false, spacingChoiceVisible = STICKER_SPACING_CHOICE_VISIBLE, printerPath,
+  spacingAllowed = false, onSpacing, imagePath = false, spacingChoiceVisible = STICKER_SPACING_CHOICE_VISIBLE, printerPath, maxBuyerNum = 0,
 }: {
   onBack: () => void;
   printerPath?: FitPath; // the saved printer's path (tests); default = this device's saved printer, "browser" on a laptop
+  maxBuyerNum?: number;  // round 3 (item 3): the highest buyer number of the current session — the red line measures with it (0 = unknown → 12345)
   pp: PrintPatternState;
   // The seller's real Shop name — the SAME value every print path puts in the slip's
   // center (RedesignApp printShopName). Default = the old sample, for standalone renders.
@@ -156,7 +157,7 @@ export default function PrintPattern({
   // item 5 (round 2): a laptop (no native printer) prints the browser page → preview + fit measure follow it
   const path: FitPath = printerPath ?? (appShell || imagePath ? savedPrinterPath() : "browser"); // imagePath = a phone that prints images
   const where = { path, wMm, hMm, compactV2: stickerCompactV2Effective() };
-  const qrSizeBlocked = path !== "browser" && !stickerQrPrints({ ...where, path });
+  const qrSizeBlocked = !stickerQrPrints({ ...where, path });
   // item 4 (round 2): a control that cannot print on this size / printer shows "Not printed on this size"
   const notPrinted = (k: PpBoolKey): boolean => k === "shopName" && !stickerControlPrints("shopName", where);
   const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
@@ -170,14 +171,13 @@ export default function PrintPattern({
   // atlases load on demand). Nov 3 (item 5): the preview is THE print bitmap (ExactStickerPreview →
   // stickerBitmapFor), or the browser print page on a laptop.
   // Nov 3 (item 14): measured on EVERY tap (no print needed), shown in red next to the control it belongs to.
-  const fit = useStickerFit(previewSettings ?? null, cur, shopName, path);
+  const fit = useStickerFit(previewSettings ?? null, cur, shopName, path, maxBuyerNum);
   const fitOf = (k: PpSizeKey): "push" | "cut" | "limit" | undefined => fit?.controls[FIT_OF[k]];
   const fitText = (v: "push" | "cut" | "limit") => (v === "push" ? t.rd_pp_fit_push : v === "limit" ? t.rd_pp_fit_num_limit : t.rd_pp_fit_cutoff);
   const anyUp = (["shopNameSize", "buyerNumSize", "tiktokNameSize", "tiktokUserSize", "commentSize"] as PpSizeKey[]).some((k) => printScaleLevel(pp[k]) > 1);
   const unattributed = !!fit && (fit.overflow || fit.cut) && Object.keys(fit.controls).length === 0 && anyUp; // silent at all-1× (nothing to turn down)
-  const exactBrowser = path === "browser"; // a laptop prints the browser page; a phone prints the bitmap
-  const bitmapPath: StickerPath | undefined = path === "browser" ? undefined : path;
-  // the preview: the print bitmap (image paths), the browser page (laptop), else today's mock (phone text mode)
+  const exactBrowser = path === "browser"; // a laptop prints THE bitmap as one image (round 3, item 7) — the preview is that bitmap at the label's size
+  // the preview: the print bitmap (image paths + laptop), else today's mock (phone text mode)
   const showPreview = !!previewSettings && (spacingExact || (!spacingAllowed && showExact) || exactBrowser);
   return (
     <div>
@@ -191,7 +191,7 @@ export default function PrintPattern({
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
           {showPreview && previewSettings ? (
             <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
-              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={bitmapPath} browser={exactBrowser} />
+              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} path={path} browser={exactBrowser} />
             </div>
           ) : (
           <div style={{ background: "#fff", borderRadius: 11, padding: "12px 14px", textAlign: "center" }}>

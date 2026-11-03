@@ -6,10 +6,10 @@
 // screenControls), so a new row cannot ship untested. A control that changes nothing is a failure unless it is
 // in the ALLOWED list below, each entry with its reason.
 import { describe, it, expect } from "vitest";
-import { PATHS, SIZES, screenControls, renderCase, rasterKey, recomposeBands, sampleBuyer, settingsFor, applyModuleState, AT, type CaseSpec } from "./printControls.harness";
+import { PATHS, SIZES, screenControls, renderCase, rasterKey, recomposeBands, sampleBuyer, settingsFor, applyModuleState, browserCase, pageSrc, rasterFromBmpDataUrl, AT, type CaseSpec } from "./printControls.harness";
 import { stickerFit } from "../stickerFit";
-import { buildNativeStickerPayload, imageStickerPayload, imagePathAtlases, NIIMBOT_CANVAS, NIIMBOT_LABEL } from "../printing";
-import { stickerDrawOps, stickerQrPlacement, propLayoutLines, propLayoutLinesV2, isPropCompactSize, STICKER_LAYOUTS, type FullRaster } from "../stickerRaster";
+import { buildNativeStickerPayload, imageStickerPayload, imagePathAtlases, bitmapBmpDataUrl, NIIMBOT_CANVAS, NIIMBOT_LABEL } from "../printing";
+import { stickerDrawOps, stickerQrPlacement, propLayoutLines, propLayoutLinesV2, isPropCompactSize, rightmostOpEdge, STICKER_LAYOUTS, type FullRaster } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
 import { buildGenericStickerBytes, buildNiimbotImage } from "../printing";
 import type { PpBoolKey } from "../../screens/PrintPattern";
@@ -52,15 +52,16 @@ describe("print controls matrix — every control changes the print (or is expli
         const k2 = rasterKey(await renderCase({ ...c, pp: { [k]: 2 } })), k3 = rasterKey(await renderCase({ ...c, pp: { [k]: 3 } }));
         if (base === k2 || k2 === k3) {
           // item 2 (round 2): the buyer number is the ONE control allowed to stop growing — only where it would not
-          // fit whole beside the QR, and only with the red "largest size that fits whole" line on that level
+          // fit whole beside the QR, and only with a red line on that level (round 3, item 3: "limit" when the cap
+          // is the reason, "push" when it pushes lines off — measured with this case's buyer number)
           if (k === "buyerNumSize") {
             for (const lv of [2, 3] as const) {
               const same = lv === 2 ? base === k2 : k2 === k3;
               if (!same) continue;
               const cc: CaseSpec = { ...c, pp: { [k]: lv } };
               applyModuleState(cc);
-              const f = await stickerFit(settingsFor(cc), "NT$", "BudgetUkay", c.path);
-              expect(f.controls.printBuyerNumberScale, `${name(c)} buyerNumSize ${lv}x did not change the print and no 'limit' line explains it`).toBe("limit");
+              const f = await stickerFit(settingsFor(cc), "NT$", "BudgetUkay", c.path, { maxBuyerNum: sampleBuyer().num });
+              expect(f.controls.printBuyerNumberScale, `${name(c)} buyerNumSize ${lv}x did not change the print and no red line explains it`).toBeDefined();
             }
             continue;
           }
@@ -106,6 +107,28 @@ describe("preview = print", () => {
     const preview = readFileSync("src/redesign/components/ExactStickerPreview.tsx", "utf8");
     expect(preview).toMatch(/stickerBitmapFor\(\{ path: printerPath, payload/);
     expect(preview).not.toMatch(/renderStickerBitmap\(/); // never its own layout
+  });
+});
+
+// ── round 3 (items 1 + 7): the laptop preview and the laptop print are the same picture, at every frame width ──
+describe("laptop (browser): the print page carries exactly the preview bitmap; the frame only scales it", () => {
+  for (const psSize of SIZES) for (const v2 of [false, true]) {
+    it(`${psSize.replace(/mm.*/, "")} v2-${v2 ? "on" : "off"}: page image == stickerBitmapFor("browser") == the preview's source`, async () => {
+      const c: CaseSpec = { path: "browser", psSize, v2, pp: { commentSize: 2, tiktokNameSize: 3 } };
+      const page = await browserCase(c);
+      const preview = await renderCase(c); // ExactStickerPreview draws stickerBitmapFor({ path }) — the source pin below
+      expect(rasterKey(rasterFromBmpDataUrl(pageSrc(page.html)))).toBe(rasterKey(preview));
+      expect(page.html).toContain(bitmapBmpDataUrl(preview));
+      const wh = psSize.match(/^(\d+)x(\d+)/)!;
+      expect(page.html).toContain(`@page{size:${wh[1]}mm ${wh[2]}mm;margin:0}`); // the page IS the label
+      expect(page.html).not.toMatch(/<(div|span|p)[ >]/);                             // no browser text layout
+    }, 60_000);
+  }
+  it("the preview draws the label at its real size (mm → px) and scales it with a transform (ExactStickerPreview source pins)", () => {
+    const src = readFileSync("src/redesign/components/ExactStickerPreview.tsx", "utf8");
+    expect(src).toMatch(/width: `\$\{mm\.w\}mm`, height: `\$\{mm\.h\}mm`, transform: `scale\(\$\{scale\}\)`/);
+    expect(src).toMatch(/const scale = frameW > 0 \? frameW \/ px\.w : 1/);
+    expect(src).toMatch(/path \?\? \(asBrowser \? "browser" : savedPrinterPath\(\)\)/);
   });
 });
 
@@ -156,10 +179,16 @@ describe("item 2 — the buyer number prints whole on every path / size / level 
           if ((line!.scale ?? 1) > 1 && L.qr) expect(x + line!.line.inkWidth * (line!.scale ?? 1), `${tag}: a magnified number reaches the QR`).toBeLessThanOrEqual(L.qr.x0);
         } else {
           const cfg = STICKER_LAYOUTS[`${w}x${h}`];
-          const r = stickerDrawOps(img, w, h, "extended", stickerQrPlacement(img, cfg.wDots, h * 8, h));
-          const op = r.ops.find((o) => o.k === "txt" && o.s === String(num));
+          const qr = stickerQrPlacement(img, cfg.wDots, h * 8, h);
+          const r = stickerDrawOps(img, w, h, "extended", qr);
+          const op = r.ops.find((o): o is Extract<typeof o, { k: "txt" }> => o.k === "txt" && o.s === String(num));
           expect(op, `${tag}: the whole number is not on the label`).toBeTruthy();
           expect(r.ops.some((o) => o.k === "txt" && o.font === "4" && o.s.includes("…") && /\d/.test(o.s)), `${tag}: a digit was cut`).toBe(false);
+          // round 3 (item 2): every digit ends on the label — and before the QR column when the QR shares its rows
+          const right = rightmostOpEdge([op!]);
+          expect(right, `${tag}: the number runs past the label's edge (${right} > ${r.wDots})`).toBeLessThanOrEqual(r.wDots);
+          const numH = 32 * (op!.ym ?? 1);
+          if (qr && op!.y < qr.y0 + qr.foot && op!.y + numH > qr.y0) expect(right, `${tag}: the number runs into the QR`).toBeLessThanOrEqual(qr.x0);
         }
       }
     }, 60_000);

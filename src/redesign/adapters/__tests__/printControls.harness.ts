@@ -7,13 +7,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
-import { buildNativeStickerPayload, buildSettingsFromRedesign, setStickerQrEntitled, setStickerQrOn, setStickerSpacingAllowed, setStickerCompactV2, setStickerLayoutV2Allowed, stickerBitmapFor, browserStickerHtml, type StickerPath, type Settings } from "../printing";
+import { buildNativeStickerPayload, buildSettingsFromRedesign, setStickerQrEntitled, setStickerQrOn, setStickerSpacingAllowed, setStickerCompactV2, setStickerLayoutV2Allowed, stickerBitmapFor, browserStickerPage, bitmapBmpDataUrl, type StickerPath, type Settings } from "../printing";
 import { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "../../screens/PrintPattern";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import type { FullRaster } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
 
-export const PATHS: readonly StickerPath[] = ["aimo", "generic", "niimbot"];
+// "browser" (round 3, item 7) = a laptop: the same bitmap printed as one image on a label-sized page.
+export const PATHS: readonly StickerPath[] = ["aimo", "generic", "niimbot", "browser"];
 export const SIZES = ["50x30mm", "60x40mm", "70x50mm", "80x50mm", "80x60mm", "100x60mm (Standard)"] as const;
 export const SIZES_SHORT = ["50x30mm", "60x40mm", "70x50mm"] as const;
 export const AT = Date.UTC(2026, 10, 3, 12, 15); // 11/03 20:15 Taipei
@@ -49,9 +50,21 @@ export async function renderCase(c: CaseSpec): Promise<FullRaster> {
   const payload = buildNativeStickerPayload(c.buyer ?? sampleBuyer(), "NT$", c.shop ?? "BudgetUkay", settingsFor(c), AT);
   return stickerBitmapFor({ path: c.path, payload, platform: "TikTok", ...(c.path === "generic" ? { bold: true } : {}) });
 }
-export function browserCase(c: CaseSpec): string {
-  applyModuleState(c);
-  return browserStickerHtml({ buyer: c.buyer ?? sampleBuyer(), cur: "NT$", storeName: c.shop ?? "BudgetUkay", cfg: settingsFor(c), at: AT });
+// The laptop print page for the case (round 3, item 7): the "browser" bitmap as a BMP image on a label-sized page.
+export async function browserCase(c: CaseSpec): Promise<{ html: string; raster: FullRaster }> {
+  const raster = await renderCase({ ...c, path: "browser" });
+  const st = settingsFor(c);
+  const wh = String(st.stickerSize).match(/^(\d+)x(\d+)/)!;
+  return { html: browserStickerPage({ wMm: Number(wh[1]), hMm: Number(wh[2]), src: bitmapBmpDataUrl(raster), title: "test" }), raster };
+}
+// The image on a laptop print page, back to a raster (1-bit BMP: bottom-up rows padded to 4 bytes).
+export const pageSrc = (html: string): string => /src="(data:image\/bmp;base64,[^"]+)"/.exec(html)?.[1] ?? "";
+export function rasterFromBmpDataUrl(src: string): FullRaster {
+  const b = Buffer.from(src.replace(/^data:image\/bmp;base64,/, ""), "base64");
+  const off = b.readUInt32LE(10), w = b.readInt32LE(18), h = b.readInt32LE(22), stride = ((w + 31) >> 5) << 2, rowBytes = (w + 7) >> 3;
+  const buf = new Uint8Array(rowBytes * h);
+  for (let y = 0; y < h; y++) buf.set(b.subarray(off + (h - 1 - y) * stride, off + (h - 1 - y) * stride + rowBytes), y * rowBytes);
+  return { buf, w, h, rowBytes };
 }
 // Recompose the generic TSPL mode-0 bands back into a raster (what the printer paints).
 export function recomposeBands(bytes: Uint8Array, wDots: number, hDots: number): FullRaster {

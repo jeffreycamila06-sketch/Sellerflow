@@ -277,7 +277,7 @@ describe("fit warning (Nov 3, item 8: measures the layout that prints for the sa
     const g = await stickerFit(cfgFor(60, 40, { tiktokNameSize: 3, commentSize: 3, tiktokUserSize: 3 }), "NT$", "My Shop", "aimo");
     expect(Object.keys(g.controls).sort()).toEqual(["printBuyerNameScale", "printCommentScale", "printUsernameScale"]);
   });
-  // item 5 (round 2): the laptop print page has its own measure (printing.BROWSER_STICKER_FONTS)
+  // round 3 (item 7): the laptop prints the same bitmap (path "browser" = the image layouts) — the measure is the print's
   it("browser mode: silent at the default pattern; comment 3× on 60x40 is blamed", async () => {
     setStickerCompactV2(false); setStickerSpacingAllowed(true);
     expect((await stickerFit(cfgFor(60, 40), "NT$", "My Shop", "browser")).controls).toEqual({});
@@ -288,10 +288,38 @@ describe("fit warning (Nov 3, item 8: measures the layout that prints for the sa
     setStickerCompactV2(false); setStickerSpacingAllowed(true); setStickerQrEntitled(true); setStickerQrOn(true);
     try {
       const f = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
-      expect(f.controls.printBuyerNumberScale).toBe("limit"); // item 2 (round 2)
+      expect(f.controls.printBuyerNumberScale).toBe("limit"); // item 2 (round 2): 12345 at 3× does not fit beside the QR, 2× does
     } finally { setStickerQrOn(false); setStickerQrEntitled(false); }
     const g = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
     expect(g.controls.printBuyerNumberScale).toBe("push");
+  });
+  // round 3 (item 3): the measure uses the worst-case number (12345) or the session's highest; "limit" only when the cap
+  // is the reason. Buyer 7 at 3× fits whole on 50×30, so its line is never "limit": on the compact v1 layout (generic /
+  // laptop) the big number PUSHES the lines below off the label → "push"; layout v2 squeezes its rows to the smaller
+  // sizes instead, so less of the name / comment fits → "cut" (what that print really does).
+  it("worst-case number: 12345 by default, the session's highest when known; buyer 7 at 3× on 50×30 is never 'limit'", async () => {
+    setStickerCompactV2(true); setStickerSpacingAllowed(true); setStickerQrEntitled(true); setStickerQrOn(true);
+    try {
+      const seven = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo", { maxBuyerNum: 7 });
+      expect(seven.controls.printBuyerNumberScale).toBe("cut");
+      setStickerCompactV2(false);
+      const sevenV1 = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "browser", { maxBuyerNum: 7 });
+      expect(sevenV1.controls.printBuyerNumberScale).toBe("push");
+      setStickerCompactV2(true);
+      const big = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
+      expect(big.controls.printBuyerNumberScale).toBeDefined(); // 12345: capped and/or pushing — never silent
+      const niim = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "niimbot");
+      expect(niim.controls.printBuyerNumberScale).toBeDefined();
+    } finally { setStickerQrOn(false); setStickerQrEntitled(false); setStickerCompactV2(false); }
+  });
+  // round 3 (item 5): the red line also measures a Chinese buyer (王小明 / 我要黑色) — the name at 3× on 50×30 v2 OFF with the
+  // QR on pushes the date off, which the Latin sample alone would miss
+  it("Chinese sample: TikTok name 3× on AIMO 50×30 v2 OFF, QR on → 'push' (the date goes off the label)", async () => {
+    setStickerCompactV2(false); setStickerSpacingAllowed(true); setStickerQrEntitled(true); setStickerQrOn(true);
+    try {
+      const f = await stickerFit(cfgFor(50, 30, { tiktokNameSize: 3 }), "NT$", "My Shop", "aimo");
+      expect(f.controls.printBuyerNameScale).toBe("push");
+    } finally { setStickerQrOn(false); setStickerQrEntitled(false); }
   });
   it("past the right edge → overflow (@username 3× on 60x40 is wider than the label)", async () => {
     setStickerCompactV2(false); setStickerSpacingAllowed(true);

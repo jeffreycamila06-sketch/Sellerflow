@@ -2,7 +2,7 @@
 // never printed on a sticker, never written to the 7-11 file's column J, and never opened by
 // Pickup "Chase". TikTok stickers stay byte-identical (sha256 captured on main before this change).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, type Settings } from "../printing";
+import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload, type Settings } from "../printing";
 import { printableBuyer, fbDisplayName } from "../fbName";
 import { buyerGroupsFrom, draftEntryFor, buildBagEntries, lateFormEntry, colJHandle } from "../shipping";
 import { chaseTarget } from "../parcelTracking";
@@ -81,19 +81,28 @@ describe("text (native TSPL) payload and browser print", () => {
       expect(sent.join("")).not.toContain(ID);
     });
   });
-  it("browser print: no id, no '@fb-anon-'", () => {
+  it("browser print: no id, no '@fb-anon-'", async () => {
+    // round 3 (item 7): the laptop page is the sticker IMAGE — the page holds no text at all; the picture is the
+    // printableBuyer render (no id, no "Unknown"), and a TikTok buyer's page is its own plain image
     __resetWebPrintQueue();
     let captured: HTMLIFrameElement | null = null;
     const orig = document.createElement.bind(document);
     const spy = vi.spyOn(document, "createElement").mockImplementation((tag: string) => { const el = orig(tag); if (tag === "iframe") captured = el as HTMLIFrameElement; return el; });
     try {
-      printSlip(mk("Facebook", "fb-anon-555_777", "Unknown"), "NT$", "My Shop", { ...DEF_SETTINGS });
+      const fb = mk("Facebook", "fb-anon-555_777", "Unknown");
+      printSlip(fb, "NT$", "My Shop", { ...DEF_SETTINGS });
+      await __webPrintIdle();
       const html = (captured as HTMLIFrameElement | null)?.contentDocument?.documentElement.outerHTML || "";
       expect(html).not.toContain("fb-anon");
-      expect(html).not.toContain(">Unknown<");
+      expect(html).not.toContain("Unknown");
+      expect(printableBuyer(fb).name).toBe("");
+      expect(html).toContain(bitmapBmpDataUrl(await stickerBitmapFor({ path: "browser", payload: buildNativeStickerPayload(printableBuyer(fb), "NT$", "My Shop", { ...DEF_SETTINGS, printBuyerUsername: false }), platform: "Facebook", fbName: true })));
       __resetWebPrintQueue();
-      printSlip(mk("TikTok", "annc", "Ann"), "NT$", "My Shop", { ...DEF_SETTINGS });
-      expect((captured as HTMLIFrameElement | null)?.contentDocument?.documentElement.outerHTML || "").toContain("@annc"); // TikTok unchanged
+      const tt = mk("TikTok", "annc", "Ann");
+      printSlip(tt, "NT$", "My Shop", { ...DEF_SETTINGS });
+      await __webPrintIdle();
+      const ttHtml = (captured as HTMLIFrameElement | null)?.contentDocument?.documentElement.outerHTML || "";
+      expect(ttHtml).toContain(bitmapBmpDataUrl(await stickerBitmapFor({ path: "browser", payload: buildNativeStickerPayload(tt, "NT$", "My Shop", { ...DEF_SETTINGS }), platform: "TikTok" }))); // TikTok unchanged
     } finally { spy.mockRestore(); __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove()); }
   });
 });

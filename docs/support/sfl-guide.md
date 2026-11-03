@@ -461,7 +461,7 @@ Keywords: sticker size, paper size, 100x60, 60x40, 50x30, layout, chinese name, 
 
 **What is on the sticker**: the buyer number (**Buyer 88**, the biggest thing), the buyer's name, the @username, the comment (up to 3 lines — at the normal size a long comment gets smaller before it is cut), and the date and time at the top right. On 60x40 and bigger stickers your **shop name** prints at the top on every printer (turn it on or off in the print pattern); 50x30 has no shop name. Facebook buyers show their name only.
 
-**Layout settings**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Choose what prints and its size (1×, 2× or 3×): Shop name, Date & time, Buyer #, TikTok name, TikTok username, Comment / Price, SellerFlowLive logo. Date & time and the logo are a fixed size. Every switch and every size step changes the printed sticker on every printer and sticker size; the preview at the top is the sticker your saved printer will print (on a laptop, the page the browser prints). A control that cannot print on your sticker shows **Not printed on this size** instead of a switch. If a size is too big for your sticker, a red line appears right under that control the moment you tap it — "Too big — other lines get pushed off the sticker" or "Too big — the name or comment will be cut on this sticker"; when several sizes are too big, each one gets its own line. The sticker still prints at the size you chose; pick a smaller size to clear the warning. The buyer number is the one exception: it is never cut — it prints whole at the largest size that fits next to the QR, and the red line under Buyer # tells you so. Chinese names and comments grow with the size too. Use **Printer Test** to check, then **Save settings**.
+**Layout settings**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Choose what prints and its size (1×, 2× or 3×): Shop name, Date & time, Buyer #, TikTok name, TikTok username, Comment / Price, SellerFlowLive logo. Date & time and the logo are a fixed size. Every switch and every size step changes the printed sticker on every printer and sticker size; the preview at the top is the exact sticker your saved printer will print — on a laptop it is the very picture the browser prints, shown at the label's real size and scaled to your screen. A control that cannot print on your sticker shows **Not printed on this size** instead of a switch. If a size is too big for your sticker, a red line appears right under that control the moment you tap it — "Too big — other lines get pushed off the sticker" or "Too big — the name or comment will be cut on this sticker"; when several sizes are too big, each one gets its own line. The check uses a long name, a long comment, a Chinese name and comment, and a 5-digit buyer number (or the highest buyer number of your running session), so it warns before a real order hits the limit. The sticker still prints at the size you chose; pick a smaller size to clear the warning. The buyer number is never cut on any sticker: digits get narrower or the number prints whole at the largest size that fits next to the QR, and the red line under Buyer # says which. A cut name or comment ends with "…". Chinese names and comments grow with the size too. Use **Printer Test** to check, then **Save settings**.
 
 If a saved Flash, Xprinter or Niimbot printer does not print and you see **"Update the app to print with this printer."**, update SellerFlowLive from the store, then print again.
 
@@ -470,13 +470,18 @@ If a saved Flash, Xprinter or Niimbot printer does not print and you see **"Upda
 **Print QR on sticker** — scan it in Parcel Scan to fill in the buyer quickly. It is off by default and prints on every sticker size (on 50x30 and 60x40 it sits on the right, next to the text).
 
 ## laptop-printing — Printing from a laptop
-Last checked: 2026-10-28
-Keywords: laptop, computer, windows, mac, chrome, silent print, kiosk, auto-print, browser, kompyuter, 电脑, 電腦列印, 静默打印
+Last checked: 2026-11-03
+Keywords: laptop, computer, windows, mac, chrome, silent print, kiosk, auto-print, browser, kompyuter, 电脑, 電腦列印, 静默打印, test print, scale 100%, margins
 
-1. Install your label printer's driver, set it as the default printer, and set the paper size to your label (at least 60×40mm).
-2. In **Settings → General Settings**, find **LAPTOP AUTO-PRINT** ("Silent auto-print on a laptop"). Tap **Copy**.
-3. Windows: press Win+R, paste, press Enter. Mac: open Terminal, paste, press Return.
-4. Log in once in the window that opens, and use that window for printing during your live.
+A laptop prints the same sticker picture as the phone app, on a page exactly the size of your label — what you see in the LIVE print pattern preview is what prints.
+
+1. Install your label printer's driver and set it as the default printer.
+2. In **Settings → Printer settings** on the laptop, pick your **Sticker size** (the same sizes as the phone app, 50x30 included).
+3. The **Laptop print setup** card lists the print-window settings to set once: **Scale 100% (Actual size)**, **Margins: None**, **Headers and footers: off**, **Paper size: your label size**. Tap **Got it** when done.
+4. Tap **Test Print**: it prints a test sticker with a thin border. The border should sit right on the label's edge — if it is cut or there is a white gap, check the four settings above.
+5. In **Settings → General Settings**, find **LAPTOP AUTO-PRINT** ("Silent auto-print on a laptop"). Tap **Copy**.
+6. Windows: press Win+R, paste, press Enter. Mac: open Terminal, paste, press Return.
+7. Log in once in the window that opens, and use that window for printing during your live.
 
 If you see "Auto-print not silent?", repeat these steps.
 
