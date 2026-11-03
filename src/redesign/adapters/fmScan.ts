@@ -22,6 +22,7 @@ export interface FmScanRow {
   shippingFee: number;
   orderDate: string;          // YYYY-MM-DD
   buyerUsername: string | null;
+  contactPlatform?: string | null; // buyer contact platform (sql/140); absent/null = TikTok / legacy
   createdAt: string;
   exportedAt: string | null;
   exportBatchId: string | null;
@@ -193,12 +194,13 @@ export function deliverFmFiles(files: { name: string; bytes: Uint8Array }[], app
 }
 
 // ── database (own rows, RLS) ───────────────────────────────────────────────────
-const COLS = "id, recipient_name, phone, store_id, amount, shipping_fee, order_date, buyer_username, created_at, exported_at, export_batch_id";
+const COLS = "id, recipient_name, phone, store_id, amount, shipping_fee, order_date, buyer_username, contact_platform, created_at, exported_at, export_batch_id";
 function toRow(r: Record<string, unknown>): FmScanRow {
   return {
     id: String(r.id), recipientName: String(r.recipient_name ?? ""), phone: String(r.phone ?? ""), storeId: String(r.store_id ?? ""),
     amount: Number(r.amount), shippingFee: Number(r.shipping_fee), orderDate: String(r.order_date ?? ""),
     buyerUsername: r.buyer_username == null ? null : String(r.buyer_username), createdAt: String(r.created_at ?? ""),
+    ...(r.contact_platform != null ? { contactPlatform: String(r.contact_platform) } : {}),
     exportedAt: r.exported_at == null ? null : String(r.exported_at), exportBatchId: r.export_batch_id == null ? null : String(r.export_batch_id),
   };
 }
@@ -224,12 +226,14 @@ export function inputToDb(input: FmScanInput) {
   };
 }
 
-export async function saveFmScan(input: FmScanInput, id?: string): Promise<{ ok: boolean; row?: FmScanRow }> {
+// contactPlatform (sql/140): only sent when passed (picker on, or null to clear a stale platform).
+export async function saveFmScan(input: FmScanInput, id?: string, contactPlatform?: string | null): Promise<{ ok: boolean; row?: FmScanRow }> {
   const me = await uid();
   if (!me) return { ok: false };
+  const db = { ...inputToDb(input), ...(contactPlatform !== undefined ? { contact_platform: contactPlatform } : {}) };
   const q = id
-    ? supabase!.from("fm_parcel_scans").update(inputToDb(input)).eq("id", id).eq("user_id", me)
-    : supabase!.from("fm_parcel_scans").insert({ user_id: me, ...inputToDb(input) });
+    ? supabase!.from("fm_parcel_scans").update(db).eq("id", id).eq("user_id", me)
+    : supabase!.from("fm_parcel_scans").insert({ user_id: me, ...db });
   const { data, error } = await q.select(COLS).single();
   if (error || !data) return { ok: false };
   return { ok: true, row: toRow(data as Record<string, unknown>) };

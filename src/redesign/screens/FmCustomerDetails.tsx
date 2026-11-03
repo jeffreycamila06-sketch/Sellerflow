@@ -12,6 +12,8 @@ import { searchFmCustomers, loadRecentFmCustomers, updateFmCustomer, deleteFmCus
 import { FM_ERROR_KEY, FM_SCAN_DEFAULT_FEE, loadFmGlobalFee, saveFmScan, validateFmScan, type FmScanInput } from "../adapters/fmScan";
 import { validHandle } from "../adapters/parcelScan";
 import { priceInput, hasCents } from "../../lib/money";
+import BuyerContactField from "../components/BuyerContactField";
+import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -21,7 +23,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 type EditForm = { name: string; phone: string; store: string; username: string };
 
 // feeOverride: Parcel Scan FamilyMart passes the fee it already read (no second read).
-export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOverride }: { cur?: string; onImported?: () => void; fee?: number }) {
+export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOverride, contactOn = false }: { cur?: string; onImported?: () => void; fee?: number; contactOn?: boolean }) {
   const t = useT();
 
   const [query, setQuery] = useState("");
@@ -36,6 +38,9 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
   const [openId, setOpenId] = useState<string | null>(null);
   const [price, setPrice] = useState("");
   const [handle, setHandle] = useState("");
+  const [platform, setPlatform] = useState<BuyerContactPlatform>("tiktok"); // buyer contact (sql/140); renders only when contactOn
+  const [editPlatform, setEditPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const [editNone, setEditNone] = useState(false);
   const [noHandle, setNoHandle] = useState(false);
   const [importErr, setImportErr] = useState("");
   const [importing, setImporting] = useState(false);
@@ -92,6 +97,7 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
     setPrice("");
     setHandle(c.buyerUsername || "");
     setNoHandle(false);
+    setPlatform(platformOf(c.contactPlatform));
     setOpenId((cur0) => (cur0 === c.id ? null : c.id));
   }
 
@@ -100,15 +106,16 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
     // Same rules as a new parcel on the FamilyMart screen: today (Taipei) + the FamilyMart fee.
     const parcel: FmScanInput = {
       recipientName: c.name, phone: c.phone, storeId: c.storeId, amount: price,
-      shippingFee: String(fee), orderDate: taipeiDayId(), buyerUsername: noHandle ? "" : handle,
+      shippingFee: String(fee), orderDate: taipeiDayId(), buyerUsername: noHandle ? "" : (contactOn ? normalizeContact(platform, handle) : handle),
     };
     const errs = validateFmScan(parcel, parcel.orderDate);
     const first = errs.recipientName ?? errs.phone ?? errs.storeId ?? errs.amount ?? errs.total ?? errs.buyerUsername;
     if (first) { setImportErr(t[FM_ERROR_KEY[first]]); return; }
     if (!noHandle && !validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
+    if (contactOn && !noHandle && contactError(platform, handle) !== "") { setImportErr(t.rd_bc_err_whatsapp); return; }
     setImporting(true);
     try {
-      const r = await saveFmScan(parcel);
+      const r = contactOn ? await saveFmScan(parcel, undefined, noHandle || platform === "tiktok" ? null : platform) : await saveFmScan(parcel);
       if (!r.ok) { setImportErr(t.rd_cd_import_err); return; }
       setToast(t.rd_cd_imported_toast);
       setTimeout(() => setToast(""), 2500);
@@ -122,6 +129,7 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
   function openEdit(c: FmCustomer) {
     setEditing(c);
     setEditForm({ name: c.name, phone: c.phone, store: c.storeId, username: c.buyerUsername });
+    setEditPlatform(platformOf(c.contactPlatform)); setEditNone(false);
     setEditErr("");
   }
   async function saveEdit() {
@@ -129,11 +137,16 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
     setEditErr("");
     setSavingEdit(true);
     try {
+      const username = (contactOn ? normalizeContact(editPlatform, editForm.username) : editForm.username).trim() || null;
+      const contactArg: string | null | undefined = contactOn
+        ? (!username || editPlatform === "tiktok" ? null : editPlatform)
+        : (editing.contactPlatform != null && (editing.buyerUsername || "") !== (username || "") ? null : undefined);
       const r = await updateFmCustomer(editing.id, {
         name: editForm.name.trim() || null,
         phone: editForm.phone.trim() || null,
         store_id: editForm.store.trim() || null,
-        buyer_username: editForm.username.trim() || null,
+        buyer_username: username,
+        ...(contactArg !== undefined ? { contact_platform: contactArg } : {}),
       });
       if (!r.ok) { setEditErr(t.rd_cd_edit_err); return; }
       setEditing(null);
@@ -225,6 +238,10 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
                     </div>
                     {importErr && <div style={errTxt} data-testid="fcd-import-err">{importErr}</div>}
                   </div>
+                  {contactOn ? (
+                    <BuyerContactField platform={platform} onPlatform={setPlatform} value={handle} onValue={(v) => { setHandle(v); setImportErr(""); }}
+                      noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) { setHandle(""); setImportErr(""); } }} testId="fcd-bc" />
+                  ) : (
                   <div>
                     <label style={lbl}>{t.rd_ps2_handle}</label>
                     <input value={handle}
@@ -235,6 +252,7 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
                       {t.rd_ps2_no_handle}
                     </label>
                   </div>
+                  )}
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => openEdit(c)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="fcd-edit" aria-label={t.rd_cd_edit_aria}>✏️ {t.rd_cd_edit}</button>
                     <button onClick={() => { setDelErr(""); setConfirmDel(c); }} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--danger)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="fcd-delete" aria-label={t.rd_cd_delete_aria}>🗑</button>
@@ -257,7 +275,10 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
               <div><label style={lbl}>{t.rd_cd_name_ph}</label><input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} style={input} data-testid="fcd-edit-name" /></div>
               <div><label style={lbl}>{t.rd_cd_phone_ph}</label><input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value.replace(/[^\d]/g, "").slice(0, 10) }))} inputMode="numeric" style={input} data-testid="fcd-edit-phone" /></div>
               <div><label style={lbl}>{t.rd_cd_store_ph}</label><input value={editForm.store} onChange={(e) => setEditForm((f) => ({ ...f, store: e.target.value.replace(/[^\d]/g, "").slice(0, 6) }))} inputMode="numeric" style={input} data-testid="fcd-edit-store" /></div>
-              <div><label style={lbl}>{t.rd_ps2_handle}</label><input value={editForm.username} onChange={(e) => setEditForm((f) => ({ ...f, username: e.target.value.slice(0, 50) }))} style={input} data-testid="fcd-edit-username" /></div>
+              {contactOn
+                ? <BuyerContactField platform={editPlatform} onPlatform={setEditPlatform} value={editForm.username} onValue={(v) => setEditForm((f) => ({ ...f, username: v }))}
+                    noContact={editNone} onNoContact={(on) => { setEditNone(on); if (on) setEditForm((f) => ({ ...f, username: "" })); }} testId="fcd-edit-bc" />
+                : <div><label style={lbl}>{t.rd_ps2_handle}</label><input value={editForm.username} onChange={(e) => setEditForm((f) => ({ ...f, username: e.target.value.slice(0, 50) }))} style={input} data-testid="fcd-edit-username" /></div>}
             </div>
             {editErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="fcd-edit-err">{editErr}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>

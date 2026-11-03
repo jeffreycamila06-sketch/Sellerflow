@@ -63,7 +63,7 @@ describe("Settings tile", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain('const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));');
     expect(src).toContain('onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}');
-    expect(src).toContain('{screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} />}');
+    expect(src).toContain('{screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} contactOn={buyerContactOn} />}'); // buyer contact (sql/140) rides the same mount
   });
 });
 
