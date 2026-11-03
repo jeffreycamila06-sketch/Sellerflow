@@ -64,6 +64,8 @@ describe("Products — decimal price", () => {
     const price = (await screen.findByTestId("prd-price")) as HTMLInputElement;
     fireEvent.change(price, { target: { value: "2,90" } });
     expect(price.value).toBe("2.90");
+    fireEvent.change(price, { target: { value: "1.200,50" } });
+    expect(price.value).toBe("1200.50");
   });
 
   it("RM 2.90 saves as 2.9 and shows RM2.90", async () => {

@@ -34,11 +34,15 @@ describe("fmtMoney / moneyText / priceInput", () => {
     for (const c of ["NT$", "₫", "Rp", "₩"]) expect(hasCents(c)).toBe(false);
     for (const c of ["RM", "₱", "$", "€", "฿", "A$", "¥"]) expect(hasCents(c)).toBe(true); // CNY has cents
     const main = (v: string) => v.replace(/[^0-9]/g, "");   // origin/main RedesignApp onEntPrice
-    for (const v of ["1,200", "1200", "2.90", "2,90", "12.", "-5", "abc", "", "1.200", " 3 5 ", "350.50"]) expect(livePriceInput(v, "NT$")).toBe(main(v));
+    for (const v of ["1,200", "1200", "2.90", "2,90", "12.", "abc", "", "1.200", " 3 5 ", "350.50"]) expect(livePriceInput(v, "NT$")).toBe(main(v));
     expect(livePriceInput("350.50", "NT$")).toBe("35050");
     expect(livePriceInput("2,90", "€")).toBe("2.90");       // cent currencies = the shared rule
     expect(livePriceInput("1,200.50", "₱")).toBe("1200.50");
-    expect(livePriceInput("-3", "₱", "12")).toBe("12");     // "-" ignored in the live box too
+    for (const cur of ["NT$", "₱", "€"]) {                  // "-" keeps prev in the live box, NT$ included (the one deviation from main)
+      expect(livePriceInput("-3", cur, "12")).toBe("12");
+      expect(livePriceInput("12-", cur, "12")).toBe("12");
+      expect(livePriceInput("-5", cur)).toBe("");
+    }
   });
   it("no-cent currencies OUTSIDE the live box: commas stripped, cut from the first '.'", () => {
     expect(priceInput("350.50", "NT$")).toBe("350");
@@ -55,6 +59,10 @@ describe("fmtMoney / moneyText / priceInput", () => {
     expect(priceInput("2,9", "€")).toBe("2.9");
     expect(priceInput("2.90", "€")).toBe("2.90");
     expect(priceInput("1,200", "€")).toBe("1.20");
+    expect(priceInput("1.200,50", "€")).toBe("1200.50");  // both present: "." = thousands, "," = decimal
+    expect(priceInput("1.200.000,5", "€")).toBe("1200000.5");
+    expect(priceInput("1200,5", "€")).toBe("1200.5");
+    expect(priceInput("1.200", "€")).toBe("1.20");        // "." alone = the decimal point
     expect(priceInput("2.905", "€")).toBe("2.90");
     expect(priceInput("2,", "€")).toBe("2.");           // pending decimal while typing
     expect(priceInput("12.5.0", "€")).toBe("12.50");
