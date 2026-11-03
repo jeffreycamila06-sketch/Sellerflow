@@ -148,6 +148,7 @@ import { useFeatureAccess, hasFeature } from "./adapters/featureAccess";
 import { usePostSales } from "./adapters/usePostSales";
 import { postSalesGate, postPrintSettings, givePostWaitlist, postItemStock } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
+import { fmtMoney, priceInput } from "../lib/money";
 
 type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
@@ -2577,7 +2578,7 @@ export default function RedesignApp() {
               notPrinted={notPrintedView}
               onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
-              onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey} onEntSubmit={submitEnt}
+              onEntPrice={(v) => setEntPrice(priceInput(v))} onEntKey={onEntKey} onEntSubmit={submitEnt}
               session={sessionIdleEnded ? ENDED_EMPTY_SESSION : liveSession.session} sessionState={sessionIdleEnded ? "empty" : liveSession.state}
               sessionEndedIdle={sessionIdleEnded}
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
@@ -2598,7 +2599,7 @@ export default function RedesignApp() {
               samePrice={samePriceCfg.active}
               onDisableSamePrice={() => {
                 void samePriceCfg.setEnabled(false);
-                setToast({ msg: tpl(tApp.rd_lss_off_sp, { price: `${cur}${(samePriceCfg.price ?? 0).toLocaleString("en-US")}` }), kind: "ok" });
+                setToast({ msg: tpl(tApp.rd_lss_off_sp, { price: `${cur}${fmtMoney(samePriceCfg.price ?? 0)}` }), kind: "ok" });
               }}
             />
           )}

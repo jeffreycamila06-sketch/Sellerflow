@@ -11,6 +11,7 @@ import { taipeiDayId } from "../../lib/dateHelpers";
 import { searchFmCustomers, loadRecentFmCustomers, updateFmCustomer, deleteFmCustomer, countFmCustomers, type FmCustomer } from "../adapters/fmCustomers";
 import { FM_ERROR_KEY, FM_SCAN_DEFAULT_FEE, loadFmGlobalFee, saveFmScan, validateFmScan, type FmScanInput } from "../adapters/fmScan";
 import { validHandle } from "../adapters/parcelScan";
+import { priceInput } from "../../lib/money";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -220,7 +221,7 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
                     <label style={lbl}>{t.rd_cd_price_ph}</label>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-dim)" }}>{cur}</span>
-                      <input value={price} onChange={(e) => { setPrice(e.target.value.replace(/[^\d.]/g, "")); setImportErr(""); }} inputMode="numeric" placeholder={t.rd_cd_price_ph} style={input} data-testid="fcd-price" aria-label={t.rd_cd_price_ph} />
+                      <input value={price} onChange={(e) => { setPrice(priceInput(e.target.value)); setImportErr(""); }} inputMode="decimal" placeholder={t.rd_cd_price_ph} style={input} data-testid="fcd-price" aria-label={t.rd_cd_price_ph} />
                     </div>
                     {importErr && <div style={errTxt} data-testid="fcd-import-err">{importErr}</div>}
                   </div>

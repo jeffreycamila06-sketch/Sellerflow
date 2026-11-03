@@ -247,7 +247,7 @@ export function SellOnPost({ ui: u, cur, onClose }: { ui: PostsUi; cur: string; 
             {mode === "code"
               ? <input value={r.code} onChange={(e) => setRow(i, { code: e.target.value.toUpperCase() })} data-testid="sell-item-code" style={{ ...cell, textTransform: "uppercase" }} />
               : <span style={{ ...cell, display: "flex", alignItems: "center", color: "var(--accent-fg)" }}>+1</span>}
-            <input type="number" inputMode="decimal" min={0} value={r.price || ""} onChange={(e) => setRow(i, { price: Math.max(0, Number(e.target.value) || 0) })} data-testid="sell-item-price" style={cell} />
+            <input type="number" inputMode="decimal" min={0} step="0.01" value={r.price || ""} onChange={(e) => setRow(i, { price: Math.max(0, Number(e.target.value) || 0) })} data-testid="sell-item-price" style={cell} />
             <input type="number" inputMode="numeric" min={0} placeholder="∞" value={r.stock ?? ""} onChange={(e) => setRow(i, { stock: e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)) })} data-testid="sell-item-stock" style={cell} />
           </div>
         ))}
@@ -328,7 +328,7 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
                 <span style={{ flex: 1, minWidth: 80, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
                 {editing === it.id ? (
                   <span style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}>
-                    <input type="number" inputMode="decimal" value={draft.price} onChange={(e) => setDraft((d) => ({ ...d, price: Math.max(0, Number(e.target.value) || 0) }))} data-testid="my-post-edit-price" style={{ ...cell, flex: 1 }} />
+                    <input type="number" inputMode="decimal" min={0} step="0.01" value={draft.price} onChange={(e) => setDraft((d) => ({ ...d, price: Math.max(0, Number(e.target.value) || 0) }))} data-testid="my-post-edit-price" style={{ ...cell, flex: 1 }} />
                     <input type="number" inputMode="numeric" placeholder="∞" value={draft.stock ?? ""} onChange={(e) => setDraft((d) => ({ ...d, stock: e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} data-testid="my-post-edit-stock" style={{ ...cell, flex: 1 }} />
                     <button type="button" disabled={busy} data-testid="my-post-save" onClick={() => void saveItem(it.id)} style={{ ...btnPrimary, minHeight: 42, padding: "0 12px", fontSize: 13.5 }}>{t.rd_fps_save}</button>
                   </span>

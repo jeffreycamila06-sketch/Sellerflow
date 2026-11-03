@@ -25,6 +25,7 @@ import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
 import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
 import { platformRange, platformRangeFor, platformRpcFor, type SalesPlatform, type UsePlatformSales } from "../adapters/salesByPlatform";
 import { looksLikeFbId } from "../adapters/fbName";
+import { fmt } from "../data";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
@@ -93,7 +94,6 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   useEffect(() => { const el = trackRef.current; if (el) el.scrollLeft = el.scrollWidth; }, [sales.data, range]);
 
   const d = sales.data;
-  const fmt = (n: number) => Math.round(n).toLocaleString();
   const aov = d && d.orders ? Math.round(d.revenue / d.orders) : 0;
   const hourly = d?.trendUnit === "hour";
   const maxRev = Math.max(1, ...(d?.days.map((x) => x.rev) ?? [1]));
@@ -286,7 +286,6 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
 // Per-platform view (F1): totals, orders per day, best sellers (by Auto code, else by price).
 function PlatformView({ data, state, cur }: { data: UsePlatformSales["data"]; state: UsePlatformSales["state"]; cur: string }) {
   const t = useT();
-  const fmt = (n: number) => Math.round(n).toLocaleString();
   if (state === "error") return <div style={{ ...card, textAlign: "center", color: "var(--danger)" }} data-testid="sales-plat-error">{t.rd_sal_error}</div>;
   if (state === "loading" || state === "idle" || !data) return <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-plat-loading">{t.rd_sal_loading}</div>;
   if (data.orders === 0) return <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-plat-empty">{t.rd_sal_empty}</div>;

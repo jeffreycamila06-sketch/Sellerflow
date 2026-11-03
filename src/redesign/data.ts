@@ -1,4 +1,5 @@
 // Redesign (Phase 2) — prototype sample data + helpers.
+import { fmtMoney } from "../lib/money";
 // Verbatim from design-redesign/SellerFlowLive.dc.html (data L858–952, helpers
 // L1029–1033, accents L870–878, langs L860–868, incoming L887–896).
 // NOTE: this is the prototype's static SAMPLE data (₱ / "Maria's Live Shop").
@@ -164,6 +165,6 @@ export const avColor = (s: string): string => {
 };
 export const initials = (s: string): string =>
   (s || "").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-export const fmt = (n: number): string => n.toLocaleString("en-US");
+export const fmt = fmtMoney; // whole → "1,200" (unchanged); cents → "2.90" (src/lib/money)
 export const statusColor = (st: string): string =>
   ({ Unpaid: "#e11d48", Paid: "#059669", Packed: "#0284c7", Shipped: "#7c3aed", Delivered: "#059669", Cancelled: "#9ca3af", Active: "#059669", Expiring: "#d97706", Expired: "#e11d48" } as Record<string, string>)[st] || "#9ca3af";
