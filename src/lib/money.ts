@@ -23,7 +23,9 @@ export const COMMA_DECIMAL = new Set(["€"]);
  * IGNORED — the field keeps `prev` ("-3" is never turned into 3).
  * - no-cent currency (NT$ …): commas stripped, everything from the first "." cut ("350.50" → "350", "1,200" → "1200").
  * - € : "," is the decimal point ("2,90" → "2.90"); with BOTH "." and "," present, "." is a thousands
- *   separator ("1.200,50" → "1200.50"). "." alone stays the decimal point ("1.200" → "1.20").
+ *   separator ("1.200,50" → "1200.50"); exactly one "." with exactly 3 digits after it and no "," is
+ *   a thousands separator too ("1.200" → "1200", "12.500" → "12500"); otherwise "." is the decimal
+ *   point ("2.90" → "2.90", "2.9" → "2.9").
  * - every other cent currency (₱, RM, $, ¥ …): commas are thousands separators and are removed
  *   ("1,200" → "1200", "1,200.50" → "1200.50"); "." is the decimal point.
  * Cents: the FIRST "." wins, later dots are dropped ("12.5.0" → "12.50"), at most 2 digits after it ("2.905" → "2.90").
@@ -37,12 +39,13 @@ export function priceInput(s: string, cur = "", prev = ""): string {
     return dot < 0 ? v : v.slice(0, dot);
   }
   const commaDecimal = COMMA_DECIMAL.has(cur);
-  const v = (commaDecimal && raw.includes(",") ? raw.replace(/\./g, "") : raw).replace(/,/g, commaDecimal ? "." : "").replace(/[^0-9.]/g, "");
+  const c = raw.replace(/[^0-9.,]/g, "");
+  const dotIsThousands = commaDecimal && (c.includes(",") || /^\d*\.\d{3}$/.test(c));
+  const v = (dotIsThousands ? c.replace(/\./g, "") : c).replace(/,/g, commaDecimal ? "." : "");
   const dot = v.indexOf(".");
   if (dot < 0) return v;
   return `${v.slice(0, dot)}.${v.slice(dot + 1).replace(/\./g, "").slice(0, 2)}`;
 }
 
-/** The LIVE price box only: "-" keeps `prev` like every other input; otherwise no-cent currencies keep origin/main's rule (digits only, "350.50" → "35050"). */
-export const livePriceInput = (s: string, cur: string, prev = ""): string =>
-  String(s).includes("-") ? prev : hasCents(cur) ? priceInput(s, cur, prev) : String(s).replace(/[^0-9]/g, "");
+/** The LIVE price box = the same rule as every other price input (NT$: "2.905" → "2", "1,200.50" → "1200"). */
+export const livePriceInput = priceInput;

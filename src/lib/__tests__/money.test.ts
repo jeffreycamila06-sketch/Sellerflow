@@ -30,15 +30,17 @@ describe("fmtMoney / moneyText / priceInput", () => {
     expect(moneyText(2.9)).toBe("2.90");
     expect(moneyText(2.9 * 3)).toBe("8.70");      // CSV / badge: no float noise
   });
-  it("no-cent currencies (NT$): the LIVE box keeps origin/main's digits-only rule verbatim", () => {
+  it("the LIVE box follows the same rule as every other price input (NT$ whole-only, '-' keeps prev)", () => {
     for (const c of ["NT$", "₫", "Rp", "₩"]) expect(hasCents(c)).toBe(false);
-    for (const c of ["RM", "₱", "$", "€", "฿", "A$", "¥"]) expect(hasCents(c)).toBe(true); // CNY has cents
-    const main = (v: string) => v.replace(/[^0-9]/g, "");   // origin/main RedesignApp onEntPrice
-    for (const v of ["1,200", "1200", "2.90", "2,90", "12.", "abc", "", "1.200", " 3 5 ", "350.50"]) expect(livePriceInput(v, "NT$")).toBe(main(v));
-    expect(livePriceInput("350.50", "NT$")).toBe("35050");
-    expect(livePriceInput("2,90", "€")).toBe("2.90");       // cent currencies = the shared rule
+    for (const c of ["RM", "₱", "$", "€", "฿", "A$", "¥"]) expect(hasCents(c)).toBe(true); // CNY has cents (¥ = CNY only; no JPY)
+    expect(livePriceInput).toBe(priceInput);
+    expect(livePriceInput("2.905", "NT$")).toBe("2");
+    expect(livePriceInput("1,200.50", "NT$")).toBe("1200");
+    expect(livePriceInput("1,200", "NT$")).toBe("1200");
+    expect(livePriceInput("350", "NT$")).toBe("350");
+    expect(livePriceInput("2,90", "€")).toBe("2.90");
     expect(livePriceInput("1,200.50", "₱")).toBe("1200.50");
-    for (const cur of ["NT$", "₱", "€"]) {                  // "-" keeps prev in the live box, NT$ included (the one deviation from main)
+    for (const cur of ["NT$", "₱", "€"]) {
       expect(livePriceInput("-3", cur, "12")).toBe("12");
       expect(livePriceInput("12-", cur, "12")).toBe("12");
       expect(livePriceInput("-5", cur)).toBe("");
@@ -62,8 +64,14 @@ describe("fmtMoney / moneyText / priceInput", () => {
     expect(priceInput("1.200,50", "€")).toBe("1200.50");  // both present: "." = thousands, "," = decimal
     expect(priceInput("1.200.000,5", "€")).toBe("1200000.5");
     expect(priceInput("1200,5", "€")).toBe("1200.5");
-    expect(priceInput("1.200", "€")).toBe("1.20");        // "." alone = the decimal point
-    expect(priceInput("2.905", "€")).toBe("2.90");
+    expect(priceInput("1.200", "€")).toBe("1200");        // one "." + exactly 3 digits, no "," = thousands
+    expect(priceInput("12.500", "€")).toBe("12500");
+    expect(priceInput("1.2005", "€")).toBe("1.20");       // 4 digits → decimal point
+    expect(priceInput("1.20", "€")).toBe("1.20");
+    expect(priceInput("2.9", "€")).toBe("2.9");
+    expect(priceInput("1.200.5", "€")).toBe("1.20");      // two dots, no "," → first dot is the decimal point
+    expect(priceInput("1.200", "₱")).toBe("1.20");        // non-€: "." is always the decimal point
+    expect(priceInput("2.905", "€")).toBe("2905");       // € only: one "." + 3 digits = thousands (the review-3 rule)
     expect(priceInput("2,", "€")).toBe("2.");           // pending decimal while typing
     expect(priceInput("12.5.0", "€")).toBe("12.50");
     expect(Number(priceInput("2,90", "€"))).toBe(2.9);
@@ -158,7 +166,7 @@ describe("every money input accepts decimals (source pins)", () => {
     expect(post).toMatch(/inputMode="numeric" min=\{0\} placeholder="∞" value=\{r\.stock/); // stock whole
     expect(src("src/redesign/screens/Dashboard.tsx")).toMatch(/value=\{entPrice\} onChange=\{\(e\) => onEntPrice\(e\.target\.value\)\} onKeyDown=\{onEntKey\} inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\}/);
     const app = src("src/redesign/RedesignApp.tsx");
-    expect(app).toContain("onEntPrice={(v) => setEntPrice((p) => livePriceInput(v, cur, p))}"); // live box = origin/main for NT$
+    expect(app).toContain("onEntPrice={(v) => setEntPrice((p) => livePriceInput(v, cur, p))}"); // live box = the shared rule
     expect(app).toContain("[id]: cur + moneyText(price)");          // printed badge
     expect(app).toContain("[key]: cur + moneyText(autoPrice)");
     expect(app).toContain("`${cur}${moneyText(Number(c.spent) || 0)}`"); // customers CSV
