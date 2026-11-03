@@ -167,8 +167,9 @@ describe("TikTok cooldown minutes and the analytics code", () => {
   it("E41 and E42 decode to minutes in seller words", async () => {
     globalThis.fetch = vi.fn(async () => ({ ok: false, status: 429, statusText: "", json: async () => ({ success: false, error: "E41:12" }) })) as unknown as typeof fetch;
     const r = await connectPlatform("TikTok", { username: "shop" }, "s@x.com");
-    expect(connectFailText(r, t)).toBe("Too many connects. Wait 12 minutes, then try again.");
-    expect(connectFailText(r, fil)).toBe("Masyadong maraming connect. Maghintay ng 12 minuto, tapos subukan ulit.");
+    // Nov 3, 2026 — the cooldown toast no longer names minutes: the app retries by itself.
+    expect(connectFailText(r, t)).toBe("Connection limit reached — we're retrying for you");
+    expect(connectFailText(r, fil)).toBe("Naabot ang limit ng koneksyon — sinusubukan namin ulit para sa iyo");
     expect(cooldownMinutes(decodeServerJson({ error: "E42:2 hour(s)" }).error)).toBe(120);
     expect(cooldownMinutes(decodeServerJson({ error: "E42:5 minute(s)" }).error)).toBe(5);
     expect(cooldownMinutes("E41")).toBeNull();

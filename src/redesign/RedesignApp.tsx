@@ -119,7 +119,8 @@ import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from "./adapters/printerBridge";
 import { printerFlowV2Enabled } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
-import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, type Platform, ttDisconnect } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, cooldownRetryDelayMs, type Platform, ttDisconnect } from "./adapters/connect";
+import { createCooldownRetry } from "./adapters/cooldownRetry";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
 import { fbHandleIsId } from "./adapters/fbName";
@@ -1284,6 +1285,12 @@ export default function RedesignApp() {
   useEffect(() => { setIgOff(false); }, [liveFeed.igConnected]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
+  // Nov 3, 2026 — ONE automatic retry when a connection-limit cooldown ends (cooldownRetry.ts).
+  // ttEffRef lets the timer skip the retry if the seller connected by hand in the meantime.
+  const [cooldownRetry] = useState(() => createCooldownRetry());
+  const ttEffRef = useRef(ttEff);
+  useEffect(() => { ttEffRef.current = ttEff; }, [ttEff]);
+  useEffect(() => () => cooldownRetry.cancel(), [cooldownRetry]);
   const fbEff = fbConnected && !fbOff;
   // fb_stop_reasons (switch ON) — one plain-words toast when the Facebook pill falls from green
   // for a reason the server sent; never after this device's own Disconnect (fbOff).
@@ -1670,9 +1677,10 @@ export default function RedesignApp() {
   // The actual socket connect (unchanged) — extracted so BOTH the "session already
   // running" path and the "after the seller picks a session length" path can call
   // it. Nothing in this body changed vs the old inline doConnect.
-  const performConnect = async (platform: Platform, acct: string, opts?: { register?: boolean }) => {
+  const performConnect = async (platform: Platform, acct: string, opts?: { register?: boolean; retry?: boolean }) => {
     const setConnecting = platform === "TikTok" ? setTtConnecting : setFbConnecting;
     const setOpen = platform === "TikTok" ? setTtOpen : setFbOpen;
+    if (!opts?.retry) cooldownRetry.cancel();        // a manual tap replaces any pending automatic retry
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
     track("connect_attempt", { platform });          // analytics parity (App.tsx:4277)
@@ -1705,6 +1713,10 @@ export default function RedesignApp() {
       // POST-ok-as-truth lie the branch removes) — success now toasts via the
       // gated ttConnected rise above. Failures keep the honest r-based toast.
       // Build 10: never the server's words or a code — the generic text instead.
+      // Nov 3, 2026 — connection-limit cooldown: retry ONCE by itself when it ends (no tap).
+      // The retried attempt passes retry:true, so a second cooldown never schedules a third.
+      const retryMs = !r.ok && platform === "TikTok" && !opts?.retry ? cooldownRetryDelayMs(r) : null;
+      if (retryMs !== null) cooldownRetry.schedule(acct, retryMs, () => { if (!ttEffRef.current) void performConnect("TikTok", acct, { retry: true }); });
       if (!r.ok) setToast({ msg: connectFailText(r, tApp), kind: "err" });
     } finally { setConnecting(false); }
   };
@@ -1714,7 +1726,7 @@ export default function RedesignApp() {
     const setOff = platform === "TikTok" ? setTtOff : setFbOff;
     const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
     const idx = platform === "TikTok" ? ttIdx : fbIdx;
-    if (eff) { setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget)
+    if (eff) { cooldownRetry.cancel(); setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget); drops a pending cooldown retry
     const acct = accts[idx] || accts[0];
     if (!acct) {
       // No registered account (Addendum 2, 2026-07-23). TikTok → the

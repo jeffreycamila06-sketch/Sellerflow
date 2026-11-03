@@ -40,7 +40,7 @@ const PINS: Record<string, { en: string; fil: string }> = {
   rd_cm_conn_try_again: { en: "Couldn't connect. Make sure you're LIVE, then try again.", fil: "Hindi maka-connect. Siguraduhing naka-LIVE ka, tapos subukan ulit." },
   rd_cm_footer: { en: "Live connect works in the SellerFlowLive app.", fil: "Sa SellerFlowLive app gumagana ang live connect." },
   rd_cm_reconnect_page: { en: "Couldn't connect. Please reconnect your Page.", fil: "Hindi maka-connect. I-reconnect ang Page mo." },
-  rd_cm_tt_cooldown: { en: "Too many connects. Wait {n} minutes, then try again.", fil: "Masyadong maraming connect. Maghintay ng {n} minuto, tapos subukan ulit." },
+  rd_cm_tt_cooldown: { en: "Connection limit reached — we're retrying for you", fil: "Naabot ang limit ng koneksyon — sinusubukan namin ulit para sa iyo" },
   rd_cm_tt_ph: { en: "e.g. yourshop_live", fil: "e.g. yourshop_live" },
   rd_dash_ent_title: { en: "Type price — enter a price, then press Enter to print", fil: "I-type ang presyo — ilagay ang presyo, tapos Enter para mag-print" },
   rd_dash_enterprise: { en: "Type price", fil: "I-type ang presyo" },
@@ -159,10 +159,11 @@ describe("Build 10b wording — every language filled, same {placeholders}", () 
       for (const l of LANGS) expect(placeholders(REDESIGN_STRINGS[l][k]), `${l}.${k}`).toEqual(want);
     }
   });
-  it("rd_cm_tt_cooldown sits right after rd_cm_conn_try_again and carries {n}", () => {
+  it("rd_cm_tt_cooldown sits right after rd_cm_conn_try_again and (Nov 3, 2026) names no minutes — the app retries by itself", () => {
     const keys = Object.keys(REDESIGN_STRINGS.en);
     expect(keys.indexOf("rd_cm_tt_cooldown")).toBe(keys.indexOf("rd_cm_conn_try_again") + 1);
-    expect(REDESIGN_STRINGS.en.rd_cm_tt_cooldown).toContain("{n}");
+    expect(REDESIGN_STRINGS.en.rd_cm_tt_cooldown).toBe("Connection limit reached — we're retrying for you");
+    for (const l of LANGS) expect(REDESIGN_STRINGS[l].rd_cm_tt_cooldown).not.toContain("{n}");
   });
 });
 

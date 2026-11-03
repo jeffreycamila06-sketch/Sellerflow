@@ -13,7 +13,7 @@ import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
 import { createOcr, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
 import { createWorker as createParcelWorker } from "./server/parcelTrackingWorker.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { makeFailureThrottle, checkPollToken } from "./server/pollAuth.js";
 import { sweepProductImages, makeSweepStore, readSweepSwitch } from "./server/productImagesSweep.js";
@@ -443,6 +443,17 @@ const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
 const tiktokReconnectAttempts = new Map();
 const tiktokRateLimitCooldowns = new Map();
+// Nov 3, 2026 — today's Euler-429 count + the last limit_label (Taipei day, in memory), so the
+// admin card / health detail show a limit before sellers report it.
+let eulerRateLimitStats = EMPTY_RATE_LIMIT_STATS;
+// Euler plan usage: distinct rooms connected today + concurrent connections vs the plan
+// limits (env EULER_DAILY_ROOMS_LIMIT / EULER_CONCURRENT_LIMIT; Business 10K = 1000 / 100).
+let eulerRoomStats = EMPTY_ROOM_STATS;
+const EULER_LIMITS = {
+  dailyRooms: readLimit(process.env.EULER_DAILY_ROOMS_LIMIT, EULER_DAILY_ROOMS_DEFAULT),
+  concurrent: readLimit(process.env.EULER_CONCURRENT_LIMIT, EULER_CONCURRENT_DEFAULT),
+};
+const eulerUsageNow = (now) => eulerUsage(roomsTodayCount(eulerRoomStats, now), tiktokConnections.size, EULER_LIMITS);
 // #5a — per-seller /connect attempt timestamps (rolling-window rate limit).
 const connectAttempts = new Map();
 const tiktokConnectLocks = new Set();
@@ -548,9 +559,11 @@ function isTikTokRateLimitError(error) {
 
 function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
   // #4 — honor Euler's own reset window (Retry-After / X-RateLimit-Reset carried
-  // on the SignatureRateLimitError); fall back to 30 min, not a fixed 24h.
+  // on the SignatureRateLimitError); else 2 min (Nov 3, 2026 — was 30 min), capped at 10 min.
   const cooldownMs = resolveRateLimitCooldownMs(error, Date.now());
   const retryAt = Date.now() + cooldownMs;
+  const limitLabel = rateLimitLabel(error);
+  eulerRateLimitStats = noteRateLimit(eulerRateLimitStats, limitLabel, Date.now());
   tiktokRateLimitCooldowns.set(key, retryAt);
   clearTikTokReconnect(key);
   tiktokReconnectAttempts.delete(key);
@@ -563,7 +576,7 @@ function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
     reason: "rate_limited",
     nextRetryMs: cooldownMs,
   });
-  console.log(`TikTok rate limit cooldown for ${username} until ${new Date(retryAt).toISOString()} (${Math.round(cooldownMs / 60000)}m): ${error?.message || error}`);
+  console.log(`TikTok rate limit cooldown for ${username} until ${new Date(retryAt).toISOString()} (${Math.round(cooldownMs / 60000)}m) limit=${limitLabel || "unknown"} today=${eulerRateLimitStats.count}: ${error?.message || error}`);
   return cooldownMs;
 }
 
@@ -787,6 +800,8 @@ function tiktokHealthDetail() {
   const activeConnections = tiktokConnections.size;
   const reconnectingNow = tiktokReconnectTimers.size;
   const rateLimitedAccounts = tiktokRateLimitCooldowns.size;
+  const eulerRateLimitsToday = rateLimitStatsFor(eulerRateLimitStats, Date.now());
+  const eulerUsageToday = eulerUsageNow(Date.now());
 
   const last = recentTiktokAttempts;
   const fails = last.filter(a => a.outcome === "fail").length;
@@ -800,6 +815,7 @@ function tiktokHealthDetail() {
   if (last.length >= 5 && fails / last.length >= 0.5) {
     warnings.push(`High recent failure rate: ${recentFailureRate}. Last reason: ${lastFailReason || "unknown"}`);
   }
+  for (const w of eulerUsageToday.warnings) warnings.push(`Euler plan usage near the limit: ${w}`);
 
   const ok = warnings.length === 0;
   const status = ok ? "healthy" : "degraded";
@@ -813,6 +829,8 @@ function tiktokHealthDetail() {
       activeConnections,
       reconnectingNow,
       rateLimitedAccounts,
+      eulerRateLimitsToday,
+      eulerUsage: eulerUsageToday,
     },
     // Quick memory read so Jeff can eyeball RAM without opening Render.
     memory: memorySnapshot(process.memoryUsage()),
@@ -961,6 +979,29 @@ app.post("/myship/validate-gm", requireAuth, async (req, res) => {
     console.warn(`[GM-VALIDATE] fetch failed for ${gmId}:`, e?.message || e);
     return res.status(502).json({ valid: false, error: "fetch_failed" });
   }
+});
+
+// Nov 3, 2026 — TikTok cooldown admin: see today's Euler 429s + every account on cooldown,
+// and clear ONE account's cooldown without a Render restart (which would kick every live
+// seller). Both admin-only (server-side is_admin, same gate as broadcast-translate).
+app.get("/admin/tiktok-cooldown/status", requireAuth, requireAdmin, (_req, res) => {
+  const now = Date.now();
+  return res.json({
+    success: true,
+    today: rateLimitStatsFor(eulerRateLimitStats, now),
+    usage: eulerUsageNow(now),
+    cooldowns: listCooldowns(tiktokRateLimitCooldowns, now).map((c) => ({ username: c.username, sellerId: c.sellerId, remainingMs: c.remainingMs })),
+  });
+});
+app.post("/admin/tiktok-cooldown/clear", requireAuth, requireAdmin, (req, res) => {
+  const username = cleanAccountKey((req.body || {}).username);
+  if (!username) return res.status(400).json({ success: false, error: "username_required" });
+  let cleared = 0;
+  for (const key of [...tiktokRateLimitCooldowns.keys()]) {
+    if (cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); cleared += 1; }
+  }
+  console.log(`[COOLDOWN-CLEAR] admin=${req.sellerId} username=${username} cleared=${cleared}`);
+  return res.json({ success: true, cleared });
 });
 
 app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, res) => {
@@ -1578,6 +1619,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
   recordTikTokAttempt("ok");
+  eulerRoomStats = noteRoom(eulerRoomStats, state?.roomId || key, Date.now()); // plan usage (rooms/day)
 
   emitTikTokStatus({
     sellerId,

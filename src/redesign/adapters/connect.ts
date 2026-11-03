@@ -15,7 +15,7 @@ import type { AccountUser } from "../../accountDb";
 import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 import { isAdminRole } from "../../lib/roles";
 import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
-import { tpl, type RedesignT } from "../i18n";
+import { type RedesignT } from "../i18n";
 
 export type Platform = "TikTok" | "Facebook";
 
@@ -125,7 +125,7 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
 // unreachable = the fetch itself threw (client network failure, no server reason) —
 // the app shows a localized "can't reach the live server" toast for this case
 // (F-batch i18n; the English error string stays as the analytics/log reason).
-export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean }
+export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean; cooldownMs?: number }
 
 // Build 10b: minutes to wait from the cooldown answer (E41 "…in {n} minutes." / E42 "…in about
 // {n} minute(s)|hour(s)." — the app decodes both back to those sentences), else null.
@@ -141,13 +141,25 @@ export function cooldownMinutes(error: string | undefined): number | null {
 // The text a failed TikTok/Facebook connect shows (toast + Connect modal). Build 10: never the
 // server's own words or a code — not live / can't reach / wait N minutes keep their texts,
 // anything else is the generic "Couldn't connect. Try again."
-export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable" | "error">, t: RedesignT): string {
+export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable" | "error" | "cooldownMs">, t: RedesignT): string {
   if (r.notLive) return t.rd_cm_not_live;
   if (r.unreachable) return t.rd_cm_cant_reach;
   if ((r.error || "").includes("plan_expired")) return t.rd_cm_plan_ended;
-  const mins = cooldownMinutes(r.error);
-  if (mins !== null) return tpl(t.rd_cm_tt_cooldown, { n: mins });
+  // Nov 3, 2026 — the cooldown toast no longer asks the seller to wait N minutes: the app
+  // retries by itself when the cooldown ends (cooldownRetryDelayMs + cooldownRetry.ts).
+  if (cooldownRetryDelayMs(r) !== null) return t.rd_cm_tt_cooldown;
   return t.rd_cm_conn_try_again;
+}
+
+// How long until the ONE automatic retry after a cooldown answer: the server's cooldownMs
+// (else the minutes in its sentence) plus a small pad so the retry lands after the bench
+// ends, never before. null = not a cooldown answer → no retry.
+export const COOLDOWN_RETRY_PAD_MS = 1500;
+export function cooldownRetryDelayMs(r: Pick<ConnectResult, "error" | "cooldownMs">): number | null {
+  const ms = (r.cooldownMs ?? 0) > 0 ? Number(r.cooldownMs) : null;
+  if (ms !== null) return ms + COOLDOWN_RETRY_PAD_MS;
+  const mins = cooldownMinutes(r.error);
+  return mins === null ? null : mins * 60_000 + COOLDOWN_RETRY_PAD_MS;
 }
 
 // connectPlatform — verbatim POST from App.tsx:4269-4296 (without the posthog/toast
@@ -175,7 +187,9 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     // from a server/network error → surfaces a friendly "start your LIVE first" toast,
     // and never marks the account connected (so Fix B won't auto-retry a non-live room).
     if (r.status === 409 && (j as { notLive?: boolean }).notLive) return { ok: false, notLive: true, error: j.error || "Account is not live right now.", account };
-    if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account };
+    // Nov 3, 2026 — a 429 cooldown answer carries cooldownMs; the app retries once when it ends.
+    const cooldownMs = Number((j as { cooldownMs?: unknown }).cooldownMs);
+    if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account, ...(cooldownMs > 0 ? { cooldownMs } : {}) };
     return { ok: true, account };
   } catch {
     return { ok: false, error: "Can't connect right now. Check your internet and try again.", account, unreachable: true };
