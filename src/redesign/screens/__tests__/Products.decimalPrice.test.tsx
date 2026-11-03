@@ -36,8 +36,8 @@ describe("Products — decimal price", () => {
     expect(price.required).toBe(true);
     fireEvent.change(price, { target: { value: "2,90" } });
     expect(price.value).toBe("2.90");
-    fireEvent.change(price, { target: { value: "1,200" } });
-    expect(price.value).toBe("1200");
+    fireEvent.change(price, { target: { value: "2.905" } });
+    expect(price.value).toBe("2.90");
     const stock = screen.getByTestId("prd-stock") as HTMLInputElement;
     expect(stock.type).toBe("number");
     expect(stock.inputMode).toBe("numeric");

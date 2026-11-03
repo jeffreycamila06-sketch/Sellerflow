@@ -37,26 +37,26 @@ describe("fmtMoney / moneyText / priceInput", () => {
     for (const v of ["1,200", "1200", "2.90", "2,90", "12.", "-5", "abc", "", "1.200", " 3 5 "]) expect(priceInput(v, false)).toBe(main(v));
     expect(priceInput("1,200", false)).toBe("1200");
   });
-  it("cent currencies: ',' is a decimal point only with 1–2 trailing digits; 3 = thousands; capped at 2; no negatives", () => {
+  it("cent currencies: plain decimals — ',' → '.', first dot wins, 2 decimals max, no thousands parsing, no negatives", () => {
     expect(priceInput("2,90")).toBe("2.90");
     expect(priceInput("2,9")).toBe("2.9");
     expect(priceInput("2.90")).toBe("2.90");
-    expect(priceInput("1,200")).toBe("1200");
-    expect(priceInput("1.200")).toBe("1200");
-    expect(priceInput("1,234.50")).toBe("1234.50");
+    expect(priceInput("1,200")).toBe("1.20");      // no thousands parsing
+    expect(priceInput("1.200")).toBe("1.20");
+    expect(priceInput("2.905")).toBe("2.90");      // extra decimals dropped
+    expect(priceInput("2.9051")).toBe("2.90");
     expect(priceInput("2.")).toBe("2.");           // pending decimal while typing
     expect(priceInput("2,")).toBe("2.");
-    expect(priceInput("12.5.")).toBe("12.5");      // a 2nd dot is dropped
-    expect(priceInput("12.5.0")).toBe("12.50");    // first dot wins (origin/main tiktokSend rule)
+    expect(priceInput("12.5.")).toBe("12.5");      // later dots dropped
+    expect(priceInput("12.5.0")).toBe("12.50");
     expect(priceInput("1..2")).toBe("1.2");
     expect(priceInput(".5")).toBe(".5");
-    expect(priceInput("2.9051")).toBe("2.90");     // cap 2 decimals
     expect(priceInput("-2.90")).toBe("2.90");      // negatives rejected
     expect(priceInput("RM 2,9")).toBe("2.9");
     expect(priceInput("350")).toBe("350");
+    expect(priceInput("1200")).toBe("1200");
     expect(priceInput("abc")).toBe("");
     expect(Number(priceInput("2,90"))).toBe(2.9);
-    expect(Number(priceInput("1,200"))).toBe(1200);
   });
 });
 
