@@ -3,7 +3,7 @@
 // the segment, Live default, the red dot until Posts is opened once, the empty state with ONE
 // button, buyer cards + Print new / My posts; the gate; grouping; the print Buyer (no buyer number,
 // "Post" on every line, buyer-number setting OFF); sale status / counts.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TProvider, REDESIGN_STRINGS } from "../../i18n";
 import Orders from "../../screens/Orders";
@@ -31,7 +31,9 @@ const ui = (o: Partial<PostsUi> = {}): PostsUi => ({
 });
 const view = (extra: Record<string, unknown> = {}) => render(<TProvider lang="en"><Orders onGoPrint={() => {}} cur="NT$" orders={[]} state="live" todayId="2026-10-27" buyers={[]} {...extra} /></TProvider>);
 
-beforeEach(() => { window.localStorage.clear(); });
+// a fixed clock — the fixture sale ends 2026-11-03, so "● Selling" / "Ends Nov 3" must not depend on today's date
+beforeEach(() => { window.localStorage.clear(); vi.useFakeTimers({ now: new Date("2026-10-27T05:00:00Z"), toFake: ["Date"] }); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("Orders without a Facebook Page = exactly as before", () => {
   it("no posts prop → no segment, no Posts body, no dot", () => {
