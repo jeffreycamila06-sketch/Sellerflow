@@ -253,12 +253,12 @@ describe("9 — small items", () => {
     const r = renderOrders([ANN]);
     r.type("3");
     fireEvent.click(q("tt-send-btn")!);
-    // NT$ has no cents → the sheet's inputs are digits-only (numeric keypad), like the live price entry
+    // NT$ has no cents → the sheet's inputs take whole numbers (numeric keypad): cut from the first "."
     expect(qa("tts-price")[0].inputMode).toBe("numeric");
     fireEvent.change(qa("tts-price")[0], { target: { value: "12.5.0" } });
-    expect(qa("tts-price")[0].value).toBe("1250");
+    expect(qa("tts-price")[0].value).toBe("12");
     fireEvent.change(q("tts-total")!, { target: { value: "9.9.9" } });
-    expect((q("tts-total") as HTMLInputElement).value).toBe("999");
+    expect((q("tts-total") as HTMLInputElement).value).toBe("9");
     expect(priceInput("9.9.9", true)).toBe("9.99"); // cent currencies keep one dot
   });
   it("A19 — the session list reloads every time the picker opens", async () => {

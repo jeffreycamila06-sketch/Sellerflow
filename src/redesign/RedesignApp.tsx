@@ -148,7 +148,7 @@ import { useFeatureAccess, hasFeature } from "./adapters/featureAccess";
 import { usePostSales } from "./adapters/usePostSales";
 import { postSalesGate, postPrintSettings, givePostWaitlist, postItemStock } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
-import { fmtMoney, moneyText, priceInput, hasCents } from "../lib/money";
+import { fmtMoney, moneyText, livePriceInput, hasCents } from "../lib/money";
 
 type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
@@ -2578,7 +2578,7 @@ export default function RedesignApp() {
               notPrinted={notPrintedView}
               onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
-              onEntPrice={(v) => setEntPrice(priceInput(v, hasCents(cur)))} onEntKey={onEntKey} onEntSubmit={submitEnt}
+              onEntPrice={(v) => setEntPrice(livePriceInput(v, hasCents(cur)))} onEntKey={onEntKey} onEntSubmit={submitEnt}
               session={sessionIdleEnded ? ENDED_EMPTY_SESSION : liveSession.session} sessionState={sessionIdleEnded ? "empty" : liveSession.state}
               sessionEndedIdle={sessionIdleEnded}
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}

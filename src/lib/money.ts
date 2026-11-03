@@ -11,20 +11,27 @@ export const fmtMoney = (n: number): string =>
 /** Plain text (no thousands separator) for item/sticker/CSV strings: 350 → "350", 2.9 → "2.90". */
 export const moneyText = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
-/** Currencies with no cents: their price inputs stay digits-only (origin/main behaviour). */
-export const NO_CENTS = new Set(["NT$", "₫", "Rp", "¥", "₩"]);
+/** Currencies with no cents: their price inputs take whole numbers only. (CNY ¥ HAS cents.) */
+export const NO_CENTS = new Set(["NT$", "₫", "Rp", "₩"]);
 export const hasCents = (cur: string): boolean => !NO_CENTS.has(cur);
 
 /**
- * A typed price. `cents=false` (NT$ …) = origin/main's rule verbatim: digits only ("1,200" → "1200").
- * `cents=true` = plain decimals: "," becomes ".", the FIRST "." is the decimal point, later dots are
- * dropped ("12.5.0" → "12.50"), at most 2 digits after it ("2.905" → "2.90"); no thousands parsing
- * ("1,200" → "1.20"); "-" and letters never pass.
+ * A typed price. `cents=false` (NT$ …): commas stripped, everything from the first "." cut
+ * ("350.50" → "350", "1.5" → "1", "1,200" → "1200"). `cents=true` = plain decimals: "," becomes ".",
+ * the FIRST "." is the decimal point, later dots are dropped ("12.5.0" → "12.50"), at most 2 digits
+ * after it ("2.905" → "2.90"); no thousands parsing ("1,200" → "1.20"); "-" and letters never pass.
  */
 export function priceInput(s: string, cents = true): string {
-  if (!cents) return String(s).replace(/[^0-9]/g, "");
+  if (!cents) {
+    const v = String(s).replace(/,/g, "").replace(/[^0-9.]/g, "");
+    const dot = v.indexOf(".");
+    return dot < 0 ? v : v.slice(0, dot);
+  }
   const v = String(s).replace(/,/g, ".").replace(/[^0-9.]/g, "");
   const dot = v.indexOf(".");
   if (dot < 0) return v;
   return `${v.slice(0, dot)}.${v.slice(dot + 1).replace(/\./g, "").slice(0, 2)}`;
 }
+
+/** The LIVE price box only: for no-cent currencies this is origin/main's rule verbatim (digits only, "350.50" → "35050"). */
+export const livePriceInput = (s: string, cents: boolean): string => (cents ? priceInput(s, true) : String(s).replace(/[^0-9]/g, ""));

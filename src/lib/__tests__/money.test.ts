@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fmtMoney, moneyText, priceInput, hasCents } from "../money";
+import { fmtMoney, moneyText, priceInput, livePriceInput, hasCents } from "../money";
 import { buildOrderFromComment, rebuildSessionFromRows } from "../orderLogic";
 import { formatAmount, receiptTotalText } from "../receiptLayout.js";
 import { upsertProduct } from "../../redesign/adapters/products";
@@ -30,12 +30,24 @@ describe("fmtMoney / moneyText / priceInput", () => {
     expect(moneyText(2.9)).toBe("2.90");
     expect(moneyText(2.9 * 3)).toBe("8.70");      // CSV / badge: no float noise
   });
-  it("no-cents currencies (NT$) keep origin/main's digits-only rule verbatim", () => {
-    for (const c of ["NT$", "₫", "Rp", "¥", "₩"]) expect(hasCents(c)).toBe(false);
-    for (const c of ["RM", "₱", "$", "€", "฿", "A$"]) expect(hasCents(c)).toBe(true);
+  it("no-cent currencies (NT$): the LIVE box keeps origin/main's digits-only rule verbatim", () => {
+    for (const c of ["NT$", "₫", "Rp", "₩"]) expect(hasCents(c)).toBe(false);
+    for (const c of ["RM", "₱", "$", "€", "฿", "A$", "¥"]) expect(hasCents(c)).toBe(true); // CNY has cents
     const main = (v: string) => v.replace(/[^0-9]/g, "");   // origin/main RedesignApp onEntPrice
-    for (const v of ["1,200", "1200", "2.90", "2,90", "12.", "-5", "abc", "", "1.200", " 3 5 "]) expect(priceInput(v, false)).toBe(main(v));
+    for (const v of ["1,200", "1200", "2.90", "2,90", "12.", "-5", "abc", "", "1.200", " 3 5 ", "350.50"]) expect(livePriceInput(v, false)).toBe(main(v));
+    expect(livePriceInput("350.50", false)).toBe("35050");
+    expect(livePriceInput("2,90", true)).toBe("2.90");  // cent currencies = the shared rule
+  });
+  it("no-cent currencies OUTSIDE the live box: commas stripped, cut from the first '.'", () => {
+    expect(priceInput("350.50", false)).toBe("350");
+    expect(priceInput("1.5", false)).toBe("1");
     expect(priceInput("1,200", false)).toBe("1200");
+    expect(priceInput("2.90", false)).toBe("2");
+    expect(priceInput("12.5.0", false)).toBe("12");
+    expect(priceInput(".", false)).toBe("");
+    expect(priceInput("-5", false)).toBe("5");
+    expect(priceInput("abc", false)).toBe("");
+    expect(priceInput("350", false)).toBe("350");
   });
   it("cent currencies: plain decimals — ',' → '.', first dot wins, 2 decimals max, no thousands parsing, no negatives", () => {
     expect(priceInput("2,90")).toBe("2.90");
@@ -121,7 +133,7 @@ describe("every money input accepts decimals (source pins)", () => {
     expect(post).toMatch(/inputMode="numeric" min=\{0\} placeholder="∞" value=\{r\.stock/); // stock whole
     expect(src("src/redesign/screens/Dashboard.tsx")).toMatch(/value=\{entPrice\} onChange=\{\(e\) => onEntPrice\(e\.target\.value\)\} onKeyDown=\{onEntKey\} inputMode=\{hasCents\(cur\) \? "decimal" : "numeric"\}/);
     const app = src("src/redesign/RedesignApp.tsx");
-    expect(app).toContain("onEntPrice={(v) => setEntPrice(priceInput(v, hasCents(cur)))}");
+    expect(app).toContain("onEntPrice={(v) => setEntPrice(livePriceInput(v, hasCents(cur)))}"); // live box = origin/main for NT$
     expect(app).toContain("[id]: cur + moneyText(price)");          // printed badge
     expect(app).toContain("[key]: cur + moneyText(autoPrice)");
     expect(app).toContain("`${cur}${moneyText(Number(c.spent) || 0)}`"); // customers CSV

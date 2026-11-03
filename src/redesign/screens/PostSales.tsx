@@ -332,7 +332,7 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
                   <span style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}>
                     <input type="text" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={draft.priceText} onChange={(e) => { const s = priceInput(e.target.value, hasCents(cur)); setDraft((d) => ({ ...d, priceText: s, price: Math.max(0, Number(s) || 0) })); }} data-testid="my-post-edit-price" style={{ ...cell, flex: 1 }} />
                     <input type="number" inputMode="numeric" placeholder="∞" value={draft.stock ?? ""} onChange={(e) => setDraft((d) => ({ ...d, stock: e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} data-testid="my-post-edit-stock" style={{ ...cell, flex: 1 }} />
-                    <button type="button" disabled={busy} data-testid="my-post-save" onClick={() => void saveItem(it.id)} style={{ ...btnPrimary, minHeight: 42, padding: "0 12px", fontSize: 13.5 }}>{t.rd_fps_save}</button>
+                    <button type="button" disabled={busy || draft.price <= 0} data-testid="my-post-save" onClick={() => void saveItem(it.id)} style={{ ...btnPrimary, minHeight: 42, padding: "0 12px", fontSize: 13.5 }}>{t.rd_fps_save}</button>
                   </span>
                 ) : (
                   <>

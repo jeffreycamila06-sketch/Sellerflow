@@ -43,15 +43,15 @@ describe("Products — decimal price", () => {
     expect(stock.inputMode).toBe("numeric");
   });
 
-  it("NT$: numeric keypad, digits only (origin/main behaviour)", async () => {
+  it("NT$: numeric keypad, whole numbers only", async () => {
     render(<TProvider lang="en"><Products cur="NT$" /></TProvider>);
     fireEvent.click(screen.getByText("+ Add"));
     const price = (await screen.findByTestId("prd-price")) as HTMLInputElement;
     expect(price.inputMode).toBe("numeric");
     fireEvent.change(price, { target: { value: "1,200" } });
     expect(price.value).toBe("1200");
-    fireEvent.change(price, { target: { value: "2.90" } });
-    expect(price.value).toBe("290");
+    fireEvent.change(price, { target: { value: "350.50" } });
+    expect(price.value).toBe("350");      // whole only: cut from the first "."
   });
 
   it("RM 2,90 (comma keypad) saves as 2.9 and shows RM2.90", async () => {
