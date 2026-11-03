@@ -148,6 +148,7 @@ import { useFeatureAccess, hasFeature } from "./adapters/featureAccess";
 import { usePostSales } from "./adapters/usePostSales";
 import { postSalesGate, postPrintSettings, givePostWaitlist, postItemStock } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
+import { fmtMoney, moneyText, priceInput } from "../lib/money";
 
 type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
@@ -846,7 +847,7 @@ export default function RedesignApp() {
   const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
   const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
-  const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, fbHandleIsId(c.platform, c.name, c.handle) ? c.name : c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
+  const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, fbHandleIsId(c.platform, c.name, c.handle) ? c.name : c.handle, c.platform, c.orders, `${cur}${moneyText(Number(c.spent) || 0)}`]));
 
   // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
   // matches App.tsx:1988 exactly: [#SF{orderNum}, name, item, qty, cur+total, platform, time].
@@ -2199,7 +2200,7 @@ export default function RedesignApp() {
     if (soCode && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_auto_manual_soldout_confirm, { code: soCode }))) { entSubmittedRef.current.delete(id); return; }
     const order = prod ? orders.createOrder(prod, price) : null;
     if (order) {
-      setPrinted((p) => ({ ...p, [id]: cur + price }));
+      setPrinted((p) => ({ ...p, [id]: cur + moneyText(price) }));
       const snap = snapshotFromCreate(prod as ProdComment, order); // reprint snapshot
       reprintByIdRef.current.set(id, snap);
       jobToCommentRef.current.set(String(order.orderNum), { cid: id, msgId: (prod as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
@@ -2284,7 +2285,7 @@ export default function RedesignApp() {
     // taken (H1): no productLocalId → the order hub does NOT decrement again (the piece is taken).
     const order = orders.createOrder(c, autoPrice, taken ? { autoCode: plan.code.code, itemOverride: plan.code.code } : { productLocalId: plan.code.productLocalId, autoCode: plan.code.code, itemOverride: plan.code.code });
     if (order) {
-      setPrinted((p) => ({ ...p, [key]: cur + autoPrice }));
+      setPrinted((p) => ({ ...p, [key]: cur + moneyText(autoPrice) }));
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
       reprintByIdRef.current.set(key, snap);
       jobToCommentRef.current.set(String(order.orderNum), { cid: key, msgId: (c as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
@@ -2577,7 +2578,7 @@ export default function RedesignApp() {
               notPrinted={notPrintedView}
               onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
-              onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey} onEntSubmit={submitEnt}
+              onEntPrice={(v) => setEntPrice(priceInput(v, cur))} onEntKey={onEntKey} onEntSubmit={submitEnt}
               session={sessionIdleEnded ? ENDED_EMPTY_SESSION : liveSession.session} sessionState={sessionIdleEnded ? "empty" : liveSession.state}
               sessionEndedIdle={sessionIdleEnded}
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
@@ -2598,7 +2599,7 @@ export default function RedesignApp() {
               samePrice={samePriceCfg.active}
               onDisableSamePrice={() => {
                 void samePriceCfg.setEnabled(false);
-                setToast({ msg: tpl(tApp.rd_lss_off_sp, { price: `${cur}${(samePriceCfg.price ?? 0).toLocaleString("en-US")}` }), kind: "ok" });
+                setToast({ msg: tpl(tApp.rd_lss_off_sp, { price: `${cur}${fmtMoney(samePriceCfg.price ?? 0)}` }), kind: "ok" });
               }}
             />
           )}

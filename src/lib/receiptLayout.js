@@ -37,7 +37,7 @@ const GAP = 16;       // between item text and price
 const INK = "#16151f", MUTED = "#6b6a7a";
 
 export const formatAmount = (currency, n) =>
-  `${currency}${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  `${currency}${Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; // whole as before; cents always 2 places (2.90)
 
 // Total rule: the sum only when there is at least one line and EVERY line has total > 0;
 // otherwise the "to be confirmed" label stands in for the amount.

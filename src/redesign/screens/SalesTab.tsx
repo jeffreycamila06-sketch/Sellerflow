@@ -25,6 +25,8 @@ import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
 import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
 import { platformRange, platformRangeFor, platformRpcFor, type SalesPlatform, type UsePlatformSales } from "../adapters/salesByPlatform";
 import { looksLikeFbId } from "../adapters/fbName";
+import { fmt } from "../data";
+import { moneyText } from "../../lib/money";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
@@ -93,7 +95,6 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   useEffect(() => { const el = trackRef.current; if (el) el.scrollLeft = el.scrollWidth; }, [sales.data, range]);
 
   const d = sales.data;
-  const fmt = (n: number) => Math.round(n).toLocaleString();
   const aov = d && d.orders ? Math.round(d.revenue / d.orders) : 0;
   const hourly = d?.trendUnit === "hour";
   const maxRev = Math.max(1, ...(d?.days.map((x) => x.rev) ?? [1]));
@@ -286,7 +287,6 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
 // Per-platform view (F1): totals, orders per day, best sellers (by Auto code, else by price).
 function PlatformView({ data, state, cur }: { data: UsePlatformSales["data"]; state: UsePlatformSales["state"]; cur: string }) {
   const t = useT();
-  const fmt = (n: number) => Math.round(n).toLocaleString();
   if (state === "error") return <div style={{ ...card, textAlign: "center", color: "var(--danger)" }} data-testid="sales-plat-error">{t.rd_sal_error}</div>;
   if (state === "loading" || state === "idle" || !data) return <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-plat-loading">{t.rd_sal_loading}</div>;
   if (data.orders === 0) return <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-plat-empty">{t.rd_sal_empty}</div>;
@@ -320,7 +320,7 @@ function PlatformView({ data, state, cur }: { data: UsePlatformSales["data"]; st
         {data.best.map((b, i) => (
           <div key={`${b.kind}-${b.label}`} data-testid={`sales-plat-best-${i}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 2px", borderTop: i ? "1px solid var(--border)" : "none" }}>
             <div style={{ width: 20, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textAlign: "right" }}>{i + 1}</div>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.kind === "price" ? `${cur}${b.label}` : b.label}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.kind === "price" ? `${cur}${b.label !== "" && Number.isFinite(Number(b.label)) ? moneyText(Number(b.label)) : b.label}` : b.label}</div>
             <div style={{ textAlign: "right", flexShrink: 0 }}>
               <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{b.qty} {t.rd_sal_pcs}</div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{cur}{fmt(b.rev)}</div>

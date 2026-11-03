@@ -6,6 +6,7 @@
 import { fmt } from "../data";
 import { taipeiDateOf } from "./sessionEnd";
 import { addDays } from "./useSessionWindow";
+import { priceInput } from "../../lib/money";
 
 const md = (day: string): string => (day && day.length >= 10 ? day.slice(5, 10).replace("-", "/") : day);
 
@@ -38,12 +39,8 @@ export const qtyOf = (q: unknown): number => {
 /** " x3" after the item text, only when qty > 1. */
 export const qtySuffix = (qty: number): string => (qtyOf(qty) > 1 ? ` x${qtyOf(qty)}` : "");
 
-/** A typed price: digits and ONE dot ("12.5.0" → "12.50"). */
-export const priceInput = (s: string): string => {
-  const clean = String(s).replace(/[^0-9.]/g, "");
-  const dot = clean.indexOf(".");
-  return dot < 0 ? clean : clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, "");
-};
+/** A typed price: "," → ".", digits and ONE dot — the shared helper (src/lib/money). */
+export { priceInput };
 
 export const priceOf = (s: string): number => {
   const n = Number(String(s).replace(/[^0-9.]/g, ""));

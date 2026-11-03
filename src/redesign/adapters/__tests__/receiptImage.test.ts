@@ -22,7 +22,9 @@ describe("total rule", () => {
     expect(receiptTotalText([{ item: "a", total: 350 }, { item: "b", total: 280 }], "NT$", "tbc")).toEqual({ text: "NT$630", allPriced: true });
     expect(receiptTotalText([{ item: "a", total: 350 }, { item: "b", total: 0 }], "NT$", "tbc")).toEqual({ text: "tbc", allPriced: false });
     expect(receiptTotalText([], "NT$", "tbc")).toEqual({ text: "tbc", allPriced: false });
-    expect(formatAmount("₱", 1234.5)).toBe("₱1,234.5");
+    expect(formatAmount("₱", 1234.5)).toBe("₱1,234.50");
+    expect(formatAmount("RM", 2.9)).toBe("RM2.90");
+    expect(formatAmount("NT$", 1200)).toBe("NT$1,200");
   });
   it("the layout shows the sum, or 'to be confirmed' in place of the amount", () => {
     expect(layoutReceipt(base(), measure).totalText).toBe("NT$630");

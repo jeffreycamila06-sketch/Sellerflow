@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useT, tpl } from "../i18n";
 import { fmt, initials } from "../data";
+import { hasCents, moneyText, priceInput } from "../../lib/money";
 import type { Product } from "../adapters/products";
 import {
   type PostSale, type PostOrder, type PagePost, type NewPostItem, type PostSaleMode, type CreateResult, type BuyerGroup,
@@ -133,7 +134,8 @@ function BuyerCard({ g, sales, cur }: { g: BuyerGroup; sales: PostSale[]; cur: s
 }
 
 // ── "Sell on a post" — one scrolling form (preview ②) ──────────────────────
-const blankItem = (): NewPostItem => ({ name: "", code: "", price: 0, stock: null, productId: null });
+type Row = NewPostItem & { priceText?: string }; // priceText = what the seller typed ("2." while typing); createPostSale copies named fields only
+const blankItem = (): Row => ({ name: "", code: "", price: 0, stock: null, productId: null });
 const cell: CSSProperties = { boxSizing: "border-box", width: "100%", padding: "9px 8px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 14, fontFamily: mono, fontWeight: 700, minHeight: 42, outline: "none" };
 const TABLE_COLS = "minmax(0,1fr) 62px 74px 56px";
 
@@ -155,7 +157,7 @@ export function SellOnPost({ ui: u, cur, onClose }: { ui: PostsUi; cur: string; 
   const posts = loaded && loaded.pageId === pageId ? loaded : { state: pageId ? "loading" as const : "error" as const, list: [] as PagePost[] };
   const [post, setPost] = useState<PagePost | null>(null);
   const [mode, setMode] = useState<PostSaleMode>("code");
-  const [items, setItems] = useState<NewPostItem[]>([blankItem()]);
+  const [items, setItems] = useState<Row[]>([blankItem()]);
   const [picker, setPicker] = useState(false);
   const [endsAt, setEndsAt] = useState(() => toLocalInput(new Date(Date.now() + POST_SALE_DEFAULT_DAYS * 86400000).toISOString()));
   const [err, setErr] = useState("");
@@ -170,7 +172,7 @@ export function SellOnPost({ ui: u, cur, onClose }: { ui: PostsUi; cur: string; 
   }, [pageId, u]);
 
   const rows = mode === "plus_one" ? items.slice(0, 1) : items;
-  const setRow = (i: number, patch: Partial<NewPostItem>) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const setRow = (i: number, patch: Partial<Row>) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const addRow = (p?: Product) => {
     setItems((xs) => {
       const row: NewPostItem = p ? { name: p.name, code: p.liveCode || "", price: p.price, stock: p.stock > 0 ? p.stock : null, productId: p.id } : blankItem();
@@ -247,7 +249,7 @@ export function SellOnPost({ ui: u, cur, onClose }: { ui: PostsUi; cur: string; 
             {mode === "code"
               ? <input value={r.code} onChange={(e) => setRow(i, { code: e.target.value.toUpperCase() })} data-testid="sell-item-code" style={{ ...cell, textTransform: "uppercase" }} />
               : <span style={{ ...cell, display: "flex", alignItems: "center", color: "var(--accent-fg)" }}>+1</span>}
-            <input type="number" inputMode="decimal" min={0} value={r.price || ""} onChange={(e) => setRow(i, { price: Math.max(0, Number(e.target.value) || 0) })} data-testid="sell-item-price" style={cell} />
+            <input type="text" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={r.priceText ?? (r.price || "")} onChange={(e) => { const s = priceInput(e.target.value, cur); setRow(i, { priceText: s, price: Math.max(0, Number(s) || 0) }); }} data-testid="sell-item-price" style={cell} />
             <input type="number" inputMode="numeric" min={0} placeholder="∞" value={r.stock ?? ""} onChange={(e) => setRow(i, { stock: e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)) })} data-testid="sell-item-stock" style={cell} />
           </div>
         ))}
@@ -287,7 +289,7 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
   const t = useT();
   const [open, setOpen] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
-  const [draft, setDraft] = useState<{ price: number; stock: number | null }>({ price: 0, stock: null });
+  const [draft, setDraft] = useState<{ price: number; priceText: string; stock: number | null }>({ price: 0, priceText: "", stock: null });
   const [confirmEnd, setConfirmEnd] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const statusText = { selling: t.rd_fps_st_selling, sold_out: t.rd_fps_st_sold_out, ended: t.rd_fps_st_ended } as const;
@@ -328,15 +330,15 @@ export function MyPosts({ ui: u, cur, onClose, onSell }: { ui: PostsUi; cur: str
                 <span style={{ flex: 1, minWidth: 80, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
                 {editing === it.id ? (
                   <span style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}>
-                    <input type="number" inputMode="decimal" value={draft.price} onChange={(e) => setDraft((d) => ({ ...d, price: Math.max(0, Number(e.target.value) || 0) }))} data-testid="my-post-edit-price" style={{ ...cell, flex: 1 }} />
+                    <input type="text" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={draft.priceText} onChange={(e) => { const s = priceInput(e.target.value, cur); setDraft((d) => ({ ...d, priceText: s, price: Math.max(0, Number(s) || 0) })); }} data-testid="my-post-edit-price" style={{ ...cell, flex: 1 }} />
                     <input type="number" inputMode="numeric" placeholder="∞" value={draft.stock ?? ""} onChange={(e) => setDraft((d) => ({ ...d, stock: e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} data-testid="my-post-edit-stock" style={{ ...cell, flex: 1 }} />
-                    <button type="button" disabled={busy} data-testid="my-post-save" onClick={() => void saveItem(it.id)} style={{ ...btnPrimary, minHeight: 42, padding: "0 12px", fontSize: 13.5 }}>{t.rd_fps_save}</button>
+                    <button type="button" disabled={busy || draft.price <= 0} data-testid="my-post-save" onClick={() => void saveItem(it.id)} style={{ ...btnPrimary, minHeight: 42, padding: "0 12px", fontSize: 13.5 }}>{t.rd_fps_save}</button>
                   </span>
                 ) : (
                   <>
                     <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-dim)" }}>{cur}{fmt(it.price)}</span>
                     <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{tpl(t.rd_fps_sold, { sold: it.sold })}{it.stock != null ? ` / ${it.stock}` : ""}</span>
-                    {st !== "ended" && <button type="button" data-testid="my-post-edit" onClick={() => { setEditing(it.id); setDraft({ price: it.price, stock: it.stock }); }} style={{ ...btnSoft, minHeight: 34, padding: "0 12px", fontSize: 13 }}>{t.rd_fps_edit}</button>}
+                    {st !== "ended" && <button type="button" data-testid="my-post-edit" onClick={() => { setEditing(it.id); setDraft({ price: it.price, priceText: moneyText(it.price), stock: it.stock }); }} style={{ ...btnSoft, minHeight: 34, padding: "0 12px", fontSize: 13 }}>{t.rd_fps_edit}</button>}
                   </>
                 )}
               </div>

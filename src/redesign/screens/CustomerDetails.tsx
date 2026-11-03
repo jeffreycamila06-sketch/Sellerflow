@@ -19,6 +19,7 @@ import { saveParcelScan, validAmount, amountTooHigh, validHandle, minParcelAmoun
 import { loadFrozenState, FROZEN_LOADING, TEMP_DRY, TEMP_FROZEN, feeForLayer, minTotalForLayer, type FrozenState } from "../adapters/parcelFrozen";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE, validStore } from "../adapters/shipping";
+import { priceInput, hasCents } from "../../lib/money";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -329,8 +330,8 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-dim)" }}>{cur}</span>
                       <input
                         value={price}
-                        onChange={(e) => { setPrice(e.target.value); setImportErr(""); }}
-                        inputMode="numeric"
+                        onChange={(e) => { setPrice(priceInput(e.target.value, cur)); setImportErr(""); }}
+                        inputMode={hasCents(cur) ? "decimal" : "numeric"}
                         placeholder={t.rd_cd_price_ph}
                         style={input}
                         data-testid="cd-price"

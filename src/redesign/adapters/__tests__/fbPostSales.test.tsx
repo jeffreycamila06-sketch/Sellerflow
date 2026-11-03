@@ -3,7 +3,7 @@
 // the segment, Live default, the red dot until Posts is opened once, the empty state with ONE
 // button, buyer cards + Print new / My posts; the gate; grouping; the print Buyer (no buyer number,
 // "Post" on every line, buyer-number setting OFF); sale status / counts.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TProvider, REDESIGN_STRINGS } from "../../i18n";
 import Orders from "../../screens/Orders";
@@ -31,7 +31,9 @@ const ui = (o: Partial<PostsUi> = {}): PostsUi => ({
 });
 const view = (extra: Record<string, unknown> = {}) => render(<TProvider lang="en"><Orders onGoPrint={() => {}} cur="NT$" orders={[]} state="live" todayId="2026-10-27" buyers={[]} {...extra} /></TProvider>);
 
-beforeEach(() => { window.localStorage.clear(); });
+// a fixed clock — the fixture sale ends 2026-11-03, so "● Selling" / "Ends Nov 3" must not depend on today's date
+beforeEach(() => { window.localStorage.clear(); vi.useFakeTimers({ now: new Date("2026-10-27T05:00:00Z"), toFake: ["Date"] }); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("Orders without a Facebook Page = exactly as before", () => {
   it("no posts prop → no segment, no Posts body, no dot", () => {
@@ -99,6 +101,25 @@ describe("Orders with the posts prop", () => {
     fireEvent.click(screen.getByTestId("my-post-toggle"));
     expect(screen.getByTestId("my-post-detail")).toBeTruthy();           // items + Edit + End now
     expect(screen.getByTestId("my-post-end")).toBeTruthy();
+  });
+  it("edit draft: Save is disabled while the price is blank, '.' or 0", () => {
+    view({ posts: ui({ sales: [sale({ endsAt: "2099-01-01T00:00:00Z" })] }) });
+    fireEvent.click(screen.getByTestId("ord-seg-posts"));
+    fireEvent.click(screen.getByTestId("posts-my-link"));
+    fireEvent.click(screen.getByTestId("my-post-toggle"));
+    fireEvent.click(screen.getAllByTestId("my-post-edit")[0]);
+    const price = screen.getByTestId("my-post-edit-price") as HTMLInputElement;
+    const save = () => screen.getByTestId("my-post-save") as HTMLButtonElement;
+    expect(price.value).toBe("350");
+    expect(save().disabled).toBe(false);
+    fireEvent.change(price, { target: { value: "" } });
+    expect(save().disabled).toBe(true);
+    fireEvent.change(price, { target: { value: "." } });
+    expect(save().disabled).toBe(true);
+    fireEvent.change(price, { target: { value: "0" } });
+    expect(save().disabled).toBe(true);
+    fireEvent.change(price, { target: { value: "250" } });
+    expect(save().disabled).toBe(false);
   });
   it("Sell on a post (preview ②): one form — pick the post, mode, items table, Start selling → onCreate", async () => {
     const u = ui({ sales: [], loadPosts: vi.fn(async () => ({ ok: true as const, posts: [{ id: "P1_9", message: "New arrivals", createdTime: "2026-10-26T10:00:00Z", picture: "", url: "" }] })) });

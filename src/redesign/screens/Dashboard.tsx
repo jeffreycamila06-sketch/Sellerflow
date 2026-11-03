@@ -4,7 +4,8 @@
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { avColor, initials, type Comment } from "../data";
+import { avColor, initials, fmt, type Comment } from "../data";
+import { hasCents } from "../../lib/money";
 import { basketCountFor } from "../adapters/basketCounts";
 import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
 import { normHandle, type BuyerAlertView } from "../adapters/buyerAlert";
@@ -828,7 +829,7 @@ export default function Dashboard({
         {samePrice != null && samePrice > 0 && (
           <div style={{ display: "flex", marginBottom: 11 }}>
             <span data-testid="samePrice-chip" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 999, padding: "4px 6px 4px 11px", fontSize: 11.5, fontWeight: 800, color: "var(--accent-fg)" }}>
-              {tpl(t.rd_smp_chip, { price: `${cur}${samePrice.toLocaleString("en-US")}` })}
+              {tpl(t.rd_smp_chip, { price: `${cur}${fmt(samePrice)}` })}
               <button
                 onClick={() => onDisableSamePrice?.()}
                 aria-label={t.rd_smp_off} title={t.rd_smp_off} data-testid="samePrice-chip-clear"
@@ -876,7 +877,7 @@ export default function Dashboard({
           <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
             <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "4px 9px", borderRadius: 7 }}>{t.rd_dash_today_badge}</span>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{summary.buyers} {t.rd_dash_buyers} · {summary.orders} {t.rd_cus_orders_suffix}</span>
-            <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{summary.total.toLocaleString("en-US")}</span>
+            <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(summary.total)}</span>
           </div>
         )}
         {/* COMPACT one-line header: [Live comments ●] … [● Collecting · n] … [🎮][pill]
@@ -1081,7 +1082,7 @@ export default function Dashboard({
                           {/* NO onBlur — deliberate and test-pinned: blur (keyboard
                               dismiss / row unmount in a fast feed) must never print
                               NOR clear the typed price (ghost-print protection). */}
-                          <input value={entPrice} onChange={(e) => onEntPrice(e.target.value)} onKeyDown={onEntKey} inputMode="numeric" autoFocus style={{ width: 48, border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, padding: "5px 0", outline: "none" }} />
+                          <input value={entPrice} onChange={(e) => onEntPrice(e.target.value)} onKeyDown={onEntKey} inputMode={hasCents(cur) ? "decimal" : "numeric"} autoFocus style={{ width: 48, border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, padding: "5px 0", outline: "none" }} />
                           {/* iPhone fix — in-app ✓ submit, ALWAYS visible while the
                               price flow is open (the iOS number pad has no return
                               key). onPointerDown + preventDefault: fires BEFORE any
