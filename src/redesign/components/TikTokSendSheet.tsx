@@ -98,7 +98,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
                   <GrowText value={l.text} placeholder={l.orig} label={t.rd_rc_item_ph} onChange={(text) => setLine(l.key, { text })} />
                   {l.qty > 1 && <span data-testid="tts-qty" style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)" }}>{qtySuffix(l.qty).trim()}</span>}
                 </>}
-              <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode={hasCents(cur) ? "decimal" : "numeric"} value={l.price} onChange={(e) => setPrice(l.key, priceInput(e.target.value, cur, l.price))} style={{ ...input, width: 96, textAlign: "right" }} />
+              <input data-testid="tts-price" aria-label={t.rd_rc_price_ph} inputMode={hasCents(cur) ? "decimal" : "numeric"} value={l.price} onChange={(e) => setPrice(l.key, priceInput(e.target.value, cur))} style={{ ...input, width: 96, textAlign: "right" }} />
               <button type="button" data-testid="tts-remove" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => removeLine(l.key)} style={smallBtn}>×</button>
             </div>
           ))}
@@ -109,7 +109,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
 
           <span style={label}>{t.rd_ord_receipt_total}{totalOverride !== null && totalOverride.trim() !== "" && <span data-testid="tts-edited" style={{ marginLeft: 6, fontWeight: 600, letterSpacing: 0, color: "var(--warn)" }}>{t.rd_tts_edited}</span>}</span>
           <input data-testid="tts-total" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={totalOverride ?? moneyText(sum)}
-            onChange={(e) => setTotalOverride(priceInput(e.target.value, cur, totalOverride ?? moneyText(sum)))} style={{ ...input, width: 140, textAlign: "right" }} />
+            onChange={(e) => setTotalOverride(priceInput(e.target.value, cur))} style={{ ...input, width: 140, textAlign: "right" }} />
 
           <span style={label}>{t.rd_tts_note}</span>
           <textarea data-testid="tts-note" value={note} maxLength={500} placeholder={t.rd_tts_note_ph} onChange={(e) => setNote(e.target.value)} style={{ ...input, width: "100%", minHeight: 64, resize: "vertical" }} />

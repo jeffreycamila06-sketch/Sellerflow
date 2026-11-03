@@ -178,7 +178,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
             <input data-testid="rs-item" aria-label={t.rd_rc_item_ph} placeholder={t.rd_rc_item_ph} value={l.item}
               ref={(el) => { if (el && focusLineId.current === l.id) { focusLineId.current = null; el.focus(); } }}
               onChange={(e) => setLine(l.id, { item: e.target.value })} style={{ ...input, flex: 1, minWidth: 0 }} />
-            <input data-testid="rs-price" aria-label={t.rd_rc_price_ph} placeholder={t.rd_rc_price_ph} inputMode={hasCents(cur) ? "decimal" : "numeric"} value={l.price} onChange={(e) => setLine(l.id, { price: priceInput(e.target.value, cur, l.price) })} style={{ ...input, width: 96, textAlign: "right" }} />
+            <input data-testid="rs-price" aria-label={t.rd_rc_price_ph} placeholder={t.rd_rc_price_ph} inputMode={hasCents(cur) ? "decimal" : "numeric"} value={l.price} onChange={(e) => setLine(l.id, { price: priceInput(e.target.value, cur) })} style={{ ...input, width: 96, textAlign: "right" }} />
             <button type="button" data-testid="rs-remove-line" aria-label={t.rd_rs_remove_line} title={t.rd_rs_remove_line} onClick={() => removeLine(l.id)}
               style={{ width: 40, height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text-muted)", fontSize: 18, lineHeight: 1, cursor: "pointer", fontFamily: "var(--font-ui)" }}>×</button>
           </div>

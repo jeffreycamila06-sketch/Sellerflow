@@ -407,7 +407,7 @@ export default function GeneralSettings({
                   <div className="sfl-lsm-field">
                     <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)", fontSize: 14 }}>{cur}</span>
                     <input ref={spInputRef} inputMode="decimal" autoComplete="off" value={spDraft} placeholder={t.rd_smp_placeholder}
-                      onChange={(e) => setSpDraft(priceInput(e.target.value, cur, spDraft))}
+                      onChange={(e) => setSpDraft(priceInput(e.target.value, cur))}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); turnOn(); } }}
                       data-testid="samePrice-input"
                       style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 600, color: "var(--text)", outline: "none", padding: 0 }} />

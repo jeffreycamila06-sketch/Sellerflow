@@ -15,37 +15,16 @@ export const moneyText = (n: number): string => (Number.isInteger(n) ? String(n)
 export const NO_CENTS = new Set(["NT$", "₫", "Rp", "₩"]);
 export const hasCents = (cur: string): boolean => !NO_CENTS.has(cur);
 
-/** Cent currencies whose keypad comma IS the decimal point ("2,90" → 2.90). Everywhere else "," is a thousands separator. */
-export const COMMA_DECIMAL = new Set(["€"]);
-
 /**
- * A typed price, by currency. `prev` is the field's current value: any "-" (typed or pasted) is
- * IGNORED — the field keeps `prev` ("-3" is never turned into 3).
- * - no-cent currency (NT$ …): commas stripped, everything from the first "." cut ("350.50" → "350", "1,200" → "1200").
- * - € : "," is the decimal point ("2,90" → "2.90"); with BOTH "." and "," present, "." is a thousands
- *   separator ("1.200,50" → "1200.50"); exactly one "." with exactly 3 digits after it and no "," is
- *   a thousands separator too ("1.200" → "1200", "12.500" → "12500"); otherwise "." is the decimal
- *   point ("2.90" → "2.90", "2.9" → "2.9").
- * - every other cent currency (₱, RM, $, ¥ …): commas are thousands separators and are removed
- *   ("1,200" → "1200", "1,200.50" → "1200.50"); "." is the decimal point.
- * Cents: the FIRST "." wins, later dots are dropped ("12.5.0" → "12.50"), at most 2 digits after it ("2.905" → "2.90").
+ * A typed price, by currency. Every non-digit is ignored.
+ * - no-cent currency (NT$ …): everything from the first "." is cut ("350.50" → "350", "1,200" → "1200").
+ * - every other currency: "." is the decimal point — the FIRST "." wins, later dots are dropped
+ *   ("12.5.0" → "12.50"), at most 2 digits after it ("2.905" → "2.90"); "," is removed ("1,200.50" → "1200.50").
  */
-export function priceInput(s: string, cur = "", prev = ""): string {
-  const raw = String(s);
-  if (raw.includes("-")) return prev;
-  if (!hasCents(cur)) {
-    const v = raw.replace(/,/g, "").replace(/[^0-9.]/g, "");
-    const dot = v.indexOf(".");
-    return dot < 0 ? v : v.slice(0, dot);
-  }
-  const commaDecimal = COMMA_DECIMAL.has(cur);
-  const c = raw.replace(/[^0-9.,]/g, "");
-  const dotIsThousands = commaDecimal && (c.includes(",") || /^\d*\.\d{3}$/.test(c));
-  const v = (dotIsThousands ? c.replace(/\./g, "") : c).replace(/,/g, commaDecimal ? "." : "");
+export function priceInput(s: string, cur = ""): string {
+  const v = String(s).replace(/[^0-9.]/g, "");
   const dot = v.indexOf(".");
   if (dot < 0) return v;
+  if (!hasCents(cur)) return v.slice(0, dot);
   return `${v.slice(0, dot)}.${v.slice(dot + 1).replace(/\./g, "").slice(0, 2)}`;
 }
-
-/** The LIVE price box = the same rule as every other price input (NT$: "2.905" → "2", "1,200.50" → "1200"). */
-export const livePriceInput = priceInput;

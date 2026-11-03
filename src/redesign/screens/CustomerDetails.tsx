@@ -330,7 +330,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-dim)" }}>{cur}</span>
                       <input
                         value={price}
-                        onChange={(e) => { setPrice(priceInput(e.target.value, cur, price)); setImportErr(""); }}
+                        onChange={(e) => { setPrice(priceInput(e.target.value, cur)); setImportErr(""); }}
                         inputMode={hasCents(cur) ? "decimal" : "numeric"}
                         placeholder={t.rd_cd_price_ph}
                         style={input}

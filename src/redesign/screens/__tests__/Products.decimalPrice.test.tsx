@@ -40,8 +40,8 @@ describe("Products — decimal price", () => {
     expect(price.value).toBe("2.90");
     fireEvent.change(price, { target: { value: "1,200.50" } });
     expect(price.value).toBe("1200.50");
-    fireEvent.change(price, { target: { value: "-3" } });
-    expect(price.value).toBe("1200.50");     // "-" ignored, field keeps its value
+    fireEvent.change(price, { target: { value: "2,90" } });
+    expect(price.value).toBe("290");         // "," is never a decimal point
     const stock = screen.getByTestId("prd-stock") as HTMLInputElement;
     expect(stock.type).toBe("number");
     expect(stock.inputMode).toBe("numeric");
@@ -58,14 +58,14 @@ describe("Products — decimal price", () => {
     expect(price.value).toBe("350");      // whole only: cut from the first "."
   });
 
-  it("€: ',' is the decimal point", async () => {
+  it("€: same rule as every other cent currency ('.' decimal, ',' ignored)", async () => {
     render(<TProvider lang="en"><Products cur="€" /></TProvider>);
     fireEvent.click(screen.getByText("+ Add"));
     const price = (await screen.findByTestId("prd-price")) as HTMLInputElement;
-    fireEvent.change(price, { target: { value: "2,90" } });
+    fireEvent.change(price, { target: { value: "2.90" } });
     expect(price.value).toBe("2.90");
-    fireEvent.change(price, { target: { value: "1.200,50" } });
-    expect(price.value).toBe("1200.50");
+    fireEvent.change(price, { target: { value: "2,90" } });
+    expect(price.value).toBe("290");
   });
 
   it("RM 2.90 saves as 2.9 and shows RM2.90", async () => {

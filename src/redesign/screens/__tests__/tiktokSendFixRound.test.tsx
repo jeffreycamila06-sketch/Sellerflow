@@ -261,7 +261,7 @@ describe("9 — small items", () => {
     expect((q("tts-total") as HTMLInputElement).value).toBe("9");
     expect(priceInput("9.9.9", "RM")).toBe("9.99"); // cent currencies keep one dot
     expect(priceInput("1,200.50", "₱")).toBe("1200.50"); // "," = thousands outside €
-    expect(priceInput("2,90", "€")).toBe("2.90");
+    expect(priceInput("2,90", "€")).toBe("290"); // "," is never a decimal point
   });
   it("A19 — the session list reloads every time the picker opens", async () => {
     renderOrders([ANN]);
