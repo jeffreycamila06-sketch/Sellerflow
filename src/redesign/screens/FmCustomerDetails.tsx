@@ -221,7 +221,7 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
                     <label style={lbl}>{t.rd_cd_price_ph}</label>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-dim)" }}>{cur}</span>
-                      <input value={price} onChange={(e) => { setPrice(priceInput(e.target.value, hasCents(cur))); setImportErr(""); }} inputMode={hasCents(cur) ? "decimal" : "numeric"} placeholder={t.rd_cd_price_ph} style={input} data-testid="fcd-price" aria-label={t.rd_cd_price_ph} />
+                      <input value={price} onChange={(e) => { setPrice(priceInput(e.target.value, cur, price)); setImportErr(""); }} inputMode={hasCents(cur) ? "decimal" : "numeric"} placeholder={t.rd_cd_price_ph} style={input} data-testid="fcd-price" aria-label={t.rd_cd_price_ph} />
                     </div>
                     {importErr && <div style={errTxt} data-testid="fcd-import-err">{importErr}</div>}
                   </div>

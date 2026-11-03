@@ -496,7 +496,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
               {formErr && <div style={{ fontSize: 10.5, color: "var(--danger)", marginTop: 4, lineHeight: 1.4 }}>{formErr}</div>}
             </div>
             <div style={{ display: "flex", gap: 9 }}>
-              <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_price} ({cur})</label><input type="text" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: priceInput(e.target.value, hasCents(cur)) }))} required data-testid="prd-price" style={input} /></div>
+              <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_price} ({cur})</label><input type="text" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: priceInput(e.target.value, cur, f.price) }))} required data-testid="prd-price" style={input} /></div>
               <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_stock}</label><input type="number" min="0" inputMode="numeric" value={form.stock} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} required data-testid="prd-stock" style={input} /></div>
             </div>
             <div><label style={lbl}>{t.rd_prd_platform}</label><select value={form.platform} onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value }))} style={input}><option>TikTok</option><option>Facebook</option><option>TikTok / FB</option></select></div>

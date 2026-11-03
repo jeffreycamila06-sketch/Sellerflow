@@ -25,7 +25,7 @@ import { isIOS } from "../adapters/platform";
 import { canSeeKioskLauncher, KIOSK_COMMAND_WINDOWS, KIOSK_COMMAND_MAC } from "../adapters/kioskLauncher";
 import { copyText } from "../components/inviteShare";
 import { usePrinterStatus, type PrinterConnState } from "../adapters/usePrinterStatus";
-import { fmtMoney, priceInput, hasCents } from "../../lib/money";
+import { fmtMoney, priceInput } from "../../lib/money";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -407,7 +407,7 @@ export default function GeneralSettings({
                   <div className="sfl-lsm-field">
                     <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)", fontSize: 14 }}>{cur}</span>
                     <input ref={spInputRef} inputMode="decimal" autoComplete="off" value={spDraft} placeholder={t.rd_smp_placeholder}
-                      onChange={(e) => setSpDraft(priceInput(e.target.value, hasCents(cur)))}
+                      onChange={(e) => setSpDraft(priceInput(e.target.value, cur, spDraft))}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); turnOn(); } }}
                       data-testid="samePrice-input"
                       style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 600, color: "var(--text)", outline: "none", padding: 0 }} />

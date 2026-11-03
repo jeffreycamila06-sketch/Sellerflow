@@ -27,17 +27,21 @@ async function addProduct(cur: string, price: string) {
 }
 
 describe("Products — decimal price", () => {
-  it("RM: text input with the decimal keypad; ',' typed → '.'; stock stays a whole-number input", async () => {
+  it("RM: text input with the decimal keypad; ',' is a thousands separator; stock stays a whole-number input", async () => {
     render(<TProvider lang="en"><Products cur="RM" /></TProvider>);
     fireEvent.click(screen.getByText("+ Add"));
     const price = (await screen.findByTestId("prd-price")) as HTMLInputElement;
     expect(price.type).toBe("text");
     expect(price.inputMode).toBe("decimal");
     expect(price.required).toBe(true);
-    fireEvent.change(price, { target: { value: "2,90" } });
+    fireEvent.change(price, { target: { value: "2.90" } });
     expect(price.value).toBe("2.90");
     fireEvent.change(price, { target: { value: "2.905" } });
     expect(price.value).toBe("2.90");
+    fireEvent.change(price, { target: { value: "1,200.50" } });
+    expect(price.value).toBe("1200.50");
+    fireEvent.change(price, { target: { value: "-3" } });
+    expect(price.value).toBe("1200.50");     // "-" ignored, field keeps its value
     const stock = screen.getByTestId("prd-stock") as HTMLInputElement;
     expect(stock.type).toBe("number");
     expect(stock.inputMode).toBe("numeric");
@@ -54,8 +58,16 @@ describe("Products — decimal price", () => {
     expect(price.value).toBe("350");      // whole only: cut from the first "."
   });
 
-  it("RM 2,90 (comma keypad) saves as 2.9 and shows RM2.90", async () => {
-    await addProduct("RM", "2,90");
+  it("€: ',' is the decimal point", async () => {
+    render(<TProvider lang="en"><Products cur="€" /></TProvider>);
+    fireEvent.click(screen.getByText("+ Add"));
+    const price = (await screen.findByTestId("prd-price")) as HTMLInputElement;
+    fireEvent.change(price, { target: { value: "2,90" } });
+    expect(price.value).toBe("2.90");
+  });
+
+  it("RM 2.90 saves as 2.9 and shows RM2.90", async () => {
+    await addProduct("RM", "2.90");
     expect(await screen.findByText("RM2.90")).toBeTruthy();
     expect(screen.queryByText("RM2.9")).toBeNull();
     expect(screen.queryByText("RM3")).toBeNull();

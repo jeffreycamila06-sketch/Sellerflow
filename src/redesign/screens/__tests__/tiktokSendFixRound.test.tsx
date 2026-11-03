@@ -259,7 +259,9 @@ describe("9 — small items", () => {
     expect(qa("tts-price")[0].value).toBe("12");
     fireEvent.change(q("tts-total")!, { target: { value: "9.9.9" } });
     expect((q("tts-total") as HTMLInputElement).value).toBe("9");
-    expect(priceInput("9.9.9", true)).toBe("9.99"); // cent currencies keep one dot
+    expect(priceInput("9.9.9", "RM")).toBe("9.99"); // cent currencies keep one dot
+    expect(priceInput("1,200.50", "₱")).toBe("1200.50"); // "," = thousands outside €
+    expect(priceInput("2,90", "€")).toBe("2.90");
   });
   it("A19 — the session list reloads every time the picker opens", async () => {
     renderOrders([ANN]);
