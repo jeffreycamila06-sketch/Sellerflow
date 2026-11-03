@@ -23,3 +23,13 @@ export function createCooldownRetry(): CooldownRetry {
     pending: () => account,
   };
 }
+
+// PURE: may the scheduled retry fire now? Only when TikTok is still not live, no OTHER platform
+// went live meanwhile (Facebook / Instagram / Shopee — one platform at a time), and the server
+// says the session is still running and is TikTok's (or has no platform stamped yet).
+export interface RetryContext { ttLive: boolean; otherLive: boolean; session: { running: boolean; platform: string | null } }
+export function retryAllowed(c: RetryContext): boolean {
+  if (c.ttLive || c.otherLive) return false;
+  if (!c.session.running) return false;
+  return c.session.platform === null || c.session.platform === "TikTok";
+}

@@ -9,7 +9,16 @@ import {
   rateLimitLabel, taipeiDayKey, rateLimitStatsFor, noteRateLimit, EMPTY_RATE_LIMIT_STATS,
   cooldownKeyMatches, listCooldowns,
   EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, USAGE_WARN_RATIO,
+  isDailyRoomsLabel, dailyCooldownMs, RATE_LIMIT_DAILY_MAX_MS, remainingMs, DAILY_ROOMS_LABEL,
 } from "../../../../server/connectionHealth.js";
+// The library's REAL error class (CJS build) — the message it builds is what server.js sees.
+import { SignatureRateLimitError } from "tiktok-live-connector/dist/types/errors.js";
+import type { AxiosResponse } from "axios";
+
+// Exactly how fetch-signed-websocket-euler.js throws on a 429: formatStr = `${label}Too many
+// connections started, try again later.` with label = `(${limit_label}) ` or "".
+const euler429 = (limitLabel: string | null, headers: Record<string, string> = {}, apiMessage: string | null = null) =>
+  new SignatureRateLimitError(apiMessage, `${limitLabel ? `(${limitLabel}) ` : ""}Too many connections started, try again later.`, { headers } as unknown as AxiosResponse);
 
 const NOW = 1_760_000_000_000;
 
@@ -43,17 +52,51 @@ describe("resolveRateLimitCooldownMs", () => {
   });
 });
 
-describe("rateLimitLabel — Euler's limit_label from the connector's message", () => {
-  it("reads the label the connector puts in front of the message", () => {
-    expect(rateLimitLabel({ message: "(daily_rooms) Too many connections started, try again later." })).toBe("daily_rooms");
-    expect(rateLimitLabel({ message: "(concurrent_rooms) Too many connections started, try again later. Sign server: limit" })).toBe("concurrent_rooms");
-    expect(rateLimitLabel("(per_minute) Too many connections started, try again later.")).toBe("per_minute");
+describe("rateLimitLabel — Euler's limit_label from the connector's REAL message", () => {
+  it("the real message starts with '[Rate Limited]' — the label is found after that prefix", () => {
+    const e = euler429("daily_rooms", { "retry-after": "60" }, "Daily room budget exhausted");
+    expect(e.message.startsWith("[Rate Limited] (daily_rooms) Too many connections started")).toBe(true);
+    expect(rateLimitLabel(e)).toBe("daily_rooms");
+    expect(rateLimitLabel(euler429("concurrent_rooms"))).toBe("concurrent_rooms");
+    expect(rateLimitLabel(euler429("per_minute", { "x-ratelimit-reset": "1" }))).toBe("per_minute");
+    expect(e.retryAfter).toBe(60_000);                       // the header fields our resolver reads
   });
-  it("no label → null", () => {
+  it("still reads a bare '(label) Too many connections…' and plain strings", () => {
+    expect(rateLimitLabel({ message: "(daily_rooms) Too many connections started, try again later." })).toBe("daily_rooms");
+    expect(rateLimitLabel("[Rate Limited] (per_minute) Too many connections started, try again later.")).toBe("per_minute");
+  });
+  it("no label → null (never a false label from the sign-server box text)", () => {
+    expect(rateLimitLabel(euler429(null))).toBeNull();
+    expect(rateLimitLabel(euler429(null, {}, "(weird) text inside the sign-server message box, long enough to format"))).toBeNull(); // box text ≠ a label
     expect(rateLimitLabel({ message: "Too many connections started, try again later." })).toBeNull();
     expect(rateLimitLabel({ message: "rate_limit" })).toBeNull();
     expect(rateLimitLabel(null)).toBeNull();
     expect(rateLimitLabel({})).toBeNull();
+  });
+});
+
+describe("daily_rooms — one shared bench, Euler's reset honoured up to 60 min", () => {
+  it("label check is exact and case-insensitive", () => {
+    expect(DAILY_ROOMS_LABEL).toBe("daily_rooms");
+    expect(isDailyRoomsLabel("daily_rooms")).toBe(true);
+    expect(isDailyRoomsLabel("Daily_Rooms")).toBe(true);
+    expect(isDailyRoomsLabel("concurrent_rooms")).toBe(false);
+    expect(isDailyRoomsLabel(null)).toBe(false);
+  });
+  it("reset time wins (capped 60 min), then Retry-After, else the full 60 min; never under 1 min", () => {
+    expect(RATE_LIMIT_DAILY_MAX_MS).toBe(60 * 60 * 1000);
+    expect(dailyCooldownMs({ resetTime: NOW + 25 * 60_000 }, NOW)).toBe(25 * 60_000);
+    expect(dailyCooldownMs({ resetTime: NOW + 5 * 60 * 60_000 }, NOW)).toBe(60 * 60_000);    // tomorrow → 60 min
+    expect(dailyCooldownMs({ retryAfter: 40 * 60_000 }, NOW)).toBe(40 * 60_000);
+    expect(dailyCooldownMs({ retryAfter: 10 }, NOW)).toBe(RATE_LIMIT_MIN_MS);
+    expect(dailyCooldownMs({}, NOW)).toBe(60 * 60_000);
+    expect(dailyCooldownMs(euler429("daily_rooms", { "retry-after": "1800" }), NOW)).toBe(30 * 60_000);
+    expect(dailyCooldownMs(euler429("daily_rooms"), NOW)).toBe(60 * 60_000);
+  });
+  it("remainingMs never goes negative", () => {
+    expect(remainingMs(NOW + 5000, NOW)).toBe(5000);
+    expect(remainingMs(NOW - 1, NOW)).toBe(0);
+    expect(remainingMs(0, NOW)).toBe(0);
   });
 });
 

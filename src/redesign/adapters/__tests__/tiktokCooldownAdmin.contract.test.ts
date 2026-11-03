@@ -22,6 +22,31 @@ describe("cooldown recorder", () => {
   });
 });
 
+describe("daily_rooms — the shared bench (audit item 4)", () => {
+  it("the recorder arms the shared bench on a daily_rooms label and the answer carries the longer bench", () => {
+    const fn = between("function rememberTikTokRateLimit(", "function getTikTokCooldownMs(");
+    expect(fn).toContain("if (isDailyRoomsLabel(limitLabel)) {");
+    expect(fn).toContain("dailyRoomsCooldownUntil = Math.max(dailyRoomsCooldownUntil, Date.now() + dailyMs);");
+    expect(fn).toContain("[DAILY-ROOMS]");
+    expect(fn).toContain("return Math.max(cooldownMs, dailyRoomsRemainingMs());");
+  });
+  it("the connect gate applies the shared bench to EVERY TikTok account", () => {
+    const fn = between("function getTikTokCooldownMs(", "function clearTikTokReconnect(");
+    expect(fn).toContain("return Math.max(perKeyMs, dailyRoomsRemainingMs());");
+  });
+  it("both 429 bodies name the daily limit so the client skips its auto-retry", () => {
+    expect(server.match(/\.\.\.\(dailyRoomsRemainingMs\(\) > 0 \? \{ limit: DAILY_ROOMS_LABEL \} : \{\}\),/g)?.length).toBe(2);
+  });
+  it("status reports it; clear accepts { daily: true }", () => {
+    const status = between('app.get("/admin/tiktok-cooldown/status"', 'app.post("/admin/tiktok-cooldown/clear"');
+    expect(status).toContain("daily: dailyRoomsRemainingMs() > 0 ? { remainingMs: dailyRoomsRemainingMs(), until: dailyRoomsCooldownUntil } : null,");
+    const clear = between('app.post("/admin/tiktok-cooldown/clear"', 'app.post("/admin/broadcast-translate"');
+    expect(clear).toContain('const daily = (req.body || {}).daily === true;');
+    expect(clear).toContain("if (daily) dailyRoomsCooldownUntil = 0;");
+    expect(clear).toContain("if (!username && !daily) return res.status(400)");
+  });
+});
+
 describe("admin routes", () => {
   it("status + clear, both requireAuth + requireAdmin", () => {
     expect(server).toContain('app.get("/admin/tiktok-cooldown/status", requireAuth, requireAdmin, ');
@@ -31,11 +56,11 @@ describe("admin routes", () => {
     const route = between('app.post("/admin/tiktok-cooldown/clear"', 'app.post("/admin/broadcast-translate"');
     expect(route).toContain("const username = cleanAccountKey((req.body || {}).username);");
     expect(route).toContain('return res.status(400).json({ success: false, error: "username_required" });');
-    expect(route).toContain("if (cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); cleared += 1; }");
+    expect(route).toContain("if (username && cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); cleared += 1; }");
     expect(route).not.toContain("tiktokConnections.");          // never touches a live connection
     expect(route).not.toContain("disconnect");
     expect(route).toContain("[COOLDOWN-CLEAR]");
-    expect(route).toContain("return res.json({ success: true, cleared });");
+    expect(route).toContain("return res.json({ success: true, cleared, clearedDaily });");
   });
   it("status: today's tally + plan usage + the running cooldowns", () => {
     const route = between('app.get("/admin/tiktok-cooldown/status"', 'app.post("/admin/tiktok-cooldown/clear"');

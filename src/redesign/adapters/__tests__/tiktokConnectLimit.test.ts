@@ -6,7 +6,7 @@ const { getSession } = vi.hoisted(() => ({ getSession: vi.fn(async () => ({ data
 vi.mock("../../../supabase", () => ({ supabase: { auth: { getSession: () => getSession() } } }));
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { loadTikTokCooldownStatus, clearTikTokCooldown, usageWarns } from "../tiktokConnectLimit";
+import { loadTikTokCooldownStatus, clearTikTokCooldown, clearDailyLimit, usageWarns } from "../tiktokConnectLimit";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
@@ -18,7 +18,7 @@ describe("loadTikTokCooldownStatus", () => {
     globalThis.fetch = f as unknown as typeof fetch;
     const r = await loadTikTokCooldownStatus();
     expect(r.ok).toBe(true);
-    expect(r.status).toEqual({ count: 3, lastLabel: "daily_rooms", lastAt: 1, cooldowns: body.cooldowns, usage: { roomsToday: 12, concurrent: 4, dailyLimit: 1000, concurrentLimit: 100, warn: false } });
+    expect(r.status).toEqual({ count: 3, lastLabel: "daily_rooms", lastAt: 1, cooldowns: body.cooldowns, usage: { roomsToday: 12, concurrent: 4, dailyLimit: 1000, concurrentLimit: 100, warn: false }, daily: null });
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://srv.test/admin/tiktok-cooldown/status?sfl_codes=1"); // Build 11 marker
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt-abc");
@@ -30,6 +30,22 @@ describe("loadTikTokCooldownStatus", () => {
     expect(await loadTikTokCooldownStatus()).toEqual({ ok: false, error: "unreachable" });
     globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, today: { count: 0 }, cooldowns: [] }) })) as unknown as typeof fetch;
     expect((await loadTikTokCooldownStatus()).status?.usage).toBeNull();
+  });
+  it("maps the shared daily bench when it is running", async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, today: { count: 1 }, cooldowns: [], daily: { remainingMs: 1_800_000, until: 1 } }) })) as unknown as typeof fetch;
+    expect((await loadTikTokCooldownStatus()).status?.daily).toEqual({ remainingMs: 1_800_000 });
+  });
+});
+
+describe("clearDailyLimit", () => {
+  it("POSTs { daily: true }; 403 → forbidden", async () => {
+    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, cleared: 0, clearedDaily: true }) }));
+    globalThis.fetch = f as unknown as typeof fetch;
+    expect(await clearDailyLimit()).toEqual({ ok: true });
+    const [, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ daily: true });
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 403, json: async () => ({ success: false }) })) as unknown as typeof fetch;
+    expect(await clearDailyLimit()).toEqual({ ok: false, error: "forbidden" });
   });
 });
 

@@ -13,7 +13,7 @@ import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
 import { createOcr, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
 import { createWorker as createParcelWorker } from "./server/parcelTrackingWorker.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT, isDailyRoomsLabel, dailyCooldownMs, remainingMs, DAILY_ROOMS_LABEL } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { makeFailureThrottle, checkPollToken } from "./server/pollAuth.js";
 import { sweepProductImages, makeSweepStore, readSweepSwitch } from "./server/productImagesSweep.js";
@@ -446,6 +446,9 @@ const tiktokRateLimitCooldowns = new Map();
 // Nov 3, 2026 — today's Euler-429 count + the last limit_label (Taipei day, in memory), so the
 // admin card / health detail show a limit before sellers report it.
 let eulerRateLimitStats = EMPTY_RATE_LIMIT_STATS;
+// daily_rooms = the API key's per-day budget → ONE shared cooldown for every TikTok account (epoch ms).
+let dailyRoomsCooldownUntil = 0;
+const dailyRoomsRemainingMs = () => remainingMs(dailyRoomsCooldownUntil, Date.now());
 // Euler plan usage: distinct rooms connected today + concurrent connections vs the plan
 // limits (env EULER_DAILY_ROOMS_LIMIT / EULER_CONCURRENT_LIMIT; Business 10K = 1000 / 100).
 let eulerRoomStats = EMPTY_ROOM_STATS;
@@ -565,6 +568,11 @@ function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
   const limitLabel = rateLimitLabel(error);
   eulerRateLimitStats = noteRateLimit(eulerRateLimitStats, limitLabel, Date.now());
   tiktokRateLimitCooldowns.set(key, retryAt);
+  if (isDailyRoomsLabel(limitLabel)) {
+    const dailyMs = dailyCooldownMs(error, Date.now());
+    dailyRoomsCooldownUntil = Math.max(dailyRoomsCooldownUntil, Date.now() + dailyMs);
+    console.log(`[DAILY-ROOMS] Euler daily room limit hit — ALL TikTok connects paused until ${new Date(dailyRoomsCooldownUntil).toISOString()} (${Math.round(dailyMs / 60000)}m)`);
+  }
   clearTikTokReconnect(key);
   tiktokReconnectAttempts.delete(key);
   emitTikTokStatus({
@@ -577,17 +585,14 @@ function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
     nextRetryMs: cooldownMs,
   });
   console.log(`TikTok rate limit cooldown for ${username} until ${new Date(retryAt).toISOString()} (${Math.round(cooldownMs / 60000)}m) limit=${limitLabel || "unknown"} today=${eulerRateLimitStats.count}: ${error?.message || error}`);
-  return cooldownMs;
+  return Math.max(cooldownMs, dailyRoomsRemainingMs()); // the answer carries the longer (shared daily) bench
 }
 
 function getTikTokCooldownMs(key) {
   const retryAt = tiktokRateLimitCooldowns.get(key) || 0;
-  const remainingMs = retryAt - Date.now();
-  if (remainingMs <= 0) {
-    tiktokRateLimitCooldowns.delete(key);
-    return 0;
-  }
-  return remainingMs;
+  const perKeyMs = retryAt - Date.now();
+  if (perKeyMs <= 0) tiktokRateLimitCooldowns.delete(key);
+  return Math.max(perKeyMs, dailyRoomsRemainingMs()); // the shared daily_rooms bench applies to every account
 }
 
 function clearTikTokReconnect(key) {
@@ -831,6 +836,7 @@ function tiktokHealthDetail() {
       rateLimitedAccounts,
       eulerRateLimitsToday,
       eulerUsage: eulerUsageToday,
+      dailyRoomsCooldownMs: dailyRoomsRemainingMs(),
     },
     // Quick memory read so Jeff can eyeball RAM without opening Render.
     memory: memorySnapshot(process.memoryUsage()),
@@ -990,18 +996,22 @@ app.get("/admin/tiktok-cooldown/status", requireAuth, requireAdmin, (_req, res) 
     success: true,
     today: rateLimitStatsFor(eulerRateLimitStats, now),
     usage: eulerUsageNow(now),
+    daily: dailyRoomsRemainingMs() > 0 ? { remainingMs: dailyRoomsRemainingMs(), until: dailyRoomsCooldownUntil } : null,
     cooldowns: listCooldowns(tiktokRateLimitCooldowns, now).map((c) => ({ username: c.username, sellerId: c.sellerId, remainingMs: c.remainingMs })),
   });
 });
 app.post("/admin/tiktok-cooldown/clear", requireAuth, requireAdmin, (req, res) => {
   const username = cleanAccountKey((req.body || {}).username);
-  if (!username) return res.status(400).json({ success: false, error: "username_required" });
+  const daily = (req.body || {}).daily === true;              // { daily: true } clears the shared daily_rooms bench
+  if (!username && !daily) return res.status(400).json({ success: false, error: "username_required" });
   let cleared = 0;
   for (const key of [...tiktokRateLimitCooldowns.keys()]) {
-    if (cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); cleared += 1; }
+    if (username && cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); cleared += 1; }
   }
-  console.log(`[COOLDOWN-CLEAR] admin=${req.sellerId} username=${username} cleared=${cleared}`);
-  return res.json({ success: true, cleared });
+  const clearedDaily = daily && dailyRoomsRemainingMs() > 0;
+  if (daily) dailyRoomsCooldownUntil = 0;
+  console.log(`[COOLDOWN-CLEAR] admin=${req.sellerId} username=${username || "-"} cleared=${cleared} daily=${clearedDaily}`);
+  return res.json({ success: true, cleared, clearedDaily });
 });
 
 app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, res) => {
@@ -1914,6 +1924,7 @@ async function connectTikTok(username, res, meta = {}) {
         success: false,
         error: `TikTok connection is on cooldown after a rate limit. Try again in ${Math.ceil(cooldownMs / 60000)} minutes.`,
         cooldownMs,
+        ...(dailyRoomsRemainingMs() > 0 ? { limit: DAILY_ROOMS_LABEL } : {}), // client: no auto-retry, daily text
       });
     }
 
@@ -2126,6 +2137,7 @@ async function connectTikTok(username, res, meta = {}) {
         success: false,
         error: `TikTok rate limit reached. Try again in about ${wait}.`,
         cooldownMs,
+        ...(dailyRoomsRemainingMs() > 0 ? { limit: DAILY_ROOMS_LABEL } : {}),
       });
     }
 

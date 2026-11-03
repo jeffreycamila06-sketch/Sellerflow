@@ -193,9 +193,27 @@ export function resolveRateLimitCooldownMs(error, nowMs) {
 // the front of the error message as "(daily_rooms) Too many connections started, …". Read it
 // back so the log and the admin card say WHICH limit hit — or null when there is none.
 export function rateLimitLabel(error) {
-  const m = /^\(([^)]+)\)/.exec(String((error && error.message) || error || "").trim());
+  // The real message is "[Rate Limited] (daily_rooms) Too many connections started, …" (SignAPIError
+  // prefixes the reason), so the label is searched ANYWHERE, right before "Too many connections".
+  const m = /\(([a-z0-9_]+)\)\s*Too many connections/i.exec(String((error && error.message) || error || ""));
   return m ? m[1] : null;
 }
+
+// daily_rooms = Euler's per-day room budget for the WHOLE API key — one more connect on any account
+// will 429 too, so the bench is shared by every TikTok account, honours Euler's reset time up to 60 min
+// (else the full 60), and the client must NOT auto-retry (nothing resets in a few minutes).
+export const DAILY_ROOMS_LABEL = "daily_rooms";
+export const isDailyRoomsLabel = (label) => String(label || "").toLowerCase() === DAILY_ROOMS_LABEL;
+export const RATE_LIMIT_DAILY_MAX_MS = 60 * 60 * 1000;
+const clampDaily = (ms) => Math.min(RATE_LIMIT_DAILY_MAX_MS, Math.max(RATE_LIMIT_MIN_MS, ms));
+export function dailyCooldownMs(error, nowMs) {
+  const reset = Number(error && error.resetTime);
+  if (Number.isFinite(reset) && reset > nowMs) return clampDaily(reset - nowMs);
+  const retry = Number(error && error.retryAfter);
+  if (Number.isFinite(retry) && retry > 0) return clampDaily(retry);
+  return RATE_LIMIT_DAILY_MAX_MS;
+}
+export const remainingMs = (untilMs, nowMs) => Math.max(0, (Number(untilMs) || 0) - nowMs);
 
 // PURE: today's Euler-429 tally (Taipei day), kept in memory on the server and shown on the
 // admin card / health detail. A new Taipei day starts the count again.

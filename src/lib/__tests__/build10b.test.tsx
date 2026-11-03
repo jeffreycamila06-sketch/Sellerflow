@@ -167,9 +167,14 @@ describe("TikTok cooldown minutes and the analytics code", () => {
   it("E41 and E42 decode to minutes in seller words", async () => {
     globalThis.fetch = vi.fn(async () => ({ ok: false, status: 429, statusText: "", json: async () => ({ success: false, error: "E41:12" }) })) as unknown as typeof fetch;
     const r = await connectPlatform("TikTok", { username: "shop" }, "s@x.com");
-    // Nov 3, 2026 — the cooldown toast no longer names minutes: the app retries by itself.
-    expect(connectFailText(r, t)).toBe("Connection limit reached — we're retrying for you");
-    expect(connectFailText(r, fil)).toBe("Naabot ang limit ng koneksyon — sinusubukan namin ulit para sa iyo");
+    // Nov 3, 2026 — the cooldown toast no longer names minutes. 12 min is over the 10-min auto-retry
+    // cap → "try again in a few minutes"; a 2-min answer → "we're retrying for you".
+    expect(connectFailText(r, t)).toBe("Try again in a few minutes");
+    expect(connectFailText(r, fil)).toBe("Subukan ulit sa loob ng ilang minuto");
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 429, statusText: "", json: async () => ({ success: false, error: "E41:2" }) })) as unknown as typeof fetch;
+    const r2 = await connectPlatform("TikTok", { username: "shop" }, "s@x.com");
+    expect(connectFailText(r2, t)).toBe("Connection limit reached — we're retrying for you");
+    expect(connectFailText(r2, fil)).toBe("Naabot ang limit ng koneksyon — sinusubukan namin ulit para sa iyo");
     expect(cooldownMinutes(decodeServerJson({ error: "E42:2 hour(s)" }).error)).toBe(120);
     expect(cooldownMinutes(decodeServerJson({ error: "E42:5 minute(s)" }).error)).toBe(5);
     expect(cooldownMinutes("E41")).toBeNull();

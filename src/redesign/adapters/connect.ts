@@ -125,7 +125,7 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
 // unreachable = the fetch itself threw (client network failure, no server reason) —
 // the app shows a localized "can't reach the live server" toast for this case
 // (F-batch i18n; the English error string stays as the analytics/log reason).
-export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean; cooldownMs?: number }
+export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean; cooldownMs?: number; limit?: string }
 
 // Build 10b: minutes to wait from the cooldown answer (E41 "…in {n} minutes." / E42 "…in about
 // {n} minute(s)|hour(s)." — the app decodes both back to those sentences), else null.
@@ -141,25 +141,38 @@ export function cooldownMinutes(error: string | undefined): number | null {
 // The text a failed TikTok/Facebook connect shows (toast + Connect modal). Build 10: never the
 // server's own words or a code — not live / can't reach / wait N minutes keep their texts,
 // anything else is the generic "Couldn't connect. Try again."
-export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable" | "error" | "cooldownMs">, t: RedesignT): string {
+export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable" | "error" | "cooldownMs" | "limit">, t: RedesignT, opts?: { retried?: boolean }): string {
   if (r.notLive) return t.rd_cm_not_live;
   if (r.unreachable) return t.rd_cm_cant_reach;
   if ((r.error || "").includes("plan_expired")) return t.rd_cm_plan_ended;
-  // Nov 3, 2026 — the cooldown toast no longer asks the seller to wait N minutes: the app
-  // retries by itself when the cooldown ends (cooldownRetryDelayMs + cooldownRetry.ts).
-  if (cooldownRetryDelayMs(r) !== null) return t.rd_cm_tt_cooldown;
+  // Nov 3, 2026 — a cooldown answer: "we're retrying" ONLY when a retry is really scheduled;
+  // the daily budget → its own text; a second 429 on the retry (or a bench too long to
+  // auto-retry) → "try again in a few minutes".
+  if (isCooldownAnswer(r)) {
+    if (r.limit === DAILY_ROOMS_LIMIT) return t.rd_cm_tt_daily_limit;
+    if (!opts?.retried && cooldownRetryDelayMs(r) !== null) return t.rd_cm_tt_cooldown;
+    return t.rd_cm_tt_cooldown_again;
+  }
   return t.rd_cm_conn_try_again;
 }
 
+export const DAILY_ROOMS_LIMIT = "daily_rooms";
+export const isCooldownAnswer = (r: Pick<ConnectResult, "error" | "cooldownMs">): boolean =>
+  (r.cooldownMs ?? 0) > 0 || cooldownMinutes(r.error) !== null;
+
 // How long until the ONE automatic retry after a cooldown answer: the server's cooldownMs
 // (else the minutes in its sentence) plus a small pad so the retry lands after the bench
-// ends, never before. null = not a cooldown answer → no retry.
+// ends, never before. null = no retry: not a cooldown answer, the daily budget (nothing
+// resets in minutes), or a bench longer than 10 min (an old server's 30-min answer).
 export const COOLDOWN_RETRY_PAD_MS = 1500;
-export function cooldownRetryDelayMs(r: Pick<ConnectResult, "error" | "cooldownMs">): number | null {
-  const ms = (r.cooldownMs ?? 0) > 0 ? Number(r.cooldownMs) : null;
-  if (ms !== null) return ms + COOLDOWN_RETRY_PAD_MS;
+export const COOLDOWN_RETRY_MAX_MS = 10 * 60 * 1000;
+export function cooldownRetryDelayMs(r: Pick<ConnectResult, "error" | "cooldownMs" | "limit">): number | null {
+  if (r.limit === DAILY_ROOMS_LIMIT) return null;
+  const fromBody = (r.cooldownMs ?? 0) > 0 ? Number(r.cooldownMs) : null;
   const mins = cooldownMinutes(r.error);
-  return mins === null ? null : mins * 60_000 + COOLDOWN_RETRY_PAD_MS;
+  const ms = fromBody ?? (mins === null ? null : mins * 60_000);
+  if (ms === null || ms > COOLDOWN_RETRY_MAX_MS) return null;
+  return ms + COOLDOWN_RETRY_PAD_MS;
 }
 
 // connectPlatform — verbatim POST from App.tsx:4269-4296 (without the posthog/toast
@@ -189,7 +202,8 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     if (r.status === 409 && (j as { notLive?: boolean }).notLive) return { ok: false, notLive: true, error: j.error || "Account is not live right now.", account };
     // Nov 3, 2026 — a 429 cooldown answer carries cooldownMs; the app retries once when it ends.
     const cooldownMs = Number((j as { cooldownMs?: unknown }).cooldownMs);
-    if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account, ...(cooldownMs > 0 ? { cooldownMs } : {}) };
+    const limit = String((j as { limit?: unknown }).limit || "");   // "daily_rooms" = the shared daily bench
+    if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account, ...(cooldownMs > 0 ? { cooldownMs } : {}), ...(limit ? { limit } : {}) };
     return { ok: true, account };
   } catch {
     return { ok: false, error: "Can't connect right now. Check your internet and try again.", account, unreachable: true };

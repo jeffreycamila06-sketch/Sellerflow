@@ -120,7 +120,7 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from ".
 import { printerFlowV2Enabled } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, cooldownRetryDelayMs, type Platform, ttDisconnect } from "./adapters/connect";
-import { createCooldownRetry } from "./adapters/cooldownRetry";
+import { createCooldownRetry, retryAllowed } from "./adapters/cooldownRetry";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
 import { fbHandleIsId } from "./adapters/fbName";
@@ -1332,6 +1332,9 @@ export default function RedesignApp() {
   /* eslint-enable react-hooks/set-state-in-effect */
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
   const igEff = liveFeed.igConnected && !igOff; // false for everyone without Instagram
+  const otherLive = fbEff || igEff || shopeeEff;   // cooldown retry: never while another platform is live
+  const otherLiveRef = useRef(otherLive);
+  useEffect(() => { otherLiveRef.current = otherLive; }, [otherLive]);
   // BUYER ALERT (Phase 1, gated by the server access list) — ONE RPC when a live source
   // connects, refreshed every 10 min; rows do an O(1) map lookup. No access → no RPC, no change.
   const buyerAlert = useBuyerAlert(buyerAlertGate(buyerAlertAccess), ttEff || fbEff || shopeeEff || igEff);
@@ -1396,6 +1399,7 @@ export default function RedesignApp() {
   // never tapped TikTok Connect → arm the room join), POST, toast on success. The
   // modal shows inline errors from the returned result (no double toast here).
   const doShopeeConnect = async (shopId: number, sessionId: string) => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     // Owner preview: no Partner credentials → no real connect. Show an honest note
     // instead of a misleading toast (this is UI-visibility only).
     if (shopeePreview) { setToast({ msg: tApp.rd_shp_preview_note, kind: "err" }); return { ok: false, error: "preview" }; }
@@ -1464,6 +1468,7 @@ export default function RedesignApp() {
   // socket is in the room before the poller relays, POST /fb/connect, toast the outcome.
   // Reached only via runTargetConnect / connectPending AFTER a session is guaranteed.
   const doFbConnect = async (pageId: string, scopeKey = "") => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     // fbPreview is NOT short-circuited — allowlisted preview users hit the REAL POST
     // /fb/connect (the fb_enabled flag stays the fleet switch only). Non-allowlisted
     // sellers can never reach this (no reachable Facebook connect target for them).
@@ -1493,6 +1498,7 @@ export default function RedesignApp() {
     return commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
   };
   const doIgConnect = async (igUserId: string) => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     if (platformLocks.Instagram) { setToast({ msg: lockText("Instagram"), kind: "err" }); return; } // Shopee beta lock
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
     setIgConnecting(true);
@@ -1600,6 +1606,7 @@ export default function RedesignApp() {
   // length; born-ended fix makes it safe — no endSession first) → reset board (#1) →
   // connect the new platform. A null id (RPC failed) aborts without a session-less feed.
   const confirmSwitch = async () => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     if (switchingRef.current) return;              // H4 — same-tick double-tap → exactly ONE start_session/reset
     const target = switchConfirm;
     setSwitchConfirm(null);
@@ -1716,8 +1723,14 @@ export default function RedesignApp() {
       // Nov 3, 2026 — connection-limit cooldown: retry ONCE by itself when it ends (no tap).
       // The retried attempt passes retry:true, so a second cooldown never schedules a third.
       const retryMs = !r.ok && platform === "TikTok" && !opts?.retry ? cooldownRetryDelayMs(r) : null;
-      if (retryMs !== null) cooldownRetry.schedule(acct, retryMs, () => { if (!ttEffRef.current) void performConnect("TikTok", acct, { retry: true }); });
-      if (!r.ok) setToast({ msg: connectFailText(r, tApp), kind: "err" });
+      // The timer re-checks before firing: TikTok still off, no other platform live, and the
+      // SERVER still says the session is running and is TikTok's (never a bare re-POST).
+      if (retryMs !== null) cooldownRetry.schedule(acct, retryMs, () => { void (async () => {
+        const session = await sessionInstance.checkStatus();
+        if (!retryAllowed({ ttLive: ttEffRef.current, otherLive: otherLiveRef.current, session })) return;
+        void performConnect("TikTok", acct, { retry: true, register: opts?.register });
+      })(); });
+      if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retried: !!opts?.retry }), kind: "err" });
     } finally { setConnecting(false); }
   };
   const doConnect = async (platform: Platform) => {
@@ -1797,6 +1810,7 @@ export default function RedesignApp() {
   // (nulls current_session_id + stamps session_ended_at) → board clears to day-view
   // (Option A) → toast. Owner-gated caller only; no other seller reaches this.
   const doEndSession = async () => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     setEndConfirm(false);
     const ok = await sessionInstance.endSession();
     if (!ok) { setToast({ msg: tApp.rd_os_end_failed, kind: "err" }); return; }

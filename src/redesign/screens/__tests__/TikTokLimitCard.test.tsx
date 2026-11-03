@@ -4,14 +4,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 
-const { load, clear } = vi.hoisted(() => ({ load: vi.fn(), clear: vi.fn() }));
-vi.mock("../../adapters/tiktokConnectLimit", async (orig) => ({ ...(await orig<typeof import("../../adapters/tiktokConnectLimit")>()), loadTikTokCooldownStatus: () => load(), clearTikTokCooldown: (u: string) => clear(u) }));
+const { load, clear, clearDaily } = vi.hoisted(() => ({ load: vi.fn(), clear: vi.fn(), clearDaily: vi.fn() }));
+vi.mock("../../adapters/tiktokConnectLimit", async (orig) => ({ ...(await orig<typeof import("../../adapters/tiktokConnectLimit")>()), loadTikTokCooldownStatus: () => load(), clearTikTokCooldown: (u: string) => clear(u), clearDailyLimit: () => clearDaily() }));
 
 import { TikTokLimitCard } from "../Admin";
 
-const status = (over: Record<string, unknown> = {}) => ({ ok: true, status: { count: 2, lastLabel: "daily_rooms", lastAt: Date.UTC(2026, 10, 3, 12, 59), cooldowns: [{ username: "thrifts.studio", sellerId: "j@x.com", remainingMs: 95_000 }], usage: { roomsToday: 12, concurrent: 3, dailyLimit: 1000, concurrentLimit: 100, warn: false }, ...over } });
+const status = (over: Record<string, unknown> = {}) => ({ ok: true, status: { count: 2, lastLabel: "daily_rooms", lastAt: Date.UTC(2026, 10, 3, 12, 59), cooldowns: [{ username: "thrifts.studio", sellerId: "j@x.com", remainingMs: 95_000 }], usage: { roomsToday: 12, concurrent: 3, dailyLimit: 1000, concurrentLimit: 100, warn: false }, daily: null, ...over } });
 
-beforeEach(() => { cleanup(); load.mockReset(); clear.mockReset(); });
+beforeEach(() => { cleanup(); load.mockReset(); clear.mockReset(); clearDaily.mockReset(); });
 
 describe("TikTokLimitCard", () => {
   it("shows today's count + label, the usage line, and the cooldown rows", async () => {
@@ -57,6 +57,23 @@ describe("TikTokLimitCard", () => {
     fireEvent.change(screen.getByTestId("adm-ttl-input"), { target: { value: "shop" } });
     fireEvent.click(screen.getByTestId("adm-ttl-clear"));
     await waitFor(() => expect(screen.getByTestId("adm-ttl-note").textContent).toContain("Couldn't clear"));
+  });
+  it("daily limit → red 'Daily limit reached' banner with minutes left; its button clears the shared bench", async () => {
+    load.mockResolvedValue(status({ daily: { remainingMs: 1_800_000 } }));
+    clearDaily.mockResolvedValue({ ok: true });
+    render(<TProvider lang="en"><TikTokLimitCard /></TProvider>);
+    const banner = await screen.findByTestId("adm-ttl-daily");
+    expect(banner.textContent).toContain("Daily limit reached");
+    expect(banner.textContent).toContain("30 min left");
+    fireEvent.click(screen.getByTestId("adm-ttl-clear-daily"));
+    await waitFor(() => expect(clearDaily).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  });
+  it("no daily bench → no banner", async () => {
+    load.mockResolvedValue(status());
+    render(<TProvider lang="en"><TikTokLimitCard /></TProvider>);
+    await screen.findByTestId("adm-ttl-today");
+    expect(screen.queryByTestId("adm-ttl-daily")).toBeNull();
   });
   it("load failure → the load-error line", async () => {
     load.mockResolvedValue({ ok: false, error: "forbidden" });
