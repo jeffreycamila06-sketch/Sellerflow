@@ -2,11 +2,13 @@
 // never printed on a sticker, never written to the 7-11 file's column J, and never opened by
 // Pickup "Chase". TikTok stickers stay byte-identical (sha256 captured on main before this change).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload, type Settings } from "../printing";
+import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload, type Settings, markLaptopSizeChosen } from "../printing";
 import { printableBuyer, fbDisplayName } from "../fbName";
 import { buyerGroupsFrom, draftEntryFor, buildBagEntries, lateFormEntry, colJHandle } from "../shipping";
 import { chaseTarget } from "../parcelTracking";
 import type { Buyer } from "../../../lib/orderTypes";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 const mem = new Map<string, string>();
 vi.stubGlobal("localStorage", {

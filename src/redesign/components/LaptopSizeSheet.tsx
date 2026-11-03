@@ -9,12 +9,7 @@ import { useT } from "../i18n";
 import ExactStickerPreview from "./ExactStickerPreview";
 import { printLaptopTestSticker, type Settings } from "../adapters/printing";
 import { buildTestBuyer } from "../adapters/printerBridge";
-
-export const LAPTOP_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm", "50x30mm"];
-export const LAPTOP_SIZE_SHEET_SEEN_KEY = "sfl_rd_laptop_size_sheet_seen";
-export function laptopSizeSheetSeen(): boolean { try { return localStorage.getItem(LAPTOP_SIZE_SHEET_SEEN_KEY) === "1"; } catch { return false; } }
-export function markLaptopSizeSheetSeen(): void { try { localStorage.setItem(LAPTOP_SIZE_SHEET_SEEN_KEY, "1"); } catch { /* ignore */ } }
-export const sizeKeyOf = (psSize: string): string => psSize.match(/\d+x\d+/)?.[0] || "100x60";
+import { LAPTOP_SIZES, sizeKeyOf } from "../adapters/laptopSize";
 
 export default function LaptopSizeSheet({ psSize, onPick, settings, cur, storeName, onChoose, onLater }: {
   psSize: string; onPick: (s: string) => void;

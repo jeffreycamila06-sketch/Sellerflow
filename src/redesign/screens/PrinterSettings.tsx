@@ -30,6 +30,7 @@ import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { useT, tpl } from "../i18n";
+import { LAPTOP_SIZES } from "../adapters/laptopSize";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
 const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -75,8 +76,9 @@ export const LAPTOP_SETUP_SEEN_KEY = "sfl_rd_laptop_print_setup_seen";
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
-  stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false,
+  stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false, laptopSizeChosen = true,
 }: {
+  laptopSizeChosen?: boolean; // round 4 (item 5): laptop only — false = orders still print the previous laptop page
   compactV2?: boolean; // sticker layout v2 ON (printing.ts stickerCompactV2Allowed): the QR prints on every size → no 60×40 lock, v2 hint
   onBack: () => void;
   psType: "wifi" | "bt";
@@ -258,7 +260,7 @@ export default function PrinterSettings({
       </button>
       {psSizeOpen && (
         <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
-          {(v2 || !nativeReady ? [...PS_SIZES, "50x30mm"] : PS_SIZES).map((z) => {
+          {(!nativeReady ? LAPTOP_SIZES : v2 ? [...PS_SIZES, "50x30mm"] : PS_SIZES).map((z) => {
             const on = z === psSize;
             return (
               <button key={z} onClick={() => onPickPsSize(z)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
@@ -296,6 +298,7 @@ export default function PrinterSettings({
           <div data-testid="ps-laptop" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 16 }}>
             <label style={label}>{t.rd_ps_sticker_size}</label>
             {sizePicker}
+            {!laptopSizeChosen && <div data-testid="ps-laptop-old-note" style={{ fontSize: 11.5, color: "var(--warn)", marginTop: 7, lineHeight: 1.5 }}>{t.rd_ps_lsize_old_note}</div>}
             {!laptopSetupSeen && (
               <div data-testid="ps-laptop-setup" style={{ marginTop: 12, padding: "11px 13px", borderRadius: 12, background: "var(--accent-softer)", border: "1px solid var(--border)" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_laptop_title}</div>

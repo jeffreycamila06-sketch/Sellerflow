@@ -112,7 +112,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { sessionKeyFor, shippingSessionKey } from "./adapters/shipping";
 import { setStickerLayoutV2Allowed, stickerV2Allowed, stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, printsStickerViaImage, stickerCompactV2Allowed, setStickerCompactV2 } from "./adapters/printing";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setUpdateAppText, PLUGIN_MISSING, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setUpdateAppText, PLUGIN_MISSING, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, setLaptopSizeNeededHandler, laptopSizeChosen, markLaptopSizeChosen, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -137,6 +137,8 @@ import UpdateModal from "./components/UpdateModal";
 import ExpiryModal from "./components/ExpiryModal";
 import PrinterModal from "./components/PrinterModal";
 import BtOffModal from "./components/BtOffModal";
+import LaptopSizeSheet from "./components/LaptopSizeSheet";
+import { laptopSizeSheetSeen, markLaptopSizeSheetSeen } from "./adapters/laptopSize";
 import { useBtOffModal } from "./adapters/btOff";
 import PrinterGuideModal from "./components/PrinterGuideModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
@@ -983,6 +985,16 @@ export default function RedesignApp() {
   useEffect(() => { screenRef.current = screen; }, [screen]); // ref write in an effect (react-hooks/refs)
   const btOff = useBtOffModal();
   const reportBtOff = btOff.report; // stable (refs only) — safe in the once-registered handler
+  // Round 4 (item 5): the one-time laptop "Choose your sticker size" sheet. Opens AFTER a laptop print (printing.ts
+  // asks once the old page is queued) or when Printer settings opens on a laptop — never before a print. Until a
+  // size is chosen the laptop prints the old page; "Use this size" (or a pick in Printer settings) switches it.
+  const [laptopChosen, setLaptopChosen] = useState(() => laptopSizeChosen());
+  const [laptopSheet, setLaptopSheet] = useState(false);
+  const openLaptopSheet = useCallback(() => { if (hasNativePrinter() || laptopSizeChosen() || laptopSizeSheetSeen()) return; setLaptopSheet(true); }, []);
+  useEffect(() => { setLaptopSizeNeededHandler(openLaptopSheet); return () => setLaptopSizeNeededHandler(null); }, [openLaptopSheet]);
+  useEffect(() => { if (screen === "printersettings") openLaptopSheet(); }, [screen, openLaptopSheet]);
+  const chooseLaptopSize = useCallback(() => { markLaptopSizeChosen(); setLaptopChosen(true); markLaptopSizeSheetSeen(); setLaptopSheet(false); }, []);
+  const laterLaptopSize = useCallback(() => { markLaptopSizeSheetSeen(); setLaptopSheet(false); }, []);
   const tAppRef = useRef(tApp);
   useEffect(() => { tAppRef.current = tApp; }, [tApp]); // ref write in an effect (react-hooks/refs)
   useEffect(() => {
@@ -2729,7 +2741,8 @@ export default function RedesignApp() {
               psType={psType} compactV2={stickerCompactV2On}
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
-              onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
+              onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); if (!hasNativePrinter()) chooseLaptopSize(); }}
+              laptopSizeChosen={laptopChosen}
               cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicAllowed}
               stickerQrAllowed={stickerQrAllowed}
@@ -2928,6 +2941,9 @@ export default function RedesignApp() {
         )}
 
         {btOff.open && <BtOffModal onClose={btOff.close} />}
+        {laptopSheet && (
+          <LaptopSizeSheet psSize={psSize} onPick={setPsSize} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} cur={cur} storeName={printShopName} onChoose={chooseLaptopSize} onLater={laterLaptopSize} />
+        )}
         {/* "No printer connected" — order saved, but nothing printed (no printer
             set up yet). Primary button = the verified deep-link straight to the
             printer setup screen (right tab pre-selected by the failing path). */}

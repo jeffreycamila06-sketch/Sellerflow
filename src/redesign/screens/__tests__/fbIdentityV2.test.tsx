@@ -40,7 +40,7 @@ import { fbHandleIsId, looksLikeFbId } from "../../adapters/fbName";
 import { buyerTagFor, buyerTagKey, parseBuyerTags } from "../../adapters/buyerTag";
 import { buildBasketCounts, basketCountFor } from "../../adapters/basketCounts";
 import { normHandle, type BuyerAlertView } from "../../adapters/buyerAlert";
-import { printSlip, setStickerQrOn, DEF_SETTINGS, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload } from "../../adapters/printing";
+import { printSlip, setStickerQrOn, DEF_SETTINGS, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload, markLaptopSizeChosen } from "../../adapters/printing";
 import { printableBuyer } from "../../adapters/fbName";
 import Dashboard from "../Dashboard";
 import Orders from "../Orders";
@@ -50,6 +50,8 @@ import Shipping from "../Shipping";
 import type { Comment, Order } from "../../data";
 import type { UseMinersReport } from "../../adapters/minersReport";
 import type { UseSalesTab } from "../../adapters/salesTab";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 const MARIA = "Maria Santos";
 const ID1 = "1029384756473829";
@@ -165,6 +167,7 @@ describe("(d) sticker (web print) — the name, never the id", () => {
       removeItem: (k: string) => { mem.delete(k); }, clear: () => mem.clear(), key: () => null, get length() { return mem.size; },
     });
     __resetWebPrintQueue(); setStickerQrOn(false);
+    markLaptopSizeChosen(); // the stub above replaced the storage the file-level hook wrote to (round 4: the bitmap page needs a chosen size)
     const orig = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => { const el = orig(tag); if (tag === "iframe") frame = el as HTMLIFrameElement; return el; });
   });

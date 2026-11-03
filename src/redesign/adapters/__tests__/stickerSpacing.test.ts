@@ -16,7 +16,7 @@ import {
   stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, stickerSpacingFlags, spacingFlagsFor, STICKER_SPACING_PUBLIC,
   buildSettingsFromRedesign, type Settings,
 } from "../printing";
-import { stickerFit, FIT_SAMPLE_NAME, FIT_SAMPLE_COMMENT } from "../stickerFit";
+import { stickerFit, FIT_SAMPLE_NAME, FIT_SAMPLE_COMMENT, FIT_SAMPLE_NUM_SMALL } from "../stickerFit";
 import { setStickerCompactV2 } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 import { setFeatureAccess } from "../featureAccess";
@@ -284,14 +284,27 @@ describe("fit warning (Nov 3, item 8: measures the layout that prints for the sa
     const f = await stickerFit(cfgFor(60, 40, { commentSize: 3 }), "NT$", "My Shop", "browser");
     expect(f.controls.printCommentScale).toBeDefined();
   });
-  it("50×30: the buyer number at 3× beside the QR → 'limit' (printed whole at the largest size that fits); QR off → it pushes", async () => {
+  // round 4 (item 3): the measure runs the worst-case number AND a 1-digit one — "pushes off" when either pushes, "limit"
+  // only when the number itself is capped. On the fixed 50×30 layout 12345 at 3× is capped beside the QR (round 2's
+  // "limit"), but buyer 7 at 3× prints at full height and pushes the lines below off → the line says "push".
+  it("50×30 v2 OFF: 12345 at 3× is capped beside the QR, but a 1-digit number at 3× pushes → 'push' (either sample); QR off → push", async () => {
     setStickerCompactV2(false); setStickerSpacingAllowed(true); setStickerQrEntitled(true); setStickerQrOn(true);
     try {
       const f = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
-      expect(f.controls.printBuyerNumberScale).toBe("limit"); // item 2 (round 2): 12345 at 3× does not fit beside the QR, 2× does
+      expect(f.controls.printBuyerNumberScale).toBe("push");
+      const seven = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo", { maxBuyerNum: 7 });
+      expect(seven.controls.printBuyerNumberScale).toBe("push"); // the 1-digit sample is the reason
     } finally { setStickerQrOn(false); setStickerQrEntitled(false); }
     const g = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
     expect(g.controls.printBuyerNumberScale).toBe("push");
+  });
+  it("50×30 v2 ON: 12345 at 3× is capped and the 1-digit sample only cuts (never pushes) → 'limit' (the cap is the reason)", async () => {
+    setStickerCompactV2(true); setStickerSpacingAllowed(true); setStickerQrEntitled(true); setStickerQrOn(true);
+    try {
+      const f = await stickerFit(cfgFor(50, 30, { buyerNumSize: 3 }), "NT$", "My Shop", "aimo");
+      expect(f.controls.printBuyerNumberScale).toBe("limit");
+      expect(FIT_SAMPLE_NUM_SMALL).toBe(7);
+    } finally { setStickerQrOn(false); setStickerQrEntitled(false); setStickerCompactV2(false); }
   });
   // round 3 (item 3): the measure uses the worst-case number (12345) or the session's highest; "limit" only when the cap
   // is the reason. Buyer 7 at 3× fits whole on 50×30, so its line is never "limit": on the compact v1 layout (generic /

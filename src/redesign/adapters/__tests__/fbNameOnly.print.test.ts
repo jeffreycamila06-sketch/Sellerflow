@@ -16,8 +16,10 @@ vi.mock("../stickerRaster", async (importOriginal) => {
 
 import { fbNameOnly, isFacebookPlatform, printableBuyer } from "../fbName";
 import { fbNameLines, lowestOpBottom, stickerDrawOps, STICKER_LAYOUTS, type DrawOp, type RasterPayload } from "../stickerRaster";
-import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __resetNativePrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload, type Settings } from "../printing";
+import { printSlip, setStickerQrOn, setStickerQrEntitled, LS_CLASSIC_TEXT, DEF_SETTINGS, __resetWebPrintQueue, __resetNativePrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, buildNativeStickerPayload, type Settings, markLaptopSizeChosen } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 const mem = new Map<string, string>();
 vi.stubGlobal("localStorage", {

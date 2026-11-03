@@ -5,10 +5,12 @@
 // size (the generic rules), so 60×40 gets one on a laptop.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import jsQR from "jsqr";
-import { printSlip, setStickerQrOn, setStickerQrEntitled, __resetWebPrintQueue, __webPrintIdle, DEF_SETTINGS, type Settings } from "../printing";
+import { printSlip, setStickerQrOn, setStickerQrEntitled, __resetWebPrintQueue, __webPrintIdle, DEF_SETTINGS, type Settings, markLaptopSizeChosen } from "../printing";
 import { pageSrc, rasterFromBmpDataUrl } from "./printControls.harness";
 import type { FullRaster } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 const order = (over: Record<string, unknown> = {}) => ({ orderNum: 1750000000000, item: "A01", qty: 1, price: 320, total: 320, time: "9:41 PM", handle: "annc", name: "Ann Cruz", bNum: 12, platform: "TikTok", status: "New", date: "2026-09-26", ...over });
 const buyer = (over: Partial<Buyer> = {}): Buyer => ({ handle: "annc", name: "Ann Cruz", platform: "TikTok", num: 12, orders: [order()], totalOrders: 1, totalSpent: 320, ...over } as Buyer);

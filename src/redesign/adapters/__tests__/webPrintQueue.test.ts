@@ -6,8 +6,10 @@
 // confirms. jsdom has no window.SellerFlowPrinter, so printSlip always takes the
 // browser fallback here.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { printSlip, setWebPrintOutcomeHandler, setWebPrintKioskHintHandler, __resetWebPrintQueue, __webPrintIdle, DEF_SETTINGS } from "../printing";
+import { printSlip, setWebPrintOutcomeHandler, setWebPrintKioskHintHandler, __resetWebPrintQueue, __webPrintIdle, DEF_SETTINGS, markLaptopSizeChosen } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 const cfg = DEF_SETTINGS;
 const buyer = (num: number, orderNum: number): Buyer => ({

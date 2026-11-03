@@ -4,9 +4,11 @@
 // output printed on day T without it (bytes / payload / HTML). Without opts every route prints
 // today, as before.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { printSlip, buildNativeStickerPayload, buildSlipPayload, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, DEF_SETTINGS, type Settings } from "../printing";
+import { printSlip, buildNativeStickerPayload, buildSlipPayload, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, DEF_SETTINGS, type Settings, markLaptopSizeChosen } from "../printing";
 import { performReprint, originalPrintInstant } from "../reprint";
 import type { Buyer } from "../../../lib/orderTypes";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 type W = { SellerFlowPrinter?: unknown; Capacitor?: unknown };
 const ORDER_AT = Date.parse("2026-10-08T04:30:00.000Z");   // 10/08 12:30 Taipei

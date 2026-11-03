@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
-import { buildNativeStickerPayload, buildSettingsFromRedesign, setStickerQrEntitled, setStickerQrOn, setStickerSpacingAllowed, setStickerCompactV2, setStickerLayoutV2Allowed, stickerBitmapFor, browserStickerPage, bitmapBmpDataUrl, type StickerPath, type Settings } from "../printing";
+import { buildNativeStickerPayload, buildSettingsFromRedesign, setStickerQrEntitled, setStickerQrOn, setStickerSpacingAllowed, setStickerCompactV2, setStickerLayoutV2Allowed, stickerBitmapFor, browserStickerPage, type StickerPath, type Settings } from "../printing";
 import { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "../../screens/PrintPattern";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
 import type { FullRaster } from "../stickerRaster";
@@ -55,7 +55,7 @@ export async function browserCase(c: CaseSpec): Promise<{ html: string; raster: 
   const raster = await renderCase({ ...c, path: "browser" });
   const st = settingsFor(c);
   const wh = String(st.stickerSize).match(/^(\d+)x(\d+)/)!;
-  return { html: browserStickerPage({ wMm: Number(wh[1]), hMm: Number(wh[2]), src: bitmapBmpDataUrl(raster), title: "test" }), raster };
+  return { html: browserStickerPage({ wMm: Number(wh[1]), hMm: Number(wh[2]), img: raster, title: "test" }), raster };
 }
 // The image on a laptop print page, back to a raster (1-bit BMP: bottom-up rows padded to 4 bytes).
 export const pageSrc = (html: string): string => /src="(data:image\/bmp;base64,[^"]+)"/.exec(html)?.[1] ?? "";

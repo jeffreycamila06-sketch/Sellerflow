@@ -63,7 +63,7 @@ describe("RedesignApp wires ONE value into the preview and every print path", ()
     expect(app).toContain("storeName: printShopName,");                 // printCfgRef → printSlip / reprint
     expect(app).toContain("const storeName = printShopName;");          // Printer Test
     expect(app).toContain("shopName={printShopName}");                   // Live print pattern preview
-    expect(app.match(/storeName=\{printShopName\}/g)?.length).toBe(2);   // Print screen + the other print consumer
+    expect(app.match(/storeName=\{printShopName\}/g)?.length).toBe(3);   // Print screen + Printer settings + the laptop size sheet (round 4)
     expect(app).not.toContain('profile.storeName || "SellerFlowLive"'); // no stray second derivation
   });
 });

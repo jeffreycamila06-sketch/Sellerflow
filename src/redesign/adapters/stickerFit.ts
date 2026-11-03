@@ -13,6 +13,7 @@ export const FIT_SAMPLE_NAME = "Cristine Ramos Cabanas";        // 20 letters, 3
 export const FIT_SAMPLE_COMMENT = "Mine black size XL 2pcs 350";   // 27 characters, 6 words
 export const FIT_SAMPLE_HANDLE = "cristineramos";
 export const FIT_SAMPLE_NUM = 12345;                               // the worst-case buyer number (5 digits)
+export const FIT_SAMPLE_NUM_SMALL = 7;                             // round 4 (item 3): a 1-digit number — big digits can push lines off too
 export const FIT_SAMPLE_CJK_NAME = "王小明";
 export const FIT_SAMPLE_CJK_COMMENT = "我要黑色";
 
@@ -38,10 +39,12 @@ export const sampleBuyer = (s: Partial<FitSample> = {}): Buyer => {
   return { handle, name, platform: "TikTok", num, totalSpent: 350, totalOrders: 1,
     orders: [{ orderNum: 1, item: comment, qty: 1, price: 350, total: 350, time: "14:05", handle, name, bNum: num, platform: "TikTok", status: "New", date: "2026-09-30" }] } as Buyer;
 };
-const SAMPLES = (num: number): FitSample[] => [
-  { name: FIT_SAMPLE_NAME, comment: FIT_SAMPLE_COMMENT, handle: FIT_SAMPLE_HANDLE, num },
-  { name: FIT_SAMPLE_CJK_NAME, comment: FIT_SAMPLE_CJK_COMMENT, handle: FIT_SAMPLE_HANDLE, num },
-];
+// Both scripts × the worst-case number AND a 1-digit one (round 4, item 3): "pushes off" when either pushes;
+// "limit" only when the number itself is capped. A 1-digit session max measures once.
+const SAMPLES = (num: number): FitSample[] => [...new Set([num, FIT_SAMPLE_NUM_SMALL])].flatMap((n) => [
+  { name: FIT_SAMPLE_NAME, comment: FIT_SAMPLE_COMMENT, handle: FIT_SAMPLE_HANDLE, num: n },
+  { name: FIT_SAMPLE_CJK_NAME, comment: FIT_SAMPLE_CJK_COMMENT, handle: FIT_SAMPLE_HANDLE, num: n },
+]);
 
 interface Measure { overflow: boolean; cut: boolean; words: number; letters: number; commentXm: number | null; offN: number; cutN: number; numScale: number }
 const units = (s: string) => (/[㐀-鿿]/.test(s) ? [...s.replace(/[\s…]/g, "")].length : s.split(/\s+/).filter(Boolean).length); // words, or ideographs

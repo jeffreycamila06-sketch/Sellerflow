@@ -2,10 +2,12 @@
 // redesign adapter produces output byte-for-byte identical to a VERBATIM copy of
 // App.tsx's builders (the native TSPL/ESC-POS payload shape is DO-NOT-TOUCH).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, printSlip, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, DEF_SETTINGS, type Settings } from "../printing";
+import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, printSlip, __resetWebPrintQueue, __webPrintIdle, stickerBitmapFor, bitmapBmpDataUrl, DEF_SETTINGS, type Settings, markLaptopSizeChosen } from "../printing";
 import { rasterFromBmpDataUrl } from "./printControls.harness";
 import type { FullRaster } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 // ── VERBATIM reference from src/App.tsx:519-585, 658-659. If App.tsx changes,
 // update BOTH this reference and the adapter together — this test is the guard.

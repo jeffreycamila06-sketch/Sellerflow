@@ -5,11 +5,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   printSlip, setStickerQrOn, setStickerQrEntitled, stickerQrAllowedFor, __resetWebPrintQueue, __webPrintIdle, LS_CLASSIC_TEXT,
-  DEF_SETTINGS, type Settings,
+  DEF_SETTINGS, markLaptopSizeChosen, type Settings,
 } from "../printing";
 import jsQR from "jsqr";
 import { pageSrc, rasterFromBmpDataUrl } from "./printControls.harness";
 import type { Buyer } from "../../../lib/orderTypes";
+// round 4 (item 5): these cases exercise the laptop BITMAP page — a chosen sticker size (the old page prints until one is chosen)
+beforeEach(() => markLaptopSizeChosen());
 
 type W = { SellerFlowPrinter?: unknown; Capacitor?: unknown };
 const order = (platform: string | undefined) => ({ orderNum: 1750000000000, item: "A01", qty: 1, price: 320, total: 320, time: "9:41 PM", handle: "annc", name: "Ann Cruz", bNum: 12, platform, status: "New", date: "2026-09-26" });
