@@ -43,10 +43,19 @@ export type BootOpts = {
   legacyRows?: unknown[];                   // rows the legacy lane's GET parcel_scans returns (default [])
   initialStorage?: Record<string, unknown>; // extra chrome.storage.local keys (e.g. a persisted pc_worker)
   config?: Record<string, unknown>;         // extra pc_config fields (e.g. deviceName)
+  // 1.17.0 frozen check: the PC_FROZEN_CHECK reply ("ok" / "no_frozen" / "unknown"; null = the
+  // emap tab didn't answer; "hang" = never answers; "throw" = the stub throws), and the
+  // settings rows the app_settings GET returns (default: the switch row absent = OFF).
+  frozenVerdict?: (row?: { id?: string; store_id?: string }) => string | null;
+  frozenSwitch?: "true" | "false" | "missing" | "error";
+  frozenPending?: unknown[] | "error";       // admin_parcel_frozen_pending rows (default [])
+  frozenVerdictHttp?: number;               // admin_parcel_frozen_verdict status (default 200)
+  extDir?: string;                          // read the worker from another folder (e.g. main's copy)
 };
 
 export function bootWorker(opts: BootOpts = {}) {
-  const src = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/background.js`, "utf8");
+  const extDir = opts.extDir || process.env.SFL_EXT_DIR || "chrome-extension";
+  const src = readFileSync(`${extDir}/background.js`, "utf8");
   const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },
@@ -81,6 +90,13 @@ export function bootWorker(opts: BootOpts = {}) {
           const r = opts.onPickStoreClick ? opts.onPickStoreClick(emapTabs) : undefined;
           return cb(r ? { ok: true, clicked: r.clicked, reason: r.reason || "", text: "選擇取貨門市" } : { ok: true, clicked: true, reason: "", text: "選擇取貨門市" });
         }
+        if (msg.type === "PC_FROZEN_CHECK") {
+          const v = opts.frozenVerdict ? opts.frozenVerdict(msg.row) : "ok";
+          if (v === "hang") return;                       // never answers
+          if (v === "throw") throw new Error("frozen stub threw");
+          if (v === null) return cb(null);
+          return cb({ ok: true, script: "emap-frozen", frozen_store_status: v, frozen_reason: v === "unknown" ? "sim unknown" : "", transient: false, guidFound: true, endpoint: "/ecmap/byIDData.aspx" });
+        }
         if (msg.type === "PC_CHECK_STORE") {
           const v = emap && emap.guid ? (opts.storeVerdict ? opts.storeVerdict(msg.row) : "open") : "unknown";
           return cb({ ok: true, store_full_status: v, store_reason: v === "unknown" ? "eshopGuid not found on emap page" : "", guidFound: Boolean(emap && emap.guid), transient: Boolean(opts.storeTransient) && v === "unknown" });
@@ -113,6 +129,20 @@ export function bootWorker(opts: BootOpts = {}) {
       return { ok: st >= 200 && st < 300, status: st, json: async () => r.json, text: async () => JSON.stringify(r.json), headers: { get: () => "application/json" } };
     }
     if (/admin_parcel_check_requeue/.test(url) && opts.requeueOk === false) return { ok: false, status: 404, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+    if (/rest\/v1\/app_settings\?/.test(url)) {
+      if (opts.frozenSwitch === "error") return { ok: false, status: 500, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+      const rows = opts.frozenSwitch === "true" || opts.frozenSwitch === "false" ? [{ key: "frozen_store_check_enabled", value: opts.frozenSwitch }] : [];
+      return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows), headers: { get: () => "application/json" } };
+    }
+    if (/admin_parcel_frozen_pending/.test(url)) {
+      if (opts.frozenPending === "error") return { ok: false, status: 500, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+      const rows = opts.frozenPending ?? [];
+      return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows), headers: { get: () => "application/json" } };
+    }
+    if (/admin_parcel_frozen_verdict/.test(url)) {
+      const st = opts.frozenVerdictHttp ?? 200;
+      return { ok: st >= 200 && st < 300, status: st, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+    }
     const body = /admin_parcel_checks_pending/.test(url) ? rows
       : /admin_parcel_check_requeue/.test(url) ? 2
       : /admin_parcel_check_config/.test(url) ? { enabled: "true", healthy: "true", sender_phone: "0979593026", probe_buyer: "0919342192", sample_gm: "GM1" }
@@ -128,6 +158,8 @@ export function bootWorker(opts: BootOpts = {}) {
     ? new Proxy(Date, { get: (t, k) => (k === "now" ? now : Reflect.get(t, k)), construct: (t, args) => new t(...(args.length ? (args as [number]) : [now()] as [number])) })
     : Date;
   const sandbox: Record<string, unknown> = {
+    // importScripts (service-worker global): evaluates the named file(s) in the SAME context
+    importScripts: (...files: string[]) => { for (const f of files) vm.runInContext(readFileSync(`${extDir}/${f}`, "utf8"), sandbox as vm.Context, { filename: f }); },
     chrome, fetch, setTimeout, clearTimeout: () => {},
     console: { log: (...a: unknown[]) => calls.logs.push(a.join(" ")), warn: (...a: unknown[]) => calls.logs.push(a.join(" ")), error: (...a: unknown[]) => calls.logs.push(a.join(" ")) },
     Date: DateCtor, Promise, JSON, Math, Number, String, Boolean, Array, Object, Set, Map, URL, URLSearchParams, Error, RegExp, atob: (s: string) => Buffer.from(s, "base64").toString("binary"),

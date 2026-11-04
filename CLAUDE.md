@@ -4661,6 +4661,28 @@ fails all 6 tests with the exact CI error.
 - `check:dist` also fails on any email address (except the support contact + placeholders) and on
   former internal phrases.
 
+## 2026-11-05 — FROZEN (冷凍) STORE CHECK v3 (branch `claude/frozen-store-check-v3`, NOT merged; extension 1.17.0; sql/142 NOT applied)
+ADD-ONLY rebuild of the parked frozen check (the two parked branches stay untouched). Probe on the NORMAL
+E-Map session (Jeff, 2026-11-05): byIDData `cate=27` answers the frozen capability on the same tab/guid
+(968551 → disable on 27 / enable on 3; 151003 → enable on both) → no second tab.
+- **Extension 1.17.0:** NEW `chrome-extension/frozen-check.js` (worker module, `importScripts` line + ONE
+  `pcFrozenKick(pass)` line in `pcRunOnce` — the only two lines added to background.js, zero changed) + NEW
+  `emap-frozen-711.js` (its own `PC_FROZEN_CHECK` listener, cate=27, same guid/endpoint logic). Kill switch
+  `app_settings.frozen_store_check_enabled` (exact 'true' only; read failure = off; ≤1 read-only GET/min is the
+  ONLY request when off — test-compared byte-for-byte to main). Frozen lane = leader-only, 冷凍 rows only
+  (the DB picks them), 1 row/store/pass, 10-min per-store floor (local + shared), 01:00–05:00 window skipped,
+  never awaited (a hung check never delays the normal lane), any failure = that parcel 'unknown'.
+- **sql/142 (+rollback):** `parcel_scans.frozen_store_status/_checked_at`, `store_frozen_cache`,
+  `store_frozen_check_log`, RPCs `admin_parcel_frozen_pending` / `admin_parcel_frozen_verdict`. no_frozen
+  cached 1 h (+ hourly live recheck), ok 10 min, unknown retried 10 min and never overwrites no_frozen, Recheck
+  (NULL + kept checked_at) bypasses the cache. ⚠️ APPLY BEFORE the web deploy (the app selects the column).
+  Phonebook trigger untouched → no_frozen never removes a buyer. `scripts/sql142-behaviour.mjs` = 39 pglite checks.
+- **App (7-11 Parcel Scan, 冷凍 rows only):** no_frozen → red border + `rd_ps2_frozen_no` (wraps, never cut),
+  ⟳ offered, excluded from export (`no_frozen` reason); null/unknown → amber `rd_ps2_frozen_unchecked` instead of
+  the all-clear; ok → normal. Dry rows byte-identical (test-pinned). Previews: `docs/design/frozen-store-check/`.
+- **Rollout (Jeff):** apply sql/142 → merge → web deploy → install 1.17.0 on the Mac STANDBY first with the switch
+  'true' for 1 day → then the Windows checker laptops. Build: `npm run build:extension` → load `chrome-extension-dist/`.
+
 ## ⏸ PARKED (2026-10-06) — automated FROZEN (冷凍) store check
 Parked until the owner is back from his trip. `main` = exactly what ran before the frozen merge
 (revert of merge `5ed43c1` on `claude/park-frozen-check`; extension **1.15.1**; sql/81 was NEVER

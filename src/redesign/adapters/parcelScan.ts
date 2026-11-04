@@ -168,6 +168,9 @@ export interface ParcelScanRow {
   // sql/79 — 常溫 | 冷凍. Only read/written for sellers with the Dry / Frozen control (or once
   // sql/79 is applied); absent = 常溫, exactly today's export.
   tempLayer?: string;
+  // sql/142 — the FROZEN store verdict of the Parcel Checker (冷凍 rows only): 'ok' | 'no_frozen' |
+  // 'unknown' | null (not checked yet). Absent on dry rows and before sql/142 is applied.
+  frozenStoreStatus?: string | null;
   createdAt: string;
 }
 
@@ -392,13 +395,14 @@ export function rowToScan(row: Record<string, unknown>): ParcelScanRow {
     phoneCheckStatus: row.phone_check_status ? String(row.phone_check_status) : null,
     phoneRestrictedUntil: row.phone_restricted_until ? String(row.phone_restricted_until) : null,
     ...(row.temp_layer != null ? { tempLayer: String(row.temp_layer) } : {}),
+    ...(row.frozen_store_status != null ? { frozenStoreStatus: String(row.frozen_store_status) } : {}),
     ...(row.contact_platform != null ? { contactPlatform: String(row.contact_platform) } : {}),
     createdAt: String(row.created_at ?? ""),
   };
 }
 
 export const SCANS_PAGE = 50; // latest EXPORTED rows shown on screen open (history tail)
-const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, temp_layer, contact_platform, created_at";
+const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, temp_layer, contact_platform, frozen_store_status, created_at"; // frozen_store_status: sql/142 is applied BEFORE this ships
 
 // M4 (Oct 1 audit): EVERY not-yet-exported row (the working queue — a flat
 // newest-50 used to push older unexported parcels off screen, so they were
@@ -555,7 +559,7 @@ export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
 // shipping export, PLUS store_check_status. Rows already 'exported' are skipped
 // (neither bucket). store_check_status 'unknown'/null → READY (soft-warned in
 // the UI, never excluded: E-Map may be down / the confirmed-gate off). Pure.
-export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount" | "frozen_settings";
+export type ExportReason = "wrong_store" | "store_full" | "no_frozen" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount" | "frozen_settings";
 export interface ScanExportSplit {
   ready: ParcelScanRow[];
   attention: { row: ParcelScanRow; reason: ExportReason }[];
@@ -581,6 +585,9 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCf
     // A 冷凍 row without the frozen settings is NEVER exported (never as 常溫) — its own reason.
     if (row.tempLayer === TEMP_FROZEN && !frozenCfg) reason = "frozen_settings";
     else if (wrongStoreCode(row)) reason = "wrong_store";                            // E-Map: wrong code (either check)
+    // sql/142: a 冷凍 row whose store can't receive frozen is kept out of the export like a
+    // full store (only the explicit 'no_frozen' verdict; null / 'unknown' never exclude).
+    else if (row.tempLayer === TEMP_FROZEN && row.frozenStoreStatus === "no_frozen") reason = "no_frozen";
     // Extension checks (sql/33) — EXPLICIT problem verdicts only exclude. null/
     // 'unknown' (unchecked / can't verify) do NOT exclude (unchecked ≠ problem),
     // matching store_check_status's own unknown/null → READY behaviour.
@@ -784,6 +791,7 @@ export async function resetExtensionChecks(rowId: string): Promise<{ ok: boolean
       store_full_status: null, store_full_at: null,
       phone_check_status: null, phone_check_at: null,
       phone_check_message: null, phone_restricted_until: null,
+      frozen_store_status: null, // sql/142: a Recheck goes live for the frozen half too (checked_at kept = the "bypass the cache" marker)
     })
     .eq("id", rowId)
     .eq("user_id", me);
@@ -866,7 +874,7 @@ export async function updateParcelScan(
   };
   if (tempLayer) patch.temp_layer = tempLayer;
   if (contactPlatform !== undefined) patch.contact_platform = contactPlatform;
-  if (resetChecks?.storeFull) { patch.store_full_status = null; patch.store_full_at = null; }
+  if (resetChecks?.storeFull) { patch.store_full_status = null; patch.store_full_at = null; patch.frozen_store_status = null; } // a new store code also voids the frozen verdict (sql/142)
   if (resetChecks?.phoneCheck) {
     patch.phone_check_status = null; patch.phone_check_at = null;
     patch.phone_check_message = null; patch.phone_restricted_until = null;

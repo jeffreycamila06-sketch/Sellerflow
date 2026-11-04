@@ -74,8 +74,9 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
 // the render): ⚠️ full → orange, 🚫 restricted / wrong store code → red (red
 // wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
 // only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
-const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null }): boolean =>
-  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted";
+const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null; frozenStoreStatus?: string | null; tempLayer?: string }): boolean =>
+  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted"
+  || (isFrozenLayer(r.tempLayer) && r.frozenStoreStatus === "no_frozen"); // sql/142 — 冷凍 rows only; a dry row never reads the frozen column
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
 function untilDate(iso: string | null): string {
   if (!iso) return "";
@@ -100,9 +101,10 @@ const formToFields = (f: FormState): ScanFields => ({
 });
 
 // Export attention reason → i18n key.
-type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
+type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_no_frozen" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
 const reasonKey = (r: ExportReason): ReasonKey =>
   r === "frozen_settings" ? "rd_ps2_x_frozen_settings"
+  : r === "no_frozen" ? "rd_ps2_x_no_frozen"
   : r === "wrong_store" ? "rd_ps2_x_wrong_store"
     : r === "store_full" ? "rd_ps2_x_store_full"
       : r === "restricted_number" ? "rd_ps2_x_restricted"
@@ -848,7 +850,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (!r.ok) { setDeleteErr(r.error || "recheck_failed"); return; }
     if (aliveRef.current) {
       setRows((prev) => prev.map((x) => (x.id === id
-        ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null }
+        ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null, frozenStoreStatus: null }
         : x)));
       setConfirm(null);
     }
@@ -1532,7 +1534,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             // DISPLAY-ONLY row highlight (2026-09-27): a passing check needs no label;
             // a problem shows as a glowing border. RED (more serious, wins) = restricted
             // buyer OR wrong/invalid store code; ORANGE = store full. Clean = no border.
-            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r);
+            // sql/142 FROZEN rows only: no_frozen = red (blocked, like a full store); ok = normal;
+            // null / unknown = an amber "checking" line instead of the green all-clear. Dry rows: nothing.
+            const frozenRow = isFrozenLayer(r.tempLayer);
+            const frozenNo = frozenRow && r.frozenStoreStatus === "no_frozen";
+            const frozenOk = !frozenRow || r.frozenStoreStatus === "ok";
+            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r) || frozenNo;
             const rowOrange = !rowRed && r.storeFullStatus === "full";
             const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
@@ -1558,6 +1565,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {r.storeFullStatus === "full" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-badge-full">⚠️ {t.rd_ps2_full}</div>
                   )}
+                  {/* sql/142: the store can't receive frozen — red, may wrap to 2 lines on a phone (never cut) */}
+                  {frozenNo && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)", overflowWrap: "anywhere", whiteSpace: "normal" }} data-testid="ps-frozen-no">{t.rd_ps2_frozen_no}</div>
+                  )}
                   {r.phoneCheckStatus === "restricted" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-badge-restricted">
                       🚫 {r.phoneRestrictedUntil ? tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) }) : t.rd_ps2_restricted}
@@ -1567,8 +1578,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       Phone ok but store null/unknown → an AMBER pending line — it must
                       never read as all-clear. (Red restricted / orange full still surface
                       immediately above, independent of the other half.) */}
-                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && (
+                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && frozenOk && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
+                  )}
+                  {/* sql/142: a 冷凍 row whose normal checks passed but whose frozen answer is still
+                      null / unknown — amber "Checking frozen…" instead of the all-clear (never red) */}
+                  {checkOn && r.status !== "exported" && !rowRed && !rowOrange && r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && !frozenOk && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)", overflowWrap: "anywhere" }} data-testid="ps-frozen-unchecked">{t.rd_ps2_frozen_unchecked}</div>
                   )}
                   {/* ONE pending line: ⏳ Checking (animated dots) until BOTH halves resolve,
                       unless the row is already red (restricted / wrong code) or orange
