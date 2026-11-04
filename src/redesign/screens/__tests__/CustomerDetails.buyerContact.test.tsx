@@ -96,4 +96,23 @@ describe("Customer Details — buyer contact ON", () => {
     fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "0922333444" } }); // valid again → enabled
     expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled).toBe(false);
   });
+  it("edit modal: a Facebook share link shows the error, disables Save, never calls the update; a people/<name>/<id>/ link saves fb:<id>", async () => {
+    const r = view();
+    fireEvent.click((await r.findAllByTestId("cd-row-main"))[0]);
+    fireEvent.click(await r.findByTestId("cd-edit"));
+    await r.findByTestId("cd-edit-overlay");
+    fireEvent.click(r.getByTestId("cd-edit-bc-pick-facebook"));
+    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
+    expect(r.getByTestId("cd-edit-bc-err").textContent).toBe("Open the buyer's profile and copy that link — share links can't be used.");
+    expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(r.getByTestId("cd-edit-save"));
+    await new Promise((res) => setTimeout(res, 20));
+    expect(updateParcelCustomer).not.toHaveBeenCalled();
+    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/" } });
+    expect(r.queryByTestId("cd-edit-bc-err")).toBeNull();
+    fireEvent.click(r.getByTestId("cd-edit-save"));
+    await waitFor(() => expect(updateParcelCustomer).toHaveBeenCalledTimes(1));
+    expect(updateParcelCustomer.mock.calls[0][1]).toMatchObject({ notes: "fb:100012345678901" });
+    expect(updateParcelCustomer.mock.calls[0][2]).toBe("facebook");
+  });
 });

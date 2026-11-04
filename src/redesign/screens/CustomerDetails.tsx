@@ -178,7 +178,8 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
     // handle is prompted here, not silently imported without one — UNLESS the seller ticks
     // "no social handle", which imports with a BLANK handle (col J stays empty).
     if (!noHandle && !validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
-    if (contactOn && !noHandle && contactError(platform, handle) !== "") { setImportErr(t.rd_bc_err_whatsapp); return; }
+    const ce = contactOn && !noHandle ? contactError(platform, handle) : "";
+    if (ce !== "") { setImportErr(ce === "facebook" ? t.rd_bc_err_facebook : t.rd_bc_err_whatsapp); return; }
     setImporting(true);
     try {
       const cnt = await countPendingParcels();

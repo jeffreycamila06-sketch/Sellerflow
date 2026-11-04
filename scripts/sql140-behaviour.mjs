@@ -92,11 +92,16 @@ ok(JSON.stringify(await fmcust("0922222222")) === JSON.stringify([{ buyer_userna
 await q("update fm_parcel_scans set buyer_username='+886922222222', contact_platform='whatsapp' where phone='0922222222'");
 ok(JSON.stringify(await fmcust("0922222222")) === JSON.stringify([{ buyer_username: "+886922222222", contact_platform: "whatsapp" }]), "FM handle + platform replaced together");
 
+// a SEPARATE approved FAQ row with the same question text (admin-made, other sections / from a chat) is not ours
+await q("insert into support_faq(lang, question, answer, guide_sections, enabled, approved_at) values ('en', 'How do I remind a buyer to pick up a parcel?', 'admin answer', array['pickup-status'], true, now())");
+await q("insert into support_faq(lang, question, answer, guide_sections, from_chat_id, enabled) values ('en', 'How do I save a buyer''s WhatsApp, LINE, Facebook or Instagram for a parcel?', 'from a chat', array['parcel-scan','pickup-status'], gen_random_uuid(), false)");
+
 // ── rollback ─────────────────────────────────────────────────────────────────
 await db.exec(readFileSync(down, "utf8"));
 for (const t of ["parcel_scans", "parcel_customers", "fm_parcel_scans", "fm_parcel_customers"]) ok(!(await col(t)), `${t}.contact_platform dropped`);
 ok((await q("select count(*)::int as n from app_settings where key='buyer_contact_enabled'")).rows[0].n === 0, "switch row deleted");
-ok((await q("select count(*)::int as n from support_faq")).rows[0].n === 0, "the 16 seeded FAQ rows deleted by the rollback");
+ok((await q("select count(*)::int as n from support_faq where guide_sections = array['parcel-scan','pickup-status']::text[] and from_chat_id is null")).rows[0].n === 0, "the 16 seeded FAQ rows deleted by the rollback");
+ok((await q("select count(*)::int as n from support_faq")).rows[0].n === 2, "a separate approved / chat-made FAQ row with the same question survives the rollback");
 ok(JSON.stringify((await q("select buyer_username from fm_parcel_customers where phone='0922222222'")).rows) === JSON.stringify([{ buyer_username: "+886922222222" }]), "contact values untouched by the rollback");
 await q("insert into parcel_scans(user_id, customer_name, phone, store_id, amount, notes) values ($1,'Ana','0933333333','211004',300,'@ana')", [A]);
 ok(JSON.stringify(await q("select notes from parcel_customers where phone='0933333333'").then((r) => r.rows)) === JSON.stringify([{ notes: "@ana" }]), "restored 7-11 trigger still saves the handle");

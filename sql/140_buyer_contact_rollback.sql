@@ -104,8 +104,9 @@ alter table public.fm_parcel_customers drop column if exists contact_platform;
 
 delete from public.app_settings where key = 'buyer_contact_enabled';
 
--- the 16 FAQ rows seeded by sql/140 §6 (by exact question)
-delete from public.support_faq where question in (
+-- the 16 FAQ rows seeded by sql/140 §6 (by exact question AND the seed's shape — a separate
+-- approved row with the same question, or one made from a chat, is never ours)
+delete from public.support_faq where guide_sections = array['parcel-scan','pickup-status']::text[] and from_chat_id is null and question in (
   'How do I save a buyer''s WhatsApp, LINE, Facebook or Instagram for a parcel?',
   'How do I remind a buyer to pick up a parcel?',
   'Paano i-save ang WhatsApp, LINE, Facebook o Instagram ng buyer para sa parcel?',

@@ -112,7 +112,8 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
     const first = errs.recipientName ?? errs.phone ?? errs.storeId ?? errs.amount ?? errs.total ?? errs.buyerUsername;
     if (first) { setImportErr(t[FM_ERROR_KEY[first]]); return; }
     if (!noHandle && !validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
-    if (contactOn && !noHandle && contactError(platform, handle) !== "") { setImportErr(t.rd_bc_err_whatsapp); return; }
+    const ce = contactOn && !noHandle ? contactError(platform, handle) : "";
+    if (ce !== "") { setImportErr(ce === "facebook" ? t.rd_bc_err_facebook : t.rd_bc_err_whatsapp); return; }
     setImporting(true);
     try {
       const r = contactOn ? await saveFmScan(parcel, undefined, noHandle || platform === "tiktok" ? null : platform) : await saveFmScan(parcel);

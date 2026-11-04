@@ -66,8 +66,14 @@ describe("sql/140 rollback", () => {
     expect(down).toMatch(/^-- ⚠️ REVERT THE WEB DEPLOY FIRST, then run this/);
     const questions = [...up.matchAll(/\n {2}\('(?:en|fil|zh|zh-TW|vi|th|id|bg)', '((?:[^']|'')+)', '/g)].map((m) => m[1]);
     expect(questions).toHaveLength(16);
-    expect(down).toContain("delete from public.support_faq where question in (");
+    // only the seed's shape (sections + not from a chat): a separate approved row with the same question survives
+    expect(down).toContain("delete from public.support_faq where guide_sections = array['parcel-scan','pickup-status']::text[] and from_chat_id is null and question in (");
     for (const q of questions) expect(down).toContain(`  '${q}'`); // every seeded FAQ row removed by its exact question
+    // pre-apply check in the header: a select of the 16 questions that must return 0 rows
+    const header = up.slice(0, up.indexOf("\nbegin;"));
+    expect(header).toContain("PRE-APPLY CHECK — must return 0 rows");
+    expect(header).toContain("--   select lang, question, enabled from public.support_faq where question in (");
+    for (const q of questions) expect(header).toContain(`'${q}'`);
     expect(down).not.toContain("('buyer_contact')");
     expect(down).toContain("('fb_post_sales')");
   });

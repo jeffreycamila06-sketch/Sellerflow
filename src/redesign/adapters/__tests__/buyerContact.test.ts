@@ -3,11 +3,7 @@
 // the ready message (Customer Details name only; masked / missing → no-name greeting), the
 // phone-shaped rule, the lookup keys and the gate matrix (v2 item 8).
 import { describe, it, expect } from "vitest";
-import {
-  BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, RAW_INPUT_MAX, isContactPlatform, platformOf,
-  buyerContactVisible, whatsappDigits, facebookStoredValue, normalizeContact, contactError, lineHint,
-  contactLink, pickupMessage, contactKey, lookupContact,
-} from "../buyerContact";
+import { BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, RAW_INPUT_MAX, isContactPlatform, platformOf, buyerContactVisible, whatsappDigits, facebookStoredValue, normalizeContact, contactError, lineHint, contactLink, pickupMessage, contactKey, lookupContact, FB_RESERVED, contactTruncated } from "../buyerContact";
 
 const T = { rd_pt_msg_tpl: "Hi {name}! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_msg_tpl_noname: "Hi! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_carrier_711: "7-11", rd_pt_carrier_fm: "FamilyMart" };
 const MSG = "Hi Maria! Your parcel is at 7-11 松山門市 (NT$380). Please pick it up by 2026-11-05. Thank you! & # 🎉";
@@ -76,6 +72,48 @@ describe("normalise per platform (the col J value, never > 50 chars)", () => {
     for (const p of BUYER_CONTACT_PLATFORMS) expect(normalizeContact(p, "x".repeat(120)).length).toBeLessThanOrEqual(CONTACT_MAX_LEN);
     expect(lineHint("0912345678")).toBe(true);
     expect(lineHint("yating.line")).toBe(false);
+  });
+});
+
+describe("Facebook links that are not a profile (share / people / messages)", () => {
+  it("people/<name>/<digits>/ and messages/t/<digits> → fb:<id>; a share link is REFUSED on save; typed names and real usernames pass", () => {
+    expect(facebookStoredValue("https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/")).toBe("fb:100012345678901");
+    expect(facebookStoredValue("https://m.facebook.com/messages/t/100012345678901")).toBe("fb:100012345678901");
+    expect(facebookStoredValue("https://www.facebook.com/share/1AbCdEfGh/")).toBe("share"); // what old rows hold
+    expect(contactError("facebook", "https://www.facebook.com/share/1AbCdEfGh/")).toBe("facebook");
+    expect(contactError("facebook", "https://www.facebook.com/SHARE/p/1AbCdEfGh/")).toBe("facebook"); // case-insensitive
+    expect(contactError("facebook", "https://www.facebook.com/profile.php")).toBe("facebook"); // profile.php with no id
+    expect(contactError("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz/")).toBe("facebook"); // people with no id
+    expect(contactError("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/")).toBe("");
+    expect(contactError("facebook", "https://www.facebook.com/joy.reyes.90")).toBe("");
+    expect(contactError("facebook", "Juan Dela Cruz")).toBe("");
+    expect(contactError("facebook", "share")).toBe(""); // a typed word is a name, not a link
+    expect(contactError("facebook", "")).toBe("");
+    expect(contactError("whatsapp", "12345")).toBe("whatsapp"); // unchanged
+  });
+  it("contactLink never builds m.me for a reserved saved value (old data stays safe)", () => {
+    for (const w of FB_RESERVED) {
+      const a = contactLink("facebook", w, "msg");
+      expect(a).toEqual({ kind: "copy", text: "msg", contact: w });
+      expect(JSON.stringify(a)).not.toContain("m.me");
+    }
+    expect(contactLink("facebook", "https://www.facebook.com/share/1AbCdEfGh/", "msg")).toEqual({ kind: "copy", text: "msg", contact: "share" });
+    expect(contactLink("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/", "msg")).toEqual({ kind: "open", url: "https://www.facebook.com/profile.php?id=100012345678901", copy: "msg" });
+    expect(contactLink("facebook", "joy.reyes.90", "msg")).toEqual({ kind: "open", url: "https://m.me/joy.reyes.90", copy: "msg" }); // a real username still opens
+  });
+});
+
+describe("contactTruncated — the 'max 50' hint", () => {
+  it("true when the saved value would be cut; never for a Facebook LINK or a valid WhatsApp number", () => {
+    const long = "x".repeat(51);
+    expect(contactTruncated("other", long)).toBe(true);
+    expect(contactTruncated("instagram", `@${long}`)).toBe(true);
+    expect(contactTruncated("tiktok", "x".repeat(50))).toBe(false);
+    expect(contactTruncated("facebook", long)).toBe(true); // a typed 51-char name IS cut
+    expect(contactTruncated("facebook", "https://www.facebook.com/profile.php?id=100012345678901")).toBe(false); // link → fb:<id>
+    expect(contactTruncated("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz-Santos-Reyes-Of-Manila/100012345678901/")).toBe(false);
+    expect(contactTruncated("whatsapp", "+886 912 345 678")).toBe(false);
+    expect(contactTruncated("whatsapp", "1".repeat(51))).toBe(true); // invalid AND long
   });
 });
 

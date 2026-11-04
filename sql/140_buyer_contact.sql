@@ -22,6 +22,26 @@
 -- ⚠️ The 16 FAQ rows (§6) are seeded DISABLED. WHEN the switch is flipped (not at merge): enable them +
 -- apply sql/116b (the guide) in the same step, so the help bot never describes a feature sellers can't see:
 --   update public.support_faq set enabled = true, approved_at = now() where 'pickup-status' = any(guide_sections) and enabled = false and question in (<the 16 questions below>);
+-- ⚠️ PRE-APPLY CHECK — must return 0 rows (the §6 seed skips an existing question, so a row that is
+-- already there would be left as-is AND the rollback would not know it is ours):
+--   select lang, question, enabled from public.support_faq where question in (
+--     'How do I save a buyer''s WhatsApp, LINE, Facebook or Instagram for a parcel?',
+--     'How do I remind a buyer to pick up a parcel?',
+--     'Paano i-save ang WhatsApp, LINE, Facebook o Instagram ng buyer para sa parcel?',
+--     'Paano paalalahanan ang buyer na kunin ang parcel?',
+--     '怎么为包裹保存买家的 WhatsApp、LINE、Facebook 或 Instagram？',
+--     '怎么提醒买家取件？',
+--     '怎麼為包裹儲存買家的 WhatsApp、LINE、Facebook 或 Instagram？',
+--     '怎麼提醒買家取件？',
+--     'Làm sao lưu WhatsApp, LINE, Facebook hoặc Instagram của người mua cho kiện hàng?',
+--     'Làm sao nhắc người mua nhận kiện hàng?',
+--     'บันทึก WhatsApp, LINE, Facebook หรือ Instagram ของผู้ซื้อสำหรับพัสดุอย่างไร?',
+--     'เตือนผู้ซื้อให้มารับพัสดุอย่างไร?',
+--     'Bagaimana menyimpan WhatsApp, LINE, Facebook, atau Instagram pembeli untuk paket?',
+--     'Bagaimana mengingatkan pembeli mengambil paket?',
+--     'Как да запазя WhatsApp, LINE, Facebook или Instagram на купувача за пратка?',
+--     'Как да напомня на купувача да вземе пратката?'
+--   );
 begin;
 set local lock_timeout = '5s';
 

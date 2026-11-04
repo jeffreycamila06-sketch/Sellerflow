@@ -5,7 +5,7 @@
 // Scan (7-11 + 全家) and both Customer Details screens. Scan QR lives in the screen header.
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useT } from "../i18n";
-import { BUYER_CONTACT_PLATFORMS, contactError, lineHint, RAW_INPUT_MAX, type BuyerContactPlatform } from "../adapters/buyerContact";
+import { BUYER_CONTACT_PLATFORMS, contactError, contactTruncated, lineHint, RAW_INPUT_MAX, type BuyerContactPlatform } from "../adapters/buyerContact";
 
 // Brand marks (small, single-colour). LINE + Facebook paths are the ContactChip ones.
 const MARK: Record<BuyerContactPlatform, ReactNode> = {
@@ -54,6 +54,7 @@ export default function BuyerContactField({ platform, onPlatform, value, onValue
   }, []);
   const size = narrow ? 32 : 34;
   const err = contactError(platform, value);
+  const truncated = contactTruncated(platform, value);
   const ph: Record<BuyerContactPlatform, string> = {
     tiktok: t.rd_bc_ph_tiktok, line: t.rd_bc_ph_line, whatsapp: t.rd_bc_ph_whatsapp, facebook: t.rd_bc_ph_facebook, instagram: t.rd_bc_ph_instagram, other: t.rd_bc_ph_other,
   };
@@ -102,8 +103,9 @@ export default function BuyerContactField({ platform, onPlatform, value, onValue
           aria-label={t.rd_bc_label}
         />
       </div>
-      {err === "whatsapp" && !noContact && <div style={errTxt} data-testid={`${testId}-err`}>{t.rd_bc_err_whatsapp}</div>}
+      {err !== "" && !noContact && <div style={errTxt} data-testid={`${testId}-err`}>{err === "facebook" ? t.rd_bc_err_facebook : t.rd_bc_err_whatsapp}</div>}
       {hint && err === "" && <div style={hintTxt}>{hint}</div>}
+      {truncated && err === "" && !noContact && <div style={hintTxt} data-testid={`${testId}-max`}>{t.rd_bc_hint_max}</div>}
       {invalid && !noContact && err === "" && <div style={errTxt} data-testid={`${testId}-missing`}>{t.rd_ps2_err_handle}</div>}
       <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer", fontSize: 12, color: "var(--text-dim)" }}>
         <input type="checkbox" checked={noContact} onChange={(e) => { const on = e.target.checked; onNoContact(on); if (on) onValue(""); }} data-testid={`${testId}-none`} />

@@ -124,6 +124,24 @@ describe("Parcel Scan — buyer contact ON", () => {
     expect(saveParcelScan.mock.calls[0][0]).toMatchObject({ notes: "fb:100012345678901" });
     expect(saveParcelScan.mock.calls[0][3]).toBe("facebook");
   });
+  it("Facebook share link → error + NO save; a people/<name>/<id>/ link saves fb:<id>", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    await r.findByTestId("ps-confirm");
+    fill(r);
+    fireEvent.click(r.getByTestId("ps-bc-pick-facebook"));
+    fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
+    expect(r.getByTestId("ps-bc-err").textContent).toBe("Open the buyer's profile and copy that link — share links can't be used.");
+    save(r);
+    await new Promise((res) => setTimeout(res, 20));
+    expect(saveParcelScan).not.toHaveBeenCalled();
+    fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/" } });
+    expect(r.queryByTestId("ps-bc-err")).toBeNull();
+    save(r);
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    expect(saveParcelScan.mock.calls[0][0]).toMatchObject({ notes: "fb:100012345678901" });
+    expect(saveParcelScan.mock.calls[0][3]).toBe("facebook");
+  });
   it("Scan QR fills the handle AND selects TikTok (from any platform)", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));

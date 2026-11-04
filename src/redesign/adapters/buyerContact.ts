@@ -52,11 +52,19 @@ export function whatsappDigits(raw: string): string | null {
 // profile.php?id=… (v2 item 5: the stored value is never longer than col J's 50 chars;
 // contactLink rebuilds the full URL). A plain username stays; a name stays as typed.
 const FB_HOST = /^(?:https?:\/\/)?(?:www\.|m\.|web\.)?(?:facebook\.com|fb\.com)\//i;
+// First path segments that are NEVER a username (facebook.com/share/1AbC…, /people/…, …). A
+// link whose first segment is reserved and carries no numeric id is refused on save
+// (contactError "facebook"); a reserved value already stored never becomes an m.me link.
+export const FB_RESERVED = new Set(["share", "people", "groups", "watch", "messages", "reel", "reels", "stories", "story.php", "photo.php", "permalink.php", "profile.php", "home.php", "login", "marketplace", "events", "pages", "hashtag", "search", "videos", "friends", "sharer", "l.php"]);
+export const fbReserved = (stored: string): boolean => FB_RESERVED.has(String(stored ?? "").trim().toLowerCase());
+export const isFacebookLink = (raw: string): boolean => FB_HOST.test(String(raw ?? "").trim());
 export function facebookStoredValue(raw: string): string {
   const v = String(raw ?? "").trim();
   if (!FB_HOST.test(v)) return v.slice(0, CONTACT_MAX_LEN);
   const rest = v.replace(FB_HOST, "").replace(/^\/+/, "");
-  const idm = /^profile\.php\?(?:.*&)?id=(\d+)/i.exec(rest);
+  const idm = /^profile\.php\?(?:.*&)?id=(\d+)/i.exec(rest) // profile.php?id=<digits>
+    ?? /^people\/[^/?#]+\/(\d+)(?:[/?#]|$)/i.exec(rest)      // people/<name>/<digits>/
+    ?? /^messages\/t\/(\d+)(?:[/?#]|$)/i.exec(rest);          // messages/t/<digits>
   if (idm) return `fb:${idm[1]}`;
   const user = rest.split(/[/?#]/)[0] || "";
   return (user || v).slice(0, CONTACT_MAX_LEN);
@@ -76,12 +84,23 @@ export function normalizeContact(platform: BuyerContactPlatform, raw: string): s
   }
 }
 
-// Save-blocking error: only WhatsApp (not 8–15 digits). "" = fine. The LINE "looks like a
-// phone number" case is a hint, not a block (lineHint).
-export function contactError(platform: BuyerContactPlatform, raw: string): "" | "whatsapp" {
-  if (platform !== "whatsapp") return "";
-  if (String(raw ?? "").trim() === "") return "";
-  return whatsappDigits(raw) ? "" : "whatsapp";
+// Save-blocking error: WhatsApp (not 8–15 digits) or a Facebook link that is not a profile
+// (share / people without an id / …). "" = fine. The LINE "looks like a phone number" case is a
+// hint, not a block (lineHint).
+export function contactError(platform: BuyerContactPlatform, raw: string): "" | "whatsapp" | "facebook" {
+  const v = String(raw ?? "").trim();
+  if (v === "") return "";
+  if (platform === "whatsapp") return whatsappDigits(v) ? "" : "whatsapp";
+  if (platform === "facebook") return FB_HOST.test(v) && fbReserved(facebookStoredValue(v)) ? "facebook" : "";
+  return "";
+}
+// The saved value would be cut at 50 (a Facebook LINK is shortened to the username / fb:<id>
+// instead, a valid WhatsApp number is always short) → the field shows a "max 50" hint.
+export function contactTruncated(platform: BuyerContactPlatform, raw: string): boolean {
+  const v = String(raw ?? "").trim();
+  if (platform === "facebook" && FB_HOST.test(v)) return false;
+  if (platform === "whatsapp" && whatsappDigits(v)) return false;
+  return v.replace(/^@+/, "").length > CONTACT_MAX_LEN;
 }
 export const lineHint = (raw: string): boolean => /^\d{4,}$/.test(String(raw ?? "").trim());
 export const LINE_ID = /^[a-z0-9._-]{4,20}$/;
@@ -113,6 +132,7 @@ export function contactLink(platform: BuyerContactPlatform, value: string, messa
       const stored = facebookStoredValue(v);
       const idm = /^fb:(\d+)$/.exec(stored);
       if (idm) return { kind: "open", url: `https://www.facebook.com/profile.php?id=${idm[1]}`, copy: message };
+      if (fbReserved(stored)) return { kind: "copy", text: message, contact: stored }; // "share" etc. (old rows) is nobody's username — never m.me
       if (/^\d{15,}$/.test(stored)) return { kind: "copy", text: message, contact: stored };
       if (FB_USERNAME.test(stored)) return { kind: "open", url: `https://m.me/${encodeURIComponent(stored)}`, copy: message };
       return { kind: "copy", text: message, contact: stored }; // a name → copy only

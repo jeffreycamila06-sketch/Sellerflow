@@ -69,6 +69,24 @@ describe("BuyerContactField", () => {
     expect(r.queryByTestId("t-err")).toBeNull();
     expect(r.getByTestId("t-input").getAttribute("aria-invalid")).toBe("false");
   });
+  it("'max 50' hint when the saved value would be cut; not for a Facebook link, a 50-char value or 'no contact'", () => {
+    const r = render(<Host init="other" />);
+    const input = r.getByTestId("t-input");
+    fireEvent.change(input, { target: { value: "x".repeat(50) } });
+    expect(r.queryByTestId("t-max")).toBeNull();
+    fireEvent.change(input, { target: { value: "x".repeat(51) } });
+    expect(r.getByTestId("t-max").textContent).toBe("Max 50 characters — only the first 50 are saved");
+    fireEvent.click(r.getByTestId("t-pick-facebook"));
+    fireEvent.change(input, { target: { value: "https://www.facebook.com/profile.php?id=100012345678901&x=".padEnd(70, "y") } });
+    expect(r.queryByTestId("t-max")).toBeNull(); // a link is shortened to fb:<id>, nothing is cut
+    fireEvent.change(input, { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
+    expect(r.getByTestId("t-err").textContent).toBe("Open the buyer's profile and copy that link — share links can't be used.");
+    expect(r.getByTestId("t-input").getAttribute("aria-invalid")).toBe("true");
+    fireEvent.change(input, { target: { value: "x".repeat(60) } }); // a typed 60-char name IS cut
+    expect(r.getByTestId("t-max")).toBeTruthy();
+    fireEvent.click(r.getByTestId("t-none"));
+    expect(r.queryByTestId("t-max")).toBeNull();
+  });
   it("'Buyer has no contact' clears + dims the input; typing un-ticks it; 300-char raw cap (the 50 limit is on the saved value)", () => {
     const onSave = vi.fn();
     const r = render(<Host onSave={onSave} />);
