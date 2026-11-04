@@ -192,7 +192,8 @@ function Buyer({ row, t, nowMs, buyerName, platform = null }: { row: ParcelTrack
   const chip = platform && platform !== "tiktok"
     ? <span data-testid="pt-contact" data-platform={platform} style={{ display: "inline-block", marginLeft: 5, padding: "0 6px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", verticalAlign: "middle" }}>{t[PLATFORM_NAME_KEY[platform]]}</span>
     : null;
-  const shown = /^fb:/i.test(name) ? t.rd_pt_fb_profile : platform && platform !== "tiktok" ? name : `@${handle}`; // "fb:1000…" is a profile id, not a name
+  // feature ON + Facebook + a real stored id ("fb:<digits>" / "fbshare:<code>") → "Facebook profile"; OFF = exactly main's @username
+  const shown = platform === "facebook" && (/^fb:\d+$/.test(name) || /^fbshare:[A-Za-z0-9]+$/.test(name)) ? t.rd_pt_fb_profile : platform && platform !== "tiktok" ? name : `@${handle}`;
   const label = name && buyerName
     ? <>
         <span data-testid="pt-buyer-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={buyerName}>{buyerName}</span>

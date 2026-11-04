@@ -80,7 +80,15 @@ describe("Facebook links — ALLOWLIST (anything else is refused on save)", () =
     "https://www.facebook.com/photo/?fbid=100012345678901&set=a.1",
     "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fx.com",
     "https://www.facebook.com/share.php?u=https%3A%2F%2Fx.com",
-    "https://www.facebook.com/share/1AbCdEfGh/",
+    "https://www.facebook.com/share/p/1AbCdEfGh/",
+    "https://www.facebook.com/share/r/1AbCdEfGh/",
+    "https://www.facebook.com/share/v/1AbCdEfGh/",
+    "https://www.facebook.com/share/1AbCdEfGh/extra",
+    "https://www.facebook.com/share/a!b",
+    "https://www.facebook.com/share/abc12",
+    "https://www.facebook.com/share/" + "a".repeat(21),
+    "https://fb.com/share/19tvMLYXPi/",
+    "https://m.me/share/19tvMLYXPi",
     "https://www.facebook.com/media/set/?set=a.123",
     "https://www.facebook.com/gaming/juan",
     "https://www.facebook.com",
@@ -92,6 +100,12 @@ describe("Facebook links — ALLOWLIST (anything else is refused on save)", () =
     "https://www.facebook.com/people/Juan-Dela-Cruz/",
     "https://www.facebook.com/p/Juan-Shop/",
     "https://www.facebook.com/juan/videos/123",
+    "https://www.facebook.com/juan.delacruz.7/video",
+    "https://www.facebook.com/juan.delacruz.7/donate",
+    "https://www.facebook.com/juan.delacruz.7/messenger",
+    "https://www.facebook.com/juan.delacruz.7/posts",
+    "https://www.facebook.com/profile.php?id=100012345abc",
+    "https://www.facebook.com/profile.php?id=100012345abc&ref=x",
     "https://www.facebook.com/login.php?next=x",
     "https://www.facebook.com/live/",
     "https://m.me/share",
@@ -114,6 +128,13 @@ describe("Facebook links — ALLOWLIST (anything else is refused on save)", () =
     ["https://www.facebook.com/juan.delacruz.7/about", "juan.delacruz.7"],
     ["fb.com/joy.reyes.90?mibextid=abc", "joy.reyes.90"],
     ["https://M.FACEBOOK.COM/juan.delacruz.7#x", "juan.delacruz.7"],
+    ["https://www.facebook.com/juan.delacruz.7/photos", "juan.delacruz.7"],
+    ["https://www.facebook.com/juan.delacruz.7/Followers", "juan.delacruz.7"],
+    ["https://www.facebook.com/share/19tvMLYXPi/?mibextid=wwXIfr", "fbshare:19tvMLYXPi"],
+    ["https://www.facebook.com/share/19tvMLYXPi", "fbshare:19tvMLYXPi"],
+    ["https://www.facebook.com/share/19tvMLYXPi/", "fbshare:19tvMLYXPi"],
+    ["m.facebook.com/share/19tvMLYXPi/", "fbshare:19tvMLYXPi"],
+    ["https://web.facebook.com/share/1AbCdEfGh/?x=1#y", "fbshare:1AbCdEfGh"],
   ];
   it("blocked links → contactError 'facebook' (Save blocked), stored value is never a reserved word; plain text passes as before", () => {
     for (const l of BLOCKED) {
@@ -122,7 +143,7 @@ describe("Facebook links — ALLOWLIST (anything else is refused on save)", () =
       expect(contactError("facebook", l), l).toBe("facebook");
       expect(fbReserved(facebookStoredValue(l)), l).toBe(false); // what WOULD be stored is the cut raw link, not "photo" / "share"
     }
-    expect(facebookStoredValue("https://www.facebook.com/share/1AbCdEfGh/")).not.toBe("share");
+    expect(facebookStoredValue("https://www.facebook.com/share/p/1AbCdEfGh/")).not.toBe("share");
     for (const txt of ["Juan Dela Cruz", "share", "photo", "juan.delacruz.7", "100012345678901", ""]) {
       expect(parseFacebookLink(txt)).toBeNull();
       expect(contactError("facebook", txt)).toBe("");
@@ -143,7 +164,12 @@ describe("Facebook links — ALLOWLIST (anything else is refused on save)", () =
       const a = contactLink("facebook", w, "msg");
       expect(a, w).toEqual({ kind: "copy", text: "msg", contact: w });
     }
-    expect(contactLink("facebook", "https://www.facebook.com/share/1AbCdEfGh/", "msg")?.kind).toBe("copy");
+    expect(contactLink("facebook", "https://www.facebook.com/share/p/1AbCdEfGh/", "msg")?.kind).toBe("copy");
+    expect(contactLink("facebook", "fbshare:19tvMLYXPi", "msg")).toEqual({ kind: "open", url: "https://www.facebook.com/share/19tvMLYXPi/", copy: "msg" });
+    expect(contactLink("facebook", "https://www.facebook.com/share/19tvMLYXPi/?mibextid=wwXIfr", "msg")).toEqual({ kind: "open", url: "https://www.facebook.com/share/19tvMLYXPi/", copy: "msg" });
+    for (const bad of ["fbshare:", "fbshare:abc12", "fbshare:a!bcdef", "FBSHARE:19tvMLYXPi", "fbshare:" + "a".repeat(21)]) expect(contactLink("facebook", bad, "msg"), bad).toEqual({ kind: "copy", text: "msg", contact: bad });
+    for (const digits of ["0912345678", "12345", "886912345678", "100012345678901"]) expect(contactLink("facebook", digits, "msg"), digits).toEqual({ kind: "copy", text: "msg", contact: digits }); // a phone typed into the FB field never opens m.me
+    expect(contactTruncated("facebook", "https://www.facebook.com/share/19tvMLYXPi/?mibextid=wwXIfr&" + "x".repeat(60))).toBe(false); // stored as fbshare:<code>
     expect(JSON.stringify(contactLink("facebook", "https://www.facebook.com/photo/?fbid=1", "msg"))).not.toContain("m.me");
     expect(contactLink("facebook", "https://m.me/juan.delacruz.7", "msg")).toEqual({ kind: "open", url: "https://m.me/juan.delacruz.7", copy: "msg" }); // the Messenger button
     expect(contactLink("facebook", "juan.delacruz.7", "msg")).toEqual({ kind: "open", url: "https://m.me/juan.delacruz.7", copy: "msg" });

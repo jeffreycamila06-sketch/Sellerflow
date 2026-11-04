@@ -79,13 +79,27 @@ describe("BuyerContactField", () => {
     fireEvent.click(r.getByTestId("t-pick-facebook"));
     fireEvent.change(input, { target: { value: "https://www.facebook.com/profile.php?id=100012345678901&x=".padEnd(70, "y") } });
     expect(r.queryByTestId("t-max")).toBeNull(); // a link is shortened to fb:<id>, nothing is cut
-    fireEvent.change(input, { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
+    fireEvent.change(input, { target: { value: "https://www.facebook.com/share/p/1AbCdEfGh/" } });
     expect(r.getByTestId("t-err").textContent).toBe("Open the buyer's Facebook profile and copy that link.");
     expect(r.getByTestId("t-input").getAttribute("aria-invalid")).toBe("true");
     fireEvent.change(input, { target: { value: "x".repeat(60) } }); // a typed 60-char name IS cut
     expect(r.getByTestId("t-max")).toBeTruthy();
     fireEvent.click(r.getByTestId("t-none"));
     expect(r.queryByTestId("t-max")).toBeNull();
+  });
+  it("paste: newlines become a space, so a link + a next line is refused as a link instead of merging into one username", () => {
+    const r = render(<Host init="facebook" />);
+    const input = r.getByTestId("t-input") as HTMLInputElement;
+    fireEvent.paste(input, { clipboardData: { getData: () => "https://www.facebook.com/juan.delacruz.7\r\nJuan Dela Cruz" } });
+    expect(input.value).toBe("https://www.facebook.com/juan.delacruz.7 Juan Dela Cruz");
+    expect(r.getByTestId("t-err").textContent).toBe("Open the buyer's Facebook profile and copy that link.");
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.paste(input, { clipboardData: { getData: () => "https://www.facebook.com/share/19tvMLYXPi/?mibextid=wwXIfr" } }); // no newline → the browser's own paste (not intercepted)
+    expect(input.value).toBe(""); // jsdom does not insert text on a non-intercepted paste
+    expect(r.queryByTestId("t-err")).toBeNull();
+    fireEvent.change(input, { target: { value: "https://www.facebook.com/share/19tvMLYXPi/?mibextid=wwXIfr" } });
+    expect(r.queryByTestId("t-err")).toBeNull();
+    expect(r.queryByTestId("t-max")).toBeNull(); // a share link stores "fbshare:<code>" → never cut
   });
   it("'Buyer has no contact' clears + dims the input; typing un-ticks it; 300-char raw cap (the 50 limit is on the saved value)", () => {
     const onSave = vi.fn();

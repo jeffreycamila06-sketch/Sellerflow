@@ -124,13 +124,13 @@ describe("Parcel Scan — buyer contact ON", () => {
     expect(saveParcelScan.mock.calls[0][0]).toMatchObject({ notes: "fb:100012345678901" });
     expect(saveParcelScan.mock.calls[0][3]).toBe("facebook");
   });
-  it("Facebook share link → error + NO save; a people/<name>/<id>/ link saves fb:<id>", async () => {
+  it("Facebook /share/p/ link → error + NO save; a people/<name>/<id>/ link saves fb:<id>; a share-PROFILE link saves fbshare:<code>", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
     await r.findByTestId("ps-confirm");
     fill(r);
     fireEvent.click(r.getByTestId("ps-bc-pick-facebook"));
-    fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
+    fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://www.facebook.com/share/p/1AbCdEfGh/" } }); // /share/p/… is a POST share, not a profile
     expect(r.getByTestId("ps-bc-err").textContent).toBe("Open the buyer's Facebook profile and copy that link.");
     save(r);
     await new Promise((res) => setTimeout(res, 20));
@@ -155,6 +155,12 @@ describe("Parcel Scan — buyer contact ON", () => {
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(2));
     expect(saveParcelScan.mock.calls[1][0]).toMatchObject({ notes: "juan.delacruz.7" });
     expect(saveParcelScan.mock.calls[1][3]).toBe("facebook");
+    fill(r);
+    fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://www.facebook.com/share/19tvMLYXPi/?mibextid=wwXIfr" } }); // the FB app's "Share profile" link
+    expect(r.queryByTestId("ps-bc-err")).toBeNull();
+    save(r);
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(3));
+    expect(saveParcelScan.mock.calls[2][0]).toMatchObject({ notes: "fbshare:19tvMLYXPi" });
   });
   it("Scan QR fills the handle AND selects TikTok (from any platform)", async () => {
     const r = view();

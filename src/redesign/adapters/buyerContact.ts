@@ -54,8 +54,9 @@ export function whatsappDigits(raw: string): string | null {
 // be stored as "photo" / "share" (= m.me/photo → a stranger, and every such buyer merged):
 //   profile.php?id=<digits> · people/<anything>/<digits> · messages/t/<digits> · p/<Name>-<digits 6+>
 //   · a path that is only digits → "fb:<id>"
-//   m.me/<username> · facebook.com/<username>[/<about|posts|…>] → "<username>" (FB_USERNAME, no ".php",
-//   not reserved)
+//   facebook.com/share/<code>[/] → "fbshare:<code>"
+//   m.me/<username> · facebook.com/<username>[/<about|photos|videos|friends|reels|followers|following|mentions>]
+//   → "<username>" (FB_USERNAME, no ".php", not reserved)
 // The stored value is never longer than col J's 50 chars; contactLink rebuilds the URL. Plain
 // text (a name, a plain id) stays as typed.
 const FB_LINK = /^(?:https?:\/\/)?(?:[a-z0-9-]+\.)*(facebook\.com|fb\.com|m\.me|fb\.me)(?::\d+)?(?=[/?#]|$)/i;
@@ -63,7 +64,14 @@ export const isFacebookLink = (raw: string): boolean => FB_LINK.test(String(raw 
 // First path segments that are never a username — the second guard behind the allowlist, and
 // what keeps an already-stored reserved word (old rows) from ever becoming an m.me link.
 export const FB_RESERVED = new Set(["share", "people", "groups", "watch", "messages", "reel", "reels", "stories", "story.php", "photo.php", "permalink.php", "profile.php", "home.php", "login", "marketplace", "events", "pages", "hashtag", "search", "videos", "friends", "sharer", "l.php",
-  "photo", "photos", "media", "gaming", "share.php", "sharer.php", "video.php", "login.php", "live", "notes", "help", "settings", "notifications", "bookmarks", "saved", "business", "ads", "pg", "p", "profile", "fundraisers", "dialog", "plugins", "checkpoint", "privacy", "policies"]);
+  "photo", "photos", "media", "gaming", "share.php", "sharer.php", "video.php", "login.php", "live", "notes", "help", "settings", "notifications", "bookmarks", "saved", "business", "ads", "pg", "p", "profile", "fundraisers", "dialog", "plugins", "checkpoint", "privacy", "policies",
+  "video", "donate", "recover", "memories", "watchparty", "messenger", "instantgames", "places", "offers", "latest", "feeds", "composer"]);
+// facebook.com/<username>/<sub>: only these profile tabs; any other second segment is refused.
+const FB_PROFILE_SUB = new Set(["about", "photos", "videos", "friends", "reels", "followers", "following", "mentions"]);
+// facebook.com/share/<code>/ — the FB app's "Share profile" link; stored as "fbshare:<code>" (the
+// code is opaque, contactLink reopens the share URL). /share/p|r|v/… and deeper paths are refused.
+const FB_SHARE_CODE = /^[A-Za-z0-9]{6,20}$/;
+export const FB_SHARE_STORED = /^fbshare:([A-Za-z0-9]{6,20})$/;
 export const fbReserved = (stored: string): boolean => FB_RESERVED.has(String(stored ?? "").trim().toLowerCase());
 export const FB_USERNAME = /^[A-Za-z0-9.]{5,50}$/;
 const fbUsernameOk = (u: string): boolean => FB_USERNAME.test(u) && !/\.php$/i.test(u) && !fbReserved(u);
@@ -81,12 +89,14 @@ export function parseFacebookLink(raw: string): string | null {
   if (host === "fb.me") return "";
   if (host === "m.me") return seg.length === 1 && fbUsernameOk(seg[0]) ? seg[0] : "";
   const s0 = (seg[0] ?? "").toLowerCase();
-  if (s0 === "profile.php" && seg.length === 1) { const m = /(?:^|[?&])id=(\d+)/.exec(query); return m ? `fb:${m[1]}` : ""; }
+  if (s0 === "profile.php" && seg.length === 1) { const m = /(?:^|[?&])id=(\d+)(?:&|$)/.exec(query); return m ? `fb:${m[1]}` : ""; } // id=100abc → refused
+  if (s0 === "share") return host === "facebook.com" && seg.length === 2 && FB_SHARE_CODE.test(seg[1]) ? `fbshare:${seg[1]}` : "";
   if (s0 === "people" && seg.length === 3 && /^\d+$/.test(seg[2])) return `fb:${seg[2]}`;
   if (s0 === "messages" && seg.length === 3 && seg[1].toLowerCase() === "t" && /^\d+$/.test(seg[2])) return `fb:${seg[2]}`;
   if (s0 === "p" && seg.length === 2) { const m = /-(\d{6,})$/.exec(seg[1]); return m ? `fb:${m[1]}` : ""; }
   if (seg.length === 1 && /^\d+$/.test(seg[0])) return `fb:${seg[0]}`;
-  if ((seg.length === 1 || seg.length === 2) && fbUsernameOk(seg[0])) return seg[0];
+  if (seg.length === 1 && fbUsernameOk(seg[0])) return seg[0];
+  if (seg.length === 2 && fbUsernameOk(seg[0]) && FB_PROFILE_SUB.has(seg[1].toLowerCase())) return seg[0];
   return "";
 }
 export function facebookStoredValue(raw: string): string {
@@ -153,8 +163,11 @@ export function contactLink(platform: BuyerContactPlatform, value: string, messa
       const stored = facebookStoredValue(v);
       const idm = /^fb:(\d+)$/.exec(stored);
       if (idm) return { kind: "open", url: `https://www.facebook.com/profile.php?id=${idm[1]}`, copy: message };
+      const sh = FB_SHARE_STORED.exec(stored);
+      if (sh) return { kind: "open", url: `https://www.facebook.com/share/${sh[1]}/`, copy: message };
+      if (/^fbshare:/i.test(stored)) return { kind: "copy", text: message, contact: stored }; // a malformed share value
       if (fbReserved(stored) || /\.php$/i.test(stored)) return { kind: "copy", text: message, contact: stored }; // "share" / "photo.php" (old rows) is nobody's username — never m.me
-      if (/^\d{15,}$/.test(stored)) return { kind: "copy", text: message, contact: stored };
+      if (/^\d+$/.test(stored)) return { kind: "copy", text: message, contact: stored }; // a phone typed into the FB field never opens m.me
       if (FB_USERNAME.test(stored)) return { kind: "open", url: `https://m.me/${encodeURIComponent(stored)}`, copy: message };
       return { kind: "copy", text: message, contact: stored }; // a name → copy only
     }

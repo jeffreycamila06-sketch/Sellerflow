@@ -118,6 +118,39 @@ describe("feature ON", () => {
   });
 });
 
+describe("Facebook id values in the Buyer cell", () => {
+  it("feature ON: fb:<digits> and fbshare:<code> on a Facebook row → 'Facebook profile' (+ the right link); other fb-looking values show as stored", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [mk({ buyerUsername: "fbshare:19tvMLYXPi" }), mk({ buyerUsername: "FB:abc" }), mk({ buyerUsername: "fb:100012345678901" })] });
+    loadBuyerContacts.mockResolvedValue({ s711: new Map([["fbshare:19tvmlyxpi", "facebook"], ["fb:abc", "facebook"], ["fb:100012345678901", "line"]]), fm: new Map() });
+    const r = view(true);
+    await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(3));
+    await waitFor(() => expect(r.getAllByTestId("pt-contact").length).toBe(3));
+    const rows = r.getAllByTestId("pt-row");
+    expect(rows[0].textContent).toContain("Facebook profile");
+    expect(rows[0].textContent).not.toContain("fbshare:");
+    expect((r.getByTestId("pt-open-facebook") as HTMLAnchorElement).href).toBe("https://www.facebook.com/share/19tvMLYXPi/");
+    expect(rows[1].textContent).toContain("FB:abc"); // not a real id → shown as stored
+    expect(rows[1].textContent).not.toContain("Facebook profile");
+    expect(rows[2].textContent).toContain("fb:100012345678901"); // a LINE row is never relabelled
+    expect(rows[2].textContent).not.toContain("Facebook profile");
+  });
+  it("feature OFF: 'fb:100012345678901', 'FB:abc', 'fb:', 'fbshare:abc123' render as @username — exactly main", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [mk({ buyerUsername: "fb:100012345678901" }), mk({ buyerUsername: "FB:abc" }), mk({ buyerUsername: "fb:" }), mk({ buyerUsername: "fbshare:abc123" })] });
+    loadBuyerContacts.mockResolvedValue({ s711: new Map([["fb:100012345678901", "facebook"], ["fbshare:abc123", "facebook"]]), fm: new Map() });
+    const r = view(false);
+    await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(4));
+    await waitFor(() => expect(loadBuyerContacts).toHaveBeenCalled());
+    const rows = r.getAllByTestId("pt-row");
+    expect(rows[0].textContent).toContain("@fb:100012345678901");
+    expect(rows[1].textContent).toContain("@FB:abc");
+    expect(rows[2].textContent).toContain("@fb:");
+    expect(rows[3].textContent).toContain("@fbshare:abc123");
+    expect(r.queryByText("Facebook profile")).toBeNull();
+    expect(r.queryByTestId("pt-contact")).toBeNull();
+    expect(r.queryByTestId("pt-open-facebook")).toBeNull();
+  });
+});
+
 describe("feature OFF (the map is still read — v2 item 2)", () => {
   it("known non-TikTok platforms → Copy (never a TikTok link); no chips, no Copy message; TikTok row = today's Chase", async () => {
     const r = view(false);

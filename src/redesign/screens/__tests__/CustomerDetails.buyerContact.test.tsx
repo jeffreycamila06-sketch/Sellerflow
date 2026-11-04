@@ -96,19 +96,19 @@ describe("Customer Details — buyer contact ON", () => {
     fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "0922333444" } }); // valid again → enabled
     expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled).toBe(false);
   });
-  it("edit modal: a Facebook share link shows the error, disables Save, never calls the update; a people/<name>/<id>/ link saves fb:<id>", async () => {
+  it("edit modal: a Facebook /share/p/ link shows the error, disables Save, never calls the update; a p/<Name>-<id>/ link saves fb:<id>", async () => {
     const r = view();
     fireEvent.click((await r.findAllByTestId("cd-row-main"))[0]);
     fireEvent.click(await r.findByTestId("cd-edit"));
     await r.findByTestId("cd-edit-overlay");
     fireEvent.click(r.getByTestId("cd-edit-bc-pick-facebook"));
-    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
+    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "https://www.facebook.com/share/p/1AbCdEfGh/" } });
     expect(r.getByTestId("cd-edit-bc-err").textContent).toBe("Open the buyer's Facebook profile and copy that link.");
     expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(r.getByTestId("cd-edit-save"));
     await new Promise((res) => setTimeout(res, 20));
     expect(updateParcelCustomer).not.toHaveBeenCalled();
-    for (const bad of ["https://www.facebook.com/share.php?u=x", "https://www.facebook.com/media/set/?set=a.1", "https://www.facebook.com/gaming/juan", "https://l.facebook.com/l.php?u=x"]) {
+    for (const bad of ["https://www.facebook.com/share.php?u=x", "https://www.facebook.com/media/set/?set=a.1", "https://www.facebook.com/gaming/juan", "https://l.facebook.com/l.php?u=x", "https://www.facebook.com/juan/video", "https://www.facebook.com/profile.php?id=100012345abc"]) {
       fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: bad } });
       expect(r.getByTestId("cd-edit-bc-err").textContent, bad).toBe("Open the buyer's Facebook profile and copy that link.");
       expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled, bad).toBe(true);
