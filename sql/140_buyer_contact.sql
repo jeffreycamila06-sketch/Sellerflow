@@ -19,6 +19,9 @@
 -- Switch on (Plus / Pro / Master, after the device test):
 --   update public.app_settings set value = 'true', updated_at = now() where key = 'buyer_contact_enabled';
 -- Preview before the switch: insert into public.feature_access_emails (feature, email, is_prefix) values ('buyer_contact', '<login email>', false);
+-- ⚠️ The 16 FAQ rows (§6) are seeded DISABLED. WHEN the switch is flipped (not at merge): enable them +
+-- apply sql/116b (the guide) in the same step, so the help bot never describes a feature sellers can't see:
+--   update public.support_faq set enabled = true, approved_at = now() where 'pickup-status' = any(guide_sections) and enabled = false and question in (<the 16 questions below>);
 begin;
 set local lock_timeout = '5s';
 
@@ -153,7 +156,7 @@ $function$;
 
 -- ── 6. help-bot FAQ (user-level words, 8 languages; the guide sections carry the detail) ──
 insert into public.support_faq (lang, question, answer, guide_sections, enabled, approved_at)
-select v.lang, v.question, v.answer, array['parcel-scan','pickup-status'], true, now()
+select v.lang, v.question, v.answer, array['parcel-scan','pickup-status'], false, null  -- disabled until the switch flips (see header)
 from (values
   ('en', 'How do I save a buyer''s WhatsApp, LINE, Facebook or Instagram for a parcel?', 'In Parcel Scan, under the amount, tap the buyer''s app (TikTok, LINE, WhatsApp, Facebook, Instagram or Other) and type the contact. The app you picked stays selected for the next parcel. Tick "Buyer has no contact" if there is none.'),
   ('en', 'How do I remind a buyer to pick up a parcel?', 'Open Pickup Status, tab "Buyer waiting for pickup". Tap the buyer''s app button: WhatsApp opens the chat with a ready reminder; LINE, Messenger and Instagram open the buyer and copy the reminder so you can paste it; Copy message copies the reminder.'),

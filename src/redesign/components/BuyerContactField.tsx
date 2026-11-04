@@ -5,7 +5,7 @@
 // Scan (7-11 + 全家) and both Customer Details screens. Scan QR lives in the screen header.
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useT } from "../i18n";
-import { BUYER_CONTACT_PLATFORMS, contactError, lineHint, CONTACT_MAX_LEN, type BuyerContactPlatform } from "../adapters/buyerContact";
+import { BUYER_CONTACT_PLATFORMS, contactError, lineHint, RAW_INPUT_MAX, type BuyerContactPlatform } from "../adapters/buyerContact";
 
 // Brand marks (small, single-colour). LINE + Facebook paths are the ContactChip ones.
 const MARK: Record<BuyerContactPlatform, ReactNode> = {
@@ -74,7 +74,7 @@ export default function BuyerContactField({ platform, onPlatform, value, onValue
                 key={p} type="button" role="radio" aria-checked={on} aria-label={names[p]} title={names[p]}
                 onClick={() => onPlatform(p)} data-testid={`${testId}-pick-${p}`} data-selected={on ? "1" : "0"}
                 style={{
-                  width: size, height: size, borderRadius: "50%", padding: 0, border: p === "other" ? "1px solid var(--border-strong)" : "none",
+                  width: size, height: size, borderRadius: "50%", padding: 0, border: p === "other" || (p === "tiktok" && !on) ? "1px solid var(--border-strong)" : "none", // TikTok black on a dark theme: keep its edge visible
                   background: b.bg, color: b.fg, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
                   opacity: on ? 1 : 0.42, transform: on ? "scale(1.06)" : "none",
                   boxShadow: on ? "0 0 0 2px var(--surface), 0 0 0 4px var(--accent)" : "none", transition: "opacity .12s, transform .12s, box-shadow .12s",
@@ -91,8 +91,8 @@ export default function BuyerContactField({ platform, onPlatform, value, onValue
         <input
           id={inputId}
           value={value}
-          onChange={(e) => { const v = e.target.value.slice(0, CONTACT_MAX_LEN); onValue(v); if (v.trim() !== "" && noContact) onNoContact(false); }}
-          maxLength={CONTACT_MAX_LEN}
+          onChange={(e) => { const v = e.target.value.slice(0, RAW_INPUT_MAX); onValue(v); if (v.trim() !== "" && noContact) onNoContact(false); }}
+          maxLength={RAW_INPUT_MAX}
           inputMode={INPUT_MODE[platform]}
           placeholder={ph[platform]}
           style={{ ...input, paddingLeft: platform === "other" ? 42 : platform === "tiktok" ? 72 : platform === "line" ? 60 : 92, ...(noContact ? { opacity: 0.5 } : {}) }}

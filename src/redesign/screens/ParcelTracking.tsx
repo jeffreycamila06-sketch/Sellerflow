@@ -33,7 +33,7 @@ import {
 } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
-import { contactLink, looksLikePhone, pickupMessage, type BuyerContactPlatform } from "../adapters/buyerContact";
+import { contactLink, pickupMessage, type BuyerContactPlatform } from "../adapters/buyerContact";
 import { loadBuyerContacts, contactFor, EMPTY_CONTACT_MAPS, type ContactMaps } from "../adapters/buyerContactMap";
 
 const btn: CSSProperties = { padding: "7px 12px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-block", whiteSpace: "nowrap" };
@@ -123,8 +123,8 @@ function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t:
 // the chat with the message in the link; LINE / Messenger / Instagram open the profile with
 // the message copied first; a name / "Other" = copy only). NULL / TikTok = today's chase
 // EXACTLY, plus a separate "Copy message" when the feature is on. No stranger's TikTok (v2
-// item 2): a known non-TikTok platform, or a value that looks like a phone number, never gets
-// TikTok "Open profile" — whatever the map says.
+// item 2): a known non-TikTok platform (the map), or a value starting with "+" (a saved WhatsApp
+// number), never gets TikTok "Open profile". Plain digits stay today's Chase (main parity).
 function ChaseAction({ row, t, onCopy, platform = null, contactOn = false, message = "", onCopyMsg }: {
   row: ParcelTrackingRow; t: T; onCopy: (handle: string) => void;
   platform?: BuyerContactPlatform | null; contactOn?: boolean; message?: string; onCopyMsg?: (m: string) => void;
@@ -132,7 +132,7 @@ function ChaseAction({ row, t, onCopy, platform = null, contactOn = false, messa
   if (rowTab(row) !== "waiting" || isUnchecked(row)) return null; // not checked yet → no chase
   const raw = String(row.buyerUsername ?? "").trim();
   const copyMsg = contactOn && onCopyMsg && message
-    ? <button style={{ ...chaseBtn, whiteSpace: "nowrap" }} onClick={() => onCopyMsg(message)} data-testid="pt-copy-msg" title={t.rd_pt_copy_msg}>{t.rd_pt_copy_msg}</button>
+    ? <button style={{ ...chaseBtn, ...ellipsis, maxWidth: 124 }} onClick={() => onCopyMsg(message)} data-testid="pt-copy-msg" title={t.rd_pt_copy_msg}>{t.rd_pt_copy_msg}</button> // long labels (fil / bg) ellipsise so the name column keeps its room at 390
     : null;
   // two actions → stacked (Copy message over the chase/copy button); one action → today's exact DOM
   const stack = (a: ReactNode, b: ReactNode): ReactNode => (a ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>{a}{b}</span> : b);
@@ -153,7 +153,7 @@ function ChaseAction({ row, t, onCopy, platform = null, contactOn = false, messa
         {t.rd_pt_copy}
       </button>);
   }
-  const target = looksLikePhone(raw) ? { kind: "copy" as const, handle: raw } : chaseTarget(row.buyerUsername);
+  const target = chaseTarget(row.buyerUsername); // "+digits" (a saved WhatsApp number) already lands on Copy here; plain digits = today's Chase
   if (target.kind === "open") {
     // Direct link opens the TikTok app on iOS (universal link). On iOS ALSO copy
     // "@handle" on the same tap so it's ready to paste into the app's Search → profile

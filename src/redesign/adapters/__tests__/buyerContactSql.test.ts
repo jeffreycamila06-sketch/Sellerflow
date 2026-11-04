@@ -39,7 +39,9 @@ describe("sql/140", () => {
     expect(up).toMatch(/pg_get_functiondef\('public\.my_feature_access'::regproc\)/);
     expect(up).toContain("'tiktok_api' if sql/138 is applied");
     for (const l of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"]) expect((up.match(new RegExp(`\\n  \\('${l}', '`, "g")) || []).length).toBe(2);
-    expect(up).toContain("array['parcel-scan','pickup-status']");
+    expect(up).toContain("array['parcel-scan','pickup-status'], false, null"); // FAQ seeded DISABLED
+    expect(up).not.toMatch(/array\[.parcel-scan.,.pickup-status.\],\s+true/);
+    expect(up).toContain("enable them +\n-- apply sql/116b (the guide) in the same step"); // enabled when the switch flips, not at merge
     expect(up).not.toMatch(/contact_platform.*trigger.*internal|RLS|jsonb_object_agg.*\n.*buyer_contact.*secret/);
   });
   it("col J, the export row builders and the extension are not touched by the SQL (no writes to notes / buyer_username)", () => {
@@ -61,6 +63,11 @@ describe("sql/140 rollback", () => {
     expect(down).toContain("after insert or update of recipient_name, phone, store_id, buyer_username\n  on public.fm_parcel_scans");
     for (const t of ["parcel_scans", "parcel_customers", "fm_parcel_scans", "fm_parcel_customers"]) expect(down).toMatch(new RegExp(`alter table public\\.${t}\\s+drop column if exists contact_platform;`));
     expect(down).toContain("delete from public.app_settings where key = 'buyer_contact_enabled';");
+    expect(down).toMatch(/^-- ⚠️ REVERT THE WEB DEPLOY FIRST, then run this/);
+    const questions = [...up.matchAll(/\n {2}\('(?:en|fil|zh|zh-TW|vi|th|id|bg)', '((?:[^']|'')+)', '/g)].map((m) => m[1]);
+    expect(questions).toHaveLength(16);
+    expect(down).toContain("delete from public.support_faq where question in (");
+    for (const q of questions) expect(down).toContain(`  '${q}'`); // every seeded FAQ row removed by its exact question
     expect(down).not.toContain("('buyer_contact')");
     expect(down).toContain("('fb_post_sales')");
   });

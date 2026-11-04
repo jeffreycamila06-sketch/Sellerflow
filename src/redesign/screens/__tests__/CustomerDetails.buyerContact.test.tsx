@@ -82,4 +82,18 @@ describe("Customer Details — buyer contact ON", () => {
     expect(updateParcelCustomer.mock.calls[0][1]).toMatchObject({ notes: "chen.line" });
     expect(updateParcelCustomer.mock.calls[0][2]).toBe("line");
   });
+  it("edit modal: an invalid WhatsApp number shows the error, disables Save and never calls the update", async () => {
+    const r = view();
+    fireEvent.click((await r.findAllByTestId("cd-row-main"))[0]);
+    fireEvent.click(await r.findByTestId("cd-edit"));
+    await r.findByTestId("cd-edit-overlay");
+    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "12345" } });
+    expect(r.getByTestId("cd-edit-bc-err").textContent).toBe("Enter a valid phone number (8–15 digits)");
+    expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(r.getByTestId("cd-edit-save"));
+    await new Promise((res) => setTimeout(res, 20));
+    expect(updateParcelCustomer).not.toHaveBeenCalled();
+    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "0922333444" } }); // valid again → enabled
+    expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled).toBe(false);
+  });
 });

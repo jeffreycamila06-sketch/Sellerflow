@@ -11,6 +11,9 @@ export const BUYER_CONTACT_PLATFORMS = ["tiktok", "line", "whatsapp", "facebook"
 export type BuyerContactPlatform = (typeof BUYER_CONTACT_PLATFORMS)[number];
 export const DEFAULT_CONTACT_PLATFORM: BuyerContactPlatform = "tiktok";
 export const CONTACT_MAX_LEN = 50; // 賣貨便 col J limit — the stored value is never longer
+// What the picker input accepts before normalising (a pasted Facebook link can be ~80 chars and
+// must reach facebookStoredValue whole — the 50 limit is on the SAVED value only).
+export const RAW_INPUT_MAX = 300;
 
 export const isContactPlatform = (v: unknown): v is BuyerContactPlatform =>
   typeof v === "string" && (BUYER_CONTACT_PLATFORMS as readonly string[]).includes(v);
@@ -84,10 +87,6 @@ export const lineHint = (raw: string): boolean => /^\d{4,}$/.test(String(raw ?? 
 export const LINE_ID = /^[a-z0-9._-]{4,20}$/;
 export const IG_USERNAME = /^[A-Za-z0-9._]{1,30}$/;
 
-// A value that looks like a phone number (8–15 digits, optional +) — v2 item 2: such a value
-// never gets a TikTok "Open profile", even when the platform map is missing.
-export const looksLikePhone = (value: string | null | undefined): boolean => /^\+?\d{8,15}$/.test(String(value ?? "").trim());
-
 // ── Pickup Status action per platform ─────────────────────────────────────────
 // open  = a real link (<a href target=_blank>); `copy` is what the tap also copies first
 //         (the ready message) — WhatsApp carries the message in the URL instead.
@@ -107,7 +106,7 @@ export function contactLink(platform: BuyerContactPlatform, value: string, messa
     }
     case "line": {
       const id = v.replace(/^@+/, "").toLowerCase();
-      if (!LINE_ID.test(id)) return { kind: "copy", text: message, contact: v };
+      if (/^\d+$/.test(id) || !LINE_ID.test(id)) return { kind: "copy", text: message, contact: v }; // all digits = a phone number, not a LINE id
       return { kind: "open", url: `https://line.me/R/ti/p/~${encodeURIComponent(id)}`, copy: message };
     }
     case "facebook": {

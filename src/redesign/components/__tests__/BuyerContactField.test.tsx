@@ -69,7 +69,7 @@ describe("BuyerContactField", () => {
     expect(r.queryByTestId("t-err")).toBeNull();
     expect(r.getByTestId("t-input").getAttribute("aria-invalid")).toBe("false");
   });
-  it("'Buyer has no contact' clears + dims the input; typing un-ticks it; 50-char cap", () => {
+  it("'Buyer has no contact' clears + dims the input; typing un-ticks it; 300-char raw cap (the 50 limit is on the saved value)", () => {
     const onSave = vi.fn();
     const r = render(<Host onSave={onSave} />);
     fireEvent.change(r.getByTestId("t-input"), { target: { value: "@maria" } });
@@ -80,8 +80,11 @@ describe("BuyerContactField", () => {
     fireEvent.change(r.getByTestId("t-input"), { target: { value: "x" } });
     expect((r.getByTestId("t-none") as HTMLInputElement).checked).toBe(false);
     fireEvent.change(r.getByTestId("t-input"), { target: { value: "y".repeat(80) } });
-    expect((r.getByTestId("t-input") as HTMLInputElement).value).toHaveLength(50);
+    expect((r.getByTestId("t-input") as HTMLInputElement).value).toHaveLength(80); // not cut before normalising
+    expect(r.getByTestId("t-input").getAttribute("maxlength")).toBe("300");
+    fireEvent.change(r.getByTestId("t-input"), { target: { value: "y".repeat(350) } });
+    expect((r.getByTestId("t-input") as HTMLInputElement).value).toHaveLength(300);
     fireEvent.click(r.getByText("save"));
-    expect(onSave).toHaveBeenCalledWith("tiktok", "y".repeat(50), false);
+    expect(onSave).toHaveBeenCalledWith("tiktok", "y".repeat(300), false);
   });
 });

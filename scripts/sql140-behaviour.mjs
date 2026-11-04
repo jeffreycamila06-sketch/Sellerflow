@@ -10,6 +10,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const [,, up, down] = process.argv;
 const db = new PGlite({ extensions: { pg_trgm } });
@@ -37,9 +38,14 @@ create table public.fm_parcel_scans(id uuid primary key default gen_random_uuid(
 create table public.fm_parcel_customers(id uuid primary key default gen_random_uuid(), user_id uuid not null, phone text not null, name text, store_id text, buyer_username text, created_at timestamptz default now(), updated_at timestamptz default now());
 create unique index fm_parcel_customers_uniq on public.fm_parcel_customers (user_id, phone, lower(trim(coalesce(name, ''))));
 `;
-// the live phonebook triggers before sql/140 = sql/36 + sql/121 (as restored by the rollback file)
+// the live phonebook triggers before sql/140 = sql/36 + sql/121, read from THOSE files (not from the rollback)
+const sqlDir = dirname(up);
+const s36 = readFileSync(join(sqlDir, "36_parcel_customers_filters.sql"), "utf8");
+const s121 = readFileSync(join(sqlDir, "121_fm_parcel_customers.sql"), "utf8");
+const slice = (s, from, to) => { const a = s.indexOf(from), b = s.indexOf(to, a); if (a < 0 || b < 0) throw new Error(`anchor missing: ${from} / ${to}`); return s.slice(a, b + to.length); };
+const before = slice(s36, "create or replace function public.upsert_parcel_customer()", "execute function public.upsert_parcel_customer();")
+  + "\n" + slice(s121, "create function public.upsert_fm_parcel_customer()", "execute function public.upsert_fm_parcel_customer();");
 const live = readFileSync(down, "utf8");
-const before = live.slice(live.indexOf("create or replace function public.upsert_parcel_customer()"), live.indexOf("alter table public.parcel_scans        drop column"));
 const featureFn = live.slice(live.indexOf("create or replace function public.my_feature_access()"), live.lastIndexOf("commit;"));
 
 await db.exec(STUB);
@@ -60,7 +66,8 @@ let bad = false; try { await q("insert into parcel_scans(user_id, phone, notes, 
 ok(bad, "check constraint rejects an unknown platform");
 ok((await q("select value from app_settings where key='buyer_contact_enabled'")).rows[0]?.value === "false", "switch seeded OFF");
 ok((await q("select count(*)::int as n from support_faq where 'pickup-status' = any(guide_sections)")).rows[0].n === 16, "16 FAQ rows (2 × 8 languages)");
-await db.exec(readFileSync(up, "utf8").replace(/^begin;|^commit;/gm, "")).catch(() => {}); // idempotent re-run (no duplicate FAQ / setting)
+ok((await q("select count(*)::int as n from support_faq where enabled or approved_at is not null")).rows[0].n === 0, "FAQ rows seeded DISABLED (enabled with the switch, not at merge)");
+await db.exec(readFileSync(up, "utf8")); // idempotent re-run (no duplicate FAQ / setting) — must not throw
 ok((await q("select count(*)::int as n from support_faq")).rows[0].n === 16, "FAQ seed is idempotent");
 const fa = (await asUser("select public.my_feature_access() as a"))[0].a;
 ok(fa.buyer_contact === true && fa.fb_post_sales === false, `my_feature_access carries buyer_contact for a listed email (${JSON.stringify(fa)})`);
@@ -89,6 +96,7 @@ ok(JSON.stringify(await fmcust("0922222222")) === JSON.stringify([{ buyer_userna
 await db.exec(readFileSync(down, "utf8"));
 for (const t of ["parcel_scans", "parcel_customers", "fm_parcel_scans", "fm_parcel_customers"]) ok(!(await col(t)), `${t}.contact_platform dropped`);
 ok((await q("select count(*)::int as n from app_settings where key='buyer_contact_enabled'")).rows[0].n === 0, "switch row deleted");
+ok((await q("select count(*)::int as n from support_faq")).rows[0].n === 0, "the 16 seeded FAQ rows deleted by the rollback");
 ok(JSON.stringify((await q("select buyer_username from fm_parcel_customers where phone='0922222222'")).rows) === JSON.stringify([{ buyer_username: "+886922222222" }]), "contact values untouched by the rollback");
 await q("insert into parcel_scans(user_id, customer_name, phone, store_id, amount, notes) values ($1,'Ana','0933333333','211004',300,'@ana')", [A]);
 ok(JSON.stringify(await q("select notes from parcel_customers where phone='0933333333'").then((r) => r.rows)) === JSON.stringify([{ notes: "@ana" }]), "restored 7-11 trigger still saves the handle");

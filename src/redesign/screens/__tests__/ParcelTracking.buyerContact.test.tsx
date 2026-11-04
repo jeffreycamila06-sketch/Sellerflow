@@ -1,8 +1,9 @@
 // Pickup Status with buyer contacts: per-platform one-tap buttons (WhatsApp link carries the
 // ready message; LINE / Messenger / Instagram open with the message copied; Other = copy), the
 // contact chip, the message built from the Customer Details name (masked → no name), and the
-// no-stranger rules (v2 item 2): a known non-TikTok platform or a phone-shaped value never
-// gets TikTok "Open profile" — feature on OR off, map present OR missing.
+// no-stranger rules (v2 item 2, as audited): a known non-TikTok platform (the map) or a value
+// starting with "+" (a saved WhatsApp number) never gets TikTok "Open profile" — feature on OR
+// off, map present OR missing. Plain digits with no "+" stay today's Chase (identical to main).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
 import { TProvider } from "../../i18n";
@@ -45,7 +46,7 @@ const ROWS = () => [
   mk({ buyerUsername: "ana.cruz_ig" }),        // Instagram
   mk({ buyerUsername: "maria_shops" }),        // TikTok (NULL platform)
   mk({ buyerUsername: "Telegram @meiling" }),  // Other
-  mk({ buyerUsername: "0912345678" }),         // phone-shaped, NO map entry
+  mk({ buyerUsername: "0912345678" }),         // plain digits, NO map entry → today's Chase (main parity)
 ];
 const MAPS = (): ContactMaps => ({ s711: new Map([["+886922333444", "whatsapp"], ["yating.line", "line"], ["joy.reyes.90", "facebook"], ["ana.cruz_ig", "instagram"], ["telegram @meiling", "other"]]), fm: new Map() });
 const view = (contactOn: boolean) => render(<TProvider lang="en"><ParcelTracking contactOn={contactOn} /></TProvider>);
@@ -87,21 +88,20 @@ describe("feature ON", () => {
     expect(copyText).toHaveBeenLastCalledWith("Hi 王小美! Your parcel is at 7-11 松山門市 (NT$380). Please pick it up by 2026-11-05. Thank you!");
     await waitFor(() => expect(r.container.textContent).toContain("Message copied"));
     // TikTok row keeps today's Chase (Open profile)
-    expect((r.getByTestId("pt-open-profile") as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@maria_shops");
+    expect((r.getAllByTestId("pt-open-profile")[0] as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@maria_shops");
     // Other → Copy copies the contact
     const copies = r.getAllByTestId("pt-copy-username");
     fireEvent.click(copies[0]);
     expect(copyText).toHaveBeenLastCalledWith("Telegram @meiling");
   });
-  it("phone-shaped value with no map entry → Copy, never TikTok Open; the map is loaded with the rows' carriers", async () => {
+  it("plain digits with no map entry keep today's Chase (main parity); a '+' value is Copy; the map is loaded with the rows' carriers", async () => {
     const r = view(true);
     await rowsReady(r);
     await waitFor(() => expect(loadBuyerContacts).toHaveBeenCalled());
     expect(loadBuyerContacts.mock.calls[0][0]).toEqual(expect.arrayContaining([{ handle: "0912345678", carrier: "711" }]));
-    expect(r.getAllByTestId("pt-open-profile")).toHaveLength(1);        // only maria_shops
-    const last = r.getAllByTestId("pt-row")[6];
-    expect(last.querySelector('[data-testid="pt-open-profile"]')).toBeNull();
-    expect(last.querySelector('[data-testid="pt-copy-username"]')).toBeTruthy();
+    const open = r.getAllByTestId("pt-open-profile").map((a) => (a as HTMLAnchorElement).href);
+    expect(open).toEqual(["https://www.tiktok.com/@maria_shops", "https://www.tiktok.com/@0912345678"]);
+    expect(open).not.toContain("https://www.tiktok.com/@+886922333444");
   });
   it("mobile layout: same buttons in the compact list", async () => {
     M.narrow = true;
@@ -123,8 +123,8 @@ describe("feature OFF (the map is still read — v2 item 2)", () => {
     expect(r.queryByTestId("pt-open-line")).toBeNull();
     expect(r.queryByTestId("pt-contact")).toBeNull();
     expect(r.queryByTestId("pt-copy-msg")).toBeNull();
-    expect(r.getAllByTestId("pt-open-profile")).toHaveLength(1);
-    expect((r.getByTestId("pt-open-profile") as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@maria_shops");
+    expect(r.getAllByTestId("pt-open-profile")).toHaveLength(2); // maria_shops + the plain-digit row (today's Chase)
+    expect((r.getAllByTestId("pt-open-profile")[0] as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@maria_shops");
   });
   it("map failed / empty: a LINE id that looks like a handle still opens TikTok today (unchanged), but a phone-shaped value never does", async () => {
     loadBuyerContacts.mockResolvedValue({ s711: new Map(), fm: new Map() });
@@ -133,7 +133,18 @@ describe("feature OFF (the map is still read — v2 item 2)", () => {
     const open = r.getAllByTestId("pt-open-profile").map((a) => (a as HTMLAnchorElement).href);
     expect(open).toContain("https://www.tiktok.com/@maria_shops");
     expect(open).toContain("https://www.tiktok.com/@yating.line");       // today's behaviour for a handle-shaped value
-    expect(open).not.toContain("https://www.tiktok.com/@0912345678");    // phone-shaped → Copy
-    expect(open).not.toContain("https://www.tiktok.com/@+886922333444");
+    expect(open).toContain("https://www.tiktok.com/@0912345678");        // plain digits → today's Chase (main parity)
+    expect(open).not.toContain("https://www.tiktok.com/@+886922333444"); // "+" → Copy (chaseTarget, as on main)
+  });
+  it("feature off: '12345678' and '0912345678' are Chase (identical to main); only '+digits' or a whatsapp map entry is Copy", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [mk({ buyerUsername: "12345678" }), mk({ buyerUsername: "0912345678" }), mk({ buyerUsername: "+886912345678" }), mk({ buyerUsername: "0933111222" })] });
+    loadBuyerContacts.mockResolvedValue({ s711: new Map([["0933111222", "whatsapp"]]), fm: new Map() });
+    const r = view(false);
+    await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(4));
+    await waitFor(() => expect(loadBuyerContacts).toHaveBeenCalled());
+    await waitFor(() => expect(r.getAllByTestId("pt-copy-username")).toHaveLength(2));
+    const open = r.getAllByTestId("pt-open-profile").map((a) => (a as HTMLAnchorElement).href);
+    expect(open).toEqual(["https://www.tiktok.com/@12345678", "https://www.tiktok.com/@0912345678"]);
+    expect(r.queryByTestId("pt-open-whatsapp")).toBeNull(); // off → never the WhatsApp button
   });
 });

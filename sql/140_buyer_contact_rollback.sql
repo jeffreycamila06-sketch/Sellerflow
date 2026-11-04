@@ -1,3 +1,4 @@
+-- ⚠️ REVERT THE WEB DEPLOY FIRST, then run this (the deployed app selects contact_platform).
 -- Rollback of 140 — removes the buyer-contact platform (the saved platforms are LOST; the
 -- contact values in notes / buyer_username are untouched), restores the sql/36 and sql/121
 -- phonebook triggers byte-for-byte, deletes the switch and takes 'buyer_contact' out of
@@ -102,6 +103,26 @@ alter table public.fm_parcel_scans     drop column if exists contact_platform;
 alter table public.fm_parcel_customers drop column if exists contact_platform;
 
 delete from public.app_settings where key = 'buyer_contact_enabled';
+
+-- the 16 FAQ rows seeded by sql/140 §6 (by exact question)
+delete from public.support_faq where question in (
+  'How do I save a buyer''s WhatsApp, LINE, Facebook or Instagram for a parcel?',
+  'How do I remind a buyer to pick up a parcel?',
+  'Paano i-save ang WhatsApp, LINE, Facebook o Instagram ng buyer para sa parcel?',
+  'Paano paalalahanan ang buyer na kunin ang parcel?',
+  '怎么为包裹保存买家的 WhatsApp、LINE、Facebook 或 Instagram？',
+  '怎么提醒买家取件？',
+  '怎麼為包裹儲存買家的 WhatsApp、LINE、Facebook 或 Instagram？',
+  '怎麼提醒買家取件？',
+  'Làm sao lưu WhatsApp, LINE, Facebook hoặc Instagram của người mua cho kiện hàng?',
+  'Làm sao nhắc người mua nhận kiện hàng?',
+  'บันทึก WhatsApp, LINE, Facebook หรือ Instagram ของผู้ซื้อสำหรับพัสดุอย่างไร?',
+  'เตือนผู้ซื้อให้มารับพัสดุอย่างไร?',
+  'Bagaimana menyimpan WhatsApp, LINE, Facebook, atau Instagram pembeli untuk paket?',
+  'Bagaimana mengingatkan pembeli mengambil paket?',
+  'Как да запазя WhatsApp, LINE, Facebook или Instagram на купувача за пратка?',
+  'Как да напомня на купувача да вземе пратката?'
+);
 
 -- my_feature_access() without 'buyer_contact' = sql/137's list (rebuild from the live definition)
 create or replace function public.my_feature_access()

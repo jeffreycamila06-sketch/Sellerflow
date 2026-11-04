@@ -109,6 +109,21 @@ describe("Parcel Scan — buyer contact ON", () => {
     expect(saveParcelScan.mock.calls[2][3]).toBe("facebook");
     expect((saveParcelScan.mock.calls[2][0] as { notes: string }).notes.length).toBeLessThanOrEqual(50);
   });
+  it("a pasted 55-char Facebook profile link is NOT cut by the input: saved as fb:<id>", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    await r.findByTestId("ps-confirm");
+    fill(r);
+    fireEvent.click(r.getByTestId("ps-bc-pick-facebook"));
+    const link = "https://www.facebook.com/profile.php?id=100012345678901";
+    expect(link).toHaveLength(55);
+    fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: link } });
+    expect((r.getByTestId("ps-bc-input") as HTMLInputElement).value).toBe(link); // whole link still in the field
+    save(r);
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    expect(saveParcelScan.mock.calls[0][0]).toMatchObject({ notes: "fb:100012345678901" });
+    expect(saveParcelScan.mock.calls[0][3]).toBe("facebook");
+  });
   it("Scan QR fills the handle AND selects TikTok (from any platform)", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));

@@ -132,8 +132,9 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
     setEditPlatform(platformOf(c.contactPlatform)); setEditNone(false);
     setEditErr("");
   }
+  const editContactErr = contactOn && !editNone && contactError(editPlatform, editForm.username) !== ""; // the field shows the message
   async function saveEdit() {
-    if (!editing) return;
+    if (!editing || editContactErr) return;
     setEditErr("");
     setSavingEdit(true);
     try {
@@ -283,7 +284,7 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
             {editErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="fcd-edit-err">{editErr}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button onClick={() => setEditing(null)} disabled={savingEdit} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: savingEdit ? "default" : "pointer" }} data-testid="fcd-edit-cancel">{t.rd_cd_cancel}</button>
-              <button onClick={() => void saveEdit()} disabled={savingEdit} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: savingEdit ? "default" : "pointer", opacity: savingEdit ? 0.7 : 1 }} data-testid="fcd-edit-save">{t.rd_cd_save}</button>
+              <button onClick={() => void saveEdit()} disabled={savingEdit || editContactErr} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: savingEdit || editContactErr ? "default" : "pointer", opacity: savingEdit || editContactErr ? 0.7 : 1 }} data-testid="fcd-edit-save">{t.rd_cd_save}</button>
             </div>
           </div>
         </div>,

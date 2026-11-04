@@ -4,9 +4,9 @@
 // phone-shaped rule, the lookup keys and the gate matrix (v2 item 8).
 import { describe, it, expect } from "vitest";
 import {
-  BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, isContactPlatform, platformOf,
+  BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, RAW_INPUT_MAX, isContactPlatform, platformOf,
   buyerContactVisible, whatsappDigits, facebookStoredValue, normalizeContact, contactError, lineHint,
-  looksLikePhone, contactLink, pickupMessage, contactKey, lookupContact,
+  contactLink, pickupMessage, contactKey, lookupContact,
 } from "../buyerContact";
 
 const T = { rd_pt_msg_tpl: "Hi {name}! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_msg_tpl_noname: "Hi! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_carrier_711: "7-11", rd_pt_carrier_fm: "FamilyMart" };
@@ -79,10 +79,13 @@ describe("normalise per platform (the col J value, never > 50 chars)", () => {
   });
 });
 
-describe("looksLikePhone (v2 item 2) — never a TikTok Open for a phone-shaped value", () => {
-  it("8–15 digits with an optional +", () => {
-    for (const v of ["+886912345678", "0912345678", "12345678", "+1 "]) expect(looksLikePhone(v.trim() === "+1" ? "+123456789012345" : v)).toBe(true);
-    for (const v of ["maria_shops", "1234567", "+1234567890123456", "", null, undefined, "0912-345-678"]) expect(looksLikePhone(v)).toBe(false);
+describe("input vs saved limits", () => {
+  it("the picker input takes 300 raw chars (a long Facebook link must arrive whole); the saved value is still ≤ 50", () => {
+    expect(RAW_INPUT_MAX).toBe(300);
+    expect(CONTACT_MAX_LEN).toBe(50);
+    const link = "https://www.facebook.com/profile.php?id=100012345678901"; // 55 chars — longer than col J
+    expect(link).toHaveLength(55);
+    expect(normalizeContact("facebook", link)).toBe("fb:100012345678901");
   });
 });
 
@@ -98,6 +101,8 @@ describe("contactLink — the Pickup Status action per platform", () => {
   it("LINE: line.me add-friend + the message copied; a bad id → copy", () => {
     expect(contactLink("line", "@Yating.Line", MSG)).toEqual({ kind: "open", url: "https://line.me/R/ti/p/~yating.line", copy: MSG });
     expect(contactLink("line", "ab", MSG)).toEqual({ kind: "copy", text: MSG, contact: "ab" });
+    expect(contactLink("line", "0912345678", MSG)).toEqual({ kind: "copy", text: MSG, contact: "0912345678" }); // all digits = a phone number: never a line.me link
+    expect(contactLink("line", "@12345678", MSG)).toMatchObject({ kind: "copy" });
     expect(contactLink("line", "has space", MSG)).toMatchObject({ kind: "copy" });
   });
   it("Facebook: username → m.me; fb:id → profile URL; a name / 15+ digits → copy only", () => {
