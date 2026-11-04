@@ -332,7 +332,10 @@ test("08 Facebook settings for a seller without Facebook: plain notice, no dead 
   const switchSeen = watchSwitch(page, "fb_polish_v2");
   await openApp(page);
   await openChannel(page, "facebook");
-  if (await page.getByText(EN.rd_fb_channels_title, { exact: true }).first().isVisible({ timeout: 4000 }).catch(() => false)) {
+  const hasFb = page.getByText(EN.rd_fb_channels_title, { exact: true }).first();
+  const noFb = page.getByTestId("mc-fb-activation");
+  await hasFb.or(noFb).first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined); // access loads a moment after the screen opens
+  if (await hasFb.isVisible().catch(() => false)) {
     test.skip(true, "This test account HAS Facebook access (it sees 'Manage Facebook pages') — this check is for sellers without it.");
   }
   await expect(page.getByText(EN.rd_ch_manage_fb_title, { exact: true })).toBeVisible();
@@ -558,6 +561,13 @@ test("13 Practice comments: Auto order, duplicate, sticker", async () => {
 // Parcel Scan / Customer Details / Pickup Status / buyer contact — NOTHING is saved here.
 // A saved parcel can reach the parcel checker and the 7-11 export, so every check below is
 // type-and-look: fill, read the message and the Save button's state, then Cancel.
+// Pickup Status shows either its tabs or, for an account with no parcels yet, the first-sync card.
+async function pickupLoaded(page: Page): Promise<"tabs" | "empty"> {
+  const tabs = page.getByTestId("pt-tabs");
+  const empty = page.getByTestId("pt-empty-sync");
+  await expect(tabs.or(empty).first(), "Pickup Status showed neither its tabs nor the first-sync card").toBeVisible({ timeout: 30_000 });
+  return (await tabs.count()) ? "tabs" : "empty";
+}
 const RULE = "ps-bc";
 const PICKUP_BUTTONS = ["whatsapp", "line", "facebook", "instagram"] as const;
 
@@ -664,7 +674,7 @@ test("18 Pickup Status opens on every tab with no error", async ({ page }) => {
   const entry = await openParcelTile(page, "parceltracking");
   if (entry === "hidden") test.skip(true, "Pickup Status is not offered to this test account (needs the Pickup Status access list and a Plus/Pro/Master plan).");
   if (entry === "locked") test.skip(true, "Pickup Status shows as locked for this test account's plan — the robot never taps a locked tile.");
-  await expect(page.getByTestId("pt-tabs")).toBeVisible({ timeout: 30_000 });
+  if ((await pickupLoaded(page)) === "empty") { await screenIsFine(page, "Pickup Status (no parcels yet)"); note("Pickup Status opened: no parcels yet on this account, so it shows the first-sync card (no tabs). Nothing changed."); return; }
   await expect(page.getByTestId("pt-error")).toHaveCount(0);
   const tabs = page.locator('[data-testid^="pt-tab-"]:not([data-testid="pt-tab-empty"])');
   const n = await tabs.count();
@@ -688,7 +698,7 @@ test("19 Pickup Status buttons only point to the buyer's own app (read-only)", a
   const entry = await openParcelTile(page, "parceltracking");
   if (entry === "hidden") test.skip(true, "Pickup Status is not offered to this test account (needs the Pickup Status access list and a Plus/Pro/Master plan).");
   if (entry === "locked") test.skip(true, "Pickup Status shows as locked for this test account's plan — the robot never taps a locked tile.");
-  await expect(page.getByTestId("pt-tabs")).toBeVisible({ timeout: 30_000 });
+  if ((await pickupLoaded(page)) === "empty") test.skip(true, "The test account has no parcels in Pickup Status (first-sync card), so there are no buttons to check (the robot cannot add a parcel).");
   await page.getByTestId("pt-tab-all").click();
   await expect(page.getByTestId("pt-error")).toHaveCount(0);
   await page.waitForTimeout(1500); // the contact map and names load right after the rows
@@ -721,7 +731,7 @@ test("20 Buyer contact OFF for this account: plain @username box, no contact but
   }
   const pickup = await openParcelTile(page, "parceltracking");
   if (pickup !== "open") { note(`Parcel Scan: plain box, no picker. Pickup Status is ${pickup === "locked" ? "locked" : "not offered"} for this account, so its buttons were not checked.`); return; }
-  await expect(page.getByTestId("pt-tabs")).toBeVisible({ timeout: 30_000 });
+  if ((await pickupLoaded(page)) === "empty") { note("Parcel Scan: plain @username box, no picker. Pickup Status: no parcels yet (first-sync card), so no buttons to check."); return; }
   await page.getByTestId("pt-tab-all").click();
   await page.waitForTimeout(1500);
   for (const k of PICKUP_BUTTONS) expect(await page.getByTestId(`pt-open-${k}`).count(), `a ${k} button shows although buyer contact is off`).toBe(0);
