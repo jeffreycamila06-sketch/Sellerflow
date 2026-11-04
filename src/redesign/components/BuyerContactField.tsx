@@ -95,7 +95,7 @@ export default function BuyerContactField({ platform, onPlatform, value, onValue
           onChange={(e) => { const v = e.target.value.slice(0, RAW_INPUT_MAX); onValue(v); if (v.trim() !== "" && noContact) onNoContact(false); }}
           onPaste={(e) => {
             // a pasted link + a following line must not merge into one "username": newlines → a space
-            const txt = e.clipboardData.getData("text");
+            const txt = e.clipboardData ? e.clipboardData.getData("text") : ""; // no clipboard data → the browser's own paste
             if (!/[\r\n]/.test(txt)) return;
             e.preventDefault();
             const el = e.currentTarget; const a = el.selectionStart ?? value.length; const b = el.selectionEnd ?? value.length;

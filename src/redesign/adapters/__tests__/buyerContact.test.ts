@@ -3,7 +3,7 @@
 // the ready message (Customer Details name only; masked / missing → no-name greeting), the
 // phone-shaped rule, the lookup keys and the gate matrix (v2 item 8).
 import { describe, it, expect } from "vitest";
-import { BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, RAW_INPUT_MAX, isContactPlatform, platformOf, buyerContactVisible, whatsappDigits, facebookStoredValue, normalizeContact, contactError, lineHint, contactLink, pickupMessage, contactKey, lookupContact, FB_RESERVED, contactTruncated, isFacebookLink, parseFacebookLink, fbReserved } from "../buyerContact";
+import { BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, RAW_INPUT_MAX, isContactPlatform, platformOf, buyerContactVisible, whatsappDigits, facebookStoredValue, normalizeContact, contactError, lineHint, contactLink, pickupMessage, contactKey, lookupContact, FB_RESERVED, contactTruncated, isFacebookLink, parseFacebookLink, fbReserved, FB_USERNAME, FB_WEBSITE } from "../buyerContact";
 
 const T = { rd_pt_msg_tpl: "Hi {name}! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_msg_tpl_noname: "Hi! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_carrier_711: "7-11", rd_pt_carrier_fm: "FamilyMart" };
 const MSG = "Hi Maria! Your parcel is at 7-11 松山門市 (NT$380). Please pick it up by 2026-11-05. Thank you! & # 🎉";
@@ -272,5 +272,63 @@ describe("lookup keys (v2 item 3)", () => {
     expect(lookupContact(m, "nobody", "1")).toBeNull();
     expect(lookupContact(m, "", "1")).toBeNull();
     expect(contactKey("maria")).toBe("maria");
+  });
+});
+
+describe("Facebook parsing — audit leftovers (polish)", () => {
+  it("a. more reserved first segments", () => {
+    for (const w of ["about", "terms", "policy", "policies", "careers", "legal", "directory", "mobile", "games", "campaign", "security", "safety", "community", "support", "hacked", "adsmanager", "insights", "commerce", "shops", "weather", "fundraiser", "tools", "developers"]) {
+      expect(fbReserved(w), w).toBe(true);
+      expect(parseFacebookLink(`https://www.facebook.com/${w}`), w).toBe("");
+      expect(contactLink("facebook", w, "msg"), w).toEqual({ kind: "copy", text: "msg", contact: w });
+    }
+  });
+  it("b. FB_USERNAME starts and ends with a letter/digit, 5–50 long", () => {
+    for (const bad of ["....", ".....", "juan.", "..juan", ".juan.", "juan"]) {
+      expect(FB_USERNAME.test(bad), bad).toBe(false);
+      expect(parseFacebookLink(`https://www.facebook.com/${bad}`), bad).toBe("");
+      expect(contactLink("facebook", bad, "msg")?.kind, bad).toBe("copy");
+    }
+    expect(FB_USERNAME.test("a".repeat(51))).toBe(false);
+    expect(parseFacebookLink(`https://www.facebook.com/${"a".repeat(51)}`)).toBe("");
+    for (const ok of ["juan.delacruz.7", "a.b.c", "12345", "a".repeat(50)]) expect(FB_USERNAME.test(ok), ok).toBe(true);
+  });
+  it("c. a stored value that looks like a website → copy only", () => {
+    for (const w of ["shop.com", "mypage.net", "ngo.org", "brand.co", "page.me", "app.io", "store.tw", "tindahan.ph", "SHOP.COM"]) {
+      expect(FB_WEBSITE.test(w), w).toBe(true);
+      expect(contactLink("facebook", w, "msg"), w).toEqual({ kind: "copy", text: "msg", contact: w });
+    }
+    expect(contactLink("facebook", "joy.reyes.90", "msg")?.kind).toBe("open");
+    expect(contactLink("facebook", "shop.company", "msg")?.kind).toBe("open"); // not a known web ending
+  });
+  it("d. ids are at most 20 digits everywhere", () => {
+    const id20 = "1".repeat(20); const id21 = "1".repeat(21);
+    expect(parseFacebookLink(`https://www.facebook.com/profile.php?id=${id20}`)).toBe(`fb:${id20}`);
+    expect(parseFacebookLink(`https://www.facebook.com/profile.php?id=${id21}`)).toBe("");
+    expect(parseFacebookLink(`https://www.facebook.com/people/Juan/${id21}/`)).toBe("");
+    expect(parseFacebookLink(`https://www.facebook.com/messages/t/${id21}`)).toBe("");
+    expect(parseFacebookLink(`https://www.facebook.com/p/Juan-Shop-${id21}/`)).toBe("");
+    expect(parseFacebookLink(`https://www.facebook.com/${id21}`)).toBe("");
+    expect(parseFacebookLink(`https://m.me/${id21}`)).toBe("");
+    expect(contactLink("facebook", `fb:${id20}`, "msg")?.kind).toBe("open");
+    expect(contactLink("facebook", `fb:${id21}`, "msg")).toEqual({ kind: "copy", text: "msg", contact: `fb:${id21}` });
+  });
+  it("e. the #fragment is dropped before the query is read", () => {
+    expect(parseFacebookLink("https://www.facebook.com/profile.php?id=123#about")).toBe("fb:123");
+    expect(parseFacebookLink("https://www.facebook.com/profile.php#?id=1")).toBe("");
+    expect(parseFacebookLink("https://www.facebook.com/juan.delacruz.7#about")).toBe("juan.delacruz.7");
+    expect(parseFacebookLink("https://www.facebook.com/share/19tvMLYXPi/#x")).toBe("fbshare:19tvMLYXPi");
+  });
+  it("f. m.me/<digits> and messenger.com/t/<digits> → fb:<id>; fb.watch links are refused", () => {
+    expect(parseFacebookLink("https://m.me/100012345678901")).toBe("fb:100012345678901");
+    expect(parseFacebookLink("https://www.messenger.com/t/100012345678901")).toBe("fb:100012345678901");
+    expect(parseFacebookLink("messenger.com/t/100012345678901/")).toBe("fb:100012345678901");
+    expect(parseFacebookLink("https://www.messenger.com/t/juan.delacruz.7")).toBe("");
+    expect(parseFacebookLink("https://www.messenger.com/juan.delacruz.7")).toBe("");
+    expect(isFacebookLink("https://fb.watch/abc123/")).toBe(true);
+    expect(parseFacebookLink("https://fb.watch/abc123/")).toBe("");
+    expect(contactError("facebook", "https://fb.watch/abc123/")).toBe("facebook");
+    expect(contactError("facebook", "https://m.me/100012345678901")).toBe("");
+    expect(normalizeContact("facebook", "https://www.messenger.com/t/100012345678901")).toBe("fb:100012345678901");
   });
 });

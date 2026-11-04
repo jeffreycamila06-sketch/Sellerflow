@@ -78,14 +78,14 @@ export async function loadBuyerContacts(rows: { handle: string | null | undefine
   const out: ContactMaps = { s711: new Map(), fm: new Map() };
   const wanted = new Set(rows.map((r) => normHandle(r.handle)).filter(Boolean));
   if (!wanted.size || !isSupabaseConfigured || !supabase) return out;
-  const anyFm = rows.some((r) => r.carrier === "fm");
-  const any711 = rows.some((r) => r.carrier !== "fm");
+  // BOTH sources whenever there is a row: a seller with only FamilyMart parcels still gets the
+  // 7-11 phonebook as contactFor's fallback map (and the other way round).
   try {
     const me = await uid();
     if (!me) return out;
     const sinceIso = new Date(Date.now() - BUYER_CONTACTS_DAYS * 24 * 60 * 60 * 1000).toISOString();
-    if (any711) for (const s of SRC_711) await readInto(out.s711, wanted, me, s, sinceIso);
-    if (anyFm) for (const s of SRC_FM) await readInto(out.fm, wanted, me, s, sinceIso);
+    for (const s of SRC_711) await readInto(out.s711, wanted, me, s, sinceIso);
+    for (const s of SRC_FM) await readInto(out.fm, wanted, me, s, sinceIso);
     return out;
   } catch { return { s711: new Map(), fm: new Map() }; }
 }

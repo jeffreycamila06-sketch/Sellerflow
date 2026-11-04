@@ -1957,6 +1957,8 @@ const RAW: Record<string, Row> = {
   rd_pt_open_whatsapp: { en: "WhatsApp", fil: "WhatsApp", zh: "WhatsApp", "zh-TW": "WhatsApp", vi: "WhatsApp", th: "WhatsApp", id: "WhatsApp", bg: "WhatsApp" },
   rd_pt_open_line: { en: "LINE", fil: "LINE", zh: "LINE", "zh-TW": "LINE", vi: "LINE", th: "LINE", id: "LINE", bg: "LINE" },
   rd_pt_open_facebook: { en: "Messenger", fil: "Messenger", zh: "Messenger", "zh-TW": "Messenger", vi: "Messenger", th: "Messenger", id: "Messenger", bg: "Messenger" },
+  rd_pt_open_fb_profile: { en: "Facebook", fil: "Facebook", zh: "Facebook", "zh-TW": "Facebook", vi: "Facebook", th: "Facebook", id: "Facebook", bg: "Facebook" },
+  rd_pt_open_tiktok: { en: "TikTok", fil: "TikTok", zh: "TikTok", "zh-TW": "TikTok", vi: "TikTok", th: "TikTok", id: "TikTok", bg: "TikTok" },
   rd_pt_open_instagram: { en: "Instagram", fil: "Instagram", zh: "Instagram", "zh-TW": "Instagram", vi: "Instagram", th: "Instagram", id: "Instagram", bg: "Instagram" },
   rd_pt_copy_msg: { en: "Copy message", fil: "Kopya mensahe", zh: "复制消息", "zh-TW": "複製訊息", vi: "Chép tin nhắn", th: "คัดลอกข้อความ", id: "Salin pesan", bg: "Копирай текста" },
   rd_pt_msg_copied: { en: "Message copied", fil: "Nakopya ang mensahe", zh: "消息已复制", "zh-TW": "訊息已複製", vi: "Đã sao chép tin nhắn", th: "คัดลอกข้อความแล้ว", id: "Pesan disalin", bg: "Съобщението е копирано" },
