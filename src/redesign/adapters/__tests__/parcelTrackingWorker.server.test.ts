@@ -13,7 +13,7 @@ const H = 60 * 60 * 1000;
 
 type Q = { table: string; op: string; filters: unknown[][]; patch: unknown };
 type Cfg = {
-  enabled?: string; plan?: string; role?: string; job?: Record<string, unknown> | null; claimError?: unknown;
+  enabled?: string; plan?: string; role?: string; planStatus?: string; planExpiry?: string | null; job?: Record<string, unknown> | null; claimError?: unknown;
   rows?: Record<string, unknown>[]; todaysJobs?: { requests_used: number }[]; dailyRequests?: number;
   healthToday?: boolean; freshAfter?: boolean; settings?: Record<string, string>;
 };
@@ -24,7 +24,7 @@ function fakeSb(cfg: Cfg = {}) {
     const has = (k: string, ...v: unknown[]) => q.filters.some((f) => f[0] === k && v.every((x, i) => f[i + 1] === x));
     if (q.table === "app_settings") return { data: [{ key: "parcel_tracking_enabled", value: cfg.enabled ?? "true" },
       ...Object.entries(cfg.settings ?? {}).map(([key, value]) => ({ key, value }))], error: null };
-    if (q.table === "seller_profiles") return { data: { plan: cfg.plan ?? "plus", role: cfg.role ?? "seller" }, error: null };
+    if (q.table === "seller_profiles") return { data: { plan: cfg.plan ?? "plus", role: cfg.role ?? "seller", plan_status: cfg.planStatus ?? "active", plan_expiry: cfg.planExpiry ?? null }, error: null };
     if (q.table === "parcel_tracking_daily") return { data: { requests: cfg.dailyRequests ?? 0 }, error: null };
     if (q.table === "parcel_tracking_jobs" && q.op === "select") {
       if (has("eq", "kind", "health")) return { data: cfg.healthToday ? [{ id: "h" }] : [], error: null };
@@ -158,6 +158,30 @@ describe("createWorker().tick", () => {
     expect(await w.tick()).toEqual({ idle: true });
   });
 
+  for (const [why, cfg] of [["plan_status expired", { planStatus: "expired" }], ["plan_expiry in the past", { planStatus: "active", planExpiry: "2020-01-01T00:00:00Z" }]] as const) {
+    it(`Check now for an EXPIRED seller (${why}) → skipped plan_expired: no check, no delete, rows untouched`, async () => {
+      const sb = fakeSb({ job: job("manual"), rows: [row("a")], ...cfg });
+      const check = checkOk();
+      const log = quiet();
+      const w = createWorker({ serviceSb: sb, now: () => T0, logger: log, checkRowsImpl: check });
+      const out = await w.tick();
+      expect(out).toMatchObject({ status: "skipped", error: "plan_expired" });
+      expect(check).not.toHaveBeenCalled();
+      expect(sb.queries.some((q) => q.table === "parcel_tracking" && q.op === "select")).toBe(false);
+      expect(sb.queries.some((q) => q.table === "parcel_tracking" && q.op === "delete")).toBe(false);
+      expect(jobUpdate(sb)!.patch).toMatchObject({ status: "skipped", error: "plan_expired", parcels_checked: 0 });
+      expect(accessUpdate(sb)).toBeUndefined();
+      expect(JSON.stringify(log.log.mock.calls)).toContain("[PARCEL-JOB] skipped job=J1 user=U1: plan expired (rows untouched)");
+    });
+  }
+  it("an ADMIN with an expired plan still runs the job; an active seller with a future expiry too", async () => {
+    for (const cfg of [{ role: "admin", planStatus: "expired", planExpiry: "2020-01-01T00:00:00Z" }, { planStatus: "active", planExpiry: "2099-01-01T00:00:00Z" }]) {
+      const sb = fakeSb({ job: job("manual"), rows: [row("a")], ...cfg });
+      const w = createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: checkOk() });
+      expect(await w.tick()).toMatchObject({ status: "done", checked: 1 });
+      expect(sb.queries.some((q) => q.table === "parcel_tracking" && q.op === "delete")).toBe(true); // retention still runs
+    }
+  });
   it("manual job: checks the scope, finishes the job row, sets last_completed_at, writes a health row, emits job-done", async () => {
     const sb = fakeSb({ job: job("manual"), rows: [row("a"), row("b")] });
     const emit = vi.fn();

@@ -304,8 +304,12 @@ export function activePollIds(ids, profiles, nowDate) {
 // A profile read failure → poll everyone as before (logged), never a silent stop.
 async function dropExpiredSellers(serviceSb, ids, nowDate, logger) {
   if (!ids.length) return ids;
-  const { data, error } = await serviceSb.from("seller_profiles").select("auth_user_id, role, plan_status, plan_expiry").in("auth_user_id", ids);
-  if (error) { logger.warn("[PARCEL-POLL] profile read failed — polling everyone:", error.code || "error"); return ids; }
+  let data = null;
+  try {
+    const r = await serviceSb.from("seller_profiles").select("auth_user_id, role, plan_status, plan_expiry").in("auth_user_id", ids);
+    if (r.error) { logger.warn("[PARCEL-POLL] profile read failed — polling everyone:", r.error.code || "error"); return ids; }
+    data = r.data;
+  } catch (e) { logger.warn("[PARCEL-POLL] profile read threw — polling everyone:", (e && e.code) || "threw"); return ids; }
   const kept = activePollIds(ids, data || [], nowDate);
   if (kept.length < ids.length) logger.log(`[PARCEL-POLL] skipped ${ids.length - kept.length} expired seller(s)`);
   return kept;

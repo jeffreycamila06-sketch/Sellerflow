@@ -94,7 +94,8 @@ describe("feature ON", () => {
     await waitFor(() => expect(r.container.textContent).toContain("Message copied"));
     // TikTok row keeps today's Chase link (Open profile) — labelled "TikTok" while the feature is on
     expect((r.getAllByTestId("pt-open-profile")[0] as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@maria_shops");
-    expect(r.getAllByTestId("pt-open-profile").map((a) => a.textContent)).toEqual(["TikTok", "TikTok"]);
+    expect(r.getAllByTestId("pt-open-profile").map((a) => a.textContent)).toEqual(["TikTok", "Chase"]); // "0912345678" has no saved app → "Chase" (link unchanged)
+    expect((r.getAllByTestId("pt-open-profile")[1] as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@0912345678");
     expect((r.getAllByTestId("pt-open-facebook")[0] as HTMLAnchorElement).textContent).toBe("Messenger"); // m.me/<username>
     // Other → Copy copies the contact
     const copies = r.getAllByTestId("pt-copy-username");
@@ -151,6 +152,24 @@ describe("Facebook id values in the Buyer cell", () => {
     expect(r.queryByText("Facebook profile")).toBeNull();
     expect(r.queryByTestId("pt-contact")).toBeNull();
     expect(r.queryByTestId("pt-open-facebook")).toBeNull();
+  });
+});
+
+describe("TikTok button label (feature ON)", () => {
+  it("a TikTok handle → 'TikTok'; an all-digit handle with NO saved app → 'Chase' (same link); digits WITH a saved TikTok app → 'TikTok'", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [mk({ buyerUsername: "maria_shops" }), mk({ buyerUsername: "0912345678" }), mk({ buyerUsername: "@0933111222" }), mk({ buyerUsername: "0955666777" })] });
+    loadBuyerContacts.mockResolvedValue({ s711: new Map([["0955666777", "tiktok"]]), fm: new Map() });
+    const r = view(true);
+    await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(4));
+    await waitFor(() => expect(loadBuyerContacts).toHaveBeenCalled());
+    await waitFor(() => expect(r.getAllByTestId("pt-open-profile").length).toBe(4));
+    const a = r.getAllByTestId("pt-open-profile") as HTMLAnchorElement[];
+    expect(a.map((x) => [x.textContent, x.href])).toEqual([
+      ["TikTok", "https://www.tiktok.com/@maria_shops"],
+      ["Chase", "https://www.tiktok.com/@0912345678"],
+      ["Chase", "https://www.tiktok.com/@0933111222"],
+      ["TikTok", "https://www.tiktok.com/@0955666777"],
+    ]);
   });
 });
 

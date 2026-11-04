@@ -58,6 +58,15 @@ describe("Pickup Status tile — who sees what", () => {
       expect(renewed.r.queryByTestId("tile-parceltracking-locked")).toBeNull();
     });
   }
+  it("PENDING Plus / Pro / Master (with access) → stays the 🔒 tile, same as Parcel Scan (no change, pinned)", () => {
+    for (const plan of ["plus", "pro", "master"]) {
+      const { r } = hubFor({ role: "seller", plan, planStatus: "pending", access: true });
+      expect(r.getByTestId("tile-parceltracking-locked")).toBeTruthy();
+      expect(r.queryByTestId("tile-parceltracking")).toBeNull();
+      expect(parcelScanVisible({ role: "seller", plan, planStatus: "pending", planExpiry: null, manualEnabled: true }).visible).toBe(false);
+      r.unmount();
+    }
+  });
   it("admin with an expired plan → the working tile only", () => {
     const { r } = hubFor({ role: "admin", plan: "master", planStatus: "expired", planExpiry: "2020-01-01" });
     expect(r.getByTestId("tile-parceltracking")).toBeTruthy();

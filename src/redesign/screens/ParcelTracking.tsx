@@ -165,7 +165,7 @@ function ChaseAction({ row, t, onCopy, platform = null, contactOn = false, messa
     return stack(copyMsg,
       <a href={target.url} target="_blank" rel="noreferrer" style={chaseBtn} data-testid="pt-open-profile" title={t.rd_pt_open_profile}
         onClick={() => { if (cp) void onCopy(cp); }}>
-        {contactOn ? t.rd_pt_open_tiktok : t.rd_pt_chase}
+        {contactOn && !(platform == null && /^\d+$/.test(target.handle)) ? t.rd_pt_open_tiktok : t.rd_pt_chase}{/* a phone-number handle with no saved app keeps "Chase" */}
       </a>);
   }
   if (target.kind === "copy") {

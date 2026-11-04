@@ -55,7 +55,8 @@ export function whatsappDigits(raw: string): string | null {
 //   profile.php?id=<digits> · people/<anything>/<digits> · messages/t/<digits> · p/<Name>-<digits 6+>
 //   · a path that is only digits → "fb:<id>"
 //   facebook.com/share/<code>[/] → "fbshare:<code>"
-//   m.me/<digits> · messenger.com/t/<digits> → "fb:<id>" (ids are 1–20 digits everywhere; fb.me / fb.watch refused)
+//   m.me/<digits> · messenger.com/t/<digits> · messenger.com/e2ee/t/<digits> → "fb:<id>" (ids are 1–20 digits
+//   everywhere; fb.me / fb.watch refused) · messenger.com/t/<username> → "<username>"
 //   m.me/<username> · facebook.com/<username>[/<about|photos|videos|friends|reels|followers|following|mentions>]
 //   → "<username>" (FB_USERNAME, no ".php", not reserved)
 // The stored value is never longer than col J's 50 chars; contactLink rebuilds the URL. Plain
@@ -77,8 +78,11 @@ const FB_SHARE_CODE = /^[A-Za-z0-9]{6,20}$/;
 export const FB_SHARE_STORED = /^fbshare:([A-Za-z0-9]{6,20})$/;
 export const fbReserved = (stored: string): boolean => FB_RESERVED.has(String(stored ?? "").trim().toLowerCase());
 export const FB_USERNAME = /^[A-Za-z0-9][A-Za-z0-9.]{3,48}[A-Za-z0-9]$/; // 5–50, starts and ends with a letter/digit (no "....", "juan.", "..juan")
-// A stored value that is really a website (shop.com, page.me, …) is never an m.me username.
-export const FB_WEBSITE = /\.(?:com|net|org|co|me|io|tw|ph)$/i;
+// A plain TYPED value that is really a website (shop.com, store.com.tw, …) is never an m.me
+// username. Only for typed text: a username that came out of a real Facebook / m.me /
+// messenger.com link (facebook.com/anne.tw) keeps its Messenger button, and old stored
+// values like "anne.tw", "rose.ph", "its.me", "maria.co" open m.me exactly as on main.
+export const FB_WEBSITE = /\.(?:com|net|org)$|\.com\.(?:tw|ph)$/i;
 const fbUsernameOk = (u: string): boolean => FB_USERNAME.test(u) && !/^\d+$/.test(u) && !/\.php$/i.test(u) && !fbReserved(u); // all digits = an id (≤20) or nothing
 // null = not a link; "" = a link with no usable profile (refused); else the stored value.
 export function parseFacebookLink(raw: string): string | null {
@@ -93,7 +97,11 @@ export function parseFacebookLink(raw: string): string | null {
   const seg = path.split("/").filter(Boolean);
   if (host === "fb.me" || host === "fb.watch") return "";
   if (host === "m.me") return seg.length === 1 ? (FB_ID.test(seg[0]) ? `fb:${seg[0]}` : fbUsernameOk(seg[0]) ? seg[0] : "") : "";
-  if (host === "messenger.com") return seg.length === 2 && seg[0].toLowerCase() === "t" && FB_ID.test(seg[1]) ? `fb:${seg[1]}` : "";
+  if (host === "messenger.com") { // messenger.com/t/<id> · /t/<username> · /e2ee/t/<id>
+    if (seg.length === 2 && seg[0].toLowerCase() === "t") return FB_ID.test(seg[1]) ? `fb:${seg[1]}` : fbUsernameOk(seg[1]) ? seg[1] : "";
+    if (seg.length === 3 && seg[0].toLowerCase() === "e2ee" && seg[1].toLowerCase() === "t" && FB_ID.test(seg[2])) return `fb:${seg[2]}`;
+    return "";
+  }
   const s0 = (seg[0] ?? "").toLowerCase();
   if (s0 === "profile.php" && seg.length === 1) { const m = /(?:^|[?&])id=(\d{1,20})(?:&|$)/.exec(query); return m ? `fb:${m[1]}` : ""; } // id=100abc / 21+ digits → refused
   if (s0 === "share") return host === "facebook.com" && seg.length === 2 && FB_SHARE_CODE.test(seg[1]) ? `fbshare:${seg[1]}` : "";
@@ -167,9 +175,10 @@ export function contactLink(platform: BuyerContactPlatform, value: string, messa
     }
     case "facebook": {
       const stored = facebookStoredValue(v);
+      const fromLink = parseFacebookLink(v) !== null;
       const idm = /^fb:(\d{1,20})$/.exec(stored);
       if (idm) return { kind: "open", url: `https://www.facebook.com/profile.php?id=${idm[1]}`, copy: message };
-      if (FB_WEBSITE.test(stored)) return { kind: "copy", text: message, contact: stored }; // a website, not a username
+      if (!fromLink && FB_WEBSITE.test(stored)) return { kind: "copy", text: message, contact: stored }; // typed "shop.com" = a website, not a username
       const sh = FB_SHARE_STORED.exec(stored);
       if (sh) return { kind: "open", url: `https://www.facebook.com/share/${sh[1]}/`, copy: message };
       if (/^fbshare:/i.test(stored)) return { kind: "copy", text: message, contact: stored }; // a malformed share value

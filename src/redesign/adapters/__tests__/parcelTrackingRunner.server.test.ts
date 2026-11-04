@@ -30,7 +30,7 @@ type Opts = {
   settings?: Record<string, string>; settingsError?: unknown;
   access?: string[]; accessError?: unknown;
   daily?: Record<string, number>; dailyError?: unknown;
-  profiles?: Record<string, unknown>[]; profilesError?: unknown;
+  profiles?: Record<string, unknown>[]; profilesError?: unknown; profilesThrow?: boolean;
 };
 function fakeSb(rows: unknown[], opts: Opts = {}) {
   const settings = opts.settings ?? { parcel_tracking_enabled: "true" };
@@ -95,7 +95,7 @@ function fakeSb(rows: unknown[], opts: Opts = {}) {
         select() { return { eq: () => { captured.accessReads += 1; return thenable(() => ({ data: opts.accessError ? null : access.map((user_id) => ({ user_id })), error: opts.accessError ?? null })); } }; },
       };
       if (table === "seller_profiles") return {
-        select() { return { in: (_c: string, ids: unknown[]) => { captured.profileReads.push(ids); return thenable(() => ({ data: opts.profilesError ? null : (opts.profiles ?? []), error: opts.profilesError ?? null })); } }; },
+        select() { return { in: (_c: string, ids: unknown[]) => { captured.profileReads.push(ids); if (opts.profilesThrow) throw new Error("boom"); return thenable(() => ({ data: opts.profilesError ? null : (opts.profiles ?? []), error: opts.profilesError ?? null })); } }; },
       };
       if (table === "parcel_tracking_daily") return {
         select() { return { eq: (_c: string, day: string) => ({ maybeSingle: () => thenable(() => ({ data: opts.dailyError ? null : (day in daily ? { requests: daily[day] } : null), error: opts.dailyError ?? null })) }) }; },
@@ -309,6 +309,14 @@ describe("expired sellers are skipped (rows untouched; resumes after renewal)", 
     const sb = fakeSb([], { access: ["R"], profiles: [{ auth_user_id: "R", role: "seller", plan_status: "active", plan_expiry: future }] });
     await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }, limits: smallLimits });
     expect(sb._captured.selectIns.filter(([c]) => c === "user_id").map(([, v]) => v)).toEqual([["R"]]);
+  });
+  it("runPoll: a profile read that THROWS → everyone is polled, runPoll never throws", async () => {
+    const sb = fakeSb([], { access: ["A", "B"], profilesThrow: true });
+    const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const out = await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger, limits: smallLimits });
+    expect(out.ok).toBe(true);
+    expect(sb._captured.selectIns.filter(([c]) => c === "user_id").map(([, v]) => v)).toEqual([["A", "B"]]);
+    expect(logger.warn).toHaveBeenCalledWith("[PARCEL-POLL] profile read threw — polling everyone:", "threw");
   });
   it("runPoll: a profile read error → everyone is polled as before (logged, never a silent stop)", async () => {
     const sb = fakeSb([], { access: ["A", "B"], profilesError: { code: "500" } });

@@ -293,13 +293,21 @@ describe("Facebook parsing — audit leftovers (polish)", () => {
     expect(parseFacebookLink(`https://www.facebook.com/${"a".repeat(51)}`)).toBe("");
     for (const ok of ["juan.delacruz.7", "a.b.c", "12345", "a".repeat(50)]) expect(FB_USERNAME.test(ok), ok).toBe(true);
   });
-  it("c. a stored value that looks like a website → copy only", () => {
-    for (const w of ["shop.com", "mypage.net", "ngo.org", "brand.co", "page.me", "app.io", "store.tw", "tindahan.ph", "SHOP.COM"]) {
+  it("c. a TYPED value that looks like a website (.com/.net/.org/.com.tw/.com.ph) → copy only; a username from a real link, and old stored .tw/.ph/.me/.co values, open m.me", () => {
+    for (const w of ["shop.com", "mypage.net", "ngo.org", "store.com.tw", "tindahan.com.ph", "SHOP.COM"]) {
       expect(FB_WEBSITE.test(w), w).toBe(true);
       expect(contactLink("facebook", w, "msg"), w).toEqual({ kind: "copy", text: "msg", contact: w });
     }
-    expect(contactLink("facebook", "joy.reyes.90", "msg")?.kind).toBe("open");
-    expect(contactLink("facebook", "shop.company", "msg")?.kind).toBe("open"); // not a known web ending
+    for (const w of ["anne.tw", "rose.ph", "its.me", "maria.co", "app.io", "brand.co", "joy.reyes.90", "shop.company"]) {
+      expect(FB_WEBSITE.test(w), w).toBe(false);
+      expect(contactLink("facebook", w, "msg"), w).toEqual({ kind: "open", url: `https://m.me/${w}`, copy: "msg" }); // same as main
+    }
+    // the same ending coming out of a real Facebook / m.me / messenger.com link keeps its Messenger button
+    for (const l of ["https://www.facebook.com/shop.com", "https://m.me/store.com.tw", "https://www.messenger.com/t/mypage.net", "facebook.com/anne.tw", "m.me/maria.co"]) {
+      const a = contactLink("facebook", l, "msg");
+      expect(a?.kind, l).toBe("open");
+      expect((a as { url: string }).url, l).toMatch(/^https:\/\/m\.me\//);
+    }
   });
   it("d. ids are at most 20 digits everywhere", () => {
     const id20 = "1".repeat(20); const id21 = "1".repeat(21);
@@ -323,8 +331,13 @@ describe("Facebook parsing — audit leftovers (polish)", () => {
     expect(parseFacebookLink("https://m.me/100012345678901")).toBe("fb:100012345678901");
     expect(parseFacebookLink("https://www.messenger.com/t/100012345678901")).toBe("fb:100012345678901");
     expect(parseFacebookLink("messenger.com/t/100012345678901/")).toBe("fb:100012345678901");
-    expect(parseFacebookLink("https://www.messenger.com/t/juan.delacruz.7")).toBe("");
+    expect(parseFacebookLink("https://www.messenger.com/t/juan.delacruz.7")).toBe("juan.delacruz.7"); // messenger.com/t/<username>
+    expect(parseFacebookLink("https://www.messenger.com/e2ee/t/100012345678901")).toBe("fb:100012345678901"); // e2ee chat link
+    expect(parseFacebookLink("https://www.messenger.com/e2ee/t/juan.delacruz.7")).toBe(""); // e2ee takes an id only
+    expect(parseFacebookLink("https://www.messenger.com/t/share")).toBe(""); // reserved stays refused
+    expect(parseFacebookLink("https://www.messenger.com/t/" + "1".repeat(21))).toBe("");
     expect(parseFacebookLink("https://www.messenger.com/juan.delacruz.7")).toBe("");
+    expect(contactLink("facebook", "https://www.messenger.com/t/juan.delacruz.7", "msg")).toEqual({ kind: "open", url: "https://m.me/juan.delacruz.7", copy: "msg" });
     expect(isFacebookLink("https://fb.watch/abc123/")).toBe(true);
     expect(parseFacebookLink("https://fb.watch/abc123/")).toBe("");
     expect(contactError("facebook", "https://fb.watch/abc123/")).toBe("facebook");
