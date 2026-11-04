@@ -6,6 +6,10 @@
 // • It never opens Admin, never changes the plan, never presses Delete account / Log out, never
 //   exports to 7-11, never presses a printer test, never sends a Messenger receipt, and never
 //   connects to a real live. The only connect is ONE made-up TikTok name, once per run.
+// • It never SAVES a parcel (Parcel Scan / FamilyMart) and never changes a customer's contact —
+//   a saved parcel can reach the parcel checker and the 7-11 export. Those screens are
+//   type-and-look only, then Cancel. Pickup Status is read-only (it reads where a button
+//   goes, never taps one).
 // • What it creates (a product, a made-up TikTok name) it removes with the app's own buttons.
 //   The last test lists anything that could not be removed.
 // • No database writes of its own: only the app's buttons.
@@ -17,6 +21,7 @@ import { openHub, openGeneral, openLiveSessionGroup, openChannel } from "../robo
 import { productCard, deleteProductByName, openProductsLoaded } from "../robot/products";
 import { ROBOT_TT, slotInputs, slotValues, slotBlock, recentRemoval, markRemoval, openTikTokMenu, waitForSave, watchSlotLocks } from "../robot/tiktok";
 import { watchSwitch } from "../robot/switches";
+import { openParcelTile, contactField, openManualEntry, fillParcelSample, cancelManualEntry, pendingParcelCount, saveButton, linkAllowed, ALLOWED_PICKUP_LINKS, CONTACT_PLATFORMS } from "../robot/parcels";
 import { CONNECT_MARK, CONSOLE_FILE, RUN_ID, SERVER_URL } from "../robot/config";
 import { TELEGRAM_URL } from "../../../src/lib/telegram";
 import type { Page } from "@playwright/test";
@@ -547,6 +552,182 @@ test("11b TikTok accounts: remove the made-up account again", async ({ page }) =
 // ─────────────────────────────────────────────────────────────────────────────────────────
 test("13 Practice comments: Auto order, duplicate, sticker", async () => {
   test.skip(true, "The app's practice-comment feed (+ Test comment / SYNTH) is switched off on www.sellerflowlive.com for every account; adding one would mean changing the app.");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// Parcel Scan / Customer Details / Pickup Status / buyer contact — NOTHING is saved here.
+// A saved parcel can reach the parcel checker and the 7-11 export, so every check below is
+// type-and-look: fill, read the message and the Save button's state, then Cancel.
+const RULE = "ps-bc";
+const PICKUP_BUTTONS = ["whatsapp", "line", "facebook", "instagram"] as const;
+
+test("15 Parcel Scan opens; the buyer contact picker (when offered) has the 6 platforms", async ({ page }) => {
+  await openApp(page);
+  const entry = await openParcelTile(page, "parcelscan");
+  if (entry === "hidden") test.skip(true, "Parcel Scan is not offered to this test account (not on the parcel check list, or not a Taiwan account).");
+  if (entry === "locked") test.skip(true, "Parcel Scan shows as locked for this test account's plan — the robot never taps a locked tile (it opens an upsell).");
+  await expect(page.getByTestId("ps-manual")).toBeVisible();
+  await screenIsFine(page, "Parcel Scan");
+  const before = await pendingParcelCount(page);
+  if (!(await openManualEntry(page))) { note("The pending batch is full, so the manual-entry form (where the picker lives) could not be opened. Nothing saved."); return; }
+  try {
+    const bc = contactField(page, RULE);
+    if (!(await bc.present())) { note("No buyer contact picker for this test account (the feature is off for it) — the plain @username box is there instead."); return; }
+    for (const p of CONTACT_PLATFORMS) await expect(page.getByTestId(`${RULE}-pick-${p}`), `platform button "${p}" is missing`).toBeVisible();
+    expect(await page.locator(`[data-testid^="${RULE}-pick-"]`).count(), "exactly 6 platform buttons").toBe(6);
+    await expect(page.getByTestId(`${RULE}-pick-tiktok`)).toHaveAttribute("aria-checked", "true"); // TikTok is the default
+    await screenIsFine(page, "Parcel Scan manual entry");
+    note("Picker checked: TikTok, LINE, WhatsApp, Facebook, Instagram, Other. Nothing saved.");
+  } finally {
+    await cancelManualEntry(page);
+    expect(await pendingParcelCount(page), "a parcel was added — it must never be").toBe(before);
+  }
+});
+
+test("16 Parcel Scan contact checks, type-and-look only (never saves)", async ({ page }) => {
+  await openApp(page);
+  const entry = await openParcelTile(page, "parcelscan");
+  if (entry === "hidden") test.skip(true, "Parcel Scan is not offered to this test account (not on the parcel check list, or not a Taiwan account).");
+  if (entry === "locked") test.skip(true, "Parcel Scan shows as locked for this test account's plan — the robot never taps a locked tile.");
+  const before = await pendingParcelCount(page);
+  if (!(await openManualEntry(page))) test.skip(true, "The pending batch is full, so the manual-entry form could not be opened. Nothing saved.");
+  const bc = contactField(page, RULE);
+  if (!(await bc.present())) { await cancelManualEntry(page); test.skip(true, "This test account has no buyer contact picker (the feature is off for it) — see test 20 for the plain box."); }
+  try {
+    await fillParcelSample(page);
+    const save = saveButton(page);
+    const noError = async (what: string) => {
+      await expect(bc.error, `${what}: an error is showing`).toHaveCount(0);
+    };
+    const errorAndBlocked = async (what: string, words: string) => {
+      await expect(bc.error, `${what}: the error message is missing`).toHaveText(words);
+      await expect(save, `${what}: Save must be blocked`).toBeDisabled();
+    };
+    await test.step("WhatsApp 0912345678 → no error", async () => { await bc.type("whatsapp", "0912345678"); await noError("WhatsApp valid"); });
+    await test.step("WhatsApp 12345 → error + Save blocked", async () => { await bc.type("whatsapp", "12345"); await errorAndBlocked("WhatsApp 12345", EN.rd_bc_err_whatsapp); });
+    await test.step("Facebook share-profile link → no error", async () => { await bc.type("facebook", "https://www.facebook.com/share/19tvMLYXPi/?mibextid=wwXIfr"); await noError("Facebook share link"); });
+    await test.step("Facebook photo link → error + Save blocked", async () => { await bc.type("facebook", "https://www.facebook.com/photo/?fbid=123"); await errorAndBlocked("Facebook photo link", EN.rd_bc_err_facebook); });
+    await test.step("Facebook …/juan.delacruz/video → error", async () => { await bc.type("facebook", "facebook.com/juan.delacruz/video"); await expect(bc.error).toHaveText(EN.rd_bc_err_facebook); });
+    await test.step("LINE @yating.line → no error", async () => { await bc.type("line", "@yating.line"); await noError("LINE"); });
+    await test.step("Instagram @ana.cruz_ig → no error", async () => { await bc.type("instagram", "@ana.cruz_ig"); await noError("Instagram"); });
+    await test.step("51-char TikTok name → 'max 50' hint", async () => {
+      await bc.type("tiktok", "a".repeat(51));
+      await expect(bc.maxHint, "the 'max 50' hint is missing").toHaveText(EN.rd_bc_hint_max);
+      await bc.input.fill("a".repeat(50));
+      await expect(bc.maxHint, "the hint must go at 50 characters").toHaveCount(0);
+    });
+    await test.step("pasting a Facebook link + a next line → error", async () => {
+      await bc.type("facebook", "");
+      await bc.paste("https://www.facebook.com/juan.delacruz.7\nJuan");
+      expect(await bc.value(), "the pasted text should be one line (newline → space)").toBe("https://www.facebook.com/juan.delacruz.7 Juan");
+      await expect(bc.error, "a link glued to the next line must be refused").toHaveText(EN.rd_bc_err_facebook);
+    });
+    await screenIsFine(page, "Parcel Scan manual entry");
+    note("9 contact checks done on the form; nothing saved.");
+  } finally {
+    await bc.input.fill("");
+    await cancelManualEntry(page);
+    expect(await pendingParcelCount(page), "a parcel was added — it must never be").toBe(before);
+  }
+});
+
+test("17 Customer Details: open a customer's edit form, bad WhatsApp blocks Save, Cancel", async ({ page }) => {
+  await openApp(page);
+  const entry = await openParcelTile(page, "customerdetails");
+  if (entry === "hidden") test.skip(true, "Customer Details is not offered to this test account (same access as Parcel Scan).");
+  if (entry === "locked") test.skip(true, "Customer Details shows as locked for this test account's plan — the robot never taps a locked tile.");
+  await expect(page.getByTestId("cd-loading")).toHaveCount(0, { timeout: 30_000 });
+  await screenIsFine(page, "Customer Details");
+  const rows = page.getByTestId("cd-row-main");
+  if (!(await rows.count())) test.skip(true, "The test account has no customers in Customer Details (the robot cannot add one — that would mean saving a parcel).");
+  await rows.first().click();
+  await page.getByTestId("cd-edit").first().click();
+  await expect(page.getByTestId("cd-edit-overlay")).toBeVisible();
+  const bc = contactField(page, "cd-edit-bc");
+  try {
+    if (!(await bc.present())) {
+      await expect(page.getByTestId("cd-edit-notes")).toBeVisible();
+      test.skip(true, "This test account has no buyer contact picker in the edit form (the feature is off for it) — the plain box is there. Nothing changed.");
+    }
+    await bc.type("whatsapp", "12345");
+    await expect(bc.error, "the WhatsApp error is missing").toHaveText(EN.rd_bc_err_whatsapp);
+    await expect(page.getByTestId("cd-edit-save"), "Save must be disabled on a bad number").toBeDisabled();
+    note("Edit form checked (bad WhatsApp number → error, Save disabled), then Cancel. Nothing changed.");
+  } finally {
+    await page.getByTestId("cd-edit-cancel").click();
+    await expect(page.getByTestId("cd-edit-overlay")).toHaveCount(0);
+  }
+});
+
+test("18 Pickup Status opens on every tab with no error", async ({ page }) => {
+  await openApp(page);
+  const entry = await openParcelTile(page, "parceltracking");
+  if (entry === "hidden") test.skip(true, "Pickup Status is not offered to this test account (needs the Pickup Status access list and a Plus/Pro/Master plan).");
+  if (entry === "locked") test.skip(true, "Pickup Status shows as locked for this test account's plan — the robot never taps a locked tile.");
+  await expect(page.getByTestId("pt-tabs")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("pt-error")).toHaveCount(0);
+  const tabs = page.locator('[data-testid^="pt-tab-"]:not([data-testid="pt-tab-empty"])');
+  const n = await tabs.count();
+  expect(n, "no status tabs on Pickup Status").toBeGreaterThan(0);
+  const names: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const tab = tabs.nth(i);
+    const id = (await tab.getAttribute("data-testid")) || "";
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("pt-error")).toHaveCount(0);
+    await screenIsFine(page, `Pickup Status tab ${id}`);
+    names.push(id.replace("pt-tab-", ""));
+  }
+  const fm = page.getByText(EN.rd_sh_fm_name, { exact: true });
+  note(`Tabs opened: ${names.join(", ")}.${(await fm.count()) ? " FamilyMart rows are shown on this account." : " No FamilyMart tab in this build (FamilyMart parcels share the same tabs)."}`);
+});
+
+test("19 Pickup Status buttons only point to the buyer's own app (read-only)", async ({ page }) => {
+  await openApp(page);
+  const entry = await openParcelTile(page, "parceltracking");
+  if (entry === "hidden") test.skip(true, "Pickup Status is not offered to this test account (needs the Pickup Status access list and a Plus/Pro/Master plan).");
+  if (entry === "locked") test.skip(true, "Pickup Status shows as locked for this test account's plan — the robot never taps a locked tile.");
+  await expect(page.getByTestId("pt-tabs")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("pt-tab-all").click();
+  await expect(page.getByTestId("pt-error")).toHaveCount(0);
+  await page.waitForTimeout(1500); // the contact map and names load right after the rows
+  if (!(await page.getByTestId("pt-row").count())) test.skip(true, "The test account has no parcels in Pickup Status, so there are no buttons to check (the robot cannot add a parcel).");
+  // Only READ where each button goes — never tap (each opens another app).
+  const links = await page.locator('a[data-testid^="pt-open-"]').evaluateAll((as) => as.map((a) => ({ id: a.getAttribute("data-testid") || "", href: (a as HTMLAnchorElement).href })));
+  const bad = links.filter((l) => !linkAllowed(l.href));
+  expect(bad.map((l) => `${l.id} → ${l.href.slice(0, 80)}`), `a button points somewhere it must not (allowed: ${ALLOWED_PICKUP_LINKS.join(" ")})`).toEqual([]);
+  const perKind = new Map<string, number>();
+  for (const l of links) perKind.set(l.id, (perKind.get(l.id) || 0) + 1);
+  note(`${links.length} button link(s) read, all allowed: ${[...perKind].map(([k, v]) => `${k.replace("pt-open-", "")} ×${v}`).join(", ") || "none"}.`);
+});
+
+test("20 Buyer contact OFF for this account: plain @username box, no contact buttons (exactly as before)", async ({ page }) => {
+  await openApp(page);
+  const entry = await openParcelTile(page, "parcelscan");
+  if (entry === "hidden") test.skip(true, "Parcel Scan is not offered to this test account, so the robot cannot tell whether buyer contact is on or off for it.");
+  if (entry === "locked") test.skip(true, "Parcel Scan shows as locked for this test account's plan — the robot never taps a locked tile.");
+  const before = await pendingParcelCount(page);
+  if (!(await openManualEntry(page))) test.skip(true, "The pending batch is full, so the manual-entry form could not be opened. Nothing saved.");
+  const bc = contactField(page, RULE);
+  try {
+    if (await bc.present()) test.skip(true, "This test account HAS buyer contact (the picker is offered) — this check is for accounts without it (tests 15–17 covered the picker).");
+    await expect(page.getByTestId("ps-notes"), "the plain @username box is missing").toBeVisible();
+    await expect(page.getByTestId("ps-no-handle"), "the 'no social handle' box is missing").toBeVisible();
+    expect(await page.locator(`[data-testid^="${RULE}-"]`).count(), "no picker parts may show when the feature is off").toBe(0);
+  } finally {
+    await cancelManualEntry(page);
+    expect(await pendingParcelCount(page), "a parcel was added — it must never be").toBe(before);
+  }
+  const pickup = await openParcelTile(page, "parceltracking");
+  if (pickup !== "open") { note(`Parcel Scan: plain box, no picker. Pickup Status is ${pickup === "locked" ? "locked" : "not offered"} for this account, so its buttons were not checked.`); return; }
+  await expect(page.getByTestId("pt-tabs")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("pt-tab-all").click();
+  await page.waitForTimeout(1500);
+  for (const k of PICKUP_BUTTONS) expect(await page.getByTestId(`pt-open-${k}`).count(), `a ${k} button shows although buyer contact is off`).toBe(0);
+  expect(await page.getByTestId("pt-contact").count(), "a contact chip shows although buyer contact is off").toBe(0);
+  expect(await page.getByTestId("pt-copy-msg").count(), "a 'Copy message' button shows although buyer contact is off").toBe(0);
+  note("Parcel Scan: plain @username box, no picker. Pickup Status: no WhatsApp / LINE / Messenger / Instagram buttons, no contact chips.");
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────

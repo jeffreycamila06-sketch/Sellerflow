@@ -58,6 +58,12 @@ usually enough. If you can, add the screenshot from the report.
 | 11a TikTok add | Adds a made-up TikTok name (`sfl_robot_x7q9z_notlive`) to the test account and sees it in the list. |
 | 12 TikTok not live | Opens the TikTok menu from the Live picker's TikTok tile (or the old TikTok chip, which only shows while 2+ sources are live), picks the made-up name and connects it **once**. The app must say in plain words that it is not live (no code, no technical words), and nothing may stay connected. Never retried. Skipped if the test account is live. |
 | 11b TikTok remove | Removes the made-up name again. |
+| 15 Parcel Scan | Parcel Scan opens with no error. If the account has the buyer contact picker, the manual-entry form shows the 6 platform buttons (TikTok, LINE, WhatsApp, Facebook, Instagram, Other) with TikTok selected. Then Cancel — **never Save**. Skipped if Parcel Scan is not offered to the test account. |
+| 16 Parcel Scan contact checks | Type-and-look only, on the manual-entry form, nothing saved: a good WhatsApp number → no error; `12345` → error and Save blocked; a Facebook "share profile" link → no error; a Facebook photo link or `…/name/video` → error and Save blocked; a LINE id and an Instagram name → no error; a 51-letter TikTok name → the "max 50" hint; pasting a link with a second line → error. Then it clears the box and presses Cancel, and checks the pending list did not grow. Skipped if there is no picker (feature off) or the pending batch is full. |
+| 17 Customer Details | Opens Customer Details, opens the **first** customer's edit form, switches to WhatsApp, types `12345`: the error shows and Save is disabled. Then **Cancel** — nothing changed. Skipped if there are no customers or no picker. |
+| 18 Pickup Status tabs | Pickup Status opens and every status tab (All, In transit, Waiting, Picked up, Returned) opens with no error. Read-only. Skipped if Pickup Status is not offered. |
+| 19 Pickup Status buttons | Reads where every contact button goes (it never taps one — each opens another app). A button may only go to WhatsApp (`wa.me`), LINE (`line.me/R/ti/p/~`), Messenger (`m.me`), a Facebook profile or share link, Instagram (`ig.me/m`), or the buyer's TikTok profile. Anything else is a fail. Skipped if there are no parcels. |
+| 20 Buyer contact OFF | Only for a test account WITHOUT buyer contact: Parcel Scan shows the plain @username box (no picker parts), and Pickup Status shows no WhatsApp / LINE / Messenger / Instagram buttons and no contact chips — exactly as before the feature. Skipped when the account has the picker (15–17 cover it then). |
 | 13 Practice comments | **Always skipped.** The practice comment feed is switched off on the real site; turning it on would mean changing the app. |
 | 10 Server health | The live server's `/health` answers exactly `{"ok":true}`. |
 | 09 Console | No crash messages in the browser during the whole run. |
@@ -72,6 +78,9 @@ usually enough. If you can, add the screenshot from the report.
   the made-up TikTok name, once per run. This protects the live server from a TikTok cooldown
   that would hit every seller.
 - It never sends a Messenger message or receipt, never exports to 7-11, never prints.
+- It never saves a parcel (Parcel Scan or FamilyMart) and never changes a customer's contact. A
+  saved parcel could reach the parcel checker and the 7-11 export, so those screens are
+  type-and-look only, then Cancel. On Pickup Status it only reads where a button would go.
 - It never writes to the database directly. Every change goes through the app's own buttons,
   and only on the test account.
 - The password is never shown, saved in the report, or recorded. There is no video and no trace.
