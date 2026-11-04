@@ -15,7 +15,7 @@
 // action otherwise (no SHOPMORE tracking link exists, so there is no Track button).
 // "no username" parcels stay visible in their tab. "All" also keeps the non-chaseable
 // / not-yet-updated rows (the old "Other" bucket) so nothing disappears.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import { useLang } from "../i18n/langContext";
@@ -33,6 +33,8 @@ import {
 } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
+import { contactLink, pickupMessage, type BuyerContactPlatform } from "../adapters/buyerContact";
+import { loadBuyerContacts, contactFor, EMPTY_CONTACT_MAPS, type ContactMaps } from "../adapters/buyerContactMap";
 
 const btn: CSSProperties = { padding: "7px 12px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-block", whiteSpace: "nowrap" };
 const chaseBtn: CSSProperties = { ...btn, border: "1px solid var(--accent)", color: "var(--accent)", background: "transparent", padding: "6px 11px" };
@@ -117,29 +119,59 @@ function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t:
 // Waiting → "Chase" ONLY for a plain TikTok handle (opens the profile, with the iOS
 // copy-on-open). Any other username → "Copy" (copies it). No username → "Copy" copies the
 // tracking number (S6). Not checked yet / every other status → no action.
-function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy: (handle: string) => void }) {
+// Buyer contact (sql/140): a KNOWN non-TikTok platform gets its one-tap button (WhatsApp opens
+// the chat with the message in the link; LINE / Messenger / Instagram open the profile with
+// the message copied first; a name / "Other" = copy only). NULL / TikTok = today's chase
+// EXACTLY, plus a separate "Copy message" when the feature is on. No stranger's TikTok (v2
+// item 2): a known non-TikTok platform (the map), or a value starting with "+" (a saved WhatsApp
+// number), never gets TikTok "Open profile". Plain digits stay today's Chase (main parity).
+function ChaseAction({ row, t, onCopy, platform = null, contactOn = false, message = "", onCopyMsg }: {
+  row: ParcelTrackingRow; t: T; onCopy: (handle: string) => void;
+  platform?: BuyerContactPlatform | null; contactOn?: boolean; message?: string; onCopyMsg?: (m: string) => void;
+}) {
   if (rowTab(row) !== "waiting" || isUnchecked(row)) return null; // not checked yet → no chase
-  const target = chaseTarget(row.buyerUsername);
+  const raw = String(row.buyerUsername ?? "").trim();
+  const copyMsg = contactOn && onCopyMsg && message
+    ? <button style={{ ...chaseBtn, ...ellipsis, maxWidth: 124 }} onClick={() => onCopyMsg(message)} data-testid="pt-copy-msg" title={t.rd_pt_copy_msg}>{t.rd_pt_copy_msg}</button> // long labels (fil / bg) ellipsise so the name column keeps its room at 390
+    : null;
+  // two actions → stacked (Copy message over the chase/copy button); one action → today's exact DOM
+  const stack = (a: ReactNode, b: ReactNode): ReactNode => (a ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>{a}{b}</span> : b);
+  if (platform && platform !== "tiktok") {
+    const act = contactLink(platform, raw, message);
+    if (act?.kind === "open" && contactOn) {
+      const label = platform === "whatsapp" ? t.rd_pt_open_whatsapp : platform === "line" ? t.rd_pt_open_line : platform === "facebook" ? t.rd_pt_open_facebook : t.rd_pt_open_instagram;
+      return (
+        <a href={act.url} target="_blank" rel="noreferrer noopener" style={chaseBtn} data-testid={`pt-open-${platform}`} data-platform={platform} title={label}
+          onClick={() => { if (act.copy && onCopyMsg) void onCopyMsg(act.copy); }}>
+          {label}
+        </a>
+      );
+    }
+    // feature off, or no link for this value (a Facebook name, "Other"): copy the contact; + Copy message when on
+    return stack(copyMsg,
+      <button style={chaseBtn} onClick={() => onCopy(act?.kind === "copy" ? act.contact : raw)} data-testid="pt-copy-username" title={t.rd_pt_copy_username}>
+        {t.rd_pt_copy}
+      </button>);
+  }
+  const target = chaseTarget(row.buyerUsername); // "+digits" (a saved WhatsApp number) already lands on Copy here; plain digits = today's Chase
   if (target.kind === "open") {
     // Direct link opens the TikTok app on iOS (universal link). On iOS ALSO copy
     // "@handle" on the same tap so it's ready to paste into the app's Search → profile
     // → Message (the app lands on home, but the seller is logged in). Desktop: no copy,
     // straight to the profile. Navigation is NOT prevented — the link still opens.
     const cp = chaseCopyValue(target.handle, isIOS());
-    return (
+    return stack(copyMsg,
       <a href={target.url} target="_blank" rel="noreferrer" style={chaseBtn} data-testid="pt-open-profile" title={t.rd_pt_open_profile}
         onClick={() => { if (cp) void onCopy(cp); }}>
         {t.rd_pt_chase}
-      </a>
-    );
+      </a>);
   }
   if (target.kind === "copy") {
-    // not a plain TikTok handle (IG/LINE/FB-tagged, a name, CJK) → Copy only, never a link
-    return (
+    // not a plain TikTok handle (IG/LINE/FB-tagged, a name, CJK, a phone number) → Copy only, never a link
+    return stack(copyMsg,
       <button style={chaseBtn} onClick={() => onCopy(target.handle)} data-testid="pt-copy-username" title={t.rd_pt_copy_username}>
         {t.rd_pt_copy}
-      </button>
-    );
+      </button>);
   }
   // S6 — no username: still listed; Copy the tracking number so the seller can look it up
   return (
@@ -152,16 +184,23 @@ function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy:
 // buyerName (from Customer Details, matched on the handle) is DISPLAY ONLY: name on
 // top, @handle under it. No match → exactly the @handle-only rendering. Chase / Copy /
 // Open profile never see it (they read buyerUsername).
-function Buyer({ row, t, nowMs, buyerName }: { row: ParcelTrackingRow; t: T; nowMs: number; buyerName?: string }) {
+const PLATFORM_NAME_KEY: Record<BuyerContactPlatform, string> = { tiktok: "rd_bc_name_tiktok", line: "rd_bc_name_line", whatsapp: "rd_bc_name_whatsapp", facebook: "rd_bc_name_facebook", instagram: "rd_bc_name_instagram", other: "rd_bc_name_other" };
+function Buyer({ row, t, nowMs, buyerName, platform = null }: { row: ParcelTrackingRow; t: T; nowMs: number; buyerName?: string; platform?: BuyerContactPlatform | null }) {
   const name = String(row.buyerUsername ?? "").trim();
   const handle = name.replace(/^@+/, "");
+  // buyer contact chip (feature on, known non-TikTok platform): the platform name after the contact
+  const chip = platform && platform !== "tiktok"
+    ? <span data-testid="pt-contact" data-platform={platform} style={{ display: "inline-block", marginLeft: 5, padding: "0 6px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", verticalAlign: "middle" }}>{t[PLATFORM_NAME_KEY[platform]]}</span>
+    : null;
+  // feature ON + Facebook + a real stored id ("fb:<digits>" / "fbshare:<code>") → "Facebook profile"; OFF = exactly main's @username
+  const shown = platform === "facebook" && (/^fb:\d+$/.test(name) || /^fbshare:[A-Za-z0-9]+$/.test(name)) ? t.rd_pt_fb_profile : platform && platform !== "tiktok" ? name : `@${handle}`;
   const label = name && buyerName
     ? <>
         <span data-testid="pt-buyer-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={buyerName}>{buyerName}</span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={`@${handle}`}>@{handle}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={shown}>{shown}{chip}</span>
       </>
     : name
-    ? <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={`@${name.replace(/^@+/, "")}`}>@{name.replace(/^@+/, "")}</span>
+    ? <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={shown}>{shown}{chip}</span>
     : <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", fontStyle: "italic", ...ellipsis, display: "block" }}>{t.rd_pt_no_username}</span>;
   // 全家 switch on → every row carries its carrier; off → no label (exactly as before).
   const carrier = row.carrier
@@ -232,14 +271,25 @@ function Tabs({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Picku
 }
 
 // WEB — aligned table (table-layout: fixed). Buyer · Store · Parcel (mono, muted) · Left · action.
-function Table({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string> }) {
+type RowExtras = { contacts: ContactMaps; contactOn: boolean; onCopyMsg: (m: string) => void };
+// The ready message for one row (v2 item 4): Customer Details name only (never the masked
+// parcel_tracking name), carrier, store, amount, pick-up-by date, in the seller's UI language.
+function messageFor(r: ParcelTrackingRow, t: T, names: Map<string, string>): string {
+  return pickupMessage(t as { rd_pt_msg_tpl: string; rd_pt_msg_tpl_noname: string; rd_pt_carrier_711: string; rd_pt_carrier_fm: string }, {
+    name: names.get(normHandle(r.buyerUsername)), carrier: r.carrier === "fm" ? "fm" : "711",
+    store: r.recStore || r.storeId || "", amount: r.orderAmount === null ? "" : formatPrice(r.orderAmount), deadline: r.pickupDeadline || "",
+  });
+}
+const platformFor = (r: ParcelTrackingRow, x: RowExtras): BuyerContactPlatform | null => contactFor(x.contacts, r.buyerUsername, r.storeId, r.carrier);
+
+function Table({ rows, today, t, onCopy, nowMs, names, extras }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string>; extras: RowExtras }) {
   const th: CSSProperties = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", padding: "10px 10px 8px", textTransform: "uppercase", letterSpacing: ".04em", ...ellipsis };
   const td: CSSProperties = { padding: "10px", borderTop: "1px solid var(--border)", verticalAlign: "middle", overflow: "hidden" };
   return (
     <div style={{ ...card, padding: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0, overflow: "hidden" }}>
       <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse" }} data-testid="pt-table">
         <colgroup>
-          <col style={{ width: "24%" }} /><col style={{ width: "22%" }} /><col style={{ width: "18%" }} /><col style={{ width: "12%" }} /><col style={{ width: "14%" }} /><col style={{ width: 92 }} />
+          <col style={{ width: "24%" }} /><col style={{ width: extras.contactOn ? "20%" : "22%" }} /><col style={{ width: extras.contactOn ? "16%" : "18%" }} /><col style={{ width: "12%" }} /><col style={{ width: "14%" }} /><col style={{ width: extras.contactOn ? 150 : 92 }} />
         </colgroup>
         <thead>
           <tr>
@@ -254,12 +304,12 @@ function Table({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingR
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} data-testid="pt-row">
-              <td style={td}><Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} /></td>
+              <td style={td}><Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} platform={extras.contactOn ? platformFor(r, extras) : null} /></td>
               <td style={td}><span style={{ fontSize: 12.5, color: "var(--text)", ...ellipsis, display: "block" }} title={storeOf(r)}>{storeOf(r)}</span></td>
               <td style={td}><span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={r.trackingNo} data-testid="pt-code">{r.trackingNo}</span></td>
               <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 12.5, color: "var(--text)", fontVariantNumeric: "tabular-nums", ...ellipsis, display: "block" }} data-testid="pt-price">{formatPrice(r.orderAmount)}</span></td>
               <td style={td}><LeftText row={r} today={today} t={t} /></td>
-              <td style={{ ...td, textAlign: "right" }}><ChaseAction row={r} t={t} onCopy={onCopy} /></td>
+              <td style={{ ...td, textAlign: "right" }}><ChaseAction row={r} t={t} onCopy={onCopy} platform={platformFor(r, extras)} contactOn={extras.contactOn} message={messageFor(r, t, names)} onCopyMsg={extras.onCopyMsg} /></td>
             </tr>
           ))}
         </tbody>
@@ -290,20 +340,20 @@ function Cards({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Pick
 }
 
 // MOBILE — compact rows: Buyer + Store (two lines) · Left · action. No parcel code.
-function CompactList({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string> }) {
+function CompactList({ rows, today, t, onCopy, nowMs, names, extras }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string>; extras: RowExtras }) {
   return (
     <div style={{ ...card, padding: 0, overflow: "hidden" }} data-testid="pt-list">
       {rows.map((r, i) => (
         <div key={r.id} data-testid="pt-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid var(--border)" : "none" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} />
+            <Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} platform={extras.contactOn ? platformFor(r, extras) : null} />
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, display: "flex", alignItems: "baseline" }}>
               <span style={{ ...ellipsis, minWidth: 0 }}>{storeOf(r)}</span>
               {r.orderAmount !== null && <span style={{ flexShrink: 0, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }} data-testid="pt-price">{" · "}{formatPrice(r.orderAmount)}</span>}
             </div>
           </div>
           <div style={{ flexShrink: 0, maxWidth: "34%", textAlign: "right" }}><LeftText row={r} today={today} t={t} /></div>
-          <div style={{ flexShrink: 0 }}><ChaseAction row={r} t={t} onCopy={onCopy} /></div>
+          <div style={{ flexShrink: 0 }}><ChaseAction row={r} t={t} onCopy={onCopy} platform={platformFor(r, extras)} contactOn={extras.contactOn} message={messageFor(r, t, names)} onCopyMsg={extras.onCopyMsg} /></div>
         </div>
       ))}
     </div>
@@ -384,7 +434,7 @@ function jobDoneText(job: TrackingJob | null, t: T): string {
 
 // fm = the 全家 switch (or its preview) is on for this seller: adds "Sync from FamilyMart" and
 // the 7-11 / 全家 label. Off → the screen is exactly as before.
-export default function ParcelTracking({ userId, fm = false }: { userId?: string | null; fm?: boolean } = {}) {
+export default function ParcelTracking({ userId, fm = false, contactOn = false }: { userId?: string | null; fm?: boolean; contactOn?: boolean } = {}) {
   const t = useT();
   const today = taipeiDayId();
   const narrow = useNarrowLayout();
@@ -432,6 +482,23 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
     void loadBuyerNamesByHandle(handlesKey.split("\n")).then((m) => { if (live) setNames(m); }, () => { /* fail open: no names */ });
     return () => { live = false; };
   }, [handlesKey, namesNonce]);
+  // Buyer contact platforms (sql/140) — read whenever Pickup Status is open (not only when the
+  // feature is on: a known non-TikTok platform must never get TikTok "Open profile"). Same
+  // trigger as the names; fail open to empty maps.
+  const [contacts, setContacts] = useState<ContactMaps>(EMPTY_CONTACT_MAPS);
+  const carriersKey = useMemo(() => rows.map((r) => `${normHandle(r.buyerUsername)}:${r.carrier ?? "711"}`).filter((k) => !k.startsWith(":")).sort().join("\n"), [rows]);
+  useEffect(() => {
+    if (!carriersKey) return;
+    let live = true;
+    const req = carriersKey.split("\n").map((k) => { const i = k.lastIndexOf(":"); return { handle: k.slice(0, i), carrier: k.slice(i + 1) === "fm" ? "fm" as const : "711" as const }; });
+    void loadBuyerContacts(req).then((m) => { if (live) setContacts(m); }, () => { /* fail open */ });
+    return () => { live = false; };
+  }, [carriersKey, namesNonce]);
+  const onCopyMsg = async (msg: string) => {
+    const ok = await copyText(msg);
+    if (ok) { setToast(t.rd_pt_msg_copied); setTimeout(() => setToast(""), 1500); }
+  };
+  const extras: RowExtras = { contacts, contactOn, onCopyMsg: (m) => void onCopyMsg(m) };
   async function load() {
     setNamesNonce((x) => x + 1);
     setState("loading");
@@ -697,13 +764,13 @@ export default function ParcelTracking({ userId, fm = false }: { userId?: string
                   ? <div data-testid="pt-mobile">
                       <Cards tab={tab} counts={counts} onPick={setTab} t={t} />
                       {searchBox}
-                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} /> : emptyTab}
+                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} /> : emptyTab}
                       {more}
                     </div>
                   : <div data-testid="pt-web">
                       {searchBox}
                       <Tabs tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} /> : emptyTab}
+                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} /> : emptyTab}
                       {more}
                     </div>;
               })()

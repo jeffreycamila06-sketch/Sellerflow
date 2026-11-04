@@ -152,6 +152,7 @@ export interface ParcelScanRow {
   storeId: string;
   amount: number | null;
   notes: string;
+  contactPlatform?: string | null; // buyer contact platform (sql/140); absent/null = TikTok / legacy
   status: string;
   storeCheckStatus: string | null; // valid | not_found | unknown | checking | null
   // Extension-written checks (sql/33) — DISPLAY-ONLY here; the Chrome extension
@@ -391,12 +392,13 @@ export function rowToScan(row: Record<string, unknown>): ParcelScanRow {
     phoneCheckStatus: row.phone_check_status ? String(row.phone_check_status) : null,
     phoneRestrictedUntil: row.phone_restricted_until ? String(row.phone_restricted_until) : null,
     ...(row.temp_layer != null ? { tempLayer: String(row.temp_layer) } : {}),
+    ...(row.contact_platform != null ? { contactPlatform: String(row.contact_platform) } : {}),
     createdAt: String(row.created_at ?? ""),
   };
 }
 
 export const SCANS_PAGE = 50; // latest EXPORTED rows shown on screen open (history tail)
-const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, temp_layer, created_at";
+const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, temp_layer, contact_platform, created_at";
 
 // M4 (Oct 1 audit): EVERY not-yet-exported row (the working queue — a flat
 // newest-50 used to push older unexported parcels off screen, so they were
@@ -462,6 +464,7 @@ export async function saveParcelScan(
   fields: ScanFields,
   rawExtraction: { fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null,
   tempLayer?: string, // sql/79 — only passed for sellers with the Dry / Frozen control
+  contactPlatform?: string | null, // sql/140 — only passed when the buyer-contact picker is on (null = TikTok / no contact)
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   const me = await uid();
@@ -478,6 +481,7 @@ export async function saveParcelScan(
     status: "confirmed",
     raw_extraction: rawExtraction,
     ...(tempLayer ? { temp_layer: tempLayer } : {}),
+    ...(contactPlatform !== undefined ? { contact_platform: contactPlatform } : {}),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id };
@@ -847,6 +851,7 @@ export async function updateParcelScan(
   fields: ScanFields,
   resetChecks?: { storeFull?: boolean; phoneCheck?: boolean },
   tempLayer?: string, // sql/79 — only passed for sellers with the Dry / Frozen control
+  contactPlatform?: string | null, // sql/140 — only passed when known (picker on, or a stale platform to clear)
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!id) return { ok: false, error: "no id" };
@@ -860,6 +865,7 @@ export async function updateParcelScan(
     notes: fields.notes,
   };
   if (tempLayer) patch.temp_layer = tempLayer;
+  if (contactPlatform !== undefined) patch.contact_platform = contactPlatform;
   if (resetChecks?.storeFull) { patch.store_full_status = null; patch.store_full_at = null; }
   if (resetChecks?.phoneCheck) {
     patch.phone_check_status = null; patch.phone_check_at = null;

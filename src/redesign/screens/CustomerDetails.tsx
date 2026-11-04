@@ -20,6 +20,8 @@ import { loadFrozenState, FROZEN_LOADING, TEMP_DRY, TEMP_FROZEN, feeForLayer, mi
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE, validStore } from "../adapters/shipping";
 import { priceInput, hasCents } from "../../lib/money";
+import BuyerContactField from "../components/BuyerContactField";
+import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -36,7 +38,7 @@ type EditForm = { name: string; phone: string; store: string; notes: string };
 // frozenState / waitFrozen: Parcel Scan passes its Dry / Frozen state (sql/79) and a way to wait
 // for it; standalone → read once here. An import WAITS for that state, then saves with the
 // seller's CURRENT mode (no control → no temp_layer, DB default 常溫). blocked → no import.
-export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS, frozenState, waitFrozen }: { cur?: string; onImported?: () => void; pendingCap?: number; frozenState?: FrozenState; waitFrozen?: () => Promise<FrozenState> }) {
+export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS, frozenState, waitFrozen, contactOn = false }: { cur?: string; onImported?: () => void; pendingCap?: number; frozenState?: FrozenState; waitFrozen?: () => Promise<FrozenState>; contactOn?: boolean }) {
   const t = useT();
 
   const [query, setQuery] = useState("");
@@ -60,6 +62,10 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
   const [price, setPrice] = useState("");
   const [handle, setHandle] = useState(""); // buyer @username — REQUIRED for import (prefilled from the contact's saved handle)
   const [noHandle, setNoHandle] = useState(false); // per-parcel escape hatch — never persisted; resets per row/import
+  // Buyer contact platform (sql/140) — import row + edit modal; nothing renders unless contactOn.
+  const [platform, setPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const [editPlatform, setEditPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const [editNone, setEditNone] = useState(false);
   const [importErr, setImportErr] = useState("");
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState("");
@@ -144,6 +150,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
     setPrice("");
     setHandle(c.notes || ""); // prefill from the saved handle; blank contact → seller must type one
     setNoHandle(false);        // escape hatch always starts unchecked on a fresh row
+    setPlatform(platformOf(c.contactPlatform)); // the contact's saved platform (NULL = TikTok)
     setOpenId((cur0) => (cur0 === c.id ? null : c.id));
   }
 
@@ -171,16 +178,17 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
     // handle is prompted here, not silently imported without one — UNLESS the seller ticks
     // "no social handle", which imports with a BLANK handle (col J stays empty).
     if (!noHandle && !validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
+    const ce = contactOn && !noHandle ? contactError(platform, handle) : "";
+    if (ce !== "") { setImportErr(ce === "facebook" ? t.rd_bc_err_facebook : t.rd_bc_err_whatsapp); return; }
     setImporting(true);
     try {
       const cnt = await countPendingParcels();
       if (!cnt.ok) { setImportErr(t.rd_cd_import_err); return; }
       if (cnt.count >= pendingCap) { setImportErr(tpl(t.rd_ps2_batch_full, { max: String(pendingCap) })); return; }
-      const r = await saveParcelScan(
-        { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: noHandle ? "" : handle.trim() },
-        null,
-        st.allowed ? stLayer : undefined,
-      );
+      const importFields = { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: noHandle ? "" : (contactOn ? normalizeContact(platform, handle) : handle.trim()) };
+      const r = contactOn
+        ? await saveParcelScan(importFields, null, st.allowed ? stLayer : undefined, noHandle || platform === "tiktok" ? null : platform)
+        : await saveParcelScan(importFields, null, st.allowed ? stLayer : undefined);
       if (!r.ok) { setImportErr(t.rd_cd_import_err); return; }
       setToast(t.rd_cd_imported_toast);
       setTimeout(() => setToast(""), 2500);
@@ -199,19 +207,23 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
   function openEdit(c: ParcelCustomer) {
     setEditing(c);
     setEditForm({ name: c.name, phone: c.phone, store: c.storeId, notes: c.notes });
+    setEditPlatform(platformOf(c.contactPlatform)); setEditNone(false);
     setEditErr("");
   }
+  const editContactErr = contactOn && !editNone && contactError(editPlatform, editForm.notes) !== ""; // the field shows the message
   async function saveEdit() {
-    if (!editing) return;
+    if (!editing || editContactErr) return;
     setEditErr("");
     setSavingEdit(true);
     try {
-      const r = await updateParcelCustomer(editing.id, {
-        name: editForm.name.trim() || null,
-        phone: editForm.phone.trim() || null,
-        store_id: editForm.store.trim() || null,
-        notes: editForm.notes.trim() || null,
-      });
+      const notes = (contactOn ? normalizeContact(editPlatform, editForm.notes) : editForm.notes).trim() || null;
+      // picker on → its value (NULL for TikTok / no contact); off → clear a STALE platform when the
+      // handle changed (v2 item 7); a row with no platform keeps a payload with no new key.
+      const contactArg: string | null | undefined = contactOn
+        ? (!notes || editPlatform === "tiktok" ? null : editPlatform)
+        : (editing.contactPlatform != null && (editing.notes || "") !== (notes || "") ? null : undefined);
+      const editFields = { name: editForm.name.trim() || null, phone: editForm.phone.trim() || null, store_id: editForm.store.trim() || null, notes };
+      const r = contactArg === undefined ? await updateParcelCustomer(editing.id, editFields) : await updateParcelCustomer(editing.id, editFields, contactArg);
       if (!r.ok) { setEditErr(t.rd_cd_edit_err); return; }
       setEditing(null);
       await reloadCurrent();
@@ -340,6 +352,10 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
                     </div>
                     {importErr && <div style={errTxt} data-testid="cd-import-err">{importErr}</div>}
                   </div>
+                  {contactOn ? (
+                    <BuyerContactField platform={platform} onPlatform={setPlatform} value={handle} onValue={(v) => { setHandle(v); setImportErr(""); }}
+                      noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) { setHandle(""); setImportErr(""); } }} testId="cd-bc" />
+                  ) : (<>
                   {/* Buyer @username — REQUIRED (prefilled from the contact; blank → type one,
                       or tick "no social handle" to import with a blank handle). */}
                   <div>
@@ -358,6 +374,7 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
                       {t.rd_ps2_no_handle}
                     </label>
                   </div>
+                  </>)}
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => openEdit(c)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="cd-edit" aria-label={t.rd_cd_edit_aria}>✏️ {t.rd_cd_edit}</button>
                     <button onClick={() => { setDelErr(""); setConfirmDel(c); }} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--danger)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="cd-delete" aria-label={t.rd_cd_delete_aria}>🗑</button>
@@ -384,12 +401,15 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
               <div><label style={lbl}>{t.rd_cd_name_ph}</label><input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} style={input} data-testid="cd-edit-name" /></div>
               <div><label style={lbl}>{t.rd_cd_phone_ph}</label><input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} inputMode="numeric" style={input} data-testid="cd-edit-phone" /></div>
               <div><label style={lbl}>{t.rd_cd_store_ph}</label><input value={editForm.store} onChange={(e) => setEditForm((f) => ({ ...f, store: e.target.value }))} inputMode="numeric" style={input} data-testid="cd-edit-store" /></div>
-              <div><label style={lbl}>{t.rd_cd_notes_ph}</label><input value={editForm.notes} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} style={input} data-testid="cd-edit-notes" /></div>
+              {contactOn
+                ? <BuyerContactField platform={editPlatform} onPlatform={setEditPlatform} value={editForm.notes} onValue={(v) => setEditForm((f) => ({ ...f, notes: v }))}
+                    noContact={editNone} onNoContact={(on) => { setEditNone(on); if (on) setEditForm((f) => ({ ...f, notes: "" })); }} testId="cd-edit-bc" />
+                : <div><label style={lbl}>{t.rd_cd_notes_ph}</label><input value={editForm.notes} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} style={input} data-testid="cd-edit-notes" /></div>}
             </div>
             {editErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="cd-edit-err">{editErr}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button onClick={() => setEditing(null)} disabled={savingEdit} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: savingEdit ? "default" : "pointer" }} data-testid="cd-edit-cancel">{t.rd_cd_cancel}</button>
-              <button onClick={() => void saveEdit()} disabled={savingEdit} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: savingEdit ? "default" : "pointer", opacity: savingEdit ? 0.7 : 1 }} data-testid="cd-edit-save">{t.rd_cd_save}</button>
+              <button onClick={() => void saveEdit()} disabled={savingEdit || editContactErr} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: savingEdit || editContactErr ? "default" : "pointer", opacity: savingEdit || editContactErr ? 0.7 : 1 }} data-testid="cd-edit-save">{t.rd_cd_save}</button>
             </div>
           </div>
         </div>,

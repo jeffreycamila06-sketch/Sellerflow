@@ -34,6 +34,7 @@ import { shippingAccess } from "./adapters/shippingGate";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
 import { parcelTrackingVisible, parcelTrackingLocked, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
+import { buyerContactVisible } from "./adapters/buyerContact";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -841,6 +842,9 @@ export default function RedesignApp() {
   // Parcel Scan FamilyMart: the 7-11 manual Parcel Scan rule (parcelAllowed) AND the fm_scan_enabled
   // switch or the fm_pickup preview list (sql/120). Off → the FamilyMart tile stays "Soon".
   const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));
+  // Buyer contact picker + Pickup Status contact buttons (sql/140): admin, the preview key, or
+  // (switch on) a Plus/Pro/Master seller — never off-market. Off → every screen is today's.
+  const buyerContactOn = buyerContactVisible({ role: auth.profile?.role, plan: auth.profile?.plan, switchOn: featureSw.buyerContact, previewKey: hasFeature("buyer_contact"), marketHidden: hideParcelScan });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
   const helpBotIosOn = useHelpBotSwitch(authed && isIOS() ? (authUserId || "") : "", "support_ai_ios");
@@ -2713,11 +2717,11 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && shippingGate === "open" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={shipSessionKey} {...(shipSessionKey !== shipLegacyKey ? { legacyKey: shipLegacyKey } : {})} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} />
+            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />
           )}
-          {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} />}
-          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} />}
-          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} />}
+          {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />}
+          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} contactOn={buyerContactOn} />}
+          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} contactOn={buyerContactOn} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
           {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}

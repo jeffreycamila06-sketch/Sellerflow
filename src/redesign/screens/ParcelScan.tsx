@@ -30,6 +30,8 @@ import { useWakeLock } from "../adapters/useWakeLock";
 import { decodeQrFromFile } from "../adapters/qrDecode";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import CustomerDetails from "./CustomerDetails";
+import BuyerContactField from "../components/BuyerContactField";
+import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -132,7 +134,7 @@ type ExportClaim = {
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
 // pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
 // no auth); defaults to the everyone-cap so standalone renders keep 40.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -149,6 +151,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // form clear (clearForm) — i.e. after each save, on cancel, and when a scan populates.
   const [noHandle, setNoHandle] = useState(false);
   const clearForm = () => { setForm(emptyForm); setNoHandle(false); };
+  // Buyer contact platform (sql/140). STAYS on the last chosen one after each save (a batch is
+  // usually from one app); only an edit pre-fills it from the row. Saved as NULL for TikTok and
+  // for "no contact" (NULL = TikTok / legacy). Nothing here renders unless contactOn.
+  const [platform, setPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const platformToSave: string | null = noHandle || platform === "tiktok" ? null : platform;
+  const withContact = (f: FormState): FormState => (contactOn ? { ...f, notes: noHandle ? "" : normalizeContact(platform, f.notes) } : f);
   const [confid, setConfid] = useState<Record<keyof ScanFields, ScanConfidence> | null>(null);
   const [rawExtraction, setRawExtraction] = useState<{ fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null>(null);
   const [saveErr, setSaveErr] = useState("");
@@ -621,7 +629,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     const st = await waitFrozen(); // never save before the frozen state is known
     if (st.blocked) { setSaveErr(t.rd_ps2_frozen_blocked); return false; }
     const layer = st.allowed ? st.mode : undefined; // no control → no temp_layer sent (DB default 常溫)
-    const r = await saveParcelScan(fields, rawExtraction, layer);
+    const r = contactOn ? await saveParcelScan(fields, rawExtraction, layer, platformToSave) : await saveParcelScan(fields, rawExtraction, layer);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return false; }
     const rowId = r.id || `local-${Date.now()}`;
     const storeId = fields.store_id ?? "";
@@ -632,6 +640,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       storeId,
       amount: fields.amount,
       notes: fields.notes ?? "",
+      ...(contactOn && platformToSave ? { contactPlatform: platformToSave } : {}),
       status: "confirmed",
       storeCheckStatus: /^\d{6}$/.test(storeId) ? "checking" : null,
       ...(layer ? { tempLayer: layer } : {}),
@@ -648,7 +657,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
-    const ok = await commitNewParcel(formToFields(form));
+    const ok = await commitNewParcel(formToFields(withContact(form)));
     setSaving(false);
     if (!ok) return;
     setScanCount((c) => c + 1); // this-session saved counter (camera + picker)
@@ -662,7 +671,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onManualSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
-    const ok = await commitNewParcel(formToFields(form));
+    const ok = await commitNewParcel(formToFields(withContact(form)));
     setSaving(false);
     if (!ok) return;
     setManualCount((c) => c + 1);
@@ -955,6 +964,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (busy || r.status === "exported") return;
     setSaveErr("");
     setForm({ name: r.customerName, phone: r.phone, store: r.storeId, amount: r.amount == null ? "" : String(r.amount), notes: r.notes }); setNoHandle(false);
+    setPlatform(platformOf(r.contactPlatform)); // NULL = TikTok
     setEditLayer(isFrozenLayer(r.tempLayer) ? TEMP_FROZEN : TEMP_DRY);
     setConfid(null); // no low-confidence highlights on a manual edit
     setEditing({ id: r.id });
@@ -964,19 +974,25 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (!editing || saving) return;
     setSaving(true); setSaveErr("");
     const id = editing.id;
-    const fields = formToFields(form);
+    const fields = formToFields(withContact(form));
     const newStore = fields.store_id ?? "";
     const newPhone = fields.phone ?? "";
     const prev = rows.find((x) => x.id === id);
     const storeChanged = (prev?.storeId ?? "") !== newStore;
     const phoneChanged = (prev?.phone ?? "") !== newPhone;
+    // Contact platform (sql/140): picker on → its value; picker off → clear a STALE platform when
+    // the handle changed (v2 item 7); a row with no platform keeps a payload with no new key.
+    const notesChanged = (prev?.notes ?? "") !== (fields.notes ?? "");
+    const contactArg: string | null | undefined = contactOn ? platformToSave : (prev?.contactPlatform != null && notesChanged ? null : undefined);
     // Changed store/phone → null the extension verdict for that field IN THE SAME
     // update, so the extension re-checks (a stale 'full'/'restricted' from the old
     // store/phone must not linger). The app never calls 賣貨便 itself.
     const st = await waitFrozen();
     if (st.blocked) { setSaving(false); setSaveErr(t.rd_ps2_frozen_blocked); return; }
     const layer = st.allowed ? editLayer : undefined; // only sellers with the control can change it (else the row keeps its own)
-    const r = await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer); // own-scoped UPDATE, NO credit
+    const r = contactArg === undefined
+      ? await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer) // own-scoped UPDATE, NO credit (today's exact call)
+      : await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer, contactArg);
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
     if (aliveRef.current) {
@@ -987,6 +1003,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         storeId: newStore,
         amount: fields.amount,
         notes: fields.notes ?? "",
+        ...(contactArg !== undefined ? { contactPlatform: contactArg } : {}),
         // Store code changed → clear the stale ❌/verdict now; re-check below if valid.
         storeCheckStatus: storeChanged ? null : x.storeCheckStatus,
         // Extension verdicts reset locally to match the DB nulling above.
@@ -1018,7 +1035,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const errs = formErrors(form, formFee, requireStore, editing === null, noHandle, formMinTotal); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
-  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing) || frozen.blocked;
+  const contactErr = contactOn && !noHandle && contactError(platform, form.notes) !== ""; // WhatsApp: 8–15 digits or Save is blocked
+  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || contactErr || (batchFull && !editing) || frozen.blocked;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
 
@@ -1037,6 +1055,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       if (handle) {
         F({ notes: handle.slice(0, 50) }); // handle only (never a raw URL / random QR)
         setNoHandle(false);                // text present → "no handle" can't be true (rule 4)
+        if (contactOn) setPlatform("tiktok"); // a sticker QR is always the buyer's TikTok
         setToast(t.rd_ps2_qr_filled); setTimeout(() => setToast(""), 2500);
       } else {
         setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); // field left as-is
@@ -1275,7 +1294,20 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 Details" button aligned right — opens the phonebook overlay. */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>{editing ? t.rd_ps2_edit_title : manual ? t.rd_ps2_manual_title : tpl(t.rd_ps2_confirm, progress)}</div>
-              {manual && (
+              {contactOn ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="ps-scan-qr">
+                    {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
+                  </button>
+                  {manual && (
+                    <button
+                  onClick={() => setCustOpen(true)}
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+                  data-testid="ps-open-customers"
+                >📇 {t.rd_ps2_from_customers}</button>
+                  )}
+                </div>
+              ) : manual && (
                 <button
                   onClick={() => setCustOpen(true)}
                   style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
@@ -1320,6 +1352,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     : <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${minParcelAmount(formFee, formMinTotal)}` })}</div>)
                   : amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
+              {contactOn ? (
+                <div>
+                  <input ref={qrRef} type="file" accept="image/*" hidden data-testid="ps-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.notes} onValue={(v) => F({ notes: v })}
+                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) F({ notes: "" }); }}
+                    invalid={errs.handle && !errs.empty} testId="ps-bc" inputId="ps-handle" />
+                </div>
+              ) : (<>
               {/* Buyer @username — REQUIRED (no toggle). Stored in parcel_scans.notes →
                   賣貨便 col J (其他資訊), so the F-code↔handle round-trip via 匯出報表
                   keeps working. Verbatim (IG/LINE/FB vary); blank blocks Save on new rows.
@@ -1351,6 +1391,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {t.rd_ps2_no_handle}
                 </label>
               </div>
+              </>)}
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save}</div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
@@ -1632,7 +1673,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="ps-customers-close"
             >✕</button>
-            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} onImported={() => { setCustOpen(false); reloadSaved(); }} />
+            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,

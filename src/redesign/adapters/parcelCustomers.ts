@@ -16,6 +16,7 @@ export interface ParcelCustomer {
   name: string;   // "" when the row has no name
   storeId: string;
   notes: string;  // holds the buyer's TikTok handle when present
+  contactPlatform?: string | null; // buyer contact platform (sql/140); absent/null = TikTok / legacy
   createdAt: string;
   updatedAt: string;
 }
@@ -40,12 +41,13 @@ function rowToCustomer(row: Record<string, unknown>): ParcelCustomer {
     name: String(row.name ?? ""),
     storeId: String(row.store_id ?? ""),
     notes: String(row.notes ?? ""),
+    ...(row.contact_platform != null ? { contactPlatform: String(row.contact_platform) } : {}),
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
   };
 }
 
-const SELECT_COLS = "id, phone, name, store_id, notes, created_at, updated_at";
+const SELECT_COLS = "id, phone, name, store_id, notes, contact_platform, created_at, updated_at";
 
 export const CUSTOMER_SEARCH_LIMIT = 30;
 export const CUSTOMER_RECENT_LIMIT = 50;
@@ -106,7 +108,9 @@ export async function loadRecentParcelCustomers(): Promise<{ ok: boolean; rows: 
 // Edit a phonebook row directly (own-scoped UPDATE). This edits the PHONEBOOK
 // only — it does NOT touch any parcel_scans row (the trigger is one-way:
 // parcel_scans → parcel_customers). Awaited; a DB error surfaces inline.
-export async function updateParcelCustomer(id: string, fields: ParcelCustomerEdit): Promise<{ ok: boolean; error?: string }> {
+// contactPlatform (sql/140): only sent when passed — the picker's value, or null to clear a
+// stale platform when the handle changed without the picker. Omitted → byte-identical payload.
+export async function updateParcelCustomer(id: string, fields: ParcelCustomerEdit, contactPlatform?: string | null): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!id) return { ok: false, error: "no id" };
   const me = await uid();
@@ -118,6 +122,7 @@ export async function updateParcelCustomer(id: string, fields: ParcelCustomerEdi
       phone: fields.phone,
       store_id: fields.store_id,
       notes: fields.notes,
+      ...(contactPlatform !== undefined ? { contact_platform: contactPlatform } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
