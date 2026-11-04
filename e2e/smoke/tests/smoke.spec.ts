@@ -183,8 +183,8 @@ test("04 Products: add a product with a code, see it, change stock, delete it", 
       await expect(form).toBeVisible();
       await form.locator("input").first().fill(name);
       await form.getByPlaceholder(EN.rd_prd_live_code_ph).fill(code);
-      await form.locator("input[type=number]").nth(0).fill("123");
-      await form.locator("input[type=number]").nth(1).fill("2");
+      await form.getByTestId("prd-price").fill("123"); // Price is a text box since the decimal-prices change (Nov 3)
+      await form.getByTestId("prd-stock").fill("2");
       noteCreated("product", name);
       await form.getByRole("button", { name: EN.rd_prd_save, exact: true }).click();
       await expect(form).toBeHidden();
