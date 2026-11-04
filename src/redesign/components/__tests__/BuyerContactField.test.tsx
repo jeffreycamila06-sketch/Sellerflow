@@ -80,7 +80,7 @@ describe("BuyerContactField", () => {
     fireEvent.change(input, { target: { value: "https://www.facebook.com/profile.php?id=100012345678901&x=".padEnd(70, "y") } });
     expect(r.queryByTestId("t-max")).toBeNull(); // a link is shortened to fb:<id>, nothing is cut
     fireEvent.change(input, { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
-    expect(r.getByTestId("t-err").textContent).toBe("Open the buyer's profile and copy that link — share links can't be used.");
+    expect(r.getByTestId("t-err").textContent).toBe("Open the buyer's Facebook profile and copy that link.");
     expect(r.getByTestId("t-input").getAttribute("aria-invalid")).toBe("true");
     fireEvent.change(input, { target: { value: "x".repeat(60) } }); // a typed 60-char name IS cut
     expect(r.getByTestId("t-max")).toBeTruthy();

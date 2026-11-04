@@ -103,16 +103,21 @@ describe("Customer Details — buyer contact ON", () => {
     await r.findByTestId("cd-edit-overlay");
     fireEvent.click(r.getByTestId("cd-edit-bc-pick-facebook"));
     fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
-    expect(r.getByTestId("cd-edit-bc-err").textContent).toBe("Open the buyer's profile and copy that link — share links can't be used.");
+    expect(r.getByTestId("cd-edit-bc-err").textContent).toBe("Open the buyer's Facebook profile and copy that link.");
     expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(r.getByTestId("cd-edit-save"));
     await new Promise((res) => setTimeout(res, 20));
     expect(updateParcelCustomer).not.toHaveBeenCalled();
-    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/" } });
+    for (const bad of ["https://www.facebook.com/share.php?u=x", "https://www.facebook.com/media/set/?set=a.1", "https://www.facebook.com/gaming/juan", "https://l.facebook.com/l.php?u=x"]) {
+      fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: bad } });
+      expect(r.getByTestId("cd-edit-bc-err").textContent, bad).toBe("Open the buyer's Facebook profile and copy that link.");
+      expect((r.getByTestId("cd-edit-save") as HTMLButtonElement).disabled, bad).toBe(true);
+    }
+    fireEvent.change(r.getByTestId("cd-edit-bc-input"), { target: { value: "https://www.facebook.com/p/Juan-Shop-100063123456789/" } });
     expect(r.queryByTestId("cd-edit-bc-err")).toBeNull();
     fireEvent.click(r.getByTestId("cd-edit-save"));
     await waitFor(() => expect(updateParcelCustomer).toHaveBeenCalledTimes(1));
-    expect(updateParcelCustomer.mock.calls[0][1]).toMatchObject({ notes: "fb:100012345678901" });
+    expect(updateParcelCustomer.mock.calls[0][1]).toMatchObject({ notes: "fb:100063123456789" });
     expect(updateParcelCustomer.mock.calls[0][2]).toBe("facebook");
   });
 });

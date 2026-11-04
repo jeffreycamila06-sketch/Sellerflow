@@ -131,8 +131,15 @@ describe("Parcel Scan — buyer contact ON", () => {
     fill(r);
     fireEvent.click(r.getByTestId("ps-bc-pick-facebook"));
     fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://www.facebook.com/share/1AbCdEfGh/" } });
-    expect(r.getByTestId("ps-bc-err").textContent).toBe("Open the buyer's profile and copy that link — share links can't be used.");
+    expect(r.getByTestId("ps-bc-err").textContent).toBe("Open the buyer's Facebook profile and copy that link.");
     save(r);
+    await new Promise((res) => setTimeout(res, 20));
+    expect(saveParcelScan).not.toHaveBeenCalled();
+    for (const bad of ["https://www.facebook.com/photo/?fbid=100012345678901", "https://www.facebook.com/sharer.php?u=x", "facebook.com", "fb.me/x"]) {
+      fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: bad } });
+      expect(r.getByTestId("ps-bc-err").textContent, bad).toBe("Open the buyer's Facebook profile and copy that link.");
+      save(r);
+    }
     await new Promise((res) => setTimeout(res, 20));
     expect(saveParcelScan).not.toHaveBeenCalled();
     fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/" } });
@@ -141,6 +148,13 @@ describe("Parcel Scan — buyer contact ON", () => {
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
     expect(saveParcelScan.mock.calls[0][0]).toMatchObject({ notes: "fb:100012345678901" });
     expect(saveParcelScan.mock.calls[0][3]).toBe("facebook");
+    expect(r.getByTestId("ps-bc-pick-facebook").getAttribute("aria-checked")).toBe("true"); // platform STAYS facebook after a save (continuous mode blanks the form)
+    fill(r);
+    fireEvent.change(r.getByTestId("ps-bc-input"), { target: { value: "https://m.me/juan.delacruz.7" } });
+    save(r);
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(2));
+    expect(saveParcelScan.mock.calls[1][0]).toMatchObject({ notes: "juan.delacruz.7" });
+    expect(saveParcelScan.mock.calls[1][3]).toBe("facebook");
   });
   it("Scan QR fills the handle AND selects TikTok (from any platform)", async () => {
     const r = view();

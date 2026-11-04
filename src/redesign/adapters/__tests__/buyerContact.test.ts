@@ -3,7 +3,7 @@
 // the ready message (Customer Details name only; masked / missing → no-name greeting), the
 // phone-shaped rule, the lookup keys and the gate matrix (v2 item 8).
 import { describe, it, expect } from "vitest";
-import { BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, RAW_INPUT_MAX, isContactPlatform, platformOf, buyerContactVisible, whatsappDigits, facebookStoredValue, normalizeContact, contactError, lineHint, contactLink, pickupMessage, contactKey, lookupContact, FB_RESERVED, contactTruncated } from "../buyerContact";
+import { BUYER_CONTACT_PLATFORMS, DEFAULT_CONTACT_PLATFORM, CONTACT_MAX_LEN, RAW_INPUT_MAX, isContactPlatform, platformOf, buyerContactVisible, whatsappDigits, facebookStoredValue, normalizeContact, contactError, lineHint, contactLink, pickupMessage, contactKey, lookupContact, FB_RESERVED, contactTruncated, isFacebookLink, parseFacebookLink, fbReserved } from "../buyerContact";
 
 const T = { rd_pt_msg_tpl: "Hi {name}! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_msg_tpl_noname: "Hi! Your parcel is at {carrier} {store} ({amount}). Please pick it up by {deadline}. Thank you!", rd_pt_carrier_711: "7-11", rd_pt_carrier_fm: "FamilyMart" };
 const MSG = "Hi Maria! Your parcel is at 7-11 松山門市 (NT$380). Please pick it up by 2026-11-05. Thank you! & # 🎉";
@@ -75,31 +75,80 @@ describe("normalise per platform (the col J value, never > 50 chars)", () => {
   });
 });
 
-describe("Facebook links that are not a profile (share / people / messages)", () => {
-  it("people/<name>/<digits>/ and messages/t/<digits> → fb:<id>; a share link is REFUSED on save; typed names and real usernames pass", () => {
-    expect(facebookStoredValue("https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/")).toBe("fb:100012345678901");
-    expect(facebookStoredValue("https://m.facebook.com/messages/t/100012345678901")).toBe("fb:100012345678901");
-    expect(facebookStoredValue("https://www.facebook.com/share/1AbCdEfGh/")).toBe("share"); // what old rows hold
-    expect(contactError("facebook", "https://www.facebook.com/share/1AbCdEfGh/")).toBe("facebook");
-    expect(contactError("facebook", "https://www.facebook.com/SHARE/p/1AbCdEfGh/")).toBe("facebook"); // case-insensitive
-    expect(contactError("facebook", "https://www.facebook.com/profile.php")).toBe("facebook"); // profile.php with no id
-    expect(contactError("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz/")).toBe("facebook"); // people with no id
-    expect(contactError("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/")).toBe("");
-    expect(contactError("facebook", "https://www.facebook.com/joy.reyes.90")).toBe("");
-    expect(contactError("facebook", "Juan Dela Cruz")).toBe("");
-    expect(contactError("facebook", "share")).toBe(""); // a typed word is a name, not a link
-    expect(contactError("facebook", "")).toBe("");
+describe("Facebook links — ALLOWLIST (anything else is refused on save)", () => {
+  const BLOCKED = [
+    "https://www.facebook.com/photo/?fbid=100012345678901&set=a.1",
+    "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fx.com",
+    "https://www.facebook.com/share.php?u=https%3A%2F%2Fx.com",
+    "https://www.facebook.com/share/1AbCdEfGh/",
+    "https://www.facebook.com/media/set/?set=a.123",
+    "https://www.facebook.com/gaming/juan",
+    "https://www.facebook.com",
+    "facebook.com/",
+    "fb.me/x",
+    "https://fb.me/juan.delacruz.7",
+    "https://l.facebook.com/l.php?u=https%3A%2F%2Fx.com",
+    "https://www.facebook.com/profile.php",
+    "https://www.facebook.com/people/Juan-Dela-Cruz/",
+    "https://www.facebook.com/p/Juan-Shop/",
+    "https://www.facebook.com/juan/videos/123",
+    "https://www.facebook.com/login.php?next=x",
+    "https://www.facebook.com/live/",
+    "https://m.me/share",
+    "https://m.me/juan.delacruz.7/about",
+  ];
+  const ALLOWED: [string, string][] = [
+    ["https://www.facebook.com/p/Juan-Shop-100063123456789/", "fb:100063123456789"],
+    ["https://www.facebook.com/100012345678901", "fb:100012345678901"],
+    ["https://m.me/juan.delacruz.7", "juan.delacruz.7"],
+    ["https://www.facebook.com/profile.php?id=100012345678901", "fb:100012345678901"],
+    ["https://m.facebook.com/profile.php?mibextid=abc&id=100012345678901&ref=x", "fb:100012345678901"],
+    ["https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/", "fb:100012345678901"],
+    ["https://www.facebook.com/messages/t/100012345678901", "fb:100012345678901"],
+    ["https://www.facebook.com/juan.delacruz.7?mibextid=abc", "juan.delacruz.7"],
+    ["https://www.facebook.com/juan.delacruz.7/", "juan.delacruz.7"],
+    ["https://www.facebook.com/Juan.DelaCruz.7", "Juan.DelaCruz.7"],
+    ["http://facebook.com/juan.delacruz.7", "juan.delacruz.7"],
+    ["facebook.com/juan.delacruz.7", "juan.delacruz.7"],
+    ["web.facebook.com/juan.delacruz.7", "juan.delacruz.7"],
+    ["https://www.facebook.com/juan.delacruz.7/about", "juan.delacruz.7"],
+    ["fb.com/joy.reyes.90?mibextid=abc", "joy.reyes.90"],
+    ["https://M.FACEBOOK.COM/juan.delacruz.7#x", "juan.delacruz.7"],
+  ];
+  it("blocked links → contactError 'facebook' (Save blocked), stored value is never a reserved word; plain text passes as before", () => {
+    for (const l of BLOCKED) {
+      expect(isFacebookLink(l), l).toBe(true);
+      expect(parseFacebookLink(l), l).toBe("");
+      expect(contactError("facebook", l), l).toBe("facebook");
+      expect(fbReserved(facebookStoredValue(l)), l).toBe(false); // what WOULD be stored is the cut raw link, not "photo" / "share"
+    }
+    expect(facebookStoredValue("https://www.facebook.com/share/1AbCdEfGh/")).not.toBe("share");
+    for (const txt of ["Juan Dela Cruz", "share", "photo", "juan.delacruz.7", "100012345678901", ""]) {
+      expect(parseFacebookLink(txt)).toBeNull();
+      expect(contactError("facebook", txt)).toBe("");
+    }
+    expect(normalizeContact("facebook", "Juan Dela Cruz")).toBe("Juan Dela Cruz");
     expect(contactError("whatsapp", "12345")).toBe("whatsapp"); // unchanged
   });
-  it("contactLink never builds m.me for a reserved saved value (old data stays safe)", () => {
-    for (const w of FB_RESERVED) {
-      const a = contactLink("facebook", w, "msg");
-      expect(a).toEqual({ kind: "copy", text: "msg", contact: w });
-      expect(JSON.stringify(a)).not.toContain("m.me");
+  it("allowed shapes → fb:<id> / username, with ?mibextid, trailing slash, uppercase, http, no scheme, web., /about", () => {
+    for (const [l, want] of ALLOWED) {
+      expect(parseFacebookLink(l), l).toBe(want);
+      expect(facebookStoredValue(l), l).toBe(want);
+      expect(normalizeContact("facebook", l), l).toBe(want);
+      expect(contactError("facebook", l), l).toBe("");
     }
-    expect(contactLink("facebook", "https://www.facebook.com/share/1AbCdEfGh/", "msg")).toEqual({ kind: "copy", text: "msg", contact: "share" });
-    expect(contactLink("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz/100012345678901/", "msg")).toEqual({ kind: "open", url: "https://www.facebook.com/profile.php?id=100012345678901", copy: "msg" });
-    expect(contactLink("facebook", "joy.reyes.90", "msg")).toEqual({ kind: "open", url: "https://m.me/joy.reyes.90", copy: "msg" }); // a real username still opens
+  });
+  it("contactLink: m.me only for a real username; fb:<id> → profile URL; reserved / .php / a cut link (old rows) → copy only", () => {
+    for (const w of [...FB_RESERVED, "photo.php", "story.php", "Share"]) {
+      const a = contactLink("facebook", w, "msg");
+      expect(a, w).toEqual({ kind: "copy", text: "msg", contact: w });
+    }
+    expect(contactLink("facebook", "https://www.facebook.com/share/1AbCdEfGh/", "msg")?.kind).toBe("copy");
+    expect(JSON.stringify(contactLink("facebook", "https://www.facebook.com/photo/?fbid=1", "msg"))).not.toContain("m.me");
+    expect(contactLink("facebook", "https://m.me/juan.delacruz.7", "msg")).toEqual({ kind: "open", url: "https://m.me/juan.delacruz.7", copy: "msg" }); // the Messenger button
+    expect(contactLink("facebook", "juan.delacruz.7", "msg")).toEqual({ kind: "open", url: "https://m.me/juan.delacruz.7", copy: "msg" });
+    expect(contactLink("facebook", "https://www.facebook.com/p/Juan-Shop-100063123456789/", "msg")).toEqual({ kind: "open", url: "https://www.facebook.com/profile.php?id=100063123456789", copy: "msg" });
+    expect(contactLink("facebook", "fb:100012345678901", "msg")).toEqual({ kind: "open", url: "https://www.facebook.com/profile.php?id=100012345678901", copy: "msg" });
   });
 });
 
@@ -109,6 +158,11 @@ describe("contactTruncated — the 'max 50' hint", () => {
     expect(contactTruncated("other", long)).toBe(true);
     expect(contactTruncated("instagram", `@${long}`)).toBe(true);
     expect(contactTruncated("tiktok", "x".repeat(50))).toBe(false);
+    expect(contactTruncated("tiktok", `@${"x".repeat(50)}`)).toBe(true); // TikTok keeps the "@" → 51 saved → cut
+    expect(contactTruncated("other", `@${"x".repeat(50)}`)).toBe(true);
+    expect(contactTruncated("line", `@${"x".repeat(50)}`)).toBe(false); // LINE drops the "@" → exactly 50, nothing cut
+    expect(contactTruncated("instagram", `@${"x".repeat(50)}`)).toBe(false);
+    expect(contactTruncated("whatsapp", "+886 912 345 678 ".repeat(4))).toBe(true); // invalid (too many digits) AND long
     expect(contactTruncated("facebook", long)).toBe(true); // a typed 51-char name IS cut
     expect(contactTruncated("facebook", "https://www.facebook.com/profile.php?id=100012345678901")).toBe(false); // link → fb:<id>
     expect(contactTruncated("facebook", "https://www.facebook.com/people/Juan-Dela-Cruz-Santos-Reyes-Of-Manila/100012345678901/")).toBe(false);

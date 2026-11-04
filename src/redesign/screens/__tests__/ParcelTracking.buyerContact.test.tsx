@@ -47,10 +47,11 @@ const ROWS = () => [
   mk({ buyerUsername: "maria_shops" }),        // TikTok (NULL platform)
   mk({ buyerUsername: "Telegram @meiling" }),  // Other
   mk({ buyerUsername: "0912345678" }),         // plain digits, NO map entry → today's Chase (main parity)
+  mk({ buyerUsername: "fb:100012345678901" }), // Facebook profile id (from a profile.php / people / p/ link)
 ];
-const MAPS = (): ContactMaps => ({ s711: new Map([["+886922333444", "whatsapp"], ["yating.line", "line"], ["joy.reyes.90", "facebook"], ["ana.cruz_ig", "instagram"], ["telegram @meiling", "other"]]), fm: new Map() });
+const MAPS = (): ContactMaps => ({ s711: new Map([["+886922333444", "whatsapp"], ["yating.line", "line"], ["joy.reyes.90", "facebook"], ["ana.cruz_ig", "instagram"], ["telegram @meiling", "other"], ["fb:100012345678901", "facebook"]]), fm: new Map() });
 const view = (contactOn: boolean) => render(<TProvider lang="en"><ParcelTracking contactOn={contactOn} /></TProvider>);
-const rowsReady = (r: ReturnType<typeof view>) => waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(7));
+const rowsReady = (r: ReturnType<typeof view>) => waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(8));
 
 beforeEach(() => {
   M.narrow = false; n = 0;
@@ -71,9 +72,13 @@ describe("feature ON", () => {
     expect(msg).toBe("Hi 陳大文! Your parcel is at 7-11 松山門市 (NT$380). Please pick it up by 2026-11-05. Thank you!");
     expect(wa.target).toBe("_blank"); expect(wa.rel).toContain("noreferrer");
     expect((r.getByTestId("pt-open-line") as HTMLAnchorElement).href).toBe("https://line.me/R/ti/p/~yating.line");
-    expect((r.getByTestId("pt-open-facebook") as HTMLAnchorElement).href).toBe("https://m.me/joy.reyes.90");
+    const fb = r.getAllByTestId("pt-open-facebook") as HTMLAnchorElement[];
+    expect(fb.map((a) => a.href)).toEqual(["https://m.me/joy.reyes.90", "https://www.facebook.com/profile.php?id=100012345678901"]);
     expect((r.getByTestId("pt-open-instagram") as HTMLAnchorElement).href).toBe("https://ig.me/m/ana.cruz_ig");
-    expect(r.getAllByTestId("pt-contact").map((c) => c.getAttribute("data-platform"))).toEqual(["whatsapp", "line", "facebook", "instagram", "other"]);
+    expect(r.getAllByTestId("pt-contact").map((c) => c.getAttribute("data-platform"))).toEqual(["whatsapp", "line", "facebook", "instagram", "other", "facebook"]);
+    const fbRow = r.getAllByTestId("pt-row")[7];
+    expect(fbRow.textContent).toContain("Facebook profile"); // the id is shown as "Facebook profile", never raw "fb:1000…"
+    expect(fbRow.textContent).not.toContain("fb:1000");
     expect(r.getAllByTestId("pt-contact")[0].textContent).toBe("WhatsApp");
   });
   it("LINE / Messenger / Instagram copy the message on tap; Other and TikTok rows get Copy message; the masked name is never used", async () => {
