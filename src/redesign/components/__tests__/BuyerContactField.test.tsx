@@ -101,6 +101,14 @@ describe("BuyerContactField", () => {
     expect(r.queryByTestId("t-err")).toBeNull();
     expect(r.queryByTestId("t-max")).toBeNull(); // a share link stores "fbshare:<code>" → never cut
   });
+  it("paste with NO clipboard data (a plain paste event) never throws and leaves the value alone", () => {
+    const r = render(<Host init="facebook" />);
+    const input = r.getByTestId("t-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "joy.reyes.90" } });
+    expect(() => input.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }))).not.toThrow();
+    expect(input.value).toBe("joy.reyes.90");
+    expect(r.queryByTestId("t-err")).toBeNull();
+  });
   it("'Buyer has no contact' clears + dims the input; typing un-ticks it; 300-char raw cap (the 50 limit is on the saved value)", () => {
     const onSave = vi.fn();
     const r = render(<Host onSave={onSave} />);

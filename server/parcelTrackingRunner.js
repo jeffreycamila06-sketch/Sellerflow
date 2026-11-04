@@ -286,6 +286,35 @@ async function pollUserIds(serviceSb, userId) {
   return { ids: (data || []).map((r) => String(r.user_id)).filter(Boolean) };
 }
 
+// Expired sellers are NOT polled: plan_status 'expired' OR plan_expiry already past (admins and
+// sellers with no expiry date are kept). Their parcel_tracking rows stay untouched — no poll, no
+// retention delete — and polling resumes by itself after a renewal. PURE.
+export function activePollIds(ids, profiles, nowDate) {
+  const byId = new Map((profiles || []).map((p) => [String(p.auth_user_id), p]));
+  const nowMs = nowDate.getTime();
+  return ids.filter((id) => {
+    const p = byId.get(String(id));
+    if (!p) return true; // no profile row → keep (never a silent stop)
+    if (String(p.role || "").trim().toLowerCase() === "admin") return true;
+    if (String(p.plan_status || "").trim().toLowerCase() === "expired") return false;
+    const ms = p.plan_expiry ? new Date(p.plan_expiry).getTime() : NaN;
+    return !(Number.isFinite(ms) && ms < nowMs);
+  });
+}
+// A profile read failure → poll everyone as before (logged), never a silent stop.
+async function dropExpiredSellers(serviceSb, ids, nowDate, logger) {
+  if (!ids.length) return ids;
+  let data = null;
+  try {
+    const r = await serviceSb.from("seller_profiles").select("auth_user_id, role, plan_status, plan_expiry").in("auth_user_id", ids);
+    if (r.error) { logger.warn("[PARCEL-POLL] profile read failed — polling everyone:", r.error.code || "error"); return ids; }
+    data = r.data;
+  } catch (e) { logger.warn("[PARCEL-POLL] profile read threw — polling everyone:", (e && e.code) || "threw"); return ids; }
+  const kept = activePollIds(ids, data || [], nowDate);
+  if (kept.length < ids.length) logger.log(`[PARCEL-POLL] skipped ${ids.length - kept.length} expired seller(s)`);
+  return kept;
+}
+
 // Page through ALL non-terminal rows for the given sellers, stalest first ACROSS
 // sellers (last_polled_at ASC NULLS FIRST, id tiebreak for stable pages). Never relies
 // on the PostgREST default row cap. Any page error → error (never a partial set).
@@ -372,9 +401,10 @@ export async function runPoll(opts) {
   // 1) WHO — override or allowlist. 2) WHAT — every non-terminal row, stalest first.
   const who = await pollUserIds(serviceSb, userId);
   if (who.error) { logger.error("[PARCEL-POLL] access select failed:", who.error.code || "error"); return finish({ ok: false, reason: "select_failed", error: "select_failed" }); }
+  const ids = await dropExpiredSellers(serviceSb, who.ids, startedAt, logger); // expired plans: rows untouched
   let rows = [];
-  if (who.ids.length) {
-    const sel = await selectLiveRows(serviceSb, who.ids, pageSize);
+  if (ids.length) {
+    const sel = await selectLiveRows(serviceSb, ids, pageSize);
     if (sel.error) { logger.error("[PARCEL-POLL] select failed:", sel.error.code || "error"); return finish({ ok: false, reason: "select_failed", error: "select_failed" }); }
     rows = sel.rows;
   }
@@ -390,8 +420,8 @@ export async function runPoll(opts) {
   });
 
   // 3) RETENTION — scoped to the SAME sellers this run polls (skipped when nobody is
-  //    on the allowlist).
-  const purged = who.ids.length ? await purgeRetention(serviceSb, userId ? [userId] : who.ids, now(), logger) : 0;
+  //    on the allowlist; an expired seller's rows are never deleted).
+  const purged = ids.length ? await purgeRetention(serviceSb, ids, now(), logger) : 0;
 
   return finish({
     ok: !r.tripped, reason: r.stopReason, sellers: new Set(live.map((x) => String(x.user_id))).size, rows: live.length, capped,

@@ -13,7 +13,7 @@
 // and a 10-min rest after 30 min of back-to-back work.
 import {
   checkRows, readPollGate, readDailyRequests, writePollHealth, purgeRetention,
-  selectLiveRows, isMissingCarrierColumn, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP,
+  selectLiveRows, isMissingCarrierColumn, taipeiDay, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, activePollIds,
 } from "./parcelTrackingRunner.js";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MEMORY_LIMIT_MB } from "./observability.js";
@@ -143,7 +143,7 @@ export function createWorker(opts) {
     healthDay = day;
   }
 
-  async function finishJob(job, { status, error = null, checked = 0, total = 0, requests = 0, batches = 0, failures = 0, retired = 0, startedMs, stats = "" }) {
+  async function finishJob(job, { status, error = null, checked = 0, total = 0, requests = 0, batches = 0, failures = 0, retired = 0, startedMs, stats = "", purge = true }) {
     const t = now();
     const durationMs = t.getTime() - startedMs;
     const { error: jErr } = await serviceSb.from("parcel_tracking_jobs").update({
@@ -167,7 +167,7 @@ export function createWorker(opts) {
       ran_at: new Date(startedMs).toISOString(), ok: status !== "failed", reason: error, queries: batches, updated: checked,
       errors: failures, duration_ms: durationMs, sellers: 1, skipped_cap: 0, retired, requests, kind: job.kind, job_id: job.id,
     }, logger);
-    if (job.kind !== "health") {
+    if (job.kind !== "health" && purge) { // purge=false: an expired seller's rows stay untouched
       await purgeRetention(serviceSb, [job.user_id], t, logger, TAG);
       // Rows inserted while this job ran were blocked from enqueuing by the one-active
       // lock — queue a follow-up covering them.
@@ -218,8 +218,14 @@ export function createWorker(opts) {
         }
       }
 
-      const { data: prof } = await serviceSb.from("seller_profiles").select("plan,role").eq("auth_user_id", job.user_id).maybeSingle();
+      const { data: prof } = await serviceSb.from("seller_profiles").select("plan,role,plan_status,plan_expiry").eq("auth_user_id", job.user_id).maybeSingle();
       const caps = planCaps(prof?.plan, String(prof?.role || "").toLowerCase() === "admin");
+      // Expired plan (same rule as the scheduled poll, activePollIds): skip the job, rows untouched
+      // (no check, no retention delete). Admins and a missing profile row are never skipped.
+      if (prof && !activePollIds([job.user_id], [{ ...prof, auth_user_id: job.user_id }], now()).length) {
+        logger.log(`${TAG} skipped job=${job.id} user=${job.user_id}: plan expired (rows untouched)`);
+        return finishJob(job, { status: "skipped", error: "plan_expired", startedMs, purge: false });
+      }
 
       // Per-seller daily request budget, from today's (Taipei) job rows.
       const { data: todays, error: tErr } = await serviceSb.from("parcel_tracking_jobs").select("requests_used")

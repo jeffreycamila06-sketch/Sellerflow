@@ -139,7 +139,9 @@ function ChaseAction({ row, t, onCopy, platform = null, contactOn = false, messa
   if (platform && platform !== "tiktok") {
     const act = contactLink(platform, raw, message);
     if (act?.kind === "open" && contactOn) {
-      const label = platform === "whatsapp" ? t.rd_pt_open_whatsapp : platform === "line" ? t.rd_pt_open_line : platform === "facebook" ? t.rd_pt_open_facebook : t.rd_pt_open_instagram;
+      // Facebook: "Messenger" only for an m.me/<username> chat; a profile id / share link opens Facebook itself
+      const label = platform === "whatsapp" ? t.rd_pt_open_whatsapp : platform === "line" ? t.rd_pt_open_line
+        : platform === "facebook" ? (act.url.startsWith("https://m.me/") ? t.rd_pt_open_facebook : t.rd_pt_open_fb_profile) : t.rd_pt_open_instagram;
       return (
         <a href={act.url} target="_blank" rel="noreferrer noopener" style={chaseBtn} data-testid={`pt-open-${platform}`} data-platform={platform} title={label}
           onClick={() => { if (act.copy && onCopyMsg) void onCopyMsg(act.copy); }}>
@@ -163,7 +165,7 @@ function ChaseAction({ row, t, onCopy, platform = null, contactOn = false, messa
     return stack(copyMsg,
       <a href={target.url} target="_blank" rel="noreferrer" style={chaseBtn} data-testid="pt-open-profile" title={t.rd_pt_open_profile}
         onClick={() => { if (cp) void onCopy(cp); }}>
-        {t.rd_pt_chase}
+        {contactOn && !(platform == null && /^\d+$/.test(target.handle)) ? t.rd_pt_open_tiktok : t.rd_pt_chase}{/* a phone-number handle with no saved app keeps "Chase" */}
       </a>);
   }
   if (target.kind === "copy") {
@@ -193,7 +195,7 @@ function Buyer({ row, t, nowMs, buyerName, platform = null }: { row: ParcelTrack
     ? <span data-testid="pt-contact" data-platform={platform} style={{ display: "inline-block", marginLeft: 5, padding: "0 6px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", verticalAlign: "middle" }}>{t[PLATFORM_NAME_KEY[platform]]}</span>
     : null;
   // feature ON + Facebook + a real stored id ("fb:<digits>" / "fbshare:<code>") → "Facebook profile"; OFF = exactly main's @username
-  const shown = platform === "facebook" && (/^fb:\d+$/.test(name) || /^fbshare:[A-Za-z0-9]+$/.test(name)) ? t.rd_pt_fb_profile : platform && platform !== "tiktok" ? name : `@${handle}`;
+  const shown = platform === "facebook" && (/^fb:\d{1,20}$/.test(name) || /^fbshare:[A-Za-z0-9]+$/.test(name)) ? t.rd_pt_fb_profile : platform && platform !== "tiktok" ? name : `@${handle}`;
   const label = name && buyerName
     ? <>
         <span data-testid="pt-buyer-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={buyerName}>{buyerName}</span>

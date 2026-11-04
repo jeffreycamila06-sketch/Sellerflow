@@ -78,14 +78,14 @@ export async function loadBuyerContacts(rows: { handle: string | null | undefine
   const out: ContactMaps = { s711: new Map(), fm: new Map() };
   const wanted = new Set(rows.map((r) => normHandle(r.handle)).filter(Boolean));
   if (!wanted.size || !isSupabaseConfigured || !supabase) return out;
-  const anyFm = rows.some((r) => r.carrier === "fm");
-  const any711 = rows.some((r) => r.carrier !== "fm");
-  try {
-    const me = await uid();
-    if (!me) return out;
-    const sinceIso = new Date(Date.now() - BUYER_CONTACTS_DAYS * 24 * 60 * 60 * 1000).toISOString();
-    if (any711) for (const s of SRC_711) await readInto(out.s711, wanted, me, s, sinceIso);
-    if (anyFm) for (const s of SRC_FM) await readInto(out.fm, wanted, me, s, sinceIso);
-    return out;
-  } catch { return { s711: new Map(), fm: new Map() }; }
+  // BOTH sources whenever there is a row: a seller with only FamilyMart parcels still gets the
+  // 7-11 phonebook as contactFor's fallback map (and the other way round). Each carrier's reads
+  // fail on their own: a failed FamilyMart read empties the FM map only (never partial inside a
+  // map), the 7-11 map it already built stays — and the other way round.
+  const me = await uid().catch(() => null);
+  if (!me) return out;
+  const sinceIso = new Date(Date.now() - BUYER_CONTACTS_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  try { for (const s of SRC_711) await readInto(out.s711, wanted, me, s, sinceIso); } catch { out.s711 = new Map(); }
+  try { for (const s of SRC_FM) await readInto(out.fm, wanted, me, s, sinceIso); } catch { out.fm = new Map(); }
+  return out;
 }

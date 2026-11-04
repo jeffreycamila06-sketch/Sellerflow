@@ -38,6 +38,9 @@ describe("RedesignApp wiring (source contract)", () => {
   it("the gate is fed the own allowlist flag + plan — never an email list", () => {
     expect(gate).toContain("access: authed && parcelTrackingAccess");
     expect(gate).toContain("plan: auth.profile?.plan");
+    expect(gate).toContain("planStatus: auth.profile?.planStatus, planExpiry: auth.profile?.planExpiry"); // the expiry lock is fed from the profile
+    const locked = src.slice(src.indexOf("const pickupLocked = parcelTrackingLocked({"), src.indexOf("});", src.indexOf("const pickupLocked = parcelTrackingLocked({")));
+    expect(locked).toContain("planStatus: auth.profile?.planStatus, planExpiry: auth.profile?.planExpiry");
     expect(gate).not.toMatch(/email/);
     expect(src).toContain("loadParcelTrackingAccess().then(");
     expect(src).toMatch(/useState\(false\);\s*\n\s*const authUserId/); // fail-closed default

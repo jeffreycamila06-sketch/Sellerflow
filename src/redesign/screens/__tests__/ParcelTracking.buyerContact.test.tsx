@@ -92,8 +92,11 @@ describe("feature ON", () => {
     fireEvent.click(msgs[0]);
     expect(copyText).toHaveBeenLastCalledWith("Hi 王小美! Your parcel is at 7-11 松山門市 (NT$380). Please pick it up by 2026-11-05. Thank you!");
     await waitFor(() => expect(r.container.textContent).toContain("Message copied"));
-    // TikTok row keeps today's Chase (Open profile)
+    // TikTok row keeps today's Chase link (Open profile) — labelled "TikTok" while the feature is on
     expect((r.getAllByTestId("pt-open-profile")[0] as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@maria_shops");
+    expect(r.getAllByTestId("pt-open-profile").map((a) => a.textContent)).toEqual(["TikTok", "Chase"]); // "0912345678" has no saved app → "Chase" (link unchanged)
+    expect((r.getAllByTestId("pt-open-profile")[1] as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@0912345678");
+    expect((r.getAllByTestId("pt-open-facebook")[0] as HTMLAnchorElement).textContent).toBe("Messenger"); // m.me/<username>
     // Other → Copy copies the contact
     const copies = r.getAllByTestId("pt-copy-username");
     fireEvent.click(copies[0]);
@@ -129,6 +132,7 @@ describe("Facebook id values in the Buyer cell", () => {
     expect(rows[0].textContent).toContain("Facebook profile");
     expect(rows[0].textContent).not.toContain("fbshare:");
     expect((r.getByTestId("pt-open-facebook") as HTMLAnchorElement).href).toBe("https://www.facebook.com/share/19tvMLYXPi/");
+    expect((r.getByTestId("pt-open-facebook") as HTMLAnchorElement).textContent).toBe("Facebook"); // a share link is not a Messenger chat
     expect(rows[1].textContent).toContain("FB:abc"); // not a real id → shown as stored
     expect(rows[1].textContent).not.toContain("Facebook profile");
     expect(rows[2].textContent).toContain("fb:100012345678901"); // a LINE row is never relabelled
@@ -151,6 +155,39 @@ describe("Facebook id values in the Buyer cell", () => {
   });
 });
 
+describe("TikTok button label (feature ON)", () => {
+  it("a TikTok handle → 'TikTok'; an all-digit handle with NO saved app → 'Chase' (same link); digits WITH a saved TikTok app → 'TikTok'", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [mk({ buyerUsername: "maria_shops" }), mk({ buyerUsername: "0912345678" }), mk({ buyerUsername: "@0933111222" }), mk({ buyerUsername: "0955666777" })] });
+    loadBuyerContacts.mockResolvedValue({ s711: new Map([["0955666777", "tiktok"]]), fm: new Map() });
+    const r = view(true);
+    await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBe(4));
+    await waitFor(() => expect(loadBuyerContacts).toHaveBeenCalled());
+    await waitFor(() => expect(r.getAllByTestId("pt-open-profile").length).toBe(4));
+    const a = r.getAllByTestId("pt-open-profile") as HTMLAnchorElement[];
+    expect(a.map((x) => [x.textContent, x.href])).toEqual([
+      ["TikTok", "https://www.tiktok.com/@maria_shops"],
+      ["Chase", "https://www.tiktok.com/@0912345678"],
+      ["Chase", "https://www.tiktok.com/@0933111222"],
+      ["TikTok", "https://www.tiktok.com/@0955666777"],
+    ]);
+  });
+});
+
+describe("Facebook button label", () => {
+  it("'Messenger' only for an m.me/<username> chat; a profile id opens Facebook with the 'Facebook' label", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [mk({ buyerUsername: "joy.reyes.90" }), mk({ buyerUsername: "fb:100012345678901" }), mk({ buyerUsername: "fbshare:19tvMLYXPi" })] });
+    loadBuyerContacts.mockResolvedValue({ s711: new Map([["joy.reyes.90", "facebook"], ["fb:100012345678901", "facebook"], ["fbshare:19tvmlyxpi", "facebook"]]), fm: new Map() });
+    const r = view(true);
+    await waitFor(() => expect(r.getAllByTestId("pt-open-facebook").length).toBe(3));
+    const fb = r.getAllByTestId("pt-open-facebook") as HTMLAnchorElement[];
+    expect(fb.map((a) => [a.textContent, a.href])).toEqual([
+      ["Messenger", "https://m.me/joy.reyes.90"],
+      ["Facebook", "https://www.facebook.com/profile.php?id=100012345678901"],
+      ["Facebook", "https://www.facebook.com/share/19tvMLYXPi/"],
+    ]);
+  });
+});
+
 describe("feature OFF (the map is still read — v2 item 2)", () => {
   it("known non-TikTok platforms → Copy (never a TikTok link); no chips, no Copy message; TikTok row = today's Chase", async () => {
     const r = view(false);
@@ -163,6 +200,8 @@ describe("feature OFF (the map is still read — v2 item 2)", () => {
     expect(r.queryByTestId("pt-copy-msg")).toBeNull();
     expect(r.getAllByTestId("pt-open-profile")).toHaveLength(2); // maria_shops + the plain-digit row (today's Chase)
     expect((r.getAllByTestId("pt-open-profile")[0] as HTMLAnchorElement).href).toBe("https://www.tiktok.com/@maria_shops");
+    expect(r.getAllByTestId("pt-open-profile").map((a) => a.textContent)).toEqual(["Chase", "Chase"]); // feature OFF = main's label
+    expect(r.queryByText("TikTok", { exact: true })).toBeNull();
   });
   it("map failed / empty: a LINE id that looks like a handle still opens TikTok today (unchanged), but a phone-shaped value never does", async () => {
     loadBuyerContacts.mockResolvedValue({ s711: new Map(), fm: new Map() });

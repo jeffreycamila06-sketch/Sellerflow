@@ -197,8 +197,9 @@ describe("MOBILE — status count cards + compact rows (no parcel code)", () => 
 describe("gating (Stage 1): admin, or Plus/Pro/Master WITH an enabled allowlist row", () => {
   it("admins see it; an allowlisted paid seller sees it; a paid seller without the row does not; basic never", () => {
     expect(parcelTrackingVisible({ role: "admin" })).toBe(true);
-    expect(parcelTrackingVisible({ role: "seller", plan: "master", access: true })).toBe(true);
-    expect(parcelTrackingVisible({ role: "seller", plan: "master", access: false })).toBe(false);
+    expect(parcelTrackingVisible({ role: "seller", plan: "master", planStatus: "active", access: true })).toBe(true);
+    expect(parcelTrackingVisible({ role: "seller", plan: "master", planStatus: "expired", access: true })).toBe(false); // expired → never the screen
+    expect(parcelTrackingVisible({ role: "seller", plan: "master", planStatus: "active", access: false })).toBe(false);
     expect(parcelTrackingVisible({ role: "seller", plan: "master" })).toBe(false);
     expect(parcelTrackingVisible({ role: "seller", plan: "basic", access: true })).toBe(false);
   });

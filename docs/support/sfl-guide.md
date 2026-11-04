@@ -533,7 +533,7 @@ Both:
 - A field with a mistake shows a short message under it.
 
 ## pickup-status — Pickup Status
-Last checked: 2026-11-03
+Last checked: 2026-11-04
 Keywords: pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export, whatsapp, line, messenger, instagram, copy message, remind buyer, 催取件訊息, 提醒買家, nhắc người mua, เตือนผู้ซื้อ, ingatkan pembeli
 
 **Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
@@ -551,7 +551,7 @@ Who has it:
 3. Upload a new file whenever you want newer statuses.
 
 - 7-11 and 全家 parcels are in one list. Each row has a small **7-11** or **全家** label.
-- **Buyer waiting for pickup** rows have a button for the buyer's app: **WhatsApp** opens the chat with a ready reminder (name, store, amount, pick-up-by date); **LINE**, **Messenger** and **Instagram** open the buyer and copy the reminder so you can paste it; **Chase** opens a TikTok profile; **Copy message** copies the reminder; **Copy** copies the contact. The app comes from what you picked in Parcel Scan; parcels saved before this had a TikTok @username and keep **Chase**.
+- **Buyer waiting for pickup** rows have a button for the buyer's app: **WhatsApp** opens the chat with a ready reminder (name, store, amount, pick-up-by date); **LINE** and **Instagram** open the buyer and copy the reminder so you can paste it; **Facebook** opens the buyer's Facebook (**Messenger** when it is a username) and copies the reminder; **TikTok** opens the buyer's TikTok profile; **Copy message** copies the reminder; **Copy** copies the contact. The app comes from what you picked in Parcel Scan; parcels saved before this had a TikTok @username and open TikTok.
 - Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
 - Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
 - "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
