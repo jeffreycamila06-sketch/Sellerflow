@@ -7,9 +7,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  runPoll, capLiveRowsPerSeller, PER_SELLER_LIVE_CAP, pollGateFrom,
-  underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, taipeiDay,
-  nextUnchangedPolls, shouldRetire, RETIRE_AFTER_POLLS, selectLiveRows, isMissingCarrierColumn,
+  runPoll, capLiveRowsPerSeller, PER_SELLER_LIVE_CAP, pollGateFrom, underRequestCap, MAX_REQUESTS_PER_BATCH, DAILY_REQUEST_CAP, taipeiDay, nextUnchangedPolls, shouldRetire, RETIRE_AFTER_POLLS, selectLiveRows, isMissingCarrierColumn, activePollIds,
 } from "../../../../server/parcelTrackingRunner.js";
 import { QUERY_URL, SEARCH_URL } from "../../../../server/parcelTracking.js";
 
@@ -32,6 +30,7 @@ type Opts = {
   settings?: Record<string, string>; settingsError?: unknown;
   access?: string[]; accessError?: unknown;
   daily?: Record<string, number>; dailyError?: unknown;
+  profiles?: Record<string, unknown>[]; profilesError?: unknown;
 };
 function fakeSb(rows: unknown[], opts: Opts = {}) {
   const settings = opts.settings ?? { parcel_tracking_enabled: "true" };
@@ -47,6 +46,7 @@ function fakeSb(rows: unknown[], opts: Opts = {}) {
     upserts: [] as Record<string, unknown>[],
     dailyWrites: [] as { day: string; requests: number }[],
     accessReads: 0,
+    profileReads: [] as unknown[][],
   };
   const daily: Record<string, number> = { ...(opts.daily ?? {}) };
   const thenable = (resolve: () => unknown) => ({
@@ -93,6 +93,9 @@ function fakeSb(rows: unknown[], opts: Opts = {}) {
       };
       if (table === "parcel_tracking_access") return {
         select() { return { eq: () => { captured.accessReads += 1; return thenable(() => ({ data: opts.accessError ? null : access.map((user_id) => ({ user_id })), error: opts.accessError ?? null })); } }; },
+      };
+      if (table === "seller_profiles") return {
+        select() { return { in: (_c: string, ids: unknown[]) => { captured.profileReads.push(ids); return thenable(() => ({ data: opts.profilesError ? null : (opts.profiles ?? []), error: opts.profilesError ?? null })); } }; },
       };
       if (table === "parcel_tracking_daily") return {
         select() { return { eq: (_c: string, day: string) => ({ maybeSingle: () => thenable(() => ({ data: opts.dailyError ? null : (day in daily ? { requests: daily[day] } : null), error: opts.dailyError ?? null })) }) }; },
@@ -266,6 +269,53 @@ const CUTOFF_RETURNED = new Date(FIXED_NOW.getTime() - 365 * 24 * 60 * 60 * 1000
     const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error: err }, limits: smallLimits });
     expect(s.ok).toBe(true);
     expect(err.mock.calls.some((c) => String(c[0]).includes("retention delete failed"))).toBe(true);
+  });
+});
+
+describe("expired sellers are skipped (rows untouched; resumes after renewal)", () => {
+  const past = "2026-09-01T00:00:00Z", future = "2027-01-01T00:00:00Z";
+  it("activePollIds (pure): plan_status expired OR plan_expiry past → dropped; admin, no expiry, future expiry, unknown profile → kept", () => {
+    const profiles = [
+      { auth_user_id: "A", role: "seller", plan_status: "active", plan_expiry: future },
+      { auth_user_id: "B", role: "seller", plan_status: "expired", plan_expiry: future },
+      { auth_user_id: "C", role: "seller", plan_status: "active", plan_expiry: past },
+      { auth_user_id: "D", role: "admin", plan_status: "expired", plan_expiry: past },
+      { auth_user_id: "E", role: "seller", plan_status: "active", plan_expiry: null },
+      { auth_user_id: "F", role: "seller", plan_status: " EXPIRED ", plan_expiry: null },
+    ];
+    expect(activePollIds(["A", "B", "C", "D", "E", "F", "Z"], profiles, FIXED_NOW)).toEqual(["A", "D", "E", "Z"]);
+    expect(activePollIds([], profiles, FIXED_NOW)).toEqual([]);
+  });
+  it("runPoll: the expired seller's rows are neither selected nor purged; the active seller is polled as before", async () => {
+    const sb = fakeSb([], { access: ["ACTIVE", "EXPIRED", "PASTDUE"], profiles: [
+      { auth_user_id: "ACTIVE", role: "seller", plan_status: "active", plan_expiry: future },
+      { auth_user_id: "EXPIRED", role: "seller", plan_status: "expired", plan_expiry: future },
+      { auth_user_id: "PASTDUE", role: "seller", plan_status: "active", plan_expiry: past },
+    ] });
+    const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger, limits: smallLimits });
+    expect(sb._captured.profileReads).toEqual([["ACTIVE", "EXPIRED", "PASTDUE"]]);
+    expect(sb._captured.selectIns.filter(([c]) => c === "user_id").map(([, v]) => v)).toEqual([["ACTIVE"]]);
+    expect(sb._captured.deletes.map((d) => d.eqs.user_id ?? d.ins.user_id)).toEqual(["ACTIVE"]);
+    expect(logger.log).toHaveBeenCalledWith("[PARCEL-POLL] skipped 2 expired seller(s)");
+  });
+  it("runPoll: every allowlisted seller expired → no parcel select, no delete (rows untouched)", async () => {
+    const sb = fakeSb([], { access: ["EXPIRED"], profiles: [{ auth_user_id: "EXPIRED", role: "seller", plan_status: "expired", plan_expiry: null }] });
+    await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }, limits: smallLimits });
+    expect(sb._captured.selectIns.filter(([c]) => c === "user_id")).toEqual([]);
+    expect(sb._captured.deletes).toEqual([]);
+  });
+  it("runPoll: renewed (status active again, expiry in the future) → polled again, nothing else to do", async () => {
+    const sb = fakeSb([], { access: ["R"], profiles: [{ auth_user_id: "R", role: "seller", plan_status: "active", plan_expiry: future }] });
+    await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }, limits: smallLimits });
+    expect(sb._captured.selectIns.filter(([c]) => c === "user_id").map(([, v]) => v)).toEqual([["R"]]);
+  });
+  it("runPoll: a profile read error → everyone is polled as before (logged, never a silent stop)", async () => {
+    const sb = fakeSb([], { access: ["A", "B"], profilesError: { code: "500" } });
+    const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger, limits: smallLimits });
+    expect(sb._captured.selectIns.filter(([c]) => c === "user_id").map(([, v]) => v)).toEqual([["A", "B"]]);
+    expect(logger.warn).toHaveBeenCalledWith("[PARCEL-POLL] profile read failed — polling everyone:", "500");
   });
 });
 

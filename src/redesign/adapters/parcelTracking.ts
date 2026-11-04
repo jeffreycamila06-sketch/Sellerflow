@@ -14,33 +14,45 @@
 import { useEffect } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
-import { isBasicOrFreePlan } from "../../lib/planWindow";
+import { isActivePaid, isBasicOrFreePlan, planDaysLeft } from "../../lib/planWindow";
 import { log } from "../../lib/log";
 
 // ── Feature gate ──────────────────────────────────────────────────────────────
 // Tiers that CAN be allowlisted (case-insensitive). The allowlist row is the switch.
 export const PARCEL_TRACKING_TIERS = ["plus", "pro", "master"] as const;
 
+// Plan rule = the SAME as Parcel Scan (canUseParcelManual): a Plus/Pro/Master plan that is
+// ACTIVE and NOT EXPIRED (isActivePaid + planDaysLeft). An expired plan → hidden here and the
+// 🔒 tile below (parcelTrackingLocked); renewal opens it again by itself. Admin never gated.
+const planActive = (a: { plan?: string | null; planStatus?: string | null; planExpiry?: string | null; nowMs?: number }): boolean =>
+  isActivePaid({ plan: String(a.plan ?? ""), planStatus: String(a.planStatus ?? ""), daysLeft: planDaysLeft(a.planExpiry, a.nowMs ?? Date.now()) });
+const trackingTier = (plan: string | null | undefined): boolean =>
+  PARCEL_TRACKING_TIERS.includes(String(plan ?? "").trim().toLowerCase() as (typeof PARCEL_TRACKING_TIERS)[number]);
+
 export function parcelTrackingVisible(account: {
   role?: string | null;
   plan?: string | null;
+  planStatus?: string | null; // seller_profiles.plan_status — must be "active"
+  planExpiry?: string | null; // seller_profiles.plan_expiry — must be in the future (missing = no expiry)
+  nowMs?: number;
   access?: boolean;       // own parcel_tracking_access.enabled (fail-closed: missing = false)
   marketHidden?: boolean; // off-market (non-TW, non-admin/preview) → hidden (admin bypass baked in)
 } | null | undefined): boolean {
   if (!account) return false;
   if (account.marketHidden) return false; // market gate wins (NULL/TW → false → today's logic)
   if (isAdminRole(account.role)) return true;
-  const tier = String(account.plan ?? "").trim().toLowerCase();
-  if (!PARCEL_TRACKING_TIERS.includes(tier as (typeof PARCEL_TRACKING_TIERS)[number])) return false;
+  if (!trackingTier(account.plan)) return false;
+  if (!planActive(account)) return false; // expired / not active → the locked tile, never the screen
   return account.access === true;
 }
 
-// Pickup Status 🔒 upsell tile (basic/free, TW market, no access, not admin) — the SAME
-// basic/free rule as the Parcel Scan locked tile. Tile-only: the screen render stays gated on
-// parcelTrackingVisible, so a locked seller can never open Pickup Status.
-export function parcelTrackingLocked(a: { role?: string | null; plan?: string | null; allowed: boolean; marketHidden?: boolean }): boolean {
+// Pickup Status 🔒 upsell tile (basic/free OR an expired Plus/Pro/Master, TW market, not admin)
+// — the SAME basic/free rule as the Parcel Scan locked tile, plus the expiry rule. Tile-only: the
+// screen render stays gated on parcelTrackingVisible, so a locked seller can never open it.
+export function parcelTrackingLocked(a: { role?: string | null; plan?: string | null; planStatus?: string | null; planExpiry?: string | null; nowMs?: number; allowed: boolean; marketHidden?: boolean }): boolean {
   if (a.allowed || a.marketHidden || isAdminRole(a.role)) return false;
-  return isBasicOrFreePlan(a.plan);
+  if (isBasicOrFreePlan(a.plan)) return true;
+  return trackingTier(a.plan) && !planActive(a); // an EXPIRED Plus/Pro/Master → the same 🔒 tile + upsell popup as Basic
 }
 
 // Own allowlist flag (SECURITY DEFINER RPC, own row only). FAIL-CLOSED: any error,
