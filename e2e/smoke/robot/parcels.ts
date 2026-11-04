@@ -16,8 +16,13 @@ export type TileState = "open" | "locked" | "hidden";
 export async function openParcelTile(page: Page, tile: ParcelTile): Promise<TileState> {
   await openHub(page);
   const open = page.getByTestId(`tile-${tile}`);
+  const locked = page.getByTestId(`tile-${tile}-locked`);
+  // The parcel tiles depend on an access list that loads a moment after Settings opens (a paid
+  // account first shows nothing or "Soon"), so wait up to 15 s for the open or locked tile
+  // before calling it hidden.
+  await open.or(locked).first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
   if (await open.count()) { await open.first().click(); return "open"; }
-  if (await page.getByTestId(`tile-${tile}-locked`).count()) return "locked";
+  if (await locked.count()) return "locked";
   return "hidden";
 }
 
