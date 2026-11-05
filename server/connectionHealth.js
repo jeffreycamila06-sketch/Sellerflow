@@ -310,33 +310,78 @@ export function isOwningConnection(connections, key, connection) {
 // throws a FetchIsLiveError with an EMPTY message and the real failures in error.errors[]; for a
 // username that no longer exists one of them is TikTok's own API error, shaped exactly
 // "API Error 19881007 (user_not_found)" (fetch-room-info-api-live.js), or carries code 19881007.
-// ONLY that shape counts — a bio or any other text containing the digits (e.g. inside the
-// connector's "Invalid response from API: <json>") must NOT. PURE: walks the error and its nested
-// errors (errors[], exception, requestErr) — depth-limited, cycle-safe.
-const USER_NOT_FOUND_RX = /API Error 19881007\b|\(user_not_found\)/;
+// KNOWN SHAPES ONLY (fix round 3): the connector's "Invalid response from API: <json>" carries the
+// TikTok profile JSON INCLUDING THE BIO — such an error is skipped entirely, so nothing a seller
+// writes in their bio can look like "not found" or a rate limit. PURE: walks the error and its
+// nested errors (errors[], exception, requestErr) — depth-limited, cycle-safe.
+const PROFILE_JSON_PREFIX = "Invalid response from API:";
+const carriesProfileJson = (n) => String((n && n.message) || "").startsWith(PROFILE_JSON_PREFIX);
 function errorNodes(e, depth, seen, out) {
   if (!e || typeof e !== "object" || depth > 4 || seen.has(e)) return out;
-  seen.add(e); out.push(e);
+  seen.add(e);
+  if (!carriesProfileJson(e)) out.push(e);
   if (Array.isArray(e.errors)) for (const x of e.errors) errorNodes(x, depth + 1, seen, out);
   errorNodes(e.exception, depth + 1, seen, out);
   errorNodes(e.requestErr, depth + 1, seen, out);
   return out;
 }
 const nodesOf = (error) => errorNodes(error, 0, new Set(), []);
+const USER_NOT_FOUND_RX = /^API Error 19881007\b/;
 export function isTikTokUserNotFound(error) {
   return nodesOf(error).some((n) => n.code === 19881007 || n.code === "19881007" || USER_NOT_FOUND_RX.test(String(n.message || "")));
 }
 // A rate limit wrapped INSIDE the lookup error (e.g. "Failed to retrieve Room ID from Euler due to an
 // error: (daily_rooms) Too many connections…" in errors[]): the nested error itself (it carries the
-// label / reset time), else null. The top-level error counts too.
+// label / reset time), else null. Known shapes only: a SignatureRateLimitError, or a message that
+// STARTS with "[Rate Limited]" or "Failed to retrieve Room ID from Euler due to an error:" (or a
+// SignAPIError) AND says rate limit / too many connections. The top-level error counts too.
 const RATE_LIMIT_RX = /rate.?limit|too many connections/i;
-export function nestedRateLimitError(error) {
-  return nodesOf(error).find((n) => RATE_LIMIT_RX.test(String(n.message || ""))) || null;
+const RATE_LIMIT_PREFIXES = ["[Rate Limited]", "Failed to retrieve Room ID from Euler due to an error:"];
+const classOf = (n) => (n && n.constructor && n.constructor.name) || (n && n.name) || "";
+export function isKnownRateLimitShape(n) {
+  if (!n || typeof n !== "object" || carriesProfileJson(n)) return false;
+  const cls = classOf(n);
+  if (cls === "SignatureRateLimitError") return true;
+  const msg = String(n.message || "");
+  const known = cls === "SignAPIError" || RATE_LIMIT_PREFIXES.some((p) => msg.startsWith(p));
+  return known && RATE_LIMIT_RX.test(msg);
 }
-// The connector's room lookup failed (FetchIsLiveError) WITHOUT the not-found code — we could not
-// look the account up right now (a different, retry-later text; never "make sure you're LIVE").
+export function nestedRateLimitError(error) {
+  return nodesOf(error).find(isKnownRateLimitShape) || null;
+}
 export function isTikTokLookupFailed(error) {
   if (!error || typeof error !== "object") return false;
   const name = (error.constructor && error.constructor.name) || error.name || "";
   return name === "FetchIsLiveError" && !isTikTokUserNotFound(error);
+}
+
+// ── fix round 3 — the daily_rooms pause stops ONLY brand-new connects (PURE decisions) ──────────
+// A seller who was already connected never loses comments to the pause:
+//  • reconnectWait: a normal reconnect (any reason but "daily_pause") ignores the daily pause and
+//    tries with its usual backoff; only a reconnect whose OWN attempt got a daily 429 waits
+//    ("daily_pause"), in chunks of ≤ 5 min (a "Clear daily limit" wakes it within 5 min) with a
+//    0–5 min spread so waiting reconnects don't all fire in the same moment. The account's own
+//    cooldown still ends a normal reconnect (unchanged).
+//  • healthShouldReconnect: a quiet (event-silent / chat-stale) connection is KEPT during the pause.
+//  • dailyGateBlocks: a /connect tap gets the daily 429 only for a key with no connection now and
+//    none in the last 24 h; a key that had one gets a normal attempt.
+export const DAILY_WAIT_CHUNK_MS = 5 * 60 * 1000;
+export const DAILY_WAIT_SPREAD_MS = 5 * 60 * 1000;
+export const RECENT_CONNECTION_MS = 24 * 60 * 60 * 1000;
+export const NOT_FOUND_FINAL_STREAK = 2;                 // reconnect: 2 "not found" in a row → stop
+export function reconnectWait({ reason, perKeyMs, dailyMs, rand }) {
+  const waiting = reason === "daily_pause";
+  if (!waiting) return perKeyMs > 0 ? { giveUp: true, waitMs: null } : { giveUp: false, waitMs: null };
+  const left = Math.max(perKeyMs > 0 ? perKeyMs : 0, dailyMs > 0 ? dailyMs : 0);
+  if (left <= 0) return { giveUp: false, waitMs: null };          // the pause is over → a normal attempt
+  const spread = Math.floor(Math.min(Math.max(Number(rand) || 0, 0), 0.999999) * DAILY_WAIT_SPREAD_MS);
+  return { giveUp: false, waitMs: Math.max(1000, Math.min(left + spread, DAILY_WAIT_CHUNK_MS)) };
+}
+export function healthShouldReconnect({ eventIsFresh, chatLooksStale, dailyMs }) {
+  if (eventIsFresh && !chatLooksStale) return false;
+  return !(dailyMs > 0);
+}
+export function dailyGateBlocks({ dailyMs, isNewKey, lastConnectedAt, now }) {
+  if (!(dailyMs > 0) || !isNewKey) return false;
+  return !(lastConnectedAt && now - lastConnectedAt < RECENT_CONNECTION_MS);
 }

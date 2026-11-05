@@ -52,12 +52,14 @@ describe("daily_rooms — the shared bench (audit item 4)", () => {
     expect(pre.indexOf("const d = dailyRoomsRemainingMs();")).toBeGreaterThan(pre.indexOf("if (cooldownMs > 0) {"));
     expect(pre.indexOf("const d = dailyRoomsRemainingMs();")).toBeLessThan(pre.indexOf("res.status(429)"));
   });
-  it("A1. scheduleTikTokReconnect: gives up only on the account's own cooldown; during the daily pause it waits for the pause to end (and re-checks when it fires)", () => {
+  it("A1 (round 3). scheduleTikTokReconnect: gives up only on the account's own cooldown; a normal reconnect never waits for the daily pause; a 'daily_pause' reconnect re-checks before any Euler call", () => {
     const fn = between("function scheduleTikTokReconnect(", "function handleTikTokDisconnected(");
     expect(fn).toContain("const cooldownMs = getTikTokCooldownMs(key);");
-    expect(fn).toContain("const retryMs = Math.max(backoffMs, dailyRoomsRemainingMs()) + jitterMs;");
-    expect(fn).toContain("if (dailyRoomsRemainingMs() > 0) { scheduleTikTokReconnect(key, username, sellerId, sessionId, reason); return; }");
-    expect(fn.indexOf("if (dailyRoomsRemainingMs() > 0)")).toBeLessThan(fn.indexOf("tiktokConnectLocks.add(key);"));
+    expect(fn).toContain("if (plan.giveUp) {");
+    expect(fn).not.toContain("Math.max(backoffMs, dailyRoomsRemainingMs())");
+    const recheck = fn.indexOf('if (reason === "daily_pause" && reconnectWait(');
+    expect(recheck).toBeGreaterThan(0);
+    expect(recheck).toBeLessThan(fn.indexOf("tiktokConnectLocks.add(key);"));
   });
   it("A6. both 429 bodies mark the daily limit with a BOOLEAN (daily: true) — no raw word in the Network tab", () => {
     expect(server).not.toMatch(/limit: DAILY_ROOMS_LABEL/);

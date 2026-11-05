@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
-import { isTikTokUserNotFound, isTikTokLookupFailed, nestedRateLimitError, rateLimitLabel, isDailyRoomsLabel } from "../../../../server/connectionHealth.js";
+import { isTikTokUserNotFound, isTikTokLookupFailed, nestedRateLimitError, rateLimitLabel, isDailyRoomsLabel, isKnownRateLimitShape, reconnectWait, healthShouldReconnect, dailyGateBlocks, DAILY_WAIT_CHUNK_MS, NOT_FOUND_FINAL_STREAK, RECENT_CONNECTION_MS } from "../../../../server/connectionHealth.js";
 
 const require = createRequire(import.meta.url);
 const errs = require("tiktok-live-connector/dist/types/errors.js") as Record<string, new (...a: unknown[]) => Error>;
@@ -23,11 +23,11 @@ const notFound = () => new FetchIsLiveError([
 ]);
 
 describe("isTikTokUserNotFound — the matcher (real connector error classes)", () => {
-  it("a FetchIsLiveError (empty message) whose errors[] carry 19881007 / user_not_found → true", () => {
+  it("a FetchIsLiveError (empty message) whose errors[] carry TikTok's 'API Error 19881007 …' → true", () => {
     const e = notFound();
     expect(e.message).toBe("");
     expect(isTikTokUserNotFound(e)).toBe(true);
-    expect(isTikTokUserNotFound(new FetchIsLiveError([new Error("x"), new Error("(user_not_found)")]))).toBe(true);
+    expect(isTikTokUserNotFound(new FetchIsLiveError([new Error("x"), new Error("API Error 19881007 (Unknown Error)")]))).toBe(true);
   });
   it("found in nested exception / requestErr / a code 19881007 (number or string) too", () => {
     expect(isTikTokUserNotFound(new FetchIsLiveError([new InvalidResponseError("bad", new Error("API Error 19881007 (user_not_found)"))]))).toBe(true);
@@ -42,13 +42,36 @@ describe("isTikTokUserNotFound — the matcher (real connector error classes)", 
     expect(isTikTokUserNotFound(new Error("API Error 198810070 (other)"))).toBe(false);   // \b: not a longer number
     expect(isTikTokUserNotFound({ message: "", errors: [{ code: 19881008 }] })).toBe(false);
     expect(isTikTokUserNotFound(new Error("USER_NOT_FOUND"))).toBe(false);
+    expect(isTikTokUserNotFound(new Error("(user_not_found)"))).toBe(false);                 // round 3: only "API Error 19881007" at the START
+    expect(isTikTokUserNotFound(new Error("oops API Error 19881007 (user_not_found)"))).toBe(false);
+  });
+  it("3. a BIO can never match: 'Invalid response from API: <profile json>' is skipped by both matchers whatever it says", () => {
+    for (const bio of ["(daily_rooms) Too many connections started", "rate limit", "API Error 19881007", "(user_not_found)", "[Rate Limited] (daily_rooms) Too many connections", "Failed to retrieve Room ID from Euler due to an error: (daily_rooms) Too many connections"]) {
+      const msg = `Invalid response from API: ${JSON.stringify({ statusCode: 0, data: { user: { uniqueId: "shop", signature: bio } } })}`;
+      const inner = new InvalidResponseError(msg);
+      const wrapped = new FetchIsLiveError([new Error("Failed to fetch room info from HTML"), inner]);
+      expect(isTikTokUserNotFound(wrapped), bio).toBe(false);
+      expect(nestedRateLimitError(wrapped), bio).toBeNull();
+      expect(isKnownRateLimitShape(inner), bio).toBe(false);
+      expect(isTikTokUserNotFound(inner), bio).toBe(false);
+      expect(nestedRateLimitError(inner), bio).toBeNull();
+      // the server's top-level check ignores it too (pinned in server.js)
+    }
+    const fn = between("function isTikTokRateLimitError(", "function rememberTikTokRateLimit(");
+    expect(fn).toContain('if (raw.startsWith("Invalid response from API:")) return false;');
   });
   it("4. nestedRateLimitError: a rate limit wrapped inside the lookup error is found (with its daily_rooms label); a plain lookup failure is not", () => {
     const inner = new Error("Failed to retrieve Room ID from Euler due to an error: (daily_rooms) Too many connections started, try again later.");
     const wrapped = new FetchIsLiveError([new Error("Failed to fetch room info from HTML"), inner]);
     expect(nestedRateLimitError(wrapped)).toBe(inner);
     expect(isDailyRoomsLabel(rateLimitLabel(nestedRateLimitError(wrapped)))).toBe(true);
-    expect(nestedRateLimitError(new FetchIsLiveError([new Error("Rate limit exceeded")]))?.message).toBe("Rate limit exceeded");
+    // known shapes only: a bare "Rate limit exceeded" text is not one; the connector's own shapes are
+    expect(nestedRateLimitError(new FetchIsLiveError([new Error("Rate limit exceeded")]))).toBeNull();
+    const signed = new Error("[Rate Limited] (daily_rooms) Too many connections started");
+    expect(nestedRateLimitError(new FetchIsLiveError([signed]))).toBe(signed);
+    expect(nestedRateLimitError(new FetchIsLiveError([new Error("Failed to retrieve Room ID from Euler due to an error: This endpoint requires a Business plan.")]))).toBeNull(); // the Euler prefix alone is not a rate limit
+    const sig = new SignatureRateLimitError("Too many connections started", "[Rate Limited] (daily_rooms) %s", { headers: {}, status: 429, data: {} });
+    expect(isKnownRateLimitShape(sig)).toBe(true);
     expect(nestedRateLimitError(new FetchIsLiveError([new Error("timeout"), new Error("Failed to fetch room info")]))).toBeNull();
     expect(nestedRateLimitError(notFound())).toBeNull();
     expect(nestedRateLimitError(null)).toBeNull();
@@ -103,29 +126,52 @@ describe("connectTikTok catch — wiring", () => {
     expect(lf).toContain('recordTikTokAttempt("lookup_failed", "lookup_failed");');
     expect(server).not.toMatch(/recordTikTokAttempt\("(not_found|lookup_failed)", (cleanUsername|username)/);
   });
-  it("the scheduled reconnect treats not-found as FINAL (no retry, no cooldown)", () => {
+  it("7. the scheduled reconnect stops only after 2 'not found' answers IN A ROW (one more normal try after the first); no cooldown", () => {
+    expect(NOT_FOUND_FINAL_STREAK).toBe(2);
     const sch = between("function scheduleTikTokReconnect(", "function handleTikTokDisconnected(");
     const block = sch.slice(sch.indexOf("if (isTikTokUserNotFound(error)) {"), sch.indexOf("const rlErr ="));
-    expect(block).toContain("clearTikTokReconnect(key);");
-    expect(block).toContain("tiktokReconnectAttempts.delete(key);");
-    expect(block).toContain("return;");
-    expect(block).not.toContain("scheduleTikTokReconnect(");
+    const first = block.slice(0, block.indexOf("tiktokNotFoundStreak.delete(key);"));
+    expect(first).toContain("const streak = (tiktokNotFoundStreak.get(key) || 0) + 1;");
+    expect(first).toContain("if (streak < NOT_FOUND_FINAL_STREAK) {");
+    expect(first).toContain('scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");');
+    const final = block.slice(block.indexOf("tiktokNotFoundStreak.delete(key);"));
+    expect(final).toContain("clearTikTokReconnect(key);");
+    expect(final).toContain("tiktokReconnectAttempts.delete(key);");
+    expect(final).not.toContain("scheduleTikTokReconnect(");
     expect(block).not.toContain("rememberTikTokRateLimit");
+    // "in a row": any other outcome resets the streak (a success, or a different error)
+    expect(sch).toContain("if (!isTikTokUserNotFound(error)) tiktokNotFoundStreak.delete(key);");
+    expect(sch.indexOf("tiktokNotFoundStreak.delete(key);")).toBeLessThan(sch.indexOf("} catch (error) {"));   // after a successful reconnect
   });
   it("the TikTok success path and the Facebook / Instagram / Shopee connect routes do not reference the new matchers", () => {
-    expect(server.match(/isTikTokUserNotFound\(/g)?.length).toBe(2);   // connect catch + reconnect catch only
+    expect(server.match(/isTikTokUserNotFound\(/g)?.length).toBe(3);   // connect catch + reconnect catch (+ its streak reset) only
     expect(server.match(/isTikTokLookupFailed\(/g)?.length).toBe(1);
     expect(server.match(/nestedRateLimitError\(/g)?.length).toBe(3);   // connect catch (+ its forcedFresh gray guard) + reconnect catch
   });
-  it("1. the reconnect: a daily limit hit DURING the reconnect drops the account's own bench and waits out the daily pause", () => {
+  it("1 + 6. only a reconnect whose OWN attempt got a daily 429 waits ('daily_pause'); its own bench is dropped only when that 429 WAS the daily limit", () => {
     const sch = between("function scheduleTikTokReconnect(", "function handleTikTokDisconnected(");
-    const b = sch.slice(sch.indexOf("const rlErr ="), sch.indexOf('scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");'));
+    const b = sch.slice(sch.indexOf("const rlErr ="), sch.lastIndexOf('scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");'));
     expect(b).toContain("rememberTikTokRateLimit(key, sellerId, username, sessionId, rlErr);");
     const d = b.indexOf("if (dailyRoomsRemainingMs() > 0) {");
     expect(d).toBeGreaterThan(b.indexOf("rememberTikTokRateLimit("));
-    expect(b.slice(d)).toContain("tiktokRateLimitCooldowns.delete(key);");
+    expect(b.slice(d)).toContain("if (isDailyRoomsLabel(rateLimitLabel(rlErr))) tiktokRateLimitCooldowns.delete(key);");
     expect(b.slice(d)).toContain('scheduleTikTokReconnect(key, username, sellerId, sessionId, "daily_pause");');
-    expect(b.indexOf("tiktokRateLimitCooldowns.delete(key);")).toBeLessThan(b.indexOf('"daily_pause"')); // deleted FIRST, else the new schedule gives up on it
+    expect(b.indexOf("tiktokRateLimitCooldowns.delete(key);")).toBeLessThan(b.indexOf('scheduleTikTokReconnect(key, username, sellerId, sessionId, "daily_pause");'));
+    // 1: the delay has NO daily-pause term, and the queued job waits only in "daily_pause" mode
+    expect(sch).not.toContain("Math.max(backoffMs, dailyRoomsRemainingMs())");
+    expect(sch).toContain("const plan = reconnectWait({ reason, perKeyMs: cooldownMs, dailyMs: dailyRoomsRemainingMs(), rand: Math.random() });");
+    expect(sch).toContain('if (reason === "daily_pause" && reconnectWait(');
+    expect(sch).not.toContain("if (dailyRoomsRemainingMs() > 0) { scheduleTikTokReconnect(key, username, sellerId, sessionId, reason); return; }");
+  });
+  it("4. a full reconnect queue reschedules the dropped reconnect instead of losing it", () => {
+    const q = between("function runQueuedTikTokReconnect(", "function drainTikTokReconnectQueue(");
+    expect(q).toContain('if (dropped && typeof dropped.onDrop === "function") { try { dropped.onDrop(); } catch { /* best-effort */ } }');
+    const sch = between("function scheduleTikTokReconnect(", "function handleTikTokDisconnected(");
+    expect(sch).toContain("job.onDrop = () => scheduleTikTokReconnect(key, username, sellerId, sessionId, reason);");
+  });
+  it("8. a null error never crashes the reconnect log", () => {
+    expect(server).toContain("console.log(`TikTok reconnect failed for ${username}: ${error?.message || error}`);");
+    expect(server).not.toContain("console.log(`TikTok reconnect failed for ${username}: ${error.message}`);");
   });
   it("2. the per-account cooldown 429 also reads the daily pause: the longer wait + daily: true (→ the daily text, no client retry)", () => {
     const top = fn.slice(fn.indexOf("const cooldownMs = getTikTokCooldownMs(key);"), fn.indexOf("const existing = tiktokConnections.get(key);"));
@@ -151,5 +197,51 @@ describe("connectTikTok catch — wiring", () => {
     expect(encodeErr("username_required")).toBe("E155");
     const all = Object.values(SERVER_ONLY_CODES);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+// ── RULES (fix round 3): the daily pause stops ONLY brand-new connects — behaviour of the decisions ──
+describe("daily pause — a healthy live is NEVER blocked or closed", () => {
+  const H = 60 * 60 * 1000, M = 60 * 1000;
+  it("(a) a live seller drops during the pause → the reconnect is attempted right away with its normal backoff (no pause wait)", () => {
+    for (const reason of ["disconnected", "chat_stale", "silent_timeout", "retry_failed", "stream_error"]) {
+      expect(reconnectWait({ reason, perKeyMs: 0, dailyMs: H, rand: 0.5 }), reason).toEqual({ giveUp: false, waitMs: null });
+    }
+    expect(reconnectWait({ reason: "disconnected", perKeyMs: 2 * M, dailyMs: H, rand: 0 })).toEqual({ giveUp: true, waitMs: null }); // own bench: unchanged rule
+  });
+  it("(b) a quiet connection during the pause is NOT closed; outside the pause the health rule is unchanged", () => {
+    expect(healthShouldReconnect({ eventIsFresh: false, chatLooksStale: true, dailyMs: H })).toBe(false);
+    expect(healthShouldReconnect({ eventIsFresh: false, chatLooksStale: false, dailyMs: 1 })).toBe(false);
+    expect(healthShouldReconnect({ eventIsFresh: false, chatLooksStale: true, dailyMs: 0 })).toBe(true);
+    expect(healthShouldReconnect({ eventIsFresh: true, chatLooksStale: true, dailyMs: 0 })).toBe(true);
+    expect(healthShouldReconnect({ eventIsFresh: true, chatLooksStale: false, dailyMs: 0 })).toBe(false);
+    const timer = between("function startTikTokHealthTimer(", "async function disconnectTikTokConnection(");
+    const gate = timer.indexOf("if (!healthShouldReconnect({ eventIsFresh, chatLooksStale, dailyMs: dailyRoomsRemainingMs() })) return;");
+    expect(gate).toBeGreaterThan(0);
+    expect(gate).toBeLessThan(timer.indexOf("tiktokConnections.delete(key);"));   // before anything is closed
+    expect(gate).toBeLessThan(timer.indexOf("current.connection.disconnect();"));
+  });
+  it("(c) a brand-new account during the pause → the daily 429; a key live now or in the last 24 h → a normal attempt", () => {
+    const now = Date.UTC(2026, 10, 6, 4);
+    expect(dailyGateBlocks({ dailyMs: H, isNewKey: true, lastConnectedAt: undefined, now })).toBe(true);
+    expect(dailyGateBlocks({ dailyMs: H, isNewKey: false, lastConnectedAt: undefined, now })).toBe(false);
+    expect(dailyGateBlocks({ dailyMs: H, isNewKey: true, lastConnectedAt: now - 3 * H, now })).toBe(false);
+    expect(dailyGateBlocks({ dailyMs: H, isNewKey: true, lastConnectedAt: now - RECENT_CONNECTION_MS, now })).toBe(true);
+    expect(dailyGateBlocks({ dailyMs: 0, isNewKey: true, lastConnectedAt: undefined, now })).toBe(false);
+    const fn = between("async function connectTikTok(", "// M5 (security audit 2026-09-26)");
+    expect(fn).toContain("if (dailyGateBlocks({ dailyMs, isNewKey, lastConnectedAt: tiktokLastConnectedAt.get(key), now: Date.now() })) {");
+    expect(server).toContain("tiktokLastConnectedAt.set(key, Date.now());");
+    const start = between("async function startTikTokConnection(", "function connectTikTok") || server;
+    expect(start.indexOf("tiktokLastConnectedAt.set(key, Date.now());")).toBeGreaterThan(start.indexOf('recordTikTokAttempt("ok");'));
+  });
+  it("4 + 5. a reconnect WAITING for the pause: chunks of at most 5 min (a 'Clear daily limit' wakes it within 5 min) with a 0–5 min spread; the longer of its own bench and the pause", () => {
+    expect(DAILY_WAIT_CHUNK_MS).toBe(5 * M);
+    expect(reconnectWait({ reason: "daily_pause", perKeyMs: 0, dailyMs: H, rand: 0.9 })).toEqual({ giveUp: false, waitMs: 5 * M });
+    const short = [0, 0.25, 0.5, 0.99].map((rand) => reconnectWait({ reason: "daily_pause", perKeyMs: 0, dailyMs: 30_000, rand }).waitMs!);
+    expect(short[0]).toBe(30_000);                                   // no spread → exactly when the pause ends
+    expect(new Set(short).size).toBe(4);                              // spread apart…
+    for (const w of short) { expect(w).toBeGreaterThanOrEqual(30_000); expect(w).toBeLessThanOrEqual(5 * M); } // …never before the end, never past a chunk
+    expect(reconnectWait({ reason: "daily_pause", perKeyMs: 8 * M, dailyMs: 2 * M, rand: 0 }).waitMs).toBe(5 * M); // the longer of the two (chunked)
+    expect(reconnectWait({ reason: "daily_pause", perKeyMs: 0, dailyMs: 0, rand: 0.5 })).toEqual({ giveUp: false, waitMs: null }); // cleared / ended → a normal attempt
   });
 });

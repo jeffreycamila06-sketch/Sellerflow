@@ -109,7 +109,7 @@ describe("RedesignApp wiring (source contract)", () => {
   it("a manual tap, Disconnect, unmount, another platform's connect, a platform switch and session end all cancel a pending retry", () => {
     expect(app).toContain("if (!opts?.retry) cooldownRetry.cancel();");
     expect(app).toContain("if (eff) { cooldownRetry.cancel(); setOff(true); return; }");
-    expect(app).toContain("useEffect(() => () => cooldownRetry.cancel(), [cooldownRetry]);");
+    expect(app).toContain("useEffect(() => () => cooldownRetry.cancel(), [cooldownRetry, auth.email]);"); // unmount + user change, one effect
     for (const sig of ["const doShopeeConnect = async (shopId: number, sessionId: string) => {", 'const doFbConnect = async (pageId: string, scopeKey = "") => {', "const doIgConnect = async (igUserId: string) => {", "const confirmSwitch = async () => {", "const doEndSession = async () => {"]) {
       const i = app.indexOf(sig);
       expect(i, sig).toBeGreaterThan(0);
