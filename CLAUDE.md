@@ -4674,7 +4674,7 @@ E-Map session (Jeff, 2026-11-05): byIDData `cate=27` answers the frozen capabili
   never awaited (a hung check never delays the normal lane), any failure = that parcel 'unknown'.
 - **sql/142 (+rollback):** `parcel_scans.frozen_store_status/_checked_at`, `store_frozen_cache`,
   `store_frozen_check_log`, RPCs `admin_parcel_frozen_pending` / `admin_parcel_frozen_verdict`. no_frozen
-  cached 1 h (+ hourly live recheck), ok 10 min, unknown retried 10 min and never overwrites no_frozen, Recheck
+  cached 30 days (re-asked live only after that), ok 7 days, unknown retried 10 min and never overwrites no_frozen, Recheck
   (NULL + kept checked_at) bypasses the cache. ⚠️ APPLY BEFORE the web deploy (the app selects the column).
   Phonebook trigger untouched → no_frozen never removes a buyer. `scripts/sql142-behaviour.mjs` = 41 pglite checks.
 - **App (7-11 Parcel Scan, 冷凍 rows only):** no_frozen → red border + `rd_ps2_frozen_no` (wraps, never cut),
