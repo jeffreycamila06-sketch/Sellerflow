@@ -94,7 +94,7 @@ On iPhone the messages say "Your account expires…" and "Contact support".'),
 4. Fully close the app and open it again.
 
 This guide does not quote prices. For prices, message Admin. Plans run month to month.'),
-  ('connect-tiktok', 'Connect your TikTok live', '2026-10-15'::date, 'connect, tiktok, go live, live, link account, comments, ikonek, paano mag-connect, 连接, 連線, 直播, 抖音', '1. **Go live on TikTok first.** Your account must already be live when you connect.
+  ('connect-tiktok', 'Connect your TikTok live', '2026-11-06'::date, 'connect, tiktok, go live, live, link account, comments, ikonek, paano mag-connect, 连接, 連線, 直播, 抖音', '1. **Go live on TikTok first.** Your account must already be live when you connect.
 2. Open SellerFlowLive and tap **Live** in the bottom bar.
 3. Tap the **TikTok** tile, tap your account, then tap **Connect**.
 4. No account yet? Tap **Manage / add accounts**, type your TikTok username (the exact one that is going live), tap **Save profile**, then tap **Back** to return to **Live** and tap **Connect**.
@@ -103,7 +103,11 @@ This guide does not quote prices. For prices, message Admin. Plans run month to 
 
 Messages:
 - "Account is not live right now — start your TikTok LIVE first." Go live, then tap Connect again.
-- "Too many connects. Wait N minutes, then try again." Wait, then tap Connect once.
+- "Connection limit reached — we''re retrying for you" The app connects by itself in a few minutes. Don''t tap Connect again.
+- "Try again in a few minutes" Wait a few minutes, then tap Connect once.
+- "Daily connection limit reached — try again later" Wait a while, then tap Connect once.
+- "TikTok username not found. It may have changed — edit the account''s username and try again." Your TikTok username changed. Tap **Manage / add accounts**, fix the username, then tap Connect.
+- "Couldn''t find this TikTok account right now. Check the username is correct, then try again." Check the username in **Manage / add accounts**, then tap Connect once.
 - "Can''t connect right now. Check your internet and try again."
 - "Couldn''t connect. Make sure you''re LIVE, then try again." Go live first, then tap Connect once.
 - "Your plan has ended. Renew to connect again." See "Plan expired"

@@ -1269,7 +1269,7 @@ export default function RedesignApp() {
   // it does NOT close the dropdown and does NOT connect. Connect is the sole action that
   // connects + closes (doConnect). No connect.ts/useLiveFeed change — selection state only.
   const switchAccount = (platform: Platform, i: number) => {
-    if (platform === "TikTok") setTtIdx(i); else setFbIdx(i);
+    if (platform === "TikTok") { cooldownRetry.cancel(); setTtIdx(i); } else setFbIdx(i); // a pending retry must not connect the previously typed account
   };
   // Surface B — chip 3-state connect (neutral → connecting → connected → Disconnect).
   // `connected` is server truth (liveFeed.tt/fbConnected). We add a LOCAL connecting
@@ -1733,12 +1733,13 @@ export default function RedesignApp() {
       const retryMs = !r.ok && platform === "TikTok" && !opts?.retry ? cooldownRetryDelayMs(r) : null;
       // The timer re-checks before firing: TikTok still off, no other platform live, and the
       // SERVER still says the session is running and is TikTok's (never a bare re-POST).
-      if (retryMs !== null) cooldownRetry.schedule(acct, retryMs, () => { void (async () => {
+      if (retryMs !== null) cooldownRetry.schedule(acct, retryMs, (gen) => { void (async () => {
         const session = await sessionInstance.checkStatus();
+        if (!cooldownRetry.isCurrent(gen)) return;      // a manual tap / Disconnect / switch meanwhile wins (no double connect)
         if (!retryAllowed({ ttLive: ttEffRef.current, otherLive: otherLiveRef.current, session })) return;
         void performConnect("TikTok", acct, { retry: true, register: opts?.register });
       })(); });
-      if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retried: !!opts?.retry }), kind: "err" });
+      if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled: retryMs !== null }), kind: "err" });
     } finally { setConnecting(false); }
   };
   const doConnect = async (platform: Platform) => {

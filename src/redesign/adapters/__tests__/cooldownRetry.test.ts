@@ -49,6 +49,35 @@ describe("createCooldownRetry", () => {
   });
 });
 
+describe("A3. generation counter — a manual tap during the retry's session check wins (no double connect)", () => {
+  it("schedule() and cancel() bump the generation; the callback's gen is current only until the next schedule / cancel", async () => {
+    const r = createCooldownRetry();
+    const connect = vi.fn();
+    let release!: () => void;
+    const checkStatus = () => new Promise<void>((res) => { release = res; });
+    r.schedule("shop", 1000, (gen) => { void (async () => { await checkStatus(); if (!r.isCurrent(gen)) return; connect(); })(); });
+    vi.advanceTimersByTime(1000);                    // the retry fired; its session check is in flight
+    r.cancel();                                      // the seller taps Connect by hand right now (performConnect cancels)
+    release(); await Promise.resolve(); await Promise.resolve();
+    expect(connect).not.toHaveBeenCalled();          // the stale retry does NOT connect
+  });
+  it("without an interruption the retry connects; a later schedule makes an older gen stale", async () => {
+    const r = createCooldownRetry();
+    const seen: number[] = [];
+    r.schedule("a", 10, (gen) => seen.push(gen));
+    vi.advanceTimersByTime(10);
+    expect(r.isCurrent(seen[0])).toBe(true);
+    r.schedule("b", 10, () => {});
+    expect(r.isCurrent(seen[0])).toBe(false);
+    const g2: number[] = [];
+    r.schedule("c", 10, (gen) => g2.push(gen));
+    vi.advanceTimersByTime(10);
+    expect(r.isCurrent(g2[0])).toBe(true);
+    r.cancel();
+    expect(r.isCurrent(g2[0])).toBe(false);
+  });
+});
+
 describe("retryAllowed — the re-check before the timer fires (audit item 2)", () => {
   const running = { running: true, platform: "TikTok" as string | null };
   it("fires only when TikTok is off, no other platform is live, and the session is running + TikTok's", () => {

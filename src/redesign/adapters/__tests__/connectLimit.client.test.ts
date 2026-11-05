@@ -30,12 +30,14 @@ describe("cooldownMs from the 429 answer", () => {
     serve(429, { success: false, error: "E41:2", cooldownMs: 0 });
     expect((await connectPlatform("TikTok", { username: "shop" }, "s@x.com")).cooldownMs).toBeUndefined();
   });
-  it("the daily limit marker rides along", async () => {
-    serve(429, { success: false, error: "E41:60", cooldownMs: 3_600_000, limit: "daily_rooms" });
+  it("A6. the daily limit marker is a boolean (daily: true — no raw word on the wire) and rides along", async () => {
+    serve(429, { success: false, error: "E41:60", cooldownMs: 3_600_000, daily: true });
     const r = await connectPlatform("TikTok", { username: "shop" }, "s@x.com");
-    expect(r.limit).toBe("daily_rooms");
+    expect(r.daily).toBe(true);
     serve(429, { success: false, error: "E41:2", cooldownMs: 120_000 });
-    expect((await connectPlatform("TikTok", { username: "shop" }, "s@x.com")).limit).toBeUndefined();
+    expect((await connectPlatform("TikTok", { username: "shop" }, "s@x.com")).daily).toBeUndefined();
+    serve(429, { success: false, error: "E41:60", cooldownMs: 3_600_000, daily: "daily_rooms" });  // only the boolean counts
+    expect((await connectPlatform("TikTok", { username: "shop" }, "s@x.com")).daily).toBeUndefined();
   });
 });
 
@@ -50,19 +52,20 @@ describe("retry delay + toast text", () => {
   });
   it("no retry for the daily limit or a bench over 10 min (an old 30-min server answer) — audit items 4 + 5", () => {
     expect(COOLDOWN_RETRY_MAX_MS).toBe(10 * 60 * 1000);
-    expect(cooldownRetryDelayMs({ cooldownMs: 120_000, limit: "daily_rooms" })).toBeNull();
+    expect(cooldownRetryDelayMs({ cooldownMs: 120_000, daily: true })).toBeNull();
     expect(cooldownRetryDelayMs({ cooldownMs: 10 * 60_000 })).toBe(10 * 60_000 + COOLDOWN_RETRY_PAD_MS);   // exactly 10 min still retries
     expect(cooldownRetryDelayMs({ cooldownMs: 10 * 60_000 + 1 })).toBeNull();
     expect(cooldownRetryDelayMs({ cooldownMs: 30 * 60_000 })).toBeNull();                                  // old server: 30 min
     expect(cooldownRetryDelayMs({ error: "TikTok connection is on cooldown after a rate limit. Try again in 12 minutes." })).toBeNull();
     expect(cooldownRetryDelayMs({ error: "TikTok rate limit reached. Try again in about 1 hour(s)." })).toBeNull();
   });
-  it("the toast says 'retrying' ONLY when a retry is scheduled; daily → daily text; retried / too long → 'try again in a few minutes'", () => {
+  it("A2. the toast says 'retrying' ONLY when the caller says a retry IS scheduled; daily → daily text; otherwise 'try again in a few minutes'", () => {
     for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as const) {
       const tt = buildT(lang);
-      expect(connectFailText({ cooldownMs: 120_000, error: "E41:2" }, tt)).toBe(tt.rd_cm_tt_cooldown);
-      expect(connectFailText({ cooldownMs: 120_000, error: "E41:2" }, tt, { retried: true })).toBe(tt.rd_cm_tt_cooldown_again);
-      expect(connectFailText({ cooldownMs: 3_600_000, error: "E41:60", limit: "daily_rooms" }, tt)).toBe(tt.rd_cm_tt_daily_limit);
+      expect(connectFailText({ cooldownMs: 120_000, error: "E41:2" }, tt, { retryScheduled: true })).toBe(tt.rd_cm_tt_cooldown);
+      expect(connectFailText({ cooldownMs: 120_000, error: "E41:2" }, tt, { retryScheduled: false })).toBe(tt.rd_cm_tt_cooldown_again);
+      expect(connectFailText({ cooldownMs: 120_000, error: "E41:2" }, tt)).toBe(tt.rd_cm_tt_cooldown_again);    // the Connect modal (no retry) → never "retrying"
+      expect(connectFailText({ cooldownMs: 3_600_000, error: "E41:60", daily: true }, tt, { retryScheduled: true })).toBe(tt.rd_cm_tt_daily_limit);
       expect(connectFailText({ cooldownMs: 30 * 60_000, error: "E41:30" }, tt)).toBe(tt.rd_cm_tt_cooldown_again);
       for (const k of ["rd_cm_tt_cooldown", "rd_cm_tt_cooldown_again", "rd_cm_tt_daily_limit"] as const) {
         expect(tt[k]).not.toContain("{n}");
@@ -70,9 +73,9 @@ describe("retry delay + toast text", () => {
       }
       expect(tt.rd_cm_tt_cooldown_again).not.toBe(tt.rd_cm_tt_cooldown);
     }
-    expect(connectFailText({ cooldownMs: 120_000 }, t)).toBe("Connection limit reached — we're retrying for you");
-    expect(connectFailText({ cooldownMs: 120_000 }, t, { retried: true })).toBe("Try again in a few minutes");
-    expect(connectFailText({ cooldownMs: 3_600_000, limit: "daily_rooms" }, t)).toBe("Daily connection limit reached — try again later");
+    expect(connectFailText({ cooldownMs: 120_000 }, t, { retryScheduled: true })).toBe("Connection limit reached — we're retrying for you");
+    expect(connectFailText({ cooldownMs: 120_000 }, t)).toBe("Try again in a few minutes");
+    expect(connectFailText({ cooldownMs: 3_600_000, daily: true }, t)).toBe("Daily connection limit reached — try again later");
     expect(connectFailText({ error: "Server error" }, t)).toBe(t.rd_cm_conn_try_again);
     expect(connectFailText({ notLive: true }, t)).toBe(t.rd_cm_not_live);
   });
@@ -82,14 +85,23 @@ describe("RedesignApp wiring (source contract)", () => {
   const app = src("src/redesign/RedesignApp.tsx");
   it("one retry per cooldown answer, TikTok only, never from a retried attempt; the timer re-checks the server session + platforms and passes register through", () => {
     expect(app).toContain('const retryMs = !r.ok && platform === "TikTok" && !opts?.retry ? cooldownRetryDelayMs(r) : null;');
-    const timer = app.slice(app.indexOf("if (retryMs !== null) cooldownRetry.schedule("), app.indexOf("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retried"));
+    const timer = app.slice(app.indexOf("if (retryMs !== null) cooldownRetry.schedule("), app.indexOf("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled"));
     expect(timer).toContain("const session = await sessionInstance.checkStatus();");
+    // A3: the generation is re-checked AFTER the session check and BEFORE the connect
+    const g = timer.indexOf("if (!cooldownRetry.isCurrent(gen)) return;");
+    expect(g).toBeGreaterThan(timer.indexOf("await sessionInstance.checkStatus()"));
+    expect(g).toBeLessThan(timer.indexOf("void performConnect("));
     expect(timer).toContain("if (!retryAllowed({ ttLive: ttEffRef.current, otherLive: otherLiveRef.current, session })) return;");
     expect(timer).toContain('void performConnect("TikTok", acct, { retry: true, register: opts?.register });');
     expect(app).toContain("const otherLive = fbEff || igEff || shopeeEff;");
   });
-  it("the second 429 (on the retry) shows 'try again in a few minutes', never 'retrying'", () => {
-    expect(app).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retried: !!opts?.retry }), kind: \"err\" });");
+  it("A2. 'retrying' only when this tap really scheduled the retry (a retried attempt schedules none → 'try again'); the Connect modal passes no options", () => {
+    expect(app).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled: retryMs !== null }), kind: \"err\" });");
+    expect(src("src/redesign/screens/ConnectModal.tsx")).toContain("if (!r.ok) { setErr(connectFailText(r, t)); return; }");
+  });
+  it("A4. picking another TikTok account cancels a pending retry (it must not connect the previously typed account)", () => {
+    const fn = app.slice(app.indexOf("const switchAccount = (platform: Platform, i: number) => {"), app.indexOf("const [ttConnecting, setTtConnecting]"));
+    expect(fn).toContain('if (platform === "TikTok") { cooldownRetry.cancel(); setTtIdx(i); }');
   });
   it("a manual tap, Disconnect, unmount, another platform's connect, a platform switch and session end all cancel a pending retry", () => {
     expect(app).toContain("if (!opts?.retry) cooldownRetry.cancel();");
@@ -104,5 +116,54 @@ describe("RedesignApp wiring (source contract)", () => {
   it("the retry goes through performConnect (the same tap path: toast gate, analytics, honest toast) — no bare liveFeed.connect", () => {
     const fn = app.slice(app.indexOf("const performConnect = async"), app.indexOf("const doConnect = async"));
     expect(fn.match(/liveFeed\.connect\(/g)?.length).toBe(1);
+  });
+});
+
+describe("B. TikTok username not found / lookup failed (client)", () => {
+  const t = buildT("en");
+  it("404 notFound → notFound, no cooldown, no retry; 502 lookupFailed → lookupFailed, no cooldown, no retry", async () => {
+    serve(404, { success: false, notFound: true, error: "E43" });
+    const a = await connectPlatform("TikTok", { username: "oldname" }, "s@x.com");
+    expect(a).toMatchObject({ ok: false, notFound: true, error: "tiktok_user_not_found" });
+    expect(a.cooldownMs).toBeUndefined();
+    expect(cooldownRetryDelayMs(a)).toBeNull();
+    serve(502, { success: false, lookupFailed: true, error: "E44" });
+    const b = await connectPlatform("TikTok", { username: "shop" }, "s@x.com");
+    expect(b).toMatchObject({ ok: false, lookupFailed: true, error: "tiktok_lookup_failed" });
+    expect(cooldownRetryDelayMs(b)).toBeNull();
+    expect(cooldownRetryDelayMs({ notFound: true, cooldownMs: 120_000 })).toBeNull();   // never retried, whatever else rides along
+    serve(404, { success: false, error: "E10" });                                         // a 404 without notFound is not this case
+    expect((await connectPlatform("TikTok", { username: "shop" }, "s@x.com")).notFound).toBeUndefined();
+  });
+  it("the not-found text wins over everything (checked FIRST); lookup failed has its own text — never 'make sure you're LIVE'", () => {
+    expect(connectFailText({ notFound: true, notLive: true, cooldownMs: 1 }, t, { retryScheduled: true })).toBe(t.rd_cm_tt_not_found);
+    expect(connectFailText({ lookupFailed: true }, t)).toBe(t.rd_cm_tt_lookup_failed);
+    expect(connectFailText({ lookupFailed: true }, t)).not.toBe(t.rd_cm_not_live);
+    expect(t.rd_cm_tt_not_found).toBe("TikTok username not found. It may have changed — edit the account's username and try again.");
+    expect(t.rd_cm_tt_lookup_failed).toBe("Couldn't find this TikTok account right now. Check the username is correct, then try again.");
+  });
+  it("both texts exist in all 8 languages, distinct from English (except en) and from each other; zh-TW and fil are the given words", () => {
+    const en = buildT("en");
+    for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as const) {
+      const tt = buildT(lang);
+      for (const k of ["rd_cm_tt_not_found", "rd_cm_tt_lookup_failed", "rd_adm_ttl_daily_still"] as const) {
+        expect(tt[k], `${lang} ${k}`).toBeTruthy();
+        if (lang !== "en") expect(tt[k], `${lang} ${k}`).not.toBe(en[k]);
+      }
+      expect(tt.rd_cm_tt_not_found).not.toBe(tt.rd_cm_tt_lookup_failed);
+    }
+    expect(buildT("zh-TW").rd_cm_tt_not_found).toBe("找不到此 TikTok 使用者名稱，可能已更改，請編輯帳號的使用者名稱後再試一次。");
+    expect(buildT("fil").rd_cm_tt_not_found).toBe("Hindi mahanap ang TikTok username. Baka napalitan — i-edit ang username ng account at subukan ulit.");
+  });
+  it("the two new codes are NEW numbers (E43 / E44), never reused, and decode back to the words", async () => {
+    const { ERR_CODES, decodeErr } = await import("../../../lib/errCodes.js");
+    expect(ERR_CODES.tiktok_user_not_found).toBe("E43");
+    expect(ERR_CODES.tiktok_lookup_failed).toBe("E44");
+    const codes = Object.values(ERR_CODES);
+    expect(new Set(codes).size).toBe(codes.length);
+    const { SERVER_ONLY_CODES } = await import("../../../../server/errorCodes.js");
+    for (const c of ["E43", "E44"]) expect(Object.values(SERVER_ONLY_CODES)).not.toContain(c);
+    expect(decodeErr("E43")).toBe("tiktok_user_not_found");
+    expect(decodeErr("E44")).toBe("tiktok_lookup_failed");
   });
 });

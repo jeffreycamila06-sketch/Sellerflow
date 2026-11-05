@@ -855,7 +855,7 @@ export function TikTokLimitCard() {
     setBusy(true); setNote(null);
     const r = await clearTikTokCooldown(u);
     setBusy(false);
-    if (r.ok) { setNote({ kind: "ok", msg: tpl(t.rd_adm_ttl_cleared, { n: r.cleared ?? 0 }) }); setName(""); load(); }
+    if (r.ok) { setNote({ kind: "ok", msg: tpl(t.rd_adm_ttl_cleared, { n: r.cleared ?? 0 }) + (r.dailyActive ? ` · ${t.rd_adm_ttl_daily_still}` : "") }); setName(""); load(); }
     else setNote({ kind: "err", msg: t.rd_adm_ttl_err });
   };
   const clearDaily = async () => {

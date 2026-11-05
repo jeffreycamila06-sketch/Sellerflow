@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 // Nov 3, 2026 — admin client for the TikTok connection-limit routes (status + clear one
 // account), JWT-authenticated; 403 = server-side is_admin refused; network failure = unreachable.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -49,11 +50,20 @@ describe("clearDailyLimit", () => {
   });
 });
 
+describe("A5. clear while the daily pause is on", () => {
+  it("the answer's dailyActive reaches the admin card, which says the daily limit is still on", async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, cleared: 1, dailyActive: true }) })) as unknown as typeof fetch;
+    expect(await clearTikTokCooldown("shop")).toEqual({ ok: true, cleared: 1, dailyActive: true });
+    const admin = readFileSync("src/redesign/screens/Admin.tsx", "utf8");
+    expect(admin).toContain('(r.dailyActive ? ` · ${t.rd_adm_ttl_daily_still}` : "")');
+  });
+});
+
 describe("clearTikTokCooldown", () => {
   it("POSTs the username (leading @ stripped) and returns the cleared count", async () => {
     const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, cleared: 1 }) }));
     globalThis.fetch = f as unknown as typeof fetch;
-    expect(await clearTikTokCooldown(" @Thrifts.studio ")).toEqual({ ok: true, cleared: 1 });
+    expect(await clearTikTokCooldown(" @Thrifts.studio ")).toEqual({ ok: true, cleared: 1, dailyActive: false });
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://srv.test/admin/tiktok-cooldown/clear?sfl_codes=1");
     expect(init.method).toBe("POST");

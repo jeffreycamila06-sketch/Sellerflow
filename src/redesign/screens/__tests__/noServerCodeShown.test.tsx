@@ -61,7 +61,7 @@ describe("TikTok connect toast (RedesignApp) and Connect modal", () => {
   it("the toast in RedesignApp never prints a server field", () => {
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).not.toMatch(/msg:\s*r\.(error|reason)\b/);
-    expect(app).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retried: !!opts?.retry }), kind: \"err\" });"); // Nov 3, 2026: retried flag
+    expect(app).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled: retryMs !== null }), kind: \"err\" });"); // Nov 3, 2026: retried flag
   });
 
   const profile: AccountUser = {

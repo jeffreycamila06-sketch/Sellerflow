@@ -305,3 +305,31 @@ export function checkConnectRate(timestamps, nowMs, max = CONNECT_RATE_MAX, wind
 export function isOwningConnection(connections, key, connection) {
   return connections.get(key)?.connection === connection;
 }
+
+// Nov 6, 2026 — a seller who CHANGED their TikTok username: tiktok-live-connector 2.1.1-beta1
+// throws a FetchIsLiveError with an EMPTY message and the real failures in error.errors[]; for a
+// username that no longer exists one of them carries TikTok's "user not found" code (19881007 /
+// user_not_found). PURE: search the error and its nested errors (errors[], exception,
+// requestErr) — depth-limited, cycle-safe — for that code.
+const USER_NOT_FOUND_RX = /19881007|user_not_found/i;
+function errorTexts(e, depth, seen, out) {
+  if (!e || depth > 4 || seen.has(e)) return out;
+  if (typeof e !== "object") { out.push(String(e)); return out; }
+  seen.add(e);
+  if (e.message) out.push(String(e.message));
+  if (e.code !== undefined) out.push(String(e.code));
+  if (Array.isArray(e.errors)) for (const x of e.errors) errorTexts(x, depth + 1, seen, out);
+  errorTexts(e.exception, depth + 1, seen, out);
+  errorTexts(e.requestErr, depth + 1, seen, out);
+  return out;
+}
+export function isTikTokUserNotFound(error) {
+  return errorTexts(error, 0, new Set(), []).some((s) => USER_NOT_FOUND_RX.test(s));
+}
+// The connector's room lookup failed (FetchIsLiveError) WITHOUT the not-found code — we could not
+// look the account up right now (a different, retry-later text; never "make sure you're LIVE").
+export function isTikTokLookupFailed(error) {
+  if (!error || typeof error !== "object") return false;
+  const name = (error.constructor && error.constructor.name) || error.name || "";
+  return name === "FetchIsLiveError" && !isTikTokUserNotFound(error);
+}

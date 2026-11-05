@@ -37,15 +37,16 @@ export async function loadTikTokCooldownStatus(): Promise<{ ok: boolean; status?
   }
 }
 
-export async function clearTikTokCooldown(username: string): Promise<{ ok: boolean; cleared?: number; error?: string }> {
+// dailyActive = the account's own cooldown is cleared but the shared daily pause is still on.
+export async function clearTikTokCooldown(username: string): Promise<{ ok: boolean; cleared?: number; dailyActive?: boolean; error?: string }> {
   const u = String(username || "").trim().replace(/^@/, "");
   if (!u) return { ok: false, error: "username_required" };
   try {
     const r = await fetch(withCodes(`${SERVER}/admin/tiktok-cooldown/clear`), { method: "POST", headers: await authHeaders(), body: JSON.stringify({ username: u }) });
-    const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; cleared?: number; error?: string })));
+    const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; cleared?: number; dailyActive?: boolean; error?: string })));
     if (r.status === 403) return { ok: false, error: "forbidden" };
     if (!r.ok || !j.success) return { ok: false, error: j.error || "failed" };
-    return { ok: true, cleared: Number(j.cleared) || 0 };
+    return { ok: true, cleared: Number(j.cleared) || 0, dailyActive: j.dailyActive === true };
   } catch {
     return { ok: false, error: "unreachable" };
   }

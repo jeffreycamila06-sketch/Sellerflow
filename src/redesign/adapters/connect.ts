@@ -125,7 +125,9 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
 // unreachable = the fetch itself threw (client network failure, no server reason) —
 // the app shows a localized "can't reach the live server" toast for this case
 // (F-batch i18n; the English error string stays as the analytics/log reason).
-export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean; cooldownMs?: number; limit?: string }
+// notFound = the TikTok username no longer exists (changed); lookupFailed = TikTok's account lookup
+// failed right now; daily = the shared daily connection budget is used up. None of the three retries.
+export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean; cooldownMs?: number; daily?: boolean; notFound?: boolean; lookupFailed?: boolean }
 
 // Build 10b: minutes to wait from the cooldown answer (E41 "…in {n} minutes." / E42 "…in about
 // {n} minute(s)|hour(s)." — the app decodes both back to those sentences), else null.
@@ -141,7 +143,11 @@ export function cooldownMinutes(error: string | undefined): number | null {
 // The text a failed TikTok/Facebook connect shows (toast + Connect modal). Build 10: never the
 // server's own words or a code — not live / can't reach / wait N minutes keep their texts,
 // anything else is the generic "Couldn't connect. Try again."
-export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable" | "error" | "cooldownMs" | "limit">, t: RedesignT, opts?: { retried?: boolean }): string {
+// opts.retryScheduled = the app really scheduled the automatic retry (performConnect only) — the
+// "we're retrying for you" text shows ONLY then; the Connect modal never schedules one.
+export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable" | "error" | "cooldownMs" | "daily" | "notFound" | "lookupFailed">, t: RedesignT, opts?: { retryScheduled?: boolean }): string {
+  if (r.notFound) return t.rd_cm_tt_not_found;
+  if (r.lookupFailed) return t.rd_cm_tt_lookup_failed;
   if (r.notLive) return t.rd_cm_not_live;
   if (r.unreachable) return t.rd_cm_cant_reach;
   if ((r.error || "").includes("plan_expired")) return t.rd_cm_plan_ended;
@@ -149,14 +155,13 @@ export function connectFailText(r: Pick<ConnectResult, "notLive" | "unreachable"
   // the daily budget → its own text; a second 429 on the retry (or a bench too long to
   // auto-retry) → "try again in a few minutes".
   if (isCooldownAnswer(r)) {
-    if (r.limit === DAILY_ROOMS_LIMIT) return t.rd_cm_tt_daily_limit;
-    if (!opts?.retried && cooldownRetryDelayMs(r) !== null) return t.rd_cm_tt_cooldown;
+    if (r.daily) return t.rd_cm_tt_daily_limit;
+    if (opts?.retryScheduled) return t.rd_cm_tt_cooldown;
     return t.rd_cm_tt_cooldown_again;
   }
   return t.rd_cm_conn_try_again;
 }
 
-export const DAILY_ROOMS_LIMIT = "daily_rooms";
 export const isCooldownAnswer = (r: Pick<ConnectResult, "error" | "cooldownMs">): boolean =>
   (r.cooldownMs ?? 0) > 0 || cooldownMinutes(r.error) !== null;
 
@@ -166,8 +171,8 @@ export const isCooldownAnswer = (r: Pick<ConnectResult, "error" | "cooldownMs">)
 // resets in minutes), or a bench longer than 10 min (an old server's 30-min answer).
 export const COOLDOWN_RETRY_PAD_MS = 1500;
 export const COOLDOWN_RETRY_MAX_MS = 10 * 60 * 1000;
-export function cooldownRetryDelayMs(r: Pick<ConnectResult, "error" | "cooldownMs" | "limit">): number | null {
-  if (r.limit === DAILY_ROOMS_LIMIT) return null;
+export function cooldownRetryDelayMs(r: Pick<ConnectResult, "error" | "cooldownMs" | "daily" | "notFound" | "lookupFailed">): number | null {
+  if (r.daily || r.notFound || r.lookupFailed) return null;
   const fromBody = (r.cooldownMs ?? 0) > 0 ? Number(r.cooldownMs) : null;
   const mins = cooldownMinutes(r.error);
   const ms = fromBody ?? (mins === null ? null : mins * 60_000);
@@ -200,10 +205,14 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     // from a server/network error → surfaces a friendly "start your LIVE first" toast,
     // and never marks the account connected (so Fix B won't auto-retry a non-live room).
     if (r.status === 409 && (j as { notLive?: boolean }).notLive) return { ok: false, notLive: true, error: j.error || "Account is not live right now.", account };
+    // Nov 6, 2026 — the TikTok username no longer exists (404 notFound) / the lookup failed (502
+    // lookupFailed): their own texts, no cooldown, no automatic retry.
+    if (r.status === 404 && (j as { notFound?: boolean }).notFound) return { ok: false, notFound: true, error: j.error || "tiktok_user_not_found", account };
+    if (r.status === 502 && (j as { lookupFailed?: boolean }).lookupFailed) return { ok: false, lookupFailed: true, error: j.error || "tiktok_lookup_failed", account };
     // Nov 3, 2026 — a 429 cooldown answer carries cooldownMs; the app retries once when it ends.
     const cooldownMs = Number((j as { cooldownMs?: unknown }).cooldownMs);
-    const limit = String((j as { limit?: unknown }).limit || "");   // "daily_rooms" = the shared daily bench
-    if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account, ...(cooldownMs > 0 ? { cooldownMs } : {}), ...(limit ? { limit } : {}) };
+    const daily = (j as { daily?: unknown }).daily === true;           // the shared daily bench (a boolean — Build 10)
+    if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account, ...(cooldownMs > 0 ? { cooldownMs } : {}), ...(daily ? { daily } : {}) };
     return { ok: true, account };
   } catch {
     return { ok: false, error: "Can't connect right now. Check your internet and try again.", account, unreachable: true };
