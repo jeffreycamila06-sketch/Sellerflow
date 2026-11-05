@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SellerFlowLive Parcel Checker",
-  "version": "1.15.2",
+  "version": "1.17.0",
   "description": "Checks if your parcels' 7-11 store and phone are OK.",
   "permissions": ["storage", "alarms", "scripting"],
   "host_permissions": [
@@ -57,6 +57,11 @@
     {
       "matches": ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"],
       "js": ["emap-711.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"],
+      "js": ["emap-frozen-711.js"],
       "run_at": "document_idle"
     }
   ],

@@ -74,8 +74,9 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
 // the render): ⚠️ full → orange, 🚫 restricted / wrong store code → red (red
 // wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
 // only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
-const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null }): boolean =>
-  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted";
+const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null; frozenStoreStatus?: string | null; tempLayer?: string; status?: string }, frozenOn = false): boolean =>
+  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted"
+  || (frozenOn && r.status !== "exported" && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus === "no_frozen"); // sql/142 — 冷凍 rows only, switch on, not exported; a dry row never reads the frozen column
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
 function untilDate(iso: string | null): string {
   if (!iso) return "";
@@ -100,9 +101,10 @@ const formToFields = (f: FormState): ScanFields => ({
 });
 
 // Export attention reason → i18n key.
-type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
+type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_no_frozen" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
 const reasonKey = (r: ExportReason): ReasonKey =>
   r === "frozen_settings" ? "rd_ps2_x_frozen_settings"
+  : r === "no_frozen" ? "rd_ps2_x_no_frozen"
   : r === "wrong_store" ? "rd_ps2_x_wrong_store"
     : r === "store_full" ? "rd_ps2_x_store_full"
       : r === "restricted_number" ? "rd_ps2_x_restricted"
@@ -134,7 +136,10 @@ type ExportClaim = {
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
 // pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
 // no auth); defaults to the everyone-cap so standalone renders keep 40.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, frozenCheckOn = false }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; frozenCheckOn?: boolean }) {
+  // sql/142: the frozen (冷凍) store check's lines, export exclusion and ⟳ exist only while the
+  // app_settings switch reads exactly 'true' — off, a 冷凍 row looks exactly like main (✅).
+  const fzOn = frozenCheckOn;
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -367,7 +372,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   useEffect(() => { verdictSnapRef.current = rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus })); }, [listLoaded]);
   // M3: 3 s while a fresh (<3 min) row awaits, 30 s when only older rows do
   // (checker slow/down — watch cheaply), off when none await.
-  const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS) : null;
+  const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS, fzOn) : null;
   useEffect(() => {
     if (pollMs === null || !pageVisible) return;
     let live = true;
@@ -386,7 +391,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   }, [pollMs, pageVisible]);
   // Build 15 — the top bar's "needs attention" half + the new-problem alert (display only; the
   // problem rule is the rows' own red/orange flag, see adapters/parcelAttention.ts).
-  const problems = problemRows(rows);
+  const problems = problemRows(rows, fzOn);
   const problemCount = problems.length;
   // Ids already alerted: seeded with the problems present when the list first loads (no alert
   // for those), then every NEW problem parcel alerts once — never again for the same parcel.
@@ -394,11 +399,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [attnToast, setAttnToast] = useState<{ seq: number; text: string } | null>(null);
   if (listLoaded && alerted === null) setAlerted(new Set(problems.map((r) => r.id)));      // adjust-during-render
   else if (alerted !== null) {
-    const fresh = newProblemRows(alerted, rows);
+    const fresh = newProblemRows(alerted, rows, fzOn);
     if (fresh.length > 0) {
       const first = fresh[0];
-      const kind = problemOf(first);
-      const reason = kind === "wrong_store" ? t.rd_ps2_x_wrong_store : kind === "full" ? t.rd_ps2_x_store_full : t.rd_ps2_x_restricted;
+      const kind = problemOf(first, fzOn);
+      const reason = kind === "wrong_store" ? t.rd_ps2_x_wrong_store : kind === "full" ? t.rd_ps2_x_store_full : kind === "no_frozen" ? t.rd_ps2_x_no_frozen : t.rd_ps2_x_restricted;
       const code = alertStoreCode(first);
       setAlerted(new Set([...alerted, ...fresh.map((r) => r.id)]));
       setAttnToast((prev) => ({ seq: (prev?.seq ?? 0) + 1, text: `⚠ ${reason}${code ? ` · ${code}` : ""}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ""}` }));
@@ -431,7 +436,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hlSeq]);
-  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && !(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)));
+  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && (!(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)) || (fzOn && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus !== "ok")));
   useEffect(() => {
     if (!anyUnresolved || !pageVisible) return;
     const id = setInterval(() => setNowMs(Date.now()), 15000);
@@ -684,7 +689,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // store_check_status != 'not_found'), NOT all non-exported rows — a wrong-code
   // parcel is never counted and never lands in the .xlsm. unknown/null store
   // checks stay READY (soft-warned). Same split the build below uses.
-  const readyRows = splitScansForExport(rows, fee, frozen.cfg).ready;
+  const readyRows = splitScansForExport(rows, fee, frozen.cfg, fzOn).ready;
   const readyCount = readyRows.length;
   const frozenReady = readyRows.filter((r) => isFrozenLayer(r.tempLayer)).length;
   // Per row: dry rows get exactly today's options; frozen rows get D=冷凍 + the frozen fee/cap.
@@ -704,7 +709,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     await releaseRef.current; // a just-released claim must land before we re-read
     const fresh = await loadParcelScans();
     if (!fresh.ok) throw new Error(fresh.error || "load_failed");
-    const { ready, attention } = splitScansForExport(fresh.rows, fee, frozen.cfg);
+    const { ready, attention } = splitScansForExport(fresh.rows, fee, frozen.cfg, fzOn);
     const c = await markScansExported(ready.map((r) => r.id));
     if (!c.ok) throw new Error(c.error || "claim_failed");
     const wonIds = new Set(c.claimed);
@@ -843,12 +848,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (!confirm || confirm.kind !== "recheck" || deleting) return;
     const id = confirm.id;
     setDeleting(true); setDeleteErr("");
-    const r = await resetExtensionChecks(id);
+    const frozenRow = fzOn && isFrozenLayer(rows.find((x) => x.id === id)?.tempLayer);
+    const r = frozenRow ? await resetExtensionChecks(id, true) : await resetExtensionChecks(id); // 冷凍 + switch on → the frozen verdict is reset too; a dry row = today's exact call
     setDeleting(false);
     if (!r.ok) { setDeleteErr(r.error || "recheck_failed"); return; }
     if (aliveRef.current) {
       setRows((prev) => prev.map((x) => (x.id === id
-        ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null }
+        ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null, frozenStoreStatus: null }
         : x)));
       setConfirm(null);
     }
@@ -889,7 +895,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // NEVER a hard block (the checker may be down); only while the checks feature is on.
   const askExport = () => {
     if (frozen.blocked) return; // unknown Dry / Frozen state → no export until Retry works
-    const pending = checkOn ? readyRows.filter(rowCheckUnresolved).length : 0;
+    const pending = checkOn ? readyRows.filter((r) => rowCheckUnresolved(r, fzOn)).length : 0;
     if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
     openExportDialog();
   };
@@ -990,9 +996,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     const st = await waitFrozen();
     if (st.blocked) { setSaving(false); setSaveErr(t.rd_ps2_frozen_blocked); return; }
     const layer = st.allowed ? editLayer : undefined; // only sellers with the control can change it (else the row keeps its own)
+    // sql/142: a 冷凍 row's new store code voids its frozen verdict too — switch on or off (the old store's
+    // verdict must never come back when the switch is turned on); a dry row's payload stays byte-identical
+    const frozenReset = storeChanged && isFrozenLayer(layer ?? prev?.tempLayer);
     const r = contactArg === undefined
-      ? await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer) // own-scoped UPDATE, NO credit (today's exact call)
-      : await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer, contactArg);
+      ? await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged, ...(frozenReset ? { frozen: true } : {}) }, layer) // own-scoped UPDATE, NO credit (today's exact call)
+      : await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged, ...(frozenReset ? { frozen: true } : {}) }, layer, contactArg);
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
     if (aliveRef.current) {
@@ -1008,6 +1017,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         storeCheckStatus: storeChanged ? null : x.storeCheckStatus,
         // Extension verdicts reset locally to match the DB nulling above.
         storeFullStatus: storeChanged ? null : x.storeFullStatus,
+        ...(frozenReset ? { frozenStoreStatus: null } : {}), // on screen too, so a red no_frozen row clears with its new store code
         phoneCheckStatus: phoneChanged ? null : x.phoneCheckStatus,
         phoneRestrictedUntil: phoneChanged ? null : x.phoneRestrictedUntil,
         ...(layer ? { tempLayer: layer } : {}),
@@ -1528,11 +1538,16 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             // inline Recheck = the encode-time server check; an extension "NO2" is cleared
             // by the ⟳ button instead (that re-runs the extension check)
             const canRecheck = !r.id.startsWith("local-") && r.storeFullStatus !== "not_found" && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
-            const needsExtRecheck = extNeedsRecheck(r) && !r.id.startsWith("local-");
+            const needsExtRecheck = extNeedsRecheck(r, fzOn) && !r.id.startsWith("local-");
             // DISPLAY-ONLY row highlight (2026-09-27): a passing check needs no label;
             // a problem shows as a glowing border. RED (more serious, wins) = restricted
             // buyer OR wrong/invalid store code; ORANGE = store full. Clean = no border.
-            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r);
+            // sql/142 FROZEN rows only: no_frozen = red (blocked, like a full store); ok = normal;
+            // null / unknown = an amber "checking" line instead of the green all-clear. Dry rows: nothing.
+            const frozenRow = fzOn && isFrozenLayer(r.tempLayer);
+            const frozenNo = frozenRow && r.status !== "exported" && r.frozenStoreStatus === "no_frozen";
+            const frozenOk = !frozenRow || r.status === "exported" || r.frozenStoreStatus === "ok"; // exported 冷凍 rows keep ✅
+            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r) || frozenNo;
             const rowOrange = !rowRed && r.storeFullStatus === "full";
             const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
@@ -1558,6 +1573,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {r.storeFullStatus === "full" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-badge-full">⚠️ {t.rd_ps2_full}</div>
                   )}
+                  {/* sql/142: the store can't receive frozen — red, may wrap to 2 lines on a phone (never cut) */}
+                  {frozenNo && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)", overflowWrap: "anywhere", whiteSpace: "normal" }} data-testid="ps-frozen-no">{t.rd_ps2_frozen_no}</div>
+                  )}
                   {r.phoneCheckStatus === "restricted" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-badge-restricted">
                       🚫 {r.phoneRestrictedUntil ? tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) }) : t.rd_ps2_restricted}
@@ -1567,8 +1586,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       Phone ok but store null/unknown → an AMBER pending line — it must
                       never read as all-clear. (Red restricted / orange full still surface
                       immediately above, independent of the other half.) */}
-                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && (
+                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && frozenOk && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
+                  )}
+                  {/* sql/142: a 冷凍 row whose normal checks passed but whose frozen answer is still
+                      null / unknown — amber "Checking frozen…" instead of the all-clear (never red) */}
+                  {checkOn && r.status !== "exported" && !rowRed && !rowOrange && r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && !frozenOk && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)", overflowWrap: "anywhere" }} data-testid="ps-frozen-unchecked">{t.rd_ps2_frozen_unchecked}</div>
                   )}
                   {/* ONE pending line: ⏳ Checking (animated dots) until BOTH halves resolve,
                       unless the row is already red (restricted / wrong code) or orange

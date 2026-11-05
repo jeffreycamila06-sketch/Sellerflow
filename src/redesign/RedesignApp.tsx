@@ -2721,7 +2721,7 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && shippingGate === "open" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={shipSessionKey} {...(shipSessionKey !== shipLegacyKey ? { legacyKey: shipLegacyKey } : {})} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />
+            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />}
           {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} contactOn={buyerContactOn} />}
