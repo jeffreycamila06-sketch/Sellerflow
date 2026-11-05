@@ -71,18 +71,17 @@ async function run(opts: Opts, ticks = 3) {
 }
 
 // ── ADD ONLY ───────────────────────────────────────────────────────────────────
-describe("ADD ONLY — the diff against main, and the module's footprint", () => {
-  it("background.js: exactly two ADDED lines (guarded import + kick), nothing removed; only background.js, manifest.json and the two new files differ from main; manifest: only the version line changed", () => {
-    const diff = execSync(`git diff ${mainRef} -- chrome-extension/background.js`, { encoding: "utf8" }).split("\n");
-    expect(diff.filter((l) => l.startsWith("-") && !l.startsWith("---"))).toEqual([]);
-    const added = diff.filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1).trim());
-    expect(added).toHaveLength(2);
-    expect(added[0]).toMatch(/^try \{ importScripts\("frozen-check\.js"\); \} catch \(e\) \{ console\.log\(`\[PC-FROZEN\] module not loaded: /);
-    expect(added[1]).toMatch(/^try \{ if \(typeof pcFrozenKick === "function"\) pcFrozenKick\(pass\); \} catch \(e\) \{/);
-    expect(execSync(`git diff --name-only ${mainRef} -- chrome-extension`, { encoding: "utf8" }).trim().split("\n").sort()).toEqual(
-      ["chrome-extension/background.js", "chrome-extension/emap-frozen-711.js", "chrome-extension/frozen-check.js", "chrome-extension/manifest.json"]);
-    const man = execSync(`git diff ${mainRef} -- chrome-extension/manifest.json`, { encoding: "utf8" }).split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
-    expect(man.map((l) => l.trim())).toEqual(['-  "version": "1.15.2",']);
+describe("ADD ONLY — the two guarded lines, and the module's footprint", () => {
+  it("background.js carries the two guarded lines (the import + the kick), each exactly once — the kick inside pcRunOnce, after the normal lane's rows (now merged, so this no longer diffs against main)", () => {
+    const bg = readFileSync("chrome-extension/background.js", "utf8");
+    const lines = bg.split("\n").map((l) => l.trim());
+    const imp = lines.filter((l) => /^try \{ importScripts\("frozen-check\.js"\); \} catch \(e\) \{ console\.log\(`\[PC-FROZEN\] module not loaded: /.test(l));
+    const kick = lines.filter((l) => /^try \{ if \(typeof pcFrozenKick === "function"\) pcFrozenKick\(pass\); \} catch \(e\) \{/.test(l));
+    expect(imp).toHaveLength(1);
+    expect(kick).toHaveLength(1);
+    const run = bg.slice(bg.indexOf("async function pcRunOnce("), bg.indexOf("\n}\n", bg.indexOf("async function pcRunOnce(")));
+    expect(run).toContain("pcFrozenKick(pass)");
+    expect(run.indexOf("pcFrozenKick(pass)")).toBeGreaterThan(run.indexOf("pcPollMulti("));
   });
   it("C. frozen-check.js is ONE function scope: no top-level name shared with background.js (parsed), and loading it adds exactly ONE global — pcFrozenKick", () => {
     const names = (file: string) => {
