@@ -99,6 +99,9 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(app).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled: retryMs !== null }), kind: \"err\" });");
     expect(src("src/redesign/screens/ConnectModal.tsx")).toContain("if (!r.ok) { setErr(connectFailText(r, t)); return; }");
   });
+  it("9. a different signed-in user cancels a pending retry", () => {
+    expect(app).toContain("useEffect(() => () => cooldownRetry.cancel(), [cooldownRetry, auth.email]);");
+  });
   it("A4. picking another TikTok account cancels a pending retry (it must not connect the previously typed account)", () => {
     const fn = app.slice(app.indexOf("const switchAccount = (platform: Platform, i: number) => {"), app.indexOf("const [ttConnecting, setTtConnecting]"));
     expect(fn).toContain('if (platform === "TikTok") { cooldownRetry.cancel(); setTtIdx(i); }');
@@ -140,7 +143,7 @@ describe("B. TikTok username not found / lookup failed (client)", () => {
     expect(connectFailText({ lookupFailed: true }, t)).toBe(t.rd_cm_tt_lookup_failed);
     expect(connectFailText({ lookupFailed: true }, t)).not.toBe(t.rd_cm_not_live);
     expect(t.rd_cm_tt_not_found).toBe("TikTok username not found. It may have changed — edit the account's username and try again.");
-    expect(t.rd_cm_tt_lookup_failed).toBe("Couldn't find this TikTok account right now. Check the username is correct, then try again.");
+    expect(t.rd_cm_tt_lookup_failed).toBe("Couldn't find this TikTok account right now. Make sure you're LIVE and the username is correct, then try again.");
   });
   it("both texts exist in all 8 languages, distinct from English (except en) and from each other; zh-TW and fil are the given words", () => {
     const en = buildT("en");
@@ -154,6 +157,10 @@ describe("B. TikTok username not found / lookup failed (client)", () => {
     }
     expect(buildT("zh-TW").rd_cm_tt_not_found).toBe("找不到此 TikTok 使用者名稱，可能已更改，請編輯帳號的使用者名稱後再試一次。");
     expect(buildT("fil").rd_cm_tt_not_found).toBe("Hindi mahanap ang TikTok username. Baka napalitan — i-edit ang username ng account at subukan ulit.");
+    // 6: lookup failed covers a seller who tapped Connect before going LIVE too
+    expect(buildT("zh-TW").rd_cm_tt_lookup_failed).toBe("目前找不到此 TikTok 帳號。請確認你已開始直播且使用者名稱正確，然後再試一次。");
+    expect(buildT("fil").rd_cm_tt_lookup_failed).toBe("Hindi mahanap ang TikTok account ngayon. Siguraduhing naka-LIVE ka at tama ang username, tapos subukan ulit.");
+    for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as const) expect(buildT(lang).rd_cm_tt_lookup_failed, lang).toMatch(/LIVE|直播/);
   });
   it("the two new codes are NEW numbers (E43 / E44), never reused, and decode back to the words", async () => {
     const { ERR_CODES, decodeErr } = await import("../../../lib/errCodes.js");
@@ -165,5 +172,24 @@ describe("B. TikTok username not found / lookup failed (client)", () => {
     for (const c of ["E43", "E44"]) expect(Object.values(SERVER_ONLY_CODES)).not.toContain(c);
     expect(decodeErr("E43")).toBe("tiktok_user_not_found");
     expect(decodeErr("E44")).toBe("tiktok_lookup_failed");
+  });
+});
+
+describe("10 + 12. the rollback app's readable text; the admin comment placement", () => {
+  it("10. legacy App.tsx shows readable English for the two new TikTok answers (never the raw word)", () => {
+    const legacy = src("src/App.tsx");
+    expect(legacy).toContain(`const ttReadable=j.error==="tiktok_user_not_found"?"TikTok username not found. It may have changed — edit the account's username and try again."`);
+    expect(legacy).toContain(`:j.error==="tiktok_lookup_failed"?"Couldn't find this TikTok account right now. Make sure you're LIVE and the username is correct, then try again.":null;`);
+    expect(legacy).toContain("setToast(ttReadable||`${t.conn_failed}: ");
+    const t = buildT("en");                                       // same words as the new app
+    expect(legacy).toContain(t.rd_cm_tt_not_found);
+    expect(legacy).toContain(t.rd_cm_tt_lookup_failed);
+  });
+  it("12. the Business Pulse comment sits right above PulsePanel again (not above the TikTok limit card)", () => {
+    const admin = src("src/redesign/screens/Admin.tsx");
+    const c = admin.indexOf("// Business Pulse — WEB-ONLY admin activity view.");
+    expect(admin.indexOf("// Business Pulse — WEB-ONLY")).toBe(admin.lastIndexOf("// Business Pulse — WEB-ONLY"));
+    expect(admin.slice(c, admin.indexOf("function PulsePanel(")).split("\n").length).toBe(4);   // 3 comment lines, then the function
+    expect(admin.slice(admin.indexOf("export function TikTokLimitCard()") - 400, admin.indexOf("export function TikTokLimitCard()"))).not.toContain("Business Pulse");
   });
 });

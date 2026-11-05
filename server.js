@@ -13,7 +13,7 @@ import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
 import { createOcr, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
 import { createWorker as createParcelWorker } from "./server/parcelTrackingWorker.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT, isDailyRoomsLabel, dailyCooldownMs, remainingMs, isTikTokUserNotFound, isTikTokLookupFailed } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT, isDailyRoomsLabel, dailyCooldownMs, remainingMs, isTikTokUserNotFound, isTikTokLookupFailed, nestedRateLimitError } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { makeFailureThrottle, checkPollToken } from "./server/pollAuth.js";
 import { sweepProductImages, makeSweepStore, readSweepSwitch } from "./server/productImagesSweep.js";
@@ -812,9 +812,10 @@ function tiktokHealthDetail() {
   const eulerUsageToday = eulerUsageNow(Date.now());
 
   const last = recentTiktokAttempts;
-  const fails = last.filter(a => a.outcome === "fail").length;
+  const isFail = (a) => a.outcome === "fail" || a.outcome === "not_found" || a.outcome === "lookup_failed";
+  const fails = last.filter(isFail).length;
   const recentFailureRate = last.length === 0 ? null : `${fails}/${last.length}`;
-  const lastFailReason = [...last].reverse().find(a => a.outcome === "fail")?.reason || null;
+  const lastFailReason = [...last].reverse().find(isFail)?.reason || null;
 
   const warnings = [];
   if (!eulerKeyConfigured) {
@@ -1422,12 +1423,19 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
           console.log(`[RECONNECT] ${username} not found on TikTok — stopping reconnects`);
           clearTikTokReconnect(key);
           tiktokReconnectAttempts.delete(key);
-          recordTikTokAttempt("not_found", "reconnect");
+          recordTikTokAttempt("not_found", "not_found");
           emitTikTokStatus({ sellerId, username, sessionId, connected: false, reconnecting: false, reason: "connect_failed" });
           return;
         }
-        if (isTikTokRateLimitError(error)) {
-          rememberTikTokRateLimit(key, sellerId, username, sessionId, error);
+        const rlErr = isTikTokRateLimitError(error) ? error : nestedRateLimitError(error);
+        if (rlErr) {
+          rememberTikTokRateLimit(key, sellerId, username, sessionId, rlErr);
+          // The DAILY limit hit during this reconnect: don't give up — drop this account's own bench
+          // and wait out the shared daily pause (scheduleTikTokReconnect waits for it to end).
+          if (dailyRoomsRemainingMs() > 0) {
+            tiktokRateLimitCooldowns.delete(key);
+            scheduleTikTokReconnect(key, username, sellerId, sessionId, "daily_pause");
+          }
           return;
         }
         scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
@@ -1936,10 +1944,13 @@ async function connectTikTok(username, res, meta = {}) {
     key = liveKey(sellerId, "TikTok", cleanUsername);
     const cooldownMs = getTikTokCooldownMs(key);    // THIS account's cooldown only (the daily pause comes after the reuse branch)
     if (cooldownMs > 0) {
+      const d = dailyRoomsRemainingMs();               // the daily pause on top → the daily text, no client retry
+      const waitMs = Math.max(cooldownMs, d);
       return res.status(429).json({
         success: false,
-        error: `TikTok connection is on cooldown after a rate limit. Try again in ${Math.ceil(cooldownMs / 60000)} minutes.`,
-        cooldownMs,
+        error: `TikTok connection is on cooldown after a rate limit. Try again in ${Math.ceil(waitMs / 60000)} minutes.`,
+        cooldownMs: waitMs,
+        ...(d > 0 ? { daily: true } : {}),
       });
     }
 
@@ -1958,7 +1969,9 @@ async function connectTikTok(username, res, meta = {}) {
     // NOTE: touchTikTokConnection is NOT called before the check — it would stamp
     // lastEventAt=now and mask the very staleness being measured.
     if (existing) {
-      if (!shouldForceFreshConnect(existing.lastEventAt, Date.now())) {
+      // During the shared daily pause a quiet (event-silent) connection is NOT replaced — a fresh
+      // connect would only get the daily 429; it takes the same verify-and-reuse path instead.
+      if (!shouldForceFreshConnect(existing.lastEventAt, Date.now()) || dailyRoomsRemainingMs() > 0) {
         // B4 PHASE 2 (ENFORCED, 2026-07-14 GO — Phase-1 distribution 257 live /
         // 0 not_live / 2 ambiguous-fail-open, zero false blocks): the reuse tap
         // now AWAITS the is-LIVE verification. Same single-flight (R1), same
@@ -2133,7 +2146,7 @@ async function connectTikTok(username, res, meta = {}) {
     // gray so the pill never shows a stale green after a failed force-fresh.
     // Deliberately ONLY when forcedFresh (rate-limit already emits its own): a
     // plain failed connect for account B must not gray a live account A's pill.
-    if (forcedFresh && !isTikTokRateLimitError(error)) {
+    if (forcedFresh && !isTikTokRateLimitError(error) && !nestedRateLimitError(error)) {
       emitTikTokStatus({
         sellerId,
         username: cleanUsername,
@@ -2155,19 +2168,17 @@ async function connectTikTok(username, res, meta = {}) {
     }
     // The username no longer exists on TikTok (changed) → 404, NO cooldown (not a rate limit).
     if (isTikTokUserNotFound(error)) {
-      recordTikTokAttempt("not_found", cleanUsername);
+      recordTikTokAttempt("not_found", "not_found");            // a fixed reason — never a username
       return res.status(404).json({ success: false, notFound: true, error: "tiktok_user_not_found" });
     }
-    // The room lookup failed without that code → "couldn't find this account right now", NO cooldown.
-    if (isTikTokLookupFailed(error)) {
-      recordTikTokAttempt("lookup_failed", cleanUsername);
-      return res.status(502).json({ success: false, lookupFailed: true, error: "tiktok_lookup_failed" });
-    }
-    if (key && isTikTokRateLimitError(error)) {
-      recordTikTokAttempt("rate_limit", error?.message);
+    // A rate limit — top-level, or wrapped inside the lookup error's errors[] — is a rate limit
+    // (per-account cooldown + the daily pause on daily_rooms), never "lookup failed".
+    const rlErr = isTikTokRateLimitError(error) ? error : nestedRateLimitError(error);
+    if (key && rlErr) {
+      recordTikTokAttempt("rate_limit", rlErr?.message);
       // #4 — the cooldown now reflects Euler's own reset window (else 30 min),
       // not a fixed 24h. Report the real duration in the response.
-      const cooldownMs = rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, error);
+      const cooldownMs = rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, rlErr);
       const mins = Math.max(1, Math.round(cooldownMs / 60000));
       const wait = mins >= 60 ? `${Math.round(mins / 60)} hour(s)` : `${mins} minute(s)`;
       return res.status(429).json({
@@ -2176,6 +2187,12 @@ async function connectTikTok(username, res, meta = {}) {
         cooldownMs,
         ...(dailyRoomsRemainingMs() > 0 ? { daily: true } : {}),   // Build 10: a boolean, no raw word
       });
+    }
+
+    // The room lookup failed without the not-found code → "couldn't find this account right now", NO cooldown.
+    if (isTikTokLookupFailed(error)) {
+      recordTikTokAttempt("lookup_failed", "lookup_failed");    // a fixed reason — never a username
+      return res.status(502).json({ success: false, lookupFailed: true, error: "tiktok_lookup_failed" });
     }
 
     recordTikTokAttempt("fail", error?.message);

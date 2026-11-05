@@ -1299,6 +1299,7 @@ export default function RedesignApp() {
   const ttEffRef = useRef(ttEff);
   useEffect(() => { ttEffRef.current = ttEff; }, [ttEff]);
   useEffect(() => () => cooldownRetry.cancel(), [cooldownRetry]);
+  useEffect(() => () => cooldownRetry.cancel(), [cooldownRetry, auth.email]); // a different signed-in user → drop the pending retry
   const fbEff = fbConnected && !fbOff;
   // fb_stop_reasons (switch ON) — one plain-words toast when the Facebook pill falls from green
   // for a reason the server sent; never after this device's own Disconnect (fbOff).

@@ -308,23 +308,30 @@ export function isOwningConnection(connections, key, connection) {
 
 // Nov 6, 2026 — a seller who CHANGED their TikTok username: tiktok-live-connector 2.1.1-beta1
 // throws a FetchIsLiveError with an EMPTY message and the real failures in error.errors[]; for a
-// username that no longer exists one of them carries TikTok's "user not found" code (19881007 /
-// user_not_found). PURE: search the error and its nested errors (errors[], exception,
-// requestErr) — depth-limited, cycle-safe — for that code.
-const USER_NOT_FOUND_RX = /19881007|user_not_found/i;
-function errorTexts(e, depth, seen, out) {
-  if (!e || depth > 4 || seen.has(e)) return out;
-  if (typeof e !== "object") { out.push(String(e)); return out; }
-  seen.add(e);
-  if (e.message) out.push(String(e.message));
-  if (e.code !== undefined) out.push(String(e.code));
-  if (Array.isArray(e.errors)) for (const x of e.errors) errorTexts(x, depth + 1, seen, out);
-  errorTexts(e.exception, depth + 1, seen, out);
-  errorTexts(e.requestErr, depth + 1, seen, out);
+// username that no longer exists one of them is TikTok's own API error, shaped exactly
+// "API Error 19881007 (user_not_found)" (fetch-room-info-api-live.js), or carries code 19881007.
+// ONLY that shape counts — a bio or any other text containing the digits (e.g. inside the
+// connector's "Invalid response from API: <json>") must NOT. PURE: walks the error and its nested
+// errors (errors[], exception, requestErr) — depth-limited, cycle-safe.
+const USER_NOT_FOUND_RX = /API Error 19881007\b|\(user_not_found\)/;
+function errorNodes(e, depth, seen, out) {
+  if (!e || typeof e !== "object" || depth > 4 || seen.has(e)) return out;
+  seen.add(e); out.push(e);
+  if (Array.isArray(e.errors)) for (const x of e.errors) errorNodes(x, depth + 1, seen, out);
+  errorNodes(e.exception, depth + 1, seen, out);
+  errorNodes(e.requestErr, depth + 1, seen, out);
   return out;
 }
+const nodesOf = (error) => errorNodes(error, 0, new Set(), []);
 export function isTikTokUserNotFound(error) {
-  return errorTexts(error, 0, new Set(), []).some((s) => USER_NOT_FOUND_RX.test(s));
+  return nodesOf(error).some((n) => n.code === 19881007 || n.code === "19881007" || USER_NOT_FOUND_RX.test(String(n.message || "")));
+}
+// A rate limit wrapped INSIDE the lookup error (e.g. "Failed to retrieve Room ID from Euler due to an
+// error: (daily_rooms) Too many connections…" in errors[]): the nested error itself (it carries the
+// label / reset time), else null. The top-level error counts too.
+const RATE_LIMIT_RX = /rate.?limit|too many connections/i;
+export function nestedRateLimitError(error) {
+  return nodesOf(error).find((n) => RATE_LIMIT_RX.test(String(n.message || ""))) || null;
 }
 // The connector's room lookup failed (FetchIsLiveError) WITHOUT the not-found code — we could not
 // look the account up right now (a different, retry-later text; never "make sure you're LIVE").

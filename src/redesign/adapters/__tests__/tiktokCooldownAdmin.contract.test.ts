@@ -45,7 +45,12 @@ describe("daily_rooms — the shared bench (audit item 4)", () => {
     expect(top).toBeLessThan(reuse);
     expect(daily).toBeGreaterThan(reuse);                   // a healthy live that taps Connect / refreshes never sees the daily 429
     expect(daily).toBeLessThan(lock);                       // …but a fresh connect does, before any Euler call
-    expect(fn.slice(top, reuse)).not.toContain("dailyRoomsRemainingMs");
+    // Before the reuse branch the ONLY 429 is the account's own cooldown (the daily pause is read there
+    // just to word it — item 2 — and to choose reuse for a quiet room — item 5); never a daily-only 429.
+    const pre = fn.slice(top, reuse);
+    expect(pre.match(/res\.status\(429\)/g)?.length).toBe(1);
+    expect(pre.indexOf("const d = dailyRoomsRemainingMs();")).toBeGreaterThan(pre.indexOf("if (cooldownMs > 0) {"));
+    expect(pre.indexOf("const d = dailyRoomsRemainingMs();")).toBeLessThan(pre.indexOf("res.status(429)"));
   });
   it("A1. scheduleTikTokReconnect: gives up only on the account's own cooldown; during the daily pause it waits for the pause to end (and re-checks when it fires)", () => {
     const fn = between("function scheduleTikTokReconnect(", "function handleTikTokDisconnected(");

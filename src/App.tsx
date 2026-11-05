@@ -4304,7 +4304,10 @@ export default function App(){
       const j=await r.json();
       if(r.status===401){posthog.capture("connect_failed",{platform,reason:"unauthorized",error:j.error});setToast(`${t.conn_failed}: ${j.error||"Unauthorized"}`);return;}
       if(r.status===500){posthog.capture("connect_failed",{platform,reason:"server_error",error:j.error});setToast(`${t.conn_failed}: ${j.error||"Server error"}`);return;}
-      if(!j.success){posthog.capture("connect_failed",{platform,reason:j.error||"unknown",status:r.status});setToast(`${t.conn_failed}: ${j.error||r.statusText||`HTTP ${r.status}`}`);}
+      // Nov 6, 2026 — the two new TikTok answers get readable English (the rollback app has no keys for them).
+      const ttReadable=j.error==="tiktok_user_not_found"?"TikTok username not found. It may have changed — edit the account's username and try again."
+        :j.error==="tiktok_lookup_failed"?"Couldn't find this TikTok account right now. Make sure you're LIVE and the username is correct, then try again.":null;
+      if(!j.success){posthog.capture("connect_failed",{platform,reason:j.error||"unknown",status:r.status});setToast(ttReadable||`${t.conn_failed}: ${j.error||r.statusText||`HTTP ${r.status}`}`);}
       else{
         posthog.capture("connect_success",{platform});
         setToast(`${t.conn_success} ${platform}!`);

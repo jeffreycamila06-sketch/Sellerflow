@@ -152,7 +152,7 @@ Messages:
 - "Try again in a few minutes" Wait a few minutes, then tap Connect once.
 - "Daily connection limit reached — try again later" Wait a while, then tap Connect once.
 - "TikTok username not found. It may have changed — edit the account's username and try again." Your TikTok username changed. Tap **Manage / add accounts**, fix the username, then tap Connect.
-- "Couldn't find this TikTok account right now. Check the username is correct, then try again." Check the username in **Manage / add accounts**, then tap Connect once.
+- "Couldn't find this TikTok account right now. Make sure you're LIVE and the username is correct, then try again." Go live first and check the username in **Manage / add accounts**, then tap Connect once.
 - "Can't connect right now. Check your internet and try again."
 - "Couldn't connect. Make sure you're LIVE, then try again." Go live first, then tap Connect once.
 - "Your plan has ended. Renew to connect again." See "Plan expired"
@@ -638,7 +638,7 @@ Keywords: delete account, remove account, close account, erase data, burahin acc
 Some records (orders, payments, legal) may be kept if needed by law. If you see "This account can't be deleted in the app. Message us and we'll do it.", message Admin on Telegram @SellerFlowLive.
 
 ## trouble-connect — Connect fails, "not live", or green but no comments
-Last checked: 2026-10-11
+Last checked: 2026-11-06
 Keywords: connect failed, not live, no comments, green but nothing, stuck connecting, ayaw mag-connect, walang comment, 连不上, 連不上, 没有留言, 无评论
 
 **"Account is not live right now"** — make sure you are **already live** on TikTok with the **exact** username you added. Then tap Connect.
@@ -653,7 +653,15 @@ Keywords: connect failed, not live, no comments, green but nothing, stuck connec
 2. Tap **Connect** once.
 3. Make sure your TikTok live really has new comments.
 
-**"Too many connects. Wait N minutes"** — wait that long, then tap Connect once.
+**"Connection limit reached — we're retrying for you"** — the app connects by itself in a few minutes. Don't tap Connect again.
+
+**"Try again in a few minutes"** — wait a few minutes, then tap Connect once.
+
+**"Daily connection limit reached — try again later"** — wait a while, then tap Connect once.
+
+**"TikTok username not found. It may have changed — edit the account's username and try again."** — your TikTok username changed. Tap **Manage / add accounts**, fix the username, then tap Connect.
+
+**"Couldn't find this TikTok account right now. Make sure you're LIVE and the username is correct, then try again."** — go live first and check the username in **Manage / add accounts**, then tap Connect once.
 
 **"Your plan has ended. Renew to connect again."** — see "Plan expired".
 

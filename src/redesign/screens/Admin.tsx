@@ -823,9 +823,6 @@ function ParcelSwitchPanel() {
   );
 }
 
-// Business Pulse — WEB-ONLY admin activity view. Counts + timestamps only (NO
-// prices/revenue → coexists with the iOS payment-hiding gate). Data from the
-// admin_business_pulse RPC; read-on-open + manual Refresh (zero polling).
 // Nov 3, 2026 — TikTok connection limit (Euler 429s): today's count + last limit label, the
 // accounts on cooldown, and a one-tap clear for one account (admin route, no server restart).
 // Read-on-open + manual refresh — zero polling.
@@ -915,6 +912,9 @@ export function TikTokLimitCard() {
   );
 }
 
+// Business Pulse — WEB-ONLY admin activity view. Counts + timestamps only (NO
+// prices/revenue → coexists with the iOS payment-hiding gate). Data from the
+// admin_business_pulse RPC; read-on-open + manual Refresh (zero polling).
 function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; state: PulseState; onRefresh?: () => void }) {
   const t = useT();
   const s = pulse?.summary;
