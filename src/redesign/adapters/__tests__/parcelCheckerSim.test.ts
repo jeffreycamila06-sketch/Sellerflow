@@ -91,3 +91,27 @@ describe("A · with Chrome's 30 s keepalive alarm (it can start a second pass wh
     }, 120_000);
   }
 });
+
+describe("1 · a slow E-Map pauses the whole frozen lane for 10 minutes after a timeout", () => {
+  const MANY = Array.from({ length: 30 }, (_, i) => ({ id: `fz-${i + 1}`, store_id: String(300001 + i) }));
+  for (const alarmMs of [0, 30_000]) {
+    it(`E-Map 8 s, 30 frozen parcels at 30 stores, 30 min${alarmMs ? " + the 30 s alarm" : ""} → at most 3 frozen requests in total; 0 overlaps; the normal lane is main's`, async () => {
+      const run = async (main: boolean) => {
+        const sim = makeSim({ t0: T0, emapMs: 8000, dry: 100, frozen: MANY });
+        const w = bootWorker({ sim, lease: LEADER, ...(main ? { extDir: mainDir } : {}) });
+        await w.booted;
+        await runSim(sim, T0 + 30 * MIN, alarmMs);
+        return sim;
+      };
+      const ours = await run(false), main = await run(true);
+      const s = summary(ours);
+      if (process.env.SFL_SIM_REPORT) appendFileSync(process.env.SFL_SIM_REPORT, `[SIM-30STORES${alarmMs ? "+ALARM" : ""}] emap=8000ms ours=${JSON.stringify(s)} main.normalVerdicts=${main.normalVerdicts.length}\n`);
+      expect(s.frozenRequests).toBeGreaterThan(0);
+      expect(s.frozenRequests).toBeLessThanOrEqual(3);                     // one per 10 min, not one per store
+      expect(s.frozenDuringNormal).toBe(0);
+      expect(s.normalDuringFrozen).toBe(0);
+      expect(normalLane(ours)).toEqual(normalLane(main));
+      expect(ours.normalVerdicts).toEqual(main.normalVerdicts);
+    }, 120_000);
+  }
+});

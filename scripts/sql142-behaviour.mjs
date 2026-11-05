@@ -1,7 +1,7 @@
 // Runs sql/142 (+ its rollback) on a real Postgres (PGlite, WASM) against a stub of the live
 // parcel tables and checks the frozen lane's rules: frozen rows only (dry rows never read or
 // touched), one row per store per call, the 10-min per-store live floor across sellers, cache
-// reuse (no_frozen 1 h / ok 10 min), 'unknown' retried after 10 min, 'unknown' never overwriting
+// reuse (no_frozen 30 days / ok 7 days), 'unknown' retried after 10 min, 'unknown' never overwriting
 // no_frozen, a Recheck (NULL + kept checked_at) going live, the switch, the verdict applying only
 // while the row is still 冷凍 at the checked store, the log sources, and a clean rollback.
 // Not part of CI (PGlite is not a dependency). Run from a scratch folder:
@@ -78,16 +78,20 @@ ok((await q("select count(*)::int as n from store_frozen_check_log where store_i
 ok(!p.some((r) => r.store_id === "968551"), "store 968551 is not handed out again (cache fresh + 10-min floor)");
 ok((await row(d1)).s === null && (await row(d1)).sf === null, "dry row still untouched after the frozen pass");
 
-// ── ok verdict: 10-min cache; after 10 min a new row at that store goes live again ──
+// ── ok verdict: 7-day cache; after 7 days a new row at that store goes live again ──
 await q("select admin_parcel_frozen_verdict($1,$2,$3)", [f3, "151003", "ok"]);
 ok((await row(f3)).s === "ok", "verdict ok stamped");
 const f5 = await ins(A, "151003", "冷凍");
 await pending();
-ok((await row(f5)).s === "ok", "a new row at an ok store within 10 min → from cache");
-await q("update store_frozen_cache set checked_at = now() - interval '11 minutes' where store_id='151003'");
+ok((await row(f5)).s === "ok", "a new row at an ok store → from cache");
+await q("update store_frozen_cache set checked_at = now() - interval '6 days 23 hours' where store_id='151003'");
+const f5b = await ins(A, "151003", "冷凍");
+await pending();
+ok((await row(f5b)).s === "ok", "ok is still served from cache after 6 days 23 hours");
+await q("update store_frozen_cache set checked_at = now() - interval '7 days 1 minute' where store_id='151003'");
 const f6 = await ins(A, "151003", "冷凍");
 p = await pending();
-ok((await row(f6)).s === null && p.some((r) => r.id === f6), "after 10 min an ok store is checked live again (not from cache)");
+ok((await row(f6)).s === null && p.some((r) => r.id === f6), "after 7 days an ok store is checked live again (not from cache)");
 
 // ── unknown: retried after 10 min; never overwrites no_frozen ────────────────
 await q("select admin_parcel_frozen_verdict($1,$2,$3)", [f6, "151003", "unknown"]);
@@ -95,17 +99,26 @@ ok((await row(f6)).s === "unknown", "unknown stamped (no answer)");
 ok((await q("select status from store_frozen_cache where store_id='151003'")).rows[0]?.status === "ok", "unknown never enters the cache");
 ok(!(await pending()).some((r) => r.id === f6), "an unknown row waits 10 min before a retry");
 await q("update parcel_scans set frozen_store_checked_at = now() - interval '11 minutes' where id=$1", [f6]);
+await q("delete from store_frozen_cache where store_id='151003'"); // no cached answer for the store
+ok((await pending()).some((r) => r.id === f6), "…then it is handed out again (live, after 10 min)");
+await q("insert into store_frozen_cache values ('151003','ok', now() - interval '1 day')");
+await pending();
+ok((await row(f6)).s === "ok", "an unknown row at a store with an ok answer from the last 7 days takes it from cache");
 await q("update store_frozen_cache set checked_at = now() - interval '11 minutes' where store_id='151003'");
-ok((await pending()).some((r) => r.id === f6), "…then it is handed out again");
 await q("select admin_parcel_frozen_verdict($1,$2,$3)", [f1, "968551", "unknown"]);
 ok((await row(f1)).s === "no_frozen", "unknown never overwrites no_frozen (a blocked store stays blocked)");
 
-// ── no_frozen: hourly live recheck; a later ok frees it ──────────────────────
-ok(!(await pending()).some((r) => r.store_id === "968551"), "a no_frozen store is not rechecked within the hour");
-await q("update parcel_scans set frozen_store_checked_at = now() - interval '61 minutes' where id=$1", [f1]);
-await q("update store_frozen_cache set checked_at = now() - interval '61 minutes' where store_id='968551'");
+// ── no_frozen: 30-day cache, no hourly live recheck; a later ok frees it ─────
+await q("update parcel_scans set frozen_store_checked_at = now() - interval '29 days' where id=$1", [f1]);
+await q("update store_frozen_cache set checked_at = now() - interval '29 days' where store_id='968551'");
+ok(!(await pending()).some((r) => r.store_id === "968551"), "a no_frozen store is NOT rechecked live within 30 days (no hourly recheck)");
+const f1b = await ins(B, "968551", "冷凍");
+await pending();
+ok((await row(f1b)).s === "no_frozen", "a new row at a no_frozen store is answered from cache after 29 days");
+await q("update parcel_scans set frozen_store_checked_at = now() - interval '30 days 1 minute' where id in ($1, $2)", [f1, f1b]);
+await q("update store_frozen_cache set checked_at = now() - interval '30 days 1 minute' where store_id='968551'");
 p = await pending();
-ok(p.some((r) => r.id === f1), "after an hour the no_frozen store is rechecked live (its oldest row)");
+ok(p.some((r) => r.id === f1), "after 30 days the no_frozen store is asked live again (its oldest row)");
 await q("select admin_parcel_frozen_verdict($1,$2,$3)", [f1, "968551", "ok"]);
 ok((await row(f1)).s === "ok", "a live ok frees the store");
 
@@ -116,6 +129,10 @@ p = await pending();
 ok((await row(f5)).s === null && p.some((r) => r.id === f5), "a Recheck row is not served from cache — it goes live");
 await q("update store_frozen_cache set checked_at = now() where store_id='151003'");
 ok(!(await pending()).some((r) => r.id === f5), "…but never inside the 10-min per-store floor");
+await q("update store_frozen_cache set status='no_frozen', checked_at = now() - interval '1 day' where store_id='968551'");
+await q("update parcel_scans set frozen_store_status = null where id=$1", [f1b]); // ⟳ on a red row at a store cached no_frozen
+p = await pending();
+ok((await row(f1b)).s === null && p.some((r) => r.id === f1b), "a Recheck at a store cached no_frozen (1 day old) is not served from cache — it asks E-Map live");
 
 // ── verdict safety: wrong store / switched to 常溫 → not applied ─────────────
 await q("update parcel_scans set frozen_store_status = null, frozen_store_checked_at = null where id=$1", [f3]);
@@ -140,7 +157,7 @@ ok(!(await col("frozen_store_status")) && !(await col("frozen_store_checked_at")
 ok((await q("select count(*)::int as n from information_schema.tables where table_name in ('store_frozen_cache','store_frozen_check_log')")).rows[0].n === 0, "rollback drops the two tables");
 ok((await q("select count(*)::int as n from pg_proc where proname in ('admin_parcel_frozen_pending','admin_parcel_frozen_verdict')")).rows[0].n === 0, "rollback drops the two RPCs");
 ok((await q("select count(*)::int as n from app_settings where key='frozen_store_check_enabled'")).rows[0].n === 0, "rollback removes the switch");
-ok((await q("select count(*)::int as n from parcel_scans")).rows[0].n === 8, "parcel rows untouched by the rollback");
+ok((await q("select count(*)::int as n from parcel_scans")).rows[0].n === 10, "parcel rows untouched by the rollback");
 
 console.log(`sql142: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

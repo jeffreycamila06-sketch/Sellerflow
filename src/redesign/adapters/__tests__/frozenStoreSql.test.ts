@@ -40,9 +40,10 @@ describe("sql/142 forward — add-only", () => {
     expect(up).toContain("revoke all on function public.admin_parcel_frozen_pending(integer) from public, anon;");
     expect(up).toContain("revoke all on function public.admin_parcel_frozen_verdict(uuid, text, text) from public, anon;");
   });
-  it("cache rules: no_frozen reused 1 h (+ hourly live recheck), ok reused 10 min, ≤ 1 live request per store per 10 min, unknown retried after 10 min; one row per store; frozen rows only; switch = the exact 'true'", () => {
-    expect(up).toContain("v_no_ttl   constant interval := interval '1 hour';");
-    expect(up).toContain("v_ok_ttl   constant interval := interval '10 minutes';");
+  it("cache rules: no_frozen reused 30 days (no hourly recheck), ok reused 7 days, ≤ 1 live request per store per 10 min, unknown retried after 10 min; one row per store; frozen rows only; switch = the exact 'true'", () => {
+    expect(up).toContain("v_no_ttl   constant interval := interval '30 days';");
+    expect(up).not.toMatch(/interval '1 hour'/);
+    expect(up).toContain("v_ok_ttl   constant interval := interval '7 days';");
     expect(up).toContain("v_floor    constant interval := interval '10 minutes';");
     expect(up).toContain("v_retry    constant interval := interval '10 minutes';");
     expect(up).toContain("if coalesce(v_enabled, 'false') <> 'true' then return; end if;");

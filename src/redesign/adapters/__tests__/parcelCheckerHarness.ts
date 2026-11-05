@@ -134,7 +134,7 @@ export type BootOpts = {
   // 1.17.0 frozen check: the PC_FROZEN_CHECK reply ("ok" / "no_frozen" / "unknown"; null = the
   // emap tab didn't answer; "hang" = never answers; "throw" = the stub throws), and the
   // settings rows the app_settings GET returns (default: the switch row absent = OFF).
-  frozenVerdict?: (row?: { id?: string; store_id?: string }) => string | null;
+  frozenVerdict?: (row?: { id?: string; store_id?: string }) => string | null; // "hang" never answers · "throw" · "timeout" = the content script's 2.5 s abort (transient) · null = no answer
   frozenSwitch?: "true" | "false" | "missing" | "error";
   frozenPending?: unknown[] | "error";       // admin_parcel_frozen_pending rows (default [])
   frozenVerdictHttp?: number;               // admin_parcel_frozen_verdict status (default 200)
@@ -211,6 +211,8 @@ export function bootWorker(opts: BootOpts = {}) {
           const v = opts.sim && opts.sim.emapMs > SIM_FROZEN_ABORT_MS ? "unknown" // the content script aborted at 2.5 s
             : opts.frozenVerdict ? opts.frozenVerdict(msg.row) : "ok";
           if (v === "hang") return;                       // never answers
+          if (v === "timeout" || (opts.sim && opts.sim.emapMs > SIM_FROZEN_ABORT_MS)) // the content script's 2.5 s abort (transient)
+            return cb({ ok: true, script: "emap-frozen", frozen_store_status: "unknown", frozen_reason: "/ecmap/byIDData.aspx timeout (2.5s)", transient: true, guidFound: true, endpoint: "/ecmap/byIDData.aspx" });
           if (v === "throw") throw new Error("frozen stub threw");
           if (v === null) return cb(null);
           return cb({ ok: true, script: "emap-frozen", frozen_store_status: v, frozen_reason: v === "unknown" ? "sim unknown" : "", transient: false, guidFound: true, endpoint: "/ecmap/byIDData.aspx" });

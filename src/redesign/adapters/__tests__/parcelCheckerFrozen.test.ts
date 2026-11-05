@@ -203,15 +203,31 @@ describe("switch ON — the frozen lane", () => {
     await tick(w, clock, 4);
     expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3", "fz-1", "fz-3"]);
   });
-  it("the emap script THROWS / returns garbage / answers null → that parcel is 'unknown', the next pass checks the next one, the normal lane is untouched", async () => {
-    for (const bad of ["throw", "garbage", null] as const) {
-      const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => (row?.store_id === "968551" ? bad : "ok") }, 3);
-      const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 3);
-      expect(normalLane(a.w), String(bad)).toEqual(trace(m.w));
-      expect(verdictBodies(a.w.calls).map((v) => `${v.p_id}:${v.p_status}`), String(bad)).toEqual(["fz-1:unknown", "fz-3:ok"]);
-    }
+  it("a real non-verdict answer (garbage / close / NO2, not transient) → that parcel is 'unknown', NO pause, the next pass checks the next one; the normal lane is untouched", async () => {
+    const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => (row?.store_id === "968551" ? "garbage" : "ok") }, 3);
+    const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 3);
+    expect(normalLane(a.w)).toEqual(trace(m.w));
+    expect(verdictBodies(a.w.calls).map((v) => `${v.p_id}:${v.p_status}`)).toEqual(["fz-1:unknown", "fz-3:ok"]);
+    expect(a.w.calls.logs.some((l) => /paused 10 min/.test(l))).toBe(false);
   });
-  it("a check that never answers → the 3 s cap writes 'unknown' and frees the lane", async () => {
+  for (const bad of ["throw", null, "timeout"] as const) {
+    it(`1. ${String(bad) === "null" ? "no answer" : bad === "throw" ? "a failed tab message" : "the content script's 2.5 s timeout"} → that parcel is 'unknown' and the WHOLE frozen lane pauses 10 min (no request to any other store); then it resumes; the normal lane is main's`, async () => {
+      const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => (row?.store_id === "968551" ? bad : "ok") }, 2);
+      expect(verdictBodies(w.calls).map((v) => `${v.p_id}:${v.p_status}`)).toEqual(["fz-1:unknown"]);
+      expect(w.calls.logs.some((l) => /\[PC-FROZEN\] E-Map slow or not answering \(.+\) — frozen checks paused 10 min/.test(l))).toBe(true);
+      const pendingBefore = pendingReads(w.calls);
+      await tick(w, clock, 20);                                                  // 100 s: another store is waiting, still nothing
+      expect(frozenMsgs(w.calls)).toHaveLength(1);
+      expect(pendingReads(w.calls)).toBe(pendingBefore);                         // no pending reads while paused either
+      expect(w.calls.logs.some((l) => /paused after a slow \/ missing E-Map answer \(\d+ min left\) — next pass/.test(l))).toBe(true);
+      clock.t += 9 * MIN;
+      await tick(w, clock, 3);                                                   // pause over: read, then send
+      expect(frozenMsgs(w.calls).map((m) => m.rowId).slice(0, 2)).toEqual(["fz-1", "fz-3"]); // the next store, once the pause is over
+      const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 2);
+      expect(normalLane(w).fetch.slice(0, trace(m.w).fetch.length)).toEqual(trace(m.w).fetch);
+    });
+  }
+  it("a check that never answers → the 3 s cap writes 'unknown', frees the lane and pauses it 10 min", async () => {
     const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => (row?.store_id === "968551" ? "hang" : "ok") }, 2);
     expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
     await tick(w, clock, 2);
@@ -221,8 +237,58 @@ describe("switch ON — the frozen lane", () => {
     cap[cap.length - 1].fn(); await flush();
     expect(verdictBodies(w.calls).map((v) => `${v.p_id}:${v.p_status}`)).toEqual(["fz-1:unknown"]);
     expect(w.calls.logs.some((l) => /frozen check timeout \(3s\)/.test(l))).toBe(true);
+    expect((w.evalIn("pcFrozenKick.__test.state") as { busy: boolean }).busy).toBe(false);
+    await tick(w, clock, 3);
+    expect(frozenMsgs(w.calls)).toHaveLength(1);                               // paused
+    clock.t += 10 * MIN;
+    await tick(w, clock, 3);
+    expect(frozenMsgs(w.calls).map((m) => m.rowId).slice(0, 2)).toEqual(["fz-1", "fz-3"]);
+  });
+  it("2. a whole pass that hangs is cut at 120 s: busy is released and the next pass runs", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: () => "hang" }, 2);
+    expect(frozenMsgs(w.calls)).toHaveLength(1);
+    const st = () => w.evalIn("pcFrozenKick.__test.state") as { busy: boolean };
+    expect(st().busy).toBe(true);                                              // the 3 s cap is a recorded timer here, never fired
+    const passCap = w.calls.timers.filter((t) => t.ms === 120 * S);
+    expect(passCap.length).toBeGreaterThan(0);
+    passCap[passCap.length - 1].fn(); await flush();
+    expect(st().busy).toBe(false);
+    expect(w.calls.logs.some((l) => /pass failed: frozen pass timeout \(120s\)/.test(l))).toBe(true);
     await tick(w, clock, 1);
-    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3"]);
+    expect(st().busy).toBe(true);                                              // a new pass started
+  });
+  it("2. an injection that never returns is cut at 5 s (logged as failed); the lane is not left busy", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenScript: false }, 1);
+    (w.sb.chrome.scripting as unknown as Record<string, unknown>).executeScript = () => { /* never calls back */ };
+    await tick(w, clock, 1);
+    const injCap = w.calls.timers.filter((t) => t.ms === 5 * S && t.fn !== w.sb.pcTick); // not the loop's own 5 s re-arm
+    expect(injCap.length).toBeGreaterThan(0);
+    injCap[injCap.length - 1].fn(); await flush();
+    expect(w.calls.logs.some((l) => /emap-frozen-711\.js not answering on tab 3 → inject failed/.test(l))).toBe(true);
+    expect((w.evalIn("pcFrozenKick.__test.state") as { busy: boolean }).busy).toBe(false);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+  });
+  it("2. kicks left behind pcEv.tick (a pass that never reached its kick) are resynced after 2 min — once, logged — so the lane never stays off", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 1);
+    w.evalIn("pcEv.tick += 1;");                                                // a pass that will never kick
+    await tick(w, clock, 20);                                                    // 100 s: still held back
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    await tick(w, clock, 6);                                                     // past 2 min
+    expect(w.calls.logs.filter((l) => /\[PC-FROZEN\] pass count 1 behind for 2 min — resynced/.test(l))).toHaveLength(1);
+    expect(frozenMsgs(w.calls)[0]?.rowId).toBe("fz-1");
+    const t = w.evalIn("pcFrozenKick.__test") as { resyncKicks: (n: number) => void; state: { kicks: number } };
+    w.evalIn("pcFrozenKick.__test.state.kicks = pcEv.tick + 1;");              // a late kick after a resync overshoots…
+    t.resyncKicks(clock.t);
+    expect(t.state.kicks).toBe(Number(w.evalIn("pcEv.tick")));                 // …and clamps back at once
+  });
+  it("2. every await in frozen-check.js is bounded: each is withTimeout(…) or one of the module's own bounded steps; every body read has its own timeout", () => {
+    const code = readFileSync("chrome-extension/frozen-check.js", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const awaits = [...code.matchAll(/await\s+([A-Za-z_.]+)\(/g)].map((m) => m[1]);
+    expect(awaits.length).toBeGreaterThan(8);
+    const ownSteps = ["withTimeout", "ensureScript", "alarmSoon", "readSwitch", "readPending", "sendOne", "ping"];
+    expect(awaits.filter((a) => !ownSteps.includes(a))).toEqual([]);
+    expect(code).not.toMatch(/await\s+r\.(json|text)\(/);                    // body reads go through withTimeout
+    for (const what of ['"switch body")', '"pending body")', '"config read")', '"inject")', '"frozen pass")']) expect(code, what).toContain(what);
   });
   it("every frozen call is bounded: switch / pending / verdict 15 s, the check 3 s, the ping 1 s, the alarm read 0.5 s", () => {
     const mod = readFileSync("chrome-extension/frozen-check.js", "utf8");
@@ -356,6 +422,14 @@ describe("pure helpers", () => {
     expect(t.verdictOf({ frozen_store_status: "ok" })).toBe("ok");
     expect(t.verdictOf({ frozen_store_status: "no_frozen" })).toBe("no_frozen");
     for (const v of [{ frozen_store_status: "open" }, { frozen_store_status: "full" }, { frozen_store_status: "unknown" }, {}, null, undefined, "no_frozen"]) expect(t.verdictOf(v)).toBe("unknown");
+  });
+  it("slowAnswer (1): no reply, a throw/cap, or a transient answer pauses; a real answer (ok / no_frozen / NO2 / close / bounce) never does", () => {
+    const t = helpers();
+    expect(t.slowAnswer(null, false)).toBe(true);
+    expect(t.slowAnswer(undefined, false)).toBe(true);
+    expect(t.slowAnswer({ frozen_store_status: "ok" }, true)).toBe(true);
+    expect(t.slowAnswer({ frozen_store_status: "unknown", transient: true }, false)).toBe(true);
+    for (const r of [{ frozen_store_status: "ok", transient: false }, { frozen_store_status: "no_frozen" }, { frozen_store_status: "unknown", frozen_reason: "store not found (NO2)", transient: false }]) expect(t.slowAnswer(r, false)).toBe(false);
   });
   it("pickRows: one per store, the floor, bad rows skipped, ≤ limit", () => {
     const t = helpers();

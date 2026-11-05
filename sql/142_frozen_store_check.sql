@@ -19,12 +19,13 @@
 -- The phonebook trigger (trg_upsert_parcel_customer, sql/36 + sql/140) fires on its OWN column list,
 -- which these columns are not in → a no_frozen verdict never removes a buyer from Customer Details.
 --
--- VERDICTS: ok (store takes frozen) · no_frozen (can't take frozen now — permanent or full, we can't
--- tell: blocked from export, re-checked live once an hour like 'full') · unknown (no answer: re-checked
--- every 10 min, never blocks). NULL = not checked yet.
--- CACHE RULES (same shape as the normal store cache): no_frozen answered from cache for 1 hour, ok for
--- 10 minutes; a store is handed out for a LIVE check at most once per 10 minutes ACROSS ALL SELLERS;
--- a Recheck (status NULL, checked_at kept) bypasses the cache and goes live (subject to that floor).
+-- VERDICTS: ok (store takes frozen) · no_frozen (the store has no freezer — permanent in practice:
+-- 968551 still 'disable' a month later; blocked from export) · unknown (no answer: re-checked every
+-- 10 min, never blocks). NULL = not checked yet.
+-- CACHE RULES: no_frozen answered from cache for 30 days (no automatic live recheck before that), ok
+-- for 7 days; a store is handed out for a LIVE check at most once per 10 minutes ACROSS ALL SELLERS;
+-- the seller's ⟳ Recheck (status NULL, checked_at kept) bypasses the cache and goes live (subject to
+-- that floor).
 --
 -- ⚠️ BUILD FROM LIVE DEFINITIONS at apply time: the two RPCs are new (no live definition). Check
 -- first that nothing already exists with these names:
@@ -78,8 +79,8 @@ returns table(id uuid, store_id text, created_at timestamptz, queue_depth bigint
 language plpgsql security definer set search_path = public as $$
 declare
   v_enabled text;
-  v_no_ttl   constant interval := interval '1 hour';     -- no_frozen reused from cache + hourly live recheck
-  v_ok_ttl   constant interval := interval '10 minutes'; -- ok reused from cache
+  v_no_ttl   constant interval := interval '30 days';    -- no_frozen reused from cache; a no_frozen row is re-asked live only after this
+  v_ok_ttl   constant interval := interval '7 days';     -- ok reused from cache
   v_floor    constant interval := interval '10 minutes'; -- ≤ 1 live request per store per 10 min (all sellers)
   v_retry    constant interval := interval '10 minutes'; -- an 'unknown' row is retried after this
 begin
@@ -114,7 +115,7 @@ begin
        and (c.checked_at is null or c.checked_at < now() - v_floor)
        and ( ps.frozen_store_status is null                                                          -- never checked (no fresh cache) or a Recheck
           or (ps.frozen_store_status = 'unknown'   and ps.frozen_store_checked_at < now() - v_retry)   -- no answer last time
-          or (ps.frozen_store_status = 'no_frozen' and ps.frozen_store_checked_at < now() - v_no_ttl) ) -- hourly live recheck of a blocked store
+          or (ps.frozen_store_status = 'no_frozen' and ps.frozen_store_checked_at < now() - v_no_ttl) ) -- a blocked row is re-asked only after 30 days
   ),
   one as (
     select distinct on (cd.store_id) cd.id, cd.store_id, cd.created_at

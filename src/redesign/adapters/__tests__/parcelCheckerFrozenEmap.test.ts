@@ -30,7 +30,7 @@ const ANSWERS: Record<string, string> = {
 type Msg = { type: string; row?: { id?: string; store_id: string } };
 type Handler = (m: Msg, s: unknown, send: (r: unknown) => void) => boolean;
 
-function load(html: string, url: string, opts: { answer?: (store: string, cate: string, endpoint: string) => { ok?: boolean; status?: number; text?: string; url?: string; hang?: boolean } } = {}) {
+function load(html: string, url: string, opts: { answer?: (store: string, cate: string, endpoint: string) => { ok?: boolean; status?: number; text?: string; url?: string; hang?: boolean; hangBody?: boolean } } = {}) {
   const dom = new JSDOM(html, { url });
   const win = dom.window as unknown as Window;
   const handlers: Handler[] = [];
@@ -43,7 +43,10 @@ function load(html: string, url: string, opts: { answer?: (store: string, cate: 
     const a = opts.answer ? opts.answer(store, cate, endpoint) : { text: ANSWERS[`${store}:${cate}`] ?? "???" };
     if (a.hang) return new Promise((_res, rej) => { init?.signal?.addEventListener("abort", () => { const e = new Error("aborted"); e.name = "AbortError"; rej(e); }); });
     const origin = url.split("/").slice(0, 3).join("/");
-    return { url: a.url ?? `${origin}${u}`, ok: a.ok ?? true, status: a.status ?? 200, text: async () => a.text ?? "" };
+    const abortErr = () => { const e = new Error("aborted"); e.name = "AbortError"; return e; };
+    // hangBody: the headers arrive at once, the body never does — only the abort ends the read
+    const text = a.hangBody ? () => new Promise<string>((_res, rej) => { init?.signal?.addEventListener("abort", () => rej(abortErr())); }) : async () => a.text ?? "";
+    return { url: a.url ?? `${origin}${u}`, ok: a.ok ?? true, status: a.status ?? 200, text };
   });
   const g = win as unknown as typeof globalThis;
   const sandbox: Record<string, unknown> = {
@@ -130,6 +133,24 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
     const eb = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => ({ url: "https://emap.unipcsc.com.tw/ecmap/error.aspx", text: "" }) });
     expect(await eb.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } })).toMatchObject({ frozen_store_status: "unknown", transient: false });
     expect(eb.calls.fetch).toHaveLength(1);
+  });
+  it("3. the 2.5 s abort covers the response BODY too: headers at once, body never → aborted at 2.5 s, transient timeout, one fetch", async () => {
+    vi.useFakeTimers();
+    try {
+      const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => ({ hangBody: true }) });
+      const p = e.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } });
+      let done = false; void p.then(() => { done = true; });
+      await vi.advanceTimersByTimeAsync(2_700);                          // 300 ms guid wait + 2.4 s: still reading the body
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      const r = await p;
+      expect(r).toMatchObject({ frozen_store_status: "unknown", transient: true, endpoint: "/ecmap/byIDData.aspx" });
+      expect(String(r.frozen_reason)).toMatch(/timeout \(2\.5s\)/);
+      expect(e.calls.fetch).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
+    const src = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/emap-frozen-711.js`, "utf8");
+    expect(src.indexOf("await r.text()")).toBeLessThan(src.indexOf("finally { clearTimeout(t); }")); // the timer is cleared only after the body
+    expect(src).not.toMatch(/fetchWithTimeout/);
   });
   it("B. the load guard is a LIVENESS check: a second copy is skipped while the first is still connected; after an extension reload (old runtime id gone) the new copy installs its listener", () => {
     const dom = new JSDOM(ECMAP_HTML, { url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });

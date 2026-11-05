@@ -6,7 +6,8 @@
 // 2026-11-05: 968551 cate=27 → "…+disable+…" while cate=3 → "…+enable+…"; 151003 →
 // "…+enable+…" on both).
 // SHORT AND SINGLE (the shared E-Map session must never carry two requests at once): ONE
-// endpoint per check (no fallback retry) and a 2.5 s abort. The endpoint starts as the tab's
+// endpoint per check (no fallback retry) and a 2.5 s abort that covers the whole request,
+// response body included (the timer is cleared only after the text is read). The endpoint starts as the tab's
 // own section; an answer from it that is not a verdict (bounce / HTTP error / odd page)
 // switches to the other section for the NEXT check. A timeout never switches.
 //   field index 3: enable → ok · disable → no_frozen · close / NO2 / other → unknown
@@ -24,11 +25,6 @@
   const MAIN_WAIT_MS = 300;
   const GUID_RE = /eshop[Gg]uid\s*[:=]\s*["']([^"']{8,})["']/;
 
-  function fetchWithTimeout(url, opts) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-    return fetch(url, { credentials: "include", ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
-  }
   function sectionOf(pathname) {
     const m = /^\/(mobilemap|ecmap)\//i.exec(String(pathname || ""));
     return m ? m[1].toLowerCase() : "ecmap";
@@ -78,11 +74,13 @@
       mode: "", k: String(storeId), cate: "27", eshopparid: "7M0", eshopid: "7M0",
       multiple_type: "", Guid: guid, Nan4AjaxTrickNumber: String(Date.now()),
     }).toString();
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);   // 2.5 s for headers AND body
     try {
-      const r = await fetchWithTimeout(`${endpoint}?rnd=${Math.random()}`, {
-        method: "POST",
+      const r = await fetch(`${endpoint}?rnd=${Math.random()}`, {
+        credentials: "include", method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" },
-        body,
+        body, signal: ctrl.signal,
       });
       if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false };
       if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500 };
@@ -94,7 +92,7 @@
     } catch (e) {
       const aborted = e && e.name === "AbortError";
       return { verdict: null, reason: aborted ? `${endpoint} timeout (2.5s)` : `${endpoint} network error`, transient: true };
-    }
+    } finally { clearTimeout(t); }                            // only after the body was read (or failed)
   }
   async function checkFrozenStore(storeId, guid) {
     const endpoint = endpointOf(section);
