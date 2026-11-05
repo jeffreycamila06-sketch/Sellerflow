@@ -13,7 +13,7 @@ import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
 import { createOcr, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
 import { createWorker as createParcelWorker } from "./server/parcelTrackingWorker.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT, isDailyRoomsLabel, dailyCooldownMs, remainingMs, isTikTokUserNotFound, isTikTokLookupFailed, nestedRateLimitError, reconnectWait, healthShouldReconnect, dailyGateBlocks, NOT_FOUND_FINAL_STREAK, RECENT_CONNECTION_MS } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT, isDailyRoomsLabel, dailyCooldownMs, isTikTokUserNotFound, isTikTokLookupFailed, nestedRateLimitError, isKnownRateLimitShape, NOT_FOUND_FINAL_STREAK } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { makeFailureThrottle, checkPollToken } from "./server/pollAuth.js";
 import { sweepProductImages, makeSweepStore, readSweepSwitch } from "./server/productImagesSweep.js";
@@ -443,18 +443,16 @@ const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
 const tiktokReconnectAttempts = new Map();
 const tiktokRateLimitCooldowns = new Map();
-// Fix round 3: key → when it last connected (24 h window) — the daily pause never refuses a key
-// that was live recently; key → consecutive "username not found" answers on reconnect.
-const tiktokLastConnectedAt = new Map();
+// Round 4: the keys whose current cooldown came from Euler's daily_rooms limit (→ daily: true in
+// the 429, the app shows the daily text and schedules no retry); key → consecutive "username not
+// found" answers on reconnect.
+const tiktokDailyCooldownKeys = new Set();
 const tiktokNotFoundStreak = new Map();
 // Nov 3, 2026 — today's Euler-429 count + the last limit_label (Taipei day, in memory), so the
 // admin card / health detail show a limit before sellers report it.
 let eulerRateLimitStats = EMPTY_RATE_LIMIT_STATS;
-// daily_rooms = the API key's per-day budget → ONE shared cooldown for every TikTok account (epoch ms).
-let dailyRoomsCooldownUntil = 0;
-const dailyRoomsRemainingMs = () => remainingMs(dailyRoomsCooldownUntil, Date.now());
 // Euler plan usage: distinct rooms connected today + concurrent connections vs the plan
-// limits (env EULER_DAILY_ROOMS_LIMIT / EULER_CONCURRENT_LIMIT; Business 10K = 1000 / 100).
+// limits (env EULER_DAILY_ROOMS_LIMIT / EULER_CONCURRENT_LIMIT; Business plan = 10000 / 50).
 let eulerRoomStats = EMPTY_ROOM_STATS;
 const EULER_LIMITS = {
   dailyRooms: readLimit(process.env.EULER_DAILY_ROOMS_LIMIT, EULER_DAILY_ROOMS_DEFAULT),
@@ -559,26 +557,23 @@ async function emitCommentScoped(sellerId, platform, sourceUsername, payload) {
   }
 }
 
+// Round 4: the same strict known-shape matching as the nested check (connectionHealth.js) — never the
+// profile JSON / bio of "Invalid response from API:".
 function isTikTokRateLimitError(error) {
-  const raw = String(error?.message || error || "");
-  if (raw.startsWith("Invalid response from API:")) return false;   // the profile JSON (incl. the bio) — never a rate limit
-  const message = raw.toLowerCase();
-  return message.includes("rate_limit") || message.includes("too many connections");
+  return isKnownRateLimitShape(error);
 }
 
 function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
   // #4 — honor Euler's own reset window (Retry-After / X-RateLimit-Reset carried
   // on the SignatureRateLimitError); else 2 min (Nov 3, 2026 — was 30 min), capped at 10 min.
-  const cooldownMs = resolveRateLimitCooldownMs(error, Date.now());
-  const retryAt = Date.now() + cooldownMs;
+  // Round 4: daily_rooms → THIS account only, 10 min (or Euler's reset if sooner); never a shared pause.
   const limitLabel = rateLimitLabel(error);
+  const daily = isDailyRoomsLabel(limitLabel);
+  const cooldownMs = daily ? dailyCooldownMs(error, Date.now()) : resolveRateLimitCooldownMs(error, Date.now());
+  const retryAt = Date.now() + cooldownMs;
   eulerRateLimitStats = noteRateLimit(eulerRateLimitStats, limitLabel, Date.now());
   tiktokRateLimitCooldowns.set(key, retryAt);
-  if (isDailyRoomsLabel(limitLabel)) {
-    const dailyMs = dailyCooldownMs(error, Date.now());
-    dailyRoomsCooldownUntil = Math.max(dailyRoomsCooldownUntil, Date.now() + dailyMs);
-    console.log(`[DAILY-ROOMS] Euler daily room limit hit — ALL TikTok connects paused until ${new Date(dailyRoomsCooldownUntil).toISOString()} (${Math.round(dailyMs / 60000)}m)`);
-  }
+  if (daily) tiktokDailyCooldownKeys.add(key); else tiktokDailyCooldownKeys.delete(key);
   clearTikTokReconnect(key);
   tiktokReconnectAttempts.delete(key);
   emitTikTokStatus({
@@ -591,17 +586,18 @@ function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
     nextRetryMs: cooldownMs,
   });
   console.log(`TikTok rate limit cooldown for ${username} until ${new Date(retryAt).toISOString()} (${Math.round(cooldownMs / 60000)}m) limit=${limitLabel || "unknown"} today=${eulerRateLimitStats.count}: ${error?.message || error}`);
-  return Math.max(cooldownMs, dailyRoomsRemainingMs()); // the answer carries the longer (shared daily) bench
+  return cooldownMs;
 }
 
-// Per-ACCOUNT cooldown only. The shared daily_rooms pause is checked separately
-// (dailyRoomsRemainingMs) and ONLY right before a FRESH connect — never on the reuse of a
-// healthy connection (an already-live seller who taps Connect / refreshes must not get a 429).
 function getTikTokCooldownMs(key) {
   const retryAt = tiktokRateLimitCooldowns.get(key) || 0;
-  const perKeyMs = retryAt - Date.now();
-  if (perKeyMs <= 0) { tiktokRateLimitCooldowns.delete(key); return 0; }
-  return perKeyMs;
+  const remainingMs = retryAt - Date.now();
+  if (remainingMs <= 0) {
+    tiktokRateLimitCooldowns.delete(key);
+    tiktokDailyCooldownKeys.delete(key);
+    return 0;
+  }
+  return remainingMs;
 }
 
 function clearTikTokReconnect(key) {
@@ -613,9 +609,7 @@ function clearTikTokReconnect(key) {
 function runQueuedTikTokReconnect(task) {
   pendingTikTokReconnects.push(task);
   while (pendingTikTokReconnects.length > TIKTOK_MAX_RECONNECT_QUEUE) {
-    const dropped = pendingTikTokReconnects.shift();
-    // A full queue never loses a reconnect silently: the dropped one is scheduled again (its backoff).
-    if (dropped && typeof dropped.onDrop === "function") { try { dropped.onDrop(); } catch { /* best-effort */ } }
+    pendingTikTokReconnects.shift();
   }
   drainTikTokReconnectQueue();
 }
@@ -674,9 +668,7 @@ function startTikTokHealthTimer(key, connection) {
     const chatSilentMs = now - (current.lastCommentAt || current.startedAt || now);
     const eventIsFresh = silentMs < TIKTOK_STALE_MS;
     const chatLooksStale = connectionAgeMs >= TIKTOK_CHAT_WATCH_START_MS && chatSilentMs >= TIKTOK_CHAT_STALE_MS;
-    // During the daily pause a quiet connection is KEPT: closing it would need a fresh connect,
-    // which the pause may refuse — the seller would lose comments.
-    if (!healthShouldReconnect({ eventIsFresh, chatLooksStale, dailyMs: dailyRoomsRemainingMs() })) return;
+    if (eventIsFresh && !chatLooksStale) return;
 
     console.log(`TikTok health reconnect for ${current.username}: event silent ${Math.round(silentMs / 1000)}s, chat silent ${Math.round(chatSilentMs / 1000)}s`);
     emitTikTokStatus({
@@ -850,7 +842,6 @@ function tiktokHealthDetail() {
       rateLimitedAccounts,
       eulerRateLimitsToday,
       eulerUsage: eulerUsageToday,
-      dailyRoomsCooldownMs: dailyRoomsRemainingMs(),
     },
     // Quick memory read so Jeff can eyeball RAM without opening Render.
     memory: memorySnapshot(process.memoryUsage()),
@@ -1010,23 +1001,18 @@ app.get("/admin/tiktok-cooldown/status", requireAuth, requireAdmin, (_req, res) 
     success: true,
     today: rateLimitStatsFor(eulerRateLimitStats, now),
     usage: eulerUsageNow(now),
-    daily: dailyRoomsRemainingMs() > 0 ? { remainingMs: dailyRoomsRemainingMs(), until: dailyRoomsCooldownUntil } : null,
     cooldowns: listCooldowns(tiktokRateLimitCooldowns, now).map((c) => ({ username: c.username, sellerId: c.sellerId, remainingMs: c.remainingMs })),
   });
 });
 app.post("/admin/tiktok-cooldown/clear", requireAuth, requireAdmin, (req, res) => {
   const username = cleanAccountKey((req.body || {}).username);
-  const daily = (req.body || {}).daily === true;              // { daily: true } clears the shared daily_rooms bench
-  if (!username && !daily) return res.status(400).json({ success: false, error: "username_required" });
+  if (!username) return res.status(400).json({ success: false, error: "username_required" });
   let cleared = 0;
   for (const key of [...tiktokRateLimitCooldowns.keys()]) {
-    if (username && cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); cleared += 1; }
+    if (cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); tiktokDailyCooldownKeys.delete(key); cleared += 1; }
   }
-  const clearedDaily = daily && dailyRoomsRemainingMs() > 0;
-  if (daily) dailyRoomsCooldownUntil = 0;
-  const dailyActive = dailyRoomsRemainingMs() > 0;           // an account cleared while the shared daily pause is still on
-  console.log(`[COOLDOWN-CLEAR] admin=${req.sellerId} username=${username || "-"} cleared=${cleared} daily=${clearedDaily} dailyActive=${dailyActive}`);
-  return res.json({ success: true, cleared, clearedDaily, dailyActive });
+  console.log(`[COOLDOWN-CLEAR] admin=${req.sellerId} username=${username} cleared=${cleared}`);
+  return res.json({ success: true, cleared });
 });
 
 app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, res) => {
@@ -1359,33 +1345,15 @@ function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecti
 
 function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "disconnected") {
   if (tiktokReconnectTimers.has(key)) return;
+  // Round 4: an account on its own (≤ 10 min) cooldown is not given up — the reconnect waits for
+  // that cooldown, then tries normally. No other account and no shared pause is involved.
   const cooldownMs = getTikTokCooldownMs(key);
-  // Fix round 3: a normal reconnect ignores the daily pause (an already-live seller must not lose
-  // comments); only "daily_pause" — set when THIS reconnect's own attempt got a daily 429 — waits.
-  const plan = reconnectWait({ reason, perKeyMs: cooldownMs, dailyMs: dailyRoomsRemainingMs(), rand: Math.random() });
-  if (plan.giveUp) {
-    emitTikTokStatus({
-      sellerId,
-      username,
-      sessionId,
-      connected: false,
-      reconnecting: false,
-      reason: "rate_limited",
-      nextRetryMs: cooldownMs,
-    });
-    return;
-  }
 
-  let retryMs;
-  if (plan.waitMs !== null) {
-    retryMs = plan.waitMs;                            // ≤ 5 min chunk (+ spread); the job re-checks when it fires
-  } else {
-    const attempt = (tiktokReconnectAttempts.get(key) || 0) + 1;
-    tiktokReconnectAttempts.set(key, attempt);
-    const backoffMs = Math.min(TIKTOK_RECONNECT_BASE_MS * attempt, TIKTOK_RECONNECT_MAX_MS);
-    const jitterMs = Math.floor(Math.random() * TIKTOK_RECONNECT_JITTER_MS);
-    retryMs = backoffMs + jitterMs;
-  }
+  const attempt = (tiktokReconnectAttempts.get(key) || 0) + 1;
+  tiktokReconnectAttempts.set(key, attempt);
+  const backoffMs = Math.min(TIKTOK_RECONNECT_BASE_MS * attempt, TIKTOK_RECONNECT_MAX_MS);
+  const jitterMs = Math.floor(Math.random() * TIKTOK_RECONNECT_JITTER_MS);
+  const retryMs = Math.max(backoffMs, cooldownMs) + jitterMs;
 
   emitTikTokStatus({
     sellerId,
@@ -1399,7 +1367,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
 
   const timer = setTimeout(async () => {
     tiktokReconnectTimers.delete(key);
-    const job = async () => {
+    runQueuedTikTokReconnect(async () => {
       // clientfix RC3 — STALE-RECONNECT GUARD. Once this closure is queued,
       // clearTikTokReconnect can no longer cancel it. If the seller's own
       // Connect tap already restored the account (map entry) or a connect is
@@ -1413,19 +1381,12 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
         tiktokReconnectAttempts.delete(key);
         return;
       }
-      // A reconnect WAITING for the daily pause re-checks: still on (or the account's own bench) →
-      // wait another chunk, no Euler call. A normal reconnect never waits here.
-      if (reason === "daily_pause" && reconnectWait({ reason, perKeyMs: getTikTokCooldownMs(key), dailyMs: dailyRoomsRemainingMs(), rand: 0 }).waitMs !== null) {
-        scheduleTikTokReconnect(key, username, sellerId, sessionId, reason);
-        return;
-      }
       // Hold the SAME connect lock the /connect route uses, so a user tap and a
       // reconnect can never run startTikTokConnection for one key in parallel
       // (the tap sees 429 "already starting" for a few seconds — honest).
       tiktokConnectLocks.add(key);
       try {
         await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: false });
-        tiktokNotFoundStreak.delete(key);
         console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
       } catch (error) {
         console.log(`TikTok reconnect failed for ${username}: ${error?.message || error}`);
@@ -1459,25 +1420,18 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
           emitTikTokStatus({ sellerId, username, sessionId, connected: false, reconnecting: false, reason: "connect_failed" });
           return;
         }
-        const rlErr = isTikTokRateLimitError(error) ? error : nestedRateLimitError(error);
+        const rlErr = nestedRateLimitError(error);   // top-level or wrapped in the lookup error (known shapes only)
         if (rlErr) {
+          // This account's own cooldown (daily_rooms → 10 min); then ONE normal reconnect after it.
           rememberTikTokRateLimit(key, sellerId, username, sessionId, rlErr);
-          // The daily pause is on after THIS reconnect's own 429: don't give up — wait it out
-          // ("daily_pause"). The account's own bench is dropped only when the 429 itself was the daily
-          // limit; otherwise the wait is the longer of the two.
-          if (dailyRoomsRemainingMs() > 0) {
-            if (isDailyRoomsLabel(rateLimitLabel(rlErr))) tiktokRateLimitCooldowns.delete(key);
-            scheduleTikTokReconnect(key, username, sellerId, sessionId, "daily_pause");
-          }
+          scheduleTikTokReconnect(key, username, sellerId, sessionId, "rate_limited");
           return;
         }
         scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
       } finally {
         tiktokConnectLocks.delete(key);
       }
-    };
-    job.onDrop = () => scheduleTikTokReconnect(key, username, sellerId, sessionId, reason); // full queue → scheduled again
-    runQueuedTikTokReconnect(job);
+    });
   }, retryMs);
 
   tiktokReconnectTimers.set(key, timer);
@@ -1688,8 +1642,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
   recordTikTokAttempt("ok");
-  tiktokLastConnectedAt.set(key, Date.now());              // fix round 3: the daily pause never refuses this key for 24 h
-  for (const [k, at] of tiktokLastConnectedAt) if (Date.now() - at >= RECENT_CONNECTION_MS) tiktokLastConnectedAt.delete(k);
+  tiktokNotFoundStreak.delete(key);                        // ANY successful connect (reconnect or the seller's tap) resets the streak
   eulerRoomStats = noteRoom(eulerRoomStats, state?.roomId || key, Date.now()); // plan usage (rooms/day)
 
   emitTikTokStatus({
@@ -1979,15 +1932,13 @@ async function connectTikTok(username, res, meta = {}) {
       });
     }
     key = liveKey(sellerId, "TikTok", cleanUsername);
-    const cooldownMs = getTikTokCooldownMs(key);    // THIS account's cooldown only (the daily pause comes after the reuse branch)
+    const cooldownMs = getTikTokCooldownMs(key);    // THIS account's cooldown only — no other account is ever affected
     if (cooldownMs > 0) {
-      const d = dailyRoomsRemainingMs();               // the daily pause on top → the daily text, no client retry
-      const waitMs = Math.max(cooldownMs, d);
       return res.status(429).json({
         success: false,
-        error: `TikTok connection is on cooldown after a rate limit. Try again in ${Math.ceil(waitMs / 60000)} minutes.`,
-        cooldownMs: waitMs,
-        ...(d > 0 ? { daily: true } : {}),
+        error: `TikTok connection is on cooldown after a rate limit. Try again in ${Math.ceil(cooldownMs / 60000)} minutes.`,
+        cooldownMs,
+        ...(tiktokDailyCooldownKeys.has(key) ? { daily: true } : {}),   // the daily text, no client retry
       });
     }
 
@@ -2006,9 +1957,7 @@ async function connectTikTok(username, res, meta = {}) {
     // NOTE: touchTikTokConnection is NOT called before the check — it would stamp
     // lastEventAt=now and mask the very staleness being measured.
     if (existing) {
-      // During the shared daily pause a quiet (event-silent) connection is NOT replaced — a fresh
-      // connect would only get the daily 429; it takes the same verify-and-reuse path instead.
-      if (!shouldForceFreshConnect(existing.lastEventAt, Date.now()) || dailyRoomsRemainingMs() > 0) {
+      if (!shouldForceFreshConnect(existing.lastEventAt, Date.now())) {
         // B4 PHASE 2 (ENFORCED, 2026-07-14 GO — Phase-1 distribution 257 live /
         // 0 not_live / 2 ambiguous-fail-open, zero false blocks): the reuse tap
         // now AWAITS the is-LIVE verification. Same single-flight (R1), same
@@ -2101,20 +2050,6 @@ async function connectTikTok(username, res, meta = {}) {
       }
     }
 
-    // Right before a FRESH connect (the reuse of a healthy live never reaches here): the shared
-    // daily room budget is used up → no new Euler call until it ends.
-    const dailyMs = dailyRoomsRemainingMs();
-    // Only a BRAND-NEW connect is refused: no connection on this key now and none in the last 24 h.
-    // A key that had one (dropped, or reconnecting) gets a normal attempt.
-    if (dailyGateBlocks({ dailyMs, isNewKey, lastConnectedAt: tiktokLastConnectedAt.get(key), now: Date.now() })) {
-      return res.status(429).json({
-        success: false,
-        error: `TikTok connection is on cooldown after a rate limit. Try again in ${Math.ceil(dailyMs / 60000)} minutes.`,
-        cooldownMs: dailyMs,
-        daily: true,                                   // client: no auto-retry, the daily text (Build 10: a boolean, no raw word)
-      });
-    }
-
     if (tiktokConnectLocks.has(key)) {
       return res.status(429).json({
         success: false,
@@ -2185,7 +2120,7 @@ async function connectTikTok(username, res, meta = {}) {
     // gray so the pill never shows a stale green after a failed force-fresh.
     // Deliberately ONLY when forcedFresh (rate-limit already emits its own): a
     // plain failed connect for account B must not gray a live account A's pill.
-    if (forcedFresh && !isTikTokRateLimitError(error) && !nestedRateLimitError(error)) {
+    if (forcedFresh && !nestedRateLimitError(error)) {
       emitTikTokStatus({
         sellerId,
         username: cleanUsername,
@@ -2210,9 +2145,9 @@ async function connectTikTok(username, res, meta = {}) {
       recordTikTokAttempt("not_found", "not_found");            // a fixed reason — never a username
       return res.status(404).json({ success: false, notFound: true, error: "tiktok_user_not_found" });
     }
-    // A rate limit — top-level, or wrapped inside the lookup error's errors[] — is a rate limit
-    // (per-account cooldown + the daily pause on daily_rooms), never "lookup failed".
-    const rlErr = isTikTokRateLimitError(error) ? error : nestedRateLimitError(error);
+    // A rate limit — top-level, or wrapped inside the lookup error's errors[] (known shapes only) — is a
+    // rate limit on THIS account (daily_rooms → 10 min + daily: true), never "lookup failed".
+    const rlErr = nestedRateLimitError(error);
     if (key && rlErr) {
       recordTikTokAttempt("rate_limit", rlErr?.message);
       // #4 — the cooldown now reflects Euler's own reset window (else 30 min),
@@ -2224,7 +2159,7 @@ async function connectTikTok(username, res, meta = {}) {
         success: false,
         error: `TikTok rate limit reached. Try again in about ${wait}.`,
         cooldownMs,
-        ...(dailyRoomsRemainingMs() > 0 ? { daily: true } : {}),   // Build 10: a boolean, no raw word
+        ...(tiktokDailyCooldownKeys.has(key) ? { daily: true } : {}),   // Build 10: a boolean, no raw word
       });
     }
 

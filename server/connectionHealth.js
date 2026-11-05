@@ -199,21 +199,21 @@ export function rateLimitLabel(error) {
   return m ? m[1] : null;
 }
 
-// daily_rooms = Euler's per-day room budget for the WHOLE API key — one more connect on any account
-// will 429 too, so the bench is shared by every TikTok account, honours Euler's reset time up to 60 min
-// (else the full 60), and the client must NOT auto-retry (nothing resets in a few minutes).
+// daily_rooms = Euler's per-day room budget. Round 4 (Nov 6, 2026 — Business 10K plan, a daily hit
+// is now very rare): a PER-ACCOUNT cooldown only, never a pause for every account. The account that
+// got it waits 10 min (or Euler's reset time if sooner — never longer than 10 min) and the app shows
+// the daily text with NO client auto-retry. Other accounts are not affected.
 export const DAILY_ROOMS_LABEL = "daily_rooms";
 export const isDailyRoomsLabel = (label) => String(label || "").toLowerCase() === DAILY_ROOMS_LABEL;
-export const RATE_LIMIT_DAILY_MAX_MS = 60 * 60 * 1000;
-const clampDaily = (ms) => Math.min(RATE_LIMIT_DAILY_MAX_MS, Math.max(RATE_LIMIT_MIN_MS, ms));
+export const RATE_LIMIT_DAILY_MS = 10 * 60 * 1000;
+const clampDaily = (ms) => Math.min(RATE_LIMIT_DAILY_MS, Math.max(RATE_LIMIT_MIN_MS, ms));
 export function dailyCooldownMs(error, nowMs) {
   const reset = Number(error && error.resetTime);
   if (Number.isFinite(reset) && reset > nowMs) return clampDaily(reset - nowMs);
   const retry = Number(error && error.retryAfter);
   if (Number.isFinite(retry) && retry > 0) return clampDaily(retry);
-  return RATE_LIMIT_DAILY_MAX_MS;
+  return RATE_LIMIT_DAILY_MS;
 }
-export const remainingMs = (untilMs, nowMs) => Math.max(0, (Number(untilMs) || 0) - nowMs);
 
 // PURE: today's Euler-429 tally (Taipei day), kept in memory on the server and shown on the
 // admin card / health detail. A new Taipei day starts the count again.
@@ -245,7 +245,7 @@ export function listCooldowns(cooldowns, nowMs) {
   return out;
 }
 
-// PURE: Euler plan usage (Business 10K = 1,000 rooms/day, 100 concurrent). Distinct rooms
+// PURE: Euler plan usage (Business plan: 10,000 rooms/day, 50 concurrent — env overrides). Distinct rooms
 // connected today (Taipei day; the TikTok roomId, or the account key when the id is unknown)
 // and the current concurrent connection count, against the env limits, with a warning from
 // 70% so the admin sees it before Euler refuses a connect.
@@ -259,8 +259,8 @@ export function noteRoom(stats, roomId, nowMs) {
 }
 export const roomsTodayCount = (stats, nowMs) => (stats && stats.dayKey === taipeiDayKey(nowMs) ? stats.rooms.length : 0);
 export const USAGE_WARN_RATIO = 0.7;
-export const EULER_DAILY_ROOMS_DEFAULT = 1000;
-export const EULER_CONCURRENT_DEFAULT = 100;
+export const EULER_DAILY_ROOMS_DEFAULT = 10000;
+export const EULER_CONCURRENT_DEFAULT = 50;
 export function readLimit(raw, fallback) {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
@@ -355,33 +355,6 @@ export function isTikTokLookupFailed(error) {
   return name === "FetchIsLiveError" && !isTikTokUserNotFound(error);
 }
 
-// ── fix round 3 — the daily_rooms pause stops ONLY brand-new connects (PURE decisions) ──────────
-// A seller who was already connected never loses comments to the pause:
-//  • reconnectWait: a normal reconnect (any reason but "daily_pause") ignores the daily pause and
-//    tries with its usual backoff; only a reconnect whose OWN attempt got a daily 429 waits
-//    ("daily_pause"), in chunks of ≤ 5 min (a "Clear daily limit" wakes it within 5 min) with a
-//    0–5 min spread so waiting reconnects don't all fire in the same moment. The account's own
-//    cooldown still ends a normal reconnect (unchanged).
-//  • healthShouldReconnect: a quiet (event-silent / chat-stale) connection is KEPT during the pause.
-//  • dailyGateBlocks: a /connect tap gets the daily 429 only for a key with no connection now and
-//    none in the last 24 h; a key that had one gets a normal attempt.
-export const DAILY_WAIT_CHUNK_MS = 5 * 60 * 1000;
-export const DAILY_WAIT_SPREAD_MS = 5 * 60 * 1000;
-export const RECENT_CONNECTION_MS = 24 * 60 * 60 * 1000;
-export const NOT_FOUND_FINAL_STREAK = 2;                 // reconnect: 2 "not found" in a row → stop
-export function reconnectWait({ reason, perKeyMs, dailyMs, rand }) {
-  const waiting = reason === "daily_pause";
-  if (!waiting) return perKeyMs > 0 ? { giveUp: true, waitMs: null } : { giveUp: false, waitMs: null };
-  const left = Math.max(perKeyMs > 0 ? perKeyMs : 0, dailyMs > 0 ? dailyMs : 0);
-  if (left <= 0) return { giveUp: false, waitMs: null };          // the pause is over → a normal attempt
-  const spread = Math.floor(Math.min(Math.max(Number(rand) || 0, 0), 0.999999) * DAILY_WAIT_SPREAD_MS);
-  return { giveUp: false, waitMs: Math.max(1000, Math.min(left + spread, DAILY_WAIT_CHUNK_MS)) };
-}
-export function healthShouldReconnect({ eventIsFresh, chatLooksStale, dailyMs }) {
-  if (eventIsFresh && !chatLooksStale) return false;
-  return !(dailyMs > 0);
-}
-export function dailyGateBlocks({ dailyMs, isNewKey, lastConnectedAt, now }) {
-  if (!(dailyMs > 0) || !isNewKey) return false;
-  return !(lastConnectedAt && now - lastConnectedAt < RECENT_CONNECTION_MS);
-}
+// Reconnect: stop after this many "username not found" answers IN A ROW (one can be a TikTok
+// glitch). The streak resets on ANY successful connect (a reconnect or the seller's own tap).
+export const NOT_FOUND_FINAL_STREAK = 2;

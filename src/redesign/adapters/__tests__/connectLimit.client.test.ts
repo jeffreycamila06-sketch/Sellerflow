@@ -149,11 +149,12 @@ describe("B. TikTok username not found / lookup failed (client)", () => {
     const en = buildT("en");
     for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"] as const) {
       const tt = buildT(lang);
-      for (const k of ["rd_cm_tt_not_found", "rd_cm_tt_lookup_failed", "rd_adm_ttl_daily_still"] as const) {
+      for (const k of ["rd_cm_tt_not_found", "rd_cm_tt_lookup_failed"] as const) {
         expect(tt[k], `${lang} ${k}`).toBeTruthy();
         if (lang !== "en") expect(tt[k], `${lang} ${k}`).not.toBe(en[k]);
       }
       expect(tt.rd_cm_tt_not_found).not.toBe(tt.rd_cm_tt_lookup_failed);
+      for (const gone of ["rd_adm_ttl_daily_still", "rd_adm_ttl_daily", "rd_adm_ttl_clear_daily"]) expect((tt as Record<string, unknown>)[gone], `${lang} ${gone}`).toBeUndefined(); // round 4: the shared-pause admin texts are gone
     }
     expect(buildT("zh-TW").rd_cm_tt_not_found).toBe("找不到此 TikTok 使用者名稱，可能已更改，請編輯帳號的使用者名稱後再試一次。");
     expect(buildT("fil").rd_cm_tt_not_found).toBe("Hindi mahanap ang TikTok username. Baka napalitan — i-edit ang username ng account at subukan ulit.");

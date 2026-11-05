@@ -7,7 +7,7 @@ const { getSession } = vi.hoisted(() => ({ getSession: vi.fn(async () => ({ data
 vi.mock("../../../supabase", () => ({ supabase: { auth: { getSession: () => getSession() } } }));
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { loadTikTokCooldownStatus, clearTikTokCooldown, clearDailyLimit, usageWarns } from "../tiktokConnectLimit";
+import { loadTikTokCooldownStatus, clearTikTokCooldown, usageWarns } from "../tiktokConnectLimit";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
@@ -19,7 +19,7 @@ describe("loadTikTokCooldownStatus", () => {
     globalThis.fetch = f as unknown as typeof fetch;
     const r = await loadTikTokCooldownStatus();
     expect(r.ok).toBe(true);
-    expect(r.status).toEqual({ count: 3, lastLabel: "daily_rooms", lastAt: 1, cooldowns: body.cooldowns, usage: { roomsToday: 12, concurrent: 4, dailyLimit: 1000, concurrentLimit: 100, warn: false }, daily: null });
+    expect(r.status).toEqual({ count: 3, lastLabel: "daily_rooms", lastAt: 1, cooldowns: body.cooldowns, usage: { roomsToday: 12, concurrent: 4, dailyLimit: 1000, concurrentLimit: 100, warn: false } });
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://srv.test/admin/tiktok-cooldown/status?sfl_codes=1"); // Build 11 marker
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt-abc");
@@ -32,30 +32,20 @@ describe("loadTikTokCooldownStatus", () => {
     globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, today: { count: 0 }, cooldowns: [] }) })) as unknown as typeof fetch;
     expect((await loadTikTokCooldownStatus()).status?.usage).toBeNull();
   });
-  it("maps the shared daily bench when it is running", async () => {
+  it("round 4: no shared daily bench any more — a stray 'daily' field from an old server is ignored", async () => {
     globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, today: { count: 1 }, cooldowns: [], daily: { remainingMs: 1_800_000, until: 1 } }) })) as unknown as typeof fetch;
-    expect((await loadTikTokCooldownStatus()).status?.daily).toEqual({ remainingMs: 1_800_000 });
+    const r = await loadTikTokCooldownStatus();
+    expect(r.ok).toBe(true);
+    expect(r.status && "daily" in r.status).toBe(false);
   });
 });
 
-describe("clearDailyLimit", () => {
-  it("POSTs { daily: true }; 403 → forbidden", async () => {
-    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, cleared: 0, clearedDaily: true }) }));
-    globalThis.fetch = f as unknown as typeof fetch;
-    expect(await clearDailyLimit()).toEqual({ ok: true });
-    const [, init] = f.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({ daily: true });
-    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 403, json: async () => ({ success: false }) })) as unknown as typeof fetch;
-    expect(await clearDailyLimit()).toEqual({ ok: false, error: "forbidden" });
-  });
-});
-
-describe("A5. clear while the daily pause is on", () => {
-  it("the answer's dailyActive reaches the admin card, which says the daily limit is still on", async () => {
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, cleared: 1, dailyActive: true }) })) as unknown as typeof fetch;
-    expect(await clearTikTokCooldown("shop")).toEqual({ ok: true, cleared: 1, dailyActive: true });
+describe("round 4: the admin card has no 'Clear daily limit' and no daily note", () => {
+  it("the card clears ONE account only; the adapter has no daily clear", async () => {
     const admin = readFileSync("src/redesign/screens/Admin.tsx", "utf8");
-    expect(admin).toContain('(r.dailyActive ? ` · ${t.rd_adm_ttl_daily_still}` : "")');
+    expect(admin).not.toMatch(/clearDailyLimit|adm-ttl-clear-daily|adm-ttl-daily|rd_adm_ttl_daily|dailyActive/);
+    const adapter = readFileSync("src/redesign/adapters/tiktokConnectLimit.ts", "utf8");
+    expect(adapter).not.toMatch(/clearDailyLimit|daily: true|dailyActive/);
   });
 });
 
@@ -63,7 +53,7 @@ describe("clearTikTokCooldown", () => {
   it("POSTs the username (leading @ stripped) and returns the cleared count", async () => {
     const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, cleared: 1 }) }));
     globalThis.fetch = f as unknown as typeof fetch;
-    expect(await clearTikTokCooldown(" @Thrifts.studio ")).toEqual({ ok: true, cleared: 1, dailyActive: false });
+    expect(await clearTikTokCooldown(" @Thrifts.studio ")).toEqual({ ok: true, cleared: 1 });
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://srv.test/admin/tiktok-cooldown/clear?sfl_codes=1");
     expect(init.method).toBe("POST");

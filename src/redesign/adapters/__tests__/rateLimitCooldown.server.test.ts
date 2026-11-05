@@ -9,7 +9,7 @@ import {
   rateLimitLabel, taipeiDayKey, rateLimitStatsFor, noteRateLimit, EMPTY_RATE_LIMIT_STATS,
   cooldownKeyMatches, listCooldowns,
   EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, USAGE_WARN_RATIO,
-  isDailyRoomsLabel, dailyCooldownMs, RATE_LIMIT_DAILY_MAX_MS, remainingMs, DAILY_ROOMS_LABEL,
+  isDailyRoomsLabel, dailyCooldownMs, RATE_LIMIT_DAILY_MS, DAILY_ROOMS_LABEL,
 } from "../../../../server/connectionHealth.js";
 // The library's REAL error class (CJS build) — the message it builds is what server.js sees.
 import { SignatureRateLimitError } from "tiktok-live-connector/dist/types/errors.js";
@@ -75,7 +75,7 @@ describe("rateLimitLabel — Euler's limit_label from the connector's REAL messa
   });
 });
 
-describe("daily_rooms — one shared bench, Euler's reset honoured up to 60 min", () => {
+describe("daily_rooms — a PER-ACCOUNT 10-min cooldown (round 4), Euler's reset honoured when sooner", () => {
   it("label check is exact and case-insensitive", () => {
     expect(DAILY_ROOMS_LABEL).toBe("daily_rooms");
     expect(isDailyRoomsLabel("daily_rooms")).toBe(true);
@@ -83,20 +83,17 @@ describe("daily_rooms — one shared bench, Euler's reset honoured up to 60 min"
     expect(isDailyRoomsLabel("concurrent_rooms")).toBe(false);
     expect(isDailyRoomsLabel(null)).toBe(false);
   });
-  it("reset time wins (capped 60 min), then Retry-After, else the full 60 min; never under 1 min", () => {
-    expect(RATE_LIMIT_DAILY_MAX_MS).toBe(60 * 60 * 1000);
-    expect(dailyCooldownMs({ resetTime: NOW + 25 * 60_000 }, NOW)).toBe(25 * 60_000);
-    expect(dailyCooldownMs({ resetTime: NOW + 5 * 60 * 60_000 }, NOW)).toBe(60 * 60_000);    // tomorrow → 60 min
-    expect(dailyCooldownMs({ retryAfter: 40 * 60_000 }, NOW)).toBe(40 * 60_000);
+  it("10 min, or Euler's reset / Retry-After when SOONER — never longer than 10 min, never under 1 min", () => {
+    expect(RATE_LIMIT_DAILY_MS).toBe(10 * 60 * 1000);
+    expect(dailyCooldownMs({}, NOW)).toBe(10 * 60_000);
+    expect(dailyCooldownMs({ resetTime: NOW + 4 * 60_000 }, NOW)).toBe(4 * 60_000);          // sooner → Euler's reset
+    expect(dailyCooldownMs({ resetTime: NOW + 25 * 60_000 }, NOW)).toBe(10 * 60_000);        // later → capped at 10 min
+    expect(dailyCooldownMs({ resetTime: NOW + 5 * 60 * 60_000 }, NOW)).toBe(10 * 60_000);    // tomorrow → 10 min
+    expect(dailyCooldownMs({ retryAfter: 7 * 60_000 }, NOW)).toBe(7 * 60_000);
+    expect(dailyCooldownMs({ retryAfter: 40 * 60_000 }, NOW)).toBe(10 * 60_000);
     expect(dailyCooldownMs({ retryAfter: 10 }, NOW)).toBe(RATE_LIMIT_MIN_MS);
-    expect(dailyCooldownMs({}, NOW)).toBe(60 * 60_000);
-    expect(dailyCooldownMs(euler429("daily_rooms", { "retry-after": "1800" }), NOW)).toBe(30 * 60_000);
-    expect(dailyCooldownMs(euler429("daily_rooms"), NOW)).toBe(60 * 60_000);
-  });
-  it("remainingMs never goes negative", () => {
-    expect(remainingMs(NOW + 5000, NOW)).toBe(5000);
-    expect(remainingMs(NOW - 1, NOW)).toBe(0);
-    expect(remainingMs(0, NOW)).toBe(0);
+    expect(dailyCooldownMs(euler429("daily_rooms", { "retry-after": "1800" }), NOW)).toBe(10 * 60_000);
+    expect(dailyCooldownMs(euler429("daily_rooms"), NOW)).toBe(10 * 60_000);
   });
 });
 
@@ -146,12 +143,12 @@ describe("Euler plan usage — rooms/day + concurrent vs the env limits, warning
     expect(roomsTodayCount(s, d2)).toBe(0);
     expect(roomsTodayCount(noteRoom(s, "room-9", d2), d2)).toBe(1);
   });
-  it("readLimit: env value or the plan default (1000 rooms/day, 100 concurrent)", () => {
+  it("readLimit: env value or the plan default (Business plan: 10000 rooms/day, 50 concurrent)", () => {
     expect(readLimit("1000", 5)).toBe(1000);
     expect(readLimit(undefined, 1000)).toBe(1000);
     expect(readLimit("abc", 100)).toBe(100);
     expect(readLimit("0", 100)).toBe(100);
-    expect(eulerUsage(0, 0, {})).toMatchObject({ dailyLimit: 1000, concurrentLimit: 100, warn: false });
+    expect(eulerUsage(0, 0, {})).toMatchObject({ dailyLimit: 10000, concurrentLimit: 50, warn: false });
   });
   it("warns at 70% of either limit, names which", () => {
     expect(USAGE_WARN_RATIO).toBe(0.7);

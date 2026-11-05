@@ -22,63 +22,43 @@ describe("cooldown recorder", () => {
   });
 });
 
-describe("daily_rooms — the shared bench (audit item 4)", () => {
-  it("the recorder arms the shared bench on a daily_rooms label and the answer carries the longer bench", () => {
+describe("daily_rooms — round 4: a PER-ACCOUNT cooldown only, the shared pause is gone", () => {
+  it("the recorder gives a daily_rooms 429 the 10-min daily length on THIS key only, and marks the key daily", () => {
     const fn = between("function rememberTikTokRateLimit(", "function getTikTokCooldownMs(");
-    expect(fn).toContain("if (isDailyRoomsLabel(limitLabel)) {");
-    expect(fn).toContain("dailyRoomsCooldownUntil = Math.max(dailyRoomsCooldownUntil, Date.now() + dailyMs);");
-    expect(fn).toContain("[DAILY-ROOMS]");
-    expect(fn).toContain("return Math.max(cooldownMs, dailyRoomsRemainingMs());");
+    expect(fn).toContain("const daily = isDailyRoomsLabel(limitLabel);");
+    expect(fn).toContain("const cooldownMs = daily ? dailyCooldownMs(error, Date.now()) : resolveRateLimitCooldownMs(error, Date.now());");
+    expect(fn).toContain("tiktokRateLimitCooldowns.set(key, retryAt);");
+    expect(fn).toContain("if (daily) tiktokDailyCooldownKeys.add(key); else tiktokDailyCooldownKeys.delete(key);");
+    expect(fn).toContain("return cooldownMs;");
   });
-  it("A1. getTikTokCooldownMs is the per-ACCOUNT cooldown only (the shared daily pause is NOT in it)", () => {
-    const fn = between("function getTikTokCooldownMs(", "function clearTikTokReconnect(");
-    expect(fn).not.toContain("dailyRoomsRemainingMs");
-    expect(fn).toContain("return perKeyMs;");
+  it("NOTHING shared is left: no all-accounts pause, gate, waiting reconnect, health exception or queue reschedule", () => {
+    for (const gone of ["dailyRoomsCooldownUntil", "dailyRoomsRemainingMs", "dailyGateBlocks", "tiktokLastConnectedAt", "daily_pause", "reconnectWait", "healthShouldReconnect", "onDrop", "[DAILY-ROOMS]", "clearedDaily", "dailyActive"]) {
+      expect(server, gone).not.toContain(gone);
+    }
   });
-  it("A1. connectTikTok: per-account cooldown at the top; the daily pause ONLY after the reuse branch, right before a fresh connect", () => {
+  it("the daily flag follows the KEY: the per-account 429 and the rate-limit 429 send daily: true only for a key whose cooldown came from daily_rooms", () => {
+    expect(server).not.toMatch(/limit: DAILY_ROOMS_LABEL/);
+    expect(server.match(/\.\.\.\(tiktokDailyCooldownKeys\.has\(key\) \? \{ daily: true \} : \{\}\),/g)?.length).toBe(2);
+    const g = between("function getTikTokCooldownMs(", "function clearTikTokReconnect(");
+    expect(g).toContain("tiktokDailyCooldownKeys.delete(key);");                                   // expired → no longer daily
+    const clear = between('app.post("/admin/tiktok-cooldown/clear"', 'app.post("/admin/broadcast-translate"');
+    expect(clear).toContain("tiktokDailyCooldownKeys.delete(key);");                               // cleared → no longer daily
+  });
+  it("connectTikTok: before the reuse branch the ONLY 429 is the account's own cooldown; nothing daily-wide anywhere", () => {
     const fn = between("async function connectTikTok(", "// M5 (security audit 2026-09-26)");
     const top = fn.indexOf("const cooldownMs = getTikTokCooldownMs(key);");
     const reuse = fn.indexOf('reason: "already_connected",');
-    const daily = fn.indexOf("const dailyMs = dailyRoomsRemainingMs();");
-    const lock = fn.indexOf("if (tiktokConnectLocks.has(key)) {");
     expect(top).toBeGreaterThan(0);
     expect(top).toBeLessThan(reuse);
-    expect(daily).toBeGreaterThan(reuse);                   // a healthy live that taps Connect / refreshes never sees the daily 429
-    expect(daily).toBeLessThan(lock);                       // …but a fresh connect does, before any Euler call
-    // Before the reuse branch the ONLY 429 is the account's own cooldown (the daily pause is read there
-    // just to word it — item 2 — and to choose reuse for a quiet room — item 5); never a daily-only 429.
-    const pre = fn.slice(top, reuse);
-    expect(pre.match(/res\.status\(429\)/g)?.length).toBe(1);
-    expect(pre.indexOf("const d = dailyRoomsRemainingMs();")).toBeGreaterThan(pre.indexOf("if (cooldownMs > 0) {"));
-    expect(pre.indexOf("const d = dailyRoomsRemainingMs();")).toBeLessThan(pre.indexOf("res.status(429)"));
+    expect(fn.slice(top, reuse).match(/res\.status\(429\)/g)?.length).toBe(1);
+    expect(fn).toContain("if (!shouldForceFreshConnect(existing.lastEventAt, Date.now())) {");      // the reuse rule exactly as main
   });
-  it("A1 (round 3). scheduleTikTokReconnect: gives up only on the account's own cooldown; a normal reconnect never waits for the daily pause; a 'daily_pause' reconnect re-checks before any Euler call", () => {
-    const fn = between("function scheduleTikTokReconnect(", "function handleTikTokDisconnected(");
-    expect(fn).toContain("const cooldownMs = getTikTokCooldownMs(key);");
-    expect(fn).toContain("if (plan.giveUp) {");
-    expect(fn).not.toContain("Math.max(backoffMs, dailyRoomsRemainingMs())");
-    const recheck = fn.indexOf('if (reason === "daily_pause" && reconnectWait(');
-    expect(recheck).toBeGreaterThan(0);
-    expect(recheck).toBeLessThan(fn.indexOf("tiktokConnectLocks.add(key);"));
-  });
-  it("A6. both 429 bodies mark the daily limit with a BOOLEAN (daily: true) — no raw word in the Network tab", () => {
-    expect(server).not.toMatch(/limit: DAILY_ROOMS_LABEL/);
-    expect(server).toContain("daily: true,                                   // client: no auto-retry");
-    expect(server).toContain("...(dailyRoomsRemainingMs() > 0 ? { daily: true } : {}),");
-  });
-  it("status reports it; clear accepts { daily: true }", () => {
+  it("status + clear: no daily fields; clear needs a username", () => {
     const status = between('app.get("/admin/tiktok-cooldown/status"', 'app.post("/admin/tiktok-cooldown/clear"');
-    expect(status).toContain("daily: dailyRoomsRemainingMs() > 0 ? { remainingMs: dailyRoomsRemainingMs(), until: dailyRoomsCooldownUntil } : null,");
+    expect(status).not.toContain("daily");
     const clear = between('app.post("/admin/tiktok-cooldown/clear"', 'app.post("/admin/broadcast-translate"');
-    expect(clear).toContain('const daily = (req.body || {}).daily === true;');
-    expect(clear).toContain("if (daily) dailyRoomsCooldownUntil = 0;");
-    expect(clear).toContain("if (!username && !daily) return res.status(400)");
-  });
-  it("A5. clearing an account while the daily pause is on answers dailyActive: true", () => {
-    const clear = between('app.post("/admin/tiktok-cooldown/clear"', 'app.post("/admin/broadcast-translate"');
-    expect(clear).toContain("const dailyActive = dailyRoomsRemainingMs() > 0;");
-    expect(clear).toContain("return res.json({ success: true, cleared, clearedDaily, dailyActive });");
-    expect(clear.indexOf("const dailyActive")).toBeGreaterThan(clear.indexOf("if (daily) dailyRoomsCooldownUntil = 0;")); // read AFTER a daily clear
+    expect(clear).not.toContain("req.body || {}).daily");
+    expect(clear).toContain('if (!username) return res.status(400).json({ success: false, error: "username_required" });');
   });
 });
 
@@ -91,11 +71,11 @@ describe("admin routes", () => {
     const route = between('app.post("/admin/tiktok-cooldown/clear"', 'app.post("/admin/broadcast-translate"');
     expect(route).toContain("const username = cleanAccountKey((req.body || {}).username);");
     expect(route).toContain('return res.status(400).json({ success: false, error: "username_required" });');
-    expect(route).toContain("if (username && cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); cleared += 1; }");
+    expect(route).toContain("if (cooldownKeyMatches(key, username)) { tiktokRateLimitCooldowns.delete(key); tiktokDailyCooldownKeys.delete(key); cleared += 1; }");
     expect(route).not.toContain("tiktokConnections.");          // never touches a live connection
     expect(route).not.toContain("disconnect");
     expect(route).toContain("[COOLDOWN-CLEAR]");
-    expect(route).toContain("return res.json({ success: true, cleared, clearedDaily, dailyActive });");
+    expect(route).toContain("return res.json({ success: true, cleared });");
   });
   it("status: today's tally + plan usage + the running cooldowns", () => {
     const route = between('app.get("/admin/tiktok-cooldown/status"', 'app.post("/admin/tiktok-cooldown/clear"');

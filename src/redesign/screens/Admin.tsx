@@ -18,7 +18,7 @@ import { loadFmGlobalFeeMeta, saveFmGlobalFee, validFmFee } from "../adapters/fm
 import { loadParcelManualEnabledMeta, saveParcelManualEnabled } from "../adapters/parcelScan";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
 import { describeWorkerState } from "../adapters/parcelWorkerState";
-import { loadTikTokCooldownStatus, clearTikTokCooldown, clearDailyLimit, usageWarns, type CooldownStatus } from "../adapters/tiktokConnectLimit";
+import { loadTikTokCooldownStatus, clearTikTokCooldown, usageWarns, type CooldownStatus } from "../adapters/tiktokConnectLimit";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
@@ -852,15 +852,7 @@ export function TikTokLimitCard() {
     setBusy(true); setNote(null);
     const r = await clearTikTokCooldown(u);
     setBusy(false);
-    if (r.ok) { setNote({ kind: "ok", msg: tpl(t.rd_adm_ttl_cleared, { n: r.cleared ?? 0 }) + (r.dailyActive ? ` · ${t.rd_adm_ttl_daily_still}` : "") }); setName(""); load(); }
-    else setNote({ kind: "err", msg: t.rd_adm_ttl_err });
-  };
-  const clearDaily = async () => {
-    if (busy) return;
-    setBusy(true); setNote(null);
-    const r = await clearDailyLimit();
-    setBusy(false);
-    if (r.ok) { setNote({ kind: "ok", msg: tpl(t.rd_adm_ttl_cleared, { n: 1 }) }); load(); }
+    if (r.ok) { setNote({ kind: "ok", msg: tpl(t.rd_adm_ttl_cleared, { n: r.cleared ?? 0 }) }); setName(""); load(); }
     else setNote({ kind: "err", msg: t.rd_adm_ttl_err });
   };
   const lastAt = status?.lastAt ? new Date(status.lastAt).toLocaleTimeString() : "";
@@ -874,12 +866,6 @@ export function TikTokLimitCard() {
       {state === "error" && <div style={{ fontSize: 12, color: "var(--danger)" }}>{t.rd_adm_ttl_load_err}</div>}
       {status && (
         <>
-          {status.daily && (
-            <div data-testid="adm-ttl-daily" style={{ background: "var(--danger)", color: "#fff", borderRadius: 10, padding: "9px 11px", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <span>{tpl(t.rd_adm_ttl_daily, { m: Math.max(1, Math.ceil(status.daily.remainingMs / 60000)) })}</span>
-              <button data-testid="adm-ttl-clear-daily" onClick={() => void clearDaily()} disabled={busy} style={{ ...planBtn, flexShrink: 0, background: "#fff", color: "var(--danger)", opacity: busy ? 0.6 : 1 }}>{t.rd_adm_ttl_clear_daily}</button>
-            </div>
-          )}
           {status.usage && (
             <>
               {(status.usage.warn || usageWarns(status.usage)) && (
