@@ -21,7 +21,7 @@ const tables: Record<string, Row[]> = {
     plan_expiry: "2027-12-31", trial_started_at: null, connected_accounts: [], role: "seller", created_at: iso(200),
   }],
   app_settings: [
-    { key: "parcel_manual_enabled", value: "true" }, { key: "buyer_contact_enabled", value: "true" },
+    { key: "parcel_manual_enabled", value: "true" }, { key: "buyer_contact_enabled", value: "true" }, { key: "frozen_store_check_enabled", value: "true" },
     { key: "fm_scan_enabled", value: "true" }, { key: "fm_pickup_enabled", value: "true" },
     { key: "fm_shipping_fee", value: "39" }, { key: "shipping_fee_global", value: "38" },
   ],

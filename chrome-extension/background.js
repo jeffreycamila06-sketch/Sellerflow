@@ -10,7 +10,7 @@
 // FAIL-SAFE: the checker only ever WRITES what the 7-11 content script returns,
 // which is 'unknown' on any doubt — never a fabricated 'ok'.
 // ════════════════════════════════════════════════════════════════════════════
-importScripts("frozen-check.js"); // 1.17.0 ADD-ONLY: the FROZEN (冷凍) store check lives in its own module (kicked by one line in pcRunOnce)
+try { importScripts("frozen-check.js"); } catch (e) { console.log(`[PC-FROZEN] module not loaded: ${e && e.message}`); } // 1.17.0 ADD-ONLY: the FROZEN (冷凍) store check lives in its own module (kicked by one line in pcRunOnce); a missing/broken module never stops the worker
 const PC_ALARM = "parcel-checker-keepalive";
 const PC_KEEPALIVE_MIN = 0.5;        // chrome.alarms floor (~30s) — only revives the loop if the SW was suspended
 const PC_POLL_MS = 5000;             // ~5s cadence via a self-scheduling loop (alarms can't go this fast)
@@ -1191,7 +1191,7 @@ async function pcRunOnce() {
   // Both roles: tab pick, E-Map keepalive, local status (= standby stays ready).
   try { await pcPickEmapTab(); } catch (e) { console.log(`[PC-EMAP] skipped: pick ${e && e.message ? e.message : e}`); }
   try { await pcPollMulti(pass); } catch { /* keep looping */ }                       // leader-only inside
-  try { pcFrozenKick(pass); } catch (e) { console.log(`[PC-FROZEN] skipped: ${e && e.message ? e.message : e}`); } // 1.17.0 ADD-ONLY: never awaited — the frozen check runs on its own promise
+  try { if (typeof pcFrozenKick === "function") pcFrozenKick(pass); } catch (e) { console.log(`[PC-FROZEN] skipped: ${e && e.message ? e.message : e}`); } // 1.17.0 ADD-ONLY: never awaited — the frozen check runs on its own promise; absent module = no-op
   try { await pcEmapKeepalive(); } catch (e) { console.log(`[PC-KEEPALIVE] skipped: ${e && e.message ? e.message : e}`); }
   try { await pcRefreshTabStatus(pass); } catch (e) { console.log(`[PC-STATUS] skipped: ${e && e.message ? e.message : e}`); }
   // Leader-only: re-queue (DB write) and the worker-state mirror (DB write). M1: each is

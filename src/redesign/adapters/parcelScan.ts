@@ -576,7 +576,7 @@ export const wrongStoreCode = (r: { storeCheckStatus?: string | null; storeFullS
 // frozenCfg: the frozen settings (sql/79). Dry rows → validateAmounts(fee) exactly as before; a
 // frozen row → customAmountError with the frozen fee / min total / cap (no settings → excluded
 // with "frozen_settings").
-export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCfg: FrozenConfig | null = null): ScanExportSplit {
+export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCfg: FrozenConfig | null = null, frozenOn = false): ScanExportSplit {
   const ready: ParcelScanRow[] = [];
   const attention: { row: ParcelScanRow; reason: ExportReason }[] = [];
   for (const row of rows) {
@@ -585,14 +585,15 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCf
     // A 冷凍 row without the frozen settings is NEVER exported (never as 常溫) — its own reason.
     if (row.tempLayer === TEMP_FROZEN && !frozenCfg) reason = "frozen_settings";
     else if (wrongStoreCode(row)) reason = "wrong_store";                            // E-Map: wrong code (either check)
-    // sql/142: a 冷凍 row whose store can't receive frozen is kept out of the export like a
-    // full store (only the explicit 'no_frozen' verdict; null / 'unknown' never exclude).
-    else if (row.tempLayer === TEMP_FROZEN && row.frozenStoreStatus === "no_frozen") reason = "no_frozen";
     // Extension checks (sql/33) — EXPLICIT problem verdicts only exclude. null/
     // 'unknown' (unchecked / can't verify) do NOT exclude (unchecked ≠ problem),
     // matching store_check_status's own unknown/null → READY behaviour.
     else if (row.storeFullStatus === "full") reason = "store_full";             // 交貨便: store full
     else if (row.phoneCheckStatus === "restricted") reason = "restricted_number"; // buyer phone restricted
+    // sql/142: a 冷凍 row whose store can't receive frozen is kept out of the export like a full
+    // store — only while the switch is on, only the explicit 'no_frozen' verdict (null / 'unknown'
+    // never exclude), and after the existing reasons above (they stay the reason shown).
+    else if (frozenOn && row.tempLayer === TEMP_FROZEN && row.frozenStoreStatus === "no_frozen") reason = "no_frozen";
     else if (validateRecipientName(row.customerName) !== "") reason = "bad_name";
     else if (!validPhone(row.phone)) reason = "bad_phone";
     else if (!validStore(row.storeId)) reason = "bad_store";
@@ -609,23 +610,26 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number, frozenCf
 // A row is still AWAITING an extension verdict while it is not exported and
 // either verdict is null/undefined. The screen polls only while some loaded row
 // awaits (and the screen is visible), then stops.
-export const rowAwaitsVerdict = (r: ParcelScanRow): boolean =>
-  r.status !== "exported" && (r.storeFullStatus == null || r.phoneCheckStatus == null);
+// frozenOn (sql/142): a 冷凍 row whose frozen answer is still null / 'unknown' is also awaiting —
+// only while the switch is on (off → exactly today's rule).
+export const rowAwaitsVerdict = (r: ParcelScanRow, frozenOn = false): boolean =>
+  r.status !== "exported" && (r.storeFullStatus == null || r.phoneCheckStatus == null
+    || (frozenOn && r.tempLayer === TEMP_FROZEN && (r.frozenStoreStatus == null || r.frozenStoreStatus === "unknown")));
 
 // M7: the "Wait / Export anyway" prompt counts rows still checking AND rows
 // whose check gave up ('unknown' — the checker couldn't decide).
-export const rowCheckUnresolved = (r: ParcelScanRow): boolean =>
-  rowAwaitsVerdict(r) || (r.status !== "exported" && (r.storeFullStatus === "unknown" || r.phoneCheckStatus === "unknown"));
+export const rowCheckUnresolved = (r: ParcelScanRow, frozenOn = false): boolean =>
+  rowAwaitsVerdict(r, frozenOn) || (r.status !== "exported" && (r.storeFullStatus === "unknown" || r.phoneCheckStatus === "unknown"));
 
 // M3: badge-poll cadence. 3 s while any awaiting row is younger than freshMs
 // (the checker normally answers within a minute); 30 s once only older rows
 // still await (checker slow/down — keep watching cheaply); null = no poll.
 export const VERDICT_POLL_FAST_MS = 3000;
 export const VERDICT_POLL_SLOW_MS = 30000;
-export function verdictPollMs(rows: ParcelScanRow[], now: number, freshMs: number): number | null {
+export function verdictPollMs(rows: ParcelScanRow[], now: number, freshMs: number, frozenOn = false): number | null {
   let any = false;
   for (const r of rows) {
-    if (!rowAwaitsVerdict(r)) continue;
+    if (!rowAwaitsVerdict(r, frozenOn)) continue;
     any = true;
     const t = Date.parse(r.createdAt);
     if (!Number.isFinite(t) || now - t < freshMs) return VERDICT_POLL_FAST_MS;
@@ -643,8 +647,9 @@ export function mergeExtensionVerdicts(prev: ParcelScanRow[], fresh: ParcelScanR
   return prev.map((r) => {
     const f = byId.get(r.id);
     if (!f) return r;
-    if (f.storeFullStatus === r.storeFullStatus && f.phoneCheckStatus === r.phoneCheckStatus && f.phoneRestrictedUntil === r.phoneRestrictedUntil) return r;
-    return { ...r, storeFullStatus: f.storeFullStatus, phoneCheckStatus: f.phoneCheckStatus, phoneRestrictedUntil: f.phoneRestrictedUntil };
+    const fz = f.frozenStoreStatus ?? null, rz = r.frozenStoreStatus ?? null; // sql/142: the frozen verdict rides along (absent = null)
+    if (f.storeFullStatus === r.storeFullStatus && f.phoneCheckStatus === r.phoneCheckStatus && f.phoneRestrictedUntil === r.phoneRestrictedUntil && fz === rz) return r;
+    return { ...r, storeFullStatus: f.storeFullStatus, phoneCheckStatus: f.phoneCheckStatus, phoneRestrictedUntil: f.phoneRestrictedUntil, ...(fz === rz ? {} : { frozenStoreStatus: fz }) };
   });
 }
 
@@ -781,7 +786,9 @@ export async function saveStoreCheck(rowId: string, status: StoreCheckStatus): P
 // phone_check_*) back to NULL so the Chrome extension re-checks the row on its
 // next pass. The app NEVER calls 賣貨便 itself — this is a pure reset. Own-scoped
 // (RLS + explicit user_id). No credit, no bulk, no auto. Mirrors saveStoreCheck.
-export async function resetExtensionChecks(rowId: string): Promise<{ ok: boolean; error?: string }> {
+// frozenRow (sql/142): a 冷凍 row's Recheck also nulls its frozen verdict (checked_at kept = the
+// "bypass the cache" marker); a dry row's payload is byte-identical to before.
+export async function resetExtensionChecks(rowId: string, frozenRow = false): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, error: "not signed in" };
@@ -791,7 +798,7 @@ export async function resetExtensionChecks(rowId: string): Promise<{ ok: boolean
       store_full_status: null, store_full_at: null,
       phone_check_status: null, phone_check_at: null,
       phone_check_message: null, phone_restricted_until: null,
-      frozen_store_status: null, // sql/142: a Recheck goes live for the frozen half too (checked_at kept = the "bypass the cache" marker)
+      ...(frozenRow ? { frozen_store_status: null } : {}),
     })
     .eq("id", rowId)
     .eq("user_id", me);
@@ -857,7 +864,7 @@ export async function deleteParcelScan(id: string): Promise<{ ok: boolean; error
 export async function updateParcelScan(
   id: string,
   fields: ScanFields,
-  resetChecks?: { storeFull?: boolean; phoneCheck?: boolean },
+  resetChecks?: { storeFull?: boolean; phoneCheck?: boolean; frozen?: boolean }, // frozen (sql/142): 冷凍 rows only — a dry payload never carries the key
   tempLayer?: string, // sql/79 — only passed for sellers with the Dry / Frozen control
   contactPlatform?: string | null, // sql/140 — only passed when known (picker on, or a stale platform to clear)
 ): Promise<{ ok: boolean; error?: string }> {
@@ -874,7 +881,8 @@ export async function updateParcelScan(
   };
   if (tempLayer) patch.temp_layer = tempLayer;
   if (contactPlatform !== undefined) patch.contact_platform = contactPlatform;
-  if (resetChecks?.storeFull) { patch.store_full_status = null; patch.store_full_at = null; patch.frozen_store_status = null; } // a new store code also voids the frozen verdict (sql/142)
+  if (resetChecks?.storeFull) { patch.store_full_status = null; patch.store_full_at = null; }
+  if (resetChecks?.frozen) patch.frozen_store_status = null; // sql/142: a 冷凍 row's new store code voids its frozen verdict
   if (resetChecks?.phoneCheck) {
     patch.phone_check_status = null; patch.phone_check_at = null;
     patch.phone_check_message = null; patch.phone_restricted_until = null;

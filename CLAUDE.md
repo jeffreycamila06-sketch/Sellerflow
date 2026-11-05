@@ -4680,8 +4680,24 @@ E-Map session (Jeff, 2026-11-05): byIDData `cate=27` answers the frozen capabili
 - **App (7-11 Parcel Scan, 冷凍 rows only):** no_frozen → red border + `rd_ps2_frozen_no` (wraps, never cut),
   ⟳ offered, excluded from export (`no_frozen` reason); null/unknown → amber `rd_ps2_frozen_unchecked` instead of
   the all-clear; ok → normal. Dry rows byte-identical (test-pinned). Previews: `docs/design/frozen-store-check/`.
+- **Review round (2026-11-05):** guarded `importScripts` (a missing/broken module never stops the worker); every
+  frozen fetch/RPC/tab message bounded (15 s, ping 3 s); leader + maintenance window re-checked before EACH row;
+  **never overlaps the normal lane** — a frozen request goes out only in a gap (`pcInFlight` empty, no E-Map keepalive
+  due or sent < 15 s ago; waits ≤ 5 s then retries next pass); fairness: 1 frozen row per pass while dry rows are
+  queued (3 with an empty queue) → ≥ 1 frozen request per ~5 s, never starved; self-heal: `PC_FROZEN_PING` → inject
+  `emap-frozen-711.js` when silent. sql/142: column added WITHOUT the inline check, constraint added NOT VALID,
+  `p_limit` capped at 25. App: the frozen lines/export exclusion/⟳/attention/awaiting exist only while the switch
+  reads 'true' (`featureSw.frozenStoreCheck` → `ParcelScan frozenCheckOn`); exported 冷凍 rows keep ✅; a store-code
+  edit clears the frozen verdict on screen; `mergeExtensionVerdicts`/`rowAwaitsVerdict` carry it; `problemOf`
+  "no_frozen" kind (after wrong/full/restricted); dry rows' write payloads byte-identical (frozen key only for 冷凍).
 - **Rollout (Jeff):** apply sql/142 → merge → web deploy → install 1.17.0 on the Mac STANDBY first with the switch
   'true' for 1 day → then the Windows checker laptops. Build: `npm run build:extension` → load `chrome-extension-dist/`.
+  ⚠️ **The frozen lane runs on the LEADER only.** For the 1-day Mac trial the Mac must be the leader: on the on-duty
+  Windows laptop open the extension popup → **Pause** (a paused leader hands duty to the other machine within ~2 min;
+  the Admin check-queue card then shows the Mac "on duty"). Leave Windows paused for the day (its tabs stay ready as
+  standby). To end the trial: Resume on Windows — the Mac stays leader until IT is paused (a returning machine stays
+  standby), so pause the Mac if duty should go back to Windows. Reload the E-Map tab once after installing 1.17.0
+  (belt and braces — the worker also injects `emap-frozen-711.js` itself when the tab doesn't answer).
 
 ## ⏸ PARKED (2026-10-06) — automated FROZEN (冷凍) store check
 Parked until the owner is back from his trip. `main` = exactly what ran before the frozen merge

@@ -9,6 +9,7 @@ drop function if exists public.admin_parcel_frozen_pending(integer);
 drop function if exists public.admin_parcel_frozen_verdict(uuid, text, text);
 drop table if exists public.store_frozen_check_log;
 drop table if exists public.store_frozen_cache;
+alter table public.parcel_scans drop constraint if exists parcel_scans_frozen_store_status_check;
 alter table public.parcel_scans drop column if exists frozen_store_status;
 alter table public.parcel_scans drop column if exists frozen_store_checked_at;
 delete from public.app_settings where key = 'frozen_store_check_enabled';

@@ -6,6 +6,7 @@
 // frozen category (probe on the normal E-Map session, 2026-11-05: 968551 cate=27 →
 // "…+disable+…" while cate=3 → "…+enable+…"; 151003 → "…+enable+…" on both).
 //   field index 3: enable → ok · disable → no_frozen · close / NO2 / other → unknown
+// Answers PC_FROZEN_PING (the worker's self-heal ping; no answer → the worker injects this file).
 // Never writes anything; never executes page code (guid read from the MAIN-world helper
 // emap-guid-main.js over its DOM event, or from the page SOURCE text).
 (function sellerFlowEmapFrozen() {
@@ -104,6 +105,7 @@
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message && message.type === "PC_FROZEN_PING") { sendResponse({ ok: true, script: "emap-frozen" }); return true; } // self-heal ping
     if (!message || message.type !== "PC_FROZEN_CHECK" || !message.row) return false; // not ours
     (async () => {
       const guid = await getGuid();

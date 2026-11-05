@@ -38,9 +38,15 @@ begin;
 set local lock_timeout = '5s';
 
 -- ── 1. the two parcel columns (nullable; dry parcels and existing rows stay NULL) ──
-alter table public.parcel_scans add column if not exists frozen_store_status text
-  check (frozen_store_status is null or frozen_store_status in ('ok','no_frozen','unknown'));
+alter table public.parcel_scans add column if not exists frozen_store_status text;
 alter table public.parcel_scans add column if not exists frozen_store_checked_at timestamptz;
+-- the check is added NOT VALID: enforced for every new write, no full-table read under the ALTER lock
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'parcel_scans_frozen_store_status_check') then
+    alter table public.parcel_scans add constraint parcel_scans_frozen_store_status_check
+      check (frozen_store_status is null or frozen_store_status in ('ok','no_frozen','unknown')) not valid;
+  end if;
+end $$;
 
 -- ── 2. the shared frozen cache + log (service-role / SECURITY DEFINER only) ──
 create table if not exists public.store_frozen_cache (
@@ -118,7 +124,7 @@ begin
   select o.id, o.store_id, o.created_at, (select count(*) from cand) as queue_depth
     from one o
    order by o.created_at asc
-   limit greatest(coalesce(p_limit, 3), 1);
+   limit least(greatest(coalesce(p_limit, 3), 1), 25);
 end $$;
 revoke all on function public.admin_parcel_frozen_pending(integer) from public, anon;
 grant execute on function public.admin_parcel_frozen_pending(integer) to authenticated;

@@ -17,7 +17,9 @@ describe("sql/142 forward — add-only", () => {
     expect(up).toMatch(/apply this BEFORE the web deploy/);
   });
   it("adds only new objects: two nullable parcel columns, two new tables, the switch row, two new RPCs — no 'drop', no alter of an existing function/trigger/constraint", () => {
-    expect(up).toContain("alter table public.parcel_scans add column if not exists frozen_store_status text");
+    expect(up).toContain("alter table public.parcel_scans add column if not exists frozen_store_status text;"); // no inline check
+    expect(up).toContain("check (frozen_store_status is null or frozen_store_status in ('ok','no_frozen','unknown')) not valid;"); // added separately, NOT VALID
+    expect(up).toContain("limit least(greatest(coalesce(p_limit, 3), 1), 25);"); // capped like the existing pending RPC
     expect(up).toContain("alter table public.parcel_scans add column if not exists frozen_store_checked_at timestamptz");
     expect(up).toContain("create table if not exists public.store_frozen_cache (");
     expect(up).toContain("create table if not exists public.store_frozen_check_log (");
@@ -75,7 +77,8 @@ describe("sql/142 rollback", () => {
     expect(down).toContain("alter table public.parcel_scans drop column if exists frozen_store_status;");
     expect(down).toContain("alter table public.parcel_scans drop column if exists frozen_store_checked_at;");
     expect(down).toContain("delete from public.app_settings where key = 'frozen_store_check_enabled';");
-    expect((down.match(/\bdrop\b/gi) || []).length).toBe(6);
+    expect(down).toContain("alter table public.parcel_scans drop constraint if exists parcel_scans_frozen_store_status_check;");
+    expect((down.match(/\bdrop\b/gi) || []).length).toBe(7);
     expect(down).not.toMatch(/store_check_cache\b|store_check_log\b|parcel_check_access|temp_layer/);
   });
 });
@@ -85,8 +88,8 @@ describe("the app reads the new column only in the places the plan names", () =>
     const src = readFileSync("src/redesign/adapters/parcelScan.ts", "utf8");
     expect(src).toMatch(/const SCANS_COLS = "[^"]*frozen_store_status[^"]*"/);
     expect(src).toContain('...(row.frozen_store_status != null ? { frozenStoreStatus: String(row.frozen_store_status) } : {}),');
-    expect(src).toContain("frozen_store_status: null, // sql/142: a Recheck goes live for the frozen half too");
-    expect(src).toContain("patch.frozen_store_status = null; } // a new store code also voids the frozen verdict (sql/142)");
+    expect(src).toContain("...(frozenRow ? { frozen_store_status: null } : {}),"); // Recheck: 冷凍 rows only
+    expect(src).toContain("if (resetChecks?.frozen) patch.frozen_store_status = null;"); // store-code edit: 冷凍 rows only
     expect(src).not.toContain("frozen_store_checked_at"); // the app never writes the clock — the RPC owns it
   });
 });

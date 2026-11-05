@@ -51,12 +51,16 @@ export type BootOpts = {
   frozenPending?: unknown[] | "error";       // admin_parcel_frozen_pending rows (default [])
   frozenVerdictHttp?: number;               // admin_parcel_frozen_verdict status (default 200)
   extDir?: string;                          // read the worker from another folder (e.g. main's copy)
+  frozenScript?: boolean;                   // the frozen content script answers PC_FROZEN_PING (default true); false = until injected
+  frozenModuleSrc?: string | null;          // importScripts("frozen-check.js"): null = file missing (throws), a string = that source instead
+  slowChecks?: boolean;                     // PC_CHECK_STORE / PC_CHECK_PHONE answer one macrotask later (lets the lanes interleave); records overlaps
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const extDir = opts.extDir || process.env.SFL_EXT_DIR || "chrome-extension";
   const src = readFileSync(`${extDir}/background.js`, "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[] };
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
+    injected: [] as string[], openNormal: 0, frozenOverlap: 0 };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
@@ -72,16 +76,24 @@ export function bootWorker(opts: BootOpts = {}) {
   const chrome = {
     alarms: { create: vi.fn(), onAlarm: { addListener: vi.fn() } },
     runtime: { lastError: undefined, onMessage: { addListener: vi.fn() }, getManifest: () => ({ version: "test" }) },
-    scripting: { executeScript: (_o: unknown, cb: () => void) => cb() },
+    scripting: { executeScript: (o: { files?: string[] }, cb: () => void) => { calls.injected.push(String(o?.files?.[0] ?? "")); cb(); } },
     storage: { local: {
       get: (k: string | string[], cb: (r: Record<string, unknown>) => void) => { const key = Array.isArray(k) ? k[0] : k; cb({ [key]: storage[key] }); },
       set: (o: Record<string, unknown>, cb?: () => void) => { Object.assign(storage, o); cb?.(); },
     } },
     tabs: {
       query: (q: { url: string[] | string }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
-      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean }, cb: (r: unknown) => void) => {
+      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean }, cb0: (r: unknown) => void) => {
         calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry });
         const emap = emapTabs.find((t) => t.id === id);
+        // slowChecks: a normal E-Map / myship check stays "open" for one macrotask (the frozen lane must not send meanwhile)
+        const slow = Boolean(opts.slowChecks) && (msg.type === "PC_CHECK_STORE" || msg.type === "PC_CHECK_PHONE");
+        if (slow) calls.openNormal += 1;
+        const cb = slow ? (r: unknown) => { setImmediate(() => { calls.openNormal -= 1; cb0(r); }); } : cb0;
+        if (msg.type === "PC_FROZEN_PING") {
+          const present = opts.frozenScript !== false || calls.injected.includes("emap-frozen-711.js");
+          return present ? cb({ ok: true, script: "emap-frozen" }) : cb(undefined);
+        }
         if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: opts.sflToken ? opts.sflToken() : fakeJwt() });
         if (msg.type === "SFL_REFRESH_TOKEN") { const r = opts.onSflRefresh ? opts.onSflRefresh() : { token: fakeJwt(), hadSession: true }; return cb({ ok: true, token: r.token ?? null, hadSession: r.hadSession === undefined ? null : r.hadSession }); }
         if (msg.type === "PC_PING") return cb({ ok: true, script: "x" });
@@ -91,6 +103,7 @@ export function bootWorker(opts: BootOpts = {}) {
           return cb(r ? { ok: true, clicked: r.clicked, reason: r.reason || "", text: "選擇取貨門市" } : { ok: true, clicked: true, reason: "", text: "選擇取貨門市" });
         }
         if (msg.type === "PC_FROZEN_CHECK") {
+          if (calls.openNormal > 0) calls.frozenOverlap += 1; // a frozen request while a normal one is open = the forbidden overlap
           const v = opts.frozenVerdict ? opts.frozenVerdict(msg.row) : "ok";
           if (v === "hang") return;                       // never answers
           if (v === "throw") throw new Error("frozen stub threw");
@@ -159,7 +172,15 @@ export function bootWorker(opts: BootOpts = {}) {
     : Date;
   const sandbox: Record<string, unknown> = {
     // importScripts (service-worker global): evaluates the named file(s) in the SAME context
-    importScripts: (...files: string[]) => { for (const f of files) vm.runInContext(readFileSync(`${extDir}/${f}`, "utf8"), sandbox as vm.Context, { filename: f }); },
+    importScripts: (...files: string[]) => {
+      for (const f of files) {
+        let src: string;
+        if (f === "frozen-check.js" && opts.frozenModuleSrc === null) throw new Error(`Failed to load '${f}' (ENOENT)`);
+        if (f === "frozen-check.js" && typeof opts.frozenModuleSrc === "string") src = opts.frozenModuleSrc;
+        else src = readFileSync(`${extDir}/${f}`, "utf8");
+        vm.runInContext(src, sandbox as vm.Context, { filename: f });
+      }
+    },
     chrome, fetch, setTimeout, clearTimeout: () => {},
     console: { log: (...a: unknown[]) => calls.logs.push(a.join(" ")), warn: (...a: unknown[]) => calls.logs.push(a.join(" ")), error: (...a: unknown[]) => calls.logs.push(a.join(" ")) },
     Date: DateCtor, Promise, JSON, Math, Number, String, Boolean, Array, Object, Set, Map, URL, URLSearchParams, Error, RegExp, atob: (s: string) => Buffer.from(s, "base64").toString("binary"),
@@ -170,5 +191,6 @@ export function bootWorker(opts: BootOpts = {}) {
   const status = () => (storage.pc_status as Record<string, unknown>) || {};
   // the boot status-reset is async (one storage write) — settle it before driving ticks
   const booted = new Promise<void>((r) => { let n = 0; const step = () => { if (++n > 20) return r(); Promise.resolve().then(step); }; step(); });
-  return { sb, calls, storage, status, booted, emapTabs };
+  const evalIn = (code: string): unknown => vm.runInContext(code, sandbox as vm.Context, { filename: "test-snippet.js" });
+  return { sb, calls, storage, status, booted, emapTabs, evalIn };
 }

@@ -14,6 +14,10 @@ Each shot shows the three 冷凍 rows, one per frozen state, in this order:
 Files: `frozen-rows_<device>_<theme>_<lang>.jpg` (whole screen) and `frozen-rows-crop_…jpg` (the parcel
 list only) for iphone390 / android412 / desktop1280 × light / dark × en / zh-TW / fil = 18 + 18.
 
+The lines above show only while `app_settings.frozen_store_check_enabled` reads exactly `'true'` (the
+fake harness has it on). Switch off → a 冷凍 row renders exactly like main (the green ✅ Buyer OK, no
+red/amber line, no ⟳, no export exclusion).
+
 `measurements.json` (from the same run): at every width `document.documentElement.scrollWidth` equals the
 viewport (no horizontal scroll), every row's right edge sits inside the screen, and the red line wraps
 instead of clipping — at 390 px it takes 3 lines in English, 3 in 繁體中文 and 4 in Filipino (10.5 px text;
