@@ -3,11 +3,7 @@
 // urgency, chase-target routing, and the status grouping/sort. The load() path is a
 // thin own-scoped SELECT (parcelScan pattern) — not exercised here.
 import { describe, it, expect } from "vitest";
-import {
-  parcelTrackingVisible, PARCEL_TRACKING_TIERS, isUnchecked,
-  isChaseable, isReturningSoon, daysUntilDate, isUrgent, chaseTarget, chaseCopyValue, groupParcels,
-  rowToTracking, type ParcelTrackingRow,
-} from "../parcelTracking";
+import { parcelTrackingVisible, PARCEL_TRACKING_TIERS, isUnchecked, isChaseable, isReturningSoon, daysUntilDate, isUrgent, chaseTarget, chaseCopyValue, groupParcels, rowToTracking, type ParcelTrackingRow, parcelTrackingLocked } from "../parcelTracking";
 
 const TODAY = "2026-09-18";
 
@@ -31,25 +27,75 @@ function row(p: Partial<ParcelTrackingRow>): ParcelTrackingRow {
   };
 }
 
+const NOW = new Date("2026-11-04T06:00:00Z").getTime();
+const DAY = 86_400_000;
+describe("parcelTrackingVisible / parcelTrackingLocked — expired plan lock (same rule as Parcel Scan)", () => {
+  const seller = (plan: string, planStatus: string, planExpiry: string | null) => ({ role: "seller", plan, planStatus, planExpiry, nowMs: NOW, access: true });
+  it("expired Plus / Pro / Master → hidden screen + the 🔒 tile (plan_status expired, or expiry in the past)", () => {
+    for (const plan of ["plus", "pro", "master"]) {
+      for (const a of [seller(plan, "expired", null), seller(plan, "expired", new Date(NOW + 30 * DAY).toISOString()), seller(plan, "active", new Date(NOW - DAY).toISOString()), seller(plan, "active", new Date(NOW).toISOString())]) {
+        expect(parcelTrackingVisible(a), `${plan} ${a.planStatus} ${a.planExpiry}`).toBe(false);
+        expect(parcelTrackingLocked({ ...a, allowed: false }), `${plan} locked`).toBe(true);
+      }
+    }
+  });
+  it("renewed (active again, expiry in the future, or no expiry date) → open again, no locked tile", () => {
+    for (const plan of ["plus", "pro", "master"]) {
+      for (const a of [seller(plan, "active", new Date(NOW + DAY).toISOString()), seller(plan, "active", null)]) {
+        expect(parcelTrackingVisible(a), plan).toBe(true);
+        expect(parcelTrackingLocked({ ...a, allowed: true }), plan).toBe(false);
+      }
+    }
+  });
+  it("active Plus WITHOUT the allowlist row → hidden but NOT locked (neither tile, as before)", () => {
+    const a = { ...seller("plus", "active", null), access: false };
+    expect(parcelTrackingVisible(a)).toBe(false);
+    expect(parcelTrackingLocked({ ...a, allowed: false })).toBe(false);
+  });
+  it("pending / blank status is not active → hidden + locked for a tracking tier", () => {
+    for (const st of ["pending", "", "paused"]) {
+      expect(parcelTrackingVisible(seller("pro", st, null)), st).toBe(false);
+      expect(parcelTrackingLocked({ ...seller("pro", st, null), allowed: false }), st).toBe(true);
+    }
+  });
+  it("admin is never locked, even expired", () => {
+    const a = { role: "admin", plan: "master", planStatus: "expired", planExpiry: new Date(NOW - DAY).toISOString(), nowMs: NOW, access: false };
+    expect(parcelTrackingVisible(a)).toBe(true);
+    expect(parcelTrackingLocked({ ...a, allowed: false })).toBe(false);
+  });
+  it("free / basic unchanged: locked tile whatever the status or expiry", () => {
+    for (const plan of ["free", "basic", "Basic"]) for (const st of ["active", "expired"]) {
+      expect(parcelTrackingVisible(seller(plan, st, null)), `${plan} ${st}`).toBe(false);
+      expect(parcelTrackingLocked({ ...seller(plan, st, null), allowed: false }), `${plan} ${st}`).toBe(true);
+    }
+  });
+  it("same decision as Parcel Scan's canUseParcelManual for every Plus/Pro/Master state", async () => {
+    const { canUseParcelManual } = await import("../parcelScan");
+    for (const plan of ["plus", "pro", "master"]) for (const st of ["active", "expired", "pending"]) for (const exp of [null, new Date(NOW - DAY).toISOString(), new Date(NOW + DAY).toISOString()]) {
+      expect(parcelTrackingVisible(seller(plan, st, exp)), `${plan} ${st} ${exp}`).toBe(canUseParcelManual(plan, st, exp, NOW));
+    }
+  });
+});
+
 describe("parcelTrackingVisible — admin, OR Plus/Pro/Master + own allowlist row (sql/60)", () => {
   it("admin role → visible regardless of plan / allowlist", () => {
     expect(parcelTrackingVisible({ role: "admin" })).toBe(true);
     expect(parcelTrackingVisible({ role: "Admin", plan: "free", access: false })).toBe(true);
   });
   it("Plus / Pro / Master WITH an enabled allowlist row → visible (case-insensitive plan)", () => {
-    for (const plan of ["plus", "Pro", " MASTER "]) expect(parcelTrackingVisible({ role: "seller", plan, access: true }), plan).toBe(true);
+    for (const plan of ["plus", "Pro", " MASTER "]) expect(parcelTrackingVisible({ role: "seller", plan, planStatus: "active", access: true }), plan).toBe(true);
   });
   it("Plus / Pro / Master WITHOUT the allowlist row → hidden (the row is the switch)", () => {
     for (const plan of ["plus", "pro", "master"]) {
-      expect(parcelTrackingVisible({ role: "seller", plan, access: false }), plan).toBe(false);
-      expect(parcelTrackingVisible({ role: "seller", plan }), `${plan} missing access`).toBe(false); // fail-closed
+      expect(parcelTrackingVisible({ role: "seller", plan, planStatus: "active", access: false }), plan).toBe(false);
+      expect(parcelTrackingVisible({ role: "seller", plan, planStatus: "active" }), `${plan} missing access`).toBe(false); // fail-closed
     }
   });
   it("Basic / Free / unknown plan → hidden EVEN WITH an allowlist row", () => {
-    for (const plan of ["basic", "free", "", "enterprise", undefined, null]) expect(parcelTrackingVisible({ role: "seller", plan, access: true }), String(plan)).toBe(false);
+    for (const plan of ["basic", "free", "", "enterprise", undefined, null]) expect(parcelTrackingVisible({ role: "seller", plan, planStatus: "active", access: true }), String(plan)).toBe(false);
   });
   it("market gate wins over everything (off-market → hidden)", () => {
-    expect(parcelTrackingVisible({ role: "seller", plan: "pro", access: true, marketHidden: true })).toBe(false);
+    expect(parcelTrackingVisible({ role: "seller", plan: "pro", planStatus: "active", access: true, marketHidden: true })).toBe(false);
   });
   it("null / missing → hidden", () => {
     expect(parcelTrackingVisible(null)).toBe(false);

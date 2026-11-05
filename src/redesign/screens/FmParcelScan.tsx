@@ -20,6 +20,8 @@ import {
   markFmExported, saveFmScan, undoFmExport, validateFmScan,
 } from "../adapters/fmScan";
 import FmCustomerDetails from "./FmCustomerDetails";
+import BuyerContactField from "../components/BuyerContactField";
+import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
 
 // Same field styles as the 7-11 screen.
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -51,13 +53,16 @@ function latestBatch(rows: FmScanRow[]): { id: string; ids: string[] } | null {
   return best ? { id: best.exportBatchId!, ids: rows.filter((r) => r.exportBatchId === best!.exportBatchId).map((r) => r.id) } : null;
 }
 
-export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
+export default function FmParcelScan({ cur = "NT$", contactOn = false }: { cur?: string; contactOn?: boolean }) {
   const t = useT();
   const [rows, setRows] = useState<FmScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
   const [fee, setFee] = useState(FM_SCAN_DEFAULT_FEE);
   const [form, setForm] = useState<Form>(emptyForm);
   const [noHandle, setNoHandle] = useState(false);
+  // Buyer contact platform (sql/140) — same rules as the 7-11 screen; stays after each save.
+  const [platform, setPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const platformToSave: string | null = noHandle || platform === "tiktok" ? null : platform;
   const [manual, setManual] = useState(false);
   const [manualCount, setManualCount] = useState(0);
   const [editing, setEditing] = useState<{ id: string } | null>(null);
@@ -116,17 +121,18 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
     recipientName: form.name, phone: form.phone, storeId: form.store, amount: form.amount,
     shippingFee: editRow ? String(editRow.shippingFee) : String(fee),
     orderDate: editRow ? editRow.orderDate : today,
-    buyerUsername: noHandle ? "" : form.username,
+    buyerUsername: noHandle ? "" : (contactOn ? normalizeContact(platform, form.username) : form.username),
   };
   const errs = validateFmScan(parcel, today);
   const handleBad = !noHandle && !validHandle(form.username);
+  const contactBad = contactOn && !noHandle && contactError(platform, form.username) !== "";
   const isEmpty = Object.values(form).every((v) => v.trim() === "");
-  const saveBlocked = saving || firstError(errs) !== undefined || handleBad;
+  const saveBlocked = saving || firstError(errs) !== undefined || handleBad || contactBad;
   // Like 7-11: a field's problem shows once that field has something in it.
   const showErr = (filled: string, e?: FmScanError) => (filled.trim() !== "" && e ? <div style={errTxt} data-testid="fms-field-err">{t[FM_ERROR_KEY[e]]}</div> : null);
 
   const commitNew = async (): Promise<boolean> => {
-    const r = await saveFmScan({ ...parcel, orderDate: taipeiDayId() }); // the date at the moment of adding
+    const r = contactOn ? await saveFmScan({ ...parcel, orderDate: taipeiDayId() }, undefined, platformToSave) : await saveFmScan({ ...parcel, orderDate: taipeiDayId() }); // the date at the moment of adding
     if (!r.ok || !r.row) { setSaveErr(true); return false; }
     setRows((prev) => [r.row!, ...prev]);
     flash(t.rd_ps2_saved_toast);
@@ -144,7 +150,10 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
   const onEditSave = async () => {
     if (!editing || saveBlocked) return;
     setSaving(true); setSaveErr(false);
-    const r = await saveFmScan(parcel, editing.id);
+    // picker on → its value; off → clear a STALE platform when the handle changed (v2 item 7).
+    const usernameChanged = (editRow?.buyerUsername ?? "") !== parcel.buyerUsername.trim();
+    const contactArg: string | null | undefined = contactOn ? platformToSave : (editRow?.contactPlatform != null && usernameChanged ? null : undefined);
+    const r = contactArg === undefined ? await saveFmScan(parcel, editing.id) : await saveFmScan(parcel, editing.id, contactArg);
     setSaving(false);
     if (!r.ok || !r.row) { setSaveErr(true); return; }
     setRows((list) => list.map((x) => (x.id === editing.id ? r.row! : x)));
@@ -158,6 +167,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
     setSaveErr(false); setManual(false);
     setForm({ name: r.recipientName, phone: r.phone, store: r.storeId, amount: String(r.amount), username: r.buyerUsername ?? "" });
     setNoHandle(false);
+    setPlatform(platformOf(r.contactPlatform));
     setEditing({ id: r.id });
   };
   const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(false); };
@@ -171,7 +181,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
     try {
       const decoded = await decodeQrFromFile(file);
       const handle = decoded ? handleFromQrPayload(decoded) : null;
-      if (handle) { F({ username: handle.slice(0, 50) }); setNoHandle(false); flash(t.rd_ps2_qr_filled); }
+      if (handle) { F({ username: handle.slice(0, 50) }); setNoHandle(false); if (contactOn) setPlatform("tiktok"); flash(t.rd_ps2_qr_filled); }
       else flash(t.rd_ps2_qr_none);
     } catch { flash(t.rd_ps2_qr_none); }
     finally { if (aliveRef.current) setQrBusy(false); }
@@ -279,7 +289,16 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
           <div style={card} data-testid="fms-confirm" data-editing={editing ? "1" : undefined} data-manual={manual ? "1" : undefined}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>{editing ? t.rd_ps2_edit_title : t.rd_ps2_manual_title}</div>
-              {manual && (
+              {contactOn ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="fms-scan-qr">
+                    {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
+                  </button>
+                  {manual && (
+                    <button onClick={() => setCustOpen(true)} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
+                  )}
+                </div>
+              ) : manual && (
                 <button onClick={() => setCustOpen(true)} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
               )}
             </div>
@@ -306,6 +325,14 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
                 <input value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono }} data-testid="fms-amount" />
                 {showErr(form.amount, errs.amount ?? errs.total)}
               </div>
+              {contactOn ? (
+                <div>
+                  <input ref={qrRef} type="file" accept="image/*" hidden data-testid="fms-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.username} onValue={(v) => F({ username: v })}
+                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) F({ username: "" }); }}
+                    invalid={handleBad && !isEmpty} testId="fms-bc" inputId="fms-handle" />
+                </div>
+              ) : (
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }} htmlFor="fms-handle">{t.rd_ps2_handle}</label>
@@ -324,6 +351,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
                   {t.rd_ps2_no_handle}
                 </label>
               </div>
+              )}
               {saveErr && <div style={errTxt} data-testid="fms-save-err">{t.rd_ps2_err_save}</div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : onManualSave())} disabled={saveBlocked} style={{ ...btnFull(!saveBlocked), flex: 2 }} data-testid="fms-save">{t.rd_ps2_save}</button>
@@ -465,7 +493,7 @@ export default function FmParcelScan({ cur = "NT$" }: { cur?: string }) {
             <button onClick={() => setCustOpen(false)} aria-label={t.rd_cd_close}
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="fms-customers-close">✕</button>
-            <FmCustomerDetails cur={cur} fee={fee} onImported={() => { setCustOpen(false); reloadSaved(); }} />
+            <FmCustomerDetails cur={cur} fee={fee} contactOn={contactOn} onImported={() => { setCustOpen(false); reloadSaved(); }} />
           </div>
         </div>,
         portalRoot,

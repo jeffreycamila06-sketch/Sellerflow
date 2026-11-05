@@ -11,6 +11,7 @@ export interface FmCustomer {
   name: string;          // "" when the row has no name
   storeId: string;
   buyerUsername: string;
+  contactPlatform?: string | null; // buyer contact platform (sql/140); absent/null = TikTok / legacy
   createdAt: string;
   updatedAt: string;
 }
@@ -20,6 +21,7 @@ export interface FmCustomerEdit {
   phone: string | null;
   store_id: string | null;
   buyer_username: string | null;
+  contact_platform?: string | null; // sql/140 — present only when the picker is on (or clearing a stale one)
 }
 
 type Res<T> = { ok: boolean; error?: string } & T;
@@ -34,10 +36,11 @@ function toCustomer(r: Record<string, unknown>): FmCustomer {
   return {
     id: String(r.id), phone: String(r.phone ?? ""), name: String(r.name ?? ""), storeId: String(r.store_id ?? ""),
     buyerUsername: String(r.buyer_username ?? ""), createdAt: String(r.created_at ?? ""), updatedAt: String(r.updated_at ?? ""),
+    ...(r.contact_platform != null ? { contactPlatform: String(r.contact_platform) } : {}),
   };
 }
 
-const COLS = "id, phone, name, store_id, buyer_username, created_at, updated_at";
+const COLS = "id, phone, name, store_id, buyer_username, contact_platform, created_at, updated_at";
 const TABLE = "fm_parcel_customers";
 
 // Search by name / phone / @username. Blank query → no rows (the screen shows recent instead).

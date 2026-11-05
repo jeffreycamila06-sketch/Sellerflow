@@ -30,6 +30,8 @@ import { useWakeLock } from "../adapters/useWakeLock";
 import { decodeQrFromFile } from "../adapters/qrDecode";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import CustomerDetails from "./CustomerDetails";
+import BuyerContactField from "../components/BuyerContactField";
+import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -72,8 +74,9 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
 // the render): ⚠️ full → orange, 🚫 restricted / wrong store code → red (red
 // wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
 // only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
-const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null }): boolean =>
-  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted";
+const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null; frozenStoreStatus?: string | null; tempLayer?: string; status?: string }, frozenOn = false): boolean =>
+  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted"
+  || (frozenOn && r.status !== "exported" && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus === "no_frozen"); // sql/142 — 冷凍 rows only, switch on, not exported; a dry row never reads the frozen column
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
 function untilDate(iso: string | null): string {
   if (!iso) return "";
@@ -98,9 +101,10 @@ const formToFields = (f: FormState): ScanFields => ({
 });
 
 // Export attention reason → i18n key.
-type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
+type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_no_frozen" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount" | "rd_ps2_x_frozen_settings";
 const reasonKey = (r: ExportReason): ReasonKey =>
   r === "frozen_settings" ? "rd_ps2_x_frozen_settings"
+  : r === "no_frozen" ? "rd_ps2_x_no_frozen"
   : r === "wrong_store" ? "rd_ps2_x_wrong_store"
     : r === "store_full" ? "rd_ps2_x_store_full"
       : r === "restricted_number" ? "rd_ps2_x_restricted"
@@ -132,7 +136,10 @@ type ExportClaim = {
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
 // pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
 // no auth); defaults to the everyone-cap so standalone renders keep 40.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, frozenCheckOn = false }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; frozenCheckOn?: boolean }) {
+  // sql/142: the frozen (冷凍) store check's lines, export exclusion and ⟳ exist only while the
+  // app_settings switch reads exactly 'true' — off, a 冷凍 row looks exactly like main (✅).
+  const fzOn = frozenCheckOn;
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -149,6 +156,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // form clear (clearForm) — i.e. after each save, on cancel, and when a scan populates.
   const [noHandle, setNoHandle] = useState(false);
   const clearForm = () => { setForm(emptyForm); setNoHandle(false); };
+  // Buyer contact platform (sql/140). STAYS on the last chosen one after each save (a batch is
+  // usually from one app); only an edit pre-fills it from the row. Saved as NULL for TikTok and
+  // for "no contact" (NULL = TikTok / legacy). Nothing here renders unless contactOn.
+  const [platform, setPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const platformToSave: string | null = noHandle || platform === "tiktok" ? null : platform;
+  const withContact = (f: FormState): FormState => (contactOn ? { ...f, notes: noHandle ? "" : normalizeContact(platform, f.notes) } : f);
   const [confid, setConfid] = useState<Record<keyof ScanFields, ScanConfidence> | null>(null);
   const [rawExtraction, setRawExtraction] = useState<{ fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null>(null);
   const [saveErr, setSaveErr] = useState("");
@@ -359,7 +372,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   useEffect(() => { verdictSnapRef.current = rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus })); }, [listLoaded]);
   // M3: 3 s while a fresh (<3 min) row awaits, 30 s when only older rows do
   // (checker slow/down — watch cheaply), off when none await.
-  const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS) : null;
+  const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS, fzOn) : null;
   useEffect(() => {
     if (pollMs === null || !pageVisible) return;
     let live = true;
@@ -378,7 +391,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   }, [pollMs, pageVisible]);
   // Build 15 — the top bar's "needs attention" half + the new-problem alert (display only; the
   // problem rule is the rows' own red/orange flag, see adapters/parcelAttention.ts).
-  const problems = problemRows(rows);
+  const problems = problemRows(rows, fzOn);
   const problemCount = problems.length;
   // Ids already alerted: seeded with the problems present when the list first loads (no alert
   // for those), then every NEW problem parcel alerts once — never again for the same parcel.
@@ -386,11 +399,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [attnToast, setAttnToast] = useState<{ seq: number; text: string } | null>(null);
   if (listLoaded && alerted === null) setAlerted(new Set(problems.map((r) => r.id)));      // adjust-during-render
   else if (alerted !== null) {
-    const fresh = newProblemRows(alerted, rows);
+    const fresh = newProblemRows(alerted, rows, fzOn);
     if (fresh.length > 0) {
       const first = fresh[0];
-      const kind = problemOf(first);
-      const reason = kind === "wrong_store" ? t.rd_ps2_x_wrong_store : kind === "full" ? t.rd_ps2_x_store_full : t.rd_ps2_x_restricted;
+      const kind = problemOf(first, fzOn);
+      const reason = kind === "wrong_store" ? t.rd_ps2_x_wrong_store : kind === "full" ? t.rd_ps2_x_store_full : kind === "no_frozen" ? t.rd_ps2_x_no_frozen : t.rd_ps2_x_restricted;
       const code = alertStoreCode(first);
       setAlerted(new Set([...alerted, ...fresh.map((r) => r.id)]));
       setAttnToast((prev) => ({ seq: (prev?.seq ?? 0) + 1, text: `⚠ ${reason}${code ? ` · ${code}` : ""}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ""}` }));
@@ -423,7 +436,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hlSeq]);
-  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && !(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)));
+  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && (!(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)) || (fzOn && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus !== "ok")));
   useEffect(() => {
     if (!anyUnresolved || !pageVisible) return;
     const id = setInterval(() => setNowMs(Date.now()), 15000);
@@ -621,7 +634,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     const st = await waitFrozen(); // never save before the frozen state is known
     if (st.blocked) { setSaveErr(t.rd_ps2_frozen_blocked); return false; }
     const layer = st.allowed ? st.mode : undefined; // no control → no temp_layer sent (DB default 常溫)
-    const r = await saveParcelScan(fields, rawExtraction, layer);
+    const r = contactOn ? await saveParcelScan(fields, rawExtraction, layer, platformToSave) : await saveParcelScan(fields, rawExtraction, layer);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return false; }
     const rowId = r.id || `local-${Date.now()}`;
     const storeId = fields.store_id ?? "";
@@ -632,6 +645,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       storeId,
       amount: fields.amount,
       notes: fields.notes ?? "",
+      ...(contactOn && platformToSave ? { contactPlatform: platformToSave } : {}),
       status: "confirmed",
       storeCheckStatus: /^\d{6}$/.test(storeId) ? "checking" : null,
       ...(layer ? { tempLayer: layer } : {}),
@@ -648,7 +662,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
-    const ok = await commitNewParcel(formToFields(form));
+    const ok = await commitNewParcel(formToFields(withContact(form)));
     setSaving(false);
     if (!ok) return;
     setScanCount((c) => c + 1); // this-session saved counter (camera + picker)
@@ -662,7 +676,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onManualSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
-    const ok = await commitNewParcel(formToFields(form));
+    const ok = await commitNewParcel(formToFields(withContact(form)));
     setSaving(false);
     if (!ok) return;
     setManualCount((c) => c + 1);
@@ -675,7 +689,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // store_check_status != 'not_found'), NOT all non-exported rows — a wrong-code
   // parcel is never counted and never lands in the .xlsm. unknown/null store
   // checks stay READY (soft-warned). Same split the build below uses.
-  const readyRows = splitScansForExport(rows, fee, frozen.cfg).ready;
+  const readyRows = splitScansForExport(rows, fee, frozen.cfg, fzOn).ready;
   const readyCount = readyRows.length;
   const frozenReady = readyRows.filter((r) => isFrozenLayer(r.tempLayer)).length;
   // Per row: dry rows get exactly today's options; frozen rows get D=冷凍 + the frozen fee/cap.
@@ -695,7 +709,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     await releaseRef.current; // a just-released claim must land before we re-read
     const fresh = await loadParcelScans();
     if (!fresh.ok) throw new Error(fresh.error || "load_failed");
-    const { ready, attention } = splitScansForExport(fresh.rows, fee, frozen.cfg);
+    const { ready, attention } = splitScansForExport(fresh.rows, fee, frozen.cfg, fzOn);
     const c = await markScansExported(ready.map((r) => r.id));
     if (!c.ok) throw new Error(c.error || "claim_failed");
     const wonIds = new Set(c.claimed);
@@ -834,12 +848,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (!confirm || confirm.kind !== "recheck" || deleting) return;
     const id = confirm.id;
     setDeleting(true); setDeleteErr("");
-    const r = await resetExtensionChecks(id);
+    const frozenRow = fzOn && isFrozenLayer(rows.find((x) => x.id === id)?.tempLayer);
+    const r = frozenRow ? await resetExtensionChecks(id, true) : await resetExtensionChecks(id); // 冷凍 + switch on → the frozen verdict is reset too; a dry row = today's exact call
     setDeleting(false);
     if (!r.ok) { setDeleteErr(r.error || "recheck_failed"); return; }
     if (aliveRef.current) {
       setRows((prev) => prev.map((x) => (x.id === id
-        ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null }
+        ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null, frozenStoreStatus: null }
         : x)));
       setConfirm(null);
     }
@@ -880,7 +895,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // NEVER a hard block (the checker may be down); only while the checks feature is on.
   const askExport = () => {
     if (frozen.blocked) return; // unknown Dry / Frozen state → no export until Retry works
-    const pending = checkOn ? readyRows.filter(rowCheckUnresolved).length : 0;
+    const pending = checkOn ? readyRows.filter((r) => rowCheckUnresolved(r, fzOn)).length : 0;
     if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
     openExportDialog();
   };
@@ -955,6 +970,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (busy || r.status === "exported") return;
     setSaveErr("");
     setForm({ name: r.customerName, phone: r.phone, store: r.storeId, amount: r.amount == null ? "" : String(r.amount), notes: r.notes }); setNoHandle(false);
+    setPlatform(platformOf(r.contactPlatform)); // NULL = TikTok
     setEditLayer(isFrozenLayer(r.tempLayer) ? TEMP_FROZEN : TEMP_DRY);
     setConfid(null); // no low-confidence highlights on a manual edit
     setEditing({ id: r.id });
@@ -964,19 +980,28 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (!editing || saving) return;
     setSaving(true); setSaveErr("");
     const id = editing.id;
-    const fields = formToFields(form);
+    const fields = formToFields(withContact(form));
     const newStore = fields.store_id ?? "";
     const newPhone = fields.phone ?? "";
     const prev = rows.find((x) => x.id === id);
     const storeChanged = (prev?.storeId ?? "") !== newStore;
     const phoneChanged = (prev?.phone ?? "") !== newPhone;
+    // Contact platform (sql/140): picker on → its value; picker off → clear a STALE platform when
+    // the handle changed (v2 item 7); a row with no platform keeps a payload with no new key.
+    const notesChanged = (prev?.notes ?? "") !== (fields.notes ?? "");
+    const contactArg: string | null | undefined = contactOn ? platformToSave : (prev?.contactPlatform != null && notesChanged ? null : undefined);
     // Changed store/phone → null the extension verdict for that field IN THE SAME
     // update, so the extension re-checks (a stale 'full'/'restricted' from the old
     // store/phone must not linger). The app never calls 賣貨便 itself.
     const st = await waitFrozen();
     if (st.blocked) { setSaving(false); setSaveErr(t.rd_ps2_frozen_blocked); return; }
     const layer = st.allowed ? editLayer : undefined; // only sellers with the control can change it (else the row keeps its own)
-    const r = await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }, layer); // own-scoped UPDATE, NO credit
+    // sql/142: a 冷凍 row's new store code voids its frozen verdict too — switch on or off (the old store's
+    // verdict must never come back when the switch is turned on); a dry row's payload stays byte-identical
+    const frozenReset = storeChanged && isFrozenLayer(layer ?? prev?.tempLayer);
+    const r = contactArg === undefined
+      ? await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged, ...(frozenReset ? { frozen: true } : {}) }, layer) // own-scoped UPDATE, NO credit (today's exact call)
+      : await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged, ...(frozenReset ? { frozen: true } : {}) }, layer, contactArg);
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
     if (aliveRef.current) {
@@ -987,10 +1012,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         storeId: newStore,
         amount: fields.amount,
         notes: fields.notes ?? "",
+        ...(contactArg !== undefined ? { contactPlatform: contactArg } : {}),
         // Store code changed → clear the stale ❌/verdict now; re-check below if valid.
         storeCheckStatus: storeChanged ? null : x.storeCheckStatus,
         // Extension verdicts reset locally to match the DB nulling above.
         storeFullStatus: storeChanged ? null : x.storeFullStatus,
+        ...(frozenReset ? { frozenStoreStatus: null } : {}), // on screen too, so a red no_frozen row clears with its new store code
         phoneCheckStatus: phoneChanged ? null : x.phoneCheckStatus,
         phoneRestrictedUntil: phoneChanged ? null : x.phoneRestrictedUntil,
         ...(layer ? { tempLayer: layer } : {}),
@@ -1018,7 +1045,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const errs = formErrors(form, formFee, requireStore, editing === null, noHandle, formMinTotal); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
-  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing) || frozen.blocked;
+  const contactErr = contactOn && !noHandle && contactError(platform, form.notes) !== ""; // WhatsApp: 8–15 digits or Save is blocked
+  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || contactErr || (batchFull && !editing) || frozen.blocked;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
 
@@ -1037,6 +1065,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       if (handle) {
         F({ notes: handle.slice(0, 50) }); // handle only (never a raw URL / random QR)
         setNoHandle(false);                // text present → "no handle" can't be true (rule 4)
+        if (contactOn) setPlatform("tiktok"); // a sticker QR is always the buyer's TikTok
         setToast(t.rd_ps2_qr_filled); setTimeout(() => setToast(""), 2500);
       } else {
         setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); // field left as-is
@@ -1275,7 +1304,20 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 Details" button aligned right — opens the phonebook overlay. */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>{editing ? t.rd_ps2_edit_title : manual ? t.rd_ps2_manual_title : tpl(t.rd_ps2_confirm, progress)}</div>
-              {manual && (
+              {contactOn ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: qrBusy ? 0.6 : 1 }} data-testid="ps-scan-qr">
+                    {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
+                  </button>
+                  {manual && (
+                    <button
+                  onClick={() => setCustOpen(true)}
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+                  data-testid="ps-open-customers"
+                >📇 {t.rd_ps2_from_customers}</button>
+                  )}
+                </div>
+              ) : manual && (
                 <button
                   onClick={() => setCustOpen(true)}
                   style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
@@ -1320,6 +1362,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     : <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${minParcelAmount(formFee, formMinTotal)}` })}</div>)
                   : amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
+              {contactOn ? (
+                <div>
+                  <input ref={qrRef} type="file" accept="image/*" hidden data-testid="ps-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.notes} onValue={(v) => F({ notes: v })}
+                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) F({ notes: "" }); }}
+                    invalid={errs.handle && !errs.empty} testId="ps-bc" inputId="ps-handle" />
+                </div>
+              ) : (<>
               {/* Buyer @username — REQUIRED (no toggle). Stored in parcel_scans.notes →
                   賣貨便 col J (其他資訊), so the F-code↔handle round-trip via 匯出報表
                   keeps working. Verbatim (IG/LINE/FB vary); blank blocks Save on new rows.
@@ -1351,6 +1401,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {t.rd_ps2_no_handle}
                 </label>
               </div>
+              </>)}
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save}</div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
@@ -1487,11 +1538,16 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             // inline Recheck = the encode-time server check; an extension "NO2" is cleared
             // by the ⟳ button instead (that re-runs the extension check)
             const canRecheck = !r.id.startsWith("local-") && r.storeFullStatus !== "not_found" && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
-            const needsExtRecheck = extNeedsRecheck(r) && !r.id.startsWith("local-");
+            const needsExtRecheck = extNeedsRecheck(r, fzOn) && !r.id.startsWith("local-");
             // DISPLAY-ONLY row highlight (2026-09-27): a passing check needs no label;
             // a problem shows as a glowing border. RED (more serious, wins) = restricted
             // buyer OR wrong/invalid store code; ORANGE = store full. Clean = no border.
-            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r);
+            // sql/142 FROZEN rows only: no_frozen = red (blocked, like a full store); ok = normal;
+            // null / unknown = an amber "checking" line instead of the green all-clear. Dry rows: nothing.
+            const frozenRow = fzOn && isFrozenLayer(r.tempLayer);
+            const frozenNo = frozenRow && r.status !== "exported" && r.frozenStoreStatus === "no_frozen";
+            const frozenOk = !frozenRow || r.status === "exported" || r.frozenStoreStatus === "ok"; // exported 冷凍 rows keep ✅
+            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r) || frozenNo;
             const rowOrange = !rowRed && r.storeFullStatus === "full";
             const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
@@ -1517,6 +1573,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {r.storeFullStatus === "full" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-badge-full">⚠️ {t.rd_ps2_full}</div>
                   )}
+                  {/* sql/142: the store can't receive frozen — red, may wrap to 2 lines on a phone (never cut) */}
+                  {frozenNo && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)", overflowWrap: "anywhere", whiteSpace: "normal" }} data-testid="ps-frozen-no">{t.rd_ps2_frozen_no}</div>
+                  )}
                   {r.phoneCheckStatus === "restricted" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-badge-restricted">
                       🚫 {r.phoneRestrictedUntil ? tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) }) : t.rd_ps2_restricted}
@@ -1526,8 +1586,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       Phone ok but store null/unknown → an AMBER pending line — it must
                       never read as all-clear. (Red restricted / orange full still surface
                       immediately above, independent of the other half.) */}
-                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && (
+                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && frozenOk && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
+                  )}
+                  {/* sql/142: a 冷凍 row whose normal checks passed but whose frozen answer is still
+                      null / unknown — amber "Checking frozen…" instead of the all-clear (never red) */}
+                  {checkOn && r.status !== "exported" && !rowRed && !rowOrange && r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && !frozenOk && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)", overflowWrap: "anywhere" }} data-testid="ps-frozen-unchecked">{t.rd_ps2_frozen_unchecked}</div>
                   )}
                   {/* ONE pending line: ⏳ Checking (animated dots) until BOTH halves resolve,
                       unless the row is already red (restricted / wrong code) or orange
@@ -1632,7 +1697,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="ps-customers-close"
             >✕</button>
-            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} onImported={() => { setCustOpen(false); reloadSaved(); }} />
+            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,

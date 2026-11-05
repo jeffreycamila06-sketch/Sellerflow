@@ -503,8 +503,8 @@ Keywords: bluetooth off, bluetooth, printer busy, another app, other phone, naka
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.
 
 ## parcel-scan — Parcel Scan (7-11) and Customer Details
-Last checked: 2026-10-31
-Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家
+Last checked: 2026-11-03
+Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家, buyer contact, whatsapp, line, messenger, instagram, contact ng buyer, 買家聯絡方式, 买家联系方式, liên hệ người mua, ช่องทางติดต่อผู้ซื้อ, kontak pembeli
 
 **Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
 
@@ -517,12 +517,13 @@ Who sees what:
 **Parcel Scan 7-11**
 1. Tap **Manual encode (no camera)** and type the customer name (2 to 10 letters — a Chinese character counts as 2, so 1 to 5 Chinese characters; no numbers or symbols), phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
 2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo.
-3. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel.
-4. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.
+3. **Buyer contact** (Plus / Pro / Master): under the amount, tap the buyer's app — TikTok, LINE, WhatsApp, Facebook, Instagram or Other — then type the contact: TikTok or Instagram @username, LINE ID (not the phone number), WhatsApp number (Taiwan 09… works; other countries with the country code), Facebook name or profile link. The app you picked stays selected for the next parcel. Tick **Buyer has no contact** if there is none. A WhatsApp number that is not 8–15 digits shows a short message and cannot be saved. Scan QR still fills the TikTok @username.
+4. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel (the buyer's app and contact come back with them; you can change them before Import or with ✏️ Edit).
+5. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.
 
 **Parcel Scan FamilyMart (全家)** — in **Settings**, next to Parcel Scan 7-11.
 1. Tap **✏️ Add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
-2. **▣ Scan QR** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
+2. **▣ Scan QR**, **Buyer contact** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
 3. Tap **Export N parcel(s)**, then **Export**, and upload the file on 好賣+ → 大量匯單.
 
 Both:
@@ -532,8 +533,8 @@ Both:
 - A field with a mistake shows a short message under it.
 
 ## pickup-status — Pickup Status
-Last checked: 2026-10-22
-Keywords: pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export
+Last checked: 2026-11-04
+Keywords: pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export, whatsapp, line, messenger, instagram, copy message, remind buyer, 催取件訊息, 提醒買家, nhắc người mua, เตือนผู้ซื้อ, ingatkan pembeli
 
 **Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
 
@@ -550,6 +551,7 @@ Who has it:
 3. Upload a new file whenever you want newer statuses.
 
 - 7-11 and 全家 parcels are in one list. Each row has a small **7-11** or **全家** label.
+- **Buyer waiting for pickup** rows have a button for the buyer's app: **WhatsApp** opens the chat with a ready reminder (name, store, amount, pick-up-by date); **LINE** and **Instagram** open the buyer and copy the reminder so you can paste it; **Facebook** opens the buyer's Facebook (**Messenger** when it is a username) and copies the reminder; **TikTok** opens the buyer's TikTok profile; **Copy message** copies the reminder; **Copy** copies the contact. The app comes from what you picked in Parcel Scan; parcels saved before this had a TikTok @username and open TikTok.
 - Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
 - Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
 - "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.

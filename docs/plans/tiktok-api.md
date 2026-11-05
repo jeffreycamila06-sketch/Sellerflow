@@ -183,3 +183,9 @@ Starts with the real TikTok consent screen. Fallback: if TikTok rejects a scope,
 ## Out of scope
 TikTok LIVE via official API (doesn't exist). Marketing API (Spark Ads, lead forms) — later.
 "Sign in with TikTok" to SFL — later.
+
+## Note for sql/138 and sql/139 (added 2026-11-03 by the buyer-contact branch)
+sql/140 (buyer contact) adds the preview key `'buyer_contact'` to `my_feature_access()`. Whichever of
+138 / 139 / 140 is applied LAST must rebuild `my_feature_access()` from the LIVE definition
+(`pg_get_functiondef`) keeping every key the live function has — `'buyer_contact'` included.
+

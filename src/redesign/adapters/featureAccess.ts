@@ -17,6 +17,7 @@ export const FEATURE_KEYS = [
   "test_printers", // generic BLE label printers in the printer picker (sql/123)
   "tiktok_send",   // Send to TikTok on the Orders buyer card, for non-admin testers (sql/126)
   "fb_post_sales", // Facebook Post Sales testers (sql/137); admins see it without the key
+  "buyer_contact", // buyer contact picker + Pickup Status contact buttons before the switch (sql/140)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

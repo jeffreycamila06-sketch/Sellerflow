@@ -1,0 +1,632 @@
+[
+ {
+  "tag": "iphone390_light_en",
+  "vw": 390,
+  "docScrollW": 390,
+  "bodyScrollW": 390,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 360,
+    "lineText": "❄ This store can't receive frozen. Ask the buyer for another 7-11.",
+    "lineLines": null,
+    "lineRight": 156,
+    "lineHeight": 39
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "❄ Checking frozen…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "✅ Buyer OK",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "iphone390_light_zh-TW",
+  "vw": 390,
+  "docScrollW": 390,
+  "bodyScrollW": 390,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 360,
+    "lineText": "❄ 此門市無法收冷凍，請向買家詢問其他 7-11 門市。",
+    "lineLines": null,
+    "lineRight": 156,
+    "lineHeight": 45
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "❄ 冷凍確認中…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 15
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "✅ 買家正常",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "iphone390_light_fil",
+  "vw": 390,
+  "docScrollW": 390,
+  "bodyScrollW": 390,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 360,
+    "lineText": "❄ Hindi tumatanggap ng frozen ang store na ito. Humingi ng ibang 7-11 sa buyer.",
+    "lineLines": null,
+    "lineRight": 156,
+    "lineHeight": 52
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "❄ Chine-check ang frozen…",
+    "lineLines": null,
+    "lineRight": 172,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "✅ OK ang buyer",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "iphone390_dark_en",
+  "vw": 390,
+  "docScrollW": 390,
+  "bodyScrollW": 390,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 360,
+    "lineText": "❄ This store can't receive frozen. Ask the buyer for another 7-11.",
+    "lineLines": null,
+    "lineRight": 156,
+    "lineHeight": 39
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "❄ Checking frozen…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "✅ Buyer OK",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "iphone390_dark_zh-TW",
+  "vw": 390,
+  "docScrollW": 390,
+  "bodyScrollW": 390,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 360,
+    "lineText": "❄ 此門市無法收冷凍，請向買家詢問其他 7-11 門市。",
+    "lineLines": null,
+    "lineRight": 156,
+    "lineHeight": 45
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "❄ 冷凍確認中…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 15
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "✅ 買家正常",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "iphone390_dark_fil",
+  "vw": 390,
+  "docScrollW": 390,
+  "bodyScrollW": 390,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 360,
+    "lineText": "❄ Hindi tumatanggap ng frozen ang store na ito. Humingi ng ibang 7-11 sa buyer.",
+    "lineLines": null,
+    "lineRight": 156,
+    "lineHeight": 52
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "❄ Chine-check ang frozen…",
+    "lineLines": null,
+    "lineRight": 172,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 360,
+    "lineText": "✅ OK ang buyer",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "android412_light_en",
+  "vw": 412,
+  "docScrollW": 412,
+  "bodyScrollW": 412,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 382,
+    "lineText": "❄ This store can't receive frozen. Ask the buyer for another 7-11.",
+    "lineLines": null,
+    "lineRight": 182,
+    "lineHeight": 39
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "❄ Checking frozen…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "✅ Buyer OK",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "android412_light_zh-TW",
+  "vw": 412,
+  "docScrollW": 412,
+  "bodyScrollW": 412,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 382,
+    "lineText": "❄ 此門市無法收冷凍，請向買家詢問其他 7-11 門市。",
+    "lineLines": null,
+    "lineRight": 182,
+    "lineHeight": 30
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "❄ 冷凍確認中…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 15
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "✅ 買家正常",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "android412_light_fil",
+  "vw": 412,
+  "docScrollW": 412,
+  "bodyScrollW": 412,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 382,
+    "lineText": "❄ Hindi tumatanggap ng frozen ang store na ito. Humingi ng ibang 7-11 sa buyer.",
+    "lineLines": null,
+    "lineRight": 182,
+    "lineHeight": 52
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "❄ Chine-check ang frozen…",
+    "lineLines": null,
+    "lineRight": 172,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "✅ OK ang buyer",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "android412_dark_en",
+  "vw": 412,
+  "docScrollW": 412,
+  "bodyScrollW": 412,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 382,
+    "lineText": "❄ This store can't receive frozen. Ask the buyer for another 7-11.",
+    "lineLines": null,
+    "lineRight": 182,
+    "lineHeight": 39
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "❄ Checking frozen…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "✅ Buyer OK",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "android412_dark_zh-TW",
+  "vw": 412,
+  "docScrollW": 412,
+  "bodyScrollW": 412,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 382,
+    "lineText": "❄ 此門市無法收冷凍，請向買家詢問其他 7-11 門市。",
+    "lineLines": null,
+    "lineRight": 182,
+    "lineHeight": 30
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "❄ 冷凍確認中…",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 15
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "✅ 買家正常",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "android412_dark_fil",
+  "vw": 412,
+  "docScrollW": 412,
+  "bodyScrollW": 412,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 382,
+    "lineText": "❄ Hindi tumatanggap ng frozen ang store na ito. Humingi ng ibang 7-11 sa buyer.",
+    "lineLines": null,
+    "lineRight": 182,
+    "lineHeight": 52
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "❄ Chine-check ang frozen…",
+    "lineLines": null,
+    "lineRight": 172,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 382,
+    "lineText": "✅ OK ang buyer",
+    "lineLines": null,
+    "lineRight": 157,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "desktop1280_light_en",
+  "vw": 1280,
+  "docScrollW": 1280,
+  "bodyScrollW": 1280,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 1250,
+    "lineText": "❄ This store can't receive frozen. Ask the buyer for another 7-11.",
+    "lineLines": null,
+    "lineRight": 600,
+    "lineHeight": 13
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "❄ Checking frozen…",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "✅ Buyer OK",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "desktop1280_light_zh-TW",
+  "vw": 1280,
+  "docScrollW": 1280,
+  "bodyScrollW": 1280,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 1250,
+    "lineText": "❄ 此門市無法收冷凍，請向買家詢問其他 7-11 門市。",
+    "lineLines": null,
+    "lineRight": 528,
+    "lineHeight": 15
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "❄ 冷凍確認中…",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 15
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "✅ 買家正常",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "desktop1280_light_fil",
+  "vw": 1280,
+  "docScrollW": 1280,
+  "bodyScrollW": 1280,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 1250,
+    "lineText": "❄ Hindi tumatanggap ng frozen ang store na ito. Humingi ng ibang 7-11 sa buyer.",
+    "lineLines": null,
+    "lineRight": 680,
+    "lineHeight": 13
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "❄ Chine-check ang frozen…",
+    "lineLines": null,
+    "lineRight": 412,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "✅ OK ang buyer",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "desktop1280_dark_en",
+  "vw": 1280,
+  "docScrollW": 1280,
+  "bodyScrollW": 1280,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 1250,
+    "lineText": "❄ This store can't receive frozen. Ask the buyer for another 7-11.",
+    "lineLines": null,
+    "lineRight": 600,
+    "lineHeight": 13
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "❄ Checking frozen…",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "✅ Buyer OK",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "desktop1280_dark_zh-TW",
+  "vw": 1280,
+  "docScrollW": 1280,
+  "bodyScrollW": 1280,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 1250,
+    "lineText": "❄ 此門市無法收冷凍，請向買家詢問其他 7-11 門市。",
+    "lineLines": null,
+    "lineRight": 528,
+    "lineHeight": 15
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "❄ 冷凍確認中…",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 15
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "✅ 買家正常",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 17
+   }
+  ]
+ },
+ {
+  "tag": "desktop1280_dark_fil",
+  "vw": 1280,
+  "docScrollW": 1280,
+  "bodyScrollW": 1280,
+  "rows": [
+   {
+    "id": "s4",
+    "flag": "red",
+    "rowRight": 1250,
+    "lineText": "❄ Hindi tumatanggap ng frozen ang store na ito. Humingi ng ibang 7-11 sa buyer.",
+    "lineLines": null,
+    "lineRight": 680,
+    "lineHeight": 13
+   },
+   {
+    "id": "s5",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "❄ Chine-check ang frozen…",
+    "lineLines": null,
+    "lineRight": 412,
+    "lineHeight": 13
+   },
+   {
+    "id": "s6",
+    "flag": "",
+    "rowRight": 1250,
+    "lineText": "✅ OK ang buyer",
+    "lineLines": null,
+    "lineRight": 397,
+    "lineHeight": 17
+   }
+  ]
+ }
+]

@@ -4661,6 +4661,57 @@ fails all 6 tests with the exact CI error.
 - `check:dist` also fails on any email address (except the support contact + placeholders) and on
   former internal phrases.
 
+## 2026-11-05 — FROZEN (冷凍) STORE CHECK v3 (branch `claude/frozen-store-check-v3`, NOT merged; extension 1.17.0; sql/142 NOT applied)
+ADD-ONLY rebuild of the parked frozen check (the two parked branches stay untouched). Probe on the NORMAL
+E-Map session (Jeff, 2026-11-05): byIDData `cate=27` answers the frozen capability on the same tab/guid
+(968551 → disable on 27 / enable on 3; 151003 → enable on both) → no second tab.
+- **Extension 1.17.0:** NEW `chrome-extension/frozen-check.js` (worker module, `importScripts` line + ONE
+  `pcFrozenKick(pass)` line in `pcRunOnce` — the only two lines added to background.js, zero changed) + NEW
+  `emap-frozen-711.js` (its own `PC_FROZEN_CHECK` listener, cate=27, same guid/endpoint logic). Kill switch
+  `app_settings.frozen_store_check_enabled` (exact 'true' only; read failure = off; ≤1 read-only GET/min is the
+  ONLY request when off — test-compared byte-for-byte to main). Frozen lane = leader-only, 冷凍 rows only
+  (the DB picks them), 1 row/store/pass, 10-min per-store floor (local + shared), 01:00–05:00 window skipped,
+  never awaited (a hung check never delays the normal lane), any failure = that parcel 'unknown'.
+- **sql/142 (+rollback):** `parcel_scans.frozen_store_status/_checked_at`, `store_frozen_cache`,
+  `store_frozen_check_log`, RPCs `admin_parcel_frozen_pending` / `admin_parcel_frozen_verdict`. no_frozen
+  cached 30 days (re-asked live only after that), ok 7 days, unknown retried 10 min and never overwrites no_frozen, Recheck
+  (NULL + kept checked_at) bypasses the cache. ⚠️ APPLY BEFORE the web deploy (the app selects the column).
+  Phonebook trigger untouched → no_frozen never removes a buyer. `scripts/sql142-behaviour.mjs` = 41 pglite checks.
+- **App (7-11 Parcel Scan, 冷凍 rows only):** no_frozen → red border + `rd_ps2_frozen_no` (wraps, never cut),
+  ⟳ offered, excluded from export (`no_frozen` reason); null/unknown → amber `rd_ps2_frozen_unchecked` instead of
+  the all-clear; ok → normal. Dry rows byte-identical (test-pinned). Previews: `docs/design/frozen-store-check/`.
+- **Review round (2026-11-05):** guarded `importScripts` (a missing/broken module never stops the worker); every
+  frozen fetch/RPC/tab message bounded (15 s, ping 3 s); leader + maintenance window re-checked before EACH row;
+  **never overlaps the normal lane** — a frozen request goes out only in a gap (`pcInFlight` empty, no E-Map keepalive
+  due or sent < 15 s ago; waits ≤ 5 s then retries next pass); fairness: 1 frozen row per pass while dry rows are
+  queued (3 with an empty queue) → ≥ 1 frozen request per ~5 s, never starved; self-heal: `PC_FROZEN_PING` → inject
+  `emap-frozen-711.js` when silent. sql/142: column added WITHOUT the inline check, constraint added NOT VALID,
+  `p_limit` capped at 25. App: the frozen lines/export exclusion/⟳/attention/awaiting exist only while the switch
+  reads 'true' (`featureSw.frozenStoreCheck` → `ParcelScan frozenCheckOn`); exported 冷凍 rows keep ✅; a store-code
+  edit clears the frozen verdict on screen; `mergeExtensionVerdicts`/`rowAwaitsVerdict` carry it; `problemOf`
+  "no_frozen" kind (after wrong/full/restricted); dry rows' write payloads byte-identical (frozen key only for 冷凍).
+- **Re-audit round 2 (switch-ON safety):** the frozen request goes out ONLY right at the kick (rows read in an
+  earlier pass; switch/rows refreshed AFTER it), at most ONE per pass (also when idle), never while a normal row is in
+  flight, the keepalive was sent < 25 s ago or is due within 20 s, another pass is before its row checks
+  (`kicks === pcEv.tick`), another pass already re-armed the loop at kick time (`pcTimer`), or Chrome's keepalive alarm
+  is due within 4 s. Content script: ONE endpoint per check (a non-verdict answer switches the NEXT check), 2.5 s abort;
+  worker cap 3 s. Injection ≤ 1 per tab per 10 min; the load guard is a liveness check (an orphaned copy after an
+  extension reload no longer blocks the new one). `frozen-check.js` = one IIFE, the only global is `pcFrozenKick`
+  (parsed-name test vs background.js). Empty pending read → 60 s before the next. App: exported 冷凍 rows are never a
+  problem / never offered ⟳; a 冷凍 row's store edit resets the verdict whatever the switch; sql/142 verdict skips
+  exported rows. **Realistic-timing sim** (`parcelCheckerSim.test.ts`, virtual clock, E-Map 0.8/3/8 s, 100 dry + 3
+  frozen, 30 min, ± the 30 s alarm): 0 overlaps both ways, normal lane request-for-request = main. Frozen answers only
+  when E-Map ≤ 2.5 s (slower → 'unknown', retried after 10 min). ⚠️ The sim shows MAIN's own normal/normal overlaps
+  when the 30 s alarm starts a second pass during a pass (pre-existing, out of scope — background.js is ADD-ONLY here).
+- **Rollout (Jeff):** apply sql/142 → merge → web deploy → install 1.17.0 on the Mac STANDBY first with the switch
+  'true' for 1 day → then the Windows checker laptops. Build: `npm run build:extension` → load `chrome-extension-dist/`.
+  ⚠️ **The frozen lane runs on the LEADER only.** For the 1-day Mac trial the Mac must be the leader: on the on-duty
+  Windows laptop open the extension popup → **Pause** (a paused leader hands duty to the other machine within ~2 min;
+  the Admin check-queue card then shows the Mac "on duty"). Leave Windows paused for the day (its tabs stay ready as
+  standby). To end the trial: Resume on Windows — the Mac stays leader until IT is paused (a returning machine stays
+  standby), so pause the Mac if duty should go back to Windows. Reload the E-Map tab once after installing 1.17.0
+  (belt and braces — the worker also injects `emap-frozen-711.js` itself when the tab doesn't answer).
+
 ## ⏸ PARKED (2026-10-06) — automated FROZEN (冷凍) store check
 Parked until the owner is back from his trip. `main` = exactly what ran before the frozen merge
 (revert of merge `5ed43c1` on `claude/park-frozen-check`; extension **1.15.1**; sql/81 was NEVER
