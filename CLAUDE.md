@@ -4676,7 +4676,7 @@ E-Map session (Jeff, 2026-11-05): byIDData `cate=27` answers the frozen capabili
   `store_frozen_check_log`, RPCs `admin_parcel_frozen_pending` / `admin_parcel_frozen_verdict`. no_frozen
   cached 1 h (+ hourly live recheck), ok 10 min, unknown retried 10 min and never overwrites no_frozen, Recheck
   (NULL + kept checked_at) bypasses the cache. ⚠️ APPLY BEFORE the web deploy (the app selects the column).
-  Phonebook trigger untouched → no_frozen never removes a buyer. `scripts/sql142-behaviour.mjs` = 39 pglite checks.
+  Phonebook trigger untouched → no_frozen never removes a buyer. `scripts/sql142-behaviour.mjs` = 41 pglite checks.
 - **App (7-11 Parcel Scan, 冷凍 rows only):** no_frozen → red border + `rd_ps2_frozen_no` (wraps, never cut),
   ⟳ offered, excluded from export (`no_frozen` reason); null/unknown → amber `rd_ps2_frozen_unchecked` instead of
   the all-clear; ok → normal. Dry rows byte-identical (test-pinned). Previews: `docs/design/frozen-store-check/`.
@@ -4690,6 +4690,19 @@ E-Map session (Jeff, 2026-11-05): byIDData `cate=27` answers the frozen capabili
   reads 'true' (`featureSw.frozenStoreCheck` → `ParcelScan frozenCheckOn`); exported 冷凍 rows keep ✅; a store-code
   edit clears the frozen verdict on screen; `mergeExtensionVerdicts`/`rowAwaitsVerdict` carry it; `problemOf`
   "no_frozen" kind (after wrong/full/restricted); dry rows' write payloads byte-identical (frozen key only for 冷凍).
+- **Re-audit round 2 (switch-ON safety):** the frozen request goes out ONLY right at the kick (rows read in an
+  earlier pass; switch/rows refreshed AFTER it), at most ONE per pass (also when idle), never while a normal row is in
+  flight, the keepalive was sent < 25 s ago or is due within 20 s, another pass is before its row checks
+  (`kicks === pcEv.tick`), another pass already re-armed the loop at kick time (`pcTimer`), or Chrome's keepalive alarm
+  is due within 4 s. Content script: ONE endpoint per check (a non-verdict answer switches the NEXT check), 2.5 s abort;
+  worker cap 3 s. Injection ≤ 1 per tab per 10 min; the load guard is a liveness check (an orphaned copy after an
+  extension reload no longer blocks the new one). `frozen-check.js` = one IIFE, the only global is `pcFrozenKick`
+  (parsed-name test vs background.js). Empty pending read → 60 s before the next. App: exported 冷凍 rows are never a
+  problem / never offered ⟳; a 冷凍 row's store edit resets the verdict whatever the switch; sql/142 verdict skips
+  exported rows. **Realistic-timing sim** (`parcelCheckerSim.test.ts`, virtual clock, E-Map 0.8/3/8 s, 100 dry + 3
+  frozen, 30 min, ± the 30 s alarm): 0 overlaps both ways, normal lane request-for-request = main. Frozen answers only
+  when E-Map ≤ 2.5 s (slower → 'unknown', retried after 10 min). ⚠️ The sim shows MAIN's own normal/normal overlaps
+  when the 30 s alarm starts a second pass during a pass (pre-existing, out of scope — background.js is ADD-ONLY here).
 - **Rollout (Jeff):** apply sql/142 → merge → web deploy → install 1.17.0 on the Mac STANDBY first with the switch
   'true' for 1 day → then the Windows checker laptops. Build: `npm run build:extension` → load `chrome-extension-dist/`.
   ⚠️ **The frozen lane runs on the LEADER only.** For the 1-day Mac trial the Mac must be the leader: on the on-duty

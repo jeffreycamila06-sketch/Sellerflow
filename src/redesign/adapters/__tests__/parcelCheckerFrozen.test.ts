@@ -1,38 +1,40 @@
 // 1.17.0 — the FROZEN (冷凍) store-check lane (chrome-extension/frozen-check.js) under the real
 // worker (background.js + importScripts) in the vm harness. Jeff's hard rules, each pinned:
-//   • ADD ONLY — background.js differs from main by exactly two ADDED lines (the import + the kick);
-//     no other extension file changed.
+//   • ADD ONLY — background.js differs from main by exactly two ADDED lines (the guarded import +
+//     the kick); the only other extension changes are the two new files and the manifest; the
+//     module shares NO top-level name with background.js and adds exactly ONE global.
 //   • switch OFF = byte-for-byte today's requests / DB writes / tab messages, compared against
 //     MAIN's background.js run under the same harness. The ONE allowed difference: a read-only
-//     GET of the switch row (≤ 1 per minute). Nothing else.
-//   • dry parcels are never read here (the DB picks 冷凍 rows); the normal lane's calls are
-//     identical with the frozen lane on.
-//   • error isolation: a throwing / hanging / silent emap script, a failing pending or verdict
-//     RPC — only THAT parcel gets 'unknown', the normal lane is untouched, the pass never waits.
-//   • budget: one row per store per pass, a 10-min per-store floor, the 01:00–05:00 window,
-//     leader-only, nothing without the E-Map tab.
+//     GET of the switch row (≤ 1 per minute).
+//   • the frozen request goes out ONLY right at the kick (rows read in an earlier pass; switch /
+//     rows refreshed after it), at most ONE per pass, only with no other pass running and no
+//     normal row / keepalive near — realistic-timing proof in parcelCheckerSim.test.ts.
+//   • error isolation, 3 s cap, per-row leader / window re-check, injection ≤ 1 per tab per
+//     10 min, no pending read for 60 s after an empty one.
+// The tests drive the loop through pcTick, exactly as production does (pcTimer is consumed at
+// the start of a pass and re-armed at its end).
 import { describe, it, expect, beforeAll } from "vitest";
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import vm from "node:vm";
+import ts from "typescript";
 import { bootWorker, PENDING_ROW } from "./parcelCheckerHarness";
 
 const S = 1000, MIN = 60 * S;
-const T0 = Date.UTC(2026, 0, 15, 2, 0, 0); // 10:00 Taipei, outside the maintenance window — in the PAST so the harness's fake JWT (exp = real now + 1 h) is valid on this clock
+const T0 = Date.UTC(2026, 0, 15, 2, 0, 0); // 10:00 Taipei, outside the maintenance window (in the past, so the harness's fake JWT is valid)
 type Opts = NonNullable<Parameters<typeof bootWorker>[0]>;
-// Always the leader (a fresh lease answer every call).
 const LEADER: Opts["lease"] = (b) => ({ json: { leader: true, reason: "leader", leader_id: b.p_worker_id, leader_label: "test", leader_age_s: 0, standby_ready: false, standby_age_s: null, ttl_s: 120 } });
 const FROZEN_ROWS = [
   { id: "fz-1", store_id: "968551", created_at: new Date(T0 - 60 * S).toISOString(), queue_depth: 3 },
-  { id: "fz-2", store_id: "968551", created_at: new Date(T0 - 50 * S).toISOString(), queue_depth: 3 }, // same store → not this pass
+  { id: "fz-2", store_id: "968551", created_at: new Date(T0 - 50 * S).toISOString(), queue_depth: 3 }, // same store as fz-1 → not picked with it
   { id: "fz-3", store_id: "151003", created_at: new Date(T0 - 40 * S).toISOString(), queue_depth: 3 },
 ];
 const flush = async (n = 12) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); };
-type Calls = ReturnType<typeof bootWorker>["calls"];
 type W = ReturnType<typeof bootWorker>;
-// The only thing that legitimately differs between two boots is the random worker id (lease
-// body + the Admin-card blob) — normalised so the traces compare byte-for-byte.
+type Calls = W["calls"];
+// The only legitimate difference between two boots is the random worker id — normalised.
 const wid = (w: W): string => String((w.storage.pc_worker as { id?: string } | undefined)?.id ?? "");
 const norm = (w: W, s: string): string => (wid(w) ? s.split(wid(w)).join("WID") : s);
 const trace = (w: W) => ({
@@ -41,6 +43,7 @@ const trace = (w: W) => ({
 });
 const SWITCH_GET = /rest\/v1\/app_settings\?select=key,value&key=eq\.frozen_store_check_enabled$/;
 const frozenFetches = (c: Calls) => c.fetch.filter((u) => /admin_parcel_frozen_/.test(u));
+const pendingReads = (c: Calls) => c.fetch.filter((u) => /admin_parcel_frozen_pending/.test(u)).length;
 const frozenMsgs = (c: Calls) => c.sendMessage.filter((m) => m.type === "PC_FROZEN_CHECK");
 const verdictBodies = (c: Calls) => c.fetch.map((u, i) => [u, c.fetchBodies[i]] as const).filter(([u]) => /admin_parcel_frozen_verdict/.test(u)).map(([, b]) => JSON.parse(b) as { p_id: string; p_expected_store: string; p_status: string });
 const normalLane = (w: W) => ({
@@ -48,153 +51,92 @@ const normalLane = (w: W) => ({
   msgs: w.calls.sendMessage.filter((m) => m.type !== "PC_FROZEN_CHECK" && m.type !== "PC_FROZEN_PING").map((m) => `${m.type}:${m.tabId}:${m.rowId ?? ""}`),
 });
 
-// MAIN's background.js, for the byte-for-byte comparison (fetched shallowly when the ref is missing, e.g. CI).
 let mainDir = "";
+let mainRef = "origin/main";
 beforeAll(() => {
   mainDir = join(tmpdir(), `sfl-main-ext-${process.pid}`);
   mkdirSync(mainDir, { recursive: true });
-  let ref = "origin/main";
-  try { execSync("git rev-parse --verify --quiet origin/main", { stdio: "pipe" }); } catch { execSync("git fetch --depth=1 origin main", { stdio: "pipe" }); ref = "FETCH_HEAD"; }
-  writeFileSync(join(mainDir, "background.js"), execSync(`git show ${ref}:chrome-extension/background.js`, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }));
+  try { execSync("git rev-parse --verify --quiet origin/main", { stdio: "pipe" }); } catch { execSync("git fetch --depth=1 origin main", { stdio: "pipe" }); mainRef = "FETCH_HEAD"; }
+  writeFileSync(join(mainDir, "background.js"), execSync(`git show ${mainRef}:chrome-extension/background.js`, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }));
 });
 
+// One pass = one pcTick (as the loop runs it), then 5 s on the clock.
+async function tick(w: W, clock: { t: number }, n = 1) { for (let i = 0; i < n; i++) { await w.sb.pcTick(); await flush(); clock.t += 5 * S; } }
 async function run(opts: Opts, ticks = 3) {
   const clock = { t: T0 };
   const w = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: LEADER, ...opts });
   await w.booted;
-  for (let i = 0; i < ticks; i++) { await w.sb.pcRunOnce(); await flush(); clock.t += 5 * S; }
+  await tick(w, clock, ticks);
   return { w, clock };
 }
 
-describe("ADD ONLY — the diff against main", () => {
-  it("background.js: exactly two ADDED lines (the import and the kick), zero removed or changed; every other existing extension file is byte-identical to main", () => {
-    const ref = (() => { try { execSync("git rev-parse --verify --quiet origin/main", { stdio: "pipe" }); return "origin/main"; } catch { return "FETCH_HEAD"; } })();
-    const diff = execSync(`git diff ${ref} -- chrome-extension/background.js`, { encoding: "utf8" });
-    const added = diff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++"));
-    const removed = diff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
-    expect(removed).toEqual([]);
-    expect(added.map((l) => l.slice(1).trim())).toEqual([
-      "try { importScripts(\"frozen-check.js\"); } catch (e) { console.log(`[PC-FROZEN] module not loaded: ${e && e.message}`); } // 1.17.0 ADD-ONLY: the FROZEN (冷凍) store check lives in its own module (kicked by one line in pcRunOnce); a missing/broken module never stops the worker",
-      "try { if (typeof pcFrozenKick === \"function\") pcFrozenKick(pass); } catch (e) { console.log(`[PC-FROZEN] skipped: ${e && e.message ? e.message : e}`); } // 1.17.0 ADD-ONLY: never awaited — the frozen check runs on its own promise; absent module = no-op",
-    ]);
-    for (const f of ["emap-711.js", "emap-guid-main.js", "myship-711.js", "myship-order-711.js", "myship-export-711.js", "myship-export-hook.js", "popup.js", "popup.html", "sellerflow-bridge.js", "sellerflow-refresh-main.js"]) {
-      expect(execSync(`git diff ${ref} -- chrome-extension/${f}`, { encoding: "utf8" }), f).toBe("");
-    }
-    const manifest = execSync(`git diff ${ref} -- chrome-extension/manifest.json`, { encoding: "utf8" }).split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
-    expect(manifest.map((l) => l.trim())).toEqual(['-  "version": "1.15.2",']); // only the version line changed; the new content-script entry is pure insertion
+// ── ADD ONLY ───────────────────────────────────────────────────────────────────
+describe("ADD ONLY — the diff against main, and the module's footprint", () => {
+  it("background.js: exactly two ADDED lines (guarded import + kick), nothing removed; only background.js, manifest.json and the two new files differ from main; manifest: only the version line changed", () => {
+    const diff = execSync(`git diff ${mainRef} -- chrome-extension/background.js`, { encoding: "utf8" }).split("\n");
+    expect(diff.filter((l) => l.startsWith("-") && !l.startsWith("---"))).toEqual([]);
+    const added = diff.filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1).trim());
+    expect(added).toHaveLength(2);
+    expect(added[0]).toMatch(/^try \{ importScripts\("frozen-check\.js"\); \} catch \(e\) \{ console\.log\(`\[PC-FROZEN\] module not loaded: /);
+    expect(added[1]).toMatch(/^try \{ if \(typeof pcFrozenKick === "function"\) pcFrozenKick\(pass\); \} catch \(e\) \{/);
+    expect(execSync(`git diff --name-only ${mainRef} -- chrome-extension`, { encoding: "utf8" }).trim().split("\n").sort()).toEqual(
+      ["chrome-extension/background.js", "chrome-extension/emap-frozen-711.js", "chrome-extension/frozen-check.js", "chrome-extension/manifest.json"]);
+    const man = execSync(`git diff ${mainRef} -- chrome-extension/manifest.json`, { encoding: "utf8" }).split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
+    expect(man.map((l) => l.trim())).toEqual(['-  "version": "1.15.2",']);
   });
-  it("the kick is the only call into the module from existing code, and the module never calls into the normal lane's row flow", () => {
-    const bg = readFileSync("chrome-extension/background.js", "utf8");
-    expect(bg.split("pcFrozen").length - 1).toBe(2); // the kick line only (typeof guard + the call), nothing else
-    const mod = readFileSync("chrome-extension/frozen-check.js", "utf8");
-    expect(mod).not.toMatch(/pcPollMulti|pcPoll\(|pcEmapKeepalive\(|pcRefreshTabStatus|pcBackoff|pcEv\.emap\.(lastVerdictAt|misses|lastMissAt)|PC_CHECK_STORE|admin_parcel_check_verdict|admin_parcel_checks_pending/);
+  it("C. frozen-check.js is ONE function scope: no top-level name shared with background.js (parsed), and loading it adds exactly ONE global — pcFrozenKick", () => {
+    const names = (file: string) => {
+      const sf = ts.createSourceFile(file, readFileSync(`chrome-extension/${file}`, "utf8"), ts.ScriptTarget.Latest, false, ts.ScriptKind.JS);
+      const out: string[] = [];
+      const bind = (n: ts.BindingName) => { if (ts.isIdentifier(n)) out.push(n.text); else for (const e of n.elements) if (!ts.isOmittedExpression(e)) bind(e.name); };
+      for (const st of sf.statements) {
+        if (ts.isVariableStatement(st)) for (const d of st.declarationList.declarations) bind(d.name);
+        else if ((ts.isFunctionDeclaration(st) || ts.isClassDeclaration(st)) && st.name) out.push(st.name.text);
+      }
+      return { out, count: sf.statements.length };
+    };
+    const bg = names("background.js"), fz = names("frozen-check.js");
+    expect(bg.out.length).toBeGreaterThan(100);    // the parse really saw background.js's top level
+    expect(fz.out).toEqual([]);                    // the module declares nothing at the top level…
+    expect(fz.count).toBe(1);                      // …it is a single statement (the IIFE)
+    expect(bg.out.filter((n) => fz.out.includes(n))).toEqual([]);
+    const ctx: Record<string, unknown> = {};
+    vm.createContext(ctx);
+    const before = new Set(vm.runInContext("Object.getOwnPropertyNames(globalThis)", ctx) as string[]);
+    vm.runInContext(readFileSync("chrome-extension/frozen-check.js", "utf8"), ctx);
+    expect((vm.runInContext("Object.getOwnPropertyNames(globalThis)", ctx) as string[]).filter((n) => !before.has(n))).toEqual(["pcFrozenKick"]);
   });
-  it("1. a MISSING frozen-check.js, or one that throws at load, never stops the worker: it boots and the normal lane writes its verdict", async () => {
+  it("the kick is the only call into the module, and the module never calls the normal lane's row flow nor assigns its state", () => {
+    expect(readFileSync("chrome-extension/background.js", "utf8").split("pcFrozen").length - 1).toBe(2);
+    const mod = readFileSync("chrome-extension/frozen-check.js", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1"); // code only, comments stripped
+    expect(mod).not.toMatch(/pcPollMulti|pcPoll\(|pcEmapKeepalive\(|pcRefreshTabStatus|pcBackoff|pcScheduleLoop|pcTick\(|PC_CHECK_STORE|admin_parcel_check_verdict|admin_parcel_checks_pending/);
+    expect(mod).not.toMatch(/\bpc(Timer|InFlight|LastKeepaliveAt|Lease|Ev)\s*=[^=]/);
+  });
+  it("a MISSING frozen-check.js, or one that throws at load, never stops the worker: it boots and the normal lane writes its verdict", async () => {
     for (const src of [null, 'throw new Error("boom at top level");'] as const) {
-      const clock = { t: T0 };
-      const w = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: LEADER, frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenModuleSrc: src });
-      await w.booted;
-      for (let i = 0; i < 3; i++) { await w.sb.pcRunOnce(); await flush(); clock.t += 5 * S; }
+      const { w } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenModuleSrc: src }, 3);
       expect(w.calls.logs.some((l) => /\[PC-FROZEN\] module not loaded: /.test(l)), String(src)).toBe(true);
       expect(w.calls.fetch.some((u) => /admin_parcel_check_verdict/.test(u)), `${src}: normal verdict`).toBe(true);
       expect(frozenMsgs(w.calls), String(src)).toEqual([]);
-      expect(w.calls.logs.filter((l) => /\[PC-FROZEN\] skipped/.test(l)), String(src)).toEqual([]); // the kick line is a no-op, not an error
+      expect(w.calls.logs.filter((l) => /\[PC-FROZEN\] skipped/.test(l)), String(src)).toEqual([]);
     }
   });
 });
 
-describe("timeouts, per-row gates, no-overlap, self-heal", () => {
-  const timersOf = (w: ReturnType<typeof bootWorker>, ms: number) => w.calls.timers.filter((t) => t.ms === ms);
-  it("2. a hung frozen check (never answers) → the 15 s timeout writes 'unknown' and the lane is not left busy (the next kick runs)", async () => {
-    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS.slice(0, 1), frozenVerdict: () => "hang" }, 1);
-    expect(frozenMsgs(w.calls)).toHaveLength(1);
-    expect(verdictBodies(w.calls)).toEqual([]);
-    clock.t += 20 * S;
-    await w.sb.pcRunOnce(); await flush();                       // still busy → no second frozen message
-    expect(frozenMsgs(w.calls)).toHaveLength(1);
-    const pending = timersOf(w, 15 * S);
-    expect(pending.length).toBeGreaterThan(0);
-    pending[pending.length - 1].fn(); await flush();             // the frozen-check timeout fires
-    expect(verdictBodies(w.calls).map((v) => `${v.p_id}:${v.p_status}`)).toEqual(["fz-1:unknown"]);
-    expect(w.calls.logs.some((l) => /frozen check timeout \(15s\)/.test(l))).toBe(true);
-    clock.t += 11 * MIN;                                         // past the store floor
-    await w.sb.pcRunOnce(); await flush();
-    expect(frozenMsgs(w.calls)).toHaveLength(2);                 // the lane is free again
-  });
-  it("2b. every frozen fetch / RPC / message is bounded: the switch read, the pending read, the verdict write", () => {
-    const mod = readFileSync("chrome-extension/frozen-check.js", "utf8");
-    expect(mod.match(/pcFrozenWithTimeout\(/g)?.length).toBe(6); // definition + switch + pending + ping (inside ensureScript) + check + verdict
-    expect(mod).toContain('"switch read")'); expect(mod).toContain('"pending read")'); expect(mod).toContain('"frozen check")'); expect(mod).toContain('"verdict write")'); expect(mod).toContain('"frozen ping")');
-  });
-  it("3. the leader and the maintenance window are re-checked before EACH row", async () => {
-    const clock = { t: T0 };
-    // the first frozen row's answer loses the lease (another machine took over) → the second row is not sent
-    const w = bootWorker({ now: () => clock.t, rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: () => { w.evalIn('pcLease.role = "standby";'); return "ok"; } });
-    await w.booted;
-    for (let i = 0; i < 4; i++) { await w.sb.pcRunOnce(); await flush(); clock.t += 5 * S; } // past the keepalive guard (empty queue → 3 rows per pass)
-    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
-    expect(w.calls.logs).toContain("[PC-FROZEN] lease lost mid-pass — stopping");
-    // maintenance: the clock enters the window after the first row
-    const clock2 = { t: Date.UTC(2026, 0, 15, 16, 59, 40) }; // 00:59:40 Taipei — the keepalive guard ends at :55, the window starts at 01:00
-    const w2 = bootWorker({ now: () => clock2.t, rows: [], lease: LEADER, maintenance: true, frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: () => { clock2.t += 5 * S; return "ok"; } });
-    await w2.booted;
-    for (let i = 0; i < 5; i++) { if (frozenMsgs(w2.calls).length) break; await w2.sb.pcRunOnce(); await flush(); clock2.t += 5 * S; } // the first row goes at :55; its answer moves the clock into the window
-    expect(frozenMsgs(w2.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
-    expect(w2.calls.logs).toContain("[PC-FROZEN] maintenance window started — stopping");
-  });
-  it("4. never overlaps the normal lane: 100 dry rows + 3 frozen → all 3 answered within 3 minutes and no frozen request while a normal one is open", async () => {
-    const dry = Array.from({ length: 100 }, (_, i) => ({ ...PENDING_ROW, id: `dry-${i + 1}`, store_id: String(100000 + i), queue_depth: 100 }));
-    const threeStores = [FROZEN_ROWS[0], { ...FROZEN_ROWS[1], store_id: "133712" }, FROZEN_ROWS[2]]; // three different stores (one per store per pass)
-    const clock = { t: T0 };
-    const w = bootWorker({ now: () => clock.t, rows: dry, lease: LEADER, slowChecks: true, frozenSwitch: "true", frozenPending: threeStores, frozenVerdict: () => "ok" });
-    await w.booted;
-    for (let i = 0; i < 36; i++) { await w.sb.pcRunOnce(); await flush(60); clock.t += 5 * S; } // 3 minutes of passes
-    expect(verdictBodies(w.calls).map((v) => v.p_id).sort()).toEqual(["fz-1", "fz-2", "fz-3"]);
-    expect(w.calls.frozenOverlap).toBe(0);
-    expect(w.calls.fetch.filter((u) => /admin_parcel_check_verdict/.test(u)).length).toBeGreaterThan(50); // the dry queue kept moving
-    expect(w.calls.logs.filter((l) => /\[PC-FROZEN\] row=/.test(l)).length).toBe(3);
-  });
-  it("4b. with a dry queue waiting, ONE frozen row per pass (fairness both ways); with an empty queue up to 3 — and never while the keepalive is due / just sent", async () => {
-    const dry = Array.from({ length: 10 }, (_, i) => ({ ...PENDING_ROW, id: `dry-${i + 1}`, queue_depth: 10 }));
-    const four = [...FROZEN_ROWS, { id: "fz-4", store_id: "222222" }];
-    const busy = await run({ rows: dry, frozenSwitch: "true", frozenPending: four }, 1);
-    expect(frozenMsgs(busy.w.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
-    const idle = await run({ rows: [], frozenSwitch: "true", frozenPending: four }, 1);
-    expect(frozenMsgs(idle.w.calls)).toHaveLength(0);                   // pass 1: the E-Map keepalive is due → wait (it fires in this pass)
-    expect(idle.w.calls.logs).toContain("[PC-FROZEN] normal lane busy — retry next pass");
-    for (let i = 0; i < 3; i++) { idle.clock.t += 5 * S; await idle.w.sb.pcRunOnce(); await flush(); }
-    expect(frozenMsgs(idle.w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3", "fz-4"]); // 15 s after the keepalive: three stores in one pass
-  });
-  it("5. self-heal: no answer from the frozen content script → it is injected into the E-Map tab and the check proceeds", async () => {
-    const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS.slice(0, 1), frozenScript: false }, 1);
-    expect(a.w.calls.injected).toEqual(["emap-frozen-711.js"]);
-    expect(a.w.calls.logs.some((l) => /emap-frozen-711\.js not answering on tab 3 → injected/.test(l))).toBe(true);
-    expect(frozenMsgs(a.w.calls)).toHaveLength(1);
-    expect(verdictBodies(a.w.calls).map((v) => v.p_status)).toEqual(["ok"]);
-    // the normal lane's own heal/injection is untouched: the existing executeScript path is never called for emap-711.js here
-    expect(a.w.calls.injected.filter((f) => f === "emap-711.js")).toEqual([]);
-  });
-});
-
+// ── switch OFF ─────────────────────────────────────────────────────────────────
 describe("switch OFF = today's worker (compared to main)", () => {
   for (const frozenSwitch of ["missing", "false", "error"] as const) {
     it(`switch ${frozenSwitch}: every request, DB write and tab message equals main's, except one read-only GET of the switch row per minute`, async () => {
       const a = await run({ frozenSwitch, frozenPending: FROZEN_ROWS }, 4);
       const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 4);
       const ours = trace(a.w), theirs = trace(m.w);
-      const extra = ours.fetch.filter(([u]) => SWITCH_GET.test(u));
-      expect(extra.length, "the switch GET: at most once a minute (4 ticks × 5 s = 1)").toBe(1);
+      expect(ours.fetch.filter(([u]) => SWITCH_GET.test(u)), "the switch GET: once in 4 passes × 5 s").toHaveLength(1);
       expect(ours.fetch.filter(([u]) => !SWITCH_GET.test(u))).toEqual(theirs.fetch);
       expect(ours.msgs).toEqual(theirs.msgs);
       expect(frozenFetches(a.w.calls)).toEqual([]);
       expect(frozenMsgs(a.w.calls)).toEqual([]);
-      expect(a.w.calls.logs.filter((l) => /\[PC-FROZEN\]/.test(l))).toEqual(["[PC-FROZEN] switch off"]);
     });
   }
-  it("'TRUE' / 'yes' / 1 are not the exact string 'true' → off", () => {
-    const src = readFileSync("chrome-extension/frozen-check.js", "utf8");
-    expect(src).toContain('r.value === "true"');
-  });
   it("the status/popup state the normal lane writes is identical with the module loaded (switch off)", async () => {
     const a = await run({ frozenSwitch: "false" }, 2);
     const m = await run({ extDir: mainDir }, 2);
@@ -203,102 +145,224 @@ describe("switch OFF = today's worker (compared to main)", () => {
   });
 });
 
+// ── switch ON ──────────────────────────────────────────────────────────────────
 describe("switch ON — the frozen lane", () => {
-  it("checks one row per store per pass with cate=27 through its own message, writes its own verdict RPC, and the NORMAL lane's calls are identical to main's", async () => {
+  it("pass 1 only READS (switch + rows, no E-Map request); then ONE frozen request per pass, cate=27 via its own message + its own verdict RPC; the NORMAL lane equals main's", async () => {
     const verdicts: Record<string, string> = { "968551": "no_frozen", "151003": "ok" };
-    const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => verdicts[row?.store_id ?? ""] ?? "unknown" }, 2);
-    expect(frozenMsgs(a.w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3"]); // one per pass while a dry row is queued; fz-2 = same store as fz-1, waits
-    expect(verdictBodies(a.w.calls)).toEqual([
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => verdicts[row?.store_id ?? ""] ?? "unknown" }, 1);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(pendingReads(w.calls)).toBe(1);
+    expect(w.calls.fetchBodies[w.calls.fetch.findIndex((u) => /admin_parcel_frozen_pending/.test(u))]).toBe('{"p_limit":3}');
+    await tick(w, clock, 1);
+    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
+    await tick(w, clock, 1);
+    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3"]); // fz-2 shares fz-1's store
+    expect(verdictBodies(w.calls)).toEqual([
       { p_id: "fz-1", p_expected_store: "968551", p_status: "no_frozen" },
       { p_id: "fz-3", p_expected_store: "151003", p_status: "ok" },
     ]);
-    expect(a.w.calls.fetchBodies[a.w.calls.fetch.findIndex((u) => /admin_parcel_frozen_pending/.test(u))]).toBe('{"p_limit":3}');
-    expect(frozenMsgs(a.w.calls).every((m) => m.tabId === 3)).toBe(true); // the E-Map tab the normal lane picked
-    const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 2);
-    expect(normalLane(a.w)).toEqual(trace(m.w));
-    expect(a.w.calls.logs.filter((l) => /\[PC-FROZEN\] row=/.test(l))).toEqual(["[PC-FROZEN] row=fz-1 store=968551 → no_frozen", "[PC-FROZEN] row=fz-3 store=151003 → ok"]);
+    expect(frozenMsgs(w.calls).every((m) => m.tabId === 3)).toBe(true);
+    const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 3);
+    expect(normalLane(w)).toEqual(trace(m.w));
+    expect(w.calls.logs.filter((l) => /\[PC-FROZEN\] row=/.test(l))).toEqual(["[PC-FROZEN] row=fz-1 store=968551 → no_frozen", "[PC-FROZEN] row=fz-3 store=151003 → ok"]);
   });
-  it("10-min floor per store: the same store is not asked again within 10 min, even if the RPC keeps returning it; after 10 min it is", async () => {
-    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 4); // 4 passes in 20 s: fz-1, fz-3, then nothing (both stores under the floor)
+  it("A. at most ONE frozen request per pass also with no dry rows; nothing while the keepalive was sent < 25 s ago or is due within 20 s", async () => {
+    const rows = [{ id: "fz-a", store_id: "111111" }, { id: "fz-b", store_id: "222222" }, { id: "fz-c", store_id: "333333" }];
+    const { w, clock } = await run({ rows: [], frozenSwitch: "true", frozenPending: rows }, 1);
+    expect(w.calls.logs.some((l) => /\[PC-KEEPALIVE\]/.test(l))).toBe(true);   // pass 1 sent the keepalive (after the kick)
+    const sent: number[] = [];
+    for (let i = 0; i < 10; i++) { await tick(w, clock, 1); sent.push(frozenMsgs(w.calls).length); }
+    expect(sent.slice(0, 4)).toEqual([0, 0, 0, 0]);                            // 5–20 s after the keepalive: wait
+    expect(sent[sent.length - 1]).toBe(3);
+    expect(sent.every((n, i) => n - (sent[i - 1] ?? 0) <= 1)).toBe(true);       // never two in one pass
+    expect(w.calls.logs.some((l) => /normal lane busy \(keepalive just sent\) — next pass/.test(l))).toBe(true);
+    // the keepalive due within 20 s → wait: move the clock to 20 s before the next keepalive
+    const w2 = (await run({ rows: [], frozenSwitch: "true", frozenPending: rows }, 1)).w;
+    const ka = Number(w2.evalIn("PC_KEEPALIVE_MS"));
+    const c2 = { t: T0 + ka - 15 * S };
+    const w3 = bootWorker({ now: () => c2.t, rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: rows });
+    await w3.booted;
+    w3.evalIn(`pcLastKeepaliveAt = ${T0};`);
+    await tick(w3, c2, 2);
+    expect(frozenMsgs(w3.calls)).toEqual([]);
+    expect(w3.calls.logs.some((l) => /normal lane busy \(keepalive due\)/.test(l))).toBe(true);
+  });
+  it("D. an empty pending read → no pending read for 60 s; then one again (logged once)", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: [] }, 1);
+    expect(pendingReads(w.calls)).toBe(1);
+    await tick(w, clock, 11);                                                    // up to T0+55 s
+    expect(pendingReads(w.calls)).toBe(1);
+    await tick(w, clock, 1);                                                     // T0+60 s
+    expect(pendingReads(w.calls)).toBe(2);
+    expect(w.calls.logs.filter((l) => /no frozen parcels waiting/.test(l))).toHaveLength(1);
+  });
+  it("10-min floor per store: the same stores are not asked again within 10 min, even when the RPC keeps returning them; after 10 min they are", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 6);
     expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3"]);
     clock.t += 10 * MIN;
-    await w.sb.pcRunOnce(); await flush(); clock.t += 5 * S; await w.sb.pcRunOnce(); await flush();
+    await tick(w, clock, 4);
     expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3", "fz-1", "fz-3"]);
   });
-  it("the emap script THROWS / never answers / returns garbage / answers null → that parcel is written 'unknown', the others still get their verdict, the normal lane is untouched, and the pass never waits", async () => {
-    for (const bad of ["throw", "hang", "garbage", null] as const) {
-      const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => (row?.store_id === "968551" ? bad : "ok") }, 2);
-      const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 2);
+  it("the emap script THROWS / returns garbage / answers null → that parcel is 'unknown', the next pass checks the next one, the normal lane is untouched", async () => {
+    for (const bad of ["throw", "garbage", null] as const) {
+      const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => (row?.store_id === "968551" ? bad : "ok") }, 3);
+      const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 3);
       expect(normalLane(a.w), String(bad)).toEqual(trace(m.w));
-      if (bad === "hang") {
-        // the kick returned, pcRunOnce finished, the normal lane completed — the hung check only holds the frozen lane
-        expect(verdictBodies(a.w.calls), "hang").toEqual([]);
-        expect(a.w.calls.fetch.some((u) => /admin_parcel_check_verdict/.test(u)), "hang: normal verdict written").toBe(true);
-        continue;
-      }
       expect(verdictBodies(a.w.calls).map((v) => `${v.p_id}:${v.p_status}`), String(bad)).toEqual(["fz-1:unknown", "fz-3:ok"]);
-      expect(a.w.calls.fetch.some((u) => /admin_parcel_check_verdict/.test(u)), String(bad)).toBe(true);
     }
   });
-  it("a failing pending RPC (500) or verdict RPC (500) only logs; nothing else changes for the normal lane", async () => {
-    const p = await run({ frozenSwitch: "true", frozenPending: "error" }, 2);
+  it("a check that never answers → the 3 s cap writes 'unknown' and frees the lane", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdict: (row) => (row?.store_id === "968551" ? "hang" : "ok") }, 2);
+    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
+    await tick(w, clock, 2);
+    expect(frozenMsgs(w.calls)).toHaveLength(1);                               // still waiting → nothing new
+    const cap = w.calls.timers.filter((t) => t.ms === 3 * S);
+    expect(cap.length).toBeGreaterThan(0);
+    cap[cap.length - 1].fn(); await flush();
+    expect(verdictBodies(w.calls).map((v) => `${v.p_id}:${v.p_status}`)).toEqual(["fz-1:unknown"]);
+    expect(w.calls.logs.some((l) => /frozen check timeout \(3s\)/.test(l))).toBe(true);
+    await tick(w, clock, 1);
+    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1", "fz-3"]);
+  });
+  it("every frozen call is bounded: switch / pending / verdict 15 s, the check 3 s, the ping 1 s, the alarm read 0.5 s", () => {
+    const mod = readFileSync("chrome-extension/frozen-check.js", "utf8");
+    expect(mod).toMatch(/const CHECK_TIMEOUT_MS = 3 \* 1000;/);
+    expect(mod).toMatch(/const DB_TIMEOUT_MS = 15 \* 1000;/);
+    for (const what of ['"switch read")', '"pending read")', '"frozen check")', '"verdict write")', '"frozen ping")', '"alarm read")']) expect(mod, what).toContain(what);
+  });
+  it("a failing pending RPC (500) or verdict RPC (500) only logs; the normal lane is main's", async () => {
+    const p = await run({ frozenSwitch: "true", frozenPending: "error" }, 3);
     expect(frozenMsgs(p.w.calls)).toEqual([]);
-    expect(p.w.calls.logs).toContain("[PC-FROZEN] pending rpc_500");
-    const v = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdictHttp: 500 }, 2);
+    expect(p.w.calls.logs.some((l) => /\[PC-FROZEN\] pending rpc_500/.test(l))).toBe(true);
+    const v = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenVerdictHttp: 500 }, 3);
     expect(v.w.calls.logs.filter((l) => /verdict rpc_500/.test(l))).toHaveLength(2);
-    const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 2);
+    const m = await run({ extDir: mainDir, frozenPending: FROZEN_ROWS }, 3);
     expect(normalLane(p.w)).toEqual(trace(m.w));
     expect(normalLane(v.w)).toEqual(trace(m.w));
   });
-  it("maintenance window (01:00–05:00 Taipei): no frozen request; the switch read still happens", async () => {
-    const clock = { t: Date.UTC(2026, 0, 15, 18, 30, 0) }; // 02:30 Taipei (Jan 16)
+  it("maintenance window (01:00–05:00 Taipei): no frozen request and no pending read", async () => {
+    const clock = { t: Date.UTC(2026, 0, 15, 18, 30, 0) }; // 02:30 Taipei
     const w = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: LEADER, maintenance: true, frozenSwitch: "true", frozenPending: FROZEN_ROWS });
-    await w.booted; await w.sb.pcRunOnce(); await flush();
+    await w.booted; await tick(w, clock, 3);
     expect(frozenMsgs(w.calls)).toEqual([]);
-    expect(w.calls.fetch.some((u) => /admin_parcel_frozen_pending/.test(u))).toBe(false);
-    expect(w.calls.fetch.filter((u) => SWITCH_GET.test(u))).toHaveLength(1);
+    expect(pendingReads(w.calls)).toBe(0);
   });
   it("standby (not the leader) → nothing frozen, not even the switch read", async () => {
     const standby: Opts["lease"] = () => ({ json: { leader: false, reason: "leader_alive", leader_id: "other", leader_label: "Mac", leader_age_s: 1, standby_ready: true, standby_age_s: 1, ttl_s: 120 } });
-    const clock = { t: T0 };
-    const w = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: standby, frozenSwitch: "true", frozenPending: FROZEN_ROWS });
-    await w.booted; await w.sb.pcRunOnce(); await flush();
+    const { w } = await run({ lease: standby, frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 3);
     expect(w.calls.fetch.filter((u) => SWITCH_GET.test(u) || /admin_parcel_frozen_/.test(u))).toEqual([]);
-    expect(frozenMsgs(w.calls)).toEqual([]);
   });
-  it("no E-Map tab → the frozen rows stay queued (no request, no 'unknown' stamped for our own missing tab)", async () => {
-    const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, emapTab: false }, 1);
-    expect(frozenMsgs(a.w.calls)).toEqual([]);
-    expect(verdictBodies(a.w.calls)).toEqual([]);
-    expect(a.w.calls.fetch.some((u) => /admin_parcel_frozen_pending/.test(u))).toBe(false);
+  it("no E-Map tab → no pending read, no request, no 'unknown' stamped for our own missing tab", async () => {
+    const { w } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, emapTab: false }, 3);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(verdictBodies(w.calls)).toEqual([]);
+    expect(pendingReads(w.calls)).toBe(0);
   });
   it("paused / multi-seller off → nothing frozen", async () => {
-    const a = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, config: { paused: true } }, 1);
-    expect(a.w.calls.fetch.filter((u) => SWITCH_GET.test(u) || /admin_parcel_frozen_/.test(u))).toEqual([]);
-    const b = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, multiSeller: false }, 1);
-    expect(b.w.calls.fetch.filter((u) => SWITCH_GET.test(u) || /admin_parcel_frozen_/.test(u))).toEqual([]);
+    for (const o of [{ config: { paused: true } }, { multiSeller: false }] as Opts[]) {
+      const { w } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, ...o }, 3);
+      expect(w.calls.fetch.filter((u) => SWITCH_GET.test(u) || /admin_parcel_frozen_/.test(u)), JSON.stringify(o)).toEqual([]);
+    }
   });
 });
 
+// ── guards right before the request ────────────────────────────────────────────
+describe("guards right before the request", () => {
+  it("the leader is re-checked right before the request", async () => {
+    const clock = { t: T0 };
+    const w: W = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: LEADER, frozenSwitch: "true", frozenPending: FROZEN_ROWS, onFrozenPing: () => { w.evalIn('pcLease.role = "standby"; pcLease.leader = false;'); } });
+    await w.booted; await tick(w, clock, 3);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(w.calls.logs).toContain("[PC-FROZEN] lease lost — stopping");
+  });
+  it("the maintenance window is re-checked right before the request", async () => {
+    const clock = { t: Date.UTC(2026, 0, 15, 16, 59, 40) };          // 00:59:40 Taipei
+    const w = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: LEADER, maintenance: true, frozenSwitch: "true", frozenPending: FROZEN_ROWS, onFrozenPing: () => { clock.t = Date.UTC(2026, 0, 15, 17, 0, 1); } });
+    await w.booted;
+    await w.sb.pcTick(); await flush(); clock.t += 5 * S;              // pass 1: reads
+    await w.sb.pcTick(); await flush();                                // pass 2: the ping crosses 01:00
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(w.calls.logs).toContain("[PC-FROZEN] maintenance window started — stopping");
+  });
+  it("another pass running (started but not kicked yet, or the loop already re-armed by another pass at kick time) → no request", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 1);
+    w.evalIn("pcEv.tick += 1;");                                     // a pass started that has not reached its kick
+    await tick(w, clock, 2);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(w.calls.logs.some((l) => /other pass\(es\) before their row checks — next pass/.test(l))).toBe(true);
+    w.evalIn("pcFrozenKick.__test.state.kicks = pcEv.tick;");        // that pass kicked meanwhile
+    await tick(w, clock, 1);
+    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
+    w.evalIn("pcTimer = 7;");                                        // re-armed by ANOTHER pass when ours kicks
+    clock.t += 65 * S;                                               // past the once-a-minute log throttle
+    await w.sb.pcRunOnce(); await flush();
+    expect(frozenMsgs(w.calls)).toHaveLength(1);
+    expect(w.calls.logs.some((l) => /another pass already re-armed the loop — next pass/.test(l))).toBe(true);
+  });
+  it("the keepalive alarm due within 4 s → no request; later → sent", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 1);
+    let next = 0;
+    (w.sb.chrome.alarms as unknown as Record<string, unknown>).get = (_n: string, cb: (a: { scheduledTime: number }) => void) => cb({ scheduledTime: next });
+    next = clock.t + 2 * S;
+    await tick(w, clock, 1);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(w.calls.logs.some((l) => /keepalive alarm due — next pass/.test(l))).toBe(true);
+    next = clock.t + 20 * S;
+    await tick(w, clock, 1);
+    expect(frozenMsgs(w.calls).map((m) => m.rowId)).toEqual(["fz-1"]);
+  });
+  it("a normal row in flight at the kick → no request", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 1);
+    w.evalIn('pcInFlight.add("someone-elses-row");');
+    await tick(w, clock, 2);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(w.calls.logs.some((l) => /normal lane busy \(row in flight\)/.test(l))).toBe(true);
+    w.evalIn("pcInFlight.clear();");
+    await tick(w, clock, 1);
+    expect(frozenMsgs(w.calls)).toHaveLength(1);
+  });
+});
+
+// ── B · self-heal + injection limit ────────────────────────────────────────────
+describe("B · self-heal and the injection limit", () => {
+  it("no answer from the frozen content script → it is injected into the E-Map tab and the check proceeds", async () => {
+    const { w } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS.slice(0, 1), frozenScript: false }, 2);
+    expect(w.calls.injected.filter((f) => f === "emap-frozen-711.js")).toEqual(["emap-frozen-711.js"]);
+    expect(w.calls.logs.some((l) => /emap-frozen-711\.js not answering on tab 3 → injected/.test(l))).toBe(true);
+    expect(verdictBodies(w.calls).map((v) => v.p_status)).toEqual(["ok"]);
+  });
+  it("still silent after an injection → at most ONE injection per tab per 10 minutes (no loop), then one more", async () => {
+    const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS, frozenScriptNever: true }, 20); // 100 s
+    expect(w.calls.injected.filter((f) => f === "emap-frozen-711.js")).toHaveLength(1);
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    clock.t += 10 * MIN;
+    await tick(w, clock, 3);
+    expect(w.calls.injected.filter((f) => f === "emap-frozen-711.js")).toHaveLength(2);
+  });
+});
+
+// ── pure helpers ───────────────────────────────────────────────────────────────
 describe("pure helpers", () => {
-  const w = bootWorker({ lease: LEADER });
-  const sb = w.sb as unknown as Record<string, (...a: unknown[]) => unknown>;
-  it("pcFrozenSwitchValue: only the exact key + 'true'", () => {
-    expect(sb.pcFrozenSwitchValue([{ key: "frozen_store_check_enabled", value: "true" }])).toBe(true);
-    for (const v of ["TRUE", "yes", "1", " true", ""]) expect(sb.pcFrozenSwitchValue([{ key: "frozen_store_check_enabled", value: v }]), v).toBe(false);
-    expect(sb.pcFrozenSwitchValue([{ key: "other", value: "true" }])).toBe(false);
-    expect(sb.pcFrozenSwitchValue(null)).toBe(false);
+  const helpers = () => bootWorker({ lease: LEADER }).evalIn("pcFrozenKick.__test") as Record<string, (...a: unknown[]) => unknown>;
+  it("switchValue: only the exact key + 'true'", () => {
+    const t = helpers();
+    expect(t.switchValue([{ key: "frozen_store_check_enabled", value: "true" }])).toBe(true);
+    for (const v of ["TRUE", "yes", "1", " true", ""]) expect(t.switchValue([{ key: "frozen_store_check_enabled", value: v }]), v).toBe(false);
+    expect(t.switchValue([{ key: "other", value: "true" }])).toBe(false);
+    expect(t.switchValue(null)).toBe(false);
   });
-  it("pcFrozenVerdictOf: ok / no_frozen pass through, anything else is 'unknown'", () => {
-    expect(sb.pcFrozenVerdictOf({ frozen_store_status: "ok" })).toBe("ok");
-    expect(sb.pcFrozenVerdictOf({ frozen_store_status: "no_frozen" })).toBe("no_frozen");
-    for (const v of [{ frozen_store_status: "open" }, { frozen_store_status: "full" }, { frozen_store_status: "unknown" }, {}, null, undefined, "no_frozen"]) expect(sb.pcFrozenVerdictOf(v)).toBe("unknown");
+  it("verdictOf: ok / no_frozen pass through, anything else is 'unknown'", () => {
+    const t = helpers();
+    expect(t.verdictOf({ frozen_store_status: "ok" })).toBe("ok");
+    expect(t.verdictOf({ frozen_store_status: "no_frozen" })).toBe("no_frozen");
+    for (const v of [{ frozen_store_status: "open" }, { frozen_store_status: "full" }, { frozen_store_status: "unknown" }, {}, null, undefined, "no_frozen"]) expect(t.verdictOf(v)).toBe("unknown");
   });
-  it("pcFrozenPickRows: one per store, the floor, bad rows skipped, ≤ limit", () => {
+  it("pickRows: one per store, the floor, bad rows skipped, ≤ limit", () => {
+    const t = helpers();
     const at = new Map([["151003", T0 - 2 * MIN]]);
     const rows = [...FROZEN_ROWS, { id: "x", store_id: "" }, null, { id: "fz-9", store_id: "999999" }];
-    expect(sb.pcFrozenPickRows(rows, at, T0, 3)).toEqual([{ id: "fz-1", store_id: "968551" }, { id: "fz-9", store_id: "999999" }]);
-    expect(sb.pcFrozenPickRows(rows, new Map(), T0, 1)).toEqual([{ id: "fz-1", store_id: "968551" }]);
-    expect(sb.pcFrozenPickRows("nope", new Map(), T0, 3)).toEqual([]);
+    expect(t.pickRows(rows, at, T0, 3)).toEqual([{ id: "fz-1", store_id: "968551" }, { id: "fz-9", store_id: "999999" }]);
+    expect(t.pickRows(rows, new Map(), T0, 1)).toEqual([{ id: "fz-1", store_id: "968551" }]);
+    expect(t.pickRows("nope", new Map(), T0, 3)).toEqual([]);
   });
 });

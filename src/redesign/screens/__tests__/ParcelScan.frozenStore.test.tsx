@@ -173,7 +173,7 @@ describe("export", () => {
     fireEvent.click(await r.findByTestId("ps-confirm-export"));
     const attn = await r.findAllByTestId("ps-export-attn-row");
     expect(attn).toHaveLength(1);
-    expect(attn[0].textContent).toContain("Store can't receive frozen");
+    expect(attn[0].textContent).toContain("store can't receive frozen"); // lowercase, like the other export reasons
     expect(r.getByTestId("ps-export-summary").textContent).toMatch(/1/);
   });
 });
@@ -220,7 +220,13 @@ describe("9. exported 冷凍 rows keep ✅", () => {
       expect(row.getAttribute("data-flag"), id).toBe("");
       expect(row.querySelector('[data-testid="ps-frozen-no"], [data-testid="ps-frozen-unchecked"]'), id).toBeNull();
       expect(row.querySelector('[data-testid="ps-ext-clear"]'), id).toBeTruthy();
+      expect(row.querySelector('[data-testid="ps-ext-recheck"]'), `${id}: no ⟳ on an exported row`).toBeNull();
     }
+    expect(r.getByTestId("ps-attn").getAttribute("data-state")).toBe("ok");
+  });
+  it("problemOf: an exported 冷凍 no_frozen row is not a problem (switch on)", () => {
+    expect(problemOf(frozen({ id: "x", status: "exported", frozenStoreStatus: "no_frozen" }), true)).toBeNull();
+    expect(problemOf(frozen({ id: "y", status: "pending", frozenStoreStatus: "no_frozen" }), true)).toBe("no_frozen");
   });
 });
 
@@ -242,6 +248,20 @@ describe("10. editing the store code of a red no_frozen row", () => {
     fireEvent.click(r.getByTestId("ps-save"));
     await waitFor(() => expect(h.updateParcelScan).toHaveBeenCalledTimes(2));
     expect(h.updateParcelScan.mock.calls[1][2]).toEqual({ storeFull: true, phoneCheck: false }); // 13. byte-identical dry payload
+  });
+  it("2. switch OFF: a 冷凍 row's store edit still resets the frozen verdict (frozen: true); a dry row still sends no frozen key", async () => {
+    h.rows = [frozen({ id: "f1", frozenStoreStatus: "no_frozen" }), mk({ id: "d1", storeId: "133712" })];
+    const r = view("en", false);
+    fireEvent.click((await waitFor(() => rowEl(r, "f1"))).querySelector('[data-testid="ps-row-edit"]')!);
+    fireEvent.change(await r.findByTestId("ps-store"), { target: { value: "151003" } });
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(h.updateParcelScan).toHaveBeenCalledTimes(1));
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: true, phoneCheck: false, frozen: true });
+    fireEvent.click(rowEl(r, "d1").querySelector('[data-testid="ps-row-edit"]')!);
+    fireEvent.change(await r.findByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(h.updateParcelScan).toHaveBeenCalledTimes(2));
+    expect(h.updateParcelScan.mock.calls[1][2]).toEqual({ storeFull: true, phoneCheck: false });
   });
 });
 
@@ -293,7 +313,7 @@ describe("12. attention bar", () => {
       await act(async () => { vi.advanceTimersByTime(3100); });
       await flush();
       expect(r.getByTestId("ps-attn").getAttribute("data-state")).toBe("problem");
-      expect(r.getByTestId("ps-attn-toast").textContent).toContain("Store can't receive frozen");
+      expect(r.getByTestId("ps-attn-toast").textContent).toContain("store can't receive frozen");
       expect(rowEl(r, "f1").getAttribute("data-flag")).toBe("red");
     } finally { vi.useRealTimers(); }
   });

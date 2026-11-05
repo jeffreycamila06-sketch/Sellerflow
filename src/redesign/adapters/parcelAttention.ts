@@ -16,6 +16,7 @@ export interface ProblemRowLite {
   phoneCheckStatus?: string | null;
   tempLayer?: string;
   frozenStoreStatus?: string | null;
+  status?: string;
 }
 
 // Same order as the export's reasons (splitScansForExport): wrong code, then full, then restricted, then no_frozen.
@@ -23,7 +24,7 @@ export function problemOf(r: ProblemRowLite, frozenOn = false): ProblemKind | nu
   if (wrongStoreCode(r)) return "wrong_store";
   if (r.storeFullStatus === "full") return "full";
   if (r.phoneCheckStatus === "restricted") return "restricted";
-  if (frozenOn && r.tempLayer === TEMP_FROZEN && r.frozenStoreStatus === "no_frozen") return "no_frozen";
+  if (frozenOn && r.status !== "exported" && r.tempLayer === TEMP_FROZEN && r.frozenStoreStatus === "no_frozen") return "no_frozen"; // an exported parcel is done — never a problem
   return null;
 }
 

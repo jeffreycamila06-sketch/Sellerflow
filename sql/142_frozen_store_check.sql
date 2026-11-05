@@ -147,7 +147,7 @@ begin
     -- 'unknown' (no answer) never overwrites a real no_frozen (a blocked store stays blocked)
     frozen_store_status     = case when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end,
     frozen_store_checked_at = now()
-  where id = p_id;
+  where id = p_id and status <> 'exported';               -- an exported parcel is done: its verdict never changes
 
   v_key := coalesce(p_expected_store, v_store);
   if p_status in ('ok','no_frozen') and coalesce(v_key, '') <> '' then

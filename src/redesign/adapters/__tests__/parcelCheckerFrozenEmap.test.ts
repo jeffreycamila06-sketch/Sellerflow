@@ -1,8 +1,8 @@
 // 1.17.0 — the FROZEN E-Map content script (chrome-extension/emap-frozen-711.js) evaluated
 // against jsdom fixtures, next to the untouched normal script (emap-711.js): it answers ONLY
 // PC_FROZEN_CHECK, posts byIDData with cate=27 (the one difference from the normal check),
-// reads field index 3 (enable → ok, disable → no_frozen, close/NO2/other → unknown), falls back to
-// the other section's endpoint, and reports a timeout as transient 'unknown'. The normal script's
+// reads field index 3 (enable → ok, disable → no_frozen, close/NO2/other → unknown), asks ONE endpoint per
+// check (a non-verdict answer switches the NEXT check), aborts at 2.5 s (transient 'unknown'). The normal script's
 // own answer to PC_CHECK_STORE is byte-unchanged with the frozen script loaded beside it.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -88,29 +88,67 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
     expect(String(r.frozen_reason)).toMatch(/unexpected response/);
     expect((await e.send({ type: "PC_FROZEN_CHECK", row: { store_id: "12" } })).frozen_reason).toBe("store id not 6 digits");
   });
-  it("mobilemap tab: its own endpoint first, then the desktop one (same origin); guid from the page SOURCE without executing it", async () => {
+  it("A. ONE endpoint per check (no fallback retry): a mobilemap tab asks /mobilemap/ only; a bounce there switches the NEXT check to /ecmap/; guid from the page SOURCE without executing it", async () => {
     const e = load(MOBILEMAP_HTML, "https://emap.unipcsc.com.tw/mobilemap/default.aspx", {
       answer: (store, cate, endpoint) => (endpoint === "/mobilemap/byIDData.aspx" ? { url: "https://emap.unipcsc.com.tw/MobileMap/error.aspx", text: "" } : { text: ANSWERS[`${store}:${cate}`] }),
     });
-    const r = await e.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } });
-    expect(r.frozen_store_status).toBe("no_frozen");
+    const r1 = await e.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } });
+    expect(r1).toMatchObject({ frozen_store_status: "unknown", transient: false, endpoint: "/mobilemap/byIDData.aspx" });
+    expect(String(r1.frozen_reason)).toMatch(/bounced to error\.aspx/);
+    expect(e.calls.fetch.map((c) => c.url.split("?")[0])).toEqual(["/mobilemap/byIDData.aspx"]); // one request, no retry
+    const r2 = await e.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } });
+    expect(r2).toMatchObject({ frozen_store_status: "no_frozen", endpoint: "/ecmap/byIDData.aspx" });
     expect(e.calls.fetch.map((c) => c.url.split("?")[0])).toEqual(["/mobilemap/byIDData.aspx", "/ecmap/byIDData.aspx"]);
     expect(new URLSearchParams(e.calls.fetch[1].body).get("Guid")).toBe("a9f0e8d7-aaaa-bbbb-cccc-ddddeeeeffff");
   });
-  it("a timeout on every endpoint → transient unknown; HTTP 500 → transient; a bounce to error.aspx → not transient", async () => {
+  it("A. a request that hangs is aborted at 2.5 s (one fetch, transient, same endpoint next time); HTTP 5xx → transient, no switch; a bounce → not transient", async () => {
     vi.useFakeTimers();
     try {
-      const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => ({ hang: true }) });
+      let hang = true;
+      const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: (store, cate) => (hang ? { hang: true } : { text: ANSWERS[`${store}:${cate}`] }) });
       const p = e.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } });
-      await vi.advanceTimersByTimeAsync(10_500); await vi.advanceTimersByTimeAsync(10_500);
+      await vi.advanceTimersByTimeAsync(2_400);
+      let done = false; void p.then(() => { done = true; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(done).toBe(false);                                          // still open at 2.4 s
+      await vi.advanceTimersByTimeAsync(400);                            // past 300 ms guid wait + 2.5 s
       const r = await p;
-      expect(r).toMatchObject({ frozen_store_status: "unknown", transient: true });
-      expect(String(r.frozen_reason)).toMatch(/timeout \(10s\)/);
+      expect(r).toMatchObject({ frozen_store_status: "unknown", transient: true, endpoint: "/ecmap/byIDData.aspx" });
+      expect(String(r.frozen_reason)).toMatch(/timeout \(2\.5s\)/);
+      expect(e.calls.fetch).toHaveLength(1);
+      hang = false;
+      const p2 = e.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } });
+      await vi.advanceTimersByTimeAsync(400);                            // the 300 ms guid wait
+      expect(await p2).toMatchObject({ frozen_store_status: "no_frozen", endpoint: "/ecmap/byIDData.aspx" }); // a timeout never switches
     } finally { vi.useRealTimers(); }
-    const e5 = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => ({ ok: false, status: 503, text: "" }) });
+    let st = 503;
+    const e5 = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: (store, cate) => (st ? { ok: false, status: st, text: "" } : { text: ANSWERS[`${store}:${cate}`] }) });
     expect(await e5.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } })).toMatchObject({ frozen_store_status: "unknown", transient: true });
+    st = 0;
+    expect(await e5.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } })).toMatchObject({ frozen_store_status: "no_frozen", endpoint: "/ecmap/byIDData.aspx" });
+    expect(e5.calls.fetch).toHaveLength(2);
     const eb = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => ({ url: "https://emap.unipcsc.com.tw/ecmap/error.aspx", text: "" }) });
     expect(await eb.send({ type: "PC_FROZEN_CHECK", row: { store_id: "968551" } })).toMatchObject({ frozen_store_status: "unknown", transient: false });
+    expect(eb.calls.fetch).toHaveLength(1);
+  });
+  it("B. the load guard is a LIVENESS check: a second copy is skipped while the first is still connected; after an extension reload (old runtime id gone) the new copy installs its listener", () => {
+    const dom = new JSDOM(ECMAP_HTML, { url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
+    const win = dom.window as unknown as Window & Record<string, unknown>;
+    const src = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/emap-frozen-711.js`, "utf8");
+    const runWith = (runtime: Record<string, unknown>) => {
+      const handlers: unknown[] = [];
+      const sb: Record<string, unknown> = { window: win, document: win.document, location: win.location, CustomEvent: (win as unknown as typeof globalThis).CustomEvent, setTimeout, clearTimeout, Promise, Date, Math, String, Number, Boolean, Object, Array, RegExp, Error, JSON, URLSearchParams,
+        chrome: { runtime: { ...runtime, onMessage: { addListener: (h: unknown) => { handlers.push(h); } } } } };
+      vm.createContext(sb);
+      vm.runInNewContext(src, sb);
+      return { handlers, runtime: (sb.chrome as { runtime: Record<string, unknown> }).runtime };
+    };
+    const first = runWith({ id: "ext-1" });
+    expect(first.handlers).toHaveLength(1);
+    expect(runWith({ id: "ext-1" }).handlers).toHaveLength(0);       // the old copy is alive → skip
+    delete first.runtime.id;                                          // extension reloaded: the old copy is orphaned
+    expect(runWith({ id: "ext-2" }).handlers).toHaveLength(1);       // → the new copy is NOT blocked
+    expect(typeof win.__sflPcEmapFrozenAlive).toBe("function");
   });
   it("ignores every other message (the normal script keeps PC_CHECK_STORE, cate=3, byte-unchanged with the frozen script loaded)", async () => {
     const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx");

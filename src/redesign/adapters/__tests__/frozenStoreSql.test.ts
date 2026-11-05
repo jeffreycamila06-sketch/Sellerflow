@@ -53,6 +53,7 @@ describe("sql/142 forward — add-only", () => {
   });
   it("verdict: only while the row is still 冷凍 at the checked store; 'unknown' never overwrites no_frozen; ok/no_frozen fill the cache; every answer is logged with its source", () => {
     expect(up).toContain("if v_layer is distinct from '冷凍' then return; end if;");
+    expect(up).toContain("where id = p_id and status <> 'exported';"); // an exported parcel's verdict never changes
     expect(up).toContain("if p_expected_store is not null and v_store is distinct from p_expected_store then return; end if;");
     expect(up).toContain("case when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end");
     expect(up).toContain("if p_status in ('ok','no_frozen') and coalesce(v_key, '') <> '' then");

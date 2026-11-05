@@ -127,13 +127,20 @@ ok((await row(f3)).s === null, "a row switched to 常溫 never gets a frozen ver
 bad = false; try { await q("select admin_parcel_frozen_verdict($1,$2,$3)", [f3, "151003", "maybe"]); } catch { bad = true; }
 ok(bad, "a bad status is rejected");
 
+// ── an exported 冷凍 parcel is done: a late verdict never changes it ─────────
+const f9 = await ins(A, "151003", "冷凍");
+await q("update parcel_scans set status='exported' where id=$1", [f9]);
+await q("select admin_parcel_frozen_verdict($1,$2,$3)", [f9, "151003", "no_frozen"]);
+ok((await row(f9)).s === null && (await row(f9)).at === null, "a verdict never touches an exported row (status and checked_at stay as they were)");
+ok(!(await pending()).some((r) => r.id === f9), "an exported row is never handed out");
+
 // ── rollback ─────────────────────────────────────────────────────────────────
 await db.exec(readFileSync(down, "utf8"));
 ok(!(await col("frozen_store_status")) && !(await col("frozen_store_checked_at")), "rollback drops the two columns");
 ok((await q("select count(*)::int as n from information_schema.tables where table_name in ('store_frozen_cache','store_frozen_check_log')")).rows[0].n === 0, "rollback drops the two tables");
 ok((await q("select count(*)::int as n from pg_proc where proname in ('admin_parcel_frozen_pending','admin_parcel_frozen_verdict')")).rows[0].n === 0, "rollback drops the two RPCs");
 ok((await q("select count(*)::int as n from app_settings where key='frozen_store_check_enabled'")).rows[0].n === 0, "rollback removes the switch");
-ok((await q("select count(*)::int as n from parcel_scans")).rows[0].n === 7, "parcel rows untouched by the rollback");
+ok((await q("select count(*)::int as n from parcel_scans")).rows[0].n === 8, "parcel rows untouched by the rollback");
 
 console.log(`sql142: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

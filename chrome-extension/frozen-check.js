@@ -1,192 +1,229 @@
 // SellerFlow parcel-checker — FROZEN (冷凍) store check. ADD-ONLY module (1.17.0).
 // ════════════════════════════════════════════════════════════════════════════
 // Loaded by background.js through ONE guarded importScripts line and kicked by ONE line in
-// pcRunOnce (`pcFrozenKick(pass)`). NOTHING here is awaited by the normal lane: the kick
-// returns at once, the pass runs on its own promise, every step is wrapped and every call
-// has a timeout — a throw, a hang or a bad answer marks only THAT parcel 'unknown' and can
-// never stop, delay or retry the normal store / phone check.
+// pcRunOnce. The whole module is ONE function scope: the only global it creates is
+// self.pcFrozenKick (tested: no top-level name shared with background.js, no other global).
+// Nothing here is awaited by the normal lane: the kick returns at once and the pass runs on
+// its own promise; every call is bounded; any failure marks only THAT parcel 'unknown'.
 //
-// What it does, for 冷凍 parcels only (the DB decides which rows — dry parcels are never
-// read here): POST byIDData with cate=27 (the frozen E-Map category; the normal check is
-// cate=3) through its OWN content script (emap-frozen-711.js) on the E-Map tab the normal
-// lane already picked, then write the verdict through its OWN RPC.
-//   enable  → ok          (the store takes frozen)
-//   disable → no_frozen   (can't take frozen now — permanent or full, we can't tell →
-//                          blocked from export, re-checked once an hour like 'full')
-//   close / NO2 / anything else / no answer → unknown (re-checked every 10 min)
+// What it does, for 冷凍 parcels only (the DB picks them — dry parcels are never read here):
+// POST byIDData with cate=27 (the frozen E-Map category; the normal check is cate=3) through
+// its OWN content script (emap-frozen-711.js) on the E-Map tab the normal lane picked, then
+// write the verdict through its OWN RPC.
+//   enable → ok · disable → no_frozen (blocked from export, re-checked hourly)
+//   close / NO2 / anything else / no answer → unknown (re-checked after 10 min)
 //
 // KILL SWITCH: app_settings 'frozen_store_check_enabled' — only the exact string 'true'
 // turns it on; a read failure = off. OFF = the normal lane is byte-for-byte today's; the
 // only request this module makes is ONE read-only GET of that setting per minute.
 //
-// NEVER OVERLAP the normal lane on the shared E-Map session: a frozen request goes out only
-// in a GAP — no normal row in flight (pcInFlight empty) and no E-Map keepalive due or just
-// sent. It waits up to 5 s for a gap, then gives the pass up (next pass retries). Fairness:
-// the kick runs right after the normal lane's rows finished for the pass, which IS a gap, so
-// while frozen rows are waiting at least one frozen request goes out per pass (≈ every 5 s
-// — far inside "one per minute") even behind a long dry queue; with a dry queue waiting the
-// pass sends ONE frozen row (3 when the queue is empty) so the dry rows keep their turn.
-//
-// REQUEST BUDGET: cate=27 only for 冷凍 rows; the shared cache (store_frozen_cache, sql/142)
-// answers no_frozen for 1 h and ok for 10 min; the pending RPC never hands out a store
-// checked live in the last 10 min, and this module keeps the same 10-min floor per store in
-// memory — never more than 1 frozen request per store per 10 min across all sellers. Same
-// maintenance window (01:00–05:00 Taipei) as the normal store check. Leader-only. Both the
-// leader and the window are re-checked before EVERY row.
-//
-// SELF-HEAL: before a check the frozen content script is pinged; no answer → injected into
-// the E-Map tab (chrome.scripting, same permission the normal heal uses) and pinged again.
-const PC_FROZEN_SWITCH_KEY = "frozen_store_check_enabled";
-const PC_FROZEN_SWITCH_TTL_MS = 60 * 1000;          // re-read the switch at most once a minute
-const PC_FROZEN_LIMIT = 3;                          // rows per pass when the dry queue is empty (one per store)
-const PC_FROZEN_LIMIT_BUSY = 1;                     // rows per pass while dry rows are waiting (fairness both ways)
-const PC_FROZEN_ROW_GAP_MS = 2000;                  // same per-parcel gap as the normal lane
-const PC_FROZEN_STORE_GAP_MS = 10 * 60 * 1000;      // ≥ 10 min between live requests for one store
-const PC_FROZEN_CALL_TIMEOUT_MS = 15 * 1000;        // every fetch / RPC / tab message is bounded
-const PC_FROZEN_PING_TIMEOUT_MS = 3 * 1000;         // the content-script ping
-const PC_FROZEN_GAP_WAIT_MS = 5 * 1000;             // how long a row waits for a gap in the normal lane
-const PC_FROZEN_GAP_POLL_MS = 250;
-const PC_FROZEN_KEEPALIVE_GUARD_MS = 15 * 1000;     // a keepalive sent this recently may still be in flight
-const PC_FROZEN_VERDICTS = ["ok", "no_frozen"];     // definitive answers; everything else = 'unknown'
-const pcFrozen = {
-  busy: false,                 // single-flight: a slow pass never overlaps the next kick
-  switchOn: false, switchAt: 0, switchLogged: null,
-  storeAt: new Map(),          // store id → last live request (ms)
-  passes: 0, checks: 0, unknowns: 0, lastError: "", skippedBusy: 0,
-};
-
-function pcFrozenLog(msg) { try { console.log(`[PC-FROZEN] ${msg}`); } catch { /* never throw from a log */ } }
-
-// ── PURE helpers (unit-tested) ────────────────────────────────────────────────
-// The switch: the exact string 'true' on the exact key, nothing else.
-function pcFrozenSwitchValue(rows) {
-  return Array.isArray(rows) && rows.some((r) => r && r.key === PC_FROZEN_SWITCH_KEY && r.value === "true");
-}
-// Local per-store floor: a store checked live less than 10 min ago is skipped this pass.
-function pcFrozenStoreDue(map, storeId, nowMs) {
-  const at = map.get(String(storeId));
-  return !at || nowMs - at >= PC_FROZEN_STORE_GAP_MS;
-}
-// What the content script answered → the verdict to write. Anything not definitive = 'unknown'.
-function pcFrozenVerdictOf(resp) {
-  return resp && PC_FROZEN_VERDICTS.includes(resp.frozen_store_status) ? resp.frozen_store_status : "unknown";
-}
-// Which rows to check this pass: one per store, never a store under the local floor, ≤ limit.
-function pcFrozenPickRows(rows, storeAt, nowMs, limit) {
-  const out = []; const seen = new Set();
-  for (const row of Array.isArray(rows) ? rows : []) {
-    if (out.length >= limit) break;
-    if (!row || !row.id || !row.store_id) continue;
-    const store = String(row.store_id);
-    if (seen.has(store) || !pcFrozenStoreDue(storeAt, store, nowMs)) continue;
-    seen.add(store); out.push({ id: String(row.id), store_id: store });
+// NEVER OVERLAP THE NORMAL LANE (two ways) on the shared E-Map session:
+//  • the frozen E-Map request is sent ONLY right at the kick — pcRunOnce calls the kick after
+//    the normal lane's rows have all finished (pcPollMulti is awaited); the next normal E-Map
+//    request is at the earliest in the NEXT pass, ≥ 5 s after this one ends;
+//  • nothing from the database sits between the kick and the request: the request uses rows
+//    read in an EARLIER pass, and the switch / rows are refreshed only AFTER it;
+//  • a second pass running at the same time (Chrome's 30 s keepalive alarm can start one
+//    while a pass is running — main's own loop) is detected, read-only: every pass kicks
+//    exactly once and bumps pcEv.tick when it starts, so "kicks so far === pcEv.tick" means no
+//    pass is still in its row phase; pcTimer === null means no other pass already re-armed the
+//    loop (a new pass would start within 5 s); and the alarm must not be due within 4 s;
+//  • the frozen request is capped: the content script aborts at 2.5 s, the worker stops
+//    waiting at 3 s;
+//  • it is sent only when no normal row is in flight (pcInFlight), the E-Map keepalive is not
+//    due within 20 s (it runs right after the kick in the same pass) and was not sent in the
+//    last 25 s (a keepalive can take two 10 s endpoint attempts);
+//  • at most ONE frozen request per pass.
+// REQUEST BUDGET: cate=27 only for 冷凍 rows; shared cache (sql/142): no_frozen 1 h, ok 10 min;
+// ≤ 1 live request per store per 10 min (DB + a local floor); no pending read for 60 s after
+// one that found nothing. Same maintenance window as the normal check (01:00–05:00 Taipei),
+// re-checked with the leader right before the request. Leader-only.
+// SELF-HEAL: the frozen content script is pinged before a check; silent → injected, at most
+// once per tab per 10 minutes.
+(function sflFrozenStoreCheck(g) {
+  const SWITCH_KEY = "frozen_store_check_enabled";
+  const SWITCH_TTL_MS = 60 * 1000;           // re-read the switch at most once a minute
+  const PENDING_LIMIT = 3;                   // rows per pending read (one per store)
+  const QUEUE_MAX_AGE_MS = 60 * 1000;        // rows read more than a minute ago are read again
+  const EMPTY_WAIT_MS = 60 * 1000;           // D: a read that found nothing → no read for 60 s
+  const STORE_GAP_MS = 10 * 60 * 1000;       // ≥ 10 min between live requests for one store
+  const DB_TIMEOUT_MS = 15 * 1000;           // the switch / pending / verdict calls
+  const CHECK_TIMEOUT_MS = 3 * 1000;         // the E-Map check (the content script aborts at 2.5 s)
+  const PING_TIMEOUT_MS = 1000;              // the content-script ping (local, no network)
+  const KEEPALIVE_SOON_MS = 20 * 1000;       // the keepalive due within this → busy
+  const KEEPALIVE_RECENT_MS = 25 * 1000;     // the keepalive sent within this → busy
+  const INJECT_GAP_MS = 10 * 60 * 1000;      // B: ≤ 1 injection per tab per 10 min
+  const ALARM_GUARD_MS = 4 * 1000;           // the keepalive alarm due within this → no request (it may start a 2nd pass)
+  const ALARM_READ_TIMEOUT_MS = 500;
+  const VERDICTS = ["ok", "no_frozen"];
+  const st = {
+    busy: false, switchOn: false, switchAt: 0, switchLogged: null,
+    queue: [], queueAt: 0, emptyUntil: 0, emptyLogged: false,
+    storeAt: new Map(), injectedAt: new Map(),
+    passes: 0, checks: 0, unknowns: 0, skippedBusy: 0, lastError: "",
+    kicks: 0,                  // kicks so far — one per pass; === pcEv.tick ⇔ no pass is before its kick
+    logAt: new Map(),          // reason → last log time (skip reasons are logged at most once a minute)
+  };
+  const log = (msg) => { try { console.log(`[PC-FROZEN] ${msg}`); } catch { /* never throw from a log */ } };
+  const logSkip = (key, msg) => { const now = Date.now(); if (now - (st.logAt.get(key) || 0) >= 60 * 1000) { st.logAt.set(key, now); log(`${msg} — next pass`); } };
+  // Another pass is running or about to start (the normal lane may send a row check any moment).
+  // pcTimer is read ONLY synchronously inside the kick (atKick): a moment later the kicking pass
+  // itself ends and re-arms the loop for 5 s from then — that one is safe and must not count.
+  function otherPass(atKick) {
+    if (st.kicks !== pcEv.tick) return `${pcEv.tick - st.kicks} other pass(es) before their row checks`;
+    if (atKick && pcTimer !== null) return "another pass already re-armed the loop";
+    return "";
   }
-  return out;
-}
-// The normal lane is using the E-Map session right now (or is about to): a row is in flight,
-// or the keepalive is due this pass / was sent moments ago.
-function pcFrozenLaneBusy(nowMs) {
-  if (pcInFlight.size > 0) return true;
-  if (nowMs - pcLastKeepaliveAt < PC_FROZEN_KEEPALIVE_GUARD_MS) return true;
-  return pcKeepaliveDue(nowMs, pcLastKeepaliveAt, pcEv.lastAnyNeedStore);
-}
-// A bounded promise: rejects with a named timeout instead of hanging the lane.
-function pcFrozenWithTimeout(promise, ms, what) {
-  let timer = null;
-  const timeout = new Promise((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`${what} timeout (${ms / 1000}s)`)), ms); });
-  return Promise.race([promise, timeout]).finally(() => { if (timer !== null) clearTimeout(timer); });
-}
 
-// ── the switch (read-only GET, once a minute; any failure = off) ──────────────
-async function pcFrozenReadSwitch(cfg, rpcHeaders, nowMs) {
-  if (nowMs - pcFrozen.switchAt < PC_FROZEN_SWITCH_TTL_MS) return pcFrozen.switchOn;
-  let on = false;
-  try {
-    const r = await pcFrozenWithTimeout(fetch(`${cfg.supabaseUrl}/rest/v1/app_settings?select=key,value&key=eq.${PC_FROZEN_SWITCH_KEY}`, { method: "GET", headers: rpcHeaders }), PC_FROZEN_CALL_TIMEOUT_MS, "switch read");
-    on = r.ok ? pcFrozenSwitchValue(await r.json()) : false;
-  } catch { on = false; }
-  pcFrozen.switchOn = on; pcFrozen.switchAt = nowMs;
-  if (pcFrozen.switchLogged !== on) { pcFrozen.switchLogged = on; pcFrozenLog(`switch ${on ? "ON" : "off"}`); }
-  return on;
-}
-
-// Wait for a gap in the normal lane (≤ PC_FROZEN_GAP_WAIT_MS). true = free now.
-async function pcFrozenWaitForGap() {
-  for (let i = 0; i <= PC_FROZEN_GAP_WAIT_MS / PC_FROZEN_GAP_POLL_MS; i++) {
-    if (!pcFrozenLaneBusy(Date.now())) return true;
-    await pcSleep(PC_FROZEN_GAP_POLL_MS);
+  // ── PURE helpers (unit-tested through pcFrozenKick.__test) ────────────────────
+  const switchValue = (rows) => Array.isArray(rows) && rows.some((r) => r && r.key === SWITCH_KEY && r.value === "true");
+  const storeDue = (map, storeId, nowMs) => { const at = map.get(String(storeId)); return !at || nowMs - at >= STORE_GAP_MS; };
+  const verdictOf = (resp) => (resp && VERDICTS.includes(resp.frozen_store_status) ? resp.frozen_store_status : "unknown");
+  function pickRows(rows, storeAt, nowMs, limit) {
+    const out = []; const seen = new Set();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (out.length >= limit) break;
+      if (!row || !row.id || !row.store_id) continue;
+      const store = String(row.store_id);
+      if (seen.has(store) || !storeDue(storeAt, store, nowMs)) continue;
+      seen.add(store); out.push({ id: String(row.id), store_id: store });
+    }
+    return out;
   }
-  return false;
-}
-// The frozen content script must answer on the tab; otherwise inject it (self-heal) and ask again.
-async function pcFrozenEnsureScript(tabId) {
-  const ping = () => pcFrozenWithTimeout(pcSendTab(tabId, { type: "PC_FROZEN_PING" }), PC_FROZEN_PING_TIMEOUT_MS, "frozen ping").catch(() => null);
-  let r = await ping();
-  if (r && r.script === "emap-frozen") return true;
-  const injected = await pcInject(tabId, "emap-frozen-711.js");
-  pcFrozenLog(`emap-frozen-711.js not answering on tab ${tabId} → ${injected ? "injected" : "inject failed"}`);
-  if (!injected) return false;
-  r = await ping();
-  return Boolean(r && r.script === "emap-frozen");
-}
+  // The normal lane is using the E-Map session now, or is about to in this pass.
+  function laneBusy(nowMs) {
+    if (pcInFlight.size > 0) return "row in flight";
+    if (nowMs - pcLastKeepaliveAt < KEEPALIVE_RECENT_MS) return "keepalive just sent";
+    // due within 20 s = the same rule as pcKeepaliveDue, 20 s early (it never fires while rows need the store half)
+    if (!pcEv.lastAnyNeedStore && nowMs - pcLastKeepaliveAt >= PC_KEEPALIVE_MS - KEEPALIVE_SOON_MS) return "keepalive due";
+    return "";
+  }
+  // Chrome's keepalive alarm (background.js PC_ALARM) is due within ALARM_GUARD_MS? Read-only.
+  // No alarms API / no alarm / an error → false (the started-pass check still applies).
+  function alarmSoon(nowMs) {
+    const read = new Promise((resolve) => {
+      try {
+        if (!chrome.alarms || typeof chrome.alarms.get !== "function") { resolve(false); return; }
+        chrome.alarms.get(PC_ALARM, (a) => {
+          try { void chrome.runtime.lastError; } catch { /* ignore */ }
+          resolve(Boolean(a && typeof a.scheduledTime === "number" && a.scheduledTime - nowMs < ALARM_GUARD_MS && a.scheduledTime - nowMs > -1000));
+        });
+      } catch { resolve(false); }
+    });
+    return withTimeout(read, ALARM_READ_TIMEOUT_MS, "alarm read").catch(() => false);
+  }
+  function withTimeout(promise, ms, what) {
+    let timer = null;
+    const timeout = new Promise((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`${what} timeout (${ms / 1000}s)`)), ms); });
+    return Promise.race([promise, timeout]).finally(() => { if (timer !== null) clearTimeout(timer); });
+  }
 
-// ── the kick (the ONE line in pcRunOnce calls this; it never awaits) ───────────
-function pcFrozenKick(pass) {
-  if (pcFrozen.busy) return;
-  pcFrozen.busy = true;
-  Promise.resolve()
-    .then(() => pcFrozenPass(pass))
-    .catch((e) => { pcFrozen.lastError = (e && e.message) || "pass threw"; pcFrozenLog(`pass failed: ${pcFrozen.lastError}`); })
-    .then(() => { pcFrozen.busy = false; });
-}
+  // ── database reads (a pass that does one sends nothing to E-Map) ──────────────
+  async function readSwitch(cfg, headers, nowMs) {
+    let on = false;
+    try {
+      const r = await withTimeout(fetch(`${cfg.supabaseUrl}/rest/v1/app_settings?select=key,value&key=eq.${SWITCH_KEY}`, { method: "GET", headers }), DB_TIMEOUT_MS, "switch read");
+      on = r.ok ? switchValue(await r.json()) : false;
+    } catch { on = false; }
+    st.switchOn = on; st.switchAt = nowMs;
+    if (st.switchLogged !== on) { st.switchLogged = on; log(`switch ${on ? "ON" : "off"}`); }
+  }
+  async function readPending(cfg, headers, nowMs) {
+    st.queue = []; st.queueAt = nowMs;
+    let rows = [];
+    try {
+      const r = await withTimeout(fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_frozen_pending`, {
+        method: "POST", headers, body: JSON.stringify({ p_limit: PENDING_LIMIT }),
+      }), DB_TIMEOUT_MS, "pending read");
+      if (!r.ok) { log(`pending rpc_${r.status}`); return; }
+      rows = await r.json();
+    } catch (e) { log(`pending failed: ${(e && e.message) || "network"}`); return; }
+    st.queue = pickRows(rows, st.storeAt, Date.now(), PENDING_LIMIT);
+    if (!st.queue.length) {
+      st.emptyUntil = nowMs + EMPTY_WAIT_MS;
+      if (!st.emptyLogged) { st.emptyLogged = true; log("no frozen parcels waiting — next read in 60 s"); }
+    } else st.emptyLogged = false;
+  }
 
-async function pcFrozenPass(pass) {
-  const nowMs = Date.now();
-  const cfg = await pcConfig();
-  if (!cfg.multiSeller || cfg.paused) return;
-  if (!pcPassLeader(pass)) return;                 // leader-only, exactly like the normal lane
-  const rpc = pcEv.rpc;                             // the normal lane's admin RPC context (set every pass it runs)
-  if (!rpc || !rpc.cfg || !rpc.rpcHeaders) return;
-  if (!(await pcFrozenReadSwitch(rpc.cfg, rpc.rpcHeaders, nowMs))) return;
-  if (pcInMaintenance(nowMs)) return;               // 01:00–05:00 Taipei: no frozen requests
-  const emapTabId = (pcEv.emap.tabId && !pcEv.emap.error) ? pcEv.emap.tabId : null;
-  if (!emapTabId) return;                           // no live E-Map tab → nothing (the row stays queued)
-  let rows = [];
-  try {
-    const r = await pcFrozenWithTimeout(fetch(`${rpc.cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_frozen_pending`, {
-      method: "POST", headers: rpc.rpcHeaders, body: JSON.stringify({ p_limit: PC_FROZEN_LIMIT }),
-    }), PC_FROZEN_CALL_TIMEOUT_MS, "pending read");
-    if (!r.ok) { pcFrozenLog(`pending rpc_${r.status}`); return; }
-    rows = await r.json();
-  } catch (e) { pcFrozenLog(`pending failed: ${(e && e.message) || "network"}`); return; }
-  pcFrozen.passes += 1;
-  // fairness: while dry rows are waiting in the normal queue, one frozen row per pass
-  let queueBusy = false;
-  try { queueBusy = Number((((await pcGet(PC_STATUS_KEY, {})) || {}).multiQueueDepth) || 0) > 0; } catch { queueBusy = false; }
-  const picks = pcFrozenPickRows(rows, pcFrozen.storeAt, Date.now(), queueBusy ? PC_FROZEN_LIMIT_BUSY : PC_FROZEN_LIMIT);
-  let scriptOk = null;                              // pinged once per pass, lazily
-  for (const pick of picks) {
-    if (!pcPassLeader(pass)) { pcFrozenLog("lease lost mid-pass — stopping"); break; }
-    if (pcInMaintenance(Date.now())) { pcFrozenLog("maintenance window started — stopping"); break; }
-    if (!(await pcFrozenWaitForGap())) { pcFrozen.skippedBusy += 1; pcFrozenLog("normal lane busy — retry next pass"); break; }
-    if (scriptOk === null) scriptOk = await pcFrozenEnsureScript(emapTabId);
-    if (!scriptOk) { pcFrozenLog("frozen script unavailable on the E-Map tab — retry next pass"); break; }
+  // ── the content script (ping; inject when silent, ≤ once per tab per 10 min) ──
+  async function ensureScript(tabId, nowMs) {
+    const ping = () => withTimeout(pcSendTab(tabId, { type: "PC_FROZEN_PING" }), PING_TIMEOUT_MS, "frozen ping").catch(() => null);
+    let r = await ping();
+    if (r && r.script === "emap-frozen") return true;
+    const last = st.injectedAt.get(tabId);
+    if (last && nowMs - last < INJECT_GAP_MS) return false;  // injected recently — wait (no injection loop)
+    st.injectedAt.set(tabId, nowMs);
+    const injected = await pcInject(tabId, "emap-frozen-711.js");
+    log(`emap-frozen-711.js not answering on tab ${tabId} → ${injected ? "injected" : "inject failed"}`);
+    if (!injected) return false;
+    r = await ping();
+    return Boolean(r && r.script === "emap-frozen");
+  }
+
+  // ── one pass: at most ONE frozen E-Map request, sent right at the kick ────────
+  // Order: (1) the request, from rows read in an earlier pass — nothing from the database
+  // before it; (2) its verdict write; (3) refresh the switch / rows for the NEXT pass.
+  async function runPass(pass, otherAtKick) {
+    const nowMs = Date.now();
+    const cfg = await pcConfig();
+    if (!cfg.multiSeller || cfg.paused) return;
+    if (!pcPassLeader(pass)) return;                       // leader-only, exactly like the normal lane
+    const rpc = pcEv.rpc;                                   // the normal lane's admin RPC context (set every pass it runs)
+    if (!rpc || !rpc.cfg || !rpc.rpcHeaders) return;
+    const tabId = (pcEv.emap.tabId && !pcEv.emap.error) ? pcEv.emap.tabId : null;
+    if (st.switchOn && tabId && !pcInMaintenance(nowMs)) await sendOne(pass, otherAtKick, rpc, tabId, nowMs);
+    // (3) refresh for the next pass — AFTER the request, never between the kick and it
+    if (Date.now() - st.switchAt >= SWITCH_TTL_MS) await readSwitch(rpc.cfg, rpc.rpcHeaders, Date.now());
+    if (!st.switchOn || !tabId || pcInMaintenance(Date.now())) return;   // no live E-Map tab / window → the rows stay queued in the DB
+    if ((!st.queue.length || Date.now() - st.queueAt >= QUEUE_MAX_AGE_MS) && Date.now() >= st.emptyUntil) {
+      await readPending(rpc.cfg, rpc.rpcHeaders, Date.now());          // D: not again for 60 s after an empty read
+    }
+  }
+  async function sendOne(pass, otherAtKick, rpc, tabId, nowMs) {
+    st.queue = st.queue.filter((q) => storeDue(st.storeAt, q.store_id, nowMs));
+    if (!st.queue.length) return;
+    st.passes += 1;
+    if (otherAtKick) { st.skippedBusy += 1; logSkip("other", otherAtKick); return; }
+    const busy = laneBusy(nowMs);
+    if (busy) { st.skippedBusy += 1; logSkip("busy", `normal lane busy (${busy})`); return; }
+    if (!(await ensureScript(tabId, nowMs))) return;
+    // right before the request: still the leader, still outside the window, still a gap, no other
+    // pass started meanwhile, no alarm about to start one
+    if (!pcPassLeader(pass)) { log("lease lost — stopping"); return; }
+    if (pcInMaintenance(Date.now())) { log("maintenance window started — stopping"); return; }
+    if (laneBusy(Date.now()) || otherPass(false)) { st.skippedBusy += 1; return; }
+    if (await alarmSoon(Date.now())) { st.skippedBusy += 1; logSkip("alarm", "keepalive alarm due"); return; }
+    if (otherPass(false)) { st.skippedBusy += 1; return; }                // the alarm read is async — check once more
+    const row = st.queue.shift();
     let status = "unknown"; let reason = "";
     try {
-      pcFrozen.storeAt.set(pick.store_id, Date.now());   // the floor starts at the request, answered or not
-      const resp = await pcFrozenWithTimeout(pcSendTab(emapTabId, { type: "PC_FROZEN_CHECK", row: pick }), PC_FROZEN_CALL_TIMEOUT_MS, "frozen check");
-      status = pcFrozenVerdictOf(resp);
+      st.storeAt.set(row.store_id, Date.now());             // the floor starts at the request, answered or not
+      const resp = await withTimeout(pcSendTab(tabId, { type: "PC_FROZEN_CHECK", row }), CHECK_TIMEOUT_MS, "frozen check");
+      status = verdictOf(resp);
       reason = resp ? String(resp.frozen_reason || "") : "emap tab not responding";
     } catch (e) { status = "unknown"; reason = (e && e.message) || "check threw"; }
     try {
-      const w = await pcFrozenWithTimeout(fetch(`${rpc.cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_frozen_verdict`, {
+      const w = await withTimeout(fetch(`${rpc.cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_frozen_verdict`, {
         method: "POST", headers: rpc.rpcHeaders,
-        body: JSON.stringify({ p_id: pick.id, p_expected_store: pick.store_id, p_status: status }),
-      }), PC_FROZEN_CALL_TIMEOUT_MS, "verdict write");
-      if (!w.ok) pcFrozenLog(`row=${pick.id} verdict rpc_${w.status}`);
-      pcFrozen.checks += 1; if (status === "unknown") pcFrozen.unknowns += 1;
-      pcFrozenLog(`row=${pick.id} store=${pick.store_id} → ${status}${reason ? ` (${reason})` : ""}`);
-    } catch (e) { pcFrozenLog(`row=${pick.id} verdict write failed: ${(e && e.message) || "network"}`); }
-    await pcSleep(PC_FROZEN_ROW_GAP_MS);
+        body: JSON.stringify({ p_id: row.id, p_expected_store: row.store_id, p_status: status }),
+      }), DB_TIMEOUT_MS, "verdict write");
+      if (!w.ok) log(`row=${row.id} verdict rpc_${w.status}`);
+      st.checks += 1; if (status === "unknown") st.unknowns += 1;
+      log(`row=${row.id} store=${row.store_id} → ${status}${reason ? ` (${reason})` : ""}`);
+    } catch (e) { log(`row=${row.id} verdict write failed: ${(e && e.message) || "network"}`); }
   }
-}
+
+  // ── the kick (the ONE line in pcRunOnce calls it; it never awaits) ────────────
+  function pcFrozenKick(pass) {
+    st.kicks += 1;                                            // counted for EVERY pass, busy or not
+    const otherAtKick = otherPass(true);                      // synchronous: before the kicking pass can end
+    if (st.busy) return;
+    st.busy = true;
+    Promise.resolve()
+      .then(() => runPass(pass, otherAtKick))
+      .catch((e) => { st.lastError = (e && e.message) || "pass threw"; log(`pass failed: ${st.lastError}`); })
+      .then(() => { st.busy = false; });
+  }
+  pcFrozenKick.__test = { switchValue, verdictOf, pickRows, storeDue, laneBusy, otherPass, alarmSoon, state: st };
+  g.pcFrozenKick = pcFrozenKick;
+})(typeof self !== "undefined" ? self : globalThis);

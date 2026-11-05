@@ -74,9 +74,9 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
 // the render): ⚠️ full → orange, 🚫 restricted / wrong store code → red (red
 // wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
 // only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
-const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null; frozenStoreStatus?: string | null; tempLayer?: string }, frozenOn = false): boolean =>
+const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null; frozenStoreStatus?: string | null; tempLayer?: string; status?: string }, frozenOn = false): boolean =>
   r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted"
-  || (frozenOn && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus === "no_frozen"); // sql/142 — 冷凍 rows only, switch on; a dry row never reads the frozen column
+  || (frozenOn && r.status !== "exported" && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus === "no_frozen"); // sql/142 — 冷凍 rows only, switch on, not exported; a dry row never reads the frozen column
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
 function untilDate(iso: string | null): string {
   if (!iso) return "";
@@ -996,8 +996,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     const st = await waitFrozen();
     if (st.blocked) { setSaving(false); setSaveErr(t.rd_ps2_frozen_blocked); return; }
     const layer = st.allowed ? editLayer : undefined; // only sellers with the control can change it (else the row keeps its own)
-    // sql/142: a 冷凍 row's new store code voids its frozen verdict too (switch on) — a dry row's payload stays byte-identical
-    const frozenReset = fzOn && storeChanged && isFrozenLayer(layer ?? prev?.tempLayer);
+    // sql/142: a 冷凍 row's new store code voids its frozen verdict too — switch on or off (the old store's
+    // verdict must never come back when the switch is turned on); a dry row's payload stays byte-identical
+    const frozenReset = storeChanged && isFrozenLayer(layer ?? prev?.tempLayer);
     const r = contactArg === undefined
       ? await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged, ...(frozenReset ? { frozen: true } : {}) }, layer) // own-scoped UPDATE, NO credit (today's exact call)
       : await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged, ...(frozenReset ? { frozen: true } : {}) }, layer, contactArg);
