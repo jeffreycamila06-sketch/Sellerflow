@@ -1,0 +1,315 @@
+> **This file is the printing source of truth.** Every change that touches printing (any path P1–P15, any sticker/slip/receipt layout, printer model, label size, language/script, preview) MUST update this file in the SAME branch — especially §2 (parity matrix) and §8 (scripts). The `printer-guardian` agent (.claude/agents/printer-guardian.md) enforces it.
+
+# SellerFlowLive printing inventory (the "printer guardian" source of truth)
+
+Snapshot: worktree `printer-inv` = `origin/main` **003288ef** (fetched 2026-11-06). The requested `985881f` is **not an ancestor** of current main (it is the tiktok-connect-limit merge on another line). `git diff 985881f 003288ef` touches **no** printing file, so every line number below holds for both.
+
+Legend: ✅ honoured · ❌ missing (evidence given) · ⚠ partial or risky · n/a does not apply / by design.
+All paths are relative to the repo root.
+
+---
+
+## 0. One-picture overview
+
+```
+order created (1-Click / Enterprise / Auto / Pin / Waitlist give)   reprint / raffle / Print screen / post-sales / test print
+        └─ useOrders.ts:244 setTimeout → RedesignApp onPrint (697) ─┐        │
+                                                                    ▼        ▼
+                         printing.ts:1006  printSlip(buyer, cur, storeName, Settings, {at?})
+                           │  printableBuyer (FB id hidden) + fbName (drop @line)   (1010-1017)
+                           ├─ shouldUseBluetoothSticker(printerType==="bluetooth" && bridge.printStickerNative)  (1019)
+                           │     → native queue (938) → printStickerViaBluetooth (647)
+                           │          ├─ savedIsNiimbot()      → P6 Niimbot SDK image      (653)
+                           │          ├─ savedGenericLang()    → P3/P4/P5 generic image     (655)
+                           │          ├─ bitmap method && !classic → P1 D520BT SDK image   (667-686)
+                           │          └─ else / CJK atlas fail / BITMAP_SPP_FAILED → P2 TEXT (688-703)
+                           ├─ shouldUseLanSticker(printerType==="lan" && lanFormat==="sticker" && bridge.printStickerLan) (1027)
+                           │     → native queue → P7 iOS WiFi TSPL TEXT (713)   [Android: method absent → falls to P8]
+                           ├─ hasNativeMobilePrinter() → P8 native ESC/POS slip (1032-1033)
+                           └─ else (laptop / browser) → P9 web HTML sticker → web queue → hidden iframe window.print (1042-1105)
+```
+
+Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buildSettingsFromRedesign`, printing.ts:1127 ← `psType`/`psOut`/`psSize` in localStorage `sfl_rd_printer`, RedesignApp.tsx:1839, default **wifi / receipt / 100x60**), the native bridge method presence, the saved BT printer echo (`savedPrinter.ts`, localStorage `sfl_rd_bt_printer`, written by every `btCall` that returns `savedPrinter`, printerBridge.ts:72-84), and per-device `sfl_rd_classic_text` (honoured only when `canUseClassicText`, printing.ts:370-375).
+
+---
+
+## 1. PATHS
+
+### P1 — AIMO / Phomemo D520BT, sticker IMAGE (SDK LZO bitmap stream). The default phone path
+- **Transports:** iOS BLE (CoreBluetooth `BleStickerTransport`, Swift `SellerFlowPrinterPlugin.swift:1274` `printStickerBitmap` → `bleTransport.printJob` 1289). Android BLE (`BleStickerTransport.java`, Java `SellerFlowPrinterPlugin.java:615-659`) **or** Android Classic SPP (`sendViaBluetoothSpp`, 668-680; on a socket failure it rejects `BITMAP_SPP_FAILED`, and the web retries the same print through P2, printing.ts:680-685).
+- **Entry:** `printSlip` → `enqueueNativeSticker` (printing.ts:1024) → `runNativeStickerJob` (956) → `printStickerViaBluetooth` (647) → `printStickerViaBitmap` (486).
+- **Who decides:** `printerType==="bluetooth"` and the bridge has `printStickerNative` (printerRouting.ts:29-34). No saved Niimbot or generic printer. `bitmapBridgeFn` finds `printStickerBitmap` on the shim or on the Capacitor proxy (461-468). Classic mode is not in force (664).
+- **Renderer:** `imageStickerPayload` (482-484) adds the image-only flags to `buildNativeStickerPayload` (64-101). Then `rasterizeToSdkBitmapTspl` (stickerRaster.ts:1148) → `renderStickerBitmap` (901) → `stickerDrawOps`/`drawOpsInner` (278/310; `draw50x30` 684 for 50×30) → `rotateRaster180` + `buildSdkBitmapStream` (1123). When **compact v2 is ON and the size is 50×30 or 60×40**, the font-C atlases are loaded (printing.ts:496) and `renderPropCompact` → `propLayoutLinesV2` draws it (stickerRaster.ts:1373-1381, 1444).
+- **Atlases:** Latin + CJK 24-cell (lazy chunk, `cjkAtlasLoader.ts`). **The Cyrillic atlas is never passed here** (stickerRaster.ts:171-176). If the CJK chunk cannot load, that print drops to P2 (printing.ts:675-677).
+- **Sizes:** 100×60, 80×60, 80×50, 70×50, 60×40 (fixed-cell `STICKER_LAYOUTS`, stickerRaster.ts:225-234), and 50×30 (`draw50x30`; the 50×30 option shows only in printer setup v2, PrinterSettings.tsx:314). ⚠ CLAUDE.md:213 says 80×50 and 70×50 are **untested on paper**.
+
+### P2 — D520BT TEXT (TSPL TEXT+BAR built natively). "Classic text" and every fallback
+- **Entry:** printing.ts:688-703 → `bridge.printStickerNative(buildNativeStickerPayload(...))`.
+- **Who decides:** Classic mode ON (admin or `classic_text` feature, plus `sfl_rd_classic_text=1`), or the bitmap method is missing (old binary), or the CJK atlas is unavailable, or `BITMAP_SPP_FAILED` (reason codes at 687).
+- **Native:** Android `printStickerNative` (Java:490-552) → `TsplBuilder.forStickerNative` (TsplBuilder.java:169), sent over BLE or SPP. If a **generic** printer is saved, Java:517 diverts the same TEXT bytes to `printGeneric`. iOS `printStickerNative` (Swift:1300) → `buildTsplSticker` (Swift:620) → BLE. A generic printer is diverted at 1329.
+- **Renderer:** native TEXT builders. They are mirrored byte-for-byte with `src/lib/__tests__/tsplReference.ts`, pinned by `mobile/ios/tspl-parity/golden/*.bin`.
+- **Sizes:** the 5 rows in `LAYOUTS` / `stickerLayouts` (Swift:95-105). **❌ 50×30 has no row**: `stickerConfig` falls back to the 100×60 geometry while `SIZE 50 mm, 30 mm` is sent (TsplBuilder.java:76-77, 208; Swift:106-108). A 50×30 seller who hits any fallback gets a clipped 800-dot layout.
+
+### P3 / P4 / P5 — GENERIC printer (Flash Y41BT, Xprinter XP-420B, admin "show all" saves): sticker IMAGE in the saved language
+- **Entry:** printing.ts:655 → `printStickerViaGenericImage` (567) → `buildGenericStickerBytes` (560) → `bridge.printRawTspl({data})` (576).
+- **Who decides:** `savedGenericLang()`. That needs `model==="generic"`; the language comes from `lang`, and a missing language means `tspl` (savedPrinter.ts:44-48). The language is chosen at save time from `knownPrinterLang(name)` (PrinterSettings.tsx:207) via `printerModels.BUILT_IN`.
+- **Renderer:** `imagePathAtlases` (printing.ts:542-558) gives Latin + **Cyrillic** + CJK (when needed). For 50×30 and 60×40 it **always** adds font C (proportional DejaVu + CJK regular cells), whether compact v2 is on or off.
+  - P3 **tspl** → `rasterizeToBitmapTspl` (stickerRaster.ts:991) with `knownTsplJob` density/speed/bold (printing.ts:572; printerModels.ts:63-68).
+  - P4 **escpos** → `renderStickerBitmap` + `escposRasterBytes` (escposRaster.ts). **⚠ Unverified on hardware** (escposRaster.ts:8; printing.ts:532).
+  - P5 **cpcl** → `cpclRasterBytes` (cpclRaster.ts). **⚠ Unverified on hardware** (cpclRaster.ts:11; printing.ts:533).
+- **Native transport:** iOS `printRawTspl` (Swift:1246) → `isGenericSaved` → `GenericBleTransport` (Swift:1104, class at ~2266). Android `printRawTspl` (Java:696): a generic BLE printer goes to `GenericBleTransport` (`isGenericSaved` needs transport `ble`, Java:169-171); a generic **classic/SPP** printer goes to `sendViaBluetoothSpp` (Java:738-745).
+- **Sizes:** all 6. 50×30 and 60×40 use font C; 70×50 and up use the fixed-cell `drawOpsInner`.
+- **⚠ Silent drop:** if the binary lacks `printRawTspl`, the function returns `{ok:false, code:""}` with no failure report (printing.ts:569).
+
+### P6 — Niimbot B1 / B21 / B203 / B3S (vendor SDK image)
+- **Entry:** printing.ts:653 → `printStickerViaNiimbot` (622) → `buildNiimbotImage` (615) → `bridge.printStickerImage({image})`.
+- **Who decides:** `savedIsNiimbot()` (transport `niimbot`, savedPrinter.ts:52-54). It is checked **before** the generic route.
+- **Renderer:** **always 50×30, whatever size the seller chose** (printing.ts:616). The image is drawn on a 384×224 canvas with a 16-dot safe edge (603-614) using font C (`renderPropCompact`), and `fitRaster` is applied.
+- **Native:** iOS `printStickerImage` (Swift:1081) → `NiimbotTransport.swift` → `NiimbotKit` (`SFLReferencePrint.m`, iOS 17.2+ only; `niimbotOsTooOld` shim flag at Swift:148-150). Android `printStickerImage` (Java:153) → `NiimbotTransport.java` (classic SPP + pairing, vendor AARs in `android/app/libs`, build.gradle:51-53). Density is fixed at 3 (NiimbotTransport.java:214-216). The frame inset of 1 mm must agree in 3 places: printing.ts:604, NiimbotTransport.swift:29, NiimbotTransport.java:62.
+- **Seller error codes:** `NIIMBOT_ERROR_KEYS` (printing.ts:279-289).
+- **⚠ Silent drop** when `printStickerImage` is missing (printing.ts:624).
+
+### P7 — iOS WiFi/LAN sticker (TSPL TEXT over TCP 9100)
+- **Entry:** printing.ts:1027-1030 → queue → `printStickerViaLan` (713) → `bridge.printStickerLan` → Swift `printStickerLan` (333) → `buildTsplSticker` (the same TEXT builder as P2) → `openTCP` (415).
+- **Who decides:** `printerType==="lan"` and `lanFormat==="sticker"` and the bridge has `printStickerLan`. **Only iOS injects that method** (Swift shim at 183). **❌ Android:** the method does not exist, so an Android seller who picks WiFi + "Sticker" (the tab is shown, PrinterSettings.tsx:267-268) is silently routed to P8, an ESC/POS **receipt**.
+- **Sizes:** the same 5 as P2 (50×30 falls back to the 100×60 geometry).
+
+### P8 — Native ESC/POS slip (WiFi/LAN receipt printer, e.g. XP-N160II)
+- **Entry:** printing.ts:1032-1033 → `sendSlipToNativePrinter` (301) → `SellerFlowPrinter.printSlip` (shim) or `Capacitor.Plugins…printSlip`, or legacy `ReactNativeWebView.postMessage` (331-333).
+- **Native:** iOS `printSlip` (Swift:286) → `buildEscPosSlip` (469-596) encodes **Big5**. Android `printSlip` (Java:294) → `buildEscPosSlip` (Java:997) with Big5 `PRINTER_CHARSET` (Java:59) and `stripUnencodable` (1116-1122). Both send over TCP.
+- **Payload:** `buildSlipPayload` (printing.ts:222-226). It passes the **full Settings and the raw buyer**; times are not localized.
+- **Not queued** (intentional, printing.ts:910-913).
+
+### P9 — Web / laptop browser print (hidden iframe + `window.print`)
+- **Entry:** printing.ts:1042-1105 builds the HTML → `enqueueWebPrint` (879) → `pumpWebQueue` (811) → `startWebJob` (819-877). One reused iframe; advances on `onafterprint` or after 1.3 s; kiosk hint after 6 s on the first job (763-765).
+- **Who decides:** no native bridge (any browser). `printerType`, `lanFormat` and `stickerSize` are **all ignored**. The laptop always prints this sticker HTML, never a receipt.
+- **Silent printing:** Chrome `--kiosk-printing` command (kioskLauncher.ts:24-26; card gated on `canSeeKioskLauncher`, feature `kiosk_launcher`). Not-printed badge: `notPrintedStore.ts` (localStorage `sfl_rd_notprinted_<seller>`).
+- **Renderer:** an inline HTML/CSS template with **no** link to stickerRaster. QR = `webStickerQrSvg` (989-1001).
+- **Sizes:** whatever the printer driver's paper is (`@page{size:auto}`, 1076). Fonts scale with `vh`.
+- **This is the incident path. Full gap list in §2.**
+
+### P10 — Messenger receipt picture (not a printer, but the third renderer of order data)
+- **Phone:** `ReceiptSheet.tsx:96` → `renderReceiptPng` (receiptImage.ts:23, browser canvas, system fonts). Preview via `useReceiptPicture.ts`.
+- **Server automatic receipt:** `server/fbAutoReceipt.js:18,79` → `drawReceiptPng` (server/receiptDraw.js:95, @napi-rs/canvas, bundled Noto Sans / TC / SC / Thai). It uses the raw `live_session_orders` rows, so **edits made in the manual sheet are not used** (receiptDraw.js:9-10).
+- **Shared pure layout:** `src/lib/receiptLayout.js` (`layoutReceipt`, caps 400 lines and 12000 px).
+- **Send endpoints:** `POST /fb/receipt/info` and `/fb/receipt/send` (server/fbReceipt.js:418-420).
+
+### P11 — Previews (display only)
+- **Live print pattern CSS mock:** PrintPattern.tsx ~166+. Shown on laptop, on WiFi, and whenever the image-path condition is false. ⚠ This mock **honours the Date/time and name toggles that no printer honours** (172, 179) and is not what P9 prints.
+- **Exact preview:** `ExactStickerPreview.tsx` → `renderStickerBitmap` with Latin/CJK(/Cyrillic) **only**, with payload from `stickerPreview.ts`. Used only when `spacingAllowed && imagePath` (PrintPattern.tsx:147, 160) or for the admin QR preview (163-165).
+- **Fit warning:** `stickerFit.ts` (layout step only).
+
+### P12 — Test prints
+| Button | Code | Route |
+|---|---|---|
+| Live print pattern "Printer Test" | RedesignApp.tsx:1879-1895 | No BT bridge → `printSlip` (P9 on laptop; on a phone without the BT method → P8 or P7). Otherwise `printStickerBtRouted` (= P1, P2, P3-5 or P6) with `savedTestBuyer()`. The v2 sample comment comes from `testBuyerWithComment` (1878). |
+| Printer settings BT "Test print" | PrinterSettings.tsx:178-188 | `printStickerBtRouted(testBuyer())` |
+| Printer setup v2 "tap a printer" | PrinterSettings.tsx:196-216 | save first, then `printStickerBtRouted`: D520 → `buildTestBuyer`, generic/Niimbot → `buildTestBuyerV2` (printerBridge.ts:155) |
+| Printer settings **WiFi** "Test print" | PrinterSettings.tsx:146 | `callMobilePrinterBridge("testPrint")` → shim `testPrint` → `printSlip` with a **hard-coded** payload (Swift:214-227; MainActivity.java:115). **❌ Always an ESC/POS receipt with no settings, even when the WiFi format is "Sticker"** (it would send ESC/POS to a TSPL printer). |
+| Native `testStickerPrint` / `textTestPage` / `buildTsplTestPage` | Java:556; TsplBuilder.java:95; Swift:1225, 1391 | **Dormant.** The web no longer calls it (only listed in the `BtBridgeAction` type, printerBridge.ts:30). |
+| Native `testGenericPrinter` | Java:763; Swift:1353 | **Dormant from the web** ("The web never calls that method any more", printerBridge.ts:127). It is now only the capability marker `hasGenericPrinterBridge`. |
+
+Test buyer quirk: `buildTestBuyer().orders[0].time = new Date().toLocaleTimeString()` (printerBridge.ts:172). On native the time is re-derived from `orderNum`, but `orderNum: 1` is less than `1e12`, so the raw device-local string (e.g. "2:05:33 PM") is kept and cut to 10 characters (printing.ts:68-70).
+
+### P13 — Triggers (all go through `printSlip`, so they all inherit the path above)
+| Trigger | Code | Notes |
+|---|---|---|
+| 1-Click | RedesignApp.tsx:1944 → useOrders.ts:244 → onPrint 697 | price = `effectiveOrderPrice(0, samePrice)` |
+| Enterprise typed price | RedesignApp.tsx:2209 | typed price (same-price only pre-fills, `entPrefill`) |
+| Auto Mode | RedesignApp.tsx:2294 | `itemOverride` = code ("A1" / "A1 ×2") |
+| Pin to print (`PIN_PRINT_PUBLIC=true`) | RedesignApp.tsx:2159; pinToPrint.ts | TikTok only (`isActionablePin`) |
+| Waitlist give (live) | RedesignApp.tsx:2096 | |
+| Raffle winner ticket | RedesignApp.tsx:705-710; raffle.ts:99 `buildWinnerTicketBuyer` | item "WINNER" |
+| Reprint (in-session / order / past session) | RedesignApp.tsx:723, 739, 749 → reprint.ts:58 `performReprint` | zero-write. Past session passes `{at}` = original date. |
+| Print screen (per buyer / "Print all") | Print.tsx:28, 31; RedesignApp.tsx:2721 | **multi-order buyers** (see §2). The comment "no-op on web" (Print.tsx:4-5, 28) is **stale**: the web prints P9. |
+| Facebook post sales | RedesignApp.tsx:2054; fbPostSales.ts:130 `postPrintSettings` | buyer-number line off |
+
+### P14 — Dormant or legacy
+- `src/App.tsx` (the old app; `app.html` is **not built**, vite.config.ts:17). It has its own `printSlip` (App.tsx:625), BT/LAN (596/613) and `doPrint` (1939).
+- `public/sellerflow-printer-shortcut.bat` is still served from `public/`, but is linked only from App.tsx:846 and 2678.
+- `ReactNativeWebView.postMessage` slip branch (printing.ts:333).
+- `rasterizeToBitmapTspl` mode-0 bands on the D520 (still golden-tested). Native `printRawTspl` was a dev probe and is now live for generic printers.
+
+### P15 — Not stickers but uses `window.print`
+- `brandedExport.ts:153-172` `exportBrandedPdf` (report to PDF). The guardian can ignore it for sticker parity.
+
+---
+
+## 2. FEATURE PARITY MATRIX
+
+Columns: **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image on 50×30 (`draw50x30`) or compact v2 font C · **P2/P7** native TEXT (BT fallback or classic, and iOS WiFi sticker) · **P3-5** generic image (≥70×50 fixed-cell; 50×30/60×40 font C) · **P6** Niimbot (font C 50×30) · **P8** ESC/POS slip · **P9** web · **Prev** ExactStickerPreview.
+
+| # | Feature | P1 | P1c | P2/P7 | P3-5 | P6 | P8 | P9 | Prev |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | Shop name on/off (`printStoreName`) | ✅ stickerRaster:406 / v2hdr 378 | ❌ font C never draws a shop line (propLayoutLines 1316-1331, V2 1476-1527); `draw50x30` none (by design for 50×30, Jeff Nov 3) — **60×40 v2 shop name = open item** | ✅ TsplBuilder:269 | ✅ ≥70×50 · ❌ 60×40 (always font C) | n/a (50×30, by design) | ✅ Swift:552 | ✅ printing:1097 | ⚠ shows the fixed-cell layout on 60×40 even where font C prints |
+| 2 | Shop name size | ✅ :407-409 · ❌ v2hdr fixed 1× (:378) | ❌ | ✅ | ✅ ≥70×50 (not v2hdr) | ❌ | ❌ no scale read (Swift:538-541) | ❌ printing:1071-1073 "NOT applied on web" | ✅ |
+| 3 | **Date/time on/off** (`printDateTime` / pp.dateTime) | ❌ header date always (:380/:383); never copied into the native payload (printing:81-99) | ❌ always (:1331, :1465, :745) | ❌ always (TsplBuilder:225 `TEXT 290,18`) | ❌ | ❌ | ❌ "Session:" always (Swift:565) | ❌ always (:1095) | ❌ the **CSS mock honours it** (PrintPattern:172) → the preview lies |
+| 4 | Date/time size | n/a (fixed by design, PrintPattern.tsx:13-16) | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| 5 | Buyer # on/off | ✅ :411 | ✅ :721 / :1319 / :1481 | ✅ | ✅ | ✅ | ✅ Swift:559 | ✅ :1098 | ✅ |
+| 6 | Buyer # size | ✅ :412 | ❌ fixed (`draw50x30` :721; `propSizes` :1208) | ✅ | ✅ ≥70×50 · ❌ compact | ❌ | ❌ fixed 0x11 (Swift:69) | ❌ | ✅ |
+| 7 | **Name on/off** (`printBuyerName` / pp.tiktokName) | ❌ not in the native payload (printing:81-99) and not a `RasterSettings` key (stickerRaster:250-261) | ❌ | ❌ | ❌ | ❌ | ❌ "Name: no toggle, always" (Swift:531, 560) | ❌ prints whenever `buyer.name` (:1099) | ❌ the CSS mock honours it (PrintPattern:179) |
+| 8 | Name size | ✅ :464-465 | ❌ | ✅ | ✅ ≥70×50 | ❌ | ❌ | ❌ | ✅ |
+| 9 | @username on/off | ✅ :482 | ✅ :725 / :1321 / :1526 | ✅ | ✅ | ✅ | ✅ :561 | ✅ :1100 | ✅ |
+| 10 | @username size | ✅ :483 | ❌ | ✅ | ✅ ≥70×50 | ❌ | ❌ | ❌ | ✅ |
+| 11 | Comment on/off (`printOrderItems`) | ✅ :490/:494 | ✅ :739 / :1327 / :1521 | ✅ | ✅ | ✅ | ✅ :569 | ✅ :1101 | ✅ |
+| 12 | Comment size (`printCommentScale`) | ✅ :504, v2 :625 | ❌ fixed sizes | ✅ | ✅ ≥70×50 | ❌ | ❌ fixed 0x11 (Swift:75) | ❌ fixed `vh` | ✅ |
+| 13 | Layout v2 full-width comment (`printCommentFullWidth`, public) | ✅ :490 (one order only) | n/a (own layouts) | ❌ by design (printing:141-142) | ✅ ≥70×50 | n/a | n/a | ❌ single line, cut at 14 (:1101) | ✅ |
+| 14 | Compact v2 (`printCompactV2`: shop header ≥70×50, "Buyer 88", date top-right, 3-line comment) | ✅ :375 v2hdr | ✅ :1374 (needs the font-C atlas load at printing:496) | ❌ native payload unchanged | ✅ | ✅ | n/a | ❌ hard-coded "SellerFlowLive" brand + date only (:1095); no shop header | ❌ `imageFlags` omit it (PrintPattern:146); no font-C atlas passed (ExactStickerPreview:35) |
+| 15 | Spacing (half word gap + compact gaps) | ✅ :322-324 (not when order rows print) | ❌ not read by `draw50x30` or font C | ❌ by design | ✅ ≥70×50 | n/a | n/a | ❌ | ✅ :146 |
+| 16 | Sticker QR | ✅ ≥50 mm tall (:945, :952) | ✅ 50×30 (:953); 60×40 only via font C | ❌ text builders cannot (printing:108-110) | ✅ (font C 60×40 has **no size gate**, :1216) | ✅ | ❌ | ✅ any size, no 60×40 exclusion (:1059, :986-987) | ✅ |
+| 17 | FB/IG name-only (drop @ line) | ✅ router printing:1016-1017 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 18 | FB 2-line name | ✅ :421-461 | ❌ `draw50x30` one line (:736); font C v1 one line (:1326) · ✅ v2 (:1525) | ❌ one line cut at 30 | ✅ ≥70×50 · v1 ❌ / v2 ✅ | ❌ unless v2 | n/a | ✅ line-clamp 2 (:1093) | n/a (sample is TikTok) |
+| 19 | FB id never printed (`printableBuyer`) | ✅ printing:1010 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | n/a |
+| 20 | CJK | ✅ atlas (falls to P2 if the chunk fails) | ✅ font-C cjkReg | ✅ GBK TSS24.BF2 (AIMO prints ASCII + Simplified only, CLAUDE.md:228-233) | ✅ | ✅ | ⚠ **Big5 only**: Simplified-only characters dropped on Android (Java:1116-1122); iOS whole-string Big5, nil → UTF-8 garbage (Swift:488-503, "known latent risk") | ✅ browser fonts | ✅ |
+| 21 | Latin diacritics / Cyrillic | ✅ Latin ext · ❌ Cyrillic → handle fallback (D520 never gets the Cyrillic atlas, :171-176) | same | ⚠ transliterated to ASCII; Cyrillic → handle | ✅ incl. Cyrillic | ✅ | ⚠ Big5 drops it | ✅ | ⚠ Cyrillic only when a generic/Niimbot printer is saved |
+| 22 | Emoji strip | ✅ `stripEmoji` | ✅ | ✅ | ✅ | ✅ | ✅ (Swift:484; Android `stripUnencodable`) | ❌ `esc()` only HTML-escapes (:730) | ✅ |
+| 23 | Comment wrap / shrink / ellipsis | ⚠ no QR & not v2: hard cut at 12, no "…" (:536); QR: wrap ≤4 + "…" (:529-531); v2: wrap to the bottom, cut **without** "…" (:561, :648) | ✅ `draw50x30` font step-down + "…" (:700-717); font C: shrink then "…"; v2: wrap ≤3 | ❌ cut at 12, max 2 rows | as P1/P1c | ✅ | ✅ full text, printer wraps | ❌ **hard cut at 14** + CSS ellipsis (:1101) | ✅ |
+| 24 | Time = Taipei HH:MM | ✅ printing:66-72 | ✅ | ✅ | ✅ | ✅ | ❌ raw `order.time` (payload :222-225 is not localized; Swift:579) | ❌ raw `orders[0].time` (:1055) = `c.time \|\| now.toLocaleTimeString()` (orderLogic.ts:45), cut at 10 (:1101) | ✅ |
+| 25 | Original date on past-session reprint (`at`) | ✅ :65 | ✅ | ✅ | ✅ | ✅ | ✅ :223 | ✅ :1050 | n/a |
+| 26 | Multi-order buyer (Print screen) | ⚠ max 2 rows (:497); v2 off when >1 order | ❌ `orders[0]` only (:739, :1327) | ⚠ max 2 rows | as P1 | ❌ `orders[0]` | ✅ all orders (Swift:571) | ❌ **`orders[0]` only** (:1054) | n/a |
+| 27 | Total / currency | n/a forced off (printing:91) | n/a | n/a | n/a | n/a | n/a removed (Swift:591) | n/a | n/a |
+| 28 | Same price / decimals (item = `moneyText`, e.g. "2.90") | ✅ data level (orderLogic.ts:38) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | n/a |
+| 29 | Per-model density / speed / bold | n/a fixed | n/a | n/a DENSITY 8 | ✅ TSPL only; ❌ ESC/POS & CPCL ignore `job` (printing:563-565) | ⚠ fixed 3 (Java:214) | n/a | n/a | n/a |
+| 30 | Serialized + not-printed badge | ✅ native queue (:938) | ✅ | ✅ | ✅ (⚠ silent if the method is missing, :569) | ✅ (⚠ :624) | ⚠ not queued (by design) | ✅ web queue + kiosk hint | n/a |
+| 31 | Label size honoured | ✅ 5 + 50×30 | ✅ | ❌ 50×30 → 100×60 geometry (TsplBuilder:76-77; Swift:106-108) | ✅ | ❌ always 50×30 (:616); the preview shows the chosen size | n/a | ❌ driver decides (:1076) | ⚠ no Niimbot canvas/inset |
+
+### Highlighted gaps (each is the "web incident" kind)
+1. **P9 web sticker is a frozen copy of the July layout.** Comment hard-cut at 14 (printing.ts:1101), time raw and cut at 10 (1101), no size multipliers (1071-1073), no v2/compact v2/spacing, hard-coded "SellerFlowLive" header (1095), only `orders[0]` (1054), no emoji strip (730), time not converted to Taipei (1055). Tests **pin** this behaviour (printing.test.ts:125 "truncated to 14", :166 "multipliers NOT applied on web"), so a fix must update them. If the shop name is blank, `printShopName` falls back to "SellerFlowLive" (RedesignApp.tsx:1865), so the brand prints twice on web and in the TEXT header.
+2. **The Date/time and Name toggles do nothing on every path** (printing.ts:81-99 drops `printDateTime` / `printBuyerName`; RasterSettings has no key; the slip ignores them). Only the CSS mock reacts, so the seller is misled.
+3. **Font C (50×30, 60×40 on generic, Niimbot, and the D520 with compact v2) ignores every size control and the shop name.** This is the complaint behind the Nov 3 switch-off (memory `/areas/sticker-v2.md`).
+4. **Android WiFi "Sticker" prints an ESC/POS receipt** (no `printStickerLan` on Android). **WiFi "Test print" always prints a hard-coded receipt.**
+5. **The TEXT fallback has no 50×30 row.** Any fallback (CJK chunk offline, classic mode, `BITMAP_SPP_FAILED`) on 50×30 prints a clipped 100×60 layout.
+6. **The exact preview omits `printCompactV2`, the font-C atlases and the Niimbot 50×30 canvas.** Preview ≠ print on 50×30/60×40, for compact v2, and for Niimbot.
+7. **The 60×40 QR lock is inconsistent.** PrintPattern blocks the toggle at 60×40 regardless of compact v2 (PrintPattern.tsx:138 `qrSizeBlocked`); PrinterSettings unlocks it when compact v2 is on (PrinterSettings.tsx:98). Font C on generic/Niimbot 60×40 prints a stored QR toggle even with compact v2 off (no size gate, stickerRaster.ts:1216).
+8. **ESC/POS slip:** Big5 only (CJK Simplified and Vietnamese are lost or garbled), raw time, no sizes, no QR.
+9. **Silent no-report** when `printRawTspl` or `printStickerImage` is missing (printing.ts:569, 624). The queue marks the order not-printed but no modal shows.
+
+---
+
+## 3. FLAGS & SETTINGS that change printing
+
+| Name | Kind | Default | Read at | Effect |
+|---|---|---|---|---|
+| `STICKER_LAYOUT_V2_PUBLIC` | code const | **true** | printing.ts:143, 146, 151 | `printCommentFullWidth` on image paths. Allowlist feature `sticker_v2` when false. |
+| `STICKER_SPACING_PUBLIC` | code const | **true** | printing.ts:164, 166 | half gaps + compact. Feature `sticker_spacing` when false. |
+| `STICKER_SPACING_CHOICE_VISIBLE` / `STICKER_SPACING_FIXED` | code const | false / "compact" | printing.ts:177-183 | the stored `pp.spacing` is ignored |
+| `sticker_layout_v2` (`featureSwitches.stickerLayoutV2`) | app_settings | OFF (`SWITCHES_OFF`, featureSwitches.ts:27, 33) | RedesignApp.tsx:844 → `setStickerCompactV2` 845 | compact v2. **Also ON for admins and feature `sticker_v2`** (printing.ts:211-216). Memory: turned OFF for sellers on Nov 3. Admins still get it by code. |
+| `printer_flow_v2` + feature `test_printers` + admin | app_settings / feature_access | OFF | printerModels.ts:114-116; RedesignApp.tsx:2745 | printer setup v2 screen (whitelist, generic/Niimbot saves, 50×30 option) |
+| `fb_post_sales` | app_settings + feature | OFF | RedesignApp.tsx:2050 | post-sale prints (buyer # off) |
+| `fbAutoReceipt` | app_settings | OFF | RedesignApp.tsx:1988 | server receipt picture (P10) |
+| `classic_text` feature + admin + localStorage `sfl_rd_classic_text` | feature / LS | off | printing.ts:347-375, 664; PrinterSettings.tsx:117, 393 | forces P2 |
+| localStorage `sfl_rd_sticker_qr` + `canUseStickerQr(market)` | LS + market gate | off | printing.ts:111-129; parcelScan.ts:67; RedesignApp.tsx:279, 317-318 | QR on P1/P1c/P3-6/P9 (never for FB/IG/Shopee, printing.ts:133-136) |
+| `PIN_PRINT_PUBLIC` + LS `sfl_rd_pin_print` (+ feature `pin_print`) | const / LS | true / off per device | pinToPrint.ts:19-26, 11 | pin → order + print |
+| `HONEST_SIZE_STEPS` | code const | true | PrintPattern.tsx:39 | 1×/2×/3× steps (`printScaleLevel`, printing.ts:1124) |
+| `kiosk_launcher` feature + admin; LS `sfl_rd_kiosk_hint_dismissed` | feature / LS | | kioskLauncher.ts:15-20 | laptop silent printing helper |
+| LS `sfl_rd_pp` | LS | `DEFAULT_PP` (PrintPattern.tsx:52) | RedesignApp.tsx:1848, 1858 | pattern toggles and sizes (+ `spacing`) |
+| LS `sfl_rd_printer` | LS | wifi / receipt / "100x60mm (Standard)" | RedesignApp.tsx:1839 | `printerType` / `lanFormat` / `stickerSize` |
+| LS `sfl_rd_bt_printer` | LS echo | — | savedPrinter.ts:17-36 | routing to Niimbot / generic before the native answer |
+| LS `sfl_rd_notprinted_<seller>` | LS | — | notPrintedStore.ts | web not-printed badge |
+| Native prefs Android | SharedPreferences | — | Java: `PREF_HOST`/`PORT`, `PREF_BT_ADDR`/`NAME`/`TRANSPORT`(spp\|ble\|niimbot)/`MODEL`(generic)/`LANG` (446-458) | routing on the native side |
+| Native prefs iOS | UserDefaults | — | Swift: `sellerflow_lan_host`/`port` (53-54); `sellerflow_ble_label_id`/`name`/`model`/`lang`/`transport` (1043-1053) | the same |
+| Profile shop name | DB profile | blank → "SellerFlowLive" | RedesignApp.tsx:1865 | store line + header |
+| `DEF_SETTINGS.autoprint` / `printAutoClose` / `printLogo` / X/Y offsets | Settings fields | — | printing.ts:41 | **❌ never read by the redesign.** Every order always prints. There is no "auto print off". |
+| `ESC_POS_IMPORTANT_SIZE` / `ESC_POS_ORDER_SIZE` | native const | 0x11 | Swift:69, 75 (+ Java twins) | slip text size |
+| `printTotal` | forced false on stickers | — | printing.ts:91 | |
+| `printOrderScale` | pinned to 1 | — | printing.ts:1151 | time size is decoupled |
+| Plan gates | — | none | — | no print path is plan-gated (QR is "all plans", parcelScan.ts:63-69) |
+| `native-version.json` / `nativeVersion.ts` | capability | — | nativeVersion.ts | update modal only; routing uses method presence |
+
+---
+
+## 4. TESTS
+
+| Path | Tests | Rendered-picture / byte check? |
+|---|---|---|
+| P1 D520 image | stickerRaster.test.ts, stickerRaster.sdk.test.ts, stickerRaster.v2.test.ts, stickerRaster.50x30.test.ts, stickerRaster.cyrillic.test.ts, stickerRaster.prop.test.ts (+ stickerRasterPropGoldens.json), stickerCompactV2.test.ts, stickerSpacing.test.ts / .onOff / .offPins (pins 360 labels byte-identical), fbNameOnly.print.test.ts, printing.bitmapRouter.test.ts, printing.cjkSplit.test.ts, printing.stickerQrGate.test.ts, printing.fbNoQr.test.ts, bitmapFixtures.ts + fixtures/*.json | ✅ byte and ink checks (pure TS) |
+| P2 TEXT (Java/Swift) | src/lib/__tests__/tspl.test.ts (TS reference vs `mobile/ios/tspl-parity/golden/*.bin`, 27 fixtures), buyerLine.contract.test.ts, iosCjkEncoding.contract.test.ts; iOS AppTests MobileTsplBuilderTests / CjkEncodingTests / BleStickerLogicTests (**Mac only, manual gate**, CLAUDE.md:3613-3624); goldens regenerated by `tspl-parity/run.sh` from TsplBuilder.java | ✅ bytes. ⚠ CI runs only `npm test` (.github/workflows/ci.yml:16-20): **no gradle, no Xcode in CI**. No 50×30 fixture (the gap is unguarded). |
+| P3-5 generic | printing.genericRoute.test.ts, escposRaster.test.ts / cpclRaster.test.ts (16×2 golden), v2TestSticker.golden.test.ts, printerModels.test.ts, printerNames.contract.test.ts (TS = Java = Swift prefix lists), PrinterSettings.flowV2 / .v2TestBuyer, savedTestBuyer.test.ts | ✅ TS bytes. ⚠ ESC/POS and CPCL never tried on hardware. |
+| P6 Niimbot | printing.niimbotRoute.test.ts, v2TestSticker.golden.test.ts; Android NiimbotTransportTest.java; iOS NiimbotLoaderTests.swift | ✅ image dims and bytes (TS). Native tests not in CI. |
+| P7 iOS LAN sticker | printerRouting.test.ts, nativePrintQueue.test.ts, printing.failure.test.ts (routing only). Bytes share P2's goldens via `buildTsplSticker`. | ⚠ no test of the TCP path |
+| P8 ESC/POS slip | printing.test.ts:65-75 (payload shape only), receiptGate / i18nWiring (bridge mocks) | **❌ no byte test of `buildEscPosSlip` (Java or Swift). No Big5 test.** |
+| P9 web | printing.test.ts:77-180 (HTML string asserts), printing.webQr.test.ts, webPrintQueue.test.ts, kioskLauncher.test.ts, notPrintedStore.test.ts, useOrders.kioskFalseSave.test.tsx, Dashboard.notPrinted.test.tsx | **❌ no rendered-picture check.** The string tests *pin the gaps* (trunc 14, no multipliers). |
+| P10 receipt picture | receiptImage.test.ts, receiptDraw.server.test.ts, buyerReceipt.test.ts, receiptSettings.test.ts, receiptSheetLayout / Lines / receiptSend / receiptGate (.tsx), fbAutoReceipt*.server.test.ts | ⚠ layout ops tested; no pixel diff phone vs server |
+| P11 previews | PrintPattern.test / .honestSteps / .shopName / .spacing / .v2, stickerSpacing.compactDefault.test.tsx, stickerQrMove.test.tsx | ⚠ **no test asserts preview pixels == print pixels per path/size.** Nothing covers compact v2, font C or Niimbot in the preview. |
+| P12 test prints | testPrintComment.test.tsx, printerSetupFlow.test.tsx, PrinterSettings.test.tsx, PrinterModal.test.tsx, btOff.test.tsx | ⚠ WiFi `testPrint` shim untested; native test pages untested |
+| P13 triggers | reprint.test.ts, printing.originalDate.test.ts, raffle.test.ts, pinToPrint.test.ts, pinHold.test.tsx, useOrders.*.test, fbPostSales.test.tsx, samePrice.test.ts, Dashboard.reprint.test.tsx | ⚠ **Print screen (Print.tsx) has no test.** Nothing covers multi-order. |
+| e2e | e2e/smoke/tests/smoke.spec.ts opens Print pattern / Printer screens | **never prints** (smoke.spec.ts:7, 273) |
+
+**Paths with no picture or byte check at all:** P8 slip bytes, P9 rendered output, P7 transport, WiFi test print, native test pages, the Print screen, and preview-vs-print parity.
+
+---
+
+## 5. PRINTER MODELS
+
+| Model | Brand | Detected by | Saved as | Prints via |
+|---|---|---|---|---|
+| D520BT (AIMO, Phomemo rebadge; scans as "D520BT-Z") | AIMO | advertised service `AF30` or name prefix `D520BT` (BleStickerLogic.java:18-21, 85-95; Swift `isTargetPrinter` ~1598) → `model:"D520BT"` | transport ble/spp, no model | P1 / P2 |
+| Y41BT (FLASH LABEL; "Y41BT-0FC4_LE") | Flash | WHITELIST prefix (printerModels.ts:79-87) | generic, `tspl`, DENSITY 15 / SPEED 4 / bold (printerModels.ts:58) | P3 |
+| XP-420B | Xprinter | WHITELIST exact prefix | generic, `tspl`, 15/4/bold (printerModels.ts:59) | P3 |
+| Niimbot B1- / B21- / B203- / B3S- | Niimbot | name prefixes (printerModels.ts:31, 33; Java:145; Swift:1660) → `brand:"niimbot"` | transport `niimbot`, model generic | P6 (iOS 17.2+) |
+| XP-N160II (receipt) | Xprinter | IP entry (no scan) | LAN host/port | P8 (and P7 on iOS if the format is sticker) |
+| "Show all" unknown device (admin only) | — | any named device | generic `tspl` (PrinterSettings.tsx:207) | P3 |
+| Name-list only (not whitelisted, so hidden for sellers): XP-, Xprinter, Printer, PRT, PT-, MPT, GP-, Phomemo M02/M110/M120/M200/M220/M221/Q30/T02, HPRT, Munbyn, Gprinter, Zjiang | — | `PRINTER_NAME_PREFIXES` (printerModels.ts:24-35) + `LIKELY_PRINTER_SERVICES` (Java:118; Swift:1634) | — | — |
+
+**Selection flow (v2):** scan (`btScanOutcome`, `includeGenericPrinters`) → `isPrinterOnlyRow` → `knownPrinterInfo` whitelist filter (PrinterSettings.tsx:232) → `pickPrinter` (196-216) saves (D520: no model; Niimbot: transport niimbot; others: model generic + lang) → test print → `rememberSavedPrinter`.
+
+**Files to touch to add a NEW model** (command-language printer, BLE or classic):
+1. `src/redesign/adapters/printerModels.ts`: `WHITELIST` (+ `KnownBrand` union if it is a new brand), `BUILT_IN` (lang + density/speed/bold), `PRINTER_NAME_PREFIXES` if the name is not covered.
+2. `mobile/android/app/src/main/java/com/sellerflow/live/BleStickerLogic.java`: `PRINTER_NAME_PREFIXES` (138) and maybe `LIKELY_PRINTER_SERVICES` (118).
+3. `mobile/ios/App/App/SellerFlowPrinterPlugin.swift`: `BleStickerLogic.printerNamePrefixes` (1653) and maybe `likelyPrinterServices` (1634).
+4. Only if its GATT layout differs: `GenericBleTransport.java` and the Swift `GenericBleTransport` (~2266), `pickWriteTarget` (Swift:1711).
+5. Tests: `printerModels.test.ts`, `printerNames.contract.test.ts` (3-way list pin), `PrinterSettings.flowV2.test.tsx`, Android `BleStickerLogicTest.java`, iOS `BleStickerLogicTests.swift`.
+6. Seller wording: `docs/support/sfl-guide.md:435` (printer list), the help-bot FAQ if it lists models, `src/redesign/i18n/index.tsx` (brand strings).
+7. A native binary release for 2-4 (store update). Steps 1 and 6 are web-only.
+
+**If the new printer needs its own SDK (Niimbot pattern):** also a new Swift + Java transport, a plugin method in `pluginMethods` (Swift:21-42) and `@PluginMethod`, shim lines in `bridgeShimJS` (Swift:167-228) **and** `MainActivity.java` (~107-146), `savedPrinter.ts` transport, a route in `printStickerViaBluetooth` (printing.ts:647-655), a `has*Bridge` in printerBridge.ts, error keys + i18n (printing.ts:279), `build.gradle` libs and the Xcode framework.
+
+**If it needs a NEW label size:** `STICKER_LABELS` (printing.ts:44), `PS_SIZES` (PrinterSettings.tsx:32), `STICKER_LAYOUTS` + `COMPACT_GAPS` (stickerRaster.ts:225, 237), Java `TsplBuilder.LAYOUTS`, Swift `stickerLayouts` (95), `tsplReference.ts`, new golden payloads + `manifest.json`, `isPropCompactSize` (stickerRaster.ts:1199) / `propSizes` (1208), and the web P9 (which has no size concept today).
+
+---
+
+## 6. KNOWN RISKS / TODO comments in printing code
+
+- printing.ts:532-533, escposRaster.ts:8, cpclRaster.ts:11: ESC/POS and CPCL generic raster **unverified on hardware**.
+- SellerFlowPrinterPlugin.java:661-667: bitmap over SPP "still needs one device test"; SPP has no DONE, so the safety net catches only socket failures.
+- SellerFlowPrinterPlugin.swift:488-496 (+ 1406): iOS slip Big5 legacy encoder, "known latent risk". The never-fail twin is parked at git `b44f5b5`.
+- stickerRaster.ts:515: QR keep-out CJK comment stays one line, "char-wrap deferred".
+- stickerRaster.ts:1414: `propWrapLines` O(n²) ("ponytail").
+- CLAUDE.md:213: 80×50 / 70×50 untested on paper. CLAUDE.md:228-233: the AIMO ROM renders ASCII + Simplified Chinese only.
+- CLAUDE.md:3664-3666: "BITMAP is hardware-dead on the AIMO D520BT". This is **stale/contradictory**: the D520 now prints the SDK mode-4 LZO image (P1); only the old mode-0 bands were dead.
+- Print.tsx:4-5, 28: stale "no-op on web" comments.
+- printing.ts:1-13 header "COPY + byte-parity with App.tsx": App.tsx is no longer built, so the parity tests now guard a dead twin.
+- The web template is pinned by tests that encode the gaps (printing.test.ts:125, 166).
+- Two Facebook/font-C rules live in separate layouts (`draw50x30` vs `propLayoutLines` vs `propLayoutLinesV2` vs `drawOpsInner` v2hdr). Every new feature must be added to **4 layouts + the TEXT builder ×2 (Java/Swift, intentionally frozen) + the web HTML + the CSS mock**. That is the structural reason paths get forgotten.
+- No CI for Java/Swift. The Swift golden gate is manual on the Mac (CLAUDE.md:3613-3624).
+
+---
+
+## 7. Guardian checklist (derived; use for every print change)
+1. Which of P1, P1c, P2/P7, P3-5, P6, P8, P9 and the preview does the change touch? Fill one row of §2 per change.
+2. Run vitest with the sizes 100×60 / 80×60 / 80×50 / 70×50 / 60×40 / 50×30 × TikTok / FB / CJK / Cyrillic / emoji / long comment / QR on-off.
+3. If Java or Swift changed: run `tspl-parity/run.sh` to regenerate the goldens, then the Mac XCTest + `run-encoders-sim.sh` gate.
+4. Web P9 and the CSS mock must be checked explicitly. They share no code with stickerRaster.
+
+
+---
+
+## 8. SCRIPTS / LANGUAGES that can print (added Nov 6 2026 — Japanese seller complaint)
+
+Image paths (P1, P1c, P3-5, P6 and the exact preview) keep ONLY: ASCII, CJK **ideographs** (`isCjkIdeograph`: U+4E00–9FFF, U+3400–4DBF, U+F900–FAFF), and atlas Latin (+ Cyrillic on generic/Niimbot). Everything else is **silently removed** by `stripUnrenderableExt` (stickerRaster.ts:179-183) / `stripUnrenderable` (legacy):
+
+| Script | Example | P1/P1c/P3-6 image | P2/P7 TEXT (AIMO ROM) | P8 slip | P9 web |
+|---|---|---|---|---|---|
+| English / numbers | Amy 350 | ✅ | ✅ | ✅ | ✅ |
+| Traditional Chinese 漢字 | 黑色洋裝 | ✅ | ⚠ ROM = Simplified glyphs (CLAUDE.md:228-233) | ✅ Big5 | ✅ |
+| Simplified Chinese | 连衣裙 | ✅ | ✅ | ❌ Big5 drops | ✅ |
+| **Japanese kana** | ありがとう / ワンピース | ❌ **removed** (田中さん → 田中) | ❌ | ❌ | ✅ |
+| **CJK punctuation** U+3000–303F | 、。「」 | ❌ removed | ❌ | ⚠ | ✅ |
+| **Full-width forms** U+FF00–FFEF | ！？（）１２３ＡＢＣ, half-width ｶﾅ | ❌ removed | ❌ | ⚠ | ✅ |
+| Korean Hangul | 감사합니다 | ❌ removed | ❌ | ❌ | ✅ |
+| Thai | ขอบคุณ | ❌ removed | ❌ | ❌ | ✅ |
+| Vietnamese / Latin accents | Nguyễn | ✅ atlas | ⚠ transliterated | ⚠ | ✅ |
+| Cyrillic (Bulgarian) | Мария | ✅ generic/Niimbot · ❌ D520 (→ handle) | ⚠ | ⚠ | ✅ |
+| Emoji | 🔥 | stripped (by design) | stripped | stripped | ❌ prints (not stripped) |
+
+SFL serves TW / PH / VN / TH / ID / MY / BG / JP sellers, so every market's script must be in this table and tested with a picture before a release.
