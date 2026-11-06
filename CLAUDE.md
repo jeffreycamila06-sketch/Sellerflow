@@ -3,6 +3,17 @@
 Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
+> ## 🖨 PRINTING RULE (Nov 6 2026 — read before ANY printing work)
+> SFL prints through ~15 separate paths that share little code (phone image renderers, AIMO TEXT
+> fallback in Java/Swift, generic TSPL/ESC/POS/CPCL, Niimbot SDK, WiFi slip, **laptop/web HTML**,
+> Messenger receipt, previews). A forgotten path embarrassed Jeff in front of paying sellers
+> (web sticker cut the comment at 14 letters; Japanese kana silently dropped on Niimbot).
+> **Any task that touches printing — code, layout, label size, printer model, fonts/scripts, previews —
+> MUST: (1) read `docs/printing/PRINTING_MAP.md`; (2) run the `printer-guardian` agent
+> (`.claude/agents/printer-guardian.md`) before reporting done; (3) produce TODAY-vs-NEW pictures
+> for every affected path/size; (4) update PRINTING_MAP.md in the same branch.**
+> Never report a printing change as done without the guardian's parity table.
+
 _Last substantial update: 2026-06-26 (branch `claude/full-redesign`: **i18n
 CODE-COMPLETE + zh-TW NATIVE-VERIFIED** — all 21 redesign screens wired to `useT()`,
 504 new keys × 7 langs (en byte-exact, zh-TW confirmed correct by Jeff's Taiwan

@@ -47,7 +47,10 @@ vendor/
 # only affects untracked files); new build output there stays ignored.
 /www/
 /graphify-out/
-/.claude/
+/.claude/*
+!/.claude/agents/
+!/.claude/hooks/
+!/.claude/settings.json
 /supabase/.temp/
 *.bak
 mobile/www/
