@@ -22,7 +22,7 @@ export const SERVER_ONLY_CODES = Object.freeze({
   sweep_not_configured: "E143", too_many_attempts: "E144", translation_not_configured: "E145",
   truncated: "E146", upload_failed: "E147", "Server auth is not configured": "E148",
   try_later: "E149", insufficient_credits: "E150", not_signed_in: "E151", bad_amount: "E152",
-  connect_failed: "E153", not_found: "E154",
+  connect_failed: "E153", not_found: "E154", username_required: "E155",
 });
 
 const BY_WORD = Object.freeze({ ...SERVER_ONLY_CODES, ...ERR_CODES });

@@ -136,7 +136,7 @@ Payment is not done inside the app.
 This guide does not quote prices. For prices, message Admin. Plans run month to month.
 
 ## connect-tiktok — Connect your TikTok live
-Last checked: 2026-10-15
+Last checked: 2026-11-06
 Keywords: connect, tiktok, go live, live, link account, comments, ikonek, paano mag-connect, 连接, 連線, 直播, 抖音
 
 1. **Go live on TikTok first.** Your account must already be live when you connect.
@@ -148,7 +148,11 @@ Keywords: connect, tiktok, go live, live, link account, comments, ikonek, paano 
 
 Messages:
 - "Account is not live right now — start your TikTok LIVE first." Go live, then tap Connect again.
-- "Too many connects. Wait N minutes, then try again." Wait, then tap Connect once.
+- "Connection limit reached — we're retrying for you" The app connects by itself in a few minutes — keep the app open. If it's still not connected after a few minutes, tap Connect.
+- "Try again in a few minutes" Wait a few minutes, then tap Connect once.
+- "Daily connection limit reached — try again later" Wait about 10 minutes, then tap Connect once.
+- "TikTok username not found. It may have changed — edit the account's username and try again." Your TikTok username changed. Tap **Manage / add accounts**, fix the username, then tap Connect.
+- "Couldn't find this TikTok account right now. Make sure you're LIVE and the username is correct, then try again." Go live first and check the username in **Manage / add accounts**, then tap Connect once.
 - "Can't connect right now. Check your internet and try again."
 - "Couldn't connect. Make sure you're LIVE, then try again." Go live first, then tap Connect once.
 - "Your plan has ended. Renew to connect again." See "Plan expired"
@@ -634,7 +638,7 @@ Keywords: delete account, remove account, close account, erase data, burahin acc
 Some records (orders, payments, legal) may be kept if needed by law. If you see "This account can't be deleted in the app. Message us and we'll do it.", message Admin on Telegram @SellerFlowLive.
 
 ## trouble-connect — Connect fails, "not live", or green but no comments
-Last checked: 2026-10-11
+Last checked: 2026-11-06
 Keywords: connect failed, not live, no comments, green but nothing, stuck connecting, ayaw mag-connect, walang comment, 连不上, 連不上, 没有留言, 无评论
 
 **"Account is not live right now"** — make sure you are **already live** on TikTok with the **exact** username you added. Then tap Connect.
@@ -649,7 +653,15 @@ Keywords: connect failed, not live, no comments, green but nothing, stuck connec
 2. Tap **Connect** once.
 3. Make sure your TikTok live really has new comments.
 
-**"Too many connects. Wait N minutes"** — wait that long, then tap Connect once.
+**"Connection limit reached — we're retrying for you"** — the app connects by itself in a few minutes — keep the app open. If it's still not connected after a few minutes, tap Connect.
+
+**"Try again in a few minutes"** — wait a few minutes, then tap Connect once.
+
+**"Daily connection limit reached — try again later"** — wait about 10 minutes, then tap Connect once.
+
+**"TikTok username not found. It may have changed — edit the account's username and try again."** — your TikTok username changed. Tap **Manage / add accounts**, fix the username, then tap Connect.
+
+**"Couldn't find this TikTok account right now. Make sure you're LIVE and the username is correct, then try again."** — go live first and check the username in **Manage / add accounts**, then tap Connect once.
 
 **"Your plan has ended. Renew to connect again."** — see "Plan expired".
 

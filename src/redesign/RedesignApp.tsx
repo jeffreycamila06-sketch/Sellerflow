@@ -120,7 +120,8 @@ import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from "./adapters/printerBridge";
 import { printerFlowV2Enabled } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
-import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, type Platform, ttDisconnect } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, cooldownRetryDelayMs, type Platform, ttDisconnect } from "./adapters/connect";
+import { createCooldownRetry, retryAllowed } from "./adapters/cooldownRetry";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
 import { fbHandleIsId } from "./adapters/fbName";
@@ -1268,7 +1269,7 @@ export default function RedesignApp() {
   // it does NOT close the dropdown and does NOT connect. Connect is the sole action that
   // connects + closes (doConnect). No connect.ts/useLiveFeed change — selection state only.
   const switchAccount = (platform: Platform, i: number) => {
-    if (platform === "TikTok") setTtIdx(i); else setFbIdx(i);
+    if (platform === "TikTok") { cooldownRetry.cancel(); setTtIdx(i); } else setFbIdx(i); // a pending retry must not connect the previously typed account
   };
   // Surface B — chip 3-state connect (neutral → connecting → connected → Disconnect).
   // `connected` is server truth (liveFeed.tt/fbConnected). We add a LOCAL connecting
@@ -1292,6 +1293,12 @@ export default function RedesignApp() {
   useEffect(() => { setIgOff(false); }, [liveFeed.igConnected]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
+  // Nov 3, 2026 — ONE automatic retry when a connection-limit cooldown ends (cooldownRetry.ts).
+  // ttEffRef lets the timer skip the retry if the seller connected by hand in the meantime.
+  const [cooldownRetry] = useState(() => createCooldownRetry());
+  const ttEffRef = useRef(ttEff);
+  useEffect(() => { ttEffRef.current = ttEff; }, [ttEff]);
+  useEffect(() => () => cooldownRetry.cancel(), [cooldownRetry, auth.email]); // unmount or a different signed-in user → drop the pending retry
   const fbEff = fbConnected && !fbOff;
   // fb_stop_reasons (switch ON) — one plain-words toast when the Facebook pill falls from green
   // for a reason the server sent; never after this device's own Disconnect (fbOff).
@@ -1333,6 +1340,9 @@ export default function RedesignApp() {
   /* eslint-enable react-hooks/set-state-in-effect */
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
   const igEff = liveFeed.igConnected && !igOff; // false for everyone without Instagram
+  const otherLive = fbEff || igEff || shopeeEff;   // cooldown retry: never while another platform is live
+  const otherLiveRef = useRef(otherLive);
+  useEffect(() => { otherLiveRef.current = otherLive; }, [otherLive]);
   // BUYER ALERT (Phase 1, gated by the server access list) — ONE RPC when a live source
   // connects, refreshed every 10 min; rows do an O(1) map lookup. No access → no RPC, no change.
   const buyerAlert = useBuyerAlert(buyerAlertGate(buyerAlertAccess), ttEff || fbEff || shopeeEff || igEff);
@@ -1397,6 +1407,7 @@ export default function RedesignApp() {
   // never tapped TikTok Connect → arm the room join), POST, toast on success. The
   // modal shows inline errors from the returned result (no double toast here).
   const doShopeeConnect = async (shopId: number, sessionId: string) => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     // Owner preview: no Partner credentials → no real connect. Show an honest note
     // instead of a misleading toast (this is UI-visibility only).
     if (shopeePreview) { setToast({ msg: tApp.rd_shp_preview_note, kind: "err" }); return { ok: false, error: "preview" }; }
@@ -1465,6 +1476,7 @@ export default function RedesignApp() {
   // socket is in the room before the poller relays, POST /fb/connect, toast the outcome.
   // Reached only via runTargetConnect / connectPending AFTER a session is guaranteed.
   const doFbConnect = async (pageId: string, scopeKey = "") => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     // fbPreview is NOT short-circuited — allowlisted preview users hit the REAL POST
     // /fb/connect (the fb_enabled flag stays the fleet switch only). Non-allowlisted
     // sellers can never reach this (no reachable Facebook connect target for them).
@@ -1494,6 +1506,7 @@ export default function RedesignApp() {
     return commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
   };
   const doIgConnect = async (igUserId: string) => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     if (platformLocks.Instagram) { setToast({ msg: lockText("Instagram"), kind: "err" }); return; } // Shopee beta lock
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
     setIgConnecting(true);
@@ -1601,6 +1614,7 @@ export default function RedesignApp() {
   // length; born-ended fix makes it safe — no endSession first) → reset board (#1) →
   // connect the new platform. A null id (RPC failed) aborts without a session-less feed.
   const confirmSwitch = async () => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     if (switchingRef.current) return;              // H4 — same-tick double-tap → exactly ONE start_session/reset
     const target = switchConfirm;
     setSwitchConfirm(null);
@@ -1678,9 +1692,10 @@ export default function RedesignApp() {
   // The actual socket connect (unchanged) — extracted so BOTH the "session already
   // running" path and the "after the seller picks a session length" path can call
   // it. Nothing in this body changed vs the old inline doConnect.
-  const performConnect = async (platform: Platform, acct: string, opts?: { register?: boolean }) => {
+  const performConnect = async (platform: Platform, acct: string, opts?: { register?: boolean; retry?: boolean }) => {
     const setConnecting = platform === "TikTok" ? setTtConnecting : setFbConnecting;
     const setOpen = platform === "TikTok" ? setTtOpen : setFbOpen;
+    if (!opts?.retry) cooldownRetry.cancel();        // a manual tap replaces any pending automatic retry
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
     track("connect_attempt", { platform });          // analytics parity (App.tsx:4277)
@@ -1713,7 +1728,18 @@ export default function RedesignApp() {
       // POST-ok-as-truth lie the branch removes) — success now toasts via the
       // gated ttConnected rise above. Failures keep the honest r-based toast.
       // Build 10: never the server's words or a code — the generic text instead.
-      if (!r.ok) setToast({ msg: connectFailText(r, tApp), kind: "err" });
+      // Nov 3, 2026 — connection-limit cooldown: retry ONCE by itself when it ends (no tap).
+      // The retried attempt passes retry:true, so a second cooldown never schedules a third.
+      const retryMs = !r.ok && platform === "TikTok" && !opts?.retry ? cooldownRetryDelayMs(r) : null;
+      // The timer re-checks before firing: TikTok still off, no other platform live, and the
+      // SERVER still says the session is running and is TikTok's (never a bare re-POST).
+      if (retryMs !== null) cooldownRetry.schedule(acct, retryMs, (gen) => { void (async () => {
+        const session = await sessionInstance.checkStatus();
+        if (!cooldownRetry.isCurrent(gen)) return;      // a manual tap / Disconnect / switch meanwhile wins (no double connect)
+        if (!retryAllowed({ ttLive: ttEffRef.current, otherLive: otherLiveRef.current, session })) return;
+        void performConnect("TikTok", acct, { retry: true, register: opts?.register });
+      })(); });
+      if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled: retryMs !== null }), kind: "err" });
     } finally { setConnecting(false); }
   };
   const doConnect = async (platform: Platform) => {
@@ -1722,7 +1748,7 @@ export default function RedesignApp() {
     const setOff = platform === "TikTok" ? setTtOff : setFbOff;
     const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
     const idx = platform === "TikTok" ? ttIdx : fbIdx;
-    if (eff) { setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget)
+    if (eff) { cooldownRetry.cancel(); setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget); drops a pending cooldown retry
     const acct = accts[idx] || accts[0];
     if (!acct) {
       // No registered account (Addendum 2, 2026-07-23). TikTok → the
@@ -1793,6 +1819,7 @@ export default function RedesignApp() {
   // (nulls current_session_id + stamps session_ended_at) → board clears to day-view
   // (Option A) → toast. Owner-gated caller only; no other seller reaches this.
   const doEndSession = async () => {
+    cooldownRetry.cancel();                          // another platform / a switch / session end → no pending TikTok retry
     setEndConfirm(false);
     const ok = await sessionInstance.endSession();
     if (!ok) { setToast({ msg: tApp.rd_os_end_failed, kind: "err" }); return; }

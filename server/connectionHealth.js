@@ -167,9 +167,13 @@ export function relaySessionId(entry, closureSessionId) {
 // single spurious 429 could lock a paying seller out of going live for a full
 // day. Correct behavior (RFC 9110 §10.2.3): honor the server's own reset
 // signal; only fall back to a SANE default when no header is present.
-export const RATE_LIMIT_DEFAULT_MS = 30 * 60 * 1000;    // no header → 30 min (was 24h)
+// Nov 3, 2026 — Euler's 429s that day were the FREE plan's daily_rooms limit; our 30-min
+// bench locked sellers out of a live for far longer than the cause. Now: 2 min when Euler
+// sends no reset header, Euler's own Retry-After / X-RateLimit-Reset when it does, capped
+// at 10 min. The client auto-retries ONCE when the cooldown ends (cooldownRetry.ts).
+export const RATE_LIMIT_DEFAULT_MS = 2 * 60 * 1000;     // no header → 2 min (was 30 min)
 export const RATE_LIMIT_MIN_MS = 60 * 1000;             // 1 min floor (never thrash)
-export const RATE_LIMIT_MAX_MS = 24 * 60 * 60 * 1000;   // 24h ceiling (never WORSE than before)
+export const RATE_LIMIT_MAX_MS = 10 * 60 * 1000;        // 10 min ceiling (header can't bench longer)
 
 const clampCooldown = (ms) => Math.min(RATE_LIMIT_MAX_MS, Math.max(RATE_LIMIT_MIN_MS, ms));
 
@@ -183,6 +187,91 @@ export function resolveRateLimitCooldownMs(error, nowMs) {
   const retry = Number(error && error.retryAfter);
   if (Number.isFinite(retry) && retry > 0) return clampCooldown(retry);
   return RATE_LIMIT_DEFAULT_MS;
+}
+
+// PURE: Euler's 429 body carries `limit_label` (e.g. "daily_rooms"); the connector puts it at
+// the front of the error message as "(daily_rooms) Too many connections started, …". Read it
+// back so the log and the admin card say WHICH limit hit — or null when there is none.
+export function rateLimitLabel(error) {
+  // The real message is "[Rate Limited] (daily_rooms) Too many connections started, …" (SignAPIError
+  // prefixes the reason), so the label is searched ANYWHERE, right before "Too many connections".
+  const m = /\(([a-z0-9_]+)\)\s*Too many connections/i.exec(String((error && error.message) || error || ""));
+  return m ? m[1] : null;
+}
+
+// daily_rooms = Euler's per-day room budget. Round 4 (Nov 6, 2026 — Business 10K plan, a daily hit
+// is now very rare): a PER-ACCOUNT cooldown only, never a pause for every account. The account that
+// got it waits 10 min (or Euler's reset time if sooner — never longer than 10 min) and the app shows
+// the daily text with NO client auto-retry. Other accounts are not affected.
+export const DAILY_ROOMS_LABEL = "daily_rooms";
+export const isDailyRoomsLabel = (label) => String(label || "").toLowerCase() === DAILY_ROOMS_LABEL;
+export const RATE_LIMIT_DAILY_MS = 10 * 60 * 1000;
+const clampDaily = (ms) => Math.min(RATE_LIMIT_DAILY_MS, Math.max(RATE_LIMIT_MIN_MS, ms));
+export function dailyCooldownMs(error, nowMs) {
+  const reset = Number(error && error.resetTime);
+  if (Number.isFinite(reset) && reset > nowMs) return clampDaily(reset - nowMs);
+  const retry = Number(error && error.retryAfter);
+  if (Number.isFinite(retry) && retry > 0) return clampDaily(retry);
+  return RATE_LIMIT_DAILY_MS;
+}
+
+// PURE: today's Euler-429 tally (Taipei day), kept in memory on the server and shown on the
+// admin card / health detail. A new Taipei day starts the count again.
+export const taipeiDayKey = (nowMs) => new Date(nowMs + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+export const EMPTY_RATE_LIMIT_STATS = Object.freeze({ dayKey: "", count: 0, lastLabel: null, lastAt: null });
+export function rateLimitStatsFor(stats, nowMs) {
+  const dayKey = taipeiDayKey(nowMs);
+  return stats && stats.dayKey === dayKey ? stats : { dayKey, count: 0, lastLabel: null, lastAt: null };
+}
+export function noteRateLimit(stats, label, nowMs) {
+  const base = rateLimitStatsFor(stats, nowMs);
+  return { dayKey: base.dayKey, count: base.count + 1, lastLabel: label || base.lastLabel, lastAt: nowMs };
+}
+
+// PURE: cooldown keys are `${sellerId}:TikTok:${username}` (liveKey). The admin clear names
+// only the username (any seller, case-insensitive); the status list parses the key back.
+export function cooldownKeyMatches(key, username) {
+  const u = String(username || "").trim().toLowerCase();
+  return !!u && String(key || "").toLowerCase().endsWith(`:tiktok:${u}`);
+}
+export function listCooldowns(cooldowns, nowMs) {
+  const out = [];
+  for (const [key, retryAt] of cooldowns) {
+    const remainingMs = Number(retryAt) - nowMs;
+    if (!(remainingMs > 0)) continue;
+    const parts = String(key).split(":");
+    out.push({ key, sellerId: parts[0] || "", username: parts.slice(2).join(":"), remainingMs });
+  }
+  return out;
+}
+
+// PURE: Euler plan usage (Business plan: 10,000 rooms/day, 50 concurrent — env overrides). Distinct rooms
+// connected today (Taipei day; the TikTok roomId, or the account key when the id is unknown)
+// and the current concurrent connection count, against the env limits, with a warning from
+// 70% so the admin sees it before Euler refuses a connect.
+export const EMPTY_ROOM_STATS = Object.freeze({ dayKey: "", rooms: Object.freeze([]) });
+export function noteRoom(stats, roomId, nowMs) {
+  const dayKey = taipeiDayKey(nowMs);
+  const base = stats && stats.dayKey === dayKey ? stats : { dayKey, rooms: [] };
+  const id = String(roomId || "");
+  if (!id || base.rooms.includes(id)) return base;
+  return { dayKey, rooms: [...base.rooms, id] };
+}
+export const roomsTodayCount = (stats, nowMs) => (stats && stats.dayKey === taipeiDayKey(nowMs) ? stats.rooms.length : 0);
+export const USAGE_WARN_RATIO = 0.7;
+export const EULER_DAILY_ROOMS_DEFAULT = 10000;
+export const EULER_CONCURRENT_DEFAULT = 50;
+export function readLimit(raw, fallback) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+export function eulerUsage(roomsToday, concurrent, limits) {
+  const dailyLimit = readLimit(limits && limits.dailyRooms, EULER_DAILY_ROOMS_DEFAULT);
+  const concurrentLimit = readLimit(limits && limits.concurrent, EULER_CONCURRENT_DEFAULT);
+  const warnings = [];
+  if (roomsToday >= dailyLimit * USAGE_WARN_RATIO) warnings.push(`daily_rooms ${roomsToday}/${dailyLimit}`);
+  if (concurrent >= concurrentLimit * USAGE_WARN_RATIO) warnings.push(`concurrent ${concurrent}/${concurrentLimit}`);
+  return { roomsToday, concurrent, dailyLimit, concurrentLimit, warn: warnings.length > 0, warnings };
 }
 
 // ── Connect rate limit (#5a) — per-seller anti-abuse on /connect ─────────────
@@ -216,3 +305,56 @@ export function checkConnectRate(timestamps, nowMs, max = CONNECT_RATE_MAX, wind
 export function isOwningConnection(connections, key, connection) {
   return connections.get(key)?.connection === connection;
 }
+
+// Nov 6, 2026 — a seller who CHANGED their TikTok username: tiktok-live-connector 2.1.1-beta1
+// throws a FetchIsLiveError with an EMPTY message and the real failures in error.errors[]; for a
+// username that no longer exists one of them is TikTok's own API error, shaped exactly
+// "API Error 19881007 (user_not_found)" (fetch-room-info-api-live.js), or carries code 19881007.
+// KNOWN SHAPES ONLY (fix round 3): the connector's "Invalid response from API: <json>" carries the
+// TikTok profile JSON INCLUDING THE BIO — such an error is skipped entirely, so nothing a seller
+// writes in their bio can look like "not found" or a rate limit. PURE: walks the error and its
+// nested errors (errors[], exception, requestErr) — depth-limited, cycle-safe.
+const PROFILE_JSON_PREFIX = "Invalid response from API:";
+const carriesProfileJson = (n) => String((n && n.message) || "").startsWith(PROFILE_JSON_PREFIX);
+function errorNodes(e, depth, seen, out) {
+  if (!e || typeof e !== "object" || depth > 4 || seen.has(e)) return out;
+  seen.add(e);
+  if (!carriesProfileJson(e)) out.push(e);
+  if (Array.isArray(e.errors)) for (const x of e.errors) errorNodes(x, depth + 1, seen, out);
+  errorNodes(e.exception, depth + 1, seen, out);
+  errorNodes(e.requestErr, depth + 1, seen, out);
+  return out;
+}
+const nodesOf = (error) => errorNodes(error, 0, new Set(), []);
+const USER_NOT_FOUND_RX = /^API Error 19881007\b/;
+export function isTikTokUserNotFound(error) {
+  return nodesOf(error).some((n) => n.code === 19881007 || n.code === "19881007" || USER_NOT_FOUND_RX.test(String(n.message || "")));
+}
+// A rate limit wrapped INSIDE the lookup error (e.g. "Failed to retrieve Room ID from Euler due to an
+// error: (daily_rooms) Too many connections…" in errors[]): the nested error itself (it carries the
+// label / reset time), else null. Known shapes only: a SignatureRateLimitError, or a message that
+// STARTS with "[Rate Limited]" or "Failed to retrieve Room ID from Euler due to an error:" (or a
+// SignAPIError) AND says rate limit / too many connections. The top-level error counts too.
+const RATE_LIMIT_RX = /rate.?limit|too many connections/i;
+const RATE_LIMIT_PREFIXES = ["[Rate Limited]", "Failed to retrieve Room ID from Euler due to an error:"];
+const classOf = (n) => (n && n.constructor && n.constructor.name) || (n && n.name) || "";
+export function isKnownRateLimitShape(n) {
+  if (!n || typeof n !== "object" || carriesProfileJson(n)) return false;
+  const cls = classOf(n);
+  if (cls === "SignatureRateLimitError") return true;
+  const msg = String(n.message || "");
+  const known = cls === "SignAPIError" || RATE_LIMIT_PREFIXES.some((p) => msg.startsWith(p));
+  return known && RATE_LIMIT_RX.test(msg);
+}
+export function nestedRateLimitError(error) {
+  return nodesOf(error).find(isKnownRateLimitShape) || null;
+}
+export function isTikTokLookupFailed(error) {
+  if (!error || typeof error !== "object") return false;
+  const name = (error.constructor && error.constructor.name) || error.name || "";
+  return name === "FetchIsLiveError" && !isTikTokUserNotFound(error);
+}
+
+// Reconnect: stop after this many "username not found" answers IN A ROW (one can be a TikTok
+// glitch). The streak resets on ANY successful connect (a reconnect or the seller's own tap).
+export const NOT_FOUND_FINAL_STREAK = 2;

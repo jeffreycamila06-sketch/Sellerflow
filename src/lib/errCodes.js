@@ -49,6 +49,9 @@ export const ERR_CODES = Object.freeze({
   "TikTok connection is already starting. Please wait before trying again.": "E38",
   "TikTok username is required": "E39",
   "You're already connecting a live on another device. Please try again.": "E40",
+  // Nov 6, 2026 — TikTok connect: the username no longer exists (changed) / the lookup failed.
+  tiktok_user_not_found: "E43",
+  tiktok_lookup_failed: "E44",
 });
 
 // Sentences with one changing part: "{v}" travels after a colon ("E41:12").

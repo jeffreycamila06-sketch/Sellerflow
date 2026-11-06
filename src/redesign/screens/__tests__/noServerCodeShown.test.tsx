@@ -45,15 +45,15 @@ describe("TikTok connect toast (RedesignApp) and Connect modal", () => {
   it("every status × every code → only the app's own texts", async () => {
     for (const lang of LANGS) {
       const t = buildT(lang);
-      const allowed = new Set([t.rd_cm_not_live, t.rd_cm_cant_reach, t.rd_cm_conn_try_again, t.rd_cm_plan_ended]);
+      const allowed = new Set([t.rd_cm_not_live, t.rd_cm_cant_reach, t.rd_cm_conn_try_again, t.rd_cm_plan_ended, t.rd_cm_tt_cooldown, t.rd_cm_tt_cooldown_again, t.rd_cm_tt_daily_limit]);
       for (const status of [400, 401, 403, 409, 429, 500, 502]) {
         for (const c of CODES) {
           serve(status, { success: false, error: c, ...(status === 409 ? { notLive: true } : {}) });
           const r = await connectPlatform("TikTok", { username: "shop" }, "s@x.com");
           const text = connectFailText(r, t);
           expect(text).not.toMatch(CODE);
-          // Build 10b: or the cooldown sentence with its minutes (E41/E42)
-          expect(allowed.has(text) || /\d/.test(text) && text.startsWith(t.rd_cm_tt_cooldown.split("{n}")[0])).toBe(true);
+          // Nov 3, 2026: the cooldown answer (E41/E42) shows the fixed "retrying for you" text — no minutes
+          expect(allowed.has(text)).toBe(true);
         }
       }
     }
@@ -61,7 +61,7 @@ describe("TikTok connect toast (RedesignApp) and Connect modal", () => {
   it("the toast in RedesignApp never prints a server field", () => {
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).not.toMatch(/msg:\s*r\.(error|reason)\b/);
-    expect(app).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp), kind: \"err\" });");
+    expect(app).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled: retryMs !== null }), kind: \"err\" });"); // Nov 3, 2026: retried flag
   });
 
   const profile: AccountUser = {

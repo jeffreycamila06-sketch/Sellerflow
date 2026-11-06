@@ -166,7 +166,7 @@ describe("TikTok and Shopee: only the new code is mapped (source pins)", () => {
     const body = app.slice(app.indexOf("const performConnect = async"), app.indexOf("const doConnect = async"));
     expect(body).toContain('if (!r.ok && (r.error === ACCOUNT_NOT_COVERED || (platform === "TikTok" && r.error === "account_limit"))) { setToast({ msg: liveRefusedText(tApp,');
     expect(body.match(/account_limit/g)).toHaveLength(2);   // the mapping + its comment only
-    expect(body).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp), kind: \"err\" });"); // Build 10: never the server's words
+    expect(body).toContain("if (!r.ok) setToast({ msg: connectFailText(r, tApp, { retryScheduled: retryMs !== null }), kind: \"err\" });"); // Build 10: never the server's words
     expect(body.indexOf("ACCOUNT_NOT_COVERED")).toBeLessThan(body.indexOf("if (!r.ok) setToast({ msg: connectFailText("));
   });
   it("Shopee: account_not_covered → readable text in the connect sheet", () => {

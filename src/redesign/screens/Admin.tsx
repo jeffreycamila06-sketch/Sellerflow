@@ -18,6 +18,7 @@ import { loadFmGlobalFeeMeta, saveFmGlobalFee, validFmFee } from "../adapters/fm
 import { loadParcelManualEnabledMeta, saveParcelManualEnabled } from "../adapters/parcelScan";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
 import { describeWorkerState } from "../adapters/parcelWorkerState";
+import { loadTikTokCooldownStatus, clearTikTokCooldown, usageWarns, type CooldownStatus } from "../adapters/tiktokConnectLimit";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
@@ -822,6 +823,81 @@ function ParcelSwitchPanel() {
   );
 }
 
+// Nov 3, 2026 — TikTok connection limit (Euler 429s): today's count + last limit label, the
+// accounts on cooldown, and a one-tap clear for one account (admin route, no server restart).
+// Read-on-open + manual refresh — zero polling.
+export function TikTokLimitCard() {
+  const t = useT();
+  const [status, setStatus] = useState<CooldownStatus | null>(null);
+  const [state, setState] = useState<"loading" | "idle" | "error">("loading");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  useEffect(() => {                                               // read-on-open (starts in "loading")
+    let alive = true;
+    void loadTikTokCooldownStatus().then((r) => {
+      if (!alive) return;
+      if (r.ok && r.status) { setStatus(r.status); setState("idle"); } else setState("error");
+    });
+    return () => { alive = false; };
+  }, []);
+  const load = () => {                                              // manual Refresh + after a clear
+    setState("loading");
+    void loadTikTokCooldownStatus().then((r) => { if (r.ok && r.status) { setStatus(r.status); setState("idle"); } else setState("error"); });
+  };
+  const refresh = load;
+  const clear = async () => {
+    const u = name.trim();
+    if (!u || busy) return;
+    setBusy(true); setNote(null);
+    const r = await clearTikTokCooldown(u);
+    setBusy(false);
+    if (r.ok) { setNote({ kind: "ok", msg: tpl(t.rd_adm_ttl_cleared, { n: r.cleared ?? 0 }) }); setName(""); load(); }
+    else setNote({ kind: "err", msg: t.rd_adm_ttl_err });
+  };
+  const lastAt = status?.lastAt ? new Date(status.lastAt).toLocaleTimeString() : "";
+  const inputStyle: CSSProperties = { flex: 1, minWidth: 0, padding: "8px 10px", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", fontSize: 13 };
+  return (
+    <div data-testid="adm-ttl-card" style={{ ...card, padding: "14px 15px", display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_adm_ttl_title}</div>
+        <button onClick={refresh} disabled={state === "loading"} style={{ ...planBtn, flexShrink: 0, opacity: state === "loading" ? 0.6 : 1 }}>{state === "loading" ? t.rd_pulse_loading : t.rd_pulse_refresh}</button>
+      </div>
+      {state === "error" && <div style={{ fontSize: 12, color: "var(--danger)" }}>{t.rd_adm_ttl_load_err}</div>}
+      {status && (
+        <>
+          {status.usage && (
+            <>
+              {(status.usage.warn || usageWarns(status.usage)) && (
+                <div data-testid="adm-ttl-warn" style={{ background: "var(--danger)", color: "#fff", borderRadius: 10, padding: "9px 11px", fontSize: 12.5, fontWeight: 700 }}>{t.rd_adm_ttl_warn}</div>
+              )}
+              <div data-testid="adm-ttl-usage" style={{ fontSize: 12.5, color: "var(--text)", fontFamily: mono }}>
+                {tpl(t.rd_adm_ttl_usage, { rooms: status.usage.roomsToday, limit: status.usage.dailyLimit, live: status.usage.concurrent, climit: status.usage.concurrentLimit })}
+              </div>
+            </>
+          )}
+          <div data-testid="adm-ttl-today" style={{ fontSize: 12.5, color: status.count > 0 ? "var(--danger)" : "var(--text-muted)", fontWeight: status.count > 0 ? 700 : 500 }}>
+            {tpl(t.rd_adm_ttl_today, { n: status.count })}
+            {status.count > 0 && status.lastLabel ? <> · {tpl(t.rd_adm_ttl_last, { label: status.lastLabel, time: lastAt })}</> : null}
+          </div>
+          {status.cooldowns.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_adm_ttl_none}</div>}
+          {status.cooldowns.map((c) => (
+            <div key={c.sellerId + ":" + c.username} data-testid="adm-ttl-row" style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5, color: "var(--text)" }}>
+              <span style={{ fontFamily: mono, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{c.username} <span style={{ color: "var(--text-muted)" }}>· {c.sellerId}</span></span>
+              <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{tpl(t.rd_adm_ttl_left, { m: Math.max(1, Math.ceil(c.remainingMs / 60000)) })}</span>
+            </div>
+          ))}
+        </>
+      )}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input data-testid="adm-ttl-input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t.rd_adm_ttl_ph} aria-label={t.rd_adm_ttl_ph} style={inputStyle} />
+        <button data-testid="adm-ttl-clear" onClick={() => void clear()} disabled={busy || !name.trim()} style={{ ...planBtn, flexShrink: 0, opacity: busy || !name.trim() ? 0.6 : 1 }}>{t.rd_adm_ttl_clear}</button>
+      </div>
+      {note && <div data-testid="adm-ttl-note" style={{ fontSize: 12, fontWeight: 700, color: note.kind === "ok" ? "var(--ok, #16a34a)" : "var(--danger)" }}>{note.msg}</div>}
+    </div>
+  );
+}
+
 // Business Pulse — WEB-ONLY admin activity view. Counts + timestamps only (NO
 // prices/revenue → coexists with the iOS payment-hiding gate). Data from the
 // admin_business_pulse RPC; read-on-open + manual Refresh (zero polling).
@@ -839,6 +915,8 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
         </div>
         <button onClick={onRefresh} disabled={state === "loading"} style={{ ...planBtn, flexShrink: 0, opacity: state === "loading" ? 0.6 : 1 }}>{state === "loading" ? t.rd_pulse_loading : t.rd_pulse_refresh}</button>
       </div>
+
+      <TikTokLimitCard />
 
       {state === "loading" && !pulse && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_pulse_loading}</div>}
       {state === "error" && <div style={{ fontSize: 12.5, color: "var(--danger)", padding: "8px 2px" }}>{t.rd_pulse_error}</div>}
