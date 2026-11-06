@@ -160,7 +160,9 @@ export async function deliverXlsm(bytes: Uint8Array, filename: string): Promise<
 //                      blob a.click() here, so a failed phone export is never mistaken
 //                      for success and rows are never wrongly consumed).
 export type MobileDeliverResult = { ok: boolean; via: "native" | "webshare"; cancelled?: boolean; unsupported?: boolean; error?: string };
-export function deliverXlsmMobile(bytes: Uint8Array, filename: string): Promise<MobileDeliverResult> {
+// mime: defaults to the 賣貨便 .xlsm type (Parcel Scan, unchanged); the branded Excel export
+// passes the .xlsx type.
+export function deliverXlsmMobile(bytes: Uint8Array, filename: string, mime: string = XLSM_TYPE): Promise<MobileDeliverResult> {
   // Native path (only if a future APK bundles Filesystem+Share) — no web activation needed.
   if (hasNativeFileShare()) {
     const cap = (window as unknown as { Capacitor: CapPluginHost }).Capacitor;
@@ -172,7 +174,7 @@ export function deliverXlsmMobile(bytes: Uint8Array, filename: string): Promise<
   // Web Share — invoked SYNCHRONOUSLY (nothing is awaited above on this branch).
   const nav = (typeof navigator !== "undefined" ? navigator : undefined) as ShareNav | undefined;
   if (!nav || typeof File === "undefined" || !nav.share) return Promise.resolve({ ok: false, via: "webshare", unsupported: true });
-  const file = new File([bytes.buffer as ArrayBuffer], filename, { type: XLSM_TYPE });
+  const file = new File([bytes.buffer as ArrayBuffer], filename, { type: mime });
   if (nav.canShare && !nav.canShare({ files: [file] })) return Promise.resolve({ ok: false, via: "webshare", unsupported: true });
   return nav.share({ files: [file], title: filename })
     .then(() => ({ ok: true, via: "webshare" as const }))

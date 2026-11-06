@@ -19,7 +19,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT } from "../i18n";
-import { exportBrandedXlsx, exportBrandedPdf } from "../adapters/brandedExport";
+import type { BrandedExportInput } from "../adapters/brandedExport";
+import { useBrandedExport } from "../adapters/useBrandedExport";
+import ExportToast from "../components/ExportToast";
 import { dayStamp } from "../adapters/csv";
 import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
 import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
@@ -110,10 +112,9 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   const shownRanges: [SalesTabRange, string][] = platOn ? [...RANGES.filter(([r]) => r !== "custom"), ["2months", t.rd_sal_2months]] : RANGES;
   const pill = (active: boolean): CSSProperties => ({ padding: "7px 13px", borderRadius: 999, border: "1px solid " + (active ? "var(--accent)" : "var(--border)"), background: active ? "var(--accent)" : "var(--surface)", color: active ? "#fff" : "var(--text-dim)", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" });
 
-  const doExport = (kind: "xlsx" | "pdf") => {
-    setExportOpen(false);
-    if (!d) return;
-    const input = {
+  const buildExport = (): BrandedExportInput => {
+    if (!d) throw new Error("no data");
+    return {
       title: `${t.rd_nav_sales} · ${d.start} → ${d.end}`, seller,
       columns: [
         { header: "#", align: "right" as const, width: 5 },
@@ -130,8 +131,13 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
       ],
       filename: `sales_${range}_${dayStamp()}`,
     };
-    if (kind === "xlsx") void exportBrandedXlsx(input).catch(() => {});
-    else exportBrandedPdf(input);
+  };
+  const exp = useBrandedExport(buildExport, { failed: t.rd_export_failed, pdfPhone: t.rd_export_pdf_phone, phoneUnsupported: t.rd_export_phone_unsupported });
+  const toggleExport = () => { const o = !exportOpen; setExportOpen(o); if (o) exp.prepare(); else exp.cancel(); };
+  const doExport = (kind: "xlsx" | "pdf") => {
+    if (!d) { setExportOpen(false); exp.cancel(); return; }
+    if (kind === "xlsx") { if (exp.preparing) return; setExportOpen(false); exp.xlsx(); }
+    else { setExportOpen(false); exp.pdf(); }
   };
 
   return (
@@ -140,10 +146,10 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={headerTitle}>{t.rd_nav_sales}</div>
           <div style={{ position: "relative" }}>
-            <button onClick={() => setExportOpen((v) => !v)} disabled={!d || platOn} data-testid="sales-export" style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", border: "none", borderRadius: 10, padding: "8px 12px", color: "var(--on-header)", fontWeight: 700, fontSize: 12.5, cursor: d ? "pointer" : "default", opacity: d ? 1 : 0.5 }}>{t.rd_export} ▾</button>
+            <button onClick={toggleExport} disabled={!d || platOn} data-testid="sales-export" style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", border: "none", borderRadius: 10, padding: "8px 12px", color: "var(--on-header)", fontWeight: 700, fontSize: 12.5, cursor: d ? "pointer" : "default", opacity: d ? 1 : 0.5 }}>{t.rd_export} ▾</button>
             {exportOpen && d && (
               <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow)", overflow: "hidden", zIndex: 20, minWidth: 140 }}>
-                <button onClick={() => doExport("xlsx")} data-testid="sales-export-xlsx" style={menuItem}>📊 {t.rd_prd_export_excel}</button>
+                <button onClick={() => doExport("xlsx")} disabled={exp.preparing} aria-busy={exp.preparing} data-testid="sales-export-xlsx" style={{ ...menuItem, opacity: exp.preparing ? 0.6 : 1 }}>📊 {exp.preparing ? t.rd_export_preparing : t.rd_prd_export_excel}</button>
                 <button onClick={() => doExport("pdf")} data-testid="sales-export-pdf" style={menuItem}>📄 {t.rd_prd_export_pdf}</button>
               </div>
             )}
@@ -280,6 +286,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
         )}
         <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>{t.rd_sal_retention}</div>
       </div>
+      <ExportToast message={exp.message} />
     </div>
   );
 }

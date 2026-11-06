@@ -24,6 +24,12 @@ const tables: Record<string, Row[]> = {
     { key: "parcel_manual_enabled", value: "true" }, { key: "buyer_contact_enabled", value: "true" }, { key: "frozen_store_check_enabled", value: "true" },
     { key: "fm_scan_enabled", value: "true" }, { key: "fm_pickup_enabled", value: "true" },
     { key: "fm_shipping_fee", value: "39" }, { key: "shipping_fee_global", value: "38" },
+    { key: "past_sessions_public", value: "true" }, // Orders → Sessions → a past session (export check)
+  ],
+  // One finished 2-day session (Orders → Sessions picker + its Export). day(-n) = n days ago.
+  live_session_orders: [
+    { id: 9001, user_id: UID, session_id: "past-1", session_date: day(-9), created_at: `${day(-9)}T05:00:00.000Z`, buyer_number: 1, handle: "@oldann", customer_name: "Old Ann", platform: "TikTok", product: "A1 dress", price: 350, qty: 1, comment_msg_id: null, auto_code: null },
+    { id: 9002, user_id: UID, session_id: "past-1", session_date: day(-8), created_at: `${day(-8)}T05:00:00.000Z`, buyer_number: 2, handle: "@oldbea", customer_name: "Old Bea", platform: "TikTok", product: "B2 top", price: 280, qty: 1, comment_msg_id: null, auto_code: null },
   ],
   parcel_scans: [
     { id: "s1", user_id: UID, customer_name: "王小美", phone: "0912345678", store_id: "266402", amount: 550, notes: "maria_shops", contact_platform: null, status: "confirmed", store_check_status: "valid", store_full_status: "open", phone_check_status: "ok", phone_restricted_until: null, temp_layer: null, created_at: iso(0.1) },
@@ -64,6 +70,7 @@ const RPC: Record<string, unknown> = {
   my_parcel_tracking_access: true,
   parcel_check_can_use: true,
   session_status: { running: false, session_id: null, platform: null },
+  my_session_summaries: [{ session_id: "past-1", first_day: day(-9), last_day: day(-8), orders: 2, latest: `${day(-8)}T05:00:00.000Z` }],
   parcel_tracking_status: { enabled: true, last_manual_check_at: null, last_completed_at: iso(0.2), job: null },
 };
 
