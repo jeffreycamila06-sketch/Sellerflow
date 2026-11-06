@@ -8,7 +8,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { execSync } from "node:child_process";
 import * as health from "../../../../server/connectionHealth.js";
 
 const server = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8");
@@ -161,15 +160,11 @@ describe("2. a stopped account is never reconnected by a queued or running recon
     const conn = between("async function connectTikTok(", "// M5 (security audit 2026-09-26)");
     expect(conn.indexOf("tiktokStoppedKeys.delete(key);")).toBeGreaterThan(conn.indexOf('key = liveKey(sellerId, "TikTok", cleanUsername);'));
     expect(conn.indexOf("tiktokStoppedKeys.delete(key);")).toBeLessThan(conn.indexOf("const cooldownMs = getTikTokCooldownMs(key);"));
-    let main: string;
-    try { main = execSync("git show origin/main:server.js", { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }); }
-    catch { execSync("git fetch --depth=1 origin main", { stdio: "pipe" }); main = execSync("git show FETCH_HEAD:server.js", { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }); }
+    // Post-merge safe (Nov 6 2026): this used to diff against origin/main, which only works BEFORE the merge
+    // (after it, main already has the line → the diff is empty and the test fails on main). Assert the shape
+    // directly instead: the skip line is the FIRST statement of runQueuedTikTokReconnect.
     const ours = fnSrc(server, "runQueuedTikTokReconnect").split("\n");
-    const theirs = fnSrc(main, "runQueuedTikTokReconnect").split("\n");
-    expect(ours.filter((l) => !theirs.includes(l))).toEqual([
-      "  if (task && tiktokStoppedKeys.has(task.key)) return;   // stopped by the seller (disconnect / platform switch): never queue its reconnect",
-    ]);
-    expect(ours.length).toBe(theirs.length + 1);
-    for (const name of ["drainTikTokReconnectQueue", "startTikTokHealthTimer"]) expect(fnSrc(server, name), name).toBe(fnSrc(main, name));
+    expect(ours[1]).toBe("  if (task && tiktokStoppedKeys.has(task.key)) return;   // stopped by the seller (disconnect / platform switch): never queue its reconnect");
+    expect(ours.filter((l) => l.includes("tiktokStoppedKeys")).length).toBe(1);
   });
 });
