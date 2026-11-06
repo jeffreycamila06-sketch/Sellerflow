@@ -12,7 +12,9 @@ import {
   minersRangeBounds, MINERS_TOP_ALL, MINERS_TOP_OPTIONS,
   type MinersRange, type MinersTopN, type UseMinersReport,
 } from "../adapters/minersReport";
-import { exportBrandedXlsx, exportBrandedPdf, type ExportColumn } from "../adapters/brandedExport";
+import type { ExportColumn } from "../adapters/brandedExport";
+import { useBrandedExport } from "../adapters/useBrandedExport";
+import ExportToast from "../components/ExportToast";
 import { useT } from "../i18n";
 import { fbNameOnly, fbHandleIsId } from "../adapters/fbName";
 
@@ -87,8 +89,10 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
     const bounds = minersRangeBounds(range, todayId, sessionStartId, customFrom, customTo);
     return { title: t.rd_min_title, seller, columns, rows, summary, filename: `sellerflow-miners-${bounds.start}_${bounds.end}` };
   };
-  const doExportXlsx = () => { setExportOpen(false); void exportBrandedXlsx(buildExport()).catch(() => { /* export chunk failed */ }); };
-  const doExportPdf = () => { setExportOpen(false); exportBrandedPdf(buildExport()); };
+  const exp = useBrandedExport(buildExport, { failed: t.rd_export_failed, pdfPhone: t.rd_export_pdf_phone, phoneUnsupported: t.rd_export_phone_unsupported });
+  const toggleExport = () => { const o = !exportOpen; setExportOpen(o); if (o) exp.prepare(); else exp.cancel(); };
+  const doExportXlsx = () => { if (exp.preparing) return; setExportOpen(false); exp.xlsx(); };
+  const doExportPdf = () => { setExportOpen(false); exp.pdf(); };
   const canExport = list.length > 0;
 
   const pill = (active: boolean): CSSProperties => ({
@@ -107,11 +111,11 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 7, position: "relative" }}>
             <button onClick={rep.reload} style={hdrBtn} title={t.rd_min_refresh} aria-label={t.rd_min_refresh}>↻ {t.rd_min_refresh}</button>
-            <button onClick={() => setExportOpen((o) => !o)} disabled={!canExport} style={{ ...hdrBtn, opacity: canExport ? 1 : 0.5, cursor: canExport ? "pointer" : "default" }}>{t.rd_export} ▾</button>
+            <button onClick={toggleExport} disabled={!canExport} data-testid="miners-export" style={{ ...hdrBtn, opacity: canExport ? 1 : 0.5, cursor: canExport ? "pointer" : "default" }}>{t.rd_export} ▾</button>
             {exportOpen && canExport && (
               <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 30, background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: 11, boxShadow: "0 12px 30px rgba(9,7,24,.28)", overflow: "hidden", minWidth: 150 }}>
-                <button onClick={doExportXlsx} style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 13px", border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t.rd_prd_export_excel}</button>
-                <button onClick={doExportPdf} style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 13px", border: "none", borderTop: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t.rd_prd_export_pdf}</button>
+                <button onClick={doExportXlsx} disabled={exp.preparing} aria-busy={exp.preparing} data-testid="miners-export-xlsx" style={{ opacity: exp.preparing ? 0.6 : 1, display: "block", width: "100%", textAlign: "left", padding: "10px 13px", border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{exp.preparing ? t.rd_export_preparing : t.rd_prd_export_excel}</button>
+                <button onClick={doExportPdf} data-testid="miners-export-pdf" style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 13px", border: "none", borderTop: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t.rd_prd_export_pdf}</button>
               </div>
             )}
           </div>
@@ -201,6 +205,7 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
           ))}
         </div>
       </div>
+      <ExportToast message={exp.message} />
     </div>
   );
 }

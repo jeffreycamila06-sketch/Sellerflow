@@ -9,7 +9,8 @@ import { avColor, initials, fmt } from "../data";
 import { loadProducts, saveProducts, upsertProduct, deleteProduct, filterProducts, filterByStock, statusForStock, type Product, type ProductForm, type StockFilter } from "../adapters/products";
 import { resolveInitialProducts, saveProductDbResult, deleteProductDb, adjustProductStock, adjustStockLogged, restockProduct, logStockMovement, loadStockMovements, type StockMovement } from "../adapters/productsDb";
 import { dayStamp } from "../adapters/csv";
-import { exportBrandedXlsx, exportBrandedPdf, type ExportColumn } from "../adapters/brandedExport";
+import type { ExportColumn } from "../adapters/brandedExport";
+import { useBrandedExport } from "../adapters/useBrandedExport";
 import { useT } from "../i18n";
 import { loadProductImagePaths, compressProductImage, uploadProductImage, removeProductImage, forgetProductImage, productImageUrl } from "../adapters/productImages";
 import { priceInput, hasCents } from "../../lib/money";
@@ -333,8 +334,11 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     ];
     return { title: t.rd_prd_title, seller, columns, rows, summary, filename: `sellerflow-products-${dayStamp()}` };
   };
-  const doExportXlsx = () => { setExportOpen(false); void exportBrandedXlsx(buildExport()).catch(() => showNote(t.rd_prd_export_failed)); };
-  const doExportPdf = () => { setExportOpen(false); exportBrandedPdf(buildExport()); };
+  const exp = useBrandedExport(buildExport, { failed: t.rd_export_failed, pdfPhone: t.rd_export_pdf_phone, phoneUnsupported: t.rd_export_phone_unsupported }, showNote);
+  const toggleExport = () => { const o = !exportOpen; setExportOpen(o); if (o) exp.prepare(); else exp.cancel(); };
+  const closeExport = () => { setExportOpen(false); exp.cancel(); };
+  const doExportXlsx = () => { if (exp.preparing) return; setExportOpen(false); exp.xlsx(); };
+  const doExportPdf = () => { setExportOpen(false); exp.pdf(); };
 
   return (
     <div>
@@ -344,12 +348,12 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
           <div style={{ display: "flex", gap: 7 }}>
             {prods.length > 0 && (
               <div style={{ position: "relative" }}>
-                <button onClick={() => setExportOpen((o) => !o)} data-testid="products-export" aria-haspopup="menu" aria-expanded={exportOpen} style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", color: "var(--on-header)", border: "none", padding: "7px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export} ▾</button>
+                <button onClick={toggleExport} data-testid="products-export" aria-haspopup="menu" aria-expanded={exportOpen} style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", color: "var(--on-header)", border: "none", padding: "7px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export} ▾</button>
                 {exportOpen && (
                   <>
-                    <div onClick={() => setExportOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                    <div onClick={closeExport} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
                     <div role="menu" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 41, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 11, boxShadow: "0 12px 32px rgba(0,0,0,.28)", overflow: "hidden", minWidth: 152 }}>
-                      <button role="menuitem" onClick={doExportXlsx} data-testid="export-xlsx" style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", color: "var(--text)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_export_excel}</button>
+                      <button role="menuitem" onClick={doExportXlsx} disabled={exp.preparing} aria-busy={exp.preparing} data-testid="export-xlsx" style={{ opacity: exp.preparing ? 0.6 : 1, display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", color: "var(--text)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{exp.preparing ? t.rd_export_preparing : t.rd_prd_export_excel}</button>
                       <button role="menuitem" onClick={doExportPdf} data-testid="export-pdf" style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "transparent", border: "none", color: "var(--text)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_export_pdf}</button>
                     </div>
                   </>

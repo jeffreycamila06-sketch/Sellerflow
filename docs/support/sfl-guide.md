@@ -304,7 +304,7 @@ Keywords: pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtoma
 Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.
 
 ## products-stock — Products, codes and stock
-Last checked: 2026-10-11
+Last checked: 2026-11-06
 Keywords: products, product, item, stock, inventory, price, code, restock, add product, produkto, stocks, 商品, 库存, 庫存, 補貨
 
 Open **Products** in the bottom bar.
@@ -313,7 +313,7 @@ Open **Products** in the bottom bar.
 - **Search name or item code** to find a product.
 - **Edit** or **Delete** a product. Deleting asks "Delete this product?"
 - Use the + / − buttons (**Adjust stock**) to change stock quickly.
-- **⬇ Export** gives an **Excel (.xlsx)** or **PDF** list.
+- **⬇ Export** gives an **Excel (.xlsx)** or **PDF** list. In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
 - Auto mode orders take stock off automatically.
 
 Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live session settings. Admin turns these on per account. If you don't see one, it isn't turned on for your account yet — ask Admin.
@@ -330,7 +330,7 @@ A reprint prints a copy of the order's sticker. **No new order is created.**
 If you see the **Not printed** tag or "Some labels didn't print — tap Reprint on those rows", fix the printer first (see "Printer not printing"), then tap **Reprint** on those rows.
 
 ## orders-search — Orders screen and search
-Last checked: 2026-10-15
+Last checked: 2026-11-06
 Keywords: orders, order list, search, find order, buyer, history, last 7 days, hanapin order, listahan, 订单, 訂單, 搜索, 查詢
 
 Open **Orders** in the bottom bar.
@@ -340,7 +340,7 @@ Open **Orders** in the bottom bar.
 - **Search buyer #, name, item…** finds orders.
 - Type only a **buyer number** (for example 3) to see that buyer's card: all their orders and the total. If you see "2 buyers have #3 — pick one", tap the right buyer to open their card.
 - Each order has **↻ Reprint**. Tapping an order opens **Print** (**🖨 Print** / **🖨 Print all**).
-- **⬇ Export** downloads Excel or PDF.
+- **⬇ Export** downloads Excel or PDF of what you see (also a past session). In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
 - The **Miners** tab shows your top buyers.
 - Some accounts also have **Mark paid** / **Paid** / **Unpaid 24h+** and a Facebook waitlist. Admin turns these on per account. If you don't see them, they aren't turned on for your account yet — ask Admin.
 
@@ -365,7 +365,7 @@ Keywords: past sessions, past live, previous session, old orders, reprint old st
 - If you don't see **🗓 Sessions ▾** yet, it's not turned on for your account.
 
 ## sales — Sales screen
-Last checked: 2026-10-28
+Last checked: 2026-11-06
 Keywords: sales, report, revenue, income, total, best sellers, top buyers, benta, kita, 销售, 銷售報表, 营业额
 
 Open **Sales** in the bottom bar.
@@ -373,7 +373,7 @@ Open **Sales** in the bottom bar.
 - Pick a range: **Today**, **This session**, **Last 7 days** or **Custom**.
 - You see Orders, Total, Buyers and Avg order, a **Daily trend** (or **Hourly trend**), **Top buyers** (with **Search buyer**) and **Best sellers**.
 - Tap a buyer and **Open in Orders** to see their orders.
-- **⬇ Export** gives Excel or PDF.
+- **⬇ Export** gives Excel or PDF. In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
 
 ## miners-customers — Miners and Customers
 Last checked: 2026-10-14

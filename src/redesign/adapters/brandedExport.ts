@@ -51,12 +51,33 @@ export function toARGB(hex?: string): string | undefined {
   return /^[0-9a-fA-F]{6}$/.test(h) ? `FF${h.toUpperCase()}` : undefined;
 }
 
+// Excel sheet-tab name. exceljs THROWS on * ? : \\ / [ ], on a leading/trailing ' and on
+// "History" (Excel rules) — a past-session title like "Past session · 10/12" used to throw
+// and the export silently did nothing. Forbidden chars → "-", trim, max 31 UTF-16 units
+// (Excel's limit; never split an emoji's surrogate pair), never empty (→ "Orders").
+// The FULL title still goes in the subtitle row.
+export const SHEET_NAME_FALLBACK = "Orders";
+export function safeSheetName(title: string): string {
+  let n = String(title ?? "").replace(/[*?:\\/[\]]/g, "-").trim();
+  if (n.length > 31) {
+    n = n.slice(0, 31);
+    if (/[\uD800-\uDBFF]$/.test(n)) n = n.slice(0, -1);
+  }
+  n = n.trim().replace(/^'+|'+$/g, "").trim();
+  if (!n || n.toLowerCase() === "history") return SHEET_NAME_FALLBACK;
+  return n;
+}
+
+export const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 // ── XLSX (exceljs, dynamic import) ────────────────────────────────────────────
-export async function exportBrandedXlsx(input: BrandedExportInput): Promise<void> {
+// Build only (no download) — the phone app shell builds the bytes FIRST, then shares
+// them synchronously in the tap (see useBrandedExport).
+export async function buildBrandedXlsxBytes(input: BrandedExportInput): Promise<Uint8Array> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = BRAND_NAME;
-  const ws = wb.addWorksheet(input.title, { views: [{ state: "frozen", ySplit: 4 }] }); // freeze through the header row
+  const ws = wb.addWorksheet(safeSheetName(input.title), { views: [{ state: "frozen", ySplit: 4 }] }); // freeze through the header row
   const nCols = input.columns.length;
 
   // Row 1: brand. Row 2: subtitle. Row 3: blank. Row 4: column headers.
@@ -103,7 +124,14 @@ export async function exportBrandedXlsx(input: BrandedExportInput): Promise<void
   }
 
   const buf = await wb.xlsx.writeBuffer();
-  triggerDownload(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${input.filename}.xlsx`);
+  return new Uint8Array(buf as ArrayBuffer);
+}
+
+// Laptop / browser: build + blob download (unchanged behaviour). Rejects on failure —
+// callers MUST show a message (never fail silently).
+export async function exportBrandedXlsx(input: BrandedExportInput): Promise<void> {
+  const bytes = await buildBrandedXlsxBytes(input);
+  triggerDownload(new Blob([bytes.buffer as ArrayBuffer], { type: XLSX_TYPE }), `${input.filename}.xlsx`);
 }
 
 function triggerDownload(blob: Blob, filename: string): void {
@@ -149,7 +177,9 @@ ${summary}
 </body></html>`;
 }
 
-export function exportBrandedPdf(input: BrandedExportInput): void {
+// onError: the print could not start (no frame window / print threw) — the caller shows a
+// message. Building the doc itself can throw synchronously; callers catch that too.
+export function exportBrandedPdf(input: BrandedExportInput, onError?: () => void): void {
   const html = buildPrintHtml(input);
   // Hidden iframe (more reliable than window.open — no popup block). Print, then
   // clean up. The browser's print dialog offers "Save as PDF".
@@ -165,10 +195,10 @@ export function exportBrandedPdf(input: BrandedExportInput): void {
   iframe.onload = () => {
     try {
       const win = iframe.contentWindow;
-      if (!win) { cleanup(); return; }
+      if (!win) { onError?.(); cleanup(); return; }
       win.focus();
       win.print();
-    } catch { /* ignore */ }
+    } catch { onError?.(); }
     cleanup();
   };
   iframe.srcdoc = html;
