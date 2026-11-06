@@ -240,8 +240,8 @@ describe("round 4 — a live connection is never closed or blocked by anything i
     catch { execSync("git fetch --depth=1 origin main", { stdio: "pipe" }); return execSync("git show FETCH_HEAD:server.js", { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }); }
   })();
   const fnOf = (src: string, name: string) => { const i = src.indexOf(`function ${name}(`); return src.slice(i, src.indexOf("\n}\n", i) + 2); };
-  it("the health timer, the reconnect queue and its drain are byte-identical to main", () => {
-    for (const name of ["startTikTokHealthTimer", "runQueuedTikTokReconnect", "drainTikTokReconnectQueue", "clearTikTokHealthTimer", "touchTikTokConnection"]) {
+  it("the health timer and the queue drain are byte-identical to main (runQueuedTikTokReconnect: one skip line only — tiktokReconnectStops.server.test)", () => {
+    for (const name of ["startTikTokHealthTimer", "drainTikTokReconnectQueue", "clearTikTokHealthTimer", "touchTikTokConnection"]) {
       expect(fnOf(server, name), name).toBe(fnOf(main, name));
     }
   });

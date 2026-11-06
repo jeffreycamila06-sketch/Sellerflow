@@ -148,7 +148,7 @@ Keywords: connect, tiktok, go live, live, link account, comments, ikonek, paano 
 
 Messages:
 - "Account is not live right now — start your TikTok LIVE first." Go live, then tap Connect again.
-- "Connection limit reached — we're retrying for you" The app connects by itself in a few minutes — keep the app open. If it's still not connected after 3 minutes, tap Connect.
+- "Connection limit reached — we're retrying for you" The app connects by itself in a few minutes — keep the app open. If it's still not connected after a few minutes, tap Connect.
 - "Try again in a few minutes" Wait a few minutes, then tap Connect once.
 - "Daily connection limit reached — try again later" Wait about 10 minutes, then tap Connect once.
 - "TikTok username not found. It may have changed — edit the account's username and try again." Your TikTok username changed. Tap **Manage / add accounts**, fix the username, then tap Connect.
@@ -653,7 +653,7 @@ Keywords: connect failed, not live, no comments, green but nothing, stuck connec
 2. Tap **Connect** once.
 3. Make sure your TikTok live really has new comments.
 
-**"Connection limit reached — we're retrying for you"** — the app connects by itself in a few minutes — keep the app open. If it's still not connected after 3 minutes, tap Connect.
+**"Connection limit reached — we're retrying for you"** — the app connects by itself in a few minutes — keep the app open. If it's still not connected after a few minutes, tap Connect.
 
 **"Try again in a few minutes"** — wait a few minutes, then tap Connect once.
 

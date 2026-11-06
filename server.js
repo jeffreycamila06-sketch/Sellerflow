@@ -448,6 +448,12 @@ const tiktokRateLimitCooldowns = new Map();
 // found" answers on reconnect.
 const tiktokDailyCooldownKeys = new Set();
 const tiktokNotFoundStreak = new Map();
+// Final round: key → reconnects rescheduled because of a rate limit (max TIKTOK_RATE_LIMIT_RECONNECTS,
+// then stop: the seller taps Connect); keys the seller STOPPED (/disconnect/tiktok, platform switch) —
+// a reconnect already queued or running never connects them again; a manual connect clears it.
+const tiktokRateLimitReconnects = new Map();
+const TIKTOK_RATE_LIMIT_RECONNECTS = 3;
+const tiktokStoppedKeys = new Set();
 // Nov 3, 2026 — today's Euler-429 count + the last limit_label (Taipei day, in memory), so the
 // admin card / health detail show a limit before sellers report it.
 let eulerRateLimitStats = EMPTY_RATE_LIMIT_STATS;
@@ -607,6 +613,7 @@ function clearTikTokReconnect(key) {
 }
 
 function runQueuedTikTokReconnect(task) {
+  if (task && tiktokStoppedKeys.has(task.key)) return;   // stopped by the seller (disconnect / platform switch): never queue its reconnect
   pendingTikTokReconnects.push(task);
   while (pendingTikTokReconnects.length > TIKTOK_MAX_RECONNECT_QUEUE) {
     pendingTikTokReconnects.shift();
@@ -690,7 +697,7 @@ function startTikTokHealthTimer(key, connection) {
 
 async function disconnectTikTokConnection(key, { manual = false } = {}) {
   const existing = tiktokConnections.get(key);
-  if (manual) clearTikTokReconnect(key);
+  if (manual) { clearTikTokReconnect(key); tiktokRateLimitReconnects.delete(key); }
   if (!existing) {
     manualTikTokDisconnects.delete(key);
     return;
@@ -861,6 +868,8 @@ registerHealthRoutes(app, { token: PARCEL_POLL_TOKEN, tiktokDetail: tiktokHealth
 // disconnectTikTokConnection(manual) also clears a scheduled reconnect, then one terminal gray.
 app.post("/disconnect/tiktok", requireAuth, async (req, res) => {
   const key = liveKey(req.sellerId, "TikTok", (req.body || {}).username);
+  tiktokStoppedKeys.add(key);                        // a reconnect already queued / running must not bring it back
+  tiktokRateLimitReconnects.delete(key);
   const existing = tiktokConnections.get(key);
   if (!existing) {
     clearTikTokReconnect(key);
@@ -1367,7 +1376,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
 
   const timer = setTimeout(async () => {
     tiktokReconnectTimers.delete(key);
-    runQueuedTikTokReconnect(async () => {
+    runQueuedTikTokReconnect(Object.assign(async () => {
       // clientfix RC3 — STALE-RECONNECT GUARD. Once this closure is queued,
       // clearTikTokReconnect can no longer cancel it. If the seller's own
       // Connect tap already restored the account (map entry) or a connect is
@@ -1381,12 +1390,25 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
         tiktokReconnectAttempts.delete(key);
         return;
       }
+      // The seller stopped this account (disconnect / platform switch) after it was queued → never reconnect.
+      if (tiktokStoppedKeys.has(key)) {
+        console.log(`[RECONNECT] skip queued reconnect for ${username} (${sellerId}) — stopped by the seller`);
+        tiktokReconnectAttempts.delete(key);
+        return;
+      }
       // Hold the SAME connect lock the /connect route uses, so a user tap and a
       // reconnect can never run startTikTokConnection for one key in parallel
       // (the tap sees 429 "already starting" for a few seconds — honest).
       tiktokConnectLocks.add(key);
       try {
         await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: false });
+        // Stopped by the seller WHILE this reconnect was running → tear it down again, one gray.
+        if (tiktokStoppedKeys.has(key)) {
+          await disconnectTikTokConnection(key, { manual: true });
+          emitTikTokStatus({ sellerId, username, sessionId, connected: false, reconnecting: false, reason: "disconnect" });
+          console.log(`[RECONNECT] ${username} (${sellerId}) was stopped during the reconnect — disconnected again`);
+          return;
+        }
         console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
       } catch (error) {
         console.log(`TikTok reconnect failed for ${username}: ${error?.message || error}`);
@@ -1422,8 +1444,17 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
         }
         const rlErr = nestedRateLimitError(error);   // top-level or wrapped in the lookup error (known shapes only)
         if (rlErr) {
-          // This account's own cooldown (daily_rooms → 10 min); then ONE normal reconnect after it.
+          // This account's own cooldown (daily_rooms → 10 min), then a normal reconnect after it — at
+          // most TIKTOK_RATE_LIMIT_RECONNECTS times in a row; after that stop (rememberTikTokRateLimit
+          // already emitted the one gray rate_limited status) and the seller taps Connect.
           rememberTikTokRateLimit(key, sellerId, username, sessionId, rlErr);
+          const n = (tiktokRateLimitReconnects.get(key) || 0) + 1;
+          if (n > TIKTOK_RATE_LIMIT_RECONNECTS) {
+            tiktokRateLimitReconnects.delete(key);
+            console.log(`[RECONNECT] ${username} rate-limited ${n} times in a row — stopping reconnects`);
+            return;
+          }
+          tiktokRateLimitReconnects.set(key, n);
           scheduleTikTokReconnect(key, username, sellerId, sessionId, "rate_limited");
           return;
         }
@@ -1431,7 +1462,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
       } finally {
         tiktokConnectLocks.delete(key);
       }
-    });
+    }, { key }));
   }, retryMs);
 
   tiktokReconnectTimers.set(key, timer);
@@ -1643,6 +1674,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
   recordTikTokAttempt("ok");
   tiktokNotFoundStreak.delete(key);                        // ANY successful connect (reconnect or the seller's tap) resets the streak
+  tiktokRateLimitReconnects.delete(key);                   // …and the rate-limit reconnect count
   eulerRoomStats = noteRoom(eulerRoomStats, state?.roomId || key, Date.now()); // plan usage (rooms/day)
 
   emitTikTokStatus({
@@ -1932,6 +1964,7 @@ async function connectTikTok(username, res, meta = {}) {
       });
     }
     key = liveKey(sellerId, "TikTok", cleanUsername);
+    tiktokStoppedKeys.delete(key);                   // a manual connect un-stops the account
     const cooldownMs = getTikTokCooldownMs(key);    // THIS account's cooldown only — no other account is ever affected
     if (cooldownMs > 0) {
       return res.status(429).json({

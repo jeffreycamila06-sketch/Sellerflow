@@ -126,7 +126,7 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
 // the app shows a localized "can't reach the live server" toast for this case
 // (F-batch i18n; the English error string stays as the analytics/log reason).
 // notFound = the TikTok username no longer exists (changed); lookupFailed = TikTok's account lookup
-// failed right now; daily = the shared daily connection budget is used up. None of the three retries.
+// failed right now; daily = this account's daily-limit cooldown. None of the three retries.
 export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean; cooldownMs?: number; daily?: boolean; notFound?: boolean; lookupFailed?: boolean }
 
 // Build 10b: minutes to wait from the cooldown answer (E41 "…in {n} minutes." / E42 "…in about
@@ -211,7 +211,7 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     if (r.status === 502 && (j as { lookupFailed?: boolean }).lookupFailed) return { ok: false, lookupFailed: true, error: j.error || "tiktok_lookup_failed", account };
     // Nov 3, 2026 — a 429 cooldown answer carries cooldownMs; the app retries once when it ends.
     const cooldownMs = Number((j as { cooldownMs?: unknown }).cooldownMs);
-    const daily = (j as { daily?: unknown }).daily === true;           // the shared daily bench (a boolean — Build 10)
+    const daily = (j as { daily?: unknown }).daily === true;           // this account's daily-limit cooldown (a boolean — Build 10)
     if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account, ...(cooldownMs > 0 ? { cooldownMs } : {}), ...(daily ? { daily } : {}) };
     return { ok: true, account };
   } catch {
