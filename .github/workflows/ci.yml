@@ -9,11 +9,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # printing gate compares against origin/main
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: node scripts/printing-gate.mjs   # printing files changed → PRINTING_MAP.md must be updated
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

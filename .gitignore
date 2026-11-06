@@ -49,6 +49,8 @@ vendor/
 /graphify-out/
 /.claude/*
 !/.claude/agents/
+!/.claude/hooks/
+!/.claude/settings.json
 /supabase/.temp/
 *.bak
 mobile/www/
