@@ -23,6 +23,9 @@ import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
 import ContactChip from "../components/ContactChip";
+import { AdminCountryPicker, CountryPill, CountryTag } from "../components/AdminCountry";
+import { AdminCountryCtx, type AdminCountryApi, type CountryInfo } from "../adapters/adminCountryCtx";
+import { useAdminCountries, resolveUserCountry } from "../adapters/adminCountry";
 import AdminHelpChat from "../components/AdminHelpChat";
 import { useT, tpl, type RedesignT } from "../i18n";
 import { isIOS } from "../adapters/platform";
@@ -207,7 +210,7 @@ function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[];
       {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_none}</div>}
       {list.map((u) => (
         <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
-          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.note || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email} · {u.plan}</div></div>
+          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.note || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email} · {u.plan}</div><CountryTag email={u.email} /></div>
           <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: statusColor }}>{statusLabel}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(u.days === 1 ? t.rd_adm_days_left_one : t.rd_adm_days_left_many, { n: daysDisplay(u.days) })}</div></div>
         </div>
       ))}
@@ -240,7 +243,7 @@ function FreeUserList({ list, rawByEmail }: { list: FreeUserRow[]; rawByEmail: R
         const color = u.capped ? "var(--danger)" : u.near_cap ? "var(--warn)" : "var(--ok)";
         return (
           <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.full_name || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tpl(t.rd_adm_joined, { d: joinedDate(rawByEmail[u.email]?.createdAt) })}</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.full_name || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div><CountryTag email={u.email} suffix={tpl(t.rd_adm_joined, { d: joinedDate(rawByEmail[u.email]?.createdAt) })} /></div>
             <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, color }}>{u.count} / {u.cap}</div></div>
           </div>
         );
@@ -452,6 +455,7 @@ function ExportMonitorBlock() {
                     <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2, ...ell }}>
                       {tpl(t.rd_adm_exp_line, { plan: r.seller_plan || "—", last: exportNum(r.last_month), d7: exportNum(r.last_7d), day: exportDay(r.last_export_day), pickup: r.pickup_status ? "✓" : "—" })}
                     </div>
+                    <CountryTag email={r.seller_email} />
                   </div>
                 ))}
               </div>
@@ -480,6 +484,7 @@ function ExportMonitorBlock() {
                           {!r.has_shop_link && noLink}
                         </div>
                         <div style={{ fontSize: 11, color: "var(--text-muted)", ...ell }} title={r.seller_email ?? ""}>{r.seller_email ?? ""}</div>
+                        <CountryTag email={r.seller_email} />
                       </td>
                       <td style={{ fontSize: 11.5, color: "var(--text)", padding: "6px 6px", ...ell }}>{r.seller_plan || "—"}</td>
                       <td style={{ ...numCell, fontWeight: 800 }}>{exportNum(r.this_month)}</td>
@@ -620,6 +625,7 @@ function ParcelMonPanel() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email || "—"}</div>
                   <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>{tpl(t.rd_adm_pm_last_scan, { d: lastScan(r.lastScanAt) })}</div>
+                  <CountryTag email={r.email} />
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: "var(--text)" }}>{tpl(t.rd_adm_pm_bal, { n: r.balance })}</div>
@@ -974,6 +980,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.email || t.rd_pulse_unknown}</div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email || ""}{u.last_order_at ? <> · {tpl(t.rd_pulse_last, { ago: relativeTime(u.last_order_at, Date.now()) })}</> : null}</div>
+                      <CountryTag email={u.email} />
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{u.orders_today}</div>
@@ -1201,7 +1208,24 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     void run(t.rd_adm_act_edit_accounts, editRaw.email, () => actions!.editAccounts(editRaw, editTt, editFb, editCountry), () => closeEdit());
   };
 
+  // Country flag + name per user (admin-only label; sql/143). One read on open, zero poll.
+  // Order: admin pick > saved signup country > phone-shape guess > "Hindi alam".
+  const countries = useAdminCountries(usersState === "live");
+  const [countryFor, setCountryFor] = useState<string | null>(null);
+  const countryApi: AdminCountryApi | null = (() => {
+    if (usersState !== "live") return null; // sample/preview data → no flags
+    const infoFor = (email: string | null | undefined): CountryInfo | null => {
+      const raw = email ? rawByEmail[email] : undefined;
+      if (!raw || !raw.authUserId) return null;
+      const r = resolveUserCountry({ adminPick: countries.picks[raw.authUserId], saved: raw.profile.country, phone: raw.profile.phone });
+      return { ...r, userId: raw.authUserId, email: raw.email };
+    };
+    return { infoFor, open: (email: string) => { if (infoFor(email)) setCountryFor(email); } };
+  })();
+  const countryInfo = countryFor && countryApi ? countryApi.infoFor(countryFor) : null;
+
   return (
+    <AdminCountryCtx.Provider value={countryApi}>
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} className="sfl-anim-sheet" style={{ width: "100%", maxHeight: "86%", background: "var(--surface)", borderRadius: "22px 22px 0 0", display: "flex", flexDirection: "column", boxShadow: "0 -16px 40px rgba(0,0,0,.3)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 13px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
@@ -1238,20 +1262,21 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                   const isAdmin = isAdminRole(u.role); // Batch E #16 — shared predicate (display-cased "Admin")
                   return (
                     <div key={u.email} style={{ border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface-2)", padding: 12 }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-                          {/* Admin contact note — inline parse + click-to-edit (parity with old App.tsx
-                              ContactDisplay/ContactEditor). Editable only when real admin actions exist. */}
-                          <div style={{ marginTop: 3 }} onClick={(e) => e.stopPropagation()}>
-                            <ContactChip note={u.contactNote || ""} onSave={actions ? (v) => { void actions.setContactNote(u.email, v).then((r) => { if (r.ok) onChanged?.(); }); } : undefined} />
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                      {/* Email + pills on ONE row; when they don't fit (phones, long emails) the
+                          pills wrap under the email — never cut, never overflow. */}
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 6 }} data-testid="adm-seller-head">
+                        <div style={{ flex: "1 1 auto", minWidth: 0, maxWidth: "100%", fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5, maxWidth: "100%", minWidth: 0 }}>
+                          <CountryPill email={u.email} />
                           <span style={{ fontSize: 10, fontWeight: 800, color: isAdmin ? "var(--accent-fg)" : "var(--text-dim)", background: isAdmin ? "var(--accent-soft)" : "var(--surface-3)", padding: "3px 7px", borderRadius: 6 }}>{u.role}</span>
                           <span style={{ fontSize: 10, fontWeight: 800, color: planFg(plan), background: "var(--surface)", border: "1px solid var(--border)", padding: "3px 7px", borderRadius: 6 }}>{plan}</span>
                           {u.status && u.status !== "active" && <span style={{ fontSize: 10, fontWeight: 800, color: u.status === "expired" ? "var(--danger)" : "var(--warn)", background: "var(--surface)", border: "1px solid var(--border)", padding: "3px 7px", borderRadius: 6 }}>{u.status}</span>}
                         </div>
+                      </div>
+                      {/* Admin contact note — inline parse + click-to-edit (parity with old App.tsx
+                          ContactDisplay/ContactEditor). Editable only when real admin actions exist. */}
+                      <div style={{ marginTop: 3 }} onClick={(e) => e.stopPropagation()}>
+                        <ContactChip note={u.contactNote || ""} onSave={actions ? (v) => { void actions.setContactNote(u.email, v).then((r) => { if (r.ok) onChanged?.(); }); } : undefined} />
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 9, fontSize: 11, color: "var(--text-dim)" }}>
                         <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_days}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{daysDisplay(days)}</span></span>
@@ -1633,6 +1658,8 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           </div>
         </div>
       )}
+      {countryInfo && <AdminCountryPicker info={countryInfo} onClose={() => setCountryFor(null)} onSave={(iso) => countries.save(countryInfo.userId, iso)} />}
     </div>
+    </AdminCountryCtx.Provider>
   );
 }

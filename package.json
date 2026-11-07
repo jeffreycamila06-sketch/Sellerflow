@@ -25,6 +25,7 @@
     "@supabase/supabase-js": "^2.105.4",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
+    "country-flag-icons": "1.6.20",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "html2canvas": "^1.4.1",
