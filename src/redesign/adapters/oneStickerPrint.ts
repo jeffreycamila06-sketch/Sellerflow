@@ -74,7 +74,7 @@ export function oneStickerInputFrom(buyer: Buyer, storeName: string, at?: number
     storeName: stickerShopName(storeName),
     date: TAIPEI_DATE.format(when).replace(/-/g, "/"),
     time: TAIPEI_TIME.format(new Date(ts)),
-    buyerNum: buyer.num,
+    buyerNum: buyer.num ? buyer.num : undefined, // 0 = no buyer number (Facebook post-sales prints, postPrintSettings)
     name: buyer.name,
     handle: buyer.handle,
     platform: buyer.platform,

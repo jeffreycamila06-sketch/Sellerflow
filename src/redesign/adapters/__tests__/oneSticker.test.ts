@@ -22,6 +22,7 @@ const stub: RunDrawer = {
 let F: Fonts;
 beforeAll(async () => { F = await fullFonts(); setFallbackRunDrawer(stub); });
 
+const AT0 = Date.UTC(2026, 10, 6, 17, 30);
 const inp = (o: Partial<OneStickerInput> = {}): OneStickerInput => ({ storeName: "Maria Ukay", date: "2026/11/07", time: "14:05", buyerNum: 12, name: "Amy Chen", handle: "amy.shop", platform: "TikTok", items: ["A2 x2"], ...o });
 const S = (w = 100, h = 60, patch?: (s: OneStickerSettings) => void) => { const s = recommendedSettings({ w, h }); patch?.(s); return s; };
 const ink = (r: { buf: Uint8Array }) => r.buf.reduce((a, b) => a + (b ? 1 : 0), 0);
@@ -173,5 +174,9 @@ describe("settings, sizes, printers", () => {
     const b = { num: 7, name: "Amy", handle: "amy", platform: "TikTok", orders: [{ orderNum: Date.UTC(2026, 10, 6, 17, 30), item: "A1" }, { orderNum: Date.UTC(2026, 10, 6, 17, 31), item: "B2 x2" }] } as unknown as Buyer;
     const i = oneStickerInputFrom(b, "SellerFlowLive", Date.UTC(2026, 10, 6, 17, 30));
     expect(i).toMatchObject({ storeName: "", date: "2026/11/07", time: "01:30", items: ["A1", "B2 x2"] });
+    // Facebook post-sales prints carry buyer number 0 → no buyer line (today: printBuyerNumber off)
+    const post = oneStickerInputFrom({ ...b, num: 0, platform: "Facebook" } as Buyer, "Shop", AT0);
+    expect(post.buyerNum).toBeUndefined();
+    expect(layoutSticker(S(60, 40), post, F).lines.some((l) => l.run.text === "Buyer")).toBe(false);
   });
 });
