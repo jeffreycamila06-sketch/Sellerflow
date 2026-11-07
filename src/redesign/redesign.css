@@ -784,3 +784,15 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
 /* 44px tap area around a small pill without changing its size or the header height. */
 [data-redesign] .sfl-tap44 { position: relative; }
 [data-redesign] .sfl-tap44::after { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; height: 44px; transform: translateY(-50%); }
+
+/* Admin-only country picker (components/AdminCountry.tsx). Bottom sheet on phones,
+   small centered dialog on wider screens. .sfl-cty-hit grows a small pill's tap area to
+   44px without changing how it looks. */
+.sfl-cty-hit { position: relative; }
+.sfl-cty-hit::after { content: ""; position: absolute; inset: -8px -3px; }
+.sfl-cty-wrap { position: absolute; inset: 0; z-index: 30; background: rgba(8,6,24,.5); display: flex; align-items: flex-end; justify-content: center; }
+.sfl-cty-card { width: 100%; max-height: 92%; overflow-y: auto; box-sizing: border-box; background: var(--surface); border-radius: 22px 22px 0 0; padding: 18px 16px calc(22px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; box-shadow: 0 -16px 40px rgba(0,0,0,.3); }
+@media (min-width: 720px) {
+  .sfl-cty-wrap { align-items: center; padding: 24px; }
+  .sfl-cty-card { max-width: 440px; border-radius: 18px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+}

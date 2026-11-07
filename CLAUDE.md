@@ -4738,3 +4738,18 @@ applied — nothing to undo in the DB). Do NOT delete the two branches:
   Needs a timeout / watchdog before anything ships.
 - **Re-merging requires a REVERT OF THE PARK REVERT first** (git treats `5ed43c1`'s changes as already
   merged; merging the branches again without reverting the revert brings back nothing of it).
+
+## 2026-11-07 — ADMIN COUNTRY FLAG + NAME PER USER (branch `claude/admin-country-flag`, NOT merged; sql/143 NOT applied)
+Admin-only label: flag + English country name on every Admin user list (Manage sellers pill next to
+Seller/plan; Active / Expiring / Expired / Free tier / Business Pulse "sellers today" / Parcel Scan
+monitoring per-seller + Exports per seller). Tap it → picker (search, Madalas TW/PH/US, I-save, clear).
+- **Order:** admin pick (`public.admin_user_country`, sql/143, RLS all `is_admin()`) > `seller_profiles.country`
+  > phone-shape guess (display only: "09"+8 = TW, "09"+9 = PH, "+code" = that country) > "Hindi alam".
+  Code: `adapters/adminCountry.ts` (pure, tested), `components/AdminCountry.tsx`, `adapters/adminCountryCtx.ts`.
+- ⚠️ **`seller_profiles.country` = the seller's MARKET** (market.ts: currency, TW-only tools). The admin pick
+  NEVER writes it — separate table, nothing seller-side reads it.
+- Flags = SVG images from `country-flag-icons@1.6.20` (no emoji — Windows Chrome shows letters), loaded lazily
+  as their own chunk (~50 KB gz) only when an admin list shows a flag.
+- ⚠️ Apply sql/143 BEFORE relying on picks: without the table the pills still show (saved/guess/unknown) and a
+  save fails with "Hindi na-save". Behaviour check: `scripts/sql143-behaviour.mjs` (PGlite).
+- Not covered: TikTok-limit card rows (keyed by server sellerId, no email) and Audit log (entries, not users).
