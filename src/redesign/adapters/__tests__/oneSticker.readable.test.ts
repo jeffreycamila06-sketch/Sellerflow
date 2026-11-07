@@ -108,6 +108,17 @@ describe("readability guard", () => {
       const L = layoutSticker(s, inputFor(k), F, renderOptsFor(pr.path, s, pr.job));
       for (const l of L.lines) if (!independentlyOpen(l.run.text, l.px, l.weight, l.ink) || !lineIsReadable(l.run.text, l.px, { weight: l.weight, ink: l.ink }, F)) bad.push(`${w}x${h} ${k} ${weight} ${pr.key}: "${l.run.text}" ${l.weight}${l.ink ? "+ink" : ""}`);
     }
+    // a line printed lighter never moves the lines below it (Niimbot 60×40, all Extra, comment ×2, CJK name)
+    for (const [w, h, path] of [[60, 40, "niimbot"], [50, 30, "niimbot"], [60, 40, "tspl"], [70, 50, "d520"]] as [number, number, OneStickerPath][]) for (const name of ["陳小美", "田中さん", "김민지", "Amy Chen"]) {
+      const s = settingsFor(w, h, "extra");
+      s.parts.comment.scale = 2;
+      const inp = { ...inputFor("latin"), name, items: ["ako po yung black dress size M pa reserve po and the red one too"] };
+      const on = layoutSticker(s, inp, F, renderOptsFor(path, s, { bold: true }));
+      const off = layoutSticker(s, inp, F, { ...renderOptsFor(path, s, { bold: true }), guard: false });
+      if (on.commentPx !== off.commentPx) bad.push(`${w}x${h} ${path} ${name}: comment ${on.commentPx} vs ${off.commentPx}`);
+      const tops = (L: typeof on) => L.lines.map((l) => l.baseline).join(",");
+      if (on.lines.length === off.lines.length && tops(on) !== tops(off)) bad.push(`${w}x${h} ${path} ${name}: lines moved`);
+    }
     expect(bad).toEqual([]);
   }, 300000);
   it("without the guard some samples DO close (the test can fail)", () => {
@@ -167,6 +178,17 @@ describe("readability guard", () => {
         const order = [400, 700, 900];
         for (let i = 0; i < Math.min(on.lines.length, off.lines.length); i++) if (order.indexOf(on.lines[i].weight) > order.indexOf(off.lines[i].weight)) bad.push(`${tag}: heavier`);
       }
+    }
+    // a line printed lighter never moves the lines below it (Niimbot 60×40, all Extra, comment ×2, CJK name)
+    for (const [w, h, path] of [[60, 40, "niimbot"], [50, 30, "niimbot"], [60, 40, "tspl"], [70, 50, "d520"]] as [number, number, OneStickerPath][]) for (const name of ["陳小美", "田中さん", "김민지", "Amy Chen"]) {
+      const s = settingsFor(w, h, "extra");
+      s.parts.comment.scale = 2;
+      const inp = { ...inputFor("latin"), name, items: ["ako po yung black dress size M pa reserve po and the red one too"] };
+      const on = layoutSticker(s, inp, F, renderOptsFor(path, s, { bold: true }));
+      const off = layoutSticker(s, inp, F, { ...renderOptsFor(path, s, { bold: true }), guard: false });
+      if (on.commentPx !== off.commentPx) bad.push(`${w}x${h} ${path} ${name}: comment ${on.commentPx} vs ${off.commentPx}`);
+      const tops = (L: typeof on) => L.lines.map((l) => l.baseline).join(",");
+      if (on.lines.length === off.lines.length && tops(on) !== tops(off)) bad.push(`${w}x${h} ${path} ${name}: lines moved`);
     }
     expect(bad).toEqual([]);
   }, 300000);

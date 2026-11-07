@@ -190,7 +190,8 @@ export function cjkGlyph(atlas: GlyphAtlas | undefined, cell: CjkCell, mag: numb
 // ── Fallback drawer (device fonts) ────────────────────────────────────────────────────────────
 // Draws ONE run of text (a whole word or right-to-left phrase, so the browser shapes it) at `px`
 // dots per em into a 1-bit picture. Returns null when nothing can be drawn (no canvas).
-export interface RunDrawer { drawRun(text: string, px: number, weight: SansWeight, rtl: boolean): GlyphBits | null }
+// `cut` = the coverage (0-255) a dot needs to be ink; small runs use a softer cut so 1-dot strokes survive.
+export interface RunDrawer { drawRun(text: string, px: number, weight: SansWeight, rtl: boolean, cut?: number): GlyphBits | null }
 let fallbackDrawer: RunDrawer | null | undefined;
 let fallbackGen = 0;
 export function setFallbackRunDrawer(d: RunDrawer | null): void { fallbackDrawer = d; runCache.clear(); fallbackGen++; }
@@ -207,7 +208,7 @@ type CanvasLike = { width: number; height: number; getContext(k: "2d"): Ctx2D | 
 /** A RunDrawer over any canvas factory (the browser's, or @napi-rs/canvas in tests). */
 export function canvasRunDrawer(make: (w: number, h: number) => CanvasLike | null, fonts = FALLBACK_FONTS): RunDrawer {
   return {
-    drawRun(text, px, weight, rtl) {
+    drawRun(text, px, weight, rtl, cut = 128) {
       const probe = make(4, 4)?.getContext("2d");
       if (!probe) return null;
       const font = `${weight} ${px}px ${fonts}`;
@@ -228,11 +229,11 @@ export function canvasRunDrawer(make: (w: number, h: number) => CanvasLike | nul
       else { ctx.direction = "ltr"; ctx.textAlign = "left"; ctx.fillText(text, left, asc); }
       const data = ctx.getImageData(0, 0, w, h).data;
       let minX = w, minY = h, maxX = -1, maxY = -1;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] >= 128) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] >= cut) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
       if (maxX < 0) return EMPTY_GLYPH(adv);
       const bw = maxX - minX + 1, bh = maxY - minY + 1, rowBytes = (bw + 7) >> 3;
       const buf = new Uint8Array(rowBytes * bh);
-      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (data[((y + minY) * w + (x + minX)) * 4 + 3] >= 128) buf[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (data[((y + minY) * w + (x + minX)) * 4 + 3] >= cut) buf[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
       return { w: bw, h: bh, rowBytes, buf, x0: minX - left, y0: minY - asc, adv };
     },
   };
@@ -250,14 +251,14 @@ function browserDrawer(): RunDrawer | null {
 }
 const runCache = new Map<string, GlyphBits | null>();
 /** Draw a run with the fallback drawer (cached). null = no drawer / nothing drawn. */
-export function fallbackRun(text: string, px: number, weight: SansWeight, rtl: boolean): GlyphBits | null {
+export function fallbackRun(text: string, px: number, weight: SansWeight, rtl: boolean, cut = 128): GlyphBits | null {
   if (fallbackDrawer === undefined) fallbackDrawer = browserDrawer();
   if (!fallbackDrawer) return null;
-  const key = `${weight}|${px}|${rtl ? 1 : 0}|${text}`;
+  const key = `${weight}|${px}|${rtl ? 1 : 0}|${cut}|${text}`;
   const hit = runCache.get(key);
   if (hit !== undefined) return hit;
   let out: GlyphBits | null;
-  try { out = fallbackDrawer.drawRun(text, px, weight, rtl); } catch { out = null; }
+  try { out = cut === 128 ? fallbackDrawer.drawRun(text, px, weight, rtl) : fallbackDrawer.drawRun(text, px, weight, rtl, cut); } catch { out = null; }
   runCache.set(key, out);
   return out;
 }

@@ -55,29 +55,44 @@ const PUA0 = 0xe000; // BMP private use (the legacy emoji strip removes everythi
 // One synthetic glyph group: a single kana / full-width character in one cell (`one`), or a run (a
 // word, or several words with their spaces) cut into pieces BETWEEN letters, each piece as wide as
 // its letters. cuts = each piece's [x0, x1) in the run drawn at SYNTH_CELL24_EM, left → right.
-interface Cellish { text: string; rtl: boolean; one: boolean; pua: number[]; cuts: [number, number][] }
+interface Cellish { text: string; rtl: boolean; one: boolean; pua: number[]; cuts: [number, number][]; fit?: Record<number, { em: number; base: number }> }
 export interface AllScriptsPrep {
   payload: RasterPayload;
   synth: Set<number>;
   adv: Map<number, number>; // piece advance in em (stickerRaster.withSyntheticCjk) — runs only
   joined: Set<number>; // pieces followed by the rest of the same word (no gap, no line break between)
+  regEm: Map<number, Map<number, number>>; // piece → (font-C cell 18/20/24/32 → the em its run is drawn at)
   cells: Cellish[];
   extraCyrillic: boolean; // the D520BT payload has Cyrillic → give it the Cyrillic atlas
 }
 export const SYNTH_CELL24_EM = 17; // the 24-cell CJK atlas = Noto Sans CJK at em ≈ 16.6 (asc − desc fit)
-const PIECE_MAX = 24;                // a piece never wider than one cell of that atlas
+// a piece ≤ 17 dots at em 17: whatever em a cell draws its run at (≤ the cell), the piece still fits
+// the cell's width
+const PIECE_MAX = SYNTH_CELL24_EM;
 function graphemes(s: string): string[] {
   const Seg = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => { segment(s: string): Iterable<{ segment: string }> } }).Segmenter;
   if (Seg) { const out: string[] = []; for (const g of new Seg(undefined, { granularity: "grapheme" }).segment(s)) out.push(g.segment); return out; }
   return Array.from(s);
 }
+// A run drawn small (em < 20 dots) uses a softer coverage cut so its 1-dot strokes are not lost.
+const SOFT_BELOW = 20, SOFT_CUT = 80;
+const cutFor = (em: number): number => (em < SOFT_BELOW ? SOFT_CUT : 128);
 function drawRun(text: string, px: number, rtl: boolean, cjkx: SansFace | null): GlyphBits | null {
   const cps = Array.from(text);
   if (cps.length === 1 && cjkx) {
     const cp = cps[0].codePointAt(0) ?? 0;
     if (cjkx.g[cp] != null) return outlineGlyph(cjkx, "x", cp, px);
   }
-  return fallbackRun(text, px, 400, rtl);
+  return fallbackRun(text, px, 400, rtl, cutFor(px));
+}
+/** The writing system of a run (runs of one script get one size per cell, so a sticker never mixes sizes). */
+function scriptOf(text: string): string {
+  const cp = text.codePointAt(0) ?? 0;
+  if (cp >= 0x0e00 && cp <= 0x0eff) return "thai-lao";
+  if ((cp >= 0x0590 && cp <= 0x08ff) || (cp >= 0xfb1d && cp <= 0xfdff) || (cp >= 0xfe70 && cp <= 0xfeff)) return "hebrew-arabic";
+  if ((cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x3130 && cp <= 0x318f) || (cp >= 0xa960 && cp <= 0xa97f) || (cp >= 0xac00 && cp <= 0xd7ff)) return "hangul";
+  if (cp >= 0x0900 && cp <= 0x0dff) return "indic";
+  return "other";
 }
 /** Cut a run between letters into pieces ≤ one cell wide (visual left → right). */
 function pieceCuts(text: string, rtl: boolean): [number, number][] {
@@ -157,35 +172,64 @@ export function prepareAllScripts(payload: RasterPayload, extraAtlas: boolean, o
     buyer: { ...b, name: b.name != null ? map(b.name) : b.name, handle: b.handle != null ? map(b.handle) : b.handle, orders: b.orders?.map((o) => ({ ...o, item: o.item != null ? map(o.item) : o.item })) },
   };
   if (!changed && !(hasCyr && !extraAtlas)) return null;
-  return { payload: mapped, synth, adv, joined, cells, extraCyrillic: hasCyr && !extraAtlas };
+  return { payload: mapped, synth, adv, joined, regEm: fitRuns(cells), cells, extraCyrillic: hasCyr && !extraAtlas };
 }
 
 // Draw each synthetic glyph for one cell family: the 24-cell CJK atlas (em 17, baseline 19 —
 // gen-glyph-atlas "cjk") or an em-cell size s (em s, baseline 0.88·s — "cjkreg"). A one-cell character
 // is centred in its cell; a run is drawn once (shaping) and each piece is cut out, left-aligned.
-// Runs (Thai, Arabic, Hangul …) reach above and below a Chinese character, so in every cell they are
-// drawn at the 24-cell proportions (em 17/24 of the cell, baseline 19/24) — the marks and tails fit
-// inside the cell; their advance uses the same em (stickerRaster runEm). One-cell characters (kana,
-// CJK punctuation, full-width) keep the cell's own em like the ideographs.
+// Runs (Thai, Arabic, Hangul …): in the 24-cell atlas at em 17 / baseline 19 like every synthetic
+// glyph there; in the font-C cells at the em `fitRuns` chose (the biggest that keeps all ink inside the
+// cell), the advance using the same em (stickerRaster `synthRegEm`). One-cell characters (kana, CJK
+// punctuation, full-width) keep the cell's own em like the ideographs.
 export const runEmFor = (cell: number): number => Math.round((cell * SYNTH_CELL24_EM) / 24);
-const runBaseFor = (cell: number): number => Math.round((cell * 19) / 24);
-function cellsGlyphs(prep: AllScriptsPrep, cell: number, oneEm: number, oneBase: number): Record<number, string> {
+const REG_CELLS: CjkRegSize[] = [18, 20, 24, 32];
+/** Font-C cells (18/20/24/32): each script's runs get the BIGGEST em (≤ the cell, ≥ the 24-cell
+ *  proportion) at which all of them fit the cell top to bottom — Hangul keeps the full cell, Thai with
+ *  stacked marks steps down only as far as it must. One em per script per cell (no mixed sizes). */
+function fitRuns(cells: Cellish[]): Map<number, Map<number, number>> {
+  const cjkx = getSansFace("cjkx");
+  const groups = new Map<string, Cellish[]>();
+  for (const c of cells) if (!c.one) { const k = scriptOf(c.text); const g = groups.get(k); if (g) g.push(c); else groups.set(k, [c]); }
+  const regEm = new Map<number, Map<number, number>>();
+  for (const runs of groups.values()) for (const cell of REG_CELLS) {
+    const tryEm = (em: number): number | null => {
+      let lo = -Infinity, hi = Infinity; // where the baseline may go so every run's ink stays inside
+      for (const r of runs) { const g = drawRun(r.text, em, r.rtl, cjkx); if (!g || !g.w) continue; lo = Math.max(lo, -g.y0); hi = Math.min(hi, cell - (g.y0 + g.h)); }
+      if (lo > hi) return null;
+      return Math.min(hi, Math.max(lo, Math.round(0.88 * em)));
+    };
+    let em = cell, base = tryEm(cell);
+    for (; base === null && em > runEmFor(cell); ) base = tryEm(--em);
+    if (base === null) base = Math.round((cell * 19) / 24); // never reached for real text (17/24 fits — test)
+    for (const r of runs) {
+      (r.fit ??= {})[cell] = { em, base };
+      for (const cp of r.pua) { let m = regEm.get(cp); if (!m) regEm.set(cp, (m = new Map())); m.set(cell, em); }
+    }
+  }
+  return regEm;
+}
+function cellsGlyphs(prep: AllScriptsPrep, cell: number, oneEm: number, oneBase: number, reg: boolean): Record<number, string> {
   const cjkx = getSansFace("cjkx");
   const out: Record<number, string> = {};
   const rb = (cell + 7) >> 3;
   for (const c of prep.cells) {
-    const em = c.one ? oneEm : runEmFor(cell), base = c.one ? oneBase : runBaseFor(cell);
+    const fit = reg && !c.one ? c.fit?.[cell] : undefined;
+    const em = fit ? fit.em : oneEm, base = fit ? fit.base : oneBase;
     const sc = em / SYNTH_CELL24_EM;
     const g = drawRun(c.text, em, c.rtl, cjkx);
     c.cuts.forEach(([m0, m1], i) => {
       const cellBuf = new Uint8Array(rb * cell);
       if (g && g.w) {
         const x0 = c.one ? 0 : Math.round(m0 * sc), x1 = c.one ? Infinity : Math.round(m1 * sc);
+        // the first / last piece also keeps any ink before / after the measured run (side bearings,
+        // and the run's width at this em not being exactly the em-17 width scaled)
+        const lo = c.one || i === 0 ? -Infinity : x0, hi = c.one || i === c.cuts.length - 1 ? Infinity : x1;
         const shift = c.one ? Math.floor((cell - Math.round(g.adv)) / 2) : -x0; // pen x → cell x
         for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
           if (!(g.buf[y * g.rowBytes + (x >> 3)] & (0x80 >> (x & 7)))) continue;
           const pen = x + g.x0;
-          if (!c.one && (pen < x0 || pen >= x1)) continue;
+          if (!c.one && (pen < lo || pen >= hi)) continue;
           const X = pen + shift, Y = base + g.y0 + y;
           if (X < 0 || Y < 0 || X >= cell || Y >= cell) continue;
           cellBuf[Y * rb + (X >> 3)] |= 0x80 >> (X & 7);
@@ -200,13 +244,13 @@ const withGlyphs = (font: GlyphFont, extra: Record<number, string>): GlyphFont =
 /** The atlases with the synthetic cells added (the originals are untouched, lookups chain to them). */
 export function augmentAtlases(atlases: RasterAtlases, prep: AllScriptsPrep, cyrillic?: GlyphAtlas): RasterAtlases {
   const base24: GlyphFont = atlases.cjk?.cjk ?? { w: 24, h: 24, glyphs: {} };
-  const out: RasterAtlases = { ...atlases, cjk: { ...(atlases.cjk ?? {}), cjk: withGlyphs(base24, cellsGlyphs(prep, 24, 17, 19)) } };
+  const out: RasterAtlases = { ...atlases, cjk: { ...(atlases.cjk ?? {}), cjk: withGlyphs(base24, cellsGlyphs(prep, 24, 17, 19, false)) } };
   if (prep.extraCyrillic && cyrillic && !out.cyrillic) out.cyrillic = cyrillic;
   if (atlases.cjkReg) {
     const reg: NonNullable<RasterAtlases["cjkReg"]> = {};
     for (const [k, a] of Object.entries(atlases.cjkReg) as [string, GlyphAtlas | undefined][]) {
       const size = Number(k) as CjkRegSize;
-      if (a?.cjk) reg[size] = { ...a, cjk: withGlyphs(a.cjk, cellsGlyphs(prep, size, size, Math.round(0.88 * size))) };
+      if (a?.cjk) reg[size] = { ...a, cjk: withGlyphs(a.cjk, cellsGlyphs(prep, size, size, Math.round(0.88 * size), true)) };
     }
     out.cjkReg = reg;
   }

@@ -151,12 +151,15 @@ let synthAdv: ReadonlyMap<number, number> | null = null;
 // Pieces whose NEXT codepoint (cp + 1) is the rest of the same word: no 1-dot gap between them and
 // a line never breaks between them (a Thai / Korean word stays whole, with no seams).
 let synthJoined: ReadonlySet<number> | null = null;
-export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T, adv?: ReadonlyMap<number, number> | null, joined?: ReadonlySet<number> | null): T {
-  const prev = synthCjk, prevAdv = synthAdv, prevJoined = synthJoined;
+// The em a piece's run is drawn at in each font-C cell (18/20/24/32), when not the 24-cell proportion.
+let synthRegEm: ReadonlyMap<number, ReadonlyMap<number, number>> | null = null;
+export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T, adv?: ReadonlyMap<number, number> | null, joined?: ReadonlySet<number> | null, regEm?: ReadonlyMap<number, ReadonlyMap<number, number>> | null): T {
+  const prev = synthCjk, prevAdv = synthAdv, prevJoined = synthJoined, prevReg = synthRegEm;
   synthCjk = set && set.size ? set : null;
   synthAdv = synthCjk && adv && adv.size ? adv : null;
   synthJoined = synthCjk && joined && joined.size ? joined : null;
-  try { return fn(); } finally { synthCjk = prev; synthAdv = prevAdv; synthJoined = prevJoined; }
+  synthRegEm = synthCjk && regEm && regEm.size ? regEm : null;
+  try { return fn(); } finally { synthCjk = prev; synthAdv = prevAdv; synthJoined = prevJoined; synthRegEm = prevReg; }
 }
 /** `next` continues the same word as `cp` (both synthetic pieces of one run). */
 function synthJoins(cp: number, next: number): boolean {
@@ -1300,7 +1303,7 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
     const cp = ch.codePointAt(0) ?? 0;
-    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, Math.round((size * CELL24_EM) / 24)) ?? size) + (synthJoins(cp, chars[i + 1]?.codePointAt(0) ?? -1) ? 0 : PROP_CJK_GAP), cjk: cp }); continue; }
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, synthRegEm?.get(cp)?.get(size) ?? Math.round((size * CELL24_EM) / 24)) ?? size) + (synthJoins(cp, chars[i + 1]?.codePointAt(0) ?? -1) ? 0 : PROP_CJK_GAP), cjk: cp }); continue; }
     let g = font.glyphs[cp];
     if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
     if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w + PROP_CJK_GAP, cjk: cp }); continue; }

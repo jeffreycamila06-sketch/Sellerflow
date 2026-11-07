@@ -170,7 +170,7 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   // date & time — top right, fixed
   const dateText = printableText([inp.date, inp.time].filter(Boolean).join(" "));
   const { st: dSt, out: dRun } = one(dateText, B.date, 700);
-  const dExt = lineExtent(dRun, B.date, dSt.weight, fonts);
+  const dExt = lineExtent(dRun, B.date, 700, fonts); // heights from the CHOSEN weight: a lighter line never moves the rest
   const dTop = my, dBase = my + Math.max(dExt.asc, Math.round(B.date * 0.74));
   const dX = W - mx - dRun.width;
   add({ run: dRun, px: B.date, weight: dSt.weight, ink: dSt.ink, x: dX, baseline: dBase, clip: W });
@@ -207,7 +207,9 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const bottomLimit = H - my;
   const placeLine = (run: LineRun, p: number, st: InkStyle, part: PartKey, extraGap = true): number => {
     const w = st.weight;
-    const ext = lineExtent(run, p, w, fonts);
+    // the line's height comes from the seller's CHOSEN weight: the guard printing it lighter never
+    // moves the lines below (and so never changes how big the comment can be)
+    const ext = lineExtent(run, p, wt(part), fonts);
     const asc = Math.max(ext.asc, Math.round(p * 0.72)), desc = Math.max(ext.desc, Math.round(p * 0.08));
     const baseline = y + asc;
     const clip = rightAt(y, baseline + desc);
@@ -233,7 +235,7 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     const pn = px("buyer", B.num), pw = Math.max(12, Math.round(pn * 0.36));
     const { st: nSt, out: nRun } = one(num, pn, wt("buyer"));
     const { st: wSt, out: wRun } = one("Buyer", pw, 700);
-    const ext = lineExtent(nRun, pn, nSt.weight, fonts);
+    const ext = lineExtent(nRun, pn, wt("buyer"), fonts);
     const asc = Math.max(ext.asc, Math.round(pn * 0.72));
     const baseline = y + asc;
     const clip = rightAt(y, baseline);

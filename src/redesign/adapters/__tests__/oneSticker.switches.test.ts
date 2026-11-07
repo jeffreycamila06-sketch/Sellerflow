@@ -13,6 +13,7 @@ import { recommendedSettings } from "../oneSticker";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
 import { installNodeFallbackDrawer, installSans } from "./oneSticker.harness";
 import { fallbackRun } from "../oneStickerFonts";
+import { topology } from "../oneStickerReadable";
 import { withSyntheticCjk, wrapCommentV2 } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -126,22 +127,30 @@ describe("all-scripts switch", () => {
     const below = fallbackRun("ปุ๊", 34, 400, false)!;             // ุ under the letter
     expect(below.y0 + below.h).toBeGreaterThan(base.y0 + base.h);
   });
-  it("Thai / Arabic / Korean runs lose no ink in ANY cell (18 / 20 / 24 / 32 — Niimbot, generic 50×30, compact v2)", () => {
-    const text = "ชุด ญี่ปุ่น ที่น้ำ ขอบคุณค่ะ مريم العربية 김민지";
+  it("Thai / Arabic / Korean runs in EVERY cell (18 / 20 / 24 / 32 — Niimbot, generic 50×30, compact v2): no ink lost, no stroke broken, as big as the cell allows", () => {
+    const text = "ชุด ญี่ปุ่น ที่น้ำ ขอบคุณค่ะ مريم العربية 김민지 한국어 원피스";
     const np = buildNativeStickerPayload(buyer("Amy", text), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "50x30" });
     const prep = prepareAllScripts(np, true, true)!;
     const empty = (n: number) => ({ cjk: { w: n, h: n, glyphs: {} } });
     const at = augmentAtlases({ latin: {}, cjk: empty(24), cjkReg: { 18: empty(18), 20: empty(20), 24: empty(24), 32: empty(32) } }, prep);
     const inkOf = (b64: string) => [...Buffer.from(b64, "base64")].reduce((a, x) => { let n = 0; for (let v = x; v; v &= v - 1) n++; return a + n; }, 0);
     const bitsInk = (g: { w: number; h: number; rowBytes: number; buf: Uint8Array }) => { let n = 0; for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) if (g.buf[y * g.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) n++; return n; };
+    const cut = (em: number) => (em < 20 ? 80 : 128);
     const lost: string[] = [];
-    for (const [cell, font] of [[24, at.cjk!.cjk], ...([18, 20, 24, 32] as const).map((c) => [c, at.cjkReg![c]!.cjk] as const)] as const) {
+    for (const [cell, font, reg] of [[24, at.cjk!.cjk, false], ...([18, 20, 24, 32] as const).map((c) => [c, at.cjkReg![c]!.cjk, true] as const)] as const) {
       for (const c of prep.cells) {
         if (c.one) continue;
-        const em = cell === 24 && font === at.cjk!.cjk ? 17 : runEmFor(cell);
-        const whole = fallbackRun(c.text, em, 400, c.rtl)!;
+        const em = reg ? prep.regEm.get(c.pua[0])!.get(cell)! : 17;
+        expect(em, `${cell} ${c.text}`).toBeGreaterThanOrEqual(runEmFor(cell));
+        // Hangul has no marks above / below: it keeps the whole cell
+        if (reg && /[\uac00-\ud7af]/.test(c.text)) expect(em, `${cell} ${c.text}`).toBe(cell);
+        const whole = fallbackRun(c.text, em, 400, c.rtl, cut(em))!;
         const got = c.pua.reduce((a, cp) => a + inkOf(font.glyphs[cp]), 0);
         if (got < bitsInk(whole)) lost.push(`cell ${cell} "${c.text}": ${bitsInk(whole) - got} dots lost`);
+        // no stroke broken: as many separate pieces of ink as the same run drawn twice as big
+        const parts = (g: Parameters<typeof topology>[0]) => topology(g).parts;
+        const big = fallbackRun(c.text, em * 2, 400, c.rtl)!;
+        if (parts(whole) > parts(big)) lost.push(`cell ${cell} "${c.text}": strokes broken (${parts(whole)} pieces vs ${parts(big)} at 2×)`);
       }
     }
     expect(lost).toEqual([]);

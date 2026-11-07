@@ -553,7 +553,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
 function renderWithScripts<T>(prep: AllScriptsPrep | null, atlases: RasterAtlases, fn: (payload: RasterPayload, atlases: RasterAtlases) => T, original: RasterPayload): T {
   if (!prep) return fn(original, atlases);
   const a = augmentAtlases(atlases, prep, CYRILLIC_ATLAS);
-  return withSyntheticCjk(prep.synth, () => fn(prep.payload, a), prep.adv, prep.joined);
+  return withSyntheticCjk(prep.synth, () => fn(prep.payload, a), prep.adv, prep.joined, prep.regEm);
 }
 export async function imagePathAtlases(payload: NativeStickerPayload, img: RasterPayload): Promise<RasterAtlases> {
   // ALL SCRIPTS (switch): plan with the mapped payload (its synthetic cells are CJK-sized); null = as before
@@ -569,7 +569,7 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
     if (atlases.proportional && needsCjk) {
       // only the CJK sizes this label's lines land on (the shrink ladder is width-based, so it is known before any CJK atlas is fetched)
       const prop = atlases.proportional;
-      const sizes = withSyntheticCjk(synth, () => propPlanCjkSizes(img, payload.labelWidthMm, payload.labelHeightMm, prop), prep?.adv, prep?.joined);
+      const sizes = withSyntheticCjk(synth, () => propPlanCjkSizes(img, payload.labelWidthMm, payload.labelHeightMm, prop), prep?.adv, prep?.joined, prep?.regEm);
       const reg: NonNullable<RasterAtlases["cjkReg"]> = {};
       for (const size of sizes) { try { reg[size] = await loadCjkRegAtlas(size); } catch { /* that size paints from the 24-cell CJK atlas */ } }
       atlases.cjkReg = reg;
