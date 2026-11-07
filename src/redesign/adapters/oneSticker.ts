@@ -64,8 +64,8 @@ export function normalizeSettings(raw: unknown): OneStickerSettings {
 
 // ── Label classes and sizes ───────────────────────────────────────────────────────────────────
 export const DOTS_PER_MM = 8;
-/** 50×30-class: no shop name, smaller minimum comment size. */
-export const isSmallClass = (wMm: number, hMm: number): boolean => hMm < 35 || wMm < 45;
+/** 50×30-class (height < 35 mm or width < 55 mm): no shop name, smaller minimum comment size. */
+export const isSmallClass = (wMm: number, hMm: number): boolean => hMm < 35 || wMm < 55; // approved Step 0 preview
 interface Base { shop: number; word: number; num: number; name: number; user: number; comment: number; date: number; minComment: number; margin: number }
 /** Text sizes (px = dots per em) at 1× for this label. */
 export function baseSizes(wMm: number, hMm: number): Base {
@@ -83,7 +83,7 @@ export function baseSizes(wMm: number, hMm: number): Base {
 // ── Input (one buyer, one sticker) ────────────────────────────────────────────────────────────
 export interface OneStickerInput {
   storeName?: string;
-  date: string;          // already Taipei "YYYY/MM/DD"
+  date: string;          // already Taipei "MM/DD" (approved preview: "11/07 14:05", no year)
   time?: string;         // "HH:MM" Taipei
   buyerNum?: number | string;
   name?: string;

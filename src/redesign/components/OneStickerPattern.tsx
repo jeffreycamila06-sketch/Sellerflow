@@ -15,7 +15,7 @@ import { oneStickerFonts, renderOptsFor, type OneStickerPath } from "../adapters
 import type { OneStickerDevicePath } from "../adapters/printing";
 
 const ONE_STICKER_SAMPLE: OneStickerInput = {
-  storeName: "", date: "2026/11/07", time: "14:05", buyerNum: 128, name: "Maria Santos", handle: "maria_live", platform: "TikTok", items: ["COMMENT / PRICE"],
+  storeName: "", date: "11/07", time: "14:05", buyerNum: 128, name: "Maria Santos", handle: "maria_live", platform: "TikTok", items: ["COMMENT / PRICE"],
 };
 const sampleFor = (shopName: string): OneStickerInput => ({ ...ONE_STICKER_SAMPLE, storeName: shopName });
 // the fit check uses a 4-digit buyer number (the widest a busy live reaches)
@@ -142,6 +142,29 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
     { k: "user", hint: t.rd_os_user_fb },
     { k: "comment" },
   ];
+  const rowOf = (k: PartKey) => rows.find((r) => r.k === k)!;
+  const partRow = (r: (typeof rows)[number], last = false) => {
+            const part = s.parts[r.k];
+            return (
+              <div key={r.k} data-testid={`os-row-${r.k}`} style={{ padding: "10px 13px", borderBottom: last ? "none" : "1px solid var(--border)", opacity: r.disabled ? 0.55 : 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{partLabel[r.k]}</div>
+                    {r.hint && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{r.hint}</div>}
+                  </div>
+                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={r.disabled || part.scale === SCALE_STEPS[0]} data-testid={`os-${r.k}-minus`} style={stepBtn}>−</button>
+                  <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, fontWeight: 700, color: "var(--text)", width: 40, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
+                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={r.disabled || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} data-testid={`os-${r.k}-plus`} style={stepBtn}>+</button>
+                  <Switch on={part.on && !r.disabled} disabled={r.disabled} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
+                </div>
+                <div style={{ display: "flex", gap: 4, marginTop: 7, padding: 3, borderRadius: 10, background: "var(--surface-2, var(--border))", maxWidth: 300 }} role="group" aria-label={partLabel[r.k]}>
+                  {(["normal", "bold", "extra"] as Weight[]).map((w) => (
+                    <button key={w} type="button" disabled={r.disabled} onClick={() => setPart(r.k, { weight: w })} aria-pressed={part.weight === w} data-testid={`os-${r.k}-w-${w}`} style={segBtn(part.weight === w)}>{weightLabel[w]}</button>
+                  ))}
+                </div>
+              </div>
+            );
+  };
   const isStd = (w: number, h: number) => !customOpen && s.size.w === w && s.size.h === h;
   return (
     <div data-testid="os-screen">
@@ -196,34 +219,17 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
 
         {/* 4. one row per part */}
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden", marginTop: 13 }}>
-          {rows.map((r) => {
-            const part = s.parts[r.k];
-            return (
-              <div key={r.k} data-testid={`os-row-${r.k}`} style={{ padding: "10px 13px", borderBottom: "1px solid var(--border)", opacity: r.disabled ? 0.55 : 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{partLabel[r.k]}</div>
-                    {r.hint && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{r.hint}</div>}
-                  </div>
-                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={r.disabled || part.scale === SCALE_STEPS[0]} data-testid={`os-${r.k}-minus`} style={stepBtn}>−</button>
-                  <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, fontWeight: 700, color: "var(--text)", width: 40, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
-                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={r.disabled || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} data-testid={`os-${r.k}-plus`} style={stepBtn}>+</button>
-                  <Switch on={part.on && !r.disabled} disabled={r.disabled} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
-                </div>
-                <div style={{ display: "flex", gap: 4, marginTop: 7, padding: 3, borderRadius: 10, background: "var(--surface-2, var(--border))", maxWidth: 300 }} role="group" aria-label={partLabel[r.k]}>
-                  {(["normal", "bold", "extra"] as Weight[]).map((w) => (
-                    <button key={w} type="button" disabled={r.disabled} onClick={() => setPart(r.k, { weight: w })} aria-pressed={part.weight === w} data-testid={`os-${r.k}-w-${w}`} style={segBtn(part.weight === w)}>{weightLabel[w]}</button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          <div data-testid="os-row-date" style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", borderBottom: p.qrAllowed ? "1px solid var(--border)" : "none" }}>
+          {/* the approved preview's order: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price */}
+          {partRow(rowOf("shop"))}
+          <div data-testid="os-row-date" style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", borderBottom: "1px solid var(--border)" }}>
             <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_pp_date_time}</span>
             <span style={{ fontSize: 11.5, fontStyle: "italic", color: "var(--text-muted)", textAlign: "right" }}>{t.rd_os_date_fixed}</span>
           </div>
+          {partRow(rowOf("buyer"))}
+          {partRow(rowOf("name"))}
+          {partRow(rowOf("user"))}
           {p.qrAllowed && (
-            <div data-testid="os-row-qr" style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px" }}>
+            <div data-testid="os-row-qr" style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", borderBottom: "1px solid var(--border)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_os_qr_hint}</div>
@@ -231,6 +237,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
               <Switch on={s.qr} onClick={() => setS((x) => ({ ...x, qr: !x.qr }))} testId="os-qr-on" />
             </div>
           )}
+          {partRow(rowOf("comment"), true)}
         </div>
 
         {/* 5. reset + save */}

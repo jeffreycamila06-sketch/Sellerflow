@@ -23,7 +23,7 @@ let F: Fonts;
 beforeAll(async () => { F = await fullFonts(); setFallbackRunDrawer(stub); });
 
 const AT0 = Date.UTC(2026, 10, 6, 17, 30);
-const inp = (o: Partial<OneStickerInput> = {}): OneStickerInput => ({ storeName: "Maria Ukay", date: "2026/11/07", time: "14:05", buyerNum: 12, name: "Amy Chen", handle: "amy.shop", platform: "TikTok", items: ["A2 x2"], ...o });
+const inp = (o: Partial<OneStickerInput> = {}): OneStickerInput => ({ storeName: "Maria Ukay", date: "11/07", time: "14:05", buyerNum: 12, name: "Amy Chen", handle: "amy.shop", platform: "TikTok", items: ["A2 x2"], ...o });
 const S = (w = 100, h = 60, patch?: (s: OneStickerSettings) => void) => { const s = recommendedSettings({ w, h }); patch?.(s); return s; };
 const ink = (r: { buf: Uint8Array }) => r.buf.reduce((a, b) => a + (b ? 1 : 0), 0);
 const texts = (s: OneStickerSettings, i: OneStickerInput) => layoutSticker(s, i, F).lines.map((l) => l.run.text);
@@ -65,7 +65,7 @@ describe("layout (approved spec)", () => {
   it("date & time always top-right; the shop name is never the app brand; blank shop = no header", () => {
     const l = layoutSticker(S(), inp(), F);
     const date = l.lines[0];
-    expect(date.run.text).toBe("2026/11/07 14:05");
+    expect(date.run.text).toBe("11/07 14:05"); // approved preview: MM/DD HH:MM, no year
     expect(date.x + date.run.width).toBeLessThanOrEqual(l.w);
     expect(date.x).toBeGreaterThan(l.w / 2);
     expect(stickerShopName("SellerFlowLive")).toBe("");
@@ -76,6 +76,9 @@ describe("layout (approved spec)", () => {
     expect(isSmallClass(50, 30)).toBe(true);
     expect(isSmallClass(40, 30)).toBe(true);
     expect(isSmallClass(60, 40)).toBe(false);
+    expect(isSmallClass(54, 40)).toBe(true);   // approved preview: width < 55 mm
+    expect(isSmallClass(55, 40)).toBe(false);
+    expect(isSmallClass(100, 34)).toBe(true);  // height < 35 mm
     expect(texts(S(50, 30), inp())).not.toContain("Maria Ukay");
     expect(texts(S(60, 40), inp())).toContain("Maria Ukay");
   });
@@ -173,7 +176,11 @@ describe("settings, sizes, printers", () => {
   it("the order's input: Taipei date + order time, items of every order, the brand never as shop", () => {
     const b = { num: 7, name: "Amy", handle: "amy", platform: "TikTok", orders: [{ orderNum: Date.UTC(2026, 10, 6, 17, 30), item: "A1" }, { orderNum: Date.UTC(2026, 10, 6, 17, 31), item: "B2 x2" }] } as unknown as Buyer;
     const i = oneStickerInputFrom(b, "SellerFlowLive", Date.UTC(2026, 10, 6, 17, 30));
-    expect(i).toMatchObject({ storeName: "", date: "2026/11/07", time: "01:30", items: ["A1", "B2 x2"] });
+    expect(i).toMatchObject({ storeName: "", date: "11/07", time: "01:30", items: ["A1", "B2 x2"] });
+    // reprint of a past order: the ORIGINAL order's date and time (at = that order's instant)
+    const old = Date.UTC(2026, 8, 30, 11, 45); // Sep 30 19:45 Taipei
+    const rb = { ...b, orders: [{ orderNum: old, item: "C3" }] } as unknown as Buyer;
+    expect(oneStickerInputFrom(rb, "Shop", old)).toMatchObject({ date: "09/30", time: "19:45" });
     // Facebook post-sales prints carry buyer number 0 → no buyer line (today: printBuyerNumber off)
     const post = oneStickerInputFrom({ ...b, num: 0, platform: "Facebook" } as Buyer, "Shop", AT0);
     expect(post.buyerNum).toBeUndefined();

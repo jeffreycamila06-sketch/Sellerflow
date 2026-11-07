@@ -28,6 +28,11 @@ describe("OneStickerPattern", () => {
     expect(screen.queryByText(/logo/i)).toBeNull();
     expect(screen.queryByText(/SellerFlowLive/)).toBeNull();
   });
+  it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
+    renderIt();
+    const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
+    expect(ids).toEqual(["os-row-shop", "os-row-date", "os-row-buyer", "os-row-name", "os-row-user", "os-row-qr", "os-row-comment"]);
+  });
   it("Save is off until something changes; Save hands the settings to the device", () => {
     const { onSave } = renderIt();
     const save = screen.getByTestId("os-save") as HTMLButtonElement;

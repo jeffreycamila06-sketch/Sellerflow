@@ -59,7 +59,7 @@ export function oneStickerVisibleFor(role: string | null | undefined, switchOn: 
 }
 
 // ── Input (one buyer → what prints) ───────────────────────────────────────────────────────────
-const TAIPEI_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" });
+const TAIPEI_DATE = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit" }); // "11/07" — the approved preview prints "MM/DD HH:MM"
 const TAIPEI_TIME = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
 export const BRAND_FALLBACK = "SellerFlowLive";
 /** The shop line: the seller's own shop name, or nothing — NEVER the app's brand. */
@@ -73,7 +73,7 @@ export function oneStickerInputFrom(buyer: Buyer, storeName: string, at?: number
   const ts = typeof o0?.orderNum === "number" && o0.orderNum > 1e12 ? o0.orderNum : when.getTime();
   return {
     storeName: stickerShopName(storeName),
-    date: TAIPEI_DATE.format(when).replace(/-/g, "/"),
+    date: TAIPEI_DATE.format(when), // a reprint passes `at` → the original order's own date
     time: TAIPEI_TIME.format(new Date(ts)),
     buyerNum: buyer.num ? buyer.num : undefined, // 0 = no buyer number (Facebook post-sales prints, postPrintSettings)
     name: buyer.name,
