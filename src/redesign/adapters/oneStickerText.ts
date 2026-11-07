@@ -301,7 +301,7 @@ function bitsTouch(a: GlyphBits, ax: number, ay: number, b: GlyphBits, bx: numbe
 // Neighbouring letters: painted side by side, two letters that did NOT touch in Normal must not
 // touch in the heavier style either (checked pair by pair, so one pair can never hide another).
 const pairTouch = new Map<string, boolean>();
-function touchingPairs(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts, closest = false): boolean[] {
+function touchingPairs(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): boolean[] {
   const run = measure(text, px, weight, f);
   const keys = run.pieces.map((p) => pieceKey(p, px, weight, ink, f));
   let glyphs: Placed[] | null = null;
@@ -310,10 +310,9 @@ function touchingPairs(text: string, px: number, weight: SansWeight, ink: boolea
   let pen = 0;
   for (const p of run.pieces) { pens.push(Math.round(pen)); pen += p.adv; } // exactly where glyphsOf places them
   for (let i = 0; i + 1 < keys.length; i++) {
-    // the heavier style is checked exactly where this line puts its letters; the Normal reference one
-    // dot closer than its closest spacing (a pair the Normal font itself all but joins, e.g. "кл" whose
-    // feet meet, is the font's design — not a heavier weight closing the text)
-    const gap = closest ? Math.floor(run.pieces[i].adv) - 1 : pens[i + 1] - pens[i];
+    // both styles exactly where the line puts their letters: a pair may touch only where the Normal
+    // font itself joins it at its own printed spacing (never "rn" → "m", "vv" → "w")
+    const gap = pens[i + 1] - pens[i];
     const key = `${keys[i]}\u0001${keys[i + 1]}\u0001${gap}`; // the gap is in the key: one cache for both
     let hit = pairTouch.get(key);
     if (hit === undefined) {
@@ -339,7 +338,7 @@ export function readableStyle(text: string, px: number, weight: SansWeight, ink:
   const steps = lighterSteps(weight, ink);
   if (!text.trim() || steps.length === 1) return steps[0];
   const ref = topologies(text, px, 400, false, f);
-  const refTouch = touchingPairs(text, px, 400, false, f, true);
+  const refTouch = touchingPairs(text, px, 400, false, f);
   for (const st of steps) {
     if (st.weight === 400 && !st.ink) return st;
     if (sameShape(text, px, st, ref, refTouch, f)) return st;
@@ -349,7 +348,7 @@ export function readableStyle(text: string, px: number, weight: SansWeight, ink:
 /** Every letter of the line open in this style? (used by the screen / proof pictures) */
 export function lineIsReadable(text: string, px: number, style: InkStyle, f: Fonts): boolean {
   if (style.weight === 400 && !style.ink) return true;
-  return sameShape(text, px, style, topologies(text, px, 400, false, f), touchingPairs(text, px, 400, false, f, true), f);
+  return sameShape(text, px, style, topologies(text, px, 400, false, f), touchingPairs(text, px, 400, false, f), f);
 }
 export function __clearReadableCache(): void { glyphTopo.clear(); pairTouch.clear(); }
 /** Which CJK atlas cells the given line sizes need (to load them before painting). */

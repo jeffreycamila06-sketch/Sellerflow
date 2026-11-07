@@ -10,7 +10,7 @@ import { lineIsReadable, measure, newInk, paintLine, readableStyle, type Fonts }
 import type { SansWeight } from "../oneStickerFonts";
 import { renderOptsFor, type OneStickerPath } from "../oneStickerPrint";
 import { fullFonts, installNodeFallbackDrawer } from "./oneSticker.harness";
-import { READ_SAMPLES } from "./oneSticker.samples";
+import { READ_SAMPLES, SIZES } from "./oneSticker.samples";
 
 const inputFor = (k: string): OneStickerInput => ({ storeName: "Maria Ukay Shop", date: "11/07", time: "14:05", buyerNum: 128, name: READ_SAMPLES[k].name, handle: "maria_live", platform: "TikTok", items: READ_SAMPLES[k].items });
 const settingsFor = (w: number, h: number, weight: Weight): OneStickerSettings => {
@@ -82,17 +82,17 @@ function checkOpen(text: string, px: number, weight: SansWeight, ink: boolean): 
     }
   }
   // neighbours, exactly where the line puts them: two letters may touch only where the Normal font
-  // itself joins them one dot closer than its closest spacing (the font's own design, e.g. "кл")
+  // itself joins them at its own printed spacing
   const pair = (r: Run, i: number, gap: number, w: SansWeight, k: boolean) => {
     const run: Run = { pieces: [r.pieces[i], { ...r.pieces[i + 1] }], width: gap + r.pieces[i + 1].adv, text: "" };
     run.pieces[0] = { ...r.pieces[i], adv: gap };
     const both = analyse(paintRun(run, px, w, k)).pieces;
     return both < analyse(paintRun(one(r, i), px, w, k)).pieces + analyse(paintRun(one(r, i + 1), px, w, k)).pieces;
   };
-  let pen = 0;
-  const pens = gotRun.pieces.map((p) => { const x = Math.round(pen); pen += p.adv; return x; });
+  const pensOf = (r: Run) => { let pen = 0; return r.pieces.map((p) => { const x = Math.round(pen); pen += p.adv; return x; }); };
+  const pens = pensOf(gotRun), refPens = pensOf(refRun);
   for (let i = 0; i + 1 < gotRun.pieces.length; i++) {
-    if (pair(gotRun, i, pens[i + 1] - pens[i], weight, ink) && !pair(refRun, i, Math.floor(refRun.pieces[i].adv) - 1, 400, false)) return false;
+    if (pair(gotRun, i, pens[i + 1] - pens[i], weight, ink) && !pair(refRun, i, refPens[i + 1] - refPens[i], 400, false)) return false;
   }
   return true;
 }
@@ -120,8 +120,9 @@ describe("readability guard", () => {
     expect(closed).toBeGreaterThan(0);
   }, 60000);
   it("ordinary names, numbers and price codes keep the seller's weight on AIMO (no needless lightening)", () => {
-    // (Vietnamese "ễ" at Extra correctly goes to Bold: its two stacked marks run into each other)
-    const cases: [string, string[]][] = [["Amy Chen", ["A1 350", "B2 x2"]], ["Мария Иванова", ["рокля 450"]], ["Nguyen Thi Hoa", ["vay den 299"]], ["Maria Santos", ["C3 1200"]]];
+    // (Vietnamese "ễ" at Extra correctly goes to Bold: its two stacked marks run into each other; Cyrillic
+    // "кл" in Bold: the feet of к and л meet → that line prints lighter — tested below)
+    const cases: [string, string[]][] = [["Amy Chen", ["A1 350", "B2 x2"]], ["Мария Иванова", ["платье М 450"]], ["Nguyen Thi Hoa", ["vay den 299"]], ["Maria Santos", ["C3 1200"]]];
     const lowered: string[] = [];
     for (const [w, h] of [[60, 40], [100, 60]]) for (const weight of ["bold", "extra"] as Weight[]) for (const [name, items] of cases) {
       const s = settingsFor(w, h, weight);
@@ -135,18 +136,40 @@ describe("readability guard", () => {
     const L = layoutSticker(s, { ...inputFor("latin"), name: "Nguyễn Thị Hoa", items: ["váy đen 299"] }, F, renderOptsFor("d520", s));
     for (const l of L.lines) if (l.run.text !== "Buyer" && l.run.text !== "11/07 14:05") expect(l.weight, l.run.text).toBe(700);
   }, 60000);
-  it("only lighter, never resized: the same text sizes with and without the guard", () => {
-    for (const k of Object.keys(READ_SAMPLES)) {
-      const s = settingsFor(60, 40, "extra");
-      const on = layoutSticker(s, inputFor(k), F, { inkBold: true });
-      const off = layoutSticker(s, inputFor(k), F, { inkBold: true, guard: false });
-      // the same sizes (a lighter line can be narrower, so a wrapped comment may need fewer lines)
-      expect([...new Set(on.lines.map((l) => l.px))].sort(), k).toEqual([...new Set(off.lines.map((l) => l.px))].sort());
-      expect(on.commentPx, k).toBe(off.commentPx);
-      const order = [400, 700, 900];
-      for (let i = 0; i < Math.min(on.lines.length, off.lines.length); i++) expect(order.indexOf(on.lines[i].weight), k).toBeLessThanOrEqual(order.indexOf(off.lines[i].weight));
+  it("look-alike pairs never merge (rn → m, vv → w, rt, ty) — and \"кл\" in Bold prints lighter", () => {
+    for (const [px, w, ink] of [[17, 900, true], [17, 700, true], [19, 700, false], [19, 900, false], [24, 900, true]] as [number, SansWeight, boolean][]) {
+      for (const t of ["modern Fern burn vvip", "rn rm ri rr vv rt ty", "Burn the turn"]) {
+        const st = readableStyle(t, px, w, ink, F);
+        expect(independentlyOpen(t, px, st.weight, st.ink), `${t} ${px} ${w}${ink ? "+ink" : ""} → ${st.weight}${st.ink ? "+ink" : ""}`).toBe(true);
+      }
     }
-  }, 60000);
+    expect(readableStyle("рокля", 36, 700, false, F).weight).toBe(400);
+  });
+  it("only lighter, never resized: the same text sizes with and without the guard — every size, scale 1 / 1.5 / 2, long Chinese / Japanese comments", () => {
+    const LONG: Record<string, string[]> = {
+      ...Object.fromEntries(Object.entries(READ_SAMPLES).map(([k, v]) => [k, v.items])),
+      longChinese: ["我要這件黑色洋裝 M 號 兩件 還有紅色那件也要 謝謝老闆"],
+      longJapanese: ["日本語「ワンピース」１２３ 田中さん これもお願いします"],
+    };
+    const bad: string[] = [];
+    for (const [w, h] of SIZES) for (const weight of ["bold", "extra"] as Weight[]) for (const scale of [1, 1.5, 2]) for (const [k, items] of Object.entries(LONG)) {
+      const s = settingsFor(w, h, weight);
+      s.parts.comment.scale = scale;
+      const inp = { ...inputFor("latin"), items };
+      for (const ink of [false, true]) {
+        const on = layoutSticker(s, inp, F, { inkBold: ink });
+        const off = layoutSticker(s, inp, F, { inkBold: ink, guard: false });
+        const tag = `${w}x${h} ${weight} ×${scale} ${k}${ink ? " +ink" : ""}`;
+        if (on.commentPx !== off.commentPx) bad.push(`${tag}: comment ${on.commentPx} vs ${off.commentPx}`);
+        // the same sizes (a lighter line can be narrower, so a wrapped comment may need fewer lines)
+        const sz = (L: typeof on) => [...new Set(L.lines.map((l) => l.px))].sort().join(",");
+        if (sz(on) !== sz(off)) bad.push(`${tag}: sizes ${sz(on)} vs ${sz(off)}`);
+        const order = [400, 700, 900];
+        for (let i = 0; i < Math.min(on.lines.length, off.lines.length); i++) if (order.indexOf(on.lines[i].weight) > order.indexOf(off.lines[i].weight)) bad.push(`${tag}: heavier`);
+      }
+    }
+    expect(bad).toEqual([]);
+  }, 300000);
   it("the ink goes first: Extra + ink that closes tries Extra without ink before Bold", () => {
     // a Latin comment at 24 dots (3 mm): Extra stays, only the 1-dot ink is dropped (letters open as Extra)
     const st = readableStyle("ako po yung black dress size M", 24, 900, true, F);

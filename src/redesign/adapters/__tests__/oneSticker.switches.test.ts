@@ -8,7 +8,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { printSlip, DEF_SETTINGS, setStickerQrEntitled, setStickerQrOn, setStickerCompactV2, buildGenericStickerBytes, buildNiimbotImage, buildNativeStickerPayload, __resetNativePrintQueue, __resetWebPrintQueue, type Settings } from "../printing";
 import { setOneStickerVisible, saveOneSticker, __resetOneStickerState, LS_ONE_STICKER } from "../oneStickerPrint";
-import { setStickerAllScripts, prepareAllScripts } from "../oneStickerScripts";
+import { setStickerAllScripts, prepareAllScripts, augmentAtlases, runEmFor } from "../oneStickerScripts";
 import { recommendedSettings } from "../oneSticker";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
 import { installNodeFallbackDrawer, installSans } from "./oneSticker.harness";
@@ -125,6 +125,26 @@ describe("all-scripts switch", () => {
     expect(marked.y0 + marked.h).toBeGreaterThanOrEqual(base.y0 + base.h);
     const below = fallbackRun("ปุ๊", 34, 400, false)!;             // ุ under the letter
     expect(below.y0 + below.h).toBeGreaterThan(base.y0 + base.h);
+  });
+  it("Thai / Arabic / Korean runs lose no ink in ANY cell (18 / 20 / 24 / 32 — Niimbot, generic 50×30, compact v2)", () => {
+    const text = "ชุด ญี่ปุ่น ที่น้ำ ขอบคุณค่ะ مريم العربية 김민지";
+    const np = buildNativeStickerPayload(buyer("Amy", text), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "50x30" });
+    const prep = prepareAllScripts(np, true, true)!;
+    const empty = (n: number) => ({ cjk: { w: n, h: n, glyphs: {} } });
+    const at = augmentAtlases({ latin: {}, cjk: empty(24), cjkReg: { 18: empty(18), 20: empty(20), 24: empty(24), 32: empty(32) } }, prep);
+    const inkOf = (b64: string) => [...Buffer.from(b64, "base64")].reduce((a, x) => { let n = 0; for (let v = x; v; v &= v - 1) n++; return a + n; }, 0);
+    const bitsInk = (g: { w: number; h: number; rowBytes: number; buf: Uint8Array }) => { let n = 0; for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) if (g.buf[y * g.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) n++; return n; };
+    const lost: string[] = [];
+    for (const [cell, font] of [[24, at.cjk!.cjk], ...([18, 20, 24, 32] as const).map((c) => [c, at.cjkReg![c]!.cjk] as const)] as const) {
+      for (const c of prep.cells) {
+        if (c.one) continue;
+        const em = cell === 24 && font === at.cjk!.cjk ? 17 : runEmFor(cell);
+        const whole = fallbackRun(c.text, em, 400, c.rtl)!;
+        const got = c.pua.reduce((a, cp) => a + inkOf(font.glyphs[cp]), 0);
+        if (got < bitsInk(whole)) lost.push(`cell ${cell} "${c.text}": ${bitsInk(whole) - got} dots lost`);
+      }
+    }
+    expect(lost).toEqual([]);
   });
   it("a Thai / Korean word stays whole: one run per word (real spaces between), no gap or line break inside it", () => {
     const np = buildNativeStickerPayload(buyer("สมใจ", "ชุด สีดำ"), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "100x60" });

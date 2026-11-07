@@ -163,12 +163,19 @@ export function prepareAllScripts(payload: RasterPayload, extraAtlas: boolean, o
 // Draw each synthetic glyph for one cell family: the 24-cell CJK atlas (em 17, baseline 19 —
 // gen-glyph-atlas "cjk") or an em-cell size s (em s, baseline 0.88·s — "cjkreg"). A one-cell character
 // is centred in its cell; a run is drawn once (shaping) and each piece is cut out, left-aligned.
-function cellsGlyphs(prep: AllScriptsPrep, cell: number, em: number, base: number): Record<number, string> {
+// Runs (Thai, Arabic, Hangul …) reach above and below a Chinese character, so in every cell they are
+// drawn at the 24-cell proportions (em 17/24 of the cell, baseline 19/24) — the marks and tails fit
+// inside the cell; their advance uses the same em (stickerRaster runEm). One-cell characters (kana,
+// CJK punctuation, full-width) keep the cell's own em like the ideographs.
+export const runEmFor = (cell: number): number => Math.round((cell * SYNTH_CELL24_EM) / 24);
+const runBaseFor = (cell: number): number => Math.round((cell * 19) / 24);
+function cellsGlyphs(prep: AllScriptsPrep, cell: number, oneEm: number, oneBase: number): Record<number, string> {
   const cjkx = getSansFace("cjkx");
   const out: Record<number, string> = {};
   const rb = (cell + 7) >> 3;
-  const sc = em / SYNTH_CELL24_EM;
   for (const c of prep.cells) {
+    const em = c.one ? oneEm : runEmFor(cell), base = c.one ? oneBase : runBaseFor(cell);
+    const sc = em / SYNTH_CELL24_EM;
     const g = drawRun(c.text, em, c.rtl, cjkx);
     c.cuts.forEach(([m0, m1], i) => {
       const cellBuf = new Uint8Array(rb * cell);

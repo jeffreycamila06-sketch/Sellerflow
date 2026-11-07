@@ -281,9 +281,13 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
       const lineH = ideo ? Math.max(Math.round(p * 1.12), (() => { const c = cjkCellFor(p); return c.cell * c.mag + cjkInk(p, wChosen).dy + 2; })()) : Math.round(p * 1.12);
       const maxLines = Math.max(0, Math.floor((bottomLimit - startY + Math.round(p * 0.12)) / lineH));
       const widthOf = (i: number) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx);
-      const { st, out: wr } = settle(comment, p, wChosen, (st) => { const r = maxLines > 0 ? wrapText(comment, p, st.weight, widthOf, maxLines, fonts) : { lines: [] as LineRun[], cut: true }; return { runs: r.lines, out: r }; });
-      const w = st.weight;
-      if ((!wr.cut && wr.lines.length) || p <= minP) {
+      const wrapAt = (weight: SansWeight) => (maxLines > 0 ? wrapText(comment, p, weight, widthOf, maxLines, fonts) : { lines: [] as LineRun[], cut: true });
+      // the SIZE is decided with the seller's own weight (the guard never changes it — only lighter) …
+      const fit = wrapAt(wChosen);
+      if ((!fit.cut && fit.lines.length) || p <= minP) {
+        // … then the readability guard picks the weight on the lines that print at that size
+        const { st, out: wr } = settle(comment, p, wChosen, (st) => { const r = st.weight === wChosen ? fit : wrapAt(st.weight); return { runs: r.lines, out: r }; });
+        const w = st.weight;
         if (wr.cut) warnings.push({ part: "comment", kind: wr.lines.length ? "width" : "height" });
         y = startY;
         wr.lines.forEach((l, i) => {

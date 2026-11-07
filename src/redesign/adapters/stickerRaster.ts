@@ -1300,7 +1300,7 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
     const cp = ch.codePointAt(0) ?? 0;
-    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, size) ?? size) + (synthJoins(cp, chars[i + 1]?.codePointAt(0) ?? -1) ? 0 : PROP_CJK_GAP), cjk: cp }); continue; }
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, Math.round((size * CELL24_EM) / 24)) ?? size) + (synthJoins(cp, chars[i + 1]?.codePointAt(0) ?? -1) ? 0 : PROP_CJK_GAP), cjk: cp }); continue; }
     let g = font.glyphs[cp];
     if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
     if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w + PROP_CJK_GAP, cjk: cp }); continue; }
