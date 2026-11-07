@@ -29,7 +29,7 @@ import { LATIN_ATLAS } from "./glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "./glyphAtlas.cyrillic"; // generic-printer / Niimbot image paths only
 import { log } from "../../lib/log";
 import { hasFeature } from "./featureAccess";
-import { oneStickerActive, oneStickerInputFrom, renderOneStickerFor, d520Stream, genericBytes, niimbotImage, laptopPage, type OneStickerPath } from "./oneStickerPrint";
+import { oneStickerActive, oneStickerInputFrom, renderOneStickerFor, d520Stream, genericBytes, niimbotImage, laptopPage, textStickerSizeFor, type OneStickerPath } from "./oneStickerPrint";
 import type { OneStickerSettings } from "./oneSticker";
 import { prepareAllScripts, augmentAtlases, ensureAllScriptsFonts, stickerAllScriptsOn, type AllScriptsPrep } from "./oneStickerScripts";
 import { withSyntheticCjk } from "./stickerRaster";
@@ -739,16 +739,20 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
   return !out.ok && out.code === BITMAP_SPP_FAILED ? "text-spp" : out;
 }
 
-async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName = false, at?: number): Promise<BtRouteResult> {
+async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfgIn: Settings, fbName = false, at?: number): Promise<BtRouteResult> {
+  let cfg = cfgIn;
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
   // ONE STICKER (opted-in device only; null for every other device → today's routing below).
   const os = oneStickerActive();
   let oneStickerSpp = false;
   if (os) {
-    const done = await printOneStickerViaBluetooth(bridge, os, buyer, storeName, fbName, at);
+    // Facebook name-only follows the buyer (not the old @username toggle of the previous screen)
+    const done = await printOneStickerViaBluetooth(bridge, os, buyer, storeName, fbNameOnly(buyer.platform, buyer.name), at);
     if (done !== "text" && done !== "text-spp") return done;
     oneStickerSpp = done === "text-spp"; // → the native TEXT sticker below (Branch 2 keeps it as is)
+    // …at the largest TEXT size that fits the chosen label (TEXT has no 50×30 / custom row)
+    cfg = { ...cfg, stickerSize: textStickerSizeFor(os.size) };
   }
   // Printer setup v2 — a saved Niimbot prints the sticker IMAGE through its driver; a saved
   // GENERIC printer prints the sticker IMAGE in its saved language (both above). A D520BT
@@ -816,7 +820,7 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
     if (typeof document === "undefined") return { ok: false, code: "", message: "", via: "none" };
     const os = oneStickerEffective(draft);
     const jobId = `one-sticker-test-${++webFallbackId}`;
-    const page = webPrepareChain.then(async () => laptopPage(await renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, undefined, fbName)), os, "Test sticker"));
+    const page = webPrepareChain.then(() => withTimeout(renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, undefined, fbName)), ONE_STICKER_WEB_TIMEOUT_MS)).then((r) => laptopPage(r, os, "Test sticker"));
     webPrepareChain = page.catch(() => undefined);
     enqueueWebPrint({ id: jobId, html: page });
     return { ok: true, code: "", message: "", via: "browser" };
@@ -1236,7 +1240,7 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
     (qr ? qr.svg : "") +
     `</body></html>`;
   const os = oneStickerActive();
-  if (os) { enqueueWebPrint({ id: jobId, html: oneStickerWebPage(os, buyer, storeName, at, fbName, html) }); return { ok: true, via: "browser" }; }
+  if (os) { enqueueWebPrint({ id: jobId, html: oneStickerWebPage(os, buyer, storeName, at, fbNameOnly(buyer.platform, buyer.name), html) }); return { ok: true, via: "browser" }; }
   enqueueWebPrint({ id: jobId, html });
   return { ok: true, via: "browser" };
 }
@@ -1248,12 +1252,17 @@ let webPrepareChain: Promise<unknown> = Promise.resolve();
 let lastOneStickerWebMiss: { at: number; error: string } | null = null;
 export const getLastOneStickerWebMiss = () => lastOneStickerWebMiss;
 export function __webPrintIdle(): Promise<void> { return webPrepareChain.then(() => undefined, () => undefined); }
+// A picture that is not ready in time (a font chunk stuck on a bad connection) never holds the
+// queue: that sticker prints today's page and the next one goes on.
+export const ONE_STICKER_WEB_TIMEOUT_MS = 8000;
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((res, rej) => { const t = setTimeout(() => rej(new Error("one-sticker picture timeout")), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
+}
 function oneStickerWebPage(osIn: OneStickerSettings, buyer: Buyer, storeName: string, at: number | undefined, fbName: boolean, legacyHtml: string): Promise<string> {
   const os = oneStickerEffective(osIn);
-  const page = webPrepareChain.then(async () => {
-    const r = await renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName));
-    return laptopPage(r, os, `Sticker #${buyer.num}`);
-  }).catch((err: unknown) => {
+  const page = webPrepareChain.then(() => withTimeout(renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName)), ONE_STICKER_WEB_TIMEOUT_MS))
+    .then((r) => laptopPage(r, os, `Sticker #${buyer.num}`))
+    .catch((err: unknown) => {
     lastOneStickerWebMiss = { at: Date.now(), error: String(err) };
     log.warn("[ONE-STICKER laptop] picture failed — printing today's page", err);
     return legacyHtml;

@@ -70,12 +70,17 @@ describe("OneStickerPattern", () => {
   it("warns when the size is wider than the saved printer takes (Niimbot B1 = 50 mm)", () => {
     renderIt({ printerName: "B1-H123", devicePath: "niimbot" });
     expect(screen.getByTestId("os-too-wide").textContent).toContain("B1");
+    fireEvent.click(screen.getByTestId("os-name-w-extra")); // a change, but the size is too wide → Save stays off
+    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("os-size-50x30"));
+    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId("os-too-wide")).toBeNull();
   });
   it("a printer on the older text sticker: Custom is hidden with a short note", () => {
     renderIt({ devicePath: "text" });
     expect(screen.queryByTestId("os-size-custom")).toBeNull();
+    expect(screen.queryByTestId("os-size-50x30")).toBeNull(); // the TEXT sticker has no 50×30 layout
+    expect(screen.getByTestId("os-size-60x40")).toBeTruthy();
     expect(screen.getByTestId("os-custom-hidden")).toBeTruthy();
     expect(screen.getByTestId("os-text-path")).toBeTruthy();
   });
@@ -94,6 +99,7 @@ describe("OneStickerPattern", () => {
     fireEvent.click(screen.getByTestId("os-comment-plus"));
     fireEvent.click(screen.getByTestId("os-test-zh"));
     expect(onTest.mock.calls[0][1]).toBe("zh");
+    expect(onTest.mock.calls[0][2]).toBe(true); // not saved yet → the "tap Save" toast
     expect(onTest.mock.calls[0][0].parts.comment.scale).toBe(1.15);
   });
 });

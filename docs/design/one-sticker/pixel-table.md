@@ -103,7 +103,7 @@ Every cell: what the printer RECEIVES (decoded) compared pixel by pixel with the
 
 ## Laptop — Chrome's real print (the page printed to PDF by Chromium)
 
-The exact page the hidden print iframe receives, printed by Chromium (Playwright). The picture inside Chrome's print = the sticker picture, bit for bit (diff = 0), one page per sticker. Chrome rounds the paper to whole screen pixels (≈0.2 mm smaller than the label) and places the picture at the label's size; that tiny scale happens inside Chrome / the printer driver, not in the app.
+The exact page the hidden print iframe receives, printed by Chromium (Playwright). The picture inside Chrome's print = the sticker picture, bit for bit (diff = 0), one page per sticker. Chrome rounds the paper to whole screen pixels (≈0.2 mm under the label) and places the picture at the label's size; that tiny scale happens inside Chrome / the printer driver, not in the app. A real Windows printer driver is still to be tested (Jeff).
 
 | page | pages | picture (dots) | picture size (mm) | Chrome paper (mm) | pixels different |
 |---|---|---|---|---|---|

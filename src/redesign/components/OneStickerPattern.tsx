@@ -100,7 +100,7 @@ export interface OneStickerPatternProps {
   printerName?: string | null;     // the saved Bluetooth printer (size limit warning)
   genericBold?: boolean;           // the saved printer gets the 1-dot ink (Y41BT / XP-420B)
   qrAllowed: boolean;              // "Print QR on sticker" is available for this account
-  onTest: (draft: OneStickerSettings, sample: "default" | "en" | "zh") => void;
+  onTest: (draft: OneStickerSettings, sample: "default" | "en" | "zh", unsaved: boolean) => void;
 }
 
 export default function OneStickerPattern(p: OneStickerPatternProps) {
@@ -129,7 +129,8 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
   const reset = () => setS(recommendedSettings(s.size));
-  const save = () => { if (!dirty && saved) return; p.onSave(s); setBase(s); setS(s); setSaved(true); };
+  const blocked = !!tooWide || (customOpen && !customOk); // a size the printer cannot take is never saved
+  const save = () => { if ((!dirty && saved) || blocked) return; p.onSave(s); setBase(s); setS(s); setSaved(true); };
 
   const fitParts = warnings.filter((w) => w.part !== "comment" && w.part !== "qr");
   const partLabel: Record<PartKey, string> = { shop: t.rd_set_shop_name, buyer: t.rd_pp_buyer_num, name: t.rd_os_name, user: t.rd_os_user, comment: t.rd_pp_comment_center };
@@ -164,16 +165,16 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         {p.devicePath === "wifi" && <div data-testid="os-wifi-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_wifi_path}</div>}
 
         {/* 2. test prints (today's buttons) */}
-        <button onClick={() => p.onTest(sEff, "default")} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_printer_test}</button>
+        <button onClick={() => p.onTest(sEff, "default", dirty || !saved)} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_printer_test}</button>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={() => p.onTest(sEff, "en")} data-testid="os-test-en" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_latin}</button>
-          <button onClick={() => p.onTest(sEff, "zh")} data-testid="os-test-zh" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_cjk}</button>
+          <button onClick={() => p.onTest(sEff, "en", dirty || !saved)} data-testid="os-test-en" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_latin}</button>
+          <button onClick={() => p.onTest(sEff, "zh", dirty || !saved)} data-testid="os-test-zh" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_cjk}</button>
         </div>
 
         {/* 3. paper size */}
         <div style={{ marginTop: 14, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{t.rd_os_size}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 7 }} data-testid="os-sizes">
-          {STANDARD_SIZES.map((z) => (
+          {STANDARD_SIZES.filter((z) => customAllowed || !(z.w === 50 && z.h === 30)).map((z) => (
             <button key={`${z.w}x${z.h}`} type="button" onClick={() => pickSize(z.w, z.h)} aria-pressed={isStd(z.w, z.h)} data-testid={`os-size-${z.w}x${z.h}`} style={chip(isStd(z.w, z.h))}>{z.w}×{z.h}</button>
           ))}
           {customAllowed && <button type="button" onClick={() => setCustomOpen(true)} aria-pressed={customOpen} data-testid="os-size-custom" style={chip(customOpen)}>{t.rd_os_custom}</button>}
@@ -235,7 +236,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         {/* 5. reset + save */}
         <button type="button" onClick={reset} data-testid="os-reset" style={{ width: "100%", marginTop: 12, padding: "11px 0", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_os_reset}</button>
         <div data-testid="os-device-note" style={{ marginTop: 9, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.45 }}>{saved && !dirty ? t.rd_os_active_note : t.rd_os_optin_note}</div>
-        <button type="button" onClick={save} disabled={!dirty || (customOpen && !customOk)} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: dirty ? "pointer" : "default", opacity: dirty && !(customOpen && !customOk) ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
+        <button type="button" onClick={save} disabled={!dirty || blocked} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: dirty ? "pointer" : "default", opacity: dirty && !blocked ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
       </div>
     </div>
   );

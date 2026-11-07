@@ -12,9 +12,10 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, renderOneSticker, loadFontsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
+import { loadSansFace } from "./oneStickerFonts";
 import { bitmapTsplFromRaster, buildSdkBitmapStream, bytesToBase64, packPrinterRaster, rotateRaster180, type FullRaster } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
@@ -125,4 +126,19 @@ export function niimbotImage(r: FullRaster, s: OneStickerSettings): NiimbotImage
 /** The laptop print page (one W×H mm page, the picture at W×H mm). `frame` = the test print border. */
 export function laptopPage(r: FullRaster, s: OneStickerSettings, title: string, frame = false): string {
   return laptopStickerPage(s.size.w, s.size.h, rasterBmpDataUrl(frame ? framed(r) : r, bytesToBase64), title);
+}
+
+// The native TEXT sticker (old app / Classic text / an SPP picture send that failed) has only the
+// five fixed sizes and no 50×30 row: when the one sticker falls back to it, use the largest TEXT size
+// that fits inside the chosen label (never a bigger layout than the paper).
+const TEXT_SIZES: [number, number][] = [[100, 60], [80, 60], [80, 50], [70, 50], [60, 40]];
+export function textStickerSizeFor(size: { w: number; h: number }): string {
+  const hit = TEXT_SIZES.find(([w, h]) => w <= size.w && h <= size.h);
+  return hit ? `${hit[0]}x${hit[1]}` : "60x40";
+}
+/** Warm the Sans weights this device prints with (app start) so the first sticker is not slow. */
+export function prefetchOneStickerFonts(): void {
+  const s = oneStickerActive();
+  if (!s) return;
+  for (const w of weightsFor(s)) void loadSansFace(w).catch(() => { /* the print retries */ });
 }

@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { normalizeSettings, recommendedSettings, renderOneSticker, layoutSticker, SCALE_STEPS, snapScale, validCustomMm, isSmallClass, tooWideFor, printerLimitFor, baseSizes, type OneStickerInput, type OneStickerSettings } from "../oneSticker";
 import { printableText, measure, type Fonts } from "../oneStickerText";
 import { setFallbackRunDrawer, type RunDrawer } from "../oneStickerFonts";
-import { oneStickerInputFrom, stickerShopName } from "../oneStickerPrint";
+import { oneStickerInputFrom, stickerShopName, textStickerSizeFor } from "../oneStickerPrint";
 import { fullFonts } from "./oneSticker.harness";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -178,5 +178,14 @@ describe("settings, sizes, printers", () => {
     const post = oneStickerInputFrom({ ...b, num: 0, platform: "Facebook" } as Buyer, "Shop", AT0);
     expect(post.buyerNum).toBeUndefined();
     expect(layoutSticker(S(60, 40), post, F).lines.some((l) => l.run.text === "Buyer")).toBe(false);
+  });
+});
+
+describe("TEXT fallback size", () => {
+  it("the TEXT sticker never gets a layout bigger than the chosen label (no 50×30 row there)", () => {
+    expect(textStickerSizeFor({ w: 100, h: 60 })).toBe("100x60");
+    expect(textStickerSizeFor({ w: 75, h: 45 })).toBe("60x40");
+    expect(textStickerSizeFor({ w: 80, h: 50 })).toBe("80x50");
+    expect(textStickerSizeFor({ w: 50, h: 30 })).toBe("60x40"); // nothing fits → the smallest TEXT size
   });
 });

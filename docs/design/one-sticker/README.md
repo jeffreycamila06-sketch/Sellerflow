@@ -12,7 +12,8 @@ The laptop pictures are Chrome's own print of the real print page (Playwright �
 | `stickers/laptop/` | Laptop / browser — Chrome's print of the real print page, every size × sample. |
 | `controls/` | 100×60 and 60×40: for each part (shop name, Buyer #, name, @username, comment/price) 0.6× / 1× / 2×, Normal / Bold / Extra, OFF — every step looks different (also tested: `oneSticker.test.ts`). |
 | `pixel-table.md` | Pixel test: what each printer RECEIVES, decoded, == the preview — 8 sizes × 12 samples × AIMO / TSPL / ESC-POS / CPCL / Niimbot / laptop (all ✅), and Chrome's real print of all 96 laptop pages (picture inside Chrome's print = the sticker, 0 pixels different). |
-| `today-vs-new/` | The customer case (laptop 100×60, long comment: today cut at "ako po yung bl") and the Japan client case (Niimbot 50×30 田中さん: today "tanaka" + kana removed). |
+| `today-vs-new/` | The customer case (laptop 100×60, long comment: today cut at "ako po yung bl"), the Japan client case (Niimbot 50×30 田中さん: today "tanaka" + kana removed), and the AIMO D520 at every size (long comment, Facebook 2-line name, 中文) — what the printer receives, TODAY vs NEW. |
+| `all-scripts-today-layouts/` | The second switch (`sticker_all_scripts_enabled`) on TODAY's sticker — AIMO D520 every size, generic 50×30 / 60×40, Niimbot 50×30 — OFF vs ON for Japanese, Korean, Thai, Arabic, Bulgarian and an iPhone-apostrophe/dash name (O’Brien Ana–Maria). |
 | `ink-extra/` | Y41BT / XP-420B: Extra + the 1-dot bold ink fills complex Chinese/Japanese letters at 50×30 and 60×40 → Extra on labels ≤ 40 mm tall prints with plain ink; Bold keeps the approved 1-dot ink. |
 | `font/` | One font "Sans": our pure-TypeScript drawing of Noto Sans 400/700/900 next to the same words drawn by the browser engine (Skia) — the same letter shapes. |
 

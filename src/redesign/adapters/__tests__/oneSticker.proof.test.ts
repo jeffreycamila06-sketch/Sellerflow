@@ -13,6 +13,10 @@ import { knownTsplJob } from "../printerModels";
 import { fbNameOnly, printableBuyer } from "../fbName";
 import { buildNativeStickerPayload, buildNiimbotImage, setStickerQrEntitled, setStickerQrOn, DEF_SETTINGS, printSlip, __resetWebPrintQueue } from "../printing";
 import { setOneStickerVisible, saveOneSticker, __resetOneStickerState } from "../oneStickerPrint";
+import { setStickerAllScripts } from "../oneStickerScripts";
+import { decodeSdkStream, decodeEscpos } from "./oneSticker.decode";
+import { buildGenericStickerBytes, __resetNativePrintQueue, type Settings } from "../printing";
+import { __resetSavedPrinter } from "../savedPrinter";
 import type { FullRaster } from "../stickerRaster";
 import { installNodeFallbackDrawer, installSans, napiCanvas } from "./oneSticker.harness";
 import { SAMPLES, SIZES } from "./oneSticker.samples";
@@ -173,4 +177,73 @@ describe.skipIf(!OUT)("one sticker — proof pictures", () => {
     fs.writeFileSync(path.join(dir, "new_laptop_100x60_long-comment.html"), await grab());
     __resetOneStickerState(); setStickerQrOn(false);
   }, 120000);
+
+  // what the AIMO D520BT RECEIVES for this buyer at this size (decoded), with the current switches
+  async function d520Received(b: Buyer, shop: string, size: string): Promise<FullRaster> {
+    __resetNativePrintQueue(); __resetSavedPrinter();
+    const ok = () => vi.fn(async () => ({ ok: true }));
+    const br: Record<string, ReturnType<typeof vi.fn>> = { printStickerNative: ok(), printStickerBitmap: ok() };
+    (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter = br;
+    const cfg: Settings = { ...DEF_SETTINGS, printerType: "bluetooth", stickerSize: size };
+    printSlip(b, "NT$", shop, cfg, { at: AT });
+    await vi.waitFor(() => expect(br.printStickerBitmap.mock.calls.length).toBe(1), { timeout: 20000 });
+    delete (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter;
+    return decodeSdkStream(Uint8Array.from(Buffer.from((br.printStickerBitmap.mock.calls[0][0] as { data: string }).data, "base64")));
+  }
+  const ALL_SCRIPT_KEYS = ["japanese", "korean", "thai", "arabic", "bulgarian"];
+  const apostrophe = { key: "apostrophe-dash", shop: "Maria Ukay Shop", buyer: { ...SAMPLES[0].buyer, name: "O’Brien Ana–Maria", orders: [{ ...SAMPLES[0].buyer.orders[0], item: "Joy… “A2” 350" }] } as Buyer, qr: false };
+
+  it("ALL SCRIPTS on TODAY's layouts — OFF vs ON (D520 every size, generic 50×30 / 60×40, Niimbot 50×30)", async () => {
+    installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); setStickerQrOn(false);
+    const samples = [...SAMPLES.filter((x) => ALL_SCRIPT_KEYS.includes(x.key)), apostrophe];
+    for (const size of ["100x60", "80x60", "80x50", "70x50", "60x40", "50x30"]) {
+      const cells = [];
+      for (const smp of samples) for (const on of [false, true]) {
+        setStickerAllScripts(on);
+        cells.push({ title: `${smp.key} — ${on ? "ON" : "OFF (today)"}`, r: await d520Received(smp.buyer, smp.shop, size) });
+      }
+      setStickerAllScripts(false);
+      const [w] = size.split("x").map(Number);
+      write(`all-scripts-today-layouts/aimo-d520_${size}.png`, sheet(cells, 4, w >= 80 ? 1 : 2, `TODAY's AIMO D520 sticker, ${size.replace("x", "×")} — all-scripts switch OFF vs ON (what the printer receives)`));
+    }
+    for (const size of ["50x30", "60x40"]) {
+      const cells = [];
+      for (const smp of samples) for (const on of [false, true]) {
+        setStickerAllScripts(on);
+        const np = buildNativeStickerPayload(smp.buyer, "NT$", smp.shop, { ...DEF_SETTINGS, stickerSize: size }, AT);
+        cells.push({ title: `${smp.key} — ${on ? "ON" : "OFF (today)"}`, r: decodeEscpos(await buildGenericStickerBytes("escpos", np, smp.buyer.platform)) });
+      }
+      setStickerAllScripts(false);
+      write(`all-scripts-today-layouts/generic_${size}.png`, sheet(cells, 4, 2, `TODAY's generic-printer sticker (Y41BT / XP-420B picture), ${size.replace("x", "×")} — all-scripts OFF vs ON`));
+    }
+    {
+      const cells = [];
+      for (const smp of samples) for (const on of [false, true]) {
+        setStickerAllScripts(on);
+        const np = buildNativeStickerPayload(smp.buyer, "NT$", smp.shop, { ...DEF_SETTINGS, stickerSize: "50x30" }, AT);
+        const im = await buildNiimbotImage(np, smp.buyer.platform);
+        cells.push({ title: `${smp.key} — ${on ? "ON" : "OFF (today)"}`, r: { w: im.w, h: im.h, rowBytes: im.rowBytes, buf: Uint8Array.from(Buffer.from(im.data, "base64")) }, frameW: 400, frameH: 240 });
+      }
+      setStickerAllScripts(false);
+      write("all-scripts-today-layouts/niimbot_50x30.png", sheet(cells, 4, 2, "TODAY's Niimbot sticker, 50×30 — all-scripts OFF vs ON"));
+    }
+  }, 600000);
+
+  it("TODAY vs NEW on the AIMO D520 — every size (long comment, Facebook 2-line name, 中文)", async () => {
+    installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); setStickerQrOn(true);
+    const picks = ["long-comment", "facebook-long-name", "chinese"].map((k) => SAMPLES.find((x) => x.key === k)!);
+    for (const size of ["100x60", "80x60", "80x50", "70x50", "60x40", "50x30"]) {
+      const [w, h] = size.split("x").map(Number);
+      const cells = [];
+      for (const smp of picks) {
+        __resetOneStickerState();
+        cells.push({ title: `${smp.key} — TODAY`, r: await d520Received(smp.buyer, smp.shop, size), frameW: w * 8, frameH: h * 8 });
+        setOneStickerVisible(true); saveOneSticker({ ...recommendedSettings({ w, h }), qr: true });
+        cells.push({ title: `${smp.key} — NEW`, r: await d520Received(smp.buyer, smp.shop, size), frameW: w * 8, frameH: h * 8 });
+        __resetOneStickerState();
+      }
+      write(`today-vs-new/aimo-d520_${size}.png`, sheet(cells, 2, w >= 80 ? 1 : 2, `AIMO D520 ${size.replace("x", "×")} — TODAY vs NEW (what the printer receives; QR on)`));
+    }
+    setStickerQrOn(false);
+  }, 600000);
 });

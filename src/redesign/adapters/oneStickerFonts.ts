@@ -153,7 +153,7 @@ export function cjkCellFor(px: number): { cell: CjkCell; mag: number } {
   let bestErr = Infinity;
   for (let mag = 1; mag <= 6; mag++) for (const cell of CJK_CELLS) {
     const s = cell * mag;
-    const err = s <= px + 1 ? px - s : (s - px) * 3; // prefer not exceeding the line's size
+    const err = s <= px + 1 ? px - s : (s - px) * 1.5; // a cell a little above the em is fine (the ideograph ink sits inside it)
     if (err < bestErr) { bestErr = err; best = { cell, mag }; }
   }
   return best;
@@ -182,7 +182,7 @@ export function cjkGlyph(atlas: GlyphAtlas | undefined, cell: CjkCell, mag: numb
     for (let j = 0; j < mag; j++) for (let i = 0; i < mag; i++) { const X = x * mag + i, Y = y * mag + j; buf[Y * rowBytes + (X >> 3)] |= 0x80 >> (X & 7); }
   }
   // em cell: baseline at 0.88·s; centred in the px-wide advance
-  const out: GlyphBits = { w: s, h: s, rowBytes, buf, x0: Math.round((px - s) / 2), y0: -Math.round(0.88 * s), adv: px };
+  const out: GlyphBits = { w: s, h: s, rowBytes, buf, x0: 0, y0: -Math.round(0.88 * s), adv: s };
   cjkCache.set(key, out);
   return out;
 }

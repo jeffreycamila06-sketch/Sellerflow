@@ -29,8 +29,17 @@ const isEmojiOrControl = (cp: number) => cp < 0x20 || (cp >= 0x7f && cp < 0xa0) 
 const isRtl = (cp: number) => (cp >= 0x0590 && cp <= 0x08ff) || (cp >= 0xfb1d && cp <= 0xfdff) || (cp >= 0xfe70 && cp <= 0xfeff);
 const isOneCell = (cp: number) => (cp >= 0x3000 && cp <= 0x30ff) || (cp >= 0x31f0 && cp <= 0x31ff) || (cp >= 0xff00 && cp <= 0xffef) || (cp >= 0xac00 && cp <= 0xd7af) || (cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x3130 && cp <= 0x318f);
 
+// Typographic punctuation the Latin atlas lacks → its plain form, so "O’Brien", "Ana–Maria",
+// "Joy…" stay in the normal (Latin) layout instead of switching the line to Chinese-size cells.
+const PUNCT_FOLD: Record<string, string> = {
+  "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'", "\u2032": "'", "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u2033": '"',
+  "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-", "\u2026": "...", "\u2022": "\u00b7",
+  "\u20ac": "EUR", "\u20b1": "P", "\u20ab": "d", "\u0e3f": "THB",
+};
 function foldFancy(ch: string): string {
   const cp = ch.codePointAt(0) ?? 0;
+  const p = PUNCT_FOLD[ch];
+  if (p != null) return p;
   if (cp >= 0x1f130 && cp <= 0x1f149) return String.fromCharCode(65 + cp - 0x1f130);
   if (cp >= 0x1f150 && cp <= 0x1f169) return String.fromCharCode(65 + cp - 0x1f150);
   if (cp >= 0x1f170 && cp <= 0x1f189) return String.fromCharCode(65 + cp - 0x1f170);
@@ -104,7 +113,7 @@ export function prepareAllScripts(payload: RasterPayload, extraAtlas: boolean, o
     const gs = graphemes(s);
     for (let i = 0; i < gs.length; i++) {
       let g = gs[i];
-      const folded = foldFancy(g);
+      const folded = g === "\u2026" && extra ? g : foldFancy(g); // "…" is in the Cyrillic atlas (generic / Niimbot)
       if (folded !== g) { changed = true; g = folded; }
       const cp = g.codePointAt(0) ?? 0;
       if (g === " " && run && runRtl) { // keep a right-to-left phrase together (its words in order)

@@ -115,4 +115,14 @@ describe("all-scripts switch", () => {
       for (const ch of (name + item).replace(/[\u4e00-\u9fff\s]/g, "")) expect(kept, `${name} ${ch}`).toContain(ch);
     }
   }, 60000);
+
+  it("iPhone apostrophes, dashes and \"…\" keep a Latin name in the normal layout (folded, never Chinese-size cells)", async () => {
+    for (const [fancy, plain] of [["O’Brien", "O'Brien"], ["Ana–Maria", "Ana-Maria"], ["Joy…", "Joy..."], ["“Bea”", '"Bea"']]) {
+      setStickerAllScripts(true);
+      const on = await capture("d520", buyer(fancy, "A2 350"), "100x60");
+      setStickerAllScripts(false);
+      const plainOff = await capture("d520", buyer(plain, "A2 350"), "100x60");
+      expect(on, fancy).toBe(plainOff);
+    }
+  }, 60000);
 });

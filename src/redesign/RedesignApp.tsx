@@ -121,8 +121,8 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from ".
 import { printerFlowV2Enabled } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK } from "./adapters/oneStickerPrint";
-import { recommendedSettings, snapScale, STANDARD_SIZES, type OneStickerSettings } from "./adapters/oneSticker";
+import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts } from "./adapters/oneStickerPrint";
+import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn } from "./adapters/printing";
 import { knownTsplJob } from "./adapters/printerModels";
@@ -222,9 +222,15 @@ const autoDupKeyOf = (handle: string, code: string): string =>
 
 // ONE STICKER: the first draft of the new pattern = this device's current pattern (so the preview
 // starts from what the seller already prints), Bold, today's size.
-function seedOneSticker(pp: PrintPatternState, psSize: string, qr: boolean): OneStickerSettings {
+function seedOneSticker(pp: PrintPatternState, psSize: string, qr: boolean, path: string, printerName: string | null): OneStickerSettings {
   const m = psSize.match(/(\d+)x(\d+)/);
-  const size = m && STANDARD_SIZES.some((z) => z.w === Number(m[1]) && z.h === Number(m[2])) ? { w: Number(m[1]), h: Number(m[2]) } : { w: 100, h: 60 };
+  let size = m && STANDARD_SIZES.some((z) => z.w === Number(m[1]) && z.h === Number(m[2])) ? { w: Number(m[1]), h: Number(m[2]) } : { w: 100, h: 60 };
+  // Niimbot prints 50×30 today whatever size is stored (the stored size is usually the untouched
+  // 100×60 default): start from the biggest standard size the saved printer takes (B1/B21 → 50×30).
+  if (path === "niimbot") {
+    const max = printerLimitFor(printerName)?.maxLabelMm ?? 50;
+    size = [...STANDARD_SIZES].reverse().find((z) => z.w <= max) ?? { w: 50, h: 30 };
+  } else { const lim = printerLimitFor(printerName); if (lim && size.w > lim.maxLabelMm) size = [...STANDARD_SIZES].reverse().find((z) => z.w <= lim.maxLabelMm) ?? size; }
   const s = recommendedSettings(size);
   const part = (on: boolean, scale: number) => ({ on, weight: "bold" as const, scale: snapScale(Math.min(2, scale || 1)) });
   s.parts = { shop: part(pp.shopName, pp.shopNameSize), buyer: part(pp.buyerNum, pp.buyerNumSize), name: part(pp.tiktokName, pp.tiktokNameSize), user: part(pp.tiktokUser, pp.tiktokUserSize), comment: part(pp.comment, pp.commentSize) };
@@ -866,7 +872,7 @@ export default function RedesignApp() {
   // ONE STICKER (Branch 1): the new Live print pattern for admins, or everyone when the switch is on.
   // Each device still prints today's sticker until its seller saves the new pattern there.
   const oneStickerOn = oneStickerVisibleFor(auth.profile?.role, featureSw.oneSticker, isAdmin);
-  useEffect(() => { setOneStickerVisible(oneStickerOn); }, [oneStickerOn]);
+  useEffect(() => { setOneStickerVisible(oneStickerOn); if (oneStickerOn) prefetchOneStickerFonts(); }, [oneStickerOn]);
   // Every language prints on today's sticker too (Latin / Chinese stickers unchanged).
   const allScriptsOn = featureSw.stickerAllScripts || isAdmin;
   useEffect(() => { setStickerAllScripts(allScriptsOn); }, [allScriptsOn]);
@@ -2803,12 +2809,17 @@ export default function RedesignApp() {
           )}
           {screen === "printpattern" && oneStickerOn && (
             <OneStickerPattern onBack={() => setScreen("settings")}
-              initial={readSavedOneSticker() ?? seedOneSticker(pp, psSize, isStickerQrOn())}
+              initial={readSavedOneSticker() ?? seedOneSticker(pp, psSize, isStickerQrOn(), oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })), savedBtPrinter()?.name ?? null)}
               savedOnDevice={readSavedOneSticker() != null}
               onSave={(next) => {
                 saveOneSticker(next);
-                // a standard size is also the size the rest of the app shows (Printer settings)
-                if (!next.size.custom && STANDARD_SIZES.some((z) => z.w === next.size.w && z.h === next.size.h)) setPsSize(`${next.size.w}x${next.size.h}mm`);
+                // a standard size is also the size the rest of the app shows (Printer settings, its exact label);
+                // never 50×30 / custom for a phone on the TEXT / WiFi sticker (those have no such layout)
+                const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
+                const small = next.size.w === 50 && next.size.h === 30;
+                if (!next.size.custom && STANDARD_SIZES.some((z) => z.w === next.size.w && z.h === next.size.h) && !(small && (devPath === "text" || devPath === "wifi"))) {
+                  setPsSize(next.size.w === 100 && next.size.h === 60 ? "100x60mm (Standard)" : `${next.size.w}x${next.size.h}mm`);
+                }
                 setToast({ msg: tApp.rd_os_saved, kind: "ok" });
               }}
               shopName={printShopName === BRAND_FALLBACK ? "" : printShopName}
@@ -2816,12 +2827,12 @@ export default function RedesignApp() {
               printerName={savedBtPrinter()?.name ?? null}
               genericBold={!!knownTsplJob(savedBtPrinter()?.name).bold}
               qrAllowed={stickerQrAllowed}
-              onTest={(draft, sample) => void (async () => {
+              onTest={(draft, sample, unsaved) => void (async () => {
                 const b = buildTestBuyer();
                 const item = sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : PREVIEW_COMMENT;
                 const buyer: Buyer = { ...b, orders: [{ ...b.orders[0], item }] };
                 const r = await printOneStickerTest(draft, buyer, cur, printShopName, buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
-                if (r.ok) setToast({ msg: r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
+                if (r.ok) setToast({ msg: unsaved ? tApp.rd_os_test_unsaved : r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
                 else setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
               })()} />
           )}

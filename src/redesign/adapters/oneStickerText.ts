@@ -111,7 +111,7 @@ export function measure(text: string, px: number, weight: SansWeight, f: Fonts):
     let adv = 0;
     if (src === "sans" && face) adv = outlineGlyph(face, `s${weight}`, cp, px)?.adv ?? 0;
     else if (src === "cjkx" && f.cjkx) adv = (outlineGlyph(f.cjkx, "x", cp, px)?.adv ?? px) + ink.dx;
-    else if (src === "cjk") adv = px + Math.max(1, ink.dx);
+    else if (src === "cjk") { const c = cjkCellFor(px); adv = c.cell * c.mag + Math.max(1, ink.dx) + Math.max(1, Math.round(px / 24)); }
     pieces.push({ src, text: ch, cp, adv });
     width += adv;
   }
