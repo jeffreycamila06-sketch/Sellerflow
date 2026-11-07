@@ -12,6 +12,7 @@
 //                    line ends with "…" when the text does not fit.
 import { cjkCellFor, cjkGlyph, dilateBits, fallbackRun, outlineGlyph, EMPTY_GLYPH, type CjkCell, type GlyphBits, type SansFace, type SansWeight } from "./oneStickerFonts";
 import type { GlyphAtlas } from "./stickerRaster";
+import { lighterSteps, stillOpen, topology, type Topology } from "./oneStickerReadable";
 
 // ── What prints ───────────────────────────────────────────────────────────────────────────────
 const isEmojiCp = (cp: number): boolean =>
@@ -226,7 +227,12 @@ export function lineExtent(run: LineRun, px: number, weight: SansWeight, f: Font
   return { asc, desc };
 }
 interface Placed { x: number; bits: GlyphBits | null }
-function glyphsOf(run: LineRun, px: number, weight: SansWeight, f: Fonts): Placed[] {
+// ink = the lighter heads' 1-dot ink (Y41BT / XP-420B): every inked dot also inks the dot to its right
+function glyphsOf(run: LineRun, px: number, weight: SansWeight, f: Fonts, ink = false): Placed[] {
+  const plain = glyphsPlain(run, px, weight, f);
+  return ink ? plain.map((g) => ({ x: g.x, bits: g.bits && g.bits.w ? dilateBits(g.bits, 1, 0) : g.bits })) : plain;
+}
+function glyphsPlain(run: LineRun, px: number, weight: SansWeight, f: Fonts): Placed[] {
   const out: Placed[] = [];
   const face = sansFace(f, weight);
   const ink = cjkInk(px, weight);
@@ -247,9 +253,42 @@ function glyphsOf(run: LineRun, px: number, weight: SansWeight, f: Fonts): Place
   return out;
 }
 /** Paint a measured line with its pen at (x, baseline); ink at/after clipRight is not drawn. */
-export function paintLine(dst: Ink, run: LineRun, px: number, weight: SansWeight, f: Fonts, x: number, baseline: number, clipRight = dst.w): void {
-  for (const g of glyphsOf(run, px, weight, f)) if (g.bits && g.bits.w) blitBits(dst, g.bits, x + g.x + g.bits.x0, baseline + g.bits.y0, clipRight);
+export function paintLine(dst: Ink, run: LineRun, px: number, weight: SansWeight, f: Fonts, x: number, baseline: number, clipRight = dst.w, ink = false): void {
+  for (const g of glyphsOf(run, px, weight, f, ink)) if (g.bits && g.bits.w) blitBits(dst, g.bits, x + g.x + g.bits.x0, baseline + g.bits.y0, clipRight);
 }
+
+// ── Readability guard (oneStickerReadable.ts) ─────────────────────────────────────────────────
+const topoCache = new Map<string, Topology[]>();
+function topologies(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): Topology[] {
+  const key = `${weight}|${ink ? 1 : 0}|${px}|${text}`;
+  const hit = topoCache.get(key);
+  if (hit) return hit;
+  const run = measure(text, px, weight, f);
+  const out = glyphsOf(run, px, weight, f, ink).map((g) => (g.bits ? topology(g.bits) : { holes: [], parts: 0 }));
+  if (topoCache.size > 5000) topoCache.clear();
+  topoCache.set(key, out);
+  return out;
+}
+export interface InkStyle { weight: SansWeight; ink: boolean }
+/** The heaviest style ≤ the seller's choice that keeps every letter of `text` open at `px`. */
+export function readableStyle(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): InkStyle {
+  const steps = lighterSteps(weight, ink);
+  if (!text.trim() || steps.length === 1) return steps[0];
+  const ref = topologies(text, px, 400, false, f);
+  for (const st of steps) {
+    if (st.weight === 400 && !st.ink) return st;
+    const t = topologies(text, px, st.weight, st.ink, f);
+    if (t.length === ref.length && t.every((h, i) => stillOpen(h, ref[i]))) return st;
+  }
+  return { weight: 400, ink: false };
+}
+/** Every letter of the line open in this style? (the automatic test) */
+export function lineIsReadable(text: string, px: number, style: InkStyle, f: Fonts): boolean {
+  if (style.weight === 400 && !style.ink) return true;
+  const ref = topologies(text, px, 400, false, f), t = topologies(text, px, style.weight, style.ink, f);
+  return t.length === ref.length && t.every((h, i) => stillOpen(h, ref[i]));
+}
+export function __clearReadableCache(): void { topoCache.clear(); }
 /** Which CJK atlas cells the given line sizes need (to load them before painting). */
 export function cjkCellsFor(sizes: number[]): CjkCell[] { return [...new Set(sizes.map((s) => cjkCellFor(s).cell))]; }
 export const hasIdeograph = (s: string): boolean => { for (const ch of s) if (isIdeograph(ch.codePointAt(0) ?? 0)) return true; return false; };

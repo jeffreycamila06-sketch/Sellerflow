@@ -15,10 +15,11 @@ import { buildNativeStickerPayload, buildNiimbotImage, setStickerQrEntitled, set
 import { setOneStickerVisible, saveOneSticker, __resetOneStickerState } from "../oneStickerPrint";
 import { setStickerAllScripts } from "../oneStickerScripts";
 import { decodeSdkStream, decodeEscpos } from "./oneSticker.decode";
-import { buildGenericStickerBytes, __resetNativePrintQueue, type Settings } from "../printing";
+import { buildGenericStickerBytes, __resetNativePrintQueue, setStickerSpacingAllowed, setStickerSpacingChoice, type Settings } from "../printing";
 import { __resetSavedPrinter } from "../savedPrinter";
 import type { FullRaster } from "../stickerRaster";
 import { installNodeFallbackDrawer, installSans, napiCanvas } from "./oneSticker.harness";
+import { READ_SAMPLES } from "./oneSticker.samples";
 import { SAMPLES, SIZES } from "./oneSticker.samples";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -96,28 +97,30 @@ describe.skipIf(!OUT)("one sticker — proof pictures", () => {
     }
   }, 300000);
 
-  it("ink check: Extra + the 1-dot bold ink of Y41BT / XP-420B at 50×30 and 60×40 (Chinese + Japanese)", async () => {
-    installSans(); installNodeFallbackDrawer();
-    const buyers = [SAMPLES.find((s) => s.key === "chinese")!, SAMPLES.find((s) => s.key === "japanese")!];
-    const cells = [];
-    for (const [w, h] of [[50, 30], [60, 40]] as [number, number][]) for (const smp of buyers) {
-      const s = recommendedSettings({ w, h }); s.qr = false;
-      for (const k of ["buyer", "name", "user", "comment"] as const) s.parts[k].weight = "extra";
-      // what Branch 1 sends: plain ink for Extra on these small labels (oneStickerPrint.inkBoldFor)
-      const after = renderOneSticker(s, oneStickerInputFrom(printableBuyer(smp.buyer), smp.shop, AT), await oneStickerFonts(s, oneStickerInputFrom(printableBuyer(smp.buyer), smp.shop, AT)), { inkBold: false });
-      const boldBefore = renderOneSticker(s, oneStickerInputFrom(printableBuyer(smp.buyer), smp.shop, AT), await oneStickerFonts(s, oneStickerInputFrom(printableBuyer(smp.buyer), smp.shop, AT)), { inkBold: true });
-      cells.push({ title: `${w}×${h} ${smp.key} — Extra + 1-dot ink (filled)`, r: boldBefore });
-      cells.push({ title: `${w}×${h} ${smp.key} — Extra, plain ink (sent)`, r: after });
+  it("readability guard: every script × 50×30 / 60×40 / 100×60 × Normal / Bold / Extra — BEFORE (no guard) vs AFTER, per printer", async () => {
+    installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true);
+    const printers: { key: string; title: string; path: OneStickerPath; job: { bold?: boolean } }[] = [
+      { key: "aimo-d520", title: "AIMO D520", path: "d520", job: {} },
+      { key: "y41bt-xp420b", title: "Y41BT / XP-420B (1-dot ink)", path: "tspl", job: { bold: true } },
+      { key: "niimbot", title: "Niimbot", path: "niimbot", job: {} },
+      { key: "laptop", title: "Laptop", path: "laptop", job: {} },
+    ];
+    for (const pr of printers) for (const [w, h] of [[50, 30], [60, 40], [100, 60]] as [number, number][]) {
+      if (pr.path === "niimbot" && w > 75) continue;
+      const cells = [];
+      for (const k of Object.keys(READ_SAMPLES)) for (const weight of ["normal", "bold", "extra"] as Weight[]) {
+        const s = recommendedSettings({ w, h }); s.qr = false;
+        for (const p of ["shop", "buyer", "name", "user", "comment"] as const) s.parts[p].weight = weight;
+        const inp = { storeName: "Maria Ukay Shop", date: "11/07", time: "14:05", buyerNum: 128, name: READ_SAMPLES[k].name, handle: "maria_live", platform: "TikTok", items: READ_SAMPLES[k].items };
+        const fonts = await oneStickerFonts(s, inp);
+        const opts = renderOptsFor(pr.path, s, pr.job);
+        const label = weight === "normal" ? "Normal" : weight === "bold" ? "Bold" : "Extra";
+        cells.push({ title: `${k} ${label} — BEFORE`, r: renderOneSticker(s, inp, fonts, { ...opts, guard: false }), frameW: w * 8, frameH: h * 8 });
+        cells.push({ title: `${k} ${label} — AFTER (printed)`, r: renderOneSticker(s, inp, fonts, opts), frameW: w * 8, frameH: h * 8 });
+      }
+      write(`readability/${pr.key}_${w}x${h}.png`, sheet(cells, 6, w >= 80 ? 1 : 2, `Readability guard — ${pr.title} ${w}×${h}: the seller's weight (BEFORE) vs what prints (AFTER: lighter only where letters would close; never resized)`));
     }
-    write("ink-extra/y41bt-xp420b_extra.png", sheet(cells, 2, 3, "Y41BT / XP-420B: Extra with the 1-dot bold ink fills small letters → Extra on labels ≤40 mm tall prints with plain ink"));
-    // Bold (the default) keeps the approved 1-dot ink
-    const cells2 = [];
-    for (const [w, h] of [[50, 30], [60, 40]] as [number, number][]) for (const smp of buyers) {
-      const s = recommendedSettings({ w, h }); s.qr = false;
-      cells2.push({ title: `${w}×${h} ${smp.key} — Bold + 1-dot ink (sent)`, r: await render("tspl", s, smp.buyer, smp.shop, knownTsplJob("Y41BT")) });
-    }
-    write("ink-extra/y41bt-xp420b_bold.png", sheet(cells2, 2, 3, "Y41BT / XP-420B: Bold (recommended) keeps the approved 1-dot ink, letters stay open"));
-  }, 300000);
+  }, 900000);
 
   it("TODAY vs NEW: Japan client — Niimbot 50×30 田中さん", async () => {
     installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); setStickerQrOn(true);
@@ -195,6 +198,7 @@ describe.skipIf(!OUT)("one sticker — proof pictures", () => {
 
   it("ALL SCRIPTS on TODAY's layouts — OFF vs ON (D520 every size, generic 50×30 / 60×40, Niimbot 50×30)", async () => {
     installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); setStickerQrOn(false);
+    setStickerSpacingAllowed(true); setStickerSpacingChoice("compact"); // production: sticker spacing is public (half word gaps + compact)
     const samples = [...SAMPLES.filter((x) => ALL_SCRIPT_KEYS.includes(x.key)), apostrophe];
     for (const size of ["100x60", "80x60", "80x50", "70x50", "60x40", "50x30"]) {
       const cells = [];
@@ -231,6 +235,7 @@ describe.skipIf(!OUT)("one sticker — proof pictures", () => {
 
   it("TODAY vs NEW on the AIMO D520 — every size (long comment, Facebook 2-line name, 中文)", async () => {
     installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); setStickerQrOn(true);
+    setStickerSpacingAllowed(true); setStickerSpacingChoice("compact"); // production settings for TODAY's sticker
     const picks = ["long-comment", "facebook-long-name", "chinese"].map((k) => SAMPLES.find((x) => x.key === k)!);
     for (const size of ["100x60", "80x60", "80x50", "70x50", "60x40", "50x30"]) {
       const [w, h] = size.split("x").map(Number);

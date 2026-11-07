@@ -19,7 +19,7 @@
 // A part that does not fit → a fit warning (the screen shows it in red); the sticker still prints.
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
-import { cjkCellsFor, fitOneLine, hasIdeograph, lineExtent, measure, newInk, paintLine, printableText, wrapText, type Fonts, type Ink, type LineRun } from "./oneStickerText";
+import { cjkCellsFor, fitOneLine, hasIdeograph, lineExtent, measure, newInk, paintLine, printableText, readableStyle, wrapText, type Fonts, type InkStyle, type LineRun } from "./oneStickerText";
 import { CJK_CELLS, getSansFace, loadSansFace, type CjkCell, type SansWeight } from "./oneStickerFonts";
 import type { FullRaster } from "./stickerRaster";
 
@@ -97,6 +97,8 @@ export interface OneStickerCanvas { w: number; h: number; edgeX?: number; edgeY?
 export interface RenderOpts {
   canvas?: OneStickerCanvas; // dots (Niimbot: the SDK frame); default = the label W×H × 8
   inkBold?: boolean;         // 1-dot heavier text (lighter heads: Y41BT, XP-420B); never the QR
+  guard?: boolean;           // readability guard (default ON): a line whose letters would close prints lighter
+                             // (oneStickerReadable.ts). OFF only for the BEFORE pictures of the proof.
 }
 export const isFacebookLike = (p?: string) => String(p ?? "").trim().toLowerCase() === "facebook";
 export const qrAllowedForPlatform = (p?: string) => !["facebook", "instagram", "shopee"].includes(String(p ?? "").trim().toLowerCase());
@@ -128,7 +130,7 @@ export function fontsReadySync(): Fonts {
 export { CJK_CELLS };
 
 // ── Layout ────────────────────────────────────────────────────────────────────────────────────
-interface Laid { run: LineRun; px: number; weight: SansWeight; x: number; baseline: number; clip: number }
+interface Laid { run: LineRun; px: number; weight: SansWeight; ink: boolean; x: number; baseline: number; clip: number }
 interface QrBox { matrix: boolean[][]; x: number; y: number; mod: number }
 export interface Layout { w: number; h: number; lines: Laid[]; qr: QrBox | null; warnings: FitWarning[]; sizes: number[]; commentPx: number | null }
 
@@ -146,14 +148,18 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const px = (k: PartKey, base: number) => Math.max(10, Math.round(base * P[k].scale));
   const wt = (k: PartKey) => WEIGHT_PX[P[k].weight];
   const gapOf = (p: number) => Math.max(3, Math.round(p * 0.14));
+  // READABILITY GUARD: the heaviest style ≤ the seller's choice that keeps every letter open (never resized)
+  const inkWanted = opts.inkBold === true;
+  const style = (text: string, p: number, w: SansWeight): InkStyle => (opts.guard === false ? { weight: w, ink: inkWanted } : readableStyle(text, p, w, inkWanted, fonts));
 
   // date & time — top right, fixed
   const dateText = printableText([inp.date, inp.time].filter(Boolean).join(" "));
-  const dRun = measure(dateText, B.date, 700, fonts);
-  const dExt = lineExtent(dRun, B.date, 700, fonts);
+  const dSt = style(dateText, B.date, 700);
+  const dRun = measure(dateText, B.date, dSt.weight, fonts);
+  const dExt = lineExtent(dRun, B.date, dSt.weight, fonts);
   const dTop = my, dBase = my + Math.max(dExt.asc, Math.round(B.date * 0.74));
   const dX = W - mx - dRun.width;
-  add({ run: dRun, px: B.date, weight: 700, x: dX, baseline: dBase, clip: W });
+  add({ run: dRun, px: B.date, weight: dSt.weight, ink: dSt.ink, x: dX, baseline: dBase, clip: W });
   const dBottom = dBase + Math.max(dExt.desc, 2);
   const obstacles: { top: number; bottom: number; left: number }[] = [{ top: dTop - 2, bottom: dBottom + 2, left: dX - 14 }];
 
@@ -185,14 +191,15 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   // the left column, top-down
   let y = my;
   const bottomLimit = H - my;
-  const placeLine = (run: LineRun, p: number, w: SansWeight, part: PartKey, extraGap = true): number => {
+  const placeLine = (run: LineRun, p: number, st: InkStyle, part: PartKey, extraGap = true): number => {
+    const w = st.weight;
     const ext = lineExtent(run, p, w, fonts);
     const asc = Math.max(ext.asc, Math.round(p * 0.72)), desc = Math.max(ext.desc, Math.round(p * 0.08));
     const baseline = y + asc;
     const clip = rightAt(y, baseline + desc);
     if (mx + run.width > clip) warnings.push({ part, kind: "width" });
     if (baseline + desc > bottomLimit) warnings.push({ part, kind: "height" });
-    add({ run, px: p, weight: w, x: mx, baseline, clip });
+    add({ run, px: p, weight: w, ink: st.ink, x: mx, baseline, clip });
     y = baseline + desc + (extraGap ? gapOf(p) : 0);
     return baseline;
   };
@@ -202,25 +209,27 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const shop = printableText(inp.storeName);
   if (P.shop.on && shop && !isSmallClass(wMm, hMm)) {
     const p = px("shop", B.shop);
-    const { line, cut } = fitOneLine(shop, p, wt("shop"), widthAtY(p), fonts);
+    const st = style(shop, p, wt("shop"));
+    const { line, cut } = fitOneLine(shop, p, st.weight, widthAtY(p), fonts);
     if (cut) warnings.push({ part: "shop", kind: "width" });
-    placeLine(line, p, wt("shop"), "shop");
+    placeLine(line, p, st, "shop");
   }
   // 2. "Buyer 12"
   const num = inp.buyerNum != null && String(inp.buyerNum) !== "" ? String(inp.buyerNum) : "";
   if (P.buyer.on && num) {
     const pn = px("buyer", B.num), pw = Math.max(12, Math.round(pn * 0.36));
-    const nRun = measure(num, pn, wt("buyer"), fonts);
-    const wRun = measure("Buyer", pw, 700, fonts);
-    const ext = lineExtent(nRun, pn, wt("buyer"), fonts);
+    const nSt = style(num, pn, wt("buyer")), wSt = style("Buyer", pw, 700);
+    const nRun = measure(num, pn, nSt.weight, fonts);
+    const wRun = measure("Buyer", pw, wSt.weight, fonts);
+    const ext = lineExtent(nRun, pn, nSt.weight, fonts);
     const asc = Math.max(ext.asc, Math.round(pn * 0.72));
     const baseline = y + asc;
     const clip = rightAt(y, baseline);
     const gap = Math.max(6, Math.round(pn * 0.14));
     if (mx + wRun.width + gap + nRun.width > clip) warnings.push({ part: "buyer", kind: "width" });
     if (baseline > bottomLimit) warnings.push({ part: "buyer", kind: "height" });
-    add({ run: wRun, px: pw, weight: 700, x: mx, baseline, clip });
-    add({ run: nRun, px: pn, weight: wt("buyer"), x: mx + wRun.width + gap, baseline, clip });
+    add({ run: wRun, px: pw, weight: wSt.weight, ink: wSt.ink, x: mx, baseline, clip });
+    add({ run: nRun, px: pn, weight: nSt.weight, ink: nSt.ink, x: mx + wRun.width + gap, baseline, clip });
     y = baseline + Math.max(ext.desc, 2) + gapOf(pn);
   }
   // 3. name (Facebook: up to 2 lines)
@@ -230,41 +239,45 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     if (fb) {
       const startY = y;
       const lineH = Math.round(p * 1.08);
-      const wr = wrapText(name, p, wt("name"), (i) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx), 2, fonts);
+      const st = style(name, p, wt("name"));
+      const wr = wrapText(name, p, st.weight, (i) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx), 2, fonts);
       if (wr.cut) warnings.push({ part: "name", kind: "width" });
-      wr.lines.forEach((l, i) => placeLine(l, p, wt("name"), "name", i === wr.lines.length - 1));
+      wr.lines.forEach((l, i) => placeLine(l, p, st, "name", i === wr.lines.length - 1));
     } else {
-      const { line, cut } = fitOneLine(name, p, wt("name"), widthAtY(p), fonts);
+      const st = style(name, p, wt("name"));
+      const { line, cut } = fitOneLine(name, p, st.weight, widthAtY(p), fonts);
       if (cut) warnings.push({ part: "name", kind: "width" });
-      placeLine(line, p, wt("name"), "name");
+      placeLine(line, p, st, "name");
     }
   }
   // 4. @username (never on Facebook)
   if (P.user.on && handle && !fb) {
     const p = px("user", B.user);
-    const { line, cut } = fitOneLine("@" + handle, p, wt("user"), widthAtY(p), fonts);
+    const st = style("@" + handle, p, wt("user"));
+    const { line, cut } = fitOneLine("@" + handle, p, st.weight, widthAtY(p), fonts);
     if (cut) warnings.push({ part: "user", kind: "width" });
-    placeLine(line, p, wt("user"), "user");
+    placeLine(line, p, st, "user");
   }
   // 5. comment / price — every line left; shrink to the minimum, then "…"
   let commentPx: number | null = null;
   const comment = printableText(inp.items.filter(Boolean).join(" · "));
   if (P.comment.on && comment) {
     const startY = y;
-    const w = wt("comment");
+    const wChosen = wt("comment");
     let p = px("comment", B.comment);
     const minP = Math.min(p, B.minComment);
     for (;;) {
       const lineH = Math.round(p * 1.12);
       const maxLines = Math.max(0, Math.floor((bottomLimit - startY + Math.round(p * 0.12)) / lineH));
       const widthOf = (i: number) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx);
+      const st = style(comment, p, wChosen), w = st.weight;
       const wr = maxLines > 0 ? wrapText(comment, p, w, widthOf, maxLines, fonts) : { lines: [], cut: true };
       if ((!wr.cut && wr.lines.length) || p <= minP) {
         if (wr.cut) warnings.push({ part: "comment", kind: wr.lines.length ? "width" : "height" });
         y = startY;
         wr.lines.forEach((l, i) => {
           const baseline = startY + i * lineH + Math.round(p * 0.88);
-          add({ run: l, px: p, weight: w, x: mx, baseline, clip: widthOf(i) + mx });
+          add({ run: l, px: p, weight: w, ink: st.ink, x: mx, baseline, clip: widthOf(i) + mx });
         });
         commentPx = p;
         break;
@@ -282,18 +295,11 @@ function dedupWarnings(ws: FitWarning[]): FitWarning[] {
 
 // ── Render ────────────────────────────────────────────────────────────────────────────────────
 export interface OneStickerRender extends FullRaster { warnings: FitWarning[]; layout: Layout }
-function boldInk(ink: Ink): void {
-  for (let y = 0; y < ink.h; y++) {
-    const off = y * ink.rowBytes; let carry = 0;
-    for (let b = 0; b < ink.rowBytes; b++) { const v = ink.buf[off + b]; ink.buf[off + b] = v | (v >>> 1) | carry; carry = (v & 1) << 7; }
-    if (ink.w % 8) ink.buf[off + ink.rowBytes - 1] &= (0xff00 >> (ink.w % 8)) & 0xff;
-  }
-}
 export function renderOneSticker(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): OneStickerRender {
   const layout = layoutSticker(s, inp, fonts, opts);
   const ink = newInk(layout.w, layout.h);
-  for (const l of layout.lines) paintLine(ink, l.run, l.px, l.weight, fonts, l.x, l.baseline, l.clip);
-  if (opts.inkBold) boldInk(ink); // before the QR → the QR grid stays exact
+  // the 1-dot ink is per line (the guard may drop it on one line only); the QR is stamped after → never inked
+  for (const l of layout.lines) paintLine(ink, l.run, l.px, l.weight, fonts, l.x, l.baseline, l.clip, l.ink);
   if (layout.qr) {
     const { matrix: m, x, y, mod } = layout.qr;
     const n = m.length;

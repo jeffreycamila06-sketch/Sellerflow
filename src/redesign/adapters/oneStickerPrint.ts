@@ -91,15 +91,8 @@ export const NIIMBOT_EDGE_DOTS = 16;    // the B1 ±1 mm paper slack (printing.t
 /** Render options for a path: Niimbot draws into the SDK frame; TSPL heads get the 1-dot ink. */
 export function renderOptsFor(path: OneStickerPath, s: OneStickerSettings, job: TsplJobSettings = {}): RenderOpts {
   if (path === "niimbot") return { canvas: { w: (s.size.w - 2 * NIIMBOT_INSET_MM) * 8, h: (s.size.h - 2 * NIIMBOT_INSET_MM) * 8, edgeX: NIIMBOT_EDGE_DOTS, edgeY: 6 } };
-  if (path === "tspl" && job.bold) return { inkBold: inkBoldFor(s) };
+  if (path === "tspl" && job.bold) return { inkBold: true }; // the approved 1-dot ink; the readability guard drops it per line where letters would close
   return {};
-}
-// "Extra" + the 1-dot bold ink of the lighter heads (Y41BT, XP-420B): the extra dot fills the
-// small counters of Extra letters on the small labels (see docs/design/one-sticker/ink-extra),
-// so Extra text gets the plain ink there. Bold / Normal keep the approved 1-dot ink.
-export function inkBoldFor(s: OneStickerSettings): boolean {
-  const extraOnSmall = s.size.h <= 40 && (["buyer", "name", "user", "comment"] as const).some((k) => s.parts[k].on && s.parts[k].weight === "extra");
-  return !extraOnSmall;
 }
 export async function oneStickerFonts(s: OneStickerSettings, inp: OneStickerInput): Promise<Fonts> {
   return loadFontsFor(s, inp, (cell) => loadCjkRegAtlas(cell));

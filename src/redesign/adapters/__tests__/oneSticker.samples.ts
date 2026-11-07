@@ -23,3 +23,14 @@ export const SAMPLES: { key: string; shop: string; buyer: Buyer; qr: boolean }[]
   ];
 })();
 export const SIZES: [number, number][] = [[50, 30], [60, 40], [70, 50], [80, 50], [80, 60], [100, 60], [40, 30], [75, 45]];
+
+// Readability guard samples (one per script).
+export const READ_SAMPLES: Record<string, { name: string; items: string[] }> = {
+  chinese: { name: "陳小美", items: ["我要這件黑色洋裝 M 號 兩件"] },
+  japanese: { name: "田中さん", items: ["日本語「ワンピース」１２３"] },
+  korean: { name: "김민지", items: ["한국어 원피스 주세요"] },
+  thai: { name: "สมใจ", items: ["ไทย ขอบคุณค่ะ ชุดสีดำ"] },
+  arabic: { name: "مريم", items: ["العربية مرحبا فستان"] },
+  cyrillic: { name: "Мария Иванова", items: ["Българска рокля М"] },
+  latin: { name: "Amy Chen", items: ["ako po yung black dress size M"] },
+};

@@ -144,11 +144,23 @@ function isCjkIdeograph(cp: number): boolean {
 // one synchronous render. Outside it (switch off, or no such character) this set is null → every
 // classification is exactly main's.
 let synthCjk: ReadonlySet<number> | null = null;
-export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T): T {
-  const prev = synthCjk;
+// A synthetic piece of a word (Thai, Korean, Arabic …) is as wide as its letters, not a whole
+// Chinese-size cell: its advance = this many em of the cell's font (pieces end between letters, never
+// inside one). The 24-cell CJK atlas is drawn at em 17 (oneStickerScripts SYNTH_CELL24_EM).
+let synthAdv: ReadonlyMap<number, number> | null = null;
+export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T, adv?: ReadonlyMap<number, number> | null): T {
+  const prev = synthCjk, prevAdv = synthAdv;
   synthCjk = set && set.size ? set : null;
-  try { return fn(); } finally { synthCjk = prev; }
+  synthAdv = synthCjk && adv && adv.size ? adv : null;
+  try { return fn(); } finally { synthCjk = prev; synthAdv = prevAdv; }
 }
+/** The advance of a synthetic piece at a font of `em` dots, or null for every other character. */
+function synthWidth(cp: number, em: number): number | null {
+  if (synthAdv === null) return null;
+  const f = synthAdv.get(cp);
+  return f == null ? null : Math.max(1, Math.round(f * em));
+}
+const CELL24_EM = 17;
 function classifyScript(s: string): number {
   let hasCjk = false;
   for (const ch of s) {
@@ -647,7 +659,7 @@ function layoutV2Order(
   const m = 2 * pm;                          // both scripts at 2×pm in BOTH directions (normal shape)
   const glyphH = 24 * m;                     // CJK 24-cell and font "3" 24-row cell → 48×pm tall
   const step = glyphH + 6;
-  const charW = (ch: string) => (halfGap && ch === " " ? 8 * m : isCjkIdeograph(ch.codePointAt(0) ?? 0) ? 24 * m : 16 * m); // 48×pm / 32×pm
+  const charW = (ch: string) => (halfGap && ch === " " ? 8 * m : isCjkIdeograph(ch.codePointAt(0) ?? 0) ? (synthWidth(ch.codePointAt(0) ?? 0, CELL24_EM) ?? 24) * m : 16 * m); // 48×pm / 32×pm
   let bottom = hDots - V2_BOTTOM_MARGIN;
   if (totalShown) bottom = Math.min(bottom, c.totalY + extra - V2_BOTTOM_MARGIN); // never run into "Total:"
   const inlineTimeX = timeOp && !timeUp ? 16 + (truncate(order.time ?? "", 10).length + 2) * 12 * tm : 16;
@@ -858,7 +870,7 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
       let g = cjkFont.glyphs[cp];
       if (!g) { const alt = translitCp(cp); if (alt != null) g = cjkFont.glyphs[alt]; }
       if (g) bmp.blit(b64ToBytes(g), cjkFont.w, cjkFont.h, penX, op.y, op.xm, op.ym);
-      penX += cjkFont.w * op.xm;
+      penX += (synthWidth(cp, CELL24_EM) ?? cjkFont.w) * op.xm;
     }
   }
 }
@@ -1275,7 +1287,7 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
   const pieces: Piece[] = [];
   for (const ch of text) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (isIdeograph(cp)) { pieces.push({ ch, adv: size + PROP_CJK_GAP, cjk: cp }); continue; }
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, size) ?? size) + PROP_CJK_GAP, cjk: cp }); continue; }
     let g = font.glyphs[cp];
     if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
     if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w + PROP_CJK_GAP, cjk: cp }); continue; }
