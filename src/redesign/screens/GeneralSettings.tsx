@@ -59,7 +59,7 @@ export default function GeneralSettings({
   theme, accent, onSetTheme, onSetAccent,
   auto, lang, onSetLang, currency, onSetCurrency,
   profileOpen, onToggleProfile,
-  printerIdx, printerOpen, printerFocus = 0, onPrinterFocused, onTogglePrinter, onPickPrinter, onPrintPattern,
+  printerIdx, printerOpen, printerFocus = 0, onPrinterFocused, onTogglePrinter, onPickPrinter, onPrintPattern, printPatternNew = false,
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel,
   channelsV2 = false, onOpenChannel, channelsInfo,
@@ -73,7 +73,7 @@ export default function GeneralSettings({
   auto: AutoControls; cur?: string; // cur retained (optional) for callers; no longer used here (auto price editor moved to Products)
   lang: string; onSetLang: (c: string) => void; currency: string; onSetCurrency: (c: string) => void;
   profileOpen: boolean; onToggleProfile: () => void;
-  printerIdx: number; printerOpen: boolean; printerFocus?: number; onPrinterFocused?: () => void; onTogglePrinter: () => void; onPickPrinter: (i: number, alreadySetUp: boolean) => void; onPrintPattern: () => void;
+  printerIdx: number; printerOpen: boolean; printerFocus?: number; onPrinterFocused?: () => void; onTogglePrinter: () => void; onPickPrinter: (i: number, alreadySetUp: boolean) => void; onPrintPattern: () => void; printPatternNew?: boolean; // ONE STICKER: "New" badge until the seller opens the new screen
   onSubscription: () => void; onSupport: () => void; onDelete: () => void;
   account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
   // Phase 5i — real self-edit save (upsertUser → seller_profiles). Profile card writes
@@ -363,6 +363,7 @@ export default function GeneralSettings({
             {/* border reset per-side: a `border` shorthand after the lsRow spread would wipe its borderBottom */}
             <button type="button" onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ ...lsRow, width: "100%", borderTop: 0, borderLeft: 0, borderRight: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
               <span style={lsLabel}>{t.rd_set_live_pattern}</span>
+              {printPatternNew && <span data-testid="ls-print-pattern-new" style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 999, background: "var(--accent)", color: "var(--accent-text)", fontSize: 11, fontWeight: 800, marginRight: 6 }}>{t.rd_os_new}</span>}
               <span style={{ color: "var(--text-muted)", fontSize: 18, lineHeight: 1, flexShrink: 0 }}>›</span>
             </button>
             {/* 2. Keep screen awake while live */}

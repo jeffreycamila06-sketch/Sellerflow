@@ -136,7 +136,18 @@ function transliterateLatin(s: string): string {
   return out;
 }
 function isCjkIdeograph(cp: number): boolean {
-  return (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff);
+  return (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff) || (synthCjk !== null && synthCjk.has(cp));
+}
+// ALL SCRIPTS (switch sticker_all_scripts_enabled, oneStickerScripts.ts): characters the atlases do
+// not have (kana, 、。「」, full-width, Hangul, Thai, Arabic …) are given private-use codepoints with
+// synthetic glyphs in the CJK cells, and count as the CJK tier ONLY inside withSyntheticCjk() around
+// one synchronous render. Outside it (switch off, or no such character) this set is null → every
+// classification is exactly main's.
+let synthCjk: ReadonlySet<number> | null = null;
+export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T): T {
+  const prev = synthCjk;
+  synthCjk = set && set.size ? set : null;
+  try { return fn(); } finally { synthCjk = prev; }
 }
 function classifyScript(s: string): number {
   let hasCjk = false;
@@ -1001,7 +1012,20 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     if (opts.bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
     stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
   }
-  const wDots = bmp.w, hDots = bmp.h;
+  return bitmapTsplFromRaster({ buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes }, wMm, hMm, opts);
+}
+
+// The TSPL job (SIZE … DENSITY … CLS, full-width BITMAP bands, PRINT 1) for a finished raster — the
+// band emission of rasterizeToBitmapTspl, also used by the one-sticker engine (printing.ts) so both
+// paths send the same framing. Bytes unchanged (golden-tested through rasterizeToBitmapTspl).
+export function bitmapTsplFromRaster(full: FullRaster, wMm: number, hMm: number, opts: BandOptions = {}): BitmapTsplResult {
+  const wDots = full.w, hDots = full.h;
+  const rowHasInk = (y: number): boolean => { const off = y * full.rowBytes; for (let b = 0; b < full.rowBytes; b++) if (full.buf[off + b]) return true; return false; };
+  const inkExtent = (y0: number, y1: number): [number, number] | null => {
+    let lo = full.w, hi = -1;
+    for (let y = y0; y < y1; y++) for (let x = 0; x < full.w; x++) if (full.buf[y * full.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) { if (x < lo) lo = x; if (x > hi) hi = x; }
+    return hi < 0 ? null : [lo, hi + 1];
+  };
 
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };
@@ -1021,9 +1045,9 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   const runs: Band[] = [];
   let y = 0;
   while (y < hDots) {
-    if (!bmp.rowHasInk(y)) { y++; continue; }
+    if (!rowHasInk(y)) { y++; continue; }
     let y1 = y + 1;
-    while (y1 < hDots && bmp.rowHasInk(y1)) y1++;
+    while (y1 < hDots && rowHasInk(y1)) y1++;
     const prev = runs[runs.length - 1];
     if (prev && y - prev.y1 <= GAP_MERGE_ROWS) prev.y1 = y1;
     else runs.push({ y0: y, y1 });
@@ -1036,7 +1060,7 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     // every size → rowBytes exact). horizontalCrop keeps the old tight crop.
     let x0 = 0, x1 = wDots;
     if (opts.horizontalCrop) {
-      const ext = bmp.inkExtent(run.y0, run.y1);
+      const ext = inkExtent(run.y0, run.y1);
       if (!ext) continue;
       [x0, x1] = ext;
     }
@@ -1047,7 +1071,7 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     if (!INK_IS_ZERO) { /* ink=1: buffer already 0 (white); set ink bits below */ }
     else data.fill(0xff); // ink=0: start all-white(1), clear ink bits to 0
     for (let ry = 0; ry < bandH; ry++) for (let rx = 0; rx < bandW; rx++) {
-      const ink = (bmp.buf[(run.y0 + ry) * bmp.rowBytes + ((x0 + rx) >> 3)] & (0x80 >> ((x0 + rx) & 7))) !== 0;
+      const ink = (full.buf[(run.y0 + ry) * full.rowBytes + ((x0 + rx) >> 3)] & (0x80 >> ((x0 + rx) & 7))) !== 0;
       if (!ink) continue;
       const idx = ry * rowBytes + (rx >> 3), mask = 0x80 >> (rx & 7);
       if (INK_IS_ZERO) data[idx] &= ~mask; else data[idx] |= mask;
@@ -1235,7 +1259,7 @@ export const propQrInkLeft = (qr: QrPlacement): number => qr.x0 + QR_QUIET_MODUL
 interface PropItem { x: number; latin?: PropGlyph; cjk?: number } // cjk = the codepoint, painted from the size's CJK atlas
 export interface PropLine { items: PropItem[]; width: number; inkWidth: number; text: string; cut: boolean; cjk: boolean } // width = Σ advances; inkWidth = painted extent (last glyph's overhang included)
 
-const isIdeograph = (cp: number) => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff);
+const isIdeograph = (cp: number) => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff) || (synthCjk !== null && synthCjk.has(cp));
 function propCjkFont(atlases: RasterAtlases, size: number): GlyphFont | null {
   const reg = atlases.cjkReg?.[size as CjkRegSize];
   return reg?.cjk ?? atlases.cjk?.cjk ?? null;

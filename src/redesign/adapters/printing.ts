@@ -29,6 +29,10 @@ import { LATIN_ATLAS } from "./glyphAtlas.latin";
 import { CYRILLIC_ATLAS } from "./glyphAtlas.cyrillic"; // generic-printer / Niimbot image paths only
 import { log } from "../../lib/log";
 import { hasFeature } from "./featureAccess";
+import { oneStickerActive, oneStickerInputFrom, renderOneStickerFor, d520Stream, genericBytes, niimbotImage, laptopPage, type OneStickerPath } from "./oneStickerPrint";
+import type { OneStickerSettings } from "./oneSticker";
+import { prepareAllScripts, augmentAtlases, ensureAllScriptsFonts, stickerAllScriptsOn, type AllScriptsPrep } from "./oneStickerScripts";
+import { withSyntheticCjk } from "./stickerRaster";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
@@ -483,7 +487,8 @@ export function imageStickerPayload(payload: NativeStickerPayload, platform?: st
   return { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() && stickerQrAllowedFor(platform), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}), ...(fbName ? { printFacebookName: true } : {}), ...stickerSpacingFlags(), ...(stickerCompactV2Effective() ? { printCompactV2: true } : {}) } };
 }
 
-async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas, platform?: string, fbName = false): Promise<BtRouteResult> {
+async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjkIn: GlyphAtlas, platform?: string, fbName = false): Promise<BtRouteResult> {
+  let cjk = cjkIn;
   const t0 = nowMs();
   // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
   // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
@@ -492,9 +497,14 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
   // only when the payload actually contains CJK).
   const qrPayload = imageStickerPayload(payload, platform, fbName);
+  // ALL SCRIPTS (switch): null for ASCII / Latin / Chinese payloads and when the switch is off → as before
+  if (stickerAllScriptsOn()) await ensureAllScriptsFonts(qrPayload); // switch off = no extra step
+  const prep = prepareAllScripts(qrPayload, stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm));
+  if (prep && prep.cells.length && !cjk.cjk) { try { cjk = await loadCjkAtlas(); } catch { /* the synthetic cells still paint */ } }
   // Layout v2 ON: the D520BT draws the font-C layout on 50×30 / 60×40 (OFF = {latin, cjk} exactly as before)
   const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm) ? await imagePathAtlases(payload, qrPayload) : null;
-  const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk });
+  // (all scripts ON + a Cyrillic payload: renderWithScripts adds the Cyrillic atlas — never otherwise)
+  const raster = renderWithScripts(prep, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk }, (img, atlases) => rasterizeToSdkBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases), qrPayload);
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {
@@ -539,8 +549,18 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
 // passed on the D520BT stream) + CJK when the payload needs it + font C (proportional
 // DejaVu Sans Regular + CJK regular cells) for the compact sizes 50×30 / 60×40. A font-C atlas
 // that fails to load leaves the fixed-cell layout in charge — never a blank label.
+// ALL SCRIPTS: render today's layout with the synthetic cells (prep) or exactly as before (prep null).
+function renderWithScripts<T>(prep: AllScriptsPrep | null, atlases: RasterAtlases, fn: (payload: RasterPayload, atlases: RasterAtlases) => T, original: RasterPayload): T {
+  if (!prep) return fn(original, atlases);
+  const a = augmentAtlases(atlases, prep, CYRILLIC_ATLAS);
+  return withSyntheticCjk(prep.synth, () => fn(prep.payload, a));
+}
 export async function imagePathAtlases(payload: NativeStickerPayload, img: RasterPayload): Promise<RasterAtlases> {
-  const needsCjk = payloadNeedsCjk(payload);
+  // ALL SCRIPTS (switch): plan with the mapped payload (its synthetic cells are CJK-sized); null = as before
+  const prep = prepareAllScripts(img, true);
+  const synth = prep?.synth;
+  if (prep) img = prep.payload;
+  const needsCjk = payloadNeedsCjk(payload) || !!synth?.size; // all-scripts cells live in the CJK atlas
   let cjk: GlyphAtlas = {};
   if (needsCjk) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
   const atlases: RasterAtlases = { latin: LATIN_ATLAS, cjk, cyrillic: CYRILLIC_ATLAS };
@@ -548,7 +568,8 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
     try { atlases.proportional = await loadPropAtlas(); } catch { atlases.proportional = undefined; }
     if (atlases.proportional && needsCjk) {
       // only the CJK sizes this label's lines land on (the shrink ladder is width-based, so it is known before any CJK atlas is fetched)
-      const sizes = propPlanCjkSizes(img, payload.labelWidthMm, payload.labelHeightMm, atlases.proportional);
+      const prop = atlases.proportional;
+      const sizes = withSyntheticCjk(synth, () => propPlanCjkSizes(img, payload.labelWidthMm, payload.labelHeightMm, prop));
       const reg: NonNullable<RasterAtlases["cjkReg"]> = {};
       for (const size of sizes) { try { reg[size] = await loadCjkRegAtlas(size); } catch { /* that size paints from the 24-cell CJK atlas */ } }
       atlases.cjkReg = reg;
@@ -559,9 +580,11 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
 // `job` = the saved model's TSPL header (density / speed); {} = today's header for every other printer.
 export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false, job: TsplJobSettings = {}): Promise<Uint8Array> {
   const img = imageStickerPayload(payload, platform, fbName);
+  if (stickerAllScriptsOn()) await ensureAllScriptsFonts(img);
+  const prep = prepareAllScripts(img, true); // null = as before (switch off / nothing to add)
   const atlases = await imagePathAtlases(payload, img);
-  if (lang === "tspl") return rasterizeToBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases, job).bytes;
-  const full = renderStickerBitmap(img, payload.labelWidthMm, payload.labelHeightMm, atlases);
+  if (lang === "tspl") return renderWithScripts(prep, atlases, (p, a) => rasterizeToBitmapTspl(p, payload.labelWidthMm, payload.labelHeightMm, a, job), img).bytes;
+  const full = renderWithScripts(prep, atlases, (p, a) => renderStickerBitmap(p, payload.labelWidthMm, payload.labelHeightMm, a), img);
   return lang === "cpcl" ? cpclRasterBytes(full) : escposRasterBytes(full);
 }
 async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlowPrinter"]>, lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
@@ -615,8 +638,11 @@ export const NIIMBOT_CANVAS = { ...NIIMBOT_FRAME_DOTS, edge: NIIMBOT_SAFE_EDGE_D
 export async function buildNiimbotImage(payload: NativeStickerPayload, platform?: string, fbName = false): Promise<NiimbotImage> {
   const p: NativeStickerPayload = { ...payload, labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
   const img = imageStickerPayload(p, platform, fbName);
+  if (stickerAllScriptsOn()) await ensureAllScriptsFonts(img);
+  const prep = prepareAllScripts(img, true); // null = as before (switch off / nothing to add)
+  const atlases = await imagePathAtlases(p, img);
   // font C lays out to the frame; the fixed-cell fallback (no font-C atlas) is label-sized and is centred-cropped to it
-  const full = fitRaster(renderStickerBitmap(img, p.labelWidthMm, p.labelHeightMm, await imagePathAtlases(p, img), "extended", NIIMBOT_CANVAS), NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h);
+  const full = fitRaster(renderWithScripts(prep, atlases, (q, a) => renderStickerBitmap(q, p.labelWidthMm, p.labelHeightMm, a, "extended", NIIMBOT_CANVAS), img), NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h);
   return { w: full.w, h: full.h, rowBytes: full.rowBytes, data: bytesToBase64(full.buf), labelWidthMm: NIIMBOT_LABEL.w, labelHeightMm: NIIMBOT_LABEL.h };
 }
 async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrinter"]>, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
@@ -644,14 +670,91 @@ async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrin
   }
 }
 
+// ── ONE STICKER (Branch 1, switch one_sticker_enabled + this device saved the new pattern) ──
+// The same picture on every image path (oneSticker.ts). Only for a device whose seller saved the
+// NEW Live print pattern; every other device never reaches this function (oneStickerActive() is
+// null) → its bytes are today's. The QR follows the account's entitlement like today.
+function oneStickerEffective(os: OneStickerSettings): OneStickerSettings {
+  return { ...os, qr: os.qr && stickerQrEntitled };
+}
+// What this device's sticker path is for the one sticker: an image path, or "text" (old app /
+// Classic text — keeps the native TEXT sticker, Branch 2), "wifi" (WiFi receipt / iOS WiFi
+// sticker — unchanged), or "laptop" (browser print).
+export type OneStickerDevicePath = OneStickerPath | "text" | "wifi";
+export function oneStickerDevicePath(cfg: Pick<Settings, "printerType">): OneStickerDevicePath {
+  const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
+  if (!bridge) return hasNativeMobilePrinter() ? "wifi" : "laptop";
+  if (!shouldUseBluetoothSticker(cfg.printerType, !!bridge.printStickerNative)) return "wifi";
+  if (savedIsNiimbot()) return "niimbot";
+  const lang = savedGenericLang();
+  if (lang) return lang;
+  if (!bitmapBridgeFn(bridge) || (classicTextAllowed && isClassicTextSticker())) return "text";
+  return "d520";
+}
+// "text" = this print takes the native TEXT path below (no image method / classic / SPP failed).
+async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlowPrinter"]>, osIn: OneStickerSettings, buyer: Buyer, storeName: string, fbName: boolean, at?: number): Promise<BtRouteResult | "text" | "text-spp"> {
+  const os = oneStickerEffective(osIn);
+  const inp = oneStickerInputFrom(buyer, storeName, at, fbName);
+  const t0 = nowMs();
+  const send = async (via: OneStickerPath, fn: BitmapBridgeFn | ((a: { image: unknown }) => Promise<unknown>), arg: Record<string, unknown>, payloadBytes: number, reason: StickerFallbackReason): Promise<BtRouteResult> => {
+    const t1 = nowMs();
+    try {
+      const result = (await (fn as (a: Record<string, unknown>) => Promise<unknown>)(arg)) as BitmapBridgeResult;
+      const t2 = nowMs();
+      recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes, bands: 1 });
+      log.log(`[ONE-STICKER] ${via} ${os.size.w}x${os.size.h} ${payloadBytes} bytes`);
+      if (result?.ok) { reportStickerRoute({ via: "bitmap", ok: true, reason, detail: "", payloadBytes, totalMs: t2 - t0 }); return { ok: true, code: "", message: "" }; }
+      const { code, message } = readFailure(result);
+      reportStickerRoute({ via: "bitmap", ok: false, reason, detail: message || code || "print failed", payloadBytes, totalMs: t2 - t0 });
+      if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) log.warn(`[ONE-STICKER ${via}] print failed:`, message || code);
+      return { ok: false, code, message };
+    } catch (err) {
+      const { code, message } = readFailure(err);
+      reportStickerRoute({ via: "bitmap", ok: false, reason, detail: message || code || String(err), payloadBytes, totalMs: nowMs() - t0 });
+      if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) log.warn(`[ONE-STICKER ${via}] bridge call failed:`, err);
+      return { ok: false, code, message };
+    }
+  };
+  if (savedIsNiimbot()) {
+    const fn = (bridge as unknown as { printStickerImage?: (a: { image: unknown }) => Promise<unknown> }).printStickerImage;
+    if (typeof fn !== "function") return { ok: false, code: "", message: "" };
+    const r = await renderOneStickerFor("niimbot", os, inp);
+    const image = niimbotImage(r, os);
+    return send("niimbot", fn, { image }, image.rowBytes * image.h, "niimbot");
+  }
+  const lang = savedGenericLang();
+  if (lang) {
+    const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
+    if (typeof raw !== "function") return { ok: false, code: "", message: "" };
+    const job = knownTsplJob(savedBtPrinter()?.name);
+    const r = await renderOneStickerFor(lang, os, inp, job);
+    const bytes = genericBytes(lang, r, os, job);
+    return send(lang, raw, { data: bytesToBase64(bytes) }, bytes.length, lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos");
+  }
+  const bmpFn = bitmapBridgeFn(bridge);
+  if (!bmpFn || (classicTextAllowed && isClassicTextSticker())) return "text";
+  const r = await renderOneStickerFor("d520", os, inp);
+  const bytes = d520Stream(r, os);
+  const out = await send("d520", bmpFn, { data: bytesToBase64(bytes) }, bytes.length, "");
+  return !out.ok && out.code === BITMAP_SPP_FAILED ? "text-spp" : out;
+}
+
 async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName = false, at?: number): Promise<BtRouteResult> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
+  // ONE STICKER (opted-in device only; null for every other device → today's routing below).
+  const os = oneStickerActive();
+  let oneStickerSpp = false;
+  if (os) {
+    const done = await printOneStickerViaBluetooth(bridge, os, buyer, storeName, fbName, at);
+    if (done !== "text" && done !== "text-spp") return done;
+    oneStickerSpp = done === "text-spp"; // → the native TEXT sticker below (Branch 2 keeps it as is)
+  }
   // Printer setup v2 — a saved Niimbot prints the sticker IMAGE through its driver; a saved
   // GENERIC printer prints the sticker IMAGE in its saved language (both above). A D520BT
   // (or nothing learned) = the unchanged paths below.
-  if (savedIsNiimbot()) return printStickerViaNiimbot(bridge, buildNativeStickerPayload(buyer, cur, storeName, cfg, at), buyer.platform, fbName);
-  const genericLang = savedGenericLang();
+  if (!os && savedIsNiimbot()) return printStickerViaNiimbot(bridge, buildNativeStickerPayload(buyer, cur, storeName, cfg, at), buyer.platform, fbName);
+  const genericLang = os ? null : savedGenericLang();
   if (genericLang) return printStickerViaGenericImage(bridge, genericLang, buildNativeStickerPayload(buyer, cur, storeName, cfg, at), buyer.platform, fbName);
   // BITMAP default: fires only when the new native passthrough exists AND the
   // seller hasn't flipped "Classic text mode". Everything else (old binaries,
@@ -663,8 +766,8 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   // bitmap even with a stray localStorage flag on the device.
   const classic = classicTextAllowed && isClassicTextSticker();
   let cjkUnavailable = false;
-  let sppFailed = false;
-  if (bmpFn && !classic) {
+  let sppFailed = oneStickerSpp;
+  if (bmpFn && !classic && !os) {
     const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg, at);
     // The CJK atlas is a code-split chunk (prefetched at app start on bridge
     // devices). ASCII/Latin prints never wait on it; a CJK print awaits the
@@ -701,6 +804,31 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
     if (!reportNativePrintFailure("bluetooth", code, message)) log.warn("printStickerNative bridge call failed:", err);
     return { ok: false, code, message };
   }
+}
+
+// ONE STICKER — the Test print buttons of the NEW Live print pattern: print the DRAFT on screen
+// (saved or not) through this device's path, so the seller sees on paper what the preview shows.
+// Image paths only; a device on the TEXT / WiFi path prints its usual test sticker (unchanged).
+export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<BtRouteResult & { via: PrintVia }> {
+  const path = oneStickerDevicePath(cfg);
+  const fbName = fbNameOnly(buyer.platform, buyer.name);
+  if (path === "laptop") {
+    if (typeof document === "undefined") return { ok: false, code: "", message: "", via: "none" };
+    const os = oneStickerEffective(draft);
+    const jobId = `one-sticker-test-${++webFallbackId}`;
+    const page = webPrepareChain.then(async () => laptopPage(await renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, undefined, fbName)), os, "Test sticker"));
+    webPrepareChain = page.catch(() => undefined);
+    enqueueWebPrint({ id: jobId, html: page });
+    return { ok: true, code: "", message: "", via: "browser" };
+  }
+  const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
+  if (path === "text" || path === "wifi" || !bridge) {
+    const r = printSlip(buyer, cur, storeName, cfg);
+    return { ok: r.ok, code: "", message: "", via: r.via };
+  }
+  const r = await printOneStickerViaBluetooth(bridge, draft, printableBuyer(buyer), storeName, fbName);
+  if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName)), via: "bluetooth" };
+  return { ...r, via: "bluetooth" };
 }
 
 // EVERY BT sticker entry point routes through this (owner requirement): real
@@ -759,7 +887,7 @@ export interface PrintResult { ok: boolean; via: PrintVia; }
 //     doesn't confirm within KIOSK_HINT_MS, the print dialog is likely open
 //     (kiosk mode not active) → a one-time guidance notice fires.
 // Native BT/LAN/TSPL paths are untouched; this affects ONLY the browser path.
-interface WebPrintJob { id: string; html: string; }
+interface WebPrintJob { id: string; html: string | Promise<string>; }
 const WEB_PRINT_DELAY_MS = 40;           // brief settle before print() (was 120 — trimmed)
 const WEB_ADVANCE_MS = 1300;             // advance the queue after this if onafterprint never fires (silent kiosk) — WITHOUT marking not-printed
 const WEB_KIOSK_HINT_MS = 6000;          // first job unconfirmed by now ⇒ dialog likely open
@@ -848,7 +976,12 @@ function startWebJob(job: WebPrintJob): void {
   const win = frame?.contentWindow;
   if (!win) { settle(false); return; } // no iframe → REAL failure → NOT printed (reported)
   const doc = win.document;
-  try { doc.open(); doc.write(job.html); doc.close(); }
+  // ONE STICKER: the page is the sticker picture, prepared in order → the job runs once its page is
+  // ready (it never rejects: a failed picture becomes today's page). A plain string runs at once.
+  if (typeof job.html === "string") runWebJob(job.html);
+  else job.html.then((html) => runWebJob(html), () => settle(false));
+  function runWebJob(html: string): void {
+  try { doc.open(); doc.write(html); doc.close(); }
   catch { settle(false); return; }     // write threw → REAL failure → NOT printed
   // onafterprint = positive confirmation (real print completed / dialog dismissed).
   // A stale afterprint from a previous job that reused this frame is harmless: it
@@ -870,10 +1003,11 @@ function startWebJob(job: WebPrintJob): void {
   webAdvanceTimer = setTimeout(advance, WEB_ADVANCE_MS);
   setTimeout(() => {
     try {
-      if (typeof document === "undefined" || !document.hidden) win.focus(); // never steal focus from a hidden tab
-      win.print();
+      if (typeof document === "undefined" || !document.hidden) win!.focus(); // never steal focus from a hidden tab
+      win!.print();
     } catch { settle(false); }         // print threw → REAL failure → NOT printed
   }, WEB_PRINT_DELAY_MS);
+  }
 }
 
 function enqueueWebPrint(job: WebPrintJob): void {
@@ -1101,8 +1235,31 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
     (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
     (qr ? qr.svg : "") +
     `</body></html>`;
+  const os = oneStickerActive();
+  if (os) { enqueueWebPrint({ id: jobId, html: oneStickerWebPage(os, buyer, storeName, at, fbName, html) }); return { ok: true, via: "browser" }; }
   enqueueWebPrint({ id: jobId, html });
   return { ok: true, via: "browser" };
+}
+
+// ONE STICKER on the laptop: the same picture as the phone, on one W×H mm page. Prepared in ORDER
+// (one chain) so a burst prints in the order it was placed. Never blank, never silent: if the
+// picture cannot be made, today's page prints and the miss is recorded (getLastOneStickerWebMiss).
+let webPrepareChain: Promise<unknown> = Promise.resolve();
+let lastOneStickerWebMiss: { at: number; error: string } | null = null;
+export const getLastOneStickerWebMiss = () => lastOneStickerWebMiss;
+export function __webPrintIdle(): Promise<void> { return webPrepareChain.then(() => undefined, () => undefined); }
+function oneStickerWebPage(osIn: OneStickerSettings, buyer: Buyer, storeName: string, at: number | undefined, fbName: boolean, legacyHtml: string): Promise<string> {
+  const os = oneStickerEffective(osIn);
+  const page = webPrepareChain.then(async () => {
+    const r = await renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName));
+    return laptopPage(r, os, `Sticker #${buyer.num}`);
+  }).catch((err: unknown) => {
+    lastOneStickerWebMiss = { at: Date.now(), error: String(err) };
+    log.warn("[ONE-STICKER laptop] picture failed — printing today's page", err);
+    return legacyHtml;
+  });
+  webPrepareChain = page;
+  return page;
 }
 
 // ── Redesign state → Settings mapper (NEW; not byte-parity-critical). Maps the

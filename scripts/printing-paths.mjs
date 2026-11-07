@@ -3,8 +3,9 @@
 export const PRINTING_FILE_RE = new RegExp([
   String.raw`^src/redesign/adapters/(printing|stickerRaster|stickerFit|stickerPreview|printerModels|printerBridge|savedPrinter|escposRaster|cpclRaster|cjkAtlasLoader|propAtlasLoader|pinToPrint|reprint|notPrintedStore|usePrinterStatus|receiptImage|receiptSettings|useReceiptPicture|fbReceipt|fbAutoReceipt)\.tsx?$`,
   String.raw`^src/redesign/adapters/glyphAtlas\.[^/]+\.ts$`,
+  String.raw`^src/redesign/adapters/(oneSticker[A-Za-z]*|sansOutlines\.[^/]+)\.tsx?$`, // the one-sticker engine (Nov 2026)
   String.raw`^src/redesign/screens/(Print|PrintPattern|PrinterSettings|ReceiptFormat)\.tsx$`,
-  String.raw`^src/redesign/components/(ExactStickerPreview|PrinterGuideModal|PrinterModal|ReceiptSheet)\.tsx$`,
+  String.raw`^src/redesign/components/(ExactStickerPreview|PrinterGuideModal|PrinterModal|ReceiptSheet|OneStickerPattern)\.tsx$`,
   String.raw`^src/lib/(printerRouting\.ts|receiptLayout\.(js|d\.ts))$`,
   String.raw`^server/(fbAutoReceipt|fbReceipt|receiptDraw)\.js$`,
   String.raw`^mobile/android/app/src/main/java/com/sellerflow/live/(BleStickerLogic|BleStickerTransport|GenericBleTransport|NiimbotTransport|SellerFlowPrinterPlugin|TsplBuilder)\.java$`,

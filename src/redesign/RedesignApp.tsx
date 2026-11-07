@@ -120,6 +120,14 @@ import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from "./adapters/printerBridge";
 import { printerFlowV2Enabled } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
+import OneStickerPattern from "./components/OneStickerPattern";
+import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK } from "./adapters/oneStickerPrint";
+import { recommendedSettings, snapScale, STANDARD_SIZES, type OneStickerSettings } from "./adapters/oneSticker";
+import { setStickerAllScripts } from "./adapters/oneStickerScripts";
+import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn } from "./adapters/printing";
+import { knownTsplJob } from "./adapters/printerModels";
+import { savedBtPrinter } from "./adapters/savedPrinter";
+import { V2_SAMPLE_LATIN, V2_SAMPLE_CJK } from "./screens/PrintPattern";
 import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, cooldownRetryDelayMs, type Platform, ttDisconnect } from "./adapters/connect";
 import { createCooldownRetry, retryAllowed } from "./adapters/cooldownRetry";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
@@ -212,6 +220,17 @@ const autoDupKeyOf = (handle: string, code: string): string =>
   `${String(handle || "").trim().toLowerCase()}|${String(code || "").trim().toLowerCase()}`;
 
 
+// ONE STICKER: the first draft of the new pattern = this device's current pattern (so the preview
+// starts from what the seller already prints), Bold, today's size.
+function seedOneSticker(pp: PrintPatternState, psSize: string, qr: boolean): OneStickerSettings {
+  const m = psSize.match(/(\d+)x(\d+)/);
+  const size = m && STANDARD_SIZES.some((z) => z.w === Number(m[1]) && z.h === Number(m[2])) ? { w: Number(m[1]), h: Number(m[2]) } : { w: 100, h: 60 };
+  const s = recommendedSettings(size);
+  const part = (on: boolean, scale: number) => ({ on, weight: "bold" as const, scale: snapScale(Math.min(2, scale || 1)) });
+  s.parts = { shop: part(pp.shopName, pp.shopNameSize), buyer: part(pp.buyerNum, pp.buyerNumSize), name: part(pp.tiktokName, pp.tiktokNameSize), user: part(pp.tiktokUser, pp.tiktokUserSize), comment: part(pp.comment, pp.commentSize) };
+  s.qr = qr;
+  return s;
+}
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion", pinPrint: "sfl_rd_pin_print", deductOneClick: "sfl_rd_deduct_oneclick" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
@@ -844,6 +863,14 @@ export default function RedesignApp() {
   // Sticker layout v2 (printing.ts): admins + feature "sticker_v2", or everyone with the sticker_layout_v2 switch.
   const stickerCompactV2On = stickerCompactV2Allowed(auth.profile?.email, auth.profile?.role, featureSw.stickerLayoutV2);
   useEffect(() => { setStickerCompactV2(stickerCompactV2On); }, [stickerCompactV2On]);
+  // ONE STICKER (Branch 1): the new Live print pattern for admins, or everyone when the switch is on.
+  // Each device still prints today's sticker until its seller saves the new pattern there.
+  const oneStickerOn = oneStickerVisibleFor(auth.profile?.role, featureSw.oneSticker, isAdmin);
+  useEffect(() => { setOneStickerVisible(oneStickerOn); }, [oneStickerOn]);
+  // Every language prints on today's sticker too (Latin / Chinese stickers unchanged).
+  const allScriptsOn = featureSw.stickerAllScripts || isAdmin;
+  useEffect(() => { setStickerAllScripts(allScriptsOn); }, [allScriptsOn]);
+  const [oneStickerSeen, setOneStickerSeen] = useState(() => isOneStickerSeen());
   // Parcel Scan FamilyMart: the 7-11 manual Parcel Scan rule (parcelAllowed) AND the fm_scan_enabled
   // switch or the fm_pickup preview list (sql/120). Off → the FamilyMart tile stays "Soon".
   const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));
@@ -2703,7 +2730,8 @@ export default function RedesignApp() {
                 const kind = i === 0 ? "wifi" : "bt"; setPsType(kind);
                 if (alreadySetUp) setScreen("printersettings"); else setPrinterGuide(kind);
               }}
-              onPrintPattern={() => setScreen("printpattern")}
+              onPrintPattern={() => { if (oneStickerOn && !oneStickerSeen) { markOneStickerSeen(); setOneStickerSeen(true); } setScreen("printpattern"); }}
+              printPatternNew={oneStickerOn && !oneStickerSeen}
               onSubscription={() => setScreen("subscription")}
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
@@ -2773,7 +2801,31 @@ export default function RedesignApp() {
               isAdmin={isAdmin}
             />
           )}
-          {screen === "printpattern" && (
+          {screen === "printpattern" && oneStickerOn && (
+            <OneStickerPattern onBack={() => setScreen("settings")}
+              initial={readSavedOneSticker() ?? seedOneSticker(pp, psSize, isStickerQrOn())}
+              savedOnDevice={readSavedOneSticker() != null}
+              onSave={(next) => {
+                saveOneSticker(next);
+                // a standard size is also the size the rest of the app shows (Printer settings)
+                if (!next.size.custom && STANDARD_SIZES.some((z) => z.w === next.size.w && z.h === next.size.h)) setPsSize(`${next.size.w}x${next.size.h}mm`);
+                setToast({ msg: tApp.rd_os_saved, kind: "ok" });
+              }}
+              shopName={printShopName === BRAND_FALLBACK ? "" : printShopName}
+              devicePath={oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }))}
+              printerName={savedBtPrinter()?.name ?? null}
+              genericBold={!!knownTsplJob(savedBtPrinter()?.name).bold}
+              qrAllowed={stickerQrAllowed}
+              onTest={(draft, sample) => void (async () => {
+                const b = buildTestBuyer();
+                const item = sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : PREVIEW_COMMENT;
+                const buyer: Buyer = { ...b, orders: [{ ...b.orders[0], item }] };
+                const r = await printOneStickerTest(draft, buyer, cur, printShopName, buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
+                if (r.ok) setToast({ msg: r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
+                else setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
+              })()} />
+          )}
+          {screen === "printpattern" && !oneStickerOn && (
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}
               layoutV2={stickerV2On} onTestPrintSample={stickerV2On && isAdmin ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
               stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur}
