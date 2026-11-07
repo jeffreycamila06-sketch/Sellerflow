@@ -10,7 +10,7 @@
 //   wrapText()       word wrap (Intl.Segmenter when present: Thai word breaks, one break per CJK
 //                    character), a word longer than the line is split by graphemes, the last kept
 //                    line ends with "…" when the text does not fit.
-import { cjkCellFor, cjkGlyph, dilateBits, fallbackRun, outlineGlyph, EMPTY_GLYPH, type CjkCell, type GlyphBits, type SansFace, type SansWeight } from "./oneStickerFonts";
+import { cjkCellFor, cjkGlyph, dilateBits, fallbackGeneration, fallbackRun, outlineGlyph, EMPTY_GLYPH, type CjkCell, type GlyphBits, type SansFace, type SansWeight } from "./oneStickerFonts";
 import type { GlyphAtlas } from "./stickerRaster";
 import { lighterSteps, stillOpen, topology, type Topology } from "./oneStickerReadable";
 
@@ -258,16 +258,80 @@ export function paintLine(dst: Ink, run: LineRun, px: number, weight: SansWeight
 }
 
 // ── Readability guard (oneStickerReadable.ts) ─────────────────────────────────────────────────
-const topoCache = new Map<string, Topology[]>();
+// Cached per GLYPH and per neighbouring PAIR (keyed by the exact font they are drawn from), so a long
+// comment costs one check per different letter / letter pair.
+const fontIds = new WeakMap<object, number>();
+let nextFontId = 1;
+const fontId = (o: object | null | undefined): number => {
+  if (!o) return 0;
+  let id = fontIds.get(o);
+  if (!id) { id = nextFontId++; fontIds.set(o, id); }
+  return id;
+};
+function pieceKey(p: Piece, px: number, weight: SansWeight, ink: boolean, f: Fonts): string {
+  const font = p.src === "sans" ? fontId(sansFace(f, weight)) : p.src === "cjkx" ? fontId(f.cjkx) : p.src === "cjk" ? fontId(f.cjk?.[cjkCellFor(px).cell]) : 0;
+  const what = p.src === "fb" ? `${fallbackGeneration()}|${p.rtl ? 1 : 0}|${p.text}` : p.src === "cjk" ? `${p.cp}|${p.text}` : `${p.cp}`;
+  return `${p.src}|${font}|${weight}|${ink ? 1 : 0}|${px}|${what}`;
+}
+const glyphTopo = new Map<string, Topology>();
 function topologies(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): Topology[] {
-  const key = `${weight}|${ink ? 1 : 0}|${px}|${text}`;
-  const hit = topoCache.get(key);
-  if (hit) return hit;
   const run = measure(text, px, weight, f);
-  const out = glyphsOf(run, px, weight, f, ink).map((g) => (g.bits ? topology(g.bits) : { holes: [], parts: 0 }));
-  if (topoCache.size > 5000) topoCache.clear();
-  topoCache.set(key, out);
+  const keys = run.pieces.map((p) => pieceKey(p, px, weight, ink, f));
+  if (keys.every((k) => glyphTopo.has(k))) return keys.map((k) => glyphTopo.get(k)!);
+  const glyphs = glyphsOf(run, px, weight, f, ink);
+  if (glyphTopo.size > 20000) glyphTopo.clear();
+  return keys.map((k, i) => {
+    let t = glyphTopo.get(k);
+    if (!t) { const b = glyphs[i].bits; t = b ? topology(b) : { holes: [], cells: [], parts: 0 }; glyphTopo.set(k, t); }
+    return t;
+  });
+}
+/** Does any ink dot of `a` (at ax, ay) sit on or next to (8 ways) an ink dot of `b` (at bx, by)? */
+function bitsTouch(a: GlyphBits, ax: number, ay: number, b: GlyphBits, bx: number, by: number): boolean {
+  const x0 = Math.max(ax, bx - 1), x1 = Math.min(ax + a.w, bx + b.w + 1); // a's columns within 1 of b
+  const y0 = Math.max(ay, by - 1), y1 = Math.min(ay + a.h, by + b.h + 1);
+  if (x0 >= x1 || y0 >= y1) return false; // boxes 2+ dots apart: cannot touch
+  const on = (g: GlyphBits, gx: number, gy: number, x: number, y: number) => { const X = x - gx, Y = y - gy; return X >= 0 && Y >= 0 && X < g.w && Y < g.h && (g.buf[Y * g.rowBytes + (X >> 3)] & (0x80 >> (X & 7))) !== 0; };
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    if (!on(a, ax, ay, x, y)) continue;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (on(b, bx, by, x + dx, y + dy)) return true;
+  }
+  return false;
+}
+// Neighbouring letters: painted side by side, two letters that did NOT touch in Normal must not
+// touch in the heavier style either (checked pair by pair, so one pair can never hide another).
+const pairTouch = new Map<string, boolean>();
+function touchingPairs(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts, closest = false): boolean[] {
+  const run = measure(text, px, weight, f);
+  const keys = run.pieces.map((p) => pieceKey(p, px, weight, ink, f));
+  let glyphs: Placed[] | null = null;
+  const out: boolean[] = [];
+  const pens: number[] = [];
+  let pen = 0;
+  for (const p of run.pieces) { pens.push(Math.round(pen)); pen += p.adv; } // exactly where glyphsOf places them
+  for (let i = 0; i + 1 < keys.length; i++) {
+    // the heavier style is checked exactly where this line puts its letters; the Normal reference one
+    // dot closer than its closest spacing (a pair the Normal font itself all but joins, e.g. "кл" whose
+    // feet meet, is the font's design — not a heavier weight closing the text)
+    const gap = closest ? Math.floor(run.pieces[i].adv) - 1 : pens[i + 1] - pens[i];
+    const key = `${keys[i]}\u0001${keys[i + 1]}\u0001${gap}`; // the gap is in the key: one cache for both
+    let hit = pairTouch.get(key);
+    if (hit === undefined) {
+      glyphs ??= glyphsOf(run, px, weight, f, ink);
+      const a = glyphs[i].bits, b = glyphs[i + 1].bits;
+      hit = !!a && !!b && a.w > 0 && b.w > 0 && bitsTouch(a, a.x0, a.y0, b, gap + b.x0, b.y0);
+      if (pairTouch.size > 20000) pairTouch.clear();
+      pairTouch.set(key, hit);
+    }
+    out.push(hit);
+  }
   return out;
+}
+function sameShape(text: string, px: number, st: InkStyle, ref: Topology[], refTouch: boolean[], f: Fonts): boolean {
+  const t = topologies(text, px, st.weight, st.ink, f);
+  if (t.length !== ref.length || !t.every((h, i) => stillOpen(h, ref[i], px))) return false;
+  const touch = touchingPairs(text, px, st.weight, st.ink, f);
+  return touch.every((x, i) => !x || refTouch[i]);
 }
 export interface InkStyle { weight: SansWeight; ink: boolean }
 /** The heaviest style ≤ the seller's choice that keeps every letter of `text` open at `px`. */
@@ -275,20 +339,19 @@ export function readableStyle(text: string, px: number, weight: SansWeight, ink:
   const steps = lighterSteps(weight, ink);
   if (!text.trim() || steps.length === 1) return steps[0];
   const ref = topologies(text, px, 400, false, f);
+  const refTouch = touchingPairs(text, px, 400, false, f, true);
   for (const st of steps) {
     if (st.weight === 400 && !st.ink) return st;
-    const t = topologies(text, px, st.weight, st.ink, f);
-    if (t.length === ref.length && t.every((h, i) => stillOpen(h, ref[i]))) return st;
+    if (sameShape(text, px, st, ref, refTouch, f)) return st;
   }
   return { weight: 400, ink: false };
 }
-/** Every letter of the line open in this style? (the automatic test) */
+/** Every letter of the line open in this style? (used by the screen / proof pictures) */
 export function lineIsReadable(text: string, px: number, style: InkStyle, f: Fonts): boolean {
   if (style.weight === 400 && !style.ink) return true;
-  const ref = topologies(text, px, 400, false, f), t = topologies(text, px, style.weight, style.ink, f);
-  return t.length === ref.length && t.every((h, i) => stillOpen(h, ref[i]));
+  return sameShape(text, px, style, topologies(text, px, 400, false, f), touchingPairs(text, px, 400, false, f, true), f);
 }
-export function __clearReadableCache(): void { topoCache.clear(); }
+export function __clearReadableCache(): void { glyphTopo.clear(); pairTouch.clear(); }
 /** Which CJK atlas cells the given line sizes need (to load them before painting). */
 export function cjkCellsFor(sizes: number[]): CjkCell[] { return [...new Set(sizes.map((s) => cjkCellFor(s).cell))]; }
 export const hasIdeograph = (s: string): boolean => { for (const ch of s) if (isIdeograph(ch.codePointAt(0) ?? 0)) return true; return false; };

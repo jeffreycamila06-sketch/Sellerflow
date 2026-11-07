@@ -148,11 +148,19 @@ let synthCjk: ReadonlySet<number> | null = null;
 // Chinese-size cell: its advance = this many em of the cell's font (pieces end between letters, never
 // inside one). The 24-cell CJK atlas is drawn at em 17 (oneStickerScripts SYNTH_CELL24_EM).
 let synthAdv: ReadonlyMap<number, number> | null = null;
-export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T, adv?: ReadonlyMap<number, number> | null): T {
-  const prev = synthCjk, prevAdv = synthAdv;
+// Pieces whose NEXT codepoint (cp + 1) is the rest of the same word: no 1-dot gap between them and
+// a line never breaks between them (a Thai / Korean word stays whole, with no seams).
+let synthJoined: ReadonlySet<number> | null = null;
+export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T, adv?: ReadonlyMap<number, number> | null, joined?: ReadonlySet<number> | null): T {
+  const prev = synthCjk, prevAdv = synthAdv, prevJoined = synthJoined;
   synthCjk = set && set.size ? set : null;
   synthAdv = synthCjk && adv && adv.size ? adv : null;
-  try { return fn(); } finally { synthCjk = prev; synthAdv = prevAdv; }
+  synthJoined = synthCjk && joined && joined.size ? joined : null;
+  try { return fn(); } finally { synthCjk = prev; synthAdv = prevAdv; synthJoined = prevJoined; }
+}
+/** `next` continues the same word as `cp` (both synthetic pieces of one run). */
+function synthJoins(cp: number, next: number): boolean {
+  return synthJoined !== null && next === cp + 1 && synthJoined.has(cp);
 }
 /** The advance of a synthetic piece at a font of `em` dots, or null for every other character. */
 function synthWidth(cp: number, em: number): number | null {
@@ -606,10 +614,13 @@ export function wrapCommentV2(text: string, lineWidth: (lineIndex: number) => nu
   const s = String(text || "").replace(/\s+/g, " ").trim();
   const tokens: string[] = [];
   let word = "";
+  let prevCp = -1;
   for (const ch of s) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (ch === " " || isCjkIdeograph(cp)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
+    if (synthJoins(prevCp, cp) && !word && tokens.length) tokens[tokens.length - 1] += ch; // the rest of one word
+    else if (ch === " " || isCjkIdeograph(cp)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
     else word += ch;
+    prevCp = cp;
   }
   if (word) tokens.push(word);
   const widthOf = (t: string) => { let w = 0; for (const ch of t) w += charW(ch); return w; };
@@ -627,7 +638,7 @@ export function wrapCommentV2(text: string, lineWidth: (lineIndex: number) => nu
       }
       const tw = widthOf(t);
       if (used + tw <= max) { line += t; used += tw; tokens.shift(); continue; }
-      if (!line && !isCjkIdeograph(t.codePointAt(0) ?? 0)) {  // a word longer than the line → hard split
+      if (!line && ([...t].length > 1 || !isCjkIdeograph(t.codePointAt(0) ?? 0))) {  // a word longer than the line → hard split
         let head = "", hw = 0;
         for (const ch of t) { const cw = charW(ch); if (hw + cw > max) break; head += ch; hw += cw; }
         if (head) { line = head; tokens[0] = [...t].slice([...head].length).join(""); }
@@ -1285,9 +1296,11 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
   const cjkFont = propCjkFont(atlases, size); // only consulted for NON-ideographs the Latin font lacks (fullwidth punctuation, kana…)
   type Piece = { ch: string; adv: number; latin?: PropGlyph; cjk?: number };
   const pieces: Piece[] = [];
-  for (const ch of text) {
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     const cp = ch.codePointAt(0) ?? 0;
-    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, size) ?? size) + PROP_CJK_GAP, cjk: cp }); continue; }
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, size) ?? size) + (synthJoins(cp, chars[i + 1]?.codePointAt(0) ?? -1) ? 0 : PROP_CJK_GAP), cjk: cp }); continue; }
     let g = font.glyphs[cp];
     if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
     if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w + PROP_CJK_GAP, cjk: cp }); continue; }
@@ -1451,9 +1464,13 @@ export interface PropLaidLineV2 { size: number; font: PropFont; line: PropLine; 
 export function propWrapLines(text: string, size: number, maxW: number, atlases: RasterAtlases, maxLines: number): PropLine[] {
   const tokens: string[] = [];
   let word = "";
+  let prevCp = -1;
   for (const ch of String(text || "").replace(/\s+/g, " ").trim()) {
-    if (ch === " " || isCjkIdeograph(ch.codePointAt(0) ?? 0)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
+    const cp = ch.codePointAt(0) ?? 0;
+    if (synthJoins(prevCp, cp) && !word && tokens.length) tokens[tokens.length - 1] += ch; // the rest of one word
+    else if (ch === " " || isCjkIdeograph(cp)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
     else word += ch;
+    prevCp = cp;
   }
   if (word) tokens.push(word);
   const lines: PropLine[] = [];

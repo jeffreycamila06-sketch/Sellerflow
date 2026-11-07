@@ -19,8 +19,9 @@
 // A part that does not fit → a fit warning (the screen shows it in red); the sticker still prints.
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
-import { cjkCellsFor, fitOneLine, hasIdeograph, lineExtent, measure, newInk, paintLine, printableText, readableStyle, wrapText, type Fonts, type InkStyle, type LineRun } from "./oneStickerText";
-import { CJK_CELLS, getSansFace, loadSansFace, type CjkCell, type SansWeight } from "./oneStickerFonts";
+import { cjkCellsFor, cjkInk, fitOneLine, hasIdeograph, lineExtent, lineIsReadable, measure, newInk, paintLine, printableText, readableStyle, wrapText, type Fonts, type InkStyle, type LineRun } from "./oneStickerText";
+import { lighterSteps } from "./oneStickerReadable";
+import { CJK_CELLS, cjkCellFor, getSansFace, loadSansFace, type CjkCell, type SansWeight } from "./oneStickerFonts";
 import type { FullRaster } from "./stickerRaster";
 
 // ── Settings (per device, saved from Live print pattern) ──────────────────────────────────────
@@ -150,12 +151,25 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const gapOf = (p: number) => Math.max(3, Math.round(p * 0.14));
   // READABILITY GUARD: the heaviest style ≤ the seller's choice that keeps every letter open (never resized)
   const inkWanted = opts.inkBold === true;
-  const style = (text: string, p: number, w: SansWeight): InkStyle => (opts.guard === false ? { weight: w, ink: inkWanted } : readableStyle(text, p, w, inkWanted, fonts));
+  // The decision is made on the text, then CONFIRMED on the exact lines that print (where a wrap or a
+  // "…" puts the letters): a printed line that would still close → one step lighter, laid out again.
+  const settle = <T>(text: string, p: number, w: SansWeight, build: (st: InkStyle) => { runs: LineRun[]; out: T }): { st: InkStyle; out: T } => {
+    if (opts.guard === false) { const st = { weight: w, ink: inkWanted }; return { st, out: build(st).out }; }
+    const first = readableStyle(text, p, w, inkWanted, fonts);
+    const list = lighterSteps(w, inkWanted);
+    let i = Math.max(0, list.findIndex((x) => x.weight === first.weight && x.ink === first.ink));
+    for (; i < list.length - 1; i++) {
+      const b = build(list[i]);
+      if (b.runs.every((r) => lineIsReadable(r.text, p, list[i], fonts))) return { st: list[i], out: b.out };
+    }
+    return { st: list[list.length - 1], out: build(list[list.length - 1]).out };
+  };
+  const one = (text: string, p: number, w: SansWeight) => settle(text, p, w, (st) => { const run = measure(text, p, st.weight, fonts); return { runs: [run], out: run }; });
+  const fitted = (text: string, p: number, w: SansWeight, max: number) => settle(text, p, w, (st) => { const r = fitOneLine(text, p, st.weight, max, fonts); return { runs: [r.line], out: r }; });
 
   // date & time — top right, fixed
   const dateText = printableText([inp.date, inp.time].filter(Boolean).join(" "));
-  const dSt = style(dateText, B.date, 700);
-  const dRun = measure(dateText, B.date, dSt.weight, fonts);
+  const { st: dSt, out: dRun } = one(dateText, B.date, 700);
   const dExt = lineExtent(dRun, B.date, dSt.weight, fonts);
   const dTop = my, dBase = my + Math.max(dExt.asc, Math.round(B.date * 0.74));
   const dX = W - mx - dRun.width;
@@ -209,8 +223,7 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const shop = printableText(inp.storeName);
   if (P.shop.on && shop && !isSmallClass(wMm, hMm)) {
     const p = px("shop", B.shop);
-    const st = style(shop, p, wt("shop"));
-    const { line, cut } = fitOneLine(shop, p, st.weight, widthAtY(p), fonts);
+    const { st, out: { line, cut } } = fitted(shop, p, wt("shop"), widthAtY(p));
     if (cut) warnings.push({ part: "shop", kind: "width" });
     placeLine(line, p, st, "shop");
   }
@@ -218,9 +231,8 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const num = inp.buyerNum != null && String(inp.buyerNum) !== "" ? String(inp.buyerNum) : "";
   if (P.buyer.on && num) {
     const pn = px("buyer", B.num), pw = Math.max(12, Math.round(pn * 0.36));
-    const nSt = style(num, pn, wt("buyer")), wSt = style("Buyer", pw, 700);
-    const nRun = measure(num, pn, nSt.weight, fonts);
-    const wRun = measure("Buyer", pw, wSt.weight, fonts);
+    const { st: nSt, out: nRun } = one(num, pn, wt("buyer"));
+    const { st: wSt, out: wRun } = one("Buyer", pw, 700);
     const ext = lineExtent(nRun, pn, nSt.weight, fonts);
     const asc = Math.max(ext.asc, Math.round(pn * 0.72));
     const baseline = y + asc;
@@ -239,13 +251,11 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     if (fb) {
       const startY = y;
       const lineH = Math.round(p * 1.08);
-      const st = style(name, p, wt("name"));
-      const wr = wrapText(name, p, st.weight, (i) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx), 2, fonts);
+      const { st, out: wr } = settle(name, p, wt("name"), (st) => { const r = wrapText(name, p, st.weight, (i) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx), 2, fonts); return { runs: r.lines, out: r }; });
       if (wr.cut) warnings.push({ part: "name", kind: "width" });
       wr.lines.forEach((l, i) => placeLine(l, p, st, "name", i === wr.lines.length - 1));
     } else {
-      const st = style(name, p, wt("name"));
-      const { line, cut } = fitOneLine(name, p, st.weight, widthAtY(p), fonts);
+      const { st, out: { line, cut } } = fitted(name, p, wt("name"), widthAtY(p));
       if (cut) warnings.push({ part: "name", kind: "width" });
       placeLine(line, p, st, "name");
     }
@@ -253,8 +263,7 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   // 4. @username (never on Facebook)
   if (P.user.on && handle && !fb) {
     const p = px("user", B.user);
-    const st = style("@" + handle, p, wt("user"));
-    const { line, cut } = fitOneLine("@" + handle, p, st.weight, widthAtY(p), fonts);
+    const { st, out: { line, cut } } = fitted("@" + handle, p, wt("user"), widthAtY(p));
     if (cut) warnings.push({ part: "user", kind: "width" });
     placeLine(line, p, st, "user");
   }
@@ -266,12 +275,14 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     const wChosen = wt("comment");
     let p = px("comment", B.comment);
     const minP = Math.min(p, B.minComment);
+    const ideo = hasIdeograph(comment);
     for (;;) {
-      const lineH = Math.round(p * 1.12);
+      // Chinese characters fill their whole cell: stacked lines get at least 2 white dots between them
+      const lineH = ideo ? Math.max(Math.round(p * 1.12), (() => { const c = cjkCellFor(p); return c.cell * c.mag + cjkInk(p, wChosen).dy + 2; })()) : Math.round(p * 1.12);
       const maxLines = Math.max(0, Math.floor((bottomLimit - startY + Math.round(p * 0.12)) / lineH));
       const widthOf = (i: number) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx);
-      const st = style(comment, p, wChosen), w = st.weight;
-      const wr = maxLines > 0 ? wrapText(comment, p, w, widthOf, maxLines, fonts) : { lines: [], cut: true };
+      const { st, out: wr } = settle(comment, p, wChosen, (st) => { const r = maxLines > 0 ? wrapText(comment, p, st.weight, widthOf, maxLines, fonts) : { lines: [] as LineRun[], cut: true }; return { runs: r.lines, out: r }; });
+      const w = st.weight;
       if ((!wr.cut && wr.lines.length) || p <= minP) {
         if (wr.cut) warnings.push({ part: "comment", kind: wr.lines.length ? "width" : "height" });
         y = startY;

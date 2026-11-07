@@ -12,6 +12,8 @@ import { setStickerAllScripts, prepareAllScripts } from "../oneStickerScripts";
 import { recommendedSettings } from "../oneSticker";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
 import { installNodeFallbackDrawer, installSans } from "./oneSticker.harness";
+import { fallbackRun } from "../oneStickerFonts";
+import { withSyntheticCjk, wrapCommentV2 } from "../stickerRaster";
 import type { Buyer } from "../../../lib/orderTypes";
 
 type W = Window & { SellerFlowPrinter?: Record<string, unknown> };
@@ -115,6 +117,31 @@ describe("all-scripts switch", () => {
       for (const ch of (name + item).replace(/[\u4e00-\u9fff\s]/g, "")) expect(kept, `${name} ${ch}`).toContain(ch);
     }
   }, 60000);
+
+  it("Thai marks above and below the letters are kept (the device font draws into a generous box, then trims)", () => {
+    const base = fallbackRun("ทน", 34, 400, false)!, marked = fallbackRun("ที่น้ำ", 34, 400, false)!;
+    expect(base && marked).toBeTruthy();
+    expect(marked.y0).toBeLessThan(base.y0);                       // ink above the letters (ี ่ ้)
+    expect(marked.y0 + marked.h).toBeGreaterThanOrEqual(base.y0 + base.h);
+    const below = fallbackRun("ปุ๊", 34, 400, false)!;             // ุ under the letter
+    expect(below.y0 + below.h).toBeGreaterThan(base.y0 + base.h);
+  });
+  it("a Thai / Korean word stays whole: one run per word (real spaces between), no gap or line break inside it", () => {
+    const np = buildNativeStickerPayload(buyer("สมใจ", "ชุด สีดำ"), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "100x60" });
+    const prep = prepareAllScripts(np, true, true)!;
+    expect(prep.cells.map((c) => c.text)).toEqual(["สมใจ", "ชุด", "สีดำ"]); // left-to-right: the space is a real space
+    // right-to-left keeps a phrase together (its words in reading order)
+    const ar = prepareAllScripts(buildNativeStickerPayload(buyer("Amy", "فستان أسود"), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "100x60" }), true, true)!;
+    expect(ar.cells.map((c) => c.text)).toEqual(["فستان أسود"]);
+    // the pieces of one word are joined: no line break between them
+    const A = 0xe000, B = 0xe001;
+    const word = String.fromCodePoint(A, B);
+    const charW = (ch: string) => (ch === " " ? 8 : ch.codePointAt(0)! >= 0xe000 ? 20 : 16);
+    const lines = withSyntheticCjk(new Set([A, B]), () => wrapCommentV2(`AB ${word}`, () => 16 * 2 + 8 + 20 + 5, 3, charW), null, new Set([A]));
+    expect(lines).toEqual(["AB", word]);
+    const loose = withSyntheticCjk(new Set([A, B]), () => wrapCommentV2(`AB ${word}`, () => 16 * 2 + 8 + 20 + 5, 3, charW), null, null);
+    expect(loose).toEqual([`AB ${String.fromCodePoint(A)}`, String.fromCodePoint(B)]); // without the join: split
+  });
 
   it("iPhone apostrophes, dashes and \"…\" keep a Latin name in the normal layout (folded, never Chinese-size cells)", async () => {
     for (const [fancy, plain] of [["O’Brien", "O'Brien"], ["Ana–Maria", "Ana-Maria"], ["Joy…", "Joy..."], ["“Bea”", '"Bea"']]) {

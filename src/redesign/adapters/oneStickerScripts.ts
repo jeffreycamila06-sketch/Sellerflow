@@ -60,6 +60,7 @@ export interface AllScriptsPrep {
   payload: RasterPayload;
   synth: Set<number>;
   adv: Map<number, number>; // piece advance in em (stickerRaster.withSyntheticCjk) — runs only
+  joined: Set<number>; // pieces followed by the rest of the same word (no gap, no line break between)
   cells: Cellish[];
   extraCyrillic: boolean; // the D520BT payload has Cyrillic → give it the Cyrillic atlas
 }
@@ -114,13 +115,14 @@ export function prepareAllScripts(payload: RasterPayload, extraAtlas: boolean, o
   let next = PUA0;
   const synth = new Set<number>();
   const adv = new Map<number, number>();
+  const joined = new Set<number>();
   const cellFor = (text: string, rtl: boolean, one: boolean): Cellish => {
     const key = `${rtl ? 1 : 0}|${one ? 1 : 0}|${text}`;
     const hit = byText.get(key);
     if (hit) return hit;
     const cuts: [number, number][] = one ? [[0, PIECE_MAX]] : pieceCuts(text, rtl);
     const pua: number[] = [];
-    for (const [x0, x1] of cuts) { pua.push(next); synth.add(next); if (!one) adv.set(next, Math.max(1, x1 - x0) / SYNTH_CELL24_EM); next++; }
+    cuts.forEach(([x0, x1], i) => { pua.push(next); synth.add(next); if (!one) { adv.set(next, Math.max(1, x1 - x0) / SYNTH_CELL24_EM); if (i < cuts.length - 1) joined.add(next); } next++; });
     const c = { text, rtl, one, pua, cuts };
     byText.set(key, c); cells.push(c);
     return c;
@@ -136,9 +138,9 @@ export function prepareAllScripts(payload: RasterPayload, extraAtlas: boolean, o
       const folded = g === "\u2026" && extra ? g : foldFancy(g); // "…" is in the Cyrillic atlas (generic / Niimbot)
       if (folded !== g) { changed = true; g = folded; }
       const cp = g.codePointAt(0) ?? 0;
-      if (g === " " && run) { // keep a phrase together with its real spaces (right-to-left: its words in order)
+      if (g === " " && run && runRtl) { // right-to-left only: keep a phrase together with its real spaces (its words in order)
         const nextCp = gs[i + 1]?.codePointAt(0) ?? 0;
-        if (nextCp && !covered(nextCp) && !isOneCell(nextCp) && (!runRtl || isRtl(nextCp))) { run += g; continue; }
+        if (nextCp && !covered(nextCp) && isRtl(nextCp)) { run += g; continue; }
       }
       if (covered(cp)) { flush(); out += g; continue; }
       changed = true;
@@ -155,7 +157,7 @@ export function prepareAllScripts(payload: RasterPayload, extraAtlas: boolean, o
     buyer: { ...b, name: b.name != null ? map(b.name) : b.name, handle: b.handle != null ? map(b.handle) : b.handle, orders: b.orders?.map((o) => ({ ...o, item: o.item != null ? map(o.item) : o.item })) },
   };
   if (!changed && !(hasCyr && !extraAtlas)) return null;
-  return { payload: mapped, synth, adv, cells, extraCyrillic: hasCyr && !extraAtlas };
+  return { payload: mapped, synth, adv, joined, cells, extraCyrillic: hasCyr && !extraAtlas };
 }
 
 // Draw each synthetic glyph for one cell family: the 24-cell CJK atlas (em 17, baseline 19 —

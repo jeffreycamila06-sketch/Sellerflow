@@ -73,7 +73,9 @@ export function oneStickerInputFrom(buyer: Buyer, storeName: string, at?: number
   const ts = typeof o0?.orderNum === "number" && o0.orderNum > 1e12 ? o0.orderNum : when.getTime();
   return {
     storeName: stickerShopName(storeName),
-    date: TAIPEI_DATE.format(when), // a reprint passes `at` → the original order's own date
+    // date AND time from ONE moment (the order's own time; else `at` — a reprint passes the original
+    // order's time — else now), so an order at 23:59 never prints with the next day's date
+    date: TAIPEI_DATE.format(new Date(ts)),
     time: TAIPEI_TIME.format(new Date(ts)),
     buyerNum: buyer.num ? buyer.num : undefined, // 0 = no buyer number (Facebook post-sales prints, postPrintSettings)
     name: buyer.name,

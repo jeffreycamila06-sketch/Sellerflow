@@ -192,11 +192,14 @@ export function cjkGlyph(atlas: GlyphAtlas | undefined, cell: CjkCell, mag: numb
 // dots per em into a 1-bit picture. Returns null when nothing can be drawn (no canvas).
 export interface RunDrawer { drawRun(text: string, px: number, weight: SansWeight, rtl: boolean): GlyphBits | null }
 let fallbackDrawer: RunDrawer | null | undefined;
-export function setFallbackRunDrawer(d: RunDrawer | null): void { fallbackDrawer = d; runCache.clear(); }
+let fallbackGen = 0;
+export function setFallbackRunDrawer(d: RunDrawer | null): void { fallbackDrawer = d; runCache.clear(); fallbackGen++; }
+/** Changes whenever the device-font drawer changes (cache keys of anything drawn with it). */
+export const fallbackGeneration = (): number => fallbackGen;
 export const FALLBACK_FONTS = `"Noto Sans", "Noto Sans JP", "Noto Sans KR", "Noto Sans Thai", "Noto Sans Arabic", "Noto Sans Hebrew", "Noto Sans Devanagari", "PingFang TC", "Hiragino Sans", "Apple SD Gothic Neo", Thonburi, "Geeza Pro", "Segoe UI", "Malgun Gothic", "Leelawadee UI", Tahoma, system-ui, sans-serif`;
 type Ctx2D = {
   font: string; direction?: string; textAlign?: string; textBaseline?: string; fillStyle: string;
-  measureText(t: string): { width: number; actualBoundingBoxAscent?: number; actualBoundingBoxDescent?: number; actualBoundingBoxLeft?: number; actualBoundingBoxRight?: number };
+  measureText(t: string): { width: number };
   fillText(t: string, x: number, y: number): void; clearRect(x: number, y: number, w: number, h: number): void;
   getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray | Uint8Array };
 };
@@ -209,13 +212,11 @@ export function canvasRunDrawer(make: (w: number, h: number) => CanvasLike | nul
       if (!probe) return null;
       const font = `${weight} ${px}px ${fonts}`;
       probe.font = font;
-      const m = probe.measureText(text);
-      const adv = m.width;
-      const asc = Math.ceil(m.actualBoundingBoxAscent ?? px * 0.9) + 1;
-      const desc = Math.ceil(m.actualBoundingBoxDescent ?? px * 0.25) + 1;
-      const left = Math.ceil(m.actualBoundingBoxLeft ?? 0) + 1;
-      const w = Math.max(1, Math.ceil(Math.max(adv, (m.actualBoundingBoxRight ?? adv))) + left + 2);
-      const h = Math.max(1, asc + desc);
+      const adv = probe.measureText(text).width;
+      // Draw into a GENEROUS fixed box, then trim to the ink. The browser's measured ink box is wrong
+      // for a run that mixes fonts (Thai letters + a Latin space): marks above / below were cut.
+      const asc = Math.ceil(px * 1.5), desc = Math.ceil(px * 0.9), left = Math.ceil(px * 0.6);
+      const w = Math.max(1, Math.ceil(adv) + left * 2), h = asc + desc;
       const cv = make(w, h);
       const ctx = cv?.getContext("2d");
       if (!cv || !ctx) return null;
@@ -226,12 +227,13 @@ export function canvasRunDrawer(make: (w: number, h: number) => CanvasLike | nul
       if (rtl) { ctx.direction = "rtl"; ctx.textAlign = "right"; ctx.fillText(text, left + adv, asc); }
       else { ctx.direction = "ltr"; ctx.textAlign = "left"; ctx.fillText(text, left, asc); }
       const data = ctx.getImageData(0, 0, w, h).data;
-      const rowBytes = (w + 7) >> 3;
-      const buf = new Uint8Array(rowBytes * h);
-      let any = false;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] >= 128) { buf[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7); any = true; }
-      if (!any) return EMPTY_GLYPH(adv);
-      return { w, h, rowBytes, buf, x0: -left, y0: -asc, adv };
+      let minX = w, minY = h, maxX = -1, maxY = -1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] >= 128) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+      if (maxX < 0) return EMPTY_GLYPH(adv);
+      const bw = maxX - minX + 1, bh = maxY - minY + 1, rowBytes = (bw + 7) >> 3;
+      const buf = new Uint8Array(rowBytes * bh);
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (data[((y + minY) * w + (x + minX)) * 4 + 3] >= 128) buf[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+      return { w: bw, h: bh, rowBytes, buf, x0: minX - left, y0: minY - asc, adv };
     },
   };
 }

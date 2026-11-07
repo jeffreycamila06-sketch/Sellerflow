@@ -181,6 +181,10 @@ describe("settings, sizes, printers", () => {
     const old = Date.UTC(2026, 8, 30, 11, 45); // Sep 30 19:45 Taipei
     const rb = { ...b, orders: [{ orderNum: old, item: "C3" }] } as unknown as Buyer;
     expect(oneStickerInputFrom(rb, "Shop", old)).toMatchObject({ date: "09/30", time: "19:45" });
+    // date and time come from ONE moment: an order at 23:59:50 printed at 00:00:05 keeps its own day
+    const late = Date.UTC(2026, 10, 7, 15, 59, 50); // Nov 7 23:59 Taipei
+    const lb = { ...b, orders: [{ orderNum: late, item: "D4" }] } as unknown as Buyer;
+    expect(oneStickerInputFrom(lb, "Shop", late + 15000)).toMatchObject({ date: "11/07", time: "23:59" });
     // Facebook post-sales prints carry buyer number 0 → no buyer line (today: printBuyerNumber off)
     const post = oneStickerInputFrom({ ...b, num: 0, platform: "Facebook" } as Buyer, "Shop", AT0);
     expect(post.buyerNum).toBeUndefined();
