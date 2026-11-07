@@ -27,8 +27,8 @@ export const FEATURE_SWITCH_KEYS = {
   stickerLayoutV2: "sticker_layout_v2", // sticker layout v2 for EVERY seller (row created by chat-Claude; admins + feature "sticker_v2" see it before)
   buyerContact: "buyer_contact_enabled", // Buyer contact picker + Pickup Status contact buttons for Plus/Pro/Master (sql/140, seeded 'false')
   frozenStoreCheck: "frozen_store_check_enabled", // Parcel Checker frozen (冷凍) store check — the app shows the frozen lines only while this is 'true' (sql/142, seeded 'false')
-  oneSticker: "one_sticker_enabled", // ONE STICKER: the new Live print pattern screen for every seller (sql/143, seeded 'false'; admins see it before) — each device opts in by Save
-  stickerAllScripts: "sticker_all_scripts_enabled", // every language prints on today's sticker (sql/143, seeded 'false')
+  oneSticker: "one_sticker_enabled", // ONE STICKER: the new Live print pattern screen for every seller (sql/144, seeded 'false'; admins see it before) — each device opts in by Save
+  stickerAllScripts: "sticker_all_scripts_enabled", // every language prints on today's sticker (sql/144, seeded 'false')
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;

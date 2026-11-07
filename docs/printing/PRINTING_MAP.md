@@ -224,10 +224,10 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | Native prefs Android | SharedPreferences | — | Java: `PREF_HOST`/`PORT`, `PREF_BT_ADDR`/`NAME`/`TRANSPORT`(spp\|ble\|niimbot)/`MODEL`(generic)/`LANG` (446-458) | routing on the native side |
 | Native prefs iOS | UserDefaults | — | Swift: `sellerflow_lan_host`/`port` (53-54); `sellerflow_ble_label_id`/`name`/`model`/`lang`/`transport` (1043-1053) | the same |
 | Profile shop name | DB profile | blank → "SellerFlowLive" | RedesignApp.tsx:1865 | store line + header |
-| `one_sticker_enabled` (`featureSwitches.oneSticker`) | app_settings (sql/143, seeded OFF, NOT applied) | OFF (admins see it anyway) | RedesignApp `oneStickerOn` → `setOneStickerVisible` | the NEW Live print pattern screen. A device prints the one sticker only after Save there. |
+| `one_sticker_enabled` (`featureSwitches.oneSticker`) | app_settings (sql/144, seeded OFF, NOT applied) | OFF (admins see it anyway) | RedesignApp `oneStickerOn` → `setOneStickerVisible` | the NEW Live print pattern screen. A device prints the one sticker only after Save there. |
 | LS `sfl_rd_one_sticker` | LS | absent | oneStickerPrint `readSavedOneSticker` / `saveOneSticker` | `{saved:true, settings}` = this device opted in (size incl. custom, per part on/weight/scale, QR) |
 | LS `sfl_rd_one_sticker_seen` | LS | absent | RedesignApp `oneStickerSeen` | the "New" badge on the Live print pattern menu item |
-| `sticker_all_scripts_enabled` (`featureSwitches.stickerAllScripts`) | app_settings (sql/143, seeded OFF) | OFF (admins see it anyway) | RedesignApp → `setStickerAllScripts` | every script prints on TODAY's image layouts (`prepareAllScripts`); English / Latin / Chinese byte-identical ON vs OFF |
+| `sticker_all_scripts_enabled` (`featureSwitches.stickerAllScripts`) | app_settings (sql/144, seeded OFF) | OFF (admins see it anyway) | RedesignApp → `setStickerAllScripts` | every script prints on TODAY's image layouts (`prepareAllScripts`); English / Latin / Chinese byte-identical ON vs OFF |
 | `DEF_SETTINGS.autoprint` / `printAutoClose` / `printLogo` / X/Y offsets | Settings fields | — | printing.ts:41 | **❌ never read by the redesign.** Every order always prints. There is no "auto print off". |
 | `ESC_POS_IMPORTANT_SIZE` / `ESC_POS_ORDER_SIZE` | native const | 0x11 | Swift:69, 75 (+ Java twins) | slip text size |
 | `printTotal` | forced false on stickers | — | printing.ts:91 | |

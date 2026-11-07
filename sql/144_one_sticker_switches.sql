@@ -1,5 +1,5 @@
 -- ============================================================================
--- sql/143 — ONE STICKER switches (printer fix Branch 1), both OFF.
+-- sql/144 — ONE STICKER switches (printer fix Branch 1), both OFF.
 -- ============================================================================
 -- NOT APPLIED. Jeff applies via Supabase MCP after review. Seeds two app_settings rows with the
 -- value 'false'; an existing row is left exactly as it is (never flipped back by a re-run). The
@@ -18,7 +18,7 @@
 -- Switch on:
 --   update public.app_settings set value = 'true', updated_at = now() where key = 'sticker_all_scripts_enabled';
 --   update public.app_settings set value = 'true', updated_at = now() where key = 'one_sticker_enabled';
--- Rollback: sql/143_one_sticker_switches_rollback.sql.
+-- Rollback: sql/144_one_sticker_switches_rollback.sql.
 -- ============================================================================
 insert into public.app_settings (key, value) values
   ('one_sticker_enabled', 'false'),
