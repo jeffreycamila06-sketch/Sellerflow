@@ -179,6 +179,13 @@ export function wrapText(text: string, px: number, weight: SansWeight, widthOf: 
     const cand = cur + t.s;
     if (fits(cand.trimEnd(), li)) { cur = cand; i++; continue; }
     if (cur.trim()) { lines.push(cur.trimEnd()); cur = ""; continue; }
+    // a right-to-left phrase wider than the line → break it between its words (first words first)
+    if (t.s.includes(" ")) {
+      const ws = t.s.split(" ");
+      let k = 0;
+      while (k < ws.length && fits(ws.slice(0, k + 1).join(" "), li)) k++;
+      if (k > 0) { lines.push(ws.slice(0, k).join(" ")); toks[i] = { s: ws.slice(k).join(" "), space: false }; continue; }
+    }
     // the token alone is wider than the line → split it by graphemes
     const gs = graphemes(t.s);
     let n = 0;

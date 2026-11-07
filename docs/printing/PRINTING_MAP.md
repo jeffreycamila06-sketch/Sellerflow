@@ -4,6 +4,8 @@
 
 Snapshot: worktree `printer-inv` = `origin/main` **003288ef** (fetched 2026-11-06). The requested `985881f` is **not an ancestor** of current main (it is the tiktok-connect-limit merge on another line). `git diff 985881f 003288ef` touches **no** printing file, so every line number below holds for both.
 
+**Branch 1 "one sticker" (2026-11-07, branch `claude/great-wright-3v8plu`, NOT merged):** a single sticker engine (`oneSticker*.ts`) now draws P1 / P3-5 / P6 / P9 / the preview for a device whose seller SAVED the new Live print pattern (switch `one_sticker_enabled`, admins first), and `sticker_all_scripts_enabled` lets every script print on today's image layouts. See **§1b**, the **1S** column of §2, §3, §4, §5 limits and §8. Line numbers below are main's; printing.ts moved by ~+150 lines.
+
 Legend: ✅ honoured · ❌ missing (evidence given) · ⚠ partial or risky · n/a does not apply / by design.
 All paths are relative to the repo root.
 
@@ -28,6 +30,8 @@ order created (1-Click / Enterprise / Auto / Pin / Waitlist give)   reprint / ra
                            ├─ hasNativeMobilePrinter() → P8 native ESC/POS slip (1032-1033)
                            └─ else (laptop / browser) → P9 web HTML sticker → web queue → hidden iframe window.print (1042-1105)
 ```
+
+**ONE STICKER (Branch 1):** before any of the routes above, `printStickerViaBluetooth` asks `oneStickerActive()` (switch on for this account **and** this device saved the new pattern, localStorage `sfl_rd_one_sticker`). If set: Niimbot / generic / D520 image → `printOneStickerViaBluetooth` (the one engine); old app / Classic text → the native TEXT sticker below as today; the web branch of `printSlip` → `oneStickerWebPage` (the picture on a W×H mm page; today's HTML if the picture fails). `null` → every byte as before (tested).
 
 Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buildSettingsFromRedesign`, printing.ts:1127 ← `psType`/`psOut`/`psSize` in localStorage `sfl_rd_printer`, RedesignApp.tsx:1839, default **wifi / receipt / 100x60**), the native bridge method presence, the saved BT printer echo (`savedPrinter.ts`, localStorage `sfl_rd_bt_printer`, written by every `btCall` that returns `savedPrinter`, printerBridge.ts:72-84), and per-device `sfl_rd_classic_text` (honoured only when `canUseClassicText`, printing.ts:370-375).
 
@@ -133,45 +137,54 @@ Test buyer quirk: `buildTestBuyer().orders[0].time = new Date().toLocaleTimeStri
 ### P15 — Not stickers but uses `window.print`
 - `brandedExport.ts:153-172` `exportBrandedPdf` (report to PDF). The guardian can ignore it for sticker parity.
 
+### §1b — ONE STICKER (Branch 1, NOT merged) — the single engine for every image path + the laptop
+- **Files:** `adapters/oneSticker.ts` (settings, layout, render, printer limits, laptop page), `oneStickerText.ts` (what prints: fancy→plain, emoji out; glyph sources; wrap/shrink/"…"), `oneStickerFonts.ts` (Sans outlines rasterized in pure TS, CJK cells, device-font fallback drawer), `sansOutlines.{400,700,900,cjkx}.ts` (lazy chunks, `scripts/gen-sans-outlines.mjs`), `oneStickerPrint.ts` (per-device storage, input, per-path render options + encoders), `oneStickerScripts.ts` (all-scripts on today's layouts), `components/OneStickerPattern.tsx` (the new screen). Router glue in printing.ts: `oneStickerDevicePath`, `printOneStickerViaBluetooth`, `oneStickerWebPage`, `printOneStickerTest`.
+- **Who decides:** `oneStickerActive()` = `setOneStickerVisible(admin || featureSw.oneSticker)` **and** `sfl_rd_one_sticker = {saved:true, settings}` on THIS device (written only by Save on the new screen). Never switches a device by itself.
+- **Font:** ONE font "Sans" = Noto Sans 400/700/900 (Latin, Vietnamese, Cyrillic, punctuation, currency) as vector outlines rasterized in TS (nonzero scanline at pixel centres → the same bits on iPhone, Android, laptop and in tests) + Noto Sans TC 400 outlines for kana / CJK punctuation / full-width / half-width forms + the existing Noto Sans CJK TC cell atlases (18/20/24/32, whole-number magnification) for ideographs. Bold/Extra on CJK + kana = stroke dilation (`cjkInk`). Everything else (Hangul, Thai, Arabic, Hebrew, Devanagari, rare ideographs) = the device font through a canvas, a whole word / right-to-left phrase at a time (shaping right), thresholded into the same 1-bit picture — the ONLY part that can differ between devices.
+- **Layout:** top-right date & time (fixed: 17 px ≤ f 1.25, else 20; bold) · QR under it (TikTok only, 6/5/4 dots per module, 4-module clear gap to the text) · left column: shop name (not on 50×30-class = height < 35 mm or width < 45 mm; blank / "SellerFlowLive" = no line) · "Buyer" (0.36×) + number on one baseline · name (Facebook: 2 lines) · @username (never on Facebook) · comment/price (all items, " · "): starts at the chosen size, ×0.92 steps down to 19 px (17 px on 50×30-class), every free line, then "…"; never grows. Sizes at 1× scale with f = clamp(min(H/30, W/50), 0.8, 2.2). Fit warnings (width/height per part, QR) → red line on the screen; the sticker still prints.
+- **Paths (render options):** D520 = label W×H×8 → `d520Stream` (SDK LZO, 180° as today) · generic TSPL = `bitmapTsplFromRaster` with the saved model's DENSITY/SPEED (Y41BT/XP-420B 15/4) and the 1-dot ink (`inkBold`, off for Extra on labels ≤ 40 mm tall — see ink check) · ESC/POS / CPCL = the existing raster encoders · Niimbot = the SDK frame (W−2)×(H−2) mm, 16-dot side edge, `labelWidthMm/HeightMm` = the chosen size · laptop = 1-bit BMP on `@page{size:W mm H mm;margin:0}`, image W×H mm, in the existing web queue (one iframe, onafterprint / 1.3 s, kiosk hint, not-printed badge). Picture failure → today's HTML + `getLastOneStickerWebMiss()`.
+- **Custom size:** W and H 30–110 mm. All image paths take any W×H with NO native change (D520 `SIZE`, TSPL `SIZE/GAP`, ESC/POS raster, CPCL page height, Niimbot `labelWidthMm/HeightMm` read by both native drivers). Hidden on the TEXT path (old app / Classic) and WiFi (P7/P8 are Branch 2).
+- **Not changed (Branch 2):** P2/P7 native TEXT sticker, P8 ESC/POS slip, iOS WiFi sticker, the WiFi test print, P10 receipt picture.
+
 ---
 
 ## 2. FEATURE PARITY MATRIX
 
-Columns: **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image on 50×30 (`draw50x30`) or compact v2 font C · **P2/P7** native TEXT (BT fallback or classic, and iOS WiFi sticker) · **P3-5** generic image (≥70×50 fixed-cell; 50×30/60×40 font C) · **P6** Niimbot (font C 50×30) · **P8** ESC/POS slip · **P9** web · **Prev** ExactStickerPreview.
+Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / preview on a device that SAVED the new pattern; P2/P7/P8 unchanged) · **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image on 50×30 (`draw50x30`) or compact v2 font C · **P2/P7** native TEXT (BT fallback or classic, and iOS WiFi sticker) · **P3-5** generic image (≥70×50 fixed-cell; 50×30/60×40 font C) · **P6** Niimbot (font C 50×30) · **P8** ESC/POS slip · **P9** web · **Prev** ExactStickerPreview.
 
-| # | Feature | P1 | P1c | P2/P7 | P3-5 | P6 | P8 | P9 | Prev |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | Shop name on/off (`printStoreName`) | ✅ stickerRaster:406 / v2hdr 378 | ❌ font C never draws a shop line (propLayoutLines 1316-1331, V2 1476-1527); `draw50x30` none (by design for 50×30, Jeff Nov 3) — **60×40 v2 shop name = open item** | ✅ TsplBuilder:269 | ✅ ≥70×50 · ❌ 60×40 (always font C) | n/a (50×30, by design) | ✅ Swift:552 | ✅ printing:1097 | ⚠ shows the fixed-cell layout on 60×40 even where font C prints |
-| 2 | Shop name size | ✅ :407-409 · ❌ v2hdr fixed 1× (:378) | ❌ | ✅ | ✅ ≥70×50 (not v2hdr) | ❌ | ❌ no scale read (Swift:538-541) | ❌ printing:1071-1073 "NOT applied on web" | ✅ |
-| 3 | **Date/time on/off** (`printDateTime` / pp.dateTime) | ❌ header date always (:380/:383); never copied into the native payload (printing:81-99) | ❌ always (:1331, :1465, :745) | ❌ always (TsplBuilder:225 `TEXT 290,18`) | ❌ | ❌ | ❌ "Session:" always (Swift:565) | ❌ always (:1095) | ❌ the **CSS mock honours it** (PrintPattern:172) → the preview lies |
-| 4 | Date/time size | n/a (fixed by design, PrintPattern.tsx:13-16) | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| 5 | Buyer # on/off | ✅ :411 | ✅ :721 / :1319 / :1481 | ✅ | ✅ | ✅ | ✅ Swift:559 | ✅ :1098 | ✅ |
-| 6 | Buyer # size | ✅ :412 | ❌ fixed (`draw50x30` :721; `propSizes` :1208) | ✅ | ✅ ≥70×50 · ❌ compact | ❌ | ❌ fixed 0x11 (Swift:69) | ❌ | ✅ |
-| 7 | **Name on/off** (`printBuyerName` / pp.tiktokName) | ❌ not in the native payload (printing:81-99) and not a `RasterSettings` key (stickerRaster:250-261) | ❌ | ❌ | ❌ | ❌ | ❌ "Name: no toggle, always" (Swift:531, 560) | ❌ prints whenever `buyer.name` (:1099) | ❌ the CSS mock honours it (PrintPattern:179) |
-| 8 | Name size | ✅ :464-465 | ❌ | ✅ | ✅ ≥70×50 | ❌ | ❌ | ❌ | ✅ |
-| 9 | @username on/off | ✅ :482 | ✅ :725 / :1321 / :1526 | ✅ | ✅ | ✅ | ✅ :561 | ✅ :1100 | ✅ |
-| 10 | @username size | ✅ :483 | ❌ | ✅ | ✅ ≥70×50 | ❌ | ❌ | ❌ | ✅ |
-| 11 | Comment on/off (`printOrderItems`) | ✅ :490/:494 | ✅ :739 / :1327 / :1521 | ✅ | ✅ | ✅ | ✅ :569 | ✅ :1101 | ✅ |
-| 12 | Comment size (`printCommentScale`) | ✅ :504, v2 :625 | ❌ fixed sizes | ✅ | ✅ ≥70×50 | ❌ | ❌ fixed 0x11 (Swift:75) | ❌ fixed `vh` | ✅ |
-| 13 | Layout v2 full-width comment (`printCommentFullWidth`, public) | ✅ :490 (one order only) | n/a (own layouts) | ❌ by design (printing:141-142) | ✅ ≥70×50 | n/a | n/a | ❌ single line, cut at 14 (:1101) | ✅ |
-| 14 | Compact v2 (`printCompactV2`: shop header ≥70×50, "Buyer 88", date top-right, 3-line comment) | ✅ :375 v2hdr | ✅ :1374 (needs the font-C atlas load at printing:496) | ❌ native payload unchanged | ✅ | ✅ | n/a | ❌ hard-coded "SellerFlowLive" brand + date only (:1095); no shop header | ❌ `imageFlags` omit it (PrintPattern:146); no font-C atlas passed (ExactStickerPreview:35) |
-| 15 | Spacing (half word gap + compact gaps) | ✅ :322-324 (not when order rows print) | ❌ not read by `draw50x30` or font C | ❌ by design | ✅ ≥70×50 | n/a | n/a | ❌ | ✅ :146 |
-| 16 | Sticker QR | ✅ ≥50 mm tall (:945, :952) | ✅ 50×30 (:953); 60×40 only via font C | ❌ text builders cannot (printing:108-110) | ✅ (font C 60×40 has **no size gate**, :1216) | ✅ | ❌ | ✅ any size, no 60×40 exclusion (:1059, :986-987) | ✅ |
-| 17 | FB/IG name-only (drop @ line) | ✅ router printing:1016-1017 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 18 | FB 2-line name | ✅ :421-461 | ❌ `draw50x30` one line (:736); font C v1 one line (:1326) · ✅ v2 (:1525) | ❌ one line cut at 30 | ✅ ≥70×50 · v1 ❌ / v2 ✅ | ❌ unless v2 | n/a | ✅ line-clamp 2 (:1093) | n/a (sample is TikTok) |
-| 19 | FB id never printed (`printableBuyer`) | ✅ printing:1010 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | n/a |
-| 20 | CJK | ✅ atlas (falls to P2 if the chunk fails) | ✅ font-C cjkReg | ✅ GBK TSS24.BF2 (AIMO prints ASCII + Simplified only, CLAUDE.md:228-233) | ✅ | ✅ | ⚠ **Big5 only**: Simplified-only characters dropped on Android (Java:1116-1122); iOS whole-string Big5, nil → UTF-8 garbage (Swift:488-503, "known latent risk") | ✅ browser fonts | ✅ |
-| 21 | Latin diacritics / Cyrillic | ✅ Latin ext · ❌ Cyrillic → handle fallback (D520 never gets the Cyrillic atlas, :171-176) | same | ⚠ transliterated to ASCII; Cyrillic → handle | ✅ incl. Cyrillic | ✅ | ⚠ Big5 drops it | ✅ | ⚠ Cyrillic only when a generic/Niimbot printer is saved |
-| 22 | Emoji strip | ✅ `stripEmoji` | ✅ | ✅ | ✅ | ✅ | ✅ (Swift:484; Android `stripUnencodable`) | ❌ `esc()` only HTML-escapes (:730) | ✅ |
-| 23 | Comment wrap / shrink / ellipsis | ⚠ no QR & not v2: hard cut at 12, no "…" (:536); QR: wrap ≤4 + "…" (:529-531); v2: wrap to the bottom, cut **without** "…" (:561, :648) | ✅ `draw50x30` font step-down + "…" (:700-717); font C: shrink then "…"; v2: wrap ≤3 | ❌ cut at 12, max 2 rows | as P1/P1c | ✅ | ✅ full text, printer wraps | ❌ **hard cut at 14** + CSS ellipsis (:1101) | ✅ |
-| 24 | Time = Taipei HH:MM | ✅ printing:66-72 | ✅ | ✅ | ✅ | ✅ | ❌ raw `order.time` (payload :222-225 is not localized; Swift:579) | ❌ raw `orders[0].time` (:1055) = `c.time \|\| now.toLocaleTimeString()` (orderLogic.ts:45), cut at 10 (:1101) | ✅ |
-| 25 | Original date on past-session reprint (`at`) | ✅ :65 | ✅ | ✅ | ✅ | ✅ | ✅ :223 | ✅ :1050 | n/a |
-| 26 | Multi-order buyer (Print screen) | ⚠ max 2 rows (:497); v2 off when >1 order | ❌ `orders[0]` only (:739, :1327) | ⚠ max 2 rows | as P1 | ❌ `orders[0]` | ✅ all orders (Swift:571) | ❌ **`orders[0]` only** (:1054) | n/a |
-| 27 | Total / currency | n/a forced off (printing:91) | n/a | n/a | n/a | n/a | n/a removed (Swift:591) | n/a | n/a |
-| 28 | Same price / decimals (item = `moneyText`, e.g. "2.90") | ✅ data level (orderLogic.ts:38) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | n/a |
-| 29 | Per-model density / speed / bold | n/a fixed | n/a | n/a DENSITY 8 | ✅ TSPL only; ❌ ESC/POS & CPCL ignore `job` (printing:563-565) | ⚠ fixed 3 (Java:214) | n/a | n/a | n/a |
-| 30 | Serialized + not-printed badge | ✅ native queue (:938) | ✅ | ✅ | ✅ (⚠ silent if the method is missing, :569) | ✅ (⚠ :624) | ⚠ not queued (by design) | ✅ web queue + kiosk hint | n/a |
-| 31 | Label size honoured | ✅ 5 + 50×30 | ✅ | ❌ 50×30 → 100×60 geometry (TsplBuilder:76-77; Swift:106-108) | ✅ | ❌ always 50×30 (:616); the preview shows the chosen size | n/a | ❌ driver decides (:1076) | ⚠ no Niimbot canvas/inset |
+| # | Feature | P1 | P1c | P2/P7 | P3-5 | P6 | P8 | P9 | Prev | 1S one sticker |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Shop name on/off (`printStoreName`) | ✅ stickerRaster:406 / v2hdr 378 | ❌ font C never draws a shop line (propLayoutLines 1316-1331, V2 1476-1527); `draw50x30` none (by design for 50×30, Jeff Nov 3) — **60×40 v2 shop name = open item** | ✅ TsplBuilder:269 | ✅ ≥70×50 · ❌ 60×40 (always font C) | n/a (50×30, by design) | ✅ Swift:552 | ✅ printing:1097 | ⚠ shows the fixed-cell layout on 60×40 even where font C prints | ✅ top-left, ≥60×40-class; none on 50×30-class; blank = none (never the brand) |
+| 2 | Shop name size | ✅ :407-409 · ❌ v2hdr fixed 1× (:378) | ❌ | ✅ | ✅ ≥70×50 (not v2hdr) | ❌ | ❌ no scale read (Swift:538-541) | ❌ printing:1071-1073 "NOT applied on web" | ✅ | ✅ 0.6–2× + weight |
+| 3 | **Date/time on/off** (`printDateTime` / pp.dateTime) | ❌ header date always (:380/:383); never copied into the native payload (printing:81-99) | ❌ always (:1331, :1465, :745) | ❌ always (TsplBuilder:225 `TEXT 290,18`) | ❌ | ❌ | ❌ "Session:" always (Swift:565) | ❌ always (:1095) | ❌ the **CSS mock honours it** (PrintPattern:172) → the preview lies | ✅ always printed (by design: no switch), top-right — the CSS-mock lie is gone (new screen = the real picture) |
+| 4 | Date/time size | n/a (fixed by design, PrintPattern.tsx:13-16) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a fixed (17/20 px) |
+| 5 | Buyer # on/off | ✅ :411 | ✅ :721 / :1319 / :1481 | ✅ | ✅ | ✅ | ✅ Swift:559 | ✅ :1098 | ✅ | ✅ |
+| 6 | Buyer # size | ✅ :412 | ❌ fixed (`draw50x30` :721; `propSizes` :1208) | ✅ | ✅ ≥70×50 · ❌ compact | ❌ | ❌ fixed 0x11 (Swift:69) | ❌ | ✅ | ✅ 0.6–2× + weight |
+| 7 | **Name on/off** (`printBuyerName` / pp.tiktokName) | ❌ not in the native payload (printing:81-99) and not a `RasterSettings` key (stickerRaster:250-261) | ❌ | ❌ | ❌ | ❌ | ❌ "Name: no toggle, always" (Swift:531, 560) | ❌ prints whenever `buyer.name` (:1099) | ❌ the CSS mock honours it (PrintPattern:179) | ✅ switch honoured (new screen) |
+| 8 | Name size | ✅ :464-465 | ❌ | ✅ | ✅ ≥70×50 | ❌ | ❌ | ❌ | ✅ | ✅ 0.6–2× + weight |
+| 9 | @username on/off | ✅ :482 | ✅ :725 / :1321 / :1526 | ✅ | ✅ | ✅ | ✅ :561 | ✅ :1100 | ✅ | ✅ (never on Facebook) |
+| 10 | @username size | ✅ :483 | ❌ | ✅ | ✅ ≥70×50 | ❌ | ❌ | ❌ | ✅ | ✅ 0.6–2× + weight |
+| 11 | Comment on/off (`printOrderItems`) | ✅ :490/:494 | ✅ :739 / :1327 / :1521 | ✅ | ✅ | ✅ | ✅ :569 | ✅ :1101 | ✅ | ✅ |
+| 12 | Comment size (`printCommentScale`) | ✅ :504, v2 :625 | ❌ fixed sizes | ✅ | ✅ ≥70×50 | ❌ | ❌ fixed 0x11 (Swift:75) | ❌ fixed `vh` | ✅ | ✅ start size; shrinks to 19/17 px; never grows |
+| 13 | Layout v2 full-width comment (`printCommentFullWidth`, public) | ✅ :490 (one order only) | n/a (own layouts) | ❌ by design (printing:141-142) | ✅ ≥70×50 | n/a | n/a | ❌ single line, cut at 14 (:1101) | ✅ | n/a (always full width) |
+| 14 | Compact v2 (`printCompactV2`: shop header ≥70×50, "Buyer 88", date top-right, 3-line comment) | ✅ :375 v2hdr | ✅ :1374 (needs the font-C atlas load at printing:496) | ❌ native payload unchanged | ✅ | ✅ | n/a | ❌ hard-coded "SellerFlowLive" brand + date only (:1095); no shop header | ❌ `imageFlags` omit it (PrintPattern:146); no font-C atlas passed (ExactStickerPreview:35) | n/a (its own layout) |
+| 15 | Spacing (half word gap + compact gaps) | ✅ :322-324 (not when order rows print) | ❌ not read by `draw50x30` or font C | ❌ by design | ✅ ≥70×50 | n/a | n/a | ❌ | ✅ :146 | n/a (fixed gaps) |
+| 16 | Sticker QR | ✅ ≥50 mm tall (:945, :952) | ✅ 50×30 (:953); 60×40 only via font C | ❌ text builders cannot (printing:108-110) | ✅ (font C 60×40 has **no size gate**, :1216) | ✅ | ❌ | ✅ any size, no 60×40 exclusion (:1059, :986-987) | ✅ | ✅ TikTok only, every size it fits (6/5/4 dots/module); 'does not fit' note |
+| 17 | FB/IG name-only (drop @ line) | ✅ router printing:1016-1017 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 18 | FB 2-line name | ✅ :421-461 | ❌ `draw50x30` one line (:736); font C v1 one line (:1326) · ✅ v2 (:1525) | ❌ one line cut at 30 | ✅ ≥70×50 · v1 ❌ / v2 ✅ | ❌ unless v2 | n/a | ✅ line-clamp 2 (:1093) | n/a (sample is TikTok) | ✅ 2 lines |
+| 19 | FB id never printed (`printableBuyer`) | ✅ printing:1010 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | n/a | ✅ (printableBuyer before the engine) |
+| 20 | CJK | ✅ atlas (falls to P2 if the chunk fails) | ✅ font-C cjkReg | ✅ GBK TSS24.BF2 (AIMO prints ASCII + Simplified only, CLAUDE.md:228-233) | ✅ | ✅ | ⚠ **Big5 only**: Simplified-only characters dropped on Android (Java:1116-1122); iOS whole-string Big5, nil → UTF-8 garbage (Swift:488-503, "known latent risk") | ✅ browser fonts | ✅ | ✅ atlas cells + Bold/Extra dilation |
+| 21 | Latin diacritics / Cyrillic | ✅ Latin ext · ❌ Cyrillic → handle fallback (D520 never gets the Cyrillic atlas, :171-176) | same | ⚠ transliterated to ASCII; Cyrillic → handle | ✅ incl. Cyrillic | ✅ | ⚠ Big5 drops it | ✅ | ⚠ Cyrillic only when a generic/Niimbot printer is saved | ✅ Sans outlines (Cyrillic also on the D520) |
+| 22 | Emoji strip | ✅ `stripEmoji` | ✅ | ✅ | ✅ | ✅ | ✅ (Swift:484; Android `stripUnencodable`) | ❌ `esc()` only HTML-escapes (:730) | ✅ | ✅ removed (+ fancy letters → plain) |
+| 23 | Comment wrap / shrink / ellipsis | ⚠ no QR & not v2: hard cut at 12, no "…" (:536); QR: wrap ≤4 + "…" (:529-531); v2: wrap to the bottom, cut **without** "…" (:561, :648) | ✅ `draw50x30` font step-down + "…" (:700-717); font C: shrink then "…"; v2: wrap ≤3 | ❌ cut at 12, max 2 rows | as P1/P1c | ✅ | ✅ full text, printer wraps | ❌ **hard cut at 14** + CSS ellipsis (:1101) | ✅ | ✅ wrap · shrink · '…' only at the minimum |
+| 24 | Time = Taipei HH:MM | ✅ printing:66-72 | ✅ | ✅ | ✅ | ✅ | ❌ raw `order.time` (payload :222-225 is not localized; Swift:579) | ❌ raw `orders[0].time` (:1055) = `c.time \|\| now.toLocaleTimeString()` (orderLogic.ts:45), cut at 10 (:1101) | ✅ | ✅ Taipei HH:MM from orderNum |
+| 25 | Original date on past-session reprint (`at`) | ✅ :65 | ✅ | ✅ | ✅ | ✅ | ✅ :223 | ✅ :1050 | n/a | ✅ `at` |
+| 26 | Multi-order buyer (Print screen) | ⚠ max 2 rows (:497); v2 off when >1 order | ❌ `orders[0]` only (:739, :1327) | ⚠ max 2 rows | as P1 | ❌ `orders[0]` | ✅ all orders (Swift:571) | ❌ **`orders[0]` only** (:1054) | n/a | ✅ every order's item, joined ' · ' (shrinks to fit) — better than P1 (2 rows) / P9 (orders[0]) |
+| 27 | Total / currency | n/a forced off (printing:91) | n/a | n/a | n/a | n/a | n/a removed (Swift:591) | n/a | n/a | n/a |
+| 28 | Same price / decimals (item = `moneyText`, e.g. "2.90") | ✅ data level (orderLogic.ts:38) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | n/a | ✅ |
+| 29 | Per-model density / speed / bold | n/a fixed | n/a | n/a DENSITY 8 | ✅ TSPL only; ❌ ESC/POS & CPCL ignore `job` (printing:563-565) | ⚠ fixed 3 (Java:214) | n/a | n/a | n/a | ✅ D520 none · TSPL 15/4 + 1-dot ink (not on Extra ≤40 mm tall) · Niimbot 3 (native) · ESC/POS/CPCL as today |
+| 30 | Serialized + not-printed badge | ✅ native queue (:938) | ✅ | ✅ | ✅ (⚠ silent if the method is missing, :569) | ✅ (⚠ :624) | ⚠ not queued (by design) | ✅ web queue + kiosk hint | n/a | ✅ same queues; laptop never blank (falls back to today's page) |
+| 31 | Label size honoured | ✅ 5 + 50×30 | ✅ | ❌ 50×30 → 100×60 geometry (TsplBuilder:76-77; Swift:106-108) | ✅ | ❌ always 50×30 (:616); the preview shows the chosen size | n/a | ❌ driver decides (:1076) | ⚠ no Niimbot canvas/inset | ✅ the chosen size incl. custom 30–110 mm on every image path + laptop (@page) |
 
 ### Highlighted gaps (each is the "web incident" kind)
 1. **P9 web sticker is a frozen copy of the July layout.** Comment hard-cut at 14 (printing.ts:1101), time raw and cut at 10 (1101), no size multipliers (1071-1073), no v2/compact v2/spacing, hard-coded "SellerFlowLive" header (1095), only `orders[0]` (1054), no emoji strip (730), time not converted to Taipei (1055). Tests **pin** this behaviour (printing.test.ts:125 "truncated to 14", :166 "multipliers NOT applied on web"), so a fix must update them. If the shop name is blank, `printShopName` falls back to "SellerFlowLive" (RedesignApp.tsx:1865), so the brand prints twice on web and in the TEXT header.
@@ -209,6 +222,10 @@ Columns: **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image o
 | Native prefs Android | SharedPreferences | — | Java: `PREF_HOST`/`PORT`, `PREF_BT_ADDR`/`NAME`/`TRANSPORT`(spp\|ble\|niimbot)/`MODEL`(generic)/`LANG` (446-458) | routing on the native side |
 | Native prefs iOS | UserDefaults | — | Swift: `sellerflow_lan_host`/`port` (53-54); `sellerflow_ble_label_id`/`name`/`model`/`lang`/`transport` (1043-1053) | the same |
 | Profile shop name | DB profile | blank → "SellerFlowLive" | RedesignApp.tsx:1865 | store line + header |
+| `one_sticker_enabled` (`featureSwitches.oneSticker`) | app_settings (sql/143, seeded OFF, NOT applied) | OFF (admins see it anyway) | RedesignApp `oneStickerOn` → `setOneStickerVisible` | the NEW Live print pattern screen. A device prints the one sticker only after Save there. |
+| LS `sfl_rd_one_sticker` | LS | absent | oneStickerPrint `readSavedOneSticker` / `saveOneSticker` | `{saved:true, settings}` = this device opted in (size incl. custom, per part on/weight/scale, QR) |
+| LS `sfl_rd_one_sticker_seen` | LS | absent | RedesignApp `oneStickerSeen` | the "New" badge on the Live print pattern menu item |
+| `sticker_all_scripts_enabled` (`featureSwitches.stickerAllScripts`) | app_settings (sql/143, seeded OFF) | OFF (admins see it anyway) | RedesignApp → `setStickerAllScripts` | every script prints on TODAY's image layouts (`prepareAllScripts`); English / Latin / Chinese byte-identical ON vs OFF |
 | `DEF_SETTINGS.autoprint` / `printAutoClose` / `printLogo` / X/Y offsets | Settings fields | — | printing.ts:41 | **❌ never read by the redesign.** Every order always prints. There is no "auto print off". |
 | `ESC_POS_IMPORTANT_SIZE` / `ESC_POS_ORDER_SIZE` | native const | 0x11 | Swift:69, 75 (+ Java twins) | slip text size |
 | `printTotal` | forced false on stickers | — | printing.ts:91 | |
@@ -233,6 +250,7 @@ Columns: **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image o
 | P11 previews | PrintPattern.test / .honestSteps / .shopName / .spacing / .v2, stickerSpacing.compactDefault.test.tsx, stickerQrMove.test.tsx | ⚠ **no test asserts preview pixels == print pixels per path/size.** Nothing covers compact v2, font C or Niimbot in the preview. |
 | P12 test prints | testPrintComment.test.tsx, printerSetupFlow.test.tsx, PrinterSettings.test.tsx, PrinterModal.test.tsx, btOff.test.tsx | ⚠ WiFi `testPrint` shim untested; native test pages untested |
 | P13 triggers | reprint.test.ts, printing.originalDate.test.ts, raffle.test.ts, pinToPrint.test.ts, pinHold.test.tsx, useOrders.*.test, fbPostSales.test.tsx, samePrice.test.ts, Dashboard.reprint.test.tsx | ⚠ **Print screen (Print.tsx) has no test.** Nothing covers multi-order. |
+| 1S one sticker | oneSticker.test.ts (what prints, layout rules, every control changes the picture, fit warnings, custom, limits), **oneSticker.parity.test.ts (pixel test: printSlip → the bytes each printer receives, decoded == the preview, 8 sizes × 12 samples × D520/TSPL/ESC-POS/CPCL/Niimbot/laptop)**, oneSticker.switches.test.ts (switch OFF / unsaved = today's bytes on every path; ON+saved changes only image paths; all-scripts ON vs OFF byte-identical for Latin/Chinese on D520 6 sizes × QR × v2 + generic ×3 + Niimbot), OneStickerPattern.test.tsx, GeneralSettings.oneStickerBadge.test.tsx; Chrome real print check (docs/design/one-sticker/pixel-table.md, Playwright PDF: 96 pages, diff 0) | ✅ pixels (TS) + Chrome print |
 | e2e | e2e/smoke/tests/smoke.spec.ts opens Print pattern / Printer screens | **never prints** (smoke.spec.ts:7, 273) |
 
 **Paths with no picture or byte check at all:** P8 slip bytes, P9 rendered output, P7 transport, WiFi test print, native test pages, the Print screen, and preview-vs-print parity.
@@ -250,6 +268,16 @@ Columns: **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image o
 | XP-N160II (receipt) | Xprinter | IP entry (no scan) | LAN host/port | P8 (and P7 on iOS if the format is sticker) |
 | "Show all" unknown device (admin only) | — | any named device | generic `tspl` (PrinterSettings.tsx:207) | P3 |
 | Name-list only (not whitelisted, so hidden for sellers): XP-, Xprinter, Printer, PRT, PT-, MPT, GP-, Phomemo M02/M110/M120/M200/M220/M221/Q30/T02, HPRT, Munbyn, Gprinter, Zjiang | — | `PRINTER_NAME_PREFIXES` (printerModels.ts:24-35) + `LIKELY_PRINTER_SERVICES` (Java:118; Swift:1634) | — | — |
+
+**Printer size limits (one sticker "too wide" warning, `PRINTER_LIMITS` in oneSticker.ts):**
+| Model | Widest label | Print width | Source |
+|---|---|---|---|
+| AIMO/Phomemo D520BT | 110 mm (4×6 in roll) | 108 mm (SDK: 864-dot head) | maker/retail sheets, SDK DefaultPrinters.json |
+| Xprinter XP-420B | 116 mm | 108 mm | retail spec sheets |
+| Flash Y41BT | 110 mm | 108 mm | ⚠ no maker sheet found — treated as a 4-inch head (UNVERIFIED) |
+| Niimbot B1 / B21 | 50 mm | 48 mm | retail spec sheets |
+| Niimbot B203 | 50 mm | 48 mm | ⚠ not found — same family as B21 (UNVERIFIED) |
+| Niimbot B3S | 75 mm | 72 mm | B3S_P manual |
 
 **Selection flow (v2):** scan (`btScanOutcome`, `includeGenericPrinters`) → `isPrinterOnlyRow` → `knownPrinterInfo` whitelist filter (PrinterSettings.tsx:232) → `pickPrinter` (196-216) saves (D520: no model; Niimbot: transport niimbot; others: model generic + lang) → test print → `rememberSavedPrinter`.
 
@@ -281,6 +309,7 @@ Columns: **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image o
 - printing.ts:1-13 header "COPY + byte-parity with App.tsx": App.tsx is no longer built, so the parity tests now guard a dead twin.
 - The web template is pinned by tests that encode the gaps (printing.test.ts:125, 166).
 - Two Facebook/font-C rules live in separate layouts (`draw50x30` vs `propLayoutLines` vs `propLayoutLinesV2` vs `drawOpsInner` v2hdr). Every new feature must be added to **4 layouts + the TEXT builder ×2 (Java/Swift, intentionally frozen) + the web HTML + the CSS mock**. That is the structural reason paths get forgotten.
+- **One sticker (Branch 1):** the device-font fallback (Hangul, Thai, Arabic …) can differ between devices; everything else is pixel-identical by construction. Chrome itself prints the laptop page on paper rounded to whole screen pixels (≈0.2 mm under the label) — inside Chrome / the driver, not the app. 80×50 / 70×50 / custom sizes still need a paper test. ESC/POS / CPCL generic stay unverified on hardware. Y41BT and B203 width limits unverified. A device on an old app / Classic text keeps the TEXT sticker even after Save (the screen says so).
 - No CI for Java/Swift. The Swift golden gate is manual on the Mac (CLAUDE.md:3613-3624).
 
 ---
@@ -298,18 +327,20 @@ Columns: **P1** D520 image, fixed-cell sizes (≥60×40) · **P1c** D520 image o
 
 Image paths (P1, P1c, P3-5, P6 and the exact preview) keep ONLY: ASCII, CJK **ideographs** (`isCjkIdeograph`: U+4E00–9FFF, U+3400–4DBF, U+F900–FAFF), and atlas Latin (+ Cyrillic on generic/Niimbot). Everything else is **silently removed** by `stripUnrenderableExt` (stickerRaster.ts:179-183) / `stripUnrenderable` (legacy):
 
-| Script | Example | P1/P1c/P3-6 image | P2/P7 TEXT (AIMO ROM) | P8 slip | P9 web |
-|---|---|---|---|---|---|
-| English / numbers | Amy 350 | ✅ | ✅ | ✅ | ✅ |
-| Traditional Chinese 漢字 | 黑色洋裝 | ✅ | ⚠ ROM = Simplified glyphs (CLAUDE.md:228-233) | ✅ Big5 | ✅ |
-| Simplified Chinese | 连衣裙 | ✅ | ✅ | ❌ Big5 drops | ✅ |
-| **Japanese kana** | ありがとう / ワンピース | ❌ **removed** (田中さん → 田中) | ❌ | ❌ | ✅ |
-| **CJK punctuation** U+3000–303F | 、。「」 | ❌ removed | ❌ | ⚠ | ✅ |
-| **Full-width forms** U+FF00–FFEF | ！？（）１２３ＡＢＣ, half-width ｶﾅ | ❌ removed | ❌ | ⚠ | ✅ |
-| Korean Hangul | 감사합니다 | ❌ removed | ❌ | ❌ | ✅ |
-| Thai | ขอบคุณ | ❌ removed | ❌ | ❌ | ✅ |
-| Vietnamese / Latin accents | Nguyễn | ✅ atlas | ⚠ transliterated | ⚠ | ✅ |
-| Cyrillic (Bulgarian) | Мария | ✅ generic/Niimbot · ❌ D520 (→ handle) | ⚠ | ⚠ | ✅ |
-| Emoji | 🔥 | stripped (by design) | stripped | stripped | ❌ prints (not stripped) |
+| Script | Example | P1/P1c/P3-6 image | P2/P7 TEXT (AIMO ROM) | P8 slip | P9 web | all-scripts ON (today's layouts) | 1S one sticker |
+|---|---|---|---|---|---|---|---|
+| English / numbers | Amy 350 | ✅ | ✅ | ✅ | ✅ | ✅ unchanged | ✅ |
+| Traditional Chinese 漢字 | 黑色洋裝 | ✅ | ⚠ ROM = Simplified glyphs (CLAUDE.md:228-233) | ✅ Big5 | ✅ | ✅ unchanged | ✅ cells |
+| Simplified Chinese | 连衣裙 | ✅ | ✅ | ❌ Big5 drops | ✅ | ✅ unchanged | ✅ cells |
+| **Japanese kana** | ありがとう / ワンピース | ❌ **removed** (田中さん → 田中) | ❌ | ❌ | ✅ | ✅ cells (田中さん) | ✅ Sans TC outlines |
+| **CJK punctuation** U+3000–303F | 、。「」 | ❌ removed | ❌ | ⚠ | ✅ | ✅ | ✅ |
+| **Full-width forms** U+FF00–FFEF | ！？（）１２３ＡＢＣ, half-width ｶﾅ | ❌ removed | ❌ | ⚠ | ✅ | ✅ kept full-width | ✅ kept full-width |
+| Korean Hangul | 감사합니다 | ❌ removed | ❌ | ❌ | ✅ | ✅ device font | ✅ device font |
+| Thai | ขอบคุณ | ❌ removed | ❌ | ❌ | ✅ | ✅ device font (marks right) | ✅ device font |
+| Vietnamese / Latin accents | Nguyễn | ✅ atlas | ⚠ transliterated | ⚠ | ✅ | ✅ unchanged | ✅ Sans |
+| Cyrillic (Bulgarian) | Мария | ✅ generic/Niimbot · ❌ D520 (→ handle) | ⚠ | ⚠ | ✅ | ✅ also on the D520 | ✅ Sans |
+| Emoji | 🔥 | stripped (by design) | stripped | stripped | ❌ prints (not stripped) | stripped (as today) | removed; fancy 𝓐𝓶𝔂 → Amy |
 
 SFL serves TW / PH / VN / TH / ID / MY / BG / JP sellers, so every market's script must be in this table and tested with a picture before a release.
+
+Added in Branch 1 (not in the table rows above): **Arabic / Hebrew** (right-to-left, joined letters) and **Devanagari** etc. → all-scripts ON and 1S both print them with the device font, a right-to-left phrase drawn as one run (word order and joining by the device), long phrases break between words. **Still removed (Branch 2):** P2/P7 native TEXT keeps the AIMO ROM limits (ASCII + Simplified Chinese; others → @handle); P8 ESC/POS slip keeps Big5 (Simplified-only characters, kana, Hangul, Thai, Cyrillic, Vietnamese tones lost on Android `stripUnencodable`; iOS whole-string Big5 → nil = garbage) — listed for Branch 2.

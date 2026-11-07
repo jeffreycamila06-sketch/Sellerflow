@@ -254,7 +254,7 @@ export function fallbackRun(text: string, px: number, weight: SansWeight, rtl: b
   const key = `${weight}|${px}|${rtl ? 1 : 0}|${text}`;
   const hit = runCache.get(key);
   if (hit !== undefined) return hit;
-  let out: GlyphBits | null = null;
+  let out: GlyphBits | null;
   try { out = fallbackDrawer.drawRun(text, px, weight, rtl); } catch { out = null; }
   runCache.set(key, out);
   return out;

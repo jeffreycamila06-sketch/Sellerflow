@@ -1,0 +1,24 @@
+iphone-390 light en horizontalScroll=false
+iphone-390 light fil horizontalScroll=false
+iphone-390 light zh-TW horizontalScroll=false
+iphone-390 dark en horizontalScroll=false
+iphone-390 dark fil horizontalScroll=false
+iphone-390 dark zh-TW horizontalScroll=false
+android-412 light en horizontalScroll=false
+android-412 light fil horizontalScroll=false
+android-412 light zh-TW horizontalScroll=false
+android-412 dark en horizontalScroll=false
+android-412 dark fil horizontalScroll=false
+android-412 dark zh-TW horizontalScroll=false
+desktop-1280 light en horizontalScroll=false
+desktop-1280 light fil horizontalScroll=false
+desktop-1280 light zh-TW horizontalScroll=false
+desktop-1280 dark en horizontalScroll=false
+desktop-1280 dark fil horizontalScroll=false
+desktop-1280 dark zh-TW horizontalScroll=false
+fit false
+custom false
+toowide false
+text false
+360 false
+430 false

@@ -181,5 +181,5 @@ export async function ensureAllScriptsFonts(payload: RasterPayload): Promise<voi
   if (!allScriptsOn) return;
   const b = payload.buyer ?? {};
   const t = [payload.storeName, b.name, b.handle, ...(b.orders ?? []).map((o) => o.item)].join(" ");
-  if (/[　-ヿㇰ-ㇿ＀-￯]/.test(t)) { try { await loadSansFace("cjkx"); } catch { /* the device font draws them */ } }
+  if (/[\u3000-\u30ff\u31f0-\u31ff\uff00-\uffef]/.test(t)) { try { await loadSansFace("cjkx"); } catch { /* the device font draws them */ } }
 }

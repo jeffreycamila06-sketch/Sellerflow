@@ -8,16 +8,16 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
+  recommendedSettings, renderOneSticker, layoutSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning,
 } from "../adapters/oneSticker";
 import { oneStickerFonts, renderOptsFor, type OneStickerPath } from "../adapters/oneStickerPrint";
 import type { OneStickerDevicePath } from "../adapters/printing";
 
-export const ONE_STICKER_SAMPLE: OneStickerInput = {
+const ONE_STICKER_SAMPLE: OneStickerInput = {
   storeName: "", date: "2026/11/07", time: "14:05", buyerNum: 128, name: "Maria Santos", handle: "maria_live", platform: "TikTok", items: ["COMMENT / PRICE"],
 };
-export const sampleFor = (shopName: string): OneStickerInput => ({ ...ONE_STICKER_SAMPLE, storeName: shopName });
+const sampleFor = (shopName: string): OneStickerInput => ({ ...ONE_STICKER_SAMPLE, storeName: shopName });
 // the fit check uses a 4-digit buyer number (the widest a busy live reaches)
 const fitSample = (shopName: string): OneStickerInput => ({ ...sampleFor(shopName), buyerNum: 8888 });
 
@@ -65,6 +65,18 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings }: { 
   );
 }
 
+/** The fit warnings of `settings` for this path (the layout only — no picture is drawn). */
+function useFitWarnings(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }): FitWarning[] {
+  const [w, setW] = useState<FitWarning[]>([]);
+  const key = JSON.stringify({ settings, input, path, job });
+  useEffect(() => {
+    let live = true;
+    void oneStickerFonts(settings, input).then((fonts) => { if (live) setW(layoutSticker(settings, input, fonts, renderOptsFor(path, settings, job)).warnings); });
+    return () => { live = false; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
+  return w;
+}
+
 const chip = (on: boolean): CSSProperties => ({ padding: "8px 11px", minHeight: 36, borderRadius: 10, border: "1px solid var(--border-strong)", background: on ? "var(--accent)" : "var(--surface)", color: on ? "var(--accent-text)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", flexShrink: 0 });
 const stepBtn: CSSProperties = { width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--accent-fg)", fontSize: 17, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
 const segBtn = (on: boolean): CSSProperties => ({ flex: 1, padding: "6px 0", minHeight: 30, border: "none", borderRadius: 8, background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-text)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" });
@@ -93,13 +105,16 @@ export interface OneStickerPatternProps {
 
 export default function OneStickerPattern(p: OneStickerPatternProps) {
   const t = useT();
-  const [s, setS] = useState<OneStickerSettings>(p.initial);
+  const [s0, setS] = useState<OneStickerSettings>(p.initial);
   const [base, setBase] = useState<OneStickerSettings>(p.initial); // what Save compares against
   const [saved, setSaved] = useState(p.savedOnDevice);
-  const [warnings, setWarnings] = useState<FitWarning[]>([]);
   const [customW, setCustomW] = useState(String(p.initial.size.w));
   const [customH, setCustomH] = useState(String(p.initial.size.h));
   const [customOpen, setCustomOpen] = useState(!!p.initial.size.custom);
+  const cw = Number(customW), ch = Number(customH);
+  const customOk = validCustomMm(cw) && validCustomMm(ch);
+  // the draft: an open, valid Custom size is the size (derived — nothing is copied into state)
+  const s: OneStickerSettings = customOpen && customOk ? { ...s0, size: { w: cw, h: ch, custom: true } } : customOpen ? s0 : { ...s0, size: { w: s0.size.w, h: s0.size.h } };
   const path = pathForPreview(p.devicePath);
   const customAllowed = p.devicePath !== "text" && p.devicePath !== "wifi";
   const dirty = !sameSettings(s, base);
@@ -108,14 +123,13 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const input = useMemo(() => sampleFor(p.shopName), [p.shopName]);
   const fitInput = useMemo(() => fitSample(p.shopName), [p.shopName]);
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
+  // fit check with a 4-digit buyer number (the widest a busy live reaches) → the red warning
+  const warnings = useFitWarnings(sEff, fitInput, path, p.genericBold ? { bold: true } : {});
 
   const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
-  const cw = Number(customW), ch = Number(customH);
-  const customOk = validCustomMm(cw) && validCustomMm(ch);
-  useEffect(() => { if (customOpen && customOk) setS((x) => (x.size.w === cw && x.size.h === ch && x.size.custom ? x : { ...x, size: { w: cw, h: ch, custom: true } })); }, [customOpen, customOk, cw, ch]);
-  const reset = () => { setCustomOpen(!!s.size.custom); setS(recommendedSettings(s.size)); };
-  const save = () => { if (!dirty && saved) return; p.onSave(s); setBase(s); setSaved(true); };
+  const reset = () => setS(recommendedSettings(s.size));
+  const save = () => { if (!dirty && saved) return; p.onSave(s); setBase(s); setS(s); setSaved(true); };
 
   const fitParts = warnings.filter((w) => w.part !== "comment" && w.part !== "qr");
   const partLabel: Record<PartKey, string> = { shop: t.rd_set_shop_name, buyer: t.rd_pp_buyer_num, name: t.rd_os_name, user: t.rd_os_user, comment: t.rd_pp_comment_center };
@@ -127,8 +141,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
     { k: "user", hint: t.rd_os_user_fb },
     { k: "comment" },
   ];
-  const isStd = (w: number, h: number) => !customOpen && !s.size.custom && s.size.w === w && s.size.h === h;
-  const wide = (cell: CSSProperties): CSSProperties => cell;
+  const isStd = (w: number, h: number) => !customOpen && s.size.w === w && s.size.h === h;
   return (
     <div data-testid="os-screen">
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -141,8 +154,6 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
           <OneStickerPreview settings={sEff} input={input} path={path} job={p.genericBold ? { bold: true } : {}} />
         </div>
-        {/* fit check (4-digit buyer number) — invisible, drives the red warning */}
-        <div style={{ display: "none" }}><OneStickerPreview settings={sEff} input={fitInput} path={path} job={p.genericBold ? { bold: true } : {}} onWarnings={setWarnings} /></div>
         {fitParts.length > 0 && (
           <div data-testid="os-fit" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>
             {tpl(t.rd_os_fit, { parts: [...new Set(fitParts.map((w) => partLabel[w.part as PartKey]))].join(", ") })}
@@ -165,7 +176,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           {STANDARD_SIZES.map((z) => (
             <button key={`${z.w}x${z.h}`} type="button" onClick={() => pickSize(z.w, z.h)} aria-pressed={isStd(z.w, z.h)} data-testid={`os-size-${z.w}x${z.h}`} style={chip(isStd(z.w, z.h))}>{z.w}×{z.h}</button>
           ))}
-          {customAllowed && <button type="button" onClick={() => setCustomOpen(true)} aria-pressed={customOpen || !!s.size.custom} data-testid="os-size-custom" style={chip(customOpen || !!s.size.custom)}>{t.rd_os_custom}</button>}
+          {customAllowed && <button type="button" onClick={() => setCustomOpen(true)} aria-pressed={customOpen} data-testid="os-size-custom" style={chip(customOpen)}>{t.rd_os_custom}</button>}
         </div>
         {!customAllowed && <div data-testid="os-custom-hidden" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_os_custom_hidden}</div>}
         {customAllowed && customOpen && (
@@ -193,7 +204,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{partLabel[r.k]}</div>
                     {r.hint && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{r.hint}</div>}
                   </div>
-                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={r.disabled || part.scale === SCALE_STEPS[0]} data-testid={`os-${r.k}-minus`} style={wide(stepBtn)}>−</button>
+                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={r.disabled || part.scale === SCALE_STEPS[0]} data-testid={`os-${r.k}-minus`} style={stepBtn}>−</button>
                   <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, fontWeight: 700, color: "var(--text)", width: 40, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
                   <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={r.disabled || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} data-testid={`os-${r.k}-plus`} style={stepBtn}>+</button>
                   <Switch on={part.on && !r.disabled} disabled={r.disabled} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
