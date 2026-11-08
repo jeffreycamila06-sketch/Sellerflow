@@ -298,19 +298,19 @@ The status card at the top shows a red dot when Bluetooth needs your attention, 
 "Printer didn''t respond. Check it''s on." — check the printer is on, the phone and printer are on the same WiFi, and the number is right (it can change after the router restarts).'),
   ('stickers', 'Sticker sizes, layout, Chinese names and QR', '2026-11-08'::date, 'sticker size, paper size, 100x60, 60x40, 50x30, layout, chinese name, qr, print pattern, laki ng sticker, buyer number, shop name, 贴纸尺寸, 标签尺寸, 中文名, 二维码', '**Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm, and 50x30mm on the newer printers. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer. A Niimbot always prints the 50x30 sticker.
 
-**What is on the sticker**: the buyer number (**Buyer 88**, the biggest thing), the buyer''s name, the @username, the comment (up to 3 lines — long comments get smaller before they are cut), and the date and time at the top right. On 70x50 and bigger stickers your **shop name** prints at the top (turn it on or off in the print pattern). Facebook buyers show their name only.
+**What is on the sticker**: the buyer number (the biggest thing), the buyer''s name, the @username, the comment or price, and the date and time. A long comment gets smaller first, then is cut with "…". Your **shop name** prints when it is turned on in the print pattern (on small stickers there may be no room for it). Facebook buyers show their name only.
 
-**Layout settings**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Choose what prints and its size: Shop name, Date & time, Buyer #, TikTok name, TikTok username, Comment / Price, SellerFlowLive logo. Date & time and the logo are a fixed size. Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
+**Layout settings**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Turn each part on or off and pick its size: Shop name, Buyer #, TikTok name, TikTok username, Comment / Price. Date & time (and the SellerFlowLive logo row, where your screen shows it) are a fixed size — you can''t change them. Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
 
 **New LIVE print pattern** (shows a **New** badge when it is on for your account): the picture at the top is exactly what your printer prints.
-- **Paper size**: tap a size, or **Custom** for your own width and height (30–110 mm). The same size shows in **Printer settings**.
+- **Paper size**: tap a size, or **Custom** for your own width and height (30–110 mm). After you save, a size you pick in **Printer settings** changes it here too — if your printer can''t print that size, the app keeps your size and tells you why.
 - For **Shop name, Buyer #, Name, @username, Comment / Price**: tap **−** / **+** for the size, **Normal / Bold / Extra** for how thick, and the switch to turn it on or off. **Date & time** always prints, at a fixed size. **Print QR on sticker** is for TikTok buyers.
 - The notes under the picture say if everything fits, if a long comment was made smaller or cut with "…", or (in red) if something is too big for the label — make it smaller.
 - **Printer Test** and the two **long comment** tests print the sample you see. Tap **Save settings** to use the new sticker on this phone or computer; until you save, it keeps your usual sticker. **↺ Reset to recommended** brings back the suggested settings.
 
 **Chinese names** print correctly; no extra setting needed.
 
-**Print QR on sticker** — scan it in Parcel Scan to fill in the buyer quickly. It is off by default and prints on every sticker size (on 50x30 and 60x40 it sits on the right, next to the text).'),
+**Print QR on sticker** — scan it in Parcel Scan to fill in the buyer quickly. It is off by default; turn it on in **Printer settings** (or in the new LIVE print pattern). It prints on the right side of the sticker, for TikTok buyers only. If your screen says the QR is not available on a size, pick a bigger size.'),
   ('laptop-printing', 'Printing from a laptop', '2026-10-28'::date, 'laptop, computer, windows, mac, chrome, silent print, kiosk, auto-print, browser, kompyuter, 电脑, 電腦列印, 静默打印', '1. Install your label printer''s driver, set it as the default printer, and set the paper size to your label (at least 60×40mm).
 2. In **Settings → General Settings**, find **LAPTOP AUTO-PRINT** ("Silent auto-print on a laptop"). Tap **Copy**.
 3. Windows: press Win+R, paste, press Enter. Mac: open Terminal, paste, press Return.
