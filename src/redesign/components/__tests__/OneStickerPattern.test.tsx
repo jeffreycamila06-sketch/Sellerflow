@@ -1,5 +1,7 @@
 // The NEW Live print pattern screen (one sticker) — what the seller can do, and the per-device opt-in.
 import { describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { fireEvent, render, screen } from "@testing-library/react";
 import OneStickerPattern from "../OneStickerPattern";
 import { recommendedSettings } from "../../adapters/oneSticker";
@@ -124,6 +126,12 @@ describe("OneStickerPattern", () => {
     expect(c.style.width).toBe("auto");
     expect(c.style.maxWidth).toBe("100%");
     expect(c.style.aspectRatio).toBe("50 / 70");
+  });
+  it("note colours: \"Shortened with …\" is grey (info) — amber only for a shrunk / cut comment and the QR", () => {
+    const src = fs.readFileSync(path.join(__dirname, "../OneStickerPattern.tsx"), "utf8");
+    const m = /NOTE_COLOR[^=]*=\s*\{([^}]*)\}/.exec(src)![1];
+    expect(m).toMatch(/short: "var\(--text-muted\)"/);
+    expect(m).toMatch(/shrunk: "var\(--warn/); expect(m).toMatch(/cut: "var\(--warn/); expect(m).toMatch(/qr: "var\(--warn/);
   });
   it("the @username hint: Not printed for Facebook buyers", () => {
     renderIt();

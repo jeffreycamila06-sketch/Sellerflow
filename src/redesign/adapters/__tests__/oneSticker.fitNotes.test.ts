@@ -51,13 +51,14 @@ describe("fit notes", () => {
   it("recommended settings + the preview sample: \"Everything fits\"", () => {
     for (const z of STANDARD_SIZES) expect(notes(recommendedSettings(z))[0], `${z.w}x${z.h}`).toEqual({ kind: "ok" });
   });
-  it("a long name on one line ends in \"…\" → amber (short), never red", () => {
+  it("a long name on one line ends in \"…\" → a grey info note (short), never red or amber; \"Everything fits\" still shows", () => {
     const s = recommendedSettings({ w: 60, h: 40 });
     s.parts.name.scale = 2;
     const L = layoutSticker(s, { ...sampleInput("Budgetukay"), name: "Maria Cristina Dela Cruz Santos Reyes" }, F);
     const n = fitNotes(L, s);
     expect(n.some((x) => x.kind === "short" && x.parts.includes("name"))).toBe(true);
     expect(n.some((x) => x.kind === "bad")).toBe(false);
+    expect(n.some((x) => x.kind === "ok")).toBe(true);
   });
   it("a long comment shrinks (amber %), a very long one is cut (amber …), everything 2× runs off (red)", () => {
     const s = recommendedSettings({ w: 60, h: 40 });

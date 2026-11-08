@@ -337,9 +337,9 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
 }
 // ── The notes under the preview (approved Step 0 preview) ───────────────────────────────────────
 //   bad  = a part runs off the BOTTOM of the label, or the buyer number does not fit (red "Too big")
-//   warn = the comment was made smaller to fit (N %), the comment end was cut ("…"), a one-line part
-//          was shortened with "…", or the QR has no room (amber)
-//   info = no shop name on a label this small
+//   warn = the comment was made smaller to fit (N %), the comment end was cut ("…"), or the QR has no
+//          room (amber)
+//   info = a one-line part shortened with "…", no shop name on a label this small (grey)
 //   ok   = everything fits (shown when there is no bad / warn)
 export type FitNote = { kind: "bad"; parts: PartKey[] } | { kind: "shrunk"; pct: number } | { kind: "cut" } | { kind: "short"; parts: PartKey[] } | { kind: "qr" } | { kind: "small" } | { kind: "ok" };
 export function fitNotes(L: Pick<Layout, "warnings" | "commentPx" | "commentWantPx">, s: OneStickerSettings): FitNote[] {
@@ -354,7 +354,9 @@ export function fitNotes(L: Pick<Layout, "warnings" | "commentPx" | "commentWant
   if (short.length) out.push({ kind: "short", parts: [...new Set(short)] });
   if (L.warnings.some((w) => w.part === "qr") && s.qr) out.push({ kind: "qr" });
   if (isSmallClass(s.size.w, s.size.h) && s.parts.shop.on) out.push({ kind: "small" });
-  if (!out.some((n) => n.kind !== "small")) out.unshift({ kind: "ok" });
+  // "Everything fits" when nothing is red or amber (a one-line part shortened with "…" and "no shop
+  // name on this size" are grey info notes)
+  if (!out.some((n) => n.kind !== "small" && n.kind !== "short")) out.unshift({ kind: "ok" });
   return out;
 }
 /** The notes for the screen: the layout of the preview's sample, plus the buyer number at its widest

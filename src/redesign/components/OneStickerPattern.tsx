@@ -83,7 +83,7 @@ function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path:
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return n;
 }
-const NOTE_COLOR: Record<FitNote["kind"], string> = { ok: "var(--ok, #0F8A5F)", bad: "var(--danger)", shrunk: "var(--warn, #9A5C00)", cut: "var(--warn, #9A5C00)", short: "var(--warn, #9A5C00)", qr: "var(--warn, #9A5C00)", small: "var(--text-muted)" };
+const NOTE_COLOR: Record<FitNote["kind"], string> = { ok: "var(--ok, #0F8A5F)", bad: "var(--danger)", shrunk: "var(--warn, #9A5C00)", cut: "var(--warn, #9A5C00)", short: "var(--text-muted)", qr: "var(--warn, #9A5C00)", small: "var(--text-muted)" };
 
 // Phone: one column. Laptop (the screen area ≥ 760 px): two columns, the preview on the left and
 // sticky while the controls scroll (approved preview).
