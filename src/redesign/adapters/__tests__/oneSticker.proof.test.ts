@@ -7,8 +7,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { recommendedSettings, renderOneSticker, type OneStickerSettings, type PartKey, type Weight } from "../oneSticker";
-import { oneStickerInputFrom, renderOptsFor, oneStickerFonts, laptopPage, type OneStickerPath } from "../oneStickerPrint";
+import { recommendedSettings, renderOneSticker, screenFitNotes, type OneStickerSettings, type PartKey, type Weight } from "../oneSticker";
+import { oneStickerInputFrom, renderOptsFor, oneStickerFonts, laptopPage, sampleInput, type OneStickerPath } from "../oneStickerPrint";
 import { knownTsplJob } from "../printerModels";
 import { fbNameOnly, printableBuyer } from "../fbName";
 import { buildNativeStickerPayload, buildNiimbotImage, setStickerQrEntitled, setStickerQrOn, DEF_SETTINGS, printSlip, __resetWebPrintQueue } from "../printing";
@@ -250,5 +250,32 @@ describe.skipIf(!OUT)("one sticker — proof pictures", () => {
       write(`today-vs-new/aimo-d520_${size}.png`, sheet(cells, 2, w >= 80 ? 1 : 2, `AIMO D520 ${size.replace("x", "×")} — TODAY vs NEW (what the printer receives; QR on)`));
     }
     setStickerQrOn(false);
+  }, 600000);
+  it("buyer numbers: custom 50×40 / 50×50 / 50×70 / 40×60 (Niimbot, D520) and Buyer # 1.15× / 1.3× on 50×30 / 60×40 — #128 vs #1234 / #8888, with the screen's note", async () => {
+    installSans(); installNodeFallbackDrawer();
+    const base = SAMPLES.find((x) => x.key === "tiktok-qr")!;
+    const withNum = (n: number): Buyer => ({ ...base.buyer, num: n, orders: base.buyer.orders.map((o) => ({ ...o, bNum: n })) } as Buyer);
+    const noteOf = async (s: OneStickerSettings, path: OneStickerPath) => {
+      const inp = sampleInput(base.shop);
+      const n = screenFitNotes(s, inp, await oneStickerFonts(s, inp), renderOptsFor(path, s));
+      return n.some((x) => x.kind === "bad") ? "screen: RED" : n.some((x) => x.kind === "ok") ? "screen: fits" : "screen: amber";
+    };
+    for (const path of ["niimbot", "d520"] as OneStickerPath[]) {
+      const cells = [];
+      for (const [w, h] of [[50, 40], [50, 50], [50, 70], [40, 60]]) {
+        const s = { ...recommendedSettings({ w, h }), size: { w, h, custom: true }, qr: true };
+        const note = await noteOf(s, path);
+        for (const n of [128, 8888]) cells.push({ title: `${w}×${h} #${n} · ${note}`, r: await render(path, s, withNum(n), base.shop), frameW: w * 8, frameH: h * 8 });
+      }
+      write(`buyer-numbers/custom_${path}.png`, sheet(cells, 2, 2, `${path === "niimbot" ? "Niimbot (SDK frame)" : "AIMO D520"} — custom sizes, recommended settings, buyer #128 vs #8888 (today's sticker has no custom size)`));
+    }
+    const cells = [];
+    for (const [w, h] of [[50, 30], [60, 40]]) for (const scale of [1.15, 1.3]) {
+      const s = { ...recommendedSettings({ w, h }), qr: true };
+      s.parts.buyer.scale = scale;
+      const note = await noteOf(s, "d520");
+      for (const n of [128, 1234]) cells.push({ title: `${w}×${h} Buyer # ${scale}× #${n} · ${note}`, r: await render("d520", s, withNum(n), base.shop), frameW: w * 8, frameH: h * 8 });
+    }
+    write("buyer-numbers/bigger-number_d520.png", sheet(cells, 2, 2, "AIMO D520 — Buyer # 1.15× / 1.3×: #128 vs #1234 (the screen is red whenever a 4-digit number would be cut)"));
   }, 600000);
 });
