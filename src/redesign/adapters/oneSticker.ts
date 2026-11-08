@@ -353,6 +353,9 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
 //   info = a one-line part shortened with "…", no shop name on a label this small (grey)
 //   ok   = everything fits (shown when there is no bad / warn)
 export type FitNote = { kind: "bad"; parts: PartKey[] } | { kind: "shrunk"; pct: number } | { kind: "cut" } | { kind: "short"; parts: PartKey[] } | { kind: "qr" } | { kind: "small" } | { kind: "ok" };
+// The note pill's tone per kind (approved preview): green "fits", amber when the comment / QR had to
+// give way, red when something is off the label; "Shortened with …" and "small label" are grey info.
+export const NOTE_TONE: Record<FitNote["kind"], "ok" | "warn" | "bad" | "info"> = { ok: "ok", bad: "bad", shrunk: "warn", cut: "warn", qr: "warn", short: "info", small: "info" };
 export function fitNotes(L: Pick<Layout, "warnings" | "commentPx" | "commentWantPx">, s: OneStickerSettings): FitNote[] {
   const out: FitNote[] = [];
   // off the bottom — or a buyer number too wide to print whole (a number is never shortened with "…")

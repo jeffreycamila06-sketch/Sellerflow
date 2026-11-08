@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, screenFitNotes, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
+  recommendedSettings, renderOneSticker, screenFitNotes, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor, NOTE_TONE,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
 import { oneStickerScreenFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
@@ -88,7 +88,6 @@ function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path:
   }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return n;
 }
-const NOTE_COLOR: Record<FitNote["kind"], string> = { ok: "var(--ok, #0F8A5F)", bad: "var(--danger)", shrunk: "var(--warn, #9A5C00)", cut: "var(--warn, #9A5C00)", short: "var(--text-muted)", qr: "var(--warn, #9A5C00)", small: "var(--text-muted)" };
 
 // Phone: one column. Laptop (the screen area ≥ 760 px): two columns, the preview on the left and
 // sticky while the controls scroll (approved preview).
@@ -101,6 +100,13 @@ const OS_CSS = `
 .os-row-name{grid-area:name}.os-row-ctl{grid-area:ctl}
 .os-row-w{grid-area:w;display:flex;flex-wrap:wrap;min-width:0}
 @container (min-width:460px){.os-row-grid{grid-template-areas:"name ctl" "w ctl"}}
+.os-note{font-size:12px;font-weight:600;padding:4px 9px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);line-height:1.4}
+.os-note[data-tone="ok"]{color:#0F8A5F;border-color:#9DDCC4}
+.os-note[data-tone="warn"]{color:#9A5C00;border-color:#F0CF92}
+.os-note[data-tone="bad"]{color:#C2342B;border-color:#F2B1AB}
+[data-theme="dark"] .os-note[data-tone="ok"]{color:#3DD39B;border-color:#245C48}
+[data-theme="dark"] .os-note[data-tone="warn"]{color:#F2B451;border-color:#5E4A20}
+[data-theme="dark"] .os-note[data-tone="bad"]{color:#FF7A70;border-color:#5E2A27}
 .os-ctl{margin-top:14px}
 @container (min-width:760px){
   .os-body{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:start;gap:20px;padding:20px;max-width:1180px}
@@ -245,7 +251,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         </div>
         {showNotes && <div data-testid="os-notes" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           {notes.map((n, i) => (
-            <span key={i} data-testid={n.kind === "bad" ? "os-fit" : n.kind === "qr" ? "os-fit-qr" : `os-note-${n.kind}`} style={{ fontSize: 12, fontWeight: 600, padding: "4px 9px", borderRadius: 999, border: "1px solid var(--border)", background: n.kind === "bad" ? "var(--danger-soft)" : "var(--surface)", color: NOTE_COLOR[n.kind], lineHeight: 1.4 }}>
+            <span key={i} className="os-note" data-tone={NOTE_TONE[n.kind]} data-testid={n.kind === "bad" ? "os-fit" : n.kind === "qr" ? "os-fit-qr" : `os-note-${n.kind}`}>
               {n.kind === "bad" ? tpl(t.rd_os_fit, { parts: n.parts.map((k) => partLabel[k]).join(", ") })
                 : n.kind === "shrunk" ? tpl(t.rd_os_note_shrunk, { pct: String(n.pct) })
                 : n.kind === "cut" ? t.rd_os_note_cut

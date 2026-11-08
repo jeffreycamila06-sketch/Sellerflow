@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fireEvent, render, screen } from "@testing-library/react";
 import OneStickerPattern from "../OneStickerPattern";
-import { recommendedSettings } from "../../adapters/oneSticker";
+import { recommendedSettings, NOTE_TONE } from "../../adapters/oneSticker";
 import { TProvider } from "../../i18n";
 
 const renderIt = (over: Partial<Parameters<typeof OneStickerPattern>[0]> = {}) => {
@@ -127,11 +127,20 @@ describe("OneStickerPattern", () => {
     expect(c.style.maxWidth).toBe("100%");
     expect(c.style.aspectRatio).toBe("50 / 70");
   });
-  it("note colours: \"Shortened with …\" is grey (info) — amber only for a shrunk / cut comment and the QR", () => {
+  it("note pills (approved preview): green fits, amber shrunk / cut / QR, red off the label, grey info — tinted borders in light AND dark", () => {
+    expect(NOTE_TONE).toEqual({ ok: "ok", bad: "bad", shrunk: "warn", cut: "warn", qr: "warn", short: "info", small: "info" });
     const src = fs.readFileSync(path.join(__dirname, "../OneStickerPattern.tsx"), "utf8");
-    const m = /NOTE_COLOR[^=]*=\s*\{([^}]*)\}/.exec(src)![1];
-    expect(m).toMatch(/short: "var\(--text-muted\)"/);
-    expect(m).toMatch(/shrunk: "var\(--warn/); expect(m).toMatch(/cut: "var\(--warn/); expect(m).toMatch(/qr: "var\(--warn/);
+    for (const [sel, color, border] of [
+      ['.os-note[data-tone="ok"]', "#0F8A5F", "#9DDCC4"], ['.os-note[data-tone="warn"]', "#9A5C00", "#F0CF92"], ['.os-note[data-tone="bad"]', "#C2342B", "#F2B1AB"],
+      ['[data-theme="dark"] .os-note[data-tone="ok"]', "#3DD39B", "#245C48"], ['[data-theme="dark"] .os-note[data-tone="warn"]', "#F2B451", "#5E4A20"], ['[data-theme="dark"] .os-note[data-tone="bad"]', "#FF7A70", "#5E2A27"],
+    ]) expect(src).toContain(`\n${sel}{color:${color};border-color:${border}}`);
+    expect(src).toMatch(/\.os-note\{[^}]*border:1px solid var\(--border\);background:var\(--surface\);color:var\(--text-muted\)/); // info = grey
+  });
+  it("each rendered note carries its tone", async () => {
+    renderIt();
+    const ok = await screen.findByTestId("os-note-ok");
+    expect(ok.className).toBe("os-note");
+    expect(ok.getAttribute("data-tone")).toBe("ok");
   });
   it("a TEXT / WiFi phone can never Save 50×30 or a custom size (no such layout there), even before saving", () => {
     for (const devicePath of ["text", "wifi"] as const) {
