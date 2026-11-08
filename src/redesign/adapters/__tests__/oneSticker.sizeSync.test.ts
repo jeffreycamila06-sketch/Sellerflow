@@ -53,13 +53,13 @@ describe("Printer settings Label size ↔ one sticker size", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
     const at = src.indexOf("syncOneStickerSizeFromPrinter(s,");
     const block = src.slice(at, at + 900);
-    expect(block).toContain('if (r.status === "kept")');
-    expect(block).toContain("setPsSize(printerLabelFor(r.keep))");
+    expect(block).toContain('if (sync.status === "kept")');
+    expect(block).toContain("setPsSize(printerLabelFor(sync.keep))");
     expect(block).toMatch(/rd_os_sync_niimbot[\s\S]*rd_os_sync_too_wide[\s\S]*rd_os_sync_text/);
   });
   it("RedesignApp wires both directions (Printer settings pick → one sticker; Save → Printer settings label)", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
-    expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) \{\s*const r = syncOneStickerSizeFromPrinter\(s, \{ printerName: savedBtPrinter\(\)\?\.name \?\? null, niimbot: savedIsNiimbot\(\), devicePath: oneStickerDevicePath\(/);
+    expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) \{\s*const sync = syncOneStickerSizeFromPrinter\(s, \{ printerName: savedBtPrinter\(\)\?\.name \?\? null, niimbot: savedIsNiimbot\(\), devicePath: oneStickerDevicePath\(/);
     expect(src).toMatch(/setPsSize\(printerLabelFor\(next\.size\)\)/);
   });
 });
