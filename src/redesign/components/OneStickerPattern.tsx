@@ -72,14 +72,23 @@ function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path:
 }
 const NOTE_COLOR: Record<FitNote["kind"], string> = { ok: "var(--ok, #0F8A5F)", bad: "var(--danger)", shrunk: "var(--warn, #9A5C00)", cut: "var(--warn, #9A5C00)", short: "var(--warn, #9A5C00)", qr: "var(--warn, #9A5C00)", small: "var(--text-muted)" };
 
-const chip = (on: boolean): CSSProperties => ({ padding: "8px 11px", minHeight: 36, borderRadius: 10, border: "1px solid var(--border-strong)", background: on ? "var(--accent)" : "var(--surface)", color: on ? "var(--accent-text)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", flexShrink: 0 });
-const stepBtn: CSSProperties = { width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--accent-fg)", fontSize: 17, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
-const segBtn = (on: boolean): CSSProperties => ({ flex: 1, padding: "6px 0", minHeight: 30, border: "none", borderRadius: 8, background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-text)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" });
-function Switch({ on, onClick, testId, disabled }: { on: boolean; onClick: () => void; testId: string; disabled?: boolean }) {
+// Every control is at least 44 px tall to tap (audit 10); the visible pill / circle / switch keeps the
+// approved preview's size inside that area.
+const TAP = 44;
+const chip = (on: boolean): CSSProperties => ({ padding: "8px 11px", minHeight: TAP, borderRadius: 10, border: on ? "1px solid var(--accent)" : "1px solid var(--border-strong)", background: on ? "var(--accent-soft)" : "var(--surface)", color: on ? "var(--accent-fg)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", flexShrink: 0, fontVariantNumeric: "tabular-nums" });
+const tapBox: CSSProperties = { minWidth: TAP, minHeight: TAP, background: "none", border: "none", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontFamily: "var(--font-ui)" };
+function StepBtn({ label, onClick, disabled, testId, aria }: { label: string; onClick: () => void; disabled?: boolean; testId: string; aria: string }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={on} data-testid={testId} style={{ background: "none", border: "none", cursor: disabled ? "not-allowed" : "pointer", padding: 6, margin: -6, flexShrink: 0, opacity: disabled ? 0.4 : 1 }}>
-      <span style={{ width: 42, height: 24, borderRadius: 12, background: on ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-        <span style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+    <button type="button" onClick={onClick} disabled={disabled} data-testid={testId} aria-label={aria} style={{ ...tapBox, margin: "0 -6px", cursor: disabled ? "default" : "pointer" }}>
+      <span style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border-strong)", color: "var(--accent-fg)", fontSize: 16, fontWeight: 700, display: "grid", placeItems: "center", lineHeight: 1, opacity: disabled ? 0.35 : 1 }}>{label}</span>
+    </button>
+  );
+}
+function Switch({ on, onClick, testId, disabled, aria }: { on: boolean; onClick: () => void; testId: string; disabled?: boolean; aria?: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={aria} onClick={onClick} disabled={disabled} aria-pressed={on} data-testid={testId} style={{ ...tapBox, minWidth: 54, margin: "0 -4px", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1 }}>
+      <span style={{ width: 46, height: 28, borderRadius: 14, background: on ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+        <span style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 22, height: 22, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
       </span>
     </button>
   );
@@ -138,26 +147,33 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   ];
   const rowOf = (k: PartKey) => rows.find((r) => r.k === k)!;
   const partRow = (r: (typeof rows)[number], last = false) => {
-            const part = s.parts[r.k];
-            return (
-              <div key={r.k} data-testid={`os-row-${r.k}`} style={{ padding: "10px 13px", borderBottom: last ? "none" : "1px solid var(--border)", opacity: r.disabled ? 0.55 : 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{partLabel[r.k]}</div>
-                    {r.hint && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{r.hint}</div>}
-                  </div>
-                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={r.disabled || part.scale === SCALE_STEPS[0]} data-testid={`os-${r.k}-minus`} style={stepBtn}>−</button>
-                  <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, fontWeight: 700, color: "var(--text)", width: 40, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
-                  <button type="button" onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={r.disabled || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} data-testid={`os-${r.k}-plus`} style={stepBtn}>+</button>
-                  <Switch on={part.on && !r.disabled} disabled={r.disabled} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
-                </div>
-                <div style={{ display: "flex", gap: 4, marginTop: 7, padding: 3, borderRadius: 10, background: "var(--surface-2, var(--border))", maxWidth: 300 }} role="group" aria-label={partLabel[r.k]}>
-                  {(["normal", "bold", "extra"] as Weight[]).map((w) => (
-                    <button key={w} type="button" disabled={r.disabled} onClick={() => setPart(r.k, { weight: w })} aria-pressed={part.weight === w} data-testid={`os-${r.k}-w-${w}`} style={segBtn(part.weight === w)}>{weightLabel[w]}</button>
-                  ))}
-                </div>
-              </div>
-            );
+    const part = s.parts[r.k];
+    // a part switched OFF (or not on this size): its size and weight are dimmed and cannot be changed
+    const off = !part.on || !!r.disabled;
+    return (
+      <div key={r.k} data-testid={`os-row-${r.k}`} data-off={off ? "1" : "0"} style={{ padding: "8px 12px", borderBottom: last ? "none" : "1px solid var(--border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, opacity: r.disabled ? 0.55 : 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{partLabel[r.k]}</div>
+            {r.hint && <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>{r.hint}</div>}
+            {/* Normal / Bold / Extra under the row name (approved preview) */}
+            <div role="group" aria-label={partLabel[r.k]} data-testid={`os-${r.k}-weights`} style={{ display: "flex", width: "max-content", maxWidth: "100%", marginTop: 2, opacity: off ? 0.4 : 1 }}>
+              {(["normal", "bold", "extra"] as Weight[]).map((w, i) => (
+                <button key={w} type="button" disabled={off} onClick={() => setPart(r.k, { weight: w })} aria-pressed={part.weight === w} data-testid={`os-${r.k}-w-${w}`} style={{ ...tapBox, minWidth: 0, cursor: off ? "default" : "pointer" }}>
+                  <span style={{ padding: "4px 8px", fontSize: 11.5, fontWeight: w === "normal" ? 400 : w === "bold" ? 700 : 900, border: "1px solid var(--border)", borderLeftWidth: i === 0 ? 1 : 0, borderRadius: i === 0 ? "9px 0 0 9px" : i === 2 ? "0 9px 9px 0" : 0, background: part.weight === w ? "var(--accent-soft)" : "var(--surface)", color: part.weight === w ? "var(--accent-fg)" : "var(--text)" }}>{weightLabel[w]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div data-testid={`os-${r.k}-stepper`} style={{ display: "flex", alignItems: "center", opacity: off ? 0.4 : 1 }}>
+            <StepBtn label="−" aria={`${partLabel[r.k]} −`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={off || part.scale === SCALE_STEPS[0]} testId={`os-${r.k}-minus`} />
+            <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--text)", minWidth: 36, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
+            <StepBtn label="+" aria={`${partLabel[r.k]} +`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={off || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} testId={`os-${r.k}-plus`} />
+          </div>
+          <Switch on={part.on && !r.disabled} disabled={r.disabled} aria={partLabel[r.k]} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
+        </div>
+      </div>
+    );
   };
   const isStd = (w: number, h: number) => !customOpen && s.size.w === w && s.size.h === h;
   return (

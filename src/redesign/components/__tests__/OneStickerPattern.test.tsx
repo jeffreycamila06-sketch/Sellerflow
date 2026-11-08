@@ -40,6 +40,29 @@ describe("OneStickerPattern", () => {
     expect(screen.getByTestId("os-row-comment").textContent).toContain("Shrinks automatically when long");
     expect(screen.getByTestId("os-row-date").textContent).toContain("Fixed size");
   });
+  it("Normal / Bold / Extra sit under the row name, inside the name column (not a full-width second line)", () => {
+    renderIt();
+    for (const k of ["shop", "buyer", "name", "user", "comment"]) {
+      const weights = screen.getByTestId(`os-${k}-weights`);
+      const nameCol = weights.parentElement!;
+      expect(nameCol.textContent).toContain(weights.textContent!);
+      expect(nameCol.parentElement!.contains(screen.getByTestId(`os-${k}-stepper`))).toBe(true); // same line as the stepper
+      expect(nameCol.contains(screen.getByTestId(`os-${k}-stepper`))).toBe(false);
+    }
+  });
+  it("a part switched OFF: its size and weight are dimmed and cannot be changed (the switch still works)", () => {
+    const { onSave } = renderIt();
+    fireEvent.click(screen.getByTestId("os-name-on"));
+    expect(screen.getByTestId("os-row-name").getAttribute("data-off")).toBe("1");
+    for (const id of ["os-name-plus", "os-name-minus", "os-name-w-normal", "os-name-w-bold", "os-name-w-extra"]) expect((screen.getByTestId(id) as HTMLButtonElement).disabled, id).toBe(true);
+    expect(screen.getByTestId("os-name-stepper").style.opacity).toBe("0.4");
+    expect(screen.getByTestId("os-name-weights").style.opacity).toBe("0.4");
+    fireEvent.click(screen.getByTestId("os-name-plus"));
+    expect(screen.getByTestId("os-name-scale").textContent).toBe("1×");
+    fireEvent.click(screen.getByTestId("os-name-on")); // back on → usable again
+    expect((screen.getByTestId("os-name-plus") as HTMLButtonElement).disabled).toBe(false);
+    void onSave;
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
