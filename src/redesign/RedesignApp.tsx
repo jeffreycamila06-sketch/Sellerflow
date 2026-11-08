@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from ".
 import { printerFlowV2Enabled } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn } from "./adapters/printing";
@@ -2797,7 +2797,7 @@ export default function RedesignApp() {
               psType={psType} compactV2={stickerCompactV2On}
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
-              onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
+              onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); if (oneStickerOn) syncOneStickerSizeFromPrinter(s); }}
               cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicAllowed}
               stickerQrAllowed={stickerQrAllowed}
@@ -2818,7 +2818,7 @@ export default function RedesignApp() {
                 const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
                 const small = next.size.w === 50 && next.size.h === 30;
                 if (!next.size.custom && STANDARD_SIZES.some((z) => z.w === next.size.w && z.h === next.size.h) && !(small && (devPath === "text" || devPath === "wifi"))) {
-                  setPsSize(next.size.w === 100 && next.size.h === 60 ? "100x60mm (Standard)" : `${next.size.w}x${next.size.h}mm`);
+                  setPsSize(printerLabelFor(next.size));
                 }
                 setToast({ msg: tApp.rd_os_saved, kind: "ok" });
               }}

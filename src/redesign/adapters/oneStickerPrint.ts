@@ -37,6 +37,25 @@ export function saveOneSticker(s: OneStickerSettings): void {
   try { localStorage.setItem(LS_ONE_STICKER, JSON.stringify({ saved: true, settings: s })); } catch { /* ignore */ }
   savedCache = normalizeSettings(s);
 }
+/** ONE SIZE, BOTH PLACES: the Printer settings "Label size" label ("100x60mm (Standard)", "60x40mm")
+ *  → the size the one sticker prints. null = not a size label. PURE. */
+export function sizeFromPrinterLabel(label: string): { w: number; h: number } | null {
+  const m = /^(\d+)x(\d+)mm/.exec(String(label || "").trim());
+  return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
+}
+/** The one-sticker size → the Printer settings label it shows as. PURE. */
+export const printerLabelFor = (z: { w: number; h: number }): string => (z.w === 100 && z.h === 60 ? "100x60mm (Standard)" : `${z.w}x${z.h}mm`);
+/** A size picked in Printer settings on a device that saved the new pattern: the saved one-sticker
+ *  size follows (only the size changes; the rest of the pattern stays as saved). No saved pattern →
+ *  nothing is saved (the device keeps today's sticker). Returns the new saved settings, or null. */
+export function syncOneStickerSizeFromPrinter(label: string): OneStickerSettings | null {
+  const saved = readSavedOneSticker();
+  const z = sizeFromPrinterLabel(label);
+  if (!saved || !z || (saved.size.w === z.w && saved.size.h === z.h && !saved.size.custom)) return null;
+  const next = normalizeSettings({ ...saved, size: { w: z.w, h: z.h } });
+  saveOneSticker(next);
+  return next;
+}
 export function isOneStickerSeen(): boolean { try { return localStorage.getItem(LS_ONE_STICKER_SEEN) === "1"; } catch { return false; } }
 export function markOneStickerSeen(): void { try { localStorage.setItem(LS_ONE_STICKER_SEEN, "1"); } catch { /* ignore */ } }
 
