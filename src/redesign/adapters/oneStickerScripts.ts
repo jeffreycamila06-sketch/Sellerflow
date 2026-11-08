@@ -264,8 +264,17 @@ export async function ensureAllScriptsFonts(payload: RasterPayload): Promise<voi
   const b = payload.buyer ?? {};
   const t = [payload.storeName, b.name, b.handle, ...(b.orders ?? []).map((o) => o.item)].join(" ");
   if (!/[\u3000-\u30ff\u31f0-\u31ff\uff00-\uffef]/.test(t)) return;
+  if (kanaStuck) return; // still loading after an 8 s wait: the device font draws them at once
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const load = loadSansFace("cjkx");
   try {
-    await Promise.race([loadSansFace("cjkx"), new Promise<void>((res) => { timer = setTimeout(res, ALL_SCRIPTS_FONT_TIMEOUT_MS); })]);
+    const late = await Promise.race([load.then(() => false), new Promise<boolean>((res) => { timer = setTimeout(() => res(true), ALL_SCRIPTS_FONT_TIMEOUT_MS); })]);
+    if (late) { // one wait only: until this load settles, every next print goes on at once
+      kanaStuck = load;
+      const done = () => { if (kanaStuck === load) kanaStuck = null; };
+      load.then(done, done);
+    }
   } catch { /* the device font draws them */ } finally { if (timer) clearTimeout(timer); }
 }
+let kanaStuck: Promise<unknown> | null = null;
+export function __resetKanaStuck(): void { kanaStuck = null; }
