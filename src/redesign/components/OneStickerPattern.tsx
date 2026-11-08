@@ -268,15 +268,14 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           {partRow(rowOf("buyer"))}
           {partRow(rowOf("name"))}
           {partRow(rowOf("user"))}
-          {p.qrAllowed && (
-            <div data-testid="os-row-qr" style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_os_qr_hint}</div>
-              </div>
-              <Switch on={s.qr} onClick={() => setS((x) => ({ ...x, qr: !x.qr }))} testId="os-qr-on" />
+          {/* always shown; greyed out with a short hint when this account has no QR */}
+          <div data-testid="os-row-qr" data-off={p.qrAllowed ? "0" : "1"} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ flex: 1, minWidth: 0, opacity: p.qrAllowed ? 1 : 0.55 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>{p.qrAllowed ? t.rd_os_qr_hint : t.rd_os_qr_none}</div>
             </div>
-          )}
+            <Switch on={p.qrAllowed && s.qr} disabled={!p.qrAllowed} aria={t.rd_ps_sticker_qr} onClick={() => setS((x) => ({ ...x, qr: !x.qr }))} testId="os-qr-on" />
+          </div>
           {partRow(rowOf("comment"), true)}
         </div>
 

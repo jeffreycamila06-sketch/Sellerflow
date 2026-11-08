@@ -74,6 +74,16 @@ describe("OneStickerPattern", () => {
     expect(css).toContain("grid-template-columns:minmax(0,1fr) minmax(0,1.05fr)");
     expect(css).toMatch(/\.os-pv\{position:sticky;top:\d+px\}/);
   });
+  it("the QR row is always shown: on an account without QR it is greyed out with a short hint", () => {
+    renderIt({ qrAllowed: false });
+    const row = screen.getByTestId("os-row-qr");
+    expect(row.textContent).toContain("Not available on your account");
+    const sw = screen.getByTestId("os-qr-on") as HTMLButtonElement;
+    expect(sw.disabled).toBe(true);
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(sw);
+    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true); // nothing changed
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
