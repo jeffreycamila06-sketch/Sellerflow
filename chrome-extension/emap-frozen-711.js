@@ -15,6 +15,10 @@
 // 1.18.0: every answer also carries `blocked` — true for HTTP 403 / 429 or a captcha / login page
 // instead of an answer. The warm-up lane stops itself on it; the live lane treats it like any other
 // 'unknown' (unchanged).
+// 1.18.0 NIGHT: only a message with `nightWarm: true` (the warm-up's 01:00–05:00 probe) treats an E-Map
+// maintenance page (redirect path or body) as a transient no-answer. Every other request — the live lane
+// and the day warm-up — keeps the 1.17.0 order and outcome: a non-answer page = 'unknown', not transient,
+// the next check uses the other section.
 // Never writes anything; never executes page code (guid read from the MAIN-world helper
 // emap-guid-main.js over its DOM event, or from the page SOURCE text).
 (function sellerFlowEmapFrozen() {
@@ -28,11 +32,16 @@
   const MAIN_WAIT_MS = 300;
   const GUID_RE = /eshop[Gg]uid\s*[:=]\s*["']([^"']{8,})["']/;
   const BLOCK_PAGE_RE = /captcha|驗證碼|recaptcha|login|登入|robot/i;
-  // 1.18.0: an E-Map MAINTENANCE page (a redirect to it, or its body in a 200) is NEVER a verdict and NEVER
-  // a block (such pages often carry a "登入" link) → transient no-answer. HTTP 403 / 429 still block.
+  // 1.18.0 (night warm-up probe only): an E-Map MAINTENANCE page (a redirect to it, or its body in a 200)
+  // is a transient no-answer, never a verdict and never a block (such pages often carry a "登入" link).
+  // HTTP 403 / 429, a login / captcha URL, captcha words and a login form still block.
+  // MAINT_URL_RE is tested on the redirect's PATH only (never its query string).
   const MAINT_URL_RE = /maint|維護|upgrade|update\.(aspx|html?)|closed?\.(aspx|html?)|sorry|busy/i;
   const MAINT_BODY_RE = /維護|维护|系統更新|系统更新|暫停服務|暂停服务|maintenance|maintain|under construction/i;
   const STRONG_BLOCK_RE = /captcha|驗證碼|验证码|recaptcha|robot/i;   // these win over a maintenance look
+  // a login form / password input = a sign-in page, even when it also looks like maintenance
+  const LOGIN_FORM_RE = /<input\b[^>]*\btype\s*=\s*["']?password\b|<form\b[^>]*login/i;
+  const pathOf = (u) => { try { return new URL(String(u || ""), location.href).pathname; } catch { return ""; } };
   // a real byIDData answer is "OK;<6-digit store>+…" or exactly "NO2" — nothing else is parsed
   const ANSWER_RE = /^OK;\d{6}\+/;
 
@@ -81,7 +90,7 @@
     if (field === "close") return { status: "unknown", reason: "company store (close)" };
     return null;
   }
-  async function postFrozen(endpoint, storeId, guid) {
+  async function postFrozen(endpoint, storeId, guid, nightWarm) {
     const body = new URLSearchParams({
       mode: "", k: String(storeId), cate: "27", eshopparid: "7M0", eshopid: "7M0",
       multiple_type: "", Guid: guid, Nan4AjaxTrickNumber: String(Date.now()),
@@ -94,27 +103,36 @@
         headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" },
         body, signal: ctrl.signal,
       });
-      if (r.status === 403 || r.status === 429) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: false, blocked: true };
-      if (BLOCK_PAGE_RE.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} redirected to a login / captcha page`, transient: false, blocked: true };
-      if (MAINT_URL_RE.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} redirected to a maintenance page`, transient: true, maintenance: true };
-      if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false };
-      if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500, blocked: r.status === 403 || r.status === 429 };
+      const httpBlock = r.status === 403 || r.status === 429;
+      const urlBlock = BLOCK_PAGE_RE.test(String(r.url || ""));
+      if (nightWarm) {                                       // the night warm-up probe ONLY
+        if (httpBlock) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: false, blocked: true };
+        if (urlBlock) return { verdict: null, reason: `${endpoint} redirected to a login / captcha page`, transient: false, blocked: true };
+        if (MAINT_URL_RE.test(pathOf(r.url))) return { verdict: null, reason: `${endpoint} redirected to a maintenance page`, transient: true, maintenance: true };
+      }
+      // day + live lane: the 1.17.0 order and outcome (blocked = a flag only, read by the warm-up)
+      if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false, blocked: httpBlock || urlBlock };
+      if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500, blocked: httpBlock || urlBlock };
       const text = await r.text();
       const v = parseFrozen(text);
       if (v) return { verdict: v, reason: "", transient: false };
-      if (!STRONG_BLOCK_RE.test(String(text).slice(0, 4000)) && MAINT_BODY_RE.test(String(text).slice(0, 4000))) return { verdict: null, reason: `${endpoint} maintenance page`, transient: true, maintenance: true };
+      const page = String(text).slice(0, 4000);
+      const pageBlock = BLOCK_PAGE_RE.test(page) || LOGIN_FORM_RE.test(page);
+      if (nightWarm && !STRONG_BLOCK_RE.test(page) && !LOGIN_FORM_RE.test(page) && MAINT_BODY_RE.test(page)) {
+        return { verdict: null, reason: `${endpoint} maintenance page`, transient: true, maintenance: true };
+      }
       const head = String(text).replace(/\s+/g, " ").slice(0, 60);
-      return { verdict: null, reason: `${endpoint} unexpected response: "${head}"`, transient: false, blocked: BLOCK_PAGE_RE.test(String(text).slice(0, 4000)) };
+      return { verdict: null, reason: `${endpoint} unexpected response: "${head}"`, transient: false, blocked: httpBlock || urlBlock || pageBlock };
     } catch (e) {
       const aborted = e && e.name === "AbortError";
       return { verdict: null, reason: aborted ? `${endpoint} timeout (2.5s)` : `${endpoint} network error`, transient: true };
     } finally { clearTimeout(t); }                            // only after the body was read (or failed)
   }
-  async function checkFrozenStore(storeId, guid) {
+  async function checkFrozenStore(storeId, guid, nightWarm) {
     const endpoint = endpointOf(section);
     if (!/^\d{6}$/.test(String(storeId || ""))) return { status: "unknown", reason: "store id not 6 digits", transient: false, endpoint };
     if (!guid) return { status: "unknown", reason: "eshopGuid not found on emap page", transient: false, endpoint };
-    const r = await postFrozen(endpoint, storeId, guid);
+    const r = await postFrozen(endpoint, storeId, guid, nightWarm === true);
     if (r.verdict) return { status: r.verdict.status, reason: r.verdict.reason, transient: false, endpoint };
     if (!r.transient) section = otherSection(section);  // a real non-verdict answer → the other section NEXT time
     return { status: "unknown", reason: r.reason, transient: r.transient, blocked: Boolean(r.blocked), maintenance: Boolean(r.maintenance), endpoint };
@@ -125,7 +143,7 @@
     if (!message || message.type !== "PC_FROZEN_CHECK" || !message.row) return false; // not ours
     (async () => {
       const guid = await getGuid();
-      const res = await checkFrozenStore(message.row.store_id, guid);
+      const res = await checkFrozenStore(message.row.store_id, guid, message.nightWarm === true);
       sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: res.status, frozen_reason: res.reason, transient: Boolean(res.transient), blocked: Boolean(res.blocked), maintenance: Boolean(res.maintenance), guidFound: guid !== null, endpoint: res.endpoint });
     })().catch((e) => sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: "unknown", frozen_reason: `frozen check threw: ${(e && e.message) || "error"}`, transient: true, guidFound: false, endpoint: endpointOf(section) }));
     return true;

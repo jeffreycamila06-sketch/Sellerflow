@@ -6,6 +6,7 @@
 // own answer to PC_CHECK_STORE is byte-unchanged with the frozen script loaded beside it.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import vm from "node:vm";
 import { JSDOM } from "jsdom";
 
@@ -27,7 +28,7 @@ const ANSWERS: Record<string, string> = {
   "123456:27": "<html>login</html>",
 };
 
-type Msg = { type: string; row?: { id?: string; store_id: string } };
+type Msg = { type: string; row?: { id?: string; store_id: string }; nightWarm?: boolean };
 type Handler = (m: Msg, s: unknown, send: (r: unknown) => void) => boolean;
 
 function load(html: string, url: string, opts: { answer?: (store: string, cate: string, endpoint: string) => { ok?: boolean; status?: number; text?: string; url?: string; hang?: boolean; hangBody?: boolean } } = {}) {
@@ -51,7 +52,7 @@ function load(html: string, url: string, opts: { answer?: (store: string, cate: 
   const g = win as unknown as typeof globalThis;
   const sandbox: Record<string, unknown> = {
     window: win, document: win.document, location: win.location,
-    CustomEvent: g.CustomEvent, URLSearchParams: g.URLSearchParams, AbortController: g.AbortController,
+    CustomEvent: g.CustomEvent, URL: g.URL, URLSearchParams: g.URLSearchParams, AbortController: g.AbortController,
     setTimeout: win.setTimeout.bind(win), clearTimeout: win.clearTimeout.bind(win),
     fetch, Promise, Date, Math, String, Number, Boolean, Object, Array, RegExp, Error, JSON,
     console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -214,10 +215,10 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
         expect(String(r.frozen_reason), text).toMatch(/unexpected response/);
       }
     });
-    it("a redirect to a login page → blocked (the final URL is the login page)", async () => {
-      const { r } = await ask({ url: "https://emap.unipcsc.com.tw/Login.aspx?ReturnUrl=%2fecmap%2fbyIDData.aspx", text: "<html>login</html>" });
+    it("a redirect to a login page → blocked (the final URL is the login page); day keeps the 1.17.0 reason text", async () => {
+      const { r } = await ask({ url: "https://emap.unipcsc.com.tw/Login.aspx?ReturnUrl=%2fecmap%2fbyIDData.aspx", text: "<html>bye</html>" });
       expect(r).toMatchObject({ frozen_store_status: "unknown", blocked: true, transient: false });
-      expect(String(r.frozen_reason)).toMatch(/login \/ captcha page/);
+      expect(String(r.frozen_reason)).toMatch(/unexpected response/);           // 1.17.0 order: the body was read
     });
     it("an empty 200 → NOT blocked (an odd answer, unknown, not transient — the worker counts it as a no-answer)", async () => {
       const { r } = await ask({ text: "" });
@@ -231,15 +232,34 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
       expect((await ask({ url: "https://emap.unipcsc.com.tw/ecmap/error.aspx" })).r).toMatchObject({ blocked: false, transient: false });
     });
   });
-  // item 5: an E-Map MAINTENANCE page is never a verdict and never a block → a transient no-answer
-  // (the worker writes nothing; at night it waits 10 min, by day it is a miss)
+  // item 5 + round 5: an E-Map MAINTENANCE page is a transient no-answer ONLY for the night warm-up probe
+  // (message.nightWarm === true). Live lane + day warm-up = the 1.17.0 outcome: unknown, not transient,
+  // the next check uses the other section.
   describe("maintenance pages (01:00–05:00 Taipei)", () => {
-    const ask = async (a: { ok?: boolean; status?: number; text?: string; url?: string }, store = "968551") => {
+    const ask = async (a: { ok?: boolean; status?: number; text?: string; url?: string }, nightWarm = true, store = "968551") => {
       const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => a });
-      const r = await e.send({ type: "PC_FROZEN_CHECK", row: { id: "w1", store_id: store } });
-      const r2 = await e.send({ type: "PC_FROZEN_CHECK", row: { id: "w2", store_id: store } });
+      const msg = (id: string) => (nightWarm ? { type: "PC_FROZEN_CHECK", row: { id, store_id: store }, nightWarm: true } : { type: "PC_FROZEN_CHECK", row: { id, store_id: store } });
+      const r = await e.send(msg("w1"));
+      const r2 = await e.send(msg("w2"));
       return { r, endpoints: e.calls.fetch.map((c) => c.url.split("?")[0]), r2 };
     };
+    // what main (1.17.0) answers for the same page: unknown, not transient, section switched
+    const load117 = (a: { ok?: boolean; status?: number; text?: string; url?: string }) => {
+      const dom = new JSDOM(ECMAP_HTML, { url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
+      const win = dom.window as unknown as Window;
+      const handlers: Handler[] = [];
+      const urls: string[] = [];
+      const fetch = vi.fn(async (u: string) => { urls.push(u.split("?")[0]); return { url: a.url ?? `https://emap.unipcsc.com.tw${u}`, ok: a.ok ?? true, status: a.status ?? 200, text: async () => a.text ?? "" }; });
+      const g = win as unknown as typeof globalThis;
+      const sandbox: Record<string, unknown> = { window: win, document: win.document, location: win.location, CustomEvent: g.CustomEvent, URL: g.URL, URLSearchParams: g.URLSearchParams, AbortController: g.AbortController,
+        setTimeout: win.setTimeout.bind(win), clearTimeout: win.clearTimeout.bind(win), fetch, Promise, Date, Math, String, Number, Boolean, Object, Array, RegExp, Error, JSON,
+        console: { log: () => {}, warn: () => {}, error: () => {} }, chrome: { runtime: { onMessage: { addListener: (h: Handler) => { handlers.push(h); } } } } };
+      vm.createContext(sandbox);
+      vm.runInNewContext(execSync("git show origin/main:chrome-extension/emap-frozen-711.js", { encoding: "utf8" }), sandbox, { filename: "main-emap-frozen-711.js" });
+      const send = (id: string) => new Promise<Record<string, unknown>>((res) => { for (const h of handlers) h({ type: "PC_FROZEN_CHECK", row: { id, store_id: "968551" } }, {}, (r) => res(r as Record<string, unknown>)); });
+      return { send, urls };
+    };
+    const has117 = (() => { try { execSync("git cat-file -e origin/main:chrome-extension/emap-frozen-711.js", { stdio: "ignore" }); return true; } catch { return false; } })();
     const BODIES = [
       "<html><head><title>系統維護中</title></head><body><h1>7-ELEVEN 電子地圖系統維護中，請於 05:00 後再試</h1><a href=\"/Login.aspx\">會員登入</a></body></html>",
       "<html><body>為提供更好的服務，本系統於 01:00~05:00 進行系統更新，暫停服務</body></html>",
@@ -248,7 +268,7 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
       "<p>維護公告;968551+新蓮盈+花蓮縣+enable+0++門市</p>",
       "<html>&nbsp;維護;123456+a+b+disable+</html>",
     ];
-    it("a maintenance body in a 200 → unknown, transient, NOT blocked, never a verdict; the endpoint is not switched", async () => {
+    it("NIGHT warm-up probe: a maintenance body in a 200 → unknown, transient, NOT blocked, never a verdict; the endpoint is not switched", { timeout: 30_000 }, async () => {
       for (const text of BODIES) {
         const { r, endpoints, r2 } = await ask({ text });
         expect(r, text).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true, maintenance: true });
@@ -258,27 +278,76 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
         expect(endpoints, text).toEqual(["/ecmap/byIDData.aspx", "/ecmap/byIDData.aspx"]); // transient → same endpoint
       }
     });
-    it("a redirect to a maintenance page → unknown, transient, NOT blocked (even when its body has a login link)", async () => {
+    it("DAY / LIVE lane (no nightWarm): the SAME maintenance body = the 1.17.0 outcome — unknown, NOT transient, never maintenance, next check on the other section", { timeout: 30_000 }, async () => {
+      for (const text of BODIES) {
+        const { r, endpoints } = await ask({ text }, false);
+        expect(r, text).toMatchObject({ frozen_store_status: "unknown", transient: false, maintenance: false });
+        expect(String(r.frozen_reason), text).toMatch(/unexpected response/);
+        expect(endpoints, text).toEqual(["/ecmap/byIDData.aspx", "/mobilemap/byIDData.aspx"]); // non-answer → switch
+        // byte-for-byte the same as main's 1.17.0 script — except the answer-SHAPED bodies (';' '+' 'enable'),
+        // which 1.17.0 wrongly read as a verdict; the round-4 "OK;<6 digits>+" gate fixed that on purpose
+        if (has117 && !/;\d{6}\+|;\d+\+/.test(text)) {
+          const m = load117({ text });
+          const o = await m.send("w1"); await m.send("w2");
+          expect({ s: r.frozen_store_status, why: r.frozen_reason, tr: r.transient }, text).toEqual({ s: o.frozen_store_status, why: o.frozen_reason, tr: o.transient });
+          expect(endpoints, text).toEqual(m.urls);
+        }
+      }
+    });
+    it("DAY / LIVE lane: a redirect to a maintenance path = the 1.17.0 outcome (unknown, not transient, switch)", async () => {
+      const { r, endpoints } = await ask({ url: "https://emap.unipcsc.com.tw/maintain.aspx", text: "<html>Sorry</html>" }, false);
+      expect(r).toMatchObject({ frozen_store_status: "unknown", transient: false, maintenance: false });
+      expect(endpoints).toEqual(["/ecmap/byIDData.aspx", "/mobilemap/byIDData.aspx"]);
+      if (has117) {
+        const m = load117({ url: "https://emap.unipcsc.com.tw/maintain.aspx", text: "<html>Sorry</html>" });
+        const o = await m.send("w1");
+        expect({ s: r.frozen_store_status, why: r.frozen_reason, tr: r.transient }).toEqual({ s: o.frozen_store_status, why: o.frozen_reason, tr: o.transient });
+      }
+    });
+    it("NIGHT: a redirect to a maintenance page → unknown, transient, NOT blocked (even when its body has a login link)", async () => {
       for (const url of ["https://emap.unipcsc.com.tw/maintain.aspx", "https://emap.unipcsc.com.tw/Maintenance/index.html", "https://emap.unipcsc.com.tw/sorry.html"]) {
         const { r } = await ask({ url, text: "<html><a href=\"/x\">登入</a> OK;968551+x+y+enable+0</html>" });
         expect(r, url).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true, maintenance: true });
       }
     });
-    it("a page that is NOT an answer (no leading 'OK;<6 digits>+') is never parsed as a verdict, maintenance or not", async () => {
-      for (const text of ["公告;968551+新蓮盈+addr+enable+0++門市", " ok;968551+x+y+enable+0", "OK;96855+x+y+enable+0", "<b>OK;968551+x+y+enable+0</b>"]) {
-        const { r } = await ask({ text });
-        expect(r.frozen_store_status, text).toBe("unknown");
+    it("2: MAINT_URL_RE reads the redirect PATH only — default.aspx?url=…/update.aspx is NOT maintenance", { timeout: 30_000 }, async () => {
+      for (const url of ["https://emap.unipcsc.com.tw/ecmap/default.aspx?url=https://x.tw/update.aspx", "https://emap.unipcsc.com.tw/ecmap/byIDData.aspx?next=/maint/sorry.html&busy=1"]) {
+        const { r } = await ask({ url, text: "OK;968551+新蓮盈+addr+enable+0++門市" });
+        expect(r, url).toMatchObject({ frozen_store_status: "ok", maintenance: false });       // the real answer still reads
+        const odd = await ask({ url, text: "<html>hi</html>" });
+        expect(odd.r, url).toMatchObject({ frozen_store_status: "unknown", maintenance: false, transient: false });
       }
-      expect((await ask({ text: "  OK;968551+新蓮盈+addr+enable+0++門市\n" })).r.frozen_store_status).toBe("ok");   // a real answer (trimmed) still works
     });
-    it("blocks still win: 403 / 429 on a maintenance URL, a captcha body that mentions 維護, a login redirect → blocked", async () => {
+    it("3: a login form / password input = BLOCK even when the page also looks like maintenance (night and day)", { timeout: 30_000 }, async () => {
+      const PAGES = [
+        "<html><h1>系統維護中</h1><form method=post><input name=u><input type=\"password\" name=p></form></html>",
+        "<html><body>Scheduled maintenance<form id=\"loginForm\" action=\"/login\"><input name=u></form></body></html>",
+        "<html>暫停服務 <input type=password></html>",
+      ];
+      for (const text of PAGES) {
+        for (const night of [true, false]) {
+          const { r } = await ask({ text }, night);
+          expect(r, `${night ? "night" : "day"} ${text}`).toMatchObject({ frozen_store_status: "unknown", blocked: true, transient: false });
+        }
+      }
+    });
+    it("a page that is NOT an answer (no leading 'OK;<6 digits>+') is never parsed as a verdict, maintenance or not", { timeout: 30_000 }, async () => {
+      for (const night of [true, false]) {
+        for (const text of ["公告;968551+新蓮盈+addr+enable+0++門市", " ok;968551+x+y+enable+0", "OK;96855+x+y+enable+0", "<b>OK;968551+x+y+enable+0</b>"]) {
+          const { r } = await ask({ text }, night);
+          expect(r.frozen_store_status, text).toBe("unknown");
+        }
+        expect((await ask({ text: "  OK;968551+新蓮盈+addr+enable+0++門市\n" }, night)).r.frozen_store_status).toBe("ok"); // a real answer (trimmed) still works
+      }
+    });
+    it("blocks still win at night: 403 / 429 on a maintenance URL, a captcha body that mentions 維護, a login redirect → blocked", async () => {
       expect((await ask({ ok: false, status: 403, url: "https://emap.unipcsc.com.tw/maintain.aspx", text: "系統維護" })).r).toMatchObject({ blocked: true });
       expect((await ask({ ok: false, status: 429, url: "https://emap.unipcsc.com.tw/maintain.aspx" })).r).toMatchObject({ blocked: true });
       expect((await ask({ text: "<html>系統維護中，請輸入驗證碼</html>" })).r).toMatchObject({ blocked: true });
       expect((await ask({ url: "https://emap.unipcsc.com.tw/maintain/Login.aspx" })).r).toMatchObject({ blocked: true });
     });
-    it("HTTP 503 (a common maintenance answer) → transient, not blocked", async () => {
-      expect((await ask({ ok: false, status: 503, text: "Service Unavailable" })).r).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true });
+    it("HTTP 503 (a common maintenance answer) → transient, not blocked (night and day — as in 1.17.0)", async () => {
+      for (const night of [true, false]) expect((await ask({ ok: false, status: 503, text: "Service Unavailable" }, night)).r).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true });
     });
   });
 });

@@ -179,7 +179,7 @@ export type BootOpts = {
 export function bootWorker(opts: BootOpts = {}) {
   const extDir = opts.extDir || process.env.SFL_EXT_DIR || "chrome-extension";
   const src = readFileSync(`${extDir}/background.js`, "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean; nightWarm?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
     injected: [] as string[], openNormal: 0, frozenOverlap: 0,
     heldGets: [] as { key: string; release: () => void }[] };
   const storage: Record<string, unknown> = {
@@ -212,8 +212,8 @@ export function bootWorker(opts: BootOpts = {}) {
     } },
     tabs: {
       query: (q: { url: string[] | string }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
-      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean }, cb0: (r: unknown) => void) => {
-        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry });
+      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean; nightWarm?: boolean }, cb0: (r: unknown) => void) => {
+        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry, nightWarm: msg.nightWarm });
         const emap = emapTabs.find((t) => t.id === id);
         // slowChecks: a normal E-Map / myship check stays "open" for one macrotask (the frozen lane must not send meanwhile)
         const slow = Boolean(opts.slowChecks) && (msg.type === "PC_CHECK_STORE" || msg.type === "PC_CHECK_PHONE");

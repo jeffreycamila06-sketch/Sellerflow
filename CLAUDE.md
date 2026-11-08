@@ -4807,3 +4807,9 @@ E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_
   `emap-frozen-711.js`: only `OK;<6 digits>+…` / `NO2` are parsed; a maintenance URL or body → transient
   `maintenance:true`, never a verdict, never blocked (403/429, a login/captcha URL and captcha words still win).
   Night sim: dry lane request-for-request identical ON vs OFF.
+- **Round-5 fixes:** the maintenance handling in `emap-frozen-711.js` runs ONLY for a night warm-up probe
+  (`message.nightWarm === true`, sent by `warmOne` at night only); the live lane + day warm-up keep the 1.17.0 order and
+  outcome (unknown, not transient, section switch — test-compared to main's real script; only difference: answer-shaped
+  non-`OK;` bodies stay unknown). `MAINT_URL_RE` reads the redirect PATH only; a login form / password input = block even
+  when it looks like maintenance. Night: 6 no-answers in a row → no probes until 05:00 (`nightMisses`, `nightRetryAt`
+  clamped to the window end); `warm.misses` reset at the 01:00 and 05:00 edges (`lastNight` in mem).

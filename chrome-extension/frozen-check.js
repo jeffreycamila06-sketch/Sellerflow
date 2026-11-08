@@ -121,6 +121,14 @@
   // timeout / maintenance page → nothing written, NOT counted (no miss / pause / stop), next probe in 10 min.
   // A block (captcha / login / 403 / 429) still STOPS, any hour.
   const WARMUP_NIGHT_RETRY_MS = 10 * 60 * 1000;
+  const WARMUP_NIGHT_MISS_LIMIT = 6;            // night: 6 no-answers in a row → no more probes until 05:00
+  // the end of the current / next maintenance window (05:00 Asia/Taipei) — background.js's window hours
+  function nightEndAfter(nowMs) {
+    const H = 3600 * 1000, D = 24 * H, TZ = 8 * H;
+    let end = Math.floor((nowMs + TZ) / D) * D + PC_MAINT_END_H * H - TZ;
+    if (end <= nowMs) end += D;
+    return end;
+  }
   const BLOCK_RE = /HTTP (403|429)\b|captcha|驗證碼|recaptcha|login|登入|robot|blocked|too many requests/i;
   const st = {
     busy: false, switchOn: false, switchAt: 0, switchLogged: null,
@@ -140,12 +148,14 @@
     misses: 0, pauseUntil: 0,  // no-answers in a row → 30 min pause
     pauses: 0,                 // pauses since the last real verdict (ok / no_frozen) → 2 = STOP
     stopped: false, stopReason: "", stopWritten: false, sawOffSinceStop: false, stopTriedAt: 0,
-    nightRetryAt: 0,           // night: no warm-up probe before this (10 min after a night no-answer)
+    nightRetryAt: 0,           // night: no warm-up probe before this (10 min after a night no-answer; 05:00 after 6 in a row)
+    nightMisses: 0,            // night no-answers in a row (never counted as misses / pauses)
+    lastNight: null,           // the window state of the last pass (null = none yet) — 01:00 / 05:00 edge detection
     checked: null, left: null, nothingDue: false, lastVerdictAt: 0,
     stateSig: "", loaded: false,
   };
   // the part of `warm` that must survive a worker restart (pc_frozen_warmup.mem)
-  const MEM_KEYS = ["lastAt", "pauseUntil", "misses", "pauses", "stopped", "stopReason", "stopWritten", "sawOffSinceStop", "stopTriedAt", "nightRetryAt", "queueAt", "queue"];
+  const MEM_KEYS = ["lastAt", "pauseUntil", "misses", "pauses", "stopped", "stopReason", "stopWritten", "sawOffSinceStop", "stopTriedAt", "nightRetryAt", "nightMisses", "lastNight", "queueAt", "queue"];
   const memOf = () => { const m = {}; for (const k of MEM_KEYS) m[k] = k === "queue" ? warm.queue.slice(0, WARMUP_LIMIT) : warm[k]; return m; };
   function restoreMem(m) {
     if (!m || typeof m !== "object") return;
@@ -156,7 +166,10 @@
     warm.lastAt = Math.min(num(m.lastAt), now); warm.queueAt = Math.min(num(m.queueAt), now);
     warm.stopTriedAt = Math.min(num(m.stopTriedAt), now);       // the stop-write retry clock (≤ now: never delays a retry > 60 s)
     warm.pauseUntil = Math.min(num(m.pauseUntil), now + WARMUP_PAUSE_MS);
-    warm.nightRetryAt = Math.min(num(m.nightRetryAt), now + WARMUP_NIGHT_RETRY_MS);
+    // at night ≤ the window's end (05:00); by day ≤ 10 min (it is not used by day)
+    warm.nightRetryAt = Math.min(num(m.nightRetryAt), pcInMaintenance(now) ? nightEndAfter(now) : now + WARMUP_NIGHT_RETRY_MS);
+    warm.nightMisses = Math.max(0, Math.floor(num(m.nightMisses)));
+    warm.lastNight = typeof m.lastNight === "boolean" ? m.lastNight : null;
     warm.misses = Math.max(0, Math.floor(num(m.misses))); warm.pauses = Math.max(0, Math.floor(num(m.pauses)));
     warm.stopped = m.stopped === true; warm.stopReason = typeof m.stopReason === "string" ? m.stopReason.slice(0, 200) : "";
     warm.stopWritten = m.stopWritten === true; warm.sawOffSinceStop = m.sawOffSinceStop === true;
@@ -286,6 +299,14 @@
     if (!rpc || !rpc.cfg || !rpc.rpcHeaders) return;
     const tabId = (pcEv.emap.tabId && !pcEv.emap.error) ? pcEv.emap.tabId : null;
     const night = pcInMaintenance(nowMs);                  // 01:00–05:00 Taipei: the live frozen lane is off, the warm-up may probe
+    // 5: the 01:00 and 05:00 edges start a fresh count (day misses never carry into the night, night never into the day)
+    if (warm.loaded) {
+      if (warm.lastNight !== null && warm.lastNight !== night) {
+        warm.misses = 0; warm.nightMisses = 0; warm.nightRetryAt = 0;
+        logW(`warm-up: maintenance window ${night ? "started (01:00)" : "ended (05:00)"} — no-answer count reset`);
+      }
+      warm.lastNight = night;
+    }
     if (st.switchOn && tabId) {
       if (!night) await sendOne(pass, otherAtKick, rpc, tabId, nowMs);  // real frozen parcels first — never waits on the warm-up state
       // warm-up takes the frozen request's place ONLY when the frozen queue is empty by a fresh read (by day);
@@ -482,16 +503,25 @@
     st.storeAt.set(store, Date.now());                                     // shares the per-store 10-min floor
     void saveWarmState();                                                  // 6: the pace survives a restart (not awaited — never delays the request)
     let resp = null; let threw = false;
-    try { resp = await withTimeout(pcSendTab(tabId, { type: "PC_FROZEN_CHECK", row: { id: `warmup:${store}`, store_id: store } }), CHECK_TIMEOUT_MS, "warm-up check"); }
+    // the night probe says so (the content script then treats a maintenance page as a transient no-answer);
+    // the day warm-up message is exactly the pre-night one
+    const msg = night ? { type: "PC_FROZEN_CHECK", row: { id: `warmup:${store}`, store_id: store }, nightWarm: true } : { type: "PC_FROZEN_CHECK", row: { id: `warmup:${store}`, store_id: store } };
+    try { resp = await withTimeout(pcSendTab(tabId, msg), CHECK_TIMEOUT_MS, "warm-up check"); }
     catch (e) { threw = true; resp = { frozen_reason: (e && e.message) || "check threw", transient: true }; }
     const status = threw ? "unknown" : verdictOf(resp);
     const reason = resp ? String(resp.frozen_reason || "") : "emap tab not responding";
     if (!threw && isBlocked(resp, reason)) { stopWarm(reason, store); return; } // a block answer is not written as a verdict
     if (status === "unknown" && noAnswer(threw ? null : resp, reason) && night) {
       // night: a no-answer (timeout / maintenance page / odd page) writes NOTHING and is NOT counted
-      // (no miss, no pause, no stop) — the next probe 10 min later
-      warm.nightRetryAt = Date.now() + WARMUP_NIGHT_RETRY_MS;
-      logW(`warm-up store=${store} → no answer at night (${reason}) — nothing written, not counted, next probe in 10 min`);
+      // (no miss, no pause, no stop) — the next probe 10 min later; 6 in a row → none until 05:00
+      warm.nightMisses += 1;
+      if (warm.nightMisses >= WARMUP_NIGHT_MISS_LIMIT) {
+        warm.nightRetryAt = nightEndAfter(Date.now());
+        logW(`warm-up store=${store} → no answer at night (${reason}) — ${warm.nightMisses} in a row, no more probes until 05:00, nothing written`);
+      } else {
+        warm.nightRetryAt = Date.now() + WARMUP_NIGHT_RETRY_MS;
+        logW(`warm-up store=${store} → no answer at night (${reason}) — nothing written, not counted, next probe in 10 min`);
+      }
       void saveWarmState();
       return;
     }
@@ -507,7 +537,7 @@
       return;
     }
     warm.misses = 0;                                                       // a real answer breaks the "in a row"
-    warm.nightRetryAt = 0;                                                 // night: a real answer → back to the 60 s pace
+    warm.nightRetryAt = 0; warm.nightMisses = 0;                           // night: a real answer → back to the 60 s pace
     if (status !== "unknown") warm.pauses = 0;                             // a real verdict ends the pause streak
     try {
       const w = await withTimeout(fetch(`${rpc.cfg.supabaseUrl}/rest/v1/rpc/admin_frozen_warmup_verdict`, {

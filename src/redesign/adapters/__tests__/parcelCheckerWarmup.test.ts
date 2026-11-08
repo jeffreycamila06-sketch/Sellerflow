@@ -738,14 +738,128 @@ describe("night (01:00–05:00 Taipei) — warm-up may probe; nothing else chang
     expect(memOf(w)).toMatchObject({ pauses: 1 });                          // by day the no-answers count again: 3 → the 30-min pause
     expect(w.calls.logs.some((l) => /miss 1\/3/.test(l))).toBe(true);
   });
-  it("nightRetryAt survives a restart and a future value is clamped to ≤ 10 min", async () => {
+  it("nightRetryAt survives a restart; a future value is clamped to the window's end (05:00) at night", async () => {
     const { w } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, new Set()),
-      initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: 0, queueAt: 0, pauseUntil: 0, misses: 0, pauses: 0, stopped: false, queue: [], nightRetryAt: TN + 10 * 24 * 60 * MIN } } } });
-    expect((w.evalIn("pcFrozenKick.__test.warm") as { nightRetryAt: number }).nightRetryAt).toBe(TN + 10 * MIN);
+      initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: 0, queueAt: 0, pauseUntil: 0, misses: 0, pauses: 0, stopped: false, queue: [], nightRetryAt: TN + 10 * 24 * 60 * MIN, nightMisses: 4 } } } });
+    const m = w.evalIn("pcFrozenKick.__test.warm") as { nightRetryAt: number; nightMisses: number };
+    expect(m.nightRetryAt).toBe(Date.UTC(2026, 0, 15, 21, 0, 0));            // 05:00 Taipei
+    expect(m.nightMisses).toBe(4);
   });
   it("dry work first at night too: a dry parcel pending → no night probe", async () => {
     const { w, clock } = await nightBoot({ rows: undefined, warmupSwitch: "true", warmupNext: storeList(20, new Set()) });
     await ticks(w, clock, 60);
     expect(warmMsgs(w)).toEqual([]);
   });
+});
+
+describe("round 5 — night flag, 6 night no-answers → wait till 05:00, edge resets, guards", () => {
+  const MIN = 60 * S;
+  const T0100 = Date.UTC(2026, 0, 14, 17, 0, 0);   // 01:00 Taipei (Jan 15)
+  const T0500 = Date.UTC(2026, 0, 14, 21, 0, 0);   // 05:00 Taipei (Jan 15)
+  const OK_REPLY = { frozen_store_status: "ok", frozen_reason: "", transient: false };
+  async function at(t: number, opts: Opts) {
+    const clock = { t };
+    const defaults: Opts = { rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: [], maintenance: true };
+    for (const [k, v] of Object.entries(defaults)) if (!(k in opts)) (opts as Record<string, unknown>)[k] = v;
+    opts.now = () => clock.t;
+    const w = bootWorker(opts); await w.booted;
+    return { w, clock };
+  }
+  const warmObj = (w: W) => w.evalIn("pcFrozenKick.__test.warm") as Record<string, number | boolean | null>;
+  it("1: the night probe carries nightWarm: true; the day warm-up and the live frozen lane never do", async () => {
+    const done = new Set<string>();
+    const reply = (row?: { id?: string; store_id?: string }) => { done.add(String(row?.store_id)); return OK_REPLY; };
+    const n = await at(T0100 + 30 * MIN, { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: reply });
+    await ticks(n.w, n.clock, 24);
+    expect(warmMsgs(n.w).length).toBeGreaterThan(0);
+    expect(warmMsgs(n.w).every((m) => m.nightWarm === true)).toBe(true);
+    const d = await at(T0, { warmupSwitch: "true", warmupNext: storeList(50, new Set()), frozenReply: () => OK_REPLY,
+      frozenPending: [{ id: "fz-1", store_id: "968551", queue_depth: 1 }] });
+    await ticks(d.w, d.clock, 24);
+    expect(liveFrozenMsgs(d.w).length).toBeGreaterThan(0);
+    expect(d.w.calls.sendMessage.filter((m) => m.type === "PC_FROZEN_CHECK").every((m) => m.nightWarm === undefined)).toBe(true);
+    const day = await at(T0, { warmupSwitch: "true", warmupNext: storeList(50, new Set()), frozenReply: () => OK_REPLY });
+    await ticks(day.w, day.clock, 24);
+    expect(warmMsgs(day.w).length).toBeGreaterThan(0);
+    expect(warmMsgs(day.w).every((m) => m.nightWarm === undefined)).toBe(true);
+  });
+  it("4: 6 night no-answers in a row → no more probes until 05:00 (nothing written, never a stop); after 05:00 the day rules apply", async () => {
+    const at0: number[] = []; const ref = { t: 0 };
+    const { w, clock } = await at(T0100 + 5 * MIN, { warmupSwitch: "true", warmupNext: storeList(50, new Set()), frozenReply: () => { at0.push(ref.t); return null as never; } });
+    for (let i = 0; i < 12 * 60 * 4; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; if (clock.t >= T0500 - 10 * S) break; } // 01:05 → 04:59:50
+    const night = at0.filter((t) => t < T0500);
+    expect(night).toHaveLength(6);                                          // 10 min apart, then silence
+    for (let i = 1; i < night.length; i++) expect(night[i] - night[i - 1]).toBeGreaterThanOrEqual(10 * MIN);
+    expect(night[5] - night[0]).toBeLessThan(60 * MIN);
+    expect(Number(warmObj(w).nightRetryAt)).toBe(T0500);
+    expect(count(w, /admin_frozen_warmup_verdict/)).toBe(0);
+    expect(count(w, /admin_frozen_warmup_stop/)).toBe(0);
+    expect(w.calls.logs.some((l) => /6 in a row, no more probes until 05:00/.test(l))).toBe(true);
+    for (let i = 0; i < 12 * 3; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; } // past 05:00
+    expect(at0.some((t) => t >= T0500)).toBe(true);                       // the day warm-up probes again
+  });
+  it("4: a real answer in between resets the night count (5 misses, an answer, then 6 more misses before the wait)", async () => {
+    const at0: number[] = []; const ref = { t: 0 }; let n = 0;
+    const { w, clock } = await at(T0100 + 5 * MIN, { warmupSwitch: "true", warmupNext: storeList(80, new Set()),
+      frozenReply: () => { at0.push(ref.t); n += 1; return (n === 6 ? OK_REPLY : null) as never; } });
+    for (let i = 0; i < 12 * 60 * 3; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; } // 01:05 → 04:05
+    expect(at0).toHaveLength(12);                                           // 5 misses + the answer + 6 misses, then silence
+    expect(at0[6] - at0[5]).toBeLessThan(2 * MIN);                           // after the answer: the 60 s pace, not 10 min
+    expect(Number(warmObj(w).nightRetryAt)).toBe(T0500);
+  });
+  it("5: warm.misses is reset at the 01:00 edge and at the 05:00 edge", async () => {
+    const { w, clock } = await at(T0100 - 2 * MIN, { warmupSwitch: "true", warmupNext: storeList(50, new Set()), frozenReply: () => null as never });
+    for (let i = 0; i < 12 * 2 + 1 && clock.t < T0100; i++) { await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(Number(warmObj(w).misses)).toBeGreaterThan(0);                  // day misses at 00:58–00:59
+    await w.sb.pcTick(); await flush();                                     // first pass at 01:00
+    expect(Number(warmObj(w).misses)).toBe(0);
+    expect(w.calls.logs.some((l) => /maintenance window started \(01:00\) — no-answer count reset/.test(l))).toBe(true);
+    // 05:00: a day miss count left in mem at 04:59 (e.g. restored after a restart) is cleared at the edge
+    const late = await at(T0500 - 30 * S, { warmupSwitch: "true", warmupNext: storeList(50, new Set()), frozenReply: () => null as never,
+      initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: 0, queueAt: 0, pauseUntil: 0, misses: 2, pauses: 0, stopped: false, queue: [], lastNight: true } } } });
+    for (let i = 0; i < 4 && late.clock.t < T0500; i++) { await late.w.sb.pcTick(); await flush(); late.clock.t += 5 * S; }
+    expect(Number(warmObj(late.w).misses)).toBe(2);                        // still night: untouched
+    late.clock.t = T0500 + 1 * S;
+    await late.w.sb.pcTick(); await flush();
+    expect(Number(warmObj(late.w).misses)).toBeLessThanOrEqual(1);         // reset at 05:00 (a probe in that pass may add 1)
+    expect(late.w.calls.logs.some((l) => /maintenance window ended \(05:00\) — no-answer count reset/.test(l))).toBe(true);
+  });
+  it("6a: night, the warm-up list already loaded, then a dry row appears → no warm-up request while it waits", async () => {
+    const done = new Set<string>();
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: (row) => { done.add(String(row?.store_id)); return OK_REPLY; } };
+    const { w, clock } = await at(T0100 + 30 * MIN, opts);
+    await ticks(w, clock, 24);                                              // 2 min idle at night
+    const before = warmMsgs(w).length;
+    expect(before).toBeGreaterThan(0);
+    expect((warmObj(w).queue as unknown as string[]).length).toBeGreaterThan(0); // stores still queued = the list is loaded
+    opts.rows = [{ id: "dry-9", phone: "0912345678", store_id: "195965", gm_id: "GM1", sender_phone: "0979593026", need_phone: true, need_store: true, queue_depth: 1, created_at: new Date(clock.t).toISOString() }];
+    await ticks(w, clock, 36);                                              // 3 min with a dry row waiting
+    expect(warmMsgs(w).length).toBe(before);
+  });
+  for (const [name, edge, startNight] of [["04:59:59.5 → 05:00", T0500, true], ["00:59:59.5 → 01:00", T0100, false]] as const) {
+    it(`6b: kick at ${name} before the send → no warm-up request in that pass`, async () => {
+      const done = new Set<string>();
+      let jump = false, pings = 0;
+      let clockRef = { t: 0 };
+      const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: (row) => { done.add(String(row?.store_id)); return OK_REPLY; },
+        onFrozenPing: () => { if (jump) { pings += 1; clockRef.t = edge + 100; } } };
+      // 4 min lead-in: lands on edge − 0.5 s, and the 5-min E-Map keepalive (boot + 5 min) is NOT in the kick's pass
+      const { w, clock } = await at(edge - 240_500, opts);
+      clockRef = clock;
+      for (let i = 0; i < 48; i++) { await w.sb.pcTick(); await flush(); clockRef.t += 5 * S; }
+      expect(clockRef.t).toBe(edge - 500);
+      expect(warmMsgs(w).length).toBeGreaterThan(0);                         // the warm-up was running before
+      expect(Boolean(w.evalIn("pcInMaintenance(Date.now())"))).toBe(startNight);
+      const wo = warmObj(w); wo.lastAt = 0;                                  // the 60 s pace is satisfied at the kick
+      w.evalIn('pcFrozenKick.__test.warm.queue = ["699001"]');              // a store is waiting (the list may be used up)
+      w.evalIn("pcFrozenKick.__test.state.emptyUntil = Date.now() + 60000"); // day gate: a fresh "no frozen parcels" read (night ignores it)
+      const before = warmMsgs(w).length;
+      jump = true;
+      await w.sb.pcTick(); await flush();
+      jump = false;
+      expect(pings).toBeGreaterThan(0);                                      // the pass reached the send step (not vacuous)
+      expect(clockRef.t).toBe(edge + 100);
+      expect(warmMsgs(w).length).toBe(before);                               // the window flipped meanwhile → no request
+    });
+  }
 });
