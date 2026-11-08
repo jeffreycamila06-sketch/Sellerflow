@@ -28,6 +28,17 @@ laptop-1280 light zh-TW horizontalScroll=false
 laptop-1280 dark en horizontalScroll=false
 laptop-1280 dark fil horizontalScroll=false
 laptop-1280 dark zh-TW horizontalScroll=false
+phone-360 light bg horizontalScroll=false
+phone-360 dark bg horizontalScroll=false
+iphone-390 light bg horizontalScroll=false
+iphone-390 dark bg horizontalScroll=false
+phone-360 light vi horizontalScroll=false
+phone-360 dark vi horizontalScroll=false
+iphone-390 light vi horizontalScroll=false
+iphone-390 dark vi horizontalScroll=false
+custom-tall false
+custom-bg-360 false
+saved false
 fit false
 off false
 noqr false

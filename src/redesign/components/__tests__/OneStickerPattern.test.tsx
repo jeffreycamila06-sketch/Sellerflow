@@ -133,6 +133,10 @@ describe("OneStickerPattern", () => {
     expect(m).toMatch(/short: "var\(--text-muted\)"/);
     expect(m).toMatch(/shrunk: "var\(--warn/); expect(m).toMatch(/cut: "var\(--warn/); expect(m).toMatch(/qr: "var\(--warn/);
   });
+  it("Printer Test carries the 🖨 icon like the preview", () => {
+    renderIt();
+    expect(screen.getByTestId("os-test").textContent).toBe("🖨 Printer Test");
+  });
   it("the @username hint: Not printed for Facebook buyers", () => {
     renderIt();
     expect(screen.getByTestId("os-row-user").textContent).toContain("Not printed for Facebook buyers");
