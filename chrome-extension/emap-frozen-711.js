@@ -1,4 +1,4 @@
-// SellerFlow parcel-checker — E-Map FROZEN (冷凍) store check content script (1.17.0).
+// SellerFlow parcel-checker — E-Map FROZEN (冷凍) store check content script (1.17.0; blocked flag 1.18.0).
 // ADD-ONLY: a second, independent listener on the E-Map tab. It answers ONLY the
 // PC_FROZEN_CHECK message (every other message is ignored — emap-711.js handles those,
 // untouched). Same request the normal check makes (byIDData, the page's own eshopGuid) with
@@ -12,6 +12,9 @@
 // switches to the other section for the NEXT check. A timeout never switches.
 //   field index 3: enable → ok · disable → no_frozen · close / NO2 / other → unknown
 // Answers PC_FROZEN_PING (the worker's self-heal ping; no answer → the worker injects this file).
+// 1.18.0: every answer also carries `blocked` — true for HTTP 403 / 429 or a captcha / login page
+// instead of an answer. The warm-up lane stops itself on it; the live lane treats it like any other
+// 'unknown' (unchanged).
 // Never writes anything; never executes page code (guid read from the MAIN-world helper
 // emap-guid-main.js over its DOM event, or from the page SOURCE text).
 (function sellerFlowEmapFrozen() {
@@ -24,6 +27,7 @@
   const TIMEOUT_MS = 2500;
   const MAIN_WAIT_MS = 300;
   const GUID_RE = /eshop[Gg]uid\s*[:=]\s*["']([^"']{8,})["']/;
+  const BLOCK_PAGE_RE = /captcha|驗證碼|recaptcha|login|登入|robot/i;
 
   function sectionOf(pathname) {
     const m = /^\/(mobilemap|ecmap)\//i.exec(String(pathname || ""));
@@ -83,12 +87,13 @@
         body, signal: ctrl.signal,
       });
       if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false };
-      if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500 };
+      if (BLOCK_PAGE_RE.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} redirected to a login / captcha page`, transient: false, blocked: true };
+      if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500, blocked: r.status === 403 || r.status === 429 };
       const text = await r.text();
       const v = parseFrozen(text);
       if (v) return { verdict: v, reason: "", transient: false };
       const head = String(text).replace(/\s+/g, " ").slice(0, 60);
-      return { verdict: null, reason: `${endpoint} unexpected response: "${head}"`, transient: false };
+      return { verdict: null, reason: `${endpoint} unexpected response: "${head}"`, transient: false, blocked: BLOCK_PAGE_RE.test(String(text).slice(0, 4000)) };
     } catch (e) {
       const aborted = e && e.name === "AbortError";
       return { verdict: null, reason: aborted ? `${endpoint} timeout (2.5s)` : `${endpoint} network error`, transient: true };
@@ -101,7 +106,7 @@
     const r = await postFrozen(endpoint, storeId, guid);
     if (r.verdict) return { status: r.verdict.status, reason: r.verdict.reason, transient: false, endpoint };
     if (!r.transient) section = otherSection(section);  // a real non-verdict answer → the other section NEXT time
-    return { status: "unknown", reason: r.reason, transient: r.transient, endpoint };
+    return { status: "unknown", reason: r.reason, transient: r.transient, blocked: Boolean(r.blocked), endpoint };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -110,7 +115,7 @@
     (async () => {
       const guid = await getGuid();
       const res = await checkFrozenStore(message.row.store_id, guid);
-      sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: res.status, frozen_reason: res.reason, transient: Boolean(res.transient), guidFound: guid !== null, endpoint: res.endpoint });
+      sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: res.status, frozen_reason: res.reason, transient: Boolean(res.transient), blocked: Boolean(res.blocked), guidFound: guid !== null, endpoint: res.endpoint });
     })().catch((e) => sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: "unknown", frozen_reason: `frozen check threw: ${(e && e.message) || "error"}`, transient: true, guidFound: false, endpoint: endpointOf(section) }));
     return true;
   });

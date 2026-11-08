@@ -4753,3 +4753,27 @@ monitoring per-seller + Exports per seller). Tap it → picker (search, Madalas 
 - ⚠️ Apply sql/143 BEFORE relying on picks: without the table the pills still show (saved/guess/unknown) and a
   save fails with "Hindi na-save". Behaviour check: `scripts/sql143-behaviour.mjs` (PGlite).
 - Not covered: TikTok-limit card rows (keyed by server sellerId, no email) and Audit log (entries, not users).
+
+## 2026-11-08 — FROZEN STORE CHECK: INSTANT VERDICT + WARM-UP (branch `claude/frozen-instant-warmup`, NOT merged; extension 1.18.0; sql/145 NOT applied)
+Trial (Nov 5–8): only ~16–38% of 冷凍 parcels got a verdict before export (export ~6–10 s after encode, live
+E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_pending).
+- **A. Instant verdict (sql/145 trigger `trg_parcel_scans_frozen_instant`, BEFORE INSERT / UPDATE OF store_id,
+  temp_layer):** 冷凍 rows of `parcel_check_access` sellers get a FRESH (≤ 30 d) `store_frozen_cache` verdict at
+  insert. UPDATE acts only when store_id / temp_layer really change (the app sends store_id on EVERY edit; the ⟳
+  Recheck never changes it → still goes live). Store change → old verdict cleared, new store's cache applied.
+  Dry rows / other sellers / exported rows untouched; any error → saved as sent. Log source 'instant'.
+  App: NO change needed — the Parcel Scan 3 s verdict poll + the export's DB re-read already pick it up
+  (`ParcelScan.instantFrozen.test.tsx`). 'unknown' is never cached.
+- **B. Warm-up (frozen-check.js, 1.18.0; background.js + emap-711.js UNTOUCHED):** OFF unless app_settings
+  `frozen_warmup_enabled`='true' (read only while the frozen switch is on). Leader-only, only when the last frozen
+  pending read returned 0 rows AND the dry lane's last read (≤ 30 s) had 0 rows; ONE store per `WARMUP_GAP_MS`
+  (60 s), takes the frozen request's place in a pass behind the same gap guards. Stores from
+  `admin_frozen_warmup_next` (frozen-history first, then most parcels; ≈0.7 s query → read 5 at a time, ≤ 1/5 min),
+  answers via `admin_frozen_warmup_verdict` (log source 'warmup'; 'unknown' retried after 7 days).
+  3 no-answers in a row → 30-min pause (NO2 / close don't count); captcha / login / 403 / 429 → STOP via
+  `admin_frozen_warmup_stop` (switch off + `frozen_warmup_stop_reason`); restarts only after the switch is seen
+  off then on. Popup line from its own storage key `pc_frozen_warmup`.
+- Proof: `scripts/sql145-behaviour.mjs` (PGlite, 56 checks) · `parcelCheckerWarmup.test.ts` ·
+  `parcelCheckerWarmupSim.test.ts` (dry lane identical ON vs OFF, 0 overlaps) · `parcelCheckerWarmupPopup.test.ts`.
+- ⚠️ The only edit of an existing DB object: `store_frozen_check_log` source CHECK widened (+'warmup','instant',
+  NOT VALID). admin_parcel_frozen_pending keeps ok = 7 days (not edited); the trigger uses 30 days for both.

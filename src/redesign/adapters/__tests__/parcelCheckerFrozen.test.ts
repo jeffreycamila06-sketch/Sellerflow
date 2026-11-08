@@ -42,12 +42,14 @@ const trace = (w: W) => ({
   msgs: w.calls.sendMessage.map((m) => `${m.type}:${m.tabId}:${m.rowId ?? ""}`),
 });
 const SWITCH_GET = /rest\/v1\/app_settings\?select=key,value&key=eq\.frozen_store_check_enabled$/;
+// 1.18.0: the warm-up switch GET (only while the frozen switch is on) and the warm-up RPCs = frozen-module traffic
+const WARM_TRAFFIC = /app_settings\?select=key,value&key=eq\.frozen_warmup_enabled$|admin_frozen_warmup_/;
 const frozenFetches = (c: Calls) => c.fetch.filter((u) => /admin_parcel_frozen_/.test(u));
 const pendingReads = (c: Calls) => c.fetch.filter((u) => /admin_parcel_frozen_pending/.test(u)).length;
 const frozenMsgs = (c: Calls) => c.sendMessage.filter((m) => m.type === "PC_FROZEN_CHECK");
 const verdictBodies = (c: Calls) => c.fetch.map((u, i) => [u, c.fetchBodies[i]] as const).filter(([u]) => /admin_parcel_frozen_verdict/.test(u)).map(([, b]) => JSON.parse(b) as { p_id: string; p_expected_store: string; p_status: string });
 const normalLane = (w: W) => ({
-  fetch: w.calls.fetch.map((u, i) => [u, norm(w, w.calls.fetchBodies[i])]).filter(([u]) => !SWITCH_GET.test(u) && !/admin_parcel_frozen_/.test(u)),
+  fetch: w.calls.fetch.map((u, i) => [u, norm(w, w.calls.fetchBodies[i])]).filter(([u]) => !SWITCH_GET.test(u) && !WARM_TRAFFIC.test(u) && !/admin_parcel_frozen_/.test(u)),
   msgs: w.calls.sendMessage.filter((m) => m.type !== "PC_FROZEN_CHECK" && m.type !== "PC_FROZEN_PING").map((m) => `${m.type}:${m.tabId}:${m.rowId ?? ""}`),
 });
 
@@ -284,10 +286,11 @@ describe("switch ON — the frozen lane", () => {
     const code = readFileSync("chrome-extension/frozen-check.js", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     const awaits = [...code.matchAll(/await\s+([A-Za-z_.]+)\(/g)].map((m) => m[1]);
     expect(awaits.length).toBeGreaterThan(8);
-    const ownSteps = ["withTimeout", "ensureScript", "alarmSoon", "readSwitch", "readPending", "sendOne", "ping"];
+    const ownSteps = ["withTimeout", "ensureScript", "alarmSoon", "readSwitch", "readPending", "sendOne", "ping",
+      "dryIdle", "readWarmSwitch", "readWarmList", "writeStop", "saveWarmState", "warmOne"]; // 1.18.0 warm-up steps (each bounded inside)
     expect(awaits.filter((a) => !ownSteps.includes(a))).toEqual([]);
     expect(code).not.toMatch(/await\s+r\.(json|text)\(/);                    // body reads go through withTimeout
-    for (const what of ['"switch body")', '"pending body")', '"config read")', '"inject")', '"frozen pass")']) expect(code, what).toContain(what);
+    for (const what of ['"warm-up switch body")', '"warm-up list body")', '"status read")', '"switch body")', '"pending body")', '"config read")', '"inject")', '"frozen pass")']) expect(code, what).toContain(what);
   });
   it("every frozen call is bounded: switch / pending / verdict 15 s, the check 3 s, the ping 1 s, the alarm read 0.5 s", () => {
     const mod = readFileSync("chrome-extension/frozen-check.js", "utf8");
