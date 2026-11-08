@@ -84,6 +84,16 @@ describe("OneStickerPattern", () => {
     fireEvent.click(sw);
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true); // nothing changed
   });
+  it("every button on the screen is at least 44 px tall to tap (steppers, chips, weights, switches, Back, tests, Reset, Save)", () => {
+    renderIt();
+    fireEvent.click(screen.getByTestId("os-size-custom"));
+    const small: string[] = [];
+    for (const b of Array.from(screen.getByTestId("os-screen").querySelectorAll("button"))) {
+      const h = Math.max(parseFloat(b.style.minHeight || "0"), parseFloat(b.style.height || "0"));
+      if (!(h >= 44)) small.push(`${b.getAttribute("data-testid") ?? b.textContent}: ${h}`);
+    }
+    expect(small).toEqual([]);
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
