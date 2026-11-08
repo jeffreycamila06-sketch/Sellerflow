@@ -13,6 +13,7 @@ import {
 } from "../adapters/oneSticker";
 import { oneStickerScreenFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
 import type { OneStickerDevicePath } from "../adapters/printing";
+import { ADMIN_LANG_SAMPLES, ADMIN_DEFAULT_SAMPLE, adminSampleInput, type AdminLangSample } from "../adapters/adminLangSamples";
 
 const sameSettings = (a: OneStickerSettings, b: OneStickerSettings) => JSON.stringify(a) === JSON.stringify(b);
 const nextStep = (v: number, dir: 1 | -1): number => {
@@ -148,6 +149,10 @@ export interface OneStickerPatternProps {
   qrAllowed: boolean;              // "Print QR on sticker" is available for this account
   onTest: (draft: OneStickerSettings, sample: "default" | "en" | "zh", unsaved: boolean) => void;
   onToast?: (msg: string) => void; // a short message (Reset → "Back to recommended settings")
+  // ADMIN ONLY (never shown to sellers, whatever the switches): the language test chips + "New / Today's
+  // sticker". Printer Test then prints the picked sample through the normal print functions.
+  isAdmin?: boolean;
+  onTestSample?: (draft: OneStickerSettings, sample: AdminLangSample, route: "new" | "today", unsaved: boolean) => void;
 }
 
 export default function OneStickerPattern(p: OneStickerPatternProps) {
@@ -171,7 +176,13 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const tooWide = tooWideFor(p.printerName, s.size.w);
   // the preview's sample (#128 Maria Santos @maria_live, today's Taipei date & time) — the same one the
   // test buttons print and the same one the notes are measured on
-  const input = useMemo(() => sampleInput(p.shopName), [p.shopName]);
+  const admin = p.isAdmin === true && !!p.onTestSample;
+  const [langKey, setLangKey] = useState<string | null>(null);
+  const [route, setRoute] = useState<"new" | "today">("new");
+  const adminSample = admin && langKey ? ADMIN_LANG_SAMPLES.find((x) => x.key === langKey) ?? null : null;
+  const input = useMemo(() => (adminSample ? adminSampleInput(adminSample, p.shopName) : sampleInput(p.shopName)), [p.shopName, adminSample]);
+  // admin: Printer Test prints the picked sample (or the screen's own) on the chosen sticker
+  const adminTesting = admin && (!!adminSample || route === "today");
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
   const [pvAttempt, setPvAttempt] = useState(0);
   const [pvFailed, setPvFailed] = useState(false);
@@ -262,15 +273,34 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
             </span>
           ))}
         </div>}
+        {admin && route === "today" && <div data-testid="os-admin-today-note" style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.45 }}>{p.devicePath === "text" || p.devicePath === "wifi"
+          ? "Today's sticker selected: Printer Test prints this sample on today's text sticker, at your Printer settings size. This printer has no language fix (other scripts print as the @username, as today). The picture above is the new sticker."
+          : "Today's sticker selected: Printer Test prints this sample on today's sticker, at your Printer settings size, with the language fix. The picture above is the new sticker."}</div>}
         {p.devicePath === "text" && <div data-testid="os-text-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_text_path}</div>}
         {p.devicePath === "wifi" && <div data-testid="os-wifi-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_wifi_path}</div>}
 
         {/* 2. test prints (today's buttons) */}
-        <button onClick={() => p.onTest(sEff, "default", dirty || !saved)} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}><span aria-hidden="true">🖨 </span>{t.rd_pp_printer_test}</button>
+        <button onClick={() => (adminTesting ? p.onTestSample!(sEff, adminSample ?? ADMIN_DEFAULT_SAMPLE, route, dirty || !saved) : p.onTest(sEff, "default", dirty || !saved))} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}><span aria-hidden="true">🖨 </span>{t.rd_pp_printer_test}</button>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={() => p.onTest(sEff, "en", dirty || !saved)} data-testid="os-test-en" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_latin}</button>
           <button onClick={() => p.onTest(sEff, "zh", dirty || !saved)} data-testid="os-test-zh" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_cjk}</button>
         </div>
+        {admin && (
+          <div data-testid="os-admin-lang" style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border-strong)", borderRadius: 12, background: "var(--surface)" }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)" }}>Admin: language test</div>
+            <div role="group" aria-label="Sticker to test" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {(["new", "today"] as const).map((r) => (
+                <button key={r} type="button" onClick={() => setRoute(r)} aria-pressed={route === r} data-testid={`os-admin-route-${r}`} style={chip(route === r)}>{r === "new" ? "New sticker" : "Today's sticker"}</button>
+              ))}
+            </div>
+            <div role="group" aria-label="Language sample" data-testid="os-admin-chips" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {ADMIN_LANG_SAMPLES.map((x) => (
+                <button key={x.key} type="button" onClick={() => setLangKey((k) => (k === x.key ? null : x.key))} aria-pressed={langKey === x.key} data-testid={`os-admin-lang-${x.key}`} style={chip(langKey === x.key)}>{x.label}</button>
+              ))}
+            </div>
+            <div style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45 }}>Tap a language to preview it; Printer Test prints it. Tap again for the normal sample.</div>
+          </div>
+        )}
 
         </div>
         <div className="os-ctl" data-testid="os-ctl-col">

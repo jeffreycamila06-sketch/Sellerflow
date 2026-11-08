@@ -31,7 +31,9 @@ describe("test prints = the preview's sample", () => {
     const onTest = app.slice(app.indexOf("onTest={(draft, sample, unsaved)"), app.indexOf("onTest={(draft, sample, unsaved)") + 900);
     expect(onTest).toContain("sampleBuyer(");
     expect(onTest).not.toContain("buildTestBuyer");
-    expect(onTest).toContain("stickerShopName(printShopName)");
+    expect(onTest).toContain("await oneStickerTestPrint(draft, buyer, unsaved)");
+    const helper = app.slice(app.indexOf("const oneStickerTestPrint = async"), app.indexOf("const oneStickerTestPrint = async") + 400);
+    expect(helper).toContain("printOneStickerTest(draft, buyer, cur, stickerShopName(printShopName)"); // the seller's shop, never the brand
   });
 });
 
