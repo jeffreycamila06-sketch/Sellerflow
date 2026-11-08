@@ -12,7 +12,7 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, tooWideFor, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
 import { loadSansFace } from "./oneStickerFonts";
@@ -48,10 +48,16 @@ export const printerLabelFor = (z: { w: number; h: number }): string => (z.w ===
 /** A size picked in Printer settings on a device that saved the new pattern: the saved one-sticker
  *  size follows (only the size changes; the rest of the pattern stays as saved). No saved pattern →
  *  nothing is saved (the device keeps today's sticker). Returns the new saved settings, or null. */
-export function syncOneStickerSizeFromPrinter(label: string): OneStickerSettings | null {
+// Never a size the printer cannot take: a Niimbot (its sticker size is chosen on the new screen —
+// today's Niimbot ignores Label size), a size wider than the saved printer, or 50×30 on a phone
+// whose printer prints the TEXT / WiFi sticker (no 50×30 layout there).
+export interface SizeSyncContext { printerName?: string | null; niimbot?: boolean; devicePath?: string }
+export function syncOneStickerSizeFromPrinter(label: string, ctx: SizeSyncContext = {}): OneStickerSettings | null {
   const saved = readSavedOneSticker();
   const z = sizeFromPrinterLabel(label);
   if (!saved || !z || (saved.size.w === z.w && saved.size.h === z.h && !saved.size.custom)) return null;
+  if (ctx.niimbot || tooWideFor(ctx.printerName, z.w)) return null;
+  if (z.w === 50 && z.h === 30 && (ctx.devicePath === "text" || ctx.devicePath === "wifi")) return null;
   const next = normalizeSettings({ ...saved, size: { w: z.w, h: z.h } });
   saveOneSticker(next);
   return next;

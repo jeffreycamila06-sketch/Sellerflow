@@ -37,9 +37,20 @@ describe("Printer settings Label size ↔ one sticker size", () => {
     saveOneSticker({ ...recommendedSettings({ w: 75, h: 45 }), size: { w: 75, h: 45, custom: true } });
     expect(syncOneStickerSizeFromPrinter("80x50mm")!.size).toEqual({ w: 80, h: 50 });
   });
+  it("never a size the printer cannot take: a Niimbot keeps its saved size, a too-wide size is not taken, no 50×30 for TEXT / WiFi", () => {
+    saveOneSticker(recommendedSettings({ w: 50, h: 30 }));
+    expect(syncOneStickerSizeFromPrinter("60x40mm", { printerName: "B1-H123", niimbot: true })).toBeNull();
+    expect(readSavedOneSticker()!.size).toEqual({ w: 50, h: 30 });
+    expect(syncOneStickerSizeFromPrinter("60x40mm", { printerName: "B21-X" })).toBeNull(); // B21 = 50 mm
+    expect(readSavedOneSticker()!.size).toEqual({ w: 50, h: 30 });
+    saveOneSticker(recommendedSettings({ w: 60, h: 40 }));
+    for (const devicePath of ["text", "wifi"]) expect(syncOneStickerSizeFromPrinter("50x30mm", { devicePath })).toBeNull();
+    expect(readSavedOneSticker()!.size).toEqual({ w: 60, h: 40 });
+    expect(syncOneStickerSizeFromPrinter("50x30mm", { devicePath: "d520" })!.size).toEqual({ w: 50, h: 30 }); // an image path takes it
+  });
   it("RedesignApp wires both directions (Printer settings pick → one sticker; Save → Printer settings label)", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
-    expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) syncOneStickerSizeFromPrinter\(s\); \}\}/);
+    expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) syncOneStickerSizeFromPrinter\(s, \{ printerName: savedBtPrinter\(\)\?\.name \?\? null, niimbot: savedIsNiimbot\(\), devicePath: oneStickerDevicePath\(/);
     expect(src).toMatch(/setPsSize\(printerLabelFor\(next\.size\)\)/);
   });
 });
