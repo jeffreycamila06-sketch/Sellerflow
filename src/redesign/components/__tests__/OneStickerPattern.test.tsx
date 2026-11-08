@@ -155,7 +155,7 @@ describe("OneStickerPattern", () => {
   it("50×30: the shop name row says it is not printed", () => {
     renderIt();
     fireEvent.click(screen.getByTestId("os-size-50x30"));
-    expect(screen.getByTestId("os-row-shop").textContent).toContain("Not on 50×30");
+    expect(screen.getByTestId("os-row-shop").textContent).toContain("Not on labels this small");
   });
   it("Custom size: 30–110 mm each, inline error otherwise; Save blocked while wrong", () => {
     const { onSave } = renderIt();
