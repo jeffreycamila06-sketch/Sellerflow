@@ -864,7 +864,8 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
   }
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (path === "text" || path === "wifi" || !bridge) {
-    const r = printSlip(buyer, cur, storeName, cfg);
+    // the TEXT / WiFi sticker of THIS draft's size (never the saved pattern's size)
+    const r = printSlip(buyer, cur, storeName, { ...cfg, stickerSize: textStickerSizeFor(draft.size) }, { noOneSticker: true });
     return { ok: r.ok, code: "", message: "", via: r.via };
   }
   const r = await printOneStickerViaBluetooth(bridge, draft, printableBuyer(buyer), storeName, fbName);
@@ -1095,7 +1096,7 @@ export function __resetWebPrintQueue(): void {
 // intentionally NOT queued here. Payload bytes + the Capacitor plugin are UNTOUCHED
 // — only WHEN JS calls the existing bridge changes.
 type NativeStickerVia = "bluetooth" | "lan";
-interface NativeStickerJob { via: NativeStickerVia; buyer: Buyer; cur: string; storeName: string; cfg: Settings; jobId: string; fbName?: boolean; at?: number; }
+interface NativeStickerJob { via: NativeStickerVia; buyer: Buyer; cur: string; storeName: string; cfg: Settings; jobId: string; fbName?: boolean; at?: number; noOneSticker?: boolean; }
 // ABOVE the native BLE overall cap (~30s) so a genuinely wedged bridge (a promise
 // that never settles) can't freeze the queue — on timeout we mark not-printed and
 // advance. The native side self-bounds well under this in every normal case, so the
@@ -1139,7 +1140,7 @@ async function pumpNativeQueue(): Promise<void> {
 async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
   try {
     const run: Promise<BtRouteResult | boolean> = job.via === "bluetooth"
-      ? printStickerViaBluetooth(job.buyer, job.cur, job.storeName, job.cfg, job.fbName === true, job.at)
+      ? printStickerViaBluetooth(job.buyer, job.cur, job.storeName, job.cfg, job.fbName === true, job.at, job.noOneSticker === true)
       : printStickerViaLan(job.buyer, job.cur, job.storeName, job.cfg, job.at);
     // WATCHDOG: race the print against a timer ABOVE the native cap. The winner is
     // almost always the print (BT resolves {ok}; LAN resolves boolean); a genuine
@@ -1204,7 +1205,7 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
     // awaits each print to native completion before the next → no BT_BUSY overlap
     // drops. Return contract unchanged (enqueue succeeded). Failure/not-printed is
     // surfaced by the queue (no-printer modal + the not-printed reprint channel).
-    enqueueNativeSticker({ via: "bluetooth", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer), ...(fbName ? { fbName } : {}), ...(at != null ? { at } : {}) });
+    enqueueNativeSticker({ via: "bluetooth", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer), ...(fbName ? { fbName } : {}), ...(at != null ? { at } : {}), ...(opts?.noOneSticker ? { noOneSticker: true } : {}) });
     return { ok: true, via: "bluetooth" };
   }
   if (shouldUseLanSticker(cfg.printerType, cfg.lanFormat, !!nativePrinter?.printStickerLan)) {

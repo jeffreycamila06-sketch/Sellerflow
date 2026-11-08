@@ -153,3 +153,26 @@ describe("one sticker — laptop and test prints fall back honestly", () => {
     delete (window as W).SellerFlowPrinter;
   });
 });
+
+describe("new-screen test print on a TEXT / WiFi phone (audit-2 item 6)", () => {
+  it("TEXT phone (no picture method): the TEXT test sticker at the DRAFT's size, not the saved one", async () => {
+    __resetSavedPrinter(); __resetNativePrintQueue();
+    optIn(60, 40); // saved 60×40
+    const br = { printStickerNative: vi.fn(async (_p: unknown) => ({ ok: true })) }; // old app: no picture method → "text"
+    (window as W).SellerFlowPrinter = br;
+    await printOneStickerTest(recommendedSettings({ w: 80, h: 50 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "bluetooth" });
+    await vi.waitFor(() => expect(br.printStickerNative).toHaveBeenCalledTimes(1));
+    expect(br.printStickerNative.mock.calls[0][0]).toMatchObject({ labelWidthMm: 80, labelHeightMm: 50 });
+    delete (window as W).SellerFlowPrinter;
+  });
+  it("WiFi sticker phone: the WiFi sticker at the DRAFT's size", async () => {
+    __resetSavedPrinter(); __resetNativePrintQueue();
+    optIn(60, 40);
+    const br = { printStickerLan: vi.fn(async (_p: unknown) => ({ ok: true })) };
+    (window as W).SellerFlowPrinter = br;
+    await printOneStickerTest(recommendedSettings({ w: 80, h: 50 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "lan", lanFormat: "sticker" });
+    await vi.waitFor(() => expect(br.printStickerLan).toHaveBeenCalledTimes(1));
+    expect(br.printStickerLan.mock.calls[0][0]).toMatchObject({ labelWidthMm: 80, labelHeightMm: 50 });
+    delete (window as W).SellerFlowPrinter;
+  });
+});
