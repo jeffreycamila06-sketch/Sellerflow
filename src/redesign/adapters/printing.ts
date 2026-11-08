@@ -848,19 +848,11 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
   const fbName = fbNameOnly(buyer.platform, buyer.name);
   if (path === "laptop") {
     if (typeof document === "undefined") return { ok: false, code: "", message: "", via: "none" };
-    const os = oneStickerEffective(draft);
-    const jobId = `one-sticker-test-${++webFallbackId}`;
-    const page = webPrepareChain.then(() => withPictureLimit(() => renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, undefined, fbName)), ONE_STICKER_WEB_TIMEOUT_MS)).then((r) => laptopPage(r, os, "Test sticker"));
-    webPrepareChain = page.catch(() => undefined);
-    try {
-      enqueueWebPrint({ id: jobId, html: await page });
-      return { ok: true, code: "", message: "", via: "browser" };
-    } catch (err) {
-      // the same fallback as a real laptop print: today's test sticker, reported, and the screen says so
-      oneStickerWebMiss(err);
-      const r = printSlip(buyer, cur, storeName, cfg, { noOneSticker: true });
-      return { ok: r.ok, code: ONE_STICKER_FALLBACK, message: "", via: r.via };
-    }
+    // queued NOW (in order, like a real laptop order); the page is today's test page if the picture fails
+    return new Promise((res) => {
+      const r = printSlip(buyer, cur, storeName, cfg, { webOneSticker: { settings: draft, title: "Test sticker", onPicture: (ok) => res({ ok: true, code: ok ? "" : ONE_STICKER_FALLBACK, message: "", via: "browser" }) } });
+      if (!r.ok) res({ ok: false, code: "", message: "", via: r.via });
+    });
   }
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (path === "text" || path === "wifi" || !bridge) {
@@ -1187,7 +1179,7 @@ export function webStickerQrSvg(handle: string | undefined | null): { svg: strin
 // opts.at (OPTIONAL — passed ONLY by the past-session Reprint): the original order's instant, so
 // the header date (and the slip's Created line) is that order's own Taipei date — an exact copy
 // of the original. Absent = now, byte-identical to before on every route.
-export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printSettings: Settings | string, opts?: { at?: number; noOneSticker?: boolean }): PrintResult {
+export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printSettings: Settings | string, opts?: { at?: number; noOneSticker?: boolean; webOneSticker?: { settings: OneStickerSettings; title: string; onPicture: (ok: boolean) => void } }): PrintResult {
   const at = opts?.at != null && Number.isFinite(opts.at) ? opts.at : undefined;
   // Build 11 (M1): a Facebook buyer prints the name only (blank if none) — never the commenter's
   // id. Every other buyer: the same object (fbName.ts printableBuyer).
@@ -1285,6 +1277,8 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
     (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
     (qr ? qr.svg : "") +
     `</body></html>`;
+  // a test print of the new screen's DRAFT (webOneSticker) — queued now like any order, in order
+  if (opts?.webOneSticker) { const w = opts.webOneSticker; enqueueWebPrint({ id: jobId, html: oneStickerWebPage(w.settings, buyer, storeName, at, fbNameOnly(buyer.platform, buyer.name), html, w.title, w.onPicture) }); return { ok: true, via: "browser" }; }
   const os = opts?.noOneSticker ? null : oneStickerActive();
   if (os) { enqueueWebPrint({ id: jobId, html: oneStickerWebPage(os, buyer, storeName, at, fbNameOnly(buyer.platform, buyer.name), html) }); return { ok: true, via: "browser" }; }
   enqueueWebPrint({ id: jobId, html });
@@ -1332,11 +1326,11 @@ function oneStickerWebMiss(err: unknown): void {
   reportStickerRoute({ via: "bitmap", ok: false, reason: "one-sticker-picture-failed", detail: `laptop: ${String(err)}`, payloadBytes: 0, totalMs: 0 });
   log.warn("[ONE-STICKER laptop] picture failed — printing today's page", err);
 }
-function oneStickerWebPage(osIn: OneStickerSettings, buyer: Buyer, storeName: string, at: number | undefined, fbName: boolean, legacyHtml: string): Promise<string> {
+function oneStickerWebPage(osIn: OneStickerSettings, buyer: Buyer, storeName: string, at: number | undefined, fbName: boolean, legacyHtml: string, title = `Sticker #${buyer.num}`, onPicture?: (ok: boolean) => void): Promise<string> {
   const os = oneStickerEffective(osIn);
   const page = webPrepareChain.then(() => withPictureLimit(() => renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName)), ONE_STICKER_WEB_TIMEOUT_MS))
-    .then((r) => laptopPage(r, os, `Sticker #${buyer.num}`))
-    .catch((err: unknown) => { oneStickerWebMiss(err); return legacyHtml; });
+    .then((r) => { const html = laptopPage(r, os, title); onPicture?.(true); return html; })
+    .catch((err: unknown) => { oneStickerWebMiss(err); onPicture?.(false); return legacyHtml; });
   webPrepareChain = page;
   return page;
 }

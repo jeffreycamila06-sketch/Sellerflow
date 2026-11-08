@@ -176,3 +176,30 @@ describe("new-screen test print on a TEXT / WiFi phone (audit-2 item 6)", () => 
     delete (window as W).SellerFlowPrinter;
   });
 });
+
+const sampleTest = { ...buyer, num: 128, name: "Maria Santos", handle: "maria_live" } as Buyer;
+describe("laptop test print keeps the queue order (audit-2 item 7)", () => {
+  it("a test print, then a real order at once: they print in that order (the test joins the queue first)", async () => {
+    delete (window as W).SellerFlowPrinter;
+    __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());
+    optIn(60, 40);
+    ctl.mode = "defer"; // the test print's picture takes a while
+    const written: string[] = [];
+    const orig = document.createElement.bind(document);
+    const spy = vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      const el = orig(tag);
+      if (tag === "iframe") { const f = el as HTMLIFrameElement; const poll = setInterval(() => { const h = f.contentDocument?.documentElement.outerHTML ?? ""; if (h.includes("<body") && h.length > 200 && written[written.length - 1] !== h) written.push(h); if (written.length >= 2) clearInterval(poll); }, 5); }
+      return el;
+    });
+    const test = printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), sampleTest, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40" });
+    printSlip(buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40" }, { at: AT }); // a real order right after
+    await new Promise((r) => setTimeout(r, 50));
+    ctl.mode = "real";
+    ctl.release!(); // the test's picture is ready
+    expect(await test).toMatchObject({ ok: true, via: "browser" });
+    await vi.waitFor(() => expect(written.length).toBeGreaterThanOrEqual(2), { timeout: 8000 });
+    expect(written[0], "the test print is first").toContain("Test sticker");
+    expect(written[1]).toContain("Sticker #12");
+    spy.mockRestore(); __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());
+  }, 20000);
+});
