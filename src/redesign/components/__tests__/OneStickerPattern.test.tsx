@@ -101,7 +101,7 @@ describe("OneStickerPattern", () => {
     expect(sw.disabled).toBe(true);
     expect(sw.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(sw);
-    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true); // nothing changed
+    expect(screen.getByTestId("os-qr-on").getAttribute("aria-checked")).toBe("false"); // nothing changed
   });
   it("every button on the screen is at least 44 px tall to tap (steppers, chips, weights, switches, Back, tests, Reset, Save)", () => {
     renderIt();
@@ -142,20 +142,30 @@ describe("OneStickerPattern", () => {
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
     expect(ids).toEqual(["os-row-shop", "os-row-date", "os-row-buyer", "os-row-name", "os-row-user", "os-row-qr", "os-row-comment"]);
   });
-  it("Save is off until something changes; Save hands the settings to the device", () => {
+  it("Save: on while this device has NOT saved the new sticker (adopt what you see); after saving, off until something changes", () => {
     const { onSave } = renderIt();
-    const save = screen.getByTestId("os-save") as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
+    const save = () => screen.getByTestId("os-save") as HTMLButtonElement;
+    expect(save().disabled).toBe(false); // never saved here → can adopt as is
     expect(screen.getByTestId("os-device-note").textContent).toContain("keeps today's sticker");
+    fireEvent.click(save());
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("os-device-note").textContent).toContain("This device prints this sticker");
+    expect(save().disabled).toBe(true); // saved, nothing changed
     fireEvent.click(screen.getByTestId("os-comment-plus"));
     expect(screen.getByTestId("os-comment-scale").textContent).toBe("1.15×");
     fireEvent.click(screen.getByTestId("os-name-w-extra"));
-    expect(save.disabled).toBe(false);
-    fireEvent.click(save);
-    expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave.mock.calls[0][0].parts.comment.scale).toBe(1.15);
-    expect(onSave.mock.calls[0][0].parts.name.weight).toBe("extra");
-    expect(screen.getByTestId("os-device-note").textContent).toContain("This device prints this sticker");
+    expect(save().disabled).toBe(false);
+    fireEvent.click(save());
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave.mock.calls[1][0].parts.comment.scale).toBe(1.15);
+    expect(onSave.mock.calls[1][0].parts.name.weight).toBe("extra");
+    expect(save().disabled).toBe(true);
+  });
+  it("a device that already saved the new sticker: Save is off until something changes", () => {
+    renderIt({ savedOnDevice: true });
+    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("os-shop-plus"));
+    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(false);
   });
   it("the stepper walks the approved ladder 0.6 … 2 and stops at the ends", () => {
     renderIt();
@@ -184,7 +194,8 @@ describe("OneStickerPattern", () => {
   it("warns when the size is wider than the saved printer takes (Niimbot B1 = 50 mm)", () => {
     renderIt({ printerName: "B1-H123", devicePath: "niimbot" });
     expect(screen.getByTestId("os-too-wide").textContent).toContain("B1");
-    fireEvent.click(screen.getByTestId("os-name-w-extra")); // a change, but the size is too wide → Save stays off
+    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true); // never saved, but the size is too wide → off
+    fireEvent.click(screen.getByTestId("os-name-w-extra"));
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("os-size-50x30"));
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(false);

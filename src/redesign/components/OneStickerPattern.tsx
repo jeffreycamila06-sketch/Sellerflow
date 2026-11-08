@@ -165,7 +165,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
   const reset = () => { setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
   const blocked = !!tooWide || (customOpen && !customOk); // a size the printer cannot take is never saved
-  const save = () => { if ((!dirty && saved) || blocked) return; p.onSave(s); setBase(s); setS(s); setSaved(true); };
+  // Save: on a device that has NOT saved the new sticker yet, always on (the seller can adopt what they
+  // see); after saving, off until something changes (Jeff). Never while the size can't be printed.
+  const canSave = (dirty || !saved) && !blocked;
+  const save = () => { if (!canSave) return; p.onSave(s); setBase(s); setS(s); setSaved(true); };
 
   const partLabel: Record<PartKey, string> = { shop: t.rd_set_shop_name, buyer: t.rd_pp_buyer_num, name: t.rd_os_name, user: t.rd_os_user, comment: t.rd_pp_comment_center };
   const weightLabel: Record<Weight, string> = { normal: t.rd_os_w_normal, bold: t.rd_os_w_bold, extra: t.rd_os_w_extra };
@@ -309,7 +312,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           <button type="button" onClick={reset} data-testid="os-reset" style={{ minHeight: TAP, padding: "6px 12px", border: "none", background: "none", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t.rd_os_reset}</button>
         </div>
         <div data-testid="os-device-note" style={{ marginTop: 9, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.45 }}>{saved && !dirty ? t.rd_os_active_note : t.rd_os_optin_note}</div>
-        <button type="button" onClick={save} disabled={!dirty || blocked} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: dirty ? "pointer" : "default", opacity: dirty && !blocked ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
+        <button type="button" onClick={save} disabled={!canSave} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
         </div>
       </div>
       </div>
