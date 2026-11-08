@@ -250,6 +250,8 @@ function browserDrawer(): RunDrawer | null {
   });
 }
 const runCache = new Map<string, GlyphBits | null>();
+export const RUN_CACHE_MAX = 500; // device-font runs kept (a long live session never grows memory without end)
+export const __runCacheSize = (): number => runCache.size;
 /** Draw a run with the fallback drawer (cached). null = no drawer / nothing drawn. */
 export function fallbackRun(text: string, px: number, weight: SansWeight, rtl: boolean, cut = 128): GlyphBits | null {
   if (fallbackDrawer === undefined) fallbackDrawer = browserDrawer();
@@ -259,6 +261,7 @@ export function fallbackRun(text: string, px: number, weight: SansWeight, rtl: b
   if (hit !== undefined) return hit;
   let out: GlyphBits | null;
   try { out = cut === 128 ? fallbackDrawer.drawRun(text, px, weight, rtl) : fallbackDrawer.drawRun(text, px, weight, rtl, cut); } catch { out = null; }
+  if (runCache.size >= RUN_CACHE_MAX) runCache.delete(runCache.keys().next().value as string); // oldest first
   runCache.set(key, out);
   return out;
 }

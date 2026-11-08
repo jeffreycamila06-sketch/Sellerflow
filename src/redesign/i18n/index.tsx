@@ -1010,7 +1010,7 @@ const RAW: Record<string, Row> = {
   rd_os_user: { en: "@username", fil: "@username", zh: "@用户名", "zh-TW": "@使用者名稱", vi: "@tên người dùng", th: "@ชื่อผู้ใช้", id: "@username", bg: "@потребител" },
   rd_os_w_normal: { en: "Normal", fil: "Normal", zh: "常规", "zh-TW": "一般", vi: "Thường", th: "ปกติ", id: "Normal", bg: "Нормален" },
   rd_os_w_bold: { en: "Bold", fil: "Bold", zh: "粗体", "zh-TW": "粗體", vi: "Đậm", th: "หนา", id: "Tebal", bg: "Удебелен" },
-  rd_os_w_extra: { en: "Extra", fil: "Extra", zh: "特粗", "zh-TW": "特粗", vi: "Rất đậm", th: "หนาพิเศษ", id: "Ekstra", bg: "Extra" },
+  rd_os_w_extra: { en: "Extra", fil: "Extra", zh: "特粗", "zh-TW": "特粗", vi: "Rất đậm", th: "หนาพิเศษ", id: "Ekstra", bg: "Екстра" },
   rd_os_date_fixed: { en: "Always printed · small, fixed size", fil: "Laging naka-print · maliit, hindi nababago ang laki", zh: "总是打印 · 小号，固定大小", "zh-TW": "一定會印 · 小字，固定大小", vi: "Luôn in · nhỏ, cỡ cố định", th: "พิมพ์เสมอ · ตัวเล็ก ขนาดคงที่", id: "Selalu dicetak · kecil, ukuran tetap", bg: "Винаги се отпечатва · малко, фиксиран размер" },
   rd_os_qr_hint: { en: "TikTok buyers only", fil: "Para sa TikTok buyers lang", zh: "仅限 TikTok 买家", "zh-TW": "僅限 TikTok 買家", vi: "Chỉ người mua TikTok", th: "เฉพาะผู้ซื้อ TikTok", id: "Hanya pembeli TikTok", bg: "Само за купувачи от TikTok" },
   rd_os_not_small: { en: "Not on 50×30", fil: "Wala sa 50×30", zh: "50×30 不打印", "zh-TW": "50×30 不列印", vi: "Không in trên 50×30", th: "ไม่พิมพ์บน 50×30", id: "Tidak di 50×30", bg: "Не се печата на 50×30" },

@@ -79,12 +79,12 @@ export function oneStickerVisibleFor(role: string | null | undefined, switchOn: 
 
 // ── Input (one buyer → what prints) ───────────────────────────────────────────────────────────
 const TAIPEI_DATE = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit" }); // "11/07" — the approved preview prints "MM/DD HH:MM"
-const TAIPEI_TIME = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
+const TAIPEI_TIME = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }); // 00:05, never "24:05"
 export const BRAND_FALLBACK = "SellerFlowLive";
 /** The shop line: the seller's own shop name, or nothing — NEVER the app's brand. */
 export const stickerShopName = (storeName: string | null | undefined): string => {
   const s = String(storeName ?? "").trim();
-  return s === BRAND_FALLBACK ? "" : s;
+  return s.replace(/\s+/g, "").toLowerCase() === BRAND_FALLBACK.toLowerCase() ? "" : s; // "sellerflowlive", "Seller Flow Live" …
 };
 export function oneStickerInputFrom(buyer: Buyer, storeName: string, at?: number, fbNameOnly = false): OneStickerInput {
   const when = at != null ? new Date(at) : new Date();
