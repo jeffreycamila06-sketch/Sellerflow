@@ -125,6 +125,13 @@ export function sampleBuyer(item: string = ONE_STICKER_SAMPLE.items[0], at: numb
     orders: [{ orderNum: at, item, qty: 1, price: 0, total: 0, time: TAIPEI_TIME.format(new Date(at)), handle: S.handle, name: S.name, bNum: S.buyerNum, platform: S.platform, status: "New", date: new Date(at).toISOString().slice(0, 10) }] } as unknown as Buyer;
 }
 
+/** The test print of Printer settings / the old pattern: on a device that saved the new sticker it
+ *  prints the preview's sample (#128 Maria Santos) with the seller's own shop — never @sellerflow, the
+ *  brand or a brand QR. Every other device: exactly today's test buyer and shop. */
+export function testPrintFor<S extends string | undefined>(todayBuyer: Buyer, storeName: S): { buyer: Buyer; storeName: S | string } {
+  return oneStickerActive() ? { buyer: sampleBuyer(), storeName: stickerShopName(storeName) } : { buyer: todayBuyer, storeName }; // inactive: exactly today's arguments
+}
+
 // ── Paths ─────────────────────────────────────────────────────────────────────────────────────
 export type OneStickerPath = "d520" | "tspl" | "escpos" | "cpcl" | "niimbot" | "laptop";
 export const NIIMBOT_INSET_MM = 1;      // must equal printing.ts NIIMBOT_FRAME_INSET_MM + the native twins

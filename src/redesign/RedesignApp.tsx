@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from ".
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
@@ -1945,8 +1945,9 @@ export default function RedesignApp() {
   // bridge, with a toast for the result. No-op-safe off-device (no BT bridge).
   // Admin test of the LIVE layout v2: the normal test sticker with a long comment.
   const testBuyerWithComment = (item: string): Buyer => { const b = buildTestBuyer(); return { ...b, orders: [{ ...b.orders[0], item, time: "14:05" }] }; };
-  const onTestPrint = async (testBuyer: Buyer = savedTestBuyer()) => { // the saved printer's sticker: D520BT = old, generic / Niimbot = the Chinese v2
-    const storeName = printShopName;
+  const onTestPrint = async (todayBuyer: Buyer = savedTestBuyer()) => { // the saved printer's sticker: D520BT = old, generic / Niimbot = the Chinese v2
+    // a device on the new sticker prints the preview's sample with the seller's own shop (no brand)
+    const { buyer: testBuyer, storeName } = testPrintFor(todayBuyer, printShopName);
     const settings = buildSettingsFromRedesign({ pp, psType, psOut, psSize });
     // No BT bridge (web/desktop) → browser-print the SAME test pattern through
     // printSlip, so desktop sellers can preview their pattern settings too.

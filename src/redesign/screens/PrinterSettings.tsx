@@ -24,6 +24,7 @@ import {
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
 import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
+import { testPrintFor } from "../adapters/oneStickerPrint";
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { useT, tpl } from "../i18n";
@@ -181,7 +182,8 @@ export default function PrinterSettings({
     setBtMsg(t.rd_ps_sending_test);
     // Routed like a real order: bitmap SDK stream by default, TEXT only when
     // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
-    const r = await printStickerBtRouted(testBuyer(), cur, storeName, settings);
+    const tp = testPrintFor(testBuyer(), storeName); // a device on the new sticker: the preview's sample
+    const r = await printStickerBtRouted(tp.buyer, cur, tp.storeName, settings);
     if (r.ok) { setBtMsg(t.rd_ps_test_sent); setTestPrinted(true); return; } // an amber "didn't print" card turns green
     if (v2 && bt.report(r.code, r.message)) { setBtMsg(""); return; } // Bluetooth off / not allowed → the card says what to do
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
@@ -210,7 +212,8 @@ export default function PrinterSettings({
         : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: knownPrinterLang(p.name) ?? "tspl" };
     // Save first (the print router reads the saved printer), print one test sticker, THEN show it as saved.
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
-    const printed = await printStickerBtRouted(d520 ? testBuyer() : buildTestBuyerV2(), cur, storeName, settings);
+    const tp = testPrintFor(d520 ? testBuyer() : buildTestBuyerV2(), storeName);
+    const printed = await printStickerBtRouted(tp.buyer, cur, tp.storeName, settings);
     if (!printed.ok) bt.report(printed.code, printed.message); // Bluetooth off / not allowed → that card; anything else → the amber saved card
     setTestPrinted(printed.ok);
     setBtSaved(r?.savedPrinter || p);
