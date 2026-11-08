@@ -2836,6 +2836,7 @@ export default function RedesignApp() {
               printerName={savedBtPrinter()?.name ?? null}
               genericBold={!!knownTsplJob(savedBtPrinter()?.name).bold}
               qrAllowed={stickerQrAllowed}
+              onToast={(msg) => setToast({ msg, kind: "ok" })}
               onTest={(draft, sample, unsaved) => void (async () => {
                 // the SAME sample as the preview (#128 Maria Santos @maria_live); the long tests swap the comment only
                 const buyer: Buyer = sampleBuyer(sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : ONE_STICKER_SAMPLE.items[0]);

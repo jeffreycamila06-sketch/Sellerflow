@@ -94,6 +94,12 @@ describe("OneStickerPattern", () => {
     }
     expect(small).toEqual([]);
   });
+  it("Reset to recommended shows a short message, like the preview", () => {
+    const onToast = vi.fn();
+    renderIt({ onToast });
+    fireEvent.click(screen.getByTestId("os-reset"));
+    expect(onToast).toHaveBeenCalledWith("Back to recommended settings");
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));

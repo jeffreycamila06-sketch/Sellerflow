@@ -117,6 +117,7 @@ export interface OneStickerPatternProps {
   genericBold?: boolean;           // the saved printer gets the 1-dot ink (Y41BT / XP-420B)
   qrAllowed: boolean;              // "Print QR on sticker" is available for this account
   onTest: (draft: OneStickerSettings, sample: "default" | "en" | "zh", unsaved: boolean) => void;
+  onToast?: (msg: string) => void; // a short message (Reset → "Back to recommended settings")
 }
 
 export default function OneStickerPattern(p: OneStickerPatternProps) {
@@ -144,7 +145,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
 
   const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
-  const reset = () => setS(recommendedSettings(s.size));
+  const reset = () => { setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
   const blocked = !!tooWide || (customOpen && !customOk); // a size the printer cannot take is never saved
   const save = () => { if ((!dirty && saved) || blocked) return; p.onSave(s); setBase(s); setS(s); setSaved(true); };
 
@@ -280,7 +281,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         </div>
 
         {/* 5. reset + save */}
-        <button type="button" onClick={reset} data-testid="os-reset" style={{ width: "100%", marginTop: 12, padding: "11px 0", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_os_reset}</button>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
+          <button type="button" onClick={reset} data-testid="os-reset" style={{ minHeight: TAP, padding: "6px 12px", border: "none", background: "none", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t.rd_os_reset}</button>
+        </div>
         <div data-testid="os-device-note" style={{ marginTop: 9, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.45 }}>{saved && !dirty ? t.rd_os_active_note : t.rd_os_optin_note}</div>
         <button type="button" onClick={save} disabled={!dirty || blocked} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: dirty ? "pointer" : "default", opacity: dirty && !blocked ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
         </div>
