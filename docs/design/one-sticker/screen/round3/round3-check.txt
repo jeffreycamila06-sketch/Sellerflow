@@ -1,0 +1,36 @@
+saved light: This device prints this sticker.
+saved+changed light: Your changes are used after you tap Save.
+not saved light: This device keeps today's sticker until you tap Save.
+saved dark: This device prints this sticker.
+saved+changed dark: Your changes are used after you tap Save.
+not saved dark: This device keeps today's sticker until you tap Save.
+font 700 blocked light: failed=true notes=false
+after a setting change light: preview back, notes back
+font 700 blocked dark: failed=true notes=false
+after a setting change dark: preview back, notes back
+pills fits light:
+  ok color=rgb(15, 138, 95) border=rgb(157, 220, 196) bg=rgb(255, 255, 255) "Everything fits"
+  info color=rgb(151, 149, 173) border=rgba(28, 26, 53, 0.09) bg=rgb(255, 255, 255) "Shortened with …: Shop name"
+pills warn-bad light:
+  bad color=rgb(194, 52, 43) border=rgb(242, 177, 171) bg=rgb(255, 255, 255) "Too big: Buyer # — make it smaller"
+  warn color=rgb(154, 92, 0) border=rgb(240, 207, 146) bg=rgb(255, 255, 255) "Comment made smaller (66%) to fit"
+  info color=rgb(151, 149, 173) border=rgba(28, 26, 53, 0.09) bg=rgb(255, 255, 255) "Shortened with …: Name"
+  info color=rgb(151, 149, 173) border=rgba(28, 26, 53, 0.09) bg=rgb(255, 255, 255) "No shop name on this size"
+pills short light:
+  bad color=rgb(194, 52, 43) border=rgb(242, 177, 171) bg=rgb(255, 255, 255) "Too big: Buyer # — make it smaller"
+  info color=rgb(151, 149, 173) border=rgba(28, 26, 53, 0.09) bg=rgb(255, 255, 255) "No shop name on this size"
+pills fits dark:
+  ok color=rgb(61, 211, 155) border=rgb(36, 92, 72) bg=rgb(24, 27, 35) "Everything fits"
+  info color=rgb(107, 114, 128) border=rgba(255, 255, 255, 0.09) bg=rgb(24, 27, 35) "Shortened with …: Shop name"
+pills warn-bad dark:
+  bad color=rgb(255, 122, 112) border=rgb(94, 42, 39) bg=rgb(24, 27, 35) "Too big: Buyer # — make it smaller"
+  warn color=rgb(242, 180, 81) border=rgb(94, 74, 32) bg=rgb(24, 27, 35) "Comment made smaller (66%) to fit"
+  info color=rgb(107, 114, 128) border=rgba(255, 255, 255, 0.09) bg=rgb(24, 27, 35) "Shortened with …: Name"
+  info color=rgb(107, 114, 128) border=rgba(255, 255, 255, 0.09) bg=rgb(24, 27, 35) "No shop name on this size"
+pills short dark:
+  bad color=rgb(255, 122, 112) border=rgb(94, 42, 39) bg=rgb(24, 27, 35) "Too big: Buyer # — make it smaller"
+  info color=rgb(107, 114, 128) border=rgba(255, 255, 255, 0.09) bg=rgb(24, 27, 35) "No shop name on this size"
+tap 360: shop plus 44×44 switch 54×44 overlap=0.0px | buyer plus 44×44 switch 54×44 overlap=0.0px | name plus 44×44 switch 54×44 overlap=0.0px | user plus 44×44 switch 54×44 overlap=0.0px | comment plus 44×44 switch 54×44 overlap=0.0px
+tap 390: shop plus 44×44 switch 54×44 overlap=0.0px | buyer plus 44×44 switch 54×44 overlap=0.0px | name plus 44×44 switch 54×44 overlap=0.0px | user plus 44×44 switch 54×44 overlap=0.0px | comment plus 44×44 switch 54×44 overlap=0.0px
+tap 430: shop plus 44×44 switch 54×44 overlap=0.0px | buyer plus 44×44 switch 54×44 overlap=0.0px | name plus 44×44 switch 54×44 overlap=0.0px | user plus 44×44 switch 54×44 overlap=0.0px | comment plus 44×44 switch 54×44 overlap=0.0px
+tap 1280: shop plus 44×44 switch 54×44 overlap=0.0px | buyer plus 44×44 switch 54×44 overlap=0.0px | name plus 44×44 switch 54×44 overlap=0.0px | user plus 44×44 switch 54×44 overlap=0.0px | comment plus 44×44 switch 54×44 overlap=0.0px
