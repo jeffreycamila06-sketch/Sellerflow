@@ -27,6 +27,9 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings }: { 
   const ref = useRef<HTMLCanvasElement | null>(null);
   const key = JSON.stringify({ settings, input, path, job });
   const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false); // fonts / picture could not load → a short message + Try again
+  const [attempt, setAttempt] = useState(0);
+  const t = useT();
   useEffect(() => {
     let live = true;
     void oneStickerFonts(settings, input).then((fonts) => {
@@ -48,10 +51,17 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings }: { 
         data.data[i] = data.data[i + 1] = data.data[i + 2] = 0;
       }
       ctx.putImageData(data, 0, 0);
+      setFailed(false);
       setReady(true);
-    });
+    }).catch(() => { if (live) setFailed(true); });
     return () => { live = false; };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
+  }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
+  if (failed) return (
+    <div data-testid="os-preview-failed" role="status" style={{ width: "100%", aspectRatio: `${settings.size.w} / ${settings.size.h}`, maxHeight: "min(60vh, 420px)", display: "grid", placeItems: "center", gap: 6, background: "#fff", borderRadius: 6, padding: 12, textAlign: "center", color: "#16152B", fontSize: 13, fontWeight: 600 }}>
+      <span>{t.rd_os_preview_failed}</span>
+      <button type="button" data-testid="os-preview-retry" onClick={() => { setFailed(false); setAttempt((a) => a + 1); }} style={{ minHeight: TAP, padding: "6px 14px", borderRadius: 10, border: "1px solid #d9d7e6", background: "#fff", color: "#4F46E5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t.rd_os_try_again}</button>
+    </div>
+  );
   return (
     <canvas ref={ref} data-testid="os-preview" data-ready={ready ? "1" : "0"}
       // a tall / square custom label never pushes the screen down: at most min(60vh, 420 px) high, same shape
@@ -68,7 +78,7 @@ function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path:
     let live = true;
     // the sample (#128) AND the buyer number at its widest (#8888): a real 4-digit number never gets
     // cut while the screen says everything fits
-    void oneStickerFonts(settings, input).then((fonts) => { if (live) setN(screenFitNotes(settings, input, fonts, renderOptsFor(path, settings, job))); });
+    void oneStickerFonts(settings, input).then((fonts) => { if (live) setN(screenFitNotes(settings, input, fonts, renderOptsFor(path, settings, job))); }).catch(() => { if (live) setN([]); });
     return () => { live = false; };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return n;
