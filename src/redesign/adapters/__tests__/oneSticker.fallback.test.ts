@@ -118,7 +118,7 @@ describe("one sticker — laptop and test prints fall back honestly", () => {
   it("TEST print falling to the TEXT sticker (SPP send failed) uses the DRAFT's size, not the saved one", async () => {
     __resetSavedPrinter(); rememberSavedPrinter({ address: "AA", name: "D520BT-Z" });
     optIn(60, 40); // saved 60×40 …
-    const br = { printStickerNative: vi.fn(async () => ({ ok: true })), printStickerBitmap: vi.fn(async () => ({ ok: false, code: BITMAP_SPP_FAILED })) };
+    const br = { printStickerNative: vi.fn(async (_p: unknown) => ({ ok: true })), printStickerBitmap: vi.fn(async (_p: unknown) => ({ ok: false, code: BITMAP_SPP_FAILED })) };
     (window as W).SellerFlowPrinter = br;
     await printOneStickerTest(recommendedSettings({ w: 80, h: 50 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "bluetooth" }); // … draft 80×50
     expect(br.printStickerNative).toHaveBeenCalledTimes(1);
