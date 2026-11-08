@@ -111,17 +111,18 @@ const OS_CSS = `
 // approved preview's size inside that area.
 const TAP = 44;
 const chip = (on: boolean): CSSProperties => ({ padding: "8px 11px", minHeight: TAP, borderRadius: 10, border: on ? "1px solid var(--accent)" : "1px solid var(--border-strong)", background: on ? "var(--accent-soft)" : "var(--surface)", color: on ? "var(--accent-fg)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", flexShrink: 0, fontVariantNumeric: "tabular-nums" });
+const STEP_OVERHANG = 6, SWITCH_OVERHANG = 4; // how far each 44 px tap area reaches past its own slot
 const tapBox: CSSProperties = { minWidth: TAP, minHeight: TAP, background: "none", border: "none", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontFamily: "var(--font-ui)" };
 function StepBtn({ label, onClick, disabled, testId, aria }: { label: string; onClick: () => void; disabled?: boolean; testId: string; aria: string }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} data-testid={testId} aria-label={aria} style={{ ...tapBox, margin: "0 -6px", cursor: disabled ? "default" : "pointer" }}>
+    <button type="button" onClick={onClick} disabled={disabled} data-testid={testId} aria-label={aria} style={{ ...tapBox, margin: `0 -${STEP_OVERHANG}px`, cursor: disabled ? "default" : "pointer" }}>
       <span style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid var(--border-strong)", color: "var(--accent-fg)", fontSize: 16, fontWeight: 700, display: "grid", placeItems: "center", lineHeight: 1, opacity: disabled ? 0.35 : 1 }}>{label}</span>
     </button>
   );
 }
 function Switch({ on, onClick, testId, disabled, aria }: { on: boolean; onClick: () => void; testId: string; disabled?: boolean; aria?: string }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={aria} onClick={onClick} disabled={disabled} aria-pressed={on} data-testid={testId} style={{ ...tapBox, minWidth: 54, margin: "0 -4px", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1 }}>
+    <button type="button" role="switch" aria-checked={on} aria-label={aria} onClick={onClick} disabled={disabled} aria-pressed={on} data-testid={testId} style={{ ...tapBox, minWidth: 54, margin: `0 -${SWITCH_OVERHANG}px`, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1 }}>
       <span style={{ width: 46, height: 28, borderRadius: 14, background: on ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
         <span style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 22, height: 22, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
       </span>
@@ -203,7 +204,8 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{partLabel[r.k]}</div>
             {r.hint && <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>{r.hint}</div>}
           </div>
-          <div className="os-row-ctl" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* gap = the "+" area's 6 px overhang + the switch area's 4 px overhang: the two tap areas touch, never overlap */}
+          <div className="os-row-ctl" data-testid={`os-${r.k}-ctl`} style={{ display: "flex", alignItems: "center", gap: STEP_OVERHANG + SWITCH_OVERHANG }}>
             <div data-testid={`os-${r.k}-stepper`} style={{ display: "flex", alignItems: "center", opacity: off ? 0.4 : 1 }}>
               <StepBtn label="−" aria={`${partLabel[r.k]} −`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={off || part.scale === SCALE_STEPS[0]} testId={`os-${r.k}-minus`} />
               <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--text)", minWidth: 36, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>

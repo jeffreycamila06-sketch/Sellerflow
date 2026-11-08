@@ -200,6 +200,19 @@ describe("OneStickerPattern", () => {
     expect((screen.getByTestId("os-custom-w") as HTMLInputElement).value).toBe("60");
     expect((screen.getByTestId("os-custom-h") as HTMLInputElement).value).toBe("40");
   });
+  it("tap areas: the '+' area and the switch area never overlap (each ≥ 44 px wide; the gap covers both overhangs)", () => {
+    renderIt();
+    const px = (v: string) => Number(v.replace("px", ""));
+    for (const k of ["shop", "buyer", "name", "user", "comment"]) {
+      const plus = screen.getByTestId(`os-${k}-plus`), sw = screen.getByTestId(`os-${k}-on`), ctl = screen.getByTestId(`os-${k}-ctl`);
+      expect(px(plus.style.minWidth)).toBeGreaterThanOrEqual(44);
+      expect(px(sw.style.minWidth)).toBeGreaterThanOrEqual(44);
+      const plusOver = -px(plus.style.marginRight || plus.style.margin.split(" ")[1]);
+      const swOver = -px(sw.style.marginLeft || sw.style.margin.split(" ")[1]);
+      expect(plusOver).toBeGreaterThan(0);
+      expect(px(ctl.style.gap), k).toBeGreaterThanOrEqual(plusOver + swOver); // overlap = overhangs − gap ≤ 0
+    }
+  });
   it("device note: not saved → keeps today's sticker; saved → prints this sticker; saved with changes → used after Save", () => {
     const note = () => screen.getByTestId("os-device-note").textContent;
     renderIt({ savedOnDevice: true });
