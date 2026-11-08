@@ -40,15 +40,32 @@ describe("OneStickerPattern", () => {
     expect(screen.getByTestId("os-row-comment").textContent).toContain("Shrinks automatically when long");
     expect(screen.getByTestId("os-row-date").textContent).toContain("Fixed size");
   });
-  it("Normal / Bold / Extra sit under the row name, inside the name column (not a full-width second line)", () => {
+  it("Normal / Bold / Extra: under the name beside the size + switch on a wide row, their own line on a narrow row — never over the stepper; each ≥ 44×44", () => {
     renderIt();
     for (const k of ["shop", "buyer", "name", "user", "comment"]) {
       const weights = screen.getByTestId(`os-${k}-weights`);
-      const nameCol = weights.parentElement!;
-      expect(nameCol.textContent).toContain(weights.textContent!);
-      expect(nameCol.parentElement!.contains(screen.getByTestId(`os-${k}-stepper`))).toBe(true); // same line as the stepper
-      expect(nameCol.contains(screen.getByTestId(`os-${k}-stepper`))).toBe(false);
+      expect(weights.className).toBe("os-row-w");
+      expect(weights.contains(screen.getByTestId(`os-${k}-stepper`))).toBe(false);
+      for (const w of ["normal", "bold", "extra"]) {
+        const b = screen.getByTestId(`os-${k}-w-${w}`);
+        expect(parseFloat(b.style.minWidth)).toBeGreaterThanOrEqual(44);
+        expect(parseFloat(b.style.minHeight)).toBeGreaterThanOrEqual(44);
+      }
     }
+    const css = document.querySelector("style")!.textContent!.replace(/\s+/g, " ");
+    expect(css).toContain('grid-template-areas:"name ctl" "w w"');                       // narrow: own line
+    expect(css).toMatch(/@container \(min-width:\d+px\)\{\.os-row-grid\{grid-template-areas:"name ctl" "w ctl"\}\}/); // wide: preview
+    expect(css).toContain(".os-row-w{grid-area:w;display:flex;flex-wrap:wrap");
+  });
+  it("Custom W × H: one line (the × never wraps alone), inputs full width and ≥ 44 px", () => {
+    renderIt();
+    fireEvent.click(screen.getByTestId("os-size-custom"));
+    for (const id of ["os-custom-w", "os-custom-h"]) {
+      const el = screen.getByTestId(id) as HTMLInputElement;
+      expect(el.style.width).toBe("100%");
+      expect(parseFloat(el.style.minHeight)).toBeGreaterThanOrEqual(44);
+    }
+    expect((screen.getByTestId("os-custom").firstElementChild as HTMLElement).style.gridTemplateColumns).toBe("minmax(0,1fr) auto minmax(0,1fr)");
   });
   it("a part switched OFF: its size and weight are dimmed and cannot be changed (the switch still works)", () => {
     const { onSave } = renderIt();

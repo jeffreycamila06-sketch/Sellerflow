@@ -80,6 +80,11 @@ const OS_CSS = `
 .os-wrap{container-type:inline-size}
 .os-body{display:grid;gap:0;padding:12px 14px 18px;max-width:720px;margin:0 auto}
 .os-pv,.os-ctl{min-width:0}
+.os-row{container-type:inline-size}
+.os-row-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name ctl" "w w";column-gap:6px;align-items:center}
+.os-row-name{grid-area:name}.os-row-ctl{grid-area:ctl}
+.os-row-w{grid-area:w;display:flex;flex-wrap:wrap;min-width:0}
+@container (min-width:460px){.os-row-grid{grid-template-areas:"name ctl" "w ctl"}}
 .os-ctl{margin-top:14px}
 @container (min-width:760px){
   .os-body{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:start;gap:20px;padding:20px;max-width:1180px}
@@ -166,26 +171,29 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
     // a part switched OFF (or not on this size): its size and weight are dimmed and cannot be changed
     const off = !part.on || !!r.disabled;
     return (
-      <div key={r.k} data-testid={`os-row-${r.k}`} data-off={off ? "1" : "0"} style={{ padding: "8px 12px", borderBottom: last ? "none" : "1px solid var(--border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, opacity: r.disabled ? 0.55 : 1 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+      <div key={r.k} className="os-row" data-testid={`os-row-${r.k}`} data-off={off ? "1" : "0"} style={{ padding: "8px 12px", borderBottom: last ? "none" : "1px solid var(--border)" }}>
+        <div className="os-row-grid" style={{ opacity: r.disabled ? 0.55 : 1 }}>
+          <div className="os-row-name" style={{ minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{partLabel[r.k]}</div>
             {r.hint && <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>{r.hint}</div>}
-            {/* Normal / Bold / Extra under the row name (approved preview) */}
-            <div role="group" aria-label={partLabel[r.k]} data-testid={`os-${r.k}-weights`} style={{ display: "flex", width: "max-content", maxWidth: "100%", marginTop: 2, opacity: off ? 0.4 : 1 }}>
-              {(["normal", "bold", "extra"] as Weight[]).map((w, i) => (
-                <button key={w} type="button" disabled={off} onClick={() => setPart(r.k, { weight: w })} aria-pressed={part.weight === w} data-testid={`os-${r.k}-w-${w}`} style={{ ...tapBox, minWidth: 0, cursor: off ? "default" : "pointer" }}>
-                  <span style={{ padding: "4px 8px", fontSize: 11.5, fontWeight: w === "normal" ? 400 : w === "bold" ? 700 : 900, border: "1px solid var(--border)", borderLeftWidth: i === 0 ? 1 : 0, borderRadius: i === 0 ? "9px 0 0 9px" : i === 2 ? "0 9px 9px 0" : 0, background: part.weight === w ? "var(--accent-soft)" : "var(--surface)", color: part.weight === w ? "var(--accent-fg)" : "var(--text)" }}>{weightLabel[w]}</span>
-                </button>
-              ))}
+          </div>
+          <div className="os-row-ctl" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div data-testid={`os-${r.k}-stepper`} style={{ display: "flex", alignItems: "center", opacity: off ? 0.4 : 1 }}>
+              <StepBtn label="−" aria={`${partLabel[r.k]} −`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={off || part.scale === SCALE_STEPS[0]} testId={`os-${r.k}-minus`} />
+              <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--text)", minWidth: 36, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
+              <StepBtn label="+" aria={`${partLabel[r.k]} +`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={off || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} testId={`os-${r.k}-plus`} />
             </div>
+            <Switch on={part.on && !r.disabled} disabled={r.disabled} aria={partLabel[r.k]} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
           </div>
-          <div data-testid={`os-${r.k}-stepper`} style={{ display: "flex", alignItems: "center", opacity: off ? 0.4 : 1 }}>
-            <StepBtn label="−" aria={`${partLabel[r.k]} −`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={off || part.scale === SCALE_STEPS[0]} testId={`os-${r.k}-minus`} />
-            <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--text)", minWidth: 36, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
-            <StepBtn label="+" aria={`${partLabel[r.k]} +`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={off || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} testId={`os-${r.k}-plus`} />
+          {/* Normal / Bold / Extra: under the row name beside the size + switch when the row is wide
+              (approved preview); on its own line when it is narrow — never over the stepper */}
+          <div className="os-row-w" role="group" aria-label={partLabel[r.k]} data-testid={`os-${r.k}-weights`} style={{ opacity: off ? 0.4 : 1 }}>
+            {(["normal", "bold", "extra"] as Weight[]).map((w, i) => (
+              <button key={w} type="button" disabled={off} onClick={() => setPart(r.k, { weight: w })} aria-pressed={part.weight === w} data-testid={`os-${r.k}-w-${w}`} style={{ ...tapBox, minWidth: TAP, cursor: off ? "default" : "pointer" }}>
+                <span style={{ padding: "4px 8px", fontSize: 11.5, fontWeight: w === "normal" ? 400 : w === "bold" ? 700 : 900, border: "1px solid var(--border)", borderLeftWidth: i === 0 ? 1 : 0, borderRadius: i === 0 ? "9px 0 0 9px" : i === 2 ? "0 9px 9px 0" : 0, background: part.weight === w ? "var(--accent-soft)" : "var(--surface)", color: part.weight === w ? "var(--accent-fg)" : "var(--text)", whiteSpace: "nowrap" }}>{weightLabel[w]}</span>
+              </button>
+            ))}
           </div>
-          <Switch on={part.on && !r.disabled} disabled={r.disabled} aria={partLabel[r.k]} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
         </div>
       </div>
     );
@@ -243,15 +251,18 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         </div>
         {!customAllowed && <div data-testid="os-custom-hidden" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_os_custom_hidden}</div>}
         {customAllowed && customOpen && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, flexWrap: "wrap" }} data-testid="os-custom">
-            <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", flex: "1 1 120px" }}>{t.rd_os_width}
-              <input inputMode="numeric" value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="os-custom-w" style={{ fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
-            </label>
-            <span style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", paddingTop: 16 }}>×</span>
-            <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", flex: "1 1 120px" }}>{t.rd_os_height}
-              <input inputMode="numeric" value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="os-custom-h" style={{ fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
-            </label>
-            {!customOk && <div data-testid="os-custom-err" style={{ flexBasis: "100%", fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
+          <div data-testid="os-custom" style={{ marginTop: 9 }}>
+            {/* W · × · H on one line (a fixed grid — the "×" never wraps alone), inputs full width, ≥ 44 px */}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "end", gap: 8 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_width}
+                <input inputMode="numeric" value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="os-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+              </label>
+              <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", lineHeight: `${TAP}px` }}>×</span>
+              <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_height}
+                <input inputMode="numeric" value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="os-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+              </label>
+            </div>
+            {!customOk && <div data-testid="os-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
           </div>
         )}
         {tooWide && <div data-testid="os-too-wide" style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: tooWide.model, max: String(tooWide.maxLabelMm) })}</div>}
