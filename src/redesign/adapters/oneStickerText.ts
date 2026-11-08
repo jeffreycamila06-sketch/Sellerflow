@@ -335,6 +335,18 @@ function sameShape(text: string, px: number, st: InkStyle, ref: Topology[], refT
 export interface InkStyle { weight: SansWeight; ink: boolean }
 /** The heaviest style ≤ the seller's choice that keeps every letter of `text` open at `px`. */
 export function readableStyle(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): InkStyle {
+  const own = readableStyleOwn(text, px, weight, ink, f);
+  // MONOTONIC: a heavier choice never prints heavier than what the next lighter choice had to become
+  // (if Bold must lighten, Extra lightens at least as much)
+  if (weight === 400) return own;
+  const next: SansWeight = weight === 900 ? 700 : 400;
+  const lighter = readableStyle(text, px, next, ink, f);
+  const lighterHadTo = styleRank(lighter) < styleRank({ weight: next, ink });
+  return lighterHadTo && styleRank(lighter) < styleRank(own) ? lighter : own;
+}
+/** Heavier = bigger: weight first, then the 1-dot ink. */
+const styleRank = (s: InkStyle): number => s.weight * 2 + (s.ink ? 1 : 0);
+function readableStyleOwn(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): InkStyle {
   const steps = lighterSteps(weight, ink);
   if (!text.trim() || steps.length === 1) return steps[0];
   const ref = topologies(text, px, 400, false, f);

@@ -192,6 +192,18 @@ describe("readability guard", () => {
     }
     expect(bad).toEqual([]);
   }, 300000);
+  it("monotonic: if Bold must print lighter, Extra prints at least as light (with and without the ink)", () => {
+    const rank = (s: { weight: number; ink: boolean }) => s.weight * 2 + (s.ink ? 1 : 0);
+    const texts = [...Object.values(READ_SAMPLES).flatMap((v) => [v.name, ...v.items]), "modern Fern burn vvip", "рокля М 450", "Nguyễn Thị Hoa", "128", "@maria_live"];
+    const bad: string[] = [];
+    for (const t of texts) for (const px of [17, 19, 22, 24, 28, 36, 44]) for (const ink of [false, true]) {
+      const n = readableStyle(t, px, 400, ink, F), b = readableStyle(t, px, 700, ink, F), x = readableStyle(t, px, 900, ink, F);
+      if (rank(x) > rank(b) && b.weight < 700) bad.push(`${t} ${px}${ink ? "+ink" : ""}: Bold→${b.weight}${b.ink ? "+ink" : ""} but Extra→${x.weight}${x.ink ? "+ink" : ""}`);
+      if (rank(b) > rank(n) && n.weight === 400 && n.ink !== ink) bad.push(`${t} ${px}: Normal dropped its ink but Bold kept heavier`);
+      if (rank(x) < 0 || rank(b) > rank({ weight: 700, ink })) bad.push(`${t} ${px}: heavier than chosen`);
+    }
+    expect(bad).toEqual([]);
+  }, 120000);
   it("the ink goes first: Extra + ink that closes tries Extra without ink before Bold", () => {
     // a Latin comment at 24 dots (3 mm): Extra stays, only the 1-dot ink is dropped (letters open as Extra)
     const st = readableStyle("ako po yung black dress size M", 24, 900, true, F);
