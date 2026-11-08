@@ -699,6 +699,8 @@ export type OneStickerNotice = { kind: "too_wide"; model: string; maxMm: number 
 let oneStickerNoticeHandler: ((n: OneStickerNotice) => void) | null = null;
 export function setOneStickerNoticeHandler(fn: ((n: OneStickerNotice) => void) | null): void { oneStickerNoticeHandler = fn; }
 function oneStickerNotice(n: OneStickerNotice): void { try { oneStickerNoticeHandler?.(n); } catch { /* a notice never breaks a print */ } }
+// A test print that fell back to today's sticker returns this code (with ok) so the screen can say so.
+export const ONE_STICKER_FALLBACK = "ONE_STICKER_FALLBACK";
 // "text" = this print takes the native TEXT path below (no image method / classic / SPP failed).
 // "today" = this print takes today's sticker routing below (picture failed / too wide).
 async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlowPrinter"]>, osIn: OneStickerSettings, buyer: Buyer, storeName: string, fbName: boolean, at?: number): Promise<BtRouteResult | "text" | "text-spp" | "today"> {
@@ -849,8 +851,15 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
     const jobId = `one-sticker-test-${++webFallbackId}`;
     const page = webPrepareChain.then(() => withTimeout(renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, undefined, fbName)), ONE_STICKER_WEB_TIMEOUT_MS)).then((r) => laptopPage(r, os, "Test sticker"));
     webPrepareChain = page.catch(() => undefined);
-    enqueueWebPrint({ id: jobId, html: page });
-    return { ok: true, code: "", message: "", via: "browser" };
+    try {
+      enqueueWebPrint({ id: jobId, html: await page });
+      return { ok: true, code: "", message: "", via: "browser" };
+    } catch (err) {
+      // the same fallback as a real laptop print: today's test sticker, reported, and the screen says so
+      oneStickerWebMiss(err);
+      const r = printSlip(buyer, cur, storeName, cfg, { noOneSticker: true });
+      return { ok: r.ok, code: ONE_STICKER_FALLBACK, message: "", via: r.via };
+    }
   }
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (path === "text" || path === "wifi" || !bridge) {
@@ -861,7 +870,7 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
   // TEXT (old app / classic / SPP failed): the native TEXT test sticker at the DRAFT's size;
   // "today" (picture failed / too wide): today's test sticker. Never the saved pattern's size.
   if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, { ...cfg, stickerSize: textStickerSizeFor(draft.size) }, fbName, undefined, true)), via: "bluetooth" };
-  if (r === "today") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName, undefined, true)), via: "bluetooth" };
+  if (r === "today") { const t = await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName, undefined, true); return { ...t, code: t.ok ? ONE_STICKER_FALLBACK : t.code, via: "bluetooth" }; }
   return { ...r, via: "bluetooth" };
 }
 
@@ -1171,7 +1180,7 @@ export function webStickerQrSvg(handle: string | undefined | null): { svg: strin
 // opts.at (OPTIONAL — passed ONLY by the past-session Reprint): the original order's instant, so
 // the header date (and the slip's Created line) is that order's own Taipei date — an exact copy
 // of the original. Absent = now, byte-identical to before on every route.
-export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printSettings: Settings | string, opts?: { at?: number }): PrintResult {
+export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printSettings: Settings | string, opts?: { at?: number; noOneSticker?: boolean }): PrintResult {
   const at = opts?.at != null && Number.isFinite(opts.at) ? opts.at : undefined;
   // Build 11 (M1): a Facebook buyer prints the name only (blank if none) — never the commenter's
   // id. Every other buyer: the same object (fbName.ts printableBuyer).
@@ -1269,7 +1278,7 @@ export function printSlip(buyerIn: Buyer, cur: string, storeName: string, printS
     (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
     (qr ? qr.svg : "") +
     `</body></html>`;
-  const os = oneStickerActive();
+  const os = opts?.noOneSticker ? null : oneStickerActive();
   if (os) { enqueueWebPrint({ id: jobId, html: oneStickerWebPage(os, buyer, storeName, at, fbNameOnly(buyer.platform, buyer.name), html) }); return { ok: true, via: "browser" }; }
   enqueueWebPrint({ id: jobId, html });
   return { ok: true, via: "browser" };
@@ -1288,15 +1297,18 @@ export const ONE_STICKER_WEB_TIMEOUT_MS = 8000;
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((res, rej) => { const t = setTimeout(() => rej(new Error("one-sticker picture timeout")), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
 }
+// Recorded (getLastOneStickerWebMiss) AND reported like a phone miss (reportStickerRoute → the app
+// counts it), never only a variable.
+function oneStickerWebMiss(err: unknown): void {
+  lastOneStickerWebMiss = { at: Date.now(), error: String(err) };
+  reportStickerRoute({ via: "bitmap", ok: false, reason: "one-sticker-picture-failed", detail: `laptop: ${String(err)}`, payloadBytes: 0, totalMs: 0 });
+  log.warn("[ONE-STICKER laptop] picture failed — printing today's page", err);
+}
 function oneStickerWebPage(osIn: OneStickerSettings, buyer: Buyer, storeName: string, at: number | undefined, fbName: boolean, legacyHtml: string): Promise<string> {
   const os = oneStickerEffective(osIn);
   const page = webPrepareChain.then(() => withTimeout(renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName)), ONE_STICKER_WEB_TIMEOUT_MS))
     .then((r) => laptopPage(r, os, `Sticker #${buyer.num}`))
-    .catch((err: unknown) => {
-    lastOneStickerWebMiss = { at: Date.now(), error: String(err) };
-    log.warn("[ONE-STICKER laptop] picture failed — printing today's page", err);
-    return legacyHtml;
-  });
+    .catch((err: unknown) => { oneStickerWebMiss(err); return legacyHtml; });
   webPrepareChain = page;
   return page;
 }

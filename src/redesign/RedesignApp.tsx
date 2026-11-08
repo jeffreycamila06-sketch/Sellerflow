@@ -124,7 +124,7 @@ import OneStickerPattern from "./components/OneStickerPattern";
 import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
-import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler } from "./adapters/printing";
+import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK } from "./adapters/printing";
 import { knownTsplJob } from "./adapters/printerModels";
 import { savedBtPrinter } from "./adapters/savedPrinter";
 import { V2_SAMPLE_LATIN, V2_SAMPLE_CJK } from "./screens/PrintPattern";
@@ -933,6 +933,11 @@ export default function RedesignApp() {
   // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
   // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+  // one-sticker fallbacks (picture failed / not ready in 8 s / too wide → today's sticker) are counted
+  useEffect(() => {
+    setStickerRouteNoticeHandler((n) => { if (n.reason.startsWith("one-sticker")) track("one_sticker_fallback", { reason: n.reason, detail: n.detail.slice(0, 120) }); });
+    return () => setStickerRouteNoticeHandler(null);
+  }, []);
   // a saved size wider than the saved printer prints today's sticker — and says so (printing.ts)
   useEffect(() => {
     setOneStickerNoticeHandler((n) => { if (n.kind === "too_wide") setToast({ msg: tpl(tApp.rd_os_too_wide_print, { model: n.model, max: String(n.maxMm) }), kind: "err" }); });
@@ -2837,7 +2842,8 @@ export default function RedesignApp() {
                 const item = sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : PREVIEW_COMMENT;
                 const buyer: Buyer = { ...b, orders: [{ ...b.orders[0], item }] };
                 const r = await printOneStickerTest(draft, buyer, cur, printShopName, buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
-                if (r.ok) setToast({ msg: unsaved ? tApp.rd_os_test_unsaved : r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
+                if (r.ok && r.code === ONE_STICKER_FALLBACK) setToast({ msg: tApp.rd_os_test_fallback, kind: "err" });
+                else if (r.ok) setToast({ msg: unsaved ? tApp.rd_os_test_unsaved : r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
                 else setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
               })()} />
           )}

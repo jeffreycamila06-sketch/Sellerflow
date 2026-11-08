@@ -78,8 +78,12 @@ describe("one sticker — never switches a device by itself", () => {
     for (const p of PATHS) {
       const now = await capture(p, b);
       if (p === "text" || p === "lan" || p === "slip") expect(now, p).toBe(today[p]);
+      else if (p === "niimbot") expect(now, "60 mm on a B1 (50 mm) = too wide → today's sticker (audit 11)").toBe(today[p]);
       else expect(now, p).not.toBe(today[p]);
     }
+    // a size the B1 takes → the Niimbot prints the new sticker
+    saveOneSticker(recommendedSettings({ w: 50, h: 30 }));
+    expect(await capture("niimbot", b)).not.toBe(today.niimbot);
   }, 60000);
 });
 

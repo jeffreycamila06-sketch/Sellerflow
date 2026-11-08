@@ -84,3 +84,45 @@ describe("one sticker — a phone print is never lost", () => {
     expect(sawMiss("one-sticker-too-wide")).toBe(true);
   }, 60000);
 });
+
+import { printOneStickerTest, ONE_STICKER_FALLBACK, __resetWebPrintQueue, BITMAP_SPP_FAILED } from "../printing";
+describe("one sticker — laptop and test prints fall back honestly", () => {
+  it("laptop: a picture that fails prints today's page AND reports the miss (not only a variable)", async () => {
+    delete (window as W).SellerFlowPrinter;
+    __resetWebPrintQueue();
+    optIn(60, 40);
+    ctl.mode = "throw";
+    printSlip(buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40" }, { at: AT });
+    await vi.waitFor(() => expect(sawMiss("one-sticker-picture-failed")).toBe(true), { timeout: 5000 });
+    __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());
+  });
+  it("laptop TEST print: the same fallback, and it says so (ONE_STICKER_FALLBACK)", async () => {
+    delete (window as W).SellerFlowPrinter;
+    __resetWebPrintQueue();
+    ctl.mode = "throw";
+    const r = await printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40" });
+    expect(r).toMatchObject({ ok: true, code: ONE_STICKER_FALLBACK, via: "browser" });
+    expect(sawMiss("one-sticker-picture-failed")).toBe(true);
+    __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());
+  });
+  it("phone TEST print whose picture fails: today's test sticker, and it says so", async () => {
+    __resetSavedPrinter(); rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
+    const br = { printStickerNative: vi.fn(async () => ({ ok: true })), printRawTspl: vi.fn(async () => ({ ok: true })) };
+    (window as W).SellerFlowPrinter = br;
+    ctl.mode = "throw";
+    const r = await printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "bluetooth" });
+    expect(r).toMatchObject({ ok: true, code: ONE_STICKER_FALLBACK, via: "bluetooth" });
+    expect(br.printRawTspl).toHaveBeenCalledTimes(1);
+    delete (window as W).SellerFlowPrinter;
+  });
+  it("TEST print falling to the TEXT sticker (SPP send failed) uses the DRAFT's size, not the saved one", async () => {
+    __resetSavedPrinter(); rememberSavedPrinter({ address: "AA", name: "D520BT-Z" });
+    optIn(60, 40); // saved 60×40 …
+    const br = { printStickerNative: vi.fn(async () => ({ ok: true })), printStickerBitmap: vi.fn(async () => ({ ok: false, code: BITMAP_SPP_FAILED })) };
+    (window as W).SellerFlowPrinter = br;
+    await printOneStickerTest(recommendedSettings({ w: 80, h: 50 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "bluetooth" }); // … draft 80×50
+    expect(br.printStickerNative).toHaveBeenCalledTimes(1);
+    expect(br.printStickerNative.mock.calls[0][0]).toMatchObject({ labelWidthMm: 80, labelHeightMm: 50 });
+    delete (window as W).SellerFlowPrinter;
+  });
+});
