@@ -35,12 +35,13 @@ function enclosedLetter(cp: number): string | null {
 const isFancyBlock = (cp: number): boolean =>
   (cp >= 0x1d400 && cp <= 0x1d7ff) || (cp >= 0x2100 && cp <= 0x214f && cp !== 0x2116 && cp !== 0x2103) ||
   (cp >= 0x2460 && cp <= 0x24ff) || (cp >= 0x1d00 && cp <= 0x1dbf) || (cp >= 0x2070 && cp <= 0x209f) || (cp >= 0x2c7c && cp <= 0x2c7d) || (cp >= 0xa7f8 && cp <= 0xa7f9);
-// Modifier letters (ᴬᵐʸ, ʰ, ⁿ …): their plain letter (NFKC). Keycaps (#️⃣ 1️⃣) are emoji: removed whole.
+// Modifier letters (ᴬᵐʸ, ʰ, ⁿ …): their plain letter (NFKC). Keycaps (2️⃣ #️⃣) keep their digit / sign
+// (a quantity "x 2️⃣" must still say 2) — only the keycap marks go.
 const isModifierLetter = (cp: number): boolean => (cp >= 0x02b0 && cp <= 0x02b8) || (cp >= 0x02e0 && cp <= 0x02e4) || (cp >= 0x1d2c && cp <= 0x1d6a) || (cp >= 0x1d9b && cp <= 0x1dbf) || (cp >= 0x2070 && cp <= 0x209c) || (cp >= 0xa770 && cp <= 0xa770);
 export function printableText(s: string | null | undefined): string {
   if (!s) return "";
   let out = "";
-  const src = String(s).normalize("NFC").replace(/[0-9#*]\uFE0F?\u20E3/gu, "").replace(/[\uFE00-\uFE0F\u20E3]|\uDB40[\uDD00-\uDDEF]/gu, "");
+  const src = String(s).normalize("NFC").replace(/([0-9#*])\uFE0F?\u20E3/gu, "$1").replace(/[\uFE00-\uFE0F\u20E3]|\uDB40[\uDD00-\uDDEF]/gu, "");
   for (const ch of src) {
     const cp = ch.codePointAt(0) ?? 0;
     if (isModifierLetter(cp)) { out += ch.normalize("NFKC"); continue; }

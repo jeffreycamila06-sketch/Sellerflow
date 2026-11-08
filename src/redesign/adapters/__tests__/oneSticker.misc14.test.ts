@@ -13,9 +13,10 @@ describe("audit 14", () => {
     expect(stickerShopName("Maria Ukay Shop")).toBe("Maria Ukay Shop");
     expect(stickerShopName("SellerFlowLive Fans")).toBe("SellerFlowLive Fans");
   });
-  it("keycaps and variation selectors are removed; modifier letters become plain letters", () => {
-    expect(printableText("#️⃣")).toBe("");
-    expect(printableText("Order 1️⃣ 2⃣ *️⃣ A12")).toBe("Order A12");
+  it("keycaps keep their digit (the quantity is never lost); variation selectors removed; modifier letters become plain letters", () => {
+    expect(printableText("#️⃣")).toBe("#");
+    expect(printableText("Order 1️⃣ 2⃣ *️⃣ A12")).toBe("Order 1 2 * A12");
+    expect(printableText("A2 x 2️⃣")).toBe("A2 x 2");
     expect(printableText("ᴬᵐʸ")).toBe("Amy");
     expect(printableText("Love️ ❤️ Amy")).toBe("Love Amy");
     expect(printableText("ʰⁱ")).toBe("hi");
