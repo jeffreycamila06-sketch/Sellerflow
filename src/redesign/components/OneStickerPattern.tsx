@@ -11,7 +11,7 @@ import {
   recommendedSettings, renderOneSticker, screenFitNotes, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
-import { oneStickerFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
+import { oneStickerScreenFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
 import type { OneStickerDevicePath } from "../adapters/printing";
 
 const sameSettings = (a: OneStickerSettings, b: OneStickerSettings) => JSON.stringify(a) === JSON.stringify(b);
@@ -23,16 +23,21 @@ const nextStep = (v: number, dir: 1 | -1): number => {
 const pathForPreview = (p: OneStickerDevicePath): OneStickerPath => (p === "text" || p === "wifi" ? "laptop" : p);
 
 /** The exact picture of `settings` for this device's path (async: the fonts are lazy chunks). */
-export function OneStickerPreview({ settings, input, path, job, onWarnings }: { settings: OneStickerSettings; input: OneStickerInput; path: OneStickerPath; job?: { bold?: boolean }; onWarnings?: (w: FitWarning[]) => void }) {
+export function OneStickerPreview({ settings, input, path, job, onWarnings, onFailed, onRetry }: { settings: OneStickerSettings; input: OneStickerInput; path: OneStickerPath; job?: { bold?: boolean }; onWarnings?: (w: FitWarning[]) => void; onFailed?: (failed: boolean) => void; onRetry?: () => void }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const key = JSON.stringify({ settings, input, path, job });
   const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false); // fonts / picture could not load → a short message + Try again
+  // any face the picture needs did not load → a short message + Try again (never a device-font picture)
+  const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // a new setting is a new try: the failure belongs to the settings it happened on
+  const [failedKey, setFailedKey] = useState(key);
+  if (failedKey !== key) { setFailedKey(key); if (failed) setFailed(false); }
   const t = useT();
+  useEffect(() => { onFailed?.(failed); }, [failed]); // eslint-disable-line react-hooks/exhaustive-deps -- report the state only
   useEffect(() => {
     let live = true;
-    void oneStickerFonts(settings, input).then((fonts) => {
+    void oneStickerScreenFonts(settings, input).then((fonts) => {
       const c = ref.current;
       if (!live || !c) return;
       const img = renderOneSticker(settings, input, fonts, renderOptsFor(path, settings, job ?? {}));
@@ -59,7 +64,7 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings }: { 
   if (failed) return (
     <div data-testid="os-preview-failed" role="status" style={{ width: "100%", aspectRatio: `${settings.size.w} / ${settings.size.h}`, maxHeight: "min(60vh, 420px)", display: "grid", placeItems: "center", gap: 6, background: "#fff", borderRadius: 6, padding: 12, textAlign: "center", color: "#16152B", fontSize: 13, fontWeight: 600 }}>
       <span>{t.rd_os_preview_failed}</span>
-      <button type="button" data-testid="os-preview-retry" onClick={() => { setFailed(false); setAttempt((a) => a + 1); }} style={{ minHeight: TAP, padding: "6px 14px", borderRadius: 10, border: "1px solid #d9d7e6", background: "#fff", color: "#4F46E5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t.rd_os_try_again}</button>
+      <button type="button" data-testid="os-preview-retry" onClick={() => { setFailed(false); setAttempt((a) => a + 1); onRetry?.(); }} style={{ minHeight: TAP, padding: "6px 14px", borderRadius: 10, border: "1px solid #d9d7e6", background: "#fff", color: "#4F46E5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t.rd_os_try_again}</button>
     </div>
   );
   return (
@@ -71,16 +76,16 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings }: { 
 
 /** The notes under the preview for `settings` on this path — the preview's own sample (the layout
  *  only; no picture is drawn). */
-function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }): FitNote[] {
-  const [n, setN] = useState<FitNote[]>([]);
+function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }, attempt: number): FitNote[] | null {
+  const [n, setN] = useState<FitNote[] | null>([]); // null = the fonts did not load (no notes shown)
   const key = JSON.stringify({ settings, input, path, job });
   useEffect(() => {
     let live = true;
     // the sample (#128) AND the buyer number at its widest (#8888): a real 4-digit number never gets
-    // cut while the screen says everything fits
-    void oneStickerFonts(settings, input).then((fonts) => { if (live) setN(screenFitNotes(settings, input, fonts, renderOptsFor(path, settings, job))); }).catch(() => { if (live) setN([]); });
+    // cut while the screen says everything fits. Measured on the real faces only — never on device fonts.
+    void oneStickerScreenFonts(settings, input).then((fonts) => { if (live) setN(screenFitNotes(settings, input, fonts, renderOptsFor(path, settings, job))); }).catch(() => { if (live) setN(null); });
     return () => { live = false; };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
+  }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return n;
 }
 const NOTE_COLOR: Record<FitNote["kind"], string> = { ok: "var(--ok, #0F8A5F)", bad: "var(--danger)", shrunk: "var(--warn, #9A5C00)", cut: "var(--warn, #9A5C00)", short: "var(--text-muted)", qr: "var(--warn, #9A5C00)", small: "var(--text-muted)" };
@@ -159,7 +164,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   // test buttons print and the same one the notes are measured on
   const input = useMemo(() => sampleInput(p.shopName), [p.shopName]);
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
-  const notes = useFitNotes(sEff, input, path, p.genericBold ? { bold: true } : {});
+  const [pvAttempt, setPvAttempt] = useState(0);
+  const [pvFailed, setPvFailed] = useState(false);
+  const notes = useFitNotes(sEff, input, path, p.genericBold ? { bold: true } : {}, pvAttempt);
+  const showNotes = !pvFailed && notes !== null; // never "Everything fits" while the picture can't load
 
   const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
@@ -228,10 +236,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         <div className="os-pv" data-testid="os-pv-col">
         {/* 1. the exact picture */}
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)", display: "grid", gap: 8, justifyItems: "center" }}>
-          <OneStickerPreview settings={sEff} input={input} path={path} job={p.genericBold ? { bold: true } : {}} />
+          <OneStickerPreview settings={sEff} input={input} path={path} job={p.genericBold ? { bold: true } : {}} onFailed={setPvFailed} onRetry={() => setPvAttempt((a) => a + 1)} />
           <span data-testid="os-caption" style={{ color: "#fff", fontSize: 12, fontWeight: 600, opacity: 0.9, textAlign: "center" }}>{tpl(t.rd_os_caption, { w: String(s.size.w), h: String(s.size.h) })}</span>
         </div>
-        <div data-testid="os-notes" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+        {showNotes && <div data-testid="os-notes" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           {notes.map((n, i) => (
             <span key={i} data-testid={n.kind === "bad" ? "os-fit" : n.kind === "qr" ? "os-fit-qr" : `os-note-${n.kind}`} style={{ fontSize: 12, fontWeight: 600, padding: "4px 9px", borderRadius: 999, border: "1px solid var(--border)", background: n.kind === "bad" ? "var(--danger-soft)" : "var(--surface)", color: NOTE_COLOR[n.kind], lineHeight: 1.4 }}>
               {n.kind === "bad" ? tpl(t.rd_os_fit, { parts: n.parts.map((k) => partLabel[k]).join(", ") })
@@ -243,7 +251,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
                 : t.rd_os_note_ok}
             </span>
           ))}
-        </div>
+        </div>}
         {p.devicePath === "text" && <div data-testid="os-text-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_text_path}</div>}
         {p.devicePath === "wifi" && <div data-testid="os-wifi-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_wifi_path}</div>}
 

@@ -129,6 +129,17 @@ export async function loadFontsFor(s: OneStickerSettings, inp: OneStickerInput, 
   }
   return fonts;
 }
+/** The faces / cells the picture of `s` + `inp` needs but `fonts` lacks (empty = the picture is the
+ *  real one). The print keeps its own fallback; the SCREEN never shows a device-font picture as the
+ *  sticker — a non-empty list there means "Preview couldn't load". */
+export function missingFonts(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts): string[] {
+  const miss: string[] = [];
+  for (const w of new Set<SansWeight>([...weightsFor(s), 400])) if (!fonts.sans[w]) miss.push(`sans${w}`);
+  const text = printableText(allText(inp));
+  if (KANA_FULLWIDTH.test(text) && !fonts.cjkx) miss.push("cjkx");
+  if (hasIdeograph(text)) for (const cell of cjkCellsFor(layoutSticker(s, inp, fonts).sizes)) if (!fonts.cjk?.[cell]) miss.push(`cjk${cell}`);
+  return miss;
+}
 export function fontsReadySync(): Fonts {
   return { sans: { 400: getSansFace(400) ?? undefined, 700: getSansFace(700) ?? undefined, 900: getSansFace(900) ?? undefined }, cjkx: getSansFace("cjkx"), cjk: {} };
 }

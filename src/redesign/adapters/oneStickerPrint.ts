@@ -12,7 +12,7 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, missingFonts, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
 import { loadSansFace } from "./oneStickerFonts";
@@ -160,6 +160,14 @@ export function renderOptsFor(path: OneStickerPath, s: OneStickerSettings, job: 
 }
 export async function oneStickerFonts(s: OneStickerSettings, inp: OneStickerInput): Promise<Fonts> {
   return loadFontsFor(s, inp, (cell) => loadCjkRegAtlas(cell));
+}
+/** The screen's fonts (preview + notes): rejects when anything the picture needs did not load, so the
+ *  screen shows "Preview couldn't load" instead of a device-font picture and "Everything fits". */
+export async function oneStickerScreenFonts(s: OneStickerSettings, inp: OneStickerInput): Promise<Fonts> {
+  const fonts = await oneStickerFonts(s, inp);
+  const miss = missingFonts(s, inp, fonts);
+  if (miss.length) throw new Error(`fonts missing: ${miss.join(",")}`);
+  return fonts;
 }
 export async function renderOneStickerFor(path: OneStickerPath, s: OneStickerSettings, inp: OneStickerInput, job: TsplJobSettings = {}): Promise<OneStickerRender> {
   const fonts = await oneStickerFonts(s, inp);
