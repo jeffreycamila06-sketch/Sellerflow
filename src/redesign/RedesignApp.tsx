@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from ".
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK } from "./adapters/printing";
@@ -2837,10 +2837,9 @@ export default function RedesignApp() {
               genericBold={!!knownTsplJob(savedBtPrinter()?.name).bold}
               qrAllowed={stickerQrAllowed}
               onTest={(draft, sample, unsaved) => void (async () => {
-                const b = buildTestBuyer();
-                const item = sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : PREVIEW_COMMENT;
-                const buyer: Buyer = { ...b, orders: [{ ...b.orders[0], item }] };
-                const r = await printOneStickerTest(draft, buyer, cur, printShopName, buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
+                // the SAME sample as the preview (#128 Maria Santos @maria_live); the long tests swap the comment only
+                const buyer: Buyer = sampleBuyer(sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : ONE_STICKER_SAMPLE.items[0]);
+                const r = await printOneStickerTest(draft, buyer, cur, stickerShopName(printShopName), buildSettingsFromRedesign({ pp, psType, psOut, psSize })); // never the brand
                 if (r.ok && r.code === ONE_STICKER_FALLBACK) setToast({ msg: tApp.rd_os_test_fallback, kind: "err" });
                 else if (r.ok) setToast({ msg: unsaved ? tApp.rd_os_test_unsaved : r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
                 else setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
