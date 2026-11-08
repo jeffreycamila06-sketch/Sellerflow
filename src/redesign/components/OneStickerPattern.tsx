@@ -154,7 +154,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const cw = Number(customW), ch = Number(customH);
   const customOk = validCustomMm(cw) && validCustomMm(ch);
   // the draft: an open, valid Custom size is the size (derived — nothing is copied into state)
-  const s: OneStickerSettings = customOpen && customOk ? { ...s0, size: { w: cw, h: ch, custom: true } } : customOpen ? s0 : { ...s0, size: { w: s0.size.w, h: s0.size.h } };
+  // (a W×H that is one of the standard sizes is that size, not "custom": opening Custom alone is no change)
+  const std = STANDARD_SIZES.some((z) => z.w === cw && z.h === ch);
+  const s: OneStickerSettings = customOpen && customOk ? { ...s0, size: std ? { w: cw, h: ch } : { w: cw, h: ch, custom: true } } : customOpen ? s0 : { ...s0, size: { w: s0.size.w, h: s0.size.h } };
   const path = pathForPreview(p.devicePath);
   const customAllowed = p.devicePath !== "text" && p.devicePath !== "wifi";
   const dirty = !sameSettings(s, base);
@@ -271,7 +273,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           {STANDARD_SIZES.filter((z) => customAllowed || !(z.w === 50 && z.h === 30)).map((z) => (
             <button key={`${z.w}x${z.h}`} type="button" onClick={() => pickSize(z.w, z.h)} aria-pressed={isStd(z.w, z.h)} data-testid={`os-size-${z.w}x${z.h}`} style={chip(isStd(z.w, z.h))}>{z.w}×{z.h}</button>
           ))}
-          {customAllowed && <button type="button" onClick={() => setCustomOpen(true)} aria-pressed={customOpen} data-testid="os-size-custom" style={chip(customOpen)}>{t.rd_os_custom}</button>}
+          {customAllowed && <button type="button" onClick={() => { if (!customOpen) { setCustomW(String(s.size.w)); setCustomH(String(s.size.h)); } setCustomOpen(true); }} aria-pressed={customOpen} data-testid="os-size-custom" style={chip(customOpen)}>{t.rd_os_custom}</button>}
         </div>
         {!customAllowed && <div data-testid="os-custom-hidden" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_os_custom_hidden}</div>}
         {customAllowed && customOpen && (

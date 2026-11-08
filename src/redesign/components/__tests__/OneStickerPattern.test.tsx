@@ -174,6 +174,32 @@ describe("OneStickerPattern", () => {
     expect(onSave.mock.calls[1][0].parts.name.weight).toBe("extra");
     expect(save().disabled).toBe(true);
   });
+  it("Custom tapped without changing the numbers is no change (Save stays off; no custom flag); a non-standard W×H is", () => {
+    const { onSave } = renderIt({ savedOnDevice: true });
+    const save = () => screen.getByTestId("os-save") as HTMLButtonElement;
+    expect(save().disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("os-size-custom"));
+    expect((screen.getByTestId("os-custom-w") as HTMLInputElement).value).toBe("100");
+    expect((screen.getByTestId("os-custom-h") as HTMLInputElement).value).toBe("60");
+    expect(save().disabled, "opening Custom alone").toBe(true);
+    expect(screen.getByTestId("os-device-note").textContent).toBe("This device prints this sticker.");
+    // a standard W×H typed in is that size (no custom flag)
+    fireEvent.change(screen.getByTestId("os-custom-w"), { target: { value: "60" } });
+    fireEvent.change(screen.getByTestId("os-custom-h"), { target: { value: "40" } });
+    expect(save().disabled).toBe(false);
+    fireEvent.click(save());
+    expect(onSave.mock.calls[0][0].size).toEqual({ w: 60, h: 40 });
+    fireEvent.change(screen.getByTestId("os-custom-w"), { target: { value: "62" } });
+    fireEvent.click(save());
+    expect(onSave.mock.calls[1][0].size).toEqual({ w: 62, h: 40, custom: true });
+  });
+  it("Custom opens at the size picked last (not the size the screen opened with)", () => {
+    renderIt({ savedOnDevice: true });
+    fireEvent.click(screen.getByTestId("os-size-60x40"));
+    fireEvent.click(screen.getByTestId("os-size-custom"));
+    expect((screen.getByTestId("os-custom-w") as HTMLInputElement).value).toBe("60");
+    expect((screen.getByTestId("os-custom-h") as HTMLInputElement).value).toBe("40");
+  });
   it("device note: not saved → keeps today's sticker; saved → prints this sticker; saved with changes → used after Save", () => {
     const note = () => screen.getByTestId("os-device-note").textContent;
     renderIt({ savedOnDevice: true });
