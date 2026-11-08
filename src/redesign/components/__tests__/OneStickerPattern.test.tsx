@@ -125,6 +125,10 @@ describe("OneStickerPattern", () => {
     expect(c.style.maxWidth).toBe("100%");
     expect(c.style.aspectRatio).toBe("50 / 70");
   });
+  it("the @username hint: Not printed for Facebook buyers", () => {
+    renderIt();
+    expect(screen.getByTestId("os-row-user").textContent).toContain("Not printed for Facebook buyers");
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
