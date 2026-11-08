@@ -78,6 +78,18 @@ export function syncOneStickerSizeFromPrinter(label: string, ctx: SizeSyncContex
   saveOneSticker(next);
   return { status: "synced", settings: next };
 }
+/** ONE SIZE, BOTH PLACES when the new screen BECOMES VISIBLE (the switch went on, an admin signed in,
+ *  the app opened): a Printer settings size picked while the screen was hidden (switch OFF — nothing
+ *  synced then, so switch-OFF prints stay exactly today's) is reconciled ONCE. The saved sticker
+ *  follows Printer settings (same rule as a pick); when the printer can't take that size, Printer
+ *  settings shows the saved size instead. Returns the label Printer settings should show, or null =
+ *  leave it (nothing saved, already the same, synced, or no Printer settings label for the saved size). */
+export function reconcileOneStickerSize(label: string, ctx: SizeSyncContext = {}): string | null {
+  const r = syncOneStickerSizeFromPrinter(label, ctx);
+  if (r.status !== "kept") return null;
+  const next = psLabelFor(r.keep, ctx.devicePath);
+  return next && next !== label ? next : null;
+}
 export function isOneStickerSeen(): boolean { try { return localStorage.getItem(LS_ONE_STICKER_SEEN) === "1"; } catch { return false; } }
 export function markOneStickerSeen(): void { try { localStorage.setItem(LS_ONE_STICKER_SEEN, "1"); } catch { /* ignore */ } }
 

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { LS_ONE_STICKER, readSavedOneSticker, saveOneSticker, syncOneStickerSizeFromPrinter, sizeFromPrinterLabel, printerLabelFor, psLabelFor, __resetOneStickerState, setOneStickerVisible, oneStickerActive } from "../oneStickerPrint";
+import { LS_ONE_STICKER, readSavedOneSticker, saveOneSticker, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, sizeFromPrinterLabel, printerLabelFor, psLabelFor, __resetOneStickerState, setOneStickerVisible, oneStickerActive } from "../oneStickerPrint";
 import { recommendedSettings } from "../oneSticker";
 
 afterEach(() => { try { localStorage.removeItem(LS_ONE_STICKER); } catch { /* */ } __resetOneStickerState(); });
@@ -83,5 +83,42 @@ describe("Printer settings Label size ↔ one sticker size", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
     expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) \{\s*const sync = syncOneStickerSizeFromPrinter\(s, \{ printerName: savedBtPrinter\(\)\?\.name \?\? null, niimbot: savedIsNiimbot\(\), devicePath: oneStickerDevicePath\(/);
     expect(src).toMatch(/const label = psLabelFor\(next\.size, oneStickerDevicePath\([\s\S]{0,120}if \(label\) setPsSize\(label\);/);
+  });
+});
+
+describe("reconcile once when the new screen becomes visible (a size picked while it was hidden)", () => {
+  it("saved 100×60, Printer settings moved to 60×40 while hidden → the saved sticker follows; Printer settings left as is", () => {
+    const s = recommendedSettings({ w: 100, h: 60 }); s.parts.comment.scale = 1.5;
+    saveOneSticker(s);
+    expect(reconcileOneStickerSize("60x40mm", { devicePath: "d520" })).toBeNull();
+    expect(readSavedOneSticker()!.size).toEqual({ w: 60, h: 40 });
+    expect(readSavedOneSticker()!.parts.comment.scale).toBe(1.5);
+  });
+  it("the printer can't take the Printer settings size → Printer settings shows the saved size (saved untouched)", () => {
+    saveOneSticker(recommendedSettings({ w: 50, h: 30 }));
+    expect(reconcileOneStickerSize("60x40mm", { niimbot: true, devicePath: "niimbot" })).toBe(printerLabelFor({ w: 50, h: 30 }));
+    expect(readSavedOneSticker()!.size).toEqual({ w: 50, h: 30 });
+    __resetOneStickerState(); localStorage.removeItem(LS_ONE_STICKER);
+    saveOneSticker(recommendedSettings({ w: 60, h: 40 }));
+    expect(reconcileOneStickerSize("100x60mm (Standard)", { printerName: "B1-H1", devicePath: "d520" })).toBe(printerLabelFor({ w: 60, h: 40 }));
+    expect(readSavedOneSticker()!.size).toEqual({ w: 60, h: 40 });
+    __resetOneStickerState(); localStorage.removeItem(LS_ONE_STICKER);
+    saveOneSticker(recommendedSettings({ w: 60, h: 40 }));
+    expect(reconcileOneStickerSize("50x30mm", { devicePath: "text" })).toBe(printerLabelFor({ w: 60, h: 40 }));
+  });
+  it("nothing saved / already the same / a custom saved size with no Printer settings label → nothing changes", () => {
+    expect(reconcileOneStickerSize("60x40mm", { devicePath: "d520" })).toBeNull();
+    expect(readSavedOneSticker()).toBeNull();
+    saveOneSticker(recommendedSettings({ w: 60, h: 40 }));
+    expect(reconcileOneStickerSize("60x40mm", { devicePath: "d520" })).toBeNull();
+    saveOneSticker({ ...recommendedSettings({ w: 60, h: 40 }), size: { w: 72, h: 44, custom: true } });
+    expect(reconcileOneStickerSize("60x40mm", { niimbot: true, devicePath: "niimbot" })).toBeNull();
+    expect(readSavedOneSticker()!.size).toEqual({ w: 72, h: 44, custom: true });
+  });
+  it("RedesignApp: runs once each time the screen becomes visible; hidden = the Printer settings pick never syncs", () => {
+    const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
+    expect(src).toMatch(/if \(!oneStickerOn\) \{ osReconciled\.current = false; return; \}\s*if \(osReconciled\.current\) return;\s*osReconciled\.current = true;\s*const show = reconcileOneStickerSize\(psSize,/);
+    expect(src).toMatch(/\}, \[oneStickerOn\]\); \/\/ eslint-disable-line react-hooks\/exhaustive-deps -- once per becoming visible/);
+    expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) \{/);
   });
 });

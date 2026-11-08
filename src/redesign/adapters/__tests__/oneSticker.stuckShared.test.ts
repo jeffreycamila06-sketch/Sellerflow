@@ -14,7 +14,7 @@ vi.mock("../oneStickerFonts", async (orig) => {
 });
 vi.mock("../cjkAtlasLoader", async (orig) => {
   const m = await orig<typeof import("../cjkAtlasLoader")>();
-  return { ...m, loadCjkAtlas: () => (ctl.cjkHang ? new Promise((res, rej) => { ctl.cjkRelease = () => rej(new Error("late")); }) : m.loadCjkAtlas()) };
+  return { ...m, loadCjkAtlas: () => (ctl.cjkHang ? new Promise((_res, rej) => { ctl.cjkRelease = () => rej(new Error("late")); }) : m.loadCjkAtlas()) };
 });
 
 import { printSlip, DEF_SETTINGS, imagePathAtlases, buildNativeStickerPayload, __resetStuckPicture, __resetNativePrintQueue, type Settings } from "../printing";

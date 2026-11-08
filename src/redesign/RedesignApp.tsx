@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from ".
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
@@ -1928,6 +1928,17 @@ export default function RedesignApp() {
   const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: stepScaleLevel(p[k], dir) }));
   useEffect(() => { try { localStorage.setItem(LS.pp, JSON.stringify(pp)); } catch { /* ignore */ } }, [pp]);
   useEffect(() => { setStickerSpacingChoice(pp.spacing); }, [pp.spacing]);
+  // ONE SIZE, BOTH PLACES: when the new Live print pattern becomes visible, a Printer settings size
+  // picked while it was hidden is reconciled once (the saved sticker follows; a size the printer can't
+  // take → Printer settings shows the saved size). Hidden (switch OFF) = nothing touched.
+  const osReconciled = useRef(false);
+  useEffect(() => {
+    if (!oneStickerOn) { osReconciled.current = false; return; }
+    if (osReconciled.current) return;
+    osReconciled.current = true;
+    const show = reconcileOneStickerSize(psSize, { printerName: savedBtPrinter()?.name ?? null, niimbot: savedIsNiimbot(), devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })) });
+    if (show) queueMicrotask(() => setPsSize(show)); // after this effect (the reconcile wrote the saved sticker)
+  }, [oneStickerOn]); // eslint-disable-line react-hooks/exhaustive-deps -- once per becoming visible
 
   // The shop name every print path puts in the CENTER of the slip (bitmap + classic
   // TSPL sticker, ESC/POS slip, web print) AND the Live print pattern preview — ONE
