@@ -456,3 +456,98 @@ describe("pure helpers", () => {
     expect(mod).toMatch(/nowMs - warm\.lastAt < WARMUP_GAP_MS/);
   });
 });
+
+describe("round 2 — load failure, clamps, the load race, stale queue", () => {
+  const MIN = 60 * S;
+  const fire3s = (w: W) => { const t = w.calls.timers.filter((x) => x.ms === 3000); for (const x of t) x.fn(); w.calls.timers = w.calls.timers.filter((x) => x.ms !== 3000); return t.length; };
+  const SAVED = (t: number) => ({ on: true, checked: 9, left: 3, lastAt: t - 10 * MIN, mem: { lastAt: t - 10 * MIN, pauseUntil: 0, misses: 1, pauses: 1, stopped: false, stopReason: "", stopWritten: false, sawOffSinceStop: false, queueAt: t - 1 * MIN, queue: ["600001"] } });
+  // E
+  it("E: the pc_frozen_warmup read times out → not loaded, NOTHING written over the saved state, warm-up held; the next pass retries and then works", async () => {
+    const done = new Set<string>();
+    const saved = SAVED(T0);
+    const opts: Opts = { holdStorageGet: "pc_frozen_warmup", initialStorage: { pc_frozen_warmup: JSON.parse(JSON.stringify(saved)) }, warmupSwitch: "true", warmupNext: storeList(50, done),
+      frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } };
+    const { w, clock } = await boot(opts);
+    expect(w.calls.heldGets).toHaveLength(1);                               // the boot read, never answered
+    expect(fire3s(w)).toBeGreaterThan(0);                                    // its 3 s timeout fires
+    await flush();
+    expect(w.calls.logs.some((l) => /warm-up state read failed .* retry next pass/.test(l))).toBe(true);
+    const t = w.evalIn("pcFrozenKick.__test.warm") as Record<string, unknown>;
+    expect(t.loaded).toBe(false);
+    expect(t.lastAt).toBe(clock.t);                                          // pace clock = now
+    expect(t.queueAt).toBe(clock.t);                                         // list clock = now
+    expect(w.storage.pc_frozen_warmup).toEqual(saved);                       // not overwritten
+    await w.sb.pcTick(); await flush();                                      // next pass → retries the read
+    expect(w.calls.heldGets).toHaveLength(2);
+    expect(warmMsgs(w)).toEqual([]);
+    w.calls.heldGets[1].release(); await flush();                            // this time it answers
+    expect((w.evalIn("pcFrozenKick.__test.warm") as Record<string, unknown>).pauses).toBe(1); // the saved counter came through the retry
+    await ticks(w, clock, 24);
+    expect((w.evalIn("pcFrozenKick.__test.warm") as Record<string, unknown>).loaded).toBe(true);
+    expect(warmMsgs(w).length).toBeGreaterThan(0);
+  });
+  // F
+  it("F: future saved times are clamped — lastAt / queueAt ≤ now → the first request ~60 s after start, then ≥ 60 s apart", async () => {
+    const done = new Set<string>(); const at: number[] = []; const ref = { t: 0 };
+    const far = T0 + 10 * 24 * 60 * MIN;
+    const { w, clock } = await boot({ warmupSwitch: "true", warmupNext: storeList(50, done),
+      initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: far, queueAt: far, pauseUntil: 0, misses: 0, pauses: 0, stopped: false, queue: ["600001", "600002"] } } },
+      frozenReply: (row) => { at.push(ref.t); done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } });
+    const m = w.evalIn("pcFrozenKick.__test.warm") as { lastAt: number; queueAt: number };
+    expect(m.lastAt).toBe(T0); expect(m.queueAt).toBe(T0);
+    for (let i = 0; i < 12 * 4; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(at.length).toBeGreaterThan(1);
+    expect(at[0] - T0).toBeGreaterThanOrEqual(60 * S);                      // never faster than the pace…
+    expect(at[0] - T0).toBeLessThanOrEqual(75 * S);                         // …and not 10 days late
+    for (let i = 1; i < at.length; i++) expect(at[i] - at[i - 1]).toBeGreaterThanOrEqual(60 * S);
+  });
+  it("F: a huge saved pause is clamped to 30 min → warm-up resumes in ~30 min, not 10 days", async () => {
+    const done = new Set<string>();
+    const { w, clock } = await boot({ warmupSwitch: "true", warmupNext: storeList(50, done),
+      initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: 0, queueAt: 0, pauseUntil: T0 + 10 * 24 * 60 * MIN, misses: 0, pauses: 0, stopped: false, queue: [] } } },
+      frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } });
+    expect((w.evalIn("pcFrozenKick.__test.warm") as { pauseUntil: number }).pauseUntil).toBe(T0 + 30 * MIN);
+    await ticks(w, clock, 12 * 29);
+    expect(warmMsgs(w)).toEqual([]);
+    await ticks(w, clock, 12 * 4);
+    expect(warmMsgs(w).length).toBeGreaterThan(0);
+  });
+  // G
+  it("G: the load race — a slow pc_frozen_warmup read + ticks first → no warm-up request and the saved mem untouched until the read answers", async () => {
+    const done = new Set<string>();
+    const saved = SAVED(T0);
+    const { w, clock } = await boot({ holdStorageGet: "pc_frozen_warmup", initialStorage: { pc_frozen_warmup: JSON.parse(JSON.stringify(saved)) },
+      warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } });
+    await ticks(w, clock, 24);                                               // 2 min of passes, the read still out
+    expect(warmMsgs(w)).toEqual([]);
+    expect(count(w, /admin_frozen_warmup_next/)).toBe(0);
+    expect(w.storage.pc_frozen_warmup).toEqual(saved);
+    w.calls.heldGets[0].release(); await flush();                            // the read answers
+    await ticks(w, clock, 24);
+    expect(warmMsgs(w).length).toBeGreaterThan(0);
+    expect(warmMsgs(w)[0].rowId).toBe("warmup:600001");                      // the saved queue was used
+  });
+  // H
+  it("H: a saved queue older than 5 min is dropped on restore; a younger one is kept", async () => {
+    // the list read FAILS here, so the only store that can be sent is the restored one
+    const run = async (ageMin: number) => {
+      const { w, clock } = await boot({ warmupSwitch: "true", warmupNext: "error",
+        initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: 0, queueAt: T0 - ageMin * MIN, pauseUntil: 0, misses: 0, pauses: 0, stopped: false, queue: ["699999"] } } },
+        frozenReply: () => ({ frozen_store_status: "ok" }) });
+      await ticks(w, clock, 24);
+      return warmMsgs(w).map((m) => m.rowId);
+    };
+    expect(await run(2)).toEqual(["warmup:699999"]);                        // 2 min old → kept and used
+    expect(await run(6)).toEqual([]);                                        // 6 min old → dropped, nothing to send
+  });
+  it("H: source pins — the load never awaits the state write; the header says switch-off is one local write per start", async () => {
+    const { readFileSync } = await import("node:fs");
+    const mod = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/frozen-check.js`, "utf8");
+    const load = mod.slice(mod.indexOf("function loadWarm()"), mod.indexOf("function stopWarm("));
+    expect(load).toMatch(/void saveWarmState\(\)/);
+    expect(load).not.toMatch(/await saveWarmState\(\)/);
+    expect(mod).not.toMatch(/stays byte-for-byte 1\.17\.0/);
+    expect(mod).toMatch(/one\s+(\/\/\s+)?LOCAL chrome\.storage write per worker start/);
+    expect(mod).toMatch(/await loadWarm\(\);/);
+  });
+});

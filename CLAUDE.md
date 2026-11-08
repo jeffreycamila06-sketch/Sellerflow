@@ -4784,3 +4784,10 @@ E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_
   and loaded before the first decision; popup line `{on:false}` at boot + when the frozen switch is off; a no-answer
   writes NO verdict (miss only); 2 pauses in a row without ok/no_frozen → STOP; store list never re-read < 5 min;
   warm-up only on a fresh confirmed lease (never fail-open / role null / lone-stale); request skipped > 2 s after the kick.
+- **Round-2 audit fixes:** trigger clears the old verdict on 常溫 → 冷凍 too (a verdict from the row's dry days never
+  survives); switch read + access + lookup = ONE exception block whose handler only drops the lookup result (the clear
+  still runs when the switch said 'true'; switch off / unreadable = row saved exactly as sent); `search_path = public,
+  pg_temp` on all 4 functions; `lock_timeout = '2s'`. Extension: a failed/timed-out `pc_frozen_warmup` read = not
+  loaded, nothing written, warm-up held (pace + list clock = now), retried next pass; restored lastAt/queueAt ≤ now,
+  pauseUntil ≤ now + 30 min; a saved queue older than 5 min is dropped; the boot write is not awaited. Harness option
+  `holdStorageGet` (holds a storage read until the test releases it).

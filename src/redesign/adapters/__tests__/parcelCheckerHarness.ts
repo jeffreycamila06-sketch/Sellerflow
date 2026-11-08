@@ -173,13 +173,15 @@ export type BootOpts = {
   warmupNext?: unknown[] | ((body: Record<string, unknown>) => unknown[]) | "error"; // admin_frozen_warmup_next rows (default [])
   warmupStopHttp?: number;                     // admin_frozen_warmup_stop status (default 200)
   frozenReply?: (row?: { id?: string; store_id?: string }) => Record<string, unknown> | null; // the FULL PC_FROZEN_CHECK reply (overrides frozenVerdict)
+  holdStorageGet?: string;                     // chrome.storage.local.get of THIS key is held: queued in calls.heldGets until the test releases it
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const extDir = opts.extDir || process.env.SFL_EXT_DIR || "chrome-extension";
   const src = readFileSync(`${extDir}/background.js`, "utf8");
   const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
-    injected: [] as string[], openNormal: 0, frozenOverlap: 0 };
+    injected: [] as string[], openNormal: 0, frozenOverlap: 0,
+    heldGets: [] as { key: string; release: () => void }[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
@@ -201,7 +203,11 @@ export function bootWorker(opts: BootOpts = {}) {
     runtime: { lastError: undefined, onMessage: { addListener: vi.fn() }, getManifest: () => ({ version: "test" }) },
     scripting: { executeScript: (o: { files?: string[] }, cb: () => void) => { calls.injected.push(String(o?.files?.[0] ?? "")); cb(); } },
     storage: { local: {
-      get: (k: string | string[], cb: (r: Record<string, unknown>) => void) => { const key = Array.isArray(k) ? k[0] : k; cb({ [key]: storage[key] }); },
+      get: (k: string | string[], cb: (r: Record<string, unknown>) => void) => {
+        const key = Array.isArray(k) ? k[0] : k;
+        if (opts.holdStorageGet && key === opts.holdStorageGet) { calls.heldGets.push({ key, release: () => cb({ [key]: storage[key] }) }); return; }
+        cb({ [key]: storage[key] });
+      },
       set: (o: Record<string, unknown>, cb?: () => void) => { Object.assign(storage, o); cb?.(); },
     } },
     tabs: {

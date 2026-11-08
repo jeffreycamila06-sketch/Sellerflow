@@ -37,15 +37,20 @@
 --     → the row gets that verdict + checked_at = now().
 --   · UPDATE: acts ONLY when store_id or temp_layer really changes (the app sends store_id on every
 --     edit, and the ⟳ Recheck never changes it → Recheck still goes live, exactly as today).
---       store_id changed → the old frozen verdict is cleared (status + checked_at NULL) FIRST, outside
---       the protected lookup (any seller — the old verdict belongs to the old store), then the new
---       store's fresh cache verdict is applied (live-lane sellers), or the row is left empty.
---       temp_layer changed to 冷凍 (same store) → the cache verdict is applied only if the row has none.
+--       store_id changed, or temp_layer changed 常溫 → 冷凍 → the old frozen verdict is cleared (status +
+--       checked_at NULL) as a plain row assignment (any seller — it belongs to another store, or to a
+--       store the row had while it was dry), then the store's fresh cache verdict is applied (live-lane
+--       sellers), or the row is left empty for the frozen lane.
+--       Switch OFF + a store change → the old verdict STAYS on the row (by design: switch off = the
+--       trigger does nothing; the app clears it on screen, the frozen lane re-checks once switched on).
 --   · exported rows are never touched (an exported parcel's verdict never changes).
 --   · 'unknown' is never cached (store_frozen_cache's CHECK allows only ok / no_frozen), so it can never
 --     be applied by the trigger — an unknown store stays empty for the live lane.
---   · ANY error in the lookup → the row is saved as sent (plus the clear above); the trigger never blocks
---     an insert/update.
+--   · ONE exception block per row (switch read + access check + lookup together = one subtransaction);
+--     an error in it never blocks the insert/update: nothing is applied, and the clear still runs when the
+--     switch was read 'true' (an unreadable switch = off = the row is saved exactly as sent).
+--   · no bulk frozen writes: per row, only for 冷凍 rows whose store / layer changed — do not feed it mass
+--     updates of parcel_scans (each such row = one subtransaction).
 --   · each applied verdict is logged in store_frozen_check_log with source 'instant' (best-effort).
 --
 -- WARM-UP RULES (admin_frozen_warmup_next):
@@ -74,18 +79,20 @@
 --   update public.app_settings set value = 'true', updated_at = now() where key = 'frozen_warmup_enabled';
 --   update public.app_settings set value = '', updated_at = now() where key = 'frozen_warmup_stop_reason';
 -- Turn it OFF: the same update with 'false'.
+-- Rollback (sql/145_frozen_instant_warmup_rollback.sql) restores the log CHECK NOT VALID — do NOT VALIDATE the
+-- restored CHECK afterwards: log rows written with 'warmup' / 'instant' would fail it.
+-- All 4 functions: SECURITY DEFINER with search_path = public, pg_temp.
 begin;
-set local lock_timeout = '5s';
+set local lock_timeout = '2s';
 
 -- ── 1. INSTANT VERDICT: the cached verdict on the row the moment it is saved ──
 create or replace function public.parcel_scans_frozen_instant()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_no_ttl constant interval := interval '30 days';  -- no_frozen trusted this long (= sql/142)
   v_ok_ttl constant interval := interval '7 days';   -- ok trusted this long (= sql/142)
   v_on     text;
   v_access boolean := false;
-  v_apply  boolean := false;   -- look the store up in the cache
   v_status text;
 begin
   -- cheap exits first (no sub-transaction): dry rows, exported rows, edits that change neither field
@@ -96,26 +103,14 @@ begin
     return new;
   end if;
 
-  -- the frozen switch: anything but the exact 'true' (or a read error) = do nothing at all
+  -- ONE protected block (one subtransaction per row): the switch read + the access check + the lookup.
+  -- An error in it never blocks the save: it only drops the lookup result (v_on keeps what was read —
+  -- PL/pgSQL variables are not rolled back), so the clear below still runs when the switch said 'true'.
   begin
     select s.value into v_on from app_settings s where s.key = 'frozen_store_check_enabled';
-  exception when others then
-    return new;
-  end;
-  if coalesce(v_on, 'false') <> 'true' then return new; end if;
-
-  -- store changed → drop the old verdict FIRST, outside the protected lookup (a lookup error below
-  -- can never leave the old store's verdict on the row)
-  if tg_op = 'UPDATE' and new.store_id is distinct from old.store_id then
-    new.frozen_store_status := null;
-    new.frozen_store_checked_at := null;
-  end if;
-
-  begin
+    if coalesce(v_on, 'false') <> 'true' then return new; end if;   -- switch off = do nothing at all
     select exists (select 1 from parcel_check_access a where a.user_id = new.user_id and a.enabled) into v_access;
-    if not v_access then return new; end if;              -- the live frozen lane's sellers only
-    v_apply := new.frozen_store_status is null and new.frozen_store_checked_at is null;
-    if v_apply and coalesce(new.store_id, '') ~ '^[0-9]{6}$' then
+    if v_access and coalesce(new.store_id, '') ~ '^[0-9]{6}$' then
       select c.status into v_status
         from store_frozen_cache c
        where c.store_id = new.store_id
@@ -123,10 +118,21 @@ begin
             or (c.status = 'ok'        and c.checked_at > now() - v_ok_ttl) );
     end if;
   exception when others then
-    return new;                                             -- never block the save (the clear above stays)
+    v_access := false; v_status := null;                    -- never block the save; nothing applied
   end;
+  if coalesce(v_on, 'false') <> 'true' then return new; end if;   -- switch off / unreadable = do nothing
 
-  if v_status is not null then
+  -- the verdict on the row belongs to another store, or to a time the row was not 冷凍:
+  -- store changed, or 常溫 → 冷凍 (the old verdict may be from a store the row had while it was dry)
+  -- → drop it (any seller; a plain row assignment, cannot fail), then apply the fresh cache verdict
+  -- (live-lane sellers) or leave it empty for the frozen lane
+  if tg_op = 'UPDATE' and (new.store_id is distinct from old.store_id
+                           or old.temp_layer is distinct from '冷凍') then
+    new.frozen_store_status := null;
+    new.frozen_store_checked_at := null;
+  end if;
+  if v_access and v_status is not null
+     and new.frozen_store_status is null and new.frozen_store_checked_at is null then
     new.frozen_store_status := v_status;
     new.frozen_store_checked_at := now();
     begin
@@ -169,7 +175,7 @@ insert into public.app_settings (key, value) values ('frozen_warmup_stop_reason'
 -- ── 4. WARM-UP: which store to pre-check next ──
 create or replace function public.admin_frozen_warmup_next(p_limit integer default 1)
 returns table(store_id text, frozen_history boolean, parcels bigint, left_count bigint, checked_count bigint)
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_no_ttl      constant interval := interval '30 days';   -- a no_frozen younger than this = known (= sql/142)
   v_ok_ttl      constant interval := interval '7 days';    -- an ok younger than this = known (= sql/142)
@@ -220,7 +226,7 @@ grant execute on function public.admin_frozen_warmup_next(integer) to authentica
 
 -- ── 5. WARM-UP: one store's answer → the same cache + log (source 'warmup') ──
 create or replace function public.admin_frozen_warmup_verdict(p_store text, p_status text)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   if coalesce(p_store, '') !~ '^[0-9]{6}$' then raise exception 'bad_store'; end if;
@@ -237,7 +243,7 @@ grant execute on function public.admin_frozen_warmup_verdict(text, text) to auth
 
 -- ── 6. WARM-UP: the extension stops itself (captcha / block / login page / HTTP 403 / 429) ──
 create or replace function public.admin_frozen_warmup_stop(p_reason text)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   update app_settings set value = 'false', updated_at = now() where key = 'frozen_warmup_enabled';

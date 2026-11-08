@@ -102,6 +102,19 @@ await q("update parcel_scans set temp_layer='冷凍' where id=$1", [t1]);
 ok((await row(t1)).s === "no_frozen", "常溫 → 冷凍 on the same store → cache applied");
 await q("update parcel_scans set temp_layer='常溫' where id=$1", [t1]);
 ok((await row(t1)).s === "no_frozen", "冷凍 → 常溫 → the trigger does nothing (dry rows are never touched)");
+// A (round 2): store A no_frozen → (常溫 + store B) in one update → back to 冷凍 → B's verdict, not A's
+{
+  const r = await ins({ store: "968551" });                                   // A = no_frozen
+  ok((await row(r)).s === "no_frozen", "(A) the row starts with store A's no_frozen");
+  await q("update parcel_scans set temp_layer='常溫', store_id='151003' where id=$1", [r]);
+  ok((await row(r)).s === "no_frozen" && (await row(r)).store_id === "151003", "(A) 冷凍→常溫 + store B in one update: the dry row is not touched (A's verdict still on it)");
+  await q("update parcel_scans set temp_layer='冷凍' where id=$1", [r]);
+  ok((await row(r)).s === "ok", "(A) back to 冷凍 → store B's verdict (ok), NOT store A's no_frozen");
+  const r2 = await ins({ store: "968551" });
+  await q("update parcel_scans set temp_layer='常溫', store_id='444444' where id=$1", [r2]);   // B not in the cache
+  await q("update parcel_scans set temp_layer='冷凍' where id=$1", [r2]);
+  ok((await row(r2)).s === null && (await row(r2)).at === null, "(A) back to 冷凍 at a store with no cache verdict → cleared (empty for the frozen lane)");
+}
 const d2 = await ins({ store: "151003", layer: "常溫" });
 await q("update parcel_scans set store_id='968551' where id=$1", [d2]);
 ok((await row(d2)).s === null, "a DRY row's store change → untouched");
@@ -123,6 +136,15 @@ ok(await logN("instant") === soLog, "switch OFF: nothing logged");
 await q("update app_settings set value='true' where key='frozen_store_check_enabled'");
 const so3 = await ins({ store: "968551" });
 ok((await row(so3)).s === "no_frozen", "switch back ON → applied again");
+
+// ── B. the switch read itself failing = off (saved exactly as sent) ────────────
+{
+  const r = await ins({ store: "968551" });
+  await q("alter table app_settings rename to app_settings_x");
+  let okUpd = true; try { await q("update parcel_scans set store_id='151003' where id=$1", [r]); } catch { okUpd = false; }
+  ok(okUpd && (await row(r)).s === "no_frozen" && (await row(r)).store_id === "151003", "(B) switch unreadable → the update succeeds and nothing is cleared or applied");
+  await q("alter table app_settings_x rename to app_settings");
+}
 
 // ── A. a trigger error never blocks the save ─────────────────────────────────
 await q("alter table store_frozen_cache rename to store_frozen_cache_x");
@@ -229,6 +251,12 @@ const fl = await ins({ store: "800001" });
 await q("select admin_parcel_frozen_verdict($1,$2,$3)", [fl, "800001", "no_frozen"]);
 ok((await row(fl)).s === "no_frozen", "sql/142 frozen verdict RPC unchanged");
 
+{
+  const fns = (await q(`select proname, proconfig from pg_proc where proname in
+    ('parcel_scans_frozen_instant','admin_frozen_warmup_next','admin_frozen_warmup_verdict','admin_frozen_warmup_stop')`)).rows;
+  ok(fns.length === 4 && fns.every((f) => JSON.stringify(f.proconfig) === JSON.stringify(["search_path=public, pg_temp"])),
+     `(C) all 4 functions: search_path = public, pg_temp (${fns.map((f) => f.proconfig).join(" | ")})`);
+}
 // ── rollback ─────────────────────────────────────────────────────────────────
 await db.exec(readFileSync(down, "utf8"));
 ok((await q("select count(*)::int n from pg_proc where proname in ('parcel_scans_frozen_instant','admin_frozen_warmup_next','admin_frozen_warmup_verdict','admin_frozen_warmup_stop')")).rows[0].n === 0, "rollback drops the function + 3 RPCs");
@@ -267,6 +295,18 @@ create table public.parcel_customers(id uuid primary key default gen_random_uuid
   const def = (await db2.query("select pg_get_constraintdef(oid) d from pg_constraint where conname='store_frozen_check_log_source_check'")).rows[0]?.d || "";
   ok(/live/.test(def) && !/warmup/.test(def), "…the original source CHECK is still in place");
   await db2.close();
+}
+// B/C/D: one exception block for switch + lookup, search_path incl. pg_temp on all 4, lock_timeout 2 s
+{
+  const t = readFileSync(up, "utf8");
+  const body = t.slice(t.indexOf("create or replace function public.parcel_scans_frozen_instant()"), t.indexOf("revoke all on function public.parcel_scans_frozen_instant()"));
+  ok((body.match(/exception when others/g) || []).length === 2, "(B) trigger: ONE block for switch + access + lookup (+ the best-effort log insert only when a verdict is applied)");
+  const blk = body.slice(body.indexOf("begin\n    select s.value into v_on"), body.indexOf("exception when others then\n    v_access"));
+  ok(/frozen_store_check_enabled/.test(blk) && /store_frozen_cache/.test(blk) && /parcel_check_access/.test(blk), "(B) the switch read, access check and cache lookup are all inside that one block");
+  ok(/^begin;\nset local lock_timeout = '2s';/m.test(t), "(D) set local lock_timeout = '2s' right after begin");
+  const rb = readFileSync(down, "utf8");
+  ok(/do NOT VALIDATE/.test(rb) && /do NOT VALIDATE/.test(t), "(C) both files warn: do not VALIDATE the restored CHECK");
+  ok(/STAYS on the row \(by design/.test(t) && /no bulk frozen writes/.test(t), "(B/C) header notes: switch-off store change keeps the old verdict; no bulk frozen writes");
 }
 // the order: the trigger is created BEFORE the log CHECK is altered (lock order = the frozen lane's)
 {

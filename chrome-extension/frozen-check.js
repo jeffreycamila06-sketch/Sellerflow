@@ -15,7 +15,8 @@
 //
 // KILL SWITCH: app_settings 'frozen_store_check_enabled' — only the exact string 'true'
 // turns it on; a read failure = off. OFF = the normal lane is byte-for-byte today's; the
-// only request this module makes is ONE read-only GET of that setting per minute.
+// only request this module makes is ONE read-only GET of that setting per minute (plus, since
+// 1.18.0, one LOCAL chrome.storage write per worker start: the warm-up popup line {on:false}).
 //
 // NEVER OVERLAP THE NORMAL LANE (two ways) on the shared E-Map session:
 //  • the frozen E-Map request is sent ONLY right at the kick — pcRunOnce calls the kick after
@@ -49,7 +50,8 @@
 // WARM-UP (1.18.0, sql/145): pre-checks every known store so a frozen parcel finds its store already
 // in the cache (the sql/145 trigger then puts the verdict on the row the moment it is saved).
 //  • OFF unless app_settings 'frozen_warmup_enabled' is exactly 'true' — read (≤ once a minute) ONLY
-//    while the frozen switch is on, so "frozen switch off" stays byte-for-byte 1.17.0.
+//    while the frozen switch is on. Frozen switch off = the same NETWORK requests as 1.17.0; the one
+//    difference is a LOCAL chrome.storage write per worker start (pc_frozen_warmup → {on:false} + mem).
 //  • leader-only on a FRESH, CONFIRMED lease (the last lease answer said leader ≤ 60 s ago and the
 //    lease call is not failing — never on the lease fail-open path, the pre-answer boot rule or a
 //    lone leader's stale lease), and ONLY when the real queues are empty: the last frozen pending read (≤ 60 s ago)
@@ -70,9 +72,12 @@
 //    reason; the popup shows "Warm-up stopped: <reason>". It starts again only after the switch is seen
 //    'false' and then 'true' (Jeff turns it on again). The dry and live frozen lanes keep working.
 //  • the pace (last request), the pause, the miss / pause counters, the stop and the ≤ 5 unchecked
-//    store ids of the last list read survive a worker
-//    restart: kept in chrome.storage (pc_frozen_warmup.mem) and loaded before the first warm-up decision.
-//    The popup line is written {on:false} at boot and whenever the frozen switch is seen off.
+//    store ids of the last list read survive a worker restart: kept in chrome.storage
+//    (pc_frozen_warmup.mem) and loaded before the first warm-up decision (every pass awaits the load).
+//    A failed / timed-out load writes nothing, blocks warm-up (pace + list clock set to now) and is
+//    retried on the next pass. Restored times are clamped (lastAt / queueAt ≤ now, pauseUntil ≤ now +
+//    30 min); a saved queue older than 5 min is dropped. The popup line is written {on:false} at boot
+//    and whenever the frozen switch is seen off.
 (function sflFrozenStoreCheck(g) {
   const SWITCH_KEY = "frozen_store_check_enabled";
   const SWITCH_TTL_MS = 60 * 1000;           // re-read the switch at most once a minute
@@ -134,12 +139,17 @@
   function restoreMem(m) {
     if (!m || typeof m !== "object") return;
     const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-    warm.lastAt = num(m.lastAt); warm.pauseUntil = num(m.pauseUntil); warm.queueAt = num(m.queueAt);
+    const now = Date.now();
+    // a bad / future saved time can never stretch the pace, the list clock or the pause (clock jumps, a
+    // corrupted value): lastAt / queueAt ≤ now (= at most the normal 60 s / 5 min wait), pause ≤ 30 min
+    warm.lastAt = Math.min(num(m.lastAt), now); warm.queueAt = Math.min(num(m.queueAt), now);
+    warm.pauseUntil = Math.min(num(m.pauseUntil), now + WARMUP_PAUSE_MS);
     warm.misses = Math.max(0, Math.floor(num(m.misses))); warm.pauses = Math.max(0, Math.floor(num(m.pauses)));
     warm.stopped = m.stopped === true; warm.stopReason = typeof m.stopReason === "string" ? m.stopReason.slice(0, 200) : "";
     warm.stopWritten = m.stopWritten === true; warm.sawOffSinceStop = m.sawOffSinceStop === true;
     // the unchecked stores of the last list read (≤ 5 ids) — so a restart does not wait 5 min for a new read
     warm.queue = Array.isArray(m.queue) ? m.queue.map(String).filter((x) => /^\d{6}$/.test(x)).slice(0, WARMUP_LIMIT) : [];
+    if (now - warm.queueAt > WARMUP_LIST_MAX_AGE_MS) warm.queue = [];   // older than 5 min → stale; a fresh read is due anyway
     if (warm.stopped) { warm.on = false; warm.queue = []; }
   }
   const log = (msg) => { try { console.log(`[PC-FROZEN] ${msg}`); } catch { /* never throw from a log */ } };
@@ -394,17 +404,26 @@
     try { await withTimeout(pcSet(WARMUP_STATE_KEY, state), CONFIG_TIMEOUT_MS, "warm-up state write"); } catch { warm.stateSig = ""; }
   }
   // 6: read the saved state ONCE (at boot — the module schedules it — and awaited by every pass before a
-  // warm-up decision), then write the popup line {on:false} (12). Bounded; a failed read = fresh state.
+  // warm-up decision), then write the popup line {on:false} (12). Bounded (3 s).
+  // E: a failed / timed-out read is NOT a load: warm.loaded stays false (so nothing is written over the
+  // saved mem), warm-up is held back (pace + list clock = now) and loadP is cleared → the next pass retries.
   let loadP = null;
   function loadWarm() {
     if (!loadP) {
       loadP = (async () => {
-        try { const saved = await withTimeout(pcGet(WARMUP_STATE_KEY, null), CONFIG_TIMEOUT_MS, "warm-up state read"); restoreMem(saved && saved.mem); }
-        catch { /* fresh state */ }
+        let saved;
+        try { saved = await withTimeout(pcGet(WARMUP_STATE_KEY, null), CONFIG_TIMEOUT_MS, "warm-up state read"); }
+        catch (e) {
+          warm.lastAt = Date.now(); warm.queueAt = Date.now();
+          loadP = null;
+          logW(`warm-up state read failed (${(e && e.message) || "error"}) — warm-up held, retry next pass`);
+          return;
+        }
+        restoreMem(saved && saved.mem);
         warm.loaded = true;
         if (warm.stopped || warm.pauseUntil > Date.now()) logW(`warm-up state restored (${warm.stopped ? `stopped: ${warm.stopReason}` : `paused until ${new Date(warm.pauseUntil).toISOString()}`})`);
-        await saveWarmState();
-      })().catch(() => { warm.loaded = true; });
+        void saveWarmState();                          // H: not awaited — the load never waits on a write
+      })().catch(() => { loadP = null; });
     }
     return loadP;
   }

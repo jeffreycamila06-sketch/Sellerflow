@@ -17,6 +17,7 @@ drop function if exists public.admin_frozen_warmup_stop(text);
 alter table public.store_frozen_check_log drop constraint if exists store_frozen_check_log_source_check;
 alter table public.store_frozen_check_log add constraint store_frozen_check_log_source_check
   check (source in ('live','cache')) not valid;
+-- ⚠️ do NOT VALIDATE this constraint later: rows written with 'warmup' / 'instant' would fail it.
 
 delete from public.app_settings where key in ('frozen_warmup_enabled', 'frozen_warmup_stop_reason');
 
