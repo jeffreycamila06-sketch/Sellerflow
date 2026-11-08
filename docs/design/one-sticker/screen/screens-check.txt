@@ -10,15 +10,28 @@ android-412 light zh-TW horizontalScroll=false
 android-412 dark en horizontalScroll=false
 android-412 dark fil horizontalScroll=false
 android-412 dark zh-TW horizontalScroll=false
-desktop-1280 light en horizontalScroll=false
-desktop-1280 light fil horizontalScroll=false
-desktop-1280 light zh-TW horizontalScroll=false
-desktop-1280 dark en horizontalScroll=false
-desktop-1280 dark fil horizontalScroll=false
-desktop-1280 dark zh-TW horizontalScroll=false
+phone-360 light en horizontalScroll=false
+phone-360 light fil horizontalScroll=false
+phone-360 light zh-TW horizontalScroll=false
+phone-360 dark en horizontalScroll=false
+phone-360 dark fil horizontalScroll=false
+phone-360 dark zh-TW horizontalScroll=false
+phone-430 light en horizontalScroll=false
+phone-430 light fil horizontalScroll=false
+phone-430 light zh-TW horizontalScroll=false
+phone-430 dark en horizontalScroll=false
+phone-430 dark fil horizontalScroll=false
+phone-430 dark zh-TW horizontalScroll=false
+laptop-1280 light en horizontalScroll=false
+laptop-1280 light fil horizontalScroll=false
+laptop-1280 light zh-TW horizontalScroll=false
+laptop-1280 dark en horizontalScroll=false
+laptop-1280 dark fil horizontalScroll=false
+laptop-1280 dark zh-TW horizontalScroll=false
 fit false
+off false
+noqr false
+laptop-dark-50x30 false
 custom false
 toowide false
 text false
-360 false
-430 false

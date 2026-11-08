@@ -5,7 +5,7 @@ The laptop pictures are Chrome's own print of the real print page (Playwright �
 
 | Folder | What it shows |
 |---|---|
-| `screen/` | The new LIVE print pattern screen — iPhone 390, Android 412, desktop 1280 × light/dark × English / Filipino / 繁體中文 (`screen_<device>_<theme>_<lang>.png`), plus states: red fit warning (50×30, Buyer 2×), Custom 40×30, Niimbot B1 + a size too wide, a printer still on the older text sticker, 360 px and 430 px widths. `screens-check.txt` = no sideways scroll on any of them. |
+| `screen/` | The new LIVE print pattern screen at HEAD — iPhone 390, Android 412, 360, 430 and laptop 1280 × light/dark × English / Filipino / 繁體中文 (`screen_<width>_<theme>_<lang>.png`), plus states: red "Too big" (50×30, everything 2×), a part switched off (Name), an account without QR, laptop 50×30 dark, Custom 40×30, Niimbot B1 + a size too wide, a printer still on the older text sticker. `screens-check.txt` = no sideways scroll on any of them. |
 | `stickers/aimo-d520/` | AIMO / Phomemo D520BT — 50×30, 60×40, 70×50, 80×50, 80×60, 100×60, custom 40×30 and 75×45. Each sheet: TikTok QR on / off, Facebook long name, very long comment, 中文, 日本語 田中さん「ワンピース」１２３, 한국어, ไทย, العربية, Български, emoji + fancy (🔥𝓐𝓶𝔂 𝐋𝐢𝐦🔥), blank shop name. |
 | `stickers/generic-y41bt-xp420b/` | Flash Y41BT / Xprinter XP-420B (TSPL, density 15, speed 4, 1-dot ink) — same sizes and samples. |
 | `stickers/niimbot/` | Niimbot — the sizes a Niimbot takes (B1/B21/B203 up to 50 mm wide: 50×30, 40×30; B3S up to 75 mm: also 60×40, 70×50, 75×45). The picture sits in the SDK frame 1 mm inside the label. |
