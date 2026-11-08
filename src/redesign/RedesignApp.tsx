@@ -124,7 +124,7 @@ import OneStickerPattern from "./components/OneStickerPattern";
 import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
-import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn } from "./adapters/printing";
+import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler } from "./adapters/printing";
 import { knownTsplJob } from "./adapters/printerModels";
 import { savedBtPrinter } from "./adapters/savedPrinter";
 import { V2_SAMPLE_LATIN, V2_SAMPLE_CJK } from "./screens/PrintPattern";
@@ -933,6 +933,11 @@ export default function RedesignApp() {
   // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
   // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+  // a saved size wider than the saved printer prints today's sticker — and says so (printing.ts)
+  useEffect(() => {
+    setOneStickerNoticeHandler((n) => { if (n.kind === "too_wide") setToast({ msg: tpl(tApp.rd_os_too_wide_print, { model: n.model, max: String(n.maxMm) }), kind: "err" }); });
+    return () => setOneStickerNoticeHandler(null);
+  }, [tApp]);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
   // P3 — OAuth return (?shopee=connected|error&code=…): toast + strip the query +

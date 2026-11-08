@@ -30,7 +30,7 @@ import { CYRILLIC_ATLAS } from "./glyphAtlas.cyrillic"; // generic-printer / Nii
 import { log } from "../../lib/log";
 import { hasFeature } from "./featureAccess";
 import { oneStickerActive, oneStickerInputFrom, renderOneStickerFor, d520Stream, genericBytes, niimbotImage, laptopPage, textStickerSizeFor, type OneStickerPath } from "./oneStickerPrint";
-import type { OneStickerSettings } from "./oneSticker";
+import { tooWideFor, type OneStickerSettings } from "./oneSticker";
 import { prepareAllScripts, augmentAtlases, ensureAllScriptsFonts, stickerAllScriptsOn, type AllScriptsPrep } from "./oneStickerScripts";
 import { withSyntheticCjk } from "./stickerRaster";
 
@@ -400,7 +400,7 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 // reasons through them, and support can read getLastStickerRouteNotice() /
 // window.__sflPrintTiming from an inspector. Genuine print FAILURES surface to
 // sellers via setNativePrintFailureHandler above (unchanged) — never via this.
-export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed" | "generic-tspl" | "generic-escpos" | "generic-cpcl" | "niimbot";
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed" | "generic-tspl" | "generic-escpos" | "generic-cpcl" | "niimbot" | "one-sticker-picture-failed" | "one-sticker-too-wide";
 // AUDIT F2 safety net: the native reject code for an SPP-transport bitmap send
 // that failed at the socket level — the router retries that print through the
 // unchanged TEXT path, so an SPP-incompatible unit degrades to today's behavior.
@@ -691,11 +691,35 @@ export function oneStickerDevicePath(cfg: Pick<Settings, "printerType">): OneSti
   if (!bitmapBridgeFn(bridge) || (classicTextAllowed && isClassicTextSticker())) return "text";
   return "d520";
 }
+// A print is never lost: a picture that fails or is not ready in 8 s (a font chunk stuck on a bad
+// connection), or a saved size wider than the saved printer, prints TODAY's sticker instead ("today")
+// and the miss is recorded (reportStickerRoute). The too-wide case also tells the seller (notice).
+export const ONE_STICKER_PHONE_TIMEOUT_MS = 8000;
+export type OneStickerNotice = { kind: "too_wide"; model: string; maxMm: number };
+let oneStickerNoticeHandler: ((n: OneStickerNotice) => void) | null = null;
+export function setOneStickerNoticeHandler(fn: ((n: OneStickerNotice) => void) | null): void { oneStickerNoticeHandler = fn; }
+function oneStickerNotice(n: OneStickerNotice): void { try { oneStickerNoticeHandler?.(n); } catch { /* a notice never breaks a print */ } }
 // "text" = this print takes the native TEXT path below (no image method / classic / SPP failed).
-async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlowPrinter"]>, osIn: OneStickerSettings, buyer: Buyer, storeName: string, fbName: boolean, at?: number): Promise<BtRouteResult | "text" | "text-spp"> {
+// "today" = this print takes today's sticker routing below (picture failed / too wide).
+async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlowPrinter"]>, osIn: OneStickerSettings, buyer: Buyer, storeName: string, fbName: boolean, at?: number): Promise<BtRouteResult | "text" | "text-spp" | "today"> {
   const os = oneStickerEffective(osIn);
   const inp = oneStickerInputFrom(buyer, storeName, at, fbName);
   const t0 = nowMs();
+  const miss = (reason: StickerFallbackReason, detail: string) => {
+    reportStickerRoute({ via: "bitmap", ok: false, reason, detail, payloadBytes: 0, totalMs: nowMs() - t0 });
+    log.warn(`[ONE-STICKER] ${detail} — printing today's sticker`);
+  };
+  const wide = tooWideFor(savedBtPrinter()?.name, os.size.w);
+  if (wide && (savedIsNiimbot() || savedGenericLang() || bitmapBridgeFn(bridge))) {
+    miss("one-sticker-too-wide", `${os.size.w} mm is wider than the ${wide.model} (${wide.maxLabelMm} mm)`);
+    oneStickerNotice({ kind: "too_wide", model: wide.model, maxMm: wide.maxLabelMm });
+    return "today";
+  }
+  // the picture (fonts + layout + encode), at most 8 s; null = print today's sticker
+  const picture = async <T>(make: () => Promise<T>): Promise<T | null> => {
+    try { return await withTimeout(make(), ONE_STICKER_PHONE_TIMEOUT_MS); }
+    catch (err) { miss("one-sticker-picture-failed", `picture failed: ${String(err)}`); return null; }
+  };
   const send = async (via: OneStickerPath, fn: BitmapBridgeFn | ((a: { image: unknown }) => Promise<unknown>), arg: Record<string, unknown>, payloadBytes: number, reason: StickerFallbackReason): Promise<BtRouteResult> => {
     const t1 = nowMs();
     try {
@@ -718,8 +742,8 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
   if (savedIsNiimbot()) {
     const fn = (bridge as unknown as { printStickerImage?: (a: { image: unknown }) => Promise<unknown> }).printStickerImage;
     if (typeof fn !== "function") return { ok: false, code: "", message: "" };
-    const r = await renderOneStickerFor("niimbot", os, inp);
-    const image = niimbotImage(r, os);
+    const image = await picture(async () => niimbotImage(await renderOneStickerFor("niimbot", os, inp), os));
+    if (!image) return "today";
     return send("niimbot", fn, { image }, image.rowBytes * image.h, "niimbot");
   }
   const lang = savedGenericLang();
@@ -727,32 +751,35 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
     const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
     if (typeof raw !== "function") return { ok: false, code: "", message: "" };
     const job = knownTsplJob(savedBtPrinter()?.name);
-    const r = await renderOneStickerFor(lang, os, inp, job);
-    const bytes = genericBytes(lang, r, os, job);
+    const bytes = await picture(async () => genericBytes(lang, await renderOneStickerFor(lang, os, inp, job), os, job));
+    if (!bytes) return "today";
     return send(lang, raw, { data: bytesToBase64(bytes) }, bytes.length, lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos");
   }
   const bmpFn = bitmapBridgeFn(bridge);
   if (!bmpFn || (classicTextAllowed && isClassicTextSticker())) return "text";
-  const r = await renderOneStickerFor("d520", os, inp);
-  const bytes = d520Stream(r, os);
+  const bytes = await picture(async () => d520Stream(await renderOneStickerFor("d520", os, inp), os));
+  if (!bytes) return "today";
   const out = await send("d520", bmpFn, { data: bytesToBase64(bytes) }, bytes.length, "");
   return !out.ok && out.code === BITMAP_SPP_FAILED ? "text-spp" : out;
 }
 
-async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfgIn: Settings, fbName = false, at?: number): Promise<BtRouteResult> {
+async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfgIn: Settings, fbName = false, at?: number, noOneSticker = false): Promise<BtRouteResult> {
   let cfg = cfgIn;
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
   // ONE STICKER (opted-in device only; null for every other device → today's routing below).
-  const os = oneStickerActive();
+  let os = noOneSticker ? null : oneStickerActive();
   let oneStickerSpp = false;
   if (os) {
     // Facebook name-only follows the buyer (not the old @username toggle of the previous screen)
     const done = await printOneStickerViaBluetooth(bridge, os, buyer, storeName, fbNameOnly(buyer.platform, buyer.name), at);
-    if (done !== "text" && done !== "text-spp") return done;
-    oneStickerSpp = done === "text-spp"; // → the native TEXT sticker below (Branch 2 keeps it as is)
-    // …at the largest TEXT size that fits the chosen label (TEXT has no 50×30 / custom row)
-    cfg = { ...cfg, stickerSize: textStickerSizeFor(os.size) };
+    if (done === "today") os = null; // the picture could not be made / too wide → today's sticker, exactly as today
+    else {
+      if (done !== "text" && done !== "text-spp") return done;
+      oneStickerSpp = done === "text-spp"; // → the native TEXT sticker below (Branch 2 keeps it as is)
+      // …at the largest TEXT size that fits the chosen label (TEXT has no 50×30 / custom row)
+      cfg = { ...cfg, stickerSize: textStickerSizeFor(os.size) };
+    }
   }
   // Printer setup v2 — a saved Niimbot prints the sticker IMAGE through its driver; a saved
   // GENERIC printer prints the sticker IMAGE in its saved language (both above). A D520BT
@@ -831,7 +858,10 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
     return { ok: r.ok, code: "", message: "", via: r.via };
   }
   const r = await printOneStickerViaBluetooth(bridge, draft, printableBuyer(buyer), storeName, fbName);
-  if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName)), via: "bluetooth" };
+  // TEXT (old app / classic / SPP failed): the native TEXT test sticker at the DRAFT's size;
+  // "today" (picture failed / too wide): today's test sticker. Never the saved pattern's size.
+  if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, { ...cfg, stickerSize: textStickerSizeFor(draft.size) }, fbName, undefined, true)), via: "bluetooth" };
+  if (r === "today") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName, undefined, true)), via: "bluetooth" };
   return { ...r, via: "bluetooth" };
 }
 
