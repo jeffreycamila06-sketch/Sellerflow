@@ -14,6 +14,7 @@ const pcEls = {
   emapSessionRow: document.getElementById("pcEmapSessionRow"),
   perSellerCfg: document.getElementById("pcPerSellerCfg"),
   role: document.getElementById("pcRole"), device: document.getElementById("pcDevice"),
+  warmRow: document.getElementById("pcWarmRow"),
 };
 
 function pcOne(key, fallback) {
@@ -128,6 +129,25 @@ async function pcRenderStatus() {
   pcEls.multiRow.style.display = showMulti ? "" : "none";
   if (showMulti) pcEls.multiQueue.textContent = st.multi === "ok" ? String(st.multiQueueDepth ?? 0) : String(st.multi);
   pcReasonRow(pcEls.phoneErrRow, pcEls.phoneErr, st.lastPhoneReason, st.lastPhoneAt);
+  pcRenderWarmup((await pcOne(PC_WARMUP_KEY, null)) || null);
+}
+// 1.18.0 — the frozen warm-up line (frozen-check.js writes its own storage key). Hidden while off.
+const PC_WARMUP_KEY = "pc_frozen_warmup";
+function pcWarmupLine(w, nowMs = Date.now()) {
+  if (!w || (!w.on && !w.stopped)) return null;
+  const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (w.stopped) return ["#e5484d", `Warm-up stopped: ${w.stopReason || "the store map blocked it"}`];
+  const parts = [`${w.checked ?? 0} checked`];
+  parts.push(w.nothingDue ? "nothing to check now" : `${w.left ?? "?"} left`);
+  if (w.lastAt) parts.push(`last at ${hhmm(w.lastAt)}`);
+  if (w.pausedUntil && w.pausedUntil > nowMs) parts.push(`paused until ${hhmm(w.pausedUntil)}`);
+  return ["#4b5563", `Frozen warm-up: ${parts.join(" · ")}`];
+}
+function pcRenderWarmup(w) {
+  if (!pcEls.warmRow) return;
+  const m = pcWarmupLine(w);
+  pcEls.warmRow.style.display = m ? "" : "none";
+  if (m) { pcEls.warmRow.style.color = m[0]; pcEls.warmRow.textContent = m[1]; }
 }
 async function pcRenderConfig() {
   const c = (await pcOne(PC_CONFIG_KEY, {})) || {};

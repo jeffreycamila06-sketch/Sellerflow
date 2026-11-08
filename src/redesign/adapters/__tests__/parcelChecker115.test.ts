@@ -690,6 +690,6 @@ describe("identity, worker-state blob, writes outside a pass", () => {
   });
 
   it("version pin: manifest 1.15.2", () => {
-    expect(JSON.parse(readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/manifest.json`, "utf8")).version).toBe("1.17.0");
+    expect(JSON.parse(readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/manifest.json`, "utf8")).version).toBe("1.18.0");
   });
 });

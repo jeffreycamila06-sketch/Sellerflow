@@ -4753,3 +4753,63 @@ monitoring per-seller + Exports per seller). Tap it → picker (search, Madalas 
 - ⚠️ Apply sql/143 BEFORE relying on picks: without the table the pills still show (saved/guess/unknown) and a
   save fails with "Hindi na-save". Behaviour check: `scripts/sql143-behaviour.mjs` (PGlite).
 - Not covered: TikTok-limit card rows (keyed by server sellerId, no email) and Audit log (entries, not users).
+
+## 2026-11-08 — FROZEN STORE CHECK: INSTANT VERDICT + WARM-UP (branch `claude/frozen-instant-warmup`, NOT merged; extension 1.18.0; sql/145 NOT applied)
+Trial (Nov 5–8): only ~16–38% of 冷凍 parcels got a verdict before export (export ~6–10 s after encode, live
+E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_pending).
+- **A. Instant verdict (sql/145 trigger `trg_parcel_scans_frozen_instant`, BEFORE INSERT / UPDATE OF store_id,
+  temp_layer):** 冷凍 rows of `parcel_check_access` sellers get a FRESH (≤ 30 d) `store_frozen_cache` verdict at
+  insert. UPDATE acts only when store_id / temp_layer really change (the app sends store_id on EVERY edit; the ⟳
+  Recheck never changes it → still goes live). Store change → old verdict cleared, new store's cache applied.
+  Dry rows / other sellers / exported rows untouched; any error → saved as sent. Log source 'instant'.
+  App: NO change needed — the Parcel Scan 3 s verdict poll + the export's DB re-read already pick it up
+  (`ParcelScan.instantFrozen.test.tsx`). 'unknown' is never cached.
+- **B. Warm-up (frozen-check.js, 1.18.0; background.js + emap-711.js UNTOUCHED):** OFF unless app_settings
+  `frozen_warmup_enabled`='true' (read only while the frozen switch is on). Leader-only, only when the last frozen
+  pending read returned 0 rows AND the dry lane's last read (≤ 30 s) had 0 rows; ONE store per `WARMUP_GAP_MS`
+  (60 s), takes the frozen request's place in a pass behind the same gap guards. Stores from
+  `admin_frozen_warmup_next` (frozen-history first, then most parcels; ≈0.7 s query → read 5 at a time, ≤ 1/5 min),
+  answers via `admin_frozen_warmup_verdict` (log source 'warmup'; 'unknown' retried after 7 days).
+  3 no-answers in a row → 30-min pause (NO2 / close don't count); captcha / login / 403 / 429 → STOP via
+  `admin_frozen_warmup_stop` (switch off + `frozen_warmup_stop_reason`); restarts only after the switch is seen
+  off then on. Popup line from its own storage key `pc_frozen_warmup`.
+- Proof: `scripts/sql145-behaviour.mjs` (PGlite, 56 checks) · `parcelCheckerWarmup.test.ts` ·
+  `parcelCheckerWarmupSim.test.ts` (dry lane identical ON vs OFF, 0 overlaps) · `parcelCheckerWarmupPopup.test.ts`.
+- ⚠️ The only edit of an existing DB object: `store_frozen_check_log` source CHECK widened (+'warmup','instant',
+  NOT VALID); a DO block RAISES (whole migration rolls back) if any other CHECK on log.source survives the drop.
+- **Audit fixes (same branch):** cache trust = sql/142 (no_frozen 30 d, ok 7 d) in the trigger AND warmup_next;
+  trigger does nothing unless `frozen_store_check_enabled`='true'; a store change clears the old verdict BEFORE the
+  protected lookup (any seller); trigger created before the log ALTER (lock order = the frozen lane's). Extension:
+  warm-up state (pace, pause, misses, pause count, stop, ≤ 5 queued store ids) persisted in `pc_frozen_warmup.mem`
+  and loaded before the first decision; popup line `{on:false}` at boot + when the frozen switch is off; a no-answer
+  writes NO verdict (miss only); 2 pauses in a row without ok/no_frozen → STOP; store list never re-read < 5 min;
+  warm-up only on a fresh confirmed lease (never fail-open / role null / lone-stale); request skipped > 2 s after the kick.
+- **Round-2 audit fixes:** trigger clears the old verdict on 常溫 → 冷凍 too (a verdict from the row's dry days never
+  survives); switch read + access + lookup = ONE exception block whose handler only drops the lookup result (the clear
+  still runs when the switch said 'true'; switch off / unreadable = row saved exactly as sent); `search_path = public,
+  pg_temp` on all 4 functions; `lock_timeout = '2s'`. Extension: a failed/timed-out `pc_frozen_warmup` read = not
+  loaded, nothing written, warm-up held (pace + list clock = now), retried next pass; restored lastAt/queueAt ≤ now,
+  pauseUntil ≤ now + 30 min; a saved queue older than 5 min is dropped; the boot write is not awaited. Harness option
+  `holdStorageGet` (holds a storage read until the test releases it).
+- **Round-3 fixes:** the trigger's clear (store change / 常溫 → 冷凍) runs FIRST, before the switch read and outside the
+  exception block — also with the switch OFF (nothing is looked up or applied then; the frozen lane checks the empty
+  row live once on). Extension: `await loadWarm()` moved AFTER sendOne (right before warmOne) so a slow state read never
+  delays a real frozen parcel; warmOne + the store-list read refuse while not loaded; a failed stop write is retried
+  ≤ once per 60 s (`stopTriedAt`); the "state read failed" log goes through logSkip (once a minute).
+- **Round-4 fixes:** a failed boot read is retried every pass with `if (!warm.loaded) void loadWarm()` (never awaited;
+  also with the frozen switch OFF / a frozen queue that never empties); `stopTriedAt` + `nightRetryAt` in mem (clamped);
+  sql145 script seeds the cache 1 day old (no same-ms tie, 5/5 runs green); sql/145 header: never set a frozen verdict
+  in the same UPDATE as a store/layer change.
+- **Night warm-up (01:00–05:00 Taipei, warm-up ONLY):** the dry lane and the LIVE frozen lane keep the window unchanged
+  (no frozen pending read, no live frozen request). Warm-up probes at the 60 s pace while answers are real
+  (ok / no_frozen / NO2 / close); a no-answer / timeout / maintenance page → nothing written, NOT counted (no miss /
+  pause / stop), next probe 10 min later (`WARMUP_NIGHT_RETRY_MS`). Captcha / login / 403 / 429 → STOP any hour.
+  `emap-frozen-711.js`: only `OK;<6 digits>+…` / `NO2` are parsed; a maintenance URL or body → transient
+  `maintenance:true`, never a verdict, never blocked (403/429, a login/captcha URL and captcha words still win).
+  Night sim: dry lane request-for-request identical ON vs OFF.
+- **Round-5 fixes:** the maintenance handling in `emap-frozen-711.js` runs ONLY for a night warm-up probe
+  (`message.nightWarm === true`, sent by `warmOne` at night only); the live lane + day warm-up keep the 1.17.0 order and
+  outcome (unknown, not transient, section switch — test-compared to main's real script; only difference: answer-shaped
+  non-`OK;` bodies stay unknown). `MAINT_URL_RE` reads the redirect PATH only; a login form / password input = block even
+  when it looks like maintenance. Night: 6 no-answers in a row → no probes until 05:00 (`nightMisses`, `nightRetryAt`
+  clamped to the window end); `warm.misses` reset at the 01:00 and 05:00 edges (`lastNight` in mem).

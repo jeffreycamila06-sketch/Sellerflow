@@ -31,14 +31,22 @@ export type Sim = {
   dry: Record<string, unknown>[]; frozen: { id: string; store_id: string; retryAt: number }[];
   intervals: SimInterval[]; normalVerdicts: { id: string; t: number }[]; frozenVerdicts: { id: string; status: string; t: number }[];
   alarm: ((a: { name: string }) => void) | null; nextAlarmAt: number | null;
+  // 1.18.0 warm-up: the switch, the stores admin_frozen_warmup_next hands out, the answers written,
+  // and dry parcels that ARRIVE during the run (moved into `dry` when their time comes)
+  warmupSwitch: "true" | "false"; warmStores: string[]; warmVerdicts: { store: string; status: string; t: number }[];
+  arrivals: { t: number; row: Record<string, unknown> }[]; arrivedAt: Record<string, number>;
 };
-export function makeSim(p: { t0: number; emapMs: number; phoneMs?: number; fetchMs?: number; localMs?: number; dry?: number; frozen?: { id: string; store_id: string }[]; frozenSwitch?: "true" | "false" }): Sim {
+export function makeSim(p: { t0: number; emapMs: number; phoneMs?: number; fetchMs?: number; localMs?: number; dry?: number; frozen?: { id: string; store_id: string }[]; frozenSwitch?: "true" | "false";
+  warmupSwitch?: "true" | "false"; warmStores?: string[]; arrivals?: number[] }): Sim {
   const dry = Array.from({ length: p.dry ?? 0 }, (_, i) => ({ ...PENDING_ROW, id: `dry-${i + 1}`, store_id: String(100000 + i), created_at: new Date(p.t0 - 60_000).toISOString() }));
   return {
     now: p.t0, seq: 0, nextId: 1, queue: [], cancelled: new Set(),
     emapMs: p.emapMs, phoneMs: p.phoneMs ?? 1500, fetchMs: p.fetchMs ?? 150, localMs: p.localMs ?? 5, frozenSwitch: p.frozenSwitch ?? "true",
     dry, frozen: (p.frozen ?? []).map((f) => ({ ...f, retryAt: 0 })),
     intervals: [], normalVerdicts: [], frozenVerdicts: [], alarm: null, nextAlarmAt: null,
+    warmupSwitch: p.warmupSwitch ?? "false", warmStores: [...(p.warmStores ?? [])], warmVerdicts: [],
+    arrivals: (p.arrivals ?? []).map((ms, i) => ({ t: p.t0 + ms, row: { ...PENDING_ROW, id: `arr-${i + 1}`, store_id: String(500000 + i), created_at: new Date(p.t0 + ms).toISOString() } })),
+    arrivedAt: {},
   };
 }
 export function simAdd(sim: Sim, ms: number, fn: () => void): number {
@@ -87,6 +95,10 @@ export function simOverlaps(iv: SimInterval[]) {
 function simBody(sim: Sim, url: string, init?: { body?: string }): unknown {
   let body: Record<string, unknown> = {};
   try { body = init?.body ? JSON.parse(String(init.body)) : {}; } catch { body = {}; }
+  if (/admin_parcel_checks_pending/.test(url)) {
+    for (const a of sim.arrivals.filter((x) => x.t <= sim.now)) { sim.dry.push(a.row); sim.arrivedAt[String(a.row.id)] = a.t; }
+    sim.arrivals = sim.arrivals.filter((x) => x.t > sim.now);
+  }
   if (/admin_parcel_checks_pending/.test(url)) { const lim = Number(body.p_limit) || 5; return sim.dry.slice(0, lim).map((r) => ({ ...r, queue_depth: sim.dry.length })); }
   if (/admin_parcel_check_verdict/.test(url)) {
     const i = sim.dry.findIndex((r) => r.id === body.p_id); if (i >= 0) sim.dry.splice(i, 1);
@@ -102,7 +114,18 @@ function simBody(sim: Sim, url: string, init?: { body?: string }): unknown {
     if (i >= 0) { if (status === "unknown") sim.frozen[i].retryAt = sim.now + 10 * 60_000; else sim.frozen.splice(i, 1); }
     sim.frozenVerdicts.push({ id: String(body.p_id), status, t: sim.now }); return {};
   }
+  if (/rest\/v1\/app_settings\?/.test(url) && /frozen_warmup_enabled/.test(url)) return [{ key: "frozen_warmup_enabled", value: sim.warmupSwitch }];
   if (/rest\/v1\/app_settings\?/.test(url)) return [{ key: "frozen_store_check_enabled", value: sim.frozenSwitch }];
+  if (/admin_frozen_warmup_next/.test(url)) {
+    if (sim.warmupSwitch !== "true" || sim.frozenSwitch !== "true") return [];
+    const lim = Math.min(Number(body.p_limit) || 1, 5);
+    return sim.warmStores.slice(0, lim).map((st) => ({ store_id: st, frozen_history: false, parcels: 1, left_count: sim.warmStores.length, checked_count: sim.warmVerdicts.length }));
+  }
+  if (/admin_frozen_warmup_verdict/.test(url)) {
+    const st = String(body.p_store); sim.warmStores = sim.warmStores.filter((x) => x !== st);
+    sim.warmVerdicts.push({ store: st, status: String(body.p_status), t: sim.now }); return {};
+  }
+  if (/admin_frozen_warmup_stop/.test(url)) { sim.warmupSwitch = "false"; return {}; }
   return undefined;
 }
 export type BootOpts = {
@@ -145,13 +168,20 @@ export type BootOpts = {
   sim?: Sim;                                // virtual-clock mode (see makeSim / runSim)
   frozenScriptNever?: boolean;              // the frozen ping never answers, even after an injection (injection rate-limit test)
   onFrozenPing?: () => void;                // runs when the frozen script is pinged (a test flips the lease / clock there)
+  // 1.18.0 warm-up
+  warmupSwitch?: "true" | "false" | "missing"; // the frozen_warmup_enabled row (default missing = off)
+  warmupNext?: unknown[] | ((body: Record<string, unknown>) => unknown[]) | "error"; // admin_frozen_warmup_next rows (default [])
+  warmupStopHttp?: number;                     // admin_frozen_warmup_stop status (default 200)
+  frozenReply?: (row?: { id?: string; store_id?: string }) => Record<string, unknown> | null; // the FULL PC_FROZEN_CHECK reply (overrides frozenVerdict)
+  holdStorageGet?: string;                     // chrome.storage.local.get of THIS key is held: queued in calls.heldGets until the test releases it
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const extDir = opts.extDir || process.env.SFL_EXT_DIR || "chrome-extension";
   const src = readFileSync(`${extDir}/background.js`, "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
-    injected: [] as string[], openNormal: 0, frozenOverlap: 0 };
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean; nightWarm?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
+    injected: [] as string[], openNormal: 0, frozenOverlap: 0,
+    heldGets: [] as { key: string; release: () => void }[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
@@ -173,13 +203,17 @@ export function bootWorker(opts: BootOpts = {}) {
     runtime: { lastError: undefined, onMessage: { addListener: vi.fn() }, getManifest: () => ({ version: "test" }) },
     scripting: { executeScript: (o: { files?: string[] }, cb: () => void) => { calls.injected.push(String(o?.files?.[0] ?? "")); cb(); } },
     storage: { local: {
-      get: (k: string | string[], cb: (r: Record<string, unknown>) => void) => { const key = Array.isArray(k) ? k[0] : k; cb({ [key]: storage[key] }); },
+      get: (k: string | string[], cb: (r: Record<string, unknown>) => void) => {
+        const key = Array.isArray(k) ? k[0] : k;
+        if (opts.holdStorageGet && key === opts.holdStorageGet) { calls.heldGets.push({ key, release: () => cb({ [key]: storage[key] }) }); return; }
+        cb({ [key]: storage[key] });
+      },
       set: (o: Record<string, unknown>, cb?: () => void) => { Object.assign(storage, o); cb?.(); },
     } },
     tabs: {
       query: (q: { url: string[] | string }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
-      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean }, cb0: (r: unknown) => void) => {
-        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry });
+      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean; nightWarm?: boolean }, cb0: (r: unknown) => void) => {
+        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry, nightWarm: msg.nightWarm });
         const emap = emapTabs.find((t) => t.id === id);
         // slowChecks: a normal E-Map / myship check stays "open" for one macrotask (the frozen lane must not send meanwhile)
         const slow = Boolean(opts.slowChecks) && (msg.type === "PC_CHECK_STORE" || msg.type === "PC_CHECK_PHONE");
@@ -205,6 +239,11 @@ export function bootWorker(opts: BootOpts = {}) {
         if (msg.type === "PC_CLICK_PICK_STORE") {
           const r = opts.onPickStoreClick ? opts.onPickStoreClick(emapTabs) : undefined;
           return cb(r ? { ok: true, clicked: r.clicked, reason: r.reason || "", text: "選擇取貨門市" } : { ok: true, clicked: true, reason: "", text: "選擇取貨門市" });
+        }
+        if (msg.type === "PC_FROZEN_CHECK" && opts.frozenReply) {
+          if (calls.openNormal > 0) calls.frozenOverlap += 1;
+          const r = opts.frozenReply(msg.row);
+          return cb(r === null ? null : { ok: true, script: "emap-frozen", guidFound: true, endpoint: "/ecmap/byIDData.aspx", ...r });
         }
         if (msg.type === "PC_FROZEN_CHECK") {
           if (calls.openNormal > 0) calls.frozenOverlap += 1; // a frozen request while a normal one is open = the forbidden overlap
@@ -250,6 +289,19 @@ export function bootWorker(opts: BootOpts = {}) {
       return { ok: st >= 200 && st < 300, status: st, json: async () => r.json, text: async () => JSON.stringify(r.json), headers: { get: () => "application/json" } };
     }
     if (/admin_parcel_check_requeue/.test(url) && opts.requeueOk === false) return { ok: false, status: 404, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+    if (/rest\/v1\/app_settings\?/.test(url) && /frozen_warmup_enabled/.test(url)) {
+      const rows = opts.warmupSwitch === "true" || opts.warmupSwitch === "false" ? [{ key: "frozen_warmup_enabled", value: opts.warmupSwitch }] : [];
+      return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows), headers: { get: () => "application/json" } };
+    }
+    if (/admin_frozen_warmup_next/.test(url)) {
+      if (opts.warmupNext === "error") return { ok: false, status: 500, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+      const rows = typeof opts.warmupNext === "function" ? opts.warmupNext(JSON.parse(String(init?.body ?? "{}"))) : (opts.warmupNext ?? []);
+      return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows), headers: { get: () => "application/json" } };
+    }
+    if (/admin_frozen_warmup_(verdict|stop)/.test(url)) {
+      const st = /stop/.test(url) ? (opts.warmupStopHttp ?? 200) : 200;
+      return { ok: st >= 200 && st < 300, status: st, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+    }
     if (/rest\/v1\/app_settings\?/.test(url)) {
       if (opts.frozenSwitch === "error") return { ok: false, status: 500, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
       const rows = opts.frozenSwitch === "true" || opts.frozenSwitch === "false" ? [{ key: "frozen_store_check_enabled", value: opts.frozenSwitch }] : [];
