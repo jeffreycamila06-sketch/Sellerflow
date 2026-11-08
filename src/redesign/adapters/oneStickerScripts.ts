@@ -256,10 +256,16 @@ export function augmentAtlases(atlases: RasterAtlases, prep: AllScriptsPrep, cyr
   }
   return out;
 }
-/** Kana / full-width outlines are a lazy chunk: load them before a print that has such text. */
+/** Kana / full-width outlines are a lazy chunk: load them before a print that has such text — but
+ *  never wait longer than 8 s (a stuck chunk on a bad connection): the device font draws them then. */
+export const ALL_SCRIPTS_FONT_TIMEOUT_MS = 8000;
 export async function ensureAllScriptsFonts(payload: RasterPayload): Promise<void> {
   if (!allScriptsOn) return;
   const b = payload.buyer ?? {};
   const t = [payload.storeName, b.name, b.handle, ...(b.orders ?? []).map((o) => o.item)].join(" ");
-  if (/[\u3000-\u30ff\u31f0-\u31ff\uff00-\uffef]/.test(t)) { try { await loadSansFace("cjkx"); } catch { /* the device font draws them */ } }
+  if (!/[\u3000-\u30ff\u31f0-\u31ff\uff00-\uffef]/.test(t)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([loadSansFace("cjkx"), new Promise<void>((res) => { timer = setTimeout(res, ALL_SCRIPTS_FONT_TIMEOUT_MS); })]);
+  } catch { /* the device font draws them */ } finally { if (timer) clearTimeout(timer); }
 }
