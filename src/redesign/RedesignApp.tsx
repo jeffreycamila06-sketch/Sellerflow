@@ -124,6 +124,7 @@ import OneStickerPattern from "./components/OneStickerPattern";
 import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
+import { adminSampleBuyer } from "./adapters/adminLangSamples";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
 import { savedBtPrinter, savedIsNiimbot } from "./adapters/savedPrinter";
 import { V2_SAMPLE_LATIN, V2_SAMPLE_CJK } from "./screens/PrintPattern";
@@ -1945,6 +1946,15 @@ export default function RedesignApp() {
   // value so the preview can't drift from paper. Settings → Basic Information "Shop
   // name"; blank → "SellerFlowLive" so nothing prints empty.
   const printShopName = auth.profile?.profile.storeName?.trim() || "SellerFlowLive";
+  // The new Live print pattern's test print (the sample buyer through printOneStickerTest = the real
+  // print functions) + its message. Shared by the screen's Printer Test and the admin language test.
+  const oneStickerTestPrint = async (draft: OneStickerSettings, buyer: Buyer, unsaved: boolean) => {
+    const r = await printOneStickerTest(draft, buyer, cur, stickerShopName(printShopName), buildSettingsFromRedesign({ pp, psType, psOut, psSize })); // never the brand
+    if (r.ok && r.code === ONE_STICKER_TOO_WIDE) return; // the "too wide for your printer" message is already showing
+    if (r.ok && r.code === ONE_STICKER_FALLBACK) setToast({ msg: tApp.rd_os_test_fallback, kind: "err" });
+    else if (r.ok) setToast({ msg: unsaved ? tApp.rd_os_test_unsaved : r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
+    else setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
+  };
 
   // Phase 5g — snapshot the current print config for onPrint (declared above).
   printCfgRef.current = {
@@ -2862,12 +2872,18 @@ export default function RedesignApp() {
               onTest={(draft, sample, unsaved) => void (async () => {
                 // the SAME sample as the preview (#128 Maria Santos @maria_live); the long tests swap the comment only
                 const buyer: Buyer = sampleBuyer(sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : ONE_STICKER_SAMPLE.items[0]);
-                const r = await printOneStickerTest(draft, buyer, cur, stickerShopName(printShopName), buildSettingsFromRedesign({ pp, psType, psOut, psSize })); // never the brand
-                if (r.ok && r.code === ONE_STICKER_TOO_WIDE) return; // the "too wide for your printer" message is already showing
-                if (r.ok && r.code === ONE_STICKER_FALLBACK) setToast({ msg: tApp.rd_os_test_fallback, kind: "err" });
-                else if (r.ok) setToast({ msg: unsaved ? tApp.rd_os_test_unsaved : r.via === "bluetooth" ? tApp.rd_ps_test_sent : tpl(tApp.rd_pr_sent, { via: r.via }), kind: "ok" });
-                else setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
-              })()} />
+                await oneStickerTestPrint(draft, buyer, unsaved);
+              })()}
+              // ADMIN ONLY: the language test chips. "new" = the same test print as above with the picked
+              // sample; "today" = today's sticker through printSlip (the real-order dispatch) with the
+              // all-scripts language fix (on for admins). Never passed for a seller.
+              isAdmin={isAdmin}
+              onTestSample={isAdmin ? (draft, sample, route) => void (async () => {
+                const buyer = adminSampleBuyer(sample);
+                if (route === "new") { await oneStickerTestPrint(draft, buyer, true); return; }
+                const r = printSlip(buyer, cur, stickerShopName(printShopName), buildSettingsFromRedesign({ pp, psType, psOut, psSize }), { noOneSticker: true });
+                setToast(r.ok ? { msg: `Today's sticker test sent (${sample.label})`, kind: "ok" } : { msg: tApp.rd_ps_test_failed, kind: "err" });
+              })() : undefined} />
           )}
           {screen === "printpattern" && !oneStickerOn && (
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}
