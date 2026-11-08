@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, layoutSticker, fitNotes, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
+  recommendedSettings, renderOneSticker, screenFitNotes, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
 import { oneStickerFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
@@ -65,7 +65,9 @@ function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path:
   const key = JSON.stringify({ settings, input, path, job });
   useEffect(() => {
     let live = true;
-    void oneStickerFonts(settings, input).then((fonts) => { if (live) setN(fitNotes(layoutSticker(settings, input, fonts, renderOptsFor(path, settings, job)), settings)); });
+    // the sample (#128) AND the buyer number at its widest (#8888): a real 4-digit number never gets
+    // cut while the screen says everything fits
+    void oneStickerFonts(settings, input).then((fonts) => { if (live) setN(screenFitNotes(settings, input, fonts, renderOptsFor(path, settings, job))); });
     return () => { live = false; };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return n;

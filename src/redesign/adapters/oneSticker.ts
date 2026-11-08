@@ -70,9 +70,12 @@ export const isSmallClass = (wMm: number, hMm: number): boolean => hMm < 35 || w
 interface Base { shop: number; word: number; num: number; name: number; user: number; comment: number; date: number; minComment: number; margin: number }
 /** Text sizes (px = dots per em) at 1× for this label. */
 export function baseSizes(wMm: number, hMm: number): Base {
-  void wMm;
-  // the APPROVED preview's own formulas (mm of label HEIGHT → dots per em at 8 dots/mm)
-  const mm = (k: number) => Math.max(10, Math.round(hMm * k * 8));
+  // the APPROVED preview's own formulas (mm of label HEIGHT → dots per em at 8 dots/mm), on a height
+  // no taller than 3/4 of the width: every standard size (all at least 4:3 wide) is exactly the
+  // preview, while a square / tall custom label (50×50, 40×60 …) keeps its text narrow enough that a
+  // 4-digit buyer number still fits next to the QR
+  const hEff = Math.min(hMm, (wMm * 3) / 4);
+  const mm = (k: number) => Math.max(10, Math.round(hEff * k * 8));
   const num = mm(0.19);
   return {
     shop: mm(0.10), word: Math.round(num * 0.42), num, name: mm(0.105), user: mm(0.085), comment: mm(0.12),
@@ -178,18 +181,45 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const dBottom = dBase + Math.max(dExt.desc, 2);
   const obstacles: { top: number; bottom: number; left: number }[] = [{ top: dTop - 2, bottom: dBottom + 2, left: dX - 10 }]; // 1.2 mm clear of the date (preview)
 
+  // the buyer line at its widest — at least 4 digits ("Buyer 8888", the most a busy live reaches): the
+  // QR never takes the room that number needs (a smaller module first; the number is never cut by it)
+  const num = inp.buyerNum != null && String(inp.buyerNum) !== "" ? String(inp.buyerNum) : "";
+  const handle = printableText(inp.handle).replace(/^@+/, "");
+  const qrUrl = s.qr && !fb && qrAllowedForPlatform(inp.platform) && handle ? tiktokProfileUrl(handle) : null;
+  const m = qrUrl ? qrMatrix(qrUrl, "M") : null;
+  const lineNeed = (pn: number) => measure("Buyer", Math.max(10, Math.round(pn * 0.42)), wt("buyer"), fonts).width + Math.max(6, Math.round(pn * 0.14)) + measure(num.length >= 4 ? num : "8888", pn, wt("buyer"), fonts).width;
+  // a narrow custom label (e.g. 30–40 mm wide): the 1× number is capped so "Buyer 8888" fits beside the
+  // smallest QR — the recommended settings always fit; a bigger step the seller picks can still be red
+  let numBase = B.num, startBelowDate = false;
+  if (P.buyer.on && num) {
+    const qrFits = !!m && m.length * 4 <= W * 0.45;
+    const qrFoot = qrFits ? m!.length * 4 + 4 * 4 + Math.max(4, mx - 4) : mx;
+    // with no shop line the buyer line sits beside the date too
+    const shopPrinted = P.shop.on && !!printableText(inp.storeName) && !isSmallClass(wMm, hMm);
+    const capFor = (right: number) => { let b = B.num; while (b > 10 && mx + lineNeed(b) > right) b--; return b; };
+    const beside = capFor(Math.min(W - qrFoot, shopPrinted ? W : dX - 10));
+    numBase = beside;
+    // a label so narrow that the fixed date leaves no room beside it (e.g. 30 mm wide): the left
+    // column starts under the date instead of shrinking the number
+    if (!shopPrinted && beside < B.num * 0.8) { startBelowDate = true; numBase = capFor(W - qrFoot); }
+  }
+  const buyerPx = px("buyer", numBase), buyerWordPx = Math.max(10, Math.round(buyerPx * 0.42)), buyerGap = Math.max(6, Math.round(buyerPx * 0.14));
+  const buyerNeed = P.buyer.on && num ? lineNeed(buyerPx) : 0;
   // QR — TikTok only, under the date, right side
   let qr: QrBox | null = null;
-  const handle = printableText(inp.handle).replace(/^@+/, "");
-  if (s.qr && !fb && qrAllowedForPlatform(inp.platform) && handle) {
-    const url = tiktokProfileUrl(handle);
-    const m = url ? qrMatrix(url, "M") : null;
-    if (m) {
+  if (m) {
+    {
       const n = m.length;
       const top = dBottom + 6;
       const room = H - my - top;
-      let mod = 0;
-      for (const cand of [6, 5, 4]) if (n * cand <= room && n * cand <= W * 0.45) { mod = cand; break; }
+      let mod = 0, roomOnly = 0;
+      for (const cand of [6, 5, 4]) {
+        if (!(n * cand <= room && n * cand <= W * 0.45)) continue;
+        roomOnly ||= cand;
+        const left = W - Math.max(4, mx - 4) - n * cand - cand * 4; // the QR with its quiet zone
+        if (!buyerNeed || mx + buyerNeed <= left) { mod = cand; break; }
+      }
+      if (!mod && roomOnly) mod = [6, 5, 4].filter((c) => c <= roomOnly).pop() ?? roomOnly; // the smallest that fits; the screen shows red
       if (mod) {
         const x = W - Math.max(4, mx - 4) - n * mod;
         qr = { matrix: m, x, y: top + Math.max(0, Math.min(mod * 2, room - n * mod)), mod };
@@ -204,7 +234,7 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   };
 
   // the left column, top-down
-  let y = my;
+  let y = startBelowDate ? dBottom + 4 : my;
   const bottomLimit = H - my;
   const placeLine = (run: LineRun, p: number, st: InkStyle, part: PartKey, extraGap = true): number => {
     const w = st.weight;
@@ -231,16 +261,15 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     placeLine(line, p, st, "shop");
   }
   // 2. "Buyer 12"
-  const num = inp.buyerNum != null && String(inp.buyerNum) !== "" ? String(inp.buyerNum) : "";
   if (P.buyer.on && num) {
-    const pn = px("buyer", B.num), pw = Math.max(10, Math.round(pn * 0.42)); // the small word: 0.42 of the number (preview)
+    const pn = buyerPx, pw = buyerWordPx; // the small word: 0.42 of the number (preview)
     const { st: nSt, out: nRun } = one(num, pn, wt("buyer"));
     const { st: wSt, out: wRun } = one("Buyer", pw, wt("buyer")); // the seller's Buyer # weight (preview)
     const ext = lineExtent(nRun, pn, wt("buyer"), fonts);
     const asc = Math.max(ext.asc, Math.round(pn * 0.72));
     const baseline = y + asc;
     const clip = rightAt(y, baseline);
-    const gap = Math.max(6, Math.round(pn * 0.14));
+    const gap = buyerGap;
     if (mx + wRun.width + gap + nRun.width > clip) warnings.push({ part: "buyer", kind: "width" });
     if (baseline > bottomLimit) warnings.push({ part: "buyer", kind: "height" });
     add({ run: wRun, px: pw, weight: wSt.weight, ink: wSt.ink, x: mx, baseline, clip });
@@ -327,6 +356,16 @@ export function fitNotes(L: Pick<Layout, "warnings" | "commentPx" | "commentWant
   if (isSmallClass(s.size.w, s.size.h) && s.parts.shop.on) out.push({ kind: "small" });
   if (!out.some((n) => n.kind !== "small")) out.unshift({ kind: "ok" });
   return out;
+}
+/** The notes for the screen: the layout of the preview's sample, plus the buyer number at its widest
+ *  (4 digits) — a number that fits as #128 but not as #8888 is red, never "Everything fits". */
+export function screenFitNotes(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): FitNote[] {
+  const L = layoutSticker(s, inp, fonts, opts);
+  const n = String(inp.buyerNum ?? "");
+  if (!s.parts.buyer.on || !n || n.length >= 4) return fitNotes(L, s);
+  const wide = layoutSticker(s, { ...inp, buyerNum: "8888" }, fonts, opts);
+  const extra = wide.warnings.filter((w) => w.part === "buyer" && !L.warnings.some((x) => x.part === "buyer" && x.kind === w.kind));
+  return fitNotes({ ...L, warnings: [...L.warnings, ...extra] }, s);
 }
 function dedupWarnings(ws: FitWarning[]): FitWarning[] {
   const seen = new Set<string>(); const out: FitWarning[] = [];
