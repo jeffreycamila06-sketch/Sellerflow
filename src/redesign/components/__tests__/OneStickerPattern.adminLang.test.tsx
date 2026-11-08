@@ -62,10 +62,28 @@ describe("admin language test", () => {
     fireEvent.click(screen.getByTestId("os-test"));
     expect(onTest).not.toHaveBeenCalled();
     expect(onTestSample).toHaveBeenCalledTimes(1);
-    const [draft, sample, route] = onTestSample.mock.calls[0];
+    const [draft, sample, route, unsaved] = onTestSample.mock.calls[0];
     expect(sample.key).toBe("th");
     expect(route).toBe("new");
+    expect(unsaved).toBe(true);
     expect(draft.parts.buyer.scale).toBe(1.15);
+  });
+  it("a device that saved the sticker and changed nothing: the test is not 'unsaved'", () => {
+    const { onTestSample } = mount({ isAdmin: true, savedOnDevice: true });
+    fireEvent.click(screen.getByTestId("os-admin-lang-zh"));
+    fireEvent.click(screen.getByTestId("os-test"));
+    expect(onTestSample.mock.calls[0][3]).toBe(false);
+  });
+  it("Today's note: picture printers mention the language fix; TEXT / WiFi say there is none", () => {
+    mount({ isAdmin: true });
+    fireEvent.click(screen.getByTestId("os-admin-route-today"));
+    expect(screen.getByTestId("os-admin-today-note").textContent).toContain("with the language fix");
+    expect(screen.getByTestId("os-admin-today-note").textContent).toContain("Printer settings size");
+  });
+  it("Today's note on a TEXT phone: no language fix promised", () => {
+    mount({ isAdmin: true, devicePath: "text" });
+    fireEvent.click(screen.getByTestId("os-admin-route-today"));
+    expect(screen.getByTestId("os-admin-today-note").textContent).toContain("no language fix");
   });
   it("Today's sticker: Printer Test routes to today's sticker, and the preview says the picture is the new sticker", () => {
     const { onTestSample } = mount({ isAdmin: true });

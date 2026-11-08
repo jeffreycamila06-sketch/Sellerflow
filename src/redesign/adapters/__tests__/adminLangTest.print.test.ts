@@ -66,9 +66,9 @@ describe("admin language test — prints through the normal path", () => {
   }, 60000);
   it("RedesignApp: admin-only wiring — New = the screen's own test print, Today's = printSlip with noOneSticker", () => {
     const app = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
-    expect(app).toMatch(/isAdmin=\{isAdmin\}\s*onTestSample=\{isAdmin \? \(draft, sample, route\) =>/);
+    expect(app).toMatch(/isAdmin=\{isAdmin\}\s*onTestSample=\{isAdmin \? \(draft, sample, route, unsaved\) =>/);
     const h = app.slice(app.indexOf("onTestSample={isAdmin ?"), app.indexOf("onTestSample={isAdmin ?") + 700);
-    expect(h).toContain('if (route === "new") { await oneStickerTestPrint(draft, buyer, true); return; }');
+    expect(h).toContain('if (route === "new") { await oneStickerTestPrint(draft, buyer, unsaved); return; }');
     expect(h).toMatch(/printSlip\(buyer, cur, stickerShopName\(printShopName\), buildSettingsFromRedesign\(\{ pp, psType, psOut, psSize \}\), \{ noOneSticker: true \}\)/);
     expect(h).toContain(": undefined}");
   });

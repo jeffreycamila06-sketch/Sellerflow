@@ -152,7 +152,7 @@ export interface OneStickerPatternProps {
   // ADMIN ONLY (never shown to sellers, whatever the switches): the language test chips + "New / Today's
   // sticker". Printer Test then prints the picked sample through the normal print functions.
   isAdmin?: boolean;
-  onTestSample?: (draft: OneStickerSettings, sample: AdminLangSample, route: "new" | "today") => void;
+  onTestSample?: (draft: OneStickerSettings, sample: AdminLangSample, route: "new" | "today", unsaved: boolean) => void;
 }
 
 export default function OneStickerPattern(p: OneStickerPatternProps) {
@@ -273,12 +273,14 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
             </span>
           ))}
         </div>}
-        {admin && route === "today" && <div data-testid="os-admin-today-note" style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.45 }}>Today's sticker selected: Printer Test prints this sample on today's sticker (with the language fix). The picture above is the new sticker.</div>}
+        {admin && route === "today" && <div data-testid="os-admin-today-note" style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", lineHeight: 1.45 }}>{p.devicePath === "text" || p.devicePath === "wifi"
+          ? "Today's sticker selected: Printer Test prints this sample on today's text sticker, at your Printer settings size. This printer has no language fix (other scripts print as the @username, as today). The picture above is the new sticker."
+          : "Today's sticker selected: Printer Test prints this sample on today's sticker, at your Printer settings size, with the language fix. The picture above is the new sticker."}</div>}
         {p.devicePath === "text" && <div data-testid="os-text-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_text_path}</div>}
         {p.devicePath === "wifi" && <div data-testid="os-wifi-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_wifi_path}</div>}
 
         {/* 2. test prints (today's buttons) */}
-        <button onClick={() => (adminTesting ? p.onTestSample!(sEff, adminSample ?? ADMIN_DEFAULT_SAMPLE, route) : p.onTest(sEff, "default", dirty || !saved))} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}><span aria-hidden="true">🖨 </span>{t.rd_pp_printer_test}</button>
+        <button onClick={() => (adminTesting ? p.onTestSample!(sEff, adminSample ?? ADMIN_DEFAULT_SAMPLE, route, dirty || !saved) : p.onTest(sEff, "default", dirty || !saved))} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}><span aria-hidden="true">🖨 </span>{t.rd_pp_printer_test}</button>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={() => p.onTest(sEff, "en", dirty || !saved)} data-testid="os-test-en" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_latin}</button>
           <button onClick={() => p.onTest(sEff, "zh", dirty || !saved)} data-testid="os-test-zh" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_cjk}</button>

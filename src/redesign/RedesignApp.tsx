@@ -2878,9 +2878,9 @@ export default function RedesignApp() {
               // sample; "today" = today's sticker through printSlip (the real-order dispatch) with the
               // all-scripts language fix (on for admins). Never passed for a seller.
               isAdmin={isAdmin}
-              onTestSample={isAdmin ? (draft, sample, route) => void (async () => {
+              onTestSample={isAdmin ? (draft, sample, route, unsaved) => void (async () => {
                 const buyer = adminSampleBuyer(sample);
-                if (route === "new") { await oneStickerTestPrint(draft, buyer, true); return; }
+                if (route === "new") { await oneStickerTestPrint(draft, buyer, unsaved); return; }
                 const r = printSlip(buyer, cur, stickerShopName(printShopName), buildSettingsFromRedesign({ pp, psType, psOut, psSize }), { noOneSticker: true });
                 setToast(r.ok ? { msg: `Today's sticker test sent (${sample.label})`, kind: "ok" } : { msg: tApp.rd_ps_test_failed, kind: "err" });
               })() : undefined} />
