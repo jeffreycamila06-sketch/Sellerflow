@@ -17,7 +17,7 @@ vi.mock("../cjkAtlasLoader", async (orig) => {
   return { ...m, loadCjkAtlas: () => (ctl.cjkHang ? new Promise((_res, rej) => { ctl.cjkRelease = () => rej(new Error("late")); }) : m.loadCjkAtlas()) };
 });
 
-import { printSlip, DEF_SETTINGS, imagePathAtlases, buildNativeStickerPayload, __resetStuckPicture, __resetNativePrintQueue, type Settings } from "../printing";
+import { printSlip, DEF_SETTINGS, imagePathAtlases, buildGenericStickerBytes, buildNiimbotImage, buildNativeStickerPayload, __resetStuckPicture, __resetNativePrintQueue, type Settings } from "../printing";
 import { setOneStickerVisible, saveOneSticker, __resetOneStickerState, LS_ONE_STICKER } from "../oneStickerPrint";
 import { ensureAllScriptsFonts, setStickerAllScripts, ALL_SCRIPTS_FONT_TIMEOUT_MS } from "../oneStickerScripts";
 import { withLoadLimit, isLoadStuck, StuckSkip, __resetLoadStuck } from "../stuckLoad";
@@ -47,12 +47,29 @@ describe("one shared stuck memory", () => {
     await vi.advanceTimersByTimeAsync(ALL_SCRIPTS_FONT_TIMEOUT_MS);
     await p;
     expect(isLoadStuck()).toBe(true);
-    const make = vi.fn(async () => 1);
-    await expect(withLoadLimit(make, 8000, true)).rejects.toSatisfy((e) => e instanceof StuckSkip && e.first);
-    await expect(withLoadLimit(make, 8000, true)).rejects.toSatisfy((e) => e instanceof StuckSkip && !e.first);
-    expect(make).not.toHaveBeenCalled();
+    const waiting = () => new Promise<number>(() => {});
+    const a1 = withLoadLimit(waiting, 8000, true).catch((e) => e);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await a1).toSatisfy((e) => e instanceof StuckSkip && e.first);
+    const a2 = withLoadLimit(waiting, 8000, true).catch((e) => e);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await a2).toSatisfy((e) => e instanceof StuckSkip && !e.first);
   });
-  it("the picture timed out → a kana print does not wait again (the kana font is not even asked for)", async () => {
+  it("while stuck, what is ALREADY loaded is still used (answers at once) — only a real wait is skipped", async () => {
+    vi.useFakeTimers();
+    const first = withLoadLimit(() => new Promise(() => {}), 8000).catch(() => "late");
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(await first).toBe("late");
+    expect(isLoadStuck()).toBe(true);
+    const resident = Promise.resolve("atlas");
+    const got = withLoadLimit(() => resident.then((x) => x), 8000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await got).toBe("atlas");
+    const failing = withLoadLimit(() => Promise.reject(new Error("bad chunk")), 8000).catch((e) => String(e));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await failing).toContain("bad chunk"); // its own error, not a skip
+  });
+  it("the picture timed out → a kana print does not wait again", async () => {
     vi.useFakeTimers();
     setStickerAllScripts(true);
     const pic = withLoadLimit(() => new Promise(() => {}), 8000, true).catch(() => "skipped");
@@ -62,8 +79,7 @@ describe("one shared stuck memory", () => {
     let done = false;
     void ensureAllScriptsFonts(kanaPay).then(() => { done = true; });
     await vi.advanceTimersByTimeAsync(1);
-    expect(done).toBe(true);
-    expect(ctl.kanaCalls).toBe(0);
+    expect(done, "no second 8 s wait").toBe(true);
   });
   it("the memory clears when the stuck load settles (the next wait is a normal one again)", async () => {
     vi.useFakeTimers();
@@ -92,6 +108,30 @@ describe("one shared stuck memory", () => {
     const took = Date.now() - t0;
     expect(took).toBeGreaterThanOrEqual(7900);
     expect(took, "one 8 s wait, never 16 s").toBeLessThan(12000);
+  }, 30000);
+});
+
+describe("a stuck episode never takes away what is already loaded (guardian gap 1)", () => {
+  it("Chinese atlas loaded + an unrelated stuck load → the generic sticker bytes are the SAME as with no episode", async () => {
+    setStickerAllScripts(true);
+    const pay = buildNativeStickerPayload(mkBuyer("陳小美", "A2 350，謝謝"), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "80x60" } as Settings, AT);
+    const calm = await buildGenericStickerBytes("tspl", pay, "TikTok"); // loads the atlas (and kana) for real
+    void withLoadLimit(() => new Promise(() => {}), 5).catch(() => { /* the unrelated stuck load */ });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(isLoadStuck()).toBe(true);
+    const during = await buildGenericStickerBytes("tspl", pay, "TikTok");
+    expect(Buffer.from(during).equals(Buffer.from(calm))).toBe(true);
+    const atl = await imagePathAtlases(pay, { buyer: { name: "陳小美", orders: [{ item: "A2 350，謝謝" }] } } as never);
+    expect(Object.keys(atl.cjk.cjk ?? {}).length, "the Chinese atlas is there").toBeGreaterThan(0);
+  }, 30000);
+  it("Niimbot 50×30, 山田さん + \"350，\": an unrelated stuck load → the SAME picture (kanji and kana kept)", async () => {
+    setStickerAllScripts(true);
+    const pay = buildNativeStickerPayload(mkBuyer("山田さん", "350，"), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "50x30" } as Settings, AT);
+    const calm = await buildNiimbotImage(pay, "TikTok");
+    void withLoadLimit(() => new Promise(() => {}), 5).catch(() => { /* the unrelated stuck load */ });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(isLoadStuck()).toBe(true);
+    expect((await buildNiimbotImage(pay, "TikTok")).data).toBe(calm.data);
   }, 30000);
 });
 

@@ -27,7 +27,8 @@ describe("all-scripts font wait", () => {
     let done = 0;
     for (let i = 0; i < 10; i++) {
       const p = ensureAllScriptsFonts(pay).then(() => { done++; });
-      if (i === 0) await vi.advanceTimersByTimeAsync(ALL_SCRIPTS_FONT_TIMEOUT_MS);
+      // first print: the 8 s wait; the rest: one 0 ms tick (a font already in memory would answer in it)
+      await vi.advanceTimersByTimeAsync(i === 0 ? ALL_SCRIPTS_FONT_TIMEOUT_MS : 0);
       await p;
     }
     expect(done).toBe(10);

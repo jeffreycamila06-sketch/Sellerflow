@@ -4,8 +4,9 @@
 // kana / full-width outlines (oneStickerScripts.ensureAllScriptsFonts, 8 s) and — only with
 // all-scripts ON — the Chinese atlas loads of today's image paths (printing.ts cjkLoad, 8 s).
 // The FIRST of them that runs out of time leaves its load running in the background and marks this
-// memory; until that load settles, EVERY one of the waits goes on at once (its own fallback: today's
-// sticker / the device font / the 24-cell atlas or the text sticker). So one order never waits 8 s
+// memory; until that load settles, every wait that would have to WAIT goes on at once (its own
+// fallback: today's sticker / the device font / the 24-cell atlas or the text sticker) — what is
+// already loaded is still used. So one order never waits 8 s
 // twice (a kana order on a saved device: the picture times out → today's sticker → no second kana wait),
 // and the next orders never wait at all. When the load settles, the memory clears by itself.
 export class StuckSkip extends Error {
@@ -21,10 +22,25 @@ function markStuck(p: Promise<unknown>): void {
   p.then(done, done);
 }
 export const STUCK_TIMEOUT_TEXT = "one-sticker picture timeout";
-/** Run `make` for at most `ms`. Already stuck → StuckSkip at once (`report`: only the first such
- *  skip says first=true). Out of time → this load becomes the stuck one and the call throws. */
+/** Run `make` for at most `ms`. Out of time → this load becomes the stuck one and the call throws.
+ *  Already stuck → `make` still gets ONE timer tick: what is already in memory (a font or atlas loaded
+ *  earlier answers in microtasks) is used as before — only a load that would really wait is skipped
+ *  (StuckSkip; `report`: only the first such skip says first=true). Without this, one stuck file made
+ *  every OTHER font unusable too (guardian, audit 3: a loaded Chinese atlas printed blank). */
 export async function withLoadLimit<T>(make: () => Promise<T>, ms: number, report = false): Promise<T> {
-  if (stuck) { const first = report && !reported; if (report) reported = true; throw new StuckSkip(first); }
+  if (stuck) {
+    const p = make();
+    let tick: ReturnType<typeof setTimeout> | undefined;
+    const quick = await Promise.race([
+      p.then((v) => ({ v }), (e: unknown) => ({ e })),
+      new Promise<null>((res) => { tick = setTimeout(() => res(null), 0); }),
+    ]);
+    if (tick) clearTimeout(tick);
+    if (quick) { if ("e" in quick) throw quick.e; return quick.v; }
+    p.catch(() => { /* it goes on loading in the background; the next print uses it */ });
+    const first = report && !reported; if (report) reported = true;
+    throw new StuckSkip(first);
+  }
   const p = make();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
