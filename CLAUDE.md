@@ -4791,3 +4791,8 @@ E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_
   loaded, nothing written, warm-up held (pace + list clock = now), retried next pass; restored lastAt/queueAt ≤ now,
   pauseUntil ≤ now + 30 min; a saved queue older than 5 min is dropped; the boot write is not awaited. Harness option
   `holdStorageGet` (holds a storage read until the test releases it).
+- **Round-3 fixes:** the trigger's clear (store change / 常溫 → 冷凍) runs FIRST, before the switch read and outside the
+  exception block — also with the switch OFF (nothing is looked up or applied then; the frozen lane checks the empty
+  row live once on). Extension: `await loadWarm()` moved AFTER sendOne (right before warmOne) so a slow state read never
+  delays a real frozen parcel; warmOne + the store-list read refuse while not loaded; a failed stop write is retried
+  ≤ once per 60 s (`stopTriedAt`); the "state read failed" log goes through logSkip (once a minute).

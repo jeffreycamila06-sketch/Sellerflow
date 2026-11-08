@@ -26,8 +26,8 @@
 --     admin_parcel_frozen_pending / admin_parcel_frozen_verdict)
 --
 -- INSTANT VERDICT RULES (the trigger):
---   · does NOTHING unless app_settings 'frozen_store_check_enabled' = 'true' (the same switch as the
---     frozen lane; switch off = the row is saved exactly as sent, nothing cleared, nothing applied).
+--   · looks up and applies NOTHING unless app_settings 'frozen_store_check_enabled' = 'true' (the same
+--     switch as the frozen lane). The CLEAR below is not behind the switch: it always runs.
 --   · only rows with temp_layer = '冷凍'. The cache verdict is applied only for sellers in
 --     parcel_check_access (enabled) — the sellers the live frozen lane checks. NOTE: this is NARROWER
 --     than admin_parcel_frozen_pending's cache step, which puts cached verdicts on 冷凍 rows of EVERY
@@ -38,17 +38,16 @@
 --   · UPDATE: acts ONLY when store_id or temp_layer really changes (the app sends store_id on every
 --     edit, and the ⟳ Recheck never changes it → Recheck still goes live, exactly as today).
 --       store_id changed, or temp_layer changed 常溫 → 冷凍 → the old frozen verdict is cleared (status +
---       checked_at NULL) as a plain row assignment (any seller — it belongs to another store, or to a
---       store the row had while it was dry), then the store's fresh cache verdict is applied (live-lane
---       sellers), or the row is left empty for the frozen lane.
---       Switch OFF + a store change → the old verdict STAYS on the row (by design: switch off = the
---       trigger does nothing; the app clears it on screen, the frozen lane re-checks once switched on).
+--       checked_at NULL) FIRST, as a plain row assignment before the switch is even read (any seller,
+--       switch on or off — it belongs to another store, or to a store the row had while it was dry).
+--       Then, only with the switch on, the store's fresh cache verdict is applied (live-lane sellers).
+--       Otherwise the row stays empty; the frozen lane checks it live (once the switch is on).
 --   · exported rows are never touched (an exported parcel's verdict never changes).
 --   · 'unknown' is never cached (store_frozen_cache's CHECK allows only ok / no_frozen), so it can never
 --     be applied by the trigger — an unknown store stays empty for the live lane.
 --   · ONE exception block per row (switch read + access check + lookup together = one subtransaction);
---     an error in it never blocks the insert/update: nothing is applied, and the clear still runs when the
---     switch was read 'true' (an unreadable switch = off = the row is saved exactly as sent).
+--     an error in it never blocks the insert/update: nothing is applied (the clear already happened before
+--     it; an unreadable switch = off = nothing applied).
 --   · no bulk frozen writes: per row, only for 冷凍 rows whose store / layer changed — do not feed it mass
 --     updates of parcel_scans (each such row = one subtransaction).
 --   · each applied verdict is logged in store_frozen_check_log with source 'instant' (best-effort).
@@ -103,12 +102,21 @@ begin
     return new;
   end if;
 
+  -- the verdict on the row belongs to another store, or to a time the row was not 冷凍:
+  -- store changed, or 常溫 → 冷凍 (the old verdict may be from a store the row had while it was dry)
+  -- → drop it FIRST: a plain row assignment (cannot fail), before the switch read and outside the
+  -- protected block — any seller, switch on or off
+  if tg_op = 'UPDATE' and (new.store_id is distinct from old.store_id
+                           or old.temp_layer is distinct from '冷凍') then
+    new.frozen_store_status := null;
+    new.frozen_store_checked_at := null;
+  end if;
+
   -- ONE protected block (one subtransaction per row): the switch read + the access check + the lookup.
-  -- An error in it never blocks the save: it only drops the lookup result (v_on keeps what was read —
-  -- PL/pgSQL variables are not rolled back), so the clear below still runs when the switch said 'true'.
+  -- An error in it never blocks the save: it only drops the lookup result (nothing applied).
   begin
     select s.value into v_on from app_settings s where s.key = 'frozen_store_check_enabled';
-    if coalesce(v_on, 'false') <> 'true' then return new; end if;   -- switch off = do nothing at all
+    if coalesce(v_on, 'false') <> 'true' then return new; end if;   -- switch off = no lookup, nothing applied
     select exists (select 1 from parcel_check_access a where a.user_id = new.user_id and a.enabled) into v_access;
     if v_access and coalesce(new.store_id, '') ~ '^[0-9]{6}$' then
       select c.status into v_status
@@ -120,17 +128,8 @@ begin
   exception when others then
     v_access := false; v_status := null;                    -- never block the save; nothing applied
   end;
-  if coalesce(v_on, 'false') <> 'true' then return new; end if;   -- switch off / unreadable = do nothing
+  if coalesce(v_on, 'false') <> 'true' then return new; end if;   -- switch unreadable = off = nothing applied
 
-  -- the verdict on the row belongs to another store, or to a time the row was not 冷凍:
-  -- store changed, or 常溫 → 冷凍 (the old verdict may be from a store the row had while it was dry)
-  -- → drop it (any seller; a plain row assignment, cannot fail), then apply the fresh cache verdict
-  -- (live-lane sellers) or leave it empty for the frozen lane
-  if tg_op = 'UPDATE' and (new.store_id is distinct from old.store_id
-                           or old.temp_layer is distinct from '冷凍') then
-    new.frozen_store_status := null;
-    new.frozen_store_checked_at := null;
-  end if;
   if v_access and v_status is not null
      and new.frozen_store_status is null and new.frozen_store_checked_at is null then
     new.frozen_store_status := v_status;

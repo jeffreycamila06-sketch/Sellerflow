@@ -122,13 +122,17 @@ await q("update parcel_scans set status='exported' where id=$1", [i3]);
 await q("update parcel_scans set store_id='968551' where id=$1", [i3]);
 ok((await row(i3)).s === "ok", "an exported row's store change → its verdict never changes");
 
-// ── A. frozen switch OFF → the trigger does nothing at all ───────────────────
+// ── A. frozen switch OFF → nothing looked up or applied (the store-change CLEAR still runs) ──
 await q("update app_settings set value='false' where key='frozen_store_check_enabled'");
 const so1 = await ins({ store: "968551" });
 ok((await row(so1)).s === null && (await row(so1)).at === null, "switch OFF: a 冷凍 insert at a cached store → saved as sent (no verdict)");
 const soLog = await logN("instant");
-await q("update parcel_scans set store_id='151003' where id=$1", [i3c]);
-ok((await row(i3c)).s === "no_frozen" && (await row(i3c)).store_id === "151003", "switch OFF: a store change clears nothing and applies nothing");
+ok((await row(i3c)).s === "no_frozen", "(4) before: the row carries store 666662's no_frozen");
+await q("update parcel_scans set store_id='445566' where id=$1", [i3c]);                 // a store with no cache verdict
+ok((await row(i3c)).s === null && (await row(i3c)).at === null && (await row(i3c)).store_id === "445566",
+   "(4) switch OFF + store change → the OLD verdict is CLEARED anyway (nothing applied)");
+await q("update parcel_scans set store_id='151003' where id=$1", [so1]);                   // 151003 = a fresh 'ok' in the cache
+ok((await row(so1)).s === null && (await row(so1)).at === null, "(4) switch OFF + change to a cached store → still nothing applied");
 await q("update app_settings set value='anything' where key='frozen_store_check_enabled'");
 const so2 = await ins({ store: "968551" });
 ok((await row(so2)).s === null, "switch = anything but the exact 'true' → off");
@@ -136,13 +140,16 @@ ok(await logN("instant") === soLog, "switch OFF: nothing logged");
 await q("update app_settings set value='true' where key='frozen_store_check_enabled'");
 const so3 = await ins({ store: "968551" });
 ok((await row(so3)).s === "no_frozen", "switch back ON → applied again");
+ok((await row(i3c)).s === null && (await row(i3c)).at === null, "(4) switch ON later → the row cleared while off is still empty");
+ok((await q("select id from admin_parcel_frozen_pending(25)")).rows.some((r) => r.id === i3c), "(4) …and the frozen lane hands it out to be checked live");
 
 // ── B. the switch read itself failing = off (saved exactly as sent) ────────────
 {
   const r = await ins({ store: "968551" });
   await q("alter table app_settings rename to app_settings_x");
   let okUpd = true; try { await q("update parcel_scans set store_id='151003' where id=$1", [r]); } catch { okUpd = false; }
-  ok(okUpd && (await row(r)).s === "no_frozen" && (await row(r)).store_id === "151003", "(B) switch unreadable → the update succeeds and nothing is cleared or applied");
+  ok(okUpd && (await row(r)).s === null && (await row(r)).at === null && (await row(r)).store_id === "151003",
+     "(B/4) switch unreadable → the update succeeds, the old verdict is cleared, nothing is applied");
   await q("alter table app_settings_x rename to app_settings");
 }
 
@@ -153,7 +160,7 @@ ok(saved !== null && (await row(saved)).s === null, "cache table missing (trigge
 ok((await row(i1)).s === "no_frozen", "(before) the row carries the old store's no_frozen");
 let upd = true; try { await q("update parcel_scans set store_id='151003' where id=$1", [i1]); } catch { upd = false; }
 ok(upd && (await row(i1)).store_id === "151003", "…and an update still succeeds");
-ok((await row(i1)).s === null && (await row(i1)).at === null, "…and the store change STILL clears the old verdict (the clear runs before the lookup)");
+ok((await row(i1)).s === null && (await row(i1)).at === null, "…and the store change STILL clears the old verdict (the clear runs before the switch read, outside the protected block)");
 await q("alter table store_frozen_cache_x rename to store_frozen_cache");
 await q("alter table store_frozen_check_log add constraint t_block check (source <> 'instant') not valid");
 const lg = await ins({ store: "968551" });
@@ -306,7 +313,11 @@ create table public.parcel_customers(id uuid primary key default gen_random_uuid
   ok(/^begin;\nset local lock_timeout = '2s';/m.test(t), "(D) set local lock_timeout = '2s' right after begin");
   const rb = readFileSync(down, "utf8");
   ok(/do NOT VALIDATE/.test(rb) && /do NOT VALIDATE/.test(t), "(C) both files warn: do not VALIDATE the restored CHECK");
-  ok(/STAYS on the row \(by design/.test(t) && /no bulk frozen writes/.test(t), "(B/C) header notes: switch-off store change keeps the old verdict; no bulk frozen writes");
+  ok(/CLEAR below is not behind the switch/.test(t) && !/STAYS on the row/.test(t) && !/re-checks once switched on/.test(t) && /no bulk frozen writes/.test(t),
+     "(4) header notes: the clear is not behind the switch (old 'stays' wording gone); no bulk frozen writes");
+  ok(body.indexOf("new.frozen_store_status := null") < body.indexOf("select s.value into v_on")
+     && (body.match(/new\.frozen_store_status := null/g) || []).length === 1,
+     "(4) the ONE clear sits before the switch read (outside the exception block)");
 }
 // the order: the trigger is created BEFORE the log CHECK is altered (lock order = the frozen lane's)
 {

@@ -187,17 +187,23 @@ describe("safety", () => {
       expect((w.storage.pc_frozen_warmup as Record<string, unknown>).stopped).toBe(false);
     });
   }
-  it("the stop write fails → retried every pass until it lands; warm-up stays stopped meanwhile", async () => {
-    const done = new Set<string>();
+  it("the stop write fails → retried ≤ once per 60 s until it lands; warm-up stays stopped meanwhile", async () => {
+    const done = new Set<string>(); const tryAt: number[] = [];
     const opts: Opts = { warmupSwitch: "true", warmupStopHttp: 500, warmupNext: storeList(50, done), frozenReply: () => ({ frozen_store_status: "unknown", frozen_reason: "HTTP 403", blocked: true }) };
     const { w, clock } = await boot(opts);
-    await ticks(w, clock, 24);
-    const tries = count(w, /admin_frozen_warmup_stop/);
-    expect(tries).toBeGreaterThan(1);
+    for (let i = 0; i < 12 * 5; i++) {                                     // 5 min of passes, every stop write failing
+      const before = count(w, /admin_frozen_warmup_stop/);
+      await w.sb.pcTick(); await flush();
+      if (count(w, /admin_frozen_warmup_stop/) > before) tryAt.push(clock.t);
+      clock.t += 5 * S;
+    }
+    expect(tryAt.length).toBeGreaterThanOrEqual(4);                         // retried…
+    expect(tryAt.length).toBeLessThanOrEqual(6);                            // …but not every 5 s pass (that would be 60)
+    for (let i = 1; i < tryAt.length; i++) expect(tryAt[i] - tryAt[i - 1]).toBeGreaterThanOrEqual(60 * S);
     opts.warmupStopHttp = 200;
-    await ticks(w, clock, 4);
+    await ticks(w, clock, 13);                                              // the next try (≤ 60 s later) lands
     const after = count(w, /admin_frozen_warmup_stop/);
-    await ticks(w, clock, 12);
+    await ticks(w, clock, 24);
     expect(count(w, /admin_frozen_warmup_stop/)).toBe(after);              // landed → no more tries
     expect(warmMsgs(w)).toHaveLength(1);
   });
@@ -471,13 +477,13 @@ describe("round 2 — load failure, clamps, the load race, stale queue", () => {
     expect(w.calls.heldGets).toHaveLength(1);                               // the boot read, never answered
     expect(fire3s(w)).toBeGreaterThan(0);                                    // its 3 s timeout fires
     await flush();
-    expect(w.calls.logs.some((l) => /warm-up state read failed .* retry next pass/.test(l))).toBe(true);
+    expect(w.calls.logs.some((l) => /warm-up state read failed .* retry/.test(l))).toBe(true);
     const t = w.evalIn("pcFrozenKick.__test.warm") as Record<string, unknown>;
     expect(t.loaded).toBe(false);
     expect(t.lastAt).toBe(clock.t);                                          // pace clock = now
     expect(t.queueAt).toBe(clock.t);                                         // list clock = now
     expect(w.storage.pc_frozen_warmup).toEqual(saved);                       // not overwritten
-    await w.sb.pcTick(); await flush();                                      // next pass → retries the read
+    for (let i = 0; i < 6 && w.calls.heldGets.length < 2; i++) { await w.sb.pcTick(); await flush(); clock.t += 5 * S; } // a pass reaches the warm-up step → retries the read
     expect(w.calls.heldGets).toHaveLength(2);
     expect(warmMsgs(w)).toEqual([]);
     w.calls.heldGets[1].release(); await flush();                            // this time it answers
@@ -513,7 +519,7 @@ describe("round 2 — load failure, clamps, the load race, stale queue", () => {
     expect(warmMsgs(w).length).toBeGreaterThan(0);
   });
   // G
-  it("G: the load race — a slow pc_frozen_warmup read + ticks first → no warm-up request and the saved mem untouched until the read answers", async () => {
+  it("G: the load race — a slow pc_frozen_warmup read + ticks first → no warm-up request and the saved mem untouched until the read answers (also when the first read times out and the pass must retry it)", async () => {
     const done = new Set<string>();
     const saved = SAVED(T0);
     const { w, clock } = await boot({ holdStorageGet: "pc_frozen_warmup", initialStorage: { pc_frozen_warmup: JSON.parse(JSON.stringify(saved)) },
@@ -522,10 +528,49 @@ describe("round 2 — load failure, clamps, the load race, stale queue", () => {
     expect(warmMsgs(w)).toEqual([]);
     expect(count(w, /admin_frozen_warmup_next/)).toBe(0);
     expect(w.storage.pc_frozen_warmup).toEqual(saved);
-    w.calls.heldGets[0].release(); await flush();                            // the read answers
+    // the boot read times out → the next pass that reaches the warm-up step reads again (and waits for it)
+    fire3s(w); await flush();
+    for (let i = 0; i < 6 && w.calls.heldGets.length < 2; i++) { await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(w.calls.heldGets.length).toBeGreaterThanOrEqual(2);
+    await ticks(w, clock, 12);                                               // that read is still out → still nothing
+    expect(warmMsgs(w)).toEqual([]);
+    expect(count(w, /admin_frozen_warmup_next/)).toBe(0);
+    expect(w.storage.pc_frozen_warmup).toEqual(saved);
+    w.calls.heldGets[w.calls.heldGets.length - 1].release(); await flush(); // the read answers
     await ticks(w, clock, 24);
     expect(warmMsgs(w).length).toBeGreaterThan(0);
     expect(warmMsgs(w)[0].rowId).toBe("warmup:600001");                      // the saved queue was used
+  });
+  // 1 (round 3): a slow warm-up state read never delays a REAL frozen parcel
+  it("1: real frozen parcels first — read held: the frozen parcel goes out on the same pass as with no hold; still no warm-up / no mem write", async () => {
+    const firstFrozenTick = async (hold: boolean) => {
+      const done = new Set<string>();
+      const saved = SAVED(T0);
+      const opts: Opts = { ...(hold ? { holdStorageGet: "pc_frozen_warmup" } : {}), initialStorage: { pc_frozen_warmup: JSON.parse(JSON.stringify(saved)) },
+        warmupSwitch: "true", warmupNext: storeList(50, done), frozenPending: [{ id: "fz-1", store_id: "968551", queue_depth: 1 }],
+        frozenReply: (row) => (String(row?.id).startsWith("warmup:") ? { frozen_store_status: "ok" } : { frozen_store_status: "no_frozen" }) };
+      const { w, clock } = await boot(opts);
+      let at = -1;
+      for (let i = 0; i < 12 && at < 0; i++) { await w.sb.pcTick(); await flush(); if (liveFrozenMsgs(w).some((m) => m.rowId === "fz-1")) at = i; clock.t += 5 * S; }
+      return { at, w, saved };
+    };
+    const free = await firstFrozenTick(false);
+    const held = await firstFrozenTick(true);
+    expect(free.at).toBeGreaterThanOrEqual(0);
+    expect(held.at).toBe(free.at);                                           // no extra wait for the real parcel
+    expect(warmMsgs(held.w)).toEqual([]);
+    expect(held.w.storage.pc_frozen_warmup).toEqual(held.saved);             // nothing written while the read is out
+  });
+  // 3 (round 3)
+  it("3: the 'state read failed' log is throttled to once a minute", async () => {
+    const { w, clock } = await boot({ holdStorageGet: "pc_frozen_warmup", warmupSwitch: "true", warmupNext: storeList(50, new Set()) });
+    for (let i = 0; i < 6; i++) {                                            // six failed reads within ~30 s
+      fire3s(w); await flush();
+      for (let k = 0; k < 4; k++) { await w.sb.pcTick(); await flush(); clock.t += 1 * S; }
+    }
+    const n = w.calls.logs.filter((l) => /warm-up state read failed/.test(l)).length;
+    expect(w.calls.heldGets.length).toBeGreaterThan(3);
+    expect(n).toBe(1);
   });
   // H
   it("H: a saved queue older than 5 min is dropped on restore; a younger one is kept", async () => {
