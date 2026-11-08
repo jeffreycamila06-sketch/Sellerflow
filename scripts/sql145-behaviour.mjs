@@ -230,7 +230,7 @@ await q("update store_frozen_check_log set checked_at = now() - interval '8 days
 ok((await next(5)).some((r) => r.store_id === "700004"), "…and due again after 7 days");
 await q("insert into store_frozen_check_log(store_id,status,source) values ('700002','unknown','live')");
 ok(!(await next(5)).some((r) => r.store_id === "700002"), "any check of a store in the last 10 min (the shared floor) → not handed out");
-await cache("700001", "ok", 0);
+await cache("700001", "ok", 1);   // 1 day old → the warm-up answer is strictly newer (no same-millisecond tie)
 await q("select admin_frozen_warmup_verdict('700001','no_frozen')");
 ok((await q("select status from store_frozen_cache where store_id='700001'")).rows[0].status === "no_frozen", "a newer warm-up answer replaces an older cache row");
 await q("update store_frozen_cache set checked_at = now() + interval '1 minute' where store_id='700001'");
@@ -313,8 +313,9 @@ create table public.parcel_customers(id uuid primary key default gen_random_uuid
   ok(/^begin;\nset local lock_timeout = '2s';/m.test(t), "(D) set local lock_timeout = '2s' right after begin");
   const rb = readFileSync(down, "utf8");
   ok(/do NOT VALIDATE/.test(rb) && /do NOT VALIDATE/.test(t), "(C) both files warn: do not VALIDATE the restored CHECK");
-  ok(/CLEAR below is not behind the switch/.test(t) && !/STAYS on the row/.test(t) && !/re-checks once switched on/.test(t) && /no bulk frozen writes/.test(t),
-     "(4) header notes: the clear is not behind the switch (old 'stays' wording gone); no bulk frozen writes");
+  ok(/CLEAR below is not behind the switch/.test(t) && !/STAYS on the row/.test(t) && !/re-checks once switched on/.test(t) && /no bulk frozen writes/.test(t)
+     && /never set a frozen verdict in the same UPDATE as a store\/layer change/.test(t) && /checks it live \(live-lane sellers/.test(t),
+     "(4) header notes: the clear is not behind the switch (old 'stays' wording gone); no bulk frozen writes; same-UPDATE rule; live-lane sellers");
   ok(body.indexOf("new.frozen_store_status := null") < body.indexOf("select s.value into v_on")
      && (body.match(/new\.frozen_store_status := null/g) || []).length === 1,
      "(4) the ONE clear sits before the switch read (outside the exception block)");

@@ -104,16 +104,18 @@ describe("on + idle", () => {
     expect(st.lastAt).toBeTypeOf("number");
     expect(w.calls.logs.some((l) => /\[PC-WARMUP\] warm-up store=600001 → ok/.test(l))).toBe(true);
   });
-  it("standby → nothing; maintenance window (01:00–05:00 Taipei) → nothing", async () => {
+  it("standby → nothing; maintenance window (01:00–05:00 Taipei): the LIVE frozen lane stays off (warm-up night rules: see 'night')", async () => {
     const done = new Set<string>();
     const sb = await boot({ lease: STANDBY, warmupSwitch: "true", warmupNext: storeList(20, done) });
     await ticks(sb.w, sb.clock, 40);
     expect(warmMsgs(sb.w)).toEqual([]);
     const clock = { t: Date.UTC(2026, 0, 15, 17, 30, 0) };                  // 01:30 Taipei
-    const w = bootWorker({ now: () => clock.t, rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: [], warmupSwitch: "true", warmupNext: storeList(20, done), maintenance: true });
+    const w = bootWorker({ now: () => clock.t, rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: [{ id: "fz-1", store_id: "968551", queue_depth: 1 }], warmupSwitch: "false", warmupNext: storeList(20, done), maintenance: true });
     await w.booted;
     await ticks(w, clock, 40);
     expect(warmMsgs(w)).toEqual([]);
+    expect(liveFrozenMsgs(w)).toEqual([]);                                  // a frozen parcel waits for 05:00, as before
+    expect(count(w, /admin_parcel_frozen_pending/)).toBe(0);                // no frozen pending read in the window either
   });
 });
 
@@ -594,5 +596,156 @@ describe("round 2 — load failure, clamps, the load race, stale queue", () => {
     expect(mod).not.toMatch(/stays byte-for-byte 1\.17\.0/);
     expect(mod).toMatch(/one\s+(\/\/\s+)?LOCAL chrome\.storage write per worker start/);
     expect(mod).toMatch(/await loadWarm\(\);/);
+  });
+});
+
+describe("round 4 — the load retry without a warm-up step, stopTriedAt in mem", () => {
+  const MIN = 60 * S;
+  const fire3s = (w: W) => { const t = w.calls.timers.filter((x) => x.ms === 3000); for (const x of t) x.fn(); w.calls.timers = w.calls.timers.filter((x) => x.ms !== 3000); return t.length; };
+  // a stale popup line from the last run (on:true, "9 checked") + its restart memory
+  const SAVED = (t: number) => ({ on: true, checked: 9, left: 3, lastAt: t - 10 * MIN, mem: { lastAt: t - 10 * MIN, pauseUntil: 0, misses: 1, pauses: 1, stopped: false, stopReason: "", stopWritten: false, sawOffSinceStop: false, queueAt: t - 1 * MIN, queue: ["600001"] } });
+  const loaded = (w: W) => (w.evalIn("pcFrozenKick.__test.warm") as { loaded: boolean }).loaded;
+  it("1: boot read fails, frozen switch OFF → the next pass reads again (not awaited) and writes {on:false} to the popup line", async () => {
+    const saved = SAVED(T0);
+    const { w, clock } = await boot({ frozenSwitch: "false", holdStorageGet: "pc_frozen_warmup", initialStorage: { pc_frozen_warmup: JSON.parse(JSON.stringify(saved)) }, warmupSwitch: "true", warmupNext: storeList(20, new Set()) });
+    expect(w.calls.heldGets).toHaveLength(1);
+    fire3s(w); await flush();                                                // the boot read times out
+    expect(loaded(w)).toBe(false);
+    expect(w.storage.pc_frozen_warmup).toEqual(saved);                       // the stale line is still there
+    for (let i = 0; i < 6 && w.calls.heldGets.length < 2; i++) { await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(w.calls.heldGets).toHaveLength(2);                                // retried — no warm-up step ran (switch off)
+    w.calls.heldGets[1].release(); await flush();
+    expect(loaded(w)).toBe(true);
+    expect(shown(w)).toEqual({ on: false });                                 // the stale "on / 9 checked" line is gone
+    expect(memOf(w)).toMatchObject({ pauses: 1, misses: 1 });                // the saved memory came through
+    expect(count(w, /admin_frozen_warmup_/)).toBe(0);
+    expect(warmMsgs(w)).toEqual([]);
+  });
+  it("1: boot read fails, frozen switch ON but the frozen queue never empties → retried too; real parcels keep going out", async () => {
+    const saved = SAVED(T0);
+    const opts: Opts = { holdStorageGet: "pc_frozen_warmup", initialStorage: { pc_frozen_warmup: JSON.parse(JSON.stringify(saved)) }, warmupSwitch: "true", warmupNext: storeList(20, new Set()),
+      frozenPending: [{ id: "fz-1", store_id: "968551", queue_depth: 1 }, { id: "fz-2", store_id: "151003", queue_depth: 1 }], frozenVerdict: () => "unknown" };
+    const { w, clock } = await boot(opts);
+    fire3s(w); await flush();
+    for (let i = 0; i < 6 && w.calls.heldGets.length < 2; i++) { await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(w.calls.heldGets).toHaveLength(2);
+    w.calls.heldGets[1].release(); await flush();
+    expect(loaded(w)).toBe(true);
+    await ticks(w, clock, 12);
+    expect(w.storage.pc_frozen_warmup).not.toEqual(saved);                   // the line was rewritten from the loaded state
+    expect(memOf(w)).toMatchObject({ pauses: 1, misses: 1 });
+    expect(liveFrozenMsgs(w).length).toBeGreaterThan(0);                    // the real frozen parcels never waited
+    expect(warmMsgs(w)).toEqual([]);                                         // a frozen parcel waiting → no warm-up
+  });
+  it("1: source pin — the retry is `void loadWarm()` (never awaited) and sits OUTSIDE the switch/tab block", async () => {
+    const { readFileSync } = await import("node:fs");
+    const mod = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/frozen-check.js`, "utf8");
+    const pass = mod.slice(mod.indexOf("async function runPass("), mod.indexOf("async function sendOne("));
+    expect(pass).toMatch(/if \(!warm\.loaded\) void loadWarm\(\);/);
+    expect(pass).toMatch(/await loadWarm\(\);\s*\/\/[^\n]*\n\s*await warmOne\(/);   // the awaited one stays right before warmOne
+    const block = pass.slice(pass.indexOf("if (st.switchOn && tabId"), pass.indexOf("// (3) refresh"));
+    expect(block.indexOf("void loadWarm()")).toBeGreaterThan(block.lastIndexOf("}\n    }\n"));
+  });
+  it("2: stopTriedAt survives a restart (in mem) and a future value is clamped to now", async () => {
+    const done = new Set<string>();
+    // a stop whose write failed: stopTriedAt saved in mem
+    const a = await boot({ warmupSwitch: "true", warmupStopHttp: 500, warmupNext: storeList(50, done), frozenReply: () => ({ frozen_store_status: "unknown", frozen_reason: "HTTP 429", blocked: true }) });
+    await ticks(a.w, a.clock, 12);
+    expect(memOf(a.w)).toMatchObject({ stopped: true, stopWritten: false });
+    expect(Number(memOf(a.w).stopTriedAt)).toBeGreaterThan(0);
+    expect(Number(memOf(a.w).stopTriedAt)).toBeLessThanOrEqual(a.clock.t);
+    // a corrupted / future stopTriedAt → clamped to now → the retry is at most the normal 60 s away
+    const far = T0 + 10 * 24 * 60 * MIN;
+    const b = await boot({ warmupSwitch: "true", warmupNext: storeList(50, done),
+      initialStorage: { pc_frozen_warmup: { on: false, mem: { ...memOf(a.w), stopTriedAt: far } } } });
+    expect((b.w.evalIn("pcFrozenKick.__test.warm") as { stopTriedAt: number }).stopTriedAt).toBe(T0);
+    await ticks(b.w, b.clock, 16);                                           // 80 s
+    expect(bodiesOf(b.w, /admin_frozen_warmup_stop/).map((x) => x.p_reason)).toContain("HTTP 429");
+  });
+});
+
+describe("night (01:00–05:00 Taipei) — warm-up may probe; nothing else changes", () => {
+  const MIN = 60 * S;
+  const TN = Date.UTC(2026, 0, 15, 17, 30, 0); // 01:30 Taipei
+  async function nightBoot(opts: Opts) {
+    const clock = { t: TN };
+    const defaults: Opts = { rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: [], maintenance: true };
+    for (const [k, v] of Object.entries(defaults)) if (!(k in opts)) (opts as Record<string, unknown>)[k] = v;
+    opts.now = () => clock.t;
+    const w = bootWorker(opts);
+    await w.booted;
+    return { w, clock };
+  }
+  // what emap-frozen-711.js answers for an E-Map maintenance page (200 body or a redirect)
+  const MAINT = { frozen_store_status: "unknown", frozen_reason: "/ecmap/byIDData.aspx maintenance page", transient: true, blocked: false, maintenance: true };
+  it("night probe → real verdict → the normal 60 s pace (verdicts written); a waiting frozen parcel still gets NO live check", async () => {
+    const done = new Set<string>(); const at: number[] = []; const ref = { t: 0 };
+    const { w, clock } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, done), frozenPending: [{ id: "fz-1", store_id: "968551", queue_depth: 1 }],
+      frozenReply: (row) => { at.push(ref.t); done.add(String(row?.store_id)); return { frozen_store_status: "no_frozen", frozen_reason: "", transient: false }; } });
+    for (let i = 0; i < 12 * 10; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(at.length).toBeGreaterThanOrEqual(8);                            // ~1 per minute over 10 min
+    for (let i = 1; i < at.length; i++) expect(at[i] - at[i - 1]).toBeGreaterThanOrEqual(60 * S);
+    expect(bodiesOf(w, /admin_frozen_warmup_verdict/).length).toBe(at.length);
+    expect(liveFrozenMsgs(w)).toEqual([]);                                  // the live frozen lane keeps the window
+    expect(count(w, /admin_parcel_frozen_pending/)).toBe(0);
+    expect(w.calls.logs.some((l) => /\[PC-WARMUP\] warm-up store=600001 → no_frozen/.test(l))).toBe(true);
+  });
+  for (const [name, reply] of [["a maintenance page", MAINT], ["no answer (timeout)", null], ["an empty / odd page", { frozen_store_status: "unknown", frozen_reason: '/ecmap/byIDData.aspx unexpected response: ""', transient: false, blocked: false }]] as const) {
+    it(`night ${name} → nothing written, next probe 10 min later, never a miss / pause / stop`, async () => {
+      const done = new Set<string>(); const at: number[] = []; const ref = { t: 0 };
+      const { w, clock } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: () => { at.push(ref.t); return reply as never; } });
+      for (let i = 0; i < 12 * 65; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; }  // 65 min
+      expect(at.length).toBeGreaterThanOrEqual(6);
+      expect(at.length).toBeLessThanOrEqual(7);
+      for (let i = 1; i < at.length; i++) expect(at[i] - at[i - 1]).toBeGreaterThanOrEqual(10 * MIN);
+      expect(count(w, /admin_frozen_warmup_verdict/)).toBe(0);              // nothing written
+      expect(count(w, /admin_frozen_warmup_stop/)).toBe(0);                 // never stopped (by day: pause at 3, stop at 6)
+      expect(memOf(w)).toMatchObject({ misses: 0, pauses: 0, stopped: false, pauseUntil: 0 });
+      expect(Number(memOf(w).nightRetryAt)).toBeGreaterThan(clock.t - 10 * MIN);
+      expect(w.calls.logs.some((l) => /no answer at night .* nothing written, not counted, next probe in 10 min/.test(l))).toBe(true);
+    });
+  }
+  it("night: a no-answer, then a real answer → back to the 60 s pace at once", async () => {
+    const done = new Set<string>(); const at: number[] = []; const ref = { t: 0 }; let n = 0;
+    const { w, clock } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, done),
+      frozenReply: (row) => { at.push(ref.t); n += 1; if (n === 1) return MAINT as never; done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } });
+    for (let i = 0; i < 12 * 16; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(at.length).toBeGreaterThanOrEqual(5);
+    expect(at[1] - at[0]).toBeGreaterThanOrEqual(10 * MIN);                 // the night retry
+    for (let i = 2; i < at.length; i++) expect(at[i] - at[i - 1]).toBeLessThan(2 * MIN); // then the normal pace
+    expect(Number(memOf(w).nightRetryAt)).toBe(0);
+  });
+  for (const [name, reply] of [["captcha", { frozen_store_status: "unknown", frozen_reason: "/ecmap/byIDData.aspx unexpected response: \"captcha\"", blocked: true }], ["HTTP 403", { frozen_store_status: "unknown", frozen_reason: "/ecmap/byIDData.aspx returned HTTP 403", blocked: true }], ["HTTP 429", { frozen_store_status: "unknown", frozen_reason: "/ecmap/byIDData.aspx returned HTTP 429", blocked: true }]] as const) {
+    it(`night ${name} → STOP, exactly like by day`, async () => {
+      const { w, clock } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, new Set()), frozenReply: () => reply as never });
+      await ticks(w, clock, 24);
+      expect(warmMsgs(w)).toHaveLength(1);
+      expect(bodiesOf(w, /admin_frozen_warmup_stop/)).toHaveLength(1);
+      expect(count(w, /admin_frozen_warmup_verdict/)).toBe(0);
+      expect(memOf(w)).toMatchObject({ stopped: true });
+    });
+  }
+  it("a night no-answer does not leak into the day: at 05:00 the day rules (misses → pause) apply again", async () => {
+    const at: number[] = []; const ref = { t: 0 };
+    const clock = { t: Date.UTC(2026, 0, 15, 20, 55, 0) };                   // 04:55 Taipei
+    const opts: Opts = { now: () => clock.t, rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: [], maintenance: true, warmupSwitch: "true", warmupNext: storeList(50, new Set()), frozenReply: () => { at.push(ref.t); return null as never; } };
+    const w = bootWorker(opts); await w.booted;
+    for (let i = 0; i < 12 * 12; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; }  // 04:55 → 05:07
+    expect(at.length).toBeGreaterThanOrEqual(2);
+    expect(at[0]).toBeLessThan(Date.UTC(2026, 0, 15, 21, 0, 0));            // the night probe
+    expect(at[at.length - 1]).toBeGreaterThanOrEqual(Date.UTC(2026, 0, 15, 21, 0, 0)); // a day probe
+    expect(at[1] - at[0]).toBeLessThan(10 * MIN);                           // the night 10-min wait does not carry into the day
+    expect(memOf(w)).toMatchObject({ pauses: 1 });                          // by day the no-answers count again: 3 → the 30-min pause
+    expect(w.calls.logs.some((l) => /miss 1\/3/.test(l))).toBe(true);
+  });
+  it("nightRetryAt survives a restart and a future value is clamped to ≤ 10 min", async () => {
+    const { w } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, new Set()),
+      initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: 0, queueAt: 0, pauseUntil: 0, misses: 0, pauses: 0, stopped: false, queue: [], nightRetryAt: TN + 10 * 24 * 60 * MIN } } } });
+    expect((w.evalIn("pcFrozenKick.__test.warm") as { nightRetryAt: number }).nightRetryAt).toBe(TN + 10 * MIN);
+  });
+  it("dry work first at night too: a dry parcel pending → no night probe", async () => {
+    const { w, clock } = await nightBoot({ rows: undefined, warmupSwitch: "true", warmupNext: storeList(20, new Set()) });
+    await ticks(w, clock, 60);
+    expect(warmMsgs(w)).toEqual([]);
   });
 });

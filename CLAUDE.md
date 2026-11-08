@@ -4796,3 +4796,14 @@ E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_
   row live once on). Extension: `await loadWarm()` moved AFTER sendOne (right before warmOne) so a slow state read never
   delays a real frozen parcel; warmOne + the store-list read refuse while not loaded; a failed stop write is retried
   ≤ once per 60 s (`stopTriedAt`); the "state read failed" log goes through logSkip (once a minute).
+- **Round-4 fixes:** a failed boot read is retried every pass with `if (!warm.loaded) void loadWarm()` (never awaited;
+  also with the frozen switch OFF / a frozen queue that never empties); `stopTriedAt` + `nightRetryAt` in mem (clamped);
+  sql145 script seeds the cache 1 day old (no same-ms tie, 5/5 runs green); sql/145 header: never set a frozen verdict
+  in the same UPDATE as a store/layer change.
+- **Night warm-up (01:00–05:00 Taipei, warm-up ONLY):** the dry lane and the LIVE frozen lane keep the window unchanged
+  (no frozen pending read, no live frozen request). Warm-up probes at the 60 s pace while answers are real
+  (ok / no_frozen / NO2 / close); a no-answer / timeout / maintenance page → nothing written, NOT counted (no miss /
+  pause / stop), next probe 10 min later (`WARMUP_NIGHT_RETRY_MS`). Captcha / login / 403 / 429 → STOP any hour.
+  `emap-frozen-711.js`: only `OK;<6 digits>+…` / `NO2` are parsed; a maintenance URL or body → transient
+  `maintenance:true`, never a verdict, never blocked (403/429, a login/captcha URL and captcha words still win).
+  Night sim: dry lane request-for-request identical ON vs OFF.

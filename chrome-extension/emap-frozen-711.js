@@ -28,6 +28,13 @@
   const MAIN_WAIT_MS = 300;
   const GUID_RE = /eshop[Gg]uid\s*[:=]\s*["']([^"']{8,})["']/;
   const BLOCK_PAGE_RE = /captcha|驗證碼|recaptcha|login|登入|robot/i;
+  // 1.18.0: an E-Map MAINTENANCE page (a redirect to it, or its body in a 200) is NEVER a verdict and NEVER
+  // a block (such pages often carry a "登入" link) → transient no-answer. HTTP 403 / 429 still block.
+  const MAINT_URL_RE = /maint|維護|upgrade|update\.(aspx|html?)|closed?\.(aspx|html?)|sorry|busy/i;
+  const MAINT_BODY_RE = /維護|维护|系統更新|系统更新|暫停服務|暂停服务|maintenance|maintain|under construction/i;
+  const STRONG_BLOCK_RE = /captcha|驗證碼|验证码|recaptcha|robot/i;   // these win over a maintenance look
+  // a real byIDData answer is "OK;<6-digit store>+…" or exactly "NO2" — nothing else is parsed
+  const ANSWER_RE = /^OK;\d{6}\+/;
 
   function sectionOf(pathname) {
     const m = /^\/(mobilemap|ecmap)\//i.exec(String(pathname || ""));
@@ -66,6 +73,7 @@
   function parseFrozen(text) {
     const raw = String(text).trim();
     if (raw === "NO2") return { status: "unknown", reason: "store not found (NO2)" };
+    if (!ANSWER_RE.test(raw)) return null;                  // any page (maintenance / login / HTML) is never a verdict
     const rec = raw.split(";")[1];
     const field = rec ? rec.split("+")[3] : "";
     if (field === "enable") return { status: "ok", reason: "" };
@@ -86,12 +94,15 @@
         headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" },
         body, signal: ctrl.signal,
       });
-      if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false };
+      if (r.status === 403 || r.status === 429) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: false, blocked: true };
       if (BLOCK_PAGE_RE.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} redirected to a login / captcha page`, transient: false, blocked: true };
+      if (MAINT_URL_RE.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} redirected to a maintenance page`, transient: true, maintenance: true };
+      if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false };
       if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500, blocked: r.status === 403 || r.status === 429 };
       const text = await r.text();
       const v = parseFrozen(text);
       if (v) return { verdict: v, reason: "", transient: false };
+      if (!STRONG_BLOCK_RE.test(String(text).slice(0, 4000)) && MAINT_BODY_RE.test(String(text).slice(0, 4000))) return { verdict: null, reason: `${endpoint} maintenance page`, transient: true, maintenance: true };
       const head = String(text).replace(/\s+/g, " ").slice(0, 60);
       return { verdict: null, reason: `${endpoint} unexpected response: "${head}"`, transient: false, blocked: BLOCK_PAGE_RE.test(String(text).slice(0, 4000)) };
     } catch (e) {
@@ -106,7 +117,7 @@
     const r = await postFrozen(endpoint, storeId, guid);
     if (r.verdict) return { status: r.verdict.status, reason: r.verdict.reason, transient: false, endpoint };
     if (!r.transient) section = otherSection(section);  // a real non-verdict answer → the other section NEXT time
-    return { status: "unknown", reason: r.reason, transient: r.transient, blocked: Boolean(r.blocked), endpoint };
+    return { status: "unknown", reason: r.reason, transient: r.transient, blocked: Boolean(r.blocked), maintenance: Boolean(r.maintenance), endpoint };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -115,7 +126,7 @@
     (async () => {
       const guid = await getGuid();
       const res = await checkFrozenStore(message.row.store_id, guid);
-      sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: res.status, frozen_reason: res.reason, transient: Boolean(res.transient), blocked: Boolean(res.blocked), guidFound: guid !== null, endpoint: res.endpoint });
+      sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: res.status, frozen_reason: res.reason, transient: Boolean(res.transient), blocked: Boolean(res.blocked), maintenance: Boolean(res.maintenance), guidFound: guid !== null, endpoint: res.endpoint });
     })().catch((e) => sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: "unknown", frozen_reason: `frozen check threw: ${(e && e.message) || "error"}`, transient: true, guidFound: false, endpoint: endpointOf(section) }));
     return true;
   });

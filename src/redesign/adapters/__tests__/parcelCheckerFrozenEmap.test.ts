@@ -231,4 +231,54 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
       expect((await ask({ url: "https://emap.unipcsc.com.tw/ecmap/error.aspx" })).r).toMatchObject({ blocked: false, transient: false });
     });
   });
+  // item 5: an E-Map MAINTENANCE page is never a verdict and never a block → a transient no-answer
+  // (the worker writes nothing; at night it waits 10 min, by day it is a miss)
+  describe("maintenance pages (01:00–05:00 Taipei)", () => {
+    const ask = async (a: { ok?: boolean; status?: number; text?: string; url?: string }, store = "968551") => {
+      const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => a });
+      const r = await e.send({ type: "PC_FROZEN_CHECK", row: { id: "w1", store_id: store } });
+      const r2 = await e.send({ type: "PC_FROZEN_CHECK", row: { id: "w2", store_id: store } });
+      return { r, endpoints: e.calls.fetch.map((c) => c.url.split("?")[0]), r2 };
+    };
+    const BODIES = [
+      "<html><head><title>系統維護中</title></head><body><h1>7-ELEVEN 電子地圖系統維護中，請於 05:00 後再試</h1><a href=\"/Login.aspx\">會員登入</a></body></html>",
+      "<html><body>為提供更好的服務，本系統於 01:00~05:00 進行系統更新，暫停服務</body></html>",
+      "<!DOCTYPE html><html><body><h2>Scheduled Maintenance</h2><p>Sign in / login after 05:00</p></body></html>",
+      // a maintenance body shaped like an answer (';' and '+' and a field 3 "enable") must still NOT be a verdict
+      "<p>維護公告;968551+新蓮盈+花蓮縣+enable+0++門市</p>",
+      "<html>&nbsp;維護;123456+a+b+disable+</html>",
+    ];
+    it("a maintenance body in a 200 → unknown, transient, NOT blocked, never a verdict; the endpoint is not switched", async () => {
+      for (const text of BODIES) {
+        const { r, endpoints, r2 } = await ask({ text });
+        expect(r, text).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true, maintenance: true });
+        expect(String(r.frozen_reason), text).toMatch(/maintenance page/);
+        expect(String(r.frozen_reason), text).not.toMatch(/login|登入|captcha|blocked/i);   // the worker's block check reads the reason
+        expect(r2.frozen_store_status, text).toBe("unknown");
+        expect(endpoints, text).toEqual(["/ecmap/byIDData.aspx", "/ecmap/byIDData.aspx"]); // transient → same endpoint
+      }
+    });
+    it("a redirect to a maintenance page → unknown, transient, NOT blocked (even when its body has a login link)", async () => {
+      for (const url of ["https://emap.unipcsc.com.tw/maintain.aspx", "https://emap.unipcsc.com.tw/Maintenance/index.html", "https://emap.unipcsc.com.tw/sorry.html"]) {
+        const { r } = await ask({ url, text: "<html><a href=\"/x\">登入</a> OK;968551+x+y+enable+0</html>" });
+        expect(r, url).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true, maintenance: true });
+      }
+    });
+    it("a page that is NOT an answer (no leading 'OK;<6 digits>+') is never parsed as a verdict, maintenance or not", async () => {
+      for (const text of ["公告;968551+新蓮盈+addr+enable+0++門市", " ok;968551+x+y+enable+0", "OK;96855+x+y+enable+0", "<b>OK;968551+x+y+enable+0</b>"]) {
+        const { r } = await ask({ text });
+        expect(r.frozen_store_status, text).toBe("unknown");
+      }
+      expect((await ask({ text: "  OK;968551+新蓮盈+addr+enable+0++門市\n" })).r.frozen_store_status).toBe("ok");   // a real answer (trimmed) still works
+    });
+    it("blocks still win: 403 / 429 on a maintenance URL, a captcha body that mentions 維護, a login redirect → blocked", async () => {
+      expect((await ask({ ok: false, status: 403, url: "https://emap.unipcsc.com.tw/maintain.aspx", text: "系統維護" })).r).toMatchObject({ blocked: true });
+      expect((await ask({ ok: false, status: 429, url: "https://emap.unipcsc.com.tw/maintain.aspx" })).r).toMatchObject({ blocked: true });
+      expect((await ask({ text: "<html>系統維護中，請輸入驗證碼</html>" })).r).toMatchObject({ blocked: true });
+      expect((await ask({ url: "https://emap.unipcsc.com.tw/maintain/Login.aspx" })).r).toMatchObject({ blocked: true });
+    });
+    it("HTTP 503 (a common maintenance answer) → transient, not blocked", async () => {
+      expect((await ask({ ok: false, status: 503, text: "Service Unavailable" })).r).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true });
+    });
+  });
 });

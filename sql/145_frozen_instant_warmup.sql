@@ -41,7 +41,10 @@
 --       checked_at NULL) FIRST, as a plain row assignment before the switch is even read (any seller,
 --       switch on or off — it belongs to another store, or to a store the row had while it was dry).
 --       Then, only with the switch on, the store's fresh cache verdict is applied (live-lane sellers).
---       Otherwise the row stays empty; the frozen lane checks it live (once the switch is on).
+--       Otherwise the row stays empty; the frozen lane checks it live (live-lane sellers, once the switch is on).
+--   · RULE for any writer: never set a frozen verdict in the same UPDATE as a store/layer change — the
+--     trigger clears frozen_store_status / _checked_at on that change, so the verdict would be lost.
+--     Change the store/layer first, then write the verdict in a separate UPDATE.
 --   · exported rows are never touched (an exported parcel's verdict never changes).
 --   · 'unknown' is never cached (store_frozen_cache's CHECK allows only ok / no_frozen), so it can never
 --     be applied by the trigger — an unknown store stays empty for the live lane.

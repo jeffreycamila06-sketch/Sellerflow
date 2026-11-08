@@ -74,3 +74,42 @@ describe("warm-up with a slow E-Map", () => {
     if (wi.length === 6) expect(on.warmupSwitch).toBe("false"); // the 2nd pause = the stop turned the switch off
   }, 180_000);
 });
+
+// item 5: NIGHT (01:00–05:00 Taipei, the maintenance window) — the warm-up alone may probe; the dry lane
+// keeps the window, request-for-request identical ON vs OFF.
+describe("night (01:00–05:00 Taipei): warm-up only, the dry lane identical ON vs OFF", () => {
+  const TN = Date.UTC(2026, 0, 15, 17, 30, 0); // 01:30 Taipei
+  async function nightRun(emapMs: number, warm: boolean, alarmMs = 0): Promise<Sim> {
+    const sim = makeSim({ t0: TN, emapMs, dry: 3, frozen: [], warmupSwitch: warm ? "true" : "false", warmStores: STORES, arrivals: ARRIVALS });
+    const w = bootWorker({ sim, lease: LEADER, maintenance: true });
+    await w.booted;
+    await runSim(sim, TN + 60 * MIN, alarmMs);
+    return sim;
+  }
+  for (const [emapMs, alarmMs] of [[800, 0], [2000, 30_000]] as const) {
+    it(`E-Map ${emapMs} ms${alarmMs ? " + the 30 s alarm" : ""}: same dry requests + verdicts; 0 overlaps; warm-up probes at night, ≥ 60 s apart`, async () => {
+      const on = await nightRun(emapMs, true, alarmMs);
+      const off = await nightRun(emapMs, false, alarmMs);
+      expect(dryLane(on)).toEqual(dryLane(off));
+      expect(on.normalVerdicts).toEqual(off.normalVerdicts);
+      const o = simOverlaps(on.intervals);
+      expect(o.frozenDuringNormal).toBe(0);
+      expect(o.normalDuringFrozen).toBe(0);
+      expect(o.normalNormal).toBe(simOverlaps(off.intervals).normalNormal);
+      const wi = warmIv(on);
+      expect(wi.length).toBeGreaterThan(10);                          // answered probes → the normal pace all night
+      for (let i = 1; i < wi.length; i++) expect(wi[i].start - wi[i - 1].start).toBeGreaterThanOrEqual(60_000);
+      for (const n of on.intervals.filter((i) => i.kind === "normal")) for (const w of wi) expect(w.start <= n.start && n.start < w.end).toBe(false);
+      expect(on.warmVerdicts.length).toBeGreaterThan(0);
+    }, 180_000);
+  }
+  it("E-Map 8 s at night: every probe is a no-answer → one probe per 10 min, nothing written, NEVER a pause or stop", async () => {
+    const on = await nightRun(8000, true);
+    const wi = warmIv(on);
+    expect(wi.length).toBeGreaterThanOrEqual(5);
+    expect(wi.length).toBeLessThanOrEqual(7);                         // 60 min / 10 min
+    for (let i = 1; i < wi.length; i++) expect(wi[i].start - wi[i - 1].start).toBeGreaterThanOrEqual(10 * MIN);
+    expect(on.warmVerdicts).toEqual([]);
+    expect(on.warmupSwitch).toBe("true");                             // no stop (by day the same run stops after 6)
+  }, 180_000);
+});
