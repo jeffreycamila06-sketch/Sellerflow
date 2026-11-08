@@ -9,7 +9,7 @@
 --   one_sticker_enabled         the NEW Live print pattern screen (one sticker, same on every
 --                               printer + laptop). OFF = only admins see it. ON = every seller sees
 --                               it — but EACH DEVICE keeps printing today's sticker until the seller
---                               changes something there and taps Save on that device.
+--                               taps Save on the new screen on that device.
 --   sticker_all_scripts_enabled every language prints on today's sticker too (Japanese kana, 、。「」,
 --                               full-width, Korean, Thai, Arabic, Cyrillic on the AIMO, "fancy"
 --                               letters as normal letters). Goes to everyone at once; English /

@@ -3,8 +3,8 @@
 // WHO GETS IT (release rules, Jeff — never surprise a seller mid-live):
 //   1. the switch app_settings "one_sticker_enabled" (admins see it before) makes the NEW Live
 //      print pattern screen visible on that account (setOneStickerVisible, from RedesignApp);
-//   2. EACH DEVICE keeps printing EXACTLY today's sticker until the seller changes something on
-//      that new screen and taps Save on THAT device (localStorage sfl_rd_one_sticker). Nothing
+//   2. EACH DEVICE keeps printing EXACTLY today's sticker until the seller taps Save on the new
+//      screen on THAT device (localStorage sfl_rd_one_sticker). Nothing
 //      switches a device by itself. Switch OFF again → the saved choice is ignored (today's
 //      sticker), not deleted.
 // WHICH PATHS: the image paths only — AIMO/Phomemo D520BT SDK image, generic TSPL/ESC-POS/CPCL

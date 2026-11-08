@@ -174,6 +174,30 @@ describe("OneStickerPattern", () => {
     expect(onSave.mock.calls[1][0].parts.name.weight).toBe("extra");
     expect(save().disabled).toBe(true);
   });
+  it("device note: not saved → keeps today's sticker; saved → prints this sticker; saved with changes → used after Save", () => {
+    const note = () => screen.getByTestId("os-device-note").textContent;
+    renderIt({ savedOnDevice: true });
+    expect(note()).toBe("This device prints this sticker.");
+    fireEvent.click(screen.getByTestId("os-shop-plus"));
+    expect(note()).toBe("Your changes are used after you tap Save.");
+    fireEvent.click(screen.getByTestId("os-shop-minus")); // back to what is saved
+    expect(note()).toBe("This device prints this sticker.");
+    fireEvent.click(screen.getByTestId("os-shop-plus"));
+    fireEvent.click(screen.getByTestId("os-save"));
+    expect(note()).toBe("This device prints this sticker.");
+  });
+  it("device note on a device that never saved: the opt-in note, with or without changes", () => {
+    const note = () => screen.getByTestId("os-device-note").textContent;
+    renderIt();
+    expect(note()).toBe("This device keeps today's sticker until you tap Save.");
+    fireEvent.click(screen.getByTestId("os-shop-plus"));
+    expect(note()).toBe("This device keeps today's sticker until you tap Save.");
+  });
+  it("the saved-with-changes note exists in all 8 languages", () => {
+    const src = fs.readFileSync(path.resolve(__dirname, "../../i18n/index.tsx"), "utf8");
+    const line = src.split("\n").find((l) => l.trimStart().startsWith("rd_os_unsaved_note:"))!;
+    for (const k of ["en:", "fil:", "zh:", '"zh-TW":', "vi:", "th:", "id:", "bg:"]) expect(line).toContain(k);
+  });
   it("a device that already saved the new sticker: Save is off until something changes", () => {
     renderIt({ savedOnDevice: true });
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
