@@ -4,13 +4,13 @@
 // seller. Same 8 s limit for the kana font of the all-scripts switch.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-const ctl = vi.hoisted(() => ({ mode: "real" as "real" | "throw" | "hang" }));
+const ctl = vi.hoisted(() => ({ mode: "real" as "real" | "throw" | "hang" | "defer", release: null as null | (() => void) }));
 vi.mock("../oneStickerPrint", async (orig) => {
   const m = await orig<typeof import("../oneStickerPrint")>();
-  return { ...m, renderOneStickerFor: (...a: Parameters<typeof m.renderOneStickerFor>) => (ctl.mode === "throw" ? Promise.reject(new Error("boom")) : ctl.mode === "hang" ? new Promise(() => {}) : m.renderOneStickerFor(...a)) };
+  return { ...m, renderOneStickerFor: (...a: Parameters<typeof m.renderOneStickerFor>) => (ctl.mode === "throw" ? Promise.reject(new Error("boom")) : ctl.mode === "hang" ? new Promise(() => {}) : ctl.mode === "defer" ? new Promise((res) => { ctl.release = () => res(m.renderOneStickerFor(...a)); }) : m.renderOneStickerFor(...a)) };
 });
 
-import { printSlip, DEF_SETTINGS, setStickerRouteNoticeHandler, setOneStickerNoticeHandler, ONE_STICKER_PHONE_TIMEOUT_MS, __resetNativePrintQueue, type Settings } from "../printing";
+import { printSlip, DEF_SETTINGS, setStickerRouteNoticeHandler, setOneStickerNoticeHandler, __resetStuckPicture, ONE_STICKER_PHONE_TIMEOUT_MS, __resetNativePrintQueue, type Settings } from "../printing";
 import { setOneStickerVisible, saveOneSticker, __resetOneStickerState, LS_ONE_STICKER } from "../oneStickerPrint";
 import { recommendedSettings } from "../oneSticker";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
@@ -42,7 +42,7 @@ async function capture(path: P, size = "60x40", waitMs = 20000): Promise<string>
 const routes: string[] = [];
 const sawMiss = (reason: string) => routes.includes(reason);
 beforeAll(() => { installSans(); installNodeFallbackDrawer(); setStickerRouteNoticeHandler((n) => { routes.push(n.reason); }); });
-afterEach(() => { routes.length = 0; ctl.mode = "real"; __resetOneStickerState(); setOneStickerNoticeHandler(null); try { localStorage.removeItem(LS_ONE_STICKER); } catch { /* */ } });
+afterEach(() => { __resetStuckPicture(); ctl.release = null; routes.length = 0; ctl.mode = "real"; __resetOneStickerState(); setOneStickerNoticeHandler(null); try { localStorage.removeItem(LS_ONE_STICKER); } catch { /* */ } });
 
 const optIn = (w = 60, h = 40) => { saveOneSticker(recommendedSettings({ w, h })); setOneStickerVisible(true); };
 
@@ -73,6 +73,20 @@ describe("one sticker — a phone print is never lost", () => {
     expect(took).toBeLessThan(11000);
     expect(sawMiss("one-sticker-picture-failed")).toBe(true);
   }, 30000);
+  it("a font stuck on a bad connection costs ONE 8 s wait: the next orders print today's sticker at once (reported once), and the new sticker comes back when it loads", async () => {
+    const today = await capture("niimbot", "50x30");
+    optIn(50, 30);
+    ctl.mode = "defer";
+    expect(await capture("niimbot", "50x30", 12000)).toBe(today); // waited 8 s
+    const t0 = Date.now();
+    expect(await capture("niimbot", "50x30")).toBe(today);
+    expect(await capture("niimbot", "50x30")).toBe(today);
+    expect(Date.now() - t0, "no 8 s wait while the first picture is still loading").toBeLessThan(3000);
+    expect(routes.filter((r) => r === "one-sticker-picture-failed").length, "timeout + one skip report").toBe(2);
+    ctl.release!(); await new Promise((r) => setTimeout(r, 50));
+    ctl.mode = "real";
+    expect(await capture("niimbot", "50x30"), "loaded → the new sticker again").not.toBe(today);
+  }, 40000);
   it("a saved size wider than the saved printer (B1 = 50 mm, saved 60×40) → today's sticker + a seller message", async () => {
     const today = await capture("niimbot", "50x30");
     optIn(60, 40);

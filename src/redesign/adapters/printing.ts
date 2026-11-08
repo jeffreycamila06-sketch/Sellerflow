@@ -719,8 +719,8 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
   }
   // the picture (fonts + layout + encode), at most 8 s; null = print today's sticker
   const picture = async <T>(make: () => Promise<T>): Promise<T | null> => {
-    try { return await withTimeout(make(), ONE_STICKER_PHONE_TIMEOUT_MS); }
-    catch (err) { miss("one-sticker-picture-failed", `picture failed: ${String(err)}`); return null; }
+    try { return await withPictureLimit(make, ONE_STICKER_PHONE_TIMEOUT_MS); }
+    catch (err) { if (!(err instanceof StuckSkip) || err.first) miss("one-sticker-picture-failed", `picture failed: ${String(err)}`); return null; }
   };
   const send = async (via: OneStickerPath, fn: BitmapBridgeFn | ((a: { image: unknown }) => Promise<unknown>), arg: Record<string, unknown>, payloadBytes: number, reason: StickerFallbackReason): Promise<BtRouteResult> => {
     const t1 = nowMs();
@@ -849,7 +849,7 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
     if (typeof document === "undefined") return { ok: false, code: "", message: "", via: "none" };
     const os = oneStickerEffective(draft);
     const jobId = `one-sticker-test-${++webFallbackId}`;
-    const page = webPrepareChain.then(() => withTimeout(renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, undefined, fbName)), ONE_STICKER_WEB_TIMEOUT_MS)).then((r) => laptopPage(r, os, "Test sticker"));
+    const page = webPrepareChain.then(() => withPictureLimit(() => renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, undefined, fbName)), ONE_STICKER_WEB_TIMEOUT_MS)).then((r) => laptopPage(r, os, "Test sticker"));
     webPrepareChain = page.catch(() => undefined);
     try {
       enqueueWebPrint({ id: jobId, html: await page });
@@ -1294,6 +1294,26 @@ export function __webPrintIdle(): Promise<void> { return webPrepareChain.then(()
 // A picture that is not ready in time (a font chunk stuck on a bad connection) never holds the
 // queue: that sticker prints today's page and the next one goes on.
 export const ONE_STICKER_WEB_TIMEOUT_MS = 8000;
+// A picture that timed out keeps loading in the background (a font chunk on a bad connection). Until
+// it finishes, every next picture is skipped AT ONCE (today's sticker, no 8 s wait each), reported
+// once; when it finishes, the next order tries the new sticker again.
+class StuckSkip extends Error { readonly first: boolean; constructor(first: boolean) { super("one-sticker picture still loading — today's sticker"); this.first = first; } }
+let stuckPicture: Promise<unknown> | null = null;
+let stuckReported = false;
+async function withPictureLimit<T>(make: () => Promise<T>, ms: number): Promise<T> {
+  if (stuckPicture) { const first = !stuckReported; stuckReported = true; throw new StuckSkip(first); }
+  const p = make();
+  try { return await withTimeout(p, ms); }
+  catch (err) {
+    if (String(err).includes("one-sticker picture timeout")) {
+      const done = () => { if (stuckPicture === p) { stuckPicture = null; stuckReported = false; } };
+      stuckPicture = p; stuckReported = false;
+      p.then(done, done);
+    }
+    throw err;
+  }
+}
+export function __resetStuckPicture(): void { stuckPicture = null; stuckReported = false; }
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((res, rej) => { const t = setTimeout(() => rej(new Error("one-sticker picture timeout")), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
 }
@@ -1301,12 +1321,13 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 // counts it), never only a variable.
 function oneStickerWebMiss(err: unknown): void {
   lastOneStickerWebMiss = { at: Date.now(), error: String(err) };
+  if (err instanceof StuckSkip && !err.first) return; // reported once per stuck episode
   reportStickerRoute({ via: "bitmap", ok: false, reason: "one-sticker-picture-failed", detail: `laptop: ${String(err)}`, payloadBytes: 0, totalMs: 0 });
   log.warn("[ONE-STICKER laptop] picture failed — printing today's page", err);
 }
 function oneStickerWebPage(osIn: OneStickerSettings, buyer: Buyer, storeName: string, at: number | undefined, fbName: boolean, legacyHtml: string): Promise<string> {
   const os = oneStickerEffective(osIn);
-  const page = webPrepareChain.then(() => withTimeout(renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName)), ONE_STICKER_WEB_TIMEOUT_MS))
+  const page = webPrepareChain.then(() => withPictureLimit(() => renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName)), ONE_STICKER_WEB_TIMEOUT_MS))
     .then((r) => laptopPage(r, os, `Sticker #${buyer.num}`))
     .catch((err: unknown) => { oneStickerWebMiss(err); return legacyHtml; });
   webPrepareChain = page;
