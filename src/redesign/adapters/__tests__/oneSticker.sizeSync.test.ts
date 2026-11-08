@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { LS_ONE_STICKER, readSavedOneSticker, saveOneSticker, syncOneStickerSizeFromPrinter, sizeFromPrinterLabel, printerLabelFor, __resetOneStickerState, setOneStickerVisible, oneStickerActive } from "../oneStickerPrint";
+import { LS_ONE_STICKER, readSavedOneSticker, saveOneSticker, syncOneStickerSizeFromPrinter, sizeFromPrinterLabel, printerLabelFor, psLabelFor, __resetOneStickerState, setOneStickerVisible, oneStickerActive } from "../oneStickerPrint";
 import { recommendedSettings } from "../oneSticker";
 
 afterEach(() => { try { localStorage.removeItem(LS_ONE_STICKER); } catch { /* */ } __resetOneStickerState(); });
@@ -52,14 +52,36 @@ describe("Printer settings Label size ↔ one sticker size", () => {
   it("RedesignApp puts Printer settings back to the kept size and shows the message", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
     const at = src.indexOf("syncOneStickerSizeFromPrinter(s,");
-    const block = src.slice(at, at + 900);
+    const block = src.slice(at, at + 1500);
     expect(block).toContain('if (sync.status === "kept")');
-    expect(block).toContain("setPsSize(printerLabelFor(sync.keep))");
+    expect(block).toContain("setPsSize(psLabelFor(sync.keep, devPath) ?? psSize)");
     expect(block).toMatch(/rd_os_sync_niimbot[\s\S]*rd_os_sync_too_wide[\s\S]*rd_os_sync_text/);
+  });
+  it("Printer settings only ever shows one of its own sizes: psLabelFor (standard, not custom, no 50×30 on TEXT / WiFi)", () => {
+    expect(psLabelFor({ w: 100, h: 60 })).toBe("100x60mm (Standard)");
+    expect(psLabelFor({ w: 60, h: 40 }, "niimbot")).toBe("60x40mm");
+    expect(psLabelFor({ w: 50, h: 30 }, "d520")).toBe("50x30mm");
+    expect(psLabelFor({ w: 50, h: 30 }, "text")).toBeNull();
+    expect(psLabelFor({ w: 50, h: 30 }, "wifi")).toBeNull();
+    expect(psLabelFor({ w: 40, h: 30, custom: true })).toBeNull();
+    expect(psLabelFor({ w: 75, h: 45 })).toBeNull(); // not a standard size
+  });
+  it("a Niimbot with a saved CUSTOM 40×30: the pick is kept as custom (Printer settings must keep its previous size)", () => {
+    saveOneSticker({ ...recommendedSettings({ w: 40, h: 30 }), size: { w: 40, h: 30, custom: true } });
+    const r = syncOneStickerSizeFromPrinter("60x40mm", { printerName: "B1-H1", niimbot: true });
+    expect(r).toEqual({ status: "kept", reason: "niimbot", keep: { w: 40, h: 30, custom: true } });
+    expect(r.status === "kept" && psLabelFor(r.keep, "niimbot")).toBeNull(); // → RedesignApp keeps the previous psSize
+  });
+  it("RedesignApp: Save and the kept-size revert use the same rule; a TEXT / WiFi phone never starts at 50×30; the laptop test never waits on a path without a page", () => {
+    const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
+    expect(src).toContain("const label = psLabelFor(next.size, oneStickerDevicePath(");
+    expect(src).toContain('if ((path === "text" || path === "wifi") && size.w === 50 && size.h === 30) size = { w: 60, h: 40 };');
+    const pr = fs.readFileSync(path.join(__dirname, "../printing.ts"), "utf8");
+    expect(pr).toContain('if (!r.ok || r.via !== "browser") res({ ok: r.ok, code: "", message: "", via: r.via });');
   });
   it("RedesignApp wires both directions (Printer settings pick → one sticker; Save → Printer settings label)", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
     expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) \{\s*const sync = syncOneStickerSizeFromPrinter\(s, \{ printerName: savedBtPrinter\(\)\?\.name \?\? null, niimbot: savedIsNiimbot\(\), devicePath: oneStickerDevicePath\(/);
-    expect(src).toMatch(/setPsSize\(printerLabelFor\(next\.size\)\)/);
+    expect(src).toMatch(/const label = psLabelFor\(next\.size, oneStickerDevicePath\([\s\S]{0,120}if \(label\) setPsSize\(label\);/);
   });
 });

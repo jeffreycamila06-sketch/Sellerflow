@@ -164,7 +164,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
   const reset = () => { setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
-  const blocked = !!tooWide || (customOpen && !customOk); // a size the printer cannot take is never saved
+  // a size the printer cannot take is never saved (too wide, a wrong custom size, or 50×30 / custom on a
+  // TEXT / WiFi phone, which has no such layout)
+  const blocked = !!tooWide || (customOpen && !customOk) || (!customAllowed && (!!s.size.custom || (s.size.w === 50 && s.size.h === 30)));
   // Save: on a device that has NOT saved the new sticker yet, always on (the seller can adopt what they
   // see); after saving, off until something changes (Jeff). Never while the size can't be printed.
   const canSave = (dirty || !saved) && !blocked;

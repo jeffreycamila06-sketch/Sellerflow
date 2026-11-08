@@ -12,7 +12,7 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, tooWideFor, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
 import { loadSansFace } from "./oneStickerFonts";
@@ -45,6 +45,14 @@ export function sizeFromPrinterLabel(label: string): { w: number; h: number } | 
 }
 /** The one-sticker size → the Printer settings label it shows as. PURE. */
 export const printerLabelFor = (z: { w: number; h: number }): string => (z.w === 100 && z.h === 60 ? "100x60mm (Standard)" : `${z.w}x${z.h}mm`);
+/** The Printer settings label for a one-sticker size — ONLY a standard, non-custom size, and never
+ *  50×30 on a phone printing the TEXT / WiFi sticker (today's sticker has no such layout there);
+ *  null = Printer settings must not show it (keep what it shows). PURE. */
+export function psLabelFor(z: { w: number; h: number; custom?: boolean }, devicePath?: string): string | null {
+  if (z.custom || !STANDARD_SIZES.some((s) => s.w === z.w && s.h === z.h)) return null;
+  if (z.w === 50 && z.h === 30 && (devicePath === "text" || devicePath === "wifi")) return null;
+  return printerLabelFor(z);
+}
 /** A size picked in Printer settings on a device that saved the new pattern: the saved one-sticker
  *  size follows (only the size changes; the rest of the pattern stays as saved). No saved pattern →
  *  nothing is saved (the device keeps today's sticker). Returns the new saved settings, or null. */
@@ -56,12 +64,12 @@ export interface SizeSyncContext { printerName?: string | null; niimbot?: boolea
 export type SizeSyncResult =
   | { status: "none" }                                    // no saved new sticker / same size / not a size
   | { status: "synced"; settings: OneStickerSettings }
-  | { status: "kept"; reason: "niimbot" | "too_wide" | "text_50x30"; keep: { w: number; h: number }; model?: string; maxMm?: number };
+  | { status: "kept"; reason: "niimbot" | "too_wide" | "text_50x30"; keep: { w: number; h: number; custom?: boolean }; model?: string; maxMm?: number };
 export function syncOneStickerSizeFromPrinter(label: string, ctx: SizeSyncContext = {}): SizeSyncResult {
   const saved = readSavedOneSticker();
   const z = sizeFromPrinterLabel(label);
   if (!saved || !z || (saved.size.w === z.w && saved.size.h === z.h && !saved.size.custom)) return { status: "none" };
-  const keep = { w: saved.size.w, h: saved.size.h };
+  const keep = { w: saved.size.w, h: saved.size.h, ...(saved.size.custom ? { custom: true } : {}) };
   if (ctx.niimbot) return { status: "kept", reason: "niimbot", keep };
   const wide = tooWideFor(ctx.printerName, z.w);
   if (wide) return { status: "kept", reason: "too_wide", keep, model: wide.model, maxMm: wide.maxLabelMm };

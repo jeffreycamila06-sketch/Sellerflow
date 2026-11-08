@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from ".
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, printerLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
@@ -230,6 +230,8 @@ function seedOneSticker(pp: PrintPatternState, psSize: string, qr: boolean, path
     const max = printerLimitFor(printerName)?.maxLabelMm ?? 50;
     size = [...STANDARD_SIZES].reverse().find((z) => z.w <= max) ?? { w: 50, h: 30 };
   } else { const lim = printerLimitFor(printerName); if (lim && size.w > lim.maxLabelMm) size = [...STANDARD_SIZES].reverse().find((z) => z.w <= lim.maxLabelMm) ?? size; }
+  // a TEXT / WiFi phone has no 50×30 layout: never start (and so never one-tap Save) at 50×30
+  if ((path === "text" || path === "wifi") && size.w === 50 && size.h === 30) size = { w: 60, h: 40 };
   const s = recommendedSettings(size);
   const part = (on: boolean, scale: number) => ({ on, weight: "bold" as const, scale: snapScale(Math.min(2, scale || 1)) });
   s.parts = { shop: part(pp.shopName, pp.shopNameSize), buyer: part(pp.buyerNum, pp.buyerNumSize), name: part(pp.tiktokName, pp.tiktokNameSize), user: part(pp.tiktokUser, pp.tiktokUserSize), comment: part(pp.comment, pp.commentSize) };
@@ -2810,7 +2812,10 @@ export default function RedesignApp() {
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); if (oneStickerOn) {
                 const sync = syncOneStickerSizeFromPrinter(s, { printerName: savedBtPrinter()?.name ?? null, niimbot: savedIsNiimbot(), devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize: s })) });
                 if (sync.status === "kept") { // the new sticker keeps its size → Printer settings shows that size too, and says why
-                  setPsSize(printerLabelFor(sync.keep));
+                  // Printer settings shows the kept size when it is one of its sizes; otherwise (a custom size,
+                  // 50×30 on TEXT / WiFi) it keeps what it showed before this pick — never an unknown size
+                  const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
+                  setPsSize(psLabelFor(sync.keep, devPath) ?? psSize);
                   const size = `${sync.keep.w}×${sync.keep.h}`;
                   const why = sync.reason === "niimbot" ? tpl(tApp.rd_os_sync_niimbot, { size }) : sync.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: sync.model ?? "", max: String(sync.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size });
                   setToast({ msg: why, kind: "err" });
@@ -2833,11 +2838,8 @@ export default function RedesignApp() {
                 saveOneSticker(next);
                 // a standard size is also the size the rest of the app shows (Printer settings, its exact label);
                 // never 50×30 / custom for a phone on the TEXT / WiFi sticker (those have no such layout)
-                const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
-                const small = next.size.w === 50 && next.size.h === 30;
-                if (!next.size.custom && STANDARD_SIZES.some((z) => z.w === next.size.w && z.h === next.size.h) && !(small && (devPath === "text" || devPath === "wifi"))) {
-                  setPsSize(printerLabelFor(next.size));
-                }
+                const label = psLabelFor(next.size, oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })));
+                if (label) setPsSize(label);
                 setToast({ msg: tApp.rd_os_saved, kind: "ok" });
               }}
               shopName={printShopName === BRAND_FALLBACK ? "" : printShopName}

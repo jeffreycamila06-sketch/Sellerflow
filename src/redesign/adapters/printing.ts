@@ -851,7 +851,7 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
     // queued NOW (in order, like a real laptop order); the page is today's test page if the picture fails
     return new Promise((res) => {
       const r = printSlip(buyer, cur, storeName, cfg, { webOneSticker: { settings: draft, title: "Test sticker", onPicture: (ok) => res({ ok: true, code: ok ? "" : ONE_STICKER_FALLBACK, message: "", via: "browser" }) } });
-      if (!r.ok) res({ ok: false, code: "", message: "", via: r.via });
+      if (!r.ok || r.via !== "browser") res({ ok: r.ok, code: "", message: "", via: r.via }); // never waits on a path without a page
     });
   }
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;

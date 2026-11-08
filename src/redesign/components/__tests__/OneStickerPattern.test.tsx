@@ -133,6 +133,15 @@ describe("OneStickerPattern", () => {
     expect(m).toMatch(/short: "var\(--text-muted\)"/);
     expect(m).toMatch(/shrunk: "var\(--warn/); expect(m).toMatch(/cut: "var\(--warn/); expect(m).toMatch(/qr: "var\(--warn/);
   });
+  it("a TEXT / WiFi phone can never Save 50×30 or a custom size (no such layout there), even before saving", () => {
+    for (const devicePath of ["text", "wifi"] as const) {
+      const { unmount } = render(<TProvider lang="en"><OneStickerPattern onBack={() => {}} initial={recommendedSettings({ w: 50, h: 30 })} savedOnDevice={false} onSave={() => {}} shopName="Maria" devicePath={devicePath} qrAllowed onTest={() => {}} /></TProvider>);
+      expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled, devicePath).toBe(true);
+      fireEvent.click(screen.getByTestId("os-size-60x40"));
+      expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled, devicePath).toBe(false);
+      unmount();
+    }
+  });
   it("Printer Test carries the 🖨 icon like the preview", () => {
     renderIt();
     expect(screen.getByTestId("os-test").textContent).toBe("🖨 Printer Test");
