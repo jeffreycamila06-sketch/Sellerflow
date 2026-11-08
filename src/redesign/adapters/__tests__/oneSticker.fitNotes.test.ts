@@ -1,0 +1,52 @@
+// The notes under the preview (approved Step 0 preview): red only when a part runs off the label;
+// a one-line part shortened with "…", a shrunk comment, a cut comment = amber; the recommended settings
+// fit with no red at every standard size, on every printer path (Niimbot = its SDK frame).
+import { beforeAll, describe, expect, it } from "vitest";
+import { fitNotes, layoutSticker, recommendedSettings, STANDARD_SIZES, type OneStickerSettings } from "../oneSticker";
+import { ONE_STICKER_SAMPLE, sampleInput, renderOptsFor, type OneStickerPath } from "../oneStickerPrint";
+import type { Fonts } from "../oneStickerText";
+import { fullFonts, installNodeFallbackDrawer } from "./oneSticker.harness";
+
+let F: Fonts;
+beforeAll(async () => { installNodeFallbackDrawer(); F = await fullFonts(); });
+const notes = (s: OneStickerSettings, path: OneStickerPath = "d520", items?: string[], shop = "Budgetukay") => {
+  const inp = { ...sampleInput(shop), ...(items ? { items } : {}) };
+  return fitNotes(layoutSticker(s, inp, F, renderOptsFor(path, s, path === "tspl" ? { bold: true } : {})), s);
+};
+
+describe("fit notes", () => {
+  it("the preview sample is buyer #128 (not 8888)", () => { expect(ONE_STICKER_SAMPLE.buyerNum).toBe(128); });
+  it("recommended settings: no red at every standard size, on every path (Niimbot in its SDK frame)", () => {
+    const bad: string[] = [];
+    for (const z of STANDARD_SIZES) for (const path of ["d520", "tspl", "niimbot", "laptop"] as OneStickerPath[]) for (const shop of ["", "Budgetukay", "Maria Ukay Ukay Shop TW"]) {
+      const n = notes(recommendedSettings(z), path, undefined, shop);
+      if (n.some((x) => x.kind === "bad")) bad.push(`${z.w}x${z.h} ${path} "${shop}": ${JSON.stringify(n)}`);
+    }
+    expect(bad).toEqual([]);
+  });
+  it("recommended settings + the preview sample: \"Everything fits\"", () => {
+    for (const z of STANDARD_SIZES) expect(notes(recommendedSettings(z))[0], `${z.w}x${z.h}`).toEqual({ kind: "ok" });
+  });
+  it("a long name on one line ends in \"…\" → amber (short), never red", () => {
+    const s = recommendedSettings({ w: 60, h: 40 });
+    s.parts.name.scale = 2;
+    const L = layoutSticker(s, { ...sampleInput("Budgetukay"), name: "Maria Cristina Dela Cruz Santos Reyes" }, F);
+    const n = fitNotes(L, s);
+    expect(n.some((x) => x.kind === "short" && x.parts.includes("name"))).toBe(true);
+    expect(n.some((x) => x.kind === "bad")).toBe(false);
+  });
+  it("a long comment shrinks (amber %), a very long one is cut (amber …), everything 2× runs off (red)", () => {
+    const s = recommendedSettings({ w: 60, h: 40 });
+    const shr = notes(s, "d520", ["A12 350 + B3 280 + C1 199 pasabay po yung itim na dress"]);
+    expect(shr.find((x) => x.kind === "shrunk")).toBeTruthy();
+    const cut = notes(s, "d520", ["A12 350 + B3 280 + C1 199 pasabay po yung itim na dress size M, ipon ko muna po hanggang Friday salamat po talaga sa inyo ulit po ".repeat(3)]);
+    expect(cut.find((x) => x.kind === "cut")).toBeTruthy();
+    expect(cut.some((x) => x.kind === "bad")).toBe(false);
+    const big = recommendedSettings({ w: 50, h: 30 });
+    for (const k of ["shop", "buyer", "name", "user", "comment"] as const) big.parts[k].scale = 2;
+    expect(notes(big).find((x) => x.kind === "bad")).toBeTruthy();
+  });
+  it("50×30: no shop name (info)", () => {
+    expect(notes(recommendedSettings({ w: 50, h: 30 })).some((x) => x.kind === "small")).toBe(true);
+  });
+});

@@ -8,18 +8,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, layoutSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
-  type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning,
+  recommendedSettings, renderOneSticker, layoutSticker, fitNotes, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor,
+  type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
-import { oneStickerFonts, renderOptsFor, type OneStickerPath } from "../adapters/oneStickerPrint";
+import { oneStickerFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
 import type { OneStickerDevicePath } from "../adapters/printing";
-
-const ONE_STICKER_SAMPLE: OneStickerInput = {
-  storeName: "", date: "11/07", time: "14:05", buyerNum: 128, name: "Maria Santos", handle: "maria_live", platform: "TikTok", items: ["COMMENT / PRICE"],
-};
-const sampleFor = (shopName: string): OneStickerInput => ({ ...ONE_STICKER_SAMPLE, storeName: shopName });
-// the fit check uses a 4-digit buyer number (the widest a busy live reaches)
-const fitSample = (shopName: string): OneStickerInput => ({ ...sampleFor(shopName), buyerNum: 8888 });
 
 const sameSettings = (a: OneStickerSettings, b: OneStickerSettings) => JSON.stringify(a) === JSON.stringify(b);
 const nextStep = (v: number, dir: 1 | -1): number => {
@@ -65,17 +58,19 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings }: { 
   );
 }
 
-/** The fit warnings of `settings` for this path (the layout only — no picture is drawn). */
-function useFitWarnings(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }): FitWarning[] {
-  const [w, setW] = useState<FitWarning[]>([]);
+/** The notes under the preview for `settings` on this path — the preview's own sample (the layout
+ *  only; no picture is drawn). */
+function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }): FitNote[] {
+  const [n, setN] = useState<FitNote[]>([]);
   const key = JSON.stringify({ settings, input, path, job });
   useEffect(() => {
     let live = true;
-    void oneStickerFonts(settings, input).then((fonts) => { if (live) setW(layoutSticker(settings, input, fonts, renderOptsFor(path, settings, job)).warnings); });
+    void oneStickerFonts(settings, input).then((fonts) => { if (live) setN(fitNotes(layoutSticker(settings, input, fonts, renderOptsFor(path, settings, job)), settings)); });
     return () => { live = false; };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
-  return w;
+  return n;
 }
+const NOTE_COLOR: Record<FitNote["kind"], string> = { ok: "var(--ok, #0F8A5F)", bad: "var(--danger)", shrunk: "var(--warn, #9A5C00)", cut: "var(--warn, #9A5C00)", short: "var(--warn, #9A5C00)", qr: "var(--warn, #9A5C00)", small: "var(--text-muted)" };
 
 const chip = (on: boolean): CSSProperties => ({ padding: "8px 11px", minHeight: 36, borderRadius: 10, border: "1px solid var(--border-strong)", background: on ? "var(--accent)" : "var(--surface)", color: on ? "var(--accent-text)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", flexShrink: 0 });
 const stepBtn: CSSProperties = { width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--accent-fg)", fontSize: 17, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
@@ -120,11 +115,11 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const dirty = !sameSettings(s, base);
   const small = isSmallClass(s.size.w, s.size.h);
   const tooWide = tooWideFor(p.printerName, s.size.w);
-  const input = useMemo(() => sampleFor(p.shopName), [p.shopName]);
-  const fitInput = useMemo(() => fitSample(p.shopName), [p.shopName]);
+  // the preview's sample (#128 Maria Santos @maria_live, today's Taipei date & time) — the same one the
+  // test buttons print and the same one the notes are measured on
+  const input = useMemo(() => sampleInput(p.shopName), [p.shopName]);
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
-  // fit check with a 4-digit buyer number (the widest a busy live reaches) → the red warning
-  const warnings = useFitWarnings(sEff, fitInput, path, p.genericBold ? { bold: true } : {});
+  const notes = useFitNotes(sEff, input, path, p.genericBold ? { bold: true } : {});
 
   const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
@@ -132,7 +127,6 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const blocked = !!tooWide || (customOpen && !customOk); // a size the printer cannot take is never saved
   const save = () => { if ((!dirty && saved) || blocked) return; p.onSave(s); setBase(s); setS(s); setSaved(true); };
 
-  const fitParts = warnings.filter((w) => w.part !== "comment" && w.part !== "qr");
   const partLabel: Record<PartKey, string> = { shop: t.rd_set_shop_name, buyer: t.rd_pp_buyer_num, name: t.rd_os_name, user: t.rd_os_user, comment: t.rd_pp_comment_center };
   const weightLabel: Record<Weight, string> = { normal: t.rd_os_w_normal, bold: t.rd_os_w_bold, extra: t.rd_os_w_extra };
   const rows: { k: PartKey; hint?: string; disabled?: boolean }[] = [
@@ -140,7 +134,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
     { k: "buyer" },
     { k: "name", hint: t.rd_os_name_fb },
     { k: "user", hint: t.rd_os_user_fb },
-    { k: "comment" },
+    { k: "comment", hint: t.rd_os_comment_hint },
   ];
   const rowOf = (k: PartKey) => rows.find((r) => r.k === k)!;
   const partRow = (r: (typeof rows)[number], last = false) => {
@@ -175,15 +169,23 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
 
       <div style={{ padding: "12px 14px 18px", maxWidth: 720, margin: "0 auto" }}>
         {/* 1. the exact picture */}
-        <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
+        <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)", display: "grid", gap: 8, justifyItems: "center" }}>
           <OneStickerPreview settings={sEff} input={input} path={path} job={p.genericBold ? { bold: true } : {}} />
+          <span data-testid="os-caption" style={{ color: "#fff", fontSize: 12, fontWeight: 600, opacity: 0.9, textAlign: "center" }}>{tpl(t.rd_os_caption, { w: String(s.size.w), h: String(s.size.h) })}</span>
         </div>
-        {fitParts.length > 0 && (
-          <div data-testid="os-fit" style={{ marginTop: 8, padding: "9px 11px", borderRadius: 10, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>
-            {tpl(t.rd_os_fit, { parts: [...new Set(fitParts.map((w) => partLabel[w.part as PartKey]))].join(", ") })}
-          </div>
-        )}
-        {warnings.some((w) => w.part === "qr") && sEff.qr && <div data-testid="os-fit-qr" style={{ marginTop: 6, fontSize: 12, color: "var(--warn)" }}>{t.rd_os_fit_qr}</div>}
+        <div data-testid="os-notes" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {notes.map((n, i) => (
+            <span key={i} data-testid={n.kind === "bad" ? "os-fit" : n.kind === "qr" ? "os-fit-qr" : `os-note-${n.kind}`} style={{ fontSize: 12, fontWeight: 600, padding: "4px 9px", borderRadius: 999, border: "1px solid var(--border)", background: n.kind === "bad" ? "var(--danger-soft)" : "var(--surface)", color: NOTE_COLOR[n.kind], lineHeight: 1.4 }}>
+              {n.kind === "bad" ? tpl(t.rd_os_fit, { parts: n.parts.map((k) => partLabel[k]).join(", ") })
+                : n.kind === "shrunk" ? tpl(t.rd_os_note_shrunk, { pct: String(n.pct) })
+                : n.kind === "cut" ? t.rd_os_note_cut
+                : n.kind === "short" ? tpl(t.rd_os_note_short, { parts: n.parts.map((k) => partLabel[k]).join(", ") })
+                : n.kind === "qr" ? t.rd_os_fit_qr
+                : n.kind === "small" ? t.rd_os_note_small
+                : t.rd_os_note_ok}
+            </span>
+          ))}
+        </div>
         {p.devicePath === "text" && <div data-testid="os-text-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_text_path}</div>}
         {p.devicePath === "wifi" && <div data-testid="os-wifi-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_wifi_path}</div>}
 
@@ -222,8 +224,11 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           {/* the approved preview's order: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price */}
           {partRow(rowOf("shop"))}
           <div data-testid="os-row-date" style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", borderBottom: "1px solid var(--border)" }}>
-            <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_pp_date_time}</span>
-            <span style={{ fontSize: 11.5, fontStyle: "italic", color: "var(--text-muted)", textAlign: "right" }}>{t.rd_os_date_fixed}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_pp_date_time}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_os_date_always}</div>
+            </div>
+            <span style={{ fontSize: 11.5, fontStyle: "italic", color: "var(--text-muted)", textAlign: "right" }}>{t.rd_os_date_size}</span>
           </div>
           {partRow(rowOf("buyer"))}
           {partRow(rowOf("name"))}

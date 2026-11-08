@@ -28,6 +28,18 @@ describe("OneStickerPattern", () => {
     expect(screen.queryByText(/logo/i)).toBeNull();
     expect(screen.queryByText(/SellerFlowLive/)).toBeNull();
   });
+  it("under the preview: \"Exact preview · W×H mm\" and the notes (fits / red only when a part runs off)", async () => {
+    renderIt();
+    expect(screen.getByTestId("os-caption").textContent).toBe("Exact preview · 100×60 mm");
+    expect((await screen.findByTestId("os-note-ok")).textContent).toBe("Everything fits");
+    expect(screen.queryByTestId("os-fit")).toBeNull();
+    fireEvent.click(screen.getByTestId("os-size-50x30"));
+    expect(screen.getByTestId("os-caption").textContent).toBe("Exact preview · 50×30 mm");
+    for (const k of ["shop", "buyer", "name", "user", "comment"]) for (let i = 0; i < 9; i++) fireEvent.click(screen.getByTestId(`os-${k}-plus`));
+    expect((await screen.findByTestId("os-fit")).textContent).toContain("Too big");
+    expect(screen.getByTestId("os-row-comment").textContent).toContain("Shrinks automatically when long");
+    expect(screen.getByTestId("os-row-date").textContent).toContain("Fixed size");
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));

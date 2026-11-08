@@ -134,7 +134,7 @@ export { CJK_CELLS };
 // ── Layout ────────────────────────────────────────────────────────────────────────────────────
 interface Laid { run: LineRun; px: number; weight: SansWeight; ink: boolean; x: number; baseline: number; clip: number }
 interface QrBox { matrix: boolean[][]; x: number; y: number; mod: number }
-export interface Layout { w: number; h: number; lines: Laid[]; qr: QrBox | null; warnings: FitWarning[]; sizes: number[]; commentPx: number | null }
+export interface Layout { w: number; h: number; lines: Laid[]; qr: QrBox | null; warnings: FitWarning[]; sizes: number[]; commentPx: number | null; commentWantPx: number | null }
 
 export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): Layout {
   const wMm = s.size.w, hMm = s.size.h;
@@ -271,12 +271,13 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     placeLine(line, p, st, "user");
   }
   // 5. comment / price — every line left; shrink to the minimum, then "…"
-  let commentPx: number | null = null;
+  let commentPx: number | null = null, commentWantPx: number | null = null;
   const comment = printableText(inp.items.filter(Boolean).join(" · "));
   if (P.comment.on && comment) {
     const startY = y;
     const wChosen = wt("comment");
     let p = px("comment", B.comment);
+    commentWantPx = p;
     const minP = Math.min(p, B.minComment);
     const ideo = hasIdeograph(comment);
     for (;;) {
@@ -303,7 +304,29 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
       p = Math.max(minP, Math.round(p * 0.92) === p ? p - 1 : Math.round(p * 0.92));
     }
   }
-  return { w: W, h: H, lines, qr, warnings: dedupWarnings(warnings), sizes, commentPx };
+  return { w: W, h: H, lines, qr, warnings: dedupWarnings(warnings), sizes, commentPx, commentWantPx };
+}
+// ── The notes under the preview (approved Step 0 preview) ───────────────────────────────────────
+//   bad  = a part runs off the BOTTOM of the label, or the buyer number does not fit (red "Too big")
+//   warn = the comment was made smaller to fit (N %), the comment end was cut ("…"), a one-line part
+//          was shortened with "…", or the QR has no room (amber)
+//   info = no shop name on a label this small
+//   ok   = everything fits (shown when there is no bad / warn)
+export type FitNote = { kind: "bad"; parts: PartKey[] } | { kind: "shrunk"; pct: number } | { kind: "cut" } | { kind: "short"; parts: PartKey[] } | { kind: "qr" } | { kind: "small" } | { kind: "ok" };
+export function fitNotes(L: Pick<Layout, "warnings" | "commentPx" | "commentWantPx">, s: OneStickerSettings): FitNote[] {
+  const out: FitNote[] = [];
+  // off the bottom — or a buyer number too wide to print whole (a number is never shortened with "…")
+  const off = L.warnings.filter((w) => (w.kind === "height" || w.part === "buyer") && w.part !== "qr").map((w) => w.part as PartKey);
+  if (off.length) out.push({ kind: "bad", parts: [...new Set(off)] });
+  const commentCut = L.warnings.some((w) => w.part === "comment" && w.kind === "width");
+  if (L.commentPx != null && L.commentWantPx != null && L.commentPx < L.commentWantPx && !commentCut && !off.includes("comment")) out.push({ kind: "shrunk", pct: Math.round((L.commentPx / L.commentWantPx) * 100) });
+  if (commentCut) out.push({ kind: "cut" });
+  const short = L.warnings.filter((w) => w.kind === "width" && w.part !== "comment" && w.part !== "qr" && w.part !== "buyer").map((w) => w.part as PartKey);
+  if (short.length) out.push({ kind: "short", parts: [...new Set(short)] });
+  if (L.warnings.some((w) => w.part === "qr") && s.qr) out.push({ kind: "qr" });
+  if (isSmallClass(s.size.w, s.size.h) && s.parts.shop.on) out.push({ kind: "small" });
+  if (!out.some((n) => n.kind !== "small")) out.unshift({ kind: "ok" });
+  return out;
 }
 function dedupWarnings(ws: FitWarning[]): FitWarning[] {
   const seen = new Set<string>(); const out: FitWarning[] = [];

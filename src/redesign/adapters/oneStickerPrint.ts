@@ -105,6 +105,20 @@ export function oneStickerInputFrom(buyer: Buyer, storeName: string, at?: number
   };
 }
 
+// ── The sample (approved preview): what the screen shows AND what its test buttons print ──────
+// Buyer #128 "Maria Santos" @maria_live (TikTok), the seller's own shop name, today's Taipei date &
+// time; the long-comment tests swap the comment only. Never the app's brand, never a brand QR.
+export const ONE_STICKER_SAMPLE = { buyerNum: 128, name: "Maria Santos", handle: "maria_live", platform: "TikTok", items: ["COMMENT / PRICE"] } as const;
+export function sampleInput(shopName: string, at: number = Date.now()): OneStickerInput {
+  return { storeName: stickerShopName(shopName), date: TAIPEI_DATE.format(new Date(at)), time: TAIPEI_TIME.format(new Date(at)), buyerNum: ONE_STICKER_SAMPLE.buyerNum, name: ONE_STICKER_SAMPLE.name, handle: ONE_STICKER_SAMPLE.handle, platform: ONE_STICKER_SAMPLE.platform, items: [...ONE_STICKER_SAMPLE.items] };
+}
+/** The sample as an order (for the test prints): the same buyer, `item` = the comment. */
+export function sampleBuyer(item: string = ONE_STICKER_SAMPLE.items[0], at: number = Date.now()): Buyer {
+  const S = ONE_STICKER_SAMPLE;
+  return { num: S.buyerNum, name: S.name, handle: S.handle, platform: S.platform, totalSpent: 0, totalOrders: 1,
+    orders: [{ orderNum: at, item, qty: 1, price: 0, total: 0, time: TAIPEI_TIME.format(new Date(at)), handle: S.handle, name: S.name, bNum: S.buyerNum, platform: S.platform, status: "New", date: new Date(at).toISOString().slice(0, 10) }] } as unknown as Buyer;
+}
+
 // ── Paths ─────────────────────────────────────────────────────────────────────────────────────
 export type OneStickerPath = "d520" | "tspl" | "escpos" | "cpcl" | "niimbot" | "laptop";
 export const NIIMBOT_INSET_MM = 1;      // must equal printing.ts NIIMBOT_FRAME_INSET_MM + the native twins
