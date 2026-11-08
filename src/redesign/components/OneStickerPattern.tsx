@@ -72,6 +72,18 @@ function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path:
 }
 const NOTE_COLOR: Record<FitNote["kind"], string> = { ok: "var(--ok, #0F8A5F)", bad: "var(--danger)", shrunk: "var(--warn, #9A5C00)", cut: "var(--warn, #9A5C00)", short: "var(--warn, #9A5C00)", qr: "var(--warn, #9A5C00)", small: "var(--text-muted)" };
 
+// Phone: one column. Laptop (the screen area ≥ 760 px): two columns, the preview on the left and
+// sticky while the controls scroll (approved preview).
+const OS_CSS = `
+.os-wrap{container-type:inline-size}
+.os-body{display:grid;gap:0;padding:12px 14px 18px;max-width:720px;margin:0 auto}
+.os-pv,.os-ctl{min-width:0}
+.os-ctl{margin-top:14px}
+@container (min-width:760px){
+  .os-body{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:start;gap:20px;padding:20px;max-width:1180px}
+  .os-pv{position:sticky;top:84px}
+  .os-ctl{margin-top:0}
+}`;
 // Every control is at least 44 px tall to tap (audit 10); the visible pill / circle / switch keeps the
 // approved preview's size inside that area.
 const TAP = 44;
@@ -183,7 +195,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.rd_set_live_pattern}</div>
       </div>
 
-      <div style={{ padding: "12px 14px 18px", maxWidth: 720, margin: "0 auto" }}>
+      <style>{OS_CSS}</style>
+      <div className="os-wrap">
+      <div className="os-body" data-testid="os-body">
+        <div className="os-pv" data-testid="os-pv-col">
         {/* 1. the exact picture */}
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)", display: "grid", gap: 8, justifyItems: "center" }}>
           <OneStickerPreview settings={sEff} input={input} path={path} job={p.genericBold ? { bold: true } : {}} />
@@ -212,9 +227,12 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           <button onClick={() => p.onTest(sEff, "zh", dirty || !saved)} data-testid="os-test-zh" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_cjk}</button>
         </div>
 
+        </div>
+        <div className="os-ctl" data-testid="os-ctl-col">
         {/* 3. paper size */}
-        <div style={{ marginTop: 14, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{t.rd_os_size}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 7 }} data-testid="os-sizes">
+        <div data-testid="os-size-card" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", padding: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)", padding: "0 4px" }}>{t.rd_os_size}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }} data-testid="os-sizes">
           {STANDARD_SIZES.filter((z) => customAllowed || !(z.w === 50 && z.h === 30)).map((z) => (
             <button key={`${z.w}x${z.h}`} type="button" onClick={() => pickSize(z.w, z.h)} aria-pressed={isStd(z.w, z.h)} data-testid={`os-size-${z.w}x${z.h}`} style={chip(isStd(z.w, z.h))}>{z.w}×{z.h}</button>
           ))}
@@ -234,6 +252,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           </div>
         )}
         {tooWide && <div data-testid="os-too-wide" style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: tooWide.model, max: String(tooWide.maxLabelMm) })}</div>}
+        </div>
 
         {/* 4. one row per part */}
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden", marginTop: 13 }}>
@@ -265,6 +284,8 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         <button type="button" onClick={reset} data-testid="os-reset" style={{ width: "100%", marginTop: 12, padding: "11px 0", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_os_reset}</button>
         <div data-testid="os-device-note" style={{ marginTop: 9, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.45 }}>{saved && !dirty ? t.rd_os_active_note : t.rd_os_optin_note}</div>
         <button type="button" onClick={save} disabled={!dirty || blocked} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: dirty ? "pointer" : "default", opacity: dirty && !blocked ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
+        </div>
+      </div>
       </div>
     </div>
   );

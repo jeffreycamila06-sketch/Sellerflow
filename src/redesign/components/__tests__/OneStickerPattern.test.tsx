@@ -63,6 +63,17 @@ describe("OneStickerPattern", () => {
     expect((screen.getByTestId("os-name-plus") as HTMLButtonElement).disabled).toBe(false);
     void onSave;
   });
+  it("laptop (≥760 px): two columns — the preview column (picture, notes, tests) sticky on the left, the controls on the right", () => {
+    renderIt();
+    const pv = screen.getByTestId("os-pv-col"), ctl = screen.getByTestId("os-ctl-col");
+    for (const id of ["os-preview", "os-notes", "os-test", "os-test-en", "os-test-zh"]) expect(pv.contains(screen.getByTestId(id)), id).toBe(true);
+    for (const id of ["os-size-card", "os-row-shop", "os-row-comment", "os-reset", "os-save"]) expect(ctl.contains(screen.getByTestId(id)), id).toBe(true);
+    expect(pv.compareDocumentPosition(ctl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // preview first = left
+    const css = document.querySelector("style")!.textContent!.replace(/\s+/g, " ");
+    expect(css).toContain("@container (min-width:760px)");
+    expect(css).toContain("grid-template-columns:minmax(0,1fr) minmax(0,1.05fr)");
+    expect(css).toMatch(/\.os-pv\{position:sticky;top:\d+px\}/);
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
