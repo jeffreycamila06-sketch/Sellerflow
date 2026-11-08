@@ -200,3 +200,33 @@ describe("TEXT fallback size", () => {
     expect(textStickerSizeFor({ w: 50, h: 30 })).toBe("60x40"); // nothing fits → the smallest TEXT size
   });
 });
+
+const AMY = inp({ buyerNum: 128 });
+describe("approved preview — Buyer word, date size (audit 17a/b)", () => {
+  it("the small \"Buyer\" word uses the seller's Buyer # weight and 0.42 of its size", () => {
+    for (const weight of ["normal", "bold", "extra"] as const) {
+      const s = S(100, 60, (x) => { x.parts.buyer.weight = weight; });
+      const L = layoutSticker(s, AMY, F, { guard: false });
+      const word = L.lines.find((l) => l.run.text === "Buyer")!, num = L.lines.find((l) => l.run.text === "128")!;
+      expect(word.weight, weight).toBe(num.weight);
+      expect(word.px).toBe(Math.round(num.px * 0.42));
+    }
+  });
+  it("date & time: height × 0.065 mm, between 2.0 and 3.0 mm, fixed (not seller-adjustable)", () => {
+    for (const [w, h] of [[50, 30], [60, 40], [70, 50], [80, 50], [80, 60], [100, 60], [40, 30], [75, 45], [110, 110], [30, 30]]) {
+      const want = Math.round(Math.min(3, Math.max(2, h * 0.065)) * 8);
+      expect(baseSizes(w, h).date, `${w}x${h}`).toBe(want);
+      const s = S(w, h, (x) => { for (const k of ["shop", "buyer", "name", "user", "comment"] as const) x.parts[k].scale = 2; });
+      expect(layoutSticker(s, AMY, F).lines.find((l) => l.run.text.includes(":"))!.px, `${w}x${h} not scaled`).toBe(want);
+    }
+  });
+  it("the date still fits next to the QR at every size (inside the label, QR below it, no overlap)", () => {
+    for (const [w, h] of [[50, 30], [60, 40], [70, 50], [80, 50], [80, 60], [100, 60], [40, 30], [75, 45]]) {
+      const L = layoutSticker(S(w, h), AMY, F);
+      const d = L.lines.find((l) => l.run.text.includes(":"))!;
+      expect(d.x, `${w}x${h}`).toBeGreaterThanOrEqual(0);
+      expect(d.x + d.run.width, `${w}x${h}`).toBeLessThanOrEqual(L.w);
+      if (L.qr) expect(L.qr.y, `${w}x${h} QR under the date`).toBeGreaterThan(d.baseline);
+    }
+  });
+});

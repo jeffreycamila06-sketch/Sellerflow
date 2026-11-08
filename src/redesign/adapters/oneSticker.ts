@@ -70,14 +70,15 @@ export const isSmallClass = (wMm: number, hMm: number): boolean => hMm < 35 || w
 interface Base { shop: number; word: number; num: number; name: number; user: number; comment: number; date: number; minComment: number; margin: number }
 /** Text sizes (px = dots per em) at 1× for this label. */
 export function baseSizes(wMm: number, hMm: number): Base {
-  const f = Math.max(0.8, Math.min(2.2, Math.min(hMm / 30, wMm / 50)));
-  const small = isSmallClass(wMm, hMm);
-  const r = (n: number) => Math.max(10, Math.round(n * f));
+  void wMm;
+  // the APPROVED preview's own formulas (mm of label HEIGHT → dots per em at 8 dots/mm)
+  const mm = (k: number) => Math.max(10, Math.round(hMm * k * 8));
+  const num = mm(0.19);
   return {
-    shop: r(24), word: r(20), num: r(56), name: r(30), user: r(24), comment: r(30),
-    date: f < 1.25 ? 17 : 20,
-    minComment: small ? 17 : 19, // ≈2.1 mm / ≈2.4 mm
-    margin: wMm >= 60 && hMm >= 40 ? 12 : 8,
+    shop: mm(0.10), word: Math.round(num * 0.42), num, name: mm(0.105), user: mm(0.085), comment: mm(0.12),
+    date: Math.round(Math.min(3.0, Math.max(2.0, hMm * 0.065)) * 8), // fixed, 2.0–3.0 mm
+    minComment: hMm < 35 ? 17 : 19, // ≈2.1 mm on a short label, ≈2.4 mm otherwise
+    margin: 12,                      // 1.5 mm
   };
 }
 
@@ -106,7 +107,7 @@ export const qrAllowedForPlatform = (p?: string) => !["facebook", "instagram", "
 
 // ── Fonts ─────────────────────────────────────────────────────────────────────────────────────
 export function weightsFor(s: OneStickerSettings): SansWeight[] {
-  const set = new Set<SansWeight>([700]); // date / "Buyer" word
+  const set = new Set<SansWeight>([700]); // the date (the "Buyer" word follows Buyer #)
   for (const k of PART_KEYS) if (s.parts[k].on) set.add(WEIGHT_PX[s.parts[k].weight]);
   return [...set];
 }
@@ -175,7 +176,7 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   const dX = W - mx - dRun.width;
   add({ run: dRun, px: B.date, weight: dSt.weight, ink: dSt.ink, x: dX, baseline: dBase, clip: W });
   const dBottom = dBase + Math.max(dExt.desc, 2);
-  const obstacles: { top: number; bottom: number; left: number }[] = [{ top: dTop - 2, bottom: dBottom + 2, left: dX - 14 }];
+  const obstacles: { top: number; bottom: number; left: number }[] = [{ top: dTop - 2, bottom: dBottom + 2, left: dX - 10 }]; // 1.2 mm clear of the date (preview)
 
   // QR — TikTok only, under the date, right side
   let qr: QrBox | null = null;
@@ -232,9 +233,9 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   // 2. "Buyer 12"
   const num = inp.buyerNum != null && String(inp.buyerNum) !== "" ? String(inp.buyerNum) : "";
   if (P.buyer.on && num) {
-    const pn = px("buyer", B.num), pw = Math.max(12, Math.round(pn * 0.36));
+    const pn = px("buyer", B.num), pw = Math.max(10, Math.round(pn * 0.42)); // the small word: 0.42 of the number (preview)
     const { st: nSt, out: nRun } = one(num, pn, wt("buyer"));
-    const { st: wSt, out: wRun } = one("Buyer", pw, 700);
+    const { st: wSt, out: wRun } = one("Buyer", pw, wt("buyer")); // the seller's Buyer # weight (preview)
     const ext = lineExtent(nRun, pn, wt("buyer"), fonts);
     const asc = Math.max(ext.asc, Math.round(pn * 0.72));
     const baseline = y + asc;
