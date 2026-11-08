@@ -50,19 +50,29 @@
 // in the cache (the sql/145 trigger then puts the verdict on the row the moment it is saved).
 //  • OFF unless app_settings 'frozen_warmup_enabled' is exactly 'true' — read (≤ once a minute) ONLY
 //    while the frozen switch is on, so "frozen switch off" stays byte-for-byte 1.17.0.
-//  • leader-only, and ONLY when the real queues are empty: the last frozen pending read (≤ 60 s ago)
+//  • leader-only on a FRESH, CONFIRMED lease (the last lease answer said leader ≤ 60 s ago and the
+//    lease call is not failing — never on the lease fail-open path, the pre-answer boot rule or a
+//    lone leader's stale lease), and ONLY when the real queues are empty: the last frozen pending read (≤ 60 s ago)
 //    returned NO row at all, the dry lane's last pending read (≤ 30 s ago) had 0 rows, no row in flight.
 //  • the warm-up request takes the frozen request's place in a pass (still ≤ ONE frozen E-Map request
 //    per pass), right at the kick, behind every gap guard the frozen lane uses — so a new real parcel
-//    waits at most for that one ≤ 3 s check (the next pass is ≥ 5 s after the kick anyway).
+//    waits at most for that one ≤ 3 s check (the next pass is ≥ 5 s after the kick anyway). It is NOT
+//    sent when more than WARMUP_SEND_WINDOW_MS (2 s) has passed since the kick (the gap is used early
+//    or not at all).
 //  • pace: ONE store per WARMUP_GAP_MS (60 s), day and night; the maintenance window is respected.
-//  • the stores come from admin_frozen_warmup_next (5 at a time, read ≤ once per 5 min — the query
-//    is heavy); the answer goes to admin_frozen_warmup_verdict (same cache, log source 'warmup').
-//  • safety: 3 no-answers in a row (timeout / no reply / error page) → warm-up pauses 30 min;
-//    a captcha / login page / block / HTTP 403 / 429 → warm-up STOPS: admin_frozen_warmup_stop turns
-//    the switch off and keeps the reason; the popup shows "Warm-up stopped: <reason>". It starts
-//    again only after the switch is seen 'false' and then 'true' (Jeff turns it on again).
-//    The dry and live frozen lanes keep working either way.
+//  • the stores come from admin_frozen_warmup_next (5 at a time, read NEVER sooner than 5 min after the
+//    last read, even when that read was empty — the query is heavy); a real answer goes to
+//    admin_frozen_warmup_verdict (same cache, log source 'warmup'). A no-answer (timeout / no reply /
+//    error page) writes NOTHING — it only counts as a miss.
+//  • safety: 3 no-answers in a row → warm-up pauses 30 min; 2 such pauses in a row with no real
+//    verdict (ok / no_frozen) in between → warm-up STOPS. A captcha / login page / block / HTTP 403 /
+//    429 → warm-up STOPS at once. A stop = admin_frozen_warmup_stop turns the switch off and keeps the
+//    reason; the popup shows "Warm-up stopped: <reason>". It starts again only after the switch is seen
+//    'false' and then 'true' (Jeff turns it on again). The dry and live frozen lanes keep working.
+//  • the pace (last request), the pause, the miss / pause counters, the stop and the ≤ 5 unchecked
+//    store ids of the last list read survive a worker
+//    restart: kept in chrome.storage (pc_frozen_warmup.mem) and loaded before the first warm-up decision.
+//    The popup line is written {on:false} at boot and whenever the frozen switch is seen off.
 (function sflFrozenStoreCheck(g) {
   const SWITCH_KEY = "frozen_store_check_enabled";
   const SWITCH_TTL_MS = 60 * 1000;           // re-read the switch at most once a minute
@@ -94,6 +104,8 @@
   const WARMUP_MISS_LIMIT = 3;                 // no-answers in a row → pause
   const WARMUP_PAUSE_MS = 30 * 60 * 1000;
   const WARMUP_STATE_KEY = "pc_frozen_warmup"; // its own storage key (never races pc_status)
+  const WARMUP_PAUSES_STOP = 2;                // pauses in a row with no real verdict → STOP
+  const WARMUP_SEND_WINDOW_MS = 2 * 1000;      // the warm-up request only within 2 s of the kick
   const BLOCK_RE = /HTTP (403|429)\b|captcha|驗證碼|recaptcha|login|登入|robot|blocked|too many requests/i;
   const st = {
     busy: false, switchOn: false, switchAt: 0, switchLogged: null,
@@ -111,10 +123,25 @@
     queue: [], queueAt: 0, emptyUntil: 0,
     lastAt: 0,                 // the last warm-up request (the 60 s pace)
     misses: 0, pauseUntil: 0,  // no-answers in a row → 30 min pause
+    pauses: 0,                 // pauses since the last real verdict (ok / no_frozen) → 2 = STOP
     stopped: false, stopReason: "", stopWritten: false, sawOffSinceStop: false,
     checked: null, left: null, nothingDue: false, lastVerdictAt: 0,
-    stateSig: "",
+    stateSig: "", loaded: false,
   };
+  // the part of `warm` that must survive a worker restart (pc_frozen_warmup.mem)
+  const MEM_KEYS = ["lastAt", "pauseUntil", "misses", "pauses", "stopped", "stopReason", "stopWritten", "sawOffSinceStop", "queueAt", "queue"];
+  const memOf = () => { const m = {}; for (const k of MEM_KEYS) m[k] = k === "queue" ? warm.queue.slice(0, WARMUP_LIMIT) : warm[k]; return m; };
+  function restoreMem(m) {
+    if (!m || typeof m !== "object") return;
+    const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    warm.lastAt = num(m.lastAt); warm.pauseUntil = num(m.pauseUntil); warm.queueAt = num(m.queueAt);
+    warm.misses = Math.max(0, Math.floor(num(m.misses))); warm.pauses = Math.max(0, Math.floor(num(m.pauses)));
+    warm.stopped = m.stopped === true; warm.stopReason = typeof m.stopReason === "string" ? m.stopReason.slice(0, 200) : "";
+    warm.stopWritten = m.stopWritten === true; warm.sawOffSinceStop = m.sawOffSinceStop === true;
+    // the unchecked stores of the last list read (≤ 5 ids) — so a restart does not wait 5 min for a new read
+    warm.queue = Array.isArray(m.queue) ? m.queue.map(String).filter((x) => /^\d{6}$/.test(x)).slice(0, WARMUP_LIMIT) : [];
+    if (warm.stopped) { warm.on = false; warm.queue = []; }
+  }
   const log = (msg) => { try { console.log(`[PC-FROZEN] ${msg}`); } catch { /* never throw from a log */ } };
   const logW = (msg) => { try { console.log(`[PC-WARMUP] ${msg}`); } catch { /* never throw from a log */ } };
   const logSkip = (key, msg) => { const now = Date.now(); if (now - (st.logAt.get(key) || 0) >= 60 * 1000) { st.logAt.set(key, now); log(`${msg} — next pass`); } };
@@ -125,6 +152,12 @@
     if (st.kicks !== pcEv.tick) return `${pcEv.tick - st.kicks} other pass(es) before their row checks`;
     if (atKick && pcTimer !== null) return "another pass already re-armed the loop";
     return "";
+  }
+  // 10: warm-up needs a FRESH, CONFIRMED lease — the last lease answer said leader, ≤ 60 s ago, and the
+  // lease call is not failing. pcPassLeader alone also says yes on the 3-min fail-open path, before the
+  // first answer (role null) and for a lone leader on a stale lease — warm-up never runs on those.
+  function leaseConfirmed(nowMs) {
+    return pcLease.role === "leader" && !pcLease.failing && pcLease.lastOkAt > 0 && nowMs - pcLease.lastOkAt <= PC_LEASE_MAX_AGE_MS;
   }
 
   // ── PURE helpers (unit-tested through pcFrozenKick.__test) ────────────────────
@@ -182,6 +215,7 @@
     } catch { on = false; }
     st.switchOn = on; st.switchAt = nowMs;
     if (st.switchLogged !== on) { st.switchLogged = on; log(`switch ${on ? "ON" : "off"}`); }
+    if (!on) { warm.on = false; warm.switchAt = 0; }        // 12: warm-up off with it; the save right after this read writes {on:false}
   }
   async function readPending(cfg, headers, nowMs) {
     st.queue = []; st.queueAt = nowMs;
@@ -220,7 +254,8 @@
   // ── one pass: at most ONE frozen E-Map request, sent right at the kick ────────
   // Order: (1) the request, from rows read in an earlier pass — nothing from the database
   // before it; (2) its verdict write; (3) refresh the switch / rows for the NEXT pass.
-  async function runPass(pass, otherAtKick) {
+  async function runPass(pass, otherAtKick, kickAt) {
+    await loadWarm();                                       // 6: the saved warm-up state, before any warm-up decision
     const nowMs = Date.now();
     const cfg = await withTimeout(pcConfig(), CONFIG_TIMEOUT_MS, "config read");
     if (!cfg.multiSeller || cfg.paused) return;
@@ -231,20 +266,21 @@
     if (st.switchOn && tabId && !pcInMaintenance(nowMs)) {
       await sendOne(pass, otherAtKick, rpc, tabId, nowMs);
       // warm-up takes the frozen request's place ONLY when the frozen queue is empty by a fresh read
-      if (!st.queue.length && nowMs < st.emptyUntil && st.lastRaw === 0) await warmOne(pass, otherAtKick, rpc, tabId, nowMs);
+      if (!st.queue.length && nowMs < st.emptyUntil && st.lastRaw === 0) await warmOne(pass, otherAtKick, rpc, tabId, nowMs, kickAt);
     }
     // (3) refresh for the next pass — AFTER the request, never between the kick and it
     if (Date.now() - st.switchAt >= SWITCH_TTL_MS) await readSwitch(rpc.cfg, rpc.rpcHeaders, Date.now());
     if (st.switchOn && Date.now() - warm.switchAt >= SWITCH_TTL_MS) await readWarmSwitch(rpc.cfg, rpc.rpcHeaders, Date.now());
-    if (warm.stopped && !warm.stopWritten) await writeStop(rpc.cfg, rpc.rpcHeaders);
-    if (st.switchOn || warm.stateSig) await saveWarmState();             // frozen switch off and never on → no write at all
+    if (st.switchOn && warm.stopped && !warm.stopWritten) await writeStop(rpc.cfg, rpc.rpcHeaders);
+    await saveWarmState();                                               // written only when it changed
     if (!st.switchOn || !tabId || pcInMaintenance(Date.now())) return;   // no live E-Map tab / window → the rows stay queued in the DB
     if ((!st.queue.length || Date.now() - st.queueAt >= QUEUE_MAX_AGE_MS) && Date.now() >= st.emptyUntil && Date.now() >= st.pauseUntil) {
       await readPending(rpc.cfg, rpc.rpcHeaders, Date.now());          // D: not again for 60 s after an empty read
     }
-    if (warm.on && !st.queue.length && Date.now() < st.emptyUntil && st.lastRaw === 0 && (!warm.queue.length || Date.now() - warm.queueAt >= WARMUP_LIST_MAX_AGE_MS)
-        && Date.now() >= warm.emptyUntil && Date.now() >= warm.pauseUntil && (await dryIdle())) {
-      await readWarmList(rpc.cfg, rpc.rpcHeaders, Date.now());          // the heavy query: only while idle, ≤ once per 5 min
+    if (warm.on && !st.queue.length && Date.now() < st.emptyUntil && st.lastRaw === 0 && Date.now() - warm.queueAt >= WARMUP_LIST_MAX_AGE_MS
+        && Date.now() >= warm.emptyUntil && Date.now() >= warm.pauseUntil && leaseConfirmed(Date.now()) && (await dryIdle())) {
+      await readWarmList(rpc.cfg, rpc.rpcHeaders, Date.now());          // 8: the heavy query — only while idle, NEVER sooner than 5 min after the last read
+      await saveWarmState();
     }
   }
   async function sendOne(pass, otherAtKick, rpc, tabId, nowMs) {
@@ -312,7 +348,7 @@
     warm.switchAt = nowMs;
     if (warm.stopped) {
       if (!v && warm.stopWritten) warm.sawOffSinceStop = true;
-      if (v && warm.sawOffSinceStop) { warm.stopped = false; warm.stopReason = ""; warm.sawOffSinceStop = false; warm.misses = 0; log("warm-up switched on again"); }
+      if (v && warm.sawOffSinceStop) { warm.stopped = false; warm.stopReason = ""; warm.sawOffSinceStop = false; warm.misses = 0; warm.pauses = 0; warm.pauseUntil = 0; logW("warm-up switched on again"); }
     }
     warm.on = v && !warm.stopped;
     if (warm.switchLogged !== warm.on) { warm.switchLogged = warm.on; logW(`warm-up ${warm.on ? "ON" : "off"}`); }
@@ -343,48 +379,79 @@
     } catch (e) { logW(`warm-up stop failed: ${(e && e.message) || "network"} — retrying next pass`); }
   }
   // The popup line ("Frozen warm-up: N checked · M left · last at HH:MM"), in its own storage key.
+  // The same key carries `mem` (6: what must survive a worker restart); the popup reads only the top level.
+  // 12: frozen switch off → the line is {on:false} (no stale "N checked" / "stopped" from before).
   async function saveWarmState() {
-    const show = warm.on || warm.stopped;
+    if (!warm.loaded) return;                         // never overwrite the saved state before it was read
+    const show = st.switchOn && (warm.on || warm.stopped);
     const state = show ? { on: warm.on, checked: warm.checked, left: warm.left, lastAt: warm.lastVerdictAt || null,
       pausedUntil: warm.pauseUntil > Date.now() ? warm.pauseUntil : null, nothingDue: warm.nothingDue,
       stopped: warm.stopped, stopReason: warm.stopReason || "" } : { on: false };
+    state.mem = memOf();
     const sig = JSON.stringify(state);
     if (sig === warm.stateSig) return;
     warm.stateSig = sig;
     try { await withTimeout(pcSet(WARMUP_STATE_KEY, state), CONFIG_TIMEOUT_MS, "warm-up state write"); } catch { warm.stateSig = ""; }
   }
+  // 6: read the saved state ONCE (at boot — the module schedules it — and awaited by every pass before a
+  // warm-up decision), then write the popup line {on:false} (12). Bounded; a failed read = fresh state.
+  let loadP = null;
+  function loadWarm() {
+    if (!loadP) {
+      loadP = (async () => {
+        try { const saved = await withTimeout(pcGet(WARMUP_STATE_KEY, null), CONFIG_TIMEOUT_MS, "warm-up state read"); restoreMem(saved && saved.mem); }
+        catch { /* fresh state */ }
+        warm.loaded = true;
+        if (warm.stopped || warm.pauseUntil > Date.now()) logW(`warm-up state restored (${warm.stopped ? `stopped: ${warm.stopReason}` : `paused until ${new Date(warm.pauseUntil).toISOString()}`})`);
+        await saveWarmState();
+      })().catch(() => { warm.loaded = true; });
+    }
+    return loadP;
+  }
+  function stopWarm(reason, store) {
+    warm.stopped = true; warm.on = false; warm.stopReason = String(reason || "").slice(0, 200) || "blocked";
+    warm.stopWritten = false; warm.sawOffSinceStop = false; warm.queue = []; warm.misses = 0; warm.pauses = 0;
+    logW(`warm-up STOPPED: ${warm.stopReason} (store=${store}) — turning the warm-up switch off`);
+  }
   // ONE warm-up request, at the kick, behind the same guards as the frozen request.
-  async function warmOne(pass, otherAtKick, rpc, tabId, nowMs) {
+  async function warmOne(pass, otherAtKick, rpc, tabId, nowMs, kickAt) {
     if (!warm.on || warm.stopped || !warm.queue.length) return;
     if (nowMs - warm.lastAt < WARMUP_GAP_MS) return;                       // the 60 s pace
     if (nowMs < warm.pauseUntil || nowMs < st.pauseUntil) return;          // warm-up pause / the frozen lane's slow-E-Map pause
+    if (!leaseConfirmed(nowMs)) return;                                    // 10: a fresh, confirmed lease only
     if (otherAtKick || laneBusy(nowMs)) return;
     if (!(await dryIdle())) return;                                        // a real parcel waiting → it goes first
     warm.queue = warm.queue.filter((s) => storeDue(st.storeAt, s, nowMs));
     if (!warm.queue.length) return;
     if (!(await ensureScript(tabId, nowMs))) return;
-    if (!pcPassLeader(pass) || pcInMaintenance(Date.now())) return;
+    if (!pcPassLeader(pass) || !leaseConfirmed(Date.now()) || pcInMaintenance(Date.now())) return;
     if (laneBusy(Date.now()) || otherPass(false)) return;
     if (await alarmSoon(Date.now())) return;
     if (otherPass(false) || pcInFlight.size > 0) return;
+    if (Date.now() - kickAt > WARMUP_SEND_WINDOW_MS) { logSkip("warm-late", `warm-up skipped: ${Date.now() - kickAt} ms since the kick (> ${WARMUP_SEND_WINDOW_MS} ms)`); return; } // 11
     const store = warm.queue.shift();
     warm.lastAt = Date.now();
     st.storeAt.set(store, Date.now());                                     // shares the per-store 10-min floor
+    void saveWarmState();                                                  // 6: the pace survives a restart (not awaited — never delays the request)
     let resp = null; let threw = false;
     try { resp = await withTimeout(pcSendTab(tabId, { type: "PC_FROZEN_CHECK", row: { id: `warmup:${store}`, store_id: store } }), CHECK_TIMEOUT_MS, "warm-up check"); }
     catch (e) { threw = true; resp = { frozen_reason: (e && e.message) || "check threw", transient: true }; }
     const status = threw ? "unknown" : verdictOf(resp);
     const reason = resp ? String(resp.frozen_reason || "") : "emap tab not responding";
-    if (!threw && isBlocked(resp, reason)) {
-      warm.stopped = true; warm.on = false; warm.stopReason = reason.slice(0, 200) || "blocked"; warm.stopWritten = false; warm.sawOffSinceStop = false;
-      warm.queue = [];
-      logW(`warm-up STOPPED: ${warm.stopReason} (store=${store}) — turning the warm-up switch off`);
-      return;                                                              // a block answer is not written as a verdict
-    }
+    if (!threw && isBlocked(resp, reason)) { stopWarm(reason, store); return; } // a block answer is not written as a verdict
     if (status === "unknown" && noAnswer(threw ? null : resp, reason)) {
+      // 9: a no-answer writes NOTHING — it only counts as a miss
       warm.misses += 1;
-      if (warm.misses >= WARMUP_MISS_LIMIT) { warm.misses = 0; warm.pauseUntil = Date.now() + WARMUP_PAUSE_MS; logW(`warm-up: ${WARMUP_MISS_LIMIT} no-answers in a row (${reason}) — paused 30 min`); }
-    } else if (status !== "unknown") warm.misses = 0;
+      logW(`warm-up store=${store} → no answer (${reason}) — miss ${warm.misses}/${WARMUP_MISS_LIMIT}, nothing written`);
+      if (warm.misses >= WARMUP_MISS_LIMIT) {
+        warm.misses = 0; warm.pauses += 1;
+        if (warm.pauses >= WARMUP_PAUSES_STOP) stopWarm(`${WARMUP_PAUSES_STOP} pauses in a row with no answer from E-Map (last: ${reason})`.slice(0, 200), store); // 7
+        else { warm.pauseUntil = Date.now() + WARMUP_PAUSE_MS; logW(`warm-up: ${WARMUP_MISS_LIMIT} no-answers in a row (${reason}) — paused 30 min (pause ${warm.pauses}/${WARMUP_PAUSES_STOP})`); }
+      }
+      return;
+    }
+    warm.misses = 0;                                                       // a real answer breaks the "in a row"
+    if (status !== "unknown") warm.pauses = 0;                             // a real verdict ends the pause streak
     try {
       const w = await withTimeout(fetch(`${rpc.cfg.supabaseUrl}/rest/v1/rpc/admin_frozen_warmup_verdict`, {
         method: "POST", headers: rpc.rpcHeaders, body: JSON.stringify({ p_store: store, p_status: status }),
@@ -410,14 +477,16 @@
     st.kicks += 1;                                            // counted for EVERY pass, busy or not
     resyncKicks(Date.now());
     const otherAtKick = otherPass(true);                      // synchronous: before the kicking pass can end
+    const kickAt = Date.now();                                // 11: the warm-up request only within 2 s of this
     if (st.busy) return;
     st.busy = true;
     Promise.resolve()
-      .then(() => withTimeout(runPass(pass, otherAtKick), PASS_TIMEOUT_MS, "frozen pass"))
+      .then(() => withTimeout(runPass(pass, otherAtKick, kickAt), PASS_TIMEOUT_MS, "frozen pass"))
       .catch((e) => { st.lastError = (e && e.message) || "pass threw"; log(`pass failed: ${st.lastError}`); })
       .then(() => { st.busy = false; });
   }
   pcFrozenKick.__test = { switchValue, verdictOf, slowAnswer, pickRows, storeDue, laneBusy, otherPass, alarmSoon, resyncKicks, state: st,
-    warm, isBlocked, noAnswer, WARMUP_GAP_MS };
+    warm, isBlocked, noAnswer, leaseConfirmed, WARMUP_GAP_MS, WARMUP_SEND_WINDOW_MS };
   g.pcFrozenKick = pcFrozenKick;
+  Promise.resolve().then(loadWarm).catch(() => { /* never throw at boot */ }); // 6 + 12: at boot (after background.js finished loading)
 })(typeof self !== "undefined" ? self : globalThis);

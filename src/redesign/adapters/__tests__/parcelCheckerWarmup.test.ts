@@ -7,8 +7,12 @@
 //     heavy store-list read is not made either);
 //   • safety: captcha / login / block / HTTP 403 / 429 → STOP (switch off via admin_frozen_warmup_stop +
 //     reason in the popup state), restart only after the switch is seen off and then on again;
-//     3 no-answers in a row → 30-min pause (NO2 / close answers do not count);
-//   • leader-only, maintenance window respected.
+//     3 no-answers in a row → 30-min pause (NO2 / close answers do not count); a no-answer writes NO
+//     verdict; 2 pauses in a row with no real verdict → STOP;
+//   • leader-only on a FRESH CONFIRMED lease (never on the fail-open path), maintenance window respected,
+//     the request only within 2 s of the kick, the store list never re-read sooner than 5 min;
+//   • the pace / pause / counters / stop survive a worker restart (pc_frozen_warmup.mem); the popup
+//     line is {on:false} at boot and whenever the frozen switch is seen off.
 import { describe, it, expect } from "vitest";
 import { bootWorker } from "./parcelCheckerHarness";
 
@@ -33,6 +37,9 @@ const liveFrozenMsgs = (w: W) => w.calls.sendMessage.filter((m) => m.type === "P
 const bodiesOf = (w: W, re: RegExp) => w.calls.fetch.map((u, i) => [u, w.calls.fetchBodies[i]] as const).filter(([u]) => re.test(u)).map(([, b]) => JSON.parse(b || "{}") as Record<string, unknown>);
 const count = (w: W, re: RegExp) => w.calls.fetch.filter((u) => re.test(u)).length;
 const WARM_GET = /app_settings\?select=key,value&key=eq\.frozen_warmup_enabled$/;
+// the popup part of pc_frozen_warmup (the `mem` part is the restart memory)
+const shown = (w: W) => { const { mem: _mem, ...rest } = (w.storage.pc_frozen_warmup ?? {}) as Record<string, unknown>; return rest; };
+const memOf = (w: W) => ((w.storage.pc_frozen_warmup ?? {}) as { mem?: Record<string, unknown> }).mem ?? {};
 
 // The SAME opts object goes to the harness (defaults filled in place), so a test can change the
 // world mid-run (opts.rows / frozenPending / warmupSwitch / frozenReply) and the worker sees it.
@@ -56,7 +63,7 @@ describe("off = nothing", () => {
     expect(count(w, WARM_GET)).toBe(0);
     expect(count(w, /admin_frozen_warmup_/)).toBe(0);
     expect(warmMsgs(w)).toEqual([]);
-    expect(w.storage.pc_frozen_warmup).toBeUndefined();
+    expect(shown(w)).toEqual({ on: false });                                // 12: written {on:false} at boot (storage only — no request)
   });
   for (const sw of ["false", "missing"] as const) {
     it(`warm-up switch ${sw} (frozen on): the switch read ≤ once a minute, nothing else`, async () => {
@@ -67,7 +74,7 @@ describe("off = nothing", () => {
       expect(count(w, WARM_GET)).toBeLessThanOrEqual(6);
       expect(count(w, /admin_frozen_warmup_/)).toBe(0);
       expect(warmMsgs(w)).toEqual([]);
-      expect(w.storage.pc_frozen_warmup).toEqual({ on: false });
+      expect(shown(w)).toEqual({ on: false });
     });
   }
 });
@@ -208,7 +215,10 @@ describe("safety", () => {
       opts.frozenReply = (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; };
       await ticks(w, clock, 12 * 4);                                        // past 30 min
       expect(warmMsgs(w).length).toBeGreaterThan(3);
-      expect(bodiesOf(w, /admin_frozen_warmup_verdict/).slice(0, 3).map((b) => b.p_status)).toEqual(["unknown", "unknown", "unknown"]);
+      // 9: the 3 no-answers wrote NOTHING; only the real answers after the pause are written
+      const v = bodiesOf(w, /admin_frozen_warmup_verdict/).map((b) => b.p_status);
+      expect(v.length).toBe(warmMsgs(w).length - 3);
+      expect(v.every((x) => x === "ok")).toBe(true);
     });
   }
   it("NO2 / close (real answers, just no verdict) never count toward the pause", async () => {
@@ -218,6 +228,209 @@ describe("safety", () => {
     await ticks(w, clock, 12 * 8);                                           // 8 min
     expect(warmMsgs(w).length).toBeGreaterThanOrEqual(7);
     expect(w.calls.logs.some((l) => /paused 30 min/.test(l))).toBe(false);
+    // a real answer that is not a verdict IS written as 'unknown' (the 7-day re-ask gap in sql/145 needs it)
+    expect(bodiesOf(w, /admin_frozen_warmup_verdict/).map((b) => b.p_status)).toEqual(warmMsgs(w).map(() => "unknown"));
+  });
+  // 7
+  it("2 pauses in a row with no real verdict → warm-up STOPS (stop RPC with the reason), nothing written", async () => {
+    const done = new Set<string>();
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(80, done), frozenReply: (row) => { done.add(String(row?.store_id)); return null; } };
+    const { w, clock } = await boot(opts);
+    await ticks(w, clock, 12 * 5);                                          // 3 misses → pause 1
+    expect(warmMsgs(w)).toHaveLength(3);
+    expect(bodiesOf(w, /admin_frozen_warmup_stop/)).toEqual([]);
+    await ticks(w, clock, 12 * 30);                                         // pause ends, 3 more misses → pause 2 = STOP
+    expect(warmMsgs(w)).toHaveLength(6);
+    const stops = bodiesOf(w, /admin_frozen_warmup_stop/);
+    expect(stops).toHaveLength(1);
+    expect(String(stops[0].p_reason)).toMatch(/^2 pauses in a row with no answer from E-Map/);
+    expect(bodiesOf(w, /admin_frozen_warmup_verdict/)).toEqual([]);
+    expect(shown(w)).toMatchObject({ stopped: true, on: false });
+    await ticks(w, clock, 12 * 40);                                         // the switch row still says 'true' → stays stopped
+    expect(warmMsgs(w)).toHaveLength(6);
+  });
+  it("a real verdict between two pauses resets the count → a second pause, no stop", async () => {
+    const done = new Set<string>(); let n = 0;
+    const { w, clock } = await boot({ warmupSwitch: "true", warmupNext: storeList(80, done),
+      frozenReply: (row) => { done.add(String(row?.store_id)); n += 1; return n === 4 ? { frozen_store_status: "ok" } : null; } });
+    await ticks(w, clock, 12 * 60);                                          // miss×3 (~0–2 min), pause, ok (~32), miss×3, pause 2 (~35–65)
+    expect(bodiesOf(w, /admin_frozen_warmup_stop/)).toEqual([]);
+    expect(w.calls.logs.filter((l) => /paused 30 min/.test(l)).length).toBe(2);
+    expect(bodiesOf(w, /admin_frozen_warmup_verdict/).map((b) => b.p_status)).toEqual(["ok"]);
+  });
+});
+
+describe("audit fixes — restart memory, list pace, lease, 2 s window, popup off", () => {
+  // 6: worker 1 runs, its chrome.storage is handed to worker 2 (a service-worker restart)
+  async function restartFrom(w1: W, at: number, opts: Opts) {
+    const clock = { t: at };
+    const defaults: Opts = { rows: [], lease: LEADER, frozenSwitch: "true", frozenPending: [] };
+    for (const [k, v] of Object.entries(defaults)) if (!(k in opts)) (opts as Record<string, unknown>)[k] = v;
+    opts.now = () => clock.t;                                                // the SAME opts object → a test can change the world mid-run
+    opts.initialStorage = { pc_frozen_warmup: JSON.parse(JSON.stringify(w1.storage.pc_frozen_warmup)) };
+    const w2 = bootWorker(opts);
+    await w2.booted;
+    return { w: w2, clock };
+  }
+  it("restart mid-pace: the new worker waits out the 60 s from the LAST request", async () => {
+    const done = new Set<string>(); const at: number[] = []; const ref = { t: 0 };
+    const reply = (row?: { store_id?: string }) => { at.push(ref.t); done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; };
+    const a = await boot({ warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: reply });
+    for (let i = 0; i < 40 && at.length < 1; i++) { ref.t = a.clock.t; await a.w.sb.pcTick(); await flush(); a.clock.t += 5 * S; }
+    expect(warmMsgs(a.w)).toHaveLength(1);
+    const last = Number(memOf(a.w).lastAt);
+    expect(last).toBe(at[0]);
+    const b = await restartFrom(a.w, last + 20 * S, { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: reply });
+    for (let i = 0; i < 20; i++) { ref.t = b.clock.t; await b.w.sb.pcTick(); await flush(); b.clock.t += 5 * S; }
+    expect(warmMsgs(b.w).length).toBeGreaterThan(0);
+    expect(at[1] - at[0]).toBeGreaterThanOrEqual(60 * S);                   // the pace held across the restart
+  });
+  it("restart mid-pause: still paused until the saved time; the miss count survives too", async () => {
+    const done = new Set<string>();
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(80, done), frozenReply: (row) => { done.add(String(row?.store_id)); return null; } };
+    const a = await boot(opts);
+    await ticks(a.w, a.clock, 12 * 5);
+    const m = memOf(a.w);
+    expect(Number(m.pauseUntil)).toBeGreaterThan(a.clock.t);
+    expect(m.pauses).toBe(1);
+    const b = await restartFrom(a.w, a.clock.t + 60 * S, { ...opts, frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } });
+    expect(b.w.calls.logs.some((l) => /warm-up state restored \(paused until/.test(l))).toBe(true);
+    await ticks(b.w, b.clock, 12 * 20);                                     // 20 min: still inside the 30-min pause
+    expect(warmMsgs(b.w)).toEqual([]);
+    await ticks(b.w, b.clock, 12 * 12);                                     // past it → resumes
+    expect(warmMsgs(b.w).length).toBeGreaterThan(0);
+    // and the pause count was carried: 3 more misses on worker 2 would have been pause 2 → stop (checked below)
+    const c = await restartFrom(a.w, a.clock.t + 31 * 60 * S, { warmupSwitch: "true", warmupNext: storeList(80, done), frozenReply: (row) => { done.add(String(row?.store_id)); return null; } });
+    await ticks(c.w, c.clock, 12 * 5);
+    expect(bodiesOf(c.w, /admin_frozen_warmup_stop/)).toHaveLength(1);    // pause #2 after the restart = STOP
+  });
+  it("restart after a stop: stays stopped (switch row still 'true'), the line says stopped, resumes only after off → on", async () => {
+    const done = new Set<string>();
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: () => ({ frozen_store_status: "unknown", frozen_reason: "returned HTTP 403", blocked: true }) };
+    const a = await boot(opts);
+    await ticks(a.w, a.clock, 24);
+    expect(memOf(a.w)).toMatchObject({ stopped: true, stopWritten: true });
+    const ok = (row?: { store_id?: string }) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; };
+    const b2: Opts = { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: ok };
+    const b = await restartFrom(a.w, a.clock.t + 5 * S, b2);
+    expect(b.w.calls.logs.some((l) => /warm-up state restored \(stopped: returned HTTP 403\)/.test(l))).toBe(true);
+    await ticks(b.w, b.clock, 12 * 5);
+    expect(warmMsgs(b.w)).toEqual([]);
+    expect(count(b.w, /admin_frozen_warmup_stop/)).toBe(0);                // already written before the restart
+    expect(shown(b.w)).toMatchObject({ stopped: true, stopReason: "returned HTTP 403" });
+    b2.warmupSwitch = "false"; await ticks(b.w, b.clock, 24);
+    b2.warmupSwitch = "true"; await ticks(b.w, b.clock, 36);
+    expect(warmMsgs(b.w).length).toBeGreaterThan(0);
+    expect(shown(b.w)).toMatchObject({ stopped: false, on: true });
+  });
+  it("a stop whose write never landed before the restart → written by the new worker", async () => {
+    const done = new Set<string>();
+    const a = await boot({ warmupSwitch: "true", warmupStopHttp: 500, warmupNext: storeList(50, done), frozenReply: () => ({ frozen_store_status: "unknown", frozen_reason: "HTTP 429", blocked: true }) });
+    await ticks(a.w, a.clock, 12);
+    expect(memOf(a.w)).toMatchObject({ stopped: true, stopWritten: false });
+    const b = await restartFrom(a.w, a.clock.t, { warmupSwitch: "true", warmupNext: storeList(50, done) });
+    await ticks(b.w, b.clock, 12);
+    expect(bodiesOf(b.w, /admin_frozen_warmup_stop/).map((x) => x.p_reason)).toContain("HTTP 429");
+  });
+  // 8
+  it("the store list is never read again sooner than 5 min after the last read — even when the queue ran dry", async () => {
+    const done = new Set<string>(); const reads: number[] = [];
+    const { w, clock } = await boot({ warmupSwitch: "true",
+      warmupNext: (b) => { reads.push(clock.t); return storeList(80, done)(b).slice(0, 1); },     // ONE store per read: the queue empties after 1 check
+      frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } });
+    await ticks(w, clock, 12 * 16);                                         // 16 min
+    expect(reads.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < reads.length; i++) expect(reads[i] - reads[i - 1]).toBeGreaterThanOrEqual(5 * 60 * S);
+    expect(reads.length).toBeLessThanOrEqual(4);
+  });
+  // 10
+  it("lease fail-open (the lease call failing 3+ min): the frozen lane keeps working, warm-up does NOT", async () => {
+    const done = new Set<string>(); let lease: "ok" | "fail" = "ok";
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(80, done), lease: (b) => (lease === "ok" ? (LEADER as NonNullable<Opts["lease"]>)(b) : "throw"),
+      frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } };
+    const { w, clock } = await boot(opts);
+    await ticks(w, clock, 12 * 3);
+    const before = warmMsgs(w).length;
+    expect(before).toBeGreaterThan(0);
+    lease = "fail";
+    await ticks(w, clock, 12 * 4);                                          // past the 3-min fail-open
+    expect(w.calls.logs.some((l) => /lease unreachable for 3\+ min — acting as leader/.test(l))).toBe(true);
+    opts.frozenPending = [{ id: "fz-fo", store_id: "968551", queue_depth: 1 }];
+    await ticks(w, clock, 12 * 3);
+    expect(liveFrozenMsgs(w).map((m) => m.rowId)).toContain("fz-fo");       // the frozen lane still works on fail-open
+    opts.frozenPending = [];
+    await ticks(w, clock, 12 * 6);
+    expect(warmMsgs(w).length).toBe(before);                                 // …but warm-up never ran on it
+    lease = "ok";
+    await ticks(w, clock, 12 * 4);
+    expect(warmMsgs(w).length).toBeGreaterThan(before);                      // a confirmed lease again → resumes
+  });
+  it("no lease answer yet (pre-1.15 boot rule) → no warm-up; the pure check", async () => {
+    const done = new Set<string>();
+    const { w, clock } = await boot({ lease: undefined, warmupSwitch: "true", warmupNext: storeList(20, done), frozenReply: () => ({ frozen_store_status: "ok" }) });
+    await ticks(w, clock, 40);
+    expect(warmMsgs(w)).toEqual([]);
+    const t = w.evalIn("pcFrozenKick.__test") as { leaseConfirmed: (n: number) => boolean };
+    const set = (code: string) => w.evalIn(code);
+    const now = clock.t;
+    set(`pcLease.role = "leader"; pcLease.failing = false; pcLease.lastOkAt = ${now - 10 * S};`);
+    expect(t.leaseConfirmed(now)).toBe(true);
+    set(`pcLease.lastOkAt = ${now - 61 * S}; pcLease.lone = true;`);
+    expect(t.leaseConfirmed(now)).toBe(false);                               // a lone leader on a stale lease: no
+    set(`pcLease.lastOkAt = ${now - 10 * S}; pcLease.failing = true;`);
+    expect(t.leaseConfirmed(now)).toBe(false);                               // the lease call failing: no
+    set(`pcLease.failing = false; pcLease.role = "standby";`);
+    expect(t.leaseConfirmed(now)).toBe(false);
+    set(`pcLease.role = null;`);
+    expect(t.leaseConfirmed(now)).toBe(false);
+  });
+  // 11
+  it("more than 2 s since the kick when it is time to send → the warm-up request is skipped", async () => {
+    const done = new Set<string>(); const late = { ms: 0 }; const clockRef = { t: 0 };
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(50, done), onFrozenPing: () => { clockRef.t += late.ms; },
+      frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } };
+    const { w, clock } = await boot(opts);
+    // the ping hook moves the worker's clock (it reads opts.now)
+    Object.defineProperty(clockRef, "t", { get: () => clock.t, set: (v: number) => { clock.t = v; } });
+    late.ms = 2500;
+    await ticks(w, clock, 24);
+    expect(warmMsgs(w)).toEqual([]);
+    expect(w.calls.logs.some((l) => /warm-up skipped: \d+ ms since the kick/.test(l))).toBe(true);
+    late.ms = 1500;
+    await ticks(w, clock, 24);
+    expect(warmMsgs(w).length).toBeGreaterThan(0);                           // within 2 s → sent
+  });
+  // 12
+  it("the frozen switch seen OFF → the popup line becomes {on:false} (no stale 'N checked')", async () => {
+    const done = new Set<string>();
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: (row) => { done.add(String(row?.store_id)); return { frozen_store_status: "ok" }; } };
+    const { w, clock } = await boot(opts);
+    await ticks(w, clock, 24);
+    expect(shown(w)).toMatchObject({ on: true });
+    opts.frozenSwitch = "false";
+    await ticks(w, clock, 24);
+    expect(shown(w)).toEqual({ on: false });
+    const n = warmMsgs(w).length;
+    await ticks(w, clock, 24);
+    expect(warmMsgs(w)).toHaveLength(n);
+  });
+  it("…also a STOPPED line: frozen switch OFF → {on:false} (the stop itself is kept in mem)", async () => {
+    const done = new Set<string>();
+    const opts: Opts = { warmupSwitch: "true", warmupNext: storeList(50, done), frozenReply: () => ({ frozen_store_status: "unknown", frozen_reason: "returned HTTP 403", blocked: true }) };
+    const { w, clock } = await boot(opts);
+    await ticks(w, clock, 24);
+    expect(shown(w)).toMatchObject({ stopped: true });
+    opts.frozenSwitch = "false";
+    await ticks(w, clock, 24);
+    expect(shown(w)).toEqual({ on: false });
+    expect(memOf(w)).toMatchObject({ stopped: true, stopReason: "returned HTTP 403" });
+  });
+  it("at boot the saved line is replaced by {on:false} before anything is read (no stale line from the last run)", async () => {
+    const w = bootWorker({ rows: [], lease: LEADER, frozenSwitch: "false", frozenPending: [],
+      initialStorage: { pc_frozen_warmup: { on: true, checked: 9, left: 3, lastAt: 1, mem: { lastAt: 5 } } } });
+    await w.booted; await flush();
+    expect(shown(w)).toEqual({ on: false });
+    expect(memOf(w).lastAt).toBe(5);                                         // the restart memory is kept
   });
 });
 

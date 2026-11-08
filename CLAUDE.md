@@ -4776,4 +4776,11 @@ E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_
 - Proof: `scripts/sql145-behaviour.mjs` (PGlite, 56 checks) · `parcelCheckerWarmup.test.ts` ·
   `parcelCheckerWarmupSim.test.ts` (dry lane identical ON vs OFF, 0 overlaps) · `parcelCheckerWarmupPopup.test.ts`.
 - ⚠️ The only edit of an existing DB object: `store_frozen_check_log` source CHECK widened (+'warmup','instant',
-  NOT VALID). admin_parcel_frozen_pending keeps ok = 7 days (not edited); the trigger uses 30 days for both.
+  NOT VALID); a DO block RAISES (whole migration rolls back) if any other CHECK on log.source survives the drop.
+- **Audit fixes (same branch):** cache trust = sql/142 (no_frozen 30 d, ok 7 d) in the trigger AND warmup_next;
+  trigger does nothing unless `frozen_store_check_enabled`='true'; a store change clears the old verdict BEFORE the
+  protected lookup (any seller); trigger created before the log ALTER (lock order = the frozen lane's). Extension:
+  warm-up state (pace, pause, misses, pause count, stop, ≤ 5 queued store ids) persisted in `pc_frozen_warmup.mem`
+  and loaded before the first decision; popup line `{on:false}` at boot + when the frozen switch is off; a no-answer
+  writes NO verdict (miss only); 2 pauses in a row without ok/no_frozen → STOP; store list never re-read < 5 min;
+  warm-up only on a fresh confirmed lease (never fail-open / role null / lone-stale); request skipped > 2 s after the kick.

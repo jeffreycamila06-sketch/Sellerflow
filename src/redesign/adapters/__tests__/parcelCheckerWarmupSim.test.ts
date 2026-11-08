@@ -65,11 +65,12 @@ describe("warm-up never delays a real parcel (dry lane identical ON vs OFF)", ()
 });
 
 describe("warm-up with a slow E-Map", () => {
-  it("E-Map 8 s: every warm-up check is a no-answer → 3 in a row, then a 30-min pause (≤ 6 checks in 60 min)", async () => {
+  it("E-Map 8 s: every warm-up check is a no-answer → 3, a 30-min pause, 3 more → STOP (≤ 6 checks in 60 min, nothing written)", async () => {
     const on = await simRun(8000, true);
     const wi = warmIv(on);
     expect(wi.length).toBeGreaterThan(0);
     expect(wi.length).toBeLessThanOrEqual(6);
-    expect(on.warmVerdicts.every((v) => v.status === "unknown")).toBe(true);
+    expect(on.warmVerdicts).toEqual([]);                    // a no-answer never writes a verdict
+    if (wi.length === 6) expect(on.warmupSwitch).toBe("false"); // the 2nd pause = the stop turned the switch off
   }, 180_000);
 });

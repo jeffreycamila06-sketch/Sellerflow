@@ -188,4 +188,47 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
     expect(src).not.toMatch(/createElement\(\s*["']script["']|innerHTML|chrome\.storage|localStorage|\.submit\(/);
     expect(src).toContain('message.type !== "PC_FROZEN_CHECK"');
   });
+
+  // 1.18.0 audit (13): the `blocked` flag the warm-up lane stops on. Real page script, jsdom, every case.
+  describe("1.18.0 blocked detection (the warm-up stop signal)", () => {
+    const ask = async (a: { ok?: boolean; status?: number; text?: string; url?: string }) => {
+      const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => a });
+      const r = await e.send({ type: "PC_FROZEN_CHECK", row: { id: "w1", store_id: "968551" } });
+      return { r, fetches: e.calls.fetch.length };
+    };
+    it("HTTP 403 → blocked, unknown, not transient (one request)", async () => {
+      const { r, fetches } = await ask({ ok: false, status: 403, text: "Forbidden" });
+      expect(r).toMatchObject({ frozen_store_status: "unknown", blocked: true, transient: false });
+      expect(String(r.frozen_reason)).toMatch(/HTTP 403/);
+      expect(fetches).toBe(1);
+    });
+    it("HTTP 429 → blocked, unknown, not transient", async () => {
+      const { r } = await ask({ ok: false, status: 429, text: "Too Many Requests" });
+      expect(r).toMatchObject({ frozen_store_status: "unknown", blocked: true, transient: false });
+      expect(String(r.frozen_reason)).toMatch(/HTTP 429/);
+    });
+    it("a captcha page in a 200 body → blocked (驗證碼 and captcha both)", async () => {
+      for (const text of ["<html><body><h1>請輸入驗證碼</h1></body></html>", "<html><div class=\"g-recaptcha\"></div></html>", "<html>Please complete the CAPTCHA</html>"]) {
+        const { r } = await ask({ text });
+        expect(r, text).toMatchObject({ frozen_store_status: "unknown", blocked: true, transient: false });
+        expect(String(r.frozen_reason), text).toMatch(/unexpected response/);
+      }
+    });
+    it("a redirect to a login page → blocked (the final URL is the login page)", async () => {
+      const { r } = await ask({ url: "https://emap.unipcsc.com.tw/Login.aspx?ReturnUrl=%2fecmap%2fbyIDData.aspx", text: "<html>login</html>" });
+      expect(r).toMatchObject({ frozen_store_status: "unknown", blocked: true, transient: false });
+      expect(String(r.frozen_reason)).toMatch(/login \/ captcha page/);
+    });
+    it("an empty 200 → NOT blocked (an odd answer, unknown, not transient — the worker counts it as a no-answer)", async () => {
+      const { r } = await ask({ text: "" });
+      expect(r).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: false });
+      expect(String(r.frozen_reason)).toMatch(/unexpected response/);
+    });
+    it("controls: a real verdict, NO2, HTTP 500 and a bounce are never blocked", async () => {
+      expect((await ask({ text: ANSWERS["968551:27"] })).r).toMatchObject({ frozen_store_status: "no_frozen", blocked: false });
+      expect((await ask({ text: "NO2" })).r).toMatchObject({ frozen_store_status: "unknown", blocked: false });
+      expect((await ask({ ok: false, status: 500 })).r).toMatchObject({ blocked: false, transient: true });
+      expect((await ask({ url: "https://emap.unipcsc.com.tw/ecmap/error.aspx" })).r).toMatchObject({ blocked: false, transient: false });
+    });
+  });
 });

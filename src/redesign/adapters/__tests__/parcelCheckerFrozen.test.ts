@@ -287,7 +287,7 @@ describe("switch ON — the frozen lane", () => {
     const awaits = [...code.matchAll(/await\s+([A-Za-z_.]+)\(/g)].map((m) => m[1]);
     expect(awaits.length).toBeGreaterThan(8);
     const ownSteps = ["withTimeout", "ensureScript", "alarmSoon", "readSwitch", "readPending", "sendOne", "ping",
-      "dryIdle", "readWarmSwitch", "readWarmList", "writeStop", "saveWarmState", "warmOne"]; // 1.18.0 warm-up steps (each bounded inside)
+      "dryIdle", "readWarmSwitch", "readWarmList", "writeStop", "saveWarmState", "warmOne", "loadWarm"]; // 1.18.0 warm-up steps (each bounded inside; loadWarm = one withTimeout read, once)
     expect(awaits.filter((a) => !ownSteps.includes(a))).toEqual([]);
     expect(code).not.toMatch(/await\s+r\.(json|text)\(/);                    // body reads go through withTimeout
     for (const what of ['"warm-up switch body")', '"warm-up list body")', '"status read")', '"switch body")', '"pending body")', '"config read")', '"inject")', '"frozen pass")']) expect(code, what).toContain(what);

@@ -1,6 +1,8 @@
 // Runs sql/145 (+ its rollback) on a real Postgres (PGlite, WASM), on top of sql/142, against a stub of the
-// live tables. Proves: a 冷凍 insert with a FRESH cache verdict (≤ 30 days) gets it at insert; a stale one
-// (> 30 days) does not; dry rows and sellers outside the frozen check are never touched; a store_id change
+// live tables. Proves: a 冷凍 insert with a FRESH cache verdict (no_frozen ≤ 30 days, ok ≤ 7 days — the
+// sql/142 trust) gets it at insert; an older one does not; the frozen switch OFF = the trigger does nothing;
+// a store change clears the old verdict even when the lookup errors; a second CHECK on log.source stops
+// the migration; dry rows and sellers outside the frozen check are never touched; a store_id change
 // clears + re-applies; an edit that changes neither field (and the ⟳ Recheck) leaves the row alone; exported
 // rows are never touched; a trigger error never blocks the save; 'unknown' is never cached; the warm-up RPCs
 // (switches, order, floors, re-check after 30 days, store ids only, stop) and a clean rollback.
@@ -50,15 +52,21 @@ const logN = async (src) => (await q("select count(*)::int n from store_frozen_c
 
 // ── A. instant verdict at insert ─────────────────────────────────────────────
 await cache("968551", "no_frozen", 2);
-await cache("151003", "ok", 20);
+await cache("151003", "ok", 5);
 await cache("222222", "no_frozen", 31);
-await cache("333333", "ok", 29.9);
+await cache("333333", "ok", 6.9);
+await cache("666661", "ok", 8);
+await cache("666662", "no_frozen", 29.9);
 const i1 = await ins({ store: "968551" });
 ok((await row(i1)).s === "no_frozen" && (await row(i1)).at !== null, "冷凍 insert, fresh no_frozen in cache → no_frozen + checked_at at insert");
 const i2 = await ins({ store: "151003" });
-ok((await row(i2)).s === "ok", "冷凍 insert, fresh 'ok' (20 days) → ok at insert (30-day rule)");
+ok((await row(i2)).s === "ok", "冷凍 insert, fresh 'ok' (5 days) → ok at insert");
 const i3 = await ins({ store: "333333" });
-ok((await row(i3)).s === "ok", "cache 29.9 days old still applies");
+ok((await row(i3)).s === "ok", "'ok' 6.9 days old still applies (ok trust = 7 days)");
+const i3b = await ins({ store: "666661" });
+ok((await row(i3b)).s === null && (await row(i3b)).at === null, "'ok' 8 days old → NOT applied (ok trust = 7 days, = sql/142)");
+const i3c = await ins({ store: "666662" });
+ok((await row(i3c)).s === "no_frozen", "'no_frozen' 29.9 days old still applies (no_frozen trust = 30 days)");
 const i4 = await ins({ store: "222222" });
 ok((await row(i4)).s === null && (await row(i4)).at === null, "stale cache (31 days) → left empty for the frozen lane");
 const i5 = await ins({ store: "444444" });
@@ -69,7 +77,7 @@ const n1 = await ins({ store: "968551", user: N });
 ok((await row(n1)).s === null, "seller outside the frozen check → untouched");
 const e1 = await ins({ store: "968551", status: "exported" });
 ok((await row(e1)).s === null, "a row inserted as exported → untouched");
-ok(await logN("instant") === 3, "each applied verdict logged once with source 'instant' (3)");
+ok(await logN("instant") === 4, "each applied verdict logged once with source 'instant' (4)");
 const pre = await q("insert into parcel_scans(user_id, store_id, temp_layer, frozen_store_status, frozen_store_checked_at) values ($1,'968551','冷凍','ok', now() - interval '1 hour') returning id", [A]);
 ok((await row(pre.rows[0].id)).s === "ok", "an insert that already carries a verdict keeps it (the cache never overwrites it)");
 
@@ -101,12 +109,29 @@ await q("update parcel_scans set status='exported' where id=$1", [i3]);
 await q("update parcel_scans set store_id='968551' where id=$1", [i3]);
 ok((await row(i3)).s === "ok", "an exported row's store change → its verdict never changes");
 
+// ── A. frozen switch OFF → the trigger does nothing at all ───────────────────
+await q("update app_settings set value='false' where key='frozen_store_check_enabled'");
+const so1 = await ins({ store: "968551" });
+ok((await row(so1)).s === null && (await row(so1)).at === null, "switch OFF: a 冷凍 insert at a cached store → saved as sent (no verdict)");
+const soLog = await logN("instant");
+await q("update parcel_scans set store_id='151003' where id=$1", [i3c]);
+ok((await row(i3c)).s === "no_frozen" && (await row(i3c)).store_id === "151003", "switch OFF: a store change clears nothing and applies nothing");
+await q("update app_settings set value='anything' where key='frozen_store_check_enabled'");
+const so2 = await ins({ store: "968551" });
+ok((await row(so2)).s === null, "switch = anything but the exact 'true' → off");
+ok(await logN("instant") === soLog, "switch OFF: nothing logged");
+await q("update app_settings set value='true' where key='frozen_store_check_enabled'");
+const so3 = await ins({ store: "968551" });
+ok((await row(so3)).s === "no_frozen", "switch back ON → applied again");
+
 // ── A. a trigger error never blocks the save ─────────────────────────────────
 await q("alter table store_frozen_cache rename to store_frozen_cache_x");
 let saved = null; try { saved = await ins({ store: "968551" }); } catch { saved = null; }
 ok(saved !== null && (await row(saved)).s === null, "cache table missing (trigger errors) → the insert still succeeds, no verdict");
+ok((await row(i1)).s === "no_frozen", "(before) the row carries the old store's no_frozen");
 let upd = true; try { await q("update parcel_scans set store_id='151003' where id=$1", [i1]); } catch { upd = false; }
 ok(upd && (await row(i1)).store_id === "151003", "…and an update still succeeds");
+ok((await row(i1)).s === null && (await row(i1)).at === null, "…and the store change STILL clears the old verdict (the clear runs before the lookup)");
 await q("alter table store_frozen_cache_x rename to store_frozen_cache");
 await q("alter table store_frozen_check_log add constraint t_block check (source <> 'instant') not valid");
 const lg = await ins({ store: "968551" });
@@ -138,15 +163,27 @@ await ins({ store: "700005" }); await ins({ store: "700005", layer: "常溫" });
 await q("insert into parcel_customers(store_id) values ('70000'), ('abcdef'), (null), ('7000067')");  // not 6 digits → never
 await cache("700006", "ok", 1); await q("insert into parcel_customers(store_id) values ('700006')"); // fresh cache → not due
 await cache("700007", "no_frozen", 40); await q("insert into parcel_customers(store_id) values ('700007'), ('700007')"); // stale → due again (2 parcels)
+await cache("700008", "ok", 8); await q("insert into parcel_customers(store_id) values ('700008')");           // ok > 7 days → due again
+await cache("700009", "no_frozen", 20); await q("insert into parcel_customers(store_id) values ('700009')");   // no_frozen ≤ 30 days → known
 let rows = await next(5);
 ok(JSON.stringify(rows.map((r) => r.store_id)) === JSON.stringify(["700005", "700004", "700002", "700001", "700007"]),
   `order: frozen-history stores first, then most parcels (got ${rows.map((r) => r.store_id).join(",")})`);
 ok(rows.every((r) => /^\d{6}$/.test(r.store_id)), "only 6-digit store ids");
 ok(JSON.stringify(Object.keys(rows[0]).sort()) === JSON.stringify(["checked_count", "frozen_history", "left_count", "parcels", "store_id"]), "columns = store id + counts only (no names, no phones)");
-ok(Number(rows[0].left_count) === 6, `left = stores with no fresh verdict (6, got ${rows[0].left_count})`);
+ok(Number(rows[0].left_count) === 7, `left = stores with no fresh verdict (7, got ${rows[0].left_count})`);
 ok(!rows.some((r) => r.store_id === "700006"), "a store with a fresh verdict is not handed out");
-ok(rows.some((r) => r.store_id === "700007"), "a verdict older than 30 days → due again (the re-check)");
-ok((await next(99)).length === 5 && (await next(1)).length === 1, "p_limit is capped (≤ 5, 6 are due) and honoured");
+ok(rows.some((r) => r.store_id === "700007"), "a no_frozen older than 30 days → due again (the re-check)");
+const all = [];
+{ // read past the 5-cap by stamping the floor on what we got
+  const seen = new Set(rows.map((r) => r.store_id));
+  for (const r of rows) await q("insert into store_frozen_check_log(store_id,status,source) values ($1,'unknown','live')", [r.store_id]);
+  for (const r of await next(5)) seen.add(r.store_id);
+  all.push(...seen);
+  await q("delete from store_frozen_check_log");
+}
+ok(all.includes("700008"), "an 'ok' older than 7 days → due again (ok trust = 7 days)");
+ok(!all.includes("700009"), "a 'no_frozen' 20 days old → still known, not handed out");
+ok((await next(99)).length === 5 && (await next(1)).length === 1, "p_limit is capped (≤ 5, 7 are due) and honoured");
 
 // ── B. warm-up: verdict ──────────────────────────────────────────────────────
 await q("select admin_frozen_warmup_verdict('700005','no_frozen')");
@@ -201,6 +238,43 @@ ok(r1 && (await row(r1)).s === null, "after rollback a 冷凍 insert saves as be
 ok((await q("select count(*)::int n from app_settings where key like 'frozen_warmup%'")).rows[0].n === 0, "rollback removes the two warm-up settings");
 let srcOk = true; try { await q("insert into store_frozen_check_log(store_id,status,source) values ('1','ok','warmup')"); srcOk = false; } catch { /* refused */ }
 ok(srcOk, "rollback restores the log source CHECK (live, cache)");
+
+// ── a second CHECK on store_frozen_check_log.source → the migration stops (nothing applied) ──
+{
+  const db2 = new PGlite();
+  await db2.exec(`
+do $$ begin if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if; if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if; end $$;
+create schema if not exists auth;
+create table auth.users(id uuid primary key);
+create or replace function public.is_admin() returns boolean language sql as $$ select true $$;
+create table public.app_settings(key text primary key, value text not null, updated_at timestamptz not null default now(), updated_by uuid);
+create table public.parcel_check_access(user_id uuid primary key, enabled boolean not null default true);
+create table public.parcel_scans(
+  id uuid primary key default gen_random_uuid(), user_id uuid not null, customer_name text, phone text, store_id text,
+  amount numeric, notes text, status text not null default 'confirmed', temp_layer text not null default '常溫',
+  store_full_status text, store_full_at timestamptz, created_at timestamptz not null default now());
+create table public.parcel_customers(id uuid primary key default gen_random_uuid(), user_id uuid, phone text, name text, store_id text);
+`);
+  await db2.exec(readFileSync(s142, "utf8"));
+  await db2.exec("alter table store_frozen_check_log add constraint another_source_rule check (source <> 'zzz')");
+  let msg = "";
+  try { await db2.exec(readFileSync(up, "utf8")); } catch (e) { msg = String(e?.message || e); }
+  ok(/another CHECK on store_frozen_check_log\.source/.test(msg) && /another_source_rule/.test(msg), `a 2nd CHECK on log.source → sql/145 RAISES and names it (${msg.slice(0, 90)})`);
+  await db2.exec("rollback").catch(() => {});
+  const left = (await db2.query("select count(*)::int n from pg_proc where proname in ('parcel_scans_frozen_instant','admin_frozen_warmup_next')")).rows[0].n;
+  const trg = (await db2.query("select count(*)::int n from pg_trigger where tgname='trg_parcel_scans_frozen_instant'")).rows[0].n;
+  ok(left === 0 && trg === 0, "…and NOTHING of sql/145 stays (one transaction)");
+  const def = (await db2.query("select pg_get_constraintdef(oid) d from pg_constraint where conname='store_frozen_check_log_source_check'")).rows[0]?.d || "";
+  ok(/live/.test(def) && !/warmup/.test(def), "…the original source CHECK is still in place");
+  await db2.close();
+}
+// the order: the trigger is created BEFORE the log CHECK is altered (lock order = the frozen lane's)
+{
+  const t = readFileSync(up, "utf8");
+  ok(t.indexOf("create trigger trg_parcel_scans_frozen_instant") > 0 &&
+     t.indexOf("create trigger trg_parcel_scans_frozen_instant") < t.indexOf("alter table public.store_frozen_check_log drop constraint"),
+     "trigger on parcel_scans is created before the ALTER of store_frozen_check_log");
+}
 
 console.log(`sql145: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

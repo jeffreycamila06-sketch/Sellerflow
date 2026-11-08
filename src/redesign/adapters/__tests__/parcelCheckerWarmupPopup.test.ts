@@ -36,6 +36,8 @@ describe("popup — frozen warm-up line", () => {
   it("absent / off → hidden", async () => {
     expect((await line(undefined)).shown).toBe(false);
     expect((await line({ on: false })).shown).toBe(false);
+    // the worker's restart memory rides in the same key — it never shows a line by itself
+    expect((await line({ on: false, mem: { stopped: true, stopReason: "HTTP 403", lastAt: 1, pauseUntil: Date.now() + 60_000 } })).shown).toBe(false);
   });
   it("on → 'Frozen warm-up: N checked · M left · last at HH:MM'", async () => {
     const t = Date.UTC(2026, 10, 8, 6, 5);
