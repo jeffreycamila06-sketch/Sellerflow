@@ -99,7 +99,7 @@ describe("one sticker — a phone print is never lost", () => {
   }, 60000);
 });
 
-import { printOneStickerTest, ONE_STICKER_FALLBACK, __resetWebPrintQueue, BITMAP_SPP_FAILED } from "../printing";
+import { printOneStickerTest, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE, __resetWebPrintQueue, BITMAP_SPP_FAILED } from "../printing";
 describe("one sticker — laptop and test prints fall back honestly", () => {
   it("laptop: a picture that fails prints today's page AND reports the miss (not only a variable)", async () => {
     delete (window as W).SellerFlowPrinter;
@@ -129,6 +129,18 @@ describe("one sticker — laptop and test prints fall back honestly", () => {
     expect(br.printRawTspl).toHaveBeenCalledTimes(1);
     delete (window as W).SellerFlowPrinter;
   });
+  it("TEST print with a size too wide for the printer: today's test sticker, and only the too-wide message (code ONE_STICKER_TOO_WIDE)", async () => {
+    __resetSavedPrinter(); rememberSavedPrinter({ address: "AA", name: "B1-H1", transport: "niimbot" });
+    const br = { printStickerNative: vi.fn(async (_p: unknown) => ({ ok: true })), printStickerImage: vi.fn(async (_p: unknown) => ({ ok: true })) };
+    (window as W).SellerFlowPrinter = br;
+    const notices: unknown[] = [];
+    setOneStickerNoticeHandler((n) => notices.push(n));
+    const r = await printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "bluetooth" });
+    expect(r).toMatchObject({ ok: true, code: ONE_STICKER_TOO_WIDE, via: "bluetooth" });
+    expect(notices).toHaveLength(1);
+    expect(br.printStickerImage).toHaveBeenCalledTimes(1);
+    delete (window as W).SellerFlowPrinter;
+  });
   it("TEST print falling to the TEXT sticker (SPP send failed) uses the DRAFT's size, not the saved one", async () => {
     __resetSavedPrinter(); rememberSavedPrinter({ address: "AA", name: "D520BT-Z" });
     optIn(60, 40); // saved 60×40 …
@@ -137,6 +149,7 @@ describe("one sticker — laptop and test prints fall back honestly", () => {
     await printOneStickerTest(recommendedSettings({ w: 80, h: 50 }), buyer, "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "bluetooth" }); // … draft 80×50
     expect(br.printStickerNative).toHaveBeenCalledTimes(1);
     expect(br.printStickerNative.mock.calls[0][0]).toMatchObject({ labelWidthMm: 80, labelHeightMm: 50 });
+    expect(br.printStickerBitmap, "the new picture once — never today's picture again at the TEXT size").toHaveBeenCalledTimes(1);
     delete (window as W).SellerFlowPrinter;
   });
 });

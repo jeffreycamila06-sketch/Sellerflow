@@ -701,9 +701,10 @@ export function setOneStickerNoticeHandler(fn: ((n: OneStickerNotice) => void) |
 function oneStickerNotice(n: OneStickerNotice): void { try { oneStickerNoticeHandler?.(n); } catch { /* a notice never breaks a print */ } }
 // A test print that fell back to today's sticker returns this code (with ok) so the screen can say so.
 export const ONE_STICKER_FALLBACK = "ONE_STICKER_FALLBACK";
+export const ONE_STICKER_TOO_WIDE = "ONE_STICKER_TOO_WIDE"; // the too-wide notice already told the seller
 // "text" = this print takes the native TEXT path below (no image method / classic / SPP failed).
 // "today" = this print takes today's sticker routing below (picture failed / too wide).
-async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlowPrinter"]>, osIn: OneStickerSettings, buyer: Buyer, storeName: string, fbName: boolean, at?: number): Promise<BtRouteResult | "text" | "text-spp" | "today"> {
+async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlowPrinter"]>, osIn: OneStickerSettings, buyer: Buyer, storeName: string, fbName: boolean, at?: number): Promise<BtRouteResult | "text" | "text-spp" | "today" | "too-wide"> {
   const os = oneStickerEffective(osIn);
   const inp = oneStickerInputFrom(buyer, storeName, at, fbName);
   const t0 = nowMs();
@@ -715,7 +716,7 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
   if (wide && (savedIsNiimbot() || savedGenericLang() || bitmapBridgeFn(bridge))) {
     miss("one-sticker-too-wide", `${os.size.w} mm is wider than the ${wide.model} (${wide.maxLabelMm} mm)`);
     oneStickerNotice({ kind: "too_wide", model: wide.model, maxMm: wide.maxLabelMm });
-    return "today";
+    return "too-wide";
   }
   // the picture (fonts + layout + encode), at most 8 s; null = print today's sticker
   const picture = async <T>(make: () => Promise<T>): Promise<T | null> => {
@@ -765,7 +766,7 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
   return !out.ok && out.code === BITMAP_SPP_FAILED ? "text-spp" : out;
 }
 
-async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfgIn: Settings, fbName = false, at?: number, noOneSticker = false): Promise<BtRouteResult> {
+async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfgIn: Settings, fbName = false, at?: number, noOneSticker = false, forceText = false): Promise<BtRouteResult> {
   let cfg = cfgIn;
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
@@ -775,7 +776,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   if (os) {
     // Facebook name-only follows the buyer (not the old @username toggle of the previous screen)
     const done = await printOneStickerViaBluetooth(bridge, os, buyer, storeName, fbNameOnly(buyer.platform, buyer.name), at);
-    if (done === "today") os = null; // the picture could not be made / too wide → today's sticker, exactly as today
+    if (done === "today" || done === "too-wide") os = null; // the picture could not be made / too wide → today's sticker, exactly as today
     else {
       if (done !== "text" && done !== "text-spp") return done;
       oneStickerSpp = done === "text-spp"; // → the native TEXT sticker below (Branch 2 keeps it as is)
@@ -799,8 +800,8 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   // bitmap even with a stray localStorage flag on the device.
   const classic = classicTextAllowed && isClassicTextSticker();
   let cjkUnavailable = false;
-  let sppFailed = oneStickerSpp;
-  if (bmpFn && !classic && !os) {
+  let sppFailed = oneStickerSpp || forceText;
+  if (bmpFn && !classic && !os && !forceText) {
     const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg, at);
     // The CJK atlas is a code-split chunk (prefetched at app start on bridge
     // devices). ASCII/Latin prints never wait on it; a CJK print awaits the
@@ -869,8 +870,13 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
   const r = await printOneStickerViaBluetooth(bridge, draft, printableBuyer(buyer), storeName, fbName);
   // TEXT (old app / classic / SPP failed): the native TEXT test sticker at the DRAFT's size;
   // "today" (picture failed / too wide): today's test sticker. Never the saved pattern's size.
-  if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, { ...cfg, stickerSize: textStickerSizeFor(draft.size) }, fbName, undefined, true)), via: "bluetooth" };
-  if (r === "today") { const t = await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName, undefined, true); return { ...t, code: t.ok ? ONE_STICKER_FALLBACK : t.code, via: "bluetooth" }; }
+  // "text-spp": the picture send failed on this printer → straight to the TEXT sticker (as a real print
+  // does), never today's picture at the TEXT size
+  if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, { ...cfg, stickerSize: textStickerSizeFor(draft.size) }, fbName, undefined, true, r === "text-spp")), via: "bluetooth" };
+  if (r === "today" || r === "too-wide") {
+    const t = await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName, undefined, true);
+    return { ...t, code: t.ok ? (r === "too-wide" ? ONE_STICKER_TOO_WIDE : ONE_STICKER_FALLBACK) : t.code, via: "bluetooth" };
+  }
   return { ...r, via: "bluetooth" };
 }
 
