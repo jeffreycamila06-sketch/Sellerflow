@@ -31,7 +31,8 @@ import { log } from "../../lib/log";
 import { hasFeature } from "./featureAccess";
 import { oneStickerActive, oneStickerInputFrom, renderOneStickerFor, d520Stream, genericBytes, niimbotImage, laptopPage, textStickerSizeFor, type OneStickerPath } from "./oneStickerPrint";
 import { tooWideFor, type OneStickerSettings } from "./oneSticker";
-import { prepareAllScripts, augmentAtlases, ensureAllScriptsFonts, stickerAllScriptsOn, type AllScriptsPrep } from "./oneStickerScripts";
+import { prepareAllScripts, augmentAtlases, ensureAllScriptsFonts, stickerAllScriptsOn, ALL_SCRIPTS_FONT_TIMEOUT_MS, type AllScriptsPrep } from "./oneStickerScripts";
+import { StuckSkip, withLoadLimit, __resetLoadStuck } from "./stuckLoad";
 import { withSyntheticCjk } from "./stickerRaster";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
@@ -500,7 +501,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // ALL SCRIPTS (switch): null for ASCII / Latin / Chinese payloads and when the switch is off → as before
   if (stickerAllScriptsOn()) await ensureAllScriptsFonts(qrPayload); // switch off = no extra step
   const prep = prepareAllScripts(qrPayload, stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm));
-  if (prep && prep.cells.length && !cjk.cjk) { try { cjk = await loadCjkAtlas(); } catch { /* the synthetic cells still paint */ } }
+  if (prep && prep.cells.length && !cjk.cjk) { try { cjk = await cjkLoad(loadCjkAtlas); } catch { /* the synthetic cells still paint */ } }
   // Layout v2 ON: the D520BT draws the font-C layout on 50×30 / 60×40 (OFF = {latin, cjk} exactly as before)
   const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm) ? await imagePathAtlases(payload, qrPayload) : null;
   // (all scripts ON + a Cyrillic payload: renderWithScripts adds the Cyrillic atlas — never otherwise)
@@ -562,7 +563,7 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
   if (prep) img = prep.payload;
   const needsCjk = payloadNeedsCjk(payload) || !!synth?.size; // all-scripts cells live in the CJK atlas
   let cjk: GlyphAtlas = {};
-  if (needsCjk) { try { cjk = await loadCjkAtlas(); } catch { cjk = {}; } }
+  if (needsCjk) { try { cjk = await cjkLoad(loadCjkAtlas); } catch { cjk = {}; } }
   const atlases: RasterAtlases = { latin: LATIN_ATLAS, cjk, cyrillic: CYRILLIC_ATLAS };
   if (isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm)) {
     try { atlases.proportional = await loadPropAtlas(); } catch { atlases.proportional = undefined; }
@@ -571,7 +572,7 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
       const prop = atlases.proportional;
       const sizes = withSyntheticCjk(synth, () => propPlanCjkSizes(img, payload.labelWidthMm, payload.labelHeightMm, prop), prep?.adv, prep?.joined, prep?.regEm);
       const reg: NonNullable<RasterAtlases["cjkReg"]> = {};
-      for (const size of sizes) { try { reg[size] = await loadCjkRegAtlas(size); } catch { /* that size paints from the 24-cell CJK atlas */ } }
+      for (const size of sizes) { try { reg[size] = await cjkLoad(() => loadCjkRegAtlas(size)); } catch { /* that size paints from the 24-cell CJK atlas */ } }
       atlases.cjkReg = reg;
     }
   }
@@ -810,7 +811,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
     // via the printer font — never tofu); the next print retries the chunk load.
     let cjk: GlyphAtlas | null = {};
     if (payloadNeedsCjk(payload)) {
-      try { cjk = await loadCjkAtlas(); } catch { cjk = null; cjkUnavailable = true; }
+      try { cjk = await cjkLoad(loadCjkAtlas); } catch { cjk = null; cjkUnavailable = true; }
     }
     if (cjk) {
       const r = await printStickerViaBitmap(bmpFn, payload, cjk, buyer.platform, fbName);
@@ -1297,27 +1298,13 @@ export function __webPrintIdle(): Promise<void> { return webPrepareChain.then(()
 export const ONE_STICKER_WEB_TIMEOUT_MS = 8000;
 // A picture that timed out keeps loading in the background (a font chunk on a bad connection). Until
 // it finishes, every next picture is skipped AT ONCE (today's sticker, no 8 s wait each), reported
-// once; when it finishes, the next order tries the new sticker again.
-class StuckSkip extends Error { readonly first: boolean; constructor(first: boolean) { super("one-sticker picture still loading — today's sticker"); this.first = first; } }
-let stuckPicture: Promise<unknown> | null = null;
-let stuckReported = false;
-async function withPictureLimit<T>(make: () => Promise<T>, ms: number): Promise<T> {
-  if (stuckPicture) { const first = !stuckReported; stuckReported = true; throw new StuckSkip(first); }
-  const p = make();
-  try { return await withTimeout(p, ms); }
-  catch (err) {
-    if (String(err).includes("one-sticker picture timeout")) {
-      const done = () => { if (stuckPicture === p) { stuckPicture = null; stuckReported = false; } };
-      stuckPicture = p; stuckReported = false;
-      p.then(done, done);
-    }
-    throw err;
-  }
-}
-export function __resetStuckPicture(): void { stuckPicture = null; stuckReported = false; }
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((res, rej) => { const t = setTimeout(() => rej(new Error("one-sticker picture timeout")), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
-}
+// once; when it finishes, the next order tries the new sticker again. The memory is SHARED with the
+// all-scripts kana wait and the Chinese atlas loads below (stuckLoad.ts): one order never waits twice.
+const withPictureLimit = <T>(make: () => Promise<T>, ms: number): Promise<T> => withLoadLimit(make, ms, true);
+export const __resetStuckPicture = __resetLoadStuck;
+// All-scripts ON: today's image paths wait on the Chinese atlas chunk at most 8 s too (the same
+// shared memory). OFF: exactly today's wait.
+const cjkLoad = <T>(load: () => Promise<T>): Promise<T> => (stickerAllScriptsOn() ? withLoadLimit(load, ALL_SCRIPTS_FONT_TIMEOUT_MS) : load());
 // Recorded (getLastOneStickerWebMiss) AND reported like a phone miss (reportStickerRoute → the app
 // counts it), never only a variable.
 function oneStickerWebMiss(err: unknown): void {

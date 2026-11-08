@@ -16,6 +16,7 @@
 import type { GlyphAtlas, GlyphFont, RasterAtlases, RasterPayload, CjkRegSize } from "./stickerRaster";
 import { bytesToBase64 } from "./stickerRaster";
 import { fallbackRun, outlineGlyph, getSansFace, loadSansFace, type GlyphBits, type SansFace } from "./oneStickerFonts";
+import { withLoadLimit, __resetLoadStuck } from "./stuckLoad";
 
 let allScriptsOn = false;
 export function setStickerAllScripts(on: boolean): void { allScriptsOn = on === true; }
@@ -257,24 +258,15 @@ export function augmentAtlases(atlases: RasterAtlases, prep: AllScriptsPrep, cyr
   return out;
 }
 /** Kana / full-width outlines are a lazy chunk: load them before a print that has such text — but
- *  never wait longer than 8 s (a stuck chunk on a bad connection): the device font draws them then. */
+ *  never wait longer than 8 s (a stuck chunk on a bad connection): the device font draws them then.
+ *  The "still loading" memory is SHARED with the new-sticker picture and the Chinese atlas loads
+ *  (stuckLoad.ts): anything already stuck → no wait at all. */
 export const ALL_SCRIPTS_FONT_TIMEOUT_MS = 8000;
 export async function ensureAllScriptsFonts(payload: RasterPayload): Promise<void> {
   if (!allScriptsOn) return;
   const b = payload.buyer ?? {};
   const t = [payload.storeName, b.name, b.handle, ...(b.orders ?? []).map((o) => o.item)].join(" ");
   if (!/[\u3000-\u30ff\u31f0-\u31ff\uff00-\uffef]/.test(t)) return;
-  if (kanaStuck) return; // still loading after an 8 s wait: the device font draws them at once
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const load = loadSansFace("cjkx");
-  try {
-    const late = await Promise.race([load.then(() => false), new Promise<boolean>((res) => { timer = setTimeout(() => res(true), ALL_SCRIPTS_FONT_TIMEOUT_MS); })]);
-    if (late) { // one wait only: until this load settles, every next print goes on at once
-      kanaStuck = load;
-      const done = () => { if (kanaStuck === load) kanaStuck = null; };
-      load.then(done, done);
-    }
-  } catch { /* the device font draws them */ } finally { if (timer) clearTimeout(timer); }
+  try { await withLoadLimit(() => loadSansFace("cjkx"), ALL_SCRIPTS_FONT_TIMEOUT_MS); } catch { /* stuck / late / failed: the device font draws them */ }
 }
-let kanaStuck: Promise<unknown> | null = null;
-export function __resetKanaStuck(): void { kanaStuck = null; }
+export const __resetKanaStuck = __resetLoadStuck;
