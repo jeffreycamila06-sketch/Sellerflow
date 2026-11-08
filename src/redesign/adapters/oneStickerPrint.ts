@@ -50,17 +50,25 @@ export const printerLabelFor = (z: { w: number; h: number }): string => (z.w ===
  *  nothing is saved (the device keeps today's sticker). Returns the new saved settings, or null. */
 // Never a size the printer cannot take: a Niimbot (its sticker size is chosen on the new screen —
 // today's Niimbot ignores Label size), a size wider than the saved printer, or 50×30 on a phone
-// whose printer prints the TEXT / WiFi sticker (no 50×30 layout there).
+// whose printer prints the TEXT / WiFi sticker (no 50×30 layout there). Then the saved size is KEPT
+// and the caller puts Printer settings back to it with a message — both places always agree.
 export interface SizeSyncContext { printerName?: string | null; niimbot?: boolean; devicePath?: string }
-export function syncOneStickerSizeFromPrinter(label: string, ctx: SizeSyncContext = {}): OneStickerSettings | null {
+export type SizeSyncResult =
+  | { status: "none" }                                    // no saved new sticker / same size / not a size
+  | { status: "synced"; settings: OneStickerSettings }
+  | { status: "kept"; reason: "niimbot" | "too_wide" | "text_50x30"; keep: { w: number; h: number }; model?: string; maxMm?: number };
+export function syncOneStickerSizeFromPrinter(label: string, ctx: SizeSyncContext = {}): SizeSyncResult {
   const saved = readSavedOneSticker();
   const z = sizeFromPrinterLabel(label);
-  if (!saved || !z || (saved.size.w === z.w && saved.size.h === z.h && !saved.size.custom)) return null;
-  if (ctx.niimbot || tooWideFor(ctx.printerName, z.w)) return null;
-  if (z.w === 50 && z.h === 30 && (ctx.devicePath === "text" || ctx.devicePath === "wifi")) return null;
+  if (!saved || !z || (saved.size.w === z.w && saved.size.h === z.h && !saved.size.custom)) return { status: "none" };
+  const keep = { w: saved.size.w, h: saved.size.h };
+  if (ctx.niimbot) return { status: "kept", reason: "niimbot", keep };
+  const wide = tooWideFor(ctx.printerName, z.w);
+  if (wide) return { status: "kept", reason: "too_wide", keep, model: wide.model, maxMm: wide.maxLabelMm };
+  if (z.w === 50 && z.h === 30 && (ctx.devicePath === "text" || ctx.devicePath === "wifi")) return { status: "kept", reason: "text_50x30", keep };
   const next = normalizeSettings({ ...saved, size: { w: z.w, h: z.h } });
   saveOneSticker(next);
-  return next;
+  return { status: "synced", settings: next };
 }
 export function isOneStickerSeen(): boolean { try { return localStorage.getItem(LS_ONE_STICKER_SEEN) === "1"; } catch { return false; } }
 export function markOneStickerSeen(): void { try { localStorage.setItem(LS_ONE_STICKER_SEEN, "1"); } catch { /* ignore */ } }

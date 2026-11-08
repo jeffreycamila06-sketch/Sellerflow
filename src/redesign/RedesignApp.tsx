@@ -2807,7 +2807,14 @@ export default function RedesignApp() {
               psType={psType} compactV2={stickerCompactV2On}
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
-              onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); if (oneStickerOn) syncOneStickerSizeFromPrinter(s, { printerName: savedBtPrinter()?.name ?? null, niimbot: savedIsNiimbot(), devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize: s })) }); }}
+              onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); if (oneStickerOn) {
+                const r = syncOneStickerSizeFromPrinter(s, { printerName: savedBtPrinter()?.name ?? null, niimbot: savedIsNiimbot(), devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize: s })) });
+                if (r.status === "kept") { // the new sticker keeps its size → Printer settings shows that size too, and says why
+                  setPsSize(printerLabelFor(r.keep));
+                  const size = `${r.keep.w}×${r.keep.h}`;
+                  setToast({ msg: r.reason === "niimbot" ? tpl(tApp.rd_os_sync_niimbot, { size }) : r.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: r.model ?? "", max: String(r.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size }), kind: "err" });
+                }
+              } }}
               cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicAllowed}
               stickerQrAllowed={stickerQrAllowed}
