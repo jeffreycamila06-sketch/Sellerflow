@@ -136,8 +136,42 @@ function transliterateLatin(s: string): string {
   return out;
 }
 function isCjkIdeograph(cp: number): boolean {
-  return (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff);
+  return (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff) || (synthCjk !== null && synthCjk.has(cp));
 }
+// ALL SCRIPTS (switch sticker_all_scripts_enabled, oneStickerScripts.ts): characters the atlases do
+// not have (kana, 、。「」, full-width, Hangul, Thai, Arabic …) are given private-use codepoints with
+// synthetic glyphs in the CJK cells, and count as the CJK tier ONLY inside withSyntheticCjk() around
+// one synchronous render. Outside it (switch off, or no such character) this set is null → every
+// classification is exactly main's.
+let synthCjk: ReadonlySet<number> | null = null;
+// A synthetic piece of a word (Thai, Korean, Arabic …) is as wide as its letters, not a whole
+// Chinese-size cell: its advance = this many em of the cell's font (pieces end between letters, never
+// inside one). The 24-cell CJK atlas is drawn at em 17 (oneStickerScripts SYNTH_CELL24_EM).
+let synthAdv: ReadonlyMap<number, number> | null = null;
+// Pieces whose NEXT codepoint (cp + 1) is the rest of the same word: no 1-dot gap between them and
+// a line never breaks between them (a Thai / Korean word stays whole, with no seams).
+let synthJoined: ReadonlySet<number> | null = null;
+// The em a piece's run is drawn at in each font-C cell (18/20/24/32), when not the 24-cell proportion.
+let synthRegEm: ReadonlyMap<number, ReadonlyMap<number, number>> | null = null;
+export function withSyntheticCjk<T>(set: ReadonlySet<number> | null | undefined, fn: () => T, adv?: ReadonlyMap<number, number> | null, joined?: ReadonlySet<number> | null, regEm?: ReadonlyMap<number, ReadonlyMap<number, number>> | null): T {
+  const prev = synthCjk, prevAdv = synthAdv, prevJoined = synthJoined, prevReg = synthRegEm;
+  synthCjk = set && set.size ? set : null;
+  synthAdv = synthCjk && adv && adv.size ? adv : null;
+  synthJoined = synthCjk && joined && joined.size ? joined : null;
+  synthRegEm = synthCjk && regEm && regEm.size ? regEm : null;
+  try { return fn(); } finally { synthCjk = prev; synthAdv = prevAdv; synthJoined = prevJoined; synthRegEm = prevReg; }
+}
+/** `next` continues the same word as `cp` (both synthetic pieces of one run). */
+function synthJoins(cp: number, next: number): boolean {
+  return synthJoined !== null && next === cp + 1 && synthJoined.has(cp);
+}
+/** The advance of a synthetic piece at a font of `em` dots, or null for every other character. */
+function synthWidth(cp: number, em: number): number | null {
+  if (synthAdv === null) return null;
+  const f = synthAdv.get(cp);
+  return f == null ? null : Math.max(1, Math.round(f * em));
+}
+const CELL24_EM = 17;
 function classifyScript(s: string): number {
   let hasCjk = false;
   for (const ch of s) {
@@ -583,10 +617,13 @@ export function wrapCommentV2(text: string, lineWidth: (lineIndex: number) => nu
   const s = String(text || "").replace(/\s+/g, " ").trim();
   const tokens: string[] = [];
   let word = "";
+  let prevCp = -1;
   for (const ch of s) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (ch === " " || isCjkIdeograph(cp)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
+    if (synthJoins(prevCp, cp) && !word && tokens.length) tokens[tokens.length - 1] += ch; // the rest of one word
+    else if (ch === " " || isCjkIdeograph(cp)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
     else word += ch;
+    prevCp = cp;
   }
   if (word) tokens.push(word);
   const widthOf = (t: string) => { let w = 0; for (const ch of t) w += charW(ch); return w; };
@@ -604,7 +641,7 @@ export function wrapCommentV2(text: string, lineWidth: (lineIndex: number) => nu
       }
       const tw = widthOf(t);
       if (used + tw <= max) { line += t; used += tw; tokens.shift(); continue; }
-      if (!line && !isCjkIdeograph(t.codePointAt(0) ?? 0)) {  // a word longer than the line → hard split
+      if (!line && ([...t].length > 1 || !isCjkIdeograph(t.codePointAt(0) ?? 0))) {  // a word longer than the line → hard split
         let head = "", hw = 0;
         for (const ch of t) { const cw = charW(ch); if (hw + cw > max) break; head += ch; hw += cw; }
         if (head) { line = head; tokens[0] = [...t].slice([...head].length).join(""); }
@@ -636,7 +673,7 @@ function layoutV2Order(
   const m = 2 * pm;                          // both scripts at 2×pm in BOTH directions (normal shape)
   const glyphH = 24 * m;                     // CJK 24-cell and font "3" 24-row cell → 48×pm tall
   const step = glyphH + 6;
-  const charW = (ch: string) => (halfGap && ch === " " ? 8 * m : isCjkIdeograph(ch.codePointAt(0) ?? 0) ? 24 * m : 16 * m); // 48×pm / 32×pm
+  const charW = (ch: string) => (halfGap && ch === " " ? 8 * m : isCjkIdeograph(ch.codePointAt(0) ?? 0) ? (synthWidth(ch.codePointAt(0) ?? 0, CELL24_EM) ?? 24) * m : 16 * m); // 48×pm / 32×pm
   let bottom = hDots - V2_BOTTOM_MARGIN;
   if (totalShown) bottom = Math.min(bottom, c.totalY + extra - V2_BOTTOM_MARGIN); // never run into "Total:"
   const inlineTimeX = timeOp && !timeUp ? 16 + (truncate(order.time ?? "", 10).length + 2) * 12 * tm : 16;
@@ -847,7 +884,7 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
       let g = cjkFont.glyphs[cp];
       if (!g) { const alt = translitCp(cp); if (alt != null) g = cjkFont.glyphs[alt]; }
       if (g) bmp.blit(b64ToBytes(g), cjkFont.w, cjkFont.h, penX, op.y, op.xm, op.ym);
-      penX += cjkFont.w * op.xm;
+      penX += (synthWidth(cp, CELL24_EM) ?? cjkFont.w) * op.xm;
     }
   }
 }
@@ -1001,7 +1038,20 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     if (opts.bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
     stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
   }
-  const wDots = bmp.w, hDots = bmp.h;
+  return bitmapTsplFromRaster({ buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes }, wMm, hMm, opts);
+}
+
+// The TSPL job (SIZE … DENSITY … CLS, full-width BITMAP bands, PRINT 1) for a finished raster — the
+// band emission of rasterizeToBitmapTspl, also used by the one-sticker engine (printing.ts) so both
+// paths send the same framing. Bytes unchanged (golden-tested through rasterizeToBitmapTspl).
+export function bitmapTsplFromRaster(full: FullRaster, wMm: number, hMm: number, opts: BandOptions = {}): BitmapTsplResult {
+  const wDots = full.w, hDots = full.h;
+  const rowHasInk = (y: number): boolean => { const off = y * full.rowBytes; for (let b = 0; b < full.rowBytes; b++) if (full.buf[off + b]) return true; return false; };
+  const inkExtent = (y0: number, y1: number): [number, number] | null => {
+    let lo = full.w, hi = -1;
+    for (let y = y0; y < y1; y++) for (let x = 0; x < full.w; x++) if (full.buf[y * full.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) { if (x < lo) lo = x; if (x > hi) hi = x; }
+    return hi < 0 ? null : [lo, hi + 1];
+  };
 
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };
@@ -1021,9 +1071,9 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   const runs: Band[] = [];
   let y = 0;
   while (y < hDots) {
-    if (!bmp.rowHasInk(y)) { y++; continue; }
+    if (!rowHasInk(y)) { y++; continue; }
     let y1 = y + 1;
-    while (y1 < hDots && bmp.rowHasInk(y1)) y1++;
+    while (y1 < hDots && rowHasInk(y1)) y1++;
     const prev = runs[runs.length - 1];
     if (prev && y - prev.y1 <= GAP_MERGE_ROWS) prev.y1 = y1;
     else runs.push({ y0: y, y1 });
@@ -1036,7 +1086,7 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     // every size → rowBytes exact). horizontalCrop keeps the old tight crop.
     let x0 = 0, x1 = wDots;
     if (opts.horizontalCrop) {
-      const ext = bmp.inkExtent(run.y0, run.y1);
+      const ext = inkExtent(run.y0, run.y1);
       if (!ext) continue;
       [x0, x1] = ext;
     }
@@ -1047,7 +1097,7 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     if (!INK_IS_ZERO) { /* ink=1: buffer already 0 (white); set ink bits below */ }
     else data.fill(0xff); // ink=0: start all-white(1), clear ink bits to 0
     for (let ry = 0; ry < bandH; ry++) for (let rx = 0; rx < bandW; rx++) {
-      const ink = (bmp.buf[(run.y0 + ry) * bmp.rowBytes + ((x0 + rx) >> 3)] & (0x80 >> ((x0 + rx) & 7))) !== 0;
+      const ink = (full.buf[(run.y0 + ry) * full.rowBytes + ((x0 + rx) >> 3)] & (0x80 >> ((x0 + rx) & 7))) !== 0;
       if (!ink) continue;
       const idx = ry * rowBytes + (rx >> 3), mask = 0x80 >> (rx & 7);
       if (INK_IS_ZERO) data[idx] &= ~mask; else data[idx] |= mask;
@@ -1235,7 +1285,7 @@ export const propQrInkLeft = (qr: QrPlacement): number => qr.x0 + QR_QUIET_MODUL
 interface PropItem { x: number; latin?: PropGlyph; cjk?: number } // cjk = the codepoint, painted from the size's CJK atlas
 export interface PropLine { items: PropItem[]; width: number; inkWidth: number; text: string; cut: boolean; cjk: boolean } // width = Σ advances; inkWidth = painted extent (last glyph's overhang included)
 
-const isIdeograph = (cp: number) => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff);
+const isIdeograph = (cp: number) => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff) || (synthCjk !== null && synthCjk.has(cp));
 function propCjkFont(atlases: RasterAtlases, size: number): GlyphFont | null {
   const reg = atlases.cjkReg?.[size as CjkRegSize];
   return reg?.cjk ?? atlases.cjk?.cjk ?? null;
@@ -1249,9 +1299,11 @@ export function propFitLine(text: string, size: number, maxW: number, atlases: R
   const cjkFont = propCjkFont(atlases, size); // only consulted for NON-ideographs the Latin font lacks (fullwidth punctuation, kana…)
   type Piece = { ch: string; adv: number; latin?: PropGlyph; cjk?: number };
   const pieces: Piece[] = [];
-  for (const ch of text) {
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     const cp = ch.codePointAt(0) ?? 0;
-    if (isIdeograph(cp)) { pieces.push({ ch, adv: size + PROP_CJK_GAP, cjk: cp }); continue; }
+    if (isIdeograph(cp)) { pieces.push({ ch, adv: (synthWidth(cp, synthRegEm?.get(cp)?.get(size) ?? Math.round((size * CELL24_EM) / 24)) ?? size) + (synthJoins(cp, chars[i + 1]?.codePointAt(0) ?? -1) ? 0 : PROP_CJK_GAP), cjk: cp }); continue; }
     let g = font.glyphs[cp];
     if (!g) { const alt = translitCp(cp); if (alt != null) g = font.glyphs[alt]; }
     if (!g && cjkFont?.glyphs[cp]) { pieces.push({ ch, adv: cjkFont.w + PROP_CJK_GAP, cjk: cp }); continue; }
@@ -1415,9 +1467,13 @@ export interface PropLaidLineV2 { size: number; font: PropFont; line: PropLine; 
 export function propWrapLines(text: string, size: number, maxW: number, atlases: RasterAtlases, maxLines: number): PropLine[] {
   const tokens: string[] = [];
   let word = "";
+  let prevCp = -1;
   for (const ch of String(text || "").replace(/\s+/g, " ").trim()) {
-    if (ch === " " || isCjkIdeograph(ch.codePointAt(0) ?? 0)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
+    const cp = ch.codePointAt(0) ?? 0;
+    if (synthJoins(prevCp, cp) && !word && tokens.length) tokens[tokens.length - 1] += ch; // the rest of one word
+    else if (ch === " " || isCjkIdeograph(cp)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
     else word += ch;
+    prevCp = cp;
   }
   if (word) tokens.push(word);
   const lines: PropLine[] = [];

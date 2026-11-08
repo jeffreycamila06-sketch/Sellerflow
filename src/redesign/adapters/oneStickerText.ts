@@ -1,0 +1,374 @@
+// ONE STICKER — text: what prints, how a line is measured, wrapped and painted (pure).
+//
+//   printableText()  NFC; "fancy" letters (𝐀𝐦𝐲 𝓐𝓶𝔂 Ⓐ 🄰 🅰) → normal "Amy"; emoji removed; every
+//                    other printable character KEPT (kana, 、。「」, full-width １２３Ｍ, half-width
+//                    ｶﾅ, Hangul, Thai, Arabic, Cyrillic, Vietnamese …). Full-width is NOT folded.
+//   pieces           each character's glyph source: sans (outline) · cjkx (kana / full-width
+//                    outline) · cjk (ideograph atlas) · fb (fallback drawer, whole runs so the
+//                    device shapes Thai marks and joins Arabic letters; right-to-left phrases are
+//                    kept as one run).
+//   wrapText()       word wrap (Intl.Segmenter when present: Thai word breaks, one break per CJK
+//                    character), a word longer than the line is split by graphemes, the last kept
+//                    line ends with "…" when the text does not fit.
+import { cjkCellFor, cjkGlyph, dilateBits, fallbackGeneration, fallbackRun, outlineGlyph, EMPTY_GLYPH, type CjkCell, type GlyphBits, type SansFace, type SansWeight } from "./oneStickerFonts";
+import type { GlyphAtlas } from "./stickerRaster";
+import { lighterSteps, stillOpen, topology, type Topology } from "./oneStickerReadable";
+
+// ── What prints ───────────────────────────────────────────────────────────────────────────────
+const isEmojiCp = (cp: number): boolean =>
+  (cp >= 0x1f000 && cp <= 0x1faff && !(cp >= 0x1f130 && cp <= 0x1f189)) || // pictographs, flags (squared letters handled below)
+  (cp >= 0x1fb00 && cp <= 0x1fbff) || (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0x2b00 && cp <= 0x2bff) ||
+  (cp >= 0x1f1e6 && cp <= 0x1f1ff) || (cp >= 0xfe00 && cp <= 0xfe0f) || cp === 0x200d || cp === 0x20e3 ||
+  (cp >= 0xe0020 && cp <= 0xe007f) || (cp >= 0x2300 && cp <= 0x23ff && cp !== 0x2318) || cp === 0x3030 || cp === 0x303d || cp === 0x3297 || cp === 0x3299;
+// Enclosed / styled letters that NFKC does not fold (negative squared/circled forms).
+function enclosedLetter(cp: number): string | null {
+  if (cp >= 0x1f130 && cp <= 0x1f149) return String.fromCharCode(65 + cp - 0x1f130); // 🄰 squared A–Z
+  if (cp >= 0x1f150 && cp <= 0x1f169) return String.fromCharCode(65 + cp - 0x1f150); // 🅐 negative circled
+  if (cp >= 0x1f170 && cp <= 0x1f189) return String.fromCharCode(65 + cp - 0x1f170); // 🅰 negative squared
+  if (cp >= 0x24b6 && cp <= 0x24cf) return String.fromCharCode(65 + cp - 0x24b6);   // Ⓐ circled A–Z
+  if (cp >= 0x24d0 && cp <= 0x24e9) return String.fromCharCode(97 + cp - 0x24d0);   // ⓐ circled a–z
+  return null;
+}
+// "Fancy" letters → plain: Mathematical Alphanumeric Symbols, letterlike styled letters, circled
+// numbers, modifier/small letters. NFKC per character ONLY in these blocks (never on full-width
+// forms, kana or CJK, which must print as they are).
+const isFancyBlock = (cp: number): boolean =>
+  (cp >= 0x1d400 && cp <= 0x1d7ff) || (cp >= 0x2100 && cp <= 0x214f && cp !== 0x2116 && cp !== 0x2103) ||
+  (cp >= 0x2460 && cp <= 0x24ff) || (cp >= 0x1d00 && cp <= 0x1dbf) || (cp >= 0x2070 && cp <= 0x209f) || (cp >= 0x2c7c && cp <= 0x2c7d) || (cp >= 0xa7f8 && cp <= 0xa7f9);
+// Modifier letters (ᴬᵐʸ, ʰ, ⁿ …): their plain letter (NFKC). Keycaps (2️⃣ #️⃣) keep their digit / sign
+// (a quantity "x 2️⃣" must still say 2) — only the keycap marks go.
+const isModifierLetter = (cp: number): boolean => (cp >= 0x02b0 && cp <= 0x02b8) || (cp >= 0x02e0 && cp <= 0x02e4) || (cp >= 0x1d2c && cp <= 0x1d6a) || (cp >= 0x1d9b && cp <= 0x1dbf) || (cp >= 0x2070 && cp <= 0x209c) || (cp >= 0xa770 && cp <= 0xa770);
+export function printableText(s: string | null | undefined): string {
+  if (!s) return "";
+  let out = "";
+  const src = String(s).normalize("NFC").replace(/([0-9#*])\uFE0F?\u20E3/gu, "$1").replace(/[\uFE00-\uFE0F\u20E3]|\uDB40[\uDD00-\uDDEF]/gu, "");
+  for (const ch of src) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (isModifierLetter(cp)) { out += ch.normalize("NFKC"); continue; }
+    const enc = enclosedLetter(cp);
+    if (enc) { out += enc; continue; }
+    if (isEmojiCp(cp)) continue;
+    if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) { out += cp === 0x0a || cp === 0x09 ? " " : ""; continue; }
+    if (cp === 0x200b || cp === 0x2060 || cp === 0xfeff || (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069)) continue; // invisible / bidi controls
+    if (isFancyBlock(cp)) { out += ch.normalize("NFKC"); continue; }
+    out += ch;
+  }
+  return out.replace(/\s+/g, " ").trim();
+}
+
+// ── Glyph sources ─────────────────────────────────────────────────────────────────────────────
+export type Source = "sans" | "cjkx" | "cjk" | "fb";
+export const isIdeograph = (cp: number): boolean => (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0x20000 && cp <= 0x3134f);
+const isRtl = (cp: number): boolean => (cp >= 0x0590 && cp <= 0x08ff) || (cp >= 0xfb1d && cp <= 0xfdff) || (cp >= 0xfe70 && cp <= 0xfeff);
+const isCombining = (cp: number): boolean => (cp >= 0x300 && cp <= 0x36f) || (cp >= 0x1ab0 && cp <= 0x1aff) || (cp >= 0x20d0 && cp <= 0x20ff);
+/** One character per break opportunity (CJK and kana break between any two characters). */
+const isCjkLike = (cp: number): boolean => isIdeograph(cp) || (cp >= 0x3000 && cp <= 0x30ff) || (cp >= 0x31f0 && cp <= 0x31ff) || (cp >= 0xff00 && cp <= 0xffef);
+
+export interface Fonts {
+  sans: Partial<Record<SansWeight, SansFace>>;
+  cjkx?: SansFace | null;
+  cjk?: Partial<Record<CjkCell, GlyphAtlas>>; // painting only; layout never needs it
+}
+function sansFace(f: Fonts, w: SansWeight): SansFace | null { return f.sans[w] ?? f.sans[700] ?? f.sans[400] ?? f.sans[900] ?? null; }
+export function sourceOf(cp: number, f: Fonts): Source {
+  const any = sansFace(f, 400);
+  if (any?.g[cp] != null) return "sans";
+  if (f.cjkx?.g[cp] != null) return "cjkx";
+  if (isIdeograph(cp)) return "cjk";
+  return "fb";
+}
+
+// CJK / kana thickness for Bold and Extra (the ideograph atlases are Regular).
+export function cjkInk(px: number, w: SansWeight): { dx: number; dy: number } {
+  if (w === 400) return { dx: 0, dy: 0 };
+  if (w === 700) return { dx: Math.max(1, Math.round(px / 26)), dy: 0 };
+  return { dx: Math.max(2, Math.round(px / 15)), dy: Math.max(1, Math.round(px / 34)) };
+}
+
+// A measured piece of one line.
+export interface Piece { src: Source; text: string; cp: number; adv: number; rtl?: boolean }
+export interface LineRun { pieces: Piece[]; width: number; text: string }
+
+function graphemes(s: string): string[] {
+  const Seg = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => { segment(s: string): Iterable<{ segment: string }> } }).Segmenter;
+  if (Seg) { const out: string[] = []; for (const g of new Seg(undefined, { granularity: "grapheme" }).segment(s)) out.push(g.segment); return out; }
+  return Array.from(s);
+}
+/** Measure `text` at px/weight → pieces (one per glyph, one per fallback run). */
+export function measure(text: string, px: number, weight: SansWeight, f: Fonts): LineRun {
+  const pieces: Piece[] = [];
+  let width = 0;
+  const face = sansFace(f, weight);
+  const ink = cjkInk(px, weight);
+  let fb = "", fbRtl = false;
+  const flushFb = () => {
+    if (!fb) return;
+    const g = fallbackRun(fb, px, weight, fbRtl);
+    const adv = g ? Math.round(g.adv) : 0;
+    pieces.push({ src: "fb", text: fb, cp: 0, adv, rtl: fbRtl });
+    width += adv; fb = ""; fbRtl = false;
+  };
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    let src = sourceOf(cp, f);
+    if (src === "sans" && fb && (isCombining(cp) || (cp === 0x20 && fbRtl))) src = "fb"; // a mark / space inside a fallback run stays with it
+    if (src === "fb") { if (isRtl(cp)) fbRtl = true; fb += ch; continue; }
+    flushFb();
+    let adv = 0;
+    if (src === "sans" && face) adv = outlineGlyph(face, `s${weight}`, cp, px)?.adv ?? 0;
+    else if (src === "cjkx" && f.cjkx) adv = (outlineGlyph(f.cjkx, "x", cp, px)?.adv ?? px) + ink.dx;
+    else if (src === "cjk") { const c = cjkCellFor(px); adv = c.cell * c.mag + Math.max(1, ink.dx) + Math.max(1, Math.round(px / 24)); }
+    pieces.push({ src, text: ch, cp, adv });
+    width += adv;
+  }
+  flushFb();
+  return { pieces, width: Math.round(width), text };
+}
+
+// ── Wrapping ──────────────────────────────────────────────────────────────────────────────────
+interface Token { s: string; space: boolean }
+function tokens(text: string): Token[] {
+  const Seg = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => { segment(s: string): Iterable<{ segment: string }> } }).Segmenter;
+  const raw: string[] = [];
+  if (Seg) for (const g of new Seg("th", { granularity: "word" }).segment(text)) raw.push(g.segment);
+  else raw.push(...text.split(/(\s+)/).filter(Boolean));
+  const out: Token[] = [];
+  for (const t of raw) {
+    if (/^\s+$/.test(t)) { out.push({ s: " ", space: true }); continue; }
+    // CJK / kana / full-width: a break opportunity between every character
+    let buf = "";
+    for (const g of graphemes(t)) {
+      const cp = g.codePointAt(0) ?? 0;
+      if (isCjkLike(cp)) { if (buf) { out.push({ s: buf, space: false }); buf = ""; } out.push({ s: g, space: false }); }
+      else buf += g;
+    }
+    if (buf) out.push({ s: buf, space: false });
+  }
+  // keep a right-to-left phrase (words + the spaces between them) together → the device draws it
+  // in the right order with joined letters
+  const merged: Token[] = [];
+  const rtlTok = (t: Token) => !t.space && Array.from(t.s).some((c) => isRtl(c.codePointAt(0) ?? 0));
+  for (let i = 0; i < out.length; i++) {
+    const t = out[i];
+    const prev = merged[merged.length - 1];
+    if (prev && rtlTok(prev) && (rtlTok(t) || (t.space && out[i + 1] && rtlTok(out[i + 1])))) { prev.s += t.s; continue; }
+    merged.push({ ...t });
+  }
+  return merged;
+}
+
+export interface WrapResult { lines: LineRun[]; cut: boolean }
+const ELLIPSIS = "…";
+/** Fit `text` on one line ≤ maxW, cutting the end with "…" when needed. */
+export function fitOneLine(text: string, px: number, weight: SansWeight, maxW: number, f: Fonts): { line: LineRun; cut: boolean } {
+  const full = measure(text, px, weight, f);
+  if (full.width <= maxW) return { line: full, cut: false };
+  const gs = graphemes(text);
+  let lo = 0, hi = gs.length;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; const t = gs.slice(0, mid).join("").trimEnd() + ELLIPSIS; if (measure(t, px, weight, f).width <= maxW) lo = mid; else hi = mid - 1; }
+  const t = gs.slice(0, lo).join("").trimEnd() + ELLIPSIS;
+  return { line: measure(lo > 0 ? t : ELLIPSIS, px, weight, f), cut: true };
+}
+/** Word-wrap into at most maxLines lines; widthOf(i) = the room on line i. */
+export function wrapText(text: string, px: number, weight: SansWeight, widthOf: (i: number) => number, maxLines: number, f: Fonts): WrapResult {
+  const toks = tokens(text);
+  const lines: string[] = [];
+  let cur = "";
+  let i = 0;
+  let cut = false;
+  const fits = (s: string, li: number) => measure(s, px, weight, f).width <= widthOf(li);
+  while (i < toks.length) {
+    const t = toks[i];
+    if (t.space) { if (cur) cur += " "; i++; continue; }
+    const li = lines.length;
+    if (li >= maxLines) { cut = true; break; }
+    const cand = cur + t.s;
+    if (fits(cand.trimEnd(), li)) { cur = cand; i++; continue; }
+    if (cur.trim()) { lines.push(cur.trimEnd()); cur = ""; continue; }
+    // a right-to-left phrase wider than the line → break it between its words (first words first)
+    if (t.s.includes(" ")) {
+      const ws = t.s.split(" ");
+      let k = 0;
+      while (k < ws.length && fits(ws.slice(0, k + 1).join(" "), li)) k++;
+      if (k > 0) { lines.push(ws.slice(0, k).join(" ")); toks[i] = { s: ws.slice(k).join(" "), space: false }; continue; }
+    }
+    // the token alone is wider than the line → split it by graphemes
+    const gs = graphemes(t.s);
+    let n = 0;
+    while (n < gs.length && fits(gs.slice(0, n + 1).join(""), li)) n++;
+    if (n === 0) n = 1;
+    lines.push(gs.slice(0, n).join(""));
+    toks[i] = { s: gs.slice(n).join(""), space: false };
+    if (!toks[i].s) i++;
+  }
+  if (cur.trim()) { if (lines.length < maxLines) lines.push(cur.trimEnd()); else cut = true; }
+  if (!cut && i < toks.length && toks.slice(i).some((t) => !t.space)) cut = true;
+  const out = lines.map((s) => measure(s, px, weight, f));
+  if (cut && out.length) {
+    const last = out.length - 1;
+    out[last] = fitOneLine(lines[last] + " " + ELLIPSIS.repeat(3), px, weight, widthOf(last), f).line;
+    // fitOneLine cuts our padding and appends "…"
+  }
+  return { lines: out, cut };
+}
+
+// ── Painting ──────────────────────────────────────────────────────────────────────────────────
+export interface Ink { w: number; h: number; rowBytes: number; buf: Uint8Array }
+export function newInk(w: number, h: number): Ink { const rowBytes = (w + 7) >> 3; return { w, h, rowBytes, buf: new Uint8Array(rowBytes * h) }; }
+export function blitBits(dst: Ink, g: GlyphBits, x: number, y: number, clipRight = dst.w): void {
+  for (let gy = 0; gy < g.h; gy++) {
+    const Y = y + gy; if (Y < 0 || Y >= dst.h) continue;
+    for (let gx = 0; gx < g.w; gx++) {
+      if (!(g.buf[gy * g.rowBytes + (gx >> 3)] & (0x80 >> (gx & 7)))) continue;
+      const X = x + gx; if (X < 0 || X >= clipRight) continue;
+      dst.buf[Y * dst.rowBytes + (X >> 3)] |= 0x80 >> (X & 7);
+    }
+  }
+}
+/** The ink box of a measured line relative to its baseline: [top (negative), bottom]. */
+export function lineExtent(run: LineRun, px: number, weight: SansWeight, f: Fonts): { asc: number; desc: number } {
+  let asc = 0, desc = 0;
+  for (const g of glyphsOf(run, px, weight, f)) { if (!g.bits || g.bits.w === 0) continue; asc = Math.max(asc, -g.bits.y0); desc = Math.max(desc, g.bits.y0 + g.bits.h); }
+  return { asc, desc };
+}
+interface Placed { x: number; bits: GlyphBits | null }
+// ink = the lighter heads' 1-dot ink (Y41BT / XP-420B): every inked dot also inks the dot to its right
+function glyphsOf(run: LineRun, px: number, weight: SansWeight, f: Fonts, ink = false): Placed[] {
+  const plain = glyphsPlain(run, px, weight, f);
+  return ink ? plain.map((g) => ({ x: g.x, bits: g.bits && g.bits.w ? dilateBits(g.bits, 1, 0) : g.bits })) : plain;
+}
+function glyphsPlain(run: LineRun, px: number, weight: SansWeight, f: Fonts): Placed[] {
+  const out: Placed[] = [];
+  const face = sansFace(f, weight);
+  const ink = cjkInk(px, weight);
+  const { cell, mag } = cjkCellFor(px);
+  let pen = 0;
+  for (const p of run.pieces) {
+    let bits: GlyphBits | null = null;
+    if (p.src === "sans" && face) bits = outlineGlyph(face, `s${weight}`, p.cp, px);
+    else if (p.src === "cjkx" && f.cjkx) { const g = outlineGlyph(f.cjkx, "x", p.cp, px); bits = g ? dilateBits(g, ink.dx, ink.dy) : null; }
+    else if (p.src === "cjk") {
+      const g = cjkGlyph(f.cjk?.[cell], cell, mag, p.cp, px);
+      bits = g ? dilateBits(g, ink.dx, ink.dy) : fallbackRun(p.text, px, weight, false); // an ideograph the atlas lacks → device font
+      if (bits && !g) bits = { ...bits, x0: bits.x0 + Math.round((p.adv - bits.adv) / 2) };
+    } else if (p.src === "fb") bits = fallbackRun(p.text, px, weight, !!p.rtl);
+    out.push({ x: Math.round(pen), bits: bits ?? EMPTY_GLYPH(p.adv) });
+    pen += p.adv;
+  }
+  return out;
+}
+/** Paint a measured line with its pen at (x, baseline); ink at/after clipRight is not drawn. */
+export function paintLine(dst: Ink, run: LineRun, px: number, weight: SansWeight, f: Fonts, x: number, baseline: number, clipRight = dst.w, ink = false): void {
+  for (const g of glyphsOf(run, px, weight, f, ink)) if (g.bits && g.bits.w) blitBits(dst, g.bits, x + g.x + g.bits.x0, baseline + g.bits.y0, clipRight);
+}
+
+// ── Readability guard (oneStickerReadable.ts) ─────────────────────────────────────────────────
+// Cached per GLYPH and per neighbouring PAIR (keyed by the exact font they are drawn from), so a long
+// comment costs one check per different letter / letter pair.
+const fontIds = new WeakMap<object, number>();
+let nextFontId = 1;
+const fontId = (o: object | null | undefined): number => {
+  if (!o) return 0;
+  let id = fontIds.get(o);
+  if (!id) { id = nextFontId++; fontIds.set(o, id); }
+  return id;
+};
+function pieceKey(p: Piece, px: number, weight: SansWeight, ink: boolean, f: Fonts): string {
+  const font = p.src === "sans" ? fontId(sansFace(f, weight)) : p.src === "cjkx" ? fontId(f.cjkx) : p.src === "cjk" ? fontId(f.cjk?.[cjkCellFor(px).cell]) : 0;
+  const what = p.src === "fb" ? `${fallbackGeneration()}|${p.rtl ? 1 : 0}|${p.text}` : p.src === "cjk" ? `${p.cp}|${p.text}` : `${p.cp}`;
+  return `${p.src}|${font}|${weight}|${ink ? 1 : 0}|${px}|${what}`;
+}
+const glyphTopo = new Map<string, Topology>();
+function topologies(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): Topology[] {
+  const run = measure(text, px, weight, f);
+  const keys = run.pieces.map((p) => pieceKey(p, px, weight, ink, f));
+  if (keys.every((k) => glyphTopo.has(k))) return keys.map((k) => glyphTopo.get(k)!);
+  const glyphs = glyphsOf(run, px, weight, f, ink);
+  if (glyphTopo.size > 20000) glyphTopo.clear();
+  return keys.map((k, i) => {
+    let t = glyphTopo.get(k);
+    if (!t) { const b = glyphs[i].bits; t = b ? topology(b) : { holes: [], cells: [], parts: 0 }; glyphTopo.set(k, t); }
+    return t;
+  });
+}
+/** Does any ink dot of `a` (at ax, ay) sit on or next to (8 ways) an ink dot of `b` (at bx, by)? */
+function bitsTouch(a: GlyphBits, ax: number, ay: number, b: GlyphBits, bx: number, by: number): boolean {
+  const x0 = Math.max(ax, bx - 1), x1 = Math.min(ax + a.w, bx + b.w + 1); // a's columns within 1 of b
+  const y0 = Math.max(ay, by - 1), y1 = Math.min(ay + a.h, by + b.h + 1);
+  if (x0 >= x1 || y0 >= y1) return false; // boxes 2+ dots apart: cannot touch
+  const on = (g: GlyphBits, gx: number, gy: number, x: number, y: number) => { const X = x - gx, Y = y - gy; return X >= 0 && Y >= 0 && X < g.w && Y < g.h && (g.buf[Y * g.rowBytes + (X >> 3)] & (0x80 >> (X & 7))) !== 0; };
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    if (!on(a, ax, ay, x, y)) continue;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (on(b, bx, by, x + dx, y + dy)) return true;
+  }
+  return false;
+}
+// Neighbouring letters: painted side by side, two letters that did NOT touch in Normal must not
+// touch in the heavier style either (checked pair by pair, so one pair can never hide another).
+const pairTouch = new Map<string, boolean>();
+function touchingPairs(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): boolean[] {
+  const run = measure(text, px, weight, f);
+  const keys = run.pieces.map((p) => pieceKey(p, px, weight, ink, f));
+  let glyphs: Placed[] | null = null;
+  const out: boolean[] = [];
+  const pens: number[] = [];
+  let pen = 0;
+  for (const p of run.pieces) { pens.push(Math.round(pen)); pen += p.adv; } // exactly where glyphsOf places them
+  for (let i = 0; i + 1 < keys.length; i++) {
+    // both styles exactly where the line puts their letters: a pair may touch only where the Normal
+    // font itself joins it at its own printed spacing (never "rn" → "m", "vv" → "w")
+    const gap = pens[i + 1] - pens[i];
+    const key = `${keys[i]}\u0001${keys[i + 1]}\u0001${gap}`; // the gap is in the key: one cache for both
+    let hit = pairTouch.get(key);
+    if (hit === undefined) {
+      glyphs ??= glyphsOf(run, px, weight, f, ink);
+      const a = glyphs[i].bits, b = glyphs[i + 1].bits;
+      hit = !!a && !!b && a.w > 0 && b.w > 0 && bitsTouch(a, a.x0, a.y0, b, gap + b.x0, b.y0);
+      if (pairTouch.size > 20000) pairTouch.clear();
+      pairTouch.set(key, hit);
+    }
+    out.push(hit);
+  }
+  return out;
+}
+function sameShape(text: string, px: number, st: InkStyle, ref: Topology[], refTouch: boolean[], f: Fonts): boolean {
+  const t = topologies(text, px, st.weight, st.ink, f);
+  if (t.length !== ref.length || !t.every((h, i) => stillOpen(h, ref[i], px))) return false;
+  const touch = touchingPairs(text, px, st.weight, st.ink, f);
+  return touch.every((x, i) => !x || refTouch[i]);
+}
+export interface InkStyle { weight: SansWeight; ink: boolean }
+/** The heaviest style ≤ the seller's choice that keeps every letter of `text` open at `px`. */
+export function readableStyle(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): InkStyle {
+  const own = readableStyleOwn(text, px, weight, ink, f);
+  // MONOTONIC: a heavier choice never prints heavier than what the next lighter choice had to become
+  // (if Bold must lighten, Extra lightens at least as much)
+  if (weight === 400) return own;
+  const next: SansWeight = weight === 900 ? 700 : 400;
+  const lighter = readableStyle(text, px, next, ink, f);
+  const lighterHadTo = styleRank(lighter) < styleRank({ weight: next, ink });
+  return lighterHadTo && styleRank(lighter) < styleRank(own) ? lighter : own;
+}
+/** Heavier = bigger: weight first, then the 1-dot ink. */
+const styleRank = (s: InkStyle): number => s.weight * 2 + (s.ink ? 1 : 0);
+function readableStyleOwn(text: string, px: number, weight: SansWeight, ink: boolean, f: Fonts): InkStyle {
+  const steps = lighterSteps(weight, ink);
+  if (!text.trim() || steps.length === 1) return steps[0];
+  const ref = topologies(text, px, 400, false, f);
+  const refTouch = touchingPairs(text, px, 400, false, f);
+  for (const st of steps) {
+    if (st.weight === 400 && !st.ink) return st;
+    if (sameShape(text, px, st, ref, refTouch, f)) return st;
+  }
+  return { weight: 400, ink: false };
+}
+/** Every letter of the line open in this style? (used by the screen / proof pictures) */
+export function lineIsReadable(text: string, px: number, style: InkStyle, f: Fonts): boolean {
+  if (style.weight === 400 && !style.ink) return true;
+  return sameShape(text, px, style, topologies(text, px, 400, false, f), touchingPairs(text, px, 400, false, f), f);
+}
+export function __clearReadableCache(): void { glyphTopo.clear(); pairTouch.clear(); }
+/** Which CJK atlas cells the given line sizes need (to load them before painting). */
+export function cjkCellsFor(sizes: number[]): CjkCell[] { return [...new Set(sizes.map((s) => cjkCellFor(s).cell))]; }
+export const hasIdeograph = (s: string): boolean => { for (const ch of s) if (isIdeograph(ch.codePointAt(0) ?? 0)) return true; return false; };
+export const needsCjkx = (s: string, f: Fonts): boolean => { for (const ch of s) if (sourceOf(ch.codePointAt(0) ?? 0, f) === "cjkx") return true; return false; };

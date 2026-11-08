@@ -1,0 +1,11 @@
+-- ============================================================================
+-- sql/144 rollback — remove the two one-sticker switch rows.
+-- ============================================================================
+-- Without the rows the app treats both switches as OFF (fail closed): every device prints today's
+-- sticker (a device that saved the new pattern keeps its saved choice but it is ignored), and only
+-- admins see the new Live print pattern screen.
+-- NOTE: Save on the new screen ALSO set that device's Printer settings "Label size" (one size, both
+-- places). Rolling back does not undo that: such a device keeps printing today's sticker at the size
+-- it last saved (e.g. 60×40 instead of its earlier 100×60). The seller can change it back in
+-- Settings → Printer settings → Label size.
+delete from public.app_settings where key in ('one_sticker_enabled', 'sticker_all_scripts_enabled');
