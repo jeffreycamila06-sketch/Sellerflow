@@ -54,7 +54,8 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings }: { 
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return (
     <canvas ref={ref} data-testid="os-preview" data-ready={ready ? "1" : "0"}
-      style={{ width: "100%", aspectRatio: `${settings.size.w} / ${settings.size.h}`, imageRendering: "pixelated", display: "block", background: "#fff", borderRadius: 6, boxShadow: "0 0 0 1px #d9d7e6" }} />
+      // a tall / square custom label never pushes the screen down: at most min(60vh, 420 px) high, same shape
+      style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: "min(60vh, 420px)", aspectRatio: `${settings.size.w} / ${settings.size.h}`, imageRendering: "pixelated", display: "block", background: "#fff", borderRadius: 6, boxShadow: "0 0 0 1px #d9d7e6" }} />
   );
 }
 

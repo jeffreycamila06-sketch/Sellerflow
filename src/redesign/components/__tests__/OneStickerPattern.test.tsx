@@ -117,6 +117,14 @@ describe("OneStickerPattern", () => {
     fireEvent.click(screen.getByTestId("os-reset"));
     expect(onToast).toHaveBeenCalledWith("Back to recommended settings");
   });
+  it("the preview of a tall / square label is at most min(60vh, 420 px) high, width auto, same shape", () => {
+    renderIt({ initial: { ...recommendedSettings({ w: 50, h: 70 }), size: { w: 50, h: 70, custom: true } } });
+    const c = screen.getByTestId("os-preview") as HTMLCanvasElement;
+    expect(c.style.maxHeight).toBe("min(60vh, 420px)");
+    expect(c.style.width).toBe("auto");
+    expect(c.style.maxWidth).toBe("100%");
+    expect(c.style.aspectRatio).toBe("50 / 70");
+  });
   it("rows follow the approved preview: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price", () => {
     renderIt();
     const ids = Array.from(document.querySelectorAll("[data-testid^='os-row-']")).map((e) => e.getAttribute("data-testid"));
