@@ -75,3 +75,23 @@ Pictures (left = 7273e026, right = now; red box = the bottom 1.5 mm):
 `round4_new_vn_60x40_big_{xp420b,y41bt,d520}.png`, `round4_today_th_70x50_{xp420b,y41bt,d520}.png`.
 Tests: `oneSticker.noLineMissing.test.ts`, `stickerScripts.bottomSafety.test.ts`,
 `oneSticker.labelFit.test.ts` ("one label on every printer"), `OneStickerPattern.test.tsx` (the "+" cap).
+
+## Round 5 — Jeff's decisions after the 2nd senior audit (2026-11-09)
+
+- **Worst-case buyers on the screen** also include a SHORT handle ("ab": small QR → bigger module → less
+  width for #8888) and the comment "gjpqy Ụ ợ". 438b4a90 showed no red on a 30 mm-wide label at Buyer # 1–1.5
+  while #8888 was cut, and "Everything fits" at 80×30 / 110×30 (every part 2×, Bold/Extra) while a Thai buyer's
+  @username was made smaller.
+- **A — Buyer # never cut beside the QR:** the print makes the number just small enough (QR kept, amber
+  "made smaller"); also for a pattern saved earlier. The screen lowers Buyer # automatically after a size
+  change or the QR turned on ("Buyer # lowered to fit this size").
+- **B — today's sticker, all-scripts letters, tall name at 2×:** the @username is drawn one size smaller
+  (60×40 now clear). At 70×50 / 80×50 even 1× is not enough (8 dots) — listed for Jeff. A Chinese name
+  (switch OFF byte-identical) is left as is.
+- **C** — the Chinese name + g/p/y comment case is the third switch-OFF case in PRINTING_MAP §6 (paper test pending).
+- **Limits:** only the part over its limit gets a grey "+"; the others are worked out with it held at its
+  limit. The work runs in idle slices (≈ 8 ms each) and is kept per setting; a fixed part's "+" waits until
+  its limit is known.
+
+Pictures (left = 438b4a90, right = now): `round5_new_8888_60x40_qr_buyer2_{xp420b,y41bt,d520}.png`,
+`round5_today_ja_60x40_size2_d520.png`.
