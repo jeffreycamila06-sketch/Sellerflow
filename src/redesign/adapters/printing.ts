@@ -1152,7 +1152,8 @@ function enqueueNativeSticker(job: NativeStickerJob): void {
 
 // ONE PRINTER LANE (Jeff 2026-11-09, XP-420B extra blank labels): every sticker job on this phone's printer —
 // an order from the queue below, Printer Test, the admin language test, the Printer Settings test — runs one
-// at a time in tap order: the next job starts only after the previous one settled (sent / failed). Native
+// at a time: the next job starts only after the previous one settled (sent / failed); a test waits only for the
+// sticker printing now, then goes before orders still waiting in the order queue. Native
 // generic BLE already refuses an overlapping job (BT_BUSY → that sticker "failed"); the lane makes it WAIT
 // instead. A job is never re-sent.
 // - The watchdog counts from the moment a job STARTS (never from when it was queued): a job that never

@@ -172,7 +172,8 @@ Test buyer quirk: `buildTestBuyer().orders[0].time = new Date().toLocaleTimeStri
   Swift SellerFlowPrinterPlugin.swift ~2340, Java GenericBleTransport.java ~113) — so on main a test tapped
   while another sticker was sending was refused ("test failed", nothing printed), not sent twice.
   `onPrinterLane(fn)` in printing.ts makes it WAIT instead: orders, Printer Test, the admin language test and
-  every Bluetooth test run one at a time in tap order. The watchdog (35 s) counts from when a job STARTS, so
+  every Bluetooth test run one at a time (a test waits only for the sticker printing now, then goes before
+  orders still waiting in the order queue). The watchdog (35 s) counts from when a job STARTS, so
   a long queue of taps never floods the printer; a stuck job frees the lane for ONE next job only. An idle
   lane starts the job synchronously (byte- and timing-identical to before for a single print). WiFi (P7)
   sticker orders share the lane too (they always shared the order queue).

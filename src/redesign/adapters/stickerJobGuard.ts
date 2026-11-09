@@ -1,8 +1,9 @@
 // FINAL SAFETY for every sticker PICTURE job (Jeff 2026-11-09, XP-420B extra blank labels): whatever font drew
 // the text, the data handed to the printer is checked on its REAL BYTES right before it is sent — never taller
-// than the label, exactly ONE print per sticker, no extra feed / re-sync command. A job that fails is not sent
-// (the seller sees "print failed"; nothing feeds a blank label). The encoders never produce such a job; this is
-// the backstop. PURE — no I/O. Valid jobs pass through untouched (bytes identical).
+// than the label, exactly ONE print per sticker, no extra feed / re-sync command. What happens to a job that
+// fails is decided in printing.ts: TODAY's sticker = logged + counted, sent as on main (never blocked); NEW
+// sticker = not sent → today's sticker. The encoders never produce such a job; this is the backstop.
+// PURE — no I/O. Valid jobs pass through untouched (bytes identical).
 //   TSPL (Flash Y41BT, Xprinter XP-420B …): SIZE = the label · one GAP · one CLS · bands inside the label ·
 //       ONE "PRINT 1" as the last command · no FORMFEED / FEED / BACKFEED / HOME / GAPDETECT / AUTODETECT …
 //   D520 SDK stream (Android SPP + iPhone BLE): SIZE = the label · ONE compressed image ≤ the label · ONE
