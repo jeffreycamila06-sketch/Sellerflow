@@ -113,15 +113,15 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { sessionKeyFor, shippingSessionKey } from "./adapters/shipping";
 import { setStickerLayoutV2Allowed, stickerV2Allowed, stickerSpacingAllowed, setStickerSpacingAllowed, setStickerSpacingChoice, printsStickerViaImage, stickerCompactV2Allowed, setStickerCompactV2 } from "./adapters/printing";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, niimbotErrorKey, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, classicTextCardShown, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
-import { hasBtBridge, hasNativePrinter, buildTestBuyer, savedTestBuyer } from "./adapters/printerBridge";
+import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer } from "./adapters/printerBridge";
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, stickerAllScriptsFor, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
@@ -275,7 +275,6 @@ export default function RedesignApp() {
   // the Printer Settings card's visibility AND (via setClassicTextAllowed) whether
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
-  useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
   // LIVE sticker layout v2 — admins + STICKER_V2_PREVIEW_EMAILS until STICKER_LAYOUT_V2_PUBLIC
   // flips (printing.ts). The long-comment test buttons stay admin-only.
   const stickerV2On = stickerV2Allowed(auth.profile?.email, auth.profile?.role);
@@ -868,15 +867,23 @@ export default function RedesignApp() {
   const salesTab = useSalesTab(authed);
   // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
   const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  // Printer setup v2 (admin / test_printers / the printer_flow_v2 switch) — also decides whether the Classic text
+  // card is on screen; the router honors the stored Classic flag only while that card is shown (printing.ts
+  // classicTextCardShown). Set in THIS render (not an effect) so oneStickerDevicePath below — the Live print
+  // pattern screen's "this phone prints the older sticker" note — always agrees with what the printer gets.
+  const printerFlowV2 = printerFlowV2Enabled(isAdmin, hasFeature("test_printers"), featureSw.printerFlowV2);
+  const classicShown = classicTextCardShown(classicAllowed, printerFlowV2, hasGenericPrinterBridge());
+  setClassicTextAllowed(classicShown);
   // Sticker layout v2 (printing.ts): admins + feature "sticker_v2", or everyone with the sticker_layout_v2 switch.
   const stickerCompactV2On = stickerCompactV2Allowed(auth.profile?.email, auth.profile?.role, featureSw.stickerLayoutV2);
   useEffect(() => { setStickerCompactV2(stickerCompactV2On); }, [stickerCompactV2On]);
-  // ONE STICKER (Branch 1): the new Live print pattern for admins, or everyone when the switch is on.
-  // Each device still prints today's sticker until its seller saves the new pattern there.
-  const oneStickerOn = oneStickerVisibleFor(auth.profile?.role, featureSw.oneSticker, isAdmin);
+  // ONE STICKER (Branch 1): the new Live print pattern for admins, accounts with feature "one_sticker"
+  // (sql/146), or everyone when the switch is on. Each device still prints today's sticker until its
+  // seller saves the new pattern there.
+  const oneStickerOn = oneStickerVisibleFor(auth.profile?.role, featureSw.oneSticker, isAdmin, hasFeature("one_sticker"));
   useEffect(() => { setOneStickerVisible(oneStickerOn); if (oneStickerOn) prefetchOneStickerFonts(); }, [oneStickerOn]);
   // Every language prints on today's sticker too (Latin / Chinese stickers unchanged).
-  const allScriptsOn = featureSw.stickerAllScripts || isAdmin;
+  const allScriptsOn = stickerAllScriptsFor(featureSw.stickerAllScripts, isAdmin, hasFeature("sticker_all_scripts"));
   useEffect(() => { setStickerAllScripts(allScriptsOn); }, [allScriptsOn]);
   const [oneStickerSeen, setOneStickerSeen] = useState(() => isOneStickerSeen());
   // Parcel Scan FamilyMart: the 7-11 manual Parcel Scan rule (parcelAllowed) AND the fm_scan_enabled
@@ -2843,11 +2850,11 @@ export default function RedesignApp() {
                 }
               } }}
               cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
-              showClassicToggle={classicAllowed}
+              showClassicToggle={classicShown}
               stickerQrAllowed={stickerQrAllowed}
               stickerQrMoved={stickerV2On}
               testComment={stickerV2On ? PREVIEW_COMMENT : undefined}
-              flowV2={printerFlowV2Enabled(isAdmin, hasFeature("test_printers"), featureSw.printerFlowV2)}
+              flowV2={printerFlowV2}
               isAdmin={isAdmin}
             />
           )}

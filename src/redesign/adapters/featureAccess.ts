@@ -18,6 +18,8 @@ export const FEATURE_KEYS = [
   "tiktok_send",   // Send to TikTok on the Orders buyer card, for non-admin testers (sql/126)
   "fb_post_sales", // Facebook Post Sales testers (sql/137); admins see it without the key
   "buyer_contact", // buyer contact picker + Pickup Status contact buttons before the switch (sql/140)
+  "one_sticker", // the new Live print pattern for this account before one_sticker_enabled (sql/146)
+  "sticker_all_scripts", // every language on today's sticker for this account before the switch (sql/146)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

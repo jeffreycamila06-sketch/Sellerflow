@@ -106,9 +106,13 @@ export function oneStickerActive(): OneStickerSettings | null {
 }
 export function __resetOneStickerState(): void { visible = false; savedCache = undefined; }
 /** Who sees the new screen: everyone when the switch is on, admins before. PURE. */
-export function oneStickerVisibleFor(role: string | null | undefined, switchOn: boolean, isAdmin: boolean): boolean {
+export function oneStickerVisibleFor(role: string | null | undefined, switchOn: boolean, isAdmin: boolean, listed = false): boolean {
   void role;
-  return switchOn || isAdmin;
+  return switchOn || isAdmin || listed; // listed = feature "one_sticker" for this login (sql/146)
+}
+// Every language on today's sticker: the switch, an admin, or feature "sticker_all_scripts" for this login (sql/146).
+export function stickerAllScriptsFor(switchOn: boolean, isAdmin: boolean, listed = false): boolean {
+  return switchOn || isAdmin || listed;
 }
 
 // ── Input (one buyer → what prints) ───────────────────────────────────────────────────────────
