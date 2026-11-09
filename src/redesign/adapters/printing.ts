@@ -34,6 +34,7 @@ import { tooWideFor, type OneStickerSettings } from "./oneSticker";
 import { prepareAllScripts, augmentAtlases, ensureAllScriptsFonts, stickerAllScriptsOn, ALL_SCRIPTS_FONT_TIMEOUT_MS, type AllScriptsPrep } from "./oneStickerScripts";
 import { StuckSkip, withLoadLimit, __resetLoadStuck } from "./stuckLoad";
 import { withSyntheticCjk } from "./stickerRaster";
+import { checkStickerJob, checkNiimbotImage, checkLaptopPicture, STICKER_JOB_INVALID, type JobKind } from "./stickerJobGuard";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
@@ -476,6 +477,16 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
 // (the Test Print buttons) can keep their precise user messaging (BT_NOT_SET
 // -> the no-printer wording) while inheriting the bitmap-default routing.
 export interface BtRouteResult { ok: boolean; code: string; message: string }
+// FINAL SAFETY (stickerJobGuard.ts): the real bytes of every picture job are checked right before they are
+// sent — never taller than the label, exactly one print, no feed / re-sync command. A failing job is NOT
+// sent (null = send). Valid jobs are untouched → today's bytes stay byte-identical.
+function refuseBadJob(problems: string[], what: string): BtRouteResult | null {
+  if (!problems.length) return null;
+  const message = `Sticker not sent (${what}): ${problems.join("; ")}`;
+  log.warn(`[STICKER-GUARD] ${message}`);
+  reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message, payloadBytes: 0, totalMs: 0 });
+  return { ok: false, code: STICKER_JOB_INVALID, message };
+}
 
 // The image-path raster payload: the native payload + the bitmap-only flags.
 // QR is a bitmap-only concern (the native TSPL text builders can't render it), so
@@ -506,6 +517,8 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm) ? await imagePathAtlases(payload, qrPayload) : null;
   // (all scripts ON + a Cyrillic payload: renderWithScripts adds the Cyrillic atlas — never otherwise)
   const raster = renderWithScripts(prep, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk }, (img, atlases) => rasterizeToSdkBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases), qrPayload);
+  const refused = refuseBadJob(checkStickerJob("d520", raster.bytes, payload.labelWidthMm, payload.labelHeightMm), "D520");
+  if (refused) return refused;
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {
@@ -594,6 +607,8 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
   const reason: StickerFallbackReason = lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos";
   const t0 = nowMs();
   const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, knownTsplJob(savedBtPrinter()?.name));
+  const refused = refuseBadJob(checkStickerJob(lang as JobKind, bytes, payload.labelWidthMm, payload.labelHeightMm), lang);
+  if (refused) return refused;
   const t1 = nowMs();
   log.log(`[GENERIC-STICKER] lang=${lang} bytes=${bytes.length} (~${(bytes.length / 10000).toFixed(1)}s over BLE at ~10 KB/s)`);
   try {
@@ -651,6 +666,8 @@ async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrin
   if (typeof fn !== "function") return { ok: false, code: "", message: "" };
   const t0 = nowMs();
   const image = await buildNiimbotImage(payload, platform, fbName);
+  const refused = refuseBadJob(checkNiimbotImage(image, NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h), "Niimbot");
+  if (refused) return refused;
   const payloadBytes = image.rowBytes * image.h;
   const t1 = nowMs();
   log.log(`[NIIMBOT-STICKER] ${image.w}x${image.h} ${payloadBytes} bytes`);
@@ -748,6 +765,8 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
     if (typeof fn !== "function") return { ok: false, code: "", message: "" };
     const image = await picture(async () => niimbotImage(await renderOneStickerFor("niimbot", os, inp), os));
     if (!image) return "today";
+    const refused = refuseBadJob(checkNiimbotImage(image, (os.size.w - 2 * NIIMBOT_FRAME_INSET_MM) * 8, (os.size.h - 2 * NIIMBOT_FRAME_INSET_MM) * 8), "Niimbot");
+    if (refused) return refused;
     return send("niimbot", fn, { image }, image.rowBytes * image.h, "niimbot");
   }
   const lang = savedGenericLang();
@@ -757,12 +776,16 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
     const job = knownTsplJob(savedBtPrinter()?.name);
     const bytes = await picture(async () => genericBytes(lang, await renderOneStickerFor(lang, os, inp, job), os, job));
     if (!bytes) return "today";
+    const refused = refuseBadJob(checkStickerJob(lang as JobKind, bytes, os.size.w, os.size.h), lang);
+    if (refused) return refused;
     return send(lang, raw, { data: bytesToBase64(bytes) }, bytes.length, lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos");
   }
   const bmpFn = bitmapBridgeFn(bridge);
   if (!bmpFn || (classicTextAllowed && isClassicTextSticker())) return "text";
   const bytes = await picture(async () => d520Stream(await renderOneStickerFor("d520", os, inp), os));
   if (!bytes) return "today";
+  const refused = refuseBadJob(checkStickerJob("d520", bytes, os.size.w, os.size.h), "D520");
+  if (refused) return refused;
   const out = await send("d520", bmpFn, { data: bytesToBase64(bytes) }, bytes.length, "");
   return !out.ok && out.code === BITMAP_SPP_FAILED ? "text-spp" : out;
 }
@@ -861,6 +884,10 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
     const r = printSlip(buyer, cur, storeName, { ...cfg, stickerSize: textStickerSizeFor(draft.size) }, { noOneSticker: true });
     return { ok: r.ok, code: "", message: "", via: r.via };
   }
+  // ONE PRINTER LANE: a test print waits behind any order still printing (and the next waits for it)
+  return onPrinterLane(() => oneStickerTestOnBt(bridge, draft, buyer, cur, storeName, cfg, fbName));
+}
+async function oneStickerTestOnBt(bridge: NonNullable<Window["SellerFlowPrinter"]>, draft: OneStickerSettings, buyer: Buyer, cur: string, storeName: string, cfg: Settings, fbName: boolean): Promise<BtRouteResult & { via: PrintVia }> {
   const r = await printOneStickerViaBluetooth(bridge, draft, printableBuyer(buyer), storeName, fbName);
   // TEXT (old app / classic / SPP failed): the native TEXT test sticker at the DRAFT's size;
   // "today" (picture failed / too wide): today's test sticker. Never the saved pattern's size.
@@ -879,7 +906,7 @@ export async function printOneStickerTest(draft: OneStickerSettings, buyer: Buye
 // Print Pattern) directly — bitmap SDK stream by default, TEXT only on Classic
 // mode / missing method / CJK-atlas-unavailable, route notices always firing.
 // Awaitable with the native {code, message} preserved for button messaging.
-export const printStickerBtRouted = printStickerViaBluetooth;
+export const printStickerBtRouted = (...a: Parameters<typeof printStickerViaBluetooth>): Promise<BtRouteResult> => onPrinterLane(() => printStickerViaBluetooth(...a));
 
 async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, cfg: Settings, at?: number): Promise<boolean> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
@@ -1117,11 +1144,30 @@ function enqueueNativeSticker(job: NativeStickerJob): void {
   void pumpNativeQueue();
 }
 
+// ONE PRINTER LANE (Jeff 2026-11-09, XP-420B extra blank labels): every sticker job on this phone's printer —
+// an order from the queue below, Printer Test, the admin language test — runs one at a time: the next job
+// starts only after the previous one settled (sent, acknowledged / failed). A test print can no longer start
+// while an order is still printing (the printer saw two connects close together). A job that never settles
+// frees the lane after the same watchdog as the queue. A job is never re-sent.
+// An idle lane starts the job at once (synchronously, exactly as before); a busy lane chains it.
+let laneTail: Promise<void> = Promise.resolve();
+let laneJobs = 0;
+export function onPrinterLane<T>(fn: () => Promise<T>): Promise<T> {
+  let run: Promise<T>;
+  if (laneJobs === 0) { try { run = fn(); } catch (err) { run = Promise.reject(err); } }
+  else run = laneTail.then(fn);
+  laneJobs++;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const watchdog = new Promise<void>((res) => { timer = setTimeout(res, NATIVE_PRINT_WATCHDOG_MS); });
+  laneTail = Promise.race([run.then(() => undefined, () => undefined), watchdog]).finally(() => { if (timer) clearTimeout(timer); laneJobs--; });
+  return run;
+}
+
 async function pumpNativeQueue(): Promise<void> {
   if (nativeBusy || !nativeQueue.length) return;
   nativeBusy = true;
   const job = nativeQueue.shift()!;
-  const ok = await runNativeStickerJob(job);
+  const ok = await onPrinterLane(() => runNativeStickerJob(job));
   try { nativeOutcomeHandler?.(job.jobId, ok); } catch { /* subscriber must never break the queue */ }
   nativeBusy = false;
   void pumpNativeQueue(); // drain the next job in order
@@ -1154,7 +1200,7 @@ async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
 }
 
 // Test-only: reset the native queue state between cases.
-export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; }
+export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; laneTail = Promise.resolve(); laneJobs = 0; }
 
 // WEB STICKER QR — the browser-print twin of the phone's stickerQrPlacement: the SAME
 // link (tiktokProfileUrl), the SAME ECC "M", drawn as an inline SVG (crisp vector
@@ -1316,7 +1362,11 @@ function oneStickerWebMiss(err: unknown): void {
 function oneStickerWebPage(osIn: OneStickerSettings, buyer: Buyer, storeName: string, at: number | undefined, fbName: boolean, legacyHtml: string, title = `Sticker #${buyer.num}`, onPicture?: (ok: boolean) => void): Promise<string> {
   const os = oneStickerEffective(osIn);
   const page = webPrepareChain.then(() => withPictureLimit(() => renderOneStickerFor("laptop", os, oneStickerInputFrom(buyer, storeName, at, fbName)), ONE_STICKER_WEB_TIMEOUT_MS))
-    .then((r) => { const html = laptopPage(r, os, title); onPicture?.(true); return html; })
+    .then((r) => {
+      const big = checkLaptopPicture(r, os.size.w, os.size.h); // FINAL SAFETY: never a picture taller than the page
+      if (big.length) throw new Error(`job guard: ${big.join("; ")}`);
+      const html = laptopPage(r, os, title); onPicture?.(true); return html;
+    })
     .catch((err: unknown) => { oneStickerWebMiss(err); onPicture?.(false); return legacyHtml; });
   webPrepareChain = page;
   return page;
