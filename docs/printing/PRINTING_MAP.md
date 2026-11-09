@@ -275,7 +275,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | `printer_flow_v2` + feature `test_printers` + admin | app_settings / feature_access | OFF | printerModels.ts:114-116; RedesignApp.tsx:2745 | printer setup v2 screen (whitelist, generic/Niimbot saves, 50×30 option) |
 | `fb_post_sales` | app_settings + feature | OFF | RedesignApp.tsx:2050 | post-sale prints (buyer # off) |
 | `fbAutoReceipt` | app_settings | OFF | RedesignApp.tsx:1988 | server receipt picture (P10) |
-| `classic_text` feature + admin + localStorage `sfl_rd_classic_text` | feature / LS | off | printing.ts:347-375, 664; PrinterSettings.tsx:117, 393 | forces P2 |
+| `classic_text` feature + admin + localStorage `sfl_rd_classic_text` | feature / LS | off | printing.ts:347-375, 664; PrinterSettings.tsx:117, 393 | forces P2 — **only while the Classic card is on screen** (`classicTextCardShown`: admin / `classic_text` AND not printer setup v2 on this phone; set by RedesignApp in the same render as `oneStickerDevicePath`). Setup v2 hides the card → the stored flag is ignored, as for sellers (Jeff 2026-11-09: an admin AIMO stuck on the old TEXT sticker, − / + never reaching paper). The stored value is never deleted. |
 | localStorage `sfl_rd_sticker_qr` + `canUseStickerQr(market)` | LS + market gate | off | printing.ts:111-129; parcelScan.ts:67; RedesignApp.tsx:279, 317-318 | QR on P1/P1c/P3-6/P9 (never for FB/IG/Shopee, printing.ts:133-136) |
 | `PIN_PRINT_PUBLIC` + LS `sfl_rd_pin_print` (+ feature `pin_print`) | const / LS | true / off per device | pinToPrint.ts:19-26, 11 | pin → order + print |
 | `HONEST_SIZE_STEPS` | code const | true | PrintPattern.tsx:39 | 1×/2×/3× steps (`printScaleLevel`, printing.ts:1124) |
@@ -287,10 +287,10 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | Native prefs Android | SharedPreferences | — | Java: `PREF_HOST`/`PORT`, `PREF_BT_ADDR`/`NAME`/`TRANSPORT`(spp\|ble\|niimbot)/`MODEL`(generic)/`LANG` (446-458) | routing on the native side |
 | Native prefs iOS | UserDefaults | — | Swift: `sellerflow_lan_host`/`port` (53-54); `sellerflow_ble_label_id`/`name`/`model`/`lang`/`transport` (1043-1053) | the same |
 | Profile shop name | DB profile | blank → "SellerFlowLive" | RedesignApp.tsx:1865 | store line + header |
-| `one_sticker_enabled` (`featureSwitches.oneSticker`) | app_settings (sql/144, seeded OFF, NOT applied) | OFF (admins see it anyway) | RedesignApp `oneStickerOn` → `setOneStickerVisible` | the NEW Live print pattern screen. A device prints the one sticker only after Save there. |
+| `one_sticker_enabled` (`featureSwitches.oneSticker`) | app_settings (sql/144, seeded OFF, NOT applied) | OFF (admins and accounts with feature `one_sticker` see it anyway — sql/146, NOT applied) | RedesignApp `oneStickerOn` → `setOneStickerVisible` | the NEW Live print pattern screen. A device prints the one sticker only after Save there. |
 | LS `sfl_rd_one_sticker` | LS | absent | oneStickerPrint `readSavedOneSticker` / `saveOneSticker` | `{saved:true, settings}` = this device opted in (size incl. custom, per part on/weight/scale, QR) |
 | LS `sfl_rd_one_sticker_seen` | LS | absent | RedesignApp `oneStickerSeen` | the "New" badge on the Live print pattern menu item |
-| `sticker_all_scripts_enabled` (`featureSwitches.stickerAllScripts`) | app_settings (sql/144, seeded OFF) | OFF (admins see it anyway) | RedesignApp → `setStickerAllScripts` | every script prints on TODAY's image layouts (`prepareAllScripts`); English / Latin / Chinese byte-identical ON vs OFF |
+| `sticker_all_scripts_enabled` (`featureSwitches.stickerAllScripts`) | app_settings (sql/144, seeded OFF) | OFF (admins and accounts with feature `sticker_all_scripts` get it anyway — sql/146, NOT applied) | RedesignApp → `setStickerAllScripts` | every script prints on TODAY's image layouts (`prepareAllScripts`); English / Latin / Chinese byte-identical ON vs OFF |
 | `DEF_SETTINGS.autoprint` / `printAutoClose` / `printLogo` / X/Y offsets | Settings fields | — | printing.ts:41 | **❌ never read by the redesign.** Every order always prints. There is no "auto print off". |
 | `ESC_POS_IMPORTANT_SIZE` / `ESC_POS_ORDER_SIZE` | native const | 0x11 | Swift:69, 75 (+ Java twins) | slip text size |
 | `printTotal` | forced false on stickers | — | printing.ts:91 | |

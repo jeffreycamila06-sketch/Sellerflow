@@ -379,6 +379,13 @@ export function canUseClassicText(role: string | undefined | null, email: string
 }
 let classicTextAllowed = false;
 export function setClassicTextAllowed(allowed: boolean): void { classicTextAllowed = allowed; }
+// The Classic text card is on screen (PrinterSettings: `showClassicToggle && !v2`) only when the account may use it
+// AND printer setup v2 is not in force on this phone. The router honors the stored flag ONLY then — exactly like
+// for sellers who never see the card (Jeff 2026-11-09: an admin phone that moved to setup v2 was stuck on the old
+// TEXT sticker with no card left to turn it off). The stored value itself is never deleted.
+export function classicTextCardShown(canUse: boolean, flowV2: boolean, genericBridge: boolean): boolean {
+  return canUse && !(flowV2 && genericBridge);
+}
 
 // Internal timing instrumentation (console-only, NEVER surfaced in UI): every
 // sticker print logs `[STICKER-TIMING]` to the console (Logcat → Capacitor/
