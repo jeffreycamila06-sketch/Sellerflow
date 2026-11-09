@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, screenFitNotes, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor, NOTE_TONE,
+  recommendedSettings, renderOneSticker, screenFitNotes, screenStepCaps, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor, NOTE_TONE,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
 import { oneStickerScreenFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
@@ -77,14 +77,21 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings, onFa
 
 /** The notes under the preview for `settings` on this path — the preview's own sample (the layout
  *  only; no picture is drawn). */
-function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }, attempt: number): FitNote[] | null {
-  const [n, setN] = useState<FitNote[] | null>([]); // null = the fonts did not load (no notes shown)
+type StepCaps = Partial<Record<PartKey, number>>;
+function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }, attempt: number): { notes: FitNote[] | null; caps: StepCaps } {
+  const [n, setN] = useState<{ notes: FitNote[] | null; caps: StepCaps }>({ notes: [], caps: {} }); // notes null = the fonts did not load (no notes shown)
   const key = JSON.stringify({ settings, input, path, job });
   useEffect(() => {
     let live = true;
-    // the sample (#128) AND the buyer number at its widest (#8888): a real 4-digit number never gets
-    // cut while the screen says everything fits. Measured on the real faces only — never on device fonts.
-    void oneStickerScreenFonts(settings, input).then((fonts) => { if (live) setN(screenFitNotes(settings, input, fonts, renderOptsFor(path, settings, job))); }).catch(() => { if (live) setN(null); });
+    // the sample (#128) AND the buyer number at its widest (#8888) AND the worst-case buyers (tall
+    // Vietnamese / Thai marks, Chinese, a 2-line Facebook name): a real buyer never needs a line made
+    // smaller while the screen says everything fits, and "+" stops at the largest size that always fits.
+    // Measured on the real faces only — never on device fonts.
+    void oneStickerScreenFonts(settings, input).then((fonts) => {
+      if (!live) return;
+      const opts = renderOptsFor(path, settings, job);
+      setN({ notes: screenFitNotes(settings, input, fonts, opts), caps: screenStepCaps(settings, input, fonts, opts) });
+    }).catch(() => { if (live) setN({ notes: null, caps: {} }); });
     return () => { live = false; };
   }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return n;
@@ -186,7 +193,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
   const [pvAttempt, setPvAttempt] = useState(0);
   const [pvFailed, setPvFailed] = useState(false);
-  const notes = useFitNotes(sEff, input, path, p.genericBold ? { bold: true } : {}, pvAttempt);
+  const { notes, caps } = useFitNotes(sEff, input, path, p.genericBold ? { bold: true } : {}, pvAttempt);
   const showNotes = !pvFailed && notes !== null; // never "Everything fits" while the picture can't load
 
   const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
@@ -226,7 +233,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
             <div data-testid={`os-${r.k}-stepper`} style={{ display: "flex", alignItems: "center", opacity: off ? 0.4 : 1 }}>
               <StepBtn label="−" aria={`${partLabel[r.k]} −`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={off || part.scale === SCALE_STEPS[0]} testId={`os-${r.k}-minus`} />
               <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--text)", minWidth: 36, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
-              <StepBtn label="+" aria={`${partLabel[r.k]} +`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={off || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1]} testId={`os-${r.k}-plus`} />
+              <StepBtn label="+" aria={`${partLabel[r.k]} +`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={off || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1] || (caps[r.k] != null && part.scale >= caps[r.k]!)} testId={`os-${r.k}-plus`} />
             </div>
             <Switch on={part.on && !r.disabled} disabled={r.disabled} aria={partLabel[r.k]} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
           </div>
@@ -266,6 +273,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
               {n.kind === "bad" ? tpl(t.rd_os_fit, { parts: n.parts.map((k) => partLabel[k]).join(", ") })
                 : n.kind === "shrunk" ? tpl(t.rd_os_note_shrunk, { pct: String(n.pct) })
                 : n.kind === "cut" ? t.rd_os_note_cut
+                : n.kind === "smaller" ? tpl(t.rd_os_note_smaller, { parts: n.parts.map((k) => partLabel[k]).join(", ") })
                 : n.kind === "short" ? tpl(t.rd_os_note_short, { parts: n.parts.map((k) => partLabel[k]).join(", ") })
                 : n.kind === "qr" ? t.rd_os_fit_qr
                 : n.kind === "small" ? t.rd_os_note_small

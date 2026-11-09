@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import OneStickerPattern from "../OneStickerPattern";
 import { recommendedSettings, NOTE_TONE } from "../../adapters/oneSticker";
 import { TProvider } from "../../i18n";
@@ -42,6 +42,22 @@ describe("OneStickerPattern", () => {
     expect(screen.getByTestId("os-row-comment").textContent).toContain("Shrinks automatically when long");
     expect(screen.getByTestId("os-row-date").textContent).toContain("Fixed size");
   });
+  it("worst-case buyers before Save: \"+\" stops at the largest size that always fits; past it the part is red (Jeff 2026-11-09)", async () => {
+    const init = recommendedSettings({ w: 60, h: 40 });
+    init.parts.buyer.scale = 2; init.parts.name.scale = 1.5; init.parts.user.scale = 1.75;
+    renderIt({ initial: init });
+    await waitFor(() => expect((screen.getByTestId("os-user-plus") as HTMLButtonElement).disabled).toBe(true), { timeout: 20000 });
+    expect((screen.getByTestId("os-user-minus") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("os-note-ok")).toBeNull();
+  }, 60000);
+  it("past the cap: red \"Too big\" naming the part, before Save", async () => {
+    const init = recommendedSettings({ w: 60, h: 40 });
+    init.parts.buyer.scale = 2; init.parts.name.scale = 1.5; init.parts.user.scale = 2;
+    renderIt({ initial: init });
+    const red = await screen.findByTestId("os-fit", {}, { timeout: 20000 });
+    expect(red.textContent).toContain("@username");
+    expect((screen.getByTestId("os-user-plus") as HTMLButtonElement).disabled).toBe(true);
+  }, 60000);
   it("Normal / Bold / Extra: under the name beside the size + switch on a wide row, their own line on a narrow row — never over the stepper; each ≥ 44×44", () => {
     renderIt();
     for (const k of ["shop", "buyer", "name", "user", "comment"]) {
@@ -128,7 +144,7 @@ describe("OneStickerPattern", () => {
     expect(c.style.aspectRatio).toBe("50 / 70");
   });
   it("note pills (approved preview): green fits, amber shrunk / cut / QR, red off the label, grey info — tinted borders in light AND dark", () => {
-    expect(NOTE_TONE).toEqual({ ok: "ok", bad: "bad", shrunk: "warn", cut: "warn", qr: "warn", short: "info", small: "info" });
+    expect(NOTE_TONE).toEqual({ ok: "ok", bad: "bad", shrunk: "warn", cut: "warn", smaller: "warn", qr: "warn", short: "info", small: "info" });
     const src = fs.readFileSync(path.join(__dirname, "../OneStickerPattern.tsx"), "utf8");
     for (const [sel, color, border] of [
       ['.os-note[data-tone="ok"]', "#0F8A5F", "#9DDCC4"], ['.os-note[data-tone="warn"]', "#9A5C00", "#F0CF92"], ['.os-note[data-tone="bad"]', "#C2342B", "#F2B1AB"],

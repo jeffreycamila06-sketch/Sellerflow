@@ -68,6 +68,9 @@ export interface Fonts {
   sans: Partial<Record<SansWeight, SansFace>>;
   cjkx?: SansFace | null;
   cjk?: Partial<Record<CjkCell, GlyphAtlas>>; // painting only; layout never needs it
+  /** Measure every ideograph as its FULL cell (the tallest any ideograph can be) — the screen's
+   *  worst-case fit check, which must not depend on which CJK atlases the screen has loaded. */
+  cjkBox?: boolean;
 }
 function sansFace(f: Fonts, w: SansWeight): SansFace | null { return f.sans[w] ?? f.sans[700] ?? f.sans[400] ?? f.sans[900] ?? null; }
 export function sourceOf(cp: number, f: Fonts): Source {
@@ -228,6 +231,13 @@ export function blitBits(dst: Ink, g: GlyphBits, x: number, y: number, clipRight
 /** The ink box of a measured line relative to its baseline: [top (negative), bottom]. */
 export function lineExtent(run: LineRun, px: number, weight: SansWeight, f: Fonts): { asc: number; desc: number } {
   let asc = 0, desc = 0;
+  if (f.cjkBox && run.pieces.some((p) => p.src === "cjk")) {
+    const { cell, mag } = cjkCellFor(px), sz = cell * mag, top = Math.round(0.88 * sz);
+    asc = top; desc = sz - top + cjkInk(px, weight).dy;
+    const rest: LineRun = { ...run, pieces: run.pieces.map((p) => (p.src === "cjk" ? { ...p, src: "sans" as Source, cp: 0x20 } : p)) };
+    for (const g of glyphsOf(rest, px, weight, f)) { if (!g.bits || g.bits.w === 0) continue; asc = Math.max(asc, -g.bits.y0); desc = Math.max(desc, g.bits.y0 + g.bits.h); }
+    return { asc, desc };
+  }
   for (const g of glyphsOf(run, px, weight, f)) { if (!g.bits || g.bits.w === 0) continue; asc = Math.max(asc, -g.bits.y0); desc = Math.max(desc, g.bits.y0 + g.bits.h); }
   return { asc, desc };
 }

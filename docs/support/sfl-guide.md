@@ -458,7 +458,7 @@ Keywords: wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, networ
 "Printer didn't respond. Check it's on." — check the printer is on, the phone and printer are on the same WiFi, and the number is right (it can change after the router restarts).
 
 ## stickers — Sticker sizes, layout, Chinese names and QR
-Last checked: 2026-11-08
+Last checked: 2026-11-09
 Keywords: sticker size, paper size, 100x60, 60x40, 50x30, layout, chinese name, qr, print pattern, laki ng sticker, buyer number, shop name, 贴纸尺寸, 标签尺寸, 中文名, 二维码
 
 **Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm, and 50x30mm on the newer printers. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer. A Niimbot prints the 50x30 sticker; if you saved the **new LIVE print pattern** on that phone, it prints the size saved there (B1 / B21: up to 50 mm wide — a wider size prints your usual sticker and the app tells you).
@@ -470,7 +470,7 @@ Keywords: sticker size, paper size, 100x60, 60x40, 50x30, layout, chinese name, 
 **New LIVE print pattern** (shows a **New** badge when it is on for your account): the picture at the top is exactly what your Bluetooth sticker printer or your computer prints. A WiFi printer, or a phone that prints the text sticker (older app or text mode), keeps printing your usual sticker — the screen tells you when that is the case.
 - **Paper size**: tap a size, or **Custom** for your own width and height (30–110 mm). After you save, a size you pick in **Printer settings** changes it here too — if your printer can't print that size, the app keeps your size and tells you why.
 - For **Shop name, Buyer #, Name, @username, Comment / Price**: tap **−** / **+** for the size, **Normal / Bold / Extra** for how thick, and the switch to turn it on or off. **Date & time** always prints, at a fixed size. **Print QR on sticker** is for TikTok buyers.
-- The notes under the picture say if everything fits, if a long comment was made smaller or cut with "…", or (in red) if something is too big for the label — make it smaller.
+- The notes under the picture say if everything fits, if a long comment was made smaller or cut with "…", if a line was made smaller so it fits, or (in red) if something is too big for the label — make it smaller. When a size can't go bigger, its **+** turns grey.
 - **Printer Test** and the two **long comment** tests print the sample you see. Tap **Save settings** to use the new sticker on this phone or computer; until you save, it keeps your usual sticker. **↺ Reset to recommended** brings back the suggested settings.
 
 **Chinese names** print correctly; no extra setting needed.

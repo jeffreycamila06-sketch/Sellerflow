@@ -17,8 +17,7 @@ The fit check measured line boxes, not ink, so the preview said "Everything fits
 **Fix (all picture paths share it: D520, generic TSPL / ESC-POS / CPCL, Niimbot, laptop):** no ink in the
 bottom 1.5 mm (`BOTTOM_SAFE_DOTS` = 12, the layout's own margin), measured on the real glyphs (marks,
 descenders, device-font runs). The comment drops a line and shrinks (then "…") until its last line's ink
-fits; a fixed line (name, @username, Buyer #) whose ink would cross is not drawn and the screen shows the
-red "Too big" note — same picture on the screen and on paper. Vietnamese 60×40 now prints the comment at
+fits; a fixed line (name, @username, Buyer #) is never dropped — see Round 4 below. Vietnamese 60×40 now prints the comment at
 92 % with ink 19 dots from the edge; the screen says "Comment made smaller (92%) to fit". Every other
 case is byte-for-byte the same as before.
 
@@ -26,8 +25,7 @@ case is byte-for-byte the same as before.
 printer-guardian's stress comments were not: a short Thai comment at 70×50 / 80×50 put a mark under a
 letter **5 dots** from the edge (D520, XP-420B, ESC/POS, CPCL). Fixed for the all-scripts letters only
 (`stickerRaster.ts` `liftForBottomSafety`, active only while those letters are drawn): the picture moves
-up into the free top space until the bottom 1.5 mm is clear; if there is no room, only the leftover
-mark tips are cleared. English / Chinese orders and everything with the switch OFF never enter it →
+up into the free top space until the bottom 1.5 mm is clear (Round 4: never erasing ink). English / Chinese orders and everything with the switch OFF never enter it →
 byte-identical (864 × 2 capture). Picture: `th_70x50_today_before_after.png`.
 
 **Still open (today's sticker for every seller, switch OFF — must stay byte-identical, not changed):**
@@ -42,3 +40,38 @@ Pictures: `vi_60x40_before.png` / `vi_60x40_after.png` (decoded from the exact T
 `vi_60x40_before_after.png` (red box = the bottom 1.5 mm), `en_60x40_*` (unchanged), `th_70x50_today_*` (today's sticker, all-scripts).
 Test: `src/redesign/adapters/__tests__/oneSticker.labelFit.test.ts` (fails on main: "vi 60x40: ink 8 dots
 from the bottom" on D520, XP-420B, Y41BT, ESC/POS, CPCL and laptop).
+
+## Round 4 — Jeff's decisions (2026-11-09, after the senior audit)
+
+**1. No line is ever missing.** 7273e026 did not draw a fixed line that would cross the bottom limit,
+and in practice it was the COMMENT that disappeared (e.g. #8888 Vietnamese at 60×40 with Buyer # /
+name / @username at 2×). Now:
+- **Print (safety net):** the comment gives up space first (shrink → fewer lines → "…", keeping one line);
+  then the lowest fixed line (@username → name → Buyer # → shop) is made smaller just enough — never below
+  2.4 mm (19 dots; 2.1 mm / 17 dots on a 50×30-class label). Amber note "<part> made smaller to fit".
+  The saved setting does not change; the preview is the same layout. Buyer # always prints.
+- **Screen (before Save):** the fit check also lays out worst-case buyers (#8888; Vietnamese with marks
+  above and below, Chinese + Latin descenders, Thai, a 2-line Facebook name). A part one of them would
+  need made smaller is red, and its "+" stops at the largest size that always fits.
+
+**2. Today's sticker with the all-scripts letters: ink is never erased.** The picture moves up, up to 4
+dots from the top; if that is not enough the comment takes one line fewer with "…". Thai 70×50: the
+mark tips 7273e026 cleared are back (XP-420B 18,428 → 18,472 ink dots, D520 15,818 → 15,854), still
+12 dots clear.
+
+**3.** The two switch-OFF cases (80×50 Chinese+Vietnamese comment; long FB name 60×40 D520) stay as they
+are — PRINTING_MAP §6. **Found for Jeff:** name / buyer / @username at 2× (old Print pattern) on 60×40 –
+80×50 with a tall name (Chinese, or Japanese/Korean/Thai/Arabic with the all-scripts letters) pushes the
+@username to the edge; no rule fits (it is not the comment) → lifted as far as it goes, nothing cut.
+
+**4.** The Buyer # bottom check reads the small word's "y" too; a comment that is the first line moves
+down only for the marks on its own first line.
+
+**5. One label on every printer:** one bridge call, SIZE = the label, one PRINT / feed, no FORMFEED,
+picture ≤ label, bottom 12 dots clear — D520 (same stream for Android SPP and iPhone BLE), Flash Y41BT and
+Xprinter XP-420B (TSPL), generic ESC/POS and CPCL, Niimbot B1/B21, laptop.
+
+Pictures (left = 7273e026, right = now; red box = the bottom 1.5 mm):
+`round4_new_vn_60x40_big_{xp420b,y41bt,d520}.png`, `round4_today_th_70x50_{xp420b,y41bt,d520}.png`.
+Tests: `oneSticker.noLineMissing.test.ts`, `stickerScripts.bottomSafety.test.ts`,
+`oneSticker.labelFit.test.ts` ("one label on every printer"), `OneStickerPattern.test.tsx` (the "+" cap).
