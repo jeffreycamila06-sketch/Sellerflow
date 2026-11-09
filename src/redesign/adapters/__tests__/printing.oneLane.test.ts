@@ -14,12 +14,13 @@ vi.mock("../stickerRaster", async (orig) => {
   const m = await orig<typeof import("../stickerRaster")>();
   return { ...m, rasterizeToBitmapTspl: (...a: Parameters<typeof m.rasterizeToBitmapTspl>) => { const r = m.rasterizeToBitmapTspl(...a); if (!bad.today) return r; const tail = new TextEncoder().encode(bad.today); const out = new Uint8Array(r.bytes.length + tail.length); out.set(r.bytes); out.set(tail, r.bytes.length); return { ...r, bytes: out }; } };
 });
-import { printSlip, printOneStickerTest, printStickerBtRouted, onPrinterLane, GENERIC_BLE_GAP_MS, setStickerQrEntitled, setStickerQrOn, DEF_SETTINGS, __resetNativePrintQueue, type Settings } from "../printing";
+import { printSlip, printOneStickerTest, printStickerBtRouted, onPrinterLane, setStickerQrEntitled, setStickerRouteNoticeHandler, setStickerQrOn, DEF_SETTINGS, __resetNativePrintQueue, type Settings } from "../printing";
 import { recommendedSettings } from "../oneSticker";
+import { knownGapAfterMs } from "../printerModels";
 import { saveOneSticker, setOneStickerVisible, __resetOneStickerState } from "../oneStickerPrint";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
 import { ADMIN_LANG_SAMPLES, adminSampleBuyer } from "../adminLangSamples";
-import { tsplCommands, checkTsplJob, STICKER_JOB_INVALID } from "../stickerJobGuard";
+import { tsplCommands, checkTsplJob } from "../stickerJobGuard";
 import { installNodeFallbackDrawer, installSans } from "./oneSticker.harness";
 
 type W = Window & { SellerFlowPrinter?: Record<string, unknown> };
@@ -131,19 +132,28 @@ describe("one printer lane", () => {
       await Promise.all(later);
     } finally { vi.useRealTimers(); }
   });
-  it("after a generic Bluetooth sticker the next one waits GENERIC_BLE_GAP_MS (the native side is still dropping the link)", async () => {
-    rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
-    const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
-    const one = printStickerBtRouted(sample("en"), "NT$", "My Shop", cfg);
-    const two = printStickerBtRouted(sample("vi"), "NT$", "My Shop", cfg);
-    await until(() => b.printRawTspl.mock.calls.length === 1);
-    b.finishOne();
-    expect((await one).ok).toBe(true); // the caller of the first job is not delayed
-    await until(() => b.printRawTspl.mock.calls.length === 2);
-    b.finishOne();
-    expect((await two).ok).toBe(true);
-    expect(b.startedAt[1] - b.finishedAt[0]).toBeGreaterThanOrEqual(GENERIC_BLE_GAP_MS - 50);
-  }, 60000);
+  for (const [name, gap] of [["XP-420B", 1500], ["Y41BT-0FC4_LE", 0]] as const) {
+    it(`${name}: after a sticker the next one waits ${gap} ms (XP-420B only; every other printer: no wait, as on main)`, async () => {
+      expect(knownGapAfterMs(name)).toBe(gap);
+      rememberSavedPrinter({ address: "AA", name, model: "generic", lang: "tspl" });
+      const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
+      const one = printStickerBtRouted(sample("en"), "NT$", "My Shop", cfg);
+      const two = printStickerBtRouted(sample("vi"), "NT$", "My Shop", cfg);
+      await until(() => b.printRawTspl.mock.calls.length === 1);
+      b.finishOne();
+      expect((await one).ok).toBe(true); // the caller of the first job is never delayed
+      await until(() => b.printRawTspl.mock.calls.length === 2);
+      b.finishOne();
+      expect((await two).ok).toBe(true);
+      const waited = b.startedAt[1] - b.finishedAt[0];
+      if (gap) expect(waited).toBeGreaterThanOrEqual(gap - 50);
+      else expect(waited).toBeLessThan(1000); // only the next picture's build time, no lane wait
+    }, 60000);
+  }
+  it("only the XP-420B has a lane wait: D520 / Flash / every other generic or unknown name = 0", () => {
+    for (const n of ["D520BT-Z", "Y41BT-0FC4_LE", "XP-P323B", "LabelThing-9", "B1-H123", "", undefined]) expect(knownGapAfterMs(n), String(n)).toBe(0);
+    expect(knownGapAfterMs("XP-420B-ABCD")).toBe(1500);
+  });
 });
 
 describe("final safety on the real bytes", () => {
@@ -160,14 +170,21 @@ describe("final safety on the real bytes", () => {
       expect(checkTsplJob(b.jobs[0], 60, 40)).toEqual([]);
       expect(tsplCommands(b.jobs[0]).cmds.filter((c) => /^(PRINT|FORMFEED)/.test(c))).toEqual(["PRINT 1"]);
     }, 60000);
-    it(`TODAY's sticker job with ${what} is NEVER sent: the bridge is not called, the print reports STICKER_JOB_INVALID`, async () => {
+    it(`TODAY's sticker job with ${what} is NEVER blocked: sent exactly as built (as on main), counted as one-sticker-job-invalid`, async () => {
       rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
       const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
-      bad.today = tail;
-      const r = await printStickerBtRouted(sample(k), "NT$", "My Shop", cfg);
-      expect(b.printRawTspl).not.toHaveBeenCalled();
-      expect(r.ok).toBe(false);
-      expect(r.code).toBe(STICKER_JOB_INVALID);
+      const reasons: string[] = [];
+      setStickerRouteNoticeHandler((n) => reasons.push(n.reason));
+      try {
+        bad.today = tail;
+        const run = printStickerBtRouted(sample(k), "NT$", "My Shop", cfg);
+        await until(() => b.jobs.length === 1);
+        b.finishOne();
+        expect((await run).ok).toBe(true);
+        expect(b.jobs.length).toBe(1);
+        expect(new TextDecoder("latin1").decode(b.jobs[0].slice(-tail.length))).toBe(tail); // the bytes as built
+        expect(reasons).toContain("one-sticker-job-invalid");
+      } finally { setStickerRouteNoticeHandler(null); }
     }, 60000);
   }
 });

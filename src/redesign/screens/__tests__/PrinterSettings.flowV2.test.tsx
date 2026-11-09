@@ -10,7 +10,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import PrinterSettings from "../PrinterSettings";
 import { TProvider, buildT } from "../../i18n";
-import { DEF_SETTINGS, __resetNativePrintQueue } from "../../adapters/printing";
+import { DEF_SETTINGS } from "../../adapters/printing";
 import { __resetSavedPrinter } from "../../adapters/savedPrinter";
 import { FEATURE_KEYS } from "../../adapters/featureAccess";
 import { FEATURE_SWITCH_KEYS } from "../../adapters/featureSwitches";
@@ -56,7 +56,7 @@ function installBridge(opts: { generic?: boolean; niimbot?: boolean; osTooOld?: 
   (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter = b;
   return b;
 }
-afterEach(() => { delete (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter; __resetSavedPrinter(); __resetNativePrintQueue(); vi.useRealTimers(); });
+afterEach(() => { delete (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter; __resetSavedPrinter(); vi.useRealTimers(); });
 
 const renderBT = (props: { flowV2?: boolean; isAdmin?: boolean; showClassicToggle?: boolean } = {}) =>
   render(

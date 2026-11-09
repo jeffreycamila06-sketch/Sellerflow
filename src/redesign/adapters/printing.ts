@@ -18,7 +18,7 @@ import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, f
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
 import { savedBtPrinter, savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
-import { knownTsplJob, type TsplJobSettings } from "./printerModels";
+import { knownTsplJob, knownGapAfterMs, type TsplJobSettings } from "./printerModels";
 import type { NiimbotImage } from "./printerBridge";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
@@ -478,8 +478,16 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
 // -> the no-printer wording) while inheriting the bitmap-default routing.
 export interface BtRouteResult { ok: boolean; code: string; message: string }
 // FINAL SAFETY (stickerJobGuard.ts): the real bytes of every picture job are checked right before they are
-// sent — never taller than the label, exactly one print, no feed / re-sync command. A failing job is NOT
-// sent (null = send). Valid jobs are untouched → today's bytes stay byte-identical.
+// sent — never taller than the label, exactly one print, no feed / re-sync command. Valid jobs are untouched
+// (bytes identical, no extra report).
+// TODAY's sticker (Jeff 2026-11-09): never blocked — a failing job is only counted + logged, then sent as on main.
+function noteBadJob(problems: string[], what: string): void {
+  if (!problems.length) return;
+  const detail = `Sticker job check failed (${what}), sent as before: ${problems.join("; ")}`;
+  log.warn(`[STICKER-GUARD] ${detail}`);
+  reportStickerRoute({ via: "bitmap", ok: false, reason: "one-sticker-job-invalid", detail, payloadBytes: 0, totalMs: 0 });
+}
+// NEW sticker: a failing job is NOT sent (null = send) — the caller prints today's sticker instead.
 function refuseBadJob(problems: string[], what: string): BtRouteResult | null {
   if (!problems.length) return null;
   const message = `Sticker not sent (${what}): ${problems.join("; ")}`;
@@ -518,8 +526,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   const compactV2Atlases: RasterAtlases | null = stickerCompactV2Effective() && isPropCompactSize(payload.labelWidthMm, payload.labelHeightMm) ? await imagePathAtlases(payload, qrPayload) : null;
   // (all scripts ON + a Cyrillic payload: renderWithScripts adds the Cyrillic atlas — never otherwise)
   const raster = renderWithScripts(prep, compactV2Atlases ?? { latin: LATIN_ATLAS, cjk }, (img, atlases) => rasterizeToSdkBitmapTspl(img, payload.labelWidthMm, payload.labelHeightMm, atlases), qrPayload);
-  const refused = refuseBadJob(checkStickerJob("d520", raster.bytes, payload.labelWidthMm, payload.labelHeightMm), "D520");
-  if (refused) return refused;
+  noteBadJob(checkStickerJob("d520", raster.bytes, payload.labelWidthMm, payload.labelHeightMm), "D520");
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {
@@ -608,8 +615,7 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
   const reason: StickerFallbackReason = lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos";
   const t0 = nowMs();
   const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, knownTsplJob(savedBtPrinter()?.name));
-  const refused = refuseBadJob(checkStickerJob(lang as JobKind, bytes, payload.labelWidthMm, payload.labelHeightMm), lang);
-  if (refused) return refused;
+  noteBadJob(checkStickerJob(lang as JobKind, bytes, payload.labelWidthMm, payload.labelHeightMm), lang);
   const t1 = nowMs();
   log.log(`[GENERIC-STICKER] lang=${lang} bytes=${bytes.length} (~${(bytes.length / 10000).toFixed(1)}s over BLE at ~10 KB/s)`);
   holdLaneAfterGenericSend();
@@ -668,8 +674,7 @@ async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrin
   if (typeof fn !== "function") return { ok: false, code: "", message: "" };
   const t0 = nowMs();
   const image = await buildNiimbotImage(payload, platform, fbName);
-  const refused = refuseBadJob(checkNiimbotImage(image, NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h, NIIMBOT_LABEL.w, NIIMBOT_LABEL.h), "Niimbot");
-  if (refused) return refused;
+  noteBadJob(checkNiimbotImage(image, NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h, NIIMBOT_LABEL.w, NIIMBOT_LABEL.h), "Niimbot");
   const payloadBytes = image.rowBytes * image.h;
   const t1 = nowMs();
   log.log(`[NIIMBOT-STICKER] ${image.w}x${image.h} ${payloadBytes} bytes`);
@@ -1152,17 +1157,16 @@ function enqueueNativeSticker(job: NativeStickerJob): void {
 // instead. A job is never re-sent.
 // - The watchdog counts from the moment a job STARTS (never from when it was queued): a job that never
 //   settles frees the lane after NATIVE_PRINT_WATCHDOG_MS, and only the next ONE job starts then.
-// - After a generic BLE job (Flash / XP-420B / ESC/POS / CPCL — the native side connects, writes, waits
-//   1.5 s, then disconnects WITHOUT telling JS when the disconnect is done) the lane stays closed another
-//   GENERIC_BLE_GAP_MS, so the next job never reconnects while the printer is still dropping the last link.
-//   The caller of that job is not delayed; only the next job waits.
+// - After a sticker on an Xprinter XP-420B ONLY (printerModels `gapAfterMs`, Jeff 2026-11-09) the lane stays
+//   closed 1.5 s more: native generic BLE resolves, then disconnects without telling JS when that is done, and
+//   the XP-420B fed blank labels on fast series. The caller of that job is not delayed; only the next job
+//   waits. Every other printer (Flash Y41BT, D520, Niimbot, ESC/POS, CPCL, WiFi): no wait, timing as on main.
 // - An idle lane starts the job at once (synchronously, exactly as before).
-export const GENERIC_BLE_GAP_MS = 1500;
 let laneTail: Promise<void> = Promise.resolve();
 let laneJobs = 0;
 let laneHoldMs = 0;
 let laneGen = 0; // bumped by the test reset so an old chain never touches the new lane
-function holdLaneAfterGenericSend(): void { laneHoldMs = GENERIC_BLE_GAP_MS; }
+function holdLaneAfterGenericSend(): void { laneHoldMs = knownGapAfterMs(savedBtPrinter()?.name); }
 export function onPrinterLane<T>(fn: () => Promise<T>): Promise<T> {
   const gen = laneGen;
   const prev = laneTail;

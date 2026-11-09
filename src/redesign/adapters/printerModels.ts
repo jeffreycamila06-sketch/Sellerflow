@@ -41,12 +41,15 @@ export const isNiimbotName = (name: string | undefined | null): boolean => start
 // 1-dot heavier ink in the generic BITMAP job (stickerRaster BandOptions.bold). Absent = the
 // generic job's defaults (DENSITY 8, no SPEED line, no bold) — every other printer's bytes unchanged.
 export interface TsplJobSettings { density?: number; speed?: number; bold?: boolean }
-interface KnownModel extends TsplJobSettings { prefix: string; lang: PrinterLang }
+// `gapAfterMs` = how long the phone's printer lane waits after a sticker on THIS model before the next one
+// starts (printing.ts onPrinterLane). Only the XP-420B (Jeff 2026-11-09: blank labels between stickers on a fast
+// series; Flash / AIMO / Niimbot on the same roll had none). Absent = no wait, timing exactly as before.
+interface KnownModel extends TsplJobSettings { prefix: string; lang: PrinterLang; gapAfterMs?: number }
 // Oct 31: side by side, the AIMO D520BT sticker is very dark/clear; the Y41BT and the XP-420B
 // (even at DENSITY 12 / SPEED 3) are clearly lighter → max density, slow, and bold for both.
 const BUILT_IN: KnownModel[] = [
   { prefix: "Y41BT", lang: "tspl", density: 15, speed: 4, bold: true }, // FLASH LABEL Y41BT — clean TSPL sticker on the owner's iPhone (Oct 21), light at DENSITY 8; SPEED 2 too slow (Oct 31) → 4
-  { prefix: "XP-420B", lang: "tspl", density: 15, speed: 4, bold: true }, // Xprinter XP-420B — clean 60x40 TSPL sticker on the owner's iPhone (Oct 31), light at DENSITY 12; SPEED 2 too slow (Oct 31) → 4
+  { prefix: "XP-420B", lang: "tspl", density: 15, speed: 4, bold: true, gapAfterMs: 1500 }, // Xprinter XP-420B — clean 60x40 TSPL sticker on the owner's iPhone (Oct 31), light at DENSITY 12; SPEED 2 too slow (Oct 31) → 4
 ];
 let knownSource: () => KnownModel[] = () => BUILT_IN;
 export function __setKnownSource(fn: (() => KnownModel[]) | null): void { knownSource = fn ?? (() => BUILT_IN); }
@@ -65,6 +68,14 @@ export function knownTsplJob(name: string | undefined | null): TsplJobSettings {
   if (!n) return {};
   for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return { ...(m.density != null && { density: m.density }), ...(m.speed != null && { speed: m.speed }), ...(m.bold && { bold: true }) };
   return {};
+}
+
+// The lane wait after a sticker on this model (0 = none — every model but the XP-420B).
+export function knownGapAfterMs(name: string | undefined | null): number {
+  const n = String(name || "").trim().toUpperCase();
+  if (!n) return 0;
+  for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return m.gapAfterMs ?? 0;
+  return 0;
 }
 
 // A known printer: the D520BT (AIMO / Phomemo) or a listed model.
