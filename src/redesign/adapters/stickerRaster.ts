@@ -956,11 +956,12 @@ function liftForBottomSafety(r: { buf: Uint8Array; w: number; h: number; rowByte
   if (shift > 0) { r.buf.copyWithin(0, shift * r.rowBytes); r.buf.fill(0, (r.h - shift) * r.rowBytes); }
   r.buf.fill(0, (r.h - safe) * r.rowBytes); // whatever still sits in the margin (rare: no room on top)
 }
+// how far the drawn picture sits inside the paper (from the picture ACTUALLY drawn, not the canvas asked for)
+const insetOf = (drawnH: number, hMm: number): number => Math.max(0, Math.floor((hMm * 8 - drawnH) / 2));
 export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended", canvas?: RasterCanvas): FullRaster {
-  const inset = canvas ? Math.max(0, Math.floor((hMm * 8 - canvas.h) / 2)) : 0; // the Niimbot frame sits inside the paper
   if (atlases.proportional && mode !== "legacy" && isPropCompactSize(wMm, hMm)) { // font C, image paths only
     const bmp = renderPropCompact(payload, wMm, hMm, atlases, canvas);
-    liftForBottomSafety(bmp, inset);
+    liftForBottomSafety(bmp, insetOf(bmp.h, hMm)); // the Niimbot frame sits 1 mm inside the paper
     return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
   }
   // Compute the QR placement ONCE (legacy/parity mode never has a QR) → the layout wraps
@@ -971,7 +972,7 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
   stampHandleQr(bmp, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
-  liftForBottomSafety(bmp, inset);
+  liftForBottomSafety(bmp, insetOf(bmp.h, hMm)); // a full label here even on a Niimbot (centre-cropped later) → 0
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
 }
 
