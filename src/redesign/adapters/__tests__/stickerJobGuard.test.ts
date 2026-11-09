@@ -65,6 +65,8 @@ describe("ESC/POS, CPCL, Niimbot, laptop", () => {
   it("Niimbot: an image larger than the SDK frame is caught; laptop: a picture taller than the page is caught", () => {
     expect(checkNiimbotImage({ w: 384, h: 224, rowBytes: 48, data: "", labelWidthMm: 50, labelHeightMm: 30 }, 384, 224)).toEqual([]);
     expect(checkNiimbotImage({ w: 384, h: 240, rowBytes: 48, data: "", labelWidthMm: 50, labelHeightMm: 30 }, 384, 224).length).toBe(1);
+    expect(checkNiimbotImage({ w: 384, h: 224, rowBytes: 48, data: "", labelWidthMm: 50, labelHeightMm: 30 }, 384, 224, 50, 30)).toEqual([]);
+    expect(checkNiimbotImage({ w: 384, h: 224, rowBytes: 48, data: "", labelWidthMm: 50, labelHeightMm: 40 }, 384, 224, 50, 30).join()).toMatch(/not the 50×30/);
     expect(checkLaptopPicture({ w: 480, h: 320 }, 60, 40)).toEqual([]);
     expect(checkLaptopPicture({ w: 480, h: 321 }, 60, 40).length).toBe(1);
   });

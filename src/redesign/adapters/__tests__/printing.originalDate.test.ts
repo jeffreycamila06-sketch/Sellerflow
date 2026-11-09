@@ -4,7 +4,7 @@
 // output printed on day T without it (bytes / payload / HTML). Without opts every route prints
 // today, as before.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { printSlip, buildNativeStickerPayload, buildSlipPayload, __resetWebPrintQueue, DEF_SETTINGS, type Settings } from "../printing";
+import { printSlip, buildNativeStickerPayload, buildSlipPayload, __resetWebPrintQueue, DEF_SETTINGS, type Settings, __resetNativePrintQueue } from "../printing";
 import { performReprint, originalPrintInstant } from "../reprint";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -37,7 +37,7 @@ async function run(route: "bitmap" | "text" | "lan" | "slip" | "web", opts?: { a
   return JSON.parse(JSON.stringify(seen[0]));
 }
 
-beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); __resetWebPrintQueue(); });
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); __resetWebPrintQueue(); __resetNativePrintQueue(); });
 afterEach(() => {
   vi.useRealTimers(); delete (window as W).SellerFlowPrinter; delete (window as W).Capacitor;
   __resetWebPrintQueue(); document.querySelectorAll("iframe").forEach((f) => f.remove());

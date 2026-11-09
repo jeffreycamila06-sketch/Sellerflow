@@ -402,7 +402,7 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 // reasons through them, and support can read getLastStickerRouteNotice() /
 // window.__sflPrintTiming from an inspector. Genuine print FAILURES surface to
 // sellers via setNativePrintFailureHandler above (unchanged) — never via this.
-export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed" | "generic-tspl" | "generic-escpos" | "generic-cpcl" | "niimbot" | "one-sticker-picture-failed" | "one-sticker-too-wide";
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed" | "generic-tspl" | "generic-escpos" | "generic-cpcl" | "niimbot" | "one-sticker-picture-failed" | "one-sticker-too-wide" | "one-sticker-job-invalid";
 // AUDIT F2 safety net: the native reject code for an SPP-transport bitmap send
 // that failed at the socket level — the router retries that print through the
 // unchanged TEXT path, so an SPP-incompatible unit degrades to today's behavior.
@@ -484,7 +484,8 @@ function refuseBadJob(problems: string[], what: string): BtRouteResult | null {
   if (!problems.length) return null;
   const message = `Sticker not sent (${what}): ${problems.join("; ")}`;
   log.warn(`[STICKER-GUARD] ${message}`);
-  reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message, payloadBytes: 0, totalMs: 0 });
+  // own reason (counted by RedesignApp's one_sticker_fallback tracking — every reason starting "one-sticker")
+  reportStickerRoute({ via: "bitmap", ok: false, reason: "one-sticker-job-invalid", detail: message, payloadBytes: 0, totalMs: 0 });
   return { ok: false, code: STICKER_JOB_INVALID, message };
 }
 
@@ -611,6 +612,7 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
   if (refused) return refused;
   const t1 = nowMs();
   log.log(`[GENERIC-STICKER] lang=${lang} bytes=${bytes.length} (~${(bytes.length / 10000).toFixed(1)}s over BLE at ~10 KB/s)`);
+  holdLaneAfterGenericSend();
   try {
     const result = await raw({ data: bytesToBase64(bytes) });
     const t2 = nowMs();
@@ -666,7 +668,7 @@ async function printStickerViaNiimbot(bridge: NonNullable<Window["SellerFlowPrin
   if (typeof fn !== "function") return { ok: false, code: "", message: "" };
   const t0 = nowMs();
   const image = await buildNiimbotImage(payload, platform, fbName);
-  const refused = refuseBadJob(checkNiimbotImage(image, NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h), "Niimbot");
+  const refused = refuseBadJob(checkNiimbotImage(image, NIIMBOT_FRAME_DOTS.w, NIIMBOT_FRAME_DOTS.h, NIIMBOT_LABEL.w, NIIMBOT_LABEL.h), "Niimbot");
   if (refused) return refused;
   const payloadBytes = image.rowBytes * image.h;
   const t1 = nowMs();
@@ -765,8 +767,8 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
     if (typeof fn !== "function") return { ok: false, code: "", message: "" };
     const image = await picture(async () => niimbotImage(await renderOneStickerFor("niimbot", os, inp), os));
     if (!image) return "today";
-    const refused = refuseBadJob(checkNiimbotImage(image, (os.size.w - 2 * NIIMBOT_FRAME_INSET_MM) * 8, (os.size.h - 2 * NIIMBOT_FRAME_INSET_MM) * 8), "Niimbot");
-    if (refused) return refused;
+    // a new-sticker job that fails the final safety is never sent → today's sticker (also checked), like the laptop
+    if (refuseBadJob(checkNiimbotImage(image, (os.size.w - 2 * NIIMBOT_FRAME_INSET_MM) * 8, (os.size.h - 2 * NIIMBOT_FRAME_INSET_MM) * 8, os.size.w, os.size.h), "Niimbot")) return "today";
     return send("niimbot", fn, { image }, image.rowBytes * image.h, "niimbot");
   }
   const lang = savedGenericLang();
@@ -776,16 +778,15 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
     const job = knownTsplJob(savedBtPrinter()?.name);
     const bytes = await picture(async () => genericBytes(lang, await renderOneStickerFor(lang, os, inp, job), os, job));
     if (!bytes) return "today";
-    const refused = refuseBadJob(checkStickerJob(lang as JobKind, bytes, os.size.w, os.size.h), lang);
-    if (refused) return refused;
+    if (refuseBadJob(checkStickerJob(lang as JobKind, bytes, os.size.w, os.size.h), lang)) return "today";
+    holdLaneAfterGenericSend();
     return send(lang, raw, { data: bytesToBase64(bytes) }, bytes.length, lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos");
   }
   const bmpFn = bitmapBridgeFn(bridge);
   if (!bmpFn || (classicTextAllowed && isClassicTextSticker())) return "text";
   const bytes = await picture(async () => d520Stream(await renderOneStickerFor("d520", os, inp), os));
   if (!bytes) return "today";
-  const refused = refuseBadJob(checkStickerJob("d520", bytes, os.size.w, os.size.h), "D520");
-  if (refused) return refused;
+  if (refuseBadJob(checkStickerJob("d520", bytes, os.size.w, os.size.h), "D520")) return "today";
   const out = await send("d520", bmpFn, { data: bytesToBase64(bytes) }, bytes.length, "");
   return !out.ok && out.code === BITMAP_SPP_FAILED ? "text-spp" : out;
 }
@@ -1145,22 +1146,49 @@ function enqueueNativeSticker(job: NativeStickerJob): void {
 }
 
 // ONE PRINTER LANE (Jeff 2026-11-09, XP-420B extra blank labels): every sticker job on this phone's printer —
-// an order from the queue below, Printer Test, the admin language test — runs one at a time: the next job
-// starts only after the previous one settled (sent, acknowledged / failed). A test print can no longer start
-// while an order is still printing (the printer saw two connects close together). A job that never settles
-// frees the lane after the same watchdog as the queue. A job is never re-sent.
-// An idle lane starts the job at once (synchronously, exactly as before); a busy lane chains it.
+// an order from the queue below, Printer Test, the admin language test, the Printer Settings test — runs one
+// at a time in tap order: the next job starts only after the previous one settled (sent / failed). Native
+// generic BLE already refuses an overlapping job (BT_BUSY → that sticker "failed"); the lane makes it WAIT
+// instead. A job is never re-sent.
+// - The watchdog counts from the moment a job STARTS (never from when it was queued): a job that never
+//   settles frees the lane after NATIVE_PRINT_WATCHDOG_MS, and only the next ONE job starts then.
+// - After a generic BLE job (Flash / XP-420B / ESC/POS / CPCL — the native side connects, writes, waits
+//   1.5 s, then disconnects WITHOUT telling JS when the disconnect is done) the lane stays closed another
+//   GENERIC_BLE_GAP_MS, so the next job never reconnects while the printer is still dropping the last link.
+//   The caller of that job is not delayed; only the next job waits.
+// - An idle lane starts the job at once (synchronously, exactly as before).
+export const GENERIC_BLE_GAP_MS = 1500;
 let laneTail: Promise<void> = Promise.resolve();
 let laneJobs = 0;
+let laneHoldMs = 0;
+let laneGen = 0; // bumped by the test reset so an old chain never touches the new lane
+function holdLaneAfterGenericSend(): void { laneHoldMs = GENERIC_BLE_GAP_MS; }
 export function onPrinterLane<T>(fn: () => Promise<T>): Promise<T> {
-  let run: Promise<T>;
-  if (laneJobs === 0) { try { run = fn(); } catch (err) { run = Promise.reject(err); } }
-  else run = laneTail.then(fn);
+  const gen = laneGen;
+  const prev = laneTail;
+  let release!: () => void;
+  laneTail = new Promise<void>((res) => { release = res; });
   laneJobs++;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const watchdog = new Promise<void>((res) => { timer = setTimeout(res, NATIVE_PRINT_WATCHDOG_MS); });
-  laneTail = Promise.race([run.then(() => undefined, () => undefined), watchdog]).finally(() => { if (timer) clearTimeout(timer); laneJobs--; });
-  return run;
+  const free = () => { if (gen === laneGen) laneJobs--; release(); };
+  const go = (): Promise<T> => {
+    laneHoldMs = 0;
+    let job: Promise<T>;
+    try { job = fn(); } catch (err) { job = Promise.reject(err); }
+    let settled = false;
+    // the watchdog starts NOW (the job started), never when it was queued
+    const timer = setTimeout(() => settle(), NATIVE_PRINT_WATCHDOG_MS);
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const hold = gen === laneGen ? laneHoldMs : 0;
+      if (gen === laneGen) laneHoldMs = 0;
+      if (hold > 0) setTimeout(free, hold); else free();
+    };
+    job.then(settle, settle);
+    return job;
+  };
+  return laneJobs === 1 ? go() : prev.then(go);
 }
 
 async function pumpNativeQueue(): Promise<void> {
@@ -1200,7 +1228,7 @@ async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
 }
 
 // Test-only: reset the native queue state between cases.
-export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; laneTail = Promise.resolve(); laneJobs = 0; }
+export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; laneTail = Promise.resolve(); laneJobs = 0; laneHoldMs = 0; laneGen++; }
 
 // WEB STICKER QR — the browser-print twin of the phone's stickerQrPlacement: the SAME
 // link (tiktokProfileUrl), the SAME ECC "M", drawn as an inline SVG (crisp vector

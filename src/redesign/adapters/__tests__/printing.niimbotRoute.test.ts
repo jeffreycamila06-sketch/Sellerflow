@@ -4,7 +4,7 @@
 // D520BT image stream). Saved-printer round-trip: the native answer carrying transport
 // "niimbot" is remembered, survives a cold open, and is cleared with the printer.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { printSlip, printsStickerViaImage, buildNiimbotImage, buildNativeStickerPayload, getLastStickerRouteNotice, niimbotErrorKey, DEF_SETTINGS, type Settings } from "../printing";
+import { printSlip, printsStickerViaImage, buildNiimbotImage, buildNativeStickerPayload, getLastStickerRouteNotice, niimbotErrorKey, DEF_SETTINGS, type Settings, __resetNativePrintQueue } from "../printing";
 import { buildTestBuyer, btCall, hasNiimbotBridge, type BluetoothScanResult } from "../printerBridge";
 import { rememberSavedPrinter, savedBtPrinter, savedIsNiimbot, savedGenericLang, __resetSavedPrinter } from "../savedPrinter";
 
@@ -29,7 +29,7 @@ function bridge(withDriver = true) {
   (window as W).SellerFlowPrinter = b;
   return b;
 }
-afterEach(() => { delete (window as W).SellerFlowPrinter; __resetSavedPrinter(); });
+afterEach(() => { delete (window as W).SellerFlowPrinter; __resetSavedPrinter(); __resetNativePrintQueue(); });
 
 describe("transport selection", () => {
   it("transport niimbot → ONE printStickerImage with the 50×30 image; no language path, no D520 stream", async () => {
@@ -57,10 +57,12 @@ describe("transport selection", () => {
     printSlip(buyer, "NT$", "Store", cfg);
     await flush();
     expect(b.printRawTspl).toHaveBeenCalledTimes(1);
+    __resetNativePrintQueue(); // a new printer saved (no 1.5 s generic gap carried over)
     rememberSavedPrinter({ address: "EE:EE", name: "XP-P323B", model: "generic", lang: "escpos", transport: "spp" });
     printSlip(buyer, "NT$", "Store", cfg);
     await flush();
     expect(b.printRawTspl).toHaveBeenCalledTimes(2);
+    __resetNativePrintQueue(); // a new printer saved (no 1.5 s generic gap carried over)
     rememberSavedPrinter({ address: "AA:AA", name: "D520BT-Z", transport: "ble" });
     printSlip(buyer, "NT$", "Store", cfg);
     await flush();

@@ -80,16 +80,24 @@ function problemsOf(printer: Printer, calls: { fn: string; arg: Record<string, u
       }
     }
   }
-  // fast taps: the whole admin language test tapped at once on an XP-420B whose jobs take 2.5 s each (like a BLE send + settle)
+  // fast taps: the whole admin language test tapped at once on an XP-420B. Like the native single-flight
+  // generic BLE transport, the fake printer REFUSES a job while another is sending (BT_BUSY) — that sticker
+  // never prints. Each job takes 2.5 s (BLE send + settle); the gap before the next connect is measured.
   __resetNativePrintQueue(); __resetSavedPrinter(); rememberSavedPrinter(SAVED.xp420b);
-  let inFlight = 0, maxInFlight = 0, jobs = 0;
+  let inFlight = 0, jobs = 0, busy = 0, lastEnd = 0, minGap = Infinity;
   (window as W).SellerFlowPrinter = { printStickerNative: async () => ({ ok: true }), printStickerBitmap: async () => ({ ok: true }),
-    printRawTspl: async () => { inFlight++; jobs++; maxInFlight = Math.max(maxInFlight, inFlight); await sleep(2500); inFlight--; return { ok: true }; } };
+    printRawTspl: async () => {
+      if (inFlight) { busy++; return { ok: false, code: "BT_BUSY", message: "printer busy" }; }
+      if (lastEnd) minGap = Math.min(minGap, performance.now() - lastEnd);
+      inFlight++; jobs++; await sleep(2500); inFlight--; lastEnd = performance.now(); return { ok: true };
+    } };
   const cfg = { ...DEF_SETTINGS, stickerSize: "60x40", printerType: "bluetooth" } as Settings;
   printSlip(adminSampleBuyer(samples[0], AT), "NT$", "My Shop", cfg); // an order printing at the same time
-  await Promise.all(ADMIN_LANG_SAMPLES.map((s) => printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), adminSampleBuyer(s, AT), "NT$", "My Shop", cfg)));
-  await sleep(800);
-  out.push({ route: "fast-taps", printer: "xp420b", size: "60x40", jobs, maxInFlight, problems: [...(maxInFlight > 1 ? [`${maxInFlight} jobs on the printer at once`] : []), ...(jobs !== ADMIN_LANG_SAMPLES.length + 1 ? [`${jobs} jobs for ${ADMIN_LANG_SAMPLES.length + 1} stickers`] : [])] });
+  const taps = await Promise.all(ADMIN_LANG_SAMPLES.map((s) => printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), adminSampleBuyer(s, AT), "NT$", "My Shop", cfg)));
+  await sleep(4000);
+  const want = ADMIN_LANG_SAMPLES.length + 1;
+  out.push({ route: "fast-taps", printer: "xp420b", size: "60x40", numbers: { jobs, busy, failedTaps: taps.filter((r) => !r.ok).length, minGapMs: Math.round(minGap) },
+    problems: [...(busy ? [`${busy} job(s) refused BT_BUSY (another sticker was still sending)`] : []), ...(jobs !== want ? [`${jobs} labels for ${want} stickers`] : []), ...(minGap < 1400 ? [`next connect ${Math.round(minGap)} ms after the last job`] : [])] });
   delete (window as W).SellerFlowPrinter;
   (window as W).__RESULTS = { ua: navigator.userAgent, cases: out };
 })();

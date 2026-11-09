@@ -165,29 +165,44 @@ Test buyer quirk: `buildTestBuyer().orders[0].time = new Date().toLocaleTimeStri
   `SIZE 60 mm, 40 mm · GAP 2 mm, 0 · DIRECTION 1 · REFERENCE 0,0 · SPEED 4 · DENSITY 15 · CLS · (BITMAP bands) · PRINT 1`,
   no FEED / FORMFEED / HOME / GAPDETECT, one PRINT, every band inside the 480×320 label (lowest band ends at
   dot 301, lowest ink ≤ 300). The bytes were never the cause.
-- **Cause found (JS):** the order queue (`enqueueNativeSticker`) waited one job at a time, but Printer Test,
-  the admin language test (`printOneStickerTest`) and Printer Settings / Print Pattern test
-  (`printStickerBtRouted`) went to the printer DIRECTLY — a test tapped while another sticker was still
-  sending started a second BLE job. **Fix:** `onPrinterLane(fn)` in printing.ts — orders, Printer Test, the
-  admin language test and Printer Settings test now run one at a time in tap order on the phone's printer;
-  a job that never settles frees the lane after the same 35 s watchdog as the order queue. An idle lane
-  starts the job synchronously (byte- and timing-identical to before for a single print).
+- **What JS changed (contributing / defensive — NOT proven to be the cause):** the order queue
+  (`enqueueNativeSticker`) waited one job at a time, but Printer Test, the admin language test
+  (`printOneStickerTest`) and the Printer Settings / Print Pattern / setup-v2 test (`printStickerBtRouted`)
+  called the printer DIRECTLY. Native generic BLE is single-flight and REFUSES an overlapping job (BT_BUSY:
+  Swift SellerFlowPrinterPlugin.swift ~2340, Java GenericBleTransport.java ~113) — so on main a test tapped
+  while another sticker was sending was refused ("test failed", nothing printed), not sent twice.
+  `onPrinterLane(fn)` in printing.ts makes it WAIT instead: orders, Printer Test, the admin language test and
+  every Bluetooth test run one at a time in tap order. The watchdog (35 s) counts from when a job STARTS, so
+  a long queue of taps never floods the printer; a stuck job frees the lane for ONE next job only. An idle
+  lane starts the job synchronously (byte- and timing-identical to before for a single print). WiFi (P7)
+  sticker orders share the lane too (they always shared the order queue).
+- **Generic BLE gap:** native generic BLE resolves the JS call, THEN starts the disconnect without telling JS
+  when it is done (Swift `finish` ~2650-2666). After a generic job (Flash / XP-420B / ESC/POS / CPCL) the
+  lane stays closed `GENERIC_BLE_GAP_MS` = 1.5 s more, so the next job never reconnects while the printer is
+  still dropping the last link (the caller of the first job is not delayed). This is the main remaining
+  suspect for the blanks; **it is only fixed if Jeff's paper test shows no blank**.
 - **Final safety:** `adapters/stickerJobGuard.ts` (pure) checks the REAL bytes right before each send —
   TSPL (Flash Y41BT, XP-420B), D520 SDK stream, generic ESC/POS, generic CPCL, Niimbot image vs the SDK frame,
   laptop picture vs the W×H mm page: SIZE = the label, never taller than the label, exactly ONE print, no
-  feed / re-sync command, no band past the end. A job that fails is **not sent** (the print reports
-  `STICKER_JOB_INVALID`, a `[STICKER-GUARD]` log; laptop falls back to today's page). The encoders never
+  feed / re-sync command, no band past the end, the Niimbot image for the label it says. A job that fails is
+  **not sent**: a new-sticker job falls back to today's sticker (checked too), the laptop to today's page,
+  today's sticker reports `STICKER_JOB_INVALID`; every refusal logs `[STICKER-GUARD]` and is counted
+  (`one-sticker-job-invalid`). The encoders never
   make such a job — this is the backstop. Valid jobs pass through untouched (bytes identical).
 - **Not changed (native, needs a new binary to change):** iOS/Android generic BLE connects per job, writes
   the chunks (with-response or write-without-response with back-pressure + 8 ms pacing), waits 1.5 s, then
   ALWAYS disconnects; the XP-420B sends no "done" notify, so success = "sent", not "printed". If paper still
-  shows a blank after this JS fix, the next suspect is that 1.5 s settle + disconnect per job (the printer
-  may re-sync on reconnect) — that is a Swift/Java change + paper test.
+  shows a blank WITH the JS gap above, change that settle + disconnect in Swift/Java (new binary + paper test).
 - **Tests:** `printing.oneLane.test.ts` (Printer Test waits for an order; fast admin taps one at a time in
   order, each sent once; Printer Settings test shares the lane; watchdog; a FORMFEED / second PRINT 1 job is
-  never sent; XP-420B command list new == today's) — fail on 4244c31b; `stickerJobGuard.test.ts`;
-  real browser `node scripts/printing-browser-check.mjs` (e2e/printing/onelabel.*: 793 cases + fast taps with
-  2.5 s jobs — main: 12 jobs on the printer at once; this branch: 1).
+  never sent; the watchdog counts from job start (11 × 5 s jobs, a stuck job + 3 queued); the 1.5 s generic gap;
+  XP-420B command list new == today's) — fail on 4244c31b; `stickerJobGuard.test.ts`; real browser
+  `node scripts/printing-browser-check.mjs` (e2e/printing/onelabel.*: 793 cases + fast taps on a fake XP-420B
+  that refuses an overlapping job with BT_BUSY like native, 2.5 s per job: main → 1 label for 12 taps, 11
+  refused BT_BUSY; this branch → 12 labels, none refused, next connect ≥ 1.5 s after the last job). Chromium only — **iPhone WebKit
+  ❌ not checked here** (not installed in the build container); Korean / Thai / Arabic are drawn by the
+  browser's own font, so they can differ on the iPhone. e2e/printing/onelabel.ts is not type-checked by any
+  tsconfig (vite compiles it).
 
 ## 2. FEATURE PARITY MATRIX
 
@@ -227,6 +242,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | 30 | Serialized + not-printed badge | ✅ native queue (:938) | ✅ | ✅ | ✅ (⚠ silent if the method is missing, :569) | ✅ (⚠ :624) | ⚠ not queued (by design) | ✅ web queue + kiosk hint | n/a | ✅ same queues; laptop: a picture not ready in 8 s or failing → today's page (queue never stuck) |
 | 31 | Label size honoured | ✅ 5 + 50×30 | ✅ | ❌ 50×30 → 100×60 geometry (TsplBuilder:76-77; Swift:106-108) | ✅ | ❌ always 50×30 (:616); the preview shows the chosen size | n/a | ❌ driver decides (:1076) | ⚠ no Niimbot canvas/inset | ✅ the chosen size incl. custom 30–110 mm on every image path + laptop (@page W×H mm — the laptop now FORCES the page size, today it is `size:auto`; needs a real Windows driver test) · TEXT fallback = the largest TEXT size inside the label |
 | 32 | **Bottom 1.5 mm clear · no line missing · one label per sticker** (Nov 9 2026) | ⚠ all-scripts ON only: lift ≤ 4 dots from the top, else one comment line fewer ("..." on the plain font), then the @username one size smaller (B, ≥ 1×); switch OFF unchanged (3 known cases + the 2× comment/price gap, §6) | ⚠ same; `draw50x30` and font C v1 have no "one line fewer" (lift only) | ⚠ not changed; one `PRINT 1` by code reading (TsplBuilder.java / Swift), not in the proof test | ⚠ as P1 (≥ 70×50 fixed-cell) | ⚠ as P1c; fixed-cell fallback keeps the lift below the frame crop | n/a (slip) | ⚠ today's HTML `@page size:auto` not in the proof | n/a | ✅ guard: a #8888 cut across its width (QR, date or edge) is made just small enough first (A); the comment gives way, then the lowest fixed line is made smaller (≥ 2.4 mm / 2.1 mm), never dropped; screen red + "+" limit for worst-case buyers (#8888 whole too); one job / SIZE = label / one PRINT or feed proven on D520, Y41BT, XP-420B, ESC/POS, CPCL, Niimbot, laptop |
+| 33 | **One printer lane + final safety on the real bytes** (Nov 9 2026, §1c) | ✅ lane + `checkSdkJob` | ✅ same | ✅ lane (TEXT bytes are native, not checked) | ✅ lane + `checkTsplJob` / ESC/POS / CPCL + 1.5 s gap after each generic BLE job | ✅ lane + frame and label check | n/a (slip lane unchanged) | ✅ `checkLaptopPicture` (new sticker; today's HTML unchanged) | n/a | ✅ refused new-sticker job → today's sticker (checked too) |
 
 ### Highlighted gaps (each is the "web incident" kind)
 1. **P9 web sticker is a frozen copy of the July layout.** Comment hard-cut at 14 (printing.ts:1101), time raw and cut at 10 (1101), no size multipliers (1071-1073), no v2/compact v2/spacing, hard-coded "SellerFlowLive" header (1095), only `orders[0]` (1054), no emoji strip (730), time not converted to Taipei (1055). Tests **pin** this behaviour (printing.test.ts:125 "truncated to 14", :166 "multipliers NOT applied on web"), so a fix must update them. If the shop name is blank, `printShopName` falls back to "SellerFlowLive" (RedesignApp.tsx:1865), so the brand prints twice on web and in the TEXT header.
@@ -282,7 +298,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | Path | Tests | Rendered-picture / byte check? |
 |---|---|---|
 | P1 D520 image | stickerRaster.test.ts, stickerRaster.sdk.test.ts, stickerRaster.v2.test.ts, stickerRaster.50x30.test.ts, stickerRaster.cyrillic.test.ts, stickerRaster.prop.test.ts (+ stickerRasterPropGoldens.json), stickerCompactV2.test.ts, stickerSpacing.test.ts / .onOff / .offPins (pins 360 labels byte-identical), fbNameOnly.print.test.ts, printing.bitmapRouter.test.ts, printing.cjkSplit.test.ts, printing.stickerQrGate.test.ts, printing.fbNoQr.test.ts, bitmapFixtures.ts + fixtures/*.json | ✅ byte and ink checks (pure TS) |
-| One printer lane + final safety (§1c) | printing.oneLane.test.ts, stickerJobGuard.test.ts, real browser scripts/printing-browser-check.mjs (e2e/printing/onelabel.*) | ✅ real job bytes (SIZE / one PRINT / no feed / bands inside the label) in Chromium; WebKit not installed here |
+| One printer lane + final safety (§1c) | printing.oneLane.test.ts, stickerJobGuard.test.ts, real browser scripts/printing-browser-check.mjs (e2e/printing/onelabel.*) | ✅ real job bytes (SIZE / one PRINT / no feed / bands inside the label) in Chromium; ❌ iPhone WebKit not checked (not installed here) |
 | P2 TEXT (Java/Swift) | src/lib/__tests__/tspl.test.ts (TS reference vs `mobile/ios/tspl-parity/golden/*.bin`, 27 fixtures), buyerLine.contract.test.ts, iosCjkEncoding.contract.test.ts; iOS AppTests MobileTsplBuilderTests / CjkEncodingTests / BleStickerLogicTests (**Mac only, manual gate**, CLAUDE.md:3613-3624); goldens regenerated by `tspl-parity/run.sh` from TsplBuilder.java | ✅ bytes. ⚠ CI runs only `npm test` (.github/workflows/ci.yml:16-20): **no gradle, no Xcode in CI**. No 50×30 fixture (the gap is unguarded). |
 | P3-5 generic | printing.genericRoute.test.ts, escposRaster.test.ts / cpclRaster.test.ts (16×2 golden), v2TestSticker.golden.test.ts, printerModels.test.ts, printerNames.contract.test.ts (TS = Java = Swift prefix lists), PrinterSettings.flowV2 / .v2TestBuyer, savedTestBuyer.test.ts | ✅ TS bytes. ⚠ ESC/POS and CPCL never tried on hardware. |
 | P6 Niimbot | printing.niimbotRoute.test.ts, v2TestSticker.golden.test.ts; Android NiimbotTransportTest.java; iOS NiimbotLoaderTests.swift | ✅ image dims and bytes (TS). Native tests not in CI. |
@@ -379,7 +395,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 - **One sticker — guardian review round 3 (2026-11-07), fixed:** Thai / Arabic clipped in the font-C cells (Niimbot, generic 50×30 / 60×40, compact v2) with all-scripts ON — runs now drawn at the 24-cell proportions in every cell; the guard changed the comment size (lighter letters fitted at a bigger size) — the size is now decided with the seller's weight; the pair exemption let look-alikes merge ("rn" → "m") — the reference is now Normal at its own printed spacing.
 - **One sticker — guardian review round 2 (2026-11-07), fixed:** Thai marks above / below cut on today's sticker (the device font now draws into a generous box and trims to its ink); a Thai / Korean word no longer has 1-dot seams or line breaks inside it (pieces joined; left-to-right spaces stay real spaces, right-to-left keeps its phrase); pinholes no longer drop Cyrillic / Vietnamese / digits to Normal; counters checked by position; neighbouring letters checked pair by pair; the guard confirmed on the exact printed lines; per-letter cache keyed by the font; stacked Chinese comment lines keep ≥ 2 white dots between them; date and time from one moment (an order at 23:59 never gets the next day's date).
 - **One sticker (Branch 1):** the device-font fallback (Hangul, Thai, Arabic …) can differ between devices; everything else is pixel-identical by construction. Chrome itself prints the laptop page on paper rounded to whole screen pixels (≈0.2 mm under the label) — inside Chrome / the driver, not the app. 80×50 / 70×50 / custom sizes still need a paper test. ESC/POS / CPCL generic stay unverified on hardware. Y41BT and B203 width limits unverified. A device on an old app / Classic text keeps the TEXT sticker even after Save (the screen says so).
-- **XP-420B blank labels (2026-11-09):** JS fixed (one printer lane + byte guard). Native generic BLE still disconnects 1.5 s after the last chunk with no printer "done" on the XP-420B; if paper still shows blanks, change that in Swift/Java (new binary + paper test).
+- **XP-420B blank labels (2026-11-09):** JS mitigations only (one printer lane, 1.5 s gap after a generic BLE job, byte guard) — NOT proven fixed until Jeff's paper test. Native generic BLE still disconnects 1.5 s after the last chunk with no printer "done" on the XP-420B; if paper still shows blanks, change that in Swift/Java (new binary + paper test).
 - No CI for Java/Swift. The Swift golden gate is manual on the Mac (CLAUDE.md:3613-3624).
 
 ---

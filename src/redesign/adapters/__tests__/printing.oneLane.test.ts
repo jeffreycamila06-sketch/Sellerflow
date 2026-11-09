@@ -5,12 +5,16 @@
 // is not exactly one label is never sent. (3) The XP-420B command list is today's (no feed / re-sync added).
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-const bad = vi.hoisted(() => ({ append: "" }));
+const bad = vi.hoisted(() => ({ append: "", today: "" }));
 vi.mock("../oneStickerPrint", async (orig) => {
   const m = await orig<typeof import("../oneStickerPrint")>();
   return { ...m, genericBytes: (...a: Parameters<typeof m.genericBytes>) => { const b = m.genericBytes(...a); if (!bad.append) return b; const tail = new TextEncoder().encode(bad.append); const out = new Uint8Array(b.length + tail.length); out.set(b); out.set(tail, b.length); return out; } };
 });
-import { printSlip, printOneStickerTest, printStickerBtRouted, onPrinterLane, setStickerQrEntitled, setStickerQrOn, DEF_SETTINGS, __resetNativePrintQueue, type Settings } from "../printing";
+vi.mock("../stickerRaster", async (orig) => {
+  const m = await orig<typeof import("../stickerRaster")>();
+  return { ...m, rasterizeToBitmapTspl: (...a: Parameters<typeof m.rasterizeToBitmapTspl>) => { const r = m.rasterizeToBitmapTspl(...a); if (!bad.today) return r; const tail = new TextEncoder().encode(bad.today); const out = new Uint8Array(r.bytes.length + tail.length); out.set(r.bytes); out.set(tail, r.bytes.length); return { ...r, bytes: out }; } };
+});
+import { printSlip, printOneStickerTest, printStickerBtRouted, onPrinterLane, GENERIC_BLE_GAP_MS, setStickerQrEntitled, setStickerQrOn, DEF_SETTINGS, __resetNativePrintQueue, type Settings } from "../printing";
 import { recommendedSettings } from "../oneSticker";
 import { saveOneSticker, setOneStickerVisible, __resetOneStickerState } from "../oneStickerPrint";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
@@ -27,19 +31,20 @@ function slowBridge() {
   const pending: (() => void)[] = [];
   let inFlight = 0, maxInFlight = 0;
   const jobs: Uint8Array[] = [];
+  const startedAt: number[] = [], finishedAt: number[] = [];
   const printRawTspl = vi.fn((a: { data: string }) => {
-    inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+    inFlight++; maxInFlight = Math.max(maxInFlight, inFlight); startedAt.push(Date.now());
     jobs.push(Uint8Array.from(Buffer.from(a.data, "base64")));
-    return new Promise((res) => pending.push(() => { inFlight--; res({ ok: true }); }));
+    return new Promise((res) => pending.push(() => { inFlight--; finishedAt.push(Date.now()); res({ ok: true }); }));
   });
   const ok = vi.fn(async () => ({ ok: true }));
-  return { bridge: { printRawTspl, printStickerNative: ok, printStickerBitmap: ok }, printRawTspl, pending, jobs, max: () => maxInFlight, finishOne: () => pending.shift()?.() };
+  return { bridge: { printRawTspl, printStickerNative: ok, printStickerBitmap: ok }, printRawTspl, pending, jobs, startedAt, finishedAt, max: () => maxInFlight, finishOne: () => pending.shift()?.() };
 }
 const flush = () => new Promise((r) => setTimeout(r, 0));
 async function until(fn: () => boolean, ms = 20000) { const t0 = Date.now(); while (!fn() && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 10)); }
 
 beforeAll(() => { installSans(); installNodeFallbackDrawer(); setStickerQrEntitled(true); setStickerQrOn(true); });
-afterEach(() => { delete (window as W).SellerFlowPrinter; __resetNativePrintQueue(); __resetSavedPrinter(); __resetOneStickerState(); bad.append = ""; });
+afterEach(() => { delete (window as W).SellerFlowPrinter; __resetNativePrintQueue(); __resetSavedPrinter(); __resetOneStickerState(); bad.append = ""; bad.today = ""; });
 
 describe("one printer lane", () => {
   it("a Printer Test tapped while an ORDER is still printing waits for it — never two jobs on the printer at once (fails on 4244c31b: the test print skipped the queue)", async () => {
@@ -100,26 +105,71 @@ describe("one printer lane", () => {
       expect(order).toEqual(["stuck", "next"]);
     } finally { vi.useRealTimers(); }
   });
+  it("the watchdog counts from when a job STARTS, not from when it was queued: 11 taps of 5 s jobs never run 2 at once (fails before: jobs 8-11 all started at 35 s)", async () => {
+    vi.useFakeTimers();
+    try {
+      let inFlight = 0, max = 0;
+      const runs = Array.from({ length: 11 }, () => onPrinterLane(async () => { inFlight++; max = Math.max(max, inFlight); await new Promise((r) => setTimeout(r, 5000)); inFlight--; return 1; }));
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(max).toBe(1);
+      expect((await Promise.all(runs)).length).toBe(11);
+    } finally { vi.useRealTimers(); }
+  });
+  it("one stuck job + 3 queued: at 35 s only ONE more starts; the next after it settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const started: string[] = [];
+      void onPrinterLane(() => new Promise<void>(() => { started.push("stuck"); }));
+      const later = ["a", "b", "c"].map((k) => onPrinterLane(async () => { started.push(k); await new Promise((r) => setTimeout(r, 10000)); }));
+      await vi.advanceTimersByTimeAsync(35001);
+      expect(started).toEqual(["stuck", "a"]);
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(started).toEqual(["stuck", "a", "b"]);
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(started).toEqual(["stuck", "a", "b", "c"]);
+      await vi.advanceTimersByTimeAsync(10000);
+      await Promise.all(later);
+    } finally { vi.useRealTimers(); }
+  });
+  it("after a generic Bluetooth sticker the next one waits GENERIC_BLE_GAP_MS (the native side is still dropping the link)", async () => {
+    rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
+    const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
+    const one = printStickerBtRouted(sample("en"), "NT$", "My Shop", cfg);
+    const two = printStickerBtRouted(sample("vi"), "NT$", "My Shop", cfg);
+    await until(() => b.printRawTspl.mock.calls.length === 1);
+    b.finishOne();
+    expect((await one).ok).toBe(true); // the caller of the first job is not delayed
+    await until(() => b.printRawTspl.mock.calls.length === 2);
+    b.finishOne();
+    expect((await two).ok).toBe(true);
+    expect(b.startedAt[1] - b.finishedAt[0]).toBeGreaterThanOrEqual(GENERIC_BLE_GAP_MS - 50);
+  }, 60000);
 });
 
 describe("final safety on the real bytes", () => {
-  it("a job that is not exactly one label is NEVER sent (an extra FORMFEED after PRINT): the bridge is not called, the print reports a failure", async () => {
-    rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
-    const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
-    bad.append = "FORMFEED\r\n";
-    const r = await printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), sample("ko"), "NT$", "My Shop", cfg);
-    expect(b.printRawTspl).not.toHaveBeenCalled();
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe(STICKER_JOB_INVALID);
-  }, 60000);
-  it("…or a second PRINT 1 (two labels in one job)", async () => {
-    rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
-    const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
-    bad.append = "PRINT 1\r\n";
-    const r = await printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), sample("ar"), "NT$", "My Shop", cfg);
-    expect(b.printRawTspl).not.toHaveBeenCalled();
-    expect(r.code).toBe(STICKER_JOB_INVALID);
-  }, 60000);
+  for (const [what, tail, k] of [["an extra FORMFEED after PRINT", "FORMFEED\r\n", "ko"], ["a second PRINT 1 (two labels in one job)", "PRINT 1\r\n", "ar"]] as const) {
+    it(`a NEW-sticker job with ${what} is NEVER sent — today's sticker (checked too) prints instead, exactly one label`, async () => {
+      rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
+      const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
+      bad.append = tail;
+      const run = printOneStickerTest(recommendedSettings({ w: 60, h: 40 }), sample(k), "NT$", "My Shop", cfg);
+      await until(() => b.jobs.length === 1);
+      b.finishOne();
+      expect((await run).ok).toBe(true);
+      expect(b.jobs.length).toBe(1);
+      expect(checkTsplJob(b.jobs[0], 60, 40)).toEqual([]);
+      expect(tsplCommands(b.jobs[0]).cmds.filter((c) => /^(PRINT|FORMFEED)/.test(c))).toEqual(["PRINT 1"]);
+    }, 60000);
+    it(`TODAY's sticker job with ${what} is NEVER sent: the bridge is not called, the print reports STICKER_JOB_INVALID`, async () => {
+      rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
+      const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
+      bad.today = tail;
+      const r = await printStickerBtRouted(sample(k), "NT$", "My Shop", cfg);
+      expect(b.printRawTspl).not.toHaveBeenCalled();
+      expect(r.ok).toBe(false);
+      expect(r.code).toBe(STICKER_JOB_INVALID);
+    }, 60000);
+  }
 });
 
 describe("the XP-420B command list", () => {

@@ -100,11 +100,12 @@ export function checkStickerJob(kind: JobKind, b: Uint8Array, wMm: number, hMm: 
   return kind === "tspl" ? checkTsplJob(b, wMm, hMm) : kind === "d520" ? checkSdkJob(b, wMm, hMm) : kind === "cpcl" ? checkCpclJob(b, wMm, hMm) : checkEscposJob(b, wMm, hMm);
 }
 
-/** Niimbot: one image, never taller / wider than the SDK frame, for the label it says. */
-export function checkNiimbotImage(img: { w: number; h: number; rowBytes: number; data: string; labelWidthMm: number; labelHeightMm: number }, frameW: number, frameH: number): string[] {
+/** Niimbot: one image, never taller / wider than the SDK frame, for the label it says (when given). */
+export function checkNiimbotImage(img: { w: number; h: number; rowBytes: number; data: string; labelWidthMm: number; labelHeightMm: number }, frameW: number, frameH: number, wMm?: number, hMm?: number): string[] {
   const bad: string[] = [];
   if (img.h > frameH || img.w > frameW) bad.push(`image ${img.w}×${img.h} larger than the ${frameW}×${frameH} frame`);
   if (img.rowBytes * 8 < img.w) bad.push("image rows shorter than its width");
+  if (wMm != null && hMm != null && (img.labelWidthMm !== wMm || img.labelHeightMm !== hMm)) bad.push(`label ${img.labelWidthMm}×${img.labelHeightMm} mm is not the ${wMm}×${hMm} mm label`);
   return bad;
 }
 
