@@ -1009,6 +1009,9 @@ export function withScriptsBottomSafety<T extends Ras>(draw: () => T, insetOf: (
   // B (Jeff): a tall name at 2× pushes the @username to the edge — the @username is drawn one size smaller
   // at a time, just enough (never below 1×, the line always kept)
   let last: T = first;
+  // if even the @username at 1× is not enough (PRINTING_MAP §6), keep the picture that ends furthest from the edge
+  const gap = (pl: { need: number; room: number }) => pl.room - pl.need; // after the full lift: < 0 = still in the margin
+  let best: { r: T; lift: number; gap: number } = { r: first, lift: p1.room, gap: gap(p1) };
   for (let k = 1; k < 8; k++) {
     const prevU = scriptsUserLess;
     scriptsUserLess = k;
@@ -1018,9 +1021,10 @@ export function withScriptsBottomSafety<T extends Ras>(draw: () => T, insetOf: (
     last = u;
     const pu = bottomSafetyPlan(u, insetOf(u), topCrop);
     if (pu.need <= pu.room) { liftUp(u, pu.need); return u; }
+    if (gap(pu) > best.gap) best = { r: u, lift: pu.room, gap: gap(pu) };
   }
-  liftUp(first, p1.room); // nothing left to make smaller (PRINTING_MAP §6): the most lift there is, nothing erased
-  return first;
+  liftUp(best.r, best.lift); // nothing left to make smaller (PRINTING_MAP §6): the most lift there is, nothing erased
+  return best.r;
 }
 const sameRaster = (a: Ras, b: Ras): boolean => {
   if (a.w !== b.w || a.h !== b.h || a.buf.length !== b.buf.length) return false;

@@ -84,7 +84,7 @@ describe("OneStickerPattern", () => {
     fireEvent.click(screen.getByTestId("os-size-60x40"));
     await waitFor(() => expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×"), { timeout: 20000 });
     expect(screen.getByTestId("os-note-lowered").textContent).toBe("Buyer # lowered to fit this size");
-    expect(screen.queryByText(/Too big/)).toBeNull();
+    await waitFor(() => expect(screen.queryByText(/Too big/)).toBeNull(), { timeout: 20000 }); // the new setting's notes
   }, 60000);
   it("item 2: turning the QR on with Buyer # above its limit lowers it too", async () => {
     const init = recommendedSettings({ w: 60, h: 40 });

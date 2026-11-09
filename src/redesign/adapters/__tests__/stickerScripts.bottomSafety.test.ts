@@ -167,7 +167,7 @@ describe("today's sticker, all-scripts letters: through the real print paths", (
           if (k === null && !(ns === 2 && synth)) bad.push(`${tag}: not the same picture moved up (ink erased or redrawn)`);
           if (top < Math.min(SCRIPTS_TOP_KEEP_DOTS, inkRows(raw)[0] ?? 0)) bad.push(`${tag}: ink starts at row ${top}`);
           if (path === "niimbot") continue; // the SDK frame sits 1 mm inside the paper (checked in labelFit)
-          if (safe.h - 1 - low < SCRIPTS_BOTTOM_SAFE_DOTS) (ns === 2 && key === "zh" ? listed : bad).push(`${tag}: ${safe.h - 1 - low} dots from the bottom`);
+          if (safe.h - 1 - low < SCRIPTS_BOTTOM_SAFE_DOTS) (ns === 2 && (key === "zh" || (synth && (w === 70 || w === 80) && h === 50)) ? listed : bad).push(`${tag}: ${safe.h - 1 - low} dots from the bottom`);
         }
       }
       setStickerAllScripts(false); setStickerLayoutV2Allowed(false); setStickerQrEntitled(false); setStickerQrOn(false);
@@ -175,9 +175,11 @@ describe("today's sticker, all-scripts letters: through the real print paths", (
       // the listed family (PRINTING_MAP §6): name / buyer / @username at 2× on 60×40 / 70×50 / 80×50 — a tall
       // name (Chinese: today's layout as on main, switch OFF the same; the synthetic letters likewise) pushes
       // the @username to the edge. Not the comment, so neither rule applies; never cut — Jeff decides.
-      // B (Jeff): with the all-scripts letters the @username is made smaller → clear (438b4a90: ja/ko/th/ar listed);
-      // only a CHINESE name at 2× stays as on main (the letters are not drawn → byte-identical; PRINTING_MAP §6)
-      for (const l of listed) expect(l, l).toMatch(/^zh (60x40|70x50|80x50) .*size=2/);
+      // B (Jeff): with the all-scripts letters the @username is made smaller → 60×40 now clear (438b4a90: listed).
+      // Listed (PRINTING_MAP §6): a CHINESE name at 2× (letters not drawn → as on main), and at 70×50 / 80×50 the
+      // tall name leaves no room even for the @username at 1× (it ends 8 dots from the edge, nothing erased)
+      for (const l of listed) expect(l, l).toMatch(/^(zh (60x40|70x50|80x50)|(ja|ko|th|ar|th-short|th-long|ko-long|ar-long) (70x50|80x50)) .*size=2/);
+      expect(listed.filter((l) => / 60x40 /.test(l) && !l.startsWith("zh "))).toEqual([]);
       if (process.env.LISTED_OUT) appendFileSync(process.env.LISTED_OUT, listed.map((l) => `${path} ${l}`).join("\n") + "\n");
     }, 600000);
   }
