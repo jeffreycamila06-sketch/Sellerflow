@@ -69,6 +69,9 @@ export const DOTS_PER_MM = 8;
 export const isSmallClass = (wMm: number, hMm: number): boolean => hMm < 35 || wMm < 55; // approved Step 0 preview
 interface Base { shop: number; word: number; num: number; name: number; user: number; comment: number; date: number; minComment: number; margin: number }
 /** Text sizes (px = dots per em) at 1× for this label. */
+/** No ink in the bottom 1.5 mm of the label (the gap sensor; XP-420B fed a blank label when a
+ *  descender reached 1 mm from the edge) — the layout's own margin, measured on real ink. */
+export const BOTTOM_SAFE_DOTS = 12;
 export function baseSizes(wMm: number, hMm: number): Base {
   // the APPROVED preview's own formulas (mm of label HEIGHT → dots per em at 8 dots/mm), on a height
   // no taller than 3/4 of the width: every standard size (all at least 4:3 wide) is exactly the
@@ -81,7 +84,7 @@ export function baseSizes(wMm: number, hMm: number): Base {
     shop: mm(0.10), word: Math.round(num * 0.42), num, name: mm(0.105), user: mm(0.085), comment: mm(0.12),
     date: Math.round(Math.min(3.0, Math.max(2.0, hMm * 0.065)) * 8), // fixed, 2.0–3.0 mm
     minComment: hMm < 35 ? 17 : 19, // ≈2.1 mm on a short label, ≈2.4 mm otherwise
-    margin: 12,                      // 1.5 mm
+    margin: BOTTOM_SAFE_DOTS,        // 1.5 mm (also the bottom ink safety)
   };
 }
 
@@ -246,6 +249,10 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
 
   // the left column, top-down
   let y = startBelowDate ? dBottom + 4 : my;
+  // BOTTOM SAFETY (label overflow, XP-420B paper test 2026-11-09): no INK below this row — measured on
+  // the real glyphs (descenders, marks under a letter, device-font runs), never on line boxes. A
+  // descender 1 mm from the edge made the printer feed an extra blank label. On a label-sized canvas
+  // this is the 1.5 mm margin (BOTTOM_SAFE_DOTS); the Niimbot frame already sits 1 mm inside the paper.
   const bottomLimit = H - my;
   const placeLine = (run: LineRun, p: number, st: InkStyle, part: PartKey, extraGap = true): number => {
     const w = st.weight;
@@ -256,8 +263,10 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     const baseline = y + asc;
     const clip = rightAt(y, baseline + desc);
     if (mx + run.width > clip) warnings.push({ part, kind: "width" });
+    // a line whose real ink would cross the bottom limit is NOT drawn (red "Too big" note on the screen,
+    // the same picture as the print) — never half a line in the margin
     if (baseline + desc > bottomLimit) warnings.push({ part, kind: "height" });
-    add({ run, px: p, weight: w, ink: st.ink, x: mx, baseline, clip });
+    else add({ run, px: p, weight: w, ink: st.ink, x: mx, baseline, clip });
     y = baseline + desc + (extraGap ? gapOf(p) : 0);
     return baseline;
   };
@@ -282,9 +291,11 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     const clip = rightAt(y, baseline);
     const gap = buyerGap;
     if (mx + wRun.width + gap + nRun.width > clip) warnings.push({ part: "buyer", kind: "width" });
-    if (baseline > bottomLimit) warnings.push({ part: "buyer", kind: "height" });
-    add({ run: wRun, px: pw, weight: wSt.weight, ink: wSt.ink, x: mx, baseline, clip });
-    add({ run: nRun, px: pn, weight: nSt.weight, ink: nSt.ink, x: mx + wRun.width + gap, baseline, clip });
+    if (baseline + ext.desc > bottomLimit) warnings.push({ part: "buyer", kind: "height" }); // real ink: not drawn past the bottom limit
+    else {
+      add({ run: wRun, px: pw, weight: wSt.weight, ink: wSt.ink, x: mx, baseline, clip });
+      add({ run: nRun, px: pn, weight: nSt.weight, ink: nSt.ink, x: mx + wRun.width + gap, baseline, clip });
+    }
     y = baseline + Math.max(ext.desc, 2) + gapOf(pn);
   }
   // 3. name (Facebook: up to 2 lines)
@@ -325,7 +336,16 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
       const lineH = ideo ? Math.max(Math.round(p * 1.12), (() => { const c = cjkCellFor(p); return c.cell * c.mag + cjkInk(p, wChosen).dy + 2; })()) : Math.round(p * 1.12);
       const maxLines = Math.max(0, Math.floor((bottomLimit - startY + Math.round(p * 0.12)) / lineH));
       const widthOf = (i: number) => Math.max(10, rightAt(startY + i * lineH, startY + (i + 1) * lineH) - mx);
-      const wrapAt = (weight: SansWeight) => (maxLines > 0 ? wrapText(comment, p, weight, widthOf, maxLines, fonts) : { lines: [] as LineRun[], cut: true });
+      // the last line's REAL ink (a "p", "g", "ị" or a Thai mark under it) must stay above the bottom
+      // limit — the line box alone lets it run into the margin; one line fewer then ("…" / smaller)
+      const inkFits = (lines: LineRun[], weight: SansWeight) => !lines.length || startY + (lines.length - 1) * lineH + Math.round(p * 0.88) + lineExtent(lines[lines.length - 1], p, weight, fonts).desc <= bottomLimit;
+      const wrapAt = (weight: SansWeight) => {
+        for (let m = maxLines; m > 0; m--) {
+          const r = wrapText(comment, p, weight, widthOf, m, fonts);
+          if (inkFits(r.lines, weight)) return r; // fewer lines than the text needs → r.cut ("…" / the size loop shrinks first)
+        }
+        return { lines: [] as LineRun[], cut: true };
+      };
       // the SIZE is decided with the seller's own weight (the guard never changes it — only lighter) …
       const fit = wrapAt(wChosen);
       if ((!fit.cut && fit.lines.length) || p <= minP) {
