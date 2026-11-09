@@ -514,7 +514,8 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
     extra += (cjkName ? c.nameCjkGap - c.nameGap : 0) + d;
   }
   if (printBuyerUsername && cleanBuyerHandle) {
-    const m = cmul(lvlUser);
+    // scriptsUserLess > 0 only while the all-scripts bottom safety redraws (never below 1×)
+    const m = Math.max(1, cmul(lvlUser) - Math.max(scriptsUserLess, forcedUserLess));
     textSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), m, m, m, m);
     const d = (m - 1) * F3; y += c.usernameGap + d; extra += d;
   }
@@ -561,7 +562,13 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
               // tall) clipping the label's bottom edge; always ≥1 (the row itself).
               const roomForLines = Math.floor((labelHeightMm * 8 - QR_TEXT_KEEPOUT_GAP - F4 * pm - y) / lineH) + 1;
               const maxLines = Math.max(1, Math.min(MAX_COMMENT_LINES, roomForLines));
-              const lines = wrapWords(content, maxChars, maxLines);
+              let lines = wrapWords(content, maxChars, maxLines);
+              if (scriptsCommentLess > 0 && lines.length > 1) { // bottom safety: one line fewer, "…"
+                lines = wrapWords(content, maxChars, lines.length - 1);
+                const n = lines.length - 1;
+                // the fixed-cell Latin font has no "…" (only the Cyrillic atlas does) → "..." where it would print blank
+                if (!narrow("…") && lines[n].endsWith("…")) lines[n] = [...lines[n]].slice(0, -1).join("").slice(0, Math.max(0, maxChars - 3)).trimEnd() + "...";
+              }
               for (let li = 0; li < lines.length; li++) ops.push({ k: "txt", x: priceX, y: y + li * lineH, font: "4", s: safe(lines[li]), xm: 2, ym: pm });
               wrapExtra = Math.max(0, lines.length - 1) * lineH; // rows below the first
             }
@@ -682,7 +689,17 @@ function layoutV2Order(
   let maxLines = 0;
   while (lineY(maxLines) + glyphH <= bottom) maxLines++;
   if (timeOp && !timeUp && maxLines > 0) ops.push({ ...timeOp, x: 16, y: top });
-  const lines = wrapCommentV2(content, (i) => limitX(lineY(i)) - (i === 0 ? inlineTimeX : 16), maxLines, charW);
+  let lines = wrapCommentV2(content, (i) => limitX(lineY(i)) - (i === 0 ? inlineTimeX : 16), maxLines, charW);
+  if (scriptsCommentLess > 0 && lines.length > 1) {
+    // bottom safety (all-scripts letters only): one line fewer, the last kept line ends with "…"
+    lines = lines.slice(0, lines.length - 1);
+    const n = lines.length - 1, room = limitX(lineY(n)) - (n === 0 ? inlineTimeX : 16);
+    const wOf = (t: string) => [...t].reduce((a, ch) => a + charW(ch), 0);
+    const mark = narrow("…") ? "…" : "..."; // the fixed-cell Latin font has no "…" (only the Cyrillic atlas does)
+    let last = [...lines[n]];
+    while (last.length && wOf(last.join("") + mark) > room) last = last.slice(0, -1);
+    lines[n] = last.join("").trimEnd() + mark;
+  }
   lines.forEach((line, i) => {
     // split the line into runs of one script; each run is its own op at its x
     let x = i === 0 ? inlineTimeX : 16;
@@ -935,19 +952,105 @@ export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: n
  *  size's own (the Niimbot safe margin: the B1 has no paper lock, so ±1 mm of paper slack must
  *  never cut the buyer number, the text or the QR). */
 export interface RasterCanvas { w: number; h: number; edge?: number }
+// BOTTOM SAFETY for today's sticker with the ALL-SCRIPTS letters (label overflow, 2026-11-09): a Thai
+// below-mark in the last comment row of the 70×50 / 80×50 layout reached 5 dots from the edge — the
+// XP-420B then feeds an extra blank label. ONLY while the all-scripts letters are drawn (the synthetic
+// context, never set for English / Chinese or with the switch OFF → those stay byte-identical): no ink
+// in the bottom 1.5 mm (12 dots, = the one sticker's BOTTOM_SAFE_DOTS) of the PAPER — the picture moves
+// up into the free top space, up to 4 dots from the top (Jeff 2026-11-09); if that is not enough, the
+// comment takes ONE LINE FEWER (ending with "…") and is drawn again. Ink is NEVER erased. A layout that
+// still reaches the margin after both (its lowest line is not the comment) keeps the full lift —
+// listed in PRINTING_MAP §6, never cut.
+export const SCRIPTS_BOTTOM_SAFE_DOTS = 12;
+export const SCRIPTS_TOP_KEEP_DOTS = 4;
+let scriptsCommentLess = 0; // 1 while a picture is drawn again with one comment line fewer
+let scriptsUserLess = 0;    // k while a picture is drawn again with the @username k sizes smaller (Jeff 2026-11-09 B)
+type Ras = { buf: Uint8Array; w: number; h: number; rowBytes: number };
+const rowHasInk = (r: Ras, y: number) => { const o = y * r.rowBytes; for (let b = 0; b < r.rowBytes; b++) if (r.buf[o + b]) return true; return false; };
+/** How far the picture must move up (need) and how far it can (room), in dots. PURE. */
+export function bottomSafetyPlan(r: Ras, paperInset = 0, topCrop = 0): { need: number; room: number } {
+  const safe = Math.max(0, SCRIPTS_BOTTOM_SAFE_DOTS - paperInset);
+  let low = -1; for (let y = r.h - 1; y >= 0; y--) if (rowHasInk(r, y)) { low = y; break; }
+  if (low < 0) return { need: 0, room: 0 };
+  let top = 0; while (top < r.h && !rowHasInk(r, top)) top++;
+  return { need: Math.max(0, safe - (r.h - 1 - low)), room: Math.max(0, top - SCRIPTS_TOP_KEEP_DOTS - topCrop) };
+}
+function liftUp(r: Ras, shift: number): void {
+  if (shift <= 0) return;
+  r.buf.copyWithin(0, shift * r.rowBytes); // only white rows leave at the top (shift ≤ the free top rows)
+  r.buf.fill(0, (r.h - shift) * r.rowBytes);
+}
+/** Draw with the bottom safety (all-scripts letters only; anything else = one draw, untouched). `draw`
+ *  is called again with one comment line fewer only when the lift alone is not enough. Exported for
+ *  the test of the decision itself. */
+let scriptsSafetyOff = false; // TEST ONLY: the raw picture, to prove the safety only moves ink (never erases it)
+let forcedUserLess = 0;       // TEST ONLY: draw every picture with the @username this many sizes smaller (0 = off)
+export function __forceScriptsUserLess(k: number): void { forcedUserLess = Math.max(0, Math.floor(k)); }
+export function __setScriptsBottomSafetyOff(off: boolean): void { scriptsSafetyOff = off === true; }
+/** TEST ONLY: whether the picture being drawn right now is the "one comment line fewer" retry. */
+export const __scriptsCommentLessNow = (): number => scriptsCommentLess;
+/** TEST ONLY: draw `fn` as the retry with the @username `k` sizes smaller. */
+export function __withScriptsUserLess<T>(k: number, fn: () => T): T { const prev = scriptsUserLess; scriptsUserLess = k; try { return fn(); } finally { scriptsUserLess = prev; } }
+/** TEST ONLY: how many sizes smaller the @username is drawn right now (the bottom safety's B step). */
+export const __scriptsUserLessNow = (): number => scriptsUserLess;
+/** TEST ONLY: draw `fn` as the retry with one comment line fewer. */
+export function __withScriptsCommentLess<T>(fn: () => T): T { const prev = scriptsCommentLess; scriptsCommentLess = 1; try { return fn(); } finally { scriptsCommentLess = prev; } }
+/** `topCrop` = rows a later centre-crop takes off the top (the Niimbot fixed-cell fallback: a full label
+ *  cut to the SDK frame) — the lift keeps 4 dots BELOW them, so nothing it moves up is cropped away. */
+export function withScriptsBottomSafety<T extends Ras>(draw: () => T, insetOf: (r: T) => number, topCrop = 0): T {
+  const first = draw();
+  if (synthCjk === null || scriptsSafetyOff) return first;
+  const p1 = bottomSafetyPlan(first, insetOf(first), topCrop);
+  if (p1.need <= p1.room) { liftUp(first, p1.need); return first; }
+  const prev = scriptsCommentLess;
+  scriptsCommentLess = 1;
+  let again: T;
+  try { again = draw(); } finally { scriptsCommentLess = prev; }
+  const p2 = bottomSafetyPlan(again, insetOf(again), topCrop);
+  if (p2.need <= p2.room) { liftUp(again, p2.need); return again; }
+  // B (Jeff): a tall name at 2× pushes the @username to the edge — the @username is drawn one size smaller
+  // at a time, just enough (never below 1×, the line always kept)
+  let last: T = first;
+  // if even the @username at 1× is not enough (PRINTING_MAP §6), keep the picture that ends furthest from the edge
+  const gap = (pl: { need: number; room: number }) => pl.room - pl.need; // after the full lift: < 0 = still in the margin
+  let best: { r: T; lift: number; gap: number } = { r: first, lift: p1.room, gap: gap(p1) };
+  for (let k = 1; k < 8; k++) {
+    const prevU = scriptsUserLess;
+    scriptsUserLess = k;
+    let u: T;
+    try { u = draw(); } finally { scriptsUserLess = prevU; }
+    if (sameRaster(u, last)) break; // the @username is already at 1× (or not on this sticker): nothing smaller to try
+    last = u;
+    const pu = bottomSafetyPlan(u, insetOf(u), topCrop);
+    if (pu.need <= pu.room) { liftUp(u, pu.need); return u; }
+    if (gap(pu) > best.gap) best = { r: u, lift: pu.room, gap: gap(pu) };
+  }
+  liftUp(best.r, best.lift); // nothing left to make smaller (PRINTING_MAP §6): the most lift there is, nothing erased
+  return best.r;
+}
+const sameRaster = (a: Ras, b: Ras): boolean => {
+  if (a.w !== b.w || a.h !== b.h || a.buf.length !== b.buf.length) return false;
+  for (let i = 0; i < a.buf.length; i++) if (a.buf[i] !== b.buf[i]) return false;
+  return true;
+};
+// how far the drawn picture sits inside the paper (from the picture ACTUALLY drawn, not the canvas asked for)
+const insetOf = (drawnH: number, hMm: number): number => Math.max(0, Math.floor((hMm * 8 - drawnH) / 2));
 export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended", canvas?: RasterCanvas): FullRaster {
   if (atlases.proportional && mode !== "legacy" && isPropCompactSize(wMm, hMm)) { // font C, image paths only
-    const bmp = renderPropCompact(payload, wMm, hMm, atlases, canvas);
+    const bmp = withScriptsBottomSafety(() => renderPropCompact(payload, wMm, hMm, atlases, canvas), (b) => insetOf(b.h, hMm)); // the Niimbot frame sits 1 mm inside the paper
     return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
   }
   // Compute the QR placement ONCE (legacy/parity mode never has a QR) → the layout wraps
   // the comment before it AND the stamp renders it, from the SAME footprint.
   const cfg = stickerConfig(wMm, hMm);
   const qr = mode === "legacy" ? null : stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm);
-  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode, qr, !!atlases.cyrillic);
-  const bmp = new Bitmap(wDots, hDots);
-  paint(bmp, ops, atlases);
-  stampHandleQr(bmp, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
+  const bmp = withScriptsBottomSafety(() => {
+    const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode, qr, !!atlases.cyrillic);
+    const b = new Bitmap(wDots, hDots);
+    paint(b, ops, atlases);
+    stampHandleQr(b, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
+    return b;
+  }, (b) => insetOf(b.h, hMm), canvas ? Math.max(0, Math.ceil((hMm * 8 - canvas.h) / 2)) : 0); // a full label here even on a Niimbot (centre-cropped later to the frame) → inset 0, top crop kept clear
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
 }
 
@@ -1027,17 +1130,16 @@ function stampHandleQr(bmp: Bitmap, qr: QrPlacement | null): void {
 // x=0 BITMAP blocks → TSPL. See BandOptions for why full-width is the default.
 export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
   const cfg = stickerConfig(wMm, hMm);
-  let bmp: Bitmap;
-  if (atlases.proportional && isPropCompactSize(wMm, hMm)) {
-    bmp = renderPropCompact(payload, wMm, hMm, atlases, undefined, !!opts.bold); // font C, image paths only (== renderStickerBitmap)
-  } else {
+  const bmp = withScriptsBottomSafety((): Bitmap => {
+    if (atlases.proportional && isPropCompactSize(wMm, hMm)) return renderPropCompact(payload, wMm, hMm, atlases, undefined, !!opts.bold); // font C, image paths only (== renderStickerBitmap)
     const qr = stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm); // this path is always extended/production
     const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr, !!atlases.cyrillic);
-    bmp = new Bitmap(wDots, hDots);
-    paint(bmp, ops, atlases);
-    if (opts.bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
-    stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
-  }
+    const b = new Bitmap(wDots, hDots);
+    paint(b, ops, atlases);
+    if (opts.bold) boldenRaster(b.buf, b.w, b.h, b.rowBytes); // before the QR → the QR grid stays exact
+    stampHandleQr(b, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
+    return b;
+  }, () => 0); // all-scripts letters only (see renderStickerBitmap)
   return bitmapTsplFromRaster({ buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes }, wMm, hMm, opts);
 }
 
@@ -1580,7 +1682,13 @@ export function propLayoutLinesV2(payload: RasterPayload, wMm: number, hMm: numb
   // first), keeping room for one comment line; every other name shrinks on one line as today.
   if (nameOut) { if (settings?.printFacebookName === true) wrapFirst(narrow(nameOut), 2, comment ? smallestH : 0); else shrinkRow(nameOut); }
   if (flag("printBuyerUsername") && handle) shrinkRow("@" + handle);
-  if (comment) wrapFirst(comment, COMPACT_V2_MAX_COMMENT_LINES, 0);
+  if (comment) {
+    // bottom safety (all-scripts letters only): one line fewer than the comment took, cut with "…"
+    const before = rows.length;
+    wrapFirst(comment, COMPACT_V2_MAX_COMMENT_LINES, 0);
+    const took = rows.length - before;
+    if (scriptsCommentLess > 0 && took > 1) { rows.length = before; wrapFirst(comment, took - 1, 0); }
+  }
   const tops = propLineTops(rows.map((r) => ({ font: { h: r.h } as PropFont })), H);
   const lines: PropLaidLineV2[] = [];
   rows.forEach((r, i) => { for (const p of r.parts) lines.push({ size: p.size, font: p.font, line: p.line, x: X + p.dx, top: tops[i] + p.dy }); });

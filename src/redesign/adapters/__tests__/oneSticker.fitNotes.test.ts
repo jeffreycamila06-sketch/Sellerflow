@@ -69,7 +69,9 @@ describe("fit notes", () => {
     expect(cut.some((x) => x.kind === "bad")).toBe(false);
     const big = recommendedSettings({ w: 50, h: 30 });
     for (const k of ["shop", "buyer", "name", "user", "comment"] as const) big.parts[k].scale = 2;
-    expect(notes(big).find((x) => x.kind === "bad")).toBeTruthy();
+    // the print never cuts the buyer number now (made smaller, amber); the SCREEN is red (worst-case #8888)
+    expect(notes(big).find((x) => x.kind === "smaller")).toBeTruthy();
+    expect(screenFitNotes(big, sampleInput("Budgetukay"), F, renderOptsFor("d520", big)).find((x) => x.kind === "bad")).toBeTruthy();
   });
   it("50×30: no shop name (info)", () => {
     expect(notes(recommendedSettings({ w: 50, h: 30 })).some((x) => x.kind === "small")).toBe(true);

@@ -10,7 +10,7 @@ vi.mock("../../adapters/oneSticker", async (orig) => {
   return {
     ...m,
     renderOneSticker: (...a: Parameters<typeof m.renderOneSticker>) => { seen.preview.push(String(a[1].name)); return m.renderOneSticker(...a); },
-    screenFitNotes: (...a: Parameters<typeof m.screenFitNotes>) => { seen.notes.push(String(a[1].name)); return m.screenFitNotes(...a); },
+    screenFitNotesSteps: function* (...a: Parameters<typeof m.screenFitNotesSteps>) { seen.notes.push(String(a[1].name)); return yield* m.screenFitNotesSteps(...a); },
   };
 });
 import OneStickerPattern from "../OneStickerPattern";
@@ -55,8 +55,9 @@ describe("admin language test", () => {
     fireEvent.click(screen.getByTestId("os-admin-lang-ja"));
     await waitFor(() => expect(seen.preview).toContain("Maria Santos"));
   });
-  it("Printer Test prints the picked sample with the current draft (New sticker)", () => {
+  it("Printer Test prints the picked sample with the current draft (New sticker)", { timeout: 60000 }, async () => {
     const { onTest, onTestSample } = mount({ isAdmin: true });
+    await waitFor(() => expect((screen.getByTestId("os-buyer-plus") as HTMLButtonElement).disabled).toBe(false), { timeout: 20000 }); // "+" waits for its limit
     fireEvent.click(screen.getByTestId("os-buyer-plus")); // a draft change
     fireEvent.click(screen.getByTestId("os-admin-lang-th"));
     fireEvent.click(screen.getByTestId("os-test"));

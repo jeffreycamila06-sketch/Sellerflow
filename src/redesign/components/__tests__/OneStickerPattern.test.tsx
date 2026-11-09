@@ -2,11 +2,14 @@
 import { describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import OneStickerPattern from "../OneStickerPattern";
 import { recommendedSettings, NOTE_TONE } from "../../adapters/oneSticker";
 import { TProvider } from "../../i18n";
 
+const plusBtn = (k: string) => screen.getByTestId(`os-${k}-plus`) as HTMLButtonElement;
+/** "+" of a fixed part waits until its limit for the current setting is known (Jeff item 7) */
+const plusReady = (k: string) => waitFor(() => expect(plusBtn(k).disabled).toBe(false), { timeout: 20000 });
 const renderIt = (over: Partial<Parameters<typeof OneStickerPattern>[0]> = {}) => {
   const onSave = vi.fn(), onTest = vi.fn();
   render(<TProvider lang="en"><OneStickerPattern onBack={() => {}} initial={recommendedSettings({ w: 100, h: 60 })} savedOnDevice={false} onSave={onSave} shopName="Maria Ukay" devicePath="laptop" qrAllowed onTest={onTest} {...over} /></TProvider>);
@@ -37,11 +40,66 @@ describe("OneStickerPattern", () => {
     expect(screen.queryByTestId("os-fit")).toBeNull();
     fireEvent.click(screen.getByTestId("os-size-50x30"));
     expect(screen.getByTestId("os-caption").textContent).toBe("Exact preview · 50×30 mm");
-    for (const k of ["shop", "buyer", "name", "user", "comment"]) for (let i = 0; i < 9; i++) fireEvent.click(screen.getByTestId(`os-${k}-plus`));
-    expect((await screen.findByTestId("os-fit")).textContent).toContain("Too big");
     expect(screen.getByTestId("os-row-comment").textContent).toContain("Shrinks automatically when long");
     expect(screen.getByTestId("os-row-date").textContent).toContain("Fixed size");
   });
+  it("everything 2× on 50×30: red \"Too big\" before Save", async () => {
+    const init = recommendedSettings({ w: 50, h: 30 });
+    for (const k of ["shop", "buyer", "name", "user", "comment"] as const) init.parts[k].scale = 2;
+    renderIt({ initial: init });
+    expect((await screen.findByTestId("os-fit", {}, { timeout: 20000 })).textContent).toContain("Too big");
+  }, 60000);
+  it("item 5: only the part OVER its limit gets a grey \"+\" — 60×40 + QR, Buyer # 2×: Buyer # grey and red, name / @username / shop \"+\" still usable (438b4a90: all grey)", async () => {
+    const init = recommendedSettings({ w: 60, h: 40 });
+    init.parts.buyer.scale = 2;
+    renderIt({ initial: init });
+    const red = await screen.findByTestId("os-fit", {}, { timeout: 20000 });
+    expect(red.textContent).toContain("Buyer");
+    await plusReady("name");
+    for (const k of ["shop", "user"]) await plusReady(k);
+    expect(plusBtn("buyer").disabled).toBe(true);
+    expect((screen.getByTestId("os-buyer-minus") as HTMLButtonElement).disabled).toBe(false);
+  }, 60000);
+  it("item 7: a fast second tap cannot pass the limit — \"+\" waits for the limits of the new setting (and on first load); the comment never waits", async () => {
+    renderIt({ initial: recommendedSettings({ w: 60, h: 40 }) });
+    expect(plusBtn("buyer").disabled).toBe(true); // first load: limits not known yet (438b4a90: enabled)
+    expect(plusBtn("comment").disabled).toBe(false);
+    await plusReady("buyer");
+    fireEvent.click(plusBtn("buyer"));
+    expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.15×");
+    expect(plusBtn("buyer").disabled).toBe(true); // the second, fast tap is blocked…
+    fireEvent.click(plusBtn("buyer"));
+    expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.15×"); // …and does nothing
+    await plusReady("buyer");
+    fireEvent.click(plusBtn("buyer"));
+    expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×");
+    await waitFor(() => expect(plusBtn("buyer").disabled).toBe(true), { timeout: 20000 }); // 1.3× = the 60×40 + QR limit
+    expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×");
+  }, 60000);
+  it("item 2: a paper size change puts Buyer # above its new limit → it is lowered to the largest size that fits, with a short note", async () => {
+    const init = recommendedSettings({ w: 100, h: 60 });
+    init.parts.buyer.scale = 1.75; // the 100×60 + QR limit
+    renderIt({ initial: init });
+    await plusReady("name");
+    fireEvent.click(screen.getByTestId("os-size-60x40"));
+    await waitFor(() => expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×"), { timeout: 20000 });
+    expect(screen.getByTestId("os-note-lowered").textContent).toBe("Buyer # lowered to fit this size");
+    await waitFor(() => expect(screen.queryByText(/Too big/)).toBeNull(), { timeout: 20000 }); // the new setting's notes
+  }, 60000);
+  it("item 2: turning the QR on with Buyer # above its limit lowers it too", async () => {
+    const init = recommendedSettings({ w: 60, h: 40 });
+    init.parts.buyer.scale = 2; init.qr = false; // no QR: 2× fits
+    renderIt({ initial: init });
+    await plusReady("name");
+    expect(screen.getByTestId("os-buyer-scale").textContent).toBe("2×");
+    fireEvent.click(screen.getByTestId("os-qr-on"));
+    await waitFor(() => expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×"), { timeout: 20000 });
+    expect(screen.getByTestId("os-note-lowered")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("os-qr-on")); // any other change: the note goes (it belongs to that change)
+    expect(screen.queryByTestId("os-note-lowered")).toBeNull();
+    fireEvent.click(screen.getByTestId("os-size-100x60"));
+    expect(screen.queryByTestId("os-note-lowered")).toBeNull();
+  }, 60000);
   it("Normal / Bold / Extra: under the name beside the size + switch on a wide row, their own line on a narrow row — never over the stepper; each ≥ 44×44", () => {
     renderIt();
     for (const k of ["shop", "buyer", "name", "user", "comment"]) {
@@ -69,7 +127,7 @@ describe("OneStickerPattern", () => {
     }
     expect((screen.getByTestId("os-custom").firstElementChild as HTMLElement).style.gridTemplateColumns).toBe("minmax(0,1fr) auto minmax(0,1fr)");
   });
-  it("a part switched OFF: its size and weight are dimmed and cannot be changed (the switch still works)", () => {
+  it("a part switched OFF: its size and weight are dimmed and cannot be changed (the switch still works)", async () => {
     const { onSave } = renderIt();
     fireEvent.click(screen.getByTestId("os-name-on"));
     expect(screen.getByTestId("os-row-name").getAttribute("data-off")).toBe("1");
@@ -78,8 +136,8 @@ describe("OneStickerPattern", () => {
     expect(screen.getByTestId("os-name-weights").style.opacity).toBe("0.4");
     fireEvent.click(screen.getByTestId("os-name-plus"));
     expect(screen.getByTestId("os-name-scale").textContent).toBe("1×");
-    fireEvent.click(screen.getByTestId("os-name-on")); // back on → usable again
-    expect((screen.getByTestId("os-name-plus") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId("os-name-on")); // back on → usable again (once its limit is known)
+    await plusReady("name");
     void onSave;
   });
   it("laptop (≥760 px): two columns — the preview column (picture, notes, tests) sticky on the left, the controls on the right", () => {
@@ -128,7 +186,7 @@ describe("OneStickerPattern", () => {
     expect(c.style.aspectRatio).toBe("50 / 70");
   });
   it("note pills (approved preview): green fits, amber shrunk / cut / QR, red off the label, grey info — tinted borders in light AND dark", () => {
-    expect(NOTE_TONE).toEqual({ ok: "ok", bad: "bad", shrunk: "warn", cut: "warn", qr: "warn", short: "info", small: "info" });
+    expect(NOTE_TONE).toEqual({ ok: "ok", bad: "bad", shrunk: "warn", cut: "warn", smaller: "warn", qr: "warn", short: "info", small: "info" });
     const src = fs.readFileSync(path.join(__dirname, "../OneStickerPattern.tsx"), "utf8");
     for (const [sel, color, border] of [
       ['.os-note[data-tone="ok"]', "#0F8A5F", "#9DDCC4"], ['.os-note[data-tone="warn"]', "#9A5C00", "#F0CF92"], ['.os-note[data-tone="bad"]', "#C2342B", "#F2B1AB"],
@@ -222,22 +280,25 @@ describe("OneStickerPattern", () => {
       expect(px(ctl.style.gap), k).toBeGreaterThanOrEqual(plusOver + swOver); // overlap = overhangs − gap ≤ 0
     }
   });
-  it("device note: not saved → keeps today's sticker; saved → prints this sticker; saved with changes → used after Save", () => {
+  it("device note: not saved → keeps today's sticker; saved → prints this sticker; saved with changes → used after Save", async () => {
     const note = () => screen.getByTestId("os-device-note").textContent;
     renderIt({ savedOnDevice: true });
     expect(note()).toBe("This device prints this sticker.");
+    await plusReady("shop");
     fireEvent.click(screen.getByTestId("os-shop-plus"));
     expect(note()).toBe("Your changes are used after you tap Save.");
     fireEvent.click(screen.getByTestId("os-shop-minus")); // back to what is saved
     expect(note()).toBe("This device prints this sticker.");
+    await plusReady("shop");
     fireEvent.click(screen.getByTestId("os-shop-plus"));
     fireEvent.click(screen.getByTestId("os-save"));
     expect(note()).toBe("This device prints this sticker.");
   });
-  it("device note on a device that never saved: the opt-in note, with or without changes", () => {
+  it("device note on a device that never saved: the opt-in note, with or without changes", async () => {
     const note = () => screen.getByTestId("os-device-note").textContent;
     renderIt();
     expect(note()).toBe("This device keeps today's sticker until you tap Save.");
+    await plusReady("shop");
     fireEvent.click(screen.getByTestId("os-shop-plus"));
     expect(note()).toBe("This device keeps today's sticker until you tap Save.");
   });
@@ -246,18 +307,19 @@ describe("OneStickerPattern", () => {
     const line = src.split("\n").find((l) => l.trimStart().startsWith("rd_os_unsaved_note:"))!;
     for (const k of ["en:", "fil:", "zh:", '"zh-TW":', "vi:", "th:", "id:", "bg:"]) expect(line).toContain(k);
   });
-  it("a device that already saved the new sticker: Save is off until something changes", () => {
+  it("a device that already saved the new sticker: Save is off until something changes", async () => {
     renderIt({ savedOnDevice: true });
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
+    await plusReady("shop");
     fireEvent.click(screen.getByTestId("os-shop-plus"));
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(false);
   });
-  it("the stepper walks the approved ladder 0.6 … 2 and stops at the ends", () => {
+  it("the stepper walks the approved ladder 0.6 … 2 and stops at the ends (the comment: no limit, it always gives way)", () => {
     renderIt();
-    for (let i = 0; i < 9; i++) fireEvent.click(screen.getByTestId("os-buyer-plus"));
-    expect(screen.getByTestId("os-buyer-scale").textContent).toBe("2×");
-    for (let i = 0; i < 15; i++) fireEvent.click(screen.getByTestId("os-buyer-minus"));
-    expect(screen.getByTestId("os-buyer-scale").textContent).toBe("0.6×");
+    for (let i = 0; i < 9; i++) fireEvent.click(screen.getByTestId("os-comment-plus"));
+    expect(screen.getByTestId("os-comment-scale").textContent).toBe("2×");
+    for (let i = 0; i < 15; i++) fireEvent.click(screen.getByTestId("os-comment-minus"));
+    expect(screen.getByTestId("os-comment-scale").textContent).toBe("0.6×");
   });
   it("50×30: the shop name row says it is not printed", () => {
     renderIt();
