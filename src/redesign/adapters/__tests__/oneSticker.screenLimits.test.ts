@@ -56,16 +56,15 @@ describe("1. worst-case buyers on the screen", () => {
 });
 
 describe("2. the print never cuts #8888 across its width beside the QR", () => {
-  it("every size (standard + 30–110 mm custom) × every Buyer # step × short / long handle × D520 / TSPL / laptop: the number prints whole beside the QR, never below the readable size", () => {
+  it("every size (standard + 30–110 mm custom) × every Buyer # step × short / long handle × D520 / TSPL / laptop: the number prints whole (beside the QR or, with no QR, beside the date), never below the readable size", () => {
     const bad: string[] = [];
     const sizes: [number, number][] = [...STANDARD_SIZES.map((z) => [z.w, z.h] as [number, number]), [30, 30], [30, 40], [30, 60], [30, 110], [40, 30], [40, 60], [50, 50], [110, 30]];
     for (const [w, h] of sizes) for (const scale of SCALE_STEPS) for (const inp of [SHORT(), LONG()]) for (const path of ["d520", "tspl", "laptop"] as OneStickerPath[]) {
       const s = S(w, h, (x) => { x.parts.buyer.scale = scale; });
       const L = layoutSticker(s, inp, F, optsFor(path, s));
-      // beside the QR: never cut (Jeff A). No room for a QR at all (30 mm wide) → cut by the DATE: not in Jeff's
-      // rule (PRINTING_MAP §6, listed for Jeff) — then the screen must at least be red
-      if (L.qr && !numberWhole(L)) bad.push(`${w}x${h} ×${scale} ${path} @${inp.handle}: #8888 cut beside the QR`);
-      if (!L.qr && !numberWhole(L) && !red(s, path)) bad.push(`${w}x${h} ×${scale} ${path} @${inp.handle}: #8888 cut by the date, screen not red`);
+      // never cut (Jeff A): beside the QR, and — Jeff's decision on aa596acd — also with no QR, where the
+      // date or the label edge would cut it (30×30)
+      if (!numberWhole(L)) bad.push(`${w}x${h} ×${scale} ${path} @${inp.handle}: #8888 cut ${L.qr ? "beside the QR" : "by the date (no QR)"}`);
       const num = L.lines.find((l) => l.part === "buyer" && l.run.text !== "Buyer");
       // made smaller → never below the readable size
       if (num && L.warnings.some((x) => x.part === "buyer" && x.kind === "smaller") && num.px < minReadablePx(w, h)) bad.push(`${w}x${h} ×${scale} ${path}: ${num.px} px`);
@@ -78,6 +77,21 @@ describe("2. the print never cuts #8888 across its width beside the QR", () => {
     expect(L.qr).not.toBeNull();
     expect(L.warnings).toContainEqual({ part: "buyer", kind: "smaller" });
     expect(numberWhole(L)).toBe(true);
+  });
+});
+
+describe("A with no QR (Jeff, aa596acd): the date never cuts #8888", () => {
+  it("30×30, a long handle (no room for any QR), Buyer # 1.15–2: #8888 prints whole, made smaller (amber), the screen still red (aa596acd: cut by the date)", () => {
+    for (const scale of [1.15, 1.3, 1.5, 2]) for (const path of ["d520", "tspl", "laptop"] as OneStickerPath[]) {
+      const s = S(30, 30, (x) => { x.parts.buyer.scale = scale; });
+      const L = layoutSticker(s, LONG(), F, optsFor(path, s));
+      expect(L.qr, `${scale} ${path}`).toBeNull();
+      expect(numberWhole(L), `${scale} ${path}`).toBe(true);
+      expect(L.warnings, `${scale} ${path}`).toContainEqual({ part: "buyer", kind: "smaller" });
+      const num = L.lines.find((l) => l.part === "buyer" && l.run.text !== "Buyer")!;
+      expect(num.px, `${scale} ${path}`).toBeGreaterThanOrEqual(minReadablePx(30, 30));
+      expect(red(s, path), `${scale} ${path} screen`).toBe(true);
+    }
   });
 });
 

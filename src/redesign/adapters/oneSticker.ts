@@ -186,8 +186,9 @@ export function* layoutStickerSteps(s: OneStickerSettings, inp: OneStickerInput,
   const minP = minReadablePx(s.size.w, s.size.h);
   const over: PxOver = {};
   const shrunk: PartKey[] = [];
-  // A (Jeff): a buyer number cut across its width beside the QR → the number is made just small enough
-  // to print whole (never cut, the QR kept; never below the readable minimum)
+  // A (Jeff): a buyer number cut across its width (beside the QR, or by the date / the label edge on any
+  // size) → the number is made just small enough to print whole (never cut, a QR kept; never below the
+  // readable minimum)
   if (q.numberCut && q.px.buyer != null && q.px.buyer > minP) {
     const cur = q.px.buyer;
     const whole = (x: Pass) => !x.numberCut;
@@ -246,7 +247,7 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
   const warnings: FitWarning[] = [];
   const sizes: number[] = [];
   const crossing: PartKey[] = []; // fixed lines whose real ink would cross the bottom limit (the guard fixes them)
-  let numberCut = false;          // the buyer number cut across its width beside the QR (the guard fixes it)
+  let numberCut = false;          // the buyer number cut across its width — QR, date or edge (the guard fixes it)
   const usedPx: PxOver = {};
   const add = (l: Laid) => { lines.push(l); sizes.push(l.px); };
   const P = s.parts;
@@ -378,7 +379,7 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
     const baseline = y + asc;
     const clip = rightAt(y, baseline);
     const gap = buyerGap;
-    if (mx + wRun.width + gap + nRun.width > clip) { warnings.push({ part: "buyer", kind: "width" }); if (qr) numberCut = true; }
+    if (mx + wRun.width + gap + nRun.width > clip) { warnings.push({ part: "buyer", kind: "width" }); numberCut = true; }
     // the bottom check reads BOTH runs' real ink — the small word's "y" hangs below the digits
     const inkDesc = Math.max(ext.desc, lineExtent(wRun, pw, wt("buyer"), fonts).desc);
     if (baseline + inkDesc > bottomLimit) crossing.push("buyer");

@@ -101,3 +101,12 @@ Now only: `round5_A_new_50x30_qr_buyer2_niimbot.png`, `round5_A_new_60x40_qr_buy
 laptop), `round5_case3_today_zh_gpy_70x50_{d520,xp420b}.png` (case 3, unchanged). For Jeff:
 `round5_forjeff_B_today_ja_70x50_size2_d520.png`, `round5_forjeff_today_en_60x40_size2_no_comment_d520.png`,
 `round5_forjeff_new_30x30_noqr_cut_by_date.png`. Screen screenshots (note + grey "+") not taken this round.
+
+## Round 6 — Jeff's decisions on aa596acd
+
+- Rule A also without a QR: where the date / label edge would cut #8888 (30×30, any size) the number is made
+  just small enough to print whole (amber "made smaller"; the screen stays red for that step).
+- Left as is (listed in PRINTING_MAP §6): today's sticker 2× without the comment / price (as on main), and B at
+  70×50 / 80×50 (8–10 dots) — paper test before turning all-scripts ON for everyone.
+- Standing rule (PRINTING_MAP §7): at the recommended 1× every standard size fits everything; bigger parts →
+  the preview shows exactly what will be smaller or missing; preview = print.
