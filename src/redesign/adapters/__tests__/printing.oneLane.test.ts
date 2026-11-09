@@ -150,6 +150,20 @@ describe("one printer lane", () => {
       else expect(waited).toBeLessThan(1000); // only the next picture's build time, no lane wait
     }, 60000);
   }
+  it("an XP-420B sticker, then another printer saved: the next sticker does NOT wait (the wait belongs to the XP-420B only)", async () => {
+    rememberSavedPrinter({ address: "AA", name: "XP-420B", model: "generic", lang: "tspl" });
+    const b = slowBridge(); (window as W).SellerFlowPrinter = b.bridge;
+    const one = printStickerBtRouted(sample("en"), "NT$", "My Shop", cfg);
+    await until(() => b.printRawTspl.mock.calls.length === 1);
+    b.finishOne();
+    expect((await one).ok).toBe(true);
+    rememberSavedPrinter({ address: "BB", name: "Y41BT-0FC4_LE", model: "generic", lang: "tspl" });
+    const two = printStickerBtRouted(sample("vi"), "NT$", "My Shop", cfg);
+    await until(() => b.printRawTspl.mock.calls.length === 2);
+    b.finishOne();
+    expect((await two).ok).toBe(true);
+    expect(b.startedAt[1] - b.finishedAt[0]).toBeLessThan(1000);
+  }, 60000);
   it("only the XP-420B has a lane wait: D520 / Flash / every other generic or unknown name = 0", () => {
     for (const n of ["D520BT-Z", "Y41BT-0FC4_LE", "XP-P323B", "LabelThing-9", "B1-H123", "", undefined]) expect(knownGapAfterMs(n), String(n)).toBe(0);
     expect(knownGapAfterMs("XP-420B-ABCD")).toBe(1500);

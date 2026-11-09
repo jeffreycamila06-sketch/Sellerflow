@@ -6,7 +6,7 @@
 //   cpcl   → ! 0 200 200 … EG … FORM PRINT
 // A D520BT / nothing learned → the unchanged bitmap default.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { printSlip, printsStickerViaImage, getLastStickerRouteNotice, buildGenericStickerBytes, buildNativeStickerPayload, DEF_SETTINGS, type Settings, __resetNativePrintQueue } from "../printing";
+import { printSlip, printsStickerViaImage, getLastStickerRouteNotice, buildGenericStickerBytes, buildNativeStickerPayload, DEF_SETTINGS, type Settings } from "../printing";
 import { buildTestBuyer, btCall, type BluetoothScanResult } from "../printerBridge";
 import { rememberSavedPrinter, savedGenericLang, __resetSavedPrinter } from "../savedPrinter";
 import { loadCjkAtlas } from "../cjkAtlasLoader";
@@ -31,7 +31,7 @@ function bridge() {
   (window as W).SellerFlowPrinter = b;
   return b;
 }
-afterEach(() => { delete (window as W).SellerFlowPrinter; __resetSavedPrinter(); __resetNativePrintQueue(); vi.mocked(loadCjkAtlas).mockClear(); });
+afterEach(() => { delete (window as W).SellerFlowPrinter; __resetSavedPrinter(); vi.mocked(loadCjkAtlas).mockClear(); });
 
 describe("saved generic printer routing", () => {
   it("tspl → ONE raw TSPL BITMAP job; TEXT builder + D520 image stream never; no resend", async () => {
@@ -56,7 +56,7 @@ describe("saved generic printer routing", () => {
     const header = (bytes: Buffer) => bytes.subarray(0, bytes.indexOf(Buffer.from("CLS\r\n"))).toString("ascii");
     const body = (bytes: Buffer) => bytes.subarray(header(bytes).length);
     const print = async (saved: { address: string; name: string }) => {
-      delete (window as W).SellerFlowPrinter; __resetSavedPrinter(); __resetNativePrintQueue(); // each save = a new printer (no 1.5 s generic gap carried over)
+      delete (window as W).SellerFlowPrinter; __resetSavedPrinter();
       const b = bridge();
       rememberSavedPrinter({ ...saved, model: "generic", lang: "tspl" });
       printSlip(buyer, "NT$", "Store", cfg);
@@ -91,7 +91,6 @@ describe("saved generic printer routing", () => {
 
   it("escpos → ONE ESC/POS raster; cpcl → ONE CPCL label; text + bitmap never", async () => {
     for (const [lang, head, tail] of [["escpos", [0x1b, 0x40, 0x1d, 0x76, 0x30, 0x00], [0x1b, 0x64, 0x03]], ["cpcl", Array.from(Buffer.from("! 0 200 200 480 1\r\n")), Array.from(Buffer.from("FORM\r\nPRINT\r\n"))]] as const) {
-      __resetNativePrintQueue(); // each save = a new printer (no 1.5 s generic gap carried over)
       const b = bridge();
       rememberSavedPrinter({ address: "DD:DD", name: "LabelThing-9", model: "generic", lang });
       expect(printSlip(buyer, "NT$", "Store", cfg)).toEqual({ ok: true, via: "bluetooth" });

@@ -180,7 +180,8 @@ Test buyer quirk: `buildTestBuyer().orders[0].time = new Date().toLocaleTimeStri
   disconnect without telling JS when it is done (Swift `finish` ~2650-2666). After a sticker on an Xprinter
   XP-420B the lane stays closed 1.5 s more (`printerModels` `gapAfterMs`, read with `knownGapAfterMs`), so the
   next job never reconnects while the printer is still dropping the last link (the caller of the first job is
-  not delayed). **Flash Y41BT, D520, Niimbot, ESC/POS, CPCL, WiFi: no wait** — Jeff's paper tests on the same
+  not delayed; if another printer is saved meanwhile, the wait ends at once). **Flash Y41BT, D520, Niimbot,
+  ESC/POS, CPCL, WiFi: no wait** — Jeff's paper tests on the same
   roll had zero blanks on Flash / AIMO / Niimbot. Proved: 5 orders tapped at once on every printer path
   (bridge answers after 400 ms, fake clock; and instantly, counted per microtask) = the same bridge-call and
   printed-outcome times as main on every printer except the XP-420B (+1.5 s between stickers). This is the

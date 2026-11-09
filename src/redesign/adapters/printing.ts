@@ -1165,9 +1165,14 @@ function enqueueNativeSticker(job: NativeStickerJob): void {
 let laneTail: Promise<void> = Promise.resolve();
 let laneJobs = 0;
 let laneHoldMs = 0;
+// the XP-420B wait in progress (no job running); released early when the saved printer no longer needs it
+let laneHolding: { timer: ReturnType<typeof setTimeout>; free: () => void } | null = null;
 let laneGen = 0; // bumped by the test reset so an old chain never touches the new lane
 function holdLaneAfterGenericSend(): void { laneHoldMs = knownGapAfterMs(savedBtPrinter()?.name); }
 export function onPrinterLane<T>(fn: () => Promise<T>): Promise<T> {
+  // a new job while the lane only WAITS after an XP-420B sticker, and the saved printer now has no wait
+  // (another printer saved) → stop waiting: that printer's timing stays exactly as on main
+  if (laneHolding && !knownGapAfterMs(savedBtPrinter()?.name)) { const h = laneHolding; laneHolding = null; clearTimeout(h.timer); h.free(); }
   const gen = laneGen;
   const prev = laneTail;
   let release!: () => void;
@@ -1187,7 +1192,10 @@ export function onPrinterLane<T>(fn: () => Promise<T>): Promise<T> {
       clearTimeout(timer);
       const hold = gen === laneGen ? laneHoldMs : 0;
       if (gen === laneGen) laneHoldMs = 0;
-      if (hold > 0) setTimeout(free, hold); else free();
+      if (hold > 0) {
+        const done = () => { if (laneHolding?.free === done) laneHolding = null; free(); };
+        laneHolding = { timer: setTimeout(done, hold), free: done };
+      } else free();
     };
     job.then(settle, settle);
     return job;
@@ -1232,7 +1240,7 @@ async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
 }
 
 // Test-only: reset the native queue state between cases.
-export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; laneTail = Promise.resolve(); laneJobs = 0; laneHoldMs = 0; laneGen++; }
+export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; if (laneHolding) clearTimeout(laneHolding.timer); laneHolding = null; laneTail = Promise.resolve(); laneJobs = 0; laneHoldMs = 0; laneGen++; }
 
 // WEB STICKER QR — the browser-print twin of the phone's stickerQrPlacement: the SAME
 // link (tiktokProfileUrl), the SAME ECC "M", drawn as an inline SVG (crisp vector
