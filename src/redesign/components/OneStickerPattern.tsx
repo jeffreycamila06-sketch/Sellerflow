@@ -235,8 +235,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   // a fixed part's "+" waits until its limit for THIS setting is known (a fast second tap, the first load);
   // the comment has no limit (it always gives way)
   const plusBlocked = (k: PartKey, scale: number) => k !== "comment" && (caps == null || (caps[k] != null && scale >= caps[k]!));
-  const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
-  const reset = () => { setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
+  // the "lowered" note belongs to the change that lowered Buyer # — any other change clears it
+  const pickSize = (w: number, h: number) => { setLowered(false); setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
+  const reset = () => { setLowered(false); setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
   // a size the printer cannot take is never saved (too wide, a wrong custom size, or 50×30 / custom on a
   // TEXT / WiFi phone, which has no such layout)
   const blocked = !!tooWide || (customOpen && !customOk) || (!customAllowed && (!!s.size.custom || (s.size.w === 50 && s.size.h === 30)));
@@ -358,7 +359,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           {STANDARD_SIZES.filter((z) => customAllowed || !(z.w === 50 && z.h === 30)).map((z) => (
             <button key={`${z.w}x${z.h}`} type="button" onClick={() => pickSize(z.w, z.h)} aria-pressed={isStd(z.w, z.h)} data-testid={`os-size-${z.w}x${z.h}`} style={chip(isStd(z.w, z.h))}>{z.w}×{z.h}</button>
           ))}
-          {customAllowed && <button type="button" onClick={() => { if (!customOpen) { setCustomW(String(s.size.w)); setCustomH(String(s.size.h)); } setCustomOpen(true); }} aria-pressed={customOpen} data-testid="os-size-custom" style={chip(customOpen)}>{t.rd_os_custom}</button>}
+          {customAllowed && <button type="button" onClick={() => { setLowered(false); if (!customOpen) { setCustomW(String(s.size.w)); setCustomH(String(s.size.h)); } setCustomOpen(true); }} aria-pressed={customOpen} data-testid="os-size-custom" style={chip(customOpen)}>{t.rd_os_custom}</button>}
         </div>
         {!customAllowed && <div data-testid="os-custom-hidden" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_os_custom_hidden}</div>}
         {customAllowed && customOpen && (
@@ -366,11 +367,11 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
             {/* W · × · H on one line (a fixed grid — the "×" never wraps alone), inputs full width, ≥ 44 px */}
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "end", gap: 8 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_width}
-                <input inputMode="numeric" value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="os-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+                <input inputMode="numeric" value={customW} onChange={(e) => { setLowered(false); setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3)); }} data-testid="os-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
               </label>
               <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", lineHeight: `${TAP}px` }}>×</span>
               <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_height}
-                <input inputMode="numeric" value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="os-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+                <input inputMode="numeric" value={customH} onChange={(e) => { setLowered(false); setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3)); }} data-testid="os-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
               </label>
             </div>
             {!customOk && <div data-testid="os-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
@@ -399,7 +400,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>{p.qrAllowed ? t.rd_os_qr_hint : t.rd_os_qr_none}</div>
             </div>
-            <Switch on={p.qrAllowed && s.qr} disabled={!p.qrAllowed} aria={t.rd_ps_sticker_qr} onClick={() => setS((x) => ({ ...x, qr: !x.qr }))} testId="os-qr-on" />
+            <Switch on={p.qrAllowed && s.qr} disabled={!p.qrAllowed} aria={t.rd_ps_sticker_qr} onClick={() => { setLowered(false); setS((x) => ({ ...x, qr: !x.qr })); }} testId="os-qr-on" />
           </div>
           {partRow(rowOf("comment"), true)}
         </div>

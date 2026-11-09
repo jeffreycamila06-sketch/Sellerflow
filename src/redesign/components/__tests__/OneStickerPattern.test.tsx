@@ -95,6 +95,10 @@ describe("OneStickerPattern", () => {
     fireEvent.click(screen.getByTestId("os-qr-on"));
     await waitFor(() => expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×"), { timeout: 20000 });
     expect(screen.getByTestId("os-note-lowered")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("os-qr-on")); // any other change: the note goes (it belongs to that change)
+    expect(screen.queryByTestId("os-note-lowered")).toBeNull();
+    fireEvent.click(screen.getByTestId("os-size-100x60"));
+    expect(screen.queryByTestId("os-note-lowered")).toBeNull();
   }, 60000);
   it("Normal / Bold / Extra: under the name beside the size + switch on a wide row, their own line on a narrow row — never over the stepper; each ≥ 44×44", () => {
     renderIt();

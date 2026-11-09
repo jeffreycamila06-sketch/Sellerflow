@@ -86,12 +86,18 @@ Tests: `oneSticker.noLineMissing.test.ts`, `stickerScripts.bottomSafety.test.ts`
   "made smaller"); also for a pattern saved earlier. The screen lowers Buyer # automatically after a size
   change or the QR turned on ("Buyer # lowered to fit this size").
 - **B — today's sticker, all-scripts letters, tall name at 2×:** the @username is drawn one size smaller
-  (60×40 now clear). At 70×50 / 80×50 even 1× is not enough (8 dots) — listed for Jeff. A Chinese name
-  (switch OFF byte-identical) is left as is.
+  (60×40: the bottom is now clear; only the @username changes). At 70×50 / 80×50 even 1× is not enough
+  (8–10 dots) — listed for Jeff. A Chinese name (switch OFF byte-identical) is left as is.
+- **For Jeff (guardian round 5):** at these 2× sizes today's sticker does NOT print the comment / price at all
+  (as on main, switch OFF too) — the 60×40 "after" picture has no order line either. Not changed; needs a rule.
 - **C** — the Chinese name + g/p/y comment case is the third switch-OFF case in PRINTING_MAP §6 (paper test pending).
 - **Limits:** only the part over its limit gets a grey "+"; the others are worked out with it held at its
   limit. The work runs in idle slices (≈ 8 ms each) and is kept per setting; a fixed part's "+" waits until
   its limit is known.
 
 Pictures (left = 438b4a90, right = now): `round5_new_8888_60x40_qr_buyer2_{xp420b,y41bt,d520}.png`,
-`round5_today_ja_60x40_size2_d520.png`.
+`round5_today_ja_60x40_size2_d520.png` (bottom clear; the comment/price is missing as on main — see above).
+Now only: `round5_A_new_50x30_qr_buyer2_niimbot.png`, `round5_A_new_60x40_qr_buyer2_laptop.png` (A on Niimbot /
+laptop), `round5_case3_today_zh_gpy_70x50_{d520,xp420b}.png` (case 3, unchanged). For Jeff:
+`round5_forjeff_B_today_ja_70x50_size2_d520.png`, `round5_forjeff_today_en_60x40_size2_no_comment_d520.png`,
+`round5_forjeff_new_30x30_noqr_cut_by_date.png`. Screen screenshots (note + grey "+") not taken this round.

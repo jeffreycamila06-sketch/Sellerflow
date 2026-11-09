@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { appendFileSync } from "node:fs";
 import {
-  withScriptsBottomSafety, bottomSafetyPlan, withSyntheticCjk, stickerDrawOps, wrapWords, __setScriptsBottomSafetyOff, __scriptsCommentLessNow, __withScriptsCommentLess, __withScriptsUserLess,
+  withScriptsBottomSafety, bottomSafetyPlan, withSyntheticCjk, stickerDrawOps, wrapWords, __setScriptsBottomSafetyOff, __scriptsCommentLessNow, __withScriptsCommentLess, __withScriptsUserLess, __forceScriptsUserLess,
   SCRIPTS_BOTTOM_SAFE_DOTS, SCRIPTS_TOP_KEEP_DOTS, stickerQrPlacement, type FullRaster, type RasterPayload, type DrawOp,
 } from "../stickerRaster";
 import { printSlip, setStickerQrEntitled, setStickerQrOn, setStickerLayoutV2Allowed, setStickerCompactV2, DEF_SETTINGS, __resetNativePrintQueue, type Settings } from "../printing";
@@ -141,7 +141,7 @@ const sameShifted = (raw: FullRaster, safe: FullRaster): number | null => {
 };
 
 beforeAll(() => { installSans(); installNodeFallbackDrawer(); });
-afterAll(() => { setStickerAllScripts(false); __setScriptsBottomSafetyOff(false); setStickerQrEntitled(false); setStickerQrOn(false); setStickerLayoutV2Allowed(false); setStickerCompactV2(false); });
+afterAll(() => { setStickerAllScripts(false); __setScriptsBottomSafetyOff(false); __forceScriptsUserLess(0); setStickerQrEntitled(false); setStickerQrOn(false); setStickerLayoutV2Allowed(false); setStickerCompactV2(false); });
 
 describe("today's sticker, all-scripts letters: through the real print paths", () => {
   for (const path of ["d520", "xp420b", "escpos", "niimbot"] as Path[]) {
@@ -156,6 +156,10 @@ describe("today's sticker, all-scripts letters: through the real print paths", (
           setStickerAllScripts(true);
           __setScriptsBottomSafetyOff(true);
           const raw = await printed(path, b, cfg, w, h);
+          // …and the raw picture with ONLY the @username one size smaller (what B may print, moved up)
+          __forceScriptsUserLess(1);
+          const rawU = ns === 2 ? await printed(path, b, cfg, w, h) : null;
+          __forceScriptsUserLess(0);
           __setScriptsBottomSafetyOff(false);
           const safe = await printed(path, b, cfg, w, h);
           const tag = `${key} ${w}x${h} v2=${v2} qr=${qr} size=${ns}`;
@@ -164,7 +168,9 @@ describe("today's sticker, all-scripts letters: through the real print paths", (
           // the printed picture is EXACTLY today's picture moved up (not one row of ink erased) — except the
           // name-at-2× family with the all-scripts letters, which is drawn again with the @username smaller (B)
           const synth = !["zh", "en", "vi", "bg", "fancy", "fb", "n1234", "vi-gp"].includes(key);
-          if (k === null && !(ns === 2 && synth)) bad.push(`${tag}: not the same picture moved up (ink erased or redrawn)`);
+          // B family: the picture with ONLY the @username smaller, moved up — every other line exactly as drawn
+          const kU = k === null && rawU && ns === 2 && synth ? sameShifted(rawU, safe) : null;
+          if (k === null && kU === null) bad.push(`${tag}: not today's picture (or its @username-smaller version) moved up — ink erased or another line changed`);
           if (top < Math.min(SCRIPTS_TOP_KEEP_DOTS, inkRows(raw)[0] ?? 0)) bad.push(`${tag}: ink starts at row ${top}`);
           if (path === "niimbot") continue; // the SDK frame sits 1 mm inside the paper (checked in labelFit)
           if (safe.h - 1 - low < SCRIPTS_BOTTOM_SAFE_DOTS) (ns === 2 && (key === "zh" || (synth && (w === 70 || w === 80) && h === 50)) ? listed : bad).push(`${tag}: ${safe.h - 1 - low} dots from the bottom`);

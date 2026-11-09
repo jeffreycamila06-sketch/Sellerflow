@@ -515,7 +515,7 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
   }
   if (printBuyerUsername && cleanBuyerHandle) {
     // scriptsUserLess > 0 only while the all-scripts bottom safety redraws (never below 1×)
-    const m = Math.max(1, cmul(lvlUser) - scriptsUserLess);
+    const m = Math.max(1, cmul(lvlUser) - Math.max(scriptsUserLess, forcedUserLess));
     textSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), m, m, m, m);
     const d = (m - 1) * F3; y += c.usernameGap + d; extra += d;
   }
@@ -984,6 +984,8 @@ function liftUp(r: Ras, shift: number): void {
  *  is called again with one comment line fewer only when the lift alone is not enough. Exported for
  *  the test of the decision itself. */
 let scriptsSafetyOff = false; // TEST ONLY: the raw picture, to prove the safety only moves ink (never erases it)
+let forcedUserLess = 0;       // TEST ONLY: draw every picture with the @username this many sizes smaller (0 = off)
+export function __forceScriptsUserLess(k: number): void { forcedUserLess = Math.max(0, Math.floor(k)); }
 export function __setScriptsBottomSafetyOff(off: boolean): void { scriptsSafetyOff = off === true; }
 /** TEST ONLY: whether the picture being drawn right now is the "one comment line fewer" retry. */
 export const __scriptsCommentLessNow = (): number => scriptsCommentLess;

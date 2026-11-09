@@ -197,21 +197,25 @@ export function* layoutStickerSteps(s: OneStickerSettings, inp: OneStickerInput,
     over.buyer = lo; shrunk.push("buyer");
     q = lo === minP ? atMin : yield* passG(s, inp, fonts, opts, { ...over });
   }
+  // a number still cut at the readable minimum (unreachable in the tested range) must not make the loop
+  // below shrink other lines for nothing: from here the lines are judged without it
+  const cutStuck = q.numberCut;
+  const fitsLines = (x: Pass) => !x.crossing.length && !x.commentMissing && (cutStuck || !x.numberCut);
   for (const k of GUARD_ORDER) {
-    if (passFits(q)) break;
+    if (fitsLines(q)) break;
     const cur = q.px[k];
     if (cur == null) continue; // not on this sticker
     const lo0 = Math.min(cur, minP);
     if (lo0 >= cur) continue; // already at (or below) the readable minimum
     const atMin = yield* passG(s, inp, fonts, opts, { ...over, [k]: lo0 });
-    if (!passFits(atMin)) { over[k] = lo0; q = atMin; shrunk.push(k); continue; }
+    if (!fitsLines(atMin)) { over[k] = lo0; q = atMin; shrunk.push(k); continue; }
     let lo = lo0, hi = cur - 1; // lo always fits; the biggest size that fits
-    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (passFits(yield* passG(s, inp, fonts, opts, { ...over, [k]: mid }))) lo = mid; else hi = mid - 1; }
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (fitsLines(yield* passG(s, inp, fonts, opts, { ...over, [k]: mid }))) lo = mid; else hi = mid - 1; }
     over[k] = lo; shrunk.push(k);
     q = lo === lo0 ? atMin : yield* passG(s, inp, fonts, opts, { ...over });
   }
   const L = q.L;
-  if (!passFits(q)) {
+  if (!fitsLines(q)) {
     // unreachable on any label ≥ 30 mm (oneSticker.noLineMissing.test.ts): even every line at its
     // readable minimum crosses — never ink in the margin (a blank label), the red note says it
     const drop = new Set<string>(q.crossing);
