@@ -514,7 +514,8 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
     extra += (cjkName ? c.nameCjkGap - c.nameGap : 0) + d;
   }
   if (printBuyerUsername && cleanBuyerHandle) {
-    const m = cmul(lvlUser);
+    // scriptsUserLess > 0 only while the all-scripts bottom safety redraws (never below 1×)
+    const m = Math.max(1, cmul(lvlUser) - scriptsUserLess);
     textSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), m, m, m, m);
     const d = (m - 1) * F3; y += c.usernameGap + d; extra += d;
   }
@@ -963,6 +964,7 @@ export interface RasterCanvas { w: number; h: number; edge?: number }
 export const SCRIPTS_BOTTOM_SAFE_DOTS = 12;
 export const SCRIPTS_TOP_KEEP_DOTS = 4;
 let scriptsCommentLess = 0; // 1 while a picture is drawn again with one comment line fewer
+let scriptsUserLess = 0;    // k while a picture is drawn again with the @username k sizes smaller (Jeff 2026-11-09 B)
 type Ras = { buf: Uint8Array; w: number; h: number; rowBytes: number };
 const rowHasInk = (r: Ras, y: number) => { const o = y * r.rowBytes; for (let b = 0; b < r.rowBytes; b++) if (r.buf[o + b]) return true; return false; };
 /** How far the picture must move up (need) and how far it can (room), in dots. PURE. */
@@ -985,6 +987,10 @@ let scriptsSafetyOff = false; // TEST ONLY: the raw picture, to prove the safety
 export function __setScriptsBottomSafetyOff(off: boolean): void { scriptsSafetyOff = off === true; }
 /** TEST ONLY: whether the picture being drawn right now is the "one comment line fewer" retry. */
 export const __scriptsCommentLessNow = (): number => scriptsCommentLess;
+/** TEST ONLY: draw `fn` as the retry with the @username `k` sizes smaller. */
+export function __withScriptsUserLess<T>(k: number, fn: () => T): T { const prev = scriptsUserLess; scriptsUserLess = k; try { return fn(); } finally { scriptsUserLess = prev; } }
+/** TEST ONLY: how many sizes smaller the @username is drawn right now (the bottom safety's B step). */
+export const __scriptsUserLessNow = (): number => scriptsUserLess;
 /** TEST ONLY: draw `fn` as the retry with one comment line fewer. */
 export function __withScriptsCommentLess<T>(fn: () => T): T { const prev = scriptsCommentLess; scriptsCommentLess = 1; try { return fn(); } finally { scriptsCommentLess = prev; } }
 /** `topCrop` = rows a later centre-crop takes off the top (the Niimbot fixed-cell fallback: a full label
@@ -1000,9 +1006,27 @@ export function withScriptsBottomSafety<T extends Ras>(draw: () => T, insetOf: (
   try { again = draw(); } finally { scriptsCommentLess = prev; }
   const p2 = bottomSafetyPlan(again, insetOf(again), topCrop);
   if (p2.need <= p2.room) { liftUp(again, p2.need); return again; }
-  liftUp(first, p1.room); // not the comment (PRINTING_MAP §6): the most lift there is, nothing erased
+  // B (Jeff): a tall name at 2× pushes the @username to the edge — the @username is drawn one size smaller
+  // at a time, just enough (never below 1×, the line always kept)
+  let last: T = first;
+  for (let k = 1; k < 8; k++) {
+    const prevU = scriptsUserLess;
+    scriptsUserLess = k;
+    let u: T;
+    try { u = draw(); } finally { scriptsUserLess = prevU; }
+    if (sameRaster(u, last)) break; // the @username is already at 1× (or not on this sticker): nothing smaller to try
+    last = u;
+    const pu = bottomSafetyPlan(u, insetOf(u), topCrop);
+    if (pu.need <= pu.room) { liftUp(u, pu.need); return u; }
+  }
+  liftUp(first, p1.room); // nothing left to make smaller (PRINTING_MAP §6): the most lift there is, nothing erased
   return first;
 }
+const sameRaster = (a: Ras, b: Ras): boolean => {
+  if (a.w !== b.w || a.h !== b.h || a.buf.length !== b.buf.length) return false;
+  for (let i = 0; i < a.buf.length; i++) if (a.buf[i] !== b.buf[i]) return false;
+  return true;
+};
 // how far the drawn picture sits inside the paper (from the picture ACTUALLY drawn, not the canvas asked for)
 const insetOf = (drawnH: number, hMm: number): number => Math.max(0, Math.floor((hMm * 8 - drawnH) / 2));
 export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended", canvas?: RasterCanvas): FullRaster {

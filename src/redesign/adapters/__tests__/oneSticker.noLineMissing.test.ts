@@ -143,8 +143,9 @@ describe("item 4: the Buyer word's 'y' and the comment's first line", () => {
 });
 
 describe("screen: worst-case buyers before Save", () => {
-  it("the worst-case set: tall Vietnamese / Thai marks, Chinese, a 2-line Facebook name, all #8888", () => {
-    expect(WORST_CASE_BUYERS.map((b) => b.platform)).toEqual(["TikTok", "TikTok", "TikTok", "Facebook"]);
+  it("the worst-case set: tall Vietnamese / Thai marks, Chinese, a short handle, a 2-line Facebook name, all #8888 with low-hanging comment letters", () => {
+    expect(WORST_CASE_BUYERS.map((b) => b.platform)).toEqual(["TikTok", "TikTok", "TikTok", "TikTok", "Facebook"]);
+    expect(WORST_CASE_BUYERS.some((b) => b.handle === "ab")).toBe(true); // a short handle (small QR, bigger module)
     for (const i of worstCaseInputs(sampleInput("x"))) expect(i.buyerNum).toBe("8888");
   });
   it("never \"Everything fits\" while a worst-case buyer or an admin sample would need a line made smaller (sizes × each part's steps × weights × QR × paths)", () => {
@@ -183,7 +184,8 @@ describe("screen: worst-case buyers before Save", () => {
       const caps = screenStepCaps(s, sampleInput("My Shop", AT), F, optsFor(path, s));
       expect(caps.buyer, path).toBeDefined();
       const at = (v: number) => S(60, 40, (x) => { x.parts.buyer.scale = v; });
-      const cut = (v: number) => worstCaseInputs(sampleInput("My Shop", AT)).some((inp) => layoutSticker(at(v), inp, { ...F, cjkBox: true }, optsFor(path, at(v))).warnings.some((w) => w.part === "buyer" && w.kind === "width"));
+      // the print now never cuts it (made smaller instead, Jeff A) — above the limit the number needs that
+      const cut = (v: number) => worstCaseInputs(sampleInput("My Shop", AT)).some((inp) => layoutSticker(at(v), inp, { ...F, cjkBox: true }, optsFor(path, at(v))).warnings.some((w) => w.part === "buyer" && (w.kind === "width" || w.kind === "smaller")));
       expect(cut(caps.buyer!), `${path} at the cap`).toBe(false);
       expect(cut(SCALE_STEPS[SCALE_STEPS.indexOf(caps.buyer as (typeof SCALE_STEPS)[number]) + 1]), `${path} above the cap`).toBe(true);
     }
@@ -194,15 +196,19 @@ describe("screen: worst-case buyers before Save", () => {
     for (const [w, h] of [[50, 30], [60, 40], [30, 30], [40, 30]] as [number, number][]) for (const others of [1.5, 2]) {
       const base = S(w, h, (x) => { for (const k of ["buyer", "name", "user"] as const) x.parts[k].scale = others; });
       const caps = screenStepCaps(base, sampleInput("My Shop", AT), F);
-      for (const [k, cap] of Object.entries(caps) as [PartKey, number][]) {
+      const at = (t: OneStickerSettings, k: PartKey, v: number): OneStickerSettings => ({ ...t, parts: { ...t.parts, [k]: { ...t.parts[k], scale: v } } });
+      const warnsOf = (t: OneStickerSettings) => [sampleInput("My Shop", AT), ...worstCaseInputs(sampleInput("My Shop", AT))].flatMap((inp) => layoutSticker(t, inp, inp.buyerNum === "8888" ? { ...F, cjkBox: true } : F).warnings.filter((x) => x.kind === "smaller" || (x.kind === "height" && x.part !== "qr") || (x.part === "buyer" && x.kind === "width")));
+      const fitsAt = (t: OneStickerSettings) => warnsOf(t).length === 0;
+      // the parts OVER their limit (limit below their size) are held there; the rest are judged with them held
+      const over = (Object.entries(caps) as [PartKey, number][]).filter(([k, cap]) => cap < base.parts[k].scale);
+      let t = base;
+      for (const [k, cap] of over) t = at(t, k, cap);
+      for (const [k] of over) { seen++; expect(warnsOf(t).filter((x) => x.part === k), `${w}x${h} ${k} at its limit`).toEqual([]); }
+      for (const [k, cap] of (Object.entries(caps) as [PartKey, number][]).filter(([k, cap]) => cap >= base.parts[k].scale)) {
         seen++;
-        const at = (v: number) => ({ ...base, parts: { ...base.parts, [k]: { ...base.parts[k], scale: v } } });
         const i = SCALE_STEPS.indexOf(cap as (typeof SCALE_STEPS)[number]);
-        const fitsAt = (t: OneStickerSettings) => [sampleInput("My Shop", AT), ...worstCaseInputs(sampleInput("My Shop", AT))].every((inp) => !layoutSticker(t, inp, { ...F, cjkBox: true }).warnings.some((x) => x.kind === "smaller" || (x.kind === "height" && x.part !== "qr") || (x.part === "buyer" && x.kind === "width" && inp.buyerNum === "8888")));
-        if (cap > base.parts[k].scale || fitsAt(at(cap))) {
-          expect(fitsAt(at(cap)), `${w}x${h} ${k} cap ${cap}`).toBe(true);
-          if (i < SCALE_STEPS.length - 1) expect(fitsAt(at(SCALE_STEPS[i + 1])), `${w}x${h} ${k} above cap`).toBe(false);
-        } else expect(cap, `${w}x${h} ${k}: past the cap → its own size`).toBe(base.parts[k].scale);
+        expect(fitsAt(at(t, k, cap)), `${w}x${h} ${k} cap ${cap}`).toBe(true);
+        if (i < SCALE_STEPS.length - 1) expect(fitsAt(at(t, k, SCALE_STEPS[i + 1])), `${w}x${h} ${k} above cap`).toBe(false);
       }
     }
     expect(seen).toBeGreaterThan(0);

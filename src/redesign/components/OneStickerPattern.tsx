@@ -8,11 +8,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, screenFitNotes, screenStepCaps, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor, NOTE_TONE,
+  recommendedSettings, renderOneSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor, NOTE_TONE,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
 import { oneStickerScreenFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
 import type { OneStickerDevicePath } from "../adapters/printing";
+import { cachedFit, rememberFit, startScreenFit, type StepCaps } from "../adapters/oneStickerScreen";
 import { ADMIN_LANG_SAMPLES, ADMIN_DEFAULT_SAMPLE, adminSampleInput, type AdminLangSample } from "../adapters/adminLangSamples";
 
 const sameSettings = (a: OneStickerSettings, b: OneStickerSettings) => JSON.stringify(a) === JSON.stringify(b);
@@ -75,31 +76,36 @@ export function OneStickerPreview({ settings, input, path, job, onWarnings, onFa
   );
 }
 
-/** The notes under the preview for `settings` on this path — the preview's own sample (the layout
- *  only; no picture is drawn). */
-type StepCaps = Partial<Record<PartKey, number>>;
-function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }, attempt: number): { notes: FitNote[] | null; caps: StepCaps } {
-  const [n, setN] = useState<{ notes: FitNote[] | null; caps: StepCaps }>({ notes: [], caps: {} }); // notes null = the fonts did not load (no notes shown)
+/** The notes under the preview + the "+" limits for `settings` on this path (the preview's own sample and
+ *  the worst-case buyers — layouts only, no picture). Worked out in idle slices (never a frozen screen)
+ *  and kept per setting; `caps` is null while the limits for THIS setting are not known yet. */
+function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path: OneStickerPath, job: { bold?: boolean }, attempt: number, onLimits?: (key: string, caps: StepCaps) => void): { notes: FitNote[] | null; caps: StepCaps | null; key: string } {
+  const [st, setSt] = useState<{ key: string; notes: FitNote[] | null; caps: StepCaps | null }>({ key: "", notes: [], caps: null }); // notes null = the fonts did not load (no notes shown)
   const key = JSON.stringify({ settings, input, path, job });
+  const limitsRef = useRef(onLimits);
+  useEffect(() => { limitsRef.current = onLimits; });
+  const hit = cachedFit(key);
   useEffect(() => {
     let live = true;
-    // the sample (#128) AND the buyer number at its widest (#8888) AND the worst-case buyers (tall
-    // Vietnamese / Thai marks, Chinese, a 2-line Facebook name): a real buyer never needs a line made
-    // smaller while the screen says everything fits, and "+" stops at the largest size that always fits.
-    // Measured on the real faces (a script only the phone's own font draws, e.g. Thai, is measured with
-    // that font — the same one the print uses on this phone).
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const known = cachedFit(key);
+    if (known) { queueMicrotask(() => { if (live) limitsRef.current?.(key, known.caps); }); return () => { live = false; }; }
+    // the sample (#128), the buyer number at its widest (#8888) and the worst-case buyers (tall Vietnamese /
+    // Thai marks, Chinese, a 2-line Facebook name, a short handle, low-hanging comment letters): a real buyer
+    // never needs a line made smaller while the screen says everything fits, and "+" stops at the largest size
+    // that always fits. Measured on the real faces (a script only the phone's own font draws, e.g. Thai, is
+    // measured with that font — the same one the print uses on this phone).
+    let cancel = () => {};
     void oneStickerScreenFonts(settings, input).then((fonts) => {
       if (!live) return;
-      const opts = renderOptsFor(path, settings, job);
-      const notes = screenFitNotes(settings, input, fonts, opts);
-      setN((prev) => ({ notes, caps: prev.caps }));
-      // the "+" limits after the notes are on screen (a tap never waits for both)
-      timer = setTimeout(() => { if (live) setN({ notes, caps: screenStepCaps(settings, input, fonts, opts) }); }, 0);
-    }).catch(() => { if (live) setN({ notes: null, caps: {} }); });
-    return () => { live = false; if (timer) clearTimeout(timer); };
+      cancel = startScreenFit(settings, input, fonts, renderOptsFor(path, settings, job),
+        (notes) => { if (live) setSt({ key, notes, caps: null }); },
+        (fit) => { rememberFit(key, fit); if (live) { setSt({ key, notes: fit.notes, caps: fit.caps }); limitsRef.current?.(key, fit.caps); } });
+    }).catch(() => { if (live) setSt({ key, notes: null, caps: {} }); });
+    return () => { live = false; cancel(); };
   }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
-  return n;
+  if (hit) return { notes: hit.notes, caps: hit.caps, key };
+  if (st.key === key) return { notes: st.notes, caps: st.caps, key };
+  return { notes: st.notes, caps: null, key }; // the last notes stay up while this setting is worked out
 }
 
 // Phone: one column. Laptop (the screen area ≥ 760 px): two columns, the preview on the left and
@@ -198,10 +204,37 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
   const [pvAttempt, setPvAttempt] = useState(0);
   const [pvFailed, setPvFailed] = useState(false);
-  const { notes, caps } = useFitNotes(sEff, input, path, p.genericBold ? { bold: true } : {}, pvAttempt);
+  // A (Jeff): after a paper size change or turning the QR on, a Buyer # above its new limit is lowered to
+  // the largest size that fits (a short note says so)
+  const sizeQr = `${sEff.size.w}x${sEff.size.h}|${sEff.qr ? 1 : 0}`;
+  const prevSizeQr = useRef<string | null>(null);
+  const lowerPending = useRef(false);
+  const [lowered, setLowered] = useState(false);
+  useEffect(() => {
+    const prev = prevSizeQr.current;
+    prevSizeQr.current = sizeQr;
+    if (prev === null || prev === sizeQr) return;
+    const [pSize, pQr] = prev.split("|"), [nSize, nQr] = sizeQr.split("|");
+    if (pSize !== nSize || (pQr === "0" && nQr === "1")) lowerPending.current = true;
+  }, [sizeQr]);
+  const fitKeyRef = useRef("");
+  const onLimits = (key: string, caps: StepCaps) => {
+    if (key !== fitKeyRef.current || !lowerPending.current) return;
+    lowerPending.current = false;
+    const cap = caps.buyer;
+    if (cap == null) return;
+    if (s0.parts.buyer.scale <= cap) return; // (the latest render's settings: onLimits is read through a ref)
+    setS((x) => ({ ...x, parts: { ...x.parts, buyer: { ...x.parts.buyer, scale: Math.min(x.parts.buyer.scale, cap) } } }));
+    setLowered(true);
+  };
+  const { notes, caps, key: fitKey } = useFitNotes(sEff, input, path, p.genericBold ? { bold: true } : {}, pvAttempt, onLimits);
+  useEffect(() => { fitKeyRef.current = fitKey; }, [fitKey]);
   const showNotes = !pvFailed && notes !== null; // never "Everything fits" while the picture can't load
 
-  const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } }));
+  const setPart = (k: PartKey, patch: Partial<OneStickerSettings["parts"][PartKey]>) => { setLowered(false); setS((x) => ({ ...x, parts: { ...x.parts, [k]: { ...x.parts[k], ...patch } } })); };
+  // a fixed part's "+" waits until its limit for THIS setting is known (a fast second tap, the first load);
+  // the comment has no limit (it always gives way)
+  const plusBlocked = (k: PartKey, scale: number) => k !== "comment" && (caps == null || (caps[k] != null && scale >= caps[k]!));
   const pickSize = (w: number, h: number) => { setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
   const reset = () => { setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
   // a size the printer cannot take is never saved (too wide, a wrong custom size, or 50×30 / custom on a
@@ -238,7 +271,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
             <div data-testid={`os-${r.k}-stepper`} style={{ display: "flex", alignItems: "center", opacity: off ? 0.4 : 1 }}>
               <StepBtn label="−" aria={`${partLabel[r.k]} −`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, -1) })} disabled={off || part.scale === SCALE_STEPS[0]} testId={`os-${r.k}-minus`} />
               <span data-testid={`os-${r.k}-scale`} style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--text)", minWidth: 36, textAlign: "center", flexShrink: 0 }}>{part.scale}×</span>
-              <StepBtn label="+" aria={`${partLabel[r.k]} +`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={off || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1] || (caps[r.k] != null && part.scale >= caps[r.k]!)} testId={`os-${r.k}-plus`} />
+              <StepBtn label="+" aria={`${partLabel[r.k]} +`} onClick={() => setPart(r.k, { scale: nextStep(part.scale, 1) })} disabled={off || part.scale === SCALE_STEPS[SCALE_STEPS.length - 1] || plusBlocked(r.k, part.scale)} testId={`os-${r.k}-plus`} />
             </div>
             <Switch on={part.on && !r.disabled} disabled={r.disabled} aria={partLabel[r.k]} onClick={() => setPart(r.k, { on: !part.on })} testId={`os-${r.k}-on`} />
           </div>
@@ -273,6 +306,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           <span data-testid="os-caption" style={{ color: "#fff", fontSize: 12, fontWeight: 600, opacity: 0.9, textAlign: "center" }}>{tpl(t.rd_os_caption, { w: String(s.size.w), h: String(s.size.h) })}</span>
         </div>
         {showNotes && <div data-testid="os-notes" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {lowered && <span className="os-note" data-tone="warn" data-testid="os-note-lowered">{t.rd_os_note_buyer_lowered}</span>}
           {notes.map((n, i) => (
             <span key={i} className="os-note" data-tone={NOTE_TONE[n.kind]} data-testid={n.kind === "bad" ? "os-fit" : n.kind === "qr" ? "os-fit-qr" : `os-note-${n.kind}`}>
               {n.kind === "bad" ? tpl(t.rd_os_fit, { parts: n.parts.map((k) => partLabel[k]).join(", ") })

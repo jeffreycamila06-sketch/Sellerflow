@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { appendFileSync } from "node:fs";
 import {
-  withScriptsBottomSafety, bottomSafetyPlan, withSyntheticCjk, stickerDrawOps, wrapWords, __setScriptsBottomSafetyOff, __scriptsCommentLessNow, __withScriptsCommentLess,
+  withScriptsBottomSafety, bottomSafetyPlan, withSyntheticCjk, stickerDrawOps, wrapWords, __setScriptsBottomSafetyOff, __scriptsCommentLessNow, __withScriptsCommentLess, __withScriptsUserLess,
   SCRIPTS_BOTTOM_SAFE_DOTS, SCRIPTS_TOP_KEEP_DOTS, stickerQrPlacement, type FullRaster, type RasterPayload, type DrawOp,
 } from "../stickerRaster";
 import { printSlip, setStickerQrEntitled, setStickerQrOn, setStickerLayoutV2Allowed, setStickerCompactV2, DEF_SETTINGS, __resetNativePrintQueue, type Settings } from "../printing";
@@ -57,6 +57,21 @@ describe("the decision (pure)", () => {
     const draw = vi.fn(() => raster(100, [2, 99]));
     expect(inkRows(withScriptsBottomSafety(draw, () => 0))).toEqual([2, 99]);
     expect(draw).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("B: the @username one size smaller (all-scripts letters, a tall name at 2×)", () => {
+  const p2 = (): RasterPayload => ({
+    storeName: "My Shop", sessionDate: "11/08/2026", currency: "NT$",
+    buyer: { num: 12, name: "Amy", handle: "amy_live", totalSpent: 0, orders: [{ time: "14:05", item: "A2" }] },
+    settings: { printStoreName: true, printBuyerNumber: true, printBuyerUsername: true, printOrderItems: true, printTotal: false, printStoreScale: 1, printBuyerNumberScale: 2, printBuyerNameScale: 2, printUsernameScale: 2, printOrderScale: 1, printCommentScale: 1, printTotalScale: 1 },
+  });
+  it("the @username is drawn at 1× instead of 2× — still there, never below 1×", () => {
+    const user = (ops: DrawOp[]) => ops.filter((o) => o.k === "txt" && o.s.startsWith("@"));
+    const a = user(stickerDrawOps(p2(), 70, 50).ops), b = user(__withScriptsUserLess(1, () => stickerDrawOps(p2(), 70, 50).ops)), c = user(__withScriptsUserLess(5, () => stickerDrawOps(p2(), 70, 50).ops));
+    expect(a.map((o) => (o.k === "txt" ? o.ym : 0))).toEqual([2]);
+    expect(b.map((o) => (o.k === "txt" ? o.ym : 0))).toEqual([1]);
+    expect(c.map((o) => (o.k === "txt" ? o.ym : 0))).toEqual([1]); // never below 1×
   });
 });
 
@@ -146,12 +161,13 @@ describe("today's sticker, all-scripts letters: through the real print paths", (
           const tag = `${key} ${w}x${h} v2=${v2} qr=${qr} size=${ns}`;
           const k = sameShifted(raw, safe);
           const low = inkRows(safe).pop() ?? -1, top = inkRows(safe)[0] ?? 0;
-          // in this whole matrix the 4-dot lift is always enough (or, for the listed family, nothing is):
-          // the printed picture is EXACTLY today's picture moved up — so not one row of ink is erased
-          if (k === null) bad.push(`${tag}: not the same picture moved up (ink erased or redrawn)`);
+          // the printed picture is EXACTLY today's picture moved up (not one row of ink erased) — except the
+          // name-at-2× family with the all-scripts letters, which is drawn again with the @username smaller (B)
+          const synth = !["zh", "en", "vi", "bg", "fancy", "fb", "n1234", "vi-gp"].includes(key);
+          if (k === null && !(ns === 2 && synth)) bad.push(`${tag}: not the same picture moved up (ink erased or redrawn)`);
           if (top < Math.min(SCRIPTS_TOP_KEEP_DOTS, inkRows(raw)[0] ?? 0)) bad.push(`${tag}: ink starts at row ${top}`);
           if (path === "niimbot") continue; // the SDK frame sits 1 mm inside the paper (checked in labelFit)
-          if (safe.h - 1 - low < SCRIPTS_BOTTOM_SAFE_DOTS) (ns === 2 ? listed : bad).push(`${tag}: ${safe.h - 1 - low} dots from the bottom`);
+          if (safe.h - 1 - low < SCRIPTS_BOTTOM_SAFE_DOTS) (ns === 2 && key === "zh" ? listed : bad).push(`${tag}: ${safe.h - 1 - low} dots from the bottom`);
         }
       }
       setStickerAllScripts(false); setStickerLayoutV2Allowed(false); setStickerQrEntitled(false); setStickerQrOn(false);
@@ -159,7 +175,9 @@ describe("today's sticker, all-scripts letters: through the real print paths", (
       // the listed family (PRINTING_MAP §6): name / buyer / @username at 2× on 60×40 / 70×50 / 80×50 — a tall
       // name (Chinese: today's layout as on main, switch OFF the same; the synthetic letters likewise) pushes
       // the @username to the edge. Not the comment, so neither rule applies; never cut — Jeff decides.
-      for (const l of listed) expect(l, l).toMatch(/^\S+ (60x40|70x50|80x50) .*size=2/);
+      // B (Jeff): with the all-scripts letters the @username is made smaller → clear (438b4a90: ja/ko/th/ar listed);
+      // only a CHINESE name at 2× stays as on main (the letters are not drawn → byte-identical; PRINTING_MAP §6)
+      for (const l of listed) expect(l, l).toMatch(/^zh (60x40|70x50|80x50) .*size=2/);
       if (process.env.LISTED_OUT) appendFileSync(process.env.LISTED_OUT, listed.map((l) => `${path} ${l}`).join("\n") + "\n");
     }, 600000);
   }

@@ -158,8 +158,16 @@ export interface Layout { w: number; h: number; lines: Laid[]; qr: QrBox | null;
 /** px of a fixed part chosen by the bottom-safety guard (shop / buyer number / name / @username). */
 type PxOver = Partial<Record<"shop" | "buyer" | "name" | "user", number>>;
 const GUARD_ORDER = ["user", "name", "buyer", "shop"] as const; // the lowest line gives way first
-interface Pass { L: Layout; crossing: PartKey[]; commentMissing: boolean; px: PxOver }
-const passFits = (q: Pass) => !q.crossing.length && !q.commentMissing;
+interface Pass { L: Layout; crossing: PartKey[]; commentMissing: boolean; numberCut: boolean; px: PxOver }
+const passFits = (q: Pass) => !q.crossing.length && !q.commentMissing && !q.numberCut;
+/** A generator step: a heavy layout yields after every pass, so the screen can run it in idle time. */
+export type Steps<T> = Generator<void, T, void>;
+export function runSteps<T>(g: Steps<T>): T { for (;;) { const r = g.next(); if (r.done) return r.value; } }
+function* passG(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts, over: PxOver): Steps<Pass> {
+  const q = layoutPass(s, inp, fonts, opts, over);
+  yield;
+  return q;
+}
 /** The smallest size a fixed line is ever made (≈2.4 mm; ≈2.1 mm on a 50×30-class label). */
 export const minReadablePx = (wMm: number, hMm: number): number => (isSmallClass(wMm, hMm) ? 17 : 19);
 
@@ -170,23 +178,37 @@ export const minReadablePx = (wMm: number, hMm: number): number => (isSmallClass
  *  if that is not enough. Each line made smaller → a "smaller" warning (amber note). The saved setting
  *  is never changed; the preview draws this same layout. */
 export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): Layout {
-  let q = layoutPass(s, inp, fonts, opts, {});
+  return runSteps(layoutStickerSteps(s, inp, fonts, opts));
+}
+export function* layoutStickerSteps(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): Steps<Layout> {
+  let q = yield* passG(s, inp, fonts, opts, {});
   if (passFits(q)) return q.L;
   const minP = minReadablePx(s.size.w, s.size.h);
   const over: PxOver = {};
   const shrunk: PartKey[] = [];
+  // A (Jeff): a buyer number cut across its width beside the QR → the number is made just small enough
+  // to print whole (never cut, the QR kept; never below the readable minimum)
+  if (q.numberCut && q.px.buyer != null && q.px.buyer > minP) {
+    const cur = q.px.buyer;
+    const whole = (x: Pass) => !x.numberCut;
+    const atMin = yield* passG(s, inp, fonts, opts, { buyer: minP });
+    let lo = minP;
+    if (whole(atMin)) { let hi = cur - 1; while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (whole(yield* passG(s, inp, fonts, opts, { buyer: mid }))) lo = mid; else hi = mid - 1; } }
+    over.buyer = lo; shrunk.push("buyer");
+    q = lo === minP ? atMin : yield* passG(s, inp, fonts, opts, { ...over });
+  }
   for (const k of GUARD_ORDER) {
     if (passFits(q)) break;
     const cur = q.px[k];
     if (cur == null) continue; // not on this sticker
     const lo0 = Math.min(cur, minP);
     if (lo0 >= cur) continue; // already at (or below) the readable minimum
-    const atMin = layoutPass(s, inp, fonts, opts, { ...over, [k]: lo0 });
+    const atMin = yield* passG(s, inp, fonts, opts, { ...over, [k]: lo0 });
     if (!passFits(atMin)) { over[k] = lo0; q = atMin; shrunk.push(k); continue; }
     let lo = lo0, hi = cur - 1; // lo always fits; the biggest size that fits
-    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (passFits(layoutPass(s, inp, fonts, opts, { ...over, [k]: mid }))) lo = mid; else hi = mid - 1; }
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (passFits(yield* passG(s, inp, fonts, opts, { ...over, [k]: mid }))) lo = mid; else hi = mid - 1; }
     over[k] = lo; shrunk.push(k);
-    q = lo === lo0 ? atMin : layoutPass(s, inp, fonts, opts, { ...over });
+    q = lo === lo0 ? atMin : yield* passG(s, inp, fonts, opts, { ...over });
   }
   const L = q.L;
   if (!passFits(q)) {
@@ -196,6 +218,7 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
     L.lines = L.lines.filter((l) => !drop.has(l.part));
     for (const part of q.crossing) L.warnings.push({ part, kind: "height" });
     if (q.commentMissing) L.warnings.push({ part: "comment", kind: "height" });
+    // (a number still cut at the readable minimum keeps its "width" warning: red on the screen)
   }
   for (const part of shrunk) L.warnings.push({ part, kind: "smaller" });
   L.warnings = dedupWarnings(L.warnings);
@@ -204,6 +227,9 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
 /** True when this buyer's lines only fit because the guard makes a fixed line smaller (or not even then). */
 export function needsFitGuard(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): boolean {
   return !passFits(layoutPass(s, inp, fonts, opts, {}));
+}
+function* needsFitGuardG(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts): Steps<boolean> {
+  return !passFits(yield* passG(s, inp, fonts, opts, {}));
 }
 
 function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts, over: PxOver): Pass {
@@ -216,6 +242,7 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
   const warnings: FitWarning[] = [];
   const sizes: number[] = [];
   const crossing: PartKey[] = []; // fixed lines whose real ink would cross the bottom limit (the guard fixes them)
+  let numberCut = false;          // the buyer number cut across its width beside the QR (the guard fixes it)
   const usedPx: PxOver = {};
   const add = (l: Laid) => { lines.push(l); sizes.push(l.px); };
   const P = s.parts;
@@ -347,7 +374,7 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
     const baseline = y + asc;
     const clip = rightAt(y, baseline);
     const gap = buyerGap;
-    if (mx + wRun.width + gap + nRun.width > clip) warnings.push({ part: "buyer", kind: "width" });
+    if (mx + wRun.width + gap + nRun.width > clip) { warnings.push({ part: "buyer", kind: "width" }); if (qr) numberCut = true; }
     // the bottom check reads BOTH runs' real ink — the small word's "y" hangs below the digits
     const inkDesc = Math.max(ext.desc, lineExtent(wRun, pw, wt("buyer"), fonts).desc);
     if (baseline + inkDesc > bottomLimit) crossing.push("buyer");
@@ -443,7 +470,7 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
     }
   }
   const commentMissing = P.comment.on && !!comment && !lines.some((l) => l.part === "comment");
-  return { L: { w: W, h: H, lines, qr, warnings: dedupWarnings(warnings), sizes, commentPx, commentWantPx }, crossing: [...new Set(crossing)], commentMissing, px: usedPx };
+  return { L: { w: W, h: H, lines, qr, warnings: dedupWarnings(warnings), sizes, commentPx, commentWantPx }, crossing: [...new Set(crossing)], commentMissing, numberCut, px: usedPx };
 }
 // ── The notes under the preview (approved Step 0 preview) ───────────────────────────────────────
 //   bad  = a part runs off the BOTTOM of the label, or the buyer number does not fit (red "Too big")
@@ -476,61 +503,89 @@ export function fitNotes(L: Pick<Layout, "warnings" | "commentPx" | "commentWant
   return out;
 }
 // The WORST-CASE buyers the screen checks before Save (Jeff 2026-11-09): tall marks above and below
-// (Vietnamese, Thai), Chinese with Latin descenders, a Facebook name that needs two lines — every one as
-// buyer #8888. A part that one of them would only fit by being made smaller is red on the screen, and
-// its "+" stops at the largest size that always fits.
+// (Vietnamese, Thai), Chinese with Latin descenders, a Facebook name that needs two lines, a SHORT TikTok
+// handle (its small QR takes a bigger module → less width for the number) — every one as buyer #8888,
+// with a comment of low-hanging letters / marks. A part that one of them would only fit by being made
+// smaller is red on the screen, and its "+" stops at the largest size that always fits.
+export const WORST_CASE_COMMENT = "gjpqy Ụ ợ";
 export const WORST_CASE_BUYERS: readonly Pick<OneStickerInput, "name" | "handle" | "platform" | "fbNameOnly">[] = [
   { name: "Nguyễn Thị Ngọc Quỳnh", handle: "quynh.nguyen_gpqy", platform: "TikTok" },
   { name: "陳小美 Gigi Quyên", handle: "gigi.chen_pqy", platform: "TikTok" },
   { name: "ฐิติพัฒน์ ปู่ฤทธิ์", handle: "thitiphat_gpqy", platform: "TikTok" },
+  { name: "Nguyễn Thị Ngọc Quỳnh", handle: "ab", platform: "TikTok" },
   { name: "Maria Clara Dela Cruz Santos Reyes Gonzaga Quiñones", handle: "Maria Clara Dela Cruz Santos Reyes Gonzaga Quiñones", platform: "Facebook", fbNameOnly: true },
 ];
-export const worstCaseInputs = (inp: OneStickerInput): OneStickerInput[] => WORST_CASE_BUYERS.map((b) => ({ ...inp, ...b, buyerNum: "8888" }));
+export const worstCaseInputs = (inp: OneStickerInput): OneStickerInput[] => WORST_CASE_BUYERS.map((b) => ({ ...inp, ...b, buyerNum: "8888", items: [WORST_CASE_COMMENT] }));
 /** Ideographs measured as their full cell: the check never depends on the atlases loaded. */
 const worstFonts = (f: Fonts): Fonts => ({ ...f, cjkBox: true });
-/** The fixed parts a worst-case buyer would only fit by making them smaller (or not even then). */
-function worstCaseParts(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts): PartKey[] {
+/** The fixed parts the guard changes for any of these buyers (made smaller, a number made whole, or not
+ *  even then) — the parts "over their limit". */
+function* guardedPartsG(s: OneStickerSettings, list: [OneStickerInput, Fonts][], opts: RenderOpts): Steps<Set<PartKey>> {
   const out = new Set<PartKey>();
-  const wf = worstFonts(fonts);
-  for (const w of worstCaseInputs(inp)) {
-    if (!needsFitGuard(s, w, wf, opts)) continue;
-    for (const x of layoutSticker(s, w, wf, opts).warnings) if ((x.kind === "smaller" || x.kind === "height") && x.part !== "qr") out.add(x.part);
+  for (const [b, f] of list) {
+    if (!(yield* needsFitGuardG(s, b, f, opts))) continue;
+    for (const x of (yield* layoutStickerSteps(s, b, f, opts)).warnings) if ((x.kind === "smaller" || x.kind === "height" || (x.part === "buyer" && x.kind === "width")) && x.part !== "qr") out.add(x.part);
   }
-  return [...out];
+  return out;
 }
+const screenBuyers = (inp: OneStickerInput, fonts: Fonts): [OneStickerInput, Fonts][] => [[inp, fonts], ...worstCaseInputs(inp).map((b) => [b, worstFonts(fonts)] as [OneStickerInput, Fonts])];
 /** The notes for the screen: the layout of the preview's sample, plus the buyer number at its widest
  *  (4 digits) — a number that fits as #128 but not as #8888 is red, never "Everything fits" — plus the
  *  worst-case buyers (WORST_CASE_BUYERS): a part one of them would need made smaller is red. */
 export function screenFitNotes(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): FitNote[] {
-  const L = layoutSticker(s, inp, fonts, opts);
-  const extra: FitWarning[] = worstCaseParts(s, inp, fonts, opts).map((part) => ({ part, kind: "height" as const }));
+  return runSteps(screenFitNotesSteps(s, inp, fonts, opts));
+}
+export function* screenFitNotesSteps(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): Steps<FitNote[]> {
+  const L = yield* layoutStickerSteps(s, inp, fonts, opts);
+  const worst = yield* guardedPartsG(s, worstCaseInputs(inp).map((b) => [b, worstFonts(fonts)] as [OneStickerInput, Fonts]), opts);
+  const extra: FitWarning[] = [...worst].map((part) => ({ part, kind: "height" as const }));
   const n = String(inp.buyerNum ?? "");
   if (s.parts.buyer.on && n && n.length < 4) {
-    const wide = layoutSticker(s, { ...inp, buyerNum: "8888" }, fonts, opts);
-    extra.push(...wide.warnings.filter((w) => w.part === "buyer" && w.kind === "width" && !L.warnings.some((x) => x.part === "buyer" && x.kind === w.kind)));
+    const wide = yield* layoutStickerSteps(s, { ...inp, buyerNum: "8888" }, fonts, opts);
+    extra.push(...wide.warnings.filter((w) => w.part === "buyer" && (w.kind === "width" || w.kind === "smaller") && !L.warnings.some((x) => x.part === "buyer" && x.kind === w.kind)).map((w) => ({ part: w.part, kind: "height" as const })));
   }
   return fitNotes({ ...L, warnings: dedupWarnings([...L.warnings, ...extra]) }, s);
 }
-/** The largest size step each fixed part can take (the other parts as they are) so that the preview's
- *  sample and every worst-case buyer fit without the guard, with buyer #8888 printed whole; a part already past it keeps its own size
- *  as the cap ("+" off, "−" on). No entry = no cap. The comment has none: it always gives way first. */
+/** The "+" limits (Jeff 2026-11-09): the largest size step of each fixed part at which the preview's
+ *  sample and every worst-case buyer fit with no line made smaller and #8888 printed whole.
+ *  - A part OVER its limit (the guard changes it for one of them) gets its own limit (below its size →
+ *    a grey "+"); parts are taken bottom-up as the guard takes them (Buyer # first when the number is cut).
+ *  - Every other part's limit is worked out with the over parts HELD AT THEIR LIMITS (so only the part
+ *    that is over gets a grey "+"). No entry = no limit. The comment has none: it always gives way first. */
 export function screenStepCaps(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): Partial<Record<PartKey, number>> {
+  return runSteps(screenStepCapsSteps(s, inp, fonts, opts));
+}
+export function* screenStepCapsSteps(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): Steps<Partial<Record<PartKey, number>>> {
   const caps: Partial<Record<PartKey, number>> = {};
-  const wf = worstFonts(fonts);
-  const buyers = worstCaseInputs(inp);
-  // a worst-case buyer (#8888) fits when no line needs the guard AND the number prints whole (never cut
-  // across its width beside the QR — a cut number is a wrong parcel)
-  const whole = (t: OneStickerSettings, b: OneStickerInput, f: Fonts) => { const q = layoutPass(t, b, f, opts, {}); return passFits(q) && !q.L.warnings.some((w) => w.part === "buyer" && w.kind === "width"); };
-  const fitsAll = (t: OneStickerSettings) => !needsFitGuard(t, inp, fonts, opts) && buyers.every((b) => whole(t, b, wf));
-  for (const k of ["shop", "buyer", "name", "user"] as const) {
-    if (!s.parts[k].on || (k === "shop" && isSmallClass(s.size.w, s.size.h))) continue;
-    const at = (i: number): OneStickerSettings => ({ ...s, parts: { ...s.parts, [k]: { ...s.parts[k], scale: SCALE_STEPS[i] } } });
-    const cur = Math.max(0, SCALE_STEPS.findIndex((x) => x === snapScale(s.parts[k].scale)));
-    if (fitsAll(at(SCALE_STEPS.length - 1))) continue; // the usual case: one check
-    if (cur === SCALE_STEPS.length - 1 || !fitsAll(at(cur))) { caps[k] = SCALE_STEPS[cur]; continue; }
-    let lo = cur, hi = SCALE_STEPS.length - 1; // lo fits
-    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (fitsAll(at(mid))) lo = mid; else hi = mid - 1; }
-    if (lo < SCALE_STEPS.length - 1) caps[k] = SCALE_STEPS[lo];
+  const list = screenBuyers(inp, fonts);
+  const fits = function* (t: OneStickerSettings): Steps<boolean> { for (const [b, f] of list) if (yield* needsFitGuardG(t, b, f, opts)) return false; return true; };
+  const at = (t: OneStickerSettings, k: PartKey, i: number): OneStickerSettings => ({ ...t, parts: { ...t.parts, [k]: { ...t.parts[k], scale: SCALE_STEPS[i] } } });
+  const idx = (t: OneStickerSettings, k: PartKey) => Math.max(0, SCALE_STEPS.findIndex((x) => x === snapScale(t.parts[k].scale)));
+  const fixedOn = (["buyer", "user", "name", "shop"] as const).filter((k) => s.parts[k].on && !(k === "shop" && isSmallClass(s.size.w, s.size.h)));
+  let t = s;
+  // 1. the parts over their limit, one at a time (each lowered to where the guard no longer changes it;
+  //    asked again after each, so a part is never blamed for what the one before already fixed)
+  const over = new Set<PartKey>();
+  for (const k of fixedOn) {
+    if (!(yield* guardedPartsG(t, list, opts)).has(k)) continue;
+    over.add(k);
+    const cur = idx(t, k);
+    const okAt = function* (i: number): Steps<boolean> { return !(yield* guardedPartsG(at(t, k, i), list, opts)).has(k); };
+    let lo = -1, hi = cur - 1; // the largest step below its size at which the guard leaves it alone
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (mid >= 0 && (yield* okAt(mid))) lo = mid; else hi = mid - 1; }
+    const lim = Math.max(0, lo);
+    caps[k] = SCALE_STEPS[lim];
+    t = at(t, k, lim);
+  }
+  // 2. every other part, with the over parts held at their limits
+  if (!(yield* fits(t))) return caps; // still not fitting: no limits for the rest (the red note says why)
+  for (const k of fixedOn) {
+    if (over.has(k)) continue;
+    const top = SCALE_STEPS.length - 1;
+    if (yield* fits(at(t, k, top))) continue; // the usual case: one check
+    let lo = idx(t, k), hi = top - 1; // lo fits (t fits)
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (yield* fits(at(t, k, mid))) lo = mid; else hi = mid - 1; }
+    caps[k] = SCALE_STEPS[lo];
   }
   return caps;
 }
