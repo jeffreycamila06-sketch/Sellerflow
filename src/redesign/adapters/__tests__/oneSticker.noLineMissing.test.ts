@@ -144,7 +144,7 @@ describe("item 4: the Buyer word's 'y' and the comment's first line", () => {
 
 describe("screen: worst-case buyers before Save", () => {
   it("the worst-case set: tall Vietnamese / Thai marks, Chinese, a short handle, a 2-line Facebook name, all #8888 with low-hanging comment letters", () => {
-    expect(WORST_CASE_BUYERS.map((b) => b.platform)).toEqual(["TikTok", "TikTok", "TikTok", "TikTok", "Facebook"]);
+    expect(WORST_CASE_BUYERS.map((b) => b.platform)).toEqual(["TikTok", "TikTok", "TikTok", "TikTok", "TikTok", "TikTok", "Facebook", "Facebook"]);
     expect(WORST_CASE_BUYERS.some((b) => b.handle === "ab")).toBe(true); // a short handle (small QR, bigger module)
     for (const i of worstCaseInputs(sampleInput("x"))) expect(i.buyerNum).toBe("8888");
   });

@@ -518,7 +518,10 @@ export const WORST_CASE_BUYERS: readonly Pick<OneStickerInput, "name" | "handle"
   { name: "陳小美 Gigi Quyên", handle: "gigi.chen_pqy", platform: "TikTok" },
   { name: "ฐิติพัฒน์ ปู่ฤทธิ์", handle: "thitiphat_gpqy", platform: "TikTok" },
   { name: "Nguyễn Thị Ngọc Quỳnh", handle: "ab", platform: "TikTok" },
+  { name: "Huỳnh Ỷ Ỵ Ỹ Ngọc", handle: "yy.jpg", platform: "TikTok" },           // marks above AND below, y / j / p / g
+  { name: "Йорданка Щерева", handle: "yordanka_jq", platform: "TikTok" },        // Cyrillic Й / Щ (tall + low tail)
   { name: "Maria Clara Dela Cruz Santos Reyes Gonzaga Quiñones", handle: "Maria Clara Dela Cruz Santos Reyes Gonzaga Quiñones", platform: "Facebook", fbNameOnly: true },
+  { name: "Nguyễn Thị Ngọc Quỳnh Huỳnh Phương Thùy Dương", handle: "Nguyễn Thị Ngọc Quỳnh Huỳnh Phương Thùy Dương", platform: "Facebook", fbNameOnly: true }, // a long Vietnamese 2-line Facebook name
 ];
 export const worstCaseInputs = (inp: OneStickerInput): OneStickerInput[] => WORST_CASE_BUYERS.map((b) => ({ ...inp, ...b, buyerNum: "8888", items: [WORST_CASE_COMMENT] }));
 /** Ideographs measured as their full cell: the check never depends on the atlases loaded. */

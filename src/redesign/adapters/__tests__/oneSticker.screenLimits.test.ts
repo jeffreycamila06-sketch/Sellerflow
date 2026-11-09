@@ -31,6 +31,9 @@ const made = (L: Layout) => L.warnings.filter((w) => w.kind === "smaller" || (w.
 const ok = (s: OneStickerSettings, path: OneStickerPath) => screenFitNotes(s, SAMPLE(), F, optsFor(path, s)).some((n) => n.kind === "ok");
 
 const THAI = (): OneStickerInput => ({ ...SAMPLE(), name: "ฐิติพัฒน์ ปู่ฤทธิ์", handle: "thitiphat_gpqy", buyerNum: "8888", items: ["gjpqy Ụ ợ"] });
+const HUYNH = (): OneStickerInput => ({ ...SAMPLE(), name: "Huỳnh Ỷ Ỵ Ỹ Ngọc", handle: "yy.jpg", buyerNum: "8888", items: ["gjpqy Ụ ợ"] });
+const CYR = (): OneStickerInput => ({ ...SAMPLE(), name: "Йорданка Щерева", handle: "yordanka_jq", buyerNum: "8888", items: ["gjpqy Ụ ợ"] });
+const VNFB = (): OneStickerInput => ({ ...SAMPLE(), name: "Nguyễn Thị Ngọc Quỳnh Huỳnh Phương Thùy Dương", handle: "Nguyễn Thị Ngọc Quỳnh Huỳnh Phương Thùy Dương", platform: "Facebook", fbNameOnly: true, buyerNum: "8888", items: ["gjpqy Ụ ợ"] });
 const red = (s: OneStickerSettings, path: OneStickerPath) => screenFitNotes(s, SAMPLE(), F, optsFor(path, s)).some((n) => n.kind === "bad");
 
 describe("1. worst-case buyers on the screen", () => {
@@ -44,15 +47,15 @@ describe("1. worst-case buyers on the screen", () => {
     }
     expect(lies).toEqual([]);
   }, 300000);
-  it("low-hanging comment letters: 80×30 / 110×30 / 60×30 / 50×30 with every part 2× (Bold / Extra) are never green while the print makes a line smaller (438b4a90: green, a Thai buyer's @username made smaller)", () => {
+  it("low-hanging letters / marks: 80×30 / 110×30 / 60×30 / 50×30 with Buyer # / name / @username (± shop) at 2×, Normal / Bold / Extra, are never green while the print makes a line smaller (438b4a90: Bold/Extra Thai; 695e5127: Normal — Huỳnh Ỷ Ỵ Ỹ, Йорданка Щерева, a long Vietnamese 2-line Facebook name)", () => {
     const lies: string[] = [];
-    for (const [w, h] of [[80, 30], [110, 30], [60, 30], [50, 30]] as [number, number][]) for (const weight of ["bold", "extra"] as const) for (const path of ["d520", "tspl", "laptop"] as OneStickerPath[]) {
-      const s = S(w, h, (x) => { for (const p of ["shop", "buyer", "name", "user"] as const) { x.parts[p].scale = 2; x.parts[p].weight = weight; } });
+    for (const [w, h] of [[80, 30], [110, 30], [60, 30], [50, 30]] as [number, number][]) for (const shop of [true, false]) for (const weight of ["normal", "bold", "extra"] as const) for (const path of ["d520", "tspl", "laptop"] as OneStickerPath[]) {
+      const s = S(w, h, (x) => { for (const p of [...(shop ? ["shop"] as const : []), "buyer", "name", "user"] as const) { x.parts[p].scale = 2; x.parts[p].weight = weight; } });
       if (!ok(s, path)) continue;
-      for (const inp of [THAI(), LONG(), SHORT()]) { const m = made(layoutSticker(s, inp, F, optsFor(path, s))); if (m.length) lies.push(`${w}x${h} ${weight} ${path} ${inp.name}: green but ${m.join(", ")}`); }
+      for (const inp of [THAI(), LONG(), SHORT(), HUYNH(), CYR(), VNFB()]) { const m = made(layoutSticker(s, inp, F, optsFor(path, s))); if (m.length) lies.push(`${w}x${h} shop=${shop} ${weight} ${path} ${inp.name}: green but ${m.join(", ")}`); }
     }
     expect(lies).toEqual([]);
-  }, 300000);
+  }, 600000);
 });
 
 describe("2. the print never cuts #8888 across its width beside the QR", () => {
