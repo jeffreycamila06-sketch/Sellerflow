@@ -512,13 +512,16 @@ export function screenFitNotes(s: OneStickerSettings, inp: OneStickerInput, font
   return fitNotes({ ...L, warnings: dedupWarnings([...L.warnings, ...extra]) }, s);
 }
 /** The largest size step each fixed part can take (the other parts as they are) so that the preview's
- *  sample and every worst-case buyer fit without the guard; a part already past it keeps its own size
+ *  sample and every worst-case buyer fit without the guard, with buyer #8888 printed whole; a part already past it keeps its own size
  *  as the cap ("+" off, "−" on). No entry = no cap. The comment has none: it always gives way first. */
 export function screenStepCaps(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, opts: RenderOpts = {}): Partial<Record<PartKey, number>> {
   const caps: Partial<Record<PartKey, number>> = {};
   const wf = worstFonts(fonts);
   const buyers = worstCaseInputs(inp);
-  const fitsAll = (t: OneStickerSettings) => !needsFitGuard(t, inp, fonts, opts) && buyers.every((b) => !needsFitGuard(t, b, wf, opts));
+  // a worst-case buyer (#8888) fits when no line needs the guard AND the number prints whole (never cut
+  // across its width beside the QR — a cut number is a wrong parcel)
+  const whole = (t: OneStickerSettings, b: OneStickerInput, f: Fonts) => { const q = layoutPass(t, b, f, opts, {}); return passFits(q) && !q.L.warnings.some((w) => w.part === "buyer" && w.kind === "width"); };
+  const fitsAll = (t: OneStickerSettings) => !needsFitGuard(t, inp, fonts, opts) && buyers.every((b) => whole(t, b, wf));
   for (const k of ["shop", "buyer", "name", "user"] as const) {
     if (!s.parts[k].on || (k === "shop" && isSmallClass(s.size.w, s.size.h))) continue;
     const at = (i: number): OneStickerSettings => ({ ...s, parts: { ...s.parts, [k]: { ...s.parts[k], scale: SCALE_STEPS[i] } } });

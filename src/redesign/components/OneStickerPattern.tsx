@@ -86,13 +86,18 @@ function useFitNotes(settings: OneStickerSettings, input: OneStickerInput, path:
     // the sample (#128) AND the buyer number at its widest (#8888) AND the worst-case buyers (tall
     // Vietnamese / Thai marks, Chinese, a 2-line Facebook name): a real buyer never needs a line made
     // smaller while the screen says everything fits, and "+" stops at the largest size that always fits.
-    // Measured on the real faces only — never on device fonts.
+    // Measured on the real faces (a script only the phone's own font draws, e.g. Thai, is measured with
+    // that font — the same one the print uses on this phone).
+    let timer: ReturnType<typeof setTimeout> | undefined;
     void oneStickerScreenFonts(settings, input).then((fonts) => {
       if (!live) return;
       const opts = renderOptsFor(path, settings, job);
-      setN({ notes: screenFitNotes(settings, input, fonts, opts), caps: screenStepCaps(settings, input, fonts, opts) });
+      const notes = screenFitNotes(settings, input, fonts, opts);
+      setN((prev) => ({ notes, caps: prev.caps }));
+      // the "+" limits after the notes are on screen (a tap never waits for both)
+      timer = setTimeout(() => { if (live) setN({ notes, caps: screenStepCaps(settings, input, fonts, opts) }); }, 0);
     }).catch(() => { if (live) setN({ notes: null, caps: {} }); });
-    return () => { live = false; };
+    return () => { live = false; if (timer) clearTimeout(timer); };
   }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps -- key covers every input
   return n;
 }

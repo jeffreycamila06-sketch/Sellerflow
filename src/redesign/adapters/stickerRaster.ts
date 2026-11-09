@@ -562,7 +562,12 @@ function drawOpsInner(payload: RasterPayload, labelWidthMm: number, labelHeightM
               const roomForLines = Math.floor((labelHeightMm * 8 - QR_TEXT_KEEPOUT_GAP - F4 * pm - y) / lineH) + 1;
               const maxLines = Math.max(1, Math.min(MAX_COMMENT_LINES, roomForLines));
               let lines = wrapWords(content, maxChars, maxLines);
-              if (scriptsCommentLess > 0 && lines.length > 1) lines = wrapWords(content, maxChars, lines.length - 1); // bottom safety: one line fewer, "…"
+              if (scriptsCommentLess > 0 && lines.length > 1) { // bottom safety: one line fewer, "…"
+                lines = wrapWords(content, maxChars, lines.length - 1);
+                const n = lines.length - 1;
+                // the fixed-cell Latin font has no "…" (only the Cyrillic atlas does) → "..." where it would print blank
+                if (!narrow("…") && lines[n].endsWith("…")) lines[n] = [...lines[n]].slice(0, -1).join("").slice(0, Math.max(0, maxChars - 3)).trimEnd() + "...";
+              }
               for (let li = 0; li < lines.length; li++) ops.push({ k: "txt", x: priceX, y: y + li * lineH, font: "4", s: safe(lines[li]), xm: 2, ym: pm });
               wrapExtra = Math.max(0, lines.length - 1) * lineH; // rows below the first
             }
@@ -689,9 +694,10 @@ function layoutV2Order(
     lines = lines.slice(0, lines.length - 1);
     const n = lines.length - 1, room = limitX(lineY(n)) - (n === 0 ? inlineTimeX : 16);
     const wOf = (t: string) => [...t].reduce((a, ch) => a + charW(ch), 0);
+    const mark = narrow("…") ? "…" : "..."; // the fixed-cell Latin font has no "…" (only the Cyrillic atlas does)
     let last = [...lines[n]];
-    while (last.length && wOf(last.join("") + "…") > room) last = last.slice(0, -1);
-    lines[n] = last.join("").trimEnd() + "…";
+    while (last.length && wOf(last.join("") + mark) > room) last = last.slice(0, -1);
+    lines[n] = last.join("").trimEnd() + mark;
   }
   lines.forEach((line, i) => {
     // split the line into runs of one script; each run is its own op at its x
@@ -960,12 +966,12 @@ let scriptsCommentLess = 0; // 1 while a picture is drawn again with one comment
 type Ras = { buf: Uint8Array; w: number; h: number; rowBytes: number };
 const rowHasInk = (r: Ras, y: number) => { const o = y * r.rowBytes; for (let b = 0; b < r.rowBytes; b++) if (r.buf[o + b]) return true; return false; };
 /** How far the picture must move up (need) and how far it can (room), in dots. PURE. */
-export function bottomSafetyPlan(r: Ras, paperInset = 0): { need: number; room: number } {
+export function bottomSafetyPlan(r: Ras, paperInset = 0, topCrop = 0): { need: number; room: number } {
   const safe = Math.max(0, SCRIPTS_BOTTOM_SAFE_DOTS - paperInset);
   let low = -1; for (let y = r.h - 1; y >= 0; y--) if (rowHasInk(r, y)) { low = y; break; }
   if (low < 0) return { need: 0, room: 0 };
   let top = 0; while (top < r.h && !rowHasInk(r, top)) top++;
-  return { need: Math.max(0, safe - (r.h - 1 - low)), room: Math.max(0, top - SCRIPTS_TOP_KEEP_DOTS) };
+  return { need: Math.max(0, safe - (r.h - 1 - low)), room: Math.max(0, top - SCRIPTS_TOP_KEEP_DOTS - topCrop) };
 }
 function liftUp(r: Ras, shift: number): void {
   if (shift <= 0) return;
@@ -981,16 +987,18 @@ export function __setScriptsBottomSafetyOff(off: boolean): void { scriptsSafetyO
 export const __scriptsCommentLessNow = (): number => scriptsCommentLess;
 /** TEST ONLY: draw `fn` as the retry with one comment line fewer. */
 export function __withScriptsCommentLess<T>(fn: () => T): T { const prev = scriptsCommentLess; scriptsCommentLess = 1; try { return fn(); } finally { scriptsCommentLess = prev; } }
-export function withScriptsBottomSafety<T extends Ras>(draw: () => T, insetOf: (r: T) => number): T {
+/** `topCrop` = rows a later centre-crop takes off the top (the Niimbot fixed-cell fallback: a full label
+ *  cut to the SDK frame) — the lift keeps 4 dots BELOW them, so nothing it moves up is cropped away. */
+export function withScriptsBottomSafety<T extends Ras>(draw: () => T, insetOf: (r: T) => number, topCrop = 0): T {
   const first = draw();
   if (synthCjk === null || scriptsSafetyOff) return first;
-  const p1 = bottomSafetyPlan(first, insetOf(first));
+  const p1 = bottomSafetyPlan(first, insetOf(first), topCrop);
   if (p1.need <= p1.room) { liftUp(first, p1.need); return first; }
   const prev = scriptsCommentLess;
   scriptsCommentLess = 1;
   let again: T;
   try { again = draw(); } finally { scriptsCommentLess = prev; }
-  const p2 = bottomSafetyPlan(again, insetOf(again));
+  const p2 = bottomSafetyPlan(again, insetOf(again), topCrop);
   if (p2.need <= p2.room) { liftUp(again, p2.need); return again; }
   liftUp(first, p1.room); // not the comment (PRINTING_MAP §6): the most lift there is, nothing erased
   return first;
@@ -1012,7 +1020,7 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
     paint(b, ops, atlases);
     stampHandleQr(b, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
     return b;
-  }, (b) => insetOf(b.h, hMm)); // a full label here even on a Niimbot (centre-cropped later) → 0
+  }, (b) => insetOf(b.h, hMm), canvas ? Math.max(0, Math.ceil((hMm * 8 - canvas.h) / 2)) : 0); // a full label here even on a Niimbot (centre-cropped later to the frame) → inset 0, top crop kept clear
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
 }
 

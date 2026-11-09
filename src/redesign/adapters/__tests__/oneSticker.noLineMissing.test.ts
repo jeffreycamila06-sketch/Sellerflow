@@ -177,8 +177,19 @@ describe("screen: worst-case buyers before Save", () => {
     expect(red && red.kind === "bad" ? red.parts.length : 0).toBeGreaterThan(0);
     expect(n.some((x) => x.kind === "ok")).toBe(false);
   });
-  it("the \"+\" caps: the cap step fits every worst-case buyer, the step above it does not; recommended settings have no cap at any standard size", () => {
-    for (const z of STANDARD_SIZES) expect(screenStepCaps(S(z.w, z.h), sampleInput("My Shop", AT), F), `${z.w}x${z.h}`).toEqual({});
+  it("Buyer # \"+\" stops before #8888 is cut across its width beside the QR (60×40, QR on; guardian HIGH-1)", () => {
+    for (const path of ["d520", "tspl", "laptop"] as OneStickerPath[]) {
+      const s = S(60, 40);
+      const caps = screenStepCaps(s, sampleInput("My Shop", AT), F, optsFor(path, s));
+      expect(caps.buyer, path).toBeDefined();
+      const at = (v: number) => S(60, 40, (x) => { x.parts.buyer.scale = v; });
+      const cut = (v: number) => worstCaseInputs(sampleInput("My Shop", AT)).some((inp) => layoutSticker(at(v), inp, { ...F, cjkBox: true }, optsFor(path, at(v))).warnings.some((w) => w.part === "buyer" && w.kind === "width"));
+      expect(cut(caps.buyer!), `${path} at the cap`).toBe(false);
+      expect(cut(SCALE_STEPS[SCALE_STEPS.indexOf(caps.buyer as (typeof SCALE_STEPS)[number]) + 1]), `${path} above the cap`).toBe(true);
+    }
+  });
+  it("the \"+\" caps: the cap step fits every worst-case buyer, the step above it does not; recommended settings: no cap below 1× at any standard size", () => {
+    for (const z of STANDARD_SIZES) { const c = screenStepCaps(S(z.w, z.h), sampleInput("My Shop", AT), F); for (const k of ["shop", "name", "user"] as const) expect(c[k], `${z.w}x${z.h} ${k}`).toBeUndefined(); if (c.buyer != null) expect(c.buyer, `${z.w}x${z.h} buyer`).toBeGreaterThanOrEqual(1); }
     let seen = 0;
     for (const [w, h] of [[50, 30], [60, 40], [30, 30], [40, 30]] as [number, number][]) for (const others of [1.5, 2]) {
       const base = S(w, h, (x) => { for (const k of ["buyer", "name", "user"] as const) x.parts[k].scale = others; });
@@ -187,7 +198,7 @@ describe("screen: worst-case buyers before Save", () => {
         seen++;
         const at = (v: number) => ({ ...base, parts: { ...base.parts, [k]: { ...base.parts[k], scale: v } } });
         const i = SCALE_STEPS.indexOf(cap as (typeof SCALE_STEPS)[number]);
-        const fitsAt = (t: OneStickerSettings) => [sampleInput("My Shop", AT), ...worstCaseInputs(sampleInput("My Shop", AT))].every((inp) => !layoutSticker(t, inp, { ...F, cjkBox: true }).warnings.some((x) => x.kind === "smaller" || x.kind === "height"));
+        const fitsAt = (t: OneStickerSettings) => [sampleInput("My Shop", AT), ...worstCaseInputs(sampleInput("My Shop", AT))].every((inp) => !layoutSticker(t, inp, { ...F, cjkBox: true }).warnings.some((x) => x.kind === "smaller" || (x.kind === "height" && x.part !== "qr") || (x.part === "buyer" && x.kind === "width" && inp.buyerNum === "8888")));
         if (cap > base.parts[k].scale || fitsAt(at(cap))) {
           expect(fitsAt(at(cap)), `${w}x${h} ${k} cap ${cap}`).toBe(true);
           if (i < SCALE_STEPS.length - 1) expect(fitsAt(at(SCALE_STEPS[i + 1])), `${w}x${h} ${k} above cap`).toBe(false);

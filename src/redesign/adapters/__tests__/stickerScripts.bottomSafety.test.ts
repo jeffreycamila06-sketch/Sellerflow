@@ -48,6 +48,11 @@ describe("the decision (pure)", () => {
     const r = withSyntheticCjk(SYN, () => withScriptsBottomSafety(draw, () => 0));
     expect(inkRows(r)).toEqual([4, 35, 94]);
   });
+  it("Niimbot fixed-cell fallback: a later centre-crop takes rows off the top → the lift stays 4 dots below them", () => {
+    expect(bottomSafetyPlan(raster(100, [16, 94]), 0, 8)).toEqual({ need: 7, room: 4 });
+    const r = withSyntheticCjk(SYN, () => withScriptsBottomSafety(() => raster(100, [16, 94]), () => 0, 8));
+    expect(inkRows(r)[0]).toBeGreaterThanOrEqual(8 + SCRIPTS_TOP_KEEP_DOTS); // nothing moved into the cropped rows
+  });
   it("outside the all-scripts letters: one draw, untouched", () => {
     const draw = vi.fn(() => raster(100, [2, 99]));
     expect(inkRows(withScriptsBottomSafety(draw, () => 0))).toEqual([2, 99]);
@@ -55,7 +60,7 @@ describe("the decision (pure)", () => {
   });
 });
 
-describe("one comment line fewer: every wrapping layout honours it, the last kept line ends with \"…\"", () => {
+describe("one comment line fewer: every wrapping layout honours it, the last kept line ends with \"…\" (\"...\" where the font has no \"…\")", () => {
   const base = (item: string, extra: Record<string, unknown> = {}): RasterPayload => ({
     storeName: "My Shop", sessionDate: "11/08/2026", currency: "NT$",
     buyer: { num: 12, name: "Amy", handle: "amy_live", totalSpent: 0, orders: [{ time: "14:05", item }] },
@@ -68,7 +73,8 @@ describe("one comment line fewer: every wrapping layout honours it, the last kep
     const la = commentLines(a, 120), lb = commentLines(b, 120);
     expect(la.length).toBeGreaterThan(1);
     expect(lb.length).toBe(la.length - 1);
-    expect(b.filter((o) => o.k === "txt" && o.y === Math.max(...lb)).map((o) => (o.k === "txt" ? o.s : "")).join("")).toMatch(/…$/);
+    // the plain fixed-cell font has no "…" (it would print a blank cell on the D520) → "..."
+    expect(b.filter((o) => o.k === "txt" && o.y === Math.max(...lb)).map((o) => (o.k === "txt" ? o.s : "")).join("")).toMatch(/\.\.\.$/);
   });
   it("the QR keep-out wrap", () => {
     const p = base("pa reserve po yung black dress size M salamat po ate ganda", { printStickerQr: true });
@@ -78,7 +84,7 @@ describe("one comment line fewer: every wrapping layout honours it, the last kep
     expect(ta.length).toBeGreaterThan(1);
     expect(tb.length).toBe(ta.length - 1);
     const lastOp = tb[tb.length - 1];
-    expect(lastOp.k === "txt" ? lastOp.s : "").toMatch(/…$/);
+    expect(lastOp.k === "txt" ? lastOp.s : "").toMatch(/\.\.\.$/); // "…" is not in the plain font
     expect(wrapWords("aa bb cc", 2, 2)).toEqual(["aa", "b…"]); // the "…" helper it uses
   });
 });
