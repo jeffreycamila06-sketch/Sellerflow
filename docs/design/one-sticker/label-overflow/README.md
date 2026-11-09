@@ -22,10 +22,23 @@ red "Too big" note — same picture on the screen and on paper. Vietnamese 60×4
 92 % with ink 19 dots from the edge; the screen says "Comment made smaller (92%) to fit". Every other
 case is byte-for-byte the same as before.
 
-**Today's sticker with the all-scripts fix:** checked the same way (D520, XP-420B, Niimbot) — worst case
-13 dots (Chinese / Japanese 70×50, 80×50, today's own layout) — nothing to change.
+**Today's sticker with the all-scripts fix:** the admin samples were fine (worst 13 dots), but the
+printer-guardian's stress comments were not: a short Thai comment at 70×50 / 80×50 put a mark under a
+letter **5 dots** from the edge (D520, XP-420B, ESC/POS, CPCL). Fixed for the all-scripts letters only
+(`stickerRaster.ts` `liftForBottomSafety`, active only while those letters are drawn): the picture moves
+up into the free top space until the bottom 1.5 mm is clear; if there is no room, only the leftover
+mark tips are cleared. English / Chinese orders and everything with the switch OFF never enter it →
+byte-identical (864 × 2 capture). Picture: `th_70x50_today_before_after.png`.
+
+**Still open (today's sticker for every seller, switch OFF — must stay byte-identical, not changed):**
+a mixed Chinese + Vietnamese comment at 80×50 ends 7 dots from the edge, a long Facebook name with
+descenders at 60×40 on the D520 8 dots. Same blank-label risk on an XP-420B; fix it in today's layouts in
+its own branch if sellers see it.
+
+**Top (new sticker):** a comment that is the FIRST line (every part above it off) put the tall marks of
+Ễ / Ỗ above the label top. It now starts lower by the marks' real height (only in that case).
 
 Pictures: `vi_60x40_before.png` / `vi_60x40_after.png` (decoded from the exact TSPL sent to the XP-420B),
-`vi_60x40_before_after.png` (red box = the bottom 1.5 mm), `en_60x40_*` (unchanged).
+`vi_60x40_before_after.png` (red box = the bottom 1.5 mm), `en_60x40_*` (unchanged), `th_70x50_today_*` (today's sticker, all-scripts).
 Test: `src/redesign/adapters/__tests__/oneSticker.labelFit.test.ts` (fails on main: "vi 60x40: ink 8 dots
 from the bottom" on D520, XP-420B, Y41BT, ESC/POS, CPCL and laptop).

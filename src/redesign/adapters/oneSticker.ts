@@ -325,13 +325,21 @@ export function layoutSticker(s: OneStickerSettings, inp: OneStickerInput, fonts
   let commentPx: number | null = null, commentWantPx: number | null = null;
   const comment = printableText(inp.items.filter(Boolean).join(" · "));
   if (P.comment.on && comment) {
-    const startY = y;
+    const startY0 = y;
     const wChosen = wt("comment");
+    // the comment is the FIRST thing on the label (every part above it off): its tall marks (Ễ Ỗ) must
+    // not start above the top margin — the first line moves down by the marks' real height
+    const leadFor = (p: number): number => {
+      if (startY0 > my) return 0;
+      const one = wrapText(comment, p, wChosen, () => 1e6, 1, fonts).lines[0];
+      return one ? Math.max(0, lineExtent(one, p, wChosen, fonts).asc - Math.round(p * 0.88)) : 0;
+    };
     let p = px("comment", B.comment);
     commentWantPx = p;
     const minP = Math.min(p, B.minComment);
     const ideo = hasIdeograph(comment);
     for (;;) {
+      const startY = startY0 + leadFor(p);
       // Chinese characters fill their whole cell: stacked lines get at least 2 white dots between them
       const lineH = ideo ? Math.max(Math.round(p * 1.12), (() => { const c = cjkCellFor(p); return c.cell * c.mag + cjkInk(p, wChosen).dy + 2; })()) : Math.round(p * 1.12);
       const maxLines = Math.max(0, Math.floor((bottomLimit - startY + Math.round(p * 0.12)) / lineH));

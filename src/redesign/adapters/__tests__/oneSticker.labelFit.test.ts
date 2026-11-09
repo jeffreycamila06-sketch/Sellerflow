@@ -94,6 +94,19 @@ describe("new sticker: never taller than the label, no ink in the bottom 1.5 mm"
     }
     expect(bad).toEqual([]);
   }, 300000);
+  it("top: a comment that is the FIRST line keeps its tall marks (Ễ Ỗ Ặ) inside the top margin, every size and scale", async () => {
+    const bad: string[] = [];
+    const s = { ...ADMIN_LANG_SAMPLES.find((x) => x.key === "vi")!, item: "Ễ Ỗ Ặ Ẫ Ẳ" };
+    for (const [w, h, custom] of SIZES) for (const scale of [1, 1.5, 2]) {
+      const d = draftFor(w, h, custom);
+      for (const k of ["shop", "buyer", "name", "user"] as const) d.parts[k].on = false;
+      d.qr = false; d.parts.comment.scale = scale;
+      const r = await renderOneStickerFor("tspl", d, oneStickerInputFrom(adminSampleBuyer(s, AT), "My Shop", AT), { bold: true });
+      let top = -1; for (let y = 0; y < r.h && top < 0; y++) for (let b = 0; b < r.rowBytes; b++) if (r.buf[y * r.rowBytes + b]) { top = y; break; }
+      if (top < BOTTOM_SAFE_DOTS) bad.push(`${w}x${h} ×${scale}: ink starts at row ${top}`);
+    }
+    expect(bad).toEqual([]);
+  }, 300000);
   it("laptop: the page picture is the label size and keeps the bottom 1.5 mm clear", async () => {
     const bad: string[] = [];
     for (const s of ADMIN_LANG_SAMPLES) for (const [w, h, custom] of SIZES) {
@@ -108,14 +121,24 @@ describe("new sticker: never taller than the label, no ink in the bottom 1.5 mm"
   }, 300000);
 });
 
+// extra stress for today's layouts (guardian, 2026-11-09): marks UNDER letters in the last comment row
+const STRESS: { key: string; name: string; handle: string; item: string }[] = [
+  { key: "th-short", name: "สมใจ ใจดี", handle: "somjai", item: "ชุดสีดำ 2 ตัว ขอบคุณค่ะ" },
+  { key: "th-long", name: "สมใจ ใจดี", handle: "somjai", item: "ชุดสีดำ ไซส์ M 2 ตัว ขอบคุณค่ะ ฝากด้วยนะคะ ฤดูร้อน" },
+  { key: "ko-long", name: "김민지", handle: "minji", item: "검정 원피스 두 개 주세요 감사합니다 정말" },
+  { key: "ar-long", name: "فاطمة أحمد", handle: "fatima", item: "فستان أسود مقاس M شكرا جزيلا يا أختي" },
+];
+const stressBuyer = (x: (typeof STRESS)[number]): Buyer => adminSampleBuyer({ key: x.key, label: x.key, num: 88, name: x.name, handle: x.handle, platform: "TikTok", item: x.item }, AT);
 describe("today's sticker with the all-scripts language fix: the same check", () => {
-  for (const path of ["d520", "xp420b", "niimbot"] as Path[]) {
-    it(`${path}: every admin sample × every size (Vietnamese / Thai marks included)`, async () => {
+  for (const path of ["d520", "xp420b", "escpos", "cpcl", "niimbot"] as Path[]) {
+    it(`${path}: every admin sample + the stress comments × every size (Vietnamese / Thai marks included)`, async () => {
       setStickerAllScripts(true);
       const bad: string[] = [];
       const sizes = path === "niimbot" ? [[50, 30]] : SIZES.filter(([, , c]) => !c);
-      for (const s of ADMIN_LANG_SAMPLES) for (const [w, h] of sizes) {
-        const { r, labelH, imageH } = await sent(path, () => printSlip(adminSampleBuyer(s, AT), "NT$", "My Shop", cfgFor(w, h), { noOneSticker: true }), w, h);
+      const buyers: [string, Buyer][] = [...ADMIN_LANG_SAMPLES.map((s) => [s.key, adminSampleBuyer(s, AT)] as [string, Buyer]), ...STRESS.map((x) => [x.key, stressBuyer(x)] as [string, Buyer])];
+      for (const [key, b] of buyers) for (const [w, h] of sizes) {
+        const s = { key };
+        const { r, labelH, imageH } = await sent(path, () => printSlip(b, "NT$", "My Shop", cfgFor(w, h), { noOneSticker: true }), w, h);
         const margin = labelH - 1 - lowestInk(r);
         if (imageH > labelH) bad.push(`${s.key} ${w}x${h}: image ${imageH} > label ${labelH}`);
         if (margin < BOTTOM_SAFE_DOTS) bad.push(`${s.key} ${w}x${h}: ink ${margin} dots from the bottom`);

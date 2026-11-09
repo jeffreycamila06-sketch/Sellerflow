@@ -935,9 +935,32 @@ export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: n
  *  size's own (the Niimbot safe margin: the B1 has no paper lock, so ±1 mm of paper slack must
  *  never cut the buyer number, the text or the QR). */
 export interface RasterCanvas { w: number; h: number; edge?: number }
+// BOTTOM SAFETY for today's sticker with the ALL-SCRIPTS letters (label overflow, 2026-11-09): a Thai
+// below-mark in the last comment row of the 70×50 / 80×50 layout reached 5 dots from the edge — the
+// XP-420B then feeds an extra blank label. ONLY while the all-scripts letters are drawn (the synthetic
+// context, never set for English / Chinese or with the switch OFF → those stay byte-identical): no ink
+// in the bottom 1.5 mm (12 dots, = the one sticker's BOTTOM_SAFE_DOTS) of the PAPER — the picture moves
+// up into the free top space (keeping 8 dots on top); only if there is not enough room are the last
+// rows of ink cleared (a clipped mark tip, never a blank label).
+export const SCRIPTS_BOTTOM_SAFE_DOTS = 12;
+function liftForBottomSafety(r: { buf: Uint8Array; w: number; h: number; rowBytes: number }, paperInset = 0): void {
+  if (synthCjk === null) return;
+  const safe = Math.max(0, SCRIPTS_BOTTOM_SAFE_DOTS - paperInset);
+  const rowInk = (y: number) => { const o = y * r.rowBytes; for (let b = 0; b < r.rowBytes; b++) if (r.buf[o + b]) return true; return false; };
+  let low = -1; for (let y = r.h - 1; y >= 0; y--) if (rowInk(y)) { low = y; break; }
+  if (low < 0) return;
+  const need = safe - (r.h - 1 - low);
+  if (need <= 0) return;
+  let top = 0; while (top < r.h && !rowInk(top)) top++;
+  const shift = Math.min(need, Math.max(0, top - 8));
+  if (shift > 0) { r.buf.copyWithin(0, shift * r.rowBytes); r.buf.fill(0, (r.h - shift) * r.rowBytes); }
+  r.buf.fill(0, (r.h - safe) * r.rowBytes); // whatever still sits in the margin (rare: no room on top)
+}
 export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended", canvas?: RasterCanvas): FullRaster {
+  const inset = canvas ? Math.max(0, Math.floor((hMm * 8 - canvas.h) / 2)) : 0; // the Niimbot frame sits inside the paper
   if (atlases.proportional && mode !== "legacy" && isPropCompactSize(wMm, hMm)) { // font C, image paths only
     const bmp = renderPropCompact(payload, wMm, hMm, atlases, canvas);
+    liftForBottomSafety(bmp, inset);
     return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
   }
   // Compute the QR placement ONCE (legacy/parity mode never has a QR) → the layout wraps
@@ -948,6 +971,7 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
   stampHandleQr(bmp, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
+  liftForBottomSafety(bmp, inset);
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
 }
 
@@ -1038,6 +1062,7 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     if (opts.bold) boldenRaster(bmp.buf, bmp.w, bmp.h, bmp.rowBytes); // before the QR → the QR grid stays exact
     stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
   }
+  liftForBottomSafety(bmp); // all-scripts letters only (see renderStickerBitmap)
   return bitmapTsplFromRaster({ buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes }, wMm, hMm, opts);
 }
 
