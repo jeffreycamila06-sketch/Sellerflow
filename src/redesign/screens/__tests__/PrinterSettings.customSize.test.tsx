@@ -34,6 +34,10 @@ describe("Printer settings → Sticker size → Custom", () => {
     fireEvent.change(screen.getByTestId("ps-custom-w"), { target: { value: "50" } });
     fireEvent.change(screen.getByTestId("ps-custom-h"), { target: { value: "40" } });
     expect(screen.queryByTestId("ps-custom-err")).toBeNull();
+    expect(screen.queryByTestId("ps-custom-qr-note")).toBeNull();
+    fireEvent.change(screen.getByTestId("ps-custom-w"), { target: { value: "40" } });
+    expect(screen.getByTestId("ps-custom-qr-note").textContent).toBe("QR needs a label at least 50×30 mm"); // said before Save
+    fireEvent.change(screen.getByTestId("ps-custom-w"), { target: { value: "50" } });
     fireEvent.click(screen.getByTestId("ps-custom-save"));
     expect(c.onSave).toHaveBeenCalledWith(50, 40);
   });
@@ -57,9 +61,13 @@ describe("Printer settings → Sticker size → Custom", () => {
     expect(screen.queryByTestId("ps-size-custom")).toBeNull();
     expect(screen.getByTestId("ps-custom-hidden").textContent).toContain("not available for this printer");
     a.unmount();
-    renderPS(cs({ allowed: false, reason: "not_saved", saved: null }));
+    const b = renderPS(cs({ allowed: false, reason: "not_saved", saved: null }));
     expect(screen.queryByTestId("ps-size-custom")).toBeNull();
     expect(screen.getByTestId("ps-custom-hidden").textContent).toContain("save the new sticker in Live print pattern first");
+    b.unmount();
+    renderPS(cs({ allowed: false, reason: "niimbot" }));
+    expect(screen.queryByTestId("ps-size-custom")).toBeNull();
+    expect(screen.getByTestId("ps-custom-hidden").textContent).toContain("Your Niimbot prints the size set in Live print pattern");
   });
 });
 
@@ -126,8 +134,9 @@ describe("RedesignApp wiring", () => {
     const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain("customSize={oneStickerOn ? (() => {");
     expect(app).toContain('const older = devPath === "text" || devPath === "wifi";');
-    expect(app).toContain("allowed: !older && saved != null,");
-    expect(app).toContain('reason: older ? "text" as const : saved == null ? "not_saved" as const : undefined,');
+    expect(app).toContain("allowed: !older && !niimbot && saved != null,");
+    expect(app).toContain('reason: older ? "text" as const : niimbot ? "niimbot" as const : saved == null ? "not_saved" as const : undefined,');
+    expect(app).toContain("qrBefore && !next.qr ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved");
     expect(app).toContain("const next = saveOneStickerSizeFromPrinterCustom(w, h);");
   });
 });

@@ -2863,17 +2863,23 @@ export default function RedesignApp() {
                 const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
                 const saved = readSavedOneSticker();
                 const older = devPath === "text" || devPath === "wifi";
+                // a Niimbot's size is set on the Live print pattern (a Printer settings size pick says so too) —
+                // Custom there as well, so both say the same thing
+                const niimbot = devPath === "niimbot";
                 return {
-                  allowed: !older && saved != null,
-                  reason: older ? "text" as const : saved == null ? "not_saved" as const : undefined,
+                  allowed: !older && !niimbot && saved != null,
+                  reason: older ? "text" as const : niimbot ? "niimbot" as const : saved == null ? "not_saved" as const : undefined,
                   saved: saved ? saved.size : null,
                   printerName: savedBtPrinter()?.name ?? null,
                   onSave: (w: number, h: number) => {
+                    const qrBefore = readSavedOneSticker()?.qr === true;
                     const next = saveOneStickerSizeFromPrinterCustom(w, h); // the LAST Save wins — the Live print pattern opens on this size
                     if (!next) return;
                     const label = psLabelFor(next.size, devPath);
                     if (label) setPsSize(label);
-                    setToast({ msg: tpl(tApp.rd_ps_custom_saved, { w: String(w), h: String(h) }), kind: "ok" });
+                    // below 50×30 the QR was turned off — say so (it stays off on a bigger size until turned on again)
+                    const saidSaved = tpl(tApp.rd_ps_custom_saved, { w: String(w), h: String(h) });
+                    setToast({ msg: qrBefore && !next.qr ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved, kind: "ok" });
                   },
                 };
               })() : undefined}

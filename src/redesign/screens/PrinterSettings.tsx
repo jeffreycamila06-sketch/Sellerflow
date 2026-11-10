@@ -25,7 +25,7 @@ import {
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
 import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
 import { testPrintFor } from "../adapters/oneStickerPrint";
-import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor } from "../adapters/oneSticker";
+import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor, qrSizeOk } from "../adapters/oneSticker";
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { useT, tpl } from "../i18n";
@@ -40,7 +40,7 @@ const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWe
 // Shown only to accounts with the new screen (customSize undefined = exactly today's screen).
 export interface PsCustomSize {
   allowed: boolean;                          // this phone + printer can print a custom size on the new sticker
-  reason?: "text" | "not_saved";             // why not: the older (text / WiFi) sticker, or the new sticker not saved here
+  reason?: "text" | "not_saved" | "niimbot"; // why not: the older (text / WiFi) sticker, the new sticker not saved here, or a Niimbot (its size is set on the Live print pattern)
   saved: { w: number; h: number; custom?: boolean } | null; // the new sticker's saved size on this device
   printerName?: string | null;
   onSave: (w: number, h: number) => void;
@@ -354,7 +354,7 @@ export default function PrinterSettings({
                 </div>
               )}
               {customSize && !customSize.allowed && psSizeOpen && (
-                <div data-testid="ps-custom-hidden" style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{customSize.reason === "not_saved" ? t.rd_ps_custom_need_saved : t.rd_os_custom_hidden}</div>
+                <div data-testid="ps-custom-hidden" style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{customSize.reason === "not_saved" ? t.rd_ps_custom_need_saved : customSize.reason === "niimbot" ? t.rd_ps_custom_niimbot : t.rd_os_custom_hidden}</div>
               )}
               {customSize?.allowed && psSizeOpen && customOpen && (
                 <div data-testid="ps-custom" style={{ marginTop: 9 }}>
@@ -369,6 +369,7 @@ export default function PrinterSettings({
                     </label>
                   </div>
                   {!customOk && <div data-testid="ps-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
+                  {customOk && !qrSizeOk({ w: cw, h: ch }) && <div data-testid="ps-custom-qr-note" style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>{t.rd_os_qr_min_size}</div>}
                   {customTooWide && <div data-testid="ps-custom-too-wide" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: customTooWide.model, max: String(customTooWide.maxLabelMm) })}</div>}
                   <button data-testid="ps-custom-save" disabled={!customOk || !!customTooWide} onClick={() => { if (!customOk || customTooWide) return; customSize.onSave(cw, ch); setCustomOpen(false); onTogglePsSize(); }} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 10, border: "none", background: customOk && !customTooWide ? "var(--accent)" : "var(--surface-2)", color: customOk && !customTooWide ? "var(--accent-text)" : "var(--text-muted)", cursor: customOk && !customTooWide ? "pointer" : "not-allowed" }}>{t.rd_ps_custom_save}</button>
                 </div>
