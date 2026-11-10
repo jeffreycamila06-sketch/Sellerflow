@@ -139,6 +139,12 @@ export const AUTO_SAVE_PATHS: readonly string[] = ["d520", "tspl", "escpos", "cp
 export function shouldAutoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string; printerSaved: boolean; saved: boolean }): boolean {
   return c.visible && c.flagsLoaded && c.printerSaved && !c.saved && AUTO_SAVE_PATHS.includes(c.devicePath);
 }
+/** The ONE read-only native ask for the saved Bluetooth printer on open (so the auto-save sees a long-time
+ *  AIMO user's printer): only for an account that sees the screen, both reads answered, a Bluetooth phone that
+ *  can auto-save (picture sticker — never WiFi / text / laptop), nothing known and nothing saved yet. PURE. */
+export function shouldAskSavedPrinter(c: { visible: boolean; flagsLoaded: boolean; btBridge: boolean; printerKnown: boolean; saved: boolean; devicePath: string }): boolean {
+  return c.visible && c.flagsLoaded && c.btBridge && !c.printerKnown && !c.saved && AUTO_SAVE_PATHS.includes(c.devicePath);
+}
 /** Saves the first draft (seedOneSticker) when shouldAutoSaveOneSticker says so; returns it, or null. */
 export function autoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string; printerSaved: boolean }, pp: SeedPattern, psSize: string, qr: boolean, printerName: string | null): OneStickerSettings | null {
   if (!shouldAutoSaveOneSticker({ ...c, saved: readSavedOneSticker() != null })) return null;

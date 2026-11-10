@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, autoSaveOneSticker, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
@@ -1951,10 +1951,10 @@ export default function RedesignApp() {
   const [, setPrinterAsked] = useState(0);
   const printerAsked = useRef(false);
   useEffect(() => {
-    if (printerAsked.current || !oneStickerOn || !flagsLoaded || !hasBtBridge() || savedBtPrinter() != null || readSavedOneSticker() != null) return;
+    if (printerAsked.current || !shouldAskSavedPrinter({ visible: oneStickerOn, flagsLoaded, btBridge: hasBtBridge(), printerKnown: savedBtPrinter() != null, saved: readSavedOneSticker() != null, devicePath: osDevicePath })) return;
     printerAsked.current = true;
     void btCall("getBluetoothLabelPrinter").then(() => setPrinterAsked((n) => n + 1)); // re-render → osPrinterName → the auto-save effect
-  }, [oneStickerOn, flagsLoaded]);
+  }, [oneStickerOn, flagsLoaded, osDevicePath]); // once per session; never on a WiFi / text phone
 
   // The shop name every print path puts in the CENTER of the slip (bitmap + classic
   // TSPL sticker, ESC/POS slip, web print) AND the Live print pattern preview — ONE

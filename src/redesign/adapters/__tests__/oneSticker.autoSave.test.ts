@@ -176,6 +176,6 @@ describe("RedesignApp wiring", () => {
     expect(app).toContain("const label = psLabelFor(next.size, devicePath);");
     expect(app).toContain("useEffect(() => { autoSaveNow(); }, [oneStickerOn, flagsLoaded, osDevicePath, osPrinterName]);");
     // the one read-only printer ask: visible account, both reads answered, Bluetooth phone, nothing known / saved
-    expect(app).toContain('if (printerAsked.current || !oneStickerOn || !flagsLoaded || !hasBtBridge() || savedBtPrinter() != null || readSavedOneSticker() != null) return;');
+    expect(app).toContain("if (printerAsked.current || !shouldAskSavedPrinter({ visible: oneStickerOn, flagsLoaded, btBridge: hasBtBridge(), printerKnown: savedBtPrinter() != null, saved: readSavedOneSticker() != null, devicePath: osDevicePath })) return;");
   });
 });
