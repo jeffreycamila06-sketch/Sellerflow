@@ -515,7 +515,7 @@ Keywords: bluetooth off, bluetooth, printer busy, another app, other phone, naka
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.
 
 ## parcel-scan — Parcel Scan (7-11) and Customer Details
-Last checked: 2026-11-03
+Last checked: 2026-11-11
 Keywords: parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家, buyer contact, whatsapp, line, messenger, instagram, contact ng buyer, 買家聯絡方式, 买家联系方式, liên hệ người mua, ช่องทางติดต่อผู้ซื้อ, kontak pembeli
 
 **Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
@@ -537,8 +537,10 @@ Who sees what:
 1. Tap **✏️ Add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
 2. **▣ Scan QR**, **Buyer contact** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
 3. Tap **Export N parcel(s)**, then **Export**, and upload the file on 好賣+ → 大量匯單.
+4. **Batch N / limit** at the top shows your FamilyMart parcels not exported yet. The limit is the same as on 7-11. When it is full, export first — you can still edit or delete saved parcels.
 
 Both:
+- If you can use both, tap **⇄ 全家** (on 7-11) or **⇄ 7-11** (on FamilyMart) at the top right to switch. What you were typing is still there when you come back. Each store keeps its own parcels, batch and export.
 - **Undo last export** puts the last exported parcels back. **Clear exported** removes exported parcels.
 - On a phone, turn on **Export on this phone** first (it is off by default).
 - Android: the file is saved to Downloads — use Chrome.
