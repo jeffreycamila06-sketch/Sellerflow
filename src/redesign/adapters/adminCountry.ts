@@ -9,7 +9,7 @@
 // ⚠️ seller_profiles.country decides the seller's MARKET (market.ts: currency, TW-only
 // tools). The admin pick NEVER touches it — it lives in its own table, which nothing on
 // the seller side reads. Nothing here writes seller_profiles.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { parsePhoneNumberFromString, getCountries, getCountryCallingCode, type CountryCode } from "libphonenumber-js/min";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 
@@ -126,20 +126,29 @@ export async function saveAdminCountry(userId: string, iso: string | null): Prom
 }
 
 // One read when the admin panel opens (zero poll). save() updates the map in place so
-// the list changes without a reload.
+// the list changes without a reload. A save made while that read is still on its way wins over
+// it: the list that arrives later never puts back the old country (Jeff 2026-11-10).
+/** The loaded list with this session's saves on top (null = cleared back to automatic). PURE. */
+export function withSavedHere(loaded: Record<string, string>, savedHere: Record<string, string | null>): Record<string, string> {
+  const n = { ...loaded };
+  for (const [id, c] of Object.entries(savedHere)) { if (c) n[id] = c; else delete n[id]; }
+  return n;
+}
 export function useAdminCountries(enabled: boolean): { picks: Record<string, string>; save: (userId: string, iso: string | null) => Promise<{ ok: boolean }> } {
   const [picks, setPicks] = useState<Record<string, string>>({});
+  const savedHere = useRef<Record<string, string | null>>({});
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    void loadAdminCountries().then((r) => { if (alive && r.ok) setPicks(r.map); });
+    void loadAdminCountries().then((r) => { if (alive && r.ok) setPicks(withSavedHere(r.map, savedHere.current)); });
     return () => { alive = false; };
   }, [enabled]);
   const save = useCallback(async (userId: string, iso: string | null) => {
     const r = await saveAdminCountry(userId, iso);
     if (r.ok) {
       const c = normIso(iso);
-      setPicks((m) => { const n = { ...m }; if (c) n[userId] = c; else delete n[userId]; return n; });
+      savedHere.current = { ...savedHere.current, [userId]: c };
+      setPicks((m) => withSavedHere(m, { [userId]: c }));
     }
     return r;
   }, []);
