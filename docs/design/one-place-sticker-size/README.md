@@ -19,3 +19,10 @@ TODAY (main c35e7a81) vs NEW:
 - `NEW_live-print-pattern_too-wide-b1-100x60_iphone-390` / `NEW_printer-settings_too-wide-b1-100x60_iphone-390` — a saved 100×60 on a Niimbot B1: the red too-wide note on both screens (the saved size is kept until the seller picks).
 - `NEW_printer-settings_custom-40x30-qr-note_iphone-390` — Custom 40×30 typed: the QR note before Save size.
 - `NEW_printer-settings_laptop-wifi-tab_*` — the laptop on the WiFi tab: the Sticker size card is there too.
+
+QR after a Change round trip (Jeff's blocking bug on dcd4104b — saved QR ON at 100×60 → Change → Custom 40×30 →
+100×60 → Back):
+- `TODAY-dcd4104b_live-print-pattern_after-round-trip-qr-back-on_iphone-390` — the kept draft still had the QR on, so
+  the switch showed ON again (and Save would store qr: true).
+- `NEW_live-print-pattern_after-round-trip-qr-stays-off_iphone-390` — the size pick turned the draft's QR off; the
+  switch is usable at 100×60 but stays OFF until the seller turns it on.
