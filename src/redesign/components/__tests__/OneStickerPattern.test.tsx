@@ -226,7 +226,7 @@ describe("OneStickerPattern", () => {
     const { onSave } = renderIt();
     const save = () => screen.getByTestId("os-save") as HTMLButtonElement;
     expect(save().disabled).toBe(false); // never saved here → can adopt as is
-    expect(screen.getByTestId("os-device-note").textContent).toContain("keeps today's sticker");
+    expect(screen.getByTestId("os-device-note").textContent).toBe("On this browser, tap Save to use the new sticker. In the phone app it is used automatically.");
     fireEvent.click(save());
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("os-device-note").textContent).toContain("This device prints this sticker");
@@ -297,10 +297,10 @@ describe("OneStickerPattern", () => {
   it("device note on a device that never saved: the opt-in note, with or without changes", async () => {
     const note = () => screen.getByTestId("os-device-note").textContent;
     renderIt();
-    expect(note()).toBe("This device keeps today's sticker until you tap Save.");
+    expect(note()).toBe("On this browser, tap Save to use the new sticker. In the phone app it is used automatically.");
     await plusReady("shop");
     fireEvent.click(screen.getByTestId("os-shop-plus"));
-    expect(note()).toBe("This device keeps today's sticker until you tap Save.");
+    expect(note()).toBe("On this browser, tap Save to use the new sticker. In the phone app it is used automatically.");
   });
   it("the saved-with-changes note exists in all 8 languages", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "../../i18n/index.tsx"), "utf8");

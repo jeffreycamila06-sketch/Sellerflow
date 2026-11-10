@@ -11,7 +11,7 @@ import {
   recommendedSettings, renderOneSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, qrSizeOk, isSmallClass, tooWideFor, NOTE_TONE,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
-import { oneStickerScreenFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
+import { oneStickerScreenFonts, renderOptsFor, sampleInput, AUTO_SAVE_PATHS, type OneStickerPath } from "../adapters/oneStickerPrint";
 import type { OneStickerDevicePath } from "../adapters/printing";
 import { cachedFit, rememberFit, startScreenFit, type StepCaps } from "../adapters/oneStickerScreen";
 import { ADMIN_LANG_SAMPLES, ADMIN_DEFAULT_SAMPLE, adminSampleInput, type AdminLangSample } from "../adapters/adminLangSamples";
@@ -178,6 +178,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const [s0, setS] = useState<OneStickerSettings>(p.initial);
   const [base, setBase] = useState<OneStickerSettings>(p.initial); // what Save compares against
   const [saved, setSaved] = useState(p.savedOnDevice);
+  // saved on this phone while the screen is open (the auto-save landed after it opened) → the note follows at once
+  // (adjusted during render, not an effect; the seller's edits are kept — never a remount)
+  const [savedProp, setSavedProp] = useState(p.savedOnDevice);
+  if (p.savedOnDevice !== savedProp) { setSavedProp(p.savedOnDevice); if (p.savedOnDevice) setSaved(true); }
   const [customW, setCustomW] = useState(String(p.initial.size.w));
   const [customH, setCustomH] = useState(String(p.initial.size.h));
   const [customOpen, setCustomOpen] = useState(!!p.initial.size.custom);
@@ -415,7 +419,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
           <button type="button" onClick={reset} data-testid="os-reset" style={{ minHeight: TAP, padding: "6px 12px", border: "none", background: "none", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t.rd_os_reset}</button>
         </div>
-        <div data-testid="os-device-note" style={{ marginTop: 9, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.45 }}>{saved ? (dirty ? t.rd_os_unsaved_note : t.rd_os_active_note) : t.rd_os_optin_note}</div>
+        <div data-testid="os-device-note" style={{ marginTop: 9, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.45 }}>{/* "automatically" ONLY once the new sticker is saved on this phone (Jeff 2026-11-10); not saved yet → tap Save */}
+          {saved ? (dirty ? t.rd_os_unsaved_note : AUTO_SAVE_PATHS.includes(p.devicePath) ? t.rd_os_auto_note : t.rd_os_active_note)
+            : p.devicePath === "laptop" ? t.rd_os_optin_note : AUTO_SAVE_PATHS.includes(p.devicePath) ? t.rd_os_phone_save_note : null}</div>
         <button type="button" onClick={save} disabled={!canSave} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
         </div>
       </div>

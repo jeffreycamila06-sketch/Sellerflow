@@ -136,9 +136,14 @@ describe("Manage sellers — country pill", () => {
 describe("bucket lists — country tag", () => {
   it("Expiring soon shows flag + name under the email line, tappable", async () => {
     const r = view("subExpiring");
-    await waitFor(() => expect(r.getAllByTestId("cty-tag").length).toBe(4));
-    const names = r.getAllByTestId("cty-tag").map((n) => n.textContent);
-    expect(names).toEqual(expect.arrayContaining(["Canada", "Taiwan", "Philippines", "Hindi alam"]));
+    // Wait for the admin pick (Canada, loaded async from admin_user_country) — not just
+    // for 4 tags: before the pick lands, picked@x.com shows its saved country (Taiwan).
+    await r.findByText("Canada");
+    await waitFor(() => {
+      const names = r.getAllByTestId("cty-tag").map((n) => n.textContent);
+      expect(names.length).toBe(4);
+      expect(names).toEqual(expect.arrayContaining(["Canada", "Taiwan", "Philippines", "Hindi alam"]));
+    });
     fireEvent.click(r.getAllByTestId("cty-tag")[0]);
     expect(r.getByTestId("cty-picker")).toBeTruthy();
   });

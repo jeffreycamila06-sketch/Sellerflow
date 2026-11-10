@@ -64,7 +64,7 @@ export function useFeatureSwitches(userKey: string): FeatureSwitches {
   useEffect(() => {
     if (!userKey) return;
     let live = true;
-    void loadFeatureSwitches().then((sw) => { if (live) setState({ key: userKey, sw: sw === SWITCHES_OFF ? { ...SWITCHES_OFF } : sw }); });
+    void loadFeatureSwitches().then((sw) => { if (!live) return; const failed = sw === SWITCHES_OFF ? { ...SWITCHES_OFF } : null; if (failed) FAILED_READS.add(failed); setState({ key: userKey, sw: failed ?? sw }); });
     return () => { live = false; };
   }, [userKey]);
   return state.key === userKey && userKey ? state.sw : SWITCHES_OFF;
@@ -74,4 +74,10 @@ export function useFeatureSwitches(userKey: string): FeatureSwitches {
 // still reading. For the few screens that must not decide before the switches are known.
 export function switchesLoaded(sw: FeatureSwitches): boolean {
   return sw !== SWITCHES_OFF;
+}
+// the read finished AND answered (not a failed read stored as all-off) — for the new sticker's auto-save,
+// which must never run on a read that did not answer (Jeff 2026-11-10)
+const FAILED_READS = new WeakSet<FeatureSwitches>();
+export function switchesOk(sw: FeatureSwitches): boolean {
+  return switchesLoaded(sw) && !FAILED_READS.has(sw);
 }

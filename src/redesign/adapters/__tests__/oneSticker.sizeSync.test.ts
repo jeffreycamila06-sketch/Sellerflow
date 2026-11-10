@@ -75,7 +75,8 @@ describe("Printer settings Label size ↔ one sticker size", () => {
   it("RedesignApp: Save and the kept-size revert use the same rule; a TEXT / WiFi phone never starts at 50×30; the laptop test never waits on a path without a page", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
     expect(src).toContain("const label = psLabelFor(next.size, oneStickerDevicePath(");
-    expect(src).toContain('if ((path === "text" || path === "wifi") && size.w === 50 && size.h === 30) size = { w: 60, h: 40 };');
+    // seedOneSticker moved to oneStickerPrint.ts (auto-save, Jeff 2026-11-10) — the rule itself is unchanged
+    expect(fs.readFileSync(path.join(__dirname, "../oneStickerPrint.ts"), "utf8")).toContain('if ((path === "text" || path === "wifi") && size.w === 50 && size.h === 30) size = { w: 60, h: 40 };');
     const pr = fs.readFileSync(path.join(__dirname, "../printing.ts"), "utf8");
     expect(pr).toContain('if (!r.ok || r.via !== "browser") res({ ok: r.ok, code: "", message: "", via: r.via });');
   });
