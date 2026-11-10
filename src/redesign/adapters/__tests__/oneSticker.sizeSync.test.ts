@@ -55,7 +55,8 @@ describe("Printer settings Label size ↔ one sticker size", () => {
     const block = src.slice(at, at + 1500);
     expect(block).toContain('if (sync.status === "kept")');
     expect(block).toContain("setPsSize(psLabelFor(sync.keep, devPath) ?? psSize)");
-    expect(block).toMatch(/rd_os_sync_niimbot[\s\S]*rd_os_sync_too_wide[\s\S]*rd_os_sync_text/);
+    expect(block).toMatch(/rd_os_nb_size_kept[\s\S]*rd_os_sync_too_wide[\s\S]*rd_os_sync_text/);
+    expect(block).not.toContain("rd_os_sync_niimbot"); // replaced 2026-11-10 by rd_os_nb_size_kept (the old text pointed to the Live print pattern)
   });
   it("Printer settings only ever shows one of its own sizes: psLabelFor (standard, not custom, no 50×30 on TEXT / WiFi)", () => {
     expect(psLabelFor({ w: 100, h: 60 })).toBe("100x60mm (Standard)");

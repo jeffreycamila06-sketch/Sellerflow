@@ -205,6 +205,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   useEffect(() => { draftRef.current?.(s); }, [JSON.stringify(s)]); // eslint-disable-line react-hooks/exhaustive-deps -- report each new draft
   const path = pathForPreview(p.devicePath);
   const customAllowed = p.devicePath !== "text" && p.devicePath !== "wifi";
+  const olderPath = !customAllowed; // TEXT / WiFi: this phone keeps printing the older sticker
   const dirty = !sameSettings(s, base);
   const small = isSmallClass(s.size.w, s.size.h);
   const tooWide = p.printerLimit !== undefined ? (p.printerLimit && s.size.w > p.printerLimit.maxLabelMm ? p.printerLimit : null) : tooWideFor(p.printerName, s.size.w);
@@ -405,7 +406,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           <button type="button" onClick={reset} data-testid="os-reset" style={{ minHeight: TAP, padding: "6px 12px", border: "none", background: "none", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t.rd_os_reset}</button>
         </div>
         <div data-testid="os-device-note" style={{ marginTop: 9, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.45 }}>{/* "automatically" ONLY once the new sticker is saved on this phone (Jeff 2026-11-10); not saved yet → tap Save */}
-          {saved ? (dirty ? t.rd_os_unsaved_note : AUTO_SAVE_PATHS.includes(p.devicePath) ? t.rd_os_auto_note : t.rd_os_active_note)
+          {/* a TEXT / WiFi phone prints the older sticker whatever is saved: its own note above says so — ONE note, never
+              also "This device prints this sticker" / "used after you tap Save" (Jeff 2026-11-10) */}
+          {olderPath ? null : saved ? (dirty ? t.rd_os_unsaved_note : AUTO_SAVE_PATHS.includes(p.devicePath) ? t.rd_os_auto_note : t.rd_os_active_note)
             : p.devicePath === "laptop" ? t.rd_os_optin_note : AUTO_SAVE_PATHS.includes(p.devicePath) ? t.rd_os_phone_save_note : null}</div>
         <button type="button" onClick={save} disabled={!canSave} data-testid="os-save" style={{ width: "100%", marginTop: 8, padding: "13px 0", minHeight: 46, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.45, boxShadow: "0 5px 14px var(--accent-soft)" }}>{t.rd_pp_save_settings}</button>
         </div>

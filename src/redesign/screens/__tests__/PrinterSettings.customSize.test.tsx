@@ -53,7 +53,7 @@ describe("Printer settings → Sticker size → Custom", () => {
     fireEvent.click(screen.getByTestId("ps-custom-save"));
     expect(c.onSave).not.toHaveBeenCalled();
   });
-  it("a saved custom size shows as the current size; hidden with a note on the text / WiFi sticker or before the new sticker is saved", () => {
+  it("a saved custom size shows as the current size; hidden with a note on the text / WiFi sticker", () => {
     const { unmount } = renderPS(cs({ saved: { w: 50, h: 40, custom: true } }), false);
     expect(screen.getByTestId("ps-size-current").textContent).toBe("Custom 50×40 mm");
     unmount();
@@ -61,10 +61,6 @@ describe("Printer settings → Sticker size → Custom", () => {
     expect(screen.queryByTestId("ps-size-custom")).toBeNull();
     expect(screen.getByTestId("ps-custom-hidden").textContent).toContain("not available for this printer");
     a.unmount();
-    const b = renderPS(cs({ allowed: false, reason: "not_saved", saved: null }));
-    expect(screen.queryByTestId("ps-size-custom")).toBeNull();
-    expect(screen.getByTestId("ps-custom-hidden").textContent).toContain("save the new sticker in Live print pattern first");
-    b.unmount();
     // C1 (Jeff 2026-11-10): no "set it in LIVE print pattern" note for a Niimbot any more — its size is in the one list
     expect(screen.queryByText(/Your Niimbot prints the size set in Live print pattern/)).toBeNull();
   });
@@ -137,7 +133,7 @@ describe("RedesignApp wiring", () => {
     expect(app).toContain('const osSizeMode = oneStickerOn && osDevicePath !== "text" && osDevicePath !== "wifi";');
     expect(app).toContain('const older = devPath === "text" || devPath === "wifi";');
     expect(app).toContain("allowed: !older && saved != null,");
-    expect(app).toContain('reason: older ? "text" as const : saved == null ? "not_saved" as const : undefined,');
+    expect(app).toContain('reason: older || saved == null ? "text" as const : undefined,');
     expect(app).not.toContain('"niimbot" as const');
     expect(app).toContain('oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName, osDevicePath === "niimbot"), printerName: osPrinterName, limit: oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot"), onPick: onPickOneSize } : undefined}');
   });
