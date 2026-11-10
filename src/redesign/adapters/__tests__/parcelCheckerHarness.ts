@@ -35,6 +35,9 @@ export type Sim = {
   // and dry parcels that ARRIVE during the run (moved into `dry` when their time comes)
   warmupSwitch: "true" | "false"; warmStores: string[]; warmVerdicts: { store: string; status: string; t: number }[];
   arrivals: { t: number; row: Record<string, unknown> }[]; arrivedAt: Record<string, number>;
+  gaveUp?: number;   // 1.18.1: what admin_parcel_gave_up_count answers (default 0)
+  gaveUpMs?: number; // 1.18.1: how long admin_parcel_gave_up_count takes to answer (default = fetchMs)
+  frozenArrivals?: { t: number; id: string; store_id: string }[];  // 冷凍 parcels that appear during the run
 };
 export function makeSim(p: { t0: number; emapMs: number; phoneMs?: number; fetchMs?: number; localMs?: number; dry?: number; frozen?: { id: string; store_id: string }[]; frozenSwitch?: "true" | "false";
   warmupSwitch?: "true" | "false"; warmStores?: string[]; arrivals?: number[] }): Sim {
@@ -105,6 +108,8 @@ function simBody(sim: Sim, url: string, init?: { body?: string }): unknown {
     sim.normalVerdicts.push({ id: String(body.p_id), t: sim.now }); return {};
   }
   if (/admin_parcel_frozen_pending/.test(url)) {
+    for (const a of (sim.frozenArrivals ?? []).filter((x) => x.t <= sim.now)) sim.frozen.push({ id: a.id, store_id: a.store_id, retryAt: 0 });
+    sim.frozenArrivals = (sim.frozenArrivals ?? []).filter((x) => x.t > sim.now);
     const lim = Number(body.p_limit) || 3; const seen = new Set<string>(); const out: unknown[] = [];
     for (const f of sim.frozen) { if (out.length >= lim) break; if (f.retryAt > sim.now || seen.has(f.store_id)) continue; seen.add(f.store_id); out.push({ id: f.id, store_id: f.store_id, queue_depth: sim.frozen.length }); }
     return out;
@@ -126,6 +131,7 @@ function simBody(sim: Sim, url: string, init?: { body?: string }): unknown {
     sim.warmVerdicts.push({ store: st, status: String(body.p_status), t: sim.now }); return {};
   }
   if (/admin_frozen_warmup_stop/.test(url)) { sim.warmupSwitch = "false"; return {}; }
+  if (/admin_parcel_gave_up_count/.test(url)) return sim.gaveUp ?? 0;  // 1.18.1: given-up rows waiting (sim: none unless set)
   return undefined;
 }
 export type BootOpts = {
@@ -174,6 +180,8 @@ export type BootOpts = {
   warmupStopHttp?: number;                     // admin_frozen_warmup_stop status (default 200)
   frozenReply?: (row?: { id?: string; store_id?: string }) => Record<string, unknown> | null; // the FULL PC_FROZEN_CHECK reply (overrides frozenVerdict)
   holdStorageGet?: string;                     // chrome.storage.local.get of THIS key is held: queued in calls.heldGets until the test releases it
+  // 1.18.1: admin_parcel_gave_up_count (sql/147) — a count (default 0), "error" (HTTP 500), "throw" (network), or a function
+  gaveUp?: number | "error" | "throw" | (() => number | "error" | "throw");
 };
 
 export function bootWorker(opts: BootOpts = {}) {
@@ -293,6 +301,12 @@ export function bootWorker(opts: BootOpts = {}) {
       const rows = opts.warmupSwitch === "true" || opts.warmupSwitch === "false" ? [{ key: "frozen_warmup_enabled", value: opts.warmupSwitch }] : [];
       return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows), headers: { get: () => "application/json" } };
     }
+    if (/admin_parcel_gave_up_count/.test(url)) {
+      const g = typeof opts.gaveUp === "function" ? opts.gaveUp() : (opts.gaveUp ?? 0);
+      if (g === "throw") throw new Error("network down");
+      if (g === "error") return { ok: false, status: 500, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
+      return { ok: true, status: 200, json: async () => g, text: async () => JSON.stringify(g), headers: { get: () => "application/json" } };
+    }
     if (/admin_frozen_warmup_next/.test(url)) {
       if (opts.warmupNext === "error") return { ok: false, status: 500, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
       const rows = typeof opts.warmupNext === "function" ? opts.warmupNext(JSON.parse(String(init?.body ?? "{}"))) : (opts.warmupNext ?? []);
@@ -325,7 +339,10 @@ export function bootWorker(opts: BootOpts = {}) {
   };
   // sim: every database answer arrives after the sim's fetch delay
   const fetch = opts.sim
-    ? (url: string, init?: { body?: string }) => new Promise((res, rej) => { const p = fetchNow(url, init); simAdd(opts.sim!, opts.sim!.fetchMs, () => { p.then(res, rej); }); })
+    ? (url: string, init?: { body?: string }) => new Promise((res, rej) => {
+        const ms = /admin_parcel_gave_up_count/.test(url) && opts.sim!.gaveUpMs != null ? opts.sim!.gaveUpMs : opts.sim!.fetchMs;
+        const p = fetchNow(url, init); simAdd(opts.sim!, ms, () => { p.then(res, rej); });
+      })
     : fetchNow;
   // setTimeout: the row-gap/health sleeps (<=2s) resolve immediately; the boot
   // schedule (0) and the ~5s re-arm are recorded, NOT run — the test drives ticks.

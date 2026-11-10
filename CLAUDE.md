@@ -4813,3 +4813,27 @@ E-Map check 10–41 s; the cache only reached a row through admin_parcel_frozen_
   non-`OK;` bodies stay unknown). `MAINT_URL_RE` reads the redirect PATH only; a login form / password input = block even
   when it looks like maintenance. Night: 6 no-answers in a row → no probes until 05:00 (`nightMisses`, `nightRetryAt`
   clamped to the window end); `warm.misses` reset at the 01:00 and 05:00 edges (`lastNight` in mem).
+
+## 2026-11-10 — FROZEN WARM-UP 1.18.1: REAL PARCELS ALWAYS FIRST (branch `claude/warmup-real-first`, NOT merged; sql/147 NOT applied)
+Root cause check first (read-only): the slow first answers blamed on warm-up were wrong store codes the seller
+fixed later — not warm-up. Two real holes were closed anyway (frozen-check.js only; background.js, emap-711.js,
+myship-711.js and app source untouched):
+- **(b) fresh read:** a warm-up request needs the dry lane's pending read from THIS pass — `pc_status.multiLastAt`
+  later than the previous kick (`st.lastKickAt`, set every kick) and than the worker's boot. A pass that skipped its
+  read (no token / no SFL tab / lease re-check) left the old "queue 0" in pc_status, which 1.18.0 trusted for 30 s.
+- **(a) given-up rows:** rows whose store half gave up ('unknown', waiting for the E-Map recovery re-queue) are NOT in
+  the pending queue. New RPC **`admin_parcel_gave_up_count()`** (sql/147, `is_admin()` inside, = the re-queue's own
+  filter, no index, ~4 ms) read ≤ once a minute only while warm-up is on. No warm-up unless the read says 0, is ≤ 90 s
+  old, and — after a give-up seen in this worker (`pcEv.lastGiveUpAt`) — 60 s have passed and the read was taken
+  ≥ 30 s after it. Failed / missing / bad read = no warm-up (fail-closed).
+- Both gates are checked again right before the send. Every send logs
+  `[PC-WARMUP] warm-up send store=… queue=<n> read=<ms>ms gaveUp=<n>` — after deploy every line must say `queue=0 gaveUp=0`.
+- **Post-deploy metric:** `docs/ops/warmup-metrics.sql` (Q1 first dry answer per day without cached / wrong-code
+  rows; Q2 warm-ups sent while a real parcel waited — must be 0; Q3 given-up rows now). 1.18.0 baseline in the file.
+- Tests: `parcelCheckerWarmupGates.test.ts` (15) — 1.18.0's code fails 11 of them; 7 sabotage copies each go red.
+  `scripts/sql147-behaviour.mjs` (PGlite, 14 checks). Manifest **1.18.1**.
+- **Order:** apply sql/147 → install 1.18.1. Without sql/147 the warm-up simply stays off (real parcels unaffected).
+- **Follow-up (same branch):** the gave-up read runs AFTER the live frozen queue refresh (`readPending`) and is NOT
+  awaited (one at a time, `warm.gaveUpBusy`). Just moving it was not enough: an awaited 10 s read still held the pass,
+  and a held pass makes the next kick skip its live frozen request (+5.3 s in the sim). Sim test: gave-up 10 s →
+  every live frozen request at the same time as with the read off. Source pin: after `readPending`, `void`, guarded.

@@ -122,6 +122,18 @@
   // A block (captcha / login / 403 / 429) still STOPS, any hour.
   const WARMUP_NIGHT_RETRY_MS = 10 * 60 * 1000;
   const WARMUP_NIGHT_MISS_LIMIT = 6;            // night: 6 no-answers in a row → no more probes until 05:00
+  // 1.18.1 — REAL PARCELS FIRST. Two more gates, BOTH checked right before every warm-up send:
+  //  (b) FRESH READ: the dry lane's pending read must have run in THIS pass — pc_status.multiLastAt later than
+  //      the previous pass's kick (and this worker's boot). A pass that skipped its read (no SFL tab / token,
+  //      a lease re-check) leaves the previous "0" in pc_status → no warm-up.
+  //  (a) GIVEN-UP ROWS: no warm-up while any parcel's store half is the given-up 'unknown' that the re-queue
+  //      would put back (admin_parcel_gave_up_count, sql/147 = the re-queue's own filter). Read at most once a
+  //      minute and only while warm-up is on; a failed / missing / older-than-90 s read = no warm-up. A give-up
+  //      seen in THIS worker also blocks for 60 s, and until a read taken ≥ 30 s after it says 0.
+  const WARMUP_GAVEUP_EVERY_MS = 60 * 1000;
+  const WARMUP_GAVEUP_MAX_AGE_MS = 90 * 1000;
+  const WARMUP_GIVEUP_HOLD_MS = 60 * 1000;
+  const WARMUP_GIVEUP_SETTLE_MS = 30 * 1000;
   // the end of the current / next maintenance window (05:00 Asia/Taipei) — background.js's window hours
   function nightEndAfter(nowMs) {
     const H = 3600 * 1000, D = 24 * H, TZ = 8 * H;
@@ -137,6 +149,7 @@
     storeAt: new Map(), injectedAt: new Map(),
     passes: 0, checks: 0, unknowns: 0, skippedBusy: 0, lastError: "",
     kicks: 0,                  // kicks so far — one per pass; === pcEv.tick ⇔ no pass is before its kick
+    lastKickAt: 0,             // 1.18.1 (b): the previous kick — this pass's pending read must be later
     behindSince: 0,            // when kicks first fell behind pcEv.tick (0 = in step)
     pauseUntil: 0,             // 1: no frozen E-Map request before this (after a timeout / no answer / network error)
     logAt: new Map(),          // reason → last log time (skip reasons are logged at most once a minute)
@@ -153,6 +166,7 @@
     lastNight: null,           // the window state of the last pass (null = none yet) — 01:00 / 05:00 edge detection
     checked: null, left: null, nothingDue: false, lastVerdictAt: 0,
     stateSig: "", loaded: false,
+    gaveUp: { ok: false, n: null, at: 0 }, gaveUpReadAt: 0, gaveUpBusy: false,  // 1.18.1 (a): the last admin_parcel_gave_up_count read
   };
   // the part of `warm` that must survive a worker restart (pc_frozen_warmup.mem)
   const MEM_KEYS = ["lastAt", "pauseUntil", "misses", "pauses", "stopped", "stopReason", "stopWritten", "sawOffSinceStop", "stopTriedAt", "nightRetryAt", "nightMisses", "lastNight", "queueAt", "queue"];
@@ -290,7 +304,7 @@
   // ── one pass: at most ONE frozen E-Map request, sent right at the kick ────────
   // Order: (1) the request, from rows read in an earlier pass — nothing from the database
   // before it; (2) its verdict write; (3) refresh the switch / rows for the NEXT pass.
-  async function runPass(pass, otherAtKick, kickAt) {
+  async function runPass(pass, otherAtKick, kickAt, prevKickAt) {
     const nowMs = Date.now();
     const cfg = await withTimeout(pcConfig(), CONFIG_TIMEOUT_MS, "config read");
     if (!cfg.multiSeller || cfg.paused) return;
@@ -313,7 +327,7 @@
       // at night the live frozen lane does not run, so there is no frozen request to give way to
       if (night || (!st.queue.length && nowMs < st.emptyUntil && st.lastRaw === 0)) {
         await loadWarm();                                   // 6: the saved warm-up state, before the first warm-up decision
-        await warmOne(pass, otherAtKick, rpc, tabId, nowMs, kickAt, night);
+        await warmOne(pass, otherAtKick, rpc, tabId, nowMs, kickAt, night, prevKickAt);
       }
     }
     // a failed boot read is retried here every pass — also with the frozen switch OFF or a frozen queue
@@ -331,6 +345,13 @@
     const nightNow = pcInMaintenance(Date.now());
     if (!nightNow && (!st.queue.length || Date.now() - st.queueAt >= QUEUE_MAX_AGE_MS) && Date.now() >= st.emptyUntil && Date.now() >= st.pauseUntil) {
       await readPending(rpc.cfg, rpc.rpcHeaders, Date.now());          // D: not again for 60 s after an empty read; never in the window (unchanged)
+    }
+    // 1.18.1 (a): the given-up count — AFTER the live frozen queue refresh, and NOT awaited: a slow database
+    // never delays that refresh nor holds the pass (a held pass = the next kick skips its live frozen request).
+    // One read at a time; only while warm-up is on (switch off = no extra request), ≤ once a minute.
+    if (warm.on && !warm.stopped && !warm.gaveUpBusy && Date.now() - warm.gaveUpReadAt >= WARMUP_GAVEUP_EVERY_MS) {
+      warm.gaveUpBusy = true;
+      void readGaveUp(rpc.cfg, rpc.rpcHeaders, Date.now()).finally(() => { warm.gaveUpBusy = false; });
     }
     if (warm.loaded && warm.on && (nightNow || (!st.queue.length && Date.now() < st.emptyUntil && st.lastRaw === 0)) && Date.now() - warm.queueAt >= WARMUP_LIST_MAX_AGE_MS
         && Date.now() >= warm.emptyUntil && Date.now() >= warm.pauseUntil && leaseConfirmed(Date.now()) && (await dryIdle())) {
@@ -381,13 +402,47 @@
   // ── WARM-UP ───────────────────────────────────────────────────────────────────
   // The dry lane is idle: its last pending read (≤ 30 s ago) had 0 rows and nothing needs the store
   // half. Read-only (pc_status is written by the dry lane; never by this module).
-  async function dryIdle() {
-    if (pcInFlight.size > 0 || pcEv.lastAnyNeedStore) return false;
+  // 1.18.1 (b): with minReadAt, that read must also be LATER than minReadAt (= it ran in this pass).
+  // Returns "" when idle, else the reason (for the throttled skip log).
+  let lastDry = { queue: null, at: 0 };   // the last pc_status snapshot dryState looked at (for the send log)
+  async function dryState(minReadAt) {
+    if (pcInFlight.size > 0) return "dry row in flight";
+    if (pcEv.lastAnyNeedStore) return "dry row needs the store half";
     let sts = null;
-    try { sts = await withTimeout(pcGet(PC_STATUS_KEY, {}), CONFIG_TIMEOUT_MS, "status read"); } catch { return false; }
-    if (!sts || sts.multi !== "ok" || Number(sts.multiQueueDepth) !== 0) return false;
+    try { sts = await withTimeout(pcGet(PC_STATUS_KEY, {}), CONFIG_TIMEOUT_MS, "status read"); } catch { return "status unreadable"; }
+    if (!sts || sts.multi !== "ok") return `dry lane ${sts && sts.multi ? sts.multi : "no status"}`;
     const at = Date.parse(String(sts.multiLastAt || ""));
-    return Number.isFinite(at) && Date.now() - at <= WARMUP_DRY_FRESH_MS;
+    lastDry = { queue: Number(sts.multiQueueDepth), at: Number.isFinite(at) ? at : 0 };
+    if (Number(sts.multiQueueDepth) !== 0) return `dry queue ${sts.multiQueueDepth}`;
+    if (!Number.isFinite(at) || Date.now() - at > WARMUP_DRY_FRESH_MS) return "dry read too old";
+    if (minReadAt !== undefined && !(at > minReadAt)) return "no pending read in this pass";
+    return "";
+  }
+  async function dryIdle(minReadAt) { return (await dryState(minReadAt)) === ""; }
+  // 1.18.1 (a): no given-up row waiting for the re-queue — by a fresh DB read taken after any give-up
+  // this worker saw, and not within 60 s of one.
+  function gaveUpClear(nowMs) {
+    const g = warm.gaveUp;
+    if (!g || g.ok !== true || g.n !== 0) return false;                   // unread / failed / rows waiting
+    if (nowMs - g.at > WARMUP_GAVEUP_MAX_AGE_MS) return false;            // too old
+    const gu = Number(pcEv.lastGiveUpAt) || 0;
+    if (gu && nowMs - gu < WARMUP_GIVEUP_HOLD_MS) return false;           // a give-up just happened here
+    if (gu && g.at < gu + WARMUP_GIVEUP_SETTLE_MS) return false;          // the read may predate its 'unknown' write
+    return true;
+  }
+  async function readGaveUp(cfg, headers, nowMs) {
+    warm.gaveUpReadAt = nowMs;
+    try {
+      const r = await withTimeout(fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_gave_up_count`, { method: "POST", headers, body: "{}" }), DB_TIMEOUT_MS, "gave-up read");
+      if (!r.ok) { warm.gaveUp = { ok: false, n: null, at: nowMs }; logSkip("warm-gaveup-read", `gave-up read rpc_${r.status} — warm-up held`); return; }
+      const n = await withTimeout(r.json(), DB_TIMEOUT_MS, "gave-up body");
+      const ok = typeof n === "number" && Number.isInteger(n) && n >= 0;
+      warm.gaveUp = { ok, n: ok ? n : null, at: nowMs };
+      if (!ok) logSkip("warm-gaveup-read", "gave-up read: bad answer — warm-up held");
+    } catch (e) {
+      warm.gaveUp = { ok: false, n: null, at: nowMs };
+      logSkip("warm-gaveup-read", `gave-up read failed (${(e && e.message) || "network"}) — warm-up held`);
+    }
   }
   const isBlocked = (resp, reason) => Boolean(resp && resp.blocked === true) || BLOCK_RE.test(String(reason || ""));
   // A no-answer (counts toward the 30-min pause) vs a real answer that is just not a verdict
@@ -481,7 +536,7 @@
     logW(`warm-up STOPPED: ${warm.stopReason} (store=${store}) — turning the warm-up switch off`);
   }
   // ONE warm-up request, at the kick, behind the same guards as the frozen request.
-  async function warmOne(pass, otherAtKick, rpc, tabId, nowMs, kickAt, night) {
+  async function warmOne(pass, otherAtKick, rpc, tabId, nowMs, kickAt, night, prevKickAt) {
     if (!warm.loaded) return;                                              // the saved state is not read yet → no warm-up decision
     if (!warm.on || warm.stopped || !warm.queue.length) return;
     if (nowMs - warm.lastAt < WARMUP_GAP_MS) return;                       // the 60 s pace
@@ -489,7 +544,10 @@
     if (nowMs < warm.pauseUntil || nowMs < st.pauseUntil) return;          // warm-up pause / the frozen lane's slow-E-Map pause
     if (!leaseConfirmed(nowMs)) return;                                    // 10: a fresh, confirmed lease only
     if (otherAtKick || laneBusy(nowMs)) return;
-    if (!(await dryIdle())) return;                                        // a real parcel waiting → it goes first
+    if (!gaveUpClear(nowMs)) { logSkip("warm-gaveup", warm.gaveUp && warm.gaveUp.ok && warm.gaveUp.n > 0 ? `warm-up held: ${warm.gaveUp.n} given-up parcel(s) wait for the re-queue` : "warm-up held: given-up rows not confirmed 0"); return; } // 1.18.1 (a)
+    const minReadAt = Math.max(Number(prevKickAt) || 0, Number(pcEv.bootAt) || 0);
+    const idle = await dryState(minReadAt);                                // a real parcel waiting → it goes first; (b) the read is from THIS pass
+    if (idle) { if (idle === "no pending read in this pass") logSkip("warm-stale", `warm-up held: ${idle}`); return; }
     warm.queue = warm.queue.filter((s) => storeDue(st.storeAt, s, nowMs));
     if (!warm.queue.length) return;
     if (!(await ensureScript(tabId, nowMs))) return;
@@ -498,7 +556,13 @@
     if (await alarmSoon(Date.now())) return;
     if (otherPass(false) || pcInFlight.size > 0) return;
     if (Date.now() - kickAt > WARMUP_SEND_WINDOW_MS) { logSkip("warm-late", `warm-up skipped: ${Date.now() - kickAt} ms since the kick (> ${WARMUP_SEND_WINDOW_MS} ms)`); return; } // 11
+    // 1.18.1: the last look right before the send — both gates again, on what pc_status says NOW
+    if (!gaveUpClear(Date.now())) return;
+    const lastLook = await dryState(minReadAt);
+    if (lastLook) { logSkip("warm-lastlook", `warm-up held at the send: ${lastLook}`); return; }
     const store = warm.queue.shift();
+    // 1.18.1 post-deploy check: EVERY send logs the dry queue + read age it was decided on — "queue=" must be 0
+    logW(`warm-up send store=${store} queue=${lastDry.queue} read=${Date.now() - lastDry.at}ms gaveUp=${warm.gaveUp.n}${night ? " night" : ""}`);
     warm.lastAt = Date.now();
     st.storeAt.set(store, Date.now());                                     // shares the per-store 10-min floor
     void saveWarmState();                                                  // 6: the pace survives a restart (not awaited — never delays the request)
@@ -565,15 +629,17 @@
     resyncKicks(Date.now());
     const otherAtKick = otherPass(true);                      // synchronous: before the kicking pass can end
     const kickAt = Date.now();                                // 11: the warm-up request only within 2 s of this
+    const prevKickAt = st.lastKickAt;                         // 1.18.1 (b): this pass's pending read must be later than this
+    st.lastKickAt = kickAt;                                   // set for EVERY pass, busy or not
     if (st.busy) return;
     st.busy = true;
     Promise.resolve()
-      .then(() => withTimeout(runPass(pass, otherAtKick, kickAt), PASS_TIMEOUT_MS, "frozen pass"))
+      .then(() => withTimeout(runPass(pass, otherAtKick, kickAt, prevKickAt), PASS_TIMEOUT_MS, "frozen pass"))
       .catch((e) => { st.lastError = (e && e.message) || "pass threw"; log(`pass failed: ${st.lastError}`); })
       .then(() => { st.busy = false; });
   }
   pcFrozenKick.__test = { switchValue, verdictOf, slowAnswer, pickRows, storeDue, laneBusy, otherPass, alarmSoon, resyncKicks, state: st,
-    warm, isBlocked, noAnswer, leaseConfirmed, WARMUP_GAP_MS, WARMUP_SEND_WINDOW_MS };
+    warm, isBlocked, noAnswer, leaseConfirmed, WARMUP_GAP_MS, WARMUP_SEND_WINDOW_MS, gaveUpClear, dryState };
   g.pcFrozenKick = pcFrozenKick;
   Promise.resolve().then(loadWarm).catch(() => { /* never throw at boot */ }); // 6 + 12: at boot (after background.js finished loading)
 })(typeof self !== "undefined" ? self : globalThis);
