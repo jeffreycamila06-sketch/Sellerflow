@@ -1937,10 +1937,12 @@ export default function RedesignApp() {
   const flagsLoaded = switchesOk(featureSw) && featureAccessOk();
   const osDevicePath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
   const osPrinterName = savedBtPrinter()?.name ?? null;
+  const [, setOsAutoSaved] = useState(0);
   const autoSaveNow = () => {
     const devicePath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })); // read fresh (a printer may have just been saved)
     const next = autoSaveOneSticker({ visible: oneStickerOn, flagsLoaded, devicePath, printerSaved: savedBtPrinter() != null }, pp, psSize, isStickerQrOn(), savedBtPrinter()?.name ?? null);
     if (!next) return;
+    queueMicrotask(() => setOsAutoSaved((n) => n + 1)); // re-render → an open Live print pattern gets savedOnDevice = true ("automatically")
     const label = psLabelFor(next.size, devicePath);
     if (label && label !== psSize) queueMicrotask(() => setPsSize(label)); // after this effect / the printer pick
   };

@@ -21,7 +21,15 @@ describe("the note under the Save button", () => {
     for (const p of ["d520", "tspl", "escpos", "cpcl", "niimbot"]) expect(note(p, true), p).toBe("This phone uses the new sticker automatically.");
   });
   it("phone, NOT saved yet (no printer saved / the reads failed) → the tap-Save note, never \"automatically\"", () => {
-    for (const p of ["d520", "tspl", "niimbot"]) expect(note(p, false), p).toBe("This phone keeps today's sticker until you tap Save.");
+    for (const p of ["d520", "tspl", "niimbot"]) expect(note(p, false), p).toBe("This phone keeps printing your usual sticker until you tap Save.");
+  });
+  it("saved while the screen is open (the auto-save landed after it opened) → the note changes to \"automatically\" at once, edits kept", () => {
+    const props = { onBack: () => {}, initial: recommendedSettings({ w: 60, h: 40 }), onSave: () => {}, shopName: "Maria", devicePath: "d520" as const, qrAllowed: true, onTest: () => {} };
+    const r = render(<TProvider lang="en"><OneStickerPattern {...props} savedOnDevice={false} /></TProvider>);
+    expect(screen.getByTestId("os-device-note").textContent).toBe("This phone keeps printing your usual sticker until you tap Save.");
+    r.rerender(<TProvider lang="en"><OneStickerPattern {...props} savedOnDevice /></TProvider>);
+    expect(screen.getByTestId("os-device-note").textContent).toBe("This phone uses the new sticker automatically.");
+    r.unmount();
   });
   it("browser / laptop: not saved → tap Save first; saved → \"This device prints this sticker.\" (unchanged)", () => {
     expect(note("laptop", false)).toBe("On this browser, tap Save to use the new sticker. In the phone app it is used automatically.");
@@ -35,7 +43,7 @@ describe("the note under the Save button", () => {
     for (const lang of ["fil", "zh", "zh-TW", "vi", "th", "id", "bg"]) {
       const t = note("d520", false, lang);
       expect(t, lang).toBeTruthy();
-      expect(t, lang).not.toBe("This phone keeps today's sticker until you tap Save.");
+      expect(t, lang).not.toBe("This phone keeps printing your usual sticker until you tap Save.");
     }
   });
 });

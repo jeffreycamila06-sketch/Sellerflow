@@ -3,7 +3,7 @@
 The note under "Reset to recommended" on the Live print pattern, phone 360 / 390 / 430 and laptop 1280
 (no horizontal scroll at any width):
 - `phone_saved-automatic_*` — the new sticker is saved on this phone (auto-save or Save): "This phone uses the new sticker automatically."
-- `phone_not-saved-tap-save_*` — not saved yet (no printer saved, or the reads failed): "This phone keeps today's sticker until you tap Save."
+- `phone_not-saved-tap-save_*` — not saved yet (no printer saved, or the reads failed): "This phone keeps printing your usual sticker until you tap Save."
 - `laptop_not-saved-tap-save_*` — a computer / browser: "On this browser, tap Save to use the new sticker. In the phone app it is used automatically."
 - `laptop_saved_*` — saved on the computer: "This device prints this sticker."
 A phone on the text sticker or WiFi shows its own "prints the older sticker" note (unchanged).

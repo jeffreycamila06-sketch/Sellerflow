@@ -178,6 +178,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const [s0, setS] = useState<OneStickerSettings>(p.initial);
   const [base, setBase] = useState<OneStickerSettings>(p.initial); // what Save compares against
   const [saved, setSaved] = useState(p.savedOnDevice);
+  // saved on this phone while the screen is open (the auto-save landed after it opened) → the note follows at once
+  // (adjusted during render, not an effect; the seller's edits are kept — never a remount)
+  const [savedProp, setSavedProp] = useState(p.savedOnDevice);
+  if (p.savedOnDevice !== savedProp) { setSavedProp(p.savedOnDevice); if (p.savedOnDevice) setSaved(true); }
   const [customW, setCustomW] = useState(String(p.initial.size.w));
   const [customH, setCustomH] = useState(String(p.initial.size.h));
   const [customOpen, setCustomOpen] = useState(!!p.initial.size.custom);
