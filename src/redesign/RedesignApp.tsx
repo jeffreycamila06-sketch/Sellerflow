@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, osDraftAfterSizePick, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
@@ -1968,6 +1968,9 @@ export default function RedesignApp() {
     const qrBefore = readSavedOneSticker()?.qr === true;
     const r = pickOneStickerSize(w, h); // the saved sticker follows (or, nothing saved yet, the size is remembered for its Save)
     if (!r) return;
+    // the unsaved draft too: below 50×30 its QR goes OFF and stays off when a bigger size is picked next (a listed size
+    // and Custom → Save size both come here)
+    setOsDraft((d) => osDraftAfterSizePick(d, r.size));
     const label = psLabelFor(r.size, osDevicePath);
     if (label && label !== psSize) setPsSize(label);
     setPsSizeOpen(false);

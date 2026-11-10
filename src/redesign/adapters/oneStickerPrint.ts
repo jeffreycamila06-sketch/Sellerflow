@@ -12,7 +12,7 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, validCustomMm, recommendedSettings, snapScale, printerLimitFor, missingFonts, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, validCustomMm, recommendedSettings, snapScale, printerLimitFor, missingFonts, tooWideFor, qrSizeOk, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
 import { loadSansFace } from "./oneStickerFonts";
@@ -164,6 +164,13 @@ export function pickOneStickerSize(w: number, h: number): { size: SizeOut; saved
   }
   try { localStorage.setItem(LS_ONE_STICKER_SIZE, JSON.stringify({ w, h })); } catch { /* ignore */ }
   return { size, saved: null };
+}
+
+/** The unsaved Live print pattern draft (kept for the Change → Printer settings → Back trip) after a size pick:
+ *  below 50×30 its QR goes OFF and stays off — a bigger size picked next never turns it back on (the same rule as
+ *  the saved sticker, normalizeSettings). PURE. */
+export function osDraftAfterSizePick<D extends { qr: boolean }>(draft: D | null, size: { w: number; h: number }): D | null {
+  return draft && draft.qr && !qrSizeOk(size) ? { ...draft, qr: false } : draft;
 }
 
 /** The Print Pattern fields the first draft is made from (screens/PrintPattern PrintPatternState). */
