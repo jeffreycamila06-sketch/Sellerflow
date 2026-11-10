@@ -4,25 +4,31 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import OneStickerPattern from "../OneStickerPattern";
-import { recommendedSettings, NOTE_TONE } from "../../adapters/oneSticker";
+import { recommendedSettings, NOTE_TONE, type OneStickerSettings } from "../../adapters/oneSticker";
 import { TProvider } from "../../i18n";
 
 const plusBtn = (k: string) => screen.getByTestId(`os-${k}-plus`) as HTMLButtonElement;
 /** "+" of a fixed part waits until its limit for the current setting is known (Jeff item 7) */
 const plusReady = (k: string) => waitFor(() => expect(plusBtn(k).disabled).toBe(false), { timeout: 20000 });
+type Size = { w: number; h: number; custom?: boolean };
+// The size comes from Printer settings (Jeff 2026-11-10): `size` defaults to the initial settings' size; setSize =
+// a new size picked in Printer settings while the screen stays mounted.
 const renderIt = (over: Partial<Parameters<typeof OneStickerPattern>[0]> = {}) => {
-  const onSave = vi.fn(), onTest = vi.fn();
-  render(<TProvider lang="en"><OneStickerPattern onBack={() => {}} initial={recommendedSettings({ w: 100, h: 60 })} savedOnDevice={false} onSave={onSave} shopName="Maria Ukay" devicePath="laptop" qrAllowed onTest={onTest} {...over} /></TProvider>);
-  return { onSave, onTest };
+  const onSave = vi.fn(), onTest = vi.fn(), onChangeSize = vi.fn();
+  const initial: OneStickerSettings = over.initial ?? recommendedSettings({ w: 100, h: 60 });
+  const el = (size: Size) => <TProvider lang="en"><OneStickerPattern onBack={() => {}} initial={initial} savedOnDevice={false} onSave={onSave} shopName="Maria Ukay" devicePath="laptop" qrAllowed onTest={onTest} onChangeSize={onChangeSize} {...over} size={size} /></TProvider>;
+  const r = render(el(over.size ?? initial.size));
+  return { onSave, onTest, onChangeSize, setSize: (z: Size) => r.rerender(el(z)), unmount: r.unmount };
 };
 
 describe("OneStickerPattern", () => {
-  it("shows the exact preview, the test buttons, every size chip + Custom, all part rows, the fixed date row and the QR row; no logo row", () => {
+  it("shows the exact preview, the size line, Printer Test, all part rows, the fixed date row and the QR row; no logo row, no paper size controls", () => {
     renderIt();
     expect(screen.getByTestId("os-preview")).toBeTruthy();
-    for (const id of ["os-test", "os-test-en", "os-test-zh"]) expect(screen.getByTestId(id)).toBeTruthy();
-    for (const z of ["50x30", "60x40", "70x50", "80x50", "80x60", "100x60"]) expect(screen.getByTestId(`os-size-${z}`)).toBeTruthy();
-    expect(screen.getByTestId("os-size-custom")).toBeTruthy();
+    expect(screen.getByTestId("os-test")).toBeTruthy();
+    expect(screen.getByTestId("os-size-line").textContent).toBe("Sticker size: 100×60 mm·Change");
+    for (const id of ["os-size-card", "os-sizes", "os-size-50x30", "os-size-custom", "os-custom"]) expect(screen.queryByTestId(id), id).toBeNull();
+    expect(screen.queryByText(/Paper size/i)).toBeNull();
     for (const k of ["shop", "buyer", "name", "user", "comment"]) {
       expect(screen.getByTestId(`os-row-${k}`)).toBeTruthy();
       for (const w of ["normal", "bold", "extra"]) expect(screen.getByTestId(`os-${k}-w-${w}`)).toBeTruthy();
@@ -33,13 +39,16 @@ describe("OneStickerPattern", () => {
     expect(screen.queryByText(/logo/i)).toBeNull();
     expect(screen.queryByText(/SellerFlowLive/)).toBeNull();
   });
-  it("under the preview: \"Exact preview · W×H mm\" and the notes (fits / red only when a part runs off)", async () => {
-    renderIt();
-    expect(screen.getByTestId("os-caption").textContent).toBe("Exact preview · 100×60 mm");
-    expect((await screen.findByTestId("os-note-ok")).textContent).toBe("Everything fits");
+  it("under the preview: \"Sticker size: W×H mm · Change\" (follows Printer settings) and the notes (fits / red only when a part runs off)", async () => {
+    const { setSize, onChangeSize } = renderIt();
+    expect(screen.getByTestId("os-size-text").textContent).toBe("Sticker size: 100×60 mm");
+    expect((await screen.findByTestId("os-note-ok", {}, { timeout: 20000 })).textContent).toBe("Everything fits");
     expect(screen.queryByTestId("os-fit")).toBeNull();
-    fireEvent.click(screen.getByTestId("os-size-50x30"));
-    expect(screen.getByTestId("os-caption").textContent).toBe("Exact preview · 50×30 mm");
+    setSize({ w: 50, h: 30 });
+    expect(screen.getByTestId("os-size-text").textContent).toBe("Sticker size: 50×30 mm");
+    expect((screen.getByTestId("os-preview") as HTMLCanvasElement).style.aspectRatio).toBe("50 / 30");
+    fireEvent.click(screen.getByTestId("os-size-change"));
+    expect(onChangeSize).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("os-row-comment").textContent).toContain("Shrinks automatically when long");
     expect(screen.getByTestId("os-row-date").textContent).toContain("Fixed size");
   });
@@ -76,12 +85,12 @@ describe("OneStickerPattern", () => {
     await waitFor(() => expect(plusBtn("buyer").disabled).toBe(true), { timeout: 20000 }); // 1.3× = the 60×40 + QR limit
     expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×");
   }, 60000);
-  it("item 2: a paper size change puts Buyer # above its new limit → it is lowered to the largest size that fits, with a short note", async () => {
+  it("item 2: a sticker size change (Printer settings) puts Buyer # above its new limit → it is lowered to the largest size that fits, with a short note", async () => {
     const init = recommendedSettings({ w: 100, h: 60 });
     init.parts.buyer.scale = 1.75; // the 100×60 + QR limit
-    renderIt({ initial: init });
+    const { setSize } = renderIt({ initial: init });
     await plusReady("name");
-    fireEvent.click(screen.getByTestId("os-size-60x40"));
+    setSize({ w: 60, h: 40 });
     await waitFor(() => expect(screen.getByTestId("os-buyer-scale").textContent).toBe("1.3×"), { timeout: 20000 });
     expect(screen.getByTestId("os-note-lowered").textContent).toBe("Buyer # lowered to fit this size");
     await waitFor(() => expect(screen.queryByText(/Too big/)).toBeNull(), { timeout: 20000 }); // the new setting's notes
@@ -89,7 +98,7 @@ describe("OneStickerPattern", () => {
   it("item 2: turning the QR on with Buyer # above its limit lowers it too", async () => {
     const init = recommendedSettings({ w: 60, h: 40 });
     init.parts.buyer.scale = 2; init.qr = false; // no QR: 2× fits
-    renderIt({ initial: init });
+    const { setSize } = renderIt({ initial: init });
     await plusReady("name");
     expect(screen.getByTestId("os-buyer-scale").textContent).toBe("2×");
     fireEvent.click(screen.getByTestId("os-qr-on"));
@@ -97,7 +106,7 @@ describe("OneStickerPattern", () => {
     expect(screen.getByTestId("os-note-lowered")).toBeTruthy();
     fireEvent.click(screen.getByTestId("os-qr-on")); // any other change: the note goes (it belongs to that change)
     expect(screen.queryByTestId("os-note-lowered")).toBeNull();
-    fireEvent.click(screen.getByTestId("os-size-100x60"));
+    setSize({ w: 100, h: 60 });
     expect(screen.queryByTestId("os-note-lowered")).toBeNull();
   }, 60000);
   it("Normal / Bold / Extra: under the name beside the size + switch on a wide row, their own line on a narrow row — never over the stepper; each ≥ 44×44", () => {
@@ -117,16 +126,6 @@ describe("OneStickerPattern", () => {
     expect(css).toMatch(/@container \(min-width:\d+px\)\{\.os-row-grid\{grid-template-areas:"name ctl" "w ctl"\}\}/); // wide: preview
     expect(css).toContain(".os-row-w{grid-area:w;display:flex;flex-wrap:wrap");
   });
-  it("Custom W × H: one line (the × never wraps alone), inputs full width and ≥ 44 px", () => {
-    renderIt();
-    fireEvent.click(screen.getByTestId("os-size-custom"));
-    for (const id of ["os-custom-w", "os-custom-h"]) {
-      const el = screen.getByTestId(id) as HTMLInputElement;
-      expect(el.style.width).toBe("100%");
-      expect(parseFloat(el.style.minHeight)).toBeGreaterThanOrEqual(44);
-    }
-    expect((screen.getByTestId("os-custom").firstElementChild as HTMLElement).style.gridTemplateColumns).toBe("minmax(0,1fr) auto minmax(0,1fr)");
-  });
   it("a part switched OFF: its size and weight are dimmed and cannot be changed (the switch still works)", async () => {
     const { onSave } = renderIt();
     fireEvent.click(screen.getByTestId("os-name-on"));
@@ -143,8 +142,8 @@ describe("OneStickerPattern", () => {
   it("laptop (≥760 px): two columns — the preview column (picture, notes, tests) sticky on the left, the controls on the right", () => {
     renderIt();
     const pv = screen.getByTestId("os-pv-col"), ctl = screen.getByTestId("os-ctl-col");
-    for (const id of ["os-preview", "os-notes", "os-test", "os-test-en", "os-test-zh"]) expect(pv.contains(screen.getByTestId(id)), id).toBe(true);
-    for (const id of ["os-size-card", "os-row-shop", "os-row-comment", "os-reset", "os-save"]) expect(ctl.contains(screen.getByTestId(id)), id).toBe(true);
+    for (const id of ["os-preview", "os-size-line", "os-notes", "os-test"]) expect(pv.contains(screen.getByTestId(id)), id).toBe(true);
+    for (const id of ["os-row-shop", "os-row-comment", "os-reset", "os-save"]) expect(ctl.contains(screen.getByTestId(id)), id).toBe(true);
     expect(pv.compareDocumentPosition(ctl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // preview first = left
     const css = document.querySelector("style")!.textContent!.replace(/\s+/g, " ");
     expect(css).toContain("@container (min-width:760px)");
@@ -161,9 +160,8 @@ describe("OneStickerPattern", () => {
     fireEvent.click(sw);
     expect(screen.getByTestId("os-qr-on").getAttribute("aria-checked")).toBe("false"); // nothing changed
   });
-  it("every button on the screen is at least 44 px tall to tap (steppers, chips, weights, switches, Back, tests, Reset, Save)", () => {
-    renderIt();
-    fireEvent.click(screen.getByTestId("os-size-custom"));
+  it("every button on the screen is at least 44 px tall to tap (steppers, Change, weights, switches, Back, tests, Reset, Save)", () => {
+    renderIt({ isAdmin: true, onTestSample: () => {} });
     const small: string[] = [];
     for (const b of Array.from(screen.getByTestId("os-screen").querySelectorAll("button"))) {
       const h = Math.max(parseFloat(b.style.minHeight || "0"), parseFloat(b.style.height || "0"));
@@ -178,7 +176,7 @@ describe("OneStickerPattern", () => {
     expect(onToast).toHaveBeenCalledWith("Back to recommended settings");
   });
   it("the preview of a tall / square label is at most min(60vh, 420 px) high, width auto, same shape", () => {
-    renderIt({ initial: { ...recommendedSettings({ w: 50, h: 70 }), size: { w: 50, h: 70, custom: true } } });
+    renderIt({ initial: { ...recommendedSettings({ w: 50, h: 70 }), size: { w: 50, h: 70, custom: true } }, size: { w: 50, h: 70, custom: true } });
     const c = screen.getByTestId("os-preview") as HTMLCanvasElement;
     expect(c.style.maxHeight).toBe("min(60vh, 420px)");
     expect(c.style.width).toBe("auto");
@@ -202,9 +200,11 @@ describe("OneStickerPattern", () => {
   });
   it("a TEXT / WiFi phone can never Save 50×30 or a custom size (no such layout there), even before saving", () => {
     for (const devicePath of ["text", "wifi"] as const) {
-      const { unmount } = render(<TProvider lang="en"><OneStickerPattern onBack={() => {}} initial={recommendedSettings({ w: 50, h: 30 })} savedOnDevice={false} onSave={() => {}} shopName="Maria" devicePath={devicePath} qrAllowed onTest={() => {}} /></TProvider>);
+      const { setSize, unmount } = renderIt({ initial: recommendedSettings({ w: 50, h: 30 }), devicePath });
       expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled, devicePath).toBe(true);
-      fireEvent.click(screen.getByTestId("os-size-60x40"));
+      setSize({ w: 45, h: 35, custom: true });
+      expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled, devicePath).toBe(true);
+      setSize({ w: 60, h: 40 });
       expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled, devicePath).toBe(false);
       unmount();
     }
@@ -240,32 +240,6 @@ describe("OneStickerPattern", () => {
     expect(onSave.mock.calls[1][0].parts.comment.scale).toBe(1.15);
     expect(onSave.mock.calls[1][0].parts.name.weight).toBe("extra");
     expect(save().disabled).toBe(true);
-  });
-  it("Custom tapped without changing the numbers is no change (Save stays off; no custom flag); a non-standard W×H is", () => {
-    const { onSave } = renderIt({ savedOnDevice: true });
-    const save = () => screen.getByTestId("os-save") as HTMLButtonElement;
-    expect(save().disabled).toBe(true);
-    fireEvent.click(screen.getByTestId("os-size-custom"));
-    expect((screen.getByTestId("os-custom-w") as HTMLInputElement).value).toBe("100");
-    expect((screen.getByTestId("os-custom-h") as HTMLInputElement).value).toBe("60");
-    expect(save().disabled, "opening Custom alone").toBe(true);
-    expect(screen.getByTestId("os-device-note").textContent).toBe("This device prints this sticker.");
-    // a standard W×H typed in is that size (no custom flag)
-    fireEvent.change(screen.getByTestId("os-custom-w"), { target: { value: "60" } });
-    fireEvent.change(screen.getByTestId("os-custom-h"), { target: { value: "40" } });
-    expect(save().disabled).toBe(false);
-    fireEvent.click(save());
-    expect(onSave.mock.calls[0][0].size).toEqual({ w: 60, h: 40 });
-    fireEvent.change(screen.getByTestId("os-custom-w"), { target: { value: "62" } });
-    fireEvent.click(save());
-    expect(onSave.mock.calls[1][0].size).toEqual({ w: 62, h: 40, custom: true });
-  });
-  it("Custom opens at the size picked last (not the size the screen opened with)", () => {
-    renderIt({ savedOnDevice: true });
-    fireEvent.click(screen.getByTestId("os-size-60x40"));
-    fireEvent.click(screen.getByTestId("os-size-custom"));
-    expect((screen.getByTestId("os-custom-w") as HTMLInputElement).value).toBe("60");
-    expect((screen.getByTestId("os-custom-h") as HTMLInputElement).value).toBe("40");
   });
   it("tap areas: the '+' area and the switch area never overlap (each ≥ 44 px wide; the gap covers both overhangs)", () => {
     renderIt();
@@ -322,38 +296,23 @@ describe("OneStickerPattern", () => {
     expect(screen.getByTestId("os-comment-scale").textContent).toBe("0.6×");
   });
   it("50×30: the shop name row says it is not printed", () => {
-    renderIt();
-    fireEvent.click(screen.getByTestId("os-size-50x30"));
+    renderIt({ size: { w: 50, h: 30 } });
     expect(screen.getByTestId("os-row-shop").textContent).toContain("Not on labels this small");
   });
-  it("Custom size: 30–110 mm each, inline error otherwise; Save blocked while wrong", () => {
-    const { onSave } = renderIt();
-    fireEvent.click(screen.getByTestId("os-size-custom"));
-    fireEvent.change(screen.getByTestId("os-custom-w"), { target: { value: "25" } });
-    expect(screen.getByTestId("os-custom-err").textContent).toContain("30–110 mm");
-    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByTestId("os-custom-w"), { target: { value: "40" } });
-    fireEvent.change(screen.getByTestId("os-custom-h"), { target: { value: "30" } });
-    expect(screen.queryByTestId("os-custom-err")).toBeNull();
-    fireEvent.click(screen.getByTestId("os-save"));
-    expect(onSave.mock.calls[0][0].size).toEqual({ w: 40, h: 30, custom: true });
-  });
-  it("warns when the size is wider than the saved printer takes (Niimbot B1 = 50 mm)", () => {
-    renderIt({ printerName: "B1-H123", devicePath: "niimbot" });
+  it("warns when the size is wider than the saved printer takes (Niimbot B1 = 50 mm) — fixed in Printer settings", () => {
+    const { setSize } = renderIt({ printerName: "B1-H123", devicePath: "niimbot" });
     expect(screen.getByTestId("os-too-wide").textContent).toContain("B1");
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true); // never saved, but the size is too wide → off
     fireEvent.click(screen.getByTestId("os-name-w-extra"));
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByTestId("os-size-50x30"));
+    setSize({ w: 50, h: 30 });
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId("os-too-wide")).toBeNull();
   });
-  it("a printer on the older text sticker: Custom is hidden with a short note", () => {
-    renderIt({ devicePath: "text" });
+  it("a printer on the older text sticker: the note says so; the size line still shows (no size controls here)", () => {
+    renderIt({ devicePath: "text", size: { w: 60, h: 40 } });
     expect(screen.queryByTestId("os-size-custom")).toBeNull();
-    expect(screen.queryByTestId("os-size-50x30")).toBeNull(); // the TEXT sticker has no 50×30 layout
-    expect(screen.getByTestId("os-size-60x40")).toBeTruthy();
-    expect(screen.getByTestId("os-custom-hidden")).toBeTruthy();
+    expect(screen.getByTestId("os-size-text").textContent).toBe("Sticker size: 60×40 mm");
     expect(screen.getByTestId("os-text-path")).toBeTruthy();
   });
   it("Reset to recommended = all ON, 1×, Bold, QR ON", () => {
@@ -366,8 +325,8 @@ describe("OneStickerPattern", () => {
     expect(screen.getByTestId("os-name-w-bold").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("os-qr-on").getAttribute("aria-pressed")).toBe("true");
   });
-  it("test buttons print the draft on screen", () => {
-    const { onTest } = renderIt();
+  it("test buttons print the draft on screen (admin: the long-comment tests too)", () => {
+    const { onTest } = renderIt({ isAdmin: true, onTestSample: () => {} });
     fireEvent.click(screen.getByTestId("os-comment-plus"));
     fireEvent.click(screen.getByTestId("os-test-zh"));
     expect(onTest.mock.calls[0][1]).toBe("zh");

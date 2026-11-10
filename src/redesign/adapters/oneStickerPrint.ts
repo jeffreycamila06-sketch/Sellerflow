@@ -12,7 +12,7 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, validCustomMm, recommendedSettings, snapScale, printerLimitFor, missingFonts, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, validCustomMm, recommendedSettings, snapScale, printerLimitFor, missingFonts, tooWideFor, qrSizeOk, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
 import { loadSansFace } from "./oneStickerFonts";
@@ -36,6 +36,8 @@ export function readSavedOneSticker(): OneStickerSettings | null {
 export function saveOneSticker(s: OneStickerSettings): void {
   try { localStorage.setItem(LS_ONE_STICKER, JSON.stringify({ saved: true, settings: s })); } catch { /* ignore */ }
   savedCache = normalizeSettings(s);
+  // once saved, the saved size IS the size (one place) — a size remembered before the save is done
+  try { localStorage.removeItem(LS_ONE_STICKER_SIZE); } catch { /* ignore */ }
 }
 /** ONE SIZE, BOTH PLACES: the Printer settings "Label size" label ("100x60mm (Standard)", "60x40mm")
  *  → the size the one sticker prints. null = not a size label. PURE. */
@@ -106,6 +108,71 @@ export function saveOneStickerSizeFromPrinterCustom(w: number, h: number): OneSt
   saveOneSticker(next);
   return next;
 }
+// ── ONE PLACE FOR THE SIZE (Jeff 2026-11-10) ──────────────────────────────────────────────────
+// The new sticker's size is chosen ONLY in Printer settings → Sticker size (the Live print pattern shows it and
+// links there). A size picked while the new sticker is NOT saved on this device yet (a laptop before its Save, a
+// phone before its printer) is remembered here and used by the first draft / the Save / the auto-save; once the
+// sticker is saved, its saved size is the size (a pick updates it). Accounts that don't see the new screen never
+// read or write this.
+export const LS_ONE_STICKER_SIZE = "sfl_rd_one_sticker_size";
+type SizeOut = { w: number; h: number; custom?: true };
+const asSize = (w: number, h: number): SizeOut => (STANDARD_SIZES.some((z) => z.w === w && z.h === h) ? { w, h } : { w, h, custom: true });
+export function readOneStickerSizeChoice(): SizeOut | null {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(LS_ONE_STICKER_SIZE) : null;
+    const j = raw ? (JSON.parse(raw) as { w?: unknown; h?: unknown }) : null;
+    return j && validCustomMm(j.w) && validCustomMm(j.h) ? asSize(j.w as number, j.h as number) : null;
+  } catch { return null; }
+}
+export function clearOneStickerSizeChoice(): void { try { localStorage.removeItem(LS_ONE_STICKER_SIZE); } catch { /* ignore */ } }
+/** The widest label the saved printer takes, for the size list: printerLimitFor, and a Niimbot whose name is not
+ *  known yet counts as 50 mm (like seedOneSticker) — never the full list on a small roll. PURE. */
+export function oneStickerLimitFor(printerName: string | null | undefined, niimbot = false): { model: string; maxLabelMm: number } | null {
+  const lim = printerLimitFor(printerName);
+  if (lim) return { model: lim.model, maxLabelMm: lim.maxLabelMm };
+  return niimbot ? { model: "Niimbot", maxLabelMm: 50 } : null;
+}
+/** The sizes Printer settings lists for the new sticker: 50×30 … 100×60, none wider than the saved printer
+ *  takes (B1 / B21 → 50×30 only, B3S → up to 70×50, an unknown Niimbot → 50×30). PURE. */
+export function oneStickerSizesFor(printerName: string | null | undefined, niimbot = false): { w: number; h: number }[] {
+  const lim = oneStickerLimitFor(printerName, niimbot);
+  return STANDARD_SIZES.filter((z) => !lim || z.w <= lim.maxLabelMm).map((z) => ({ w: z.w, h: z.h }));
+}
+/** The new sticker's size on this device right now: the saved sticker's size; else the size picked in Printer
+ *  settings (when the printer takes it); else the first draft's (seedOneSticker — Niimbot → the biggest it takes). */
+export function oneStickerSizeNow(pp: SeedPattern, psSize: string, path: string, printerName: string | null): SizeOut {
+  const saved = readSavedOneSticker();
+  if (saved) return saved.size.custom ? { w: saved.size.w, h: saved.size.h, custom: true } : { w: saved.size.w, h: saved.size.h };
+  // a TEXT / WiFi device picks on today's list (psSize) — a size remembered from another tab never overrides it
+  const choice = path === "text" || path === "wifi" ? null : readOneStickerSizeChoice();
+  const lim = oneStickerLimitFor(printerName, path === "niimbot");
+  if (choice && !(lim && choice.w > lim.maxLabelMm)) return choice;
+  const z = seedOneSticker(pp, psSize, false, path, printerName).size;
+  return asSize(z.w, z.h);
+}
+/** A size picked in Printer settings (a listed size or Custom W×H, 30–110 mm): the saved new sticker follows
+ *  (only the size; below 50×30 the QR goes OFF — normalizeSettings); nothing saved yet → remembered for the first
+ *  draft / Save. Returns { size, saved } (saved = the new saved settings, or null), or null for a size out of range. */
+export function pickOneStickerSize(w: number, h: number): { size: SizeOut; saved: OneStickerSettings | null } | null {
+  if (!validCustomMm(w) || !validCustomMm(h)) return null;
+  const size = asSize(w, h);
+  const cur = readSavedOneSticker();
+  if (cur) {
+    const next = normalizeSettings({ ...cur, size });
+    saveOneSticker(next);
+    return { size, saved: next };
+  }
+  try { localStorage.setItem(LS_ONE_STICKER_SIZE, JSON.stringify({ w, h })); } catch { /* ignore */ }
+  return { size, saved: null };
+}
+
+/** The unsaved Live print pattern draft (kept for the Change → Printer settings → Back trip) after a size pick:
+ *  below 50×30 its QR goes OFF and stays off — a bigger size picked next never turns it back on (the same rule as
+ *  the saved sticker, normalizeSettings). PURE. */
+export function osDraftAfterSizePick<D extends { qr: boolean }>(draft: D | null, size: { w: number; h: number }): D | null {
+  return draft && draft.qr && !qrSizeOk(size) ? { ...draft, qr: false } : draft;
+}
+
 /** The Print Pattern fields the first draft is made from (screens/PrintPattern PrintPatternState). */
 export interface SeedPattern { shopName: boolean; shopNameSize: number; buyerNum: boolean; buyerNumSize: number; tiktokName: boolean; tiktokNameSize: number; tiktokUser: boolean; tiktokUserSize: number; comment: boolean; commentSize: number }
 // ONE STICKER: the first draft of the new pattern = this device's current pattern (so the preview
@@ -148,7 +215,11 @@ export function shouldAskSavedPrinter(c: { visible: boolean; flagsLoaded: boolea
 /** Saves the first draft (seedOneSticker) when shouldAutoSaveOneSticker says so; returns it, or null. */
 export function autoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string; printerSaved: boolean }, pp: SeedPattern, psSize: string, qr: boolean, printerName: string | null): OneStickerSettings | null {
   if (!shouldAutoSaveOneSticker({ ...c, saved: readSavedOneSticker() != null })) return null;
-  const s = normalizeSettings(seedOneSticker(pp, psSize, qr, c.devicePath, printerName)); // normalize: the QR rule (none below 50×30)
+  // a size picked in Printer settings before this save (and the printer takes it) is the size — one place
+  const seed = seedOneSticker(pp, psSize, qr, c.devicePath, printerName);
+  const choice = readOneStickerSizeChoice();
+  const lim = oneStickerLimitFor(printerName, c.devicePath === "niimbot"); // an unknown Niimbot = 50 mm
+  const s = normalizeSettings(choice && !(lim && choice.w > lim.maxLabelMm) ? { ...seed, size: choice } : seed); // normalize: the QR rule (none below 50×30)
   saveOneSticker(s);
   return s;
 }

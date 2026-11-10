@@ -65,9 +65,8 @@ describe("Printer settings → Sticker size → Custom", () => {
     expect(screen.queryByTestId("ps-size-custom")).toBeNull();
     expect(screen.getByTestId("ps-custom-hidden").textContent).toContain("save the new sticker in Live print pattern first");
     b.unmount();
-    renderPS(cs({ allowed: false, reason: "niimbot" }));
-    expect(screen.queryByTestId("ps-size-custom")).toBeNull();
-    expect(screen.getByTestId("ps-custom-hidden").textContent).toContain("Your Niimbot prints the size set in Live print pattern");
+    // C1 (Jeff 2026-11-10): no "set it in LIVE print pattern" note for a Niimbot any more — its size is in the one list
+    expect(screen.queryByText(/Your Niimbot prints the size set in Live print pattern/)).toBeNull();
   });
 });
 
@@ -96,25 +95,27 @@ describe("ONE size in both places — the last Save wins", () => {
 });
 
 describe("Live print pattern: the QR switch below 50×30", () => {
+  // the size comes from Printer settings (Jeff 2026-11-10): `size` = the size picked there
+  let setSize: (z: { w: number; h: number; custom?: boolean }) => void = noop;
   const renderOS = (initial: OneStickerSettings) => {
     const onSave = vi.fn();
-    render(<TProvider lang="en"><OneStickerPattern onBack={noop} initial={initial} savedOnDevice onSave={onSave} shopName="Maria Ukay" devicePath="d520" qrAllowed onTest={noop} /></TProvider>);
+    const el = (size: { w: number; h: number; custom?: boolean }) => <TProvider lang="en"><OneStickerPattern onBack={noop} initial={initial} size={size} onChangeSize={noop} savedOnDevice onSave={onSave} shopName="Maria Ukay" devicePath="d520" qrAllowed onTest={noop} /></TProvider>;
+    const r = render(el(initial.size));
+    setSize = (z) => r.rerender(el(z));
     return onSave;
   };
   const sw = () => screen.getByTestId("os-qr-on") as HTMLButtonElement;
   it("a Custom 40×30: the QR is forced OFF, greyed, with the note, and can't be turned on; back to 60×40 it stays OFF", () => {
     const onSave = renderOS({ ...recommendedSettings({ w: 60, h: 40 }), qr: true });
     expect(sw().getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByTestId("os-size-custom"));
-    fireEvent.change(screen.getByTestId("os-custom-w"), { target: { value: "40" } });
-    fireEvent.change(screen.getByTestId("os-custom-h"), { target: { value: "30" } });
+    setSize({ w: 40, h: 30, custom: true });
     expect(sw().getAttribute("aria-checked")).toBe("false");
     expect(sw().disabled).toBe(true);
     expect(screen.getByTestId("os-row-qr").getAttribute("data-off")).toBe("1");
     expect(screen.getByTestId("os-qr-sub").textContent).toBe("QR needs a label at least 50×30 mm");
     fireEvent.click(sw());
     expect(sw().getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(screen.getByTestId("os-size-60x40"));
+    setSize({ w: 60, h: 40 });
     expect(sw().disabled).toBe(false);
     expect(sw().getAttribute("aria-checked")).toBe("false"); // NOT turned back on
     fireEvent.click(screen.getByTestId("os-save"));
@@ -122,21 +123,22 @@ describe("Live print pattern: the QR switch below 50×30", () => {
   });
   it("50×30 itself keeps the QR", () => {
     renderOS({ ...recommendedSettings({ w: 60, h: 40 }), qr: true });
-    fireEvent.click(screen.getByTestId("os-size-50x30"));
+    setSize({ w: 50, h: 30 });
     expect(sw().getAttribute("aria-checked")).toBe("true");
     expect(sw().disabled).toBe(false);
   });
 });
 
 describe("RedesignApp wiring", () => {
-  it("passes Custom only to accounts with the new Live print pattern; hidden (with the reason) on the text / WiFi sticker or before the new sticker is saved; the save goes through saveOneStickerSizeFromPrinterCustom", async () => {
+  it("the old Custom row is passed only to TEXT / WiFi devices of accounts with the new Live print pattern (with its note); every other new-sticker device gets the one size list (oneSize)", async () => {
     const fs = await import("node:fs");
     const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain("customSize={oneStickerOn ? (() => {");
+    expect(app).toContain("customSize={oneStickerOn && !osSizeMode ? (() => {");
+    expect(app).toContain('const osSizeMode = oneStickerOn && osDevicePath !== "text" && osDevicePath !== "wifi";');
     expect(app).toContain('const older = devPath === "text" || devPath === "wifi";');
-    expect(app).toContain("allowed: !older && !niimbot && saved != null,");
-    expect(app).toContain('reason: older ? "text" as const : niimbot ? "niimbot" as const : saved == null ? "not_saved" as const : undefined,');
-    expect(app).toContain("qrBefore && !next.qr ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved");
-    expect(app).toContain("const next = saveOneStickerSizeFromPrinterCustom(w, h);");
+    expect(app).toContain("allowed: !older && saved != null,");
+    expect(app).toContain('reason: older ? "text" as const : saved == null ? "not_saved" as const : undefined,');
+    expect(app).not.toContain('"niimbot" as const');
+    expect(app).toContain('oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName, osDevicePath === "niimbot"), printerName: osPrinterName, limit: oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot"), onPick: onPickOneSize } : undefined}');
   });
 });
