@@ -47,10 +47,11 @@ describe("guide", () => {
       expect(s).toMatch(/^Keywords: .+$/m);
     }
   });
-  it("no UNSURE: lines left, no prices, free plan = 20 with no reset", () => {
+  it("no UNSURE: lines left, no prices, free plan = 150 with no reset (sql/148)", () => {
     expect(guide).not.toMatch(/UNSURE:/);
     expect(guide).not.toMatch(/NT\$\s?\d|\bWise\b|100 (free )?orders/i);
-    expect(guide).toContain("20 orders in total");
+    expect(guide).toContain("150 orders in total");
+    expect(guide).not.toMatch(/(^|[^\d])20 orders in total/);
   });
   it("no secrets, switch names or server details", () => {
     expect(guide).not.toMatch(/support_ai|_enabled|app_settings|supabase|service[_ ]role|ANTHROPIC|Render|honeypot|eyJ/i);

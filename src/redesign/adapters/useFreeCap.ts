@@ -7,7 +7,8 @@
 // always-on interval (App.tsx:4168). This avoids the background-tab polling that
 // caused the earlier egress crisis.
 //
-// The DB trigger check_and_increment_free_order stays the authoritative cap (100);
+// The DB trigger check_and_increment_free_order stays the authoritative cap (sql/148: 150,
+// one time; app fallback = lib/freeTier FREE_TIER_CAP);
 // this is the friendly in-app status + soft block + popups only.
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
@@ -36,8 +37,8 @@ export function computeFreeFlags(plan: string | undefined, fs: FreeStatus | null
   return { isFreeUser, freeCapped: isFreeUser && !!fs?.capped };
 }
 
-// Near-cap celebration (threshold comes from the RPC — live values: warn at 75 of
-// the 100-order cap) shows ONCE per cycle, and never while capped / when a popup
+// Near-cap celebration (threshold comes from the RPC — sql/148: warn at 130 of the
+// 150-order cap, i.e. 20 left) shows ONCE per seller, and never while capped / when a popup
 // is already open. Mirrors App.tsx:4178-4187 conditions exactly.
 export function shouldShowNearCap(isFreeUser: boolean, fs: FreeStatus | null, capPopup: CapPopupKind): boolean {
   if (!isFreeUser || !fs) return false;

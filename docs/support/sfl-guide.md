@@ -58,14 +58,14 @@ Keywords: general settings, profile, shop name, phone, live session, appearance,
 - **ACCOUNT** — **Subscription** (not shown on iPhone), **Support & user guide**, **Delete account**.
 
 ## plans — Plans: Free, Basic, Plus, Pro, Master
-Last checked: 2026-10-15
+Last checked: 2026-11-10
 Keywords: plan, plans, subscription, free, basic, plus, pro, master, which plan, features, anong plan, 方案, 订阅, 哪個方案
 
 There are five plans. What the app shows per plan:
 
 | Plan | Live accounts | Order limit | Parcel Scan / Customer Details / Pickup Status (Taiwan only) |
 |---|---|---|---|
-| Free | 1 | 20 orders in total (see "Free order limit") | 🔒 locked |
+| Free | 1 | 150 orders in total (see "Free order limit") | 🔒 locked |
 | Basic | 1 | unlimited | 🔒 locked |
 | Plus | 2 | unlimited | Pickup Status and parcel check: automatic. Parcel Scan: see that section |
 | Pro | 3 | unlimited | same as Plus |
@@ -95,12 +95,12 @@ What to do:
 3. To add an extra TikTok account beyond your plan, tap **Add TikTok — Multi Account** and message Admin on Telegram.
 
 ## free-order-limit — Free plan order limit
-Last checked: 2026-10-28
-Keywords: free, free plan, 20 orders, order limit, cap, limit reached, reset, upgrade, libre, naubos, 免费, 免費額度, 订单上限
+Last checked: 2026-11-10
+Keywords: free, free plan, 150 orders, order limit, cap, limit reached, reset, upgrade, libre, naubos, 免费, 免費額度, 订单上限
 
-On the **Free** plan you can create **20 orders in total**. They **do not reset** — there is no monthly refill. Upgrade for unlimited orders. Paid plans do not have this limit.
+On the **Free** plan you can create **150 orders in total**. They **do not reset** — there is no monthly refill. Upgrade for unlimited orders. Paid plans do not have this limit.
 
-- When you are close, a popup says "You're almost there!" — tap **Upgrade plan** or **Maybe later**.
+- When you have 20 orders left, a popup says "You're almost there!" — tap **Upgrade plan** or **Maybe later**.
 - When you reach it, the popup says you've used all your free orders. New orders are not created after this.
 - At the limit, tap **Upgrade plan** or **View my orders**.
 - To upgrade, message Admin on Telegram @SellerFlowLive. On iPhone the popup says "Free limit reached… Please contact support."

@@ -9,6 +9,7 @@ import type { AccountUser } from "../../accountDb";
 import type { FreeStatus } from "../adapters/useFreeCap";
 import { planDaysLeft, daysDisplay, isTimeLimitedPlan } from "../../lib/planWindow";
 import { TELEGRAM_HANDLE, TELEGRAM_URL } from "../../lib/telegram";
+import { FREE_TIER_CAP } from "../../lib/freeTier";
 
 const tgPlane = <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>;
 const check = <span style={{ color: "var(--ok)", fontWeight: 800 }}>✓</span>;
@@ -66,7 +67,7 @@ export default function Subscription({ account = null, isFreeUser = false, freeS
         </div>
 
         {isFreeUser && freeStatus && (() => {
-          const cnt = freeStatus.count ?? 0, fcap = freeStatus.cap ?? 100, rd = freeStatus.cycle_resets_in_days ?? 30;
+          const cnt = freeStatus.count ?? 0, fcap = freeStatus.cap ?? FREE_TIER_CAP, rd = freeStatus.cycle_resets_in_days ?? 30;
           const pct = Math.min(100, Math.round((cnt / Math.max(1, fcap)) * 100));
           const barColor = freeStatus.capped ? "var(--danger)" : freeStatus.near_cap ? "var(--warn)" : "var(--ok)";
           return (

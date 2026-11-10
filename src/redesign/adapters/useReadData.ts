@@ -17,6 +17,7 @@ import type { RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer } from "../../lib/orderTypes";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringNotExpired, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
+import { FREE_TIER_CAP } from "../../lib/freeTier";
 import { accountList } from "./connect";
 import { planLabel } from "./useAuthSession";
 
@@ -277,7 +278,7 @@ export function freeUsersSummary(freeUsers: FreeUserRow[]): FreeSummary {
     nearCap: freeUsers.filter((f) => f.near_cap && !f.capped).length,
     capped: freeUsers.filter((f) => f.capped).length,
     orders: freeUsers.reduce((s, f) => s + (f.count || 0), 0),
-    cap: freeUsers[0]?.cap ?? 100,
+    cap: freeUsers[0]?.cap ?? FREE_TIER_CAP,
   };
 }
 
