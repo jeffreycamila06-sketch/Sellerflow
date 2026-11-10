@@ -1,14 +1,15 @@
 // ONE STICKER — the NEW Live print pattern screen (switch one_sticker_enabled; admins before).
 // Same screen on iPhone, Android and laptop. On top: the EXACT picture this device's printer path
-// prints (oneSticker.ts — the same function the print uses). Below: Printer Test + the two long
-// comment tests, the paper size chips (+ Custom W×H), one row per part (weight · size · on/off),
-// the fixed date row, the QR row, "Reset to recommended" and "Save settings".
+// prints (oneSticker.ts — the same function the print uses), then "Sticker size: W×H mm · Change" (the size is
+// chosen ONLY in Printer settings — Jeff 2026-11-10; Change opens it). Below: Printer Test (+ the two long
+// comment tests, ADMIN only), one row per part (weight · size · on/off), the fixed date row, the QR row,
+// "Reset to recommended" and "Save settings".
 // Saving is what switches THIS device to the new sticker (oneStickerPrint.saveOneSticker); until
 // then the device keeps today's sticker.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, qrSizeOk, isSmallClass, tooWideFor, NOTE_TONE,
+  recommendedSettings, renderOneSticker, SCALE_STEPS, qrSizeOk, isSmallClass, tooWideFor, NOTE_TONE,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
 import { oneStickerScreenFonts, renderOptsFor, sampleInput, AUTO_SAVE_PATHS, type OneStickerPath } from "../adapters/oneStickerPrint";
@@ -158,6 +159,12 @@ function Switch({ on, onClick, testId, disabled, aria }: { on: boolean; onClick:
 export interface OneStickerPatternProps {
   onBack: () => void;
   initial: OneStickerSettings;     // saved settings, or a seed from today's pattern
+  // ONE PLACE (Jeff 2026-11-10): the size chosen in Printer settings → Sticker size (oneStickerSizeNow). The
+  // preview, the test prints and Save always use it; this screen has no size controls.
+  size?: { w: number; h: number; custom?: boolean }; // (absent = the initial settings' size)
+  onChangeSize?: () => void;       // "Change" → Printer settings (the draft below is kept for the way back)
+  draft?: OneStickerSettings | null; // unsaved edits from before the seller went to change the size
+  onDraft?: (s: OneStickerSettings) => void;
   savedOnDevice: boolean;          // this device already prints the new sticker
   onSave: (s: OneStickerSettings) => void;
   shopName: string;                // the seller's own shop name ("" = none — never the brand)
@@ -175,26 +182,26 @@ export interface OneStickerPatternProps {
 
 export default function OneStickerPattern(p: OneStickerPatternProps) {
   const t = useT();
-  const [s0, setS] = useState<OneStickerSettings>(p.initial);
-  const [base, setBase] = useState<OneStickerSettings>(p.initial); // what Save compares against
+  const [s0, setS] = useState<OneStickerSettings>(p.draft ?? p.initial);
+  const [base0, setBase] = useState<OneStickerSettings>(p.initial); // what Save compares against (its size = the Printer settings size)
+  const z = p.size ?? p.initial.size;
+  const size = z.custom ? { w: z.w, h: z.h, custom: true as const } : { w: z.w, h: z.h };
+  const base: OneStickerSettings = { ...base0, size };
   const [saved, setSaved] = useState(p.savedOnDevice);
   // saved on this phone while the screen is open (the auto-save landed after it opened) → the note follows at once
   // (adjusted during render, not an effect; the seller's edits are kept — never a remount)
   const [savedProp, setSavedProp] = useState(p.savedOnDevice);
   if (p.savedOnDevice !== savedProp) { setSavedProp(p.savedOnDevice); if (p.savedOnDevice) setSaved(true); }
-  const [customW, setCustomW] = useState(String(p.initial.size.w));
-  const [customH, setCustomH] = useState(String(p.initial.size.h));
-  const [customOpen, setCustomOpen] = useState(!!p.initial.size.custom);
-  const cw = Number(customW), ch = Number(customH);
-  const customOk = validCustomMm(cw) && validCustomMm(ch);
-  // the draft: an open, valid Custom size is the size (derived — nothing is copied into state)
-  // (a W×H that is one of the standard sizes is that size, not "custom": opening Custom alone is no change)
-  const std = STANDARD_SIZES.some((z) => z.w === cw && z.h === ch);
-  const s1: OneStickerSettings = customOpen && customOk ? { ...s0, size: std ? { w: cw, h: ch } : { w: cw, h: ch, custom: true } } : customOpen ? s0 : { ...s0, size: { w: s0.size.w, h: s0.size.h } };
+  // the draft always has the Printer settings size (never its own)
+  const s1: OneStickerSettings = { ...s0, size };
   // QR only on a label ≥ 50×30 mm (Jeff 2026-11-10): below it the QR is OFF (and saved OFF); a bigger size later
-  // does NOT turn it back on — the state is set OFF when the size drops (pickSize / the Custom inputs)
-  const qrSizeAllowed = qrSizeOk(s1.size);
+  // does NOT turn it back on — the draft is set OFF while the size is below (adjusted during render, no effect)
+  const qrSizeAllowed = qrSizeOk(size);
+  if (!qrSizeAllowed && s0.qr) setS((x) => ({ ...x, qr: false }));
   const s: OneStickerSettings = qrSizeAllowed ? s1 : { ...s1, qr: false };
+  const draftRef = useRef(p.onDraft);
+  useEffect(() => { draftRef.current = p.onDraft; });
+  useEffect(() => { draftRef.current?.(s); }, [JSON.stringify(s)]); // eslint-disable-line react-hooks/exhaustive-deps -- report each new draft
   const path = pathForPreview(p.devicePath);
   const customAllowed = p.devicePath !== "text" && p.devicePath !== "wifi";
   const dirty = !sameSettings(s, base);
@@ -203,6 +210,8 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   // the preview's sample (#128 Maria Santos @maria_live, today's Taipei date & time) — the same one the
   // test buttons print and the same one the notes are measured on
   const admin = p.isAdmin === true && !!p.onTestSample;
+  // the two long-comment tests are for ADMINS only (Jeff 2026-11-10); a seller has Printer Test only
+  const longTests = p.isAdmin === true;
   const [langKey, setLangKey] = useState<string | null>(null);
   const [route, setRoute] = useState<"new" | "today">("new");
   const adminSample = admin && langKey ? ADMIN_LANG_SAMPLES.find((x) => x.key === langKey) ?? null : null;
@@ -215,7 +224,8 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   // A (Jeff): after a paper size change or turning the QR on, a Buyer # above its new limit is lowered to
   // the largest size that fits (a short note says so)
   const sizeQr = `${sEff.size.w}x${sEff.size.h}|${sEff.qr ? 1 : 0}`;
-  const prevSizeQr = useRef<string | null>(null);
+  // back from Printer settings with a new size: the draft's old size counts as the previous one (Buyer # is lowered there too)
+  const prevSizeQr = useRef<string | null>(p.draft ? `${p.draft.size.w}x${p.draft.size.h}|${p.draft.qr && p.qrAllowed ? 1 : 0}` : null);
   const lowerPending = useRef(false);
   const [lowered, setLowered] = useState(false);
   useEffect(() => {
@@ -244,13 +254,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   // the comment has no limit (it always gives way)
   const plusBlocked = (k: PartKey, scale: number) => k !== "comment" && (caps == null || (caps[k] != null && scale >= caps[k]!));
   // the "lowered" note belongs to the change that lowered Buyer # — any other change clears it
-  const pickSize = (w: number, h: number) => { setLowered(false); setCustomOpen(false); setS((x) => ({ ...x, size: { w, h }, qr: qrSizeOk({ w, h }) && x.qr })); };
-  // a Custom W×H below 50×30 turns the QR OFF in the draft (it stays off when the size grows again)
-  const customQrOff = (w: number, h: number) => { if (validCustomMm(w) && validCustomMm(h) && !qrSizeOk({ w, h })) setS((x) => (x.qr ? { ...x, qr: false } : x)); };
   const reset = () => { setLowered(false); setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
-  // a size the printer cannot take is never saved (too wide, a wrong custom size, or 50×30 / custom on a
-  // TEXT / WiFi phone, which has no such layout)
-  const blocked = !!tooWide || (customOpen && !customOk) || (!customAllowed && (!!s.size.custom || (s.size.w === 50 && s.size.h === 30)));
+  // a size the printer cannot take is never saved (too wide, or 50×30 / custom on a TEXT / WiFi phone, which
+  // has no such layout) — the size is changed in Printer settings
+  const blocked = !!tooWide || (!customAllowed && (!!s.size.custom || (s.size.w === 50 && s.size.h === 30)));
   // Save: on a device that has NOT saved the new sticker yet, always on (the seller can adopt what they
   // see); after saving, off until something changes (Jeff). Never while the size can't be printed.
   const canSave = (dirty || !saved) && !blocked;
@@ -299,7 +306,6 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
       </div>
     );
   };
-  const isStd = (w: number, h: number) => !customOpen && s.size.w === w && s.size.h === h;
   return (
     <div data-testid="os-screen">
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -314,8 +320,14 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         {/* 1. the exact picture */}
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)", display: "grid", gap: 8, justifyItems: "center" }}>
           <OneStickerPreview settings={sEff} input={input} path={path} job={p.genericBold ? { bold: true } : {}} onFailed={setPvFailed} onRetry={() => setPvAttempt((a) => a + 1)} />
-          <span data-testid="os-caption" style={{ color: "#fff", fontSize: 12, fontWeight: 600, opacity: 0.9, textAlign: "center" }}>{tpl(t.rd_os_caption, { w: String(s.size.w), h: String(s.size.h) })}</span>
         </div>
+        {/* the size: chosen ONLY in Printer settings (Jeff 2026-11-10) — one line + Change */}
+        <div data-testid="os-size-line" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", columnGap: 4, marginTop: 4, fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+          <span data-testid="os-size-text" style={{ fontVariantNumeric: "tabular-nums" }}>{tpl(t.rd_os_size_line, { w: String(s.size.w), h: String(s.size.h) })}</span>
+          <span aria-hidden="true" style={{ color: "var(--text-muted)" }}>·</span>
+          <button type="button" onClick={p.onChangeSize} data-testid="os-size-change" style={{ minHeight: TAP, padding: "0 8px", border: "none", background: "none", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>{t.rd_os_change}</button>
+        </div>
+        {tooWide && <div data-testid="os-too-wide" style={{ marginTop: 2, fontSize: 12, fontWeight: 700, color: "var(--danger)", textAlign: "center" }}>{tpl(t.rd_os_too_wide, { model: tooWide.model, max: String(tooWide.maxLabelMm) })}</div>}
         {showNotes && <div data-testid="os-notes" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           {lowered && <span className="os-note" data-tone="warn" data-testid="os-note-lowered">{t.rd_os_note_buyer_lowered}</span>}
           {notes.map((n, i) => (
@@ -339,10 +351,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
 
         {/* 2. test prints (today's buttons) */}
         <button onClick={() => (adminTesting ? p.onTestSample!(sEff, adminSample ?? ADMIN_DEFAULT_SAMPLE, route, dirty || !saved) : p.onTest(sEff, "default", dirty || !saved))} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}><span aria-hidden="true">🖨 </span>{t.rd_pp_printer_test}</button>
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        {longTests && <div data-testid="os-long-tests" style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={() => p.onTest(sEff, "en", dirty || !saved)} data-testid="os-test-en" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_latin}</button>
           <button onClick={() => p.onTest(sEff, "zh", dirty || !saved)} data-testid="os-test-zh" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_cjk}</button>
-        </div>
+        </div>}
         {admin && (
           <div data-testid="os-admin-lang" style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border-strong)", borderRadius: 12, background: "var(--surface)" }}>
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)" }}>Admin: language test</div>
@@ -362,36 +374,8 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
 
         </div>
         <div className="os-ctl" data-testid="os-ctl-col">
-        {/* 3. paper size */}
-        <div data-testid="os-size-card" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", padding: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)", padding: "0 4px" }}>{t.rd_os_size}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }} data-testid="os-sizes">
-          {STANDARD_SIZES.filter((z) => customAllowed || !(z.w === 50 && z.h === 30)).map((z) => (
-            <button key={`${z.w}x${z.h}`} type="button" onClick={() => pickSize(z.w, z.h)} aria-pressed={isStd(z.w, z.h)} data-testid={`os-size-${z.w}x${z.h}`} style={chip(isStd(z.w, z.h))}>{z.w}×{z.h}</button>
-          ))}
-          {customAllowed && <button type="button" onClick={() => { setLowered(false); if (!customOpen) { setCustomW(String(s.size.w)); setCustomH(String(s.size.h)); } setCustomOpen(true); }} aria-pressed={customOpen} data-testid="os-size-custom" style={chip(customOpen)}>{t.rd_os_custom}</button>}
-        </div>
-        {!customAllowed && <div data-testid="os-custom-hidden" style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_os_custom_hidden}</div>}
-        {customAllowed && customOpen && (
-          <div data-testid="os-custom" style={{ marginTop: 9 }}>
-            {/* W · × · H on one line (a fixed grid — the "×" never wraps alone), inputs full width, ≥ 44 px */}
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "end", gap: 8 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_width}
-                <input inputMode="numeric" value={customW} onChange={(e) => { setLowered(false); const v = e.target.value.replace(/[^\d]/g, "").slice(0, 3); setCustomW(v); customQrOff(Number(v), ch); }} data-testid="os-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
-              </label>
-              <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", lineHeight: `${TAP}px` }}>×</span>
-              <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_height}
-                <input inputMode="numeric" value={customH} onChange={(e) => { setLowered(false); const v = e.target.value.replace(/[^\d]/g, "").slice(0, 3); setCustomH(v); customQrOff(cw, Number(v)); }} data-testid="os-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
-              </label>
-            </div>
-            {!customOk && <div data-testid="os-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
-          </div>
-        )}
-        {tooWide && <div data-testid="os-too-wide" style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: tooWide.model, max: String(tooWide.maxLabelMm) })}</div>}
-        </div>
-
         {/* 4. one row per part */}
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden", marginTop: 13 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
           {/* the approved preview's order: Shop name → Date & time → Buyer # → Name → @username → Print QR → Comment / Price */}
           {partRow(rowOf("shop"))}
           <div data-testid="os-row-date" style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", borderBottom: "1px solid var(--border)" }}>

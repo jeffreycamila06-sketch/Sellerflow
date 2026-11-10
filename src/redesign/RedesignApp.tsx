@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, pickOneStickerSize, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
@@ -1947,6 +1947,37 @@ export default function RedesignApp() {
     if (label && label !== psSize) queueMicrotask(() => setPsSize(label)); // after this effect / the printer pick
   };
   useEffect(() => { autoSaveNow(); }, [oneStickerOn, flagsLoaded, osDevicePath, osPrinterName]); // eslint-disable-line react-hooks/exhaustive-deps -- once the answer is certain; a saved sticker is never touched again
+  // ONE PLACE FOR THE SIZE (Jeff 2026-11-10): the new sticker's size is chosen ONLY in Printer settings → Sticker size
+  // (one list for every device that prints the new sticker — picture-sticker phones incl. Niimbot, and the laptop);
+  // the Live print pattern shows it with "Change" (opens Printer settings, Back returns there with the unsaved edits).
+  // TEXT / WiFi devices keep today's Printer settings list. Accounts that don't see the new screen: untouched.
+  const osSizeMode = oneStickerOn && osDevicePath !== "text" && osDevicePath !== "wifi";
+  const [, setOsSizeRev] = useState(0);
+  // read only where it is shown (never on every live-feed render)
+  const osSizeNow = oneStickerOn && (screen === "printpattern" || screen === "printersettings") ? oneStickerSizeNow(pp, psSize, osDevicePath, osPrinterName) : null;
+  const [psBack, setPsBack] = useState<"settings" | "printpattern">("settings");
+  const [osDraft, setOsDraft] = useState<OneStickerSettings | null>(null);
+  // the unsaved Live print pattern edits live only for the trip to Printer settings and back (adjusted during
+  // render when the screen changes — leaving both screens drops them, and Printer settings' Back is Settings again)
+  const [osTripScreen, setOsTripScreen] = useState(screen);
+  if (osTripScreen !== screen) {
+    setOsTripScreen(screen);
+    if (screen !== "printpattern" && screen !== "printersettings") { if (osDraft) setOsDraft(null); if (psBack !== "settings") setPsBack("settings"); }
+  }
+  const onPickOneSize = (w: number, h: number) => {
+    const qrBefore = readSavedOneSticker()?.qr === true;
+    const r = pickOneStickerSize(w, h); // the saved sticker follows (or, nothing saved yet, the size is remembered for its Save)
+    if (!r) return;
+    const label = psLabelFor(r.size, osDevicePath);
+    if (label && label !== psSize) setPsSize(label);
+    setPsSizeOpen(false);
+    setOsSizeRev((n) => n + 1);
+    if (r.size.custom) {
+      const saidSaved = tpl(tApp.rd_ps_custom_saved, { w: String(w), h: String(h) });
+      // below 50×30 the QR was turned off — say so (it stays off on a bigger size until turned on again)
+      setToast({ msg: qrBefore && r.saved && !r.saved.qr ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved, kind: "ok" });
+    }
+  };
   // a phone whose saved Bluetooth printer is not known in this app yet (a long-time AIMO user who never opened
   // Printer settings since): ask the native side ONCE (read only), so the auto-save sees the real printer. Only
   // for an account that sees the new screen, only while nothing is saved — every other account: no extra call.
@@ -2843,7 +2874,7 @@ export default function RedesignApp() {
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={onDeleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings
-              onBack={() => setScreen("settings")}
+              onBack={() => setScreen(psBack)}
               psType={psType} compactV2={stickerCompactV2On}
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
@@ -2858,7 +2889,7 @@ export default function RedesignApp() {
                   const why = sync.reason === "niimbot" ? tpl(tApp.rd_os_sync_niimbot, { size }) : sync.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: sync.model ?? "", max: String(sync.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size });
                   setToast({ msg: why, kind: "err" });
                 }
-              } }}
+              } else clearOneStickerSizeChoice(); /* a pick while the new screen is hidden is the newest size (a remembered one-place pick is done) */ }}
               cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicShown}
               stickerQrAllowed={stickerQrAllowed}
@@ -2867,19 +2898,18 @@ export default function RedesignApp() {
               flowV2={printerFlowV2}
               isAdmin={isAdmin}
               onPrinterSaved={autoSaveNow}
-              customSize={oneStickerOn ? (() => {
+              oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName), printerName: osPrinterName, onPick: onPickOneSize } : undefined}
+              sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && psBack === "printpattern"))}
+              customSize={oneStickerOn && !osSizeMode ? (() => {
                 // ONE SIZE, BOTH PLACES (Jeff 2026-11-10): the new sticker's Custom size in Printer settings too.
                 // Hidden (with a note) where this phone + printer prints the older sticker, or where the new
                 // sticker is not saved on this device yet (that device still prints today's sticker).
                 const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
                 const saved = readSavedOneSticker();
                 const older = devPath === "text" || devPath === "wifi";
-                // a Niimbot's size is set on the Live print pattern (a Printer settings size pick says so too) —
-                // Custom there as well, so both say the same thing
-                const niimbot = devPath === "niimbot";
                 return {
-                  allowed: !older && !niimbot && saved != null,
-                  reason: older ? "text" as const : niimbot ? "niimbot" as const : saved == null ? "not_saved" as const : undefined,
+                  allowed: !older && saved != null,
+                  reason: older ? "text" as const : saved == null ? "not_saved" as const : undefined,
                   saved: saved ? saved.size : null,
                   printerName: savedBtPrinter()?.name ?? null,
                   onSave: (w: number, h: number) => {
@@ -2897,11 +2927,16 @@ export default function RedesignApp() {
             />
           )}
           {screen === "printpattern" && oneStickerOn && (
-            <OneStickerPattern onBack={() => setScreen("settings")}
+            <OneStickerPattern onBack={() => { setOsDraft(null); setScreen("settings"); }}
               initial={readSavedOneSticker() ?? seedOneSticker(pp, psSize, isStickerQrOn(), oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })), savedBtPrinter()?.name ?? null)}
+              size={osSizeNow ?? { w: 100, h: 60 }}
+              onChangeSize={() => { setPsBack("printpattern"); setPsSizeOpen(true); setScreen("printersettings"); }}
+              draft={osDraft}
+              onDraft={setOsDraft}
               savedOnDevice={readSavedOneSticker() != null}
               onSave={(next) => {
                 saveOneSticker(next);
+                setOsDraft(null);
                 // a standard size is also the size the rest of the app shows (Printer settings, its exact label);
                 // never 50×30 / custom for a phone on the TEXT / WiFi sticker (those have no such layout)
                 const label = psLabelFor(next.size, oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })));

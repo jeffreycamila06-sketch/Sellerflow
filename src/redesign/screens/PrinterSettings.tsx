@@ -24,7 +24,7 @@ import {
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
 import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
-import { testPrintFor } from "../adapters/oneStickerPrint";
+import { testPrintFor, printerLabelFor } from "../adapters/oneStickerPrint";
 import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor, qrSizeOk } from "../adapters/oneSticker";
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
@@ -40,10 +40,20 @@ const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWe
 // Shown only to accounts with the new screen (customSize undefined = exactly today's screen).
 export interface PsCustomSize {
   allowed: boolean;                          // this phone + printer can print a custom size on the new sticker
-  reason?: "text" | "not_saved" | "niimbot"; // why not: the older (text / WiFi) sticker, the new sticker not saved here, or a Niimbot (its size is set on the Live print pattern)
+  reason?: "text" | "not_saved";             // why not: the older (text / WiFi) sticker, or the new sticker not saved here
   saved: { w: number; h: number; custom?: boolean } | null; // the new sticker's saved size on this device
   printerName?: string | null;
   onSave: (w: number, h: number) => void;
+}
+// ONE PLACE (Jeff 2026-11-10): for accounts with the new Live print pattern on a device that prints the new
+// sticker (picture-sticker phones incl. Niimbot, and the laptop), THIS is where the sticker size is chosen —
+// one list for every device: 50×30 · 60×40 · 70×50 · 80×50 · 80×60 · 100×60 (none wider than the saved printer)
+// + Custom (30–110 mm). The Live print pattern shows it and links here. undefined = today's list exactly.
+export interface PsOneSize {
+  current: { w: number; h: number; custom?: boolean }; // the new sticker's size now (oneStickerSizeNow)
+  sizes: { w: number; h: number }[];                    // the listed sizes (oneStickerSizesFor)
+  printerName?: string | null;
+  onPick: (w: number, h: number) => void;               // a listed size, or Custom → Save size
 }
 const gridBtn: CSSProperties = { padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", borderRadius: 11, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textAlign: "center", border: "none", ...(active ? { background: "var(--surface)", color: "var(--accent-fg)", boxShadow: "var(--shadow)" } : { background: "transparent", color: "var(--text-dim)" }) });
@@ -85,7 +95,10 @@ export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
   stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false, customSize, onPrinterSaved,
+  oneSize, sizeOnWifiTab = false,
 }: {
+  oneSize?: PsOneSize; // the new sticker's one size list (accounts with the new Live print pattern, new-sticker devices)
+  sizeOnWifiTab?: boolean; // laptop / WiFi sticker opened from the Live print pattern: the Sticker size card on the WiFi tab too
   onPrinterSaved?: () => void; // a Bluetooth sticker printer was just saved (the new sticker's first save may run now, before the test sticker)
   customSize?: PsCustomSize; // the new sticker's Custom size (accounts with the new Live print pattern only)
   compactV2?: boolean; // sticker layout v2 ON (printing.ts stickerCompactV2Allowed): the QR prints on every size → no 60×40 lock, v2 hint
@@ -121,13 +134,13 @@ export default function PrinterSettings({
   // Printer setup v2: gated accounts on an app build new enough to store a generic printer.
   // Older apps (and the web, which has no bridge) keep today's screen exactly.
   const v2 = flowV2 && hasGenericPrinterBridge();
-  const savedCustom = customSize?.allowed && customSize.saved?.custom ? customSize.saved : null;
+  const savedCustom = oneSize ? (oneSize.current.custom ? oneSize.current : null) : customSize?.allowed && customSize.saved?.custom ? customSize.saved : null;
   const [customOpen, setCustomOpen] = useState(false);
-  const [customW, setCustomW] = useState(String(customSize?.saved?.w ?? 50));
-  const [customH, setCustomH] = useState(String(customSize?.saved?.h ?? 40));
+  const [customW, setCustomW] = useState(String(oneSize?.current.w ?? customSize?.saved?.w ?? 50));
+  const [customH, setCustomH] = useState(String(oneSize?.current.h ?? customSize?.saved?.h ?? 40));
   const cw = Number(customW), ch = Number(customH);
   const customOk = validCustomMm(cw) && validCustomMm(ch);
-  const customTooWide = customOk ? tooWideFor(customSize?.printerName, cw) : null;
+  const customTooWide = customOk ? tooWideFor(oneSize ? oneSize.printerName : customSize?.printerName, cw) : null;
   const [btScanned, setBtScanned] = useState(false);
   const [btShowAll, setBtShowAll] = useState(false);
   const [pick, setPick] = useState<BluetoothPrinterDevice | null>(null);
@@ -264,6 +277,116 @@ export default function PrinterSettings({
     : status.ok ? "var(--ok)" : nativeReady ? "var(--warn)" : "var(--text-muted)";
   const v2Title = blocked ? t.rd_bts_st_attention : btSaved ? tpl(t.rd_bts_st_connected, { name: btSaved.name || t.rd_ps_aimo }) : t.rd_bts_st_none;
 
+  // TODAY's Sticker size (every account without the one size list): unchanged.
+  const oldSizeBlock = () => (<>
+              <label style={label}>{t.rd_ps_sticker_size}</label>
+              {/* WEB (laptop): the browser print follows the Windows driver's paper
+                  size and SellerFlow auto-fits one label — no in-app size to pick.
+                  PHONE (native thermal): keep the size selector + the tiers. */}
+              {!isAppShell() ? (
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11 }}>{t.rd_ps_web_driver_size}</div>
+              ) : (<>
+              <button onClick={onTogglePsSize} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                <span data-testid="ps-size-current" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{savedCustom ? tpl(t.rd_ps_custom_size, { w: String(savedCustom.w), h: String(savedCustom.h) }) : psSize}</span>
+                <span style={{ color: "var(--text-muted)", transition: "transform .2s", transform: psSizeOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
+              </button>
+              {psSizeOpen && (
+                <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
+                  {(v2 ? [...PS_SIZES, "50x30mm"] : PS_SIZES).map((z) => {
+                    const on = z === psSize && !savedCustom && !customOpen;
+                    return (
+                      <button key={z} onClick={() => { setCustomOpen(false); onPickPsSize(z); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                        <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{z}</span>
+                      </button>
+                    );
+                  })}
+                  {customSize?.allowed && (() => {
+                    const on = customOpen || !!savedCustom;
+                    return (
+                      <button key="custom" data-testid="ps-size-custom" onClick={() => { if (!customOpen) { setCustomW(String(customSize.saved?.w ?? 50)); setCustomH(String(customSize.saved?.h ?? 40)); } setCustomOpen(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                        <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.rd_os_custom}</span>
+                      </button>
+                    );
+                  })()}
+                </div>
+              )}
+              {customSize && !customSize.allowed && psSizeOpen && (
+                <div data-testid="ps-custom-hidden" style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{customSize.reason === "not_saved" ? t.rd_ps_custom_need_saved : t.rd_os_custom_hidden}</div>
+              )}
+              {customSize?.allowed && psSizeOpen && customOpen && (
+                <div data-testid="ps-custom" style={{ marginTop: 9 }}>
+                  {/* W · × · H on one line (a fixed grid — the "×" never wraps alone), inputs full width, ≥ 44 px — the Live print pattern's Custom */}
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "end", gap: 8 }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_width}
+                      <input inputMode="numeric" value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="ps-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+                    </label>
+                    <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", lineHeight: "44px" }}>×</span>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_height}
+                      <input inputMode="numeric" value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="ps-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+                    </label>
+                  </div>
+                  {!customOk && <div data-testid="ps-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
+                  {customOk && !qrSizeOk({ w: cw, h: ch }) && <div data-testid="ps-custom-qr-note" style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>{t.rd_os_qr_min_size}</div>}
+                  {customTooWide && <div data-testid="ps-custom-too-wide" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: customTooWide.model, max: String(customTooWide.maxLabelMm) })}</div>}
+                  <button data-testid="ps-custom-save" disabled={!customOk || !!customTooWide} onClick={() => { if (!customOk || customTooWide) return; customSize.onSave(cw, ch); setCustomOpen(false); onTogglePsSize(); }} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 10, border: "none", background: customOk && !customTooWide ? "var(--accent)" : "var(--surface-2)", color: customOk && !customTooWide ? "var(--accent-text)" : "var(--text-muted)", cursor: customOk && !customTooWide ? "pointer" : "not-allowed" }}>{t.rd_ps_custom_save}</button>
+                </div>
+              )}
+              </>)}
+  </>);
+  // The one size list (oneSize): every device that prints the new sticker, the laptop included.
+  const radio = (on: boolean) => (
+    <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
+  );
+  const optBtn = (on: boolean): CSSProperties => ({ width: "100%", minHeight: 44, display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" });
+  const oneSizeCurrentTooWide = oneSize ? tooWideFor(oneSize.printerName, oneSize.current.w) : null;
+  const oneSizeBlock = oneSize && (
+    <div data-testid="ps-one-size">
+      <label style={label}>{t.rd_ps_sticker_size}</label>
+      <button onClick={onTogglePsSize} style={{ width: "100%", minHeight: 44, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+        <span data-testid="ps-size-current" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{oneSize.current.custom ? tpl(t.rd_ps_custom_size, { w: String(oneSize.current.w), h: String(oneSize.current.h) }) : printerLabelFor(oneSize.current)}</span>
+        <span style={{ color: "var(--text-muted)", transition: "transform .2s", transform: psSizeOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
+      </button>
+      {psSizeOpen && (
+        <div data-testid="ps-size-list" style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
+          {oneSize.sizes.map((z) => {
+            const on = !customOpen && !oneSize.current.custom && z.w === oneSize.current.w && z.h === oneSize.current.h;
+            return (
+              <button key={`${z.w}x${z.h}`} data-testid={`ps-size-opt-${z.w}x${z.h}`} aria-pressed={on} onClick={() => { setCustomOpen(false); oneSize.onPick(z.w, z.h); }} style={optBtn(on)}>
+                {radio(on)}<span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{printerLabelFor(z)}</span>
+              </button>
+            );
+          })}
+          <button data-testid="ps-size-custom" aria-pressed={customOpen || !!oneSize.current.custom} onClick={() => { if (!customOpen) { setCustomW(String(oneSize.current.w)); setCustomH(String(oneSize.current.h)); } setCustomOpen(true); }} style={optBtn(customOpen || !!oneSize.current.custom)}>
+            {radio(customOpen || !!oneSize.current.custom)}<span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.rd_os_custom}</span>
+          </button>
+        </div>
+      )}
+      {psSizeOpen && customOpen && (
+        <div data-testid="ps-custom" style={{ marginTop: 9 }}>
+          {/* W · × · H on one line (a fixed grid — the "×" never wraps alone), inputs full width, ≥ 44 px */}
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "end", gap: 8 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_width}
+              <input inputMode="numeric" value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="ps-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+            </label>
+            <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", lineHeight: "44px" }}>×</span>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_height}
+              <input inputMode="numeric" value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="ps-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+            </label>
+          </div>
+          {!customOk && <div data-testid="ps-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
+          {customOk && !qrSizeOk({ w: cw, h: ch }) && <div data-testid="ps-custom-qr-note" style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>{t.rd_os_qr_min_size}</div>}
+          {customTooWide && <div data-testid="ps-custom-too-wide" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: customTooWide.model, max: String(customTooWide.maxLabelMm) })}</div>}
+          <button data-testid="ps-custom-save" disabled={!customOk || !!customTooWide} onClick={() => { if (!customOk || customTooWide) return; oneSize.onPick(cw, ch); setCustomOpen(false); }} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 10, border: "none", background: customOk && !customTooWide ? "var(--accent)" : "var(--surface-2)", color: customOk && !customTooWide ? "var(--accent-text)" : "var(--text-muted)", cursor: customOk && !customTooWide ? "pointer" : "not-allowed" }}>{t.rd_ps_custom_save}</button>
+        </div>
+      )}
+      {/* the saved size: wider than this printer (a saved size is never changed by itself), or too small for a QR */}
+      {oneSizeCurrentTooWide && <div data-testid="ps-size-too-wide" style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: "var(--danger)", lineHeight: 1.45 }}>{tpl(t.rd_os_too_wide, { model: oneSizeCurrentTooWide.model, max: String(oneSizeCurrentTooWide.maxLabelMm) })}</div>}
+      {!qrSizeOk(oneSize.current) && <div data-testid="ps-size-qr-note" style={{ marginTop: 7, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_qr_min_size}</div>}
+    </div>
+  );
+
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -287,6 +410,12 @@ export default function PrinterSettings({
 
         {wifi ? (
           <div>
+            {/* the laptop / a WiFi-sticker device opened from the Live print pattern: the size is here too */}
+            {sizeOnWifiTab && (
+              <div data-testid="ps-wifi-size-card" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12 }}>
+                {oneSizeBlock || <div data-testid="ps-wifi-size-old">{oldSizeBlock()}</div>}
+              </div>
+            )}
             <div style={groupLabel}>{t.rd_ps_output_format}</div>
             <div style={{ display: "flex", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: 5, marginBottom: 12 }}>
               <button onClick={() => onSetPsOut("receipt")} style={tab(psOut === "receipt")}>{t.rd_ps_receipt}</button>
@@ -323,61 +452,7 @@ export default function PrinterSettings({
               </div>
             )}
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 16 }}>
-              <label style={label}>{t.rd_ps_sticker_size}</label>
-              {/* WEB (laptop): the browser print follows the Windows driver's paper
-                  size and SellerFlow auto-fits one label — no in-app size to pick.
-                  PHONE (native thermal): keep the size selector + the tiers. */}
-              {!isAppShell() ? (
-                <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11 }}>{t.rd_ps_web_driver_size}</div>
-              ) : (<>
-              <button onClick={onTogglePsSize} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
-                <span data-testid="ps-size-current" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{savedCustom ? tpl(t.rd_ps_custom_size, { w: String(savedCustom.w), h: String(savedCustom.h) }) : psSize}</span>
-                <span style={{ color: "var(--text-muted)", transition: "transform .2s", transform: psSizeOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
-              </button>
-              {psSizeOpen && (
-                <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
-                  {(v2 ? [...PS_SIZES, "50x30mm"] : PS_SIZES).map((z) => {
-                    const on = z === psSize && !savedCustom && !customOpen;
-                    return (
-                      <button key={z} onClick={() => { setCustomOpen(false); onPickPsSize(z); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-                        <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{z}</span>
-                      </button>
-                    );
-                  })}
-                  {customSize?.allowed && (() => {
-                    const on = customOpen || !!savedCustom;
-                    return (
-                      <button key="custom" data-testid="ps-size-custom" onClick={() => { if (!customOpen) { setCustomW(String(customSize.saved?.w ?? 50)); setCustomH(String(customSize.saved?.h ?? 40)); } setCustomOpen(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-                        <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.rd_os_custom}</span>
-                      </button>
-                    );
-                  })()}
-                </div>
-              )}
-              {customSize && !customSize.allowed && psSizeOpen && (
-                <div data-testid="ps-custom-hidden" style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{customSize.reason === "not_saved" ? t.rd_ps_custom_need_saved : customSize.reason === "niimbot" ? t.rd_ps_custom_niimbot : t.rd_os_custom_hidden}</div>
-              )}
-              {customSize?.allowed && psSizeOpen && customOpen && (
-                <div data-testid="ps-custom" style={{ marginTop: 9 }}>
-                  {/* W · × · H on one line (a fixed grid — the "×" never wraps alone), inputs full width, ≥ 44 px — the Live print pattern's Custom */}
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "end", gap: 8 }}>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_width}
-                      <input inputMode="numeric" value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="ps-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
-                    </label>
-                    <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", lineHeight: "44px" }}>×</span>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_height}
-                      <input inputMode="numeric" value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} data-testid="ps-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
-                    </label>
-                  </div>
-                  {!customOk && <div data-testid="ps-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
-                  {customOk && !qrSizeOk({ w: cw, h: ch }) && <div data-testid="ps-custom-qr-note" style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>{t.rd_os_qr_min_size}</div>}
-                  {customTooWide && <div data-testid="ps-custom-too-wide" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: customTooWide.model, max: String(customTooWide.maxLabelMm) })}</div>}
-                  <button data-testid="ps-custom-save" disabled={!customOk || !!customTooWide} onClick={() => { if (!customOk || customTooWide) return; customSize.onSave(cw, ch); setCustomOpen(false); onTogglePsSize(); }} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 10, border: "none", background: customOk && !customTooWide ? "var(--accent)" : "var(--surface-2)", color: customOk && !customTooWide ? "var(--accent-text)" : "var(--text-muted)", cursor: customOk && !customTooWide ? "pointer" : "not-allowed" }}>{t.rd_ps_custom_save}</button>
-                </div>
-              )}
-              </>)}
+              {oneSizeBlock || oldSizeBlock()}
               {btSaved && (
                 <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
                   <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{btSaved.name}</div><div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>{btSaved.address}</div></div>
