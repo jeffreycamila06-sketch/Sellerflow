@@ -35,9 +35,9 @@ describe("WiFi pick with a Niimbot still saved", () => {
 });
 
 describe("item 1 toast: the QR going off is said when nothing was saved too", () => {
-  it("RedesignApp adds the QR note when the old switch was turned off by the pick", () => {
+  it("RedesignApp adds the QR note when the pick turned the new sticker QR off (nothing saved)", () => {
     const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain("const oldQrOff = oldQrOffAfterPick(r.saved, r.size) && isStickerQrOn();");
-    expect(app).toContain("(qrBefore && r.saved && !r.saved.qr) || oldQrOff ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved");
+    expect(app).toContain("const newQrOff = markOneStickerQrOffAfterPick(r.saved, r.size, isStickerQrOn());");
+    expect(app).toContain("(qrBefore && r.saved && !r.saved.qr) || newQrOff ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved");
   });
 });

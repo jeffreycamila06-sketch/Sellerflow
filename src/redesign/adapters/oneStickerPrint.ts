@@ -173,13 +173,26 @@ export function osDraftAfterSizePick<D extends { qr: boolean }>(draft: D | null,
   return draft && draft.qr && !qrSizeOk(size) ? { ...draft, qr: false } : draft;
 }
 
-/** A size picked in Printer settings while NOTHING is saved yet (pickOneStickerSize → saved null) and below 50×30:
- *  the old "Print QR on sticker" switch (isStickerQrOn — what the first draft and the phone auto-save take the QR
- *  from) goes OFF too, so the new sticker never starts with the QR on a size that can't take it. It never comes
- *  back by itself on a bigger size; only the seller turns it on (Jeff 2026-11-10). PURE. */
+/** A size picked in Printer settings while NOTHING is saved yet (pickOneStickerSize → saved null) and below 50×30. PURE. */
 export function oldQrOffAfterPick(saved: OneStickerSettings | null, size: { w: number; h: number }): boolean {
   return saved == null && !qrSizeOk(size);
 }
+// NEW-STICKER QR OFF MARK (Jeff 2026-11-10): the old "Print QR on sticker" switch (sfl_rd_sticker_qr) is per DEVICE and
+// today's sticker of EVERY account on this device reads it, so it is never touched. Instead a separate per-device mark
+// is set, read ONLY by the new sticker's first draft (seedOneSticker) and the phone auto-save: QR OFF while it is set.
+// It never clears by itself on a bigger size — only when the seller turns the QR ON on the Live print pattern and saves.
+export const LS_ONE_STICKER_QR_OFF = "sfl_rd_one_sticker_qr_off";
+export function isOneStickerQrOffMarked(): boolean { try { return localStorage.getItem(LS_ONE_STICKER_QR_OFF) === "1"; } catch { return false; } }
+export function clearOneStickerQrOffMark(): void { try { localStorage.removeItem(LS_ONE_STICKER_QR_OFF); } catch { /* ignore */ } }
+/** After a Printer settings pick: nothing saved + below 50×30 + the new sticker would start with the QR on → set the
+ *  mark. Returns true when the QR went off for the new sticker by this pick (the toast says so). */
+export function markOneStickerQrOffAfterPick(saved: OneStickerSettings | null, size: { w: number; h: number }, oldQrOn: boolean): boolean {
+  if (!oldQrOffAfterPick(saved, size) || !oldQrOn || isOneStickerQrOffMarked()) return false;
+  try { localStorage.setItem(LS_ONE_STICKER_QR_OFF, "1"); } catch { /* ignore */ }
+  return true;
+}
+/** The QR the new sticker's first draft / auto-save start with: the old switch, unless the mark says OFF. */
+export const oneStickerSeedQr = (oldQrOn: boolean): boolean => oldQrOn && !isOneStickerQrOffMarked();
 
 /** The Print Pattern fields the first draft is made from (screens/PrintPattern PrintPatternState). */
 export interface SeedPattern { shopName: boolean; shopNameSize: number; buyerNum: boolean; buyerNumSize: number; tiktokName: boolean; tiktokNameSize: number; tiktokUser: boolean; tiktokUserSize: number; comment: boolean; commentSize: number }

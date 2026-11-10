@@ -172,7 +172,7 @@ describe("RedesignApp wiring", () => {
   it("runs only after both reads finished, from the phone's own device path; a standard size also goes to Printer settings (one size, both places)", () => {
     const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain("const flagsLoaded = switchesOk(featureSw) && featureAccessOk();");
-    expect(app).toContain("const next = autoSaveOneSticker({ visible: oneStickerOn, flagsLoaded, devicePath, printerSaved: savedBtPrinter() != null }, pp, psSize, isStickerQrOn(), savedBtPrinter()?.name ?? null);");
+    expect(app).toContain("const next = autoSaveOneSticker({ visible: oneStickerOn, flagsLoaded, devicePath, printerSaved: savedBtPrinter() != null }, pp, psSize, oneStickerSeedQr(isStickerQrOn()), savedBtPrinter()?.name ?? null);"); // the new sticker's QR: the old switch unless the 'QR off' device mark is set
     expect(app).toContain("const label = psLabelFor(next.size, devicePath);");
     expect(app).toContain("useEffect(() => { autoSaveNow(); }, [oneStickerOn, flagsLoaded, osDevicePath, osPrinterName]);");
     // the one read-only printer ask: visible account, both reads answered, Bluetooth phone, nothing known / saved
