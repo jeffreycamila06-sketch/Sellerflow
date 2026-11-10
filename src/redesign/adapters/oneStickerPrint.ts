@@ -85,6 +85,10 @@ export function syncOneStickerSizeFromPrinter(label: string, ctx: SizeSyncContex
  *  settings shows the saved size instead. Returns the label Printer settings should show, or null =
  *  leave it (nothing saved, already the same, synced, or no Printer settings label for the saved size). */
 export function reconcileOneStickerSize(label: string, ctx: SizeSyncContext = {}): string | null {
+  // a saved size with no Printer settings label (a custom size) is KEPT: saving it never changed Printer
+  // settings' old label, so that label says nothing new — last save wins (the header shows "Custom W×H mm")
+  const saved = readSavedOneSticker();
+  if (saved && psLabelFor(saved.size, ctx.devicePath) == null) return null;
   const r = syncOneStickerSizeFromPrinter(label, ctx);
   if (r.status !== "kept") return null;
   const next = psLabelFor(r.keep, ctx.devicePath);
