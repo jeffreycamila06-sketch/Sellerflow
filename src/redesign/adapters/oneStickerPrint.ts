@@ -211,7 +211,8 @@ export function autoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; 
   // a size picked in Printer settings before this save (and the printer takes it) is the size — one place
   const seed = seedOneSticker(pp, psSize, qr, c.devicePath, printerName);
   const choice = readOneStickerSizeChoice();
-  const s = normalizeSettings(choice && !tooWideFor(printerName, choice.w) ? { ...seed, size: choice } : seed); // normalize: the QR rule (none below 50×30)
+  const lim = oneStickerLimitFor(printerName, c.devicePath === "niimbot"); // an unknown Niimbot = 50 mm
+  const s = normalizeSettings(choice && !(lim && choice.w > lim.maxLabelMm) ? { ...seed, size: choice } : seed); // normalize: the QR rule (none below 50×30)
   saveOneSticker(s);
   return s;
 }

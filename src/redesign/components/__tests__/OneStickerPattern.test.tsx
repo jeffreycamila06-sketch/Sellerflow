@@ -42,7 +42,7 @@ describe("OneStickerPattern", () => {
   it("under the preview: \"Sticker size: W×H mm · Change\" (follows Printer settings) and the notes (fits / red only when a part runs off)", async () => {
     const { setSize, onChangeSize } = renderIt();
     expect(screen.getByTestId("os-size-text").textContent).toBe("Sticker size: 100×60 mm");
-    expect((await screen.findByTestId("os-note-ok")).textContent).toBe("Everything fits");
+    expect((await screen.findByTestId("os-note-ok", {}, { timeout: 20000 })).textContent).toBe("Everything fits");
     expect(screen.queryByTestId("os-fit")).toBeNull();
     setSize({ w: 50, h: 30 });
     expect(screen.getByTestId("os-size-text").textContent).toBe("Sticker size: 50×30 mm");

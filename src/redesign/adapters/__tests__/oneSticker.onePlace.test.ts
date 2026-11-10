@@ -160,6 +160,8 @@ describe("guardian gaps (2026-11-10)", () => {
     expect(oneStickerLimitFor("B3S-P1", true)).toEqual({ model: "B3S", maxLabelMm: 75 });
     pickOneStickerSize(70, 50);
     expect(oneStickerSizeNow(PP, "100x60mm (Standard)", "niimbot", "NB-UNKNOWN")).toEqual({ w: 50, h: 30 });
+    // the auto-save too (guardian follow-up): a remembered 70×50 is never auto-saved on an unknown Niimbot
+    expect(autoSaveOneSticker({ visible: true, flagsLoaded: true, devicePath: "niimbot", printerSaved: true }, PP, "100x60mm (Standard)", false, "NB-UNKNOWN")!.size).toEqual({ w: 50, h: 30 });
   });
 });
 
