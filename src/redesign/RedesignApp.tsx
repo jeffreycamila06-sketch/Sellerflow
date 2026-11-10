@@ -66,7 +66,7 @@ import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY, planLabel } from "./adapters/useAuthSession";
 import { accountLimitMessage, isAccountLimitError, useAccountQuota } from "./adapters/accountQuota";
 import { effectiveWorld, platformHides, PLATFORM_WORLDS_PUBLIC, type PlatformViewAs } from "./adapters/platformWorld";
-import { useFeatureSwitches, switchesLoaded } from "./adapters/featureSwitches";
+import { useFeatureSwitches, switchesLoaded, switchesOk } from "./adapters/featureSwitches";
 import { helpBotVisible, helpBotPaid, useHelpBotSwitch } from "./adapters/helpBot";
 import { tiktokSendAllowed } from "./adapters/tiktokSend";
 import { pastSessionsAllowed } from "./adapters/pastSessions";
@@ -117,7 +117,7 @@ import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePr
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
-import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer } from "./adapters/printerBridge";
+import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer, btCall } from "./adapters/printerBridge";
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
@@ -154,7 +154,7 @@ import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpi
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
-import { useFeatureAccess, hasFeature, featureAccessLoaded } from "./adapters/featureAccess";
+import { useFeatureAccess, hasFeature, featureAccessOk } from "./adapters/featureAccess";
 import { usePostSales } from "./adapters/usePostSales";
 import { postSalesGate, postPrintSettings, givePostWaitlist, postItemStock } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
@@ -1929,18 +1929,32 @@ export default function RedesignApp() {
     if (show) queueMicrotask(() => setPsSize(show)); // after this effect (the reconcile wrote the saved sticker)
   }, [oneStickerOn]); // eslint-disable-line react-hooks/exhaustive-deps -- once per becoming visible
   // AUTO-SAVE (Jeff 2026-11-10): on a phone whose account sees the new Live print pattern, the new sticker is
-  // saved by itself the first time (no Save tap) — only once both reads finished (the feature list AND the
-  // switches: a pending / failed read never grants it), only on a picture-sticker phone (never the laptop, the
-  // text sticker or WiFi), only while nothing is saved here. Same as a Save on the Live print pattern: a standard
-  // size is also what Printer settings shows (psLabelFor), so both keep one size (and the reconcile keeps it).
-  const flagsLoaded = switchesLoaded(featureSw) && featureAccessLoaded();
+  // saved by itself the first time (no Save tap) — only once BOTH reads answered (the feature list AND the
+  // switches; a pending or failed read = no auto-save), only on a picture-sticker phone with a Bluetooth sticker
+  // printer SAVED (never the laptop, the text sticker or WiFi; a first-time Niimbot setup waits for the Niimbot),
+  // only while nothing is saved here. Same as a Save on the Live print pattern: a standard size is also what
+  // Printer settings shows (psLabelFor), so both keep one size (and the reconcile keeps it).
+  const flagsLoaded = switchesOk(featureSw) && featureAccessOk();
   const osDevicePath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
-  useEffect(() => {
-    const next = autoSaveOneSticker({ visible: oneStickerOn, flagsLoaded, devicePath: osDevicePath }, pp, psSize, isStickerQrOn(), savedBtPrinter()?.name ?? null);
+  const osPrinterName = savedBtPrinter()?.name ?? null;
+  const autoSaveNow = () => {
+    const devicePath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })); // read fresh (a printer may have just been saved)
+    const next = autoSaveOneSticker({ visible: oneStickerOn, flagsLoaded, devicePath, printerSaved: savedBtPrinter() != null }, pp, psSize, isStickerQrOn(), savedBtPrinter()?.name ?? null);
     if (!next) return;
-    const label = psLabelFor(next.size, osDevicePath);
-    if (label && label !== psSize) queueMicrotask(() => setPsSize(label)); // after this effect
-  }, [oneStickerOn, flagsLoaded, osDevicePath]); // eslint-disable-line react-hooks/exhaustive-deps -- once the answer is certain; a saved sticker is never touched again
+    const label = psLabelFor(next.size, devicePath);
+    if (label && label !== psSize) queueMicrotask(() => setPsSize(label)); // after this effect / the printer pick
+  };
+  useEffect(() => { autoSaveNow(); }, [oneStickerOn, flagsLoaded, osDevicePath, osPrinterName]); // eslint-disable-line react-hooks/exhaustive-deps -- once the answer is certain; a saved sticker is never touched again
+  // a phone whose saved Bluetooth printer is not known in this app yet (a long-time AIMO user who never opened
+  // Printer settings since): ask the native side ONCE (read only), so the auto-save sees the real printer. Only
+  // for an account that sees the new screen, only while nothing is saved — every other account: no extra call.
+  const [, setPrinterAsked] = useState(0);
+  const printerAsked = useRef(false);
+  useEffect(() => {
+    if (printerAsked.current || !oneStickerOn || !flagsLoaded || !hasBtBridge() || savedBtPrinter() != null || readSavedOneSticker() != null) return;
+    printerAsked.current = true;
+    void btCall("getBluetoothLabelPrinter").then(() => setPrinterAsked((n) => n + 1)); // re-render → osPrinterName → the auto-save effect
+  }, [oneStickerOn, flagsLoaded]);
 
   // The shop name every print path puts in the CENTER of the slip (bitmap + classic
   // TSPL sticker, ESC/POS slip, web print) AND the Live print pattern preview — ONE
@@ -2850,6 +2864,7 @@ export default function RedesignApp() {
               testComment={stickerV2On ? PREVIEW_COMMENT : undefined}
               flowV2={printerFlowV2}
               isAdmin={isAdmin}
+              onPrinterSaved={autoSaveNow}
               customSize={oneStickerOn ? (() => {
                 // ONE SIZE, BOTH PLACES (Jeff 2026-11-10): the new sticker's Custom size in Printer settings too.
                 // Hidden (with a note) where this phone + printer prints the older sticker, or where the new

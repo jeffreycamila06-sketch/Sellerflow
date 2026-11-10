@@ -132,13 +132,15 @@ export function seedOneSticker(pp: SeedPattern, psSize: string, qr: boolean, pat
 // the new sticker by itself (no Save tap) — once per phone. Only when the visibility is CERTAIN (the feature
 // list and the switches finished loading — a failed or pending read never counts), only on a phone that prints
 // the picture sticker (D520 / generic TSPL·ESC/POS·CPCL / Niimbot — never the laptop, the text sticker or WiFi),
-// and only while nothing is saved yet (a saved standard or Custom size is never touched). PURE.
+// only once a Bluetooth sticker printer is SAVED on this phone (before that the path is a guess — a first-time
+// Niimbot setup would otherwise be saved as an AIMO 100×60), and only while nothing is saved yet (a saved standard
+// or Custom size is never touched). PURE.
 export const AUTO_SAVE_PATHS: readonly string[] = ["d520", "tspl", "escpos", "cpcl", "niimbot"];
-export function shouldAutoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string; saved: boolean }): boolean {
-  return c.visible && c.flagsLoaded && !c.saved && AUTO_SAVE_PATHS.includes(c.devicePath);
+export function shouldAutoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string; printerSaved: boolean; saved: boolean }): boolean {
+  return c.visible && c.flagsLoaded && c.printerSaved && !c.saved && AUTO_SAVE_PATHS.includes(c.devicePath);
 }
 /** Saves the first draft (seedOneSticker) when shouldAutoSaveOneSticker says so; returns it, or null. */
-export function autoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string }, pp: SeedPattern, psSize: string, qr: boolean, printerName: string | null): OneStickerSettings | null {
+export function autoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string; printerSaved: boolean }, pp: SeedPattern, psSize: string, qr: boolean, printerName: string | null): OneStickerSettings | null {
   if (!shouldAutoSaveOneSticker({ ...c, saved: readSavedOneSticker() != null })) return null;
   const s = normalizeSettings(seedOneSticker(pp, psSize, qr, c.devicePath, printerName)); // normalize: the QR rule (none below 50×30)
   saveOneSticker(s);

@@ -84,8 +84,9 @@ type Stage = "idle" | "printing" | "saved" | "fail";
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
-  stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false, customSize,
+  stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false, customSize, onPrinterSaved,
 }: {
+  onPrinterSaved?: () => void; // a Bluetooth sticker printer was just saved (the new sticker's first save may run now, before the test sticker)
   customSize?: PsCustomSize; // the new sticker's Custom size (accounts with the new Live print pattern only)
   compactV2?: boolean; // sticker layout v2 ON (printing.ts stickerCompactV2Allowed): the QR prints on every size → no 60×40 lock, v2 hint
   onBack: () => void;
@@ -231,6 +232,7 @@ export default function PrinterSettings({
         : { address: p.address, name: p.name, transport: genericTransport(p), model: "generic", lang: knownPrinterLang(p.name) ?? "tspl" };
     // Save first (the print router reads the saved printer), print one test sticker, THEN show it as saved.
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", save);
+    onPrinterSaved?.(); // the new sticker for THIS printer (e.g. a first Niimbot → 50×30) before the test sticker prints
     const tp = testPrintFor(d520 ? testBuyer() : buildTestBuyerV2(), storeName);
     const printed = await printStickerBtRouted(tp.buyer, cur, tp.storeName, settings);
     if (!printed.ok) bt.report(printed.code, printed.message); // Bluetooth off / not allowed → that card; anything else → the amber saved card
