@@ -40,7 +40,7 @@ const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWe
 // Shown only to accounts with the new screen (customSize undefined = exactly today's screen).
 export interface PsCustomSize {
   allowed: boolean;                          // this phone + printer can print a custom size on the new sticker
-  reason?: "text" | "not_saved";             // why not: the older (text / WiFi) sticker, or the new sticker not saved here
+  reason?: "text";                           // why not: the older (text / WiFi) sticker
   saved: { w: number; h: number; custom?: boolean } | null; // the new sticker's saved size on this device
   printerName?: string | null;
   onSave: (w: number, h: number) => void;
@@ -318,7 +318,7 @@ export default function PrinterSettings({
                 </div>
               )}
               {customSize && !customSize.allowed && psSizeOpen && (
-                <div data-testid="ps-custom-hidden" style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{customSize.reason === "not_saved" ? t.rd_ps_custom_need_saved : t.rd_os_custom_hidden}</div>
+                <div data-testid="ps-custom-hidden" style={{ marginTop: 7, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_custom_hidden}</div>
               )}
               {customSize?.allowed && psSizeOpen && customOpen && (
                 <div data-testid="ps-custom" style={{ marginTop: 9 }}>

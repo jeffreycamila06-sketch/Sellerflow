@@ -2884,14 +2884,15 @@ export default function RedesignApp() {
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); if (oneStickerOn) {
-                const sync = syncOneStickerSizeFromPrinter(s, { printerName: savedBtPrinter()?.name ?? null, niimbot: savedIsNiimbot(), devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize: s })) });
+                const sync = syncOneStickerSizeFromPrinter(s, { printerName: savedBtPrinter()?.name ?? null, devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize: s })) });
+                // (only TEXT / WiFi devices reach this list on an account with the new screen — a Niimbot picks in the one size list)
                 if (sync.status === "kept") { // the new sticker keeps its size → Printer settings shows that size too, and says why
                   // Printer settings shows the kept size when it is one of its sizes; otherwise (a custom size,
                   // 50×30 on TEXT / WiFi) it keeps what it showed before this pick — never an unknown size
                   const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
                   setPsSize(psLabelFor(sync.keep, devPath) ?? psSize);
                   const size = `${sync.keep.w}×${sync.keep.h}`;
-                  const why = sync.reason === "niimbot" ? tpl(tApp.rd_os_sync_niimbot, { size }) : sync.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: sync.model ?? "", max: String(sync.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size });
+                  const why = sync.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: sync.model ?? "", max: String(sync.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size });
                   setToast({ msg: why, kind: "err" });
                 }
               }
@@ -2915,7 +2916,7 @@ export default function RedesignApp() {
                 const older = devPath === "text" || devPath === "wifi";
                 return {
                   allowed: !older && saved != null,
-                  reason: older ? "text" as const : saved == null ? "not_saved" as const : undefined,
+                  reason: older || saved == null ? "text" as const : undefined,
                   saved: saved ? saved.size : null,
                   printerName: savedBtPrinter()?.name ?? null,
                   onSave: (w: number, h: number) => {
