@@ -53,7 +53,8 @@ describe("old QR switch after a small size picked with nothing saved", () => {
   });
   it("only the new screen's size list does it (accounts without it: today's Printer settings never touch the switch)", () => {
     const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain("if (oldQrOffAfterPick(r.saved, r.size) && isStickerQrOn()) setStickerQrOn(false);");
+    expect(app).toContain("const oldQrOff = oldQrOffAfterPick(r.saved, r.size) && isStickerQrOn();");
+    expect(app).toContain("if (oldQrOff) setStickerQrOn(false);");
     expect(app.match(/setStickerQrOn\(/g)!.length).toBe(1); // nowhere else in RedesignApp
     const fn = app.slice(app.indexOf("const onPickOneSize = "), app.indexOf("};", app.indexOf("const onPickOneSize = ")));
     expect(fn).toContain("setStickerQrOn(false)");

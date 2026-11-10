@@ -55,8 +55,8 @@ describe("Printer settings Label size ↔ one sticker size", () => {
     const block = src.slice(at, at + 1500);
     expect(block).toContain('if (sync.status === "kept")');
     expect(block).toContain("setPsSize(psLabelFor(sync.keep, devPath) ?? psSize)");
-    expect(block).toMatch(/rd_os_sync_too_wide[\s\S]*rd_os_sync_text/);
-    expect(block).not.toContain("rd_os_sync_niimbot"); // removed 2026-11-10: a Niimbot picks in the one size list
+    expect(block).toMatch(/rd_os_nb_size_kept[\s\S]*rd_os_sync_too_wide[\s\S]*rd_os_sync_text/);
+    expect(block).not.toContain("rd_os_sync_niimbot"); // replaced 2026-11-10 by rd_os_nb_size_kept (the old text pointed to the Live print pattern)
   });
   it("Printer settings only ever shows one of its own sizes: psLabelFor (standard, not custom, no 50×30 on TEXT / WiFi)", () => {
     expect(psLabelFor({ w: 100, h: 60 })).toBe("100x60mm (Standard)");
@@ -83,7 +83,7 @@ describe("Printer settings Label size ↔ one sticker size", () => {
   });
   it("RedesignApp wires both directions (Printer settings pick → one sticker; Save → Printer settings label)", () => {
     const src = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
-    expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) \{\s*const sync = syncOneStickerSizeFromPrinter\(s, \{ printerName: savedBtPrinter\(\)\?\.name \?\? null, devicePath: oneStickerDevicePath\(/);
+    expect(src).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\); if \(oneStickerOn\) \{\s*const sync = syncOneStickerSizeFromPrinter\(s, \{ printerName: savedBtPrinter\(\)\?\.name \?\? null, niimbot: savedIsNiimbot\(\), devicePath: oneStickerDevicePath\(/);
     expect(src).toMatch(/const label = psLabelFor\(next\.size, oneStickerDevicePath\([\s\S]{0,120}if \(label\) setPsSize\(label\);/);
   });
 });

@@ -1972,7 +1972,8 @@ export default function RedesignApp() {
     // and Custom → Save size both come here)
     setOsDraft((d) => osDraftAfterSizePick(d, r.size));
     // nothing saved yet: the old "Print QR on sticker" switch (the first draft's / the auto-save's QR) goes OFF below 50×30
-    if (oldQrOffAfterPick(r.saved, r.size) && isStickerQrOn()) setStickerQrOn(false);
+    const oldQrOff = oldQrOffAfterPick(r.saved, r.size) && isStickerQrOn();
+    if (oldQrOff) setStickerQrOn(false);
     const label = psLabelFor(r.size, osDevicePath);
     if (label && label !== psSize) setPsSize(label);
     setPsSizeOpen(false);
@@ -1980,7 +1981,7 @@ export default function RedesignApp() {
     if (r.size.custom) {
       const saidSaved = tpl(tApp.rd_ps_custom_saved, { w: String(w), h: String(h) });
       // below 50×30 the QR was turned off — say so (it stays off on a bigger size until turned on again)
-      setToast({ msg: qrBefore && r.saved && !r.saved.qr ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved, kind: "ok" });
+      setToast({ msg: (qrBefore && r.saved && !r.saved.qr) || oldQrOff ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved, kind: "ok" });
     }
   };
   // a phone whose saved Bluetooth printer is not known in this app yet (a long-time AIMO user who never opened
@@ -2884,15 +2885,16 @@ export default function RedesignApp() {
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); if (oneStickerOn) {
-                const sync = syncOneStickerSizeFromPrinter(s, { printerName: savedBtPrinter()?.name ?? null, devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize: s })) });
-                // (only TEXT / WiFi devices reach this list on an account with the new screen — a Niimbot picks in the one size list)
+                const sync = syncOneStickerSizeFromPrinter(s, { printerName: savedBtPrinter()?.name ?? null, niimbot: savedIsNiimbot(), devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize: s })) });
+                // (only TEXT / WiFi devices reach this list on an account with the new screen; a Niimbot still saved on a phone
+                // now printing over WiFi keeps its own size — guardian 2026-11-10 — with a message that says where to change it)
                 if (sync.status === "kept") { // the new sticker keeps its size → Printer settings shows that size too, and says why
                   // Printer settings shows the kept size when it is one of its sizes; otherwise (a custom size,
                   // 50×30 on TEXT / WiFi) it keeps what it showed before this pick — never an unknown size
                   const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
                   setPsSize(psLabelFor(sync.keep, devPath) ?? psSize);
                   const size = `${sync.keep.w}×${sync.keep.h}`;
-                  const why = sync.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: sync.model ?? "", max: String(sync.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size });
+                  const why = sync.reason === "niimbot" ? tpl(tApp.rd_os_nb_size_kept, { size }) : sync.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: sync.model ?? "", max: String(sync.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size });
                   setToast({ msg: why, kind: "err" });
                 }
               }
