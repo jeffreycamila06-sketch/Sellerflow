@@ -12,7 +12,7 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, missingFonts, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, validCustomMm, missingFonts, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
 import { loadSansFace } from "./oneStickerFonts";
@@ -89,6 +89,18 @@ export function reconcileOneStickerSize(label: string, ctx: SizeSyncContext = {}
   if (r.status !== "kept") return null;
   const next = psLabelFor(r.keep, ctx.devicePath);
   return next && next !== label ? next : null;
+}
+/** Printer settings → Sticker size → Custom → Save size (Jeff 2026-11-10): the SAME saved size the Live print
+ *  pattern uses (the last Save on either screen wins). Only the size changes; a W×H that is a standard size is that
+ *  size (not "custom"); below 50×30 the QR is turned OFF (normalizeSettings). No saved new sticker / a size out of
+ *  30–110 mm → nothing is saved (null). */
+export function saveOneStickerSizeFromPrinterCustom(w: number, h: number): OneStickerSettings | null {
+  const cur = readSavedOneSticker();
+  if (!cur || !validCustomMm(w) || !validCustomMm(h)) return null;
+  const std = STANDARD_SIZES.some((z) => z.w === w && z.h === h);
+  const next = normalizeSettings({ ...cur, size: std ? { w, h } : { w, h, custom: true } });
+  saveOneSticker(next);
+  return next;
 }
 export function isOneStickerSeen(): boolean { try { return localStorage.getItem(LS_ONE_STICKER_SEEN) === "1"; } catch { return false; } }
 export function markOneStickerSeen(): void { try { localStorage.setItem(LS_ONE_STICKER_SEEN, "1"); } catch { /* ignore */ } }

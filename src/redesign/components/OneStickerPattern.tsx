@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import {
-  recommendedSettings, renderOneSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, isSmallClass, tooWideFor, NOTE_TONE,
+  recommendedSettings, renderOneSticker, SCALE_STEPS, STANDARD_SIZES, CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, qrSizeOk, isSmallClass, tooWideFor, NOTE_TONE,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
 } from "../adapters/oneSticker";
 import { oneStickerScreenFonts, renderOptsFor, sampleInput, type OneStickerPath } from "../adapters/oneStickerPrint";
@@ -186,7 +186,11 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   // the draft: an open, valid Custom size is the size (derived — nothing is copied into state)
   // (a W×H that is one of the standard sizes is that size, not "custom": opening Custom alone is no change)
   const std = STANDARD_SIZES.some((z) => z.w === cw && z.h === ch);
-  const s: OneStickerSettings = customOpen && customOk ? { ...s0, size: std ? { w: cw, h: ch } : { w: cw, h: ch, custom: true } } : customOpen ? s0 : { ...s0, size: { w: s0.size.w, h: s0.size.h } };
+  const s1: OneStickerSettings = customOpen && customOk ? { ...s0, size: std ? { w: cw, h: ch } : { w: cw, h: ch, custom: true } } : customOpen ? s0 : { ...s0, size: { w: s0.size.w, h: s0.size.h } };
+  // QR only on a label ≥ 50×30 mm (Jeff 2026-11-10): below it the QR is OFF (and saved OFF); a bigger size later
+  // does NOT turn it back on — the state is set OFF when the size drops (pickSize / the Custom inputs)
+  const qrSizeAllowed = qrSizeOk(s1.size);
+  const s: OneStickerSettings = qrSizeAllowed ? s1 : { ...s1, qr: false };
   const path = pathForPreview(p.devicePath);
   const customAllowed = p.devicePath !== "text" && p.devicePath !== "wifi";
   const dirty = !sameSettings(s, base);
@@ -236,7 +240,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   // the comment has no limit (it always gives way)
   const plusBlocked = (k: PartKey, scale: number) => k !== "comment" && (caps == null || (caps[k] != null && scale >= caps[k]!));
   // the "lowered" note belongs to the change that lowered Buyer # — any other change clears it
-  const pickSize = (w: number, h: number) => { setLowered(false); setCustomOpen(false); setS((x) => ({ ...x, size: { w, h } })); };
+  const pickSize = (w: number, h: number) => { setLowered(false); setCustomOpen(false); setS((x) => ({ ...x, size: { w, h }, qr: qrSizeOk({ w, h }) && x.qr })); };
+  // a Custom W×H below 50×30 turns the QR OFF in the draft (it stays off when the size grows again)
+  const customQrOff = (w: number, h: number) => { if (validCustomMm(w) && validCustomMm(h) && !qrSizeOk({ w, h })) setS((x) => (x.qr ? { ...x, qr: false } : x)); };
   const reset = () => { setLowered(false); setS(recommendedSettings(s.size)); p.onToast?.(t.rd_os_reset_done); };
   // a size the printer cannot take is never saved (too wide, a wrong custom size, or 50×30 / custom on a
   // TEXT / WiFi phone, which has no such layout)
@@ -367,11 +373,11 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
             {/* W · × · H on one line (a fixed grid — the "×" never wraps alone), inputs full width, ≥ 44 px */}
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "end", gap: 8 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_width}
-                <input inputMode="numeric" value={customW} onChange={(e) => { setLowered(false); setCustomW(e.target.value.replace(/[^\d]/g, "").slice(0, 3)); }} data-testid="os-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+                <input inputMode="numeric" value={customW} onChange={(e) => { setLowered(false); const v = e.target.value.replace(/[^\d]/g, "").slice(0, 3); setCustomW(v); customQrOff(Number(v), ch); }} data-testid="os-custom-w" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
               </label>
               <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 800, color: "var(--text-muted)", lineHeight: `${TAP}px` }}>×</span>
               <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--text-muted)", minWidth: 0 }}>{t.rd_os_height}
-                <input inputMode="numeric" value={customH} onChange={(e) => { setLowered(false); setCustomH(e.target.value.replace(/[^\d]/g, "").slice(0, 3)); }} data-testid="os-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
+                <input inputMode="numeric" value={customH} onChange={(e) => { setLowered(false); const v = e.target.value.replace(/[^\d]/g, "").slice(0, 3); setCustomH(v); customQrOff(cw, Number(v)); }} data-testid="os-custom-h" style={{ width: "100%", boxSizing: "border-box", minHeight: TAP, fontSize: 16, padding: "9px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", minWidth: 0 }} />
               </label>
             </div>
             {!customOk && <div data-testid="os-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
@@ -395,12 +401,12 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
           {partRow(rowOf("name"))}
           {partRow(rowOf("user"))}
           {/* always shown; greyed out with a short hint when this account has no QR */}
-          <div data-testid="os-row-qr" data-off={p.qrAllowed ? "0" : "1"} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
-            <div style={{ flex: 1, minWidth: 0, opacity: p.qrAllowed ? 1 : 0.55 }}>
+          <div data-testid="os-row-qr" data-off={p.qrAllowed && qrSizeAllowed ? "0" : "1"} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ flex: 1, minWidth: 0, opacity: p.qrAllowed && qrSizeAllowed ? 1 : 0.55 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>{p.qrAllowed ? t.rd_os_qr_hint : t.rd_os_qr_none}</div>
+              <div data-testid="os-qr-sub" style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>{!p.qrAllowed ? t.rd_os_qr_none : !qrSizeAllowed ? t.rd_os_qr_min_size : t.rd_os_qr_hint}</div>
             </div>
-            <Switch on={p.qrAllowed && s.qr} disabled={!p.qrAllowed} aria={t.rd_ps_sticker_qr} onClick={() => { setLowered(false); setS((x) => ({ ...x, qr: !x.qr })); }} testId="os-qr-on" />
+            <Switch on={p.qrAllowed && s.qr} disabled={!p.qrAllowed || !qrSizeAllowed} aria={t.rd_ps_sticker_qr} onClick={() => { if (!qrSizeAllowed) return; setLowered(false); setS((x) => ({ ...x, qr: !x.qr })); }} testId="os-qr-on" />
           </div>
           {partRow(rowOf("comment"), true)}
         </div>

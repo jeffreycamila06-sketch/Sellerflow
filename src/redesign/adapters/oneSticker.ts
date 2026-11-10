@@ -37,9 +37,15 @@ export const STANDARD_SIZES: OneStickerSize[] = [
   { w: 50, h: 30 }, { w: 60, h: 40 }, { w: 70, h: 50 }, { w: 80, h: 50 }, { w: 80, h: 60 }, { w: 100, h: 60 },
 ];
 export const CUSTOM_MIN_MM = 30, CUSTOM_MAX_MM = 110;
+// QR rules (Jeff 2026-11-10): a QR prints only on a label at least 50 mm wide AND 30 mm high (50×30 itself
+// allowed), and its right side is at least 2 mm (16 dots) from the label's right edge — a 1 mm gap was cut on
+// a Flash Y41BT 50×40 when the paper sat ~1 mm to the right. Measured from the LABEL edge (on a Niimbot the
+// picture is the SDK frame, 1 mm inside the label, so that inset counts).
+export const QR_MIN_W_MM = 50, QR_MIN_H_MM = 30, QR_RIGHT_MIN_DOTS = 16;
+export const qrSizeOk = (z: { w: number; h: number }): boolean => z.w >= QR_MIN_W_MM && z.h >= QR_MIN_H_MM;
 export function recommendedSettings(size: OneStickerSize = { w: 100, h: 60 }): OneStickerSettings {
   const p = (): PartCfg => ({ on: true, weight: "bold", scale: 1 });
-  return { v: 1, size: { ...size }, parts: { shop: p(), buyer: p(), name: p(), user: p(), comment: p() }, qr: true };
+  return { v: 1, size: { ...size }, parts: { shop: p(), buyer: p(), name: p(), user: p(), comment: p() }, qr: qrSizeOk(size) };
 }
 export function snapScale(n: unknown): number {
   const v = typeof n === "number" && Number.isFinite(n) ? n : 1;
@@ -59,7 +65,7 @@ export function normalizeSettings(raw: unknown): OneStickerSettings {
     if (!p) continue;
     out.parts[k] = { on: p.on !== false, weight: p.weight === "normal" || p.weight === "extra" ? p.weight : "bold", scale: snapScale(p.scale) };
   }
-  out.qr = r.qr !== false;
+  out.qr = r.qr !== false && qrSizeOk(size); // below 50×30 the QR is OFF (and stays off — Jeff 2026-11-10)
   return out;
 }
 
@@ -286,7 +292,9 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
   // QR never takes the room that number needs (a smaller module first; the number is never cut by it)
   const num = inp.buyerNum != null && String(inp.buyerNum) !== "" ? String(inp.buyerNum) : "";
   const handle = printableText(inp.handle).replace(/^@+/, "");
-  const qrUrl = s.qr && !fb && qrAllowedForPlatform(inp.platform) && handle ? tiktokProfileUrl(handle) : null;
+  const qrUrl = s.qr && qrSizeOk(s.size) && !fb && qrAllowedForPlatform(inp.platform) && handle ? tiktokProfileUrl(handle) : null;
+  // the QR's right side → the label's right edge, at least QR_RIGHT_MIN_DOTS (the canvas may sit inside the label)
+  const qrRight = Math.max(QR_RIGHT_MIN_DOTS - Math.max(0, Math.round((wMm * DOTS_PER_MM - W) / 2)), mx - 4);
   const m = qrUrl ? qrMatrix(qrUrl, "M") : null;
   const lineNeed = (pn: number) => measure("Buyer", Math.max(10, Math.round(pn * 0.42)), wt("buyer"), fonts).width + Math.max(6, Math.round(pn * 0.14)) + measure(num.length >= 4 ? num : "8888", pn, wt("buyer"), fonts).width;
   // a narrow custom label (e.g. 30–40 mm wide): the 1× number is capped so "Buyer 8888" fits beside the
@@ -294,7 +302,7 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
   let numBase = B.num, startBelowDate = false;
   if (P.buyer.on && num) {
     const qrFits = !!m && m.length * 4 <= W * 0.45;
-    const qrFoot = qrFits ? m!.length * 4 + 4 * 4 + Math.max(4, mx - 4) : mx;
+    const qrFoot = qrFits ? m!.length * 4 + 4 * 4 + qrRight : mx;
     // with no shop line the buyer line sits beside the date too
     const shopPrinted = P.shop.on && !!printableText(inp.storeName) && !isSmallClass(wMm, hMm);
     const capFor = (right: number) => { let b = B.num; while (b > 10 && mx + lineNeed(b) > right) b--; return b; };
@@ -317,12 +325,12 @@ function layoutPass(s: OneStickerSettings, inp: OneStickerInput, fonts: Fonts, o
       for (const cand of [6, 5, 4]) {
         if (!(n * cand <= room && n * cand <= W * 0.45)) continue;
         roomOnly ||= cand;
-        const left = W - Math.max(4, mx - 4) - n * cand - cand * 4; // the QR with its quiet zone
+        const left = W - qrRight - n * cand - cand * 4; // the QR with its quiet zone
         if (!buyerNeed || mx + buyerNeed <= left) { mod = cand; break; }
       }
       if (!mod && roomOnly) mod = [6, 5, 4].filter((c) => c <= roomOnly).pop() ?? roomOnly; // the smallest that fits; the screen shows red
       if (mod) {
-        const x = W - Math.max(4, mx - 4) - n * mod;
+        const x = W - qrRight - n * mod;
         qr = { matrix: m, x, y: top + Math.max(0, Math.min(mod * 2, room - n * mod)), mod };
         obstacles.push({ top: qr.y - mod * 2, bottom: qr.y + n * mod + mod * 2, left: x - mod * 4 });
       } else warnings.push({ part: "qr", kind: "height" });
