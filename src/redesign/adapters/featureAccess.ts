@@ -33,6 +33,7 @@ export const featureAccessLoaded = (): boolean => loaded;
 // the last my_feature_access read RETURNED (no error, no missing client) — a failed read still counts as "loaded"
 // (all false) for the gates; the auto-save of the new sticker needs a read that really answered (Jeff 2026-11-10)
 let lastReadOk = false;
+let readSeq = 0; // only the LATEST read decides lastReadOk (a slow read of a previous user never counts)
 export const featureAccessOk = (): boolean => loaded && lastReadOk;
 export function setFeatureAccess(a: Partial<Record<FeatureKey, unknown>> | null, isLoaded = true): void {
   const next = NONE();
@@ -50,12 +51,13 @@ export function parseFeatureAccess(data: unknown): FeatureAccess {
 }
 
 export async function loadFeatureAccess(): Promise<FeatureAccess> {
+  const seq = ++readSeq;
   lastReadOk = false;
   if (!isSupabaseConfigured || !supabase) return NONE();
   try {
     const { data, error } = await supabase.rpc("my_feature_access");
     if (error) return NONE();
-    lastReadOk = true;
+    if (seq === readSeq) lastReadOk = true;
     return parseFeatureAccess(data);
   } catch {
     return NONE();

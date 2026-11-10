@@ -186,6 +186,7 @@ export default function PrinterSettings({
   }
   async function selectBt(p: BluetoothPrinterDevice) {
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: p.transport });
+    onPrinterSaved?.(); // the new sticker's first save (accounts that see it) — a Test print right after already uses it
     setBtSaved(r?.savedPrinter || p); setBtMsg(t.rd_ps_bt_saved);
   }
   const btRow = (p: BluetoothPrinterDevice) => (

@@ -23,6 +23,17 @@ describe("my_feature_access: featureAccessOk only after a read that answered", (
     setFeatureAccess(await loadFeatureAccess(), true);
     expect(featureAccessOk()).toBe(false);
   });
+  it("shared phone: a slow read of the previous user that answers late never makes the new user's failed read OK", async () => {
+    let finishOld!: (v: unknown) => void;
+    mock.rpc.mockReturnValueOnce(new Promise((r) => { finishOld = r; })); // previous user's read, still running
+    const old = loadFeatureAccess();
+    mock.rpc.mockResolvedValueOnce({ data: null, error: { message: "offline" } }); // the new user's read fails
+    const now = await loadFeatureAccess();
+    finishOld({ data: { one_sticker: true }, error: null });
+    await old;
+    setFeatureAccess(now, true);
+    expect(featureAccessOk()).toBe(false);
+  });
   it("a cached answer (not read yet this sign-in) is never OK", () => {
     setFeatureAccess({ one_sticker: true }, false);
     expect(featureAccessOk()).toBe(false);

@@ -107,6 +107,8 @@ describe("first-time printer setup (guardian, 0559cfe6: a Niimbot was saved as a
     expect(ps).toMatch(/const r = await btCall<BluetoothScanResult>\("setBluetoothLabelPrinter", save\);\s*onPrinterSaved\?\.\(\);[^\n]*\n\s*const tp = testPrintFor\(/);
     const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain("onPrinterSaved={autoSaveNow}");
+    // the older printer screen (setup v2 off) too
+    expect(ps).toMatch(/async function selectBt\(p: BluetoothPrinterDevice\) \{\s*const r = await btCall<BluetoothScanResult>\("setBluetoothLabelPrinter"[^\n]*\n\s*onPrinterSaved\?\.\(\);/);
   });
 });
 
