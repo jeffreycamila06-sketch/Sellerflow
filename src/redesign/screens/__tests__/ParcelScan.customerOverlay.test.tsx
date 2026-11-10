@@ -45,6 +45,7 @@ vi.mock("../../adapters/shippingExport", () => ({
 }));
 
 import ParcelScan from "../ParcelScan";
+import { clearParcelDrafts } from "../../adapters/parcelDrafts";
 
 const mkRow = (i: number): ParcelScanRow => ({
   id: `r${i}`, customerName: "Juan", phone: "0912345678", storeId: "266402", amount: 550,
@@ -143,6 +144,7 @@ describe("Parcel Scan — Customer Details overlay", () => {
     fireEvent.click(r.getByTestId("cd-import"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
     r.unmount(); saveParcelScan.mockClear();
+    clearParcelDrafts(); // a fresh visit (the bridge would otherwise bring back the open manual entry)
     countPending.mockResolvedValue({ ok: true, count: 50 });
     const r2 = view(50);
     await openOverlay(r2);

@@ -13,7 +13,7 @@ import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { isAndroid } from "../adapters/platform";
 import { decodeQrFromFile } from "../adapters/qrDecode";
 import { handleFromQrPayload } from "../../lib/tiktokHandle";
-import { validHandle } from "../adapters/parcelScan";
+import { validHandle, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import {
   FM_ERROR_KEY, FM_SCAN_DEFAULT_FEE, type FmScanError, type FmScanInput, type FmScanRow,
   buildFmExport, deleteFmExported, deleteFmScan, deliverFmFiles, loadFmGlobalFee, loadFmScans,
@@ -22,6 +22,8 @@ import {
 import FmCustomerDetails from "./FmCustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
 import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
+import { readParcelDraft, writeParcelDraft } from "../adapters/parcelDrafts";
+import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 // Same field styles as the 7-11 screen.
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -53,19 +55,30 @@ function latestBatch(rows: FmScanRow[]): { id: string; ids: string[] } | null {
   return best ? { id: best.exportBatchId!, ids: rows.filter((r) => r.exportBatchId === best!.exportBatchId).map((r) => r.id) } : null;
 }
 
-export default function FmParcelScan({ cur = "NT$", contactOn = false }: { cur?: string; contactOn?: boolean }) {
+// onBridge = the ⇄ 7-11 button (RedesignApp passes it ONLY when the seller may use BOTH Parcel Scans).
+// pendingCap = the SAME per-account batch limit as the 7-11 screen (maxPendingParcels in RedesignApp),
+// counted on FamilyMart parcels only. At the limit no NEW parcel can be saved until an export; edit
+// and delete of saved parcels stay open.
+export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; contactOn?: boolean; onBridge?: () => void; pendingCap?: number }) {
   const t = useT();
+  // Bridge: the manual entry the seller left open here (typed, not saved) comes back as it was.
+  const [draft0] = useState(() => readParcelDraft<Form>("fm"));
   const [rows, setRows] = useState<FmScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
   const [fee, setFee] = useState(FM_SCAN_DEFAULT_FEE);
-  const [form, setForm] = useState<Form>(emptyForm);
-  const [noHandle, setNoHandle] = useState(false);
+  const [form, setForm] = useState<Form>(() => draft0?.form ?? emptyForm);
+  const [noHandle, setNoHandle] = useState(() => draft0?.noHandle ?? false);
   // Buyer contact platform (sql/140) — same rules as the 7-11 screen; stays after each save.
-  const [platform, setPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const [platform, setPlatform] = useState<BuyerContactPlatform>(() => draft0?.platform ?? "tiktok");
   const platformToSave: string | null = noHandle || platform === "tiktok" ? null : platform;
-  const [manual, setManual] = useState(false);
+  const [manual, setManual] = useState(() => draft0 !== null);
   const [manualCount, setManualCount] = useState(0);
   const [editing, setEditing] = useState<{ id: string } | null>(null);
+  // Keep the open manual entry for the bridge (an edit of a saved parcel is not kept).
+  useEffect(() => {
+    if (editing) return;
+    writeParcelDraft<Form>("fm", manual ? { form, noHandle, platform } : null);
+  }, [manual, editing, form, noHandle, platform]);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState(false);
   const [toast, setToast] = useState("");
@@ -127,7 +140,10 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false }: { cur?:
   const handleBad = !noHandle && !validHandle(form.username);
   const contactBad = contactOn && !noHandle && contactError(platform, form.username) !== "";
   const isEmpty = Object.values(form).every((v) => v.trim() === "");
-  const saveBlocked = saving || firstError(errs) !== undefined || handleBad || contactBad;
+  // Batch = FamilyMart parcels not exported yet (its own count — never the 7-11 one).
+  const pendingCount = rows.filter((r) => !r.exportedAt).length;
+  const batchFull = pendingCount >= pendingCap;
+  const saveBlocked = saving || firstError(errs) !== undefined || handleBad || contactBad || (batchFull && !editing);
   // Like 7-11: a field's problem shows once that field has something in it.
   const showErr = (filled: string, e?: FmScanError) => (filled.trim() !== "" && e ? <div style={errTxt} data-testid="fms-field-err">{t[FM_ERROR_KEY[e]]}</div> : null);
 
@@ -146,6 +162,9 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false }: { cur?:
     if (!ok) return;
     setManualCount((c) => c + 1);
     clearForm(); // stays open, blank, for the next parcel
+    // Saved: the kept draft is blank now even if the seller already left this screen (⇄ during
+    // the save) — coming back must never show a parcel that is already saved.
+    writeParcelDraft<Form>("fm", { form: emptyForm, noHandle: false, platform });
   };
   const onEditSave = async () => {
     if (!editing || saveBlocked) return;
@@ -160,7 +179,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false }: { cur?:
     setEditing(null); clearForm();
     flash(t.rd_ps2_saved_toast);
   };
-  const openManual = () => { if (editing) return; setSaveErr(false); clearForm(); setManual(true); };
+  const openManual = () => { if (editing || batchFull) return; setSaveErr(false); clearForm(); setManual(true); };
   const cancelManual = () => { setManual(false); clearForm(); setSaveErr(false); };
   const openEdit = (r: FmScanRow) => {
     if (r.exportedAt) return;
@@ -273,16 +292,38 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false }: { cur?:
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5 }} data-testid="fms-top">
-        <div style={{ ...headerBar, position: "relative" }}>
-          <div className="sfl-anim-beat" style={headerTitle}>{t.rd_fms_title}</div>
+        <div style={{ ...headerBar, position: "relative", ...(onBridge ? { paddingRight: 104 } : {}) }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div className="sfl-anim-beat" style={headerTitle}>{t.rd_fms_title}</div>
+            <StoreBadge store="fm" />
+          </div>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_fms_sub}</div>
+          {onBridge && <BridgeButton to="711" onClick={onBridge} />}
         </div>
+        {/* Batch = parcels not exported yet / the account's limit (same look as the 7-11 Batch pill).
+            No "All OK" / "need attention" here — FamilyMart store codes are not checked yet. */}
+        {listLoaded && (
+          <div style={{ padding: "8px 14px", background: "var(--app-bg)", borderBottom: "1px solid var(--border)" }} data-testid="fms-topbar">
+            <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ flex: "0 1 50%", padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="fms-batch" data-full={batchFull ? "1" : undefined}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_batch}</span>
+                <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="fms-batch-n">{pendingCount} / {pendingCap}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="fms-toast">{toast}</div>}
 
+        {listLoaded && batchFull && (
+          <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="fms-batch-full">
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{tpl(t.rd_ps2_batch_full, { max: String(pendingCap) })}</div>
+          </div>
+        )}
+
         {!editing && !manual && (
-          <button onClick={openManual} style={{ justifySelf: "center", background: "none", border: "none", color: "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: "2px 4px" }} data-testid="fms-manual">✏️ {t.rd_fms_add}</button>
+          <button onClick={openManual} disabled={batchFull} style={{ justifySelf: "center", background: "none", border: "none", color: batchFull ? "var(--text-muted)" : "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, padding: "2px 4px" }} data-testid="fms-manual">✏️ {t.rd_fms_add}</button>
         )}
 
         {(editing || manual) && (
@@ -295,11 +336,11 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false }: { cur?:
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                   {manual && (
-                    <button onClick={() => setCustOpen(true)} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
+                    <button onClick={() => { if (!batchFull) setCustOpen(true); }} disabled={batchFull} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
                   )}
                 </div>
               ) : manual && (
-                <button onClick={() => setCustOpen(true)} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
+                <button onClick={() => { if (!batchFull) setCustOpen(true); }} disabled={batchFull} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
               )}
             </div>
             <div style={{ display: "grid", gap: 10 }}>

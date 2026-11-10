@@ -29,6 +29,7 @@ import CustomerDetails from "./screens/CustomerDetails";
 import ParcelTracking from "./screens/ParcelTracking";
 import FmParcelScan from "./screens/FmParcelScan";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr, maxPendingParcels } from "./adapters/parcelScan";
+import { clearParcelDrafts, parcelBridgeVisible } from "./adapters/parcelDrafts";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { shippingAccess } from "./adapters/shippingGate";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
@@ -353,6 +354,15 @@ export default function RedesignApp() {
   // true). UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
   const [parcelTrackingAccess, setParcelTrackingAccess] = useState(false);
   const authUserId = auth.profile?.authUserId;
+  // Parcel Scan bridge drafts (typed, not saved; in memory only) never outlive the seller who typed
+  // them: signed out → forget; a different seller signs in on this phone → forget.
+  const draftOwnerRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (auth.status === "anon") { clearParcelDrafts(); draftOwnerRef.current = null; return; }
+    if (auth.status !== "authed" || !authUserId) return;
+    if (draftOwnerRef.current !== null && draftOwnerRef.current !== authUserId) clearParcelDrafts();
+    draftOwnerRef.current = authUserId;
+  }, [auth.status, authUserId]);
   useEffect(() => {
     if (!authed || !authUserId) return;
     let alive = true;
@@ -871,6 +881,9 @@ export default function RedesignApp() {
   // Parcel Scan FamilyMart: the 7-11 manual Parcel Scan rule (parcelAllowed) AND the fm_scan_enabled
   // switch or the fm_pickup preview list (sql/120). Off → the FamilyMart tile stays "Soon".
   const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));
+  // Parcel Scan bridge (Jeff 2026-11-11): the ⇄ button shows only when BOTH Parcel Scans are
+  // allowed. It swaps the screen in place (no history), so leaving still lands on Settings.
+  const parcelBridge = parcelBridgeVisible(parcelAllowed, fmScanAllowed);
   // Buyer contact picker + Pickup Status contact buttons (sql/140): admin, the preview key, or
   // (switch on) a Plus/Pro/Master seller — never off-market. Off → every screen is today's.
   const buyerContactOn = buyerContactVisible({ role: auth.profile?.role, plan: auth.profile?.plan, switchOn: featureSw.buyerContact, previewKey: hasFeature("buyer_contact"), marketHidden: hideParcelScan });
@@ -2871,10 +2884,10 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && shippingGate === "open" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={shipSessionKey} {...(shipSessionKey !== shipLegacyKey ? { legacyKey: shipLegacyKey } : {})} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} />
+            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />}
-          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} contactOn={buyerContactOn} />}
+          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} contactOn={buyerContactOn} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
