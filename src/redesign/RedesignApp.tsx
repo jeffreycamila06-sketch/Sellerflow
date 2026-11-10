@@ -152,6 +152,7 @@ import PrinterGuideModal from "./components/PrinterGuideModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
 import { planDaysLeft } from "../lib/planWindow";
+import { FREE_TIER_CAP, freeOrdersLeft } from "../lib/freeTier";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
 import { useFeatureAccess, hasFeature, featureAccessOk } from "./adapters/featureAccess";
@@ -3124,7 +3125,7 @@ export default function RedesignApp() {
             title={freeCap.capPopup === "hard" ? tApp.rd_ios_cap_hard_title : tApp.rd_cap_near_title}
             message={freeCap.capPopup === "hard"
               ? tApp.rd_ios_cap_hard_msg
-              : tpl(tApp.rd_ios_cap_near_msg, { left: Math.max(0, (freeCap.freeStatus?.cap ?? 100) - (freeCap.freeStatus?.count ?? 0)), cap: freeCap.freeStatus?.cap ?? 100 })}
+              : tpl(tApp.rd_ios_cap_near_msg, { left: freeOrdersLeft(freeCap.freeStatus), cap: freeCap.freeStatus?.cap ?? FREE_TIER_CAP })}
             onClose={() => freeCap.setCapPopup("")}
           />
         )}

@@ -452,8 +452,8 @@ describe("freeUsersSummary — cap-progress aggregate from the RPC rows", () => 
     const rows = [f({ count: 10 }), f({ count: 80, near_cap: true }), f({ count: 100, near_cap: true, capped: true })];
     expect(freeUsersSummary(rows)).toEqual({ total: 3, nearCap: 1, capped: 1, orders: 190, cap: 100 });
   });
-  it("empty → zeros, default cap 100", () => {
-    expect(freeUsersSummary([])).toEqual({ total: 0, nearCap: 0, capped: 0, orders: 0, cap: 100 });
+  it("empty → zeros, default cap = FREE_TIER_CAP (150, sql/148)", () => {
+    expect(freeUsersSummary([])).toEqual({ total: 0, nearCap: 0, capped: 0, orders: 0, cap: 150 });
   });
 });
 

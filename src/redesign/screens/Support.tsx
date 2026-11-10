@@ -3,9 +3,10 @@
 // (inline body via rd_sup_g*_body, \n paragraph breaks rendered with pre-line).
 import { useState } from "react";
 import { headerBar, headerTitle } from "../ui";
-import { useT } from "../i18n";
+import { useT, tpl } from "../i18n";
 import { isIOS } from "../adapters/platform";
 import { TELEGRAM_HANDLE, TELEGRAM_URL } from "../../lib/telegram";
+import { FREE_TIER_CAP } from "../../lib/freeTier";
 
 export default function Support({ onLegal }: { onLegal: () => void }) {
   const t = useT();
@@ -14,7 +15,7 @@ export default function Support({ onLegal }: { onLegal: () => void }) {
     { title: t.rd_sup_g2, body: t.rd_sup_g2_body },
     { title: t.rd_sup_g3, body: t.rd_sup_g3_body },
     // g4 = "Renewing your subscription" (prices + subscribe/renew) → hidden on iOS.
-    ...(isIOS() ? [] : [{ title: t.rd_sup_g4, body: t.rd_sup_g4_body }]),
+    ...(isIOS() ? [] : [{ title: t.rd_sup_g4, body: tpl(t.rd_sup_g4_body, { cap: FREE_TIER_CAP }) }]),
     // g5 (7-11 shipping export) hidden: Shipping shows "Coming soon". Keys kept for when it returns.
   ];
   const [open, setOpen] = useState<number | null>(null);

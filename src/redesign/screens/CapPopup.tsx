@@ -5,6 +5,7 @@
 import type { CSSProperties } from "react";
 import type { CapPopupKind, FreeStatus } from "../adapters/useFreeCap";
 import { useT, tpl } from "../i18n";
+import { FREE_TIER_CAP, freeOrdersLeft } from "../../lib/freeTier";
 
 const overlay: CSSProperties = { position: "absolute", inset: 0, zIndex: 12, background: "rgba(8,6,24,.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 };
 const modal: CSSProperties = { width: "100%", maxWidth: 340, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,.4)", padding: "24px 22px", textAlign: "center" };
@@ -22,10 +23,9 @@ export default function CapPopup({
 }) {
   const t = useT();
   const isHard = kind === "hard";
-  const count = freeStatus?.count ?? 0;
-  const cap = freeStatus?.cap ?? 100;
+  const cap = freeStatus?.cap ?? FREE_TIER_CAP;
   const resetDays = freeStatus?.cycle_resets_in_days ?? 30;
-  const left = Math.max(0, cap - count);
+  const left = freeOrdersLeft(freeStatus);
   const title = isHard ? tpl(t.rd_cap_hard_title, { cap }) : t.rd_cap_near_title;
   const msg = isHard
     ? tpl(resetDays === 1 ? t.rd_cap_hard_msg_one : t.rd_cap_hard_msg_many, { cap, days: resetDays })
