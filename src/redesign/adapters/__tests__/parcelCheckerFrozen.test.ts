@@ -287,10 +287,11 @@ describe("switch ON — the frozen lane", () => {
     const awaits = [...code.matchAll(/await\s+([A-Za-z_.]+)\(/g)].map((m) => m[1]);
     expect(awaits.length).toBeGreaterThan(8);
     const ownSteps = ["withTimeout", "ensureScript", "alarmSoon", "readSwitch", "readPending", "sendOne", "ping",
-      "dryIdle", "readWarmSwitch", "readWarmList", "writeStop", "saveWarmState", "warmOne", "loadWarm"]; // 1.18.0 warm-up steps (each bounded inside; loadWarm = one withTimeout read, once)
+      "dryIdle", "readWarmSwitch", "readWarmList", "writeStop", "saveWarmState", "warmOne", "loadWarm",
+      "dryState", "readGaveUp"]; // 1.18.0 warm-up steps (each bounded inside; loadWarm = one withTimeout read, once); 1.18.1 gates (status read / one withTimeout RPC)
     expect(awaits.filter((a) => !ownSteps.includes(a))).toEqual([]);
     expect(code).not.toMatch(/await\s+r\.(json|text)\(/);                    // body reads go through withTimeout
-    for (const what of ['"warm-up switch body")', '"warm-up list body")', '"status read")', '"switch body")', '"pending body")', '"config read")', '"inject")', '"frozen pass")']) expect(code, what).toContain(what);
+    for (const what of ['"warm-up switch body")', '"warm-up list body")', '"status read")', '"switch body")', '"pending body")', '"config read")', '"inject")', '"frozen pass")', '"gave-up body")', '"gave-up read")']) expect(code, what).toContain(what);
   });
   it("every frozen call is bounded: switch / pending / verdict 15 s, the check 3 s, the ping 1 s, the alarm read 0.5 s", () => {
     const mod = readFileSync("chrome-extension/frozen-check.js", "utf8");

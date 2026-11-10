@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SellerFlowLive Parcel Checker",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "description": "Checks if your parcels' 7-11 store and phone are OK.",
   "permissions": ["storage", "alarms", "scripting"],
   "host_permissions": [
