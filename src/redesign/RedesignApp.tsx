@@ -121,8 +121,8 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
-import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
+import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, autoSaveOneSticker, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
 import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
@@ -154,7 +154,7 @@ import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpi
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 import { log } from "../lib/log";
-import { useFeatureAccess, hasFeature } from "./adapters/featureAccess";
+import { useFeatureAccess, hasFeature, featureAccessLoaded } from "./adapters/featureAccess";
 import { usePostSales } from "./adapters/usePostSales";
 import { postSalesGate, postPrintSettings, givePostWaitlist, postItemStock } from "./adapters/fbPostSales";
 import { errCodeOf } from "../lib/errCodes.js";
@@ -220,25 +220,6 @@ const autoDupKeyOf = (handle: string, code: string): string =>
   `${String(handle || "").trim().toLowerCase()}|${String(code || "").trim().toLowerCase()}`;
 
 
-// ONE STICKER: the first draft of the new pattern = this device's current pattern (so the preview
-// starts from what the seller already prints), Bold, today's size.
-function seedOneSticker(pp: PrintPatternState, psSize: string, qr: boolean, path: string, printerName: string | null): OneStickerSettings {
-  const m = psSize.match(/(\d+)x(\d+)/);
-  let size = m && STANDARD_SIZES.some((z) => z.w === Number(m[1]) && z.h === Number(m[2])) ? { w: Number(m[1]), h: Number(m[2]) } : { w: 100, h: 60 };
-  // Niimbot prints 50×30 today whatever size is stored (the stored size is usually the untouched
-  // 100×60 default): start from the biggest standard size the saved printer takes (B1/B21 → 50×30).
-  if (path === "niimbot") {
-    const max = printerLimitFor(printerName)?.maxLabelMm ?? 50;
-    size = [...STANDARD_SIZES].reverse().find((z) => z.w <= max) ?? { w: 50, h: 30 };
-  } else { const lim = printerLimitFor(printerName); if (lim && size.w > lim.maxLabelMm) size = [...STANDARD_SIZES].reverse().find((z) => z.w <= lim.maxLabelMm) ?? size; }
-  // a TEXT / WiFi phone has no 50×30 layout: never start (and so never one-tap Save) at 50×30
-  if ((path === "text" || path === "wifi") && size.w === 50 && size.h === 30) size = { w: 60, h: 40 };
-  const s = recommendedSettings(size);
-  const part = (on: boolean, scale: number) => ({ on, weight: "bold" as const, scale: snapScale(Math.min(2, scale || 1)) });
-  s.parts = { shop: part(pp.shopName, pp.shopNameSize), buyer: part(pp.buyerNum, pp.buyerNumSize), name: part(pp.tiktokName, pp.tiktokNameSize), user: part(pp.tiktokUser, pp.tiktokUserSize), comment: part(pp.comment, pp.commentSize) };
-  s.qr = qr;
-  return s;
-}
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion", pinPrint: "sfl_rd_pin_print", deductOneClick: "sfl_rd_deduct_oneclick" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
@@ -1947,6 +1928,19 @@ export default function RedesignApp() {
     const show = reconcileOneStickerSize(psSize, { printerName: savedBtPrinter()?.name ?? null, niimbot: savedIsNiimbot(), devicePath: oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })) });
     if (show) queueMicrotask(() => setPsSize(show)); // after this effect (the reconcile wrote the saved sticker)
   }, [oneStickerOn]); // eslint-disable-line react-hooks/exhaustive-deps -- once per becoming visible
+  // AUTO-SAVE (Jeff 2026-11-10): on a phone whose account sees the new Live print pattern, the new sticker is
+  // saved by itself the first time (no Save tap) — only once both reads finished (the feature list AND the
+  // switches: a pending / failed read never grants it), only on a picture-sticker phone (never the laptop, the
+  // text sticker or WiFi), only while nothing is saved here. Same as a Save on the Live print pattern: a standard
+  // size is also what Printer settings shows (psLabelFor), so both keep one size (and the reconcile keeps it).
+  const flagsLoaded = switchesLoaded(featureSw) && featureAccessLoaded();
+  const osDevicePath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
+  useEffect(() => {
+    const next = autoSaveOneSticker({ visible: oneStickerOn, flagsLoaded, devicePath: osDevicePath }, pp, psSize, isStickerQrOn(), savedBtPrinter()?.name ?? null);
+    if (!next) return;
+    const label = psLabelFor(next.size, osDevicePath);
+    if (label && label !== psSize) queueMicrotask(() => setPsSize(label)); // after this effect
+  }, [oneStickerOn, flagsLoaded, osDevicePath]); // eslint-disable-line react-hooks/exhaustive-deps -- once the answer is certain; a saved sticker is never touched again
 
   // The shop name every print path puts in the CENTER of the slip (bitmap + classic
   // TSPL sticker, ESC/POS slip, web print) AND the Live print pattern preview — ONE

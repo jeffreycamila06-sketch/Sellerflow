@@ -12,7 +12,7 @@
 // (classic mode / old app / any fallback), the iOS WiFi sticker and the ESC/POS slip are NOT
 // changed here (Branch 2).
 import type { Buyer } from "../../lib/orderTypes";
-import { normalizeSettings, validCustomMm, missingFonts, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
+import { normalizeSettings, validCustomMm, recommendedSettings, snapScale, printerLimitFor, missingFonts, tooWideFor, STANDARD_SIZES, renderOneSticker, loadFontsFor, weightsFor, rasterBmpDataUrl, laptopStickerPage, framed, type OneStickerSettings, type OneStickerInput, type OneStickerRender, type RenderOpts } from "./oneSticker";
 import type { Fonts } from "./oneStickerText";
 import { loadCjkRegAtlas } from "./propAtlasLoader";
 import { loadSansFace } from "./oneStickerFonts";
@@ -105,6 +105,44 @@ export function saveOneStickerSizeFromPrinterCustom(w: number, h: number): OneSt
   const next = normalizeSettings({ ...cur, size: std ? { w, h } : { w, h, custom: true } });
   saveOneSticker(next);
   return next;
+}
+/** The Print Pattern fields the first draft is made from (screens/PrintPattern PrintPatternState). */
+export interface SeedPattern { shopName: boolean; shopNameSize: number; buyerNum: boolean; buyerNumSize: number; tiktokName: boolean; tiktokNameSize: number; tiktokUser: boolean; tiktokUserSize: number; comment: boolean; commentSize: number }
+// ONE STICKER: the first draft of the new pattern = this device's current pattern (so the preview
+// starts from what the seller already prints), Bold, today's size.
+export function seedOneSticker(pp: SeedPattern, psSize: string, qr: boolean, path: string, printerName: string | null): OneStickerSettings {
+  const m = psSize.match(/(\d+)x(\d+)/);
+  let size = m && STANDARD_SIZES.some((z) => z.w === Number(m[1]) && z.h === Number(m[2])) ? { w: Number(m[1]), h: Number(m[2]) } : { w: 100, h: 60 };
+  // Niimbot prints 50×30 today whatever size is stored (the stored size is usually the untouched
+  // 100×60 default): start from the biggest standard size the saved printer takes (B1/B21 → 50×30).
+  if (path === "niimbot") {
+    const max = printerLimitFor(printerName)?.maxLabelMm ?? 50;
+    size = [...STANDARD_SIZES].reverse().find((z) => z.w <= max) ?? { w: 50, h: 30 };
+  } else { const lim = printerLimitFor(printerName); if (lim && size.w > lim.maxLabelMm) size = [...STANDARD_SIZES].reverse().find((z) => z.w <= lim.maxLabelMm) ?? size; }
+  // a TEXT / WiFi phone has no 50×30 layout: never start (and so never one-tap Save) at 50×30
+  if ((path === "text" || path === "wifi") && size.w === 50 && size.h === 30) size = { w: 60, h: 40 };
+  const s = recommendedSettings(size);
+  const part = (on: boolean, scale: number) => ({ on, weight: "bold" as const, scale: snapScale(Math.min(2, scale || 1)) });
+  s.parts = { shop: part(pp.shopName, pp.shopNameSize), buyer: part(pp.buyerNum, pp.buyerNumSize), name: part(pp.tiktokName, pp.tiktokNameSize), user: part(pp.tiktokUser, pp.tiktokUserSize), comment: part(pp.comment, pp.commentSize) };
+  s.qr = qr;
+  return s;
+}
+
+// AUTO-SAVE (Jeff 2026-11-10): on a PHONE whose account sees the new Live print pattern, the first open saves
+// the new sticker by itself (no Save tap) — once per phone. Only when the visibility is CERTAIN (the feature
+// list and the switches finished loading — a failed or pending read never counts), only on a phone that prints
+// the picture sticker (D520 / generic TSPL·ESC/POS·CPCL / Niimbot — never the laptop, the text sticker or WiFi),
+// and only while nothing is saved yet (a saved standard or Custom size is never touched). PURE.
+export const AUTO_SAVE_PATHS: readonly string[] = ["d520", "tspl", "escpos", "cpcl", "niimbot"];
+export function shouldAutoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string; saved: boolean }): boolean {
+  return c.visible && c.flagsLoaded && !c.saved && AUTO_SAVE_PATHS.includes(c.devicePath);
+}
+/** Saves the first draft (seedOneSticker) when shouldAutoSaveOneSticker says so; returns it, or null. */
+export function autoSaveOneSticker(c: { visible: boolean; flagsLoaded: boolean; devicePath: string }, pp: SeedPattern, psSize: string, qr: boolean, printerName: string | null): OneStickerSettings | null {
+  if (!shouldAutoSaveOneSticker({ ...c, saved: readSavedOneSticker() != null })) return null;
+  const s = normalizeSettings(seedOneSticker(pp, psSize, qr, c.devicePath, printerName)); // normalize: the QR rule (none below 50×30)
+  saveOneSticker(s);
+  return s;
 }
 export function isOneStickerSeen(): boolean { try { return localStorage.getItem(LS_ONE_STICKER_SEEN) === "1"; } catch { return false; } }
 export function markOneStickerSeen(): void { try { localStorage.setItem(LS_ONE_STICKER_SEEN, "1"); } catch { /* ignore */ } }
