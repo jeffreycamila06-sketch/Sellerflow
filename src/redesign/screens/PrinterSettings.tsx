@@ -53,8 +53,13 @@ export interface PsOneSize {
   current: { w: number; h: number; custom?: boolean }; // the new sticker's size now (oneStickerSizeNow)
   sizes: { w: number; h: number }[];                    // the listed sizes (oneStickerSizesFor)
   printerName?: string | null;
+  limit?: { model: string; maxLabelMm: number } | null; // the widest label the printer takes (oneStickerLimitFor; an unknown Niimbot = 50 mm)
   onPick: (w: number, h: number) => void;               // a listed size, or Custom → Save size
 }
+const overLimit = (one: PsOneSize, wMm: number) => {
+  const l = one.limit !== undefined ? one.limit : tooWideFor(one.printerName, wMm);
+  return l && wMm > l.maxLabelMm ? l : null;
+};
 const gridBtn: CSSProperties = { padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", borderRadius: 11, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textAlign: "center", border: "none", ...(active ? { background: "var(--surface)", color: "var(--accent-fg)", boxShadow: "var(--shadow)" } : { background: "transparent", color: "var(--text-dim)" }) });
 const rowBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
@@ -140,7 +145,7 @@ export default function PrinterSettings({
   const [customH, setCustomH] = useState(String(oneSize?.current.h ?? customSize?.saved?.h ?? 40));
   const cw = Number(customW), ch = Number(customH);
   const customOk = validCustomMm(cw) && validCustomMm(ch);
-  const customTooWide = customOk ? tooWideFor(oneSize ? oneSize.printerName : customSize?.printerName, cw) : null;
+  const customTooWide = customOk ? (oneSize ? overLimit(oneSize, cw) : tooWideFor(customSize?.printerName, cw)) : null;
   const [btScanned, setBtScanned] = useState(false);
   const [btShowAll, setBtShowAll] = useState(false);
   const [pick, setPick] = useState<BluetoothPrinterDevice | null>(null);
@@ -340,7 +345,7 @@ export default function PrinterSettings({
     <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
   );
   const optBtn = (on: boolean): CSSProperties => ({ width: "100%", minHeight: 44, display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" });
-  const oneSizeCurrentTooWide = oneSize ? tooWideFor(oneSize.printerName, oneSize.current.w) : null;
+  const oneSizeCurrentTooWide = oneSize ? overLimit(oneSize, oneSize.current.w) : null;
   const oneSizeBlock = oneSize && (
     <div data-testid="ps-one-size">
       <label style={label}>{t.rd_ps_sticker_size}</label>

@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, pickOneStickerSize, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
@@ -2889,7 +2889,8 @@ export default function RedesignApp() {
                   const why = sync.reason === "niimbot" ? tpl(tApp.rd_os_sync_niimbot, { size }) : sync.reason === "too_wide" ? tpl(tApp.rd_os_sync_too_wide, { model: sync.model ?? "", max: String(sync.maxMm ?? ""), size }) : tpl(tApp.rd_os_sync_text, { size });
                   setToast({ msg: why, kind: "err" });
                 }
-              } else clearOneStickerSizeChoice(); /* a pick while the new screen is hidden is the newest size (a remembered one-place pick is done) */ }}
+              }
+              clearOneStickerSizeChoice(); /* every pick on today's list is the newest size (a remembered one-place pick is done) */ }}
               cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicShown}
               stickerQrAllowed={stickerQrAllowed}
@@ -2898,7 +2899,7 @@ export default function RedesignApp() {
               flowV2={printerFlowV2}
               isAdmin={isAdmin}
               onPrinterSaved={autoSaveNow}
-              oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName), printerName: osPrinterName, onPick: onPickOneSize } : undefined}
+              oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName, osDevicePath === "niimbot"), printerName: osPrinterName, limit: oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot"), onPick: onPickOneSize } : undefined}
               sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && psBack === "printpattern"))}
               customSize={oneStickerOn && !osSizeMode ? (() => {
                 // ONE SIZE, BOTH PLACES (Jeff 2026-11-10): the new sticker's Custom size in Printer settings too.
@@ -2946,6 +2947,7 @@ export default function RedesignApp() {
               shopName={printShopName === BRAND_FALLBACK ? "" : printShopName}
               devicePath={oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }))}
               printerName={savedBtPrinter()?.name ?? null}
+              printerLimit={oneStickerLimitFor(savedBtPrinter()?.name ?? null, osDevicePath === "niimbot")}
               genericBold={!!knownTsplJob(savedBtPrinter()?.name).bold}
               qrAllowed={stickerQrAllowed}
               onToast={(msg) => setToast({ msg, kind: "ok" })}

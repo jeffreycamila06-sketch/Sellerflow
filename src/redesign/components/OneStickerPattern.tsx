@@ -170,6 +170,7 @@ export interface OneStickerPatternProps {
   shopName: string;                // the seller's own shop name ("" = none — never the brand)
   devicePath: OneStickerDevicePath;
   printerName?: string | null;     // the saved Bluetooth printer (size limit warning)
+  printerLimit?: { model: string; maxLabelMm: number } | null; // the widest label it takes (oneStickerLimitFor — an unknown Niimbot = 50 mm); absent = tooWideFor(printerName)
   genericBold?: boolean;           // the saved printer gets the 1-dot ink (Y41BT / XP-420B)
   qrAllowed: boolean;              // "Print QR on sticker" is available for this account
   onTest: (draft: OneStickerSettings, sample: "default" | "en" | "zh", unsaved: boolean) => void;
@@ -206,7 +207,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const customAllowed = p.devicePath !== "text" && p.devicePath !== "wifi";
   const dirty = !sameSettings(s, base);
   const small = isSmallClass(s.size.w, s.size.h);
-  const tooWide = tooWideFor(p.printerName, s.size.w);
+  const tooWide = p.printerLimit !== undefined ? (p.printerLimit && s.size.w > p.printerLimit.maxLabelMm ? p.printerLimit : null) : tooWideFor(p.printerName, s.size.w);
   // the preview's sample (#128 Maria Santos @maria_live, today's Taipei date & time) — the same one the
   // test buttons print and the same one the notes are measured on
   const admin = p.isAdmin === true && !!p.onTestSample;

@@ -115,6 +115,20 @@ describe("Printer settings → Sticker size: one list for the new sticker", () =
   });
 });
 
+describe("guardian gap 3: an unknown Niimbot (limit 50 mm)", () => {
+  it("50×30 + Custom only; a Custom wider than 50 mm can't be saved; a saved wider size shows the too-wide note", () => {
+    appShell();
+    const o = { current: { w: 100, h: 60 }, sizes: oneStickerSizesFor("NB-UNKNOWN", true), printerName: "NB-UNKNOWN", limit: { model: "Niimbot", maxLabelMm: 50 }, onPick: vi.fn<(w: number, h: number) => void>() };
+    renderPS(o);
+    expect(listed()).toEqual(["50x30"]);
+    expect(screen.getByTestId("ps-size-too-wide").textContent).toBe("Your Niimbot takes labels up to 50 mm wide — this size is wider.");
+    fireEvent.click(screen.getByTestId("ps-size-custom"));
+    fireEvent.change(screen.getByTestId("ps-custom-w"), { target: { value: "60" } });
+    fireEvent.change(screen.getByTestId("ps-custom-h"), { target: { value: "40" } });
+    expect((screen.getByTestId("ps-custom-save") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
 describe("RedesignApp wiring (source)", () => {
   const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
   it("Change on the Live print pattern opens Printer settings (list open) and Back returns to the Live print pattern", () => {
@@ -129,6 +143,7 @@ describe("RedesignApp wiring (source)", () => {
   it("accounts that don't see the new screen: no one size list, no Custom (today's Printer settings)", () => {
     expect(app).toContain('const osSizeMode = oneStickerOn && osDevicePath !== "text" && osDevicePath !== "wifi";');
     expect(app).toContain("oneSize={osSizeMode && osSizeNow ?");
+    expect(app).toContain('oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot")');
     expect(app).toContain("customSize={oneStickerOn && !osSizeMode ?");
     expect(app).toContain('sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && psBack === "printpattern"))}');
   });

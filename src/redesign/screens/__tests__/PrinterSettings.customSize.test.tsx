@@ -139,6 +139,6 @@ describe("RedesignApp wiring", () => {
     expect(app).toContain("allowed: !older && saved != null,");
     expect(app).toContain('reason: older ? "text" as const : saved == null ? "not_saved" as const : undefined,');
     expect(app).not.toContain('"niimbot" as const');
-    expect(app).toContain("oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName), printerName: osPrinterName, onPick: onPickOneSize } : undefined}");
+    expect(app).toContain('oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName, osDevicePath === "niimbot"), printerName: osPrinterName, limit: oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot"), onPick: onPickOneSize } : undefined}');
   });
 });

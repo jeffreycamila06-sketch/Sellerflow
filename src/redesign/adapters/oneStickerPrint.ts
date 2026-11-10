@@ -125,10 +125,17 @@ export function readOneStickerSizeChoice(): SizeOut | null {
   } catch { return null; }
 }
 export function clearOneStickerSizeChoice(): void { try { localStorage.removeItem(LS_ONE_STICKER_SIZE); } catch { /* ignore */ } }
-/** The sizes Printer settings lists for the new sticker: 50×30 … 100×60, none wider than the saved printer
- *  takes (B1 / B21 → 50×30 only, B3S → up to 70×50). PURE. */
-export function oneStickerSizesFor(printerName: string | null | undefined): { w: number; h: number }[] {
+/** The widest label the saved printer takes, for the size list: printerLimitFor, and a Niimbot whose name is not
+ *  known yet counts as 50 mm (like seedOneSticker) — never the full list on a small roll. PURE. */
+export function oneStickerLimitFor(printerName: string | null | undefined, niimbot = false): { model: string; maxLabelMm: number } | null {
   const lim = printerLimitFor(printerName);
+  if (lim) return { model: lim.model, maxLabelMm: lim.maxLabelMm };
+  return niimbot ? { model: "Niimbot", maxLabelMm: 50 } : null;
+}
+/** The sizes Printer settings lists for the new sticker: 50×30 … 100×60, none wider than the saved printer
+ *  takes (B1 / B21 → 50×30 only, B3S → up to 70×50, an unknown Niimbot → 50×30). PURE. */
+export function oneStickerSizesFor(printerName: string | null | undefined, niimbot = false): { w: number; h: number }[] {
+  const lim = oneStickerLimitFor(printerName, niimbot);
   return STANDARD_SIZES.filter((z) => !lim || z.w <= lim.maxLabelMm).map((z) => ({ w: z.w, h: z.h }));
 }
 /** The new sticker's size on this device right now: the saved sticker's size; else the size picked in Printer
@@ -136,8 +143,10 @@ export function oneStickerSizesFor(printerName: string | null | undefined): { w:
 export function oneStickerSizeNow(pp: SeedPattern, psSize: string, path: string, printerName: string | null): SizeOut {
   const saved = readSavedOneSticker();
   if (saved) return saved.size.custom ? { w: saved.size.w, h: saved.size.h, custom: true } : { w: saved.size.w, h: saved.size.h };
-  const choice = readOneStickerSizeChoice();
-  if (choice && !tooWideFor(printerName, choice.w) && !((path === "text" || path === "wifi") && (choice.custom || (choice.w === 50 && choice.h === 30)))) return choice;
+  // a TEXT / WiFi device picks on today's list (psSize) — a size remembered from another tab never overrides it
+  const choice = path === "text" || path === "wifi" ? null : readOneStickerSizeChoice();
+  const lim = oneStickerLimitFor(printerName, path === "niimbot");
+  if (choice && !(lim && choice.w > lim.maxLabelMm)) return choice;
   const z = seedOneSticker(pp, psSize, false, path, printerName).size;
   return asSize(z.w, z.h);
 }

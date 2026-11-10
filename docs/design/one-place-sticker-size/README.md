@@ -10,3 +10,12 @@ Phone 360 / 390 / 430 and laptop 1280, seller and admin (no horizontal scroll at
   "set it in LIVE print pattern" note. `printer-settings_niimbot-b3s_iphone-390` — B3S: up to 70×50 + Custom.
 - `live-print-pattern_niimbot-b1-50x30_iphone-390` — the Live print pattern on a Niimbot B1 at 50×30.
 Accounts that don't see the new Live print pattern: Printer settings is exactly today's (same HTML as main).
+
+TODAY (main c35e7a81) vs NEW:
+- `TODAY_live-print-pattern_paper-size-card_*` — today's Live print pattern with its Paper size card (size chips + Custom).
+- `TODAY_printer-settings_laptop-driver-note_laptop-1280` — today: the laptop has no size, only "set it in your computer's printer settings".
+- `TODAY_printer-settings_niimbot-old-note_iphone-390` — today: a Niimbot gets the old list + "set a custom size in Live print pattern".
+- `NEW_live-print-pattern_custom-40x30-qr-off_iphone-390` — a Custom 40×30 from Printer settings: Print QR on sticker OFF and grey, "QR needs a label at least 50×30 mm".
+- `NEW_live-print-pattern_too-wide-b1-100x60_iphone-390` / `NEW_printer-settings_too-wide-b1-100x60_iphone-390` — a saved 100×60 on a Niimbot B1: the red too-wide note on both screens (the saved size is kept until the seller picks).
+- `NEW_printer-settings_custom-40x30-qr-note_iphone-390` — Custom 40×30 typed: the QR note before Save size.
+- `NEW_printer-settings_laptop-wifi-tab_*` — the laptop on the WiFi tab: the Sticker size card is there too.

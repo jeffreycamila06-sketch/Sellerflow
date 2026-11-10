@@ -4,10 +4,11 @@
 // for every new-sticker device (none wider than the printer), Custom 30–110 mm, QR off below 50×30, a saved size
 // is never changed by itself, the laptop's pick before its Save is remembered, the auto-save uses a fitting pick.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
 import { printSlip, DEF_SETTINGS, setStickerQrEntitled, __resetNativePrintQueue, type Settings } from "../printing";
 import {
   setOneStickerVisible, readSavedOneSticker, saveOneSticker, oneStickerActive, pickOneStickerSize, oneStickerSizeNow, oneStickerSizesFor, readOneStickerSizeChoice,
-  clearOneStickerSizeChoice, autoSaveOneSticker, seedOneSticker, renderOneStickerFor, laptopPage, oneStickerInputFrom, LS_ONE_STICKER_SIZE, __resetOneStickerState, type SeedPattern,
+  clearOneStickerSizeChoice, oneStickerLimitFor, psLabelFor, autoSaveOneSticker, seedOneSticker, renderOneStickerFor, laptopPage, oneStickerInputFrom, LS_ONE_STICKER_SIZE, __resetOneStickerState, type SeedPattern,
 } from "../oneStickerPrint";
 import { recommendedSettings } from "../oneSticker";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
@@ -136,6 +137,29 @@ describe("the size the Live print pattern and Save use", () => {
     pickOneStickerSize(62, 40);
     clearOneStickerSizeChoice();
     expect(readOneStickerSizeChoice()).toBeNull();
+  });
+});
+
+describe("guardian gaps (2026-11-10)", () => {
+  it("gap 1: a size remembered on the Bluetooth tab never overrides today's list on a WiFi / text phone", () => {
+    pickOneStickerSize(80, 60); // remembered (nothing saved), a phone with no printer yet
+    for (const path of ["wifi", "text"]) {
+      // she switches to a WiFi printer and picks 60×40 on today's list → psSize "60x40mm"
+      expect(oneStickerSizeNow(PP, "60x40mm", path, null), path).toEqual({ w: 60, h: 40 });
+      // and the Live print pattern Save puts Printer settings on that same 60×40 (not 80×60)
+      expect(psLabelFor(oneStickerSizeNow(PP, "60x40mm", path, null), path)).toBe("60x40mm");
+    }
+    // RedesignApp clears the remembered size on EVERY pick on today's list
+    const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    expect(app).toMatch(/onPickPsSize=\{\(s\) => \{ setPsSize\(s\); setPsSizeOpen\(false\);[\s\S]{0,1600}?clearOneStickerSizeChoice\(\); \/\* every pick on today's list is the newest size/);
+  });
+  it("gap 3: a Niimbot whose name is not known yet counts as 50 mm — 50×30 only, wider sizes are too wide", () => {
+    expect(oneStickerLimitFor("NB-UNKNOWN", true)).toEqual({ model: "Niimbot", maxLabelMm: 50 });
+    expect(oneStickerSizesFor("NB-UNKNOWN", true)).toEqual([{ w: 50, h: 30 }]);
+    expect(oneStickerLimitFor("NB-UNKNOWN", false)).toBeNull(); // not a Niimbot: no limit known (as before)
+    expect(oneStickerLimitFor("B3S-P1", true)).toEqual({ model: "B3S", maxLabelMm: 75 });
+    pickOneStickerSize(70, 50);
+    expect(oneStickerSizeNow(PP, "100x60mm (Standard)", "niimbot", "NB-UNKNOWN")).toEqual({ w: 50, h: 30 });
   });
 });
 

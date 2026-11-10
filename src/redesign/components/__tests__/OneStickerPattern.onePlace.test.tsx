@@ -97,6 +97,11 @@ describe("Live print pattern — one place for the size", () => {
     expect(screen.getByTestId("os-too-wide").textContent).toBe("Your B21 takes labels up to 50 mm wide — this size is wider.");
     expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
   });
+  it("guardian gap 3: an unknown Niimbot (printerLimit 50 mm) at 100×60 → too wide, no Save", () => {
+    render(<TProvider lang="en"><OneStickerPattern onBack={() => {}} initial={recommendedSettings({ w: 100, h: 60 })} size={{ w: 100, h: 60 }} savedOnDevice onSave={() => {}} shopName="" devicePath="niimbot" printerName="NB-UNKNOWN" printerLimit={{ model: "Niimbot", maxLabelMm: 50 }} qrAllowed onTest={() => {}} onChangeSize={() => {}} /></TProvider>);
+    expect(screen.getByTestId("os-too-wide").textContent).toBe("Your Niimbot takes labels up to 50 mm wide — this size is wider.");
+    expect((screen.getByTestId("os-save") as HTMLButtonElement).disabled).toBe(true);
+  });
   it("the size line exists in all 8 languages", () => {
     for (const [lang, want] of [["fil", "Sukat ng sticker: 60×40 mm"], ["zh-TW", "貼紙尺寸：60×40 mm"], ["th", "ขนาดสติกเกอร์: 60×40 มม."], ["bg", "Размер на стикера: 60×40 мм"]] as const) {
       const r = render(<TProvider lang={lang}><OneStickerPattern onBack={() => {}} initial={recommendedSettings({ w: 60, h: 40 })} size={{ w: 60, h: 40 }} savedOnDevice={false} onSave={() => {}} shopName="" devicePath="d520" qrAllowed onTest={() => {}} onChangeSize={() => {}} /></TProvider>);
