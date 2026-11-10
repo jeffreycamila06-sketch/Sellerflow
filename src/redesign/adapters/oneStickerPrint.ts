@@ -173,6 +173,14 @@ export function osDraftAfterSizePick<D extends { qr: boolean }>(draft: D | null,
   return draft && draft.qr && !qrSizeOk(size) ? { ...draft, qr: false } : draft;
 }
 
+/** A size picked in Printer settings while NOTHING is saved yet (pickOneStickerSize → saved null) and below 50×30:
+ *  the old "Print QR on sticker" switch (isStickerQrOn — what the first draft and the phone auto-save take the QR
+ *  from) goes OFF too, so the new sticker never starts with the QR on a size that can't take it. It never comes
+ *  back by itself on a bigger size; only the seller turns it on (Jeff 2026-11-10). PURE. */
+export function oldQrOffAfterPick(saved: OneStickerSettings | null, size: { w: number; h: number }): boolean {
+  return saved == null && !qrSizeOk(size);
+}
+
 /** The Print Pattern fields the first draft is made from (screens/PrintPattern PrintPatternState). */
 export interface SeedPattern { shopName: boolean; shopNameSize: number; buyerNum: boolean; buyerNumSize: number; tiktokName: boolean; tiktokNameSize: number; tiktokUser: boolean; tiktokUserSize: number; comment: boolean; commentSize: number }
 // ONE STICKER: the first draft of the new pattern = this device's current pattern (so the preview

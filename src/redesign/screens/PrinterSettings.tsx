@@ -358,7 +358,7 @@ export default function PrinterSettings({
           {oneSize.sizes.map((z) => {
             const on = !customOpen && !oneSize.current.custom && z.w === oneSize.current.w && z.h === oneSize.current.h;
             return (
-              <button key={`${z.w}x${z.h}`} data-testid={`ps-size-opt-${z.w}x${z.h}`} aria-pressed={on} onClick={() => { setCustomOpen(false); oneSize.onPick(z.w, z.h); }} style={optBtn(on)}>
+              <button key={`${z.w}x${z.h}`} data-testid={`ps-size-opt-${z.w}x${z.h}`} aria-pressed={on} onClick={() => { setCustomOpen(false); oneSize.onPick(z.w, z.h); setStickerQr(isStickerQrOn()); }} style={optBtn(on)}>
                 {radio(on)}<span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{printerLabelFor(z)}</span>
               </button>
             );
@@ -383,7 +383,7 @@ export default function PrinterSettings({
           {!customOk && <div data-testid="ps-custom-err" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_custom_err, { min: String(CUSTOM_MIN_MM), max: String(CUSTOM_MAX_MM) })}</div>}
           {customOk && !qrSizeOk({ w: cw, h: ch }) && <div data-testid="ps-custom-qr-note" style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>{t.rd_os_qr_min_size}</div>}
           {customTooWide && <div data-testid="ps-custom-too-wide" style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{tpl(t.rd_os_too_wide, { model: customTooWide.model, max: String(customTooWide.maxLabelMm) })}</div>}
-          <button data-testid="ps-custom-save" disabled={!customOk || !!customTooWide} onClick={() => { if (!customOk || customTooWide) return; oneSize.onPick(cw, ch); setCustomOpen(false); }} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 10, border: "none", background: customOk && !customTooWide ? "var(--accent)" : "var(--surface-2)", color: customOk && !customTooWide ? "var(--accent-text)" : "var(--text-muted)", cursor: customOk && !customTooWide ? "pointer" : "not-allowed" }}>{t.rd_ps_custom_save}</button>
+          <button data-testid="ps-custom-save" disabled={!customOk || !!customTooWide} onClick={() => { if (!customOk || customTooWide) return; oneSize.onPick(cw, ch); setStickerQr(isStickerQrOn()); setCustomOpen(false); }} style={{ ...gridBtn, width: "100%", minHeight: 46, marginTop: 10, border: "none", background: customOk && !customTooWide ? "var(--accent)" : "var(--surface-2)", color: customOk && !customTooWide ? "var(--accent-text)" : "var(--text-muted)", cursor: customOk && !customTooWide ? "pointer" : "not-allowed" }}>{t.rd_ps_custom_save}</button>
         </div>
       )}
       {/* the saved size: wider than this printer (a saved size is never changed by itself), or too small for a QR */}

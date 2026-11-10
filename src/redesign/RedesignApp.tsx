@@ -121,11 +121,11 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, osDraftAfterSizePick, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, osDraftAfterSizePick, oldQrOffAfterPick, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
-import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
+import { printOneStickerTest, oneStickerDevicePath, isStickerQrOn, setStickerQrOn, setOneStickerNoticeHandler, setStickerRouteNoticeHandler, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE } from "./adapters/printing";
 import { savedBtPrinter, savedIsNiimbot } from "./adapters/savedPrinter";
 import { V2_SAMPLE_LATIN, V2_SAMPLE_CJK } from "./screens/PrintPattern";
 import { registeredAccountsFor, appendAccount, maxAcc, accountList, composeChannelSave, connectFailText, cooldownRetryDelayMs, type Platform, ttDisconnect } from "./adapters/connect";
@@ -1971,6 +1971,8 @@ export default function RedesignApp() {
     // the unsaved draft too: below 50×30 its QR goes OFF and stays off when a bigger size is picked next (a listed size
     // and Custom → Save size both come here)
     setOsDraft((d) => osDraftAfterSizePick(d, r.size));
+    // nothing saved yet: the old "Print QR on sticker" switch (the first draft's / the auto-save's QR) goes OFF below 50×30
+    if (oldQrOffAfterPick(r.saved, r.size) && isStickerQrOn()) setStickerQrOn(false);
     const label = psLabelFor(r.size, osDevicePath);
     if (label && label !== psSize) setPsSize(label);
     setPsSizeOpen(false);
