@@ -166,7 +166,7 @@
     lastNight: null,           // the window state of the last pass (null = none yet) — 01:00 / 05:00 edge detection
     checked: null, left: null, nothingDue: false, lastVerdictAt: 0,
     stateSig: "", loaded: false,
-    gaveUp: { ok: false, n: null, at: 0 }, gaveUpReadAt: 0,  // 1.18.1 (a): the last admin_parcel_gave_up_count read
+    gaveUp: { ok: false, n: null, at: 0 }, gaveUpReadAt: 0, gaveUpBusy: false,  // 1.18.1 (a): the last admin_parcel_gave_up_count read
   };
   // the part of `warm` that must survive a worker restart (pc_frozen_warmup.mem)
   const MEM_KEYS = ["lastAt", "pauseUntil", "misses", "pauses", "stopped", "stopReason", "stopWritten", "sawOffSinceStop", "stopTriedAt", "nightRetryAt", "nightMisses", "lastNight", "queueAt", "queue"];
@@ -336,8 +336,6 @@
     // (3) refresh for the next pass — AFTER the request, never between the kick and it
     if (Date.now() - st.switchAt >= SWITCH_TTL_MS) await readSwitch(rpc.cfg, rpc.rpcHeaders, Date.now());
     if (st.switchOn && Date.now() - warm.switchAt >= SWITCH_TTL_MS) await readWarmSwitch(rpc.cfg, rpc.rpcHeaders, Date.now());
-    // 1.18.1 (a): the given-up count — only while warm-up is on (switch off = no extra request), ≤ once a minute
-    if (st.switchOn && warm.on && !warm.stopped && Date.now() - warm.gaveUpReadAt >= WARMUP_GAVEUP_EVERY_MS) await readGaveUp(rpc.cfg, rpc.rpcHeaders, Date.now());
     if (st.switchOn && warm.stopped && !warm.stopWritten && Date.now() - warm.stopTriedAt >= WARMUP_STOP_RETRY_MS) {
       warm.stopTriedAt = Date.now();                       // 2: a failing stop write is retried at most once per 60 s
       await writeStop(rpc.cfg, rpc.rpcHeaders);
@@ -347,6 +345,13 @@
     const nightNow = pcInMaintenance(Date.now());
     if (!nightNow && (!st.queue.length || Date.now() - st.queueAt >= QUEUE_MAX_AGE_MS) && Date.now() >= st.emptyUntil && Date.now() >= st.pauseUntil) {
       await readPending(rpc.cfg, rpc.rpcHeaders, Date.now());          // D: not again for 60 s after an empty read; never in the window (unchanged)
+    }
+    // 1.18.1 (a): the given-up count — AFTER the live frozen queue refresh, and NOT awaited: a slow database
+    // never delays that refresh nor holds the pass (a held pass = the next kick skips its live frozen request).
+    // One read at a time; only while warm-up is on (switch off = no extra request), ≤ once a minute.
+    if (warm.on && !warm.stopped && !warm.gaveUpBusy && Date.now() - warm.gaveUpReadAt >= WARMUP_GAVEUP_EVERY_MS) {
+      warm.gaveUpBusy = true;
+      void readGaveUp(rpc.cfg, rpc.rpcHeaders, Date.now()).finally(() => { warm.gaveUpBusy = false; });
     }
     if (warm.loaded && warm.on && (nightNow || (!st.queue.length && Date.now() < st.emptyUntil && st.lastRaw === 0)) && Date.now() - warm.queueAt >= WARMUP_LIST_MAX_AGE_MS
         && Date.now() >= warm.emptyUntil && Date.now() >= warm.pauseUntil && leaseConfirmed(Date.now()) && (await dryIdle())) {

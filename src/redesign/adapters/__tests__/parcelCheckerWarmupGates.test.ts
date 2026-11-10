@@ -7,7 +7,8 @@
 // Plus: every warm-up send logs `queue=<n>` (the post-deploy "must be 0" check).
 // Sabotage: SFL_EXT_DIR=<patched copy> runs these against a broken frozen-check.js (see the report).
 import { describe, it, expect } from "vitest";
-import { bootWorker, fakeJwt } from "./parcelCheckerHarness";
+import { readFileSync } from "node:fs";
+import { bootWorker, fakeJwt, makeSim, runSim } from "./parcelCheckerHarness";
 
 const S = 1000;
 const MIN = 60 * S;
@@ -201,5 +202,59 @@ describe("the last look right before the send", () => {
     const before = wd.at.length;
     ref.arm = true; await pass(w, wd); ref.arm = false;
     expect(wd.at.length).toBe(before);
+  });
+});
+
+// A slow gave-up read must never hold back the LIVE frozen lane. Realistic timing (sim): warm-up ON,
+// the gave-up count takes 10 s to answer; 冷凍 parcels appear during the run. Each one's first live
+// frozen request must go out at exactly the same time as in a run where the gave-up read never
+// happens (warm-up switch off) — no extra wait.
+describe("a slow gave-up read never delays the live frozen lane", () => {
+  const SIM_T0 = Date.UTC(2026, 0, 15, 2, 0, 0); // 10:00 Taipei
+  const ARR = [3.2, 7.7, 12.1, 18.4, 23.9].map((m, i) => ({ t: SIM_T0 + Math.round(m * MIN), id: `fz-${i + 1}`, store_id: String(810001 + i) }));
+  async function run(warm: boolean, gaveUpMs: number) {
+    const sim = makeSim({ t0: SIM_T0, emapMs: 800, dry: 0, frozen: [], warmupSwitch: warm ? "true" : "false", warmStores: Array.from({ length: 60 }, (_, i) => String(700001 + i)) });
+    sim.gaveUpMs = gaveUpMs;
+    sim.frozenArrivals = ARR.map((a) => ({ ...a }));
+    const w = bootWorker({ sim, lease: LEADER });
+    await w.booted;
+    await runSim(sim, SIM_T0 + 30 * MIN);
+    const first = (id: string) => sim.intervals.find((i) => i.kind === "frozen" && i.rowId === id)?.start ?? null;
+    return { sim, firstReq: ARR.map((a) => first(a.id)) };
+  }
+  it("warm-up ON + gave-up 10 s: every live frozen request at the same time as with the gave-up read disabled", async () => {
+    const slow = await run(true, 10_000);
+    const off = await run(false, 10_000);
+    expect(off.firstReq.every((t) => t !== null)).toBe(true);
+    expect(slow.firstReq).toEqual(off.firstReq);
+    expect(slow.sim.intervals.some((i) => String(i.rowId).startsWith("warmup:"))).toBe(true);   // warm-up really ran (gave-up read happened)
+  });
+});
+
+describe("source pin — where the gave-up read sits in a pass", () => {
+  it("runPass calls readGaveUp AFTER readPending, without await, one at a time", () => {
+    const src = readFileSync(`${process.env.SFL_EXT_DIR || "chrome-extension"}/frozen-check.js`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const body = src.slice(src.indexOf("async function runPass("), src.indexOf("async function sendOne("));
+    const pending = body.indexOf("await readPending(");
+    const gave = body.indexOf("readGaveUp(");
+    expect(pending).toBeGreaterThan(0);
+    expect(gave).toBeGreaterThan(pending);
+    expect(body).not.toMatch(/await\s+readGaveUp\(/);
+    expect(body).toMatch(/void readGaveUp\(/);
+    expect(body).toMatch(/!warm\.gaveUpBusy/);
+  });
+});
+
+describe("frozen switch turned OFF while warm-up is on", () => {
+  it("the gave-up read stops once the switch is seen off (no extra request after that)", async () => {
+    const wd = world(); const w = await boot(wd);
+    await passes(w, wd, 12 * 3);
+    expect(count(w, GAVE_UP)).toBeGreaterThanOrEqual(2);                  // it was being read
+    wd.opts.frozenSwitch = "false";
+    await passes(w, wd, 12 * 2);                                          // the switch is re-read within a minute
+    const after = count(w, GAVE_UP);
+    await passes(w, wd, 12 * 5);
+    expect(count(w, GAVE_UP)).toBe(after);
+    expect(warmMsgs(w).length).toBeGreaterThan(0);
   });
 });

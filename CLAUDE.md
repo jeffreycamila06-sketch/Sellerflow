@@ -4833,3 +4833,7 @@ myship-711.js and app source untouched):
 - Tests: `parcelCheckerWarmupGates.test.ts` (15) — 1.18.0's code fails 11 of them; 7 sabotage copies each go red.
   `scripts/sql147-behaviour.mjs` (PGlite, 14 checks). Manifest **1.18.1**.
 - **Order:** apply sql/147 → install 1.18.1. Without sql/147 the warm-up simply stays off (real parcels unaffected).
+- **Follow-up (same branch):** the gave-up read runs AFTER the live frozen queue refresh (`readPending`) and is NOT
+  awaited (one at a time, `warm.gaveUpBusy`). Just moving it was not enough: an awaited 10 s read still held the pass,
+  and a held pass makes the next kick skip its live frozen request (+5.3 s in the sim). Sim test: gave-up 10 s →
+  every live frozen request at the same time as with the read off. Source pin: after `readPending`, `void`, guarded.
