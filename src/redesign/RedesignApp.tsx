@@ -121,7 +121,7 @@ import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer,
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
-import { setOneStickerVisible, stickerAllScriptsFor, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
+import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
 import { recommendedSettings, snapScale, STANDARD_SIZES, printerLimitFor, type OneStickerSettings } from "./adapters/oneSticker";
 import { setStickerAllScripts } from "./adapters/oneStickerScripts";
 import { adminSampleBuyer } from "./adapters/adminLangSamples";
@@ -2856,6 +2856,33 @@ export default function RedesignApp() {
               testComment={stickerV2On ? PREVIEW_COMMENT : undefined}
               flowV2={printerFlowV2}
               isAdmin={isAdmin}
+              customSize={oneStickerOn ? (() => {
+                // ONE SIZE, BOTH PLACES (Jeff 2026-11-10): the new sticker's Custom size in Printer settings too.
+                // Hidden (with a note) where this phone + printer prints the older sticker, or where the new
+                // sticker is not saved on this device yet (that device still prints today's sticker).
+                const devPath = oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize }));
+                const saved = readSavedOneSticker();
+                const older = devPath === "text" || devPath === "wifi";
+                // a Niimbot's size is set on the Live print pattern (a Printer settings size pick says so too) —
+                // Custom there as well, so both say the same thing
+                const niimbot = devPath === "niimbot";
+                return {
+                  allowed: !older && !niimbot && saved != null,
+                  reason: older ? "text" as const : niimbot ? "niimbot" as const : saved == null ? "not_saved" as const : undefined,
+                  saved: saved ? saved.size : null,
+                  printerName: savedBtPrinter()?.name ?? null,
+                  onSave: (w: number, h: number) => {
+                    const qrBefore = readSavedOneSticker()?.qr === true;
+                    const next = saveOneStickerSizeFromPrinterCustom(w, h); // the LAST Save wins — the Live print pattern opens on this size
+                    if (!next) return;
+                    const label = psLabelFor(next.size, devPath);
+                    if (label) setPsSize(label);
+                    // below 50×30 the QR was turned off — say so (it stays off on a bigger size until turned on again)
+                    const saidSaved = tpl(tApp.rd_ps_custom_saved, { w: String(w), h: String(h) });
+                    setToast({ msg: qrBefore && !next.qr ? `${saidSaved} · ${tApp.rd_os_qr_min_size}` : saidSaved, kind: "ok" });
+                  },
+                };
+              })() : undefined}
             />
           )}
           {screen === "printpattern" && oneStickerOn && (
