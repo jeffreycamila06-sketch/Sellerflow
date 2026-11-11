@@ -27,7 +27,7 @@ is the only way out of most sub-screens.
 | 8 | `subscription` | Subscription (hidden on iPhone) | General Settings; free-limit popup "Upgrade" (any screen); 7-11 Shipping "Upgrade" | **no** | where it came from |
 | 9 | `support` | Support / help | General Settings | **no** | General Settings |
 | 10 | `admin` | Admin (admins only) | its own nav button (admins); Settings hub | **no** | from the nav: no Back (Q5); from Settings hub: Settings hub |
-| 11 | `shipping` | 7-11 Shipping (gate "open") | Settings hub | **no** | Settings hub |
+| 11 | `shipping` | 7-11 Shipping (gate "open") | Settings hub; Orders 🚚 button | **no** | where it came from (Settings hub / Orders) |
 | 12 | `customerdata` | Customer data | Settings hub | **no** | Settings hub |
 | 13 | `legal` | Privacy / Terms | Settings hub; Support; Customer data; **Signup and the landing page (signed out)** | **no** | where it came from. ⚠️ Signed out there is no bottom nav either — today a visitor is **stuck** on Legal |
 | 14 | `delete` | Delete account | Settings hub; General Settings | **yes** — 32×32 "‹" icon only + "Keep my account" button; **always** goes to General Settings | where it came from (Settings hub or General Settings) |
@@ -105,3 +105,21 @@ Totals: 5 home tabs · 3 roots (landing / login, signup has one) · **11 sub-scr
    instead of today's General Settings?
 7. Android back: OK to plan the native change (new Android build) — or web Back only for now?
 8. Fix the signed-out Legal "stuck" case first, as part of this?
+
+## Step 2 — built (2026-11-11, Jeff's approved rules)
+
+- `src/redesign/components/BackButton.tsx` — the ONE "‹ Back" (Live print pattern look, min 44 px, `rd_back`)
+  and `HeaderWithBack` (Back on the left, title + subtitle on the right; nothing changes without `onBack`).
+- `src/redesign/adapters/backNav.ts` — the "came from" record: `navigateOrigins` (every open records its origin;
+  a home tab clears it; ⇄ 7-11 ↔ FamilyMart takes over the other screen's origin = no extra step; no loops),
+  `backFrom`, `tabOrigins`, `showsBack`, `DEFAULT_BACK` (fallback only). One entry per screen at most.
+- RedesignApp: `setScreen` is a thin wrapper that records the origin, so every existing open site works as is;
+  `goBack()` for every Back; the bottom-nav buttons use `openTab()` (fresh start); `chanBack` and `psBack` are gone
+  (Printer settings' WiFi-tab size card reads `navOrigins.printersettings === "printpattern"`).
+- 12 new Backs (#6–13, #22–25; Admin only when opened from the Settings tile). 11 existing Backs now use the shared
+  button (#14–21, #26, #27, #30). Shopee / FB pages / Instagram from Manage accounts → Manage accounts.
+  Delete account → where it came from. Signed-out Legal → Landing / Sign up.
+- Not changed: popups keep their ×; unsaved edits are dropped on Back as before; the other leave buttons
+  (Keep my account, Done, Save settings) are untouched — they call the same onBack, so they also return to the
+  origin now; Android hardware back untouched (needs a native build).
+- Help guide "Main screens" section: one line about ‹ Back (sql/116b regenerated).
