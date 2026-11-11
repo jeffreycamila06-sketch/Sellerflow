@@ -35,6 +35,14 @@ const NEW: Record<string, Record<Lang, string>> = {
   rd_ps2_empty: { en: "No saved parcels yet. Add your first parcel above.", fil: "Wala pang na-save na parcel. Idagdag ang unang parcel sa itaas.", zh: "还没有已保存的包裹。请先在上方添加第一个包裹。", "zh-TW": "還沒有已儲存的包裹。請先在上方新增第一個包裹。", vi: "Chưa có kiện nào. Hãy thêm kiện đầu tiên ở trên.", th: "ยังไม่มีพัสดุที่บันทึก เพิ่มพัสดุชิ้นแรกด้านบน", id: "Belum ada paket tersimpan. Tambahkan paket pertama di atas.", bg: "Още няма запазени пратки. Добави първата си пратка по-горе." },
 };
 
+// the old section label in each language (the Settings card name before Nov 11 2026)
+const OLD_LABEL: Record<Lang, string> = { en: "LIVE SESSION", fil: "LIVE SESSION", zh: "直播场次", "zh-TW": "直播場次", vi: "PHIÊN LIVE", th: "รอบไลฟ์", id: "SESI LIVE", bg: "LIVE СЕСИЯ" };
+// real-session wording that must NOT change
+const SESSION_WORDS: Record<string, Record<Lang, string>> = {
+  rd_dash_session_length: { en: "LIVE SESSION LENGTH", fil: "HABA NG LIVE SESSION", zh: "直播场次长度", "zh-TW": "直播場次長度", vi: "ĐỘ DÀI PHIÊN LIVE", th: "ความยาวรอบไลฟ์", id: "DURASI SESI LIVE", bg: "ПРОДЪЛЖИТЕЛНОСТ НА ЛАЙВ СЕСИЯТА" },
+  rd_sp_title: { en: "Start a live session", fil: "Magsimula ng live session", zh: "开始直播场次", "zh-TW": "開始直播場次", vi: "Bắt đầu phiên live", th: "เริ่มเซสชันไลฟ์", id: "Mulai sesi live", bg: "Започни лайв сесия" },
+};
+
 const account: AccountUser = {
   authUserId: "u1", email: "seller@example.com",
   profile: { fullName: "Owner", storeName: "Shop", phone: "0912345678", tiktok: "", facebook: "", adminContactNote: "" },
@@ -78,6 +86,34 @@ describe("the new wording, in all 8 languages", () => {
   });
   it("other 'session' words are not renamed", () => {
     expect(buildT("en").rd_dash_session_length).toBe("LIVE SESSION LENGTH");
+    for (const lang of LANGS) {
+      // these mean a real live session, not the Settings card → unchanged
+      expect(S(lang).rd_dash_session_length, lang).toBe(SESSION_WORDS.rd_dash_session_length[lang]);
+      expect(S(lang).rd_sp_title, lang).toBe(SESSION_WORDS.rd_sp_title[lang]);
+    }
+  });
+  it("Support → How Auto Mode works points to the new section name, in every language", () => {
+    for (const lang of LANGS) {
+      const body = S(lang).rd_sup_g2_body;
+      expect(body, lang).toContain(` → ${NEW.rd_set_live_session[lang]} → `);
+      expect(body, lang).not.toContain(` → ${OLD_LABEL[lang]} → `);
+    }
+  });
+  it("no i18n text anywhere still sends the seller to the old Settings card name", () => {
+    for (const lang of LANGS) {
+      const all = S(lang);
+      for (const [key, val] of Object.entries(all)) {
+        if (typeof val !== "string") continue;
+        expect(val.includes(` → ${OLD_LABEL[lang]} → `) || val.includes(` → ${OLD_LABEL[lang]}`), `${lang}/${key}`).toBe(false);
+      }
+    }
+  });
+  it("the help guide sends the seller to LIVE SETUP / Live setup, never the old card name", () => {
+    const guide = readFileSync("docs/support/sfl-guide.md", "utf8");
+    expect(guide).not.toMatch(/LIVE SESSION →|→ Live session\*\*|\*\*LIVE SESSION\*\*|tap \*\*Live session\*\*|in Live session settings/);
+    expect(guide).toContain("Settings → General Settings → LIVE SETUP → Auto mode");
+    expect(guide).toContain("**LIVE SETUP** — tap **Live setup**");
+    expect(guide).toContain("**Start a live session**"); // the real session wording stays
   });
 });
 
