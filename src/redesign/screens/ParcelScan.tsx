@@ -288,7 +288,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       setConfid((c) => (c ? { ...c, name: "high", phone: "high", store_id: "high" } : c));
       if (how === "auto") focusUnlessTyping(amountRef.current);
     },
-    onFailed: () => { setToast(t.rd_ql_failed); setTimeout(() => setToast(""), 3500); },
   });
 
   // In-app camera (web getUserMedia). Default ON where supported; a live video
@@ -691,6 +690,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
+    lookup.drop(); // an answer still on its way must not land during or after this save
     const ok = await commitNewParcel(formToFields(withContact(form)));
     setSaving(false);
     if (!ok) return;
@@ -707,6 +707,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setSaving(true); setSaveErr("");
     // The kept entry goes blank BEFORE the save: ⇄ and back while it runs = an empty form, never
     // the same parcel a second time. A failed save puts it back.
+    lookup.drop(); // an answer still on its way must not land during or after this save
     const restoreDraft = holdParcelDraftForSave("711");
     let ok = false;
     try { ok = await commitNewParcel(formToFields(withContact(form))); } finally { if (!ok) restoreDraft(); }
@@ -1739,7 +1740,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="ps-customers-close"
             >✕</button>
-            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); lookup.reset({ blankUntouched: true }); reloadSaved(); }} />
+            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.mark) clearForm(); else lookup.reset(); reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,

@@ -209,6 +209,20 @@ describe("what the form shows", () => {
     expect(many.kind === "choose" && many.rows.map((r) => r.id)).toEqual(["1", "2"]);
     expect(lookupView({ applied: null, pending: { handle: "x1", rows: [row("1"), row("2")], more: false } }, "other")).toEqual({ kind: "none" });
   });
+  it("a waiting record for B while the form still holds details of A: the view carries 'from A'", () => {
+    const applied = { handle: "a", updatedAt: "", filled: { name: "A", phone: "1", store: "2" } };
+    expect(lookupView({ applied, pending: { handle: "b", rows: [row("1")], more: false } }, "b")).toMatchObject({ kind: "suggest", handle: "b", from: "a" });
+    expect(lookupView({ applied, pending: { handle: "b", rows: [row("1"), row("2")], more: false } }, "b")).toMatchObject({ kind: "choose", from: "a" });
+    expect(lookupView({ applied: null, pending: { handle: "b", rows: [row("1")], more: false } }, "b")).toMatchObject({ kind: "suggest", from: null });
+    expect(lookupView({ applied: { ...applied, handle: "b" }, pending: { handle: "b", rows: [row("1")], more: false } }, "b")).toMatchObject({ from: null });
+  });
+  it("'could not check' shows only for the username it was about, and never over a box", () => {
+    expect(lookupView(null, "@X1", "x1")).toEqual({ kind: "failed" });
+    expect(lookupView(null, "x2", "x1")).toEqual({ kind: "none" });
+    expect(lookupView(null, "", "")).toEqual({ kind: "none" });
+    const applied = { handle: "x1", updatedAt: "", filled: { name: "A", phone: "1", store: "2" } };
+    expect(lookupView({ applied, pending: null }, "x1", "x1")).toMatchObject({ kind: "found" });
+  });
   it("the details a new scan must blank = written by the lookup and not touched since", () => {
     const applied = { handle: "a", updatedAt: "", filled: { name: "Ana", phone: "0911", store: "111111" } };
     expect(untouchedFilled(applied, { name: "Ana", phone: "0911", store: "111111" })).toEqual({ name: "", phone: "", store: "" });

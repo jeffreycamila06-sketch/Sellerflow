@@ -4,6 +4,7 @@
 //   mismatch the details came from another username than the field (yellow)
 //   suggest  one record, but something is typed already → "Use"    (blue)
 //   choose   2+ records of this username → the seller picks        (yellow)
+//   failed   the lookup could not be read → one short line         (grey)
 import { tpl, useT } from "../i18n";
 import { useLang } from "../i18n/langContext";
 import { lookupDate, type ScanQrLookupRow, type ScanQrLookupView } from "../adapters/scanQrLookup";
@@ -24,6 +25,15 @@ export default function ScanQrLookupBox({ view, onPick, onDismiss, testId }: {
   const t = useT();
   const lang = useLang();
   if (view.kind === "none") return null;
+  if (view.kind === "failed") {
+    return (
+      <div data-testid={testId} data-kind="failed" role="status"
+        style={{ margin: "0 0 10px", padding: "8px 11px", borderRadius: 11, border: "1px solid var(--border-strong)", background: "var(--surface-2)", fontSize: 12, fontWeight: 700, color: "var(--text-dim)", lineHeight: 1.4, overflowWrap: "anywhere" }}>
+        {t.rd_ql_failed}
+      </div>
+    );
+  }
+  const from = view.kind === "suggest" || view.kind === "choose" ? view.from : null;
   const tone = view.kind === "found" || view.kind === "suggest" ? TONE.info : TONE.warn;
   const updated = (iso: string): string => { const d = lookupDate(iso, lang); return d ? tpl(t.rd_ql_updated, { d }) : ""; };
   const title =
@@ -44,6 +54,9 @@ export default function ScanQrLookupBox({ view, onPick, onDismiss, testId }: {
         {tone === TONE.info ? "✓" : "!"}
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
+        {from && (
+          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--warn, #b45309)", overflowWrap: "anywhere", lineHeight: 1.35, marginBottom: 4 }} data-testid={`${testId}-from`}>{tpl(t.rd_ql_mismatch, { h: from })}</div>
+        )}
         <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere", lineHeight: 1.35 }} data-testid={`${testId}-title`}>{title}</div>
         {view.kind === "found" && updated(view.updatedAt) !== "" && (
           <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", marginTop: 2, lineHeight: 1.35 }} data-testid={`${testId}-date`}>{updated(view.updatedAt)}</div>

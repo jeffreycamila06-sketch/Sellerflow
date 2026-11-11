@@ -93,7 +93,6 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     fields: { name: form.name, phone: form.phone, store: form.store, handle: form.username },
     setFields: (fn) => setForm((s) => ({ ...s, ...fn({ name: s.name, phone: s.phone, store: s.store }) })),
     onApplied: (how) => { if (how === "auto") focusUnlessTyping(amountRef.current); },
-    onFailed: () => flash(t.rd_ql_failed, 3500),
   });
   // Keep the open manual entry for the bridge (an edit of a saved parcel is not kept).
   useEffect(() => {
@@ -177,6 +176,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     setSaving(true); setSaveErr(false);
     // The kept entry goes blank BEFORE the save: ⇄ and back while it runs = an empty form, never
     // the same parcel a second time. A failed save puts it back.
+    lookup.drop(); // an answer still on its way must not land during or after this save
     const restoreDraft = holdParcelDraftForSave("fm");
     let ok = false;
     try { ok = await commitNew(); } finally { if (!ok) restoreDraft(); }
@@ -565,7 +565,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
             <button onClick={() => setCustOpen(false)} aria-label={t.rd_cd_close}
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="fms-customers-close">✕</button>
-            <FmCustomerDetails cur={cur} fee={fee} contactOn={contactOn} onImported={() => { setCustOpen(false); lookup.reset({ blankUntouched: true }); reloadSaved(); }} />
+            <FmCustomerDetails cur={cur} fee={fee} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.mark) clearForm(); else lookup.reset(); reloadSaved(); }} />
           </div>
         </div>,
         portalRoot,

@@ -25,6 +25,9 @@ const tables: Record<string, Row[]> = {
     { key: "fm_scan_enabled", value: "true" }, { key: "fm_pickup_enabled", value: "true" },
     { key: "fm_shipping_fee", value: "39" }, { key: "shipping_fee_global", value: "38" },
     { key: "past_sessions_public", value: "true" }, // Orders → Sessions → a past session (export check)
+    // Parcel Scan: Scan QR → look up in Customers (sql/149) — previews in docs/design/scan-qr-lookup/built.
+    // Open the preview with ?qlookup=off to see the screen with the switch off.
+    { key: "scan_qr_lookup_enabled", value: typeof location !== "undefined" && /[?&]qlookup=off\b/.test(location.search) ? "false" : "true" },
   ],
   // One finished 2-day session (Orders → Sessions picker + its Export). day(-n) = n days ago.
   live_session_orders: [
@@ -47,12 +50,23 @@ const tables: Record<string, Row[]> = {
     { id: "c4", user_id: UID, phone: "0955777888", name: "Joy Reyes", store_id: "211004", notes: "joy.reyes.90", contact_platform: "facebook", created_at: iso(9), updated_at: iso(2) },
     { id: "c5", user_id: UID, phone: "0966888999", name: "Ana Cruz", store_id: "170331", notes: "ana.cruz_ig", contact_platform: "instagram", created_at: iso(8), updated_at: iso(3) },
     { id: "c6", user_id: UID, phone: "0977999000", name: "張美玲", store_id: "150210", notes: "Telegram @meiling", contact_platform: "other", created_at: iso(7), updated_at: iso(4) },
+    // Scan QR lookup previews: one username with 3 records (two stores), and near-names that must NOT match
+    { id: "c7", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "266402", notes: "@annc_tw", contact_platform: null, created_at: iso(60), updated_at: iso(8) },
+    { id: "c8", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "133712", notes: "annc_tw", contact_platform: null, created_at: iso(50), updated_at: iso(30) },
+    { id: "c9", user_id: UID, phone: "0955123456", name: "Ann Chen", store_id: "133712", notes: "Annc_TW", contact_platform: null, created_at: iso(70), updated_at: iso(44) },
+    { id: "c10", user_id: UID, phone: "0988111222", name: "不相干的人", store_id: "170331", notes: "annc_tw2", contact_platform: null, created_at: iso(5), updated_at: iso(1) },
+    { id: "c11", user_id: UID, phone: "0988333444", name: "LINE 買家", store_id: "170331", notes: "annc_tw", contact_platform: "line", created_at: iso(5), updated_at: iso(1) },
   ],
   fm_parcel_scans: [
     { id: "f1", user_id: UID, recipient_name: "黃志明", phone: "0911222333", store_id: "022131", amount: 450, shipping_fee: 39, order_date: day(0), buyer_username: "+886911222333", contact_platform: "whatsapp", created_at: iso(0.3), exported_at: null, export_batch_id: null },
   ],
   fm_parcel_customers: [
     { id: "fc1", user_id: UID, phone: "0911222333", name: "黃志明", store_id: "022131", buyer_username: "+886911222333", contact_platform: "whatsapp", created_at: iso(5), updated_at: iso(0.3) },
+    // Scan QR lookup previews (FamilyMart keeps its OWN Customers — nothing is read from the 7-11 ones)
+    { id: "fc2", user_id: UID, phone: "0912345678", name: "王小美", store_id: "022131", buyer_username: "@Maria_Shops", contact_platform: null, created_at: iso(30), updated_at: iso(6) },
+    { id: "fc3", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "022131", buyer_username: "annc_tw", contact_platform: null, created_at: iso(60), updated_at: iso(8) },
+    { id: "fc4", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "018274", buyer_username: "@annc_tw", contact_platform: null, created_at: iso(50), updated_at: iso(30) },
+    { id: "fc5", user_id: UID, phone: "0955123456", name: "陳安", store_id: "018274", buyer_username: "ANNC_TW", contact_platform: null, created_at: iso(70), updated_at: iso(44) },
   ],
   parcel_tracking: [
     { id: "t1", user_id: UID, tracking_no: "F1234567890", cm_order_no: null, buyer_username: "+886922333444", recipient_name: "陳*文", store_id: "133712", rec_store: "民生門市", status: "at_store", status_message: "包裹已到店", pickup_deadline: day(3), arrived_at: iso(1), ship_type: "C2C", special_type: null, order_amount: 1200, terminal: false, last_polled_at: iso(0.1), carrier: "711" },

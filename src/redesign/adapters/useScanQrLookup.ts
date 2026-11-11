@@ -28,8 +28,6 @@ export interface ScanQrLookupOpts {
   setFields: (fn: (cur: LookupFields) => Partial<LookupFields>) => void;
   /** Details were written: "auto" (one record, blank form) or "picked" (the seller tapped a record / Use). */
   onApplied?: (how: "auto" | "picked") => void;
-  /** The lookup could not be read (error / no signal / too slow). */
-  onFailed?: () => void;
 }
 export interface ScanQrLookupApi {
   mark: ScanQrLookupMark | null;
@@ -37,7 +35,10 @@ export interface ScanQrLookupApi {
   scanned: (handle: string) => void;
   pick: (row: ScanQrLookupRow) => void;
   dismiss: () => void;
-  reset: (o?: { blankUntouched?: boolean }) => void;
+  /** Clear / Cancel / Save done / next photo / edit start / Import: forget everything, drop any answer on its way. */
+  reset: () => void;
+  /** Save pressed: an answer still on its way is dropped (it never lands on this or the next parcel). Shows nothing. */
+  drop: () => void;
 }
 
 const blank = (f: LookupFields): boolean => f.name.trim() === "" && f.phone.trim() === "" && f.store.trim() === "";
@@ -45,6 +46,10 @@ const blank = (f: LookupFields): boolean => f.name.trim() === "" && f.phone.trim
 export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
   const [mark, setMarkState] = useState<ScanQrLookupMark | null>(() => (opts.on ? opts.initial : null));
   const markRef = useRef<ScanQrLookupMark | null>(mark);
+  // the username whose lookup could not be read (error / no signal / too slow) — one short line, never kept with the draft
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const failedRef = useRef<string | null>(null);
+  const setFailed = useCallback((v: string | null) => { if (failedRef.current !== v) { failedRef.current = v; setFailedFor(v); } }, []);
   const seqRef = useRef(0);
   const aliveRef = useRef(true);
   const optsRef = useRef(opts);
@@ -60,18 +65,24 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
   }, []);
 
   const write = useCallback((row: ScanQrLookupRow, handle: string, how: "auto" | "picked") => {
-    const filled: LookupFields = { name: row.name, phone: row.phone, store: row.storeId };
-    optsRef.current.setFields(() => filled);
-    fieldsRef.current = { ...fieldsRef.current, ...filled };
-    setMark({ applied: { handle, updatedAt: row.updatedAt, filled }, pending: null });
+    // only what the record really has: an empty value in the record never blanks something typed
+    const patch: Partial<LookupFields> = {};
+    if (row.name.trim() !== "") patch.name = row.name;
+    if (row.phone.trim() !== "") patch.phone = row.phone;
+    if (row.storeId.trim() !== "") patch.store = row.storeId;
+    optsRef.current.setFields(() => patch);
+    fieldsRef.current = { ...fieldsRef.current, ...patch };
+    setFailed(null);
+    setMark({ applied: { handle, updatedAt: row.updatedAt, filled: { name: patch.name ?? "", phone: patch.phone ?? "", store: patch.store ?? "" } }, pending: null });
     optsRef.current.onApplied?.(how);
-  }, [setMark]);
+  }, [setMark, setFailed]);
 
   const scanned = useCallback((handle: string) => {
     const o = optsRef.current;
     if (!o.on || o.blocked) return;
     const key = lookupKey(handle);
     const seq = ++seqRef.current;
+    setFailed(null);
     // B1 — the previous buyer's details the lookup wrote and nobody touched go away first.
     const prev = markRef.current?.applied ?? null;
     const cur = fieldsRef.current;
@@ -95,12 +106,12 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
       if (!now.on || now.blocked) return;
       const f = fieldsRef.current;
       if (lookupKey(f.handle) !== key) return; // the username in the field is no longer the scanned one
-      if (!res.ok) { now.onFailed?.(); return; }
+      if (!res.ok) { setFailed(key); return; }
       if (res.rows.length === 0) return; // no record → exactly as before
       if (res.rows.length === 1 && blank(f)) { write(res.rows[0], key, "auto"); return; }
       setMark({ applied: markRef.current?.applied ?? null, pending: { handle: key, rows: res.rows, more: res.more } });
     });
-  }, [setMark, write]);
+  }, [setMark, setFailed, write]);
 
   const pick = useCallback((row: ScanQrLookupRow) => {
     const p = markRef.current?.pending;
@@ -113,19 +124,13 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     if (m?.pending) setMark({ applied: m.applied, pending: null });
   }, [setMark]);
 
-  const reset = useCallback((o?: { blankUntouched?: boolean }) => {
+  const reset = useCallback(() => {
     seqRef.current++;
-    const prev = markRef.current?.applied ?? null;
-    if (o?.blankUntouched && prev) {
-      const f = prev.filled;
-      optsRef.current.setFields((s) => {
-        const out: Partial<LookupFields> = {};
-        for (const k of ["name", "phone", "store"] as const) if (f[k] !== "" && s[k] === f[k]) out[k] = "";
-        return out;
-      });
-    }
+    setFailed(null);
     if (markRef.current) setMark(null);
-  }, [setMark]);
+  }, [setMark, setFailed]);
 
-  return { mark, view: lookupView(mark, opts.fields.handle), scanned, pick, dismiss, reset };
+  const drop = useCallback(() => { seqRef.current++; }, []);
+
+  return { mark, view: lookupView(mark, opts.fields.handle, failedFor), scanned, pick, dismiss, reset, drop };
 }

@@ -137,24 +137,31 @@ export interface ScanQrLookupMark {
 }
 export type ScanQrLookupView =
   | { kind: "none" }
+  | { kind: "failed" }
   | { kind: "found"; handle: string; updatedAt: string }
   | { kind: "mismatch"; handle: string }
-  | { kind: "suggest"; handle: string; row: ScanQrLookupRow }
-  | { kind: "choose"; handle: string; rows: ScanQrLookupRow[]; differs: "store" | "phone" | "name"; more: boolean };
+  // `from` = details still in the form came from ANOTHER username's record (shown with the suggestion / list)
+  | { kind: "suggest"; handle: string; row: ScanQrLookupRow; from: string | null }
+  | { kind: "choose"; handle: string; rows: ScanQrLookupRow[]; differs: "store" | "phone" | "name"; more: boolean; from: string | null };
 
-/** What to show for the username that is in the field NOW. Pure. */
-export function lookupView(mark: ScanQrLookupMark | null, fieldHandle: string): ScanQrLookupView {
-  if (!mark) return { kind: "none" };
+/**
+ * What to show for the username that is in the field NOW. Pure.
+ * `failedFor` = the username whose lookup could not be read (shown only while it is still in the field
+ * and there is nothing else to show).
+ */
+export function lookupView(mark: ScanQrLookupMark | null, fieldHandle: string, failedFor: string | null = null): ScanQrLookupView {
   const now = lookupKey(fieldHandle);
-  const p = mark.pending;
+  const a = mark?.applied ?? null;
+  const p = mark?.pending ?? null;
   if (p && p.rows.length > 0 && p.handle === now) {
+    const from = a && a.handle !== now ? a.handle : null;
     return p.rows.length === 1
-      ? { kind: "suggest", handle: p.handle, row: p.rows[0] }
-      : { kind: "choose", handle: p.handle, rows: p.rows, differs: lookupDiffers(p.rows), more: p.more };
+      ? { kind: "suggest", handle: p.handle, row: p.rows[0], from }
+      : { kind: "choose", handle: p.handle, rows: p.rows, differs: lookupDiffers(p.rows), more: p.more, from };
   }
-  const a = mark.applied;
-  if (!a) return { kind: "none" };
-  return a.handle === now ? { kind: "found", handle: a.handle, updatedAt: a.updatedAt } : { kind: "mismatch", handle: a.handle };
+  if (a) return a.handle === now ? { kind: "found", handle: a.handle, updatedAt: a.updatedAt } : { kind: "mismatch", handle: a.handle };
+  if (failedFor !== null && failedFor !== "" && failedFor === now) return { kind: "failed" };
+  return { kind: "none" };
 }
 
 /** The fields a new scan must blank: written by the lookup and not touched since. Pure. */

@@ -198,13 +198,28 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     expect(box(on)).toBeNull();
   });
 
-  it("error / no signal / too slow: the username is in, one short message, nothing else", async () => {
-    m.lookup.mockResolvedValue({ ok: false });
+  it("error / no signal / too slow: the username is in, one short line, nothing else; it goes away with the next scan", async () => {
+    m.lookup.mockResolvedValueOnce({ ok: false });
     const r = await open();
     await scan(r, "maria_shops", "maria_shops");
-    await waitFor(() => expect(r.getByTestId(id("toast")).textContent).toBe("Couldn't look up Customers now — type it, or use Customers"));
+    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("failed"));
+    expect(box(r)?.textContent).toBe("Couldn't check Customers now — type it, or use Customers");
+    expect(r.getByTestId(id("toast")).textContent).toBe("Filled @username from QR"); // the scan's own message is not replaced
     expect(details(r)).toEqual(BLANK);
+    expect(val(r, S.handle)).toBe("maria_shops");
+    m.lookup.mockResolvedValueOnce(found());
+    await scan(r, "new_buyer", "new_buyer");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
     expect(box(r)).toBeNull();
+  });
+
+  it("the 'could not check' line is in Filipino too and does not say 'not found'", async () => {
+    m.lookup.mockResolvedValue({ ok: false });
+    const r = render(<TProvider lang="fil">{S.el({ lookupOn: true })}</TProvider>);
+    await waitFor(() => expect((r.getByTestId(id("manual")) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(r.getByTestId(id("manual")));
+    await scan(r, "maria_shops", "maria_shops");
+    await waitFor(() => expect(box(r)?.textContent).toBe("Hindi ma-check ang Customers ngayon — i-type, o gamitin ang Customers"));
   });
 
   it("QR not readable / not a TikTok QR: as before — no lookup at all", async () => {
@@ -399,16 +414,93 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     expect(val(r, S.handle)).toBe("");
   });
 
-  it("a finished import from Customers clears the box and the details the lookup wrote (the details the seller typed stay)", async () => {
-    m.lookup.mockResolvedValue(found(rec("a")));
+  it("a finished import from Customers clears a looked-up entry completely — box, details AND username (nothing of buyer A is left for the next scan)", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("a")));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
     await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("found"));
-    type(r, id("name"), "Edited By Seller");
+    type(r, id("phone"), "0999888777"); // the seller edited one detail
     fireEvent.click(r.getByTestId(id("open-customers")));
     fireEvent.click(await r.findByTestId("stub-imported"));
     await waitFor(() => expect(box(r)).toBeNull());
-    expect(details(r)).toEqual({ name: "Edited By Seller", phone: "", store: "" });
+    expect(details(r)).toEqual(BLANK);
+    expect(val(r, S.handle)).toBe("");
+    m.lookup.mockResolvedValueOnce(found());
+    await scan(r, "buyer_b", "buyer_b");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+    expect(details(r)).toEqual(BLANK);
+  });
+
+  it("a finished import when nothing was looked up leaves the typed entry as it is (as before)", async () => {
+    const r = await open();
+    type(r, id("name"), "Typed Name"); type(r, id("phone"), "0911"); type(r, S.handle, "typed_by_hand");
+    fireEvent.click(r.getByTestId(id("open-customers")));
+    fireEvent.click(await r.findByTestId("stub-imported"));
+    await waitFor(() => expect(r.queryByTestId("stub-imported")).toBeNull());
+    expect(details(r)).toEqual({ name: "Typed Name", phone: "0911", store: "" });
+    expect(val(r, S.handle)).toBe("typed_by_hand");
+    expect(m.lookup).not.toHaveBeenCalled();
+  });
+
+  it("an import while a lookup is still running drops its answer", async () => {
+    const answer = slow();
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    fireEvent.click(r.getByTestId(id("open-customers")));
+    fireEvent.click(await r.findByTestId("stub-imported"));
+    await waitFor(() => expect(r.queryByTestId("stub-imported")).toBeNull());
+    await answer(found(rec("a")));
+    expect(details(r)).toEqual(BLANK);
+    expect(box(r)).toBeNull();
+  });
+
+  it("scan A, the seller edits one detail, scan B (one record): the suggestion for B ALSO says the details in the form came from @A", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("a")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
+    type(r, id("phone"), "0999888777");
+    m.lookup.mockResolvedValueOnce(found(rec("b", { name: "Pedro Reyes", phone: "0933444555", storeId: "975310" })));
+    await scan(r, "buyer_b", "buyer_b");
+    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("suggest"));
+    expect(details(r)).toEqual({ name: "", phone: "0999888777", store: "" });
+    expect(r.getByTestId(id("ql-from")).textContent).toBe("These details came from @buyer_a — please check");
+    fireEvent.click(r.getByTestId(id("ql-use")));
+    await waitFor(() => expect(details(r)).toEqual({ name: "Pedro Reyes", phone: "0933444555", store: "975310" }));
+    expect(r.queryByTestId(id("ql-from"))).toBeNull();
+    expect(r.getByTestId(id("ql-title")).textContent).toBe("Found in Customers: @buyer_b — please check");
+  });
+
+  it("'Use' never blanks something typed: a record with an empty name keeps the typed name", async () => {
+    m.lookup.mockResolvedValue(found(rec("a", { name: "" })));
+    const r = await open();
+    type(r, id("name"), "Typed Name");
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("suggest"));
+    fireEvent.click(r.getByTestId(id("ql-use")));
+    await waitFor(() => expect(details(r)).toEqual({ name: "Typed Name", phone: "0911222333", store: "246810" }));
+  });
+
+  it("the answer arrives WHILE the Save is running: it is dropped, and the kept entry stays blank (⇄ and back can never bring the saved parcel again)", async () => {
+    const answer = slow();
+    let finishSave: () => void = () => {};
+    const gate = new Promise<void>((res) => { finishSave = res; });
+    const real = S.saved.getMockImplementation();
+    S.saved.mockImplementationOnce(async (...a: unknown[]) => { await gate; return real ? real(...a) : { ok: true, id: "srv-1" }; });
+    const r = await open();
+    type(r, id("name"), S.valid.name); type(r, id("phone"), S.valid.phone); type(r, id("store"), S.valid.store); type(r, id("amount"), S.valid.amount);
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect((r.getByTestId(id("save")) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(r.getByTestId(id("save")));
+    await waitFor(() => expect(S.saved).toHaveBeenCalledTimes(1));
+    await answer(found(rec("a"), rec("b", { storeId: "135791" }))); // would be a list
+    expect(box(r)).toBeNull();
+    const kept = readParcelDraft<Record<string, string>>(S.store);
+    expect(kept?.form.name ?? "").toBe(""); // still the blank hold
+    expect(kept && "lookup" in kept).toBe(false);
+    await act(async () => { finishSave(); await Promise.resolve(); });
+    await waitFor(() => expect(val(r, id("name"))).toBe(""));
+    expect(box(r)).toBeNull();
   });
 
   it("editing a SAVED parcel: Scan QR fills the username as before — no lookup, no box", async () => {
