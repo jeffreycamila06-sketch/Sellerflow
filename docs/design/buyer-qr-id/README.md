@@ -28,6 +28,8 @@ Tandaan sa pagtingin:
 - **Ang mga larawan sa phone ay mas mataas kaysa totoong screen** para makita ang buong card sa isang tingin;
   sa totoong phone, magso-scroll ang encoder. (Ang lapad ay totoo.)
 - Ang mga salita sa kahon ay **mungkahi lang** (Tanong 10 sa plano), English muna; 8 wika sa Hakbang 2.
+- Ang kulay-abong `022131` / `123456` sa store field at `09xxxxxxxx` sa phone ay **placeholder ng app** (blangko pa ang field), hindi napunong value.
+- Ang "Not this buyer" at "Find in Customers" ay mga mungkahing pindutan (plano §5).
 - "Amount required…" na pula ay ang umiiral na error ng app kapag blangko pa ang presyo.
 - Ang Save ay kulay-abo dahil wala pang presyo (umiiral na ugali).
 - Light theme lang ang nilarawan. Dark theme: ang kahon ay gumagamit ng parehong design tokens
