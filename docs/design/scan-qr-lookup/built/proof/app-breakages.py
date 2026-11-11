@@ -79,7 +79,7 @@ for name,edits in muts[lo:hi]:
     if not ok: bad+=1; continue
     for f in cur: open(f,'w',encoding='utf-8').write(cur[f])
     try:
-        proc=subprocess.run(['npx','vitest','run',*tests],cwd=ROOT,capture_output=True,text=True,timeout=250)
+        proc=subprocess.run(['npx','vitest','run',*tests],cwd=ROOT,capture_output=True,text=True,timeout=600)
         out=proc.stdout
     finally:
         for f in orig: open(f,'w',encoding='utf-8').write(orig[f])

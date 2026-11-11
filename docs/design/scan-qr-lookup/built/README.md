@@ -32,17 +32,17 @@ node docs/design/scan-qr-lookup/built/make-built.cjs
 Sa preview database may sadyang mga record na **hindi dapat gamitin**: `annc_tw2` (ibang username) at isang `annc_tw` na LINE
 ang app. Hindi sila ang napunan, at hindi sila kasama sa bilang ng phone.
 
-**Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): __SHOTS__
+**Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): 24 larawan · elemento ng dating kahon / listahan sa screen: **0** sa lahat · pahinang may pahalang na scroll: **0** · ang hilera ng "Batch" ay 50 px sa lahat ng lapad. (Ang purple na header sa itaas ay hindi ginalaw ng branch na ito — kapareho ng nasa `main`.)
 
 ## Mga test ng app
-Apat na file: `scanQrLookup.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx` — __APPTESTS__
-Sinadyang sirain ang code ng app (sa hiwalay na kopya) — `proof/app-breakages.py` → `proof/app-breakages.txt`: __BREAKS__
+Apat na file: `scanQrLookup.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx` — **157 test, lahat pumasa** (huling takbo bago ang commit na ito).
+Sinadyang sirain ang code ng app (sa hiwalay na kopya) — `proof/app-breakages.py` → `proof/app-breakages.txt`: **55 na paraan** — 54 ang nagpabagsak ng kahit isang test; 1 (tinanggal ang tsek na "walang record" sa hook) ang nahuli dahil nag-error ang takbo (unhandled error, exit 1), hindi ng isang `expect`. Kasama ang "tinanggal ang bantay na 3+ phone" → 8 test ang bumagsak. (takbo sa commit b1a7fb31 (pagkatapos isama ang main 0b30f3ec); 4 na test file ng app sa bawat sira)
 
 ## Naka-OFF = kapareho ng `main`
-`compare-with-main.cjs` — parehong hakbang (manual entry, Scan QR ng `@annc_tw`, na **may** 3 record) sa `main` (`4eef74f0`,
+`compare-with-main.cjs` — parehong hakbang (manual entry, Scan QR ng `@annc_tw`, na **may** 3 record) sa `main` (`0b30f3ec`,
 isinama na rin sa branch na ito) at sa branch na naka-OFF ang switch (`?qlookup=off`). Inihambing ang buong HTML ng form,
 ang mensahe at ang cursor — agad pagkatapos ng scan at 1.3 segundo pagkatapos; 7-11 at FamilyMart; 360 px at 1280 px.
-Resulta (`compare-with-main.txt`): __COMPARE__ (Preview database, hindi production.)
+Resulta (`compare-with-main.txt`): **24 sa 24 magkapareho.** (Preview database, hindi production.)
 
 ## Mga dapat malaman ni Jeff
 1. **Bantay na "3+ phone".** Binibilang lang ang sariling record ng username na iyon (TikTok o walang app, tugma ayon sa

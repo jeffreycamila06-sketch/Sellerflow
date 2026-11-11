@@ -1,35 +1,44 @@
+# takbo sa commit b1a7fb31 (pagkatapos isama ang main 0b30f3ec); 4 na test file ng app sa bawat sira
 RED    5 : rule 4: 'pedro123 (U)' (no @) counts
 RED    4 : rule 4: glued '@pedro123(U)' counts
-RED    6 : rule 4: note in front '(U) @pedro123' counts
+RED    7 : rule 4: note in front '(U) @pedro123' counts
 RED    9 : rule 4: case-sensitive
 RED    1 : rule 4: 'unknown' is a username
-RED    7 : rule 4: prefix match (pedro12 ⊂ pedro123)
-RED    4 : any app matches
-RED    3 : own-rows app check off
+RED   10 : rule 4: prefix match (pedro12 ⊂ pedro123)
+RED    7 : any app matches
+RED    5 : own-rows app check off
 RED    3 : no explicit user_id
-RED    4 : OLDEST first
+RED    7 : OLDEST first
 RED    1 : tie → bigger id
 RED    3 : a query shape dropped ('@key …')
 RED    1 : no time limit
-RED    1 : full page w/o exact = 'none'
-RED   10 : fm reads the 7-11 table
+RED    1 : a full page is trusted (no 'could not read')
+RED    1 : a full page with an exact record in it still fills
+RED    8 : shared-word guard removed (3+ phones still fill)
+RED    9 : shared-word guard at 4 phones
+RED   12 : shared-word guard at 2 phones
+RED    8 : shared-word guard counts RECORDS, not different phones
+RED    3 : shared-word guard: spaces / dashes make a new phone
+RED    1 : shared-word guard: a blank phone is counted
+RED    6 : the hook ignores the shared-word guard
+RED   11 : fm reads the 7-11 table
 RED    2 : focus steals cursor
 RED   14 : fills although something is typed
 RED   11 : fills when ANY ONE is blank (not all three)
-RED    5 : fills the OLDEST record
-RED   12 : A→B: untouched details not taken back
+RED   13 : fills the OLDEST record
+RED   14 : A→B: untouched details not taken back
 RED   11 : old answers not dropped
 RED    2 : username-changed check off
 RED    5 : reset takes no new number
 RED    2 : import clears an entry the seller fully retyped
 RED    3 : Save press does not drop the answer
-RED   18 : the fill is not remembered
+RED   20 : the fill is not remembered
 RED    2 : a scan keeps the old fill memory
 RED    6 : import never clears a filled entry
 RED    6 : import always clears the entry
-RED  run failed (unhandled error, exit 1) : error fills nothing but 'no rows' check dropped
-RED   11 : gate off: hook + 7-11 screen
-RED    9 : gate off: hook + FM screen
+RED  run failed (unhandled error, exit 1) : 'no record' check dropped in the hook
+RED   12 : gate off: hook + 7-11 screen
+RED   10 : gate off: hook + FM screen
 RED    2 : edit mode looks up: hook + 7-11
 RED    2 : edit mode looks up: hook + FM
 RED    3 : 7-11 clearForm keeps the fill memory
@@ -45,4 +54,4 @@ RED    5 : 7-11 new photo keeps the fill memory (scanOne + clearForm)
 RED    1 : 7-11 photo Save press does not drop
 RED    4 : draft drops the fill memory
 RED    1 : hold keeps the fill memory
-cases 0 - 47 of 47 | not caught / skipped: 0   (case 30 re-run after the script learned to count a failed run as caught)
+cases 0 - 55 of 55 | not caught / skipped: 0
