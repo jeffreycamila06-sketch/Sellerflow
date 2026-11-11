@@ -32,6 +32,28 @@ export function writeParcelDraft<F>(store: ParcelDraftStore, draft: ParcelDraft<
   else drafts.delete(store);
 }
 
+/**
+ * Before a manual Save starts: blank this store's kept entry right away, so a seller who taps ⇄ and
+ * comes back while the save is still running finds an EMPTY form (never the same parcel, which would
+ * be saved twice). Returns `restore`: call it when the save FAILED — it puts the typed entry back,
+ * unless something was written since (the seller already typed a new one; that wins).
+ */
+export function holdParcelDraftForSave(store: ParcelDraftStore): () => void {
+  const before = drafts.get(store) ?? null;
+  writeParcelDraft(store, before ? { ...before, form: blankOf(before.form), noHandle: false } : null);
+  const held = drafts.get(store) ?? null;
+  return () => {
+    if ((drafts.get(store) ?? null) !== held) return;
+    writeParcelDraft(store, before);
+  };
+}
+// Same keys, every value "" (both stores' forms are flat string records).
+function blankOf(form: unknown): unknown {
+  const out: Record<string, string> = {};
+  for (const k of Object.keys((form ?? {}) as Record<string, unknown>)) out[k] = "";
+  return out;
+}
+
 /** Forget both stores' drafts (user change / logout). */
 export function clearParcelDrafts(): void {
   drafts.clear();

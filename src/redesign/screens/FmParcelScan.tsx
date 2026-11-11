@@ -22,7 +22,7 @@ import {
 import FmCustomerDetails from "./FmCustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
 import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
-import { readParcelDraft, writeParcelDraft } from "../adapters/parcelDrafts";
+import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 // Same field styles as the 7-11 screen.
@@ -157,14 +157,15 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
   const onManualSave = async () => {
     if (saveBlocked) return;
     setSaving(true); setSaveErr(false);
-    const ok = await commitNew();
+    // The kept entry goes blank BEFORE the save: ⇄ and back while it runs = an empty form, never
+    // the same parcel a second time. A failed save puts it back.
+    const restoreDraft = holdParcelDraftForSave("fm");
+    let ok = false;
+    try { ok = await commitNew(); } finally { if (!ok) restoreDraft(); }
     setSaving(false);
     if (!ok) return;
     setManualCount((c) => c + 1);
     clearForm(); // stays open, blank, for the next parcel
-    // Saved: the kept draft is blank now even if the seller already left this screen (⇄ during
-    // the save) — coming back must never show a parcel that is already saved.
-    writeParcelDraft<Form>("fm", { form: emptyForm, noHandle: false, platform });
   };
   const onEditSave = async () => {
     if (!editing || saveBlocked) return;

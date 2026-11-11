@@ -32,7 +32,7 @@ import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import CustomerDetails from "./CustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
 import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
-import { readParcelDraft, writeParcelDraft } from "../adapters/parcelDrafts";
+import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -686,14 +686,15 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onManualSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
-    const ok = await commitNewParcel(formToFields(withContact(form)));
+    // The kept entry goes blank BEFORE the save: ⇄ and back while it runs = an empty form, never
+    // the same parcel a second time. A failed save puts it back.
+    const restoreDraft = holdParcelDraftForSave("711");
+    let ok = false;
+    try { ok = await commitNewParcel(formToFields(withContact(form))); } finally { if (!ok) restoreDraft(); }
     setSaving(false);
     if (!ok) return;
     setManualCount((c) => c + 1);
     clearForm(); setConfid(null); setRawExtraction(null); setSaveErr(""); // blank for the next; stay in manual
-    // Saved: the kept draft is blank now even if the seller already left this screen (⇄ during
-    // the save) — coming back must never show a parcel that is already saved.
-    writeParcelDraft<FormState>("711", { form: emptyForm, noHandle: false, platform });
   };
 
   // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
