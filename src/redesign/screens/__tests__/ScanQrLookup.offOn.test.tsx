@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   rows: {} as Record<string, Record<string, unknown>[]>,
   fail: false,
   decode: vi.fn(),
+  other: [] as string[], // rpc calls and session reads (anything that is not a table read)
 }));
 vi.mock("../../../supabase", () => {
   const from = (table: string) => {
@@ -35,8 +36,8 @@ vi.mock("../../../supabase", () => {
     isSupabaseConfigured: true,
     supabase: {
       from,
-      rpc: async () => ({ data: null, error: null }),
-      auth: { getSession: async () => ({ data: { session: { user: { id: "me-1" }, access_token: "t" } } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() { /* none */ } } } }) },
+      rpc: async (...a: unknown[]) => { h.other.push(`rpc:${String(a[0])}`); return { data: null, error: null }; },
+      auth: { getSession: async () => { h.other.push("getSession"); return { data: { session: { user: { id: "me-1" }, access_token: "t" } } }; }, onAuthStateChange: () => ({ data: { subscription: { unsubscribe() { /* none */ } } } }) },
     },
   };
 });
@@ -67,7 +68,7 @@ const SCREENS = {
   fm: { p: "fms", handle: "fms-username", table: "fm_parcel_customers", col: "buyer_username", el: (on: boolean) => <FmParcelScan cur="NT$" lookupOn={on} /> },
 };
 
-beforeEach(() => { h.reads.length = 0; h.rows = {}; h.fail = false; h.decode.mockReset(); });
+beforeEach(() => { h.reads.length = 0; h.other.length = 0; h.rows = {}; h.fail = false; h.decode.mockReset(); });
 afterEach(() => { cleanup(); clearParcelDrafts(); });
 
 describe.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("%s Parcel Scan — the real read", (key) => {
@@ -78,7 +79,7 @@ describe.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("%s Parcel Scan 
     const r = render(<TProvider lang="en">{S.el(on)}</TProvider>);
     await waitFor(() => expect((r.getByTestId(id("manual")) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(r.getByTestId(id("manual")));
-    h.reads.length = 0; // only what the SCAN reads counts from here
+    h.reads.length = 0; h.other.length = 0; // only what the SCAN does counts from here
     h.decode.mockResolvedValueOnce(payload);
     fireEvent.change(r.getByTestId(id("qr-file")), { target: { files: [new File([new Uint8Array([1])], "s.jpg", { type: "image/jpeg" })] } });
     await waitFor(() => expect((r.getByTestId(S.handle) as HTMLInputElement).value).toBe(handle));
@@ -92,6 +93,7 @@ describe.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("%s Parcel Scan 
     const r = await openAndScan(false, "https://tiktok.com/@maria_shops", "maria_shops");
     expect(customerReads()).toEqual([]);
     expect(h.reads).toEqual([]); // no table at all
+    expect(h.other).toEqual([]); // …and no rpc, no session read either: the scan does not go near the database
     expect(name(r)).toBe("");
   });
 

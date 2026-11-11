@@ -7,10 +7,12 @@
 //
 // Guards:
 //  • a new scan first blanks the details the last fill wrote and nobody touched since (A → B never mixes)
+//  • the SAME username scanned again while details are in the form: nothing is touched and nothing is read
 //  • a fill happens only while name, phone and store are ALL still blank
 //  • no fill when the username's records have 3 or more different phones (a word used for many buyers)
 //  • every scan / reset / Save press takes a new number; an answer with an old number is dropped
-//  • the username in the field must still be the scanned one when the answer comes
+//  • the username in the field must still be the scanned one when the answer comes, and the buyer's app
+//    must still be TikTok (the seller did not pick another app while waiting)
 //  • reset() at Clear / Cancel / Save done / next photo / edit start / Import
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -23,6 +25,8 @@ export interface ScanQrLookupOpts {
   store: ScanQrLookupStore;
   /** true while a saved parcel is being edited — no lookup then. */
   blocked: boolean;
+  /** false when the buyer-app picker shows another app than TikTok (default true = TikTok / no picker). */
+  tiktok?: boolean;
   /** The mark kept with this screen's ⇄ draft (null = none). */
   initial: ScanQrLookupMark | null;
   /** The form as rendered now. */
@@ -55,9 +59,10 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
   const aliveRef = useRef(true);
   const optsRef = useRef(opts);
   const fieldsRef = useRef(opts.fields);
+  const tiktokRef = useRef(opts.tiktok !== false);
   useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
-  // After every render: the latest callbacks and the form as it really is.
-  useEffect(() => { optsRef.current = opts; fieldsRef.current = opts.fields; });
+  // After every render: the latest callbacks, the form as it really is, and the buyer's app.
+  useEffect(() => { optsRef.current = opts; fieldsRef.current = opts.fields; tiktokRef.current = opts.tiktok !== false; });
 
   const setMark = useCallback((next: ScanQrLookupMark | null) => {
     if (markRef.current === next) return;
@@ -70,9 +75,13 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     if (!o.on || o.blocked) return;
     const key = lookupKey(handle);
     const seq = ++seqRef.current;
-    // The previous buyer's details that the last fill wrote and nobody touched go away first.
+    tiktokRef.current = true; // a scan puts the buyer's app on TikTok; a later tap on another app turns this off
     const prev = markRef.current;
     const cur = fieldsRef.current;
+    // The SAME username again while details are in the form (the seller corrected one of them, or just scanned
+    // twice): what is there stays — nothing is taken back, nothing is read. With an emptied form it is a new lookup.
+    if (prev && prev.handle === key && !blank(cur)) { fieldsRef.current = { ...cur, handle }; return; }
+    // The previous buyer's details that the last fill wrote and nobody touched go away first.
     const wipe = untouchedFilled(prev, cur);
     if (prev && Object.keys(wipe).length > 0) {
       const f = prev.filled;
@@ -91,6 +100,7 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
       if (!now.on || now.blocked) return;
       const f = fieldsRef.current;
       if (lookupKey(f.handle) !== key) return; // the username in the field is no longer the scanned one
+      if (!tiktokRef.current) return; // another app was picked for this buyer meanwhile → nothing is filled
       if (!res.ok) return; // could not read → exactly as before
       const row = recordToFill(res.rows); // the newest record — none, or 3+ different phones (a shared word) → null
       if (!row) return; // exactly as before

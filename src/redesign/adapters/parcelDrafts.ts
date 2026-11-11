@@ -46,7 +46,7 @@ export function writeParcelDraft<F>(store: ParcelDraftStore, draft: ParcelDraft<
  */
 export function holdParcelDraftForSave(store: ParcelDraftStore): () => void {
   const before = drafts.get(store) ?? null;
-  // the blank entry carries no lookup mark either (the saved parcel's box never shows on the next one)
+  // the blank entry carries no lookup mark either (the saved parcel's fill is never remembered for the next one)
   writeParcelDraft(store, before ? { form: blankOf(before.form), noHandle: false, platform: before.platform } : null);
   const held = drafts.get(store) ?? null;
   return () => {

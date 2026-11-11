@@ -281,7 +281,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // → scanned() returns at once: no read, no change.
   const amountRef = useRef<HTMLInputElement | null>(null);
   const lookup = useScanQrLookup({
-    on: lookupOn, store: "711", blocked: editing !== null, initial: draft0?.lookup ?? null,
+    on: lookupOn, store: "711", blocked: editing !== null, tiktok: !contactOn || platform === "tiktok", initial: draft0?.lookup ?? null,
     fields: { name: form.name, phone: form.phone, store: form.store, handle: form.notes },
     setFields: (fn) => setForm((s) => ({ ...s, ...fn({ name: s.name, phone: s.phone, store: s.store }) })),
     onFilled: () => {

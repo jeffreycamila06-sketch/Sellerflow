@@ -173,6 +173,7 @@ describe("the read — one per scan, this screen's table, own rows only", () => 
     await vi.advanceTimersByTimeAsync(0);
     expect(await p).toEqual({ ok: false });
     expect(SCAN_QR_LOOKUP_TIMEOUT_MS).toBe(4000);
+    expect(SCAN_QR_LOOKUP_LIMIT).toBe(100);
   });
   it("a full page = not every record was seen → 'could not read' (never a false 'none', never a fill from a list that was not fully counted)", async () => {
     h.data = Array.from({ length: SCAN_QR_LOOKUP_LIMIT }, (_, i) => db(`n${i}`, "aXb"));
@@ -206,6 +207,16 @@ describe("which record is used — and the word that is NOT one person's usernam
   it("3 or more DIFFERENT phones → nothing is used (a word the seller writes for many buyers)", () => {
     expect(recordToFill([row("a", "0911000001"), row("b", "0922000002"), row("c", "0933000003")])).toBeNull();
     expect(recordToFill(Array.from({ length: 60 }, (_, i) => row(`r${i}`, `09${String(10000000 + i)}`)))).toBeNull();
+  });
+  it("the third phone may be ANYWHERE in the list — every record is counted, not only the newest ones", () => {
+    const A = "0911000001", B = "0922000002", C = "0933000003";
+    const list = (phones: string[]) => phones.map((p, i) => row(`r${i}`, p, `2026-11-${String(20 - i).padStart(2, "0")}T00:00:00+00:00`));
+    for (const phones of [[A, A, B, C], [A, A, A, B, B, C], [A, B, A, B, A, C], [A, A, A, A, A, A, B, C], [C, A, A, B]]) expect(recordToFill(list(phones)), phones.join(",")).toBeNull();
+    for (const phones of [[A, A, B, B], [A, A, A, A, A, A, A, B], [A, B, A, B, A, B, A, B, A]]) expect(recordToFill(list(phones))?.id, phones.join(",")).toBe("r0");
+  });
+  it("phones that are not numbers are compared as written", () => {
+    expect(distinctPhones([row("a", "abc"), row("b", "abd"), row("c", "abc")])).toBe(2);
+    expect(recordToFill([row("a", "abc"), row("b", "abd"), row("c", "abe")])).toBeNull();
   });
   it("the same phone written with spaces or dashes is ONE phone; a blank phone is not counted", () => {
     expect(distinctPhones([row("a", "0911222333"), row("b", "0911 222 333"), row("c", "0911-222-333"), row("d", " 0911222333 ")])).toBe(1);

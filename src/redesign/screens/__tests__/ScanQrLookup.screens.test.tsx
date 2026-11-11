@@ -8,7 +8,7 @@
 // the screen with the REAL read and a recording client: ScanQrLookup.offOn.test.tsx).
 import { useRef } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
+import { render, renderHook, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import { clearParcelDrafts, readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../../adapters/parcelDrafts";
 import type { ScanQrLookupResult, ScanQrLookupRow } from "../../adapters/scanQrLookup";
@@ -47,6 +47,7 @@ vi.mock("../FmCustomerDetails", () => ({ default: ImportStub }));
 
 import ParcelScan from "../ParcelScan";
 import FmParcelScan from "../FmParcelScan";
+import { useScanQrLookup } from "../../adapters/useScanQrLookup";
 
 type P = { lookupOn?: boolean; contactOn?: boolean };
 const SCREENS = {
@@ -199,6 +200,20 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     fireEvent.click(r.getByTestId(id("save")));
     await waitFor(() => expect(S.saved).toHaveBeenCalledTimes(1));
     expect(S.savedName()).toBe(S.valid.name);
+  });
+
+  it.each([
+    ["A, A, B, C (the three newest do not have three phones)", ["0911000001", "0911000001", "0922000002", "0933000003"]],
+    ["A, A, A, B, B, C (the third phone is the oldest of six)", ["0911000001", "0911000001", "0911000001", "0922000002", "0922000002", "0933000003"]],
+    ["A, B, A, B, A, C", ["0911000001", "0922000002", "0911000001", "0922000002", "0911000001", "0933000003"]],
+  ])("3 different phones anywhere in the list — %s: NOTHING is filled", async (_w, phones) => {
+    m.lookup.mockResolvedValue(found(...(phones as string[]).map((phone, i) => rec(`r${i}`, { name: `Buyer ${i}`, phone, updatedAt: `2026-11-${String(20 - i).padStart(2, "0")}T02:00:00+00:00` }))));
+    const r = await open();
+    await scan(r, "https://tiktok.com/@user", "user");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual(BLANK);
+    nothingNew(r);
   });
 
   it("2 different phones (4 records, one phone written with spaces) is still ONE buyer's username: the NEWEST record is filled", async () => {
@@ -630,6 +645,91 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     expect(readParcelDraft<Record<string, string>>(S.store)?.form.name ?? "").toBe("");
   });
 
+  it("the SAME sticker scanned again after one detail was corrected: nothing is taken back, nothing is read again — and the fill is still remembered", async () => {
+    m.lookup.mockResolvedValue(found(rec("c1")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    type(r, id("name"), "Maria Santos Jr");
+    await scan(r, "https://tiktok.com/@Buyer_A", "Buyer_A"); // the same username (another letter case)
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual({ ...MARIA, name: "Maria Santos Jr" });
+    expect(m.lookup).toHaveBeenCalledTimes(1);
+    nothingNew(r);
+    // ANOTHER buyer's sticker now: the untouched phone and store of the first buyer go; the typed name stays, so B is not filled
+    m.lookup.mockResolvedValue(found(rec("c2", { name: "Other Buyer", phone: "0988777666", storeId: "975310" })));
+    await scan(r, "buyer_b", "buyer_b");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual({ name: "Maria Santos Jr", phone: "", store: "" });
+  });
+
+  it("the SAME sticker again with nothing changed while the database cannot be read: the details stay (no second read at all)", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("c1")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    m.lookup.mockResolvedValue({ ok: false });
+    await scan(r, "buyer_a", "buyer_a");
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual(MARIA);
+    expect(m.lookup).toHaveBeenCalledTimes(1);
+  });
+
+  it("the SAME sticker again after the seller emptied the three fields: it is a new lookup and the form is filled again", async () => {
+    m.lookup.mockResolvedValue(found(rec("c1")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    typeDetails(r, BLANK);
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+  });
+
+  it("an Amount typed before the scan is never touched — not by the fill, not by the next scan taking the details back", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("c1")));
+    const r = await open();
+    type(r, id("amount"), "750");
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    expect(val(r, id("amount"))).toBe("750");
+    m.lookup.mockResolvedValueOnce(found());
+    await scan(r, "buyer_b", "buyer_b");
+    await waitFor(() => expect(details(r)).toEqual(BLANK));
+    expect(val(r, id("amount"))).toBe("750");
+  });
+
+  it("only spaces in the name count as nothing typed: the form is filled", async () => {
+    m.lookup.mockResolvedValue(found(rec("c1")));
+    const r = await open();
+    type(r, id("name"), "   ");
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+  });
+
+  it("the buyer's app is changed to another one while the answer is on its way: NOTHING is filled", async () => {
+    const answer = slow();
+    const r = await open({ lookupOn: true, contactOn: true });
+    await scan(r, "https://tiktok.com/@Maria_Shops");
+    await waitFor(() => expect(val(r, id("bc-input")).replace(/^@/, "")).toBe("Maria_Shops"));
+    expect(r.getByTestId(id("bc-pick-tiktok")).getAttribute("data-selected")).toBe("1");
+    fireEvent.click(r.getByTestId(id("bc-pick-line")));
+    await answer(found(rec("c1")));
+    expect(details(r)).toEqual(BLANK);
+    nothingNew(r);
+  });
+
+  it("the picker was on another app BEFORE the scan: the scan puts it on TikTok and the form is filled", async () => {
+    m.lookup.mockResolvedValue(found(rec("c1")));
+    const r = await open({ lookupOn: true, contactOn: true });
+    fireEvent.click(r.getByTestId(id("bc-pick-line")));
+    expect(r.getByTestId(id("bc-pick-line")).getAttribute("data-selected")).toBe("1");
+    await scan(r, "https://tiktok.com/@Maria_Shops");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    expect(r.getByTestId(id("bc-pick-tiktok")).getAttribute("data-selected")).toBe("1");
+  });
+
   it("⇄ and back: the filled form returns on this screen only; a scan of B afterwards still takes A's untouched details back", async () => {
     m.lookup.mockResolvedValueOnce(found(rec("a")));
     const r = await open();
@@ -659,6 +759,36 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     nothingNew(r);
     await waitFor(() => expect(readParcelDraft<Record<string, string>>(S.store)).not.toBeNull());
     expect(Object.keys(readParcelDraft(S.store)!).sort()).toEqual(["form", "noHandle", "platform"]); // the draft is what it was before
+  });
+
+  it("switch OFF while the ⇄ draft still carries a fill from when it was on: the mark is not used and is not written back", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("a")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA }));
+    r.unmount();
+    const off = mount({ lookupOn: false });
+    await waitFor(() => expect(off.getByTestId(id("confirm"))).toBeTruthy());
+    expect(details(off)).toEqual(MARIA); // the typed-or-filled entry itself comes back, as any draft does
+    type(off, id("amount"), "500");
+    await waitFor(() => expect(Object.keys(readParcelDraft(S.store)!).sort()).toEqual(["form", "noHandle", "platform"]));
+    await scan(off, "buyer_b", "buyer_b");
+    await act(async () => { await Promise.resolve(); });
+    expect(details(off)).toEqual(MARIA); // nothing is taken back either: the lookup does nothing at all when off
+    expect(m.lookup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the hook on its own", () => {
+  it("a scan itself counts as TikTok: an answer that comes before the screen has re-drawn the picker is still used", async () => {
+    m.lookup.mockResolvedValue(found(rec("c1")));
+    const setFields = vi.fn();
+    // the picker still says another app in the props the hook last saw (the screen sets TikTok in the same tick as the scan)
+    const { result } = renderHook(() => useScanQrLookup({ on: true, store: "711", blocked: false, tiktok: false, initial: null, fields: { name: "", phone: "", store: "", handle: "buyer_a" }, setFields }));
+    await act(async () => { result.current.scanned("buyer_a"); await Promise.resolve(); await Promise.resolve(); });
+    expect(m.lookup).toHaveBeenCalledTimes(1);
+    expect(setFields).toHaveBeenCalledTimes(1);
+    expect((setFields.mock.calls[0][0] as (c: unknown) => unknown)({ name: "", phone: "", store: "" })).toEqual(MARIA);
   });
 });
 
