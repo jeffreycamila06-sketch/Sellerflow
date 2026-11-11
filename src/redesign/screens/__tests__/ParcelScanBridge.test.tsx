@@ -73,7 +73,7 @@ describe("1 — the ⇄ button shows only when BOTH Parcel Scans are allowed", (
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain("const parcelBridge = parcelBridgeVisible(parcelAllowed, fmScanAllowed);");
     expect(src).toContain('onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} />');
-    expect(src).toContain('<FmParcelScan cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} />');
+    expect(src).toContain('<FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} />');
     expect(src).not.toMatch(/pushState/); // no history entries → leaving goes to Settings, never back and forth
   });
   it("7-11: no onBridge → no button; with it → '⇄ 全家', ≥ 44 px, opens FamilyMart", async () => {
@@ -240,7 +240,7 @@ describe("5 — FamilyMart Batch N / CAP (its own count, the 7-11 per-account ca
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain("const parcelPendingCap = maxPendingParcels(auth.profile?.email, auth.profile?.role);");
     expect(src).toContain("pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn");
-    expect(src).toContain("<FmParcelScan cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap}");
+    expect(src).toContain("<FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap}");
     expect(readFileSync("src/redesign/screens/FmParcelScan.tsx", "utf8")).not.toMatch(/pendingCap = \d/); // no written number
   });
   it("at the limit: red pill + 'export first'; no new parcel (button off, Save off, From customers off)", async () => {

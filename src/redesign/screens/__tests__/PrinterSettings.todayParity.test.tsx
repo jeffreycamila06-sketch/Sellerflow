@@ -1,6 +1,7 @@
 // Accounts that don't see the new Live print pattern (Jeff 2026-11-10): Printer settings is EXACTLY today's —
 // the same HTML as main (c35e7a81) for every case: app / browser, Bluetooth / WiFi tab, size list open / closed,
 // two sizes, two languages. The fixture was rendered from main's PrinterSettings with the same props.
+// (Since the Back button rule, 2026-11-11, only the header Back differs — see below.)
 import { afterEach, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -22,5 +23,13 @@ it("same HTML as main for every case (no oneSize / customSize = today's screen)"
     cleanup();
   }
   expect(Object.keys(got)).toEqual(Object.keys(today));
-  for (const k of Object.keys(today)) expect(got[k], k).toBe(today[k]);
+  // Back button rule (Jeff 2026-11-11): the header's "‹ Back" is now the shared 44 px BackButton — the ONE
+  // intended difference. Swap exactly that one button on both sides; everything else must stay byte-equal.
+  const BACK = /<button[^>]*>‹ (?:Back|返回)<\/button>/g;
+  const oneBack = (html: string, k: string) => { expect((html.match(BACK) ?? []).length, k).toBe(1); return html.replace(BACK, "<BACK/>"); };
+  for (const k of Object.keys(today)) {
+    expect(got[k], k).toContain('data-testid="back-btn"');
+    expect(got[k], k).toContain("min-height: 44px");
+    expect(oneBack(got[k], k), k).toBe(oneBack(today[k], k));
+  }
 });

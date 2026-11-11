@@ -28,7 +28,7 @@ describe("settingsChannelScreen", () => {
   });
   it("RedesignApp routes the Settings row through it (Back returns to Settings)", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(src).toContain('onManageChannel={(p) => { setChanBack("settings"); setScreen(settingsChannelScreen(p, fbEnabled)); }}');
+    expect(src).toContain('onManageChannel={(p) => { setScreen(settingsChannelScreen(p, fbEnabled)); }}'); // Back = General Settings (origin recorded by setScreen)
   });
 });
 
