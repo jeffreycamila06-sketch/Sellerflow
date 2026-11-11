@@ -32,6 +32,8 @@ import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import CustomerDetails from "./CustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
 import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
+import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
+import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -136,11 +138,14 @@ type ExportClaim = {
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
 // pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
 // no auth); defaults to the everyone-cap so standalone renders keep 40.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, frozenCheckOn = false }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; frozenCheckOn?: boolean }) {
+// onBridge = the ⇄ 全家 button (RedesignApp passes it ONLY when the seller may use BOTH Parcel Scans).
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, frozenCheckOn = false, onBridge }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; frozenCheckOn?: boolean; onBridge?: () => void }) {
   // sql/142: the frozen (冷凍) store check's lines, export exclusion and ⟳ exist only while the
   // app_settings switch reads exactly 'true' — off, a 冷凍 row looks exactly like main (✅).
   const fzOn = frozenCheckOn;
   const t = useT();
+  // Bridge: the manual entry the seller left open here (typed, not saved) comes back as it was.
+  const [draft0] = useState(() => readParcelDraft<FormState>("711"));
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
   const [qrBusy, setQrBusy] = useState(false);
@@ -150,16 +155,16 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [, setScanErr] = useState(""); // kept for state flow; the raw reason is never shown
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [form, setForm] = useState<FormState>(() => draft0?.form ?? emptyForm);
   // "Buyer has no social handle" — the deliberate per-parcel escape hatch. NEVER persisted
   // (no localStorage) so skipping is a per-parcel choice, not a habit: it resets on every
   // form clear (clearForm) — i.e. after each save, on cancel, and when a scan populates.
-  const [noHandle, setNoHandle] = useState(false);
+  const [noHandle, setNoHandle] = useState(() => draft0?.noHandle ?? false);
   const clearForm = () => { setForm(emptyForm); setNoHandle(false); };
   // Buyer contact platform (sql/140). STAYS on the last chosen one after each save (a batch is
   // usually from one app); only an edit pre-fills it from the row. Saved as NULL for TikTok and
   // for "no contact" (NULL = TikTok / legacy). Nothing here renders unless contactOn.
-  const [platform, setPlatform] = useState<BuyerContactPlatform>("tiktok");
+  const [platform, setPlatform] = useState<BuyerContactPlatform>(() => draft0?.platform ?? "tiktok");
   const platformToSave: string | null = noHandle || platform === "tiktok" ? null : platform;
   const withContact = (f: FormState): FormState => (contactOn ? { ...f, notes: noHandle ? "" : normalizeContact(platform, f.notes) } : f);
   const [confid, setConfid] = useState<Record<keyof ScanFields, ScanConfidence> | null>(null);
@@ -287,8 +292,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // manualCount counts this-session manual saves — kept ONLY to flip the form's
   // Cancel button to "Done" after the first save (the confusing "Manual: N saved
   // this session" line was removed; the Batch pill N/40 is the real count).
-  const [manual, setManual] = useState(false);
+  const [manual, setManual] = useState(() => draft0 !== null);
   const [manualCount, setManualCount] = useState(0);
+  // Keep the open manual entry for the bridge (a scan confirm or an edit of a saved parcel is not kept).
+  useEffect(() => {
+    if (editing) return;
+    writeParcelDraft<FormState>("711", manual ? { form, noHandle, platform } : null);
+  }, [manual, editing, form, noHandle, platform]);
   // Camera runs only while the tab/app is foregrounded (privacy + battery); a
   // visibilitychange effect drives this, and it re-acquires on return. retryTick
   // re-runs the acquire effect when the OS ends a track (e.g. a phone call).
@@ -676,7 +686,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onManualSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
-    const ok = await commitNewParcel(formToFields(withContact(form)));
+    // The kept entry goes blank BEFORE the save: ⇄ and back while it runs = an empty form, never
+    // the same parcel a second time. A failed save puts it back.
+    const restoreDraft = holdParcelDraftForSave("711");
+    let ok = false;
+    try { ok = await commitNewParcel(formToFields(withContact(form))); } finally { if (!ok) restoreDraft(); }
     setSaving(false);
     if (!ok) return;
     setManualCount((c) => c + 1);
@@ -1114,9 +1128,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       {/* Build 15: header + the Batch / attention bar + the new-problem alert stay at the top
           while the seller scrolls (one sticky block; the header itself is unchanged). */}
       <div style={{ position: "sticky", top: 0, zIndex: 5 }} data-testid="ps-top">
-        <div style={{ ...headerBar, position: "relative" }}>
-          <div className="sfl-anim-beat" style={headerTitle}>{t.rd_ps2_title}</div>
+        <div style={{ ...headerBar, position: "relative", ...(onBridge ? { paddingRight: 104 } : {}) }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div className="sfl-anim-beat" style={headerTitle}>{t.rd_ps2_title}</div>
+            <StoreBadge store="711" />
+          </div>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_ps2_sub}</div>
+          {onBridge && <BridgeButton to="fm" onClick={onBridge} />}
         </div>
         {(statsShown || attnToast) && (
         <div style={{ padding: "8px 14px", background: "var(--app-bg)", borderBottom: "1px solid var(--border)", display: "grid", gap: 8 }} data-testid="ps-topbar">
