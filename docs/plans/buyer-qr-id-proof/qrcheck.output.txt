@@ -1,0 +1,8 @@
+today 4-char handle          "https://tiktok.com/@annc" bytes=24 modules=25 version=2 jsQR-roundtrip=true legacyParserAccepts=true
+today 12-char handle         "https://tiktok.com/@maria_shops1" bytes=32 modules=29 version=3 jsQR-roundtrip=true legacyParserAccepts=true
+today 22-char handle         "https://tiktok.com/@aaaaaaaaaaaaaaaaaaaaaa" bytes=42 modules=29 version=3 jsQR-roundtrip=true legacyParserAccepts=true
+today 24-char handle         "https://tiktok.com/@aaaaaaaaaaaaaaaaaaaaaaaa" bytes=44 modules=33 version=4 jsQR-roundtrip=true legacyParserAccepts=true
+NEW id (seller A, buyer 1)   "SFB1-EE246-6S371M557HNBR1GA" bytes=27 modules=29 version=3 jsQR-roundtrip=true legacyParserAccepts=false
+NEW id (seller B, buyer 1)   "SFB1-3E1D7-K8B2WSWECWR2H45T" bytes=27 modules=29 version=3 jsQR-roundtrip=true legacyParserAccepts=false
+NEW id (seller A, buyer 2)   "SFB1-EE246-N2QE5K45DAHK2B9M" bytes=27 modules=29 version=3 jsQR-roundtrip=true legacyParserAccepts=false
+deterministic: true
