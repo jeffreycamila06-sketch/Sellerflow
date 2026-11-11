@@ -29,6 +29,11 @@ ang app. Hindi sila ang napunan.
 **Sinukat ng script habang kinukuha ang mga larawan** (`make-built.log`): 16 larawan · bagong elemento sa screen: **0** ·
 pahinang may pahalang na scroll: **0** · parehong taas ng bar sa itaas sa lahat ng lapad.
 
+## Mga test ng app
+153+ test sa limang file (`scanQrLookup.test.ts`, `scanQrLookupSql150.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx`).
+Sinadyang sirain ang code ng app sa **47 paraan** (sa hiwalay na kopya) — lahat nahuli ng mga test
+(`proof/app-breakages.py` → `proof/app-breakages.log`).
+
 ## Naka-OFF = kapareho ng `main`
 `compare-with-main.cjs` — parehong hakbang (manual entry, Scan QR ng `@annc_tw`, na **may** 3 record) sa `main` (`119257aa`)
 at sa branch na naka-OFF ang switch (`?qlookup=off`). Inihambing ang buong HTML ng form, ang mensahe at ang cursor — agad
@@ -60,7 +65,8 @@ hatol, re-check, edit at isang update ng maraming parcel); `(U)`; `@ pedro123`; 
 6 na buyer na `c` ang contact + ika-7 = walang nabura; parcel ng ibang tao na mali ang username = walang nabura; maling
 store / restricted (totoong pagkakasunod) = kapareho ng live; lumang parcel pagkatapos ng bago = bago pa rin ang nasa record;
 banggaan sa unique index = hindi pumapalya; **laging tagumpay ang parcel save** kahit pumalya ang bagong bahagi.
-- Sinadyang sirain ang kopya ng sql/150 sa **36 na paraan** (`proof/sql150-breakages.py` → `proof/sql150-breakages.log`).
+- Sinadyang sirain ang kopya ng sql/150 sa **36 na paraan** — lahat nahuli ng patunay
+  (`proof/sql150-breakages.py` → `proof/sql150-breakages.log`).
 - Rule #4: iisang listahan ng 47 halimbawa para sa app at sa database
   (`src/redesign/adapters/__tests__/fixtures/scanQrUsernameKey.json`); pareho ang sagot sa app, sa pansamantalang database
   at sa live na Postgres 17.6 (read-only).
@@ -83,7 +89,7 @@ banggaan sa unique index = hindi pumapalya; **laging tagumpay ang parcel save** 
 5. **`pedro123 (U)` (walang `@`, may space) ay HINDI tugma** — ayon sa utos. Live: 2,295 record (7-11), 67 (FM).
 6. **Kapag may record na may parehong phone + pangalan ng parcel, IYON ang natitira** (hindi palaging ang pinakabago) — iisa
    lang ang puwedeng record sa parehong phone + pangalan. Pareho ang laman ng resulta.
-7. **13–15% ng parcel ay hindi nagkakaroon ng parehong hatol** (hal. walang hatol ng store) → sa mga iyon, hindi kailanman
+7. **Mga 15% ng parcel ay hindi nagkakaroon ng parehong hatol** (hal. walang hatol ng store) → sa mga iyon, hindi kailanman
    nagsasama (gaya ngayon). Hindi apektado ang pagpuno sa app.
 8. **Restricted na hatol PAGKATAPOS ng pagsasama** (bihira: 8 sa 16,163 parcel sa 30 araw): inaalis ang buyer (umiiral na
    tuntunin) at wala na ring lumang record niya na may ibang phone — naisama na.

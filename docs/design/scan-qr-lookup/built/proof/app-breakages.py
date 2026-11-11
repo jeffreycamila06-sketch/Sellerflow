@@ -31,7 +31,8 @@ muts=[
  ("A→B: untouched details not taken back", [(H,'const wipe = untouchedFilled(prev, cur);','const wipe = {} as Partial<LookupFields>;')]),
  ("old answers not dropped", [(H,'if (!aliveRef.current || seq !== seqRef.current) return;','if (!aliveRef.current) return;')]),
  ("username-changed check off", [(H,'      if (lookupKey(f.handle) !== key) return; // the username in the field is no longer the scanned one\n','')]),
- ("reset takes no new number", [(H,'    seqRef.current++;\n    const wrote = markRef.current !== null;','    const wrote = markRef.current !== null;')]),
+ ("reset takes no new number", [(H,'    seqRef.current++;\n    const m = markRef.current;','    const m = markRef.current;')]),
+ ("import clears an entry the seller fully retyped", [(H,'const wrote = m !== null && Object.keys(untouchedFilled(m, fieldsRef.current)).length > 0;','const wrote = m !== null;')]),
  ("Save press does not drop the answer", [(H,'const drop = useCallback(() => { seqRef.current++; }, []);','const drop = useCallback(() => { /* off */ }, []);')]),
  ("the fill is not remembered", [(H,'      setMark({ handle: key, filled });\n','')]),
  ("a scan keeps the old fill memory", [(H,'    fieldsRef.current = { ...cur, ...wipe, handle };\n    setMark(null);','    fieldsRef.current = { ...cur, ...wipe, handle };')]),
@@ -70,12 +71,15 @@ for name,edits in muts[lo:hi]:
     if not ok: bad+=1; continue
     for f in cur: open(f,'w',encoding='utf-8').write(cur[f])
     try:
-        out=subprocess.run(['npx','vitest','run',*tests],cwd=ROOT,capture_output=True,text=True,timeout=250).stdout
+        proc=subprocess.run(['npx','vitest','run',*tests],cwd=ROOT,capture_output=True,text=True,timeout=250)
+        out=proc.stdout
     finally:
         for f in orig: open(f,'w',encoding='utf-8').write(orig[f])
     m=re.search(r'Tests\s+(?:(\d+) failed)?',out)
     failed=int(m.group(1)) if m and m.group(1) else 0
     if 'Tests ' not in out: failed=-1
-    print(("RED  %3d" % failed if failed else "GREEN — NOT CAUGHT")+" : "+name, flush=True)
-    if not failed: bad+=1
+    # a run that ends with an error outside a test (an unhandled rejection) also FAILS the run (exit code 1)
+    crashed = (not failed) and proc.returncode != 0
+    print(("RED  %3d" % failed if failed else ("RED  run failed (unhandled error, exit %d)" % proc.returncode if crashed else "GREEN — NOT CAUGHT"))+" : "+name, flush=True)
+    if not failed and not crashed: bad+=1
 print("cases",lo,"-",min(hi,len(muts)),"of",len(muts),"| not caught / skipped:",bad)

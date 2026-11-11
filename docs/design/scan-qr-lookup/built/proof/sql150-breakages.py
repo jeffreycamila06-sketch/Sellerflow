@@ -1,5 +1,5 @@
 import subprocess, re, sys
-R=sys.argv[3].rstrip('/')+'/'  # the repo; run from a scratch folder that has PGlite and a copy of scripts/sql150-behaviour.mjs
+R=sys.argv[3].rstrip('/')+'/'  # the repo. Run from a scratch folder that has PGlite and a copy of scripts/sql150-behaviour.mjs: python3 sql150-breakages.py 0 99 <repo>
 src=open(R+'sql/150_one_username_one_record.sql',encoding='utf-8').read()
 A7="           and (c.phone = v_phone\n                or (v_name is not null and lower(trim(coalesce(c.name, ''))) = lower(v_name)));  -- (A)"
 muts=[
