@@ -65,6 +65,9 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
   const [draft0] = useState(() => readParcelDraft<Form>("fm"));
   const [rows, setRows] = useState<FmScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
+  // A NEW parcel needs the saved list read OK first (Batch N / CAP is only true then). Edit and
+  // delete of rows already on screen are not affected.
+  const [listOk, setListOk] = useState(false);
   const [fee, setFee] = useState(FM_SCAN_DEFAULT_FEE);
   const [form, setForm] = useState<Form>(() => draft0?.form ?? emptyForm);
   const [noHandle, setNoHandle] = useState(() => draft0?.noHandle ?? false);
@@ -112,14 +115,14 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
   const exportHidden = onMobile && !phoneExport;
 
   const reloadSaved = () => {
-    void loadFmScans().then((r) => { if (aliveRef.current && r.ok) setRows(r.rows); });
+    void loadFmScans().then((r) => { if (aliveRef.current && r.ok) { setRows(r.rows); setListOk(true); } });
   };
   useEffect(() => {
     void loadFmScans().then((r) => {
       if (!aliveRef.current) return;
-      if (r.ok) { setRows(r.rows); setLastExportBatch(latestBatch(r.rows)); }
+      if (r.ok) { setRows(r.rows); setLastExportBatch(latestBatch(r.rows)); setListOk(true); }
       setListLoaded(true);
-    });
+    }, () => { if (aliveRef.current) setListLoaded(true); });
     void loadFmGlobalFee().then((f) => { if (aliveRef.current) setFee(f); });
   }, []);
 
@@ -143,7 +146,8 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
   // Batch = FamilyMart parcels not exported yet (its own count — never the 7-11 one).
   const pendingCount = rows.filter((r) => !r.exportedAt).length;
   const batchFull = pendingCount >= pendingCap;
-  const saveBlocked = saving || firstError(errs) !== undefined || handleBad || contactBad || (batchFull && !editing);
+  const newBlocked = !listOk || batchFull; // no NEW parcel until the list loaded OK, or when the batch is full
+  const saveBlocked = saving || firstError(errs) !== undefined || handleBad || contactBad || (newBlocked && !editing);
   // Like 7-11: a field's problem shows once that field has something in it.
   const showErr = (filled: string, e?: FmScanError) => (filled.trim() !== "" && e ? <div style={errTxt} data-testid="fms-field-err">{t[FM_ERROR_KEY[e]]}</div> : null);
 
@@ -180,7 +184,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
     setEditing(null); clearForm();
     flash(t.rd_ps2_saved_toast);
   };
-  const openManual = () => { if (editing || batchFull) return; setSaveErr(false); clearForm(); setManual(true); };
+  const openManual = () => { if (editing || newBlocked) return; setSaveErr(false); clearForm(); setManual(true); };
   const cancelManual = () => { setManual(false); clearForm(); setSaveErr(false); };
   const openEdit = (r: FmScanRow) => {
     if (r.exportedAt) return;
@@ -303,7 +307,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
         </div>
         {/* Batch = parcels not exported yet / the account's limit (same look as the 7-11 Batch pill).
             No "All OK" / "need attention" here — FamilyMart store codes are not checked yet. */}
-        {listLoaded && (
+        {listOk && (
           <div style={{ padding: "8px 14px", background: "var(--app-bg)", borderBottom: "1px solid var(--border)" }} data-testid="fms-topbar">
             <div style={{ display: "flex", gap: 6 }}>
               <div style={{ flex: "0 1 50%", padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="fms-batch" data-full={batchFull ? "1" : undefined}>
@@ -317,14 +321,19 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="fms-toast">{toast}</div>}
 
-        {listLoaded && batchFull && (
+        {listLoaded && !listOk && (
+          <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="fms-load-err">
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{t.rd_fms_load_err}</div>
+          </div>
+        )}
+        {listOk && batchFull && (
           <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="fms-batch-full">
             <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{tpl(t.rd_ps2_batch_full, { max: String(pendingCap) })}</div>
           </div>
         )}
 
         {!editing && !manual && (
-          <button onClick={openManual} disabled={batchFull} style={{ justifySelf: "center", background: "none", border: "none", color: batchFull ? "var(--text-muted)" : "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, padding: "2px 4px" }} data-testid="fms-manual">✏️ {t.rd_fms_add}</button>
+          <button onClick={openManual} disabled={newBlocked} style={{ justifySelf: "center", background: "none", border: "none", color: newBlocked ? "var(--text-muted)" : "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: newBlocked ? "default" : "pointer", opacity: newBlocked ? 0.55 : 1, padding: "2px 4px" }} data-testid="fms-manual">✏️ {t.rd_fms_add}</button>
         )}
 
         {(editing || manual) && (
@@ -337,11 +346,11 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
                     {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
                   </button>
                   {manual && (
-                    <button onClick={() => { if (!batchFull) setCustOpen(true); }} disabled={batchFull} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
+                    <button onClick={() => { if (!newBlocked) setCustOpen(true); }} disabled={newBlocked} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: newBlocked ? "default" : "pointer", opacity: newBlocked ? 0.55 : 1, whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
                   )}
                 </div>
               ) : manual && (
-                <button onClick={() => { if (!batchFull) setCustOpen(true); }} disabled={batchFull} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
+                <button onClick={() => { if (!newBlocked) setCustOpen(true); }} disabled={newBlocked} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: newBlocked ? "default" : "pointer", opacity: newBlocked ? 0.55 : 1, whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
               )}
             </div>
             <div style={{ display: "grid", gap: 10 }}>
