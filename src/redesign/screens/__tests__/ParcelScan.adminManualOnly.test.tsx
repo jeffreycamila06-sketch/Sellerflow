@@ -75,7 +75,7 @@ describe("admin Parcel Scan = the seller's manual-only screen", () => {
       "ps-credits", "ps-scancount", "ps-credits-out"]) expect(queryByTestId(id), id).toBeNull();
     expect(getCreditBalance).not.toHaveBeenCalled();
     expect(queryByTestId("ps-manual")?.textContent).toBe("✏️ Manual add parcel"); // same name as FamilyMart
-    expect(queryByTestId("ps-ai-soon")).toBeTruthy();  // same small note sellers see
+    expect(queryByTestId("ps-ai-soon")).toBeNull();    // the "coming soon" note is no longer shown
     expect(queryByTestId("ps-batch")).toBeTruthy();    // the pending-cap pill stays
   });
 

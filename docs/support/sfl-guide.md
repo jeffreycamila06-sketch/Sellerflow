@@ -31,13 +31,13 @@ The bar at the bottom of the app has five buttons:
 Every other screen has **‹ Back** at the top left. It takes you back to where you came from. Tapping a button in the bottom bar always starts fresh from that tab.
 
 ## settings-tiles — The Settings screen
-Last checked: 2026-10-28
+Last checked: 2026-11-11
 Keywords: settings, tiles, shop tools, account, general settings, customers, log out, setting, ayos, 设置, 設定, 账号
 
 Tap **Settings** in the bottom bar. You will see tiles:
 
 - **Invite friends** — share the app link with other sellers.
-- **General Settings** — profile, live session options, look, language, channels, printer, subscription, support, delete account.
+- **General Settings** — profile, live setup options, look, language, channels, printer, subscription, support, delete account.
 - **Customers** — your buyers list with search.
 - **Parcel Scan** (7-11 / FamilyMart), **Customer Details**, **Pickup Status** — Taiwan tools. Parcel Scan tiles may show **Soon**. Customer Details and Pickup Status open or show 🔒.
 - **Shipping** — shows **Coming soon** for sellers in Taiwan.
@@ -47,13 +47,13 @@ Tap **Settings** in the bottom bar. You will see tiles:
 - **Log out** — logs out this device only.
 
 ## general-settings — General Settings
-Last checked: 2026-10-28
-Keywords: general settings, profile, shop name, phone, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料
+Last checked: 2026-11-11
+Keywords: general settings, profile, shop name, phone, live setup, live session, appearance, channels, printer, subscription, support, baguhin, 一般设置, 個人資料
 
 **Settings → General Settings** has these parts:
 
 - **BASIC INFORMATION** — tap **Edit** to change **Shop name**, **Owner name** and **Phone**, then **Save changes**. Your email can't be changed here.
-- **LIVE SESSION** — tap **Live session** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
+- **LIVE SETUP** — tap **Live setup** to open it: **LIVE print pattern**, **Keep screen awake while live**, **Auto-print pinned comments**, **Auto mode**, **Same price for all items**. Turning one on shows a short explanation first; tap **Turn on**. Turning one off needs no confirm.
 - **APPEARANCE** — Theme (☀ Light / ☾ Dark), Accent color, Language, Currency.
 - **CHANNELS** — TikTok Live and Facebook Live rows. Tap one to manage your accounts.
 - **Printer Settings** — tap **Printer**, then under **CHOOSE PRINTER** pick the WiFi receipt printer or the Bluetooth sticker printer.
@@ -271,24 +271,24 @@ If the comment is a sold-out Auto mode code, the app asks "{code} is sold out. C
 Tags like **NEW** or **CHECK** warn you about risky buyers.
 
 ## same-price — Same price for all items
-Last checked: 2026-10-28
+Last checked: 2026-11-11
 Keywords: same price, fixed price, all items, price, isang presyo, pare-pareho presyo, 统一价, 同價, 固定價格
 
-**Settings → General Settings → LIVE SESSION → Same price for all items**.
+**Settings → General Settings → LIVE SETUP → Same price for all items**.
 
 1. Turn it on, type the price, and tap **Turn on**.
 2. While it is on, every **1-Click** and **Auto** order prints this price, whatever the buyer types. In **Type price**, the price is filled in for you but you can still change it.
 3. Turn it off with the switch in Settings, or tap **×** on the "All items …" chip on the Live screen. The app remembers the price for next time.
 
 ## auto-mode — Auto mode (live codes)
-Last checked: 2026-10-28
+Last checked: 2026-11-11
 Keywords: auto mode, auto, code, live code, automatic order, sold out, awtomatiko, code ng item, 自动, 自動下單, 代码, 口令
 
 Auto mode turns comments into orders by itself.
 
 Set up:
 1. Go to **Products**, edit a product, and fill in **Live code** (for example A1). Set its **Price** and **Stock**.
-2. Turn on **Settings → General Settings → LIVE SESSION → Auto mode**.
+2. Turn on **Settings → General Settings → LIVE SETUP → Auto mode**.
 
 During the live:
 - Announce the code. Buyers must type the code **exactly** — "D" works, "D po" or "D." does not.
@@ -298,15 +298,15 @@ During the live:
 Use each code for one product only.
 
 ## auto-print-pinned — Auto-print pinned comments
-Last checked: 2026-10-14
+Last checked: 2026-11-11
 Keywords: pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtomatikong print, 置顶, 置頂留言, 自动打印
 
-**Settings → General Settings → LIVE SESSION → Auto-print pinned comments** (TikTok).
+**Settings → General Settings → LIVE SETUP → Auto-print pinned comments** (TikTok).
 
 Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.
 
 ## products-stock — Products, codes and stock
-Last checked: 2026-11-06
+Last checked: 2026-11-11
 Keywords: products, product, item, stock, inventory, price, code, restock, add product, produkto, stocks, 商品, 库存, 庫存, 補貨
 
 Open **Products** in the bottom bar.
@@ -318,7 +318,7 @@ Open **Products** in the bottom bar.
 - **⬇ Export** gives an **Excel (.xlsx)** or **PDF** list. In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
 - Auto mode orders take stock off automatically.
 
-Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live session settings. Admin turns these on per account. If you don't see one, it isn't turned on for your account yet — ask Admin.
+Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live setup settings. Admin turns these on per account. If you don't see one, it isn't turned on for your account yet — ask Admin.
 
 ## reprint — Reprint a sticker
 Last checked: 2026-10-28
@@ -395,10 +395,10 @@ On the **Live** screen, switch **Games** on. Orders placed while Games is on joi
 - **Print winner** prints it. **Reset** clears the winner and the excluded list.
 
 ## keep-screen-awake — Keep the screen awake
-Last checked: 2026-10-28
+Last checked: 2026-11-11
 Keywords: screen awake, sleep, screen off, lock screen, keep awake, namamatay screen, natutulog phone, 屏幕常亮, 螢幕休眠, 熄屏
 
-A sleeping phone stops capturing orders. **Keep screen awake while live** is on by default (**Settings → General Settings → Live session**). If it is off, turn it on and tap **Turn on**.
+A sleeping phone stops capturing orders. **Keep screen awake while live** is on by default (**Settings → General Settings → Live setup**). If it is off, turn it on and tap **Turn on**.
 
 It keeps the phone awake while you are connected. Keep the app open on screen during your live. Also keep the phone charging for long lives. Some older phones don't support it.
 
@@ -460,7 +460,7 @@ Keywords: wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, networ
 "Printer didn't respond. Check it's on." — check the printer is on, the phone and printer are on the same WiFi, and the number is right (it can change after the router restarts).
 
 ## stickers — Sticker sizes, layout, Chinese names and QR
-Last checked: 2026-11-10
+Last checked: 2026-11-11
 Keywords: sticker size, paper size, 100x60, 60x40, 50x30, layout, chinese name, qr, print pattern, laki ng sticker, buyer number, shop name, 贴纸尺寸, 标签尺寸, 中文名, 二维码
 
 **Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm, and 50x30mm on the newer printers. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer. A Niimbot prints the 50x30 sticker.
@@ -469,7 +469,7 @@ With the **new LIVE print pattern** on your account, **Printer settings → Stic
 
 **What is on the sticker**: the buyer number (the biggest thing), the buyer's name, the @username, the comment or price, and the date and time. A long comment gets smaller first, then is cut with "…". Your **shop name** prints when it is turned on in the print pattern (on small stickers there may be no room for it). Facebook buyers show their name only.
 
-**Layout settings**: **Settings → General Settings → LIVE SESSION → LIVE print pattern**. Turn each part on or off and pick its size: Shop name, Buyer #, TikTok name, TikTok username, Comment / Price. Date & time (and the SellerFlowLive logo row, where your screen shows it) are a fixed size — you can't change them. The Date & time switch on this screen only changes the picture on the screen: the sticker always prints the date and time. Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
+**Layout settings**: **Settings → General Settings → LIVE SETUP → LIVE print pattern**. Turn each part on or off and pick its size: Shop name, Buyer #, TikTok name, TikTok username, Comment / Price. Date & time (and the SellerFlowLive logo row, where your screen shows it) are a fixed size — you can't change them. The Date & time switch on this screen only changes the picture on the screen: the sticker always prints the date and time. Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
 
 **New LIVE print pattern** (shows a **New** badge when it is on for your account): the picture at the top is exactly what your Bluetooth sticker printer or your computer prints. A WiFi printer, or a phone that prints the text sticker (older app or text mode), keeps printing your usual sticker — the screen tells you when that is the case.
 - **Sticker size**: shown under the picture ("Sticker size: 100×60 mm"). Tap **Change** to pick another size in **Printer settings**; the picture and your prints always use that size. If the size is too wide for your printer, the screen says so — pick a smaller size in **Printer settings**.

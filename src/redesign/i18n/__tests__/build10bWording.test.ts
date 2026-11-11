@@ -77,7 +77,7 @@ const PINS: Record<string, { en: string; fil: string }> = {
   rd_ps2_recheck_q: { en: "Check this parcel again?", fil: "I-check ulit ang parcel na 'to?" },
   rd_ps2_restricted: { en: "Restricted", fil: "Restricted" },
   rd_ps2_scan_clearer: { en: "Try a clearer photo of the parcel slip.", fil: "Subukan ang mas malinaw na picture ng parcel slip." },
-  rd_ps2_sub: { en: "Snap handwritten parcel slips — we fill in the details", fil: "Picturan ang sulat-kamay na parcel slip — kami na ang mag-fill in" },
+  rd_ps2_sub: { en: "Type each parcel, then export the bulk-order file.", fil: "I-type ang bawat parcel, tapos i-export ang bulk-order file." },
   rd_ps2_undo_failed: { en: "Undo failed. Please try again.", fil: "Hindi na-undo. Subukan ulit." },
   rd_ps2_x_failed: { en: "Export failed. Please try again.", fil: "Hindi na-export. Subukan ulit." },
   rd_ps_aimo: { en: "AIMO D520BT (100×60mm)", fil: "AIMO D520BT (100×60mm)" },

@@ -1316,12 +1316,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         {!busy && !editing && !manual && !snapshot && (
           <button onClick={openManual} disabled={batchFull} style={{ justifySelf: "center", background: "none", border: "none", color: batchFull ? "var(--text-muted)" : "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, padding: "2px 4px" }} data-testid="ps-manual">✏️ {t.rd_ps2_manual}</button>
         )}
-        {/* Seller (manual-only) surface: a small muted note where the camera would
-            be — the AI scan is admin-only for now. Admins see the real camera and
-            NOT this line. */}
-        {manualOnly && !busy && !editing && !manual && !snapshot && (
-          <div style={{ fontSize: 11, color: "var(--text-dim)", textAlign: "center" }} data-testid="ps-ai-soon">{t.rd_ps2_ai_soon}</div>
-        )}
+        {/* Nov 11 2026: the "AI photo scan — coming soon" note (rd_ps2_ai_soon) is no
+            longer shown — nobody has the camera now. The key is kept in i18n. */}
 
         {phase === "scanning" && (
           <div style={{ ...card, textAlign: "center", padding: 24 }} data-testid="ps-scanning">

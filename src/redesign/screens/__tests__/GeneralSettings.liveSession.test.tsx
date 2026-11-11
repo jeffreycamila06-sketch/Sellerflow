@@ -63,7 +63,7 @@ describe("LIVE SESSION collapsible group", () => {
     renderGS();
     const header = screen.getByTestId("ls-header");
     expect(header).toBeTruthy();
-    expect(within(header).getByText("Live session")).toBeTruthy();
+    expect(within(header).getByText("Live setup")).toBeTruthy();
     expect(within(header).getByText(/Auto mode off · Screen awake on · Auto-print off/)).toBeTruthy();
     expect(screen.queryByTestId("ls-body")).toBeNull();
     expect(screen.queryByTestId("ls-print-pattern")).toBeNull();
