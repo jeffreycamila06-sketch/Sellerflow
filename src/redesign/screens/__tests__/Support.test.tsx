@@ -35,11 +35,11 @@ describe("Support user-guide accordions", () => {
     renderSupport();
     expect(screen.queryByText("How to use: 7-11 shipping export")).toBeNull();
   });
-  it("Auto Mode steps point to Products → Live code and the LIVE SESSION switch", () => {
+  it("Auto Mode steps point to Products → Live code and the LIVE SETUP switch", () => {
     renderSupport();
     fireEvent.click(screen.getByText("How Auto Mode works"));
     expect(screen.getByText(/Go to Products, edit a product and fill in Live code/)).toBeTruthy();
-    expect(screen.getByText(/Settings → General Settings → LIVE SESSION → Auto mode/)).toBeTruthy();
+    expect(screen.getByText(/Settings → General Settings → LIVE SETUP → Auto mode/)).toBeTruthy();
     expect(screen.queryByText(/match a code to a product/)).toBeNull();
   });
 
