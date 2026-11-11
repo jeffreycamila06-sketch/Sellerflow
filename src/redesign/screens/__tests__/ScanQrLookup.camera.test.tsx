@@ -175,6 +175,27 @@ describe("7-11 photo path — Scan QR → fill from Customers", () => {
     nothingNew(r);
   });
 
+  it("Save pressed on the photo card while the lookup is running: its answer is dropped at that moment — even if the details are blanked while the save runs", async () => {
+    m.scanParcel.mockResolvedValue(read("Ana Cruz", "0912345678", "123456"));
+    let answer: (v: ScanQrLookupResult) => void = () => {};
+    m.lookup.mockImplementationOnce(() => new Promise<ScanQrLookupResult>((res) => { answer = res; }));
+    let finishSave: () => void = () => {};
+    m.saveParcelScan.mockImplementationOnce(async () => { await new Promise<void>((res) => { finishSave = res; }); return { ok: false, error: "x" }; });
+    const r = mount(true);
+    await pickPhotos(r, 1);
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "500" } });
+    await scanQr(r, "maria_shops", "maria_shops");
+    await waitFor(() => expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(m.saveParcelScan).toHaveBeenCalledTimes(1));
+    for (const f of ["ps-name", "ps-phone", "ps-store"]) fireEvent.change(r.getByTestId(f), { target: { value: "" } });
+    await act(async () => { answer(found(rec("a"))); await Promise.resolve(); });
+    expect(details(r)).toEqual({ name: "", phone: "", store: "" }); // not filled under a running save
+    await act(async () => { finishSave(); await Promise.resolve(); });
+    expect(details(r)).toEqual({ name: "", phone: "", store: "" }); // the save failed: the entry stays as the seller left it
+    expect(val(r, "ps-notes")).toBe("maria_shops");
+  });
+
   it("switch OFF on the photo card: username only, no lookup, the reading and its marks untouched", async () => {
     m.scanParcel.mockResolvedValue(read(null, null, null));
     m.lookup.mockResolvedValue(found(rec("a")));
