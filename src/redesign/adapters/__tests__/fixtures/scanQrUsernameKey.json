@@ -1,5 +1,5 @@
 {
- "about": "Rule #4 (Jeff 2026-11-12): the username a saved contact text stands for. The SAME list is run against the app (usernameKeyOf) and the database (scan_qr_username_key, sql/150).",
+ "about": "Rule #4 (Jeff 2026-11-12): the username a saved contact text stands for (usernameKeyOf in adapters/scanQrLookup.ts).",
  "cases": [
   {
    "text": "pedro123",

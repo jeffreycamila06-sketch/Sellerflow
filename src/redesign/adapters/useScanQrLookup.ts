@@ -8,12 +8,13 @@
 // Guards:
 //  • a new scan first blanks the details the last fill wrote and nobody touched since (A → B never mixes)
 //  • a fill happens only while name, phone and store are ALL still blank
+//  • no fill when the username's records have 3 or more different phones (a word used for many buyers)
 //  • every scan / reset / Save press takes a new number; an answer with an old number is dropped
 //  • the username in the field must still be the scanned one when the answer comes
 //  • reset() at Clear / Cancel / Save done / next photo / edit start / Import
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  isLookupable, lookupCustomersByHandle, lookupKey, untouchedFilled,
+  isLookupable, lookupCustomersByHandle, lookupKey, recordToFill, untouchedFilled,
   type LookupFields, type ScanQrLookupMark, type ScanQrLookupStore,
 } from "./scanQrLookup";
 
@@ -90,9 +91,10 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
       if (!now.on || now.blocked) return;
       const f = fieldsRef.current;
       if (lookupKey(f.handle) !== key) return; // the username in the field is no longer the scanned one
-      if (!res.ok || res.rows.length === 0) return; // could not read / no record → exactly as before
+      if (!res.ok) return; // could not read → exactly as before
+      const row = recordToFill(res.rows); // the newest record — none, or 3+ different phones (a shared word) → null
+      if (!row) return; // exactly as before
       if (!blank(f)) return; // something is typed in name, phone or store → nothing is filled
-      const row = res.rows[0]; // the newest record of this username
       const filled: LookupFields = { name: row.name, phone: row.phone, store: row.storeId };
       now.setFields(() => filled);
       fieldsRef.current = { ...f, ...filled };

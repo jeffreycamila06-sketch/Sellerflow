@@ -2,12 +2,16 @@
 // (7-11 Parcel Scan → parcel_customers.notes · FamilyMart Parcel Scan → fm_parcel_customers.buyer_username).
 // Jeff 2026-11-12. The sticker QR, the QR parser, printing, the save and the export are untouched.
 //
+// It only READS Customers. Saving a parcel writes to Customers exactly as it always did — nothing here changes that.
+//
 // What happens (nothing new is ever shown on screen):
 //  • the username has a record → name, phone and store come from the NEWEST record (last updated; same time → id)
 //  • something is already typed in name, phone or store → nothing is filled
+//  • the username's records have 3 or more DIFFERENT phones (a word the seller uses for many buyers, e.g. "user",
+//    not one person's username) → nothing is filled
 //  • no record / error / more than 4 s → exactly as before (username only), no message
 //
-// Which records belong to a username (the SAME rule as the database, sql/150 scan_qr_username_key):
+// Which records belong to a username (rule #4):
 //  • the saved text is exactly "pedro123" or "@pedro123" (any letter case), or
 //  • it starts with "@" and the FIRST word after it (a space may come first) is exactly pedro123:
 //    "@pedro123 (U)", "@pedro123 #3", "@ pedro123", "@pedro123 Garcia (NA)"
@@ -41,7 +45,7 @@ export interface ScanQrLookupRaw extends ScanQrLookupRow {
   username: string;
   platform: string | null;
 }
-/** rows: every record of the username, newest first (rows[0] is the one to use). */
+/** rows: every record of the username, newest first — recordToFill(rows) says which one is used, if any. */
 export type ScanQrLookupResult = { ok: true; rows: ScanQrLookupRow[] } | { ok: false };
 
 /** The scanned username: trim → drop ONE leading "@" → lower case. */
@@ -53,7 +57,7 @@ export function isLookupable(key: string): boolean {
   return /^[a-z0-9._]{1,50}$/.test(key) && key !== "unknown";
 }
 
-// "Space" here = the plain ones only (space, tab, new line …) — the same set the database rule uses.
+// "Space" here = the plain ones only (space, tab, new line …).
 const WS = " \\t\\n\\r\\f\\v";
 const KEY_EXACT = new RegExp(`^[${WS}]*([A-Za-z0-9._]{1,50})[${WS}]*$`);
 const KEY_AT = new RegExp(`^[${WS}]*@[${WS}]*([A-Za-z0-9._]{1,50})(?:[${WS}][\\s\\S]*)?$`);
@@ -61,7 +65,6 @@ const KEY_AT = new RegExp(`^[${WS}]*@[${WS}]*([A-Za-z0-9._]{1,50})(?:[${WS}][\\s
  * The username a saved contact text stands for, lower case — "" when it stands for none.
  * "pedro123" / "@pedro123" / "@pedro123 (U)" / "@ pedro123" → "pedro123";
  * "(U) @pedro123" / "Pedro Garcia" / "pedro123 (U)" / "@pedro123(U)" / "unknown" → "".
- * MUST stay equal to public.scan_qr_username_key() in sql/150 (same examples run against both).
  */
 export function usernameKeyOf(text: string | null | undefined): string {
   const v = String(text ?? "");
@@ -86,6 +89,29 @@ export function matchLookupRows(rows: readonly ScanQrLookupRaw[], key: string): 
     .filter((r) => platformOk(r.platform) && usernameKeyOf(r.username) === key)
     .map((r) => ({ id: r.id, name: r.name, phone: r.phone, storeId: r.storeId, updatedAt: r.updatedAt }))
     .sort((a, b) => (a.updatedAt === b.updatedAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
+/** This many DIFFERENT phones under one "username" = a word used for many buyers, not one person → nothing is filled. */
+export const SCAN_QR_SHARED_PHONES = 3;
+
+/** How many different phones these records have (digits only, so "0911 222 333" = "0911222333"; blank = not counted). Pure. */
+export function distinctPhones(rows: readonly { phone: string }[]): number {
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const p = String(r.phone ?? "").trim();
+    const digits = p.replace(/\D/g, "");
+    if (p !== "") seen.add(digits !== "" ? digits : p);
+  }
+  return seen.size;
+}
+
+/**
+ * The record the form is filled from: the newest one (rows are newest first) — or null when there is none, or when
+ * the records have 3 or more different phones (then the scanned text is a word shared by many buyers). Pure.
+ */
+export function recordToFill(rows: readonly ScanQrLookupRow[]): ScanQrLookupRow | null {
+  if (distinctPhones(rows) >= SCAN_QR_SHARED_PHONES) return null;
+  return rows[0] ?? null;
 }
 
 /** What the database is asked for: the five shapes a record of this username can have. Pure. */
@@ -133,9 +159,9 @@ export async function lookupCustomersByHandle(store: ScanQrLookupStore, handle: 
         id: str(r.id), name: str(r.name), phone: str(r.phone), storeId: str(r.store_id), updatedAt: str(r.updated_at),
         username: str(r[src.col]), platform: r.contact_platform == null ? null : str(r.contact_platform),
       })), key);
-      // A full page with no exact record in it = not everything was seen → "could not read", never "none".
-      // (With at least one in the page, the first is the newest of all: the page is newest first.)
-      if (got.length >= SCAN_QR_LOOKUP_LIMIT && rows.length === 0) return { ok: false };
+      // A full page = not every record was seen → "could not read": never a false "none", and never a fill
+      // from a list whose phones could not all be counted.
+      if (got.length >= SCAN_QR_LOOKUP_LIMIT) return { ok: false };
       return { ok: true, rows };
     } catch {
       return { ok: false };

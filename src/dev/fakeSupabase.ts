@@ -57,6 +57,10 @@ const tables: Record<string, Row[]> = {
     { id: "c9", user_id: UID, phone: "0955123456", name: "Ann Chen", store_id: "133712", notes: "Annc_TW", contact_platform: null, created_at: iso(70), updated_at: iso(44) },
     { id: "c10", user_id: UID, phone: "0988111222", name: "不相干的人", store_id: "170331", notes: "annc_tw2", contact_platform: null, created_at: iso(5), updated_at: iso(1) },
     { id: "c11", user_id: UID, phone: "0988333444", name: "LINE 買家", store_id: "170331", notes: "annc_tw", contact_platform: "line", created_at: iso(5), updated_at: iso(1) },
+    // …and a word the seller writes for MANY buyers ("user": 3 different phones) → a scan of @user fills nothing
+    { id: "c12", user_id: UID, phone: "0933111222", name: "林小姐", store_id: "170331", notes: "user", contact_platform: null, created_at: iso(20), updated_at: iso(2) },
+    { id: "c13", user_id: UID, phone: "0944222333", name: "Grace Tan", store_id: "211004", notes: "@user", contact_platform: null, created_at: iso(22), updated_at: iso(3) },
+    { id: "c14", user_id: UID, phone: "0966444555", name: "吳先生", store_id: "150210", notes: "user", contact_platform: null, created_at: iso(25), updated_at: iso(5) },
   ],
   fm_parcel_scans: [
     { id: "f1", user_id: UID, recipient_name: "黃志明", phone: "0911222333", store_id: "022131", amount: 450, shipping_fee: 39, order_date: day(0), buyer_username: "+886911222333", contact_platform: "whatsapp", created_at: iso(0.3), exported_at: null, export_batch_id: null },
@@ -68,6 +72,9 @@ const tables: Record<string, Row[]> = {
     { id: "fc3", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "022131", buyer_username: "@annc_tw (U)", contact_platform: null, created_at: iso(60), updated_at: iso(8) },
     { id: "fc4", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "018274", buyer_username: "@annc_tw", contact_platform: null, created_at: iso(50), updated_at: iso(30) },
     { id: "fc5", user_id: UID, phone: "0955123456", name: "陳安", store_id: "018274", buyer_username: "ANNC_TW", contact_platform: null, created_at: iso(70), updated_at: iso(44) },
+    { id: "fc6", user_id: UID, phone: "0933111222", name: "林小姐", store_id: "022131", buyer_username: "user", contact_platform: null, created_at: iso(20), updated_at: iso(2) },
+    { id: "fc7", user_id: UID, phone: "0944222333", name: "Grace Tan", store_id: "018274", buyer_username: "@user", contact_platform: null, created_at: iso(22), updated_at: iso(3) },
+    { id: "fc8", user_id: UID, phone: "0966444555", name: "吳先生", store_id: "022131", buyer_username: "user", contact_platform: null, created_at: iso(25), updated_at: iso(5) },
   ],
   parcel_tracking: [
     { id: "t1", user_id: UID, tracking_no: "F1234567890", cm_order_no: null, buyer_username: "+886922333444", recipient_name: "陳*文", store_id: "133712", rec_store: "民生門市", status: "at_store", status_message: "包裹已到店", pickup_deadline: day(3), arrived_at: iso(1), ship_type: "C2C", special_type: null, order_amount: 1200, terminal: false, last_polled_at: iso(0.1), carrier: "711" },

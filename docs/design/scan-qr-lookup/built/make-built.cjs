@@ -16,6 +16,8 @@ const DEVICES = [
 const STATES = [
   { id: "1-filled", qr: "https://tiktok.com/@annc_tw" },
   { id: "2-no-match", qr: "https://tiktok.com/@newbuyer_tw" },
+  // "user" is written for 3 buyers with 3 different phones in the preview Customers → nothing is filled
+  { id: "3-shared-word", qr: "https://tiktok.com/@user" },
 ];
 
 async function openManual(p, fm) {

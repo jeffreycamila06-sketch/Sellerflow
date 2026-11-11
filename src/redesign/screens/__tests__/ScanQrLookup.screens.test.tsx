@@ -2,6 +2,7 @@
 // AND the FamilyMart Parcel Scan (same tests, both screens).
 //   • a record of the username → name, phone and store from the NEWEST record. No list, no box, no words.
 //   • something typed in name, phone or store → nothing is filled, nothing is shown.
+//   • the username's records have 3+ different phones (a word used for many buyers) → nothing is filled.
 //   • no record / error / too slow → exactly as before (username only), no message.
 // The QR decode and the lookup read are mocked here (the read itself: adapters/__tests__/scanQrLookup.test.ts;
 // the screen with the REAL read and a recording client: ScanQrLookup.offOn.test.tsx).
@@ -172,6 +173,66 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     expect(r.container.textContent).not.toContain("135791");
     expect(card(r) === ref.card).toBe(true);
     expect(document.activeElement).toBe(r.getByTestId(id("amount")));
+  });
+
+  it("3 DIFFERENT phones under the scanned word (it is used for many buyers, not one person): NOTHING is filled — exactly the lookup-off form, same message, nothing remembered", async () => {
+    const ref = await offReference("https://tiktok.com/@user", "user");
+    m.lookup.mockResolvedValue(found(
+      rec("a", { name: "Buyer One", phone: "0911000001", storeId: "111111", updatedAt: "2026-11-09T02:00:00+00:00" }),
+      rec("b", { name: "Buyer Two", phone: "0922000002", storeId: "222222", updatedAt: "2026-11-08T02:00:00+00:00" }),
+      rec("c", { name: "Buyer Three", phone: "0933000003", storeId: "333333", updatedAt: "2026-11-07T02:00:00+00:00" }),
+    ));
+    const r = await open();
+    await scan(r, "https://tiktok.com/@user", "user");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual(BLANK);
+    expect(val(r, S.handle)).toBe("user");
+    nothingNew(r);
+    expect(r.container.textContent).not.toContain("Buyer One");
+    expect(card(r) === ref.card).toBe(true);
+    expect(toast(r)).toBe(ref.toast);
+    expect(document.activeElement).not.toBe(r.getByTestId(id("amount"))); // the cursor is not moved either
+    expect(readParcelDraft(S.store) && "lookup" in readParcelDraft(S.store)!).toBe(false);
+    // the seller types the details by hand and saves — as before
+    typeDetails(r, S.valid); type(r, id("amount"), S.valid.amount);
+    fireEvent.click(r.getByTestId(id("save")));
+    await waitFor(() => expect(S.saved).toHaveBeenCalledTimes(1));
+    expect(S.savedName()).toBe(S.valid.name);
+  });
+
+  it("2 different phones (4 records, one phone written with spaces) is still ONE buyer's username: the NEWEST record is filled", async () => {
+    const newest = { name: "Maria Santos", phone: "0911222333", store: "246810" };
+    m.lookup.mockResolvedValue(found(
+      rec("new", { updatedAt: "2026-11-09T02:00:00+00:00" }),
+      rec("b", { name: "Maria S", phone: "0911 222 333", storeId: "135791", updatedAt: "2026-10-02T02:00:00+00:00" }),
+      rec("c", { name: "Mariah Santos", phone: "0955000111", storeId: "975310", updatedAt: "2026-09-20T02:00:00+00:00" }),
+      rec("d", { name: "M Santos", phone: "0955000111", storeId: "975310", updatedAt: "2026-09-10T02:00:00+00:00" }),
+    ));
+    const r = await open();
+    await scan(r, "https://tiktok.com/@annc_tw", "annc_tw");
+    await waitFor(() => expect(details(r)).toEqual(newest));
+    nothingNew(r);
+  });
+
+  it("a shared word first, then a real username: the second scan fills normally (nothing sticks from the first)", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("a", { phone: "0911000001" }), rec("b", { phone: "0922000002" }), rec("c", { phone: "0933000003" })));
+    const r = await open();
+    await scan(r, "https://tiktok.com/@user", "user");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual(BLANK);
+    m.lookup.mockResolvedValueOnce(found(rec("m")));
+    await scan(r, "https://tiktok.com/@Maria_Shops", "Maria_Shops");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    // …and the other way round: after a fill, a scan of the shared word takes the untouched details back and fills nothing
+    m.lookup.mockResolvedValueOnce(found(rec("a", { phone: "0911000001" }), rec("b", { phone: "0922000002" }), rec("c", { phone: "0933000003" })));
+    await scan(r, "https://tiktok.com/@user", "user");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(3));
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual(BLANK);
+    expect(val(r, S.handle)).toBe("user");
+    nothingNew(r);
   });
 
   it.each([

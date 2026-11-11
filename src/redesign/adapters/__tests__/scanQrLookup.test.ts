@@ -1,6 +1,7 @@
-// Scan QR → fill from Customers (Jeff 2026-11-12, sql/149 + sql/150).
+// Scan QR → fill from Customers (Jeff 2026-11-12, sql/149).
 // Which records belong to a username (rule #4), the one read it makes (shape, own rows only, time
-// limit), and which record is used (the newest). The Supabase client is a recording fake — no network.
+// limit), and which record is used (the newest — none when the records have 3+ different phones).
+// The Supabase client is a recording fake — no network.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 
@@ -36,8 +37,8 @@ vi.mock("../../../supabase", () => {
 });
 
 import {
-  isLookupable, lookupCustomersByHandle, lookupFilter, lookupKey, matchLookupRows, scanQrLookupVisible, untouchedFilled, usernameKeyOf,
-  SCAN_QR_LOOKUP_LIMIT, SCAN_QR_LOOKUP_TIMEOUT_MS, type ScanQrLookupRaw,
+  distinctPhones, isLookupable, lookupCustomersByHandle, lookupFilter, lookupKey, matchLookupRows, recordToFill, scanQrLookupVisible, untouchedFilled, usernameKeyOf,
+  SCAN_QR_LOOKUP_LIMIT, SCAN_QR_LOOKUP_TIMEOUT_MS, SCAN_QR_SHARED_PHONES, type ScanQrLookupRaw,
 } from "../scanQrLookup";
 
 const FIXTURES = JSON.parse(readFileSync("src/redesign/adapters/__tests__/fixtures/scanQrUsernameKey.json", "utf8")) as { cases: { text: string; key: string; why: string }[] };
@@ -55,7 +56,7 @@ beforeEach(() => { h.calls.length = 0; h.data = []; h.error = null; h.session = 
 afterEach(() => { vi.useRealTimers(); });
 
 describe("rule #4 — which saved text stands for which username", () => {
-  it(`every example of the shared list (${FIXTURES.cases.length}) — the same list is run against the database rule`, () => {
+  it(`every example of the list (${FIXTURES.cases.length})`, () => {
     expect(FIXTURES.cases.length).toBeGreaterThanOrEqual(40);
     for (const c of FIXTURES.cases) expect([c.text, usernameKeyOf(c.text)], c.why).toEqual([c.text, c.key]);
   });
@@ -173,16 +174,59 @@ describe("the read — one per scan, this screen's table, own rows only", () => 
     expect(await p).toEqual({ ok: false });
     expect(SCAN_QR_LOOKUP_TIMEOUT_MS).toBe(4000);
   });
-  it("a full page with no exact record in it = 'could not read' (never a false 'none'); with one in the page, that one is the newest", async () => {
+  it("a full page = not every record was seen → 'could not read' (never a false 'none', never a fill from a list that was not fully counted)", async () => {
     h.data = Array.from({ length: SCAN_QR_LOOKUP_LIMIT }, (_, i) => db(`n${i}`, "aXb"));
     expect(await lookupCustomersByHandle("711", "a_b")).toEqual({ ok: false });
+    // also with an exact record inside the full page: more records (with other phones) may lie beyond it
     h.data = [db("n0", "aXb", { updated_at: "2026-11-09T00:00:00+00:00" }), db("hit", "@a_b (U)", { updated_at: "2026-11-08T00:00:00+00:00" }), ...Array.from({ length: SCAN_QR_LOOKUP_LIMIT - 2 }, (_, i) => db(`n${i + 1}`, "aXb"))];
+    expect(await lookupCustomersByHandle("711", "a_b")).toEqual({ ok: false });
+    // one row fewer than a full page: everything was seen → the record is found
+    h.data = h.data.slice(0, SCAN_QR_LOOKUP_LIMIT - 1);
     expect(ids(await lookupCustomersByHandle("711", "a_b"))).toEqual(["hit"]);
   });
   it("the adapter reads only — no insert / update / delete / rpc anywhere in it", () => {
     const src = readFileSync("src/redesign/adapters/scanQrLookup.ts", "utf8").replace(/\/\/.*$/gm, "");
     expect(src).not.toMatch(/\.(insert|update|upsert|delete|rpc)\(/);
     expect(src.match(/\.from\(/g)).toHaveLength(1);
+  });
+});
+
+describe("which record is used — and the word that is NOT one person's username", () => {
+  const row = (id: string, phone: string, updatedAt = "2026-11-01T00:00:00+00:00") => ({ id, name: `Name ${id}`, phone, storeId: "123456", updatedAt });
+  it("the limit is 3 different phones", () => { expect(SCAN_QR_SHARED_PHONES).toBe(3); });
+  it("no record → nothing; 1 record → that one; several records → the first (= the newest)", () => {
+    expect(recordToFill([])).toBeNull();
+    expect(recordToFill([row("a", "0911000001")])?.id).toBe("a");
+    expect(recordToFill([row("new", "0911000001", "2026-11-09T00:00:00+00:00"), row("old", "0911000001", "2026-09-01T00:00:00+00:00")])?.id).toBe("new");
+  });
+  it("2 different phones (any number of records) → still the newest", () => {
+    expect(recordToFill([row("a", "0911000001"), row("b", "0922000002")])?.id).toBe("a");
+    expect(recordToFill([row("a", "0911000001"), row("b", "0922000002"), row("c", "0911000001"), row("d", "0922000002"), row("e", "0922000002")])?.id).toBe("a");
+  });
+  it("3 or more DIFFERENT phones → nothing is used (a word the seller writes for many buyers)", () => {
+    expect(recordToFill([row("a", "0911000001"), row("b", "0922000002"), row("c", "0933000003")])).toBeNull();
+    expect(recordToFill(Array.from({ length: 60 }, (_, i) => row(`r${i}`, `09${String(10000000 + i)}`)))).toBeNull();
+  });
+  it("the same phone written with spaces or dashes is ONE phone; a blank phone is not counted", () => {
+    expect(distinctPhones([row("a", "0911222333"), row("b", "0911 222 333"), row("c", "0911-222-333"), row("d", " 0911222333 ")])).toBe(1);
+    expect(distinctPhones([row("a", "0911222333"), row("b", ""), row("c", "   "), row("d", "0955000111")])).toBe(2);
+    expect(recordToFill([row("a", "0911222333"), row("b", "0911 222 333"), row("c", "0955000111"), row("d", "")])?.id).toBe("a");
+    expect(distinctPhones([])).toBe(0);
+  });
+  it("only the username's OWN records are counted: other apps and near-names never reach the count", async () => {
+    // 2 phones under @x1 (TikTok / no app) + the same text saved as LINE and a longer name with other phones
+    h.data = [
+      db("1", "@x1", { phone: "0911000001", updated_at: "2026-11-09T00:00:00+00:00" }), db("2", "x1", { phone: "0922000002" }),
+      db("3", "x1", { phone: "0933000003", contact_platform: "line" }), db("4", "@x12", { phone: "0944000004" }), db("5", "(U) @x1", { phone: "0955000005" }),
+    ];
+    const res = await lookupCustomersByHandle("711", "x1");
+    expect(ids(res)).toEqual(["1", "2"]);
+    expect(res.ok && recordToFill(res.rows)?.id).toBe("1");
+    // a third TikTok phone → the word is shared → nothing
+    h.data = [...h.data, db("6", "@x1 (U)", { phone: "0966000006" })];
+    const shared = await lookupCustomersByHandle("fm", "x1");
+    expect(ids(shared)).toHaveLength(3);
+    expect(shared.ok && recordToFill(shared.rows)).toBeNull();
   });
 });
 
@@ -200,6 +244,12 @@ describe("what the form remembers, and the gate", () => {
     expect(scanQrLookupVisible({ switchOn: false, previewKey: true })).toBe(true);
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain('const scanQrLookupOn = scanQrLookupVisible({ switchOn: featureSw.scanQrLookup, previewKey: hasFeature("scan_qr_lookup") });');
+  });
+  it("saving a parcel is not touched: the removed 'one username = one record' database change is not in the repo", () => {
+    for (const f of ["sql/150_one_username_one_record.sql", "sql/150_one_username_one_record_rollback.sql", "scripts/sql150-behaviour.mjs", "src/redesign/adapters/__tests__/scanQrLookupSql150.test.ts"]) expect(existsSync(f), f).toBe(false);
+    // …and the lookup code only reads (see "the adapter reads only" above); the hook never calls a save
+    const hook = readFileSync("src/redesign/adapters/useScanQrLookup.ts", "utf8").replace(/\/\/.*$/gm, "");
+    expect(hook).not.toMatch(/supabase|\.(insert|update|upsert|delete|rpc)\(|saveParcelScan|saveFmScan|updateParcelScan/);
   });
   it("nothing new is ever shown: no box component, no words for it, no view logic left", () => {
     expect(existsSync("src/redesign/components/ScanQrLookupBox.tsx")).toBe(false);

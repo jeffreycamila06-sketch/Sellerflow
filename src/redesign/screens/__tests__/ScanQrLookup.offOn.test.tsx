@@ -112,13 +112,43 @@ describe.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("%s Parcel Scan 
     h.rows[S.table] = [
       row("old", "me-1", "pedro123", "Oldest Name", { updated_at: "2026-09-01T00:00:00+00:00", phone: "0900000001", store_id: "111111" }),
       row("new", "me-1", "@pedro123 (U)", "Newest Name", { updated_at: "2026-11-10T00:00:00+00:00", phone: "0900000003", store_id: "333333" }),
-      row("mid", "me-1", "@ pedro123", "Middle Name", { updated_at: "2026-10-01T00:00:00+00:00", phone: "0900000002", store_id: "222222" }),
-    ];
+      row("mid", "me-1", "@ pedro123", "Middle Name", { updated_at: "2026-10-01T00:00:00+00:00", phone: "0900000001", store_id: "222222" }),
+    ]; // 3 records, 2 different phones
     const r = await openAndScan(true, "pedro123", "pedro123");
     await waitFor(() => expect(name(r)).toBe("Newest Name"));
     expect((r.getByTestId(id("phone")) as HTMLInputElement).value).toBe("0900000003");
     expect((r.getByTestId(id("store")) as HTMLInputElement).value).toBe("333333");
     expect(r.container.textContent).not.toMatch(/Oldest Name|Middle Name/);
+    expect(customerReads()).toHaveLength(1);
+  });
+
+  it("ON, 3 DIFFERENT phones under the scanned word (a word used for many buyers): ONE read, NOTHING is filled, same message, nothing new on screen", async () => {
+    h.rows[S.table] = [
+      row("a", "me-1", "user", "Buyer One", { updated_at: "2026-11-10T00:00:00+00:00", phone: "0900000001", store_id: "111111" }),
+      row("b", "me-1", "@user", "Buyer Two", { updated_at: "2026-11-09T00:00:00+00:00", phone: "0900000002", store_id: "222222" }),
+      row("c", "me-1", "@user (U)", "Buyer Three", { updated_at: "2026-11-08T00:00:00+00:00", phone: "0900000003", store_id: "333333" }),
+    ];
+    const r = await openAndScan(true, "https://tiktok.com/@user", "user");
+    expect(customerReads()).toHaveLength(1);
+    await new Promise((done) => setTimeout(done, 30)); // any answer has arrived by now
+    expect(name(r)).toBe("");
+    expect((r.getByTestId(id("phone")) as HTMLInputElement).value).toBe("");
+    expect((r.getByTestId(id("store")) as HTMLInputElement).value).toBe("");
+    expect(r.getByTestId(id("toast")).textContent).toBe("Filled @username from QR");
+    expect(r.container.textContent).not.toMatch(/Buyer One|Buyer Two|Buyer Three/);
+    expect(r.container.querySelector('[data-testid*="-ql"]')).toBeNull();
+  });
+
+  it("ON, the third phone belongs to ANOTHER app's record / another seller's row: only the username's own 2 phones count → the newest is filled", async () => {
+    h.rows[S.table] = [
+      row("new", "me-1", "@pedro123", "Newest Name", { updated_at: "2026-11-10T00:00:00+00:00", phone: "0900000001" }),
+      row("old", "me-1", "pedro123", "Older Name", { updated_at: "2026-09-01T00:00:00+00:00", phone: "0900000002" }),
+      row("line", "me-1", "pedro123", "Line Buyer", { updated_at: "2026-11-11T00:00:00+00:00", phone: "0900000003", contact_platform: "line" }),
+      row("else", "someone-else", "pedro123", "Other Seller's Buyer", { updated_at: "2026-11-11T00:00:00+00:00", phone: "0900000004" }),
+      row("near", "me-1", "@pedro1234", "Longer Name", { updated_at: "2026-11-11T00:00:00+00:00", phone: "0900000005" }),
+    ];
+    const r = await openAndScan(true, "pedro123", "pedro123");
+    await waitFor(() => expect(name(r)).toBe("Newest Name"));
     expect(customerReads()).toHaveLength(1);
   });
 
