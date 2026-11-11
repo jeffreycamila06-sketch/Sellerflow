@@ -1,5 +1,8 @@
 # Scan QR → hanapin sa Customers — mga mockup (Hakbang 1)
 
+> **Luma na ang mga mockup dito (Hakbang 1).** Noong 2026-11-12, inalis ni Jeff ang listahan at ang kahon. Ang totoong
+> screen ngayon ay nasa `built/`.
+
 **Mockup lang ito — wala pang binuo sa app.** Plano: `docs/plans/scan-qr-lookup-plan.md` (§3).
 
 Paano ginawa: ang TOTOONG Parcel Scan screen (7-11 at FamilyMart) ay binuksan sa preview database

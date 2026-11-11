@@ -335,7 +335,7 @@ Rows that failed show **Not printed**. Tap **Reprint** on each one after the pri
 **Printer used by another app or phone:** a Bluetooth printer connects to one app at a time. Close the printer''s own app (or other label apps), disconnect it from other phones, turn the printer off and on, then in **Printer settings** tap **Scan** and pick it again. Use **Test Print** to check.
 
 If the app shows "Time for an update — A new version is available", update the app first; it may fix Bluetooth printing.'),
-  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-11-11'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家, buyer contact, whatsapp, line, messenger, instagram, contact ng buyer, 買家聯絡方式, 买家联系方式, liên hệ người mua, ช่องทางติดต่อผู้ซื้อ, kontak pembeli', '**Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
+  ('parcel-scan', 'Parcel Scan (7-11) and Customer Details', '2026-11-12'::date, 'parcel scan, 7-11, 711, parcel, 賣貨便, 交貨便, customer details, waybill, padala, 包裹, 包裹扫描, 寄件, 全家, buyer contact, whatsapp, line, messenger, instagram, contact ng buyer, 買家聯絡方式, 买家联系方式, liên hệ người mua, ช่องทางติดต่อผู้ซื้อ, kontak pembeli', '**Parcel Scan** (Taiwan only) is in **Settings** as "Parcel Scan 7-11". There is also a "Parcel Scan FamilyMart" tile.
 
 Who sees what:
 - If the tile opens, you can use it.
@@ -345,9 +345,9 @@ Who sees what:
 
 **Parcel Scan 7-11**
 1. Tap **Manual encode (no camera)** and type the customer name (2 to 10 letters — a Chinese character counts as 2, so 1 to 5 Chinese characters; no numbers or symbols), phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
-2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo. If this is open for your account and that @username is already in your **Customers**, the name, phone and store # are filled in too — check them, then type the amount. If the buyer has more than one saved record, tap the right one (newest first), or **Not here — I''ll type it**. If you already typed something, nothing is replaced: tap **Use** to take the saved details. While you edit a saved parcel, Scan QR fills only the @username.
+2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo. If this is open for your account and that @username is already in your **Customers**, the name, phone and store # are filled in too — check them, then type the amount. If you already typed a name, phone or store #, nothing is filled in. While you edit a saved parcel, Scan QR fills only the @username.
 3. **Buyer contact** (Plus / Pro / Master): under the amount, tap the buyer''s app — TikTok, LINE, WhatsApp, Facebook, Instagram or Other — then type the contact: TikTok or Instagram @username, LINE ID (not the phone number), WhatsApp number (Taiwan 09… works; other countries with the country code), Facebook name or profile link. The app you picked stays selected for the next parcel. Tick **Buyer has no contact** if there is none. A WhatsApp number that is not 8–15 digits shows a short message and cannot be saved. Scan QR still fills the TikTok @username.
-4. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel (the buyer''s app and contact come back with them; you can change them before Import or with ✏️ Edit).
+4. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel (the buyer''s app and contact come back with them; you can change them before Import or with ✏️ Edit). Where Scan QR fill is open for your account, a TikTok @username has one entry: saving a new parcel for that @username updates the entry with the new name, phone and store #.
 5. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.
 
 **Parcel Scan FamilyMart (全家)** — in **Settings**, next to Parcel Scan 7-11.

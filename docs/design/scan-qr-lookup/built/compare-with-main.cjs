@@ -18,7 +18,7 @@ async function run(b, base, fm, w) {
       for (let r = 0; r < n; r++) for (let cc = 0; cc < n; cc++) if (q.isDark(r, cc)) x.fillRect((cc + qz) * sc, (r + qz) * sc, sc, sc);
       res(c.toDataURL("image/png").split(",")[1]); };
     document.head.appendChild(s2);
-  }), "https://tiktok.com/@maria_shops");
+  }), "https://tiktok.com/@annc_tw");
   await p.setInputFiles(`[data-testid="${k}-qr-file"]`, { name: "q.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
   await p.waitForSelector(`[data-testid="${k}-toast"]`, { timeout: 8000 });
   const shots = [];

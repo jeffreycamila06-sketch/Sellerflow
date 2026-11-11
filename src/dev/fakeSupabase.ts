@@ -25,7 +25,7 @@ const tables: Record<string, Row[]> = {
     { key: "fm_scan_enabled", value: "true" }, { key: "fm_pickup_enabled", value: "true" },
     { key: "fm_shipping_fee", value: "39" }, { key: "shipping_fee_global", value: "38" },
     { key: "past_sessions_public", value: "true" }, // Orders → Sessions → a past session (export check)
-    // Parcel Scan: Scan QR → look up in Customers (sql/149) — previews in docs/design/scan-qr-lookup/built.
+    // Parcel Scan: Scan QR → fill from Customers (sql/149) — previews in docs/design/scan-qr-lookup/built.
     // Open the preview with ?qlookup=off to see the screen with the switch off.
     { key: "scan_qr_lookup_enabled", value: typeof location !== "undefined" && /[?&]qlookup=off\b/.test(location.search) ? "false" : "true" },
   ],
@@ -50,8 +50,9 @@ const tables: Record<string, Row[]> = {
     { id: "c4", user_id: UID, phone: "0955777888", name: "Joy Reyes", store_id: "211004", notes: "joy.reyes.90", contact_platform: "facebook", created_at: iso(9), updated_at: iso(2) },
     { id: "c5", user_id: UID, phone: "0966888999", name: "Ana Cruz", store_id: "170331", notes: "ana.cruz_ig", contact_platform: "instagram", created_at: iso(8), updated_at: iso(3) },
     { id: "c6", user_id: UID, phone: "0977999000", name: "張美玲", store_id: "150210", notes: "Telegram @meiling", contact_platform: "other", created_at: iso(7), updated_at: iso(4) },
-    // Scan QR lookup previews: one username with 3 records (two stores), and near-names that must NOT match
-    { id: "c7", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "266402", notes: "@annc_tw", contact_platform: null, created_at: iso(60), updated_at: iso(8) },
+    // Scan QR fill previews: one username with 3 records — the NEWEST (c7, saved as "@annc_tw (U)") is the one
+    // that is filled; near-names and a LINE record with the same text must NOT be used
+    { id: "c7", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "266402", notes: "@annc_tw (U)", contact_platform: null, created_at: iso(60), updated_at: iso(8) },
     { id: "c8", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "133712", notes: "annc_tw", contact_platform: null, created_at: iso(50), updated_at: iso(30) },
     { id: "c9", user_id: UID, phone: "0955123456", name: "Ann Chen", store_id: "133712", notes: "Annc_TW", contact_platform: null, created_at: iso(70), updated_at: iso(44) },
     { id: "c10", user_id: UID, phone: "0988111222", name: "不相干的人", store_id: "170331", notes: "annc_tw2", contact_platform: null, created_at: iso(5), updated_at: iso(1) },
@@ -62,9 +63,9 @@ const tables: Record<string, Row[]> = {
   ],
   fm_parcel_customers: [
     { id: "fc1", user_id: UID, phone: "0911222333", name: "黃志明", store_id: "022131", buyer_username: "+886911222333", contact_platform: "whatsapp", created_at: iso(5), updated_at: iso(0.3) },
-    // Scan QR lookup previews (FamilyMart keeps its OWN Customers — nothing is read from the 7-11 ones)
+    // Scan QR fill previews (FamilyMart keeps its OWN Customers — nothing is read from the 7-11 ones)
     { id: "fc2", user_id: UID, phone: "0912345678", name: "王小美", store_id: "022131", buyer_username: "@Maria_Shops", contact_platform: null, created_at: iso(30), updated_at: iso(6) },
-    { id: "fc3", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "022131", buyer_username: "annc_tw", contact_platform: null, created_at: iso(60), updated_at: iso(8) },
+    { id: "fc3", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "022131", buyer_username: "@annc_tw (U)", contact_platform: null, created_at: iso(60), updated_at: iso(8) },
     { id: "fc4", user_id: UID, phone: "0922333444", name: "陳安安", store_id: "018274", buyer_username: "@annc_tw", contact_platform: null, created_at: iso(50), updated_at: iso(30) },
     { id: "fc5", user_id: UID, phone: "0955123456", name: "陳安", store_id: "018274", buyer_username: "ANNC_TW", contact_platform: null, created_at: iso(70), updated_at: iso(44) },
   ],

@@ -1,6 +1,6 @@
-// REAL screens of the built "Scan QR → look up in Customers" (Hakbang 2). Nothing is drawn on top:
-// the preview database (src/dev/fakeSupabase.ts) has the switch ON and a few Customers records;
-// a REAL QR picture is given to the REAL Scan QR input and the app does the rest.
+// REAL screens of the built "Scan QR → fill from Customers" (Hakbang 3, Jeff 2026-11-12: no list, no box).
+// Nothing is drawn on top: the preview database (src/dev/fakeSupabase.ts) has the switch ON and a few
+// Customers records; a REAL QR picture is given to the REAL Scan QR input and the app does the rest.
 //   1) npx vite --config vite.preview.config.ts --port 5199
 //   2) node docs/design/scan-qr-lookup/built/make-built.cjs [name-filter]
 const { chromium } = require("playwright");
@@ -12,11 +12,10 @@ const DEVICES = [
   { id: "android430", w: 430, h: 932 },
   { id: "laptop1280", w: 1280, h: 800 },
 ];
+// @annc_tw has 3 records in the preview Customers (the newest is saved as "@annc_tw (U)") → that one is filled.
 const STATES = [
-  { id: "1-one-match", qr: "https://tiktok.com/@maria_shops" },
-  { id: "2-many-matches", qr: "https://tiktok.com/@annc_tw" },
-  { id: "3-no-match", qr: "https://tiktok.com/@newbuyer_tw" },
-  { id: "4-typed", typed: true, qr: "https://tiktok.com/@maria_shops" },
+  { id: "1-filled", qr: "https://tiktok.com/@annc_tw" },
+  { id: "2-no-match", qr: "https://tiktok.com/@newbuyer_tw" },
 ];
 
 async function openManual(p, fm) {
@@ -41,7 +40,6 @@ async function qrPng(p, text) {
 }
 async function applyState(p, fm, st) {
   const k = fm ? "fms" : "ps";
-  if (st.typed) await p.fill(`[data-testid="${k}-name"]`, fm ? "王美" : "Wang Mei");
   const png = await qrPng(p, st.qr);
   await p.setInputFiles(`[data-testid="${k}-qr-file"]`, { name: "sticker-qr.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
   await p.waitForSelector(`[data-testid="${k}-toast"]`, { timeout: 8000 });
@@ -55,13 +53,13 @@ async function applyState(p, fm, st) {
     const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
     const delta = top.getBoundingClientRect().top - barBottom - 10;
     if (sc) sc.scrollTop += delta; else window.scrollBy(0, delta);
-    const box = document.querySelector(`[data-testid="${k}-ql"]`);
-    const picks = [...document.querySelectorAll(`[data-testid="${k}-ql-pick"],[data-testid="${k}-ql-none"],[data-testid="${k}-ql-use"]`)].map((b) => Math.round(b.getBoundingClientRect().height));
+    const v = (t) => document.querySelector(`[data-testid="${k}-${t}"]`).value;
     return {
-      bottom: Math.ceil(cardEl.getBoundingClientRect().bottom), kind: box ? box.getAttribute("data-kind") : "none",
-      name: document.querySelector(`[data-testid="${k}-name"]`).value, focus: document.activeElement && document.activeElement.getAttribute("data-testid"),
-      tapHeights: picks, pageScrollX: document.documentElement.scrollWidth > window.innerWidth,
-      topbarH: bar ? Math.round(bar.getBoundingClientRect().height) : 0,
+      bottom: Math.ceil(cardEl.getBoundingClientRect().bottom),
+      newUi: document.querySelectorAll('[data-testid*="-ql"]').length, // must be 0: nothing new is ever shown
+      name: v("name"), phone: v("phone"), store: v("store"), focus: document.activeElement && document.activeElement.getAttribute("data-testid"),
+      pageScrollX: document.documentElement.scrollWidth > window.innerWidth,
+      topbarH: bar ? Math.round(bar.getBoundingClientRect().height) : 0, cardH: Math.round(cardEl.getBoundingClientRect().height),
     };
   }, k);
   await p.waitForTimeout(250);
