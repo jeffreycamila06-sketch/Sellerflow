@@ -17,6 +17,7 @@ import { notCoveredLabel } from "../adapters/accountLive";
 import { isIOS } from "../adapters/platform";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+import { BackButton } from "../components/BackButton";
 import { TELEGRAM_URL } from "../../lib/telegram";
 const USERNAME_RE = /^[a-z0-9._]*$/; // SOFT guidance only — never hard-blocks (matches main's accept-then-clean).
 
@@ -71,7 +72,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
+        <BackButton onClick={onBack} />
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span style={{ width: 26, height: 26, borderRadius: 8, background: isTT ? "#000" : "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isTT ? 13 : 14, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: isTT ? undefined : "var(--font-display)" }}>{isTT ? "t" : "f"}</span>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, letterSpacing: "-.01em" }}>{title}</div>

@@ -3,13 +3,15 @@
 import { CUSTOMERS, fmt, type Customer } from "../data";
 import { headerBar, headerTitle, mono } from "../ui";
 import { useT } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { fbNameOnly } from "../adapters/fbName";
 
-export default function CustomerData({ onLegal, cur, customers = CUSTOMERS, onExport }: { onLegal: () => void; cur: string; customers?: Customer[]; onExport?: () => void }) {
+export default function CustomerData({ onLegal, cur, customers = CUSTOMERS, onExport, onBack }: { onLegal: () => void; cur: string; customers?: Customer[]; onExport?: () => void; onBack?: () => void }) {
   const t = useT();
   return (
     <div>
       <div style={headerBar}>
+        <HeaderWithBack onBack={onBack}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={headerTitle}>{t.rd_cd_title}</div>
@@ -19,6 +21,7 @@ export default function CustomerData({ onLegal, cur, customers = CUSTOMERS, onEx
         </div>
         {/* #7 export-scope label: this table + its CSV cover the LOADED pages only */}
         <div style={{ fontSize: 10.5, opacity: 0.75, marginTop: 7 }}>{t.rd_exp_loaded_note}</div>
+        </HeaderWithBack>
       </div>
       <div style={{ padding: 14 }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>

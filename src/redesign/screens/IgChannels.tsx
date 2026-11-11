@@ -8,6 +8,7 @@ import { isFbEligible, nativeAuthSession } from "../adapters/fb";
 import { startIgAuth, removeIgAccount, igDisconnect, igReturnText, type IgAccount } from "../adapters/ig";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+import { BackButton } from "../components/BackButton";
 import AccountQuotaLine from "../components/AccountQuotaLine";
 import { useAccountCoverage, isCovered, notCoveredLabel } from "../adapters/accountLive";
 import { isIOS } from "../adapters/platform";
@@ -92,7 +93,7 @@ export default function IgChannels({ account = null, accounts, onReload, onBack,
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
+        <BackButton onClick={onBack} />
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span style={{ width: 26, height: 26, borderRadius: 8, background: IG_BRAND, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>IG</span>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, letterSpacing: "-.01em" }}>{t.rd_ig_channels_title}</div>

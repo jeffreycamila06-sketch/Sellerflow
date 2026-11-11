@@ -5,6 +5,7 @@
 import { headerBar, headerTitle, mono } from "../ui";
 import { planLabel } from "../adapters/useAuthSession";
 import { useT, tpl } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import type { AccountUser } from "../../accountDb";
 import type { FreeStatus } from "../adapters/useFreeCap";
 import { planDaysLeft, daysDisplay, isTimeLimitedPlan } from "../../lib/planWindow";
@@ -27,7 +28,7 @@ const fmtDate = (iso: string): string => {
 const daysLeftDisplay = (iso: string): string =>
   daysDisplay(Math.max(0, planDaysLeft(iso, Date.now())));
 
-export default function Subscription({ account = null, isFreeUser = false, freeStatus = null }: { cur: string; account?: AccountUser | null; isFreeUser?: boolean; freeStatus?: FreeStatus | null }) {
+export default function Subscription({ account = null, isFreeUser = false, freeStatus = null, onBack }: { cur: string; account?: AccountUser | null; isFreeUser?: boolean; freeStatus?: FreeStatus | null; onBack?: () => void }) {
   const t = useT();
   // Real profile → plan/status/expiry; demo fallback when signed out. (The price
   // line was removed from the card per owner request — plan/price DATA is unchanged;
@@ -47,7 +48,7 @@ export default function Subscription({ account = null, isFreeUser = false, freeS
   const paidPlan = isTimeLimitedPlan(account ? account.plan : "pro");
   return (
     <div>
-      <div style={headerBar}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_sub_title}</div></div>
+      <div style={headerBar}><HeaderWithBack onBack={onBack}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_sub_title}</div></HeaderWithBack></div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ background: "linear-gradient(150deg,var(--accent),var(--accent))", borderRadius: 18, padding: 20, color: "#fff", position: "relative", overflow: "hidden", boxShadow: "0 10px 28px var(--accent-soft)" }}>
           <div style={{ position: "absolute", width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,.14)", top: -50, right: -30 }} />

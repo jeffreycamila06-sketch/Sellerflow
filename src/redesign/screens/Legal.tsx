@@ -2,16 +2,17 @@
 import type { CSSProperties } from "react";
 import { headerBar, headerTitle } from "../ui";
 import { useT } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { TELEGRAM_HANDLE } from "../../lib/telegram";
 
 const h: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--text)", marginBottom: 8 };
 const p: CSSProperties = { fontSize: 13, color: "var(--text-dim)", lineHeight: 1.65, margin: "0 0 18px" };
 
-export default function Legal() {
+export default function Legal({ onBack }: { onBack?: () => void } = {}) {
   const t = useT();
   return (
     <div>
-      <div style={headerBar}><div style={headerTitle}>{t.lg_pt_title}</div></div>
+      <div style={headerBar}><HeaderWithBack onBack={onBack}><div style={headerTitle}>{t.lg_pt_title}</div></HeaderWithBack></div>
       <div style={{ padding: "18px 18px 24px" }}>
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 600, marginBottom: 18 }}>{t.lg_updated}</div>
         <div style={h}>{t.lg_collect_h}</div>

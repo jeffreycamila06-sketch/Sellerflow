@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { useLang } from "../i18n/langContext";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
@@ -436,7 +437,7 @@ function jobDoneText(job: TrackingJob | null, t: T): string {
 
 // fm = the 全家 switch (or its preview) is on for this seller: adds "Sync from FamilyMart" and
 // the 7-11 / 全家 label. Off → the screen is exactly as before.
-export default function ParcelTracking({ userId, fm = false, contactOn = false }: { userId?: string | null; fm?: boolean; contactOn?: boolean } = {}) {
+export default function ParcelTracking({ userId, fm = false, contactOn = false, onBack }: { userId?: string | null; fm?: boolean; contactOn?: boolean; onBack?: () => void } = {}) {
   const t = useT();
   const today = taipeiDayId();
   const narrow = useNarrowLayout();
@@ -646,8 +647,10 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false }
       {/* 375px-safe (N1): the title block may shrink + wrap, the buttons wrap under it. */}
       <div style={{ ...headerBar, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }} data-testid="pt-header">
         <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+          <HeaderWithBack onBack={onBack}>
           <div style={{ ...headerTitle, overflowWrap: "anywhere" }}>{t.rd_pt_title}</div>
           <div style={{ fontSize: 11.5, color: "var(--on-header)", opacity: 0.85, marginTop: 2, overflowWrap: "anywhere" }}>{t.rd_pt_sub}</div>
+          </HeaderWithBack>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minWidth: 0, maxWidth: "100%" }}>
           {syncButton(true)}

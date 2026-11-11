@@ -33,6 +33,7 @@ import { stickerQrSupported } from "../adapters/stickerRaster";
 import ExactStickerPreview from "../components/ExactStickerPreview";
 import { PREVIEW_COMMENT } from "../adapters/stickerPreview";
 import { useT, tpl, type RedesignT } from "../i18n";
+import { BackButton } from "../components/BackButton";
 
 // ⚠️ ROLLBACK = flip to false (one-line change, Vercel-only). Do not delete
 // the legacy branches while this switch exists.
@@ -149,7 +150,7 @@ export default function PrintPattern({
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
+        <BackButton onClick={onBack} />
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>{t.rd_set_live_pattern}</div>
       </div>
 

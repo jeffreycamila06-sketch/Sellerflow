@@ -7,6 +7,7 @@ import { registrationErrorCode, REG_ERROR_KEYS, type RegisterFields, type Regist
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import { useGeoCountry } from "../adapters/useGeoCountry";
 import { useT } from "../i18n";
+import { BackButton } from "../components/BackButton";
 import { useLang } from "../i18n/langContext";
 import PasswordInput from "../components/PasswordInput";
 import CountryPhoneField from "../components/CountryPhoneField";
@@ -76,7 +77,7 @@ export default function Signup({ onBack, onLegal, onRegister }: {
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ background: "var(--header-bg)", padding: "16px 16px 18px", color: "var(--on-header)", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
+        <BackButton onClick={onBack} />
         <div>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>{t.rd_login_create_account}</div>
           <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>{t.rd_su_subtitle}</div>

@@ -30,6 +30,7 @@ import ParcelTracking from "./screens/ParcelTracking";
 import FmParcelScan from "./screens/FmParcelScan";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr, maxPendingParcels } from "./adapters/parcelScan";
 import { clearParcelDrafts, parcelBridgeVisible } from "./adapters/parcelDrafts";
+import { navigateOrigins, tabOrigins, backFrom, showsBack, type NavOrigins } from "./adapters/backNav";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { shippingAccess } from "./adapters/shippingGate";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
@@ -904,7 +905,32 @@ export default function RedesignApp() {
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
-  const [screen, setScreen] = useState<Screen>(anonScreen());
+  const [screen, setScreenRaw] = useState<Screen>(anonScreen());
+  // ‹ Back (Jeff 2026-11-11): every open records where the screen came from (adapters/backNav.ts);
+  // Back returns there; a bottom-nav tab clears the record; the Parcel Scan ⇄ never adds a step.
+  // navRef is the synchronous truth (handlers read it); navOrigins mirrors it for rendering.
+  const navRef = useRef<{ screen: Screen; origins: NavOrigins }>({ screen, origins: {} });
+  const [navOrigins, setNavOrigins] = useState<NavOrigins>({});
+  const setScreen = useCallback((next: Screen | ((s: Screen) => Screen)) => {
+    const cur = navRef.current;
+    const to = typeof next === "function" ? next(cur.screen) : next;
+    const origins = navigateOrigins(cur.origins, cur.screen, to);
+    navRef.current = { screen: to, origins };
+    setNavOrigins(origins);
+    setScreenRaw(to);
+  }, []);
+  const openTab = useCallback((to: Screen) => {
+    navRef.current = { screen: to, origins: tabOrigins() };
+    setNavOrigins(navRef.current.origins);
+    setScreenRaw(to);
+  }, []);
+  const goBack = useCallback((fallback?: Screen) => {
+    const cur = navRef.current;
+    const r = backFrom(cur.origins, cur.screen, fallback);
+    navRef.current = { screen: r.to as Screen, origins: r.origins };
+    setNavOrigins(r.origins);
+    setScreenRaw(r.to as Screen);
+  }, []);
   // iOS App Store compliance: hide/neutralize all payment & subscription UI on iOS only
   // (Android/web unchanged). `ios` is evaluated once per render; `?ios=1` overrides for
   // browser testing. iosExpired = the neutral "plan inactive" popup (connect-403 on iOS).
@@ -1242,9 +1268,6 @@ export default function RedesignApp() {
   const [ttOpen, setTtOpen] = useState(false);
   const [fbOpen, setFbOpen] = useState(false);
   const [shopeeOpen, setShopeeOpen] = useState(false); // P3 — Shopee source dropdown
-  // Where "Back" returns from the ManageChannels screen — depends on origin
-  // (Change 3): Settings → "settings" (unchanged), Live dashboard → "dashboard".
-  const [chanBack, setChanBack] = useState<Screen>("settings");
 
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
@@ -1509,9 +1532,9 @@ export default function RedesignApp() {
     // sellers never reach this handler (the FB Connect button renders only when
     // fbConnectEnabled = fbEnabled).
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
-    if (!selectedPage) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }
+    if (!selectedPage) { setFbOpen(false); setScreen("fbpages"); return; }
     // fb_stop_reasons — a Page that needs a reconnect goes to Authorize, not /fb/connect.
-    if (featureSw.fbStopReasons && fbReconnectIds.includes(selectedPage.pageId)) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }
+    if (featureSw.fbStopReasons && fbReconnectIds.includes(selectedPage.pageId)) { setFbOpen(false); setScreen("fbpages"); return; }
     // A different Page than the connected one: stop the connected Page first, then connect.
     if (fbChip.action.kind === "switch") {
       const { stopPageId, page } = fbChip.action;
@@ -1549,7 +1572,7 @@ export default function RedesignApp() {
   const onConnectInstagram = () => {
     if (igEff) { setIgOff(true); if (selectedIg) void igDisconnect(selectedIg.igUserId); return; }
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
-    if (!selectedIg) { setChanBack("dashboard"); setScreen("igaccounts"); return; }
+    if (!selectedIg) { setScreen("igaccounts"); return; }
     return commitLiveConnect({ platform: "Instagram", igUserId: selectedIg.igUserId, scopeKey: igScopeKey(selectedIg) });
   };
   const doIgConnect = async (igUserId: string) => {
@@ -1803,7 +1826,7 @@ export default function RedesignApp() {
       // Live dropdown row), retiring the old ConnectModal add-popup for this
       // path. The Facebook fallthrough below is KEPT (not deleted) but is
       // unreachable — nothing in the UI connects Facebook after the prior commits.
-      if (platform === "TikTok") { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); return; }
+      if (platform === "TikTok") { setTtOpen(false); setScreen("ttchannels"); return; }
       setConnectOpen(platform); return;
     }
     // EXPLICIT SESSION MODEL (sub-step 2): a session must be running before the feed
@@ -1969,14 +1992,13 @@ export default function RedesignApp() {
   const [, setOsSizeRev] = useState(0);
   // read only where it is shown (never on every live-feed render)
   const osSizeNow = oneStickerOn && (screen === "printpattern" || screen === "printersettings") ? oneStickerSizeNow(pp, psSize, osDevicePath, osPrinterName) : null;
-  const [psBack, setPsBack] = useState<"settings" | "printpattern">("settings");
   const [osDraft, setOsDraft] = useState<OneStickerSettings | null>(null);
   // the unsaved Live print pattern edits live only for the trip to Printer settings and back (adjusted during
-  // render when the screen changes — leaving both screens drops them, and Printer settings' Back is Settings again)
+  // render when the screen changes — leaving both screens drops them; Printer settings' Back goes to where it was opened from — adapters/backNav.ts)
   const [osTripScreen, setOsTripScreen] = useState(screen);
   if (osTripScreen !== screen) {
     setOsTripScreen(screen);
-    if (screen !== "printpattern" && screen !== "printersettings") { if (osDraft) setOsDraft(null); if (psBack !== "settings") setPsBack("settings"); }
+    if (screen !== "printpattern" && screen !== "printersettings") { if (osDraft) setOsDraft(null); }
   }
   const onPickOneSize = (w: number, h: number) => {
     const qrBefore = readSavedOneSticker()?.qr === true;
@@ -2578,7 +2600,7 @@ export default function RedesignApp() {
 
   return (
     <TProvider lang={lang}>
-    <div data-redesign="" data-theme={theme} data-accent={accent} data-motion={motionOn ? "on" : "off"} className="sfl-stage">
+    <div data-redesign="" data-theme={theme} data-accent={accent} data-motion={motionOn ? "on" : "off"} data-screen={screen} className="sfl-stage">
       <div className="sfl-phone">
         {theme === "dark" && (
           <>
@@ -2661,7 +2683,7 @@ export default function RedesignApp() {
             />
           )}
           {screen === "signup" && (
-            <Signup onBack={() => setScreen("login")} onLegal={() => setScreen("legal")} onRegister={auth.register} />
+            <Signup onBack={() => goBack()} onLegal={() => setScreen("legal")} onRegister={auth.register} />
           )}
           {screen === "dashboard" && sessionFix && (liveSession.loadStatus === "failed" || liveSession.loadStatus === "unknown") && (
             <div role="alert" data-testid="sess-gate-notice" style={{ position: "fixed", left: 12, right: 12, bottom: "calc(84px + env(safe-area-inset-bottom))", zIndex: 1200, background: "var(--danger)", color: "#fff", borderRadius: 14, padding: "12px 14px", boxShadow: "0 8px 24px rgba(0,0,0,.3)", display: "flex", alignItems: "center", gap: 10, maxWidth: 520, margin: "0 auto" }}>
@@ -2688,7 +2710,7 @@ export default function RedesignApp() {
               fbPageIdx={fbPageIdx} onPickFB={(i) => setFbPageIdx(i)}
               onConnectFB={onConnectFacebook}
               fbReconnectIds={fbReconnectIds} fbKeepDisconnect={featureSw.fbStopReasons}
-              onManageFB={() => { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); }}
+              onManageFB={() => { setFbOpen(false); setScreen("fbpages"); }}
               /* P3 — Shopee source chip (renders only when shopeeEnabled + ≥1 shop). */
               shopeeEnabled={shopeeEnabled}
               shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
@@ -2696,13 +2718,13 @@ export default function RedesignApp() {
               shopeeIdx={shopeeIdx} onPickShopee={(i) => setShopeeIdx(i)}
               shopeeConnected={shopeeEff} shopeeConnecting={shopeeConnecting}
               onConnectShopee={onConnectShopee}
-              onManageShopee={() => { setShopeeOpen(false); setChanBack("dashboard"); setScreen("shopeechannels"); }}
+              onManageShopee={() => { setShopeeOpen(false); setScreen("shopeechannels"); }}
               /* Shopee Live BETA — paste-link connect + the beta locks (sql/135). */
               shopeeLink={shopeeLinkOn ? { daysLeft: shopeeBetaAcc.daysLeft, error: shopeeLinkErr, onConnect: (shareLink: string) => { void commitLiveConnect({ platform: "Shopee", shopId: 0, sessionId: "", shareLink }); } } : undefined}
               platformLocks={lockTexts}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */
-              onManageTT={() => { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); }}
+              onManageTT={() => { setTtOpen(false); setScreen("ttchannels"); }}
               /* F3 — recovering has DISPLAY precedence over connected: while a grace
                  window is armed (health-cycle reconnect / socket blip) the pill shows
                  the existing amber pulsing "Connecting…" instead of a solid green; a
@@ -2740,7 +2762,7 @@ export default function RedesignApp() {
               {...(igEnabled ? { ig: {
                 accounts: igAccounts.map((a) => ({ igUserId: a.igUserId, name: a.username ? `@${a.username}` : a.igUserId })),
                 idx: igIdx, onPick: setIgIdx, connected: igEff, connecting: igConnecting,
-                onConnect: onConnectInstagram, onManage: () => { setChanBack("dashboard"); setScreen("igaccounts"); },
+                onConnect: onConnectInstagram, onManage: () => { setScreen("igaccounts"); },
               } } : {})}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               printed={printed} entId={entId} entPrice={entPrice}
@@ -2817,9 +2839,10 @@ export default function RedesignApp() {
           )}
           {screen === "settings" && (
             <GeneralSettings
+              onBack={() => goBack()}
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
               auto={autoControls} account={auth.profile} onSaveProfile={saveProfile}
-              onManageChannel={(p) => { setChanBack("settings"); setScreen(settingsChannelScreen(p, fbEnabled)); }}
+              onManageChannel={(p) => { setScreen(settingsChannelScreen(p, fbEnabled)); }}
               /* Owner-gated (LIVE_SOURCE_EMAILS) compact Channels list → LiveConnectModal
                  in manage mode. Non-owners fall back to the classic channelRow screens. */
               channelsV2={liveSourceMode}
@@ -2855,47 +2878,47 @@ export default function RedesignApp() {
             />
           )}
           {(screen === "ttchannels" || screen === "fbchannels") && (
-            <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen(chanBack)} onSaveChannels={saveChannels}
-              shopeeEnabled={shopeeEnabled} onShopee={() => { setChanBack("settings"); setScreen("shopeechannels"); }}
-              fbPagesEnabled={fbEnabled} onFbPages={() => { setChanBack("settings"); setScreen("fbpages"); }}
+            <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => goBack()} onSaveChannels={saveChannels}
+              shopeeEnabled={shopeeEnabled} onShopee={() => { setScreen("shopeechannels"); }}
+              fbPagesEnabled={fbEnabled} onFbPages={() => { setScreen("fbpages"); }}
               fbActivationOnly={featureSw.fbPolishV2 && !fbEnabled}
               fbSwitchesLoading={!featureSwReady}
-              {...(igEnabled ? { onInstagram: () => { setChanBack("settings"); setScreen("igaccounts"); } } : {})} />
+              {...(igEnabled ? { onInstagram: () => { setScreen("igaccounts"); } } : {})} />
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
-              Shopee chip's Manage row). Origin-aware Back via chanBack. */}
+              Shopee chip's Manage row). Back = where it was opened from (backNav). */}
           {screen === "shopeechannels" && shopeeEnabled && (
-            <ShopeeChannels account={auth.profile} shops={shopeeShops} preview={shopeePreview} onReload={reloadShopeeShops} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+            <ShopeeChannels account={auth.profile} shops={shopeeShops} preview={shopeePreview} onReload={reloadShopeeShops} onBack={() => goBack()} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* F-P3 — Facebook pages (fbEnabled-gated; reachable from ManageChannels + the
-              Live FB chip's Manage row / no-page authorize). Origin-aware Back via chanBack. */}
+              Live FB chip's Manage row / no-page authorize). Back = where it was opened from (backNav). */}
           {screen === "fbpages" && (
-            <FbChannels account={auth.profile} pages={fbPages} needsReconnectIds={fbReconnectIds} polish={featureSw.fbPolishV2} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+            <FbChannels account={auth.profile} pages={fbPages} needsReconnectIds={fbReconnectIds} polish={featureSw.fbPolishV2} onReload={reloadFbPages} onBack={() => goBack()} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {screen === "igaccounts" && igEnabled && (
-            <IgChannels account={auth.profile} accounts={igAccounts} onReload={reloadIgAccounts} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+            <IgChannels account={auth.profile} accounts={igAccounts} onReload={reloadIgAccounts} onBack={() => goBack()} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
-          {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={customersData.state === "live" ? exportCustomers : undefined} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}
-          {screen === "subscription" && !ios && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
-          {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
-          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} platformViewAs={platformViewAs} onSetPlatformViewAs={setPlatformViewAs} />}
-          {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
-          {screen === "shipping" && shippingGate === "open" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={shipSessionKey} {...(shipSessionKey !== shipLegacyKey ? { legacyKey: shipLegacyKey } : {})} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
+          {screen === "customers" && <Customers onBack={() => goBack()} cur={cur} customers={customersData.customers} state={customersData.state} onExport={customersData.state === "live" ? exportCustomers : undefined} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}
+          {screen === "subscription" && !ios && <Subscription onBack={() => goBack()} cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
+          {screen === "support" && <Support onBack={() => goBack()} onLegal={() => setScreen("legal")} />}
+          {screen === "admin" && isAdmin && <Admin onBack={showsBack(navOrigins, "admin") ? () => goBack() : undefined} onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} platformViewAs={platformViewAs} onSetPlatformViewAs={setPlatformViewAs} />}
+          {screen === "print" && <Print onBack={() => goBack()} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
+          {screen === "shipping" && shippingGate === "open" && <Shipping onBack={() => goBack()} cur={cur} buyers={liveSession.session.buyers} sessionKey={shipSessionKey} {...(shipSessionKey !== shipLegacyKey ? { legacyKey: shipLegacyKey } : {})} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} />
+            <ParcelScan onBack={() => goBack()} cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} />
           )}
-          {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />}
-          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} />}
-          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} contactOn={buyerContactOn} />}
-          {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
-          {screen === "legal" && <Legal />}
-          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => setScreen("menu")} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
-          {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={onDeleteAccount} />}
+          {screen === "customerdetails" && parcelAllowed && <CustomerDetails onBack={() => goBack()} cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />}
+          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} />}
+          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking onBack={() => goBack()} userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} contactOn={buyerContactOn} />}
+          {screen === "customerdata" && <CustomerData onBack={() => goBack()} onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
+          {screen === "legal" && <Legal onBack={() => goBack(authed ? "menu" : anonScreen())} />}
+          {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => goBack()} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
+          {screen === "delete" && <DeleteAccount onBack={() => goBack()} email={auth.profile?.email} onConfirm={onDeleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings
-              onBack={() => setScreen(psBack)}
+              onBack={() => goBack()}
               psType={psType} compactV2={stickerCompactV2On}
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
@@ -2923,7 +2946,7 @@ export default function RedesignApp() {
               isAdmin={isAdmin}
               onPrinterSaved={autoSaveNow}
               oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName, osDevicePath === "niimbot"), printerName: osPrinterName, limit: oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot"), onPick: onPickOneSize } : undefined}
-              sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && psBack === "printpattern"))}
+              sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && navOrigins.printersettings === "printpattern"))}
               customSize={oneStickerOn && !osSizeMode ? (() => {
                 // ONE SIZE, BOTH PLACES (Jeff 2026-11-10): the new sticker's Custom size in Printer settings too.
                 // Hidden (with a note) where this phone + printer prints the older sticker, or where the new
@@ -2951,10 +2974,10 @@ export default function RedesignApp() {
             />
           )}
           {screen === "printpattern" && oneStickerOn && (
-            <OneStickerPattern onBack={() => { setOsDraft(null); setScreen("settings"); }}
+            <OneStickerPattern onBack={() => { setOsDraft(null); goBack(); }}
               initial={readSavedOneSticker() ?? seedOneSticker(pp, psSize, oneStickerSeedQr(isStickerQrOn()), oneStickerDevicePath(buildSettingsFromRedesign({ pp, psType, psOut, psSize })), savedBtPrinter()?.name ?? null)}
               size={osSizeNow ?? { w: 100, h: 60 }}
-              onChangeSize={() => { setPsBack("printpattern"); setPsSizeOpen(true); setScreen("printersettings"); }}
+              onChangeSize={() => { setPsSizeOpen(true); setScreen("printersettings"); }}
               draft={osDraft}
               onDraft={setOsDraft}
               savedOnDevice={readSavedOneSticker() != null}
@@ -2992,7 +3015,7 @@ export default function RedesignApp() {
               })() : undefined} />
           )}
           {screen === "printpattern" && !oneStickerOn && (
-            <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}
+            <PrintPattern onBack={() => goBack()} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint(stickerV2On ? testBuyerWithComment(PREVIEW_COMMENT) : undefined)}
               layoutV2={stickerV2On} onTestPrintSample={stickerV2On && isAdmin ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
               stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur}
               previewSettings={stickerV2On ? buildSettingsFromRedesign({ pp, psType, psOut, psSize }) : undefined}
@@ -3008,29 +3031,29 @@ export default function RedesignApp() {
               <img src="/redesign/icon-180.png" alt="" className="sfl-anim-float" style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover" }} />
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--text)", letterSpacing: "-.01em" }}>SellerFlowLive</span>
             </div>
-            <button onClick={() => setScreen("dashboard")} className={navCls(screen === "dashboard")}>
+            <button onClick={() => openTab("dashboard")} className={navCls(screen === "dashboard")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_live}</span>
             </button>
-            <button onClick={() => setScreen("salestab")} className={navCls(screen === "salestab")} data-testid="nav-sales">
+            <button onClick={() => openTab("salestab")} className={navCls(screen === "salestab")} data-testid="nav-sales">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_sales}</span>
             </button>
-            <button onClick={() => { setOrdersInitialQuery(""); setScreen("orders"); }} className={navCls(ordersActive)}>
+            <button onClick={() => { setOrdersInitialQuery(""); openTab("orders"); }} className={navCls(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_orders}</span>
             </button>
-            <button onClick={() => setScreen("products")} className={navCls(screen === "products")}>
+            <button onClick={() => openTab("products")} className={navCls(screen === "products")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="m4 8.5 8 4.5 8-4.5M12 13v7" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_products}</span>
             </button>
-            <button onClick={() => setScreen("menu")} className={navCls(settingsActive)}>
+            <button onClick={() => openTab("menu")} className={navCls(settingsActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_settings}</span>
             </button>
             {/* Admin — owner only, sidebar only (display:none below 900px). */}
             {isAdmin && (
-              <button onClick={() => setScreen("admin")} className={navCls(screen === "admin") + " sfl-nav-admin"}>
+              <button onClick={() => openTab("admin")} className={navCls(screen === "admin") + " sfl-nav-admin"}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3 5 6v5c0 4 2.8 6.9 7 8 4.2-1.1 7-4 7-8V6l-7-3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
                 <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_admin}</span>
               </button>
@@ -3101,7 +3124,7 @@ export default function RedesignApp() {
             shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
             shopeeLiveId={shopeeEff && selectedShop ? selectedShop.shopId : null}
             shopeeEligible={shopeeEligible}
-            onAuthorizeShopee={() => { setLiveConnectPlatform(null); setChanBack("dashboard"); setScreen("shopeechannels"); }}
+            onAuthorizeShopee={() => { setLiveConnectPlatform(null); setScreen("shopeechannels"); }}
             onConnectShopee={(shopId, sessionId) => commitLiveConnect({ platform: "Shopee", shopId, sessionId })}
             onUpsell={() => { setLiveConnectPlatform(null); if (ios) setIosExpired(true); else setUpsellOpen(true); }}
           />

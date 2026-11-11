@@ -4,11 +4,12 @@
 import { useState } from "react";
 import { headerBar, headerTitle } from "../ui";
 import { useT, tpl } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { isIOS } from "../adapters/platform";
 import { TELEGRAM_HANDLE, TELEGRAM_URL } from "../../lib/telegram";
 import { FREE_TIER_CAP } from "../../lib/freeTier";
 
-export default function Support({ onLegal }: { onLegal: () => void }) {
+export default function Support({ onLegal, onBack }: { onLegal: () => void; onBack?: () => void }) {
   const t = useT();
   const GUIDE = [
     { title: t.rd_sup_g1, body: t.rd_sup_g1_body },
@@ -21,7 +22,7 @@ export default function Support({ onLegal }: { onLegal: () => void }) {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <div>
-      <div style={headerBar}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_sup_title}</div></div>
+      <div style={headerBar}><HeaderWithBack onBack={onBack}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_sup_title}</div></HeaderWithBack></div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow)", textAlign: "center" }}>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)" }}>{t.rd_sup_need}</div>

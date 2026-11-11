@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import {
   searchParcelCustomers, loadRecentParcelCustomers, updateParcelCustomer,
   deleteParcelCustomer, countPendingParcels, countParcelCustomers, type ParcelCustomer,
@@ -38,7 +39,7 @@ type EditForm = { name: string; phone: string; store: string; notes: string };
 // frozenState / waitFrozen: Parcel Scan passes its Dry / Frozen state (sql/79) and a way to wait
 // for it; standalone → read once here. An import WAITS for that state, then saves with the
 // seller's CURRENT mode (no control → no temp_layer, DB default 常溫). blocked → no import.
-export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS, frozenState, waitFrozen, contactOn = false }: { cur?: string; onImported?: () => void; pendingCap?: number; frozenState?: FrozenState; waitFrozen?: () => Promise<FrozenState>; contactOn?: boolean }) {
+export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS, frozenState, waitFrozen, contactOn = false, onBack }: { onBack?: () => void; cur?: string; onImported?: () => void; pendingCap?: number; frozenState?: FrozenState; waitFrozen?: () => Promise<FrozenState>; contactOn?: boolean }) {
   const t = useT();
 
   const [query, setQuery] = useState("");
@@ -253,8 +254,10 @@ export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = 
   return (
     <div>
       <div style={headerBar}>
+        <HeaderWithBack onBack={onBack}>
         <div className="sfl-anim-beat" style={headerTitle}>{t.rd_cd_title}</div>
         <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_cd_sub}</div>
+        </HeaderWithBack>
       </div>
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="cd-toast">{toast}</div>}

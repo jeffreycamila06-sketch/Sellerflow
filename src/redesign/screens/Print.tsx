@@ -9,6 +9,7 @@ import { fmt } from "../data";
 import { printSlip, type Settings } from "../adapters/printing";
 import type { Buyer } from "../../lib/orderTypes";
 import { useT, tpl } from "../i18n";
+import { BackButton } from "../components/BackButton";
 
 const statCard: CSSProperties = { flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px", boxShadow: "var(--shadow)" };
 
@@ -33,7 +34,7 @@ export default function Print({ onBack, cur, buyers = [], storeName = "SellerFlo
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ background: "rgba(255,255,255,.18)", border: "none", width: 32, height: 32, borderRadius: 9, color: "#fff", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+        <BackButton onClick={onBack} />
         <div style={{ flex: 1, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>{t.rd_pr_title}</div>
         {buyers.length > 0 && <button onClick={printAll} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", fontSize: 12.5, fontWeight: 700, padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{tpl(t.rd_pr_print_all, { n: buyers.length })}</button>}
       </div>
