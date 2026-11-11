@@ -124,6 +124,29 @@ describe("7-11 photo path — Scan QR → Customers lookup", () => {
     expect(r.queryByTestId("ps-ql")).toBeNull();
   });
 
+  it("Save on the photo card while the lookup is running: the answer is dropped and the NEXT photo starts clean", async () => {
+    m.scanParcel.mockResolvedValueOnce(read("Ana Cruz", "0912345678", "123456")).mockResolvedValueOnce(read("Next Buyer", "0955000111", "111222"));
+    let answer: (v: ScanQrLookupResult) => void = () => {};
+    m.lookup.mockImplementationOnce(() => new Promise<ScanQrLookupResult>((res) => { answer = res; }));
+    let finishSave: () => void = () => {};
+    m.saveParcelScan.mockImplementationOnce(async () => { await new Promise<void>((res) => { finishSave = res; }); return { ok: true, id: "srv-1" }; });
+    const r = mount(true);
+    await pickPhotos(r, 2);
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "500" } });
+    await scanQr(r, "maria_shops", "maria_shops");
+    await waitFor(() => expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(m.saveParcelScan).toHaveBeenCalledTimes(1));
+    await act(async () => { answer(found(rec("a"), rec("b", { storeId: "135791" }))); await Promise.resolve(); });
+    expect(r.queryByTestId("ps-ql-pick")).toBeNull(); // no list on the parcel being saved
+    expect(details(r).name).toBe("Ana Cruz");
+    await act(async () => { finishSave(); await Promise.resolve(); });
+    await waitFor(() => expect(val(r, "ps-name")).toBe("Next Buyer"));
+    expect(r.queryByTestId("ps-ql")).toBeNull();
+    expect(val(r, "ps-notes")).toBe("");
+    expect((m.saveParcelScan.mock.calls[0][0] as { name: string }).name).toBe("Ana Cruz");
+  });
+
   it("switch OFF on the photo card: username only, no lookup, the reading and its marks untouched", async () => {
     m.scanParcel.mockResolvedValue(read("Mraia Sntos", "0911222338", "246816"));
     m.lookup.mockResolvedValue(found(rec("a")));

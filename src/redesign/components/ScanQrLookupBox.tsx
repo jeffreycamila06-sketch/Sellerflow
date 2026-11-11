@@ -58,6 +58,9 @@ export default function ScanQrLookupBox({ view, onPick, onDismiss, testId }: {
           <div style={{ fontSize: 12, fontWeight: 800, color: "var(--warn, #b45309)", overflowWrap: "anywhere", lineHeight: 1.35, marginBottom: 4 }} data-testid={`${testId}-from`}>{tpl(t.rd_ql_mismatch, { h: from })}</div>
         )}
         <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere", lineHeight: 1.35 }} data-testid={`${testId}-title`}>{title}</div>
+        {view.kind === "mismatch" && view.failed && (
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", marginTop: 3, lineHeight: 1.35 }} data-testid={`${testId}-failed`}>{t.rd_ql_failed}</div>
+        )}
         {view.kind === "found" && updated(view.updatedAt) !== "" && (
           <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", marginTop: 2, lineHeight: 1.35 }} data-testid={`${testId}-date`}>{updated(view.updatedAt)}</div>
         )}

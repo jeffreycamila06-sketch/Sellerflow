@@ -54,11 +54,19 @@ FamilyMart; 360 px at 1280 px. Resulta sa `compare-with-main.log`: **24 sa 24 ay
 4. **Ang mensahe kapag hindi ma-check ang Customers** ay isang linya sa loob ng form (hindi ang lumilipas na mensahe sa
    itaas) — para hindi ito mabura agad ng timer ng naunang mensahe. Filipino: "Hindi ma-check ang Customers ngayon —
    i-type, o gamitin ang Customers" (pinalitan ang "Hindi nahanap…" dahil puwedeng mayroon naman talagang record).
-5. **Pagkatapos ng Import mula sa Customers:** kung may hinanap na sa kasalukuyang entry (may kahon / listahan / napunan),
-   **nililinis ang buong entry** (pati username). Kung walang hinanap, hindi ginagalaw ang naka-type — gaya ngayon.
+5. **Pagkatapos ng Import mula sa Customers:** kung may **naisulat ang hanap** sa kasalukuyang entry (napunan mula sa
+   record), **nililinis ang buong entry** (pati username at ang lumang mensahe ng bigong save). Kung mungkahi o listahan
+   lang ang nakalabas (walang naisulat), o walang hinanap: hindi ginagalaw ang naka-type — gaya ngayon; ang mungkahi /
+   listahan lang ang nawawala.
 6. **Kapag pinindot ang Save habang naghahanap pa:** itinatapon ang sagot (hindi na ito lalabas sa parcel na iyon o sa
-   susunod).
+   susunod). Kung **bumagsak ang save**, may linyang "Hindi ma-check ang Customers ngayon…" para hindi magmukhang
+   "walang record".
 7. **Kapag may details pa ni @A sa form at lumabas ang mungkahi para kay @B:** may dagdag na dilaw na linyang "Ang details
-   ay galing kay @A — pakisuri" sa loob ng parehong kahon.
-8. **"Gamitin" / pagpili ng record:** isinusulat lang ang may laman sa record — hindi nito binubura ang naka-type kapag
-   blangko ang katumbas sa record.
+   ay galing kay @A — pakisuri" sa loob ng parehong kahon. Kapag hindi na-check si @B, sinasabi rin iyon sa kahon.
+8. **"Gamitin" / pagpili ng record:** sa form na ang seller ang nag-type, isinusulat lang ang may laman sa record (hindi
+   binubura ang naka-type kapag blangko ang katumbas sa record). Pero kapag ang nasa form ay tira ng record ni @A, ang
+   **buong** record ni @B ang pumapalit (pati blangko) — walang matitira kay @A sa ilalim ng "Nahanap: @B".
+
+Ang 32 larawan ay kinuha sa commit `ca183185`. Ang mga ayos pagkatapos noon ay hindi nagbago sa apat na sitwasyong nasa
+larawan (dagdag lang na linya sa dilaw na kahon ng "galing kay @A" kapag hindi na-check); ang paghahambing sa `main` ay
+inulit sa huling code.

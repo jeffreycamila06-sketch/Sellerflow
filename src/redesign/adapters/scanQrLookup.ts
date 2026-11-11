@@ -139,7 +139,8 @@ export type ScanQrLookupView =
   | { kind: "none" }
   | { kind: "failed" }
   | { kind: "found"; handle: string; updatedAt: string }
-  | { kind: "mismatch"; handle: string }
+  // `failed` = the username now in the field could not be checked either
+  | { kind: "mismatch"; handle: string; failed: boolean }
   // `from` = details still in the form came from ANOTHER username's record (shown with the suggestion / list)
   | { kind: "suggest"; handle: string; row: ScanQrLookupRow; from: string | null }
   | { kind: "choose"; handle: string; rows: ScanQrLookupRow[]; differs: "store" | "phone" | "name"; more: boolean; from: string | null };
@@ -159,8 +160,9 @@ export function lookupView(mark: ScanQrLookupMark | null, fieldHandle: string, f
       ? { kind: "suggest", handle: p.handle, row: p.rows[0], from }
       : { kind: "choose", handle: p.handle, rows: p.rows, differs: lookupDiffers(p.rows), more: p.more, from };
   }
-  if (a) return a.handle === now ? { kind: "found", handle: a.handle, updatedAt: a.updatedAt } : { kind: "mismatch", handle: a.handle };
-  if (failedFor !== null && failedFor !== "" && failedFor === now) return { kind: "failed" };
+  const failed = failedFor !== null && failedFor !== "" && failedFor === now;
+  if (a) return a.handle === now ? { kind: "found", handle: a.handle, updatedAt: a.updatedAt } : { kind: "mismatch", handle: a.handle, failed };
+  if (failed) return { kind: "failed" };
   return { kind: "none" };
 }
 

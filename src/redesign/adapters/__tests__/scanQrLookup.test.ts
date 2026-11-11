@@ -199,8 +199,10 @@ describe("what the form shows", () => {
   it("found while the field still holds that username (any case, with @); a warning once it holds another", () => {
     const m: ScanQrLookupMark = { applied: { handle: "x1", updatedAt: "2026-11-01T00:00:00+00:00", filled: { name: "A", phone: "1", store: "2" } }, pending: null };
     expect(lookupView(m, "@X1")).toEqual({ kind: "found", handle: "x1", updatedAt: "2026-11-01T00:00:00+00:00" });
-    expect(lookupView(m, "x2")).toEqual({ kind: "mismatch", handle: "x1" });
-    expect(lookupView(m, "")).toEqual({ kind: "mismatch", handle: "x1" });
+    expect(lookupView(m, "x2")).toEqual({ kind: "mismatch", handle: "x1", failed: false });
+    expect(lookupView(m, "")).toEqual({ kind: "mismatch", handle: "x1", failed: false });
+    expect(lookupView(m, "x2", "x2")).toEqual({ kind: "mismatch", handle: "x1", failed: true }); // x2 could not be checked either
+    expect(lookupView(m, "x2", "x3")).toEqual({ kind: "mismatch", handle: "x1", failed: false });
   });
   it("one waiting record = a suggestion; 2+ = always a list; both only for the username in the field", () => {
     expect(lookupView({ applied: null, pending: { handle: "x1", rows: [row("1")], more: false } }, "x1")).toMatchObject({ kind: "suggest", handle: "x1" });

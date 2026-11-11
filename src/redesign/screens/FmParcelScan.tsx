@@ -565,7 +565,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
             <button onClick={() => setCustOpen(false)} aria-label={t.rd_cd_close}
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="fms-customers-close">✕</button>
-            <FmCustomerDetails cur={cur} fee={fee} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.mark) clearForm(); else lookup.reset(); reloadSaved(); }} />
+            <FmCustomerDetails cur={cur} fee={fee} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.reset()) { clearForm(); setSaveErr(false); } reloadSaved(); }} />
           </div>
         </div>,
         portalRoot,

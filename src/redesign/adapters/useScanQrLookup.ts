@@ -35,9 +35,15 @@ export interface ScanQrLookupApi {
   scanned: (handle: string) => void;
   pick: (row: ScanQrLookupRow) => void;
   dismiss: () => void;
-  /** Clear / Cancel / Save done / next photo / edit start / Import: forget everything, drop any answer on its way. */
-  reset: () => void;
-  /** Save pressed: an answer still on its way is dropped (it never lands on this or the next parcel). Shows nothing. */
+  /**
+   * Clear / Cancel / Save done / next photo / edit start / Import: forget everything, drop any answer on its way.
+   * Returns true when the lookup had WRITTEN details into the form (read at call time, never from an old render).
+   */
+  reset: () => boolean;
+  /**
+   * Save pressed: an answer still on its way is dropped (it never lands on this or the next parcel).
+   * If one was on its way, the form says Customers could not be checked (so a failed save never looks like "no record").
+   */
   drop: () => void;
 }
 
@@ -51,6 +57,7 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
   const failedRef = useRef<string | null>(null);
   const setFailed = useCallback((v: string | null) => { if (failedRef.current !== v) { failedRef.current = v; setFailedFor(v); } }, []);
   const seqRef = useRef(0);
+  const flightRef = useRef<string | null>(null); // the username of a lookup whose answer has not come yet
   const aliveRef = useRef(true);
   const optsRef = useRef(opts);
   const fieldsRef = useRef(opts.fields);
@@ -65,11 +72,15 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
   }, []);
 
   const write = useCallback((row: ScanQrLookupRow, handle: string, how: "auto" | "picked") => {
-    // only what the record really has: an empty value in the record never blanks something typed
+    // Only what the record really has: an empty value in the record never blanks something the seller typed.
+    // But when the form still holds details of ANOTHER username's record, the whole record replaces them
+    // (an empty value blanks the field) — nothing of the other buyer may stay under a "Found" box.
+    const other = markRef.current?.applied ?? null;
+    const whole = other !== null && other.handle !== handle;
     const patch: Partial<LookupFields> = {};
-    if (row.name.trim() !== "") patch.name = row.name;
-    if (row.phone.trim() !== "") patch.phone = row.phone;
-    if (row.storeId.trim() !== "") patch.store = row.storeId;
+    if (whole || row.name.trim() !== "") patch.name = row.name;
+    if (whole || row.phone.trim() !== "") patch.phone = row.phone;
+    if (whole || row.storeId.trim() !== "") patch.store = row.storeId;
     optsRef.current.setFields(() => patch);
     fieldsRef.current = { ...fieldsRef.current, ...patch };
     setFailed(null);
@@ -99,9 +110,12 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     fieldsRef.current = next;
     // Details the seller edited stay; while they do and the username is another one, the box says whose they were.
     setMark({ applied: prev && prev.handle !== key && !blank(next) ? prev : null, pending: null });
+    flightRef.current = null;
     if (!isLookupable(key)) return;
+    flightRef.current = key;
     void lookupCustomersByHandle(o.store, key).then((res) => {
       if (!aliveRef.current || seq !== seqRef.current) return; // a newer scan / Save / Clear / leaving the screen
+      flightRef.current = null;
       const now = optsRef.current;
       if (!now.on || now.blocked) return;
       const f = fieldsRef.current;
@@ -124,13 +138,21 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     if (m?.pending) setMark({ applied: m.applied, pending: null });
   }, [setMark]);
 
-  const reset = useCallback(() => {
+  const reset = useCallback((): boolean => {
     seqRef.current++;
+    flightRef.current = null;
     setFailed(null);
+    const wrote = !!markRef.current?.applied;
     if (markRef.current) setMark(null);
+    return wrote;
   }, [setMark, setFailed]);
 
-  const drop = useCallback(() => { seqRef.current++; }, []);
+  const drop = useCallback(() => {
+    seqRef.current++;
+    const key = flightRef.current;
+    flightRef.current = null;
+    if (key !== null) setFailed(key);
+  }, [setFailed]);
 
   return { mark, view: lookupView(mark, opts.fields.handle, failedFor), scanned, pick, dismiss, reset, drop };
 }

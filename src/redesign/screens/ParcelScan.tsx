@@ -1740,7 +1740,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="ps-customers-close"
             >✕</button>
-            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.mark) clearForm(); else lookup.reset(); reloadSaved(); }} />
+            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.reset()) { clearForm(); setSaveErr(""); } reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
