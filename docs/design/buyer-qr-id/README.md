@@ -1,6 +1,8 @@
-# Buyer QR ID — mga mockup (plano v4)
+# Buyer QR ID — mga mockup (plano v5)
 
 **Mockup lang ito — wala pang binuo sa app.** Plano: `docs/plans/buyer-qr-id-plan.md` (§6).
+Walang binago sa mga larawan mula v4 hanggang v5: ang pinal na format ng link (`https://www.tiktok.com/@username?CODE`)
+ay hindi nagbabago ng itsura ng Scan QR. Hindi pa nilarawan ang bagong dilaw na "Iba ang store sa Customers" (itsura: gaya ng `3`).
 
 Paano ginawa: ang TOTOONG Parcel Scan screen (7-11 at FamilyMart) ay binuksan sa preview database
 (`vite.preview.config.ts`, walang totoong data), tinype ang mga halimbawang value sa totoong mga field, at ang

@@ -1,0 +1,814 @@
+SUMMARY new one-sticker (7 sizes x D520/XP-420B/Flash/Niimbot/laptop x Buyer# 1/1.5/2 x usernames 2,6,7,9,10,13,20,21,22,24):
+printed QR decodes to the exact link+code and today's parser returns the username: 648/648 · smallest QR-to-label-right-edge gap (all policies, incl. custom sweep): 16 dots · QR lost vs today: 0 (standard) + 0/120 (custom 50-110 x 30-80 sweep, v4) 
+P1: layout differs from today's (same username) — 1-6: 192/192 (text 150) · 7-9: 0/192 (text 0) · 10-20: 0/288 (text 0) · 21-22: 192/192 (text 168) · 23-24: 0/96 (text 0)
+P2: layout differs from today's (same username) — 1-6: 192/192 (text 150) · 7-9: 0/192 (text 0) · 10-20: 288/288 (text 212) · 21-22: 192/192 (text 168) · 23-24: 0/96 (text 0)
+P3: layout differs from today's (same username) — 1-6: 192/192 (text 150) · 7-9: 192/192 (text 132) · 10-20: 288/288 (text 212) · 21-22: 192/192 (text 168) · 23-24: 0/96 (text 0)
+P1|Buyer # smaller|1-6 [56]: 50x30 AIMO D520 Buyer#x1.5 (69->65); 50x30 AIMO D520 Buyer#x2 (70->65); 50x30 XP-420B Buyer#x1.5 (69->65); 50x30 XP-420B Buyer#x2 (70->65); 50x30 Flash Y41BT Buyer#x1.5 (69->65); 50x30 Flash Y41BT Buyer#x2 (70->65); 50x30 Niimbot Buyer#x1.5 (65->60); 50x30 Niimbot Buyer#x2 (65->60); 50x30 laptop Buyer#x1.5 (69->65); 50x30 laptop Buyer#x2 (70->65); 50x40 AIMO D520 Buyer#x1.5 (67->65); 50x40 AIMO D520 Buyer#x2 (67->65); 50x40 XP-420B Buyer#x1.5 (67->65); 50x40 XP-420B Buyer#x2 (67->65); 50x40 Flash Y41BT Buyer#x1.5 (67->65); 50x40 Flash Y41BT Buyer#x2 (67->65); 50x40 Niimbot Buyer#x1.5 (61->60); 50x40 Niimbot Buyer#x2 (61->60); 50x40 laptop Buyer#x1.5 (67->65); 50x40 laptop Buyer#x2 (67->65); 60x40 AIMO D520 Buyer#x1.5 (91->87); 60x40 AIMO D520 Buyer#x2 (91->87); 60x40 XP-420B Buyer#x1.5 (91->87); 60x40 XP-420B Buyer#x2 (91->87); 60x40 Flash Y41BT Buyer#x1.5 (91->87); 60x40 Flash Y41BT Buyer#x2 (91->87); 60x40 Niimbot Buyer#x1.5 (87->82); 60x40 Niimbot Buyer#x2 (87->82); 60x40 laptop Buyer#x1.5 (91->87); 60x40 laptop Buyer#x2 (91->87); 70x50 AIMO D520 Buyer#x1.5 (113->109); 70x50 AIMO D520 Buyer#x2 (113->109); 70x50 XP-420B Buyer#x1.5 (113->109); 70x50 XP-420B Buyer#x2 (113->109); 70x50 Flash Y41BT Buyer#x1.5 (113->109); 70x50 Flash Y41BT Buyer#x2 (113->109); 70x50 Niimbot Buyer#x1.5 (109->105); 70x50 Niimbot Buyer#x2 (109->105); 70x50 laptop Buyer#x1.5 (113->109); 70x50 laptop Buyer#x2 (113->109); 80x50 AIMO D520 Buyer#x2 (135->131); 80x50 XP-420B Buyer#x2 (135->131); 80x50 Flash Y41BT Buyer#x2 (135->131); 80x50 laptop Buyer#x2 (135->131); 80x60 AIMO D520 Buyer#x1.5 (135->131); 80x60 AIMO D520 Buyer#x2 (135->131); 80x60 XP-420B Buyer#x1.5 (135->131); 80x60 XP-420B Buyer#x2 (135->131); 80x60 Flash Y41BT Buyer#x1.5 (135->131); 80x60 Flash Y41BT Buyer#x2 (135->131); 80x60 laptop Buyer#x1.5 (135->131); 80x60 laptop Buyer#x2 (135->131); 100x60 AIMO D520 Buyer#x2 (179->174); 100x60 XP-420B Buyer#x2 (179->174); 100x60 Flash Y41BT Buyer#x2 (179->174); 100x60 laptop Buyer#x2 (179->174)
+P1|Buyer # smaller|21-22 [56]: 50x30 AIMO D520 Buyer#x1.5 (65->60); 50x30 AIMO D520 Buyer#x2 (65->60); 50x30 XP-420B Buyer#x1.5 (65->60); 50x30 XP-420B Buyer#x2 (65->60); 50x30 Flash Y41BT Buyer#x1.5 (65->60); 50x30 Flash Y41BT Buyer#x2 (65->60); 50x30 Niimbot Buyer#x1.5 (60->57); 50x30 Niimbot Buyer#x2 (60->57); 50x30 laptop Buyer#x1.5 (65->60); 50x30 laptop Buyer#x2 (65->60); 50x40 AIMO D520 Buyer#x1.5 (65->60); 50x40 AIMO D520 Buyer#x2 (65->60); 50x40 XP-420B Buyer#x1.5 (65->60); 50x40 XP-420B Buyer#x2 (65->60); 50x40 Flash Y41BT Buyer#x1.5 (65->60); 50x40 Flash Y41BT Buyer#x2 (65->60); 50x40 Niimbot Buyer#x1.5 (60->57); 50x40 Niimbot Buyer#x2 (60->57); 50x40 laptop Buyer#x1.5 (65->60); 50x40 laptop Buyer#x2 (65->60); 60x40 AIMO D520 Buyer#x1.5 (87->82); 60x40 AIMO D520 Buyer#x2 (87->82); 60x40 XP-420B Buyer#x1.5 (87->82); 60x40 XP-420B Buyer#x2 (87->82); 60x40 Flash Y41BT Buyer#x1.5 (87->82); 60x40 Flash Y41BT Buyer#x2 (87->82); 60x40 Niimbot Buyer#x1.5 (82->78); 60x40 Niimbot Buyer#x2 (82->78); 60x40 laptop Buyer#x1.5 (87->82); 60x40 laptop Buyer#x2 (87->82); 70x50 AIMO D520 Buyer#x1.5 (109->105); 70x50 AIMO D520 Buyer#x2 (109->105); 70x50 XP-420B Buyer#x1.5 (109->105); 70x50 XP-420B Buyer#x2 (109->105); 70x50 Flash Y41BT Buyer#x1.5 (109->105); 70x50 Flash Y41BT Buyer#x2 (109->105); 70x50 Niimbot Buyer#x1.5 (105->101); 70x50 Niimbot Buyer#x2 (105->101); 70x50 laptop Buyer#x1.5 (109->105); 70x50 laptop Buyer#x2 (109->105); 80x50 AIMO D520 Buyer#x2 (131->127); 80x50 XP-420B Buyer#x2 (131->127); 80x50 Flash Y41BT Buyer#x2 (131->127); 80x50 laptop Buyer#x2 (131->127); 80x60 AIMO D520 Buyer#x1.5 (131->127); 80x60 AIMO D520 Buyer#x2 (131->127); 80x60 XP-420B Buyer#x1.5 (131->127); 80x60 XP-420B Buyer#x2 (131->127); 80x60 Flash Y41BT Buyer#x1.5 (131->127); 80x60 Flash Y41BT Buyer#x2 (131->127); 80x60 laptop Buyer#x1.5 (131->127); 80x60 laptop Buyer#x2 (131->127); 100x60 AIMO D520 Buyer#x2 (174->170); 100x60 XP-420B Buyer#x2 (174->170); 100x60 Flash Y41BT Buyer#x2 (174->170); 100x60 laptop Buyer#x2 (174->170)
+P1|module drops 5->4|1-6 [5]: 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1
+P1|module drops 6->5|1-6 [5]: 50x30 Niimbot Buyer#x1; 80x50 AIMO D520 Buyer#x1.5; 80x50 XP-420B Buyer#x1.5; 80x50 Flash Y41BT Buyer#x1.5; 80x50 laptop Buyer#x1.5
+P1|module drops 6->5|21-22 [5]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 laptop Buyer#x1; 60x40 Niimbot Buyer#x1
+P1|new 'made smaller' warning|1-6 [4]: 50x30 AIMO D520 Buyer#x1.5; 50x30 XP-420B Buyer#x1.5; 50x30 Flash Y41BT Buyer#x1.5; 50x30 laptop Buyer#x1.5
+P1|other text changes (name/@username/comment width)|1-6 [19]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P1|other text changes (name/@username/comment width)|21-22 [28]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x50 AIMO D520 Buyer#x1; 80x50 XP-420B Buyer#x1; 80x50 Flash Y41BT Buyer#x1; 80x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P2|Buyer # smaller|1-6 [56]: 50x30 AIMO D520 Buyer#x1.5 (69->65); 50x30 AIMO D520 Buyer#x2 (70->65); 50x30 XP-420B Buyer#x1.5 (69->65); 50x30 XP-420B Buyer#x2 (70->65); 50x30 Flash Y41BT Buyer#x1.5 (69->65); 50x30 Flash Y41BT Buyer#x2 (70->65); 50x30 Niimbot Buyer#x1.5 (65->60); 50x30 Niimbot Buyer#x2 (65->60); 50x30 laptop Buyer#x1.5 (69->65); 50x30 laptop Buyer#x2 (70->65); 50x40 AIMO D520 Buyer#x1.5 (67->65); 50x40 AIMO D520 Buyer#x2 (67->65); 50x40 XP-420B Buyer#x1.5 (67->65); 50x40 XP-420B Buyer#x2 (67->65); 50x40 Flash Y41BT Buyer#x1.5 (67->65); 50x40 Flash Y41BT Buyer#x2 (67->65); 50x40 Niimbot Buyer#x1.5 (61->60); 50x40 Niimbot Buyer#x2 (61->60); 50x40 laptop Buyer#x1.5 (67->65); 50x40 laptop Buyer#x2 (67->65); 60x40 AIMO D520 Buyer#x1.5 (91->87); 60x40 AIMO D520 Buyer#x2 (91->87); 60x40 XP-420B Buyer#x1.5 (91->87); 60x40 XP-420B Buyer#x2 (91->87); 60x40 Flash Y41BT Buyer#x1.5 (91->87); 60x40 Flash Y41BT Buyer#x2 (91->87); 60x40 Niimbot Buyer#x1.5 (87->82); 60x40 Niimbot Buyer#x2 (87->82); 60x40 laptop Buyer#x1.5 (91->87); 60x40 laptop Buyer#x2 (91->87); 70x50 AIMO D520 Buyer#x1.5 (113->109); 70x50 AIMO D520 Buyer#x2 (113->109); 70x50 XP-420B Buyer#x1.5 (113->109); 70x50 XP-420B Buyer#x2 (113->109); 70x50 Flash Y41BT Buyer#x1.5 (113->109); 70x50 Flash Y41BT Buyer#x2 (113->109); 70x50 Niimbot Buyer#x1.5 (109->105); 70x50 Niimbot Buyer#x2 (109->105); 70x50 laptop Buyer#x1.5 (113->109); 70x50 laptop Buyer#x2 (113->109); 80x50 AIMO D520 Buyer#x2 (135->131); 80x50 XP-420B Buyer#x2 (135->131); 80x50 Flash Y41BT Buyer#x2 (135->131); 80x50 laptop Buyer#x2 (135->131); 80x60 AIMO D520 Buyer#x1.5 (135->131); 80x60 AIMO D520 Buyer#x2 (135->131); 80x60 XP-420B Buyer#x1.5 (135->131); 80x60 XP-420B Buyer#x2 (135->131); 80x60 Flash Y41BT Buyer#x1.5 (135->131); 80x60 Flash Y41BT Buyer#x2 (135->131); 80x60 laptop Buyer#x1.5 (135->131); 80x60 laptop Buyer#x2 (135->131); 100x60 AIMO D520 Buyer#x2 (179->174); 100x60 XP-420B Buyer#x2 (179->174); 100x60 Flash Y41BT Buyer#x2 (179->174); 100x60 laptop Buyer#x2 (179->174)
+P2|Buyer # smaller|10-20 [56]: 50x30 AIMO D520 Buyer#x1.5 (65->60); 50x30 AIMO D520 Buyer#x2 (65->60); 50x30 XP-420B Buyer#x1.5 (65->60); 50x30 XP-420B Buyer#x2 (65->60); 50x30 Flash Y41BT Buyer#x1.5 (65->60); 50x30 Flash Y41BT Buyer#x2 (65->60); 50x30 Niimbot Buyer#x1.5 (60->57); 50x30 Niimbot Buyer#x2 (60->57); 50x30 laptop Buyer#x1.5 (65->60); 50x30 laptop Buyer#x2 (65->60); 50x40 AIMO D520 Buyer#x1.5 (65->60); 50x40 AIMO D520 Buyer#x2 (65->60); 50x40 XP-420B Buyer#x1.5 (65->60); 50x40 XP-420B Buyer#x2 (65->60); 50x40 Flash Y41BT Buyer#x1.5 (65->60); 50x40 Flash Y41BT Buyer#x2 (65->60); 50x40 Niimbot Buyer#x1.5 (60->57); 50x40 Niimbot Buyer#x2 (60->57); 50x40 laptop Buyer#x1.5 (65->60); 50x40 laptop Buyer#x2 (65->60); 60x40 AIMO D520 Buyer#x1.5 (87->82); 60x40 AIMO D520 Buyer#x2 (87->82); 60x40 XP-420B Buyer#x1.5 (87->82); 60x40 XP-420B Buyer#x2 (87->82); 60x40 Flash Y41BT Buyer#x1.5 (87->82); 60x40 Flash Y41BT Buyer#x2 (87->82); 60x40 Niimbot Buyer#x1.5 (82->78); 60x40 Niimbot Buyer#x2 (82->78); 60x40 laptop Buyer#x1.5 (87->82); 60x40 laptop Buyer#x2 (87->82); 70x50 AIMO D520 Buyer#x1.5 (109->105); 70x50 AIMO D520 Buyer#x2 (109->105); 70x50 XP-420B Buyer#x1.5 (109->105); 70x50 XP-420B Buyer#x2 (109->105); 70x50 Flash Y41BT Buyer#x1.5 (109->105); 70x50 Flash Y41BT Buyer#x2 (109->105); 70x50 Niimbot Buyer#x1.5 (105->101); 70x50 Niimbot Buyer#x2 (105->101); 70x50 laptop Buyer#x1.5 (109->105); 70x50 laptop Buyer#x2 (109->105); 80x50 AIMO D520 Buyer#x2 (131->127); 80x50 XP-420B Buyer#x2 (131->127); 80x50 Flash Y41BT Buyer#x2 (131->127); 80x50 laptop Buyer#x2 (131->127); 80x60 AIMO D520 Buyer#x1.5 (131->127); 80x60 AIMO D520 Buyer#x2 (131->127); 80x60 XP-420B Buyer#x1.5 (131->127); 80x60 XP-420B Buyer#x2 (131->127); 80x60 Flash Y41BT Buyer#x1.5 (131->127); 80x60 Flash Y41BT Buyer#x2 (131->127); 80x60 laptop Buyer#x1.5 (131->127); 80x60 laptop Buyer#x2 (131->127); 100x60 AIMO D520 Buyer#x2 (174->170); 100x60 XP-420B Buyer#x2 (174->170); 100x60 Flash Y41BT Buyer#x2 (174->170); 100x60 laptop Buyer#x2 (174->170)
+P2|Buyer # smaller|21-22 [56]: 50x30 AIMO D520 Buyer#x1.5 (65->60); 50x30 AIMO D520 Buyer#x2 (65->60); 50x30 XP-420B Buyer#x1.5 (65->60); 50x30 XP-420B Buyer#x2 (65->60); 50x30 Flash Y41BT Buyer#x1.5 (65->60); 50x30 Flash Y41BT Buyer#x2 (65->60); 50x30 Niimbot Buyer#x1.5 (60->57); 50x30 Niimbot Buyer#x2 (60->57); 50x30 laptop Buyer#x1.5 (65->60); 50x30 laptop Buyer#x2 (65->60); 50x40 AIMO D520 Buyer#x1.5 (65->60); 50x40 AIMO D520 Buyer#x2 (65->60); 50x40 XP-420B Buyer#x1.5 (65->60); 50x40 XP-420B Buyer#x2 (65->60); 50x40 Flash Y41BT Buyer#x1.5 (65->60); 50x40 Flash Y41BT Buyer#x2 (65->60); 50x40 Niimbot Buyer#x1.5 (60->57); 50x40 Niimbot Buyer#x2 (60->57); 50x40 laptop Buyer#x1.5 (65->60); 50x40 laptop Buyer#x2 (65->60); 60x40 AIMO D520 Buyer#x1.5 (87->82); 60x40 AIMO D520 Buyer#x2 (87->82); 60x40 XP-420B Buyer#x1.5 (87->82); 60x40 XP-420B Buyer#x2 (87->82); 60x40 Flash Y41BT Buyer#x1.5 (87->82); 60x40 Flash Y41BT Buyer#x2 (87->82); 60x40 Niimbot Buyer#x1.5 (82->78); 60x40 Niimbot Buyer#x2 (82->78); 60x40 laptop Buyer#x1.5 (87->82); 60x40 laptop Buyer#x2 (87->82); 70x50 AIMO D520 Buyer#x1.5 (109->105); 70x50 AIMO D520 Buyer#x2 (109->105); 70x50 XP-420B Buyer#x1.5 (109->105); 70x50 XP-420B Buyer#x2 (109->105); 70x50 Flash Y41BT Buyer#x1.5 (109->105); 70x50 Flash Y41BT Buyer#x2 (109->105); 70x50 Niimbot Buyer#x1.5 (105->101); 70x50 Niimbot Buyer#x2 (105->101); 70x50 laptop Buyer#x1.5 (109->105); 70x50 laptop Buyer#x2 (109->105); 80x50 AIMO D520 Buyer#x2 (131->127); 80x50 XP-420B Buyer#x2 (131->127); 80x50 Flash Y41BT Buyer#x2 (131->127); 80x50 laptop Buyer#x2 (131->127); 80x60 AIMO D520 Buyer#x1.5 (131->127); 80x60 AIMO D520 Buyer#x2 (131->127); 80x60 XP-420B Buyer#x1.5 (131->127); 80x60 XP-420B Buyer#x2 (131->127); 80x60 Flash Y41BT Buyer#x1.5 (131->127); 80x60 Flash Y41BT Buyer#x2 (131->127); 80x60 laptop Buyer#x1.5 (131->127); 80x60 laptop Buyer#x2 (131->127); 100x60 AIMO D520 Buyer#x2 (174->170); 100x60 XP-420B Buyer#x2 (174->170); 100x60 Flash Y41BT Buyer#x2 (174->170); 100x60 laptop Buyer#x2 (174->170)
+P2|module drops 5->4|1-6 [5]: 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1
+P2|module drops 6->5|1-6 [5]: 50x30 Niimbot Buyer#x1; 80x50 AIMO D520 Buyer#x1.5; 80x50 XP-420B Buyer#x1.5; 80x50 Flash Y41BT Buyer#x1.5; 80x50 laptop Buyer#x1.5
+P2|module drops 6->5|10-20 [5]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 laptop Buyer#x1; 60x40 Niimbot Buyer#x1
+P2|module drops 6->5|21-22 [5]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 laptop Buyer#x1; 60x40 Niimbot Buyer#x1
+P2|new 'made smaller' warning|1-6 [4]: 50x30 AIMO D520 Buyer#x1.5; 50x30 XP-420B Buyer#x1.5; 50x30 Flash Y41BT Buyer#x1.5; 50x30 laptop Buyer#x1.5
+P2|other text changes (name/@username/comment width)|1-6 [19]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P2|other text changes (name/@username/comment width)|10-20 [24]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P2|other text changes (name/@username/comment width)|21-22 [28]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x50 AIMO D520 Buyer#x1; 80x50 XP-420B Buyer#x1; 80x50 Flash Y41BT Buyer#x1; 80x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P3|Buyer # smaller|1-6 [56]: 50x30 AIMO D520 Buyer#x1.5 (69->60); 50x30 AIMO D520 Buyer#x2 (70->60); 50x30 XP-420B Buyer#x1.5 (69->60); 50x30 XP-420B Buyer#x2 (70->60); 50x30 Flash Y41BT Buyer#x1.5 (69->60); 50x30 Flash Y41BT Buyer#x2 (70->60); 50x30 Niimbot Buyer#x1.5 (65->57); 50x30 Niimbot Buyer#x2 (65->57); 50x30 laptop Buyer#x1.5 (69->60); 50x30 laptop Buyer#x2 (70->60); 50x40 AIMO D520 Buyer#x1.5 (67->60); 50x40 AIMO D520 Buyer#x2 (67->60); 50x40 XP-420B Buyer#x1.5 (67->60); 50x40 XP-420B Buyer#x2 (67->60); 50x40 Flash Y41BT Buyer#x1.5 (67->60); 50x40 Flash Y41BT Buyer#x2 (67->60); 50x40 Niimbot Buyer#x1.5 (61->57); 50x40 Niimbot Buyer#x2 (61->57); 50x40 laptop Buyer#x1.5 (67->60); 50x40 laptop Buyer#x2 (67->60); 60x40 AIMO D520 Buyer#x1.5 (91->82); 60x40 AIMO D520 Buyer#x2 (91->82); 60x40 XP-420B Buyer#x1.5 (91->82); 60x40 XP-420B Buyer#x2 (91->82); 60x40 Flash Y41BT Buyer#x1.5 (91->82); 60x40 Flash Y41BT Buyer#x2 (91->82); 60x40 Niimbot Buyer#x1.5 (87->78); 60x40 Niimbot Buyer#x2 (87->78); 60x40 laptop Buyer#x1.5 (91->82); 60x40 laptop Buyer#x2 (91->82); 70x50 AIMO D520 Buyer#x1.5 (113->105); 70x50 AIMO D520 Buyer#x2 (113->105); 70x50 XP-420B Buyer#x1.5 (113->105); 70x50 XP-420B Buyer#x2 (113->105); 70x50 Flash Y41BT Buyer#x1.5 (113->105); 70x50 Flash Y41BT Buyer#x2 (113->105); 70x50 Niimbot Buyer#x1.5 (109->101); 70x50 Niimbot Buyer#x2 (109->101); 70x50 laptop Buyer#x1.5 (113->105); 70x50 laptop Buyer#x2 (113->105); 80x50 AIMO D520 Buyer#x2 (135->127); 80x50 XP-420B Buyer#x2 (135->127); 80x50 Flash Y41BT Buyer#x2 (135->127); 80x50 laptop Buyer#x2 (135->127); 80x60 AIMO D520 Buyer#x1.5 (135->127); 80x60 AIMO D520 Buyer#x2 (135->127); 80x60 XP-420B Buyer#x1.5 (135->127); 80x60 XP-420B Buyer#x2 (135->127); 80x60 Flash Y41BT Buyer#x1.5 (135->127); 80x60 Flash Y41BT Buyer#x2 (135->127); 80x60 laptop Buyer#x1.5 (135->127); 80x60 laptop Buyer#x2 (135->127); 100x60 AIMO D520 Buyer#x2 (179->170); 100x60 XP-420B Buyer#x2 (179->170); 100x60 Flash Y41BT Buyer#x2 (179->170); 100x60 laptop Buyer#x2 (179->170)
+P3|Buyer # smaller|10-20 [56]: 50x30 AIMO D520 Buyer#x1.5 (65->60); 50x30 AIMO D520 Buyer#x2 (65->60); 50x30 XP-420B Buyer#x1.5 (65->60); 50x30 XP-420B Buyer#x2 (65->60); 50x30 Flash Y41BT Buyer#x1.5 (65->60); 50x30 Flash Y41BT Buyer#x2 (65->60); 50x30 Niimbot Buyer#x1.5 (60->57); 50x30 Niimbot Buyer#x2 (60->57); 50x30 laptop Buyer#x1.5 (65->60); 50x30 laptop Buyer#x2 (65->60); 50x40 AIMO D520 Buyer#x1.5 (65->60); 50x40 AIMO D520 Buyer#x2 (65->60); 50x40 XP-420B Buyer#x1.5 (65->60); 50x40 XP-420B Buyer#x2 (65->60); 50x40 Flash Y41BT Buyer#x1.5 (65->60); 50x40 Flash Y41BT Buyer#x2 (65->60); 50x40 Niimbot Buyer#x1.5 (60->57); 50x40 Niimbot Buyer#x2 (60->57); 50x40 laptop Buyer#x1.5 (65->60); 50x40 laptop Buyer#x2 (65->60); 60x40 AIMO D520 Buyer#x1.5 (87->82); 60x40 AIMO D520 Buyer#x2 (87->82); 60x40 XP-420B Buyer#x1.5 (87->82); 60x40 XP-420B Buyer#x2 (87->82); 60x40 Flash Y41BT Buyer#x1.5 (87->82); 60x40 Flash Y41BT Buyer#x2 (87->82); 60x40 Niimbot Buyer#x1.5 (82->78); 60x40 Niimbot Buyer#x2 (82->78); 60x40 laptop Buyer#x1.5 (87->82); 60x40 laptop Buyer#x2 (87->82); 70x50 AIMO D520 Buyer#x1.5 (109->105); 70x50 AIMO D520 Buyer#x2 (109->105); 70x50 XP-420B Buyer#x1.5 (109->105); 70x50 XP-420B Buyer#x2 (109->105); 70x50 Flash Y41BT Buyer#x1.5 (109->105); 70x50 Flash Y41BT Buyer#x2 (109->105); 70x50 Niimbot Buyer#x1.5 (105->101); 70x50 Niimbot Buyer#x2 (105->101); 70x50 laptop Buyer#x1.5 (109->105); 70x50 laptop Buyer#x2 (109->105); 80x50 AIMO D520 Buyer#x2 (131->127); 80x50 XP-420B Buyer#x2 (131->127); 80x50 Flash Y41BT Buyer#x2 (131->127); 80x50 laptop Buyer#x2 (131->127); 80x60 AIMO D520 Buyer#x1.5 (131->127); 80x60 AIMO D520 Buyer#x2 (131->127); 80x60 XP-420B Buyer#x1.5 (131->127); 80x60 XP-420B Buyer#x2 (131->127); 80x60 Flash Y41BT Buyer#x1.5 (131->127); 80x60 Flash Y41BT Buyer#x2 (131->127); 80x60 laptop Buyer#x1.5 (131->127); 80x60 laptop Buyer#x2 (131->127); 100x60 AIMO D520 Buyer#x2 (174->170); 100x60 XP-420B Buyer#x2 (174->170); 100x60 Flash Y41BT Buyer#x2 (174->170); 100x60 laptop Buyer#x2 (174->170)
+P3|Buyer # smaller|21-22 [56]: 50x30 AIMO D520 Buyer#x1.5 (65->60); 50x30 AIMO D520 Buyer#x2 (65->60); 50x30 XP-420B Buyer#x1.5 (65->60); 50x30 XP-420B Buyer#x2 (65->60); 50x30 Flash Y41BT Buyer#x1.5 (65->60); 50x30 Flash Y41BT Buyer#x2 (65->60); 50x30 Niimbot Buyer#x1.5 (60->57); 50x30 Niimbot Buyer#x2 (60->57); 50x30 laptop Buyer#x1.5 (65->60); 50x30 laptop Buyer#x2 (65->60); 50x40 AIMO D520 Buyer#x1.5 (65->60); 50x40 AIMO D520 Buyer#x2 (65->60); 50x40 XP-420B Buyer#x1.5 (65->60); 50x40 XP-420B Buyer#x2 (65->60); 50x40 Flash Y41BT Buyer#x1.5 (65->60); 50x40 Flash Y41BT Buyer#x2 (65->60); 50x40 Niimbot Buyer#x1.5 (60->57); 50x40 Niimbot Buyer#x2 (60->57); 50x40 laptop Buyer#x1.5 (65->60); 50x40 laptop Buyer#x2 (65->60); 60x40 AIMO D520 Buyer#x1.5 (87->82); 60x40 AIMO D520 Buyer#x2 (87->82); 60x40 XP-420B Buyer#x1.5 (87->82); 60x40 XP-420B Buyer#x2 (87->82); 60x40 Flash Y41BT Buyer#x1.5 (87->82); 60x40 Flash Y41BT Buyer#x2 (87->82); 60x40 Niimbot Buyer#x1.5 (82->78); 60x40 Niimbot Buyer#x2 (82->78); 60x40 laptop Buyer#x1.5 (87->82); 60x40 laptop Buyer#x2 (87->82); 70x50 AIMO D520 Buyer#x1.5 (109->105); 70x50 AIMO D520 Buyer#x2 (109->105); 70x50 XP-420B Buyer#x1.5 (109->105); 70x50 XP-420B Buyer#x2 (109->105); 70x50 Flash Y41BT Buyer#x1.5 (109->105); 70x50 Flash Y41BT Buyer#x2 (109->105); 70x50 Niimbot Buyer#x1.5 (105->101); 70x50 Niimbot Buyer#x2 (105->101); 70x50 laptop Buyer#x1.5 (109->105); 70x50 laptop Buyer#x2 (109->105); 80x50 AIMO D520 Buyer#x2 (131->127); 80x50 XP-420B Buyer#x2 (131->127); 80x50 Flash Y41BT Buyer#x2 (131->127); 80x50 laptop Buyer#x2 (131->127); 80x60 AIMO D520 Buyer#x1.5 (131->127); 80x60 AIMO D520 Buyer#x2 (131->127); 80x60 XP-420B Buyer#x1.5 (131->127); 80x60 XP-420B Buyer#x2 (131->127); 80x60 Flash Y41BT Buyer#x1.5 (131->127); 80x60 Flash Y41BT Buyer#x2 (131->127); 80x60 laptop Buyer#x1.5 (131->127); 80x60 laptop Buyer#x2 (131->127); 100x60 AIMO D520 Buyer#x2 (174->170); 100x60 XP-420B Buyer#x2 (174->170); 100x60 Flash Y41BT Buyer#x2 (174->170); 100x60 laptop Buyer#x2 (174->170)
+P3|Buyer # smaller|7-9 [56]: 50x30 AIMO D520 Buyer#x1.5 (65->60); 50x30 AIMO D520 Buyer#x2 (65->60); 50x30 XP-420B Buyer#x1.5 (65->60); 50x30 XP-420B Buyer#x2 (65->60); 50x30 Flash Y41BT Buyer#x1.5 (65->60); 50x30 Flash Y41BT Buyer#x2 (65->60); 50x30 Niimbot Buyer#x1.5 (60->57); 50x30 Niimbot Buyer#x2 (60->57); 50x30 laptop Buyer#x1.5 (65->60); 50x30 laptop Buyer#x2 (65->60); 50x40 AIMO D520 Buyer#x1.5 (65->60); 50x40 AIMO D520 Buyer#x2 (65->60); 50x40 XP-420B Buyer#x1.5 (65->60); 50x40 XP-420B Buyer#x2 (65->60); 50x40 Flash Y41BT Buyer#x1.5 (65->60); 50x40 Flash Y41BT Buyer#x2 (65->60); 50x40 Niimbot Buyer#x1.5 (60->57); 50x40 Niimbot Buyer#x2 (60->57); 50x40 laptop Buyer#x1.5 (65->60); 50x40 laptop Buyer#x2 (65->60); 60x40 AIMO D520 Buyer#x1.5 (87->82); 60x40 AIMO D520 Buyer#x2 (87->82); 60x40 XP-420B Buyer#x1.5 (87->82); 60x40 XP-420B Buyer#x2 (87->82); 60x40 Flash Y41BT Buyer#x1.5 (87->82); 60x40 Flash Y41BT Buyer#x2 (87->82); 60x40 Niimbot Buyer#x1.5 (82->78); 60x40 Niimbot Buyer#x2 (82->78); 60x40 laptop Buyer#x1.5 (87->82); 60x40 laptop Buyer#x2 (87->82); 70x50 AIMO D520 Buyer#x1.5 (109->105); 70x50 AIMO D520 Buyer#x2 (109->105); 70x50 XP-420B Buyer#x1.5 (109->105); 70x50 XP-420B Buyer#x2 (109->105); 70x50 Flash Y41BT Buyer#x1.5 (109->105); 70x50 Flash Y41BT Buyer#x2 (109->105); 70x50 Niimbot Buyer#x1.5 (105->101); 70x50 Niimbot Buyer#x2 (105->101); 70x50 laptop Buyer#x1.5 (109->105); 70x50 laptop Buyer#x2 (109->105); 80x50 AIMO D520 Buyer#x2 (131->127); 80x50 XP-420B Buyer#x2 (131->127); 80x50 Flash Y41BT Buyer#x2 (131->127); 80x50 laptop Buyer#x2 (131->127); 80x60 AIMO D520 Buyer#x1.5 (131->127); 80x60 AIMO D520 Buyer#x2 (131->127); 80x60 XP-420B Buyer#x1.5 (131->127); 80x60 XP-420B Buyer#x2 (131->127); 80x60 Flash Y41BT Buyer#x1.5 (131->127); 80x60 Flash Y41BT Buyer#x2 (131->127); 80x60 laptop Buyer#x1.5 (131->127); 80x60 laptop Buyer#x2 (131->127); 100x60 AIMO D520 Buyer#x2 (174->170); 100x60 XP-420B Buyer#x2 (174->170); 100x60 Flash Y41BT Buyer#x2 (174->170); 100x60 laptop Buyer#x2 (174->170)
+P3|module drops 5->4|1-6 [5]: 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1
+P3|module drops 6->5|1-6 [10]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 60x40 Niimbot Buyer#x1; 80x50 AIMO D520 Buyer#x1.5; 80x50 XP-420B Buyer#x1.5; 80x50 Flash Y41BT Buyer#x1.5; 80x50 laptop Buyer#x1.5
+P3|module drops 6->5|10-20 [5]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 laptop Buyer#x1; 60x40 Niimbot Buyer#x1
+P3|module drops 6->5|21-22 [5]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 laptop Buyer#x1; 60x40 Niimbot Buyer#x1
+P3|module drops 6->5|7-9 [5]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 laptop Buyer#x1; 60x40 Niimbot Buyer#x1
+P3|new 'made smaller' warning|1-6 [4]: 50x30 AIMO D520 Buyer#x1.5; 50x30 XP-420B Buyer#x1.5; 50x30 Flash Y41BT Buyer#x1.5; 50x30 laptop Buyer#x1.5
+P3|other text changes (name/@username/comment width)|1-6 [19]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 laptop Buyer#x1; 50x40 Niimbot Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P3|other text changes (name/@username/comment width)|10-20 [24]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P3|other text changes (name/@username/comment width)|21-22 [28]: 50x30 AIMO D520 Buyer#x1; 50x30 XP-420B Buyer#x1; 50x30 Flash Y41BT Buyer#x1; 50x30 Niimbot Buyer#x1; 50x30 laptop Buyer#x1; 50x40 AIMO D520 Buyer#x1; 50x40 XP-420B Buyer#x1; 50x40 Flash Y41BT Buyer#x1; 50x40 Niimbot Buyer#x1; 50x40 laptop Buyer#x1; 60x40 AIMO D520 Buyer#x1; 60x40 XP-420B Buyer#x1; 60x40 Flash Y41BT Buyer#x1; 60x40 Niimbot Buyer#x1; 60x40 laptop Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 Niimbot Buyer#x1; 70x50 laptop Buyer#x1; 80x50 AIMO D520 Buyer#x1; 80x50 XP-420B Buyer#x1; 80x50 Flash Y41BT Buyer#x1; 80x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+P3|other text changes (name/@username/comment width)|7-9 [10]: 50x30 Niimbot Buyer#x1; 50x40 Niimbot Buyer#x1; 70x50 AIMO D520 Buyer#x1; 70x50 XP-420B Buyer#x1; 70x50 Flash Y41BT Buyer#x1; 70x50 laptop Buyer#x1; 80x60 AIMO D520 Buyer#x1; 80x60 XP-420B Buyer#x1; 80x60 Flash Y41BT Buyer#x1; 80x60 laptop Buyer#x1
+SCREEN: P1|tot=110 · P2|tot=110 · P3|tot=110 · P3|'+' limits would differ=20 · P2|screen not red but print shrinks=2 · P3|screen not red but print shrinks=2 · P3|screen notes would differ=7
+P3 limits 50x30 niimbot Buyer#x0.6: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x0.7: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x0.8: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x0.9: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x1: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x1.15: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P2 50x30 niimbot Buyer#x1.3: screen "Everything fits" · real 13-char code print: buyer:smaller
+P3 50x30 niimbot Buyer#x1.3: screen "Everything fits" · real 13-char code print: buyer:smaller
+P3 limits 50x30 niimbot Buyer#x1.3: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x1.5: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x1.75: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 50x30 niimbot Buyer#x2: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x0.6: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x0.7: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x0.8: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x0.9: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x1: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x1.15: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P2 60x40 niimbot Buyer#x1.3: screen "Everything fits" · real 13-char code print: buyer:smaller
+P3 60x40 niimbot Buyer#x1.3: screen "Everything fits" · real 13-char code print: buyer:smaller
+P3 limits 60x40 niimbot Buyer#x1.3: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x1.5: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x1.75: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+P3 limits 60x40 niimbot Buyer#x2: today {"buyer":1.3} → with v4 buyers {"buyer":1.15}
+ROWS
+50x30 | AIMO D520 | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 TEXT | P2 v3 6d 21.8mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | AIMO D520 | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 TEXT | P2 v3 6d 21.8mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | AIMO D520 | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v3 6d 21.8mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | AIMO D520 | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v3 6d 21.8mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | AIMO D520 | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 QR | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | AIMO D520 | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 QR | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | AIMO D520 | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | AIMO D520 | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 TEXT | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | AIMO D520 | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 TEXT | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | AIMO D520 | Buyer#x1 | @24 | TODAY v4 5d 20.6mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 =
+50x30 | AIMO D520 | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b69 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b69 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x30 | AIMO D520 | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b70 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b70 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | AIMO D520 | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x30 | XP-420B | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 TEXT | P2 v3 6d 21.8mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | XP-420B | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 TEXT | P2 v3 6d 21.8mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | XP-420B | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v3 6d 21.8mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | XP-420B | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v3 6d 21.8mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | XP-420B | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 QR | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | XP-420B | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 QR | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | XP-420B | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | XP-420B | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 TEXT | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | XP-420B | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 TEXT | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | XP-420B | Buyer#x1 | @24 | TODAY v4 5d 20.6mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 =
+50x30 | XP-420B | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b69 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b69 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x30 | XP-420B | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b70 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b70 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | XP-420B | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x30 | Niimbot | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap20 b46 | P1 v3 5d 18.1mm gap20 b46 TEXT | P2 v3 5d 18.1mm gap20 b46 TEXT | P3 v4 5d 20.6mm gap20 b46 QR
+50x30 | Niimbot | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap20 b46 | P1 v3 5d 18.1mm gap20 b46 TEXT | P2 v3 5d 18.1mm gap20 b46 TEXT | P3 v4 5d 20.6mm gap20 b46 QR
+50x30 | Niimbot | Buyer#x1 | @7 | TODAY v3 5d 18.1mm gap20 b46 | P1 v3 5d 18.1mm gap20 b46 = | P2 v3 5d 18.1mm gap20 b46 = | P3 v4 5d 20.6mm gap20 b46 TEXT
+50x30 | Niimbot | Buyer#x1 | @9 | TODAY v3 5d 18.1mm gap20 b46 | P1 v3 5d 18.1mm gap20 b46 = | P2 v3 5d 18.1mm gap20 b46 = | P3 v4 5d 20.6mm gap20 b46 TEXT
+50x30 | Niimbot | Buyer#x1 | @10 | TODAY v3 5d 18.1mm gap20 b46 | P1 v3 5d 18.1mm gap20 b46 = | P2 v4 5d 20.6mm gap20 b46 TEXT | P3 v4 5d 20.6mm gap20 b46 TEXT
+50x30 | Niimbot | Buyer#x1 | @13 | TODAY v3 5d 18.1mm gap20 b46 | P1 v3 5d 18.1mm gap20 b46 = | P2 v4 5d 20.6mm gap20 b46 TEXT | P3 v4 5d 20.6mm gap20 b46 TEXT
+50x30 | Niimbot | Buyer#x1 | @20 | TODAY v3 5d 18.1mm gap20 b46 | P1 v3 5d 18.1mm gap20 b46 = | P2 v4 5d 20.6mm gap20 b46 TEXT | P3 v4 5d 20.6mm gap20 b46 TEXT
+50x30 | Niimbot | Buyer#x1 | @21 | TODAY v3 5d 18.1mm gap20 b46 | P1 v4 5d 20.6mm gap20 b46 TEXT | P2 v4 5d 20.6mm gap20 b46 TEXT | P3 v4 5d 20.6mm gap20 b46 TEXT
+50x30 | Niimbot | Buyer#x1 | @22 | TODAY v3 5d 18.1mm gap20 b46 | P1 v4 5d 20.6mm gap20 b46 TEXT | P2 v4 5d 20.6mm gap20 b46 TEXT | P3 v4 5d 20.6mm gap20 b46 TEXT
+50x30 | Niimbot | Buyer#x1 | @24 | TODAY v4 5d 20.6mm gap20 b46 | P1 v4 5d 20.6mm gap20 b46 = | P2 v4 5d 20.6mm gap20 b46 = | P3 v4 5d 20.6mm gap20 b46 =
+50x30 | Niimbot | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap20 b65 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap20 b65 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap20 b57 | P1 v4 4d 16.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 = | P3 v4 4d 16.5mm gap20 b57 =
+50x30 | Niimbot | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap20 b65 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap20 b65 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x30 | Niimbot | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap20 b57 | P1 v4 4d 16.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 = | P3 v4 4d 16.5mm gap20 b57 =
+50x30 | laptop | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 TEXT | P2 v3 6d 21.8mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | laptop | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 TEXT | P2 v3 6d 21.8mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | laptop | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v3 6d 21.8mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | laptop | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v3 6d 21.8mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | laptop | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 QR | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | laptop | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 QR | P3 v4 5d 20.6mm gap16 b46 QR
+50x30 | laptop | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b46 | P1 v3 6d 21.8mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | laptop | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 TEXT | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | laptop | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 TEXT | P2 v4 5d 20.6mm gap16 b46 TEXT | P3 v4 5d 20.6mm gap16 b46 TEXT
+50x30 | laptop | Buyer#x1 | @24 | TODAY v4 5d 20.6mm gap16 b46 | P1 v4 5d 20.6mm gap16 b46 = | P2 v4 5d 20.6mm gap16 b46 = | P3 v4 5d 20.6mm gap16 b46 =
+50x30 | laptop | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b69 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b69 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x30 | laptop | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b70 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b70 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x30 | laptop | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x40 | AIMO D520 | Buyer#x1 | @2 | TODAY v2 5d 15.6mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 QR | P2 v3 4d 14.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | AIMO D520 | Buyer#x1 | @6 | TODAY v2 5d 15.6mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 QR | P2 v3 4d 14.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | AIMO D520 | Buyer#x1 | @7 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v3 4d 14.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | AIMO D520 | Buyer#x1 | @9 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v3 4d 14.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | AIMO D520 | Buyer#x1 | @10 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | AIMO D520 | Buyer#x1 | @13 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | AIMO D520 | Buyer#x1 | @20 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | AIMO D520 | Buyer#x1 | @21 | TODAY v3 4d 14.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 TEXT | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | AIMO D520 | Buyer#x1 | @22 | TODAY v3 4d 14.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 TEXT | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | AIMO D520 | Buyer#x1 | @24 | TODAY v4 4d 16.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 =
+50x40 | AIMO D520 | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x40 | AIMO D520 | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | AIMO D520 | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x40 | XP-420B | Buyer#x1 | @2 | TODAY v2 5d 15.6mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 QR | P2 v3 4d 14.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | XP-420B | Buyer#x1 | @6 | TODAY v2 5d 15.6mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 QR | P2 v3 4d 14.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | XP-420B | Buyer#x1 | @7 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v3 4d 14.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | XP-420B | Buyer#x1 | @9 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v3 4d 14.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | XP-420B | Buyer#x1 | @10 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | XP-420B | Buyer#x1 | @13 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | XP-420B | Buyer#x1 | @20 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | XP-420B | Buyer#x1 | @21 | TODAY v3 4d 14.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 TEXT | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | XP-420B | Buyer#x1 | @22 | TODAY v3 4d 14.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 TEXT | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | XP-420B | Buyer#x1 | @24 | TODAY v4 4d 16.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 =
+50x40 | XP-420B | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x40 | XP-420B | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | XP-420B | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x40 | Niimbot | Buyer#x1 | @2 | TODAY v2 5d 15.6mm gap20 b57 | P1 v3 4d 14.5mm gap20 b57 QR | P2 v3 4d 14.5mm gap20 b57 QR | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @6 | TODAY v2 5d 15.6mm gap20 b57 | P1 v3 4d 14.5mm gap20 b57 QR | P2 v3 4d 14.5mm gap20 b57 QR | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @7 | TODAY v3 4d 14.5mm gap20 b57 | P1 v3 4d 14.5mm gap20 b57 = | P2 v3 4d 14.5mm gap20 b57 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @9 | TODAY v3 4d 14.5mm gap20 b57 | P1 v3 4d 14.5mm gap20 b57 = | P2 v3 4d 14.5mm gap20 b57 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @10 | TODAY v3 4d 14.5mm gap20 b57 | P1 v3 4d 14.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @13 | TODAY v3 4d 14.5mm gap20 b57 | P1 v3 4d 14.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @20 | TODAY v3 4d 14.5mm gap20 b57 | P1 v3 4d 14.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @21 | TODAY v3 4d 14.5mm gap20 b57 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @22 | TODAY v3 4d 14.5mm gap20 b57 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1 | @24 | TODAY v4 4d 16.5mm gap20 b57 | P1 v4 4d 16.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 = | P3 v4 4d 16.5mm gap20 b57 =
+50x40 | Niimbot | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap20 b61 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap20 b61 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap20 b57 | P1 v4 4d 16.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 = | P3 v4 4d 16.5mm gap20 b57 =
+50x40 | Niimbot | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap20 b61 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap20 b61 | P1 v3 4d 14.5mm gap20 b60 TEXT | P2 v3 4d 14.5mm gap20 b60 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v3 4d 14.5mm gap20 b60 = | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap20 b60 | P1 v3 4d 14.5mm gap20 b60 = | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap20 b60 | P1 v4 4d 16.5mm gap20 b57 TEXT | P2 v4 4d 16.5mm gap20 b57 TEXT | P3 v4 4d 16.5mm gap20 b57 TEXT
+50x40 | Niimbot | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap20 b57 | P1 v4 4d 16.5mm gap20 b57 = | P2 v4 4d 16.5mm gap20 b57 = | P3 v4 4d 16.5mm gap20 b57 =
+50x40 | laptop | Buyer#x1 | @2 | TODAY v2 5d 15.6mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 QR | P2 v3 4d 14.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | laptop | Buyer#x1 | @6 | TODAY v2 5d 15.6mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 QR | P2 v3 4d 14.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | laptop | Buyer#x1 | @7 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v3 4d 14.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | laptop | Buyer#x1 | @9 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v3 4d 14.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | laptop | Buyer#x1 | @10 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | laptop | Buyer#x1 | @13 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 QR | P3 v4 4d 16.5mm gap16 b57 QR
+50x40 | laptop | Buyer#x1 | @20 | TODAY v3 4d 14.5mm gap16 b57 | P1 v3 4d 14.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | laptop | Buyer#x1 | @21 | TODAY v3 4d 14.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 TEXT | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | laptop | Buyer#x1 | @22 | TODAY v3 4d 14.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 TEXT | P2 v4 4d 16.5mm gap16 b57 TEXT | P3 v4 4d 16.5mm gap16 b57 TEXT
+50x40 | laptop | Buyer#x1 | @24 | TODAY v4 4d 16.5mm gap16 b57 | P1 v4 4d 16.5mm gap16 b57 = | P2 v4 4d 16.5mm gap16 b57 = | P3 v4 4d 16.5mm gap16 b57 =
+50x40 | laptop | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+50x40 | laptop | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b67 | P1 v3 4d 14.5mm gap16 b65 TEXT | P2 v3 4d 14.5mm gap16 b65 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v3 4d 14.5mm gap16 b65 = | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b65 | P1 v3 4d 14.5mm gap16 b65 = | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b65 | P1 v4 4d 16.5mm gap16 b60 TEXT | P2 v4 4d 16.5mm gap16 b60 TEXT | P3 v4 4d 16.5mm gap16 b60 TEXT
+50x40 | laptop | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b60 | P1 v4 4d 16.5mm gap16 b60 = | P2 v4 4d 16.5mm gap16 b60 = | P3 v4 4d 16.5mm gap16 b60 =
+60x40 | AIMO D520 | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 TEXT | P2 v3 6d 21.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | AIMO D520 | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 TEXT | P2 v3 6d 21.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | AIMO D520 | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v3 6d 21.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | AIMO D520 | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v3 6d 21.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | AIMO D520 | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 QR | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | AIMO D520 | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 QR | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | AIMO D520 | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | AIMO D520 | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 TEXT | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | AIMO D520 | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 TEXT | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | AIMO D520 | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 =
+60x40 | AIMO D520 | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b82 | P1 v4 4d 16.5mm gap16 b82 = | P2 v4 4d 16.5mm gap16 b82 = | P3 v4 4d 16.5mm gap16 b82 =
+60x40 | AIMO D520 | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | AIMO D520 | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b82 | P1 v4 4d 16.5mm gap16 b82 = | P2 v4 4d 16.5mm gap16 b82 = | P3 v4 4d 16.5mm gap16 b82 =
+60x40 | XP-420B | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 TEXT | P2 v3 6d 21.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | XP-420B | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 TEXT | P2 v3 6d 21.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | XP-420B | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v3 6d 21.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | XP-420B | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v3 6d 21.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | XP-420B | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 QR | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | XP-420B | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 QR | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | XP-420B | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | XP-420B | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 TEXT | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | XP-420B | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 TEXT | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | XP-420B | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 =
+60x40 | XP-420B | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b82 | P1 v4 4d 16.5mm gap16 b82 = | P2 v4 4d 16.5mm gap16 b82 = | P3 v4 4d 16.5mm gap16 b82 =
+60x40 | XP-420B | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | XP-420B | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b82 | P1 v4 4d 16.5mm gap16 b82 = | P2 v4 4d 16.5mm gap16 b82 = | P3 v4 4d 16.5mm gap16 b82 =
+60x40 | Niimbot | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap20 b61 | P1 v3 6d 21.8mm gap20 b61 TEXT | P2 v3 6d 21.8mm gap20 b61 TEXT | P3 v4 5d 20.6mm gap20 b61 TEXT
+60x40 | Niimbot | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap20 b61 | P1 v3 6d 21.8mm gap20 b61 TEXT | P2 v3 6d 21.8mm gap20 b61 TEXT | P3 v4 5d 20.6mm gap20 b61 TEXT
+60x40 | Niimbot | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap20 b61 | P1 v3 6d 21.8mm gap20 b61 = | P2 v3 6d 21.8mm gap20 b61 = | P3 v4 5d 20.6mm gap20 b61 QR
+60x40 | Niimbot | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap20 b61 | P1 v3 6d 21.8mm gap20 b61 = | P2 v3 6d 21.8mm gap20 b61 = | P3 v4 5d 20.6mm gap20 b61 QR
+60x40 | Niimbot | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap20 b61 | P1 v3 6d 21.8mm gap20 b61 = | P2 v4 5d 20.6mm gap20 b61 QR | P3 v4 5d 20.6mm gap20 b61 QR
+60x40 | Niimbot | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap20 b61 | P1 v3 6d 21.8mm gap20 b61 = | P2 v4 5d 20.6mm gap20 b61 QR | P3 v4 5d 20.6mm gap20 b61 QR
+60x40 | Niimbot | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap20 b61 | P1 v3 6d 21.8mm gap20 b61 = | P2 v4 5d 20.6mm gap20 b61 TEXT | P3 v4 5d 20.6mm gap20 b61 TEXT
+60x40 | Niimbot | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap20 b61 | P1 v4 5d 20.6mm gap20 b61 TEXT | P2 v4 5d 20.6mm gap20 b61 TEXT | P3 v4 5d 20.6mm gap20 b61 TEXT
+60x40 | Niimbot | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap20 b61 | P1 v4 5d 20.6mm gap20 b61 TEXT | P2 v4 5d 20.6mm gap20 b61 TEXT | P3 v4 5d 20.6mm gap20 b61 TEXT
+60x40 | Niimbot | Buyer#x1 | @24 | TODAY v4 5d 20.6mm gap20 b61 | P1 v4 5d 20.6mm gap20 b61 = | P2 v4 5d 20.6mm gap20 b61 = | P3 v4 5d 20.6mm gap20 b61 =
+60x40 | Niimbot | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap20 b87 | P1 v3 4d 14.5mm gap20 b82 TEXT | P2 v3 4d 14.5mm gap20 b82 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap20 b87 | P1 v3 4d 14.5mm gap20 b82 TEXT | P2 v3 4d 14.5mm gap20 b82 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v3 4d 14.5mm gap20 b82 = | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v3 4d 14.5mm gap20 b82 = | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap20 b82 | P1 v4 4d 16.5mm gap20 b78 TEXT | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap20 b82 | P1 v4 4d 16.5mm gap20 b78 TEXT | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap20 b78 | P1 v4 4d 16.5mm gap20 b78 = | P2 v4 4d 16.5mm gap20 b78 = | P3 v4 4d 16.5mm gap20 b78 =
+60x40 | Niimbot | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap20 b87 | P1 v3 4d 14.5mm gap20 b82 TEXT | P2 v3 4d 14.5mm gap20 b82 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap20 b87 | P1 v3 4d 14.5mm gap20 b82 TEXT | P2 v3 4d 14.5mm gap20 b82 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v3 4d 14.5mm gap20 b82 = | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v3 4d 14.5mm gap20 b82 = | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap20 b82 | P1 v3 4d 14.5mm gap20 b82 = | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap20 b82 | P1 v4 4d 16.5mm gap20 b78 TEXT | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap20 b82 | P1 v4 4d 16.5mm gap20 b78 TEXT | P2 v4 4d 16.5mm gap20 b78 TEXT | P3 v4 4d 16.5mm gap20 b78 TEXT
+60x40 | Niimbot | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap20 b78 | P1 v4 4d 16.5mm gap20 b78 = | P2 v4 4d 16.5mm gap20 b78 = | P3 v4 4d 16.5mm gap20 b78 =
+60x40 | laptop | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 TEXT | P2 v3 6d 21.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | laptop | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 TEXT | P2 v3 6d 21.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | laptop | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v3 6d 21.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | laptop | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v3 6d 21.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | laptop | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 QR | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | laptop | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 QR | P3 v4 6d 24.8mm gap16 b61 QR
+60x40 | laptop | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b61 | P1 v3 6d 21.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | laptop | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 TEXT | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | laptop | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 TEXT | P2 v4 6d 24.8mm gap16 b61 TEXT | P3 v4 6d 24.8mm gap16 b61 TEXT
+60x40 | laptop | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b61 | P1 v4 6d 24.8mm gap16 b61 = | P2 v4 6d 24.8mm gap16 b61 = | P3 v4 6d 24.8mm gap16 b61 =
+60x40 | laptop | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b82 | P1 v4 4d 16.5mm gap16 b82 = | P2 v4 4d 16.5mm gap16 b82 = | P3 v4 4d 16.5mm gap16 b82 =
+60x40 | laptop | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b91 | P1 v3 4d 14.5mm gap16 b87 TEXT | P2 v3 4d 14.5mm gap16 b87 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v3 4d 14.5mm gap16 b87 = | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b87 | P1 v3 4d 14.5mm gap16 b87 = | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b87 | P1 v4 4d 16.5mm gap16 b82 TEXT | P2 v4 4d 16.5mm gap16 b82 TEXT | P3 v4 4d 16.5mm gap16 b82 TEXT
+60x40 | laptop | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b82 | P1 v4 4d 16.5mm gap16 b82 = | P2 v4 4d 16.5mm gap16 b82 = | P3 v4 4d 16.5mm gap16 b82 =
+70x50 | AIMO D520 | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 TEXT | P2 v3 6d 21.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 TEXT | P2 v3 6d 21.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | AIMO D520 | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 =
+70x50 | AIMO D520 | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b105 | P1 v4 4d 16.5mm gap16 b105 = | P2 v4 4d 16.5mm gap16 b105 = | P3 v4 4d 16.5mm gap16 b105 =
+70x50 | AIMO D520 | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | AIMO D520 | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b105 | P1 v4 4d 16.5mm gap16 b105 = | P2 v4 4d 16.5mm gap16 b105 = | P3 v4 4d 16.5mm gap16 b105 =
+70x50 | XP-420B | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 TEXT | P2 v3 6d 21.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 TEXT | P2 v3 6d 21.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | XP-420B | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 =
+70x50 | XP-420B | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b105 | P1 v4 4d 16.5mm gap16 b105 = | P2 v4 4d 16.5mm gap16 b105 = | P3 v4 4d 16.5mm gap16 b105 =
+70x50 | XP-420B | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | XP-420B | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b105 | P1 v4 4d 16.5mm gap16 b105 = | P2 v4 4d 16.5mm gap16 b105 = | P3 v4 4d 16.5mm gap16 b105 =
+70x50 | Niimbot | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap20 b76 | P1 v3 6d 21.8mm gap20 b76 TEXT | P2 v3 6d 21.8mm gap20 b76 TEXT | P3 v4 6d 24.8mm gap20 b76 TEXT
+70x50 | Niimbot | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap20 b76 | P1 v3 6d 21.8mm gap20 b76 TEXT | P2 v3 6d 21.8mm gap20 b76 TEXT | P3 v4 6d 24.8mm gap20 b76 TEXT
+70x50 | Niimbot | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap20 b76 | P1 v3 6d 21.8mm gap20 b76 = | P2 v3 6d 21.8mm gap20 b76 = | P3 v4 6d 24.8mm gap20 b76 QR
+70x50 | Niimbot | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap20 b76 | P1 v3 6d 21.8mm gap20 b76 = | P2 v3 6d 21.8mm gap20 b76 = | P3 v4 6d 24.8mm gap20 b76 QR
+70x50 | Niimbot | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap20 b76 | P1 v3 6d 21.8mm gap20 b76 = | P2 v4 6d 24.8mm gap20 b76 QR | P3 v4 6d 24.8mm gap20 b76 QR
+70x50 | Niimbot | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap20 b76 | P1 v3 6d 21.8mm gap20 b76 = | P2 v4 6d 24.8mm gap20 b76 QR | P3 v4 6d 24.8mm gap20 b76 QR
+70x50 | Niimbot | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap20 b76 | P1 v3 6d 21.8mm gap20 b76 = | P2 v4 6d 24.8mm gap20 b76 TEXT | P3 v4 6d 24.8mm gap20 b76 TEXT
+70x50 | Niimbot | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap20 b76 | P1 v4 6d 24.8mm gap20 b76 TEXT | P2 v4 6d 24.8mm gap20 b76 TEXT | P3 v4 6d 24.8mm gap20 b76 TEXT
+70x50 | Niimbot | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap20 b76 | P1 v4 6d 24.8mm gap20 b76 TEXT | P2 v4 6d 24.8mm gap20 b76 TEXT | P3 v4 6d 24.8mm gap20 b76 TEXT
+70x50 | Niimbot | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap20 b76 | P1 v4 6d 24.8mm gap20 b76 = | P2 v4 6d 24.8mm gap20 b76 = | P3 v4 6d 24.8mm gap20 b76 =
+70x50 | Niimbot | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap20 b109 | P1 v3 4d 14.5mm gap20 b105 TEXT | P2 v3 4d 14.5mm gap20 b105 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap20 b109 | P1 v3 4d 14.5mm gap20 b105 TEXT | P2 v3 4d 14.5mm gap20 b105 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v3 4d 14.5mm gap20 b105 = | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v3 4d 14.5mm gap20 b105 = | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap20 b105 | P1 v4 4d 16.5mm gap20 b101 TEXT | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap20 b105 | P1 v4 4d 16.5mm gap20 b101 TEXT | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap20 b101 | P1 v4 4d 16.5mm gap20 b101 = | P2 v4 4d 16.5mm gap20 b101 = | P3 v4 4d 16.5mm gap20 b101 =
+70x50 | Niimbot | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap20 b109 | P1 v3 4d 14.5mm gap20 b105 TEXT | P2 v3 4d 14.5mm gap20 b105 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap20 b109 | P1 v3 4d 14.5mm gap20 b105 TEXT | P2 v3 4d 14.5mm gap20 b105 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v3 4d 14.5mm gap20 b105 = | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v3 4d 14.5mm gap20 b105 = | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap20 b105 | P1 v3 4d 14.5mm gap20 b105 = | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap20 b105 | P1 v4 4d 16.5mm gap20 b101 TEXT | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap20 b105 | P1 v4 4d 16.5mm gap20 b101 TEXT | P2 v4 4d 16.5mm gap20 b101 TEXT | P3 v4 4d 16.5mm gap20 b101 TEXT
+70x50 | Niimbot | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap20 b101 | P1 v4 4d 16.5mm gap20 b101 = | P2 v4 4d 16.5mm gap20 b101 = | P3 v4 4d 16.5mm gap20 b101 =
+70x50 | laptop | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 TEXT | P2 v3 6d 21.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 TEXT | P2 v3 6d 21.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+70x50 | laptop | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 =
+70x50 | laptop | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b105 | P1 v4 4d 16.5mm gap16 b105 = | P2 v4 4d 16.5mm gap16 b105 = | P3 v4 4d 16.5mm gap16 b105 =
+70x50 | laptop | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b113 | P1 v3 4d 14.5mm gap16 b109 TEXT | P2 v3 4d 14.5mm gap16 b109 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v3 4d 14.5mm gap16 b109 = | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b109 | P1 v3 4d 14.5mm gap16 b109 = | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b109 | P1 v4 4d 16.5mm gap16 b105 TEXT | P2 v4 4d 16.5mm gap16 b105 TEXT | P3 v4 4d 16.5mm gap16 b105 TEXT
+70x50 | laptop | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b105 | P1 v4 4d 16.5mm gap16 b105 = | P2 v4 4d 16.5mm gap16 b105 = | P3 v4 4d 16.5mm gap16 b105 =
+80x50 | AIMO D520 | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 QR | P2 v3 6d 21.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | AIMO D520 | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 QR | P2 v3 6d 21.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | AIMO D520 | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | AIMO D520 | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | AIMO D520 | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | AIMO D520 | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | AIMO D520 | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | AIMO D520 | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+80x50 | AIMO D520 | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+80x50 | AIMO D520 | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 =
+80x50 | AIMO D520 | Buyer#x1.5 | @2 | TODAY v2 6d 18.8mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 QR | P2 v3 5d 18.1mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @6 | TODAY v2 6d 18.8mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 QR | P2 v3 5d 18.1mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @7 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v3 5d 18.1mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @9 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v3 5d 18.1mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @10 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @13 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @20 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @21 | TODAY v3 5d 18.1mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 QR | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @22 | TODAY v3 5d 18.1mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 QR | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | AIMO D520 | Buyer#x1.5 | @24 | TODAY v4 5d 20.6mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 =
+80x50 | AIMO D520 | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | AIMO D520 | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x50 | XP-420B | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 QR | P2 v3 6d 21.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | XP-420B | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 QR | P2 v3 6d 21.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | XP-420B | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | XP-420B | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | XP-420B | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | XP-420B | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | XP-420B | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | XP-420B | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+80x50 | XP-420B | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+80x50 | XP-420B | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 =
+80x50 | XP-420B | Buyer#x1.5 | @2 | TODAY v2 6d 18.8mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 QR | P2 v3 5d 18.1mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @6 | TODAY v2 6d 18.8mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 QR | P2 v3 5d 18.1mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @7 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v3 5d 18.1mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @9 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v3 5d 18.1mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @10 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @13 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @20 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @21 | TODAY v3 5d 18.1mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 QR | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @22 | TODAY v3 5d 18.1mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 QR | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | XP-420B | Buyer#x1.5 | @24 | TODAY v4 5d 20.6mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 =
+80x50 | XP-420B | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | XP-420B | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x50 | laptop | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 QR | P2 v3 6d 21.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | laptop | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 QR | P2 v3 6d 21.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | laptop | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | laptop | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v3 6d 21.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | laptop | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | laptop | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | laptop | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b76 | P1 v3 6d 21.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 QR | P3 v4 6d 24.8mm gap16 b76 QR
+80x50 | laptop | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+80x50 | laptop | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 TEXT | P2 v4 6d 24.8mm gap16 b76 TEXT | P3 v4 6d 24.8mm gap16 b76 TEXT
+80x50 | laptop | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b76 | P1 v4 6d 24.8mm gap16 b76 = | P2 v4 6d 24.8mm gap16 b76 = | P3 v4 6d 24.8mm gap16 b76 =
+80x50 | laptop | Buyer#x1.5 | @2 | TODAY v2 6d 18.8mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 QR | P2 v3 5d 18.1mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @6 | TODAY v2 6d 18.8mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 QR | P2 v3 5d 18.1mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @7 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v3 5d 18.1mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @9 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v3 5d 18.1mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @10 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @13 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @20 | TODAY v3 5d 18.1mm gap16 b114 | P1 v3 5d 18.1mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @21 | TODAY v3 5d 18.1mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 QR | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @22 | TODAY v3 5d 18.1mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 QR | P2 v4 5d 20.6mm gap16 b114 QR | P3 v4 5d 20.6mm gap16 b114 QR
+80x50 | laptop | Buyer#x1.5 | @24 | TODAY v4 5d 20.6mm gap16 b114 | P1 v4 5d 20.6mm gap16 b114 = | P2 v4 5d 20.6mm gap16 b114 = | P3 v4 5d 20.6mm gap16 b114 =
+80x50 | laptop | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x50 | laptop | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x60 | AIMO D520 | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 TEXT | P2 v3 6d 21.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 TEXT | P2 v3 6d 21.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 TEXT | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 TEXT | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | AIMO D520 | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 =
+80x60 | AIMO D520 | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x60 | AIMO D520 | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | AIMO D520 | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x60 | XP-420B | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 TEXT | P2 v3 6d 21.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 TEXT | P2 v3 6d 21.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 TEXT | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 TEXT | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | XP-420B | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 =
+80x60 | XP-420B | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x60 | XP-420B | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | XP-420B | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x60 | laptop | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 TEXT | P2 v3 6d 21.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 TEXT | P2 v3 6d 21.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 TEXT | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 TEXT | P2 v4 6d 24.8mm gap16 b91 TEXT | P3 v4 6d 24.8mm gap16 b91 TEXT
+80x60 | laptop | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 =
+80x60 | laptop | Buyer#x1.5 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x1.5 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+80x60 | laptop | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b135 | P1 v3 4d 14.5mm gap16 b131 TEXT | P2 v3 4d 14.5mm gap16 b131 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v3 4d 14.5mm gap16 b131 = | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b131 | P1 v3 4d 14.5mm gap16 b131 = | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b131 | P1 v4 4d 16.5mm gap16 b127 TEXT | P2 v4 4d 16.5mm gap16 b127 TEXT | P3 v4 4d 16.5mm gap16 b127 TEXT
+80x60 | laptop | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b127 | P1 v4 4d 16.5mm gap16 b127 = | P2 v4 4d 16.5mm gap16 b127 = | P3 v4 4d 16.5mm gap16 b127 =
+100x60 | AIMO D520 | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 QR | P2 v3 6d 21.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 QR | P2 v3 6d 21.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 QR | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 QR | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | AIMO D520 | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 =
+100x60 | AIMO D520 | Buyer#x1.5 | @2 | TODAY v2 6d 18.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 QR | P2 v3 6d 21.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @6 | TODAY v2 6d 18.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 QR | P2 v3 6d 21.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @7 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v3 6d 21.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @9 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v3 6d 21.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @10 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @13 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @20 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @21 | TODAY v3 6d 21.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 QR | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @22 | TODAY v3 6d 21.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 QR | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | AIMO D520 | Buyer#x1.5 | @24 | TODAY v4 6d 24.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 =
+100x60 | AIMO D520 | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b179 | P1 v3 4d 14.5mm gap16 b174 TEXT | P2 v3 4d 14.5mm gap16 b174 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b179 | P1 v3 4d 14.5mm gap16 b174 TEXT | P2 v3 4d 14.5mm gap16 b174 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v3 4d 14.5mm gap16 b174 = | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v3 4d 14.5mm gap16 b174 = | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b174 | P1 v4 4d 16.5mm gap16 b170 TEXT | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b174 | P1 v4 4d 16.5mm gap16 b170 TEXT | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | AIMO D520 | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b170 | P1 v4 4d 16.5mm gap16 b170 = | P2 v4 4d 16.5mm gap16 b170 = | P3 v4 4d 16.5mm gap16 b170 =
+100x60 | XP-420B | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 QR | P2 v3 6d 21.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 QR | P2 v3 6d 21.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 QR | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 QR | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | XP-420B | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 =
+100x60 | XP-420B | Buyer#x1.5 | @2 | TODAY v2 6d 18.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 QR | P2 v3 6d 21.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @6 | TODAY v2 6d 18.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 QR | P2 v3 6d 21.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @7 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v3 6d 21.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @9 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v3 6d 21.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @10 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @13 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @20 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @21 | TODAY v3 6d 21.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 QR | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @22 | TODAY v3 6d 21.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 QR | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | XP-420B | Buyer#x1.5 | @24 | TODAY v4 6d 24.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 =
+100x60 | XP-420B | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b179 | P1 v3 4d 14.5mm gap16 b174 TEXT | P2 v3 4d 14.5mm gap16 b174 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b179 | P1 v3 4d 14.5mm gap16 b174 TEXT | P2 v3 4d 14.5mm gap16 b174 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v3 4d 14.5mm gap16 b174 = | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v3 4d 14.5mm gap16 b174 = | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b174 | P1 v4 4d 16.5mm gap16 b170 TEXT | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b174 | P1 v4 4d 16.5mm gap16 b170 TEXT | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | XP-420B | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b170 | P1 v4 4d 16.5mm gap16 b170 = | P2 v4 4d 16.5mm gap16 b170 = | P3 v4 4d 16.5mm gap16 b170 =
+100x60 | laptop | Buyer#x1 | @2 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 QR | P2 v3 6d 21.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @6 | TODAY v2 6d 18.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 QR | P2 v3 6d 21.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @7 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @9 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v3 6d 21.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @10 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @13 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @20 | TODAY v3 6d 21.8mm gap16 b91 | P1 v3 6d 21.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @21 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 QR | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @22 | TODAY v3 6d 21.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 QR | P2 v4 6d 24.8mm gap16 b91 QR | P3 v4 6d 24.8mm gap16 b91 QR
+100x60 | laptop | Buyer#x1 | @24 | TODAY v4 6d 24.8mm gap16 b91 | P1 v4 6d 24.8mm gap16 b91 = | P2 v4 6d 24.8mm gap16 b91 = | P3 v4 6d 24.8mm gap16 b91 =
+100x60 | laptop | Buyer#x1.5 | @2 | TODAY v2 6d 18.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 QR | P2 v3 6d 21.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @6 | TODAY v2 6d 18.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 QR | P2 v3 6d 21.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @7 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v3 6d 21.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @9 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v3 6d 21.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @10 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @13 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @20 | TODAY v3 6d 21.8mm gap16 b137 | P1 v3 6d 21.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @21 | TODAY v3 6d 21.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 QR | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @22 | TODAY v3 6d 21.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 QR | P2 v4 6d 24.8mm gap16 b137 QR | P3 v4 6d 24.8mm gap16 b137 QR
+100x60 | laptop | Buyer#x1.5 | @24 | TODAY v4 6d 24.8mm gap16 b137 | P1 v4 6d 24.8mm gap16 b137 = | P2 v4 6d 24.8mm gap16 b137 = | P3 v4 6d 24.8mm gap16 b137 =
+100x60 | laptop | Buyer#x2 | @2 | TODAY v2 4d 12.5mm gap16 b179 | P1 v3 4d 14.5mm gap16 b174 TEXT | P2 v3 4d 14.5mm gap16 b174 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @6 | TODAY v2 4d 12.5mm gap16 b179 | P1 v3 4d 14.5mm gap16 b174 TEXT | P2 v3 4d 14.5mm gap16 b174 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @7 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v3 4d 14.5mm gap16 b174 = | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @9 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v3 4d 14.5mm gap16 b174 = | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @10 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @13 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @20 | TODAY v3 4d 14.5mm gap16 b174 | P1 v3 4d 14.5mm gap16 b174 = | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @21 | TODAY v3 4d 14.5mm gap16 b174 | P1 v4 4d 16.5mm gap16 b170 TEXT | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @22 | TODAY v3 4d 14.5mm gap16 b174 | P1 v4 4d 16.5mm gap16 b170 TEXT | P2 v4 4d 16.5mm gap16 b170 TEXT | P3 v4 4d 16.5mm gap16 b170 TEXT
+100x60 | laptop | Buyer#x2 | @24 | TODAY v4 4d 16.5mm gap16 b170 | P1 v4 4d 16.5mm gap16 b170 = | P2 v4 4d 16.5mm gap16 b170 = | P3 v4 4d 16.5mm gap16 b170 =

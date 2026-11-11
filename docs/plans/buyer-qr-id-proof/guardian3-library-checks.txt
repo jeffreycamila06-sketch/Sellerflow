@@ -1,0 +1,15 @@
+username length 1..30              123456789012345678901234567890
+code text fits v3 at M             yyyyyyyyy---------------------
+code text fits v3 at L             yyyyyyyyyyyyyyyyyyyy----------
+code text fits v4 at Q             yyyyyyyyyyyyy-----------------
+code text fits v4 at M             yyyyyyyyyyyyyyyyyyyyyyyyyyyyy-
+code text fits v4 at L             yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+code text fits v5 at M             yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+P1 picks (3M/3L/4M, x = nothing → link-only): 3M 3M 3M 3M 3M 3M 3M 3M 3M 3L 3L 3L 3L 3L 3L 3L 3L 3L 3L 3L 4M 4M 4M 4M 4M 4M 4M 4M 4M x
+P2 picks (3M/3L/4M, x = nothing → link-only): 3M 3M 3M 3M 3M 3M 3M 3M 3M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M x
+P3 picks (3M/3L/4M, x = nothing → link-only): 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M 4M x
+today's link  https://tiktok.com/@u      version by length 1..30 (ECC M): 222222333333333333333344444444
+with "www."   https://www.tiktok.com/@u  version by length 1..30 (ECC M): 223333333333333333444444444444
+lengths (≤24) whose version would change if today's link gained "www.": 3,4,5,6,19,20,21,22 = 6696 rows = 3.8% (3–6: 3029 rows, 19–22: 3667 rows)
+decode (jsQR, matrix level) = exact text, and today's parser returns the username (case kept): 87/87 
+ms per matrix (Node): today's link 1.45 · P1 13 chars (M fails, L) 1.45 · P1 22 chars (M, L fail, v4) 1.86 · P3 1.99

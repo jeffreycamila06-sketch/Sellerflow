@@ -75,10 +75,16 @@ const CASES = [
   ["https://www.tiktok.com/@annc?3AHRZ6DMV2X", "11 chars → username only"],
   ["https://www.tiktok.com/@annc?HELLOWORLD", "has L and O (not Crockford) → username only"],
   ["https://www.tiktok.com/@annc?3AHRZ6DMV2&x=1", "extra parameter after the code → username only"],
+  ["https://www.tiktok.com/@maria_live?3AHRZ6DMV2\n", "trailing newline from a scanner → trimmed, code kept"],
+  ["  https://www.tiktok.com/@maria_live?3AHRZ6DMV2  ", "spaces around → trimmed, code kept"],
+  ["HTTPS://WWW.TIKTOK.COM/@annc?3AHRZ6DMV2", "upper-case scheme/host + code → username + code"],
+  ["https://www.tiktok.com/@annc?3AHRZ6DMV2#x", "fragment after the code → username only"],
+  ["https://www.tiktok.com/@annc/?3AHRZ6DMV2", "slash before the ? → username only"],
+  ["www.tiktok.com/@annc?3AHRZ6DMV2", "no scheme → username only"],
   ["annc", "bare username (oldest stickers)"], ["@annc", "bare @username"],
   ["https://example.com/@annc?3AHRZ6DMV2", "not TikTok → nothing"], ["hello world", "random text → nothing"],
 ];
-for (const [t, why] of CASES) { const r = parse(t); console.log(`  ${t.padEnd(46)} → ${r ? `@${r.handle}${r.code ? " + code " + r.code : " (no code)"}` : "nothing"}   [${why}]`); }
+for (const [t, why] of CASES) { const r = parse(t); console.log(`  ${JSON.stringify(t).padEnd(50)} → ${r ? `@${r.handle}${r.code ? " + code " + r.code : " (no code)"}` : "nothing"}   [${why}]`); }
 
 console.log("\n== 4. SIMULATED damage: v3 at ECC L vs v4 at ECC M (jsQR, 400 tries each) — a SIMULATION, not paper ==");
 console.log("   Units are PRINTER DOTS (8 dots = 1 mm). v3 at 6 dots/module = 21.8 mm; v4 at 6 = 24.8 mm; v4 at 5 = 20.6 mm.");
