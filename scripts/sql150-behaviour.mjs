@@ -4,12 +4,16 @@
 //   • rule #4 gives the SAME answer as the app for every example of the shared list;
 //   • who is "on": the switch, or the seller's login on the list — nobody else;
 //   • OFF (switch off and seller not listed) = the Customers tables end up EXACTLY as with the live functions;
-//   • ON: one username = one record PER BUYER (newest stays; "(U)" kept; "@ pedro123"; @pedro12 ≠ @pedro123 ≠ @pedro1234);
-//   • guard A — only records of the SAME buyer (same phone or same name) are merged: a one-word contact shared by
-//     many buyers ("c") and a parcel saved with somebody else's username delete nothing;
-//   • guard B (7-11) — nothing is merged before the store is 'valid' AND the phone is 'ok', in the REAL order of
-//     the app (insert with no verdict, verdicts later): a wrong store / a restricted phone = exactly the live result;
-//   • guard C — a late verdict, a re-check, an edit or a bulk update of an OLDER parcel never puts old details back;
+//   • ON: the buyer's ONE other record of the username is replaced by the parcel's details ("(U)" kept; "@ pedro123";
+//     @pedro12 ≠ @pedro123 ≠ @pedro1234);
+//   • guard A — 2 or more OTHER records of the "username" (a word several buyers share, e.g. "c") → exactly the live
+//     result; one other record is merged only when it has the parcel's phone or name; what is NOT covered is shown too;
+//   • guard B (7-11) — nothing is merged before the store is 'valid' AND the phone is 'ok', in the REAL order of the app
+//     (insert with no verdict, verdicts later; an edit sends every field and clears the phone verdict of a changed phone):
+//     a wrong store / a restricted phone / an edited store # = exactly the live result;
+//   • guard C — a late verdict, a re-check, an edit or a bulk update of an OLDER parcel never puts old details back; a
+//     newer parcel that is restricted / refused / of another app / without phone does not count; a newer parcel that is
+//     not decided yet = exactly the live result; a deleted record = the buyer is added again;
 //   • the unique index (same phone + name) never breaks a save — the records are merged safely;
 //   • "no social handle", another app, 'unknown', a non-username contact, a restricted phone, a wrong store
 //     → exactly as before;
@@ -126,6 +130,26 @@ async function save(db, store, o) {
     return { ok: true, id };
   } catch (e) { return { ok: false, error: String(e.message) }; }
 }
+// Edit a saved parcel the way the app does: ONE update that sends name, phone, store # and contact together (changed or
+// not). 7-11 (updateParcelScan): a changed phone clears the phone verdict in the SAME statement; a changed store # leaves
+// the old store verdict in the row. Then the fresh verdicts are written — the app's own store check, the checker's phone
+// check (recheck = [store, phone]; null = that verdict never arrives). Returns the Customers right after the edit statement.
+async function editAndWatch(db, store, id, patch, recheck = ["valid", "ok"]) {
+  const t = T[store];
+  const cur = (await db.query(`select ${t.ncol} as name, phone, store_id as store, ${t.ucol} as username, contact_platform as platform, user_id from public.${t.scans} where id = $1`, [id])).rows[0];
+  const nx = { ...cur, ...patch };
+  const sets = [`${t.ncol} = $2`, "phone = $3", "store_id = $4", `${t.ucol} = $5`], vals = [id, nx.name, nx.phone, nx.store, nx.username];
+  if ("platform" in patch) { vals.push(nx.platform); sets.push(`contact_platform = $${vals.length}`); }
+  const phoneChanged = nx.phone !== cur.phone, storeChanged = nx.store !== cur.store;
+  if (store === "711" && phoneChanged) sets.push("phone_check_status = null");
+  await db.query(`update public.${t.scans} set ${sets.join(", ")} where id = $1`, vals);
+  const mid = await rows(db, store, cur.user_id);
+  if (store === "711") {
+    if (storeChanged && recheck[0]) await db.query("update public.parcel_scans set store_check_status = $2 where id = $1", [id, recheck[0]]);
+    if (phoneChanged && recheck[1]) await db.query("update public.parcel_scans set phone_check_status = $2 where id = $1", [id, recheck[1]]);
+  }
+  return mid;
+}
 const rows = async (db, store, user = A) => (await db.query(`select id, phone, name, store_id as store, ${T[store].ucol} as username, contact_platform as platform, updated_at from public.${T[store].cust} where user_id = $1 order by updated_at, phone, name`, [user])).rows;
 const view = (list) => list.map((r) => `${r.name}|${r.phone}|${r.store}|${r.username}|${r.platform}`).sort();
 // both Customers tables, every seller, in "last updated" order — without ids and times (they differ between two databases)
@@ -137,8 +161,10 @@ const snapshot = async (db) => {
 const fnMd5 = async (db, fn) => (await db.query(`select md5(pg_get_functiondef($1::regprocedure)) m`, [fn])).rows[0].m;
 const wipe = async (d, s) => { await d.query(`delete from public.${T[s].cust}`); await d.query(`delete from public.${T[s].scans}`); clock = 0; };
 // the same steps on a database with the LIVE functions and on `d` (sql/150): are the Customers of store `s` the same?
+let LIVE_DB = null; // ONE database with the live functions, emptied before every comparison (a new one each time is slow)
 const sameAsLive = async (d, s, steps) => {
-  const live = await freshDb();
+  const live = (LIVE_DB ??= await freshDb());
+  await wipe(live, s);
   await wipe(d, s);
   const a = await steps(live), b = await steps(d);
   const sa = (await snapshot(live))[s], sb = (await snapshot(d))[s];
@@ -249,17 +275,19 @@ console.log("\n── 3. OFF (switch off, seller not listed) = EXACTLY the live 
   ok(sl.fm.length > 5 && same(sl.fm, sn.fm), `FamilyMart Customers: sql/150 (off) = the live functions, row for row (${sl.fm.length} records)`);
   const dup = (await next.query(`select count(*)::int n from public.parcel_customers where user_id = $1 and public.scan_qr_username_key(notes) = 'pedro123' and contact_platform is null and lower(name) = lower($2)`, [N, M])).rows[0].n;
   ok(dup >= 3, `…and the not-listed seller still has ${dup} records of the same buyer + @pedro123 (nothing was merged for them)`);
+  // the same not-listed seller, a simple case: one record + a parcel with a new phone
+  const simple = async (d) => { await d.query("delete from public.parcel_customers where user_id = $1", [N]); await seed(d, "711", { user: N, phone: "0911000001", name: M, username: "@pedro123", store: "246810" }); return save(d, "711", { user: N, name: M, phone: "0922000099", store: "246810", username: "pedro123" }); };
+  let r = await simple(next);
+  ok(r.ok && (await rows(next, "711", N)).length === 2, "switch off, seller not listed: one record + a parcel with a new phone = 2 records (the old rule)");
   await next.query("update public.app_settings set value = 'true' where key = 'scan_qr_lookup_enabled'");
-  const r = await save(next, "711", { user: N, name: M, phone: "0922000099", store: "246810", username: "pedro123" });
-  const left = (await next.query(`select phone from public.parcel_customers where user_id = $1 and public.scan_qr_username_key(notes) = 'pedro123' and (contact_platform is null or contact_platform = 'tiktok') and lower(name) = lower($2)`, [N, M])).rows;
-  ok(r.ok && left.length === 1 && left[0].phone === "0922000099", "switch 'true' → the same not-listed seller: the next save leaves ONE record of that buyer + @pedro123");
-  const line = (await next.query(`select count(*)::int n from public.parcel_customers where user_id = $1 and contact_platform = 'line'`, [N])).rows[0].n;
-  ok(line === 2, "…their LINE records with the same text are still there");
+  r = await simple(next);
+  const left = await rows(next, "711", N);
+  ok(r.ok && left.length === 1 && left[0].phone === "0922000099", "switch 'true' → the same seller, the same steps: ONE record, with the new phone");
 }
 
 for (const s of ["711", "fm"]) {
   const label = s === "711" ? "7-11" : "FamilyMart";
-  const st1 = s === "711" ? "246810" : "022131", st2 = s === "711" ? "135791" : "018274";
+  const st1 = s === "711" ? "246810" : "022131", st2 = s === "711" ? "135791" : "018274", st3 = s === "711" ? "777777" : "033333";
   const t = T[s];
   const clean = () => wipe(db, s);
   console.log(`\n── 4. ON — ${label} (seller A, login listed) ──`);
@@ -274,12 +302,22 @@ for (const s of ["711", "fm"]) {
   r = await save(db, s, { name: M, phone: "0922000002", store: st2, username: "@Pedro123 (U)" });
   c = await rows(db, s);
   ok(r.ok && c.length === 1 && same(view(c), [`${M}|0922000002|${st2}|@Pedro123 (U)|null`]) && (s === "711" || c[0].id === only), "the buyer has a new phone and store: ONE record, with the new phone, store and the FULL contact text incl. '(U)'");
-  ok(new Date(c[0].updated_at).getTime() > Date.UTC(2026, 9, 1), "…and its 'last updated' is now");
+  ok(c.length === 1 && new Date(c[0].updated_at).getTime() > Date.UTC(2026, 9, 1), "…and its 'last updated' is now");
+
+  // every way a username may be written in the old record (rule #4) — the buyer's name differs only in letter case
+  let merged = 0;
+  const forms = ["pedro123", "@pedro123", "@Pedro123 (U)", "@ pedro123", "@pedro123 Garcia (NA)", "@pedro123 #3", "  @PEDRO123  "];
+  for (const f of forms) {
+    await clean();
+    await seed(db, s, { phone: "0911000001", name: "maria santos", username: f });
+    r = await save(db, s, { name: M, phone: "0933000009", store: st2, username: "@pedro123" });
+    c = await rows(db, s);
+    if (r.ok && same(view(c), [`${M}|0933000009|${st2}|@pedro123|null`])) merged++; else console.log(`     not merged: old record saved as ${JSON.stringify(f)} → ${JSON.stringify(view(c))}`);
+  }
+  ok(merged === forms.length, `the old record's contact written as ${forms.map((f) => JSON.stringify(f)).join(", ")}: each time ONE record with the new details`);
 
   await clean();
   await seed(db, s, { phone: "0911000001", name: M, username: "pedro123", at: day(1) });
-  const newest = await seed(db, s, { phone: "0911000003", name: "maria santos", username: "@Pedro123 (U)", at: day(30) });
-  await seed(db, s, { phone: "0911000002", name: M, username: "@ pedro123", at: day(10) });
   const others = [
     await seed(db, s, { phone: "0911000011", name: M, username: "@pedro12", at: day(40) }),
     await seed(db, s, { phone: "0911000012", name: M, username: "@pedro1234", at: day(41) }),
@@ -289,7 +327,6 @@ for (const s of ["711", "fm"]) {
     await seed(db, s, { phone: "0911000016", name: M, username: "@pedro123(U)", at: day(45) }),
     await seed(db, s, { phone: "0911000017", name: M, username: "pedro123", platform: "line", at: day(46) }),
     await seed(db, s, { phone: "0911000018", name: M, username: null, at: day(47) }),
-    await seed(db, s, { phone: "0911000019", name: "Another Person", username: "@pedro123", at: day(48) }), // same username text, ANOTHER buyer
   ];
   const otherSeller = await seed(db, s, { user: N, phone: "0911000001", name: M, username: "@pedro123", at: day(5) });
   const otherTable = s === "711" ? "fm" : "711";
@@ -297,9 +334,9 @@ for (const s of ["711", "fm"]) {
   r = await save(db, s, { name: M, phone: "0933000009", store: st2, username: "@pedro123" });
   c = await rows(db, s);
   const mine = c.filter((x) => !others.includes(x.id));
-  ok(r.ok && mine.length === 1 && same(view(mine), [`${M}|0933000009|${st2}|@pedro123|null`]) && (s === "711" || mine[0].id === newest), "3 records of the buyer + username ('pedro123', '@Pedro123 (U)', '@ pedro123'; names differ only in letter case): ONE stays with the new details" + (s === "fm" ? " — the NEWEST one" : ""));
-  ok(c.filter((x) => others.includes(x.id)).length === others.length && same(view(c.filter((x) => others.includes(x.id))), [`${M}|0911000011|111111|@pedro12|null`, `${M}|0911000012|111111|@pedro1234|null`, `${M}|0911000013|111111|(U) @pedro123|null`, `${M}|0911000014|111111|Pedro Garcia|null`, `${M}|0911000015|111111|pedro123 (U)|null`, `${M}|0911000016|111111|@pedro123(U)|null`, `${M}|0911000017|111111|pedro123|line`, `${M}|0911000018|111111|null|null`, `Another Person|0911000019|111111|@pedro123|null`].sort()),
-    "never touched (same buyer name on purpose): '@pedro12', '@pedro1234', '(U) @pedro123', 'Pedro Garcia', 'pedro123 (U)', '@pedro123(U)', a LINE record, a record with no contact — and ANOTHER buyer saved with the same username");
+  ok(r.ok && mine.length === 1 && same(view(mine), [`${M}|0933000009|${st2}|@pedro123|null`]), "the buyer's record of the username is replaced by the new details (one record of @pedro123)");
+  ok(c.filter((x) => others.includes(x.id)).length === others.length && same(view(c.filter((x) => others.includes(x.id))), [`${M}|0911000011|111111|@pedro12|null`, `${M}|0911000012|111111|@pedro1234|null`, `${M}|0911000013|111111|(U) @pedro123|null`, `${M}|0911000014|111111|Pedro Garcia|null`, `${M}|0911000015|111111|pedro123 (U)|null`, `${M}|0911000016|111111|@pedro123(U)|null`, `${M}|0911000017|111111|pedro123|line`, `${M}|0911000018|111111|null|null`].sort()),
+    "never touched (same buyer name on purpose): '@pedro12', '@pedro1234', '(U) @pedro123', 'Pedro Garcia', 'pedro123 (U)', '@pedro123(U)', a LINE record, a record with no contact");
   ok((await rows(db, s, N)).some((x) => x.id === otherSeller) && (await rows(db, s, N)).length === 1, "another seller's record of the same buyer + username is untouched");
   ok((await rows(db, otherTable)).some((x) => x.id === otherStore), `the ${otherTable === "711" ? "7-11" : "FamilyMart"} Customers are untouched by a ${label} save`);
   await db.query(`delete from public.${T[otherTable].cust}`);
@@ -313,37 +350,64 @@ for (const s of ["711", "fm"]) {
   await clean();
   await seed(db, s, { phone: "0911000001", name: "Maria Santos", username: "@pedro123", at: day(5) });
   await seed(db, s, { phone: "0911000001", name: "Maria Santoss", username: "pedro123", at: day(3) });
-  await seed(db, s, { phone: "0911000001", name: "Maria  Santos Jr", username: "@pedro123", at: day(4) });
   r = await save(db, s, { name: "Maria Santos", phone: "0911000001", store: st2, username: "@pedro123" });
   c = await rows(db, s);
-  ok(r.ok && same(view(c), [`Maria Santos|0911000001|${st2}|@pedro123|null`]), "same phone, three spellings of the name: one record stays (the one with the parcel's name)");
+  ok(r.ok && same(view(c), [`Maria Santos|0911000001|${st2}|@pedro123|null`]), "same phone, two spellings of the name: one record stays (the one with the parcel's name)");
 
-  if (s === "fm") {
-    await clean();
-    const idLo = "00000000-0000-0000-0000-00000000000a", idHi = "00000000-0000-0000-0000-00000000000b";
-    await db.query(`insert into public.${t.cust}(id, user_id, phone, name, store_id, ${t.ucol}, created_at, updated_at) values ($1,$3,'0911000001',$5,'111111','@pedro123',$4,$4), ($2,$3,'0911000002',$5,'111111','pedro123',$4,$4)`, [idHi, idLo, A, day(3), M]);
-    r = await save(db, s, { name: M, phone: "0933000001", store: st1, username: "pedro123" });
-    c = await rows(db, s);
-    ok(r.ok && c.length === 1 && c[0].id === idLo, "same 'last updated' time → the smaller id stays (the same record the app fills from)");
-  }
-
-  // guard A — a one-word contact that many different buyers share is NOT a username of one buyer
+  // the kept record takes the parcel's app too
   await clean();
-  for (let i = 1; i <= 6; i++) await seed(db, s, { phone: `091100000${i}`, name: `Buyer ${["One", "Two", "Three", "Four", "Five", "Six"][i - 1]}`, username: "c", at: day(i) });
-  r = await save(db, s, { name: "Buyer Seven", phone: "0922000007", store: st1, username: "c" });
+  await seed(db, s, { phone: "0911000001", name: M, username: "pedro123", platform: null });
+  r = await save(db, s, { name: M, phone: "0922000002", store: st2, username: "@pedro123", platform: "tiktok" });
   c = await rows(db, s);
-  ok(r.ok && c.length === 7, "6 different buyers saved with the contact 'c' + a 7th one: NOTHING is deleted — 7 records (the live data has such groups: one seller, 60 buyers, contact 'c')");
-  r = await save(db, s, { name: "Buyer One", phone: "0922000001", store: st2, username: "c" });
+  ok(r.ok && same(view(c), [`${M}|0922000002|${st2}|@pedro123|tiktok`]), "old record with no app, parcel saved as TikTok: the one record says TikTok");
+  await clean();
+  await seed(db, s, { phone: "0911000001", name: M, username: "pedro123", platform: "tiktok" });
+  r = await save(db, s, { name: M, phone: "0922000002", store: st2, username: "@pedro123" });
   c = await rows(db, s);
-  ok(r.ok && c.length === 7 && c.some((x) => x.name === "Buyer One" && x.phone === "0922000001") && !c.some((x) => x.phone === "0911000001"), "…and when ONE of those buyers comes back with a new phone, only THAT buyer's record is replaced (still 7)");
+  ok(r.ok && same(view(c), [`${M}|0922000002|${st2}|@pedro123|null`]), "old record TikTok, parcel with no app: the one record has no app (the parcel's value, as the live statement writes it)");
+
+  // guard A — the username has 2 or more OTHER records → exactly as before
+  let res = await sameAsLive(db, s, async (d) => {
+    for (let i = 1; i <= 6; i++) await seed(d, s, { phone: `091100000${i}`, name: `Buyer ${["One", "Two", "Three", "Four", "Five", "Six"][i - 1]}`, username: "c", at: day(i) });
+    const a = await save(d, s, { name: "Buyer Seven", phone: "0922000007", store: st1, username: "c" });
+    const b = await save(d, s, { name: "Buyer One", phone: "0922000001", store: st2, username: "c" });
+    return a.ok && b.ok;
+  });
+  ok(res.ok && res.n === 8, "6 different buyers saved with the contact 'c', a 7th one, and one of them back with a new phone: exactly the live result — NOTHING deleted, 8 records (the live data has such groups: one seller, 60 buyers, contact 'c')");
+  res = await sameAsLive(db, s, async (d) => {
+    for (const nm of ["Ana", "Bea", "Cara"]) await seed(d, s, { phone: "0911000001", name: nm, username: "c" });
+    return (await save(d, s, { name: "Ana", phone: "0911000001", store: st2, username: "c" })).ok;
+  });
+  ok(res.ok && res.n === 3, "three buyers who share ONE phone and the contact 'c' (Ana, Bea, Cara) + a new parcel of Ana: exactly the live result — Bea and Cara stay");
+  res = await sameAsLive(db, s, async (d) => {
+    for (const nm of ["Ana", "Bea", "Cara"]) await seed(d, s, { phone: `09110000${nm.length}${nm.charCodeAt(0) % 10}`, name: "Same Name", username: nm === "Ana" ? "@pedro123" : "pedro123" });
+    return (await save(d, s, { name: "Same Name", phone: "0944000001", store: st2, username: "@pedro123" })).ok;
+  });
+  ok(res.ok && res.n === 4, "a username that already has 3 records (same name, 3 phones) + a parcel with a 4th phone: exactly the live result — left alone (4 records)");
+  res = await sameAsLive(db, s, async (d) => {
+    await seed(d, s, { phone: "0911000001", name: M, username: "@pedro123", at: day(5) });
+    await seed(d, s, { phone: "0911000002", name: M, username: "pedro123", at: day(3) });
+    return (await save(d, s, { name: M, phone: "0911000003", store: st2, username: "@pedro123" })).ok;
+  });
+  ok(res.ok && res.n === 3, "the buyer already has 2 records of the username and the parcel has a THIRD phone: exactly the live result — 3 records (two other records = left alone)");
+
+  // guard A — NOT COVERED (listed for the owner): two different buyers who share a contact word AND a phone
+  await clean();
+  await seed(db, s, { phone: "0911000001", name: "Ana", username: "c", at: day(1) });
+  await seed(db, s, { phone: "0911000001", name: "Bea", username: "c", at: day(2) });
+  r = await save(db, s, { name: "Ana", phone: "0911000001", store: st2, username: "c" });
+  c = await rows(db, s);
+  ok(r.ok && c.length === 1 && c[0].name === "Ana", "NOT COVERED, shown as it is: only TWO buyers share the contact 'c' AND one phone (Ana, Bea) → a new parcel of Ana removes Bea's record");
 
   // guard A — a parcel of somebody else saved with this buyer's username (wrong sticker / typo)
   await clean();
   await seed(db, s, { phone: "0911000001", name: M, username: "@pedro123", at: day(5) });
-  await seed(db, s, { phone: "0911000002", name: M, username: "pedro123", at: day(3) });
   r = await save(db, s, { name: "Somebody Else", phone: "0988888888", store: st2, username: "pedro123" });
   c = await rows(db, s);
-  ok(r.ok && c.length === 3 && c.filter((x) => x.name === M).length === 2, "a parcel of SOMEBODY ELSE saved with this username (other name, other phone): the buyer's 2 records are not touched — 3 records");
+  ok(r.ok && c.length === 2 && same(view(c.filter((x) => x.name === M)), [`${M}|0911000001|111111|@pedro123|null`]), "a parcel of SOMEBODY ELSE saved with this username (other name, other phone): the buyer's record is not touched — 2 records");
+  r = await save(db, s, { name: M, phone: "0911000001", store: st2, username: "@pedro123" });
+  c = await rows(db, s);
+  ok(r.ok && c.length === 2 && c.some((x) => x.name === "Somebody Else" && x.phone === "0988888888"), "…and the buyer's own next parcel does not remove that other person's record either");
 
   // the unique index (same phone + name)
   await clean();
@@ -358,7 +422,7 @@ for (const s of ["711", "fm"]) {
   const kOld = await seed(db, s, { phone: "0922000002", name: M, username: "pedro123", at: day(2) });
   r = await save(db, s, { name: M, phone: "0922000002", store: st2, username: "@pedro123 (U)" });
   c = await rows(db, s);
-  ok(r.ok && c.length === 1 && c[0].id === kOld && same(view(c), [`${M}|0922000002|${st2}|@pedro123 (U)|null`]), "the parcel's phone + name is the OLDER record of the username: the save does not fail — that record stays, the newer one is removed");
+  ok(r.ok && c.length === 1 && c[0].id === kOld && same(view(c), [`${M}|0922000002|${st2}|@pedro123 (U)|null`]), "the buyer has 2 records and the parcel's phone + name is the OLDER one: the save does not fail — that record stays, the newer one is removed");
 
   await clean();
   await seed(db, s, { phone: "0911000001", name: M, username: "@pedro123", at: day(20) });
@@ -379,13 +443,26 @@ for (const s of ["711", "fm"]) {
     ["a contact that is not a username", { username: "Pedro Garcia" }],
     ["a username with a note in front", { username: "(U) @pedro123" }],
     ["a username with a note and no '@'", { username: "pedro123 (U)" }],
+    ["a longer username", { username: "@pedro1234" }],
+    ["a shorter username", { username: "@pedro12" }],
   ]) {
-    const res = await sameAsLive(db, s, async (d) => {
+    res = await sameAsLive(db, s, async (d) => {
       await seed(d, s, { phone: "0911000001", name: M, username: "@pedro123", at: day(20) });
-      await seed(d, s, { phone: "0911000002", name: M, username: "pedro123", at: day(10) });
       return (await save(d, s, { name: M, phone: "0944000001", store: st1, ...parcel })).ok;
     });
-    ok(res.ok && res.n === 3, `${what}: saved exactly as the live function does (the buyer keeps the 2 old records + the new one)`);
+    ok(res.ok && res.n === 2, `${what}: saved exactly as the live function does (the buyer keeps the old record + the new one)`);
+  }
+  if (s === "711") { // (a FamilyMart parcel always has a name)
+    res = await sameAsLive(db, s, async (d) => {
+      await seed(d, s, { phone: "0911000001", name: M, store: "111111", username: "@pedro123", at: day(20) });
+      return (await save(d, s, { name: "", phone: "0911000001", store: st1, username: "@pedro123" })).ok && (await save(d, s, { name: null, phone: "0911000001", store: st2, username: "@pedro123" })).ok;
+    });
+    ok(res.ok && res.n === 2 && res.live.includes(`${M}|0911000001|111111|@pedro123`), "a parcel with NO name and the buyer's phone + username: exactly the live result — the buyer's NAMED record is not replaced by a nameless one");
+    await clean();
+    await seed(db, s, { phone: "0911000001", name: null, store: "111111", username: "@pedro123", at: day(20) });
+    r = await save(db, s, { name: M, phone: "0911000001", store: st2, username: "@pedro123" });
+    c = await rows(db, s);
+    ok(r.ok && same(view(c), [`${M}|0911000001|${st2}|@pedro123|null`]), "…the other way round — the old record has NO name, the parcel has one, same phone: one record, WITH the name");
   }
 
   // Customer Details edit = a direct write to Customers → never merged
@@ -394,28 +471,54 @@ for (const s of ["711", "fm"]) {
   const edited = await seed(db, s, { phone: "0911000002", name: M, username: "@other", at: day(10) });
   await db.query(`update public.${t.cust} set ${t.ucol} = '@pedro123' where id = $1`, [edited]);
   ok((await rows(db, s)).length === 2, "editing a buyer in Customer Details (a direct write) merges nothing — still 2 records");
-  r = await save(db, s, { name: M, phone: "0955000001", store: st1, username: "@pedro123" });
-  ok(r.ok && (await rows(db, s)).length === 1, "…the next parcel save of that buyer + username then leaves one");
+  r = await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" });
+  ok(r.ok && (await rows(db, s)).length === 1, "…the next parcel save of that buyer + username (with one of the two phones) then leaves one");
 
-  // an edit of a saved parcel follows the same rule
+  // edits of a saved parcel, done the way the app does them
   await clean();
-  const pid = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
-  await db.query(`update public.${t.scans} set phone = '0911000009' where id = $1`, [pid]);
+  let pid = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
+  let mid = await editAndWatch(db, s, pid, { phone: "0911000009" });
   c = await rows(db, s);
-  ok(c.length === 1 && same(view(c), [`${M}|0911000009|${st1}|@pedro123|null`]), "editing a saved parcel (a corrected phone): the one record follows it — no second record");
+  ok(same(view(c), [`${M}|0911000009|${st1}|@pedro123|null`]), "editing a saved parcel (a corrected phone): the one record follows it — no second record" + (s === "711" ? " (once the new phone is checked 'ok')" : ""));
+  if (s === "711") ok(mid.length === 2, "…7-11: between the edit and the new phone's verdict there are 2 records, exactly as today");
 
-  // an edit that changes the phone AND the contact text: the one record takes both
   await clean();
-  const pid3 = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
-  await db.query(`update public.${t.scans} set phone = '0911000008', ${t.ucol} = '@Pedro123 (U)' where id = $1`, [pid3]);
+  pid = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
+  await editAndWatch(db, s, pid, { phone: "0911000008", username: "@Pedro123 (U)" });
   c = await rows(db, s);
-  ok(c.length === 1 && same(view(c), [`${M}|0911000008|${st1}|@Pedro123 (U)|null`]), "editing a saved parcel's phone and contact text ('(U)' added): the one record has the new phone and the new text");
+  ok(same(view(c), [`${M}|0911000008|${st1}|@Pedro123 (U)|null`]), "editing a saved parcel's phone and contact text ('(U)' added): the one record has the new phone and the new text");
+
+  await clean();
+  pid = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "pedro123" })).id;
+  await editAndWatch(db, s, pid, { name: "Maria S Santos", username: "@pedro123 (U)", platform: "tiktok" });
+  c = await rows(db, s);
+  ok(same(view(c), [`Maria S Santos|0911000001|${st1}|@pedro123 (U)|tiktok`]), "editing a saved parcel's NAME, contact text and app: the one record is renamed and takes the new text and app — no second record");
+
+  // the buyer's only record of the username has ANOTHER phone and store (the parcel's own record was removed by hand):
+  // it takes the parcel's name, phone, store, contact text and app, and its 'last updated' is now
+  await clean();
+  pid = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
+  await db.query(`delete from public.${t.cust} where user_id = $1`, [A]);
+  const lone = await seed(db, s, { phone: "0922000002", name: "Maria S Santos", store: "111111", username: "pedro123", platform: "tiktok", at: day(1) });
+  await editAndWatch(db, s, pid, { name: "Maria S Santos" });
+  c = await rows(db, s);
+  ok(c.length === 1 && c[0].id === lone && same(view(c), [`Maria S Santos|0911000001|${st1}|@pedro123|null`]) && new Date(c[0].updated_at).getTime() > Date.UTC(2026, 9, 1),
+    "the buyer's one record has another phone and store: that SAME record takes the parcel's name, phone, store, contact text and app; 'last updated' is now");
+  if (s === "711") {
+    await clean();
+    pid = (await save(db, s, { name: M, phone: "0911000001", store: "", username: "@pedro123" })).id; // no store #, yet marked checked
+    await db.query(`delete from public.${t.cust} where user_id = $1`, [A]);
+    await seed(db, s, { phone: "0922000002", name: "Maria S Santos", store: "111111", username: "pedro123", at: day(1) });
+    await editAndWatch(db, s, pid, { name: "Maria S Santos" });
+    c = await rows(db, s);
+    ok(same(view(c), [`Maria S Santos|0911000001|111111|@pedro123|null`]), "…a parcel with NO store # never blanks the record's store (it keeps 111111), as the live statement does");
+  }
 
   // …and a NEWER record of the same buyer saved with another app (LINE) is never the one that is rewritten
   await clean();
-  const pid2 = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
+  pid = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
   const lineRec = await seed(db, s, { phone: "0911000077", name: M, username: "pedro123", platform: "line", at: new Date(Date.now() + 86_400_000).toISOString() });
-  await db.query(`update public.${t.scans} set phone = '0911000009' where id = $1`, [pid2]);
+  await editAndWatch(db, s, pid, { phone: "0911000009" });
   c = await rows(db, s);
   ok(c.length === 2 && c.some((x) => x.id === lineRec && x.phone === "0911000077" && x.platform === "line" && x.username === "pedro123") && c.some((x) => x.phone === "0911000009" && x.platform === null),
     "a corrected phone while the buyer also has a NEWER LINE record with the same text: the LINE record is untouched, the TikTok record follows the parcel");
@@ -423,14 +526,13 @@ for (const s of ["711", "fm"]) {
   // saved by the seller's own browser role (the helpers are closed to it — the trigger still works)
   await clean();
   await seed(db, s, { phone: "0911000001", name: M, username: "@pedro123", at: day(20) });
-  await seed(db, s, { phone: "0911000002", name: M, username: "pedro123", at: day(10) });
   await db.exec("set role authenticated");
   r = await save(db, s, { name: M, phone: "0966000001", store: st1, username: "pedro123" });
   await db.exec("reset role");
   c = await rows(db, s);
   ok(r.ok && c.length === 1 && c[0].phone === "0966000001", "a save made as the signed-in browser role works and merges (the closed helpers do not block it)");
 
-  // guard C — the NEWEST parcel wins
+  // ── guard C — the NEWEST parcel wins ──
   await clean();
   const older = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
   await save(db, s, { name: M, phone: "0922000002", store: st2, username: "@pedro123" });
@@ -444,15 +546,62 @@ for (const s of ["711", "fm"]) {
     await db.query("update public.parcel_scans set phone_check_status = 'ok' where user_id = $1", [A]);
     ok(same(view(await rows(db, s)), wantNew), "ONE statement that updates every pending parcel (as the checker does): still the NEW phone and store, whatever order the rows are handled in");
   }
-  await db.query(`update public.${t.scans} set store_id = $2 where id = $1`, [older, s === "711" ? "777777" : "033333"]);
-  ok(same(view(await rows(db, s)), wantNew), "the seller EDITS the older parcel (another store): the record still has the NEW phone and store");
+  await editAndWatch(db, s, older, { store: st3 });
+  ok(same(view(await rows(db, s)), wantNew), "the seller EDITS the older parcel (another store): the record still has the NEW phone and store — the older parcel writes nothing");
+
+  // the newer parcel counts when it has the same PHONE and another spelling of the name
+  await clean();
+  const o2 = (await save(db, s, { name: "Maria Santos", phone: "0911000001", store: st1, username: "@pedro123" })).id;
+  await save(db, s, { name: "Maria S.", phone: "0911000001", store: st2, username: "@pedro123" });
+  const wantSpell = [`Maria S.|0911000001|${st2}|@pedro123|null`];
+  ok(same(view(await rows(db, s)), wantSpell), "second parcel: same phone, the name spelled differently → one record with the new spelling and store");
+  await editAndWatch(db, s, o2, { store: st3 });
+  ok(same(view(await rows(db, s)), wantSpell), "…an edit of the older parcel does not bring the old spelling / store back (same PHONE is enough to be the same buyer)");
+
+  // two parcels saved at the very same moment: the one with the bigger id is the newer one
+  await clean();
+  {
+    const lo = "00000000-0000-0000-0000-0000000000a1", hi = "00000000-0000-0000-0000-0000000000b2", at = day(100);
+    const ins = s === "711"
+      ? (id, ph, st) => db.query(`insert into public.parcel_scans(id, user_id, customer_name, phone, store_id, notes, created_at) values ($1,$2,$3,$4,$5,'@pedro123',$6)`, [id, A, M, ph, st, at])
+      : (id, ph, st) => db.query(`insert into public.fm_parcel_scans(id, user_id, recipient_name, phone, store_id, buyer_username, created_at) values ($1,$2,$3,$4,$5,'@pedro123',$6)`, [id, A, M, ph, st, at]);
+    await ins(lo, "0911000001", st1); await ins(hi, "0922000002", st2);
+    if (s === "711") for (const id of [hi, lo]) { await db.query("update public.parcel_scans set store_check_status = 'valid' where id = $1", [id]); await db.query("update public.parcel_scans set phone_check_status = 'ok' where id = $1", [id]); }
+    else await db.query("update public.fm_parcel_scans set store_id = $2 where id = $1", [lo, st3]);
+    ok(same(view(await rows(db, s)), wantNew), "two parcels with the SAME save time: the one with the bigger id is the newer one — one record, its phone and store");
+  }
+
+  // a newer parcel that does NOT count
+  for (const [what, newer] of [
+    ["saved with another app (LINE)", { name: M, phone: "0922000002", store: st2, username: "pedro123", platform: "line" }],
+    ["of a LONGER username (@pedro1234)", { name: M, phone: "0922000002", store: st2, username: "@pedro1234" }],
+    ["with no phone", { name: M, phone: "", store: st2, username: "@pedro123" }],
+  ]) {
+    if (s === "fm" && newer.phone === "") continue; // FamilyMart parcels always have a phone
+    await clean();
+    const o3 = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
+    await save(db, s, newer);
+    await editAndWatch(db, s, o3, { store: st3 });
+    c = await rows(db, s);
+    ok(c.some((x) => x.phone === "0911000001" && x.store === st3 && x.username === "@pedro123"), `a newer parcel ${what} does not count: the older parcel's edit still reaches its record (store ${st3})`);
+  }
+
+  // the buyer's record was deleted by hand → the older parcel is handled as before (the buyer is not lost)
+  await clean();
+  const o4 = (await save(db, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" })).id;
+  await save(db, s, { name: M, phone: "0922000002", store: st2, username: "@pedro123" });
+  await db.query(`delete from public.${t.cust} where user_id = $1`, [A]);
+  await editAndWatch(db, s, o4, { store: st3 });
+  c = await rows(db, s);
+  ok(same(view(c), [`${M}|0911000001|${st3}|@pedro123|null`]), "the buyer's record was deleted in Customer Details, then the OLDER parcel is edited: the buyer is added again, as before (not lost)");
+
   // the older parcel of ANOTHER buyer with the same contact word is not blocked by a newer parcel of somebody else
   await clean();
   const pa = (await save(db, s, { name: "Buyer One", phone: "0911000001", store: st1, username: "c" })).id;
   await save(db, s, { name: "Buyer Two", phone: "0922000002", store: st1, username: "c" });
-  await db.query(`update public.${t.scans} set store_id = $2 where id = $1`, [pa, st2]);
+  await editAndWatch(db, s, pa, { store: st2 });
   c = await rows(db, s);
-  ok(c.length === 2 && c.some((x) => x.name === "Buyer One" && x.store === st2), "…but an older parcel of a DIFFERENT buyer with the same contact word still updates its own record (as before)");
+  ok(c.length === 2 && c.some((x) => x.name === "Buyer One" && x.store === st2), "an older parcel of a DIFFERENT buyer with the same contact word still updates its own record (as before)");
 }
 function public_key(t) { const v = String(t ?? ""); const m = /^[ \t\n\r\f\v]*([A-Za-z0-9._]{1,50})[ \t\n\r\f\v]*$/.exec(v) ?? /^[ \t\n\r\f\v]*@[ \t\n\r\f\v]*([A-Za-z0-9._]{1,50})(?:[ \t\n\r\f\v][\s\S]*)?$/.exec(v); return m ? m[1].toLowerCase() : ""; }
 
@@ -461,6 +610,7 @@ console.log("\n── 5. 7-11: nothing is merged before the verdicts (guard B) �
   const base = async (d) => { await seed(d, "711", { phone: "0911111111", name: M, store: "111111", username: "@pedro123", at: day(20) }); };
   let res = await sameAsLive(db, "711", async (d) => { await base(d); return (await save(d, "711", { name: M, phone: "0922222222", store: "999999", username: "@pedro123", verdicts: ["not_found", "ok"] })).ok; });
   ok(res.ok && res.live.includes(`${M}|0911111111|111111|@pedro123`), `a WRONG store # (saved first, 'not_found' arrives later): exactly the live result — the buyer's good record (store 111111) is still there [${res.live.join(" ; ")}]`);
+  ok(res.live.includes(`${M}|0922222222|999999|@pedro123`), "…and, as today, the parcel's own record with the WRONG store 999999 is in Customers too (the live statement writes it at the save, before any verdict — not changed by sql/150)");
   res = await sameAsLive(db, "711", async (d) => { await base(d); return (await save(d, "711", { name: M, phone: "0933333333", store: "246810", username: "@pedro123", verdicts: ["valid", "restricted"] })).ok; });
   ok(res.ok && same(res.live, [`${M}|0911111111|111111|@pedro123`]), "a RESTRICTED phone (saved first, verdict later): exactly the live result — the restricted phone is removed, the buyer's good record stays");
   res = await sameAsLive(db, "711", async (d) => { await base(d); return (await save(d, "711", { name: M, phone: "0933333333", store: "246810", username: "@pedro123", verdicts: ["valid", "restricted"], phoneFirst: true })).ok; });
@@ -490,6 +640,71 @@ console.log("\n── 5. 7-11: nothing is merged before the verdicts (guard B) �
   ok(same(view(await rows(db, "711")), [`${M}|0966666666|246810|@pedro123|null`]), "more verdicts on the same parcel: still that one record");
   await db.query("update public.parcel_scans set phone_check_status = 'restricted' where id = $1", [r.id]);
   ok((await rows(db, "711")).length === 0, "a restricted verdict AFTER the merge removes that buyer (the live rule) — the older record was already merged away (listed for the owner)");
+  await wipe(db, "711"); await base(db);
+  r = await save(db, "711", { name: M, phone: "0966666666", store: "246810", username: "@pedro123", scs0: "valid", pcs0: "ok", verdicts: [null, null] });
+  ok(r.ok && same(view(await rows(db, "711")), [`${M}|0966666666|246810|@pedro123|null`]), "a parcel that is ALREADY checked when it is inserted (valid + ok in the insert itself): merged at once");
+
+  // an edit of the store # / phone: the row still carries the OLD one's verdict
+  const twoRecords = async (d) => {
+    const p = await save(d, "711", { name: M, phone: "0911111111", store: "111111", username: "@pedro123" });            // checked: valid + ok
+    await seed(d, "711", { phone: "0922222222", name: M, store: "222222", username: "pedro123", at: day(30) });         // the buyer's other record (added by hand)
+    return p.id;
+  };
+  res = await sameAsLive(db, "711", async (d) => { const id = await twoRecords(d); await editAndWatch(d, "711", id, { store: "999999" }, ["not_found", null]); return true; });
+  ok(res.ok && res.n === 2 && res.live.includes(`${M}|0922222222|222222|pedro123`), "a checked parcel's store # is edited to a WRONG one (the row still says 'valid' from the old store; 'not_found' arrives after): exactly the live result — the buyer's other record (store 222222) is NOT removed");
+  res = await sameAsLive(db, "711", async (d) => {
+    const p = await save(d, "711", { name: M, phone: "0911111111", store: "111111", username: "@pedro123" });
+    await d.query("update public.parcel_scans set phone = '0933333333' where id = $1", [p.id]); // the old 'ok' stays in the row
+    return true;
+  });
+  ok(res.ok && res.n === 2, "a phone changed by a writer that does NOT clear the old 'ok' (not the app): the changing statement merges nothing — exactly the live result (2 records)");
+  await wipe(db, "711");
+  {
+    const id = await twoRecords(db);
+    await editAndWatch(db, "711", id, { store: "135791" }, ["valid", null]);
+    c = await rows(db, "711");
+    ok(same(view(c), [`${M}|0911111111|135791|@pedro123|null`]), "the store # is edited to a GOOD one and the app's fresh check says 'valid': now the buyer has one record with the new store");
+  }
+  await wipe(db, "711");
+  {
+    const id = await twoRecords(db);
+    const mid = await editAndWatch(db, "711", id, { store: "999999" }, [null, null]); // the app is closed before its store check is written
+    ok(mid.length === 2, "NOT COVERED, shown as it is — the store # is edited and NO fresh store verdict is ever written: right after the edit, 2 records (as today)…");
+    await db.query("update public.parcel_scans set phone_check_status = 'ok' where id = $1", [id]);
+    c = await rows(db, "711");
+    ok(same(view(c), [`${M}|0911111111|999999|@pedro123|null`]), "…but the next write on that parcel (a repeated phone verdict) merges on the OLD 'valid': one record, with the unchecked store 999999");
+  }
+
+  // guard C on 7-11: what a NEWER parcel's state means for an older parcel
+  const pair = async (d, newerVerdicts) => {
+    const o = await save(d, "711", { name: M, phone: "0911111111", store: "111111", username: "@pedro123" });
+    const n = await save(d, "711", { name: M, phone: "0922222222", store: "222222", username: "@pedro123", verdicts: newerVerdicts });
+    return [o.id, n.id];
+  };
+  await wipe(db, "711");
+  {
+    const [o] = await pair(db, ["valid", "restricted"]);
+    c = await rows(db, "711");
+    ok(same(view(c), [`${M}|0911111111|111111|@pedro123|null`]), "the newer parcel's phone is RESTRICTED: the buyer keeps the older parcel's record");
+    await editAndWatch(db, "711", o, { phone: "0911111199" });
+    c = await rows(db, "711");
+    ok(same(view(c), [`${M}|0911111199|111111|@pedro123|null`]), "…and a corrected phone on the OLDER parcel is saved to Customers (a restricted newer parcel does not count)");
+  }
+  await wipe(db, "711");
+  {
+    const [o] = await pair(db, ["not_found", "ok"]);
+    ok((await rows(db, "711")).length === 2, "the newer parcel's store is REFUSED ('not_found'): 2 records, as today (the newer parcel's own record was written at its save)");
+    await db.query("update public.parcel_scans set store_check_status = 'valid' where id = $1", [o]);
+    c = await rows(db, "711");
+    ok(same(view(c), [`${M}|0911111111|111111|@pedro123|null`]), "…a repeated verdict on the OLDER, checked parcel: one record — the checked one (a refused newer parcel does not win)");
+  }
+  res = await sameAsLive(db, "711", async (d) => {
+    const [o] = await pair(d, [null, null]);
+    await d.query("update public.parcel_scans set store_check_status = 'valid' where id = $1", [o]);
+    await d.query("update public.parcel_scans set customer_name = $2 where id = $1", [o, M]);
+    return true;
+  });
+  ok(res.ok && res.n === 2, "the newer parcel is NOT decided yet (no verdict): a repeated verdict / an edit of the older parcel is handled exactly as the live function does — 2 records, nothing merged, nothing skipped");
 
   // the live filters themselves
   await wipe(db, "711"); await base(db);
@@ -506,67 +721,72 @@ for (const s of ["711", "fm"]) {
   const t = T[s];
   const st1 = s === "711" ? "246810" : "022131";
   const d = await freshDb(); await d.exec(UP);
-  const two = async () => {
-    await wipe(d, s);
-    await seed(d, s, { phone: "0911000001", name: M, username: "@pedro123", at: day(20) });
-    await seed(d, s, { phone: "0911000002", name: M, username: "pedro123", at: day(10) });
-  };
+  const one = async () => { await wipe(d, s); await seed(d, s, { phone: "0911000001", name: M, username: "@pedro123", at: day(20) }); };
   const parcels = async () => (await d.query(`select count(*)::int n from public.${t.scans}`)).rows[0].n;
   await d.exec(`create or replace function public.t_boom() returns trigger language plpgsql as $$ begin raise exception 'boom'; end $$;
     create or replace function public.t_vanish() returns trigger language plpgsql as $$ begin return null; end $$;`);
 
-  // (a) the update of the newest record throws / finds nothing. That path runs when no record has the parcel's
-  //     phone + name yet: on FamilyMart at the save itself; on 7-11 when a checked parcel's phone is edited.
-  for (const [trg, fn, what, want] of [["t_boom_upd", "t_boom", "throws", 3], ["t_vanish_upd", "t_vanish", "finds the record gone (another device)", 3]]) {
-    await two();
-    let r, before;
+  // (a) the update of the buyer's other record throws / finds nothing. That path runs when no record has the parcel's
+  //     phone + name: on FamilyMart at the save itself; on 7-11 when a checked parcel's NAME is edited.
+  for (const [trg, fn, what] of [["t_boom_upd", "t_boom", "throws"], ["t_vanish_upd", "t_vanish", "finds the record gone (another device)"]]) {
+    await one();
+    let r, c;
     if (s === "fm") {
       await d.exec(`create trigger ${trg} before update on public.${t.cust} for each row execute function public.${fn}();`);
-      before = await parcels();
+      const before = await parcels();
       r = await save(d, s, { name: M, phone: "0988000001", store: st1, username: "@pedro123" });
       ok(r.ok && await parcels() === before + 1, `${label}: the update of the record ${what} → the parcel IS saved`);
+      c = await rows(d, s);
+      ok(c.some((x) => x.phone === "0988000001") && c.length === 2, `${label}: …the buyer is added as before and nothing is removed (${c.length} records)`);
     } else {
-      const made = await save(d, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" }); // merges into one record
+      const made = await save(d, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" });
       await d.exec(`create trigger ${trg} before update on public.${t.cust} for each row execute function public.${fn}();`);
-      try { await d.query("update public.parcel_scans set phone = '0988000001' where id = $1", [made.id]); r = { ok: true }; } catch (e) { r = { ok: false, error: String(e.message) }; }
-      ok(r.ok, `${label}: the update of the record ${what} → the edit of the parcel IS saved`);
+      try { await d.query("update public.parcel_scans set customer_name = 'Maria S Santos' where id = $1", [made.id]); r = { ok: true }; } catch (e) { r = { ok: false, error: String(e.message) }; }
+      ok(r.ok && (await d.query("select customer_name n from public.parcel_scans where id = $1", [made.id])).rows[0].n === "Maria S Santos", `${label}: the update of the record ${what} → the edit of the parcel IS saved`);
+      c = await rows(d, s);
+      ok(c.some((x) => x.name === "Maria S Santos") && c.length === 2, `${label}: …the buyer is added as before and nothing is removed (${c.length} records)`);
     }
-    const c = await rows(d, s);
-    ok(c.some((x) => x.phone === "0988000001") && c.length === (s === "fm" ? want : 2), `${label}: …the buyer is added as before and the clean-up is skipped (nothing lost: ${c.length} records)`);
     await d.exec(`drop trigger ${trg} on public.${t.cust}`);
   }
 
   // (b) the clean-up (delete) throws
-  await two();
+  await one();
+  await seed(d, s, { phone: "0911000002", name: M, username: "pedro123", at: day(10) });
   await d.exec(`create trigger t_boom_del before delete on public.${t.cust} for each row execute function public.t_boom();`);
   let before = await parcels();
-  let r = await save(d, s, { name: M, phone: "0988000002", store: st1, username: "@pedro123" });
+  let r = await save(d, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" });
   let c = await rows(d, s);
-  ok(r.ok && await parcels() === before + 1 && c.some((x) => x.phone === "0988000002") && c.length >= 2, `${label}: the delete of the other records throws → the parcel IS saved, its record has the new details, the other record(s) simply stay (${c.length})`);
+  ok(r.ok && await parcels() === before + 1 && c.length === 2 && c.some((x) => x.phone === "0911000001" && x.store === st1), `${label}: the delete of the other record throws → the parcel IS saved, its record has the new details, the other record simply stays (${c.length})`);
   await d.exec(`drop trigger t_boom_del on public.${t.cust}`);
+  r = await save(d, s, { name: M, phone: "0911000001", store: st1, username: "@pedro123" });
+  ok(r.ok && (await rows(d, s)).length === 1, `${label}: …and without that failure the same save leaves ONE record (so the delete path really ran above)`);
 
   // (c) a helper is missing altogether
   for (const fn of ["scan_qr_lookup_on(uuid)", "scan_qr_username_key(text)"]) {
-    await two();
+    await one();
     const nm = fn.split("(")[0];
     await d.exec(`alter function public.${fn} rename to ${nm}_gone`);
     before = await parcels();
     r = await save(d, s, { name: M, phone: "0988000003", store: st1, username: "@pedro123" });
     c = await rows(d, s);
-    ok(r.ok && await parcels() === before + 1 && c.length === 3 && c.some((x) => x.phone === "0988000003"), `${label}: ${nm}() is missing → the parcel IS saved, exactly as before (3 records)`);
+    ok(r.ok && await parcels() === before + 1 && c.length === 2 && c.some((x) => x.phone === "0988000003"), `${label}: ${nm}() is missing → the parcel IS saved, exactly as before (2 records, nothing merged)`);
     await d.exec(`alter function public.${nm}_gone(${fn.split("(")[1]} rename to ${nm}`);
   }
 
   // (d) the parcels table cannot be read for guard C
-  await two();
+  await one();
   await d.exec(`alter table public.${t.scans} rename column created_at to created_at_gone`);
   r = await save(d, s, { name: M, phone: "0988000004", store: st1, username: "@pedro123" });
-  ok(r.ok && (await rows(d, s)).some((x) => x.phone === "0988000004"), `${label}: guard C cannot read the parcels → the parcel IS saved, as before`);
+  c = await rows(d, s);
+  ok(r.ok && c.length === 2 && c.some((x) => x.phone === "0988000004"), `${label}: guard C cannot read the parcels → the parcel IS saved, exactly as before (2 records)`);
   await d.exec(`alter table public.${t.scans} rename column created_at_gone to created_at`);
+  await one();
+  r = await save(d, s, { name: M, phone: "0988000005", store: st1, username: "@pedro123" });
+  ok(r.ok && (await rows(d, s)).length === 1, `${label}: …and with everything in place the same save leaves ONE record`);
 
   // (e) something the live function itself refuses still fails the same way (not hidden, not changed)
   if (s === "fm") {
-    await two();
+    await one();
     await d.exec("alter table public.fm_parcel_scans drop constraint fm_parcel_scans_store_id_check");
     const liveDb = await freshDb(); await liveDb.exec("alter table public.fm_parcel_scans drop constraint fm_parcel_scans_store_id_check");
     const a = await save(liveDb, "fm", { name: "Bad Store", phone: "0988000006", store: "12", username: "@pedro123" });
@@ -590,15 +810,15 @@ console.log("\n── 7. the file refuses to overwrite a function it was not bui
   try { await e.exec(UP); } catch { again = false; }
   ok(again, "applying sql/150 a second time is fine");
   ok((await e.query("select position('sql/150' in pg_get_functiondef('public.upsert_parcel_customer'::regproc)) > 0 a, position('sql/150' in pg_get_functiondef('public.upsert_fm_parcel_customer'::regproc)) > 0 b")).rows.every((x) => x.a && x.b), "both functions carry the sql/150 part");
-  await seed(e, "711", { phone: "0911000001", name: M, username: "@pedro123" });
-  await seed(e, "711", { phone: "0911000002", name: M, username: "pedro123" });
+  for (const s of ["711", "fm"]) await seed(e, s, { phone: "0911000001", name: M, username: "@pedro123", store: s === "711" ? "246810" : "022131" });
   await e.exec(DOWN);
   let allBack = true;
   for (const [fn, md5] of Object.entries(LIVE_MD5)) if (await fnMd5(e, fn) !== md5) allBack = false;
   const gone = (await e.query("select count(*)::int n from pg_proc where proname in ('scan_qr_username_key','scan_qr_lookup_on')")).rows[0].n;
   ok(allBack && gone === 0, "rollback: both functions are the live ones again, character for character; the helpers are gone");
   const r = await save(e, "711", { name: M, phone: "0999000001", store: "246810", username: "@pedro123" });
-  ok(r.ok && (await rows(e, "711")).length === 3, "after the rollback a listed seller's save is the old rule again (3 records, nothing merged)");
+  const rf = await save(e, "fm", { name: M, phone: "0999000001", store: "022131", username: "@pedro123" });
+  ok(r.ok && rf.ok && (await rows(e, "711")).length === 2 && (await rows(e, "fm")).length === 2, "after the rollback a listed seller's save is the old rule again (2 records per store, nothing merged)");
   const trg = (await e.query("select count(*)::int n from pg_trigger where not tgisinternal and tgname in ('trg_upsert_parcel_customer','trg_upsert_fm_parcel_customer')")).rows[0].n;
   const idx = (await e.query("select count(*)::int n from pg_indexes where schemaname = 'public' and tablename in ('parcel_customers','fm_parcel_customers')")).rows[0].n;
   ok(trg === 2 && idx === 5, "no trigger and no index was added or removed by sql/150 or its rollback (2 triggers, 5 indexes as created here)");

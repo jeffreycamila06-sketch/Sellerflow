@@ -1,0 +1,210 @@
+── 0. the temporary database starts as a copy of the live one ──
+ok   public.upsert_parcel_customer() here = the live function, character for character (same md5 as the live database)
+ok   public.upsert_fm_parcel_customer() here = the live function, character for character (same md5 as the live database)
+ok   the two helpers do not exist before sql/150
+
+── 1. rule #4: the database gives the SAME answer as the app for the shared example list ──
+ok   applying sql/150 changes NO Customers row (no backfill, no mass delete): 2 records of one buyer are still 2
+ok   who may run the two trigger functions is unchanged
+ok   all 47 examples: scan_qr_username_key() = usernameKeyOf() in the app
+ok   no text → no username
+ok   Jeff's matches → pedro123
+ok   Jeff's non-matches are never pedro123
+
+── 2. who is ON ──
+ok   seller A: login on the list (any letter case / spaces in the stored email) → ON
+ok   seller P: listed by a prefix row → ON
+ok   seller N: not listed (listed for ANOTHER feature only) → off
+ok   a seller with no email → off
+ok   an unknown seller → off
+ok   the switch 'true' → ON for every seller
+ok   any switch value other than exactly 'true' → off
+ok   no switch row at all → off (the list still counts)
+ok   anon, authenticated and PUBLIC cannot run the two helpers
+ok   scan_qr_lookup_on: SECURITY DEFINER, STABLE; scan_qr_username_key: IMMUTABLE; both with a fixed search_path
+
+── 3. OFF (switch off, seller not listed) = EXACTLY the live functions ──
+ok   7-11 Customers after saves, verdicts, re-checks, edits and a bulk update: sql/150 (off) = the live functions, row for row, in the same order (15 records)
+ok   FamilyMart Customers: sql/150 (off) = the live functions, row for row (12 records)
+ok   …and the not-listed seller still has 5 records of the same buyer + @pedro123 (nothing was merged for them)
+ok   switch off, seller not listed: one record + a parcel with a new phone = 2 records (the old rule)
+ok   switch 'true' → the same seller, the same steps: ONE record, with the new phone
+
+── 4. ON — 7-11 (seller A, login listed) ──
+ok   no record of the username yet → saved as before (one new record)
+ok   the buyer has a new phone and store: ONE record, with the new phone, store and the FULL contact text incl. '(U)'
+ok   …and its 'last updated' is now
+ok   the old record's contact written as "pedro123", "@pedro123", "@Pedro123 (U)", "@ pedro123", "@pedro123 Garcia (NA)", "@pedro123 #3", "  @PEDRO123  ": each time ONE record with the new details
+ok   the buyer's record of the username is replaced by the new details (one record of @pedro123)
+ok   never touched (same buyer name on purpose): '@pedro12', '@pedro1234', '(U) @pedro123', 'Pedro Garcia', 'pedro123 (U)', '@pedro123(U)', a LINE record, a record with no contact
+ok   another seller's record of the same buyer + username is untouched
+ok   the FamilyMart Customers are untouched by a 7-11 save
+ok   a save for @pedro12 or pedro1234 leaves ONE record of each and never touches @pedro123's
+ok   same phone, two spellings of the name: one record stays (the one with the parcel's name)
+ok   old record with no app, parcel saved as TikTok: the one record says TikTok
+ok   old record TikTok, parcel with no app: the one record has no app (the parcel's value, as the live statement writes it)
+ok   6 different buyers saved with the contact 'c', a 7th one, and one of them back with a new phone: exactly the live result — NOTHING deleted, 8 records (the live data has such groups: one seller, 60 buyers, contact 'c')
+ok   three buyers who share ONE phone and the contact 'c' (Ana, Bea, Cara) + a new parcel of Ana: exactly the live result — Bea and Cara stay
+ok   a username that already has 3 records (same name, 3 phones) + a parcel with a 4th phone: exactly the live result — left alone (4 records)
+ok   the buyer already has 2 records of the username and the parcel has a THIRD phone: exactly the live result — 3 records (two other records = left alone)
+ok   NOT COVERED, shown as it is: only TWO buyers share the contact 'c' AND one phone (Ana, Bea) → a new parcel of Ana removes Bea's record
+ok   a parcel of SOMEBODY ELSE saved with this username (other name, other phone): the buyer's record is not touched — 2 records
+ok   …and the buyer's own next parcel does not remove that other person's record either
+ok   a record with the parcel's phone + name already exists (no contact): the save does NOT fail — that record takes the parcel and the buyer's other record of the username is removed
+ok   the buyer has 2 records and the parcel's phone + name is the OLDER one: the save does not fail — that record stays, the newer one is removed
+ok   the parcel's phone + name is a record saved with ANOTHER username: no error — it takes the parcel (as before), the buyer has one record of @pedro123, the other username's other record is untouched
+ok   'no social handle' (no contact): saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a contact that is only spaces: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   another app (LINE): saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   another app (WhatsApp): saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   the word 'unknown': saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a contact that is not a username: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a username with a note in front: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a username with a note and no '@': saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a longer username: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a shorter username: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a parcel with NO name and the buyer's phone + username: exactly the live result — the buyer's NAMED record is not replaced by a nameless one
+ok   …the other way round — the old record has NO name, the parcel has one, same phone: one record, WITH the name
+ok   editing a buyer in Customer Details (a direct write) merges nothing — still 2 records
+ok   …the next parcel save of that buyer + username (with one of the two phones) then leaves one
+ok   editing a saved parcel (a corrected phone): the one record follows it — no second record (once the new phone is checked 'ok')
+ok   …7-11: between the edit and the new phone's verdict there are 2 records, exactly as today
+ok   editing a saved parcel's phone and contact text ('(U)' added): the one record has the new phone and the new text
+ok   editing a saved parcel's NAME, contact text and app: the one record is renamed and takes the new text and app — no second record
+ok   the buyer's one record has another phone and store: that SAME record takes the parcel's name, phone, store, contact text and app; 'last updated' is now
+ok   …a parcel with NO store # never blanks the record's store (it keeps 111111), as the live statement does
+ok   a corrected phone while the buyer also has a NEWER LINE record with the same text: the LINE record is untouched, the TikTok record follows the parcel
+ok   a save made as the signed-in browser role works and merges (the closed helpers do not block it)
+ok   two parcels of the buyer, the second with a new phone and store: one record, the NEW phone and store
+ok   a late / repeated verdict on the OLDER parcel: the record still has the NEW phone and store (the live functions would bring the old record back)
+ok   ONE statement that updates every pending parcel (as the checker does): still the NEW phone and store, whatever order the rows are handled in
+ok   the seller EDITS the older parcel (another store): the record still has the NEW phone and store — the older parcel writes nothing
+ok   second parcel: same phone, the name spelled differently → one record with the new spelling and store
+ok   …an edit of the older parcel does not bring the old spelling / store back (same PHONE is enough to be the same buyer)
+ok   two parcels with the SAME save time: the one with the bigger id is the newer one — one record, its phone and store
+ok   a newer parcel saved with another app (LINE) does not count: the older parcel's edit still reaches its record (store 777777)
+ok   a newer parcel of a LONGER username (@pedro1234) does not count: the older parcel's edit still reaches its record (store 777777)
+ok   a newer parcel with no phone does not count: the older parcel's edit still reaches its record (store 777777)
+ok   the buyer's record was deleted in Customer Details, then the OLDER parcel is edited: the buyer is added again, as before (not lost)
+ok   an older parcel of a DIFFERENT buyer with the same contact word still updates its own record (as before)
+
+── 4. ON — FamilyMart (seller A, login listed) ──
+ok   no record of the username yet → saved as before (one new record)
+ok   the buyer has a new phone and store: ONE record, with the new phone, store and the FULL contact text incl. '(U)'
+ok   …and its 'last updated' is now
+ok   the old record's contact written as "pedro123", "@pedro123", "@Pedro123 (U)", "@ pedro123", "@pedro123 Garcia (NA)", "@pedro123 #3", "  @PEDRO123  ": each time ONE record with the new details
+ok   the buyer's record of the username is replaced by the new details (one record of @pedro123)
+ok   never touched (same buyer name on purpose): '@pedro12', '@pedro1234', '(U) @pedro123', 'Pedro Garcia', 'pedro123 (U)', '@pedro123(U)', a LINE record, a record with no contact
+ok   another seller's record of the same buyer + username is untouched
+ok   the 7-11 Customers are untouched by a FamilyMart save
+ok   a save for @pedro12 or pedro1234 leaves ONE record of each and never touches @pedro123's
+ok   same phone, two spellings of the name: one record stays (the one with the parcel's name)
+ok   old record with no app, parcel saved as TikTok: the one record says TikTok
+ok   old record TikTok, parcel with no app: the one record has no app (the parcel's value, as the live statement writes it)
+ok   6 different buyers saved with the contact 'c', a 7th one, and one of them back with a new phone: exactly the live result — NOTHING deleted, 8 records (the live data has such groups: one seller, 60 buyers, contact 'c')
+ok   three buyers who share ONE phone and the contact 'c' (Ana, Bea, Cara) + a new parcel of Ana: exactly the live result — Bea and Cara stay
+ok   a username that already has 3 records (same name, 3 phones) + a parcel with a 4th phone: exactly the live result — left alone (4 records)
+ok   the buyer already has 2 records of the username and the parcel has a THIRD phone: exactly the live result — 3 records (two other records = left alone)
+ok   NOT COVERED, shown as it is: only TWO buyers share the contact 'c' AND one phone (Ana, Bea) → a new parcel of Ana removes Bea's record
+ok   a parcel of SOMEBODY ELSE saved with this username (other name, other phone): the buyer's record is not touched — 2 records
+ok   …and the buyer's own next parcel does not remove that other person's record either
+ok   a record with the parcel's phone + name already exists (no contact): the save does NOT fail — that record takes the parcel and the buyer's other record of the username is removed
+ok   the buyer has 2 records and the parcel's phone + name is the OLDER one: the save does not fail — that record stays, the newer one is removed
+ok   the parcel's phone + name is a record saved with ANOTHER username: no error — it takes the parcel (as before), the buyer has one record of @pedro123, the other username's other record is untouched
+ok   'no social handle' (no contact): saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a contact that is only spaces: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   another app (LINE): saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   another app (WhatsApp): saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   the word 'unknown': saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a contact that is not a username: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a username with a note in front: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a username with a note and no '@': saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a longer username: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   a shorter username: saved exactly as the live function does (the buyer keeps the old record + the new one)
+ok   editing a buyer in Customer Details (a direct write) merges nothing — still 2 records
+ok   …the next parcel save of that buyer + username (with one of the two phones) then leaves one
+ok   editing a saved parcel (a corrected phone): the one record follows it — no second record
+ok   editing a saved parcel's phone and contact text ('(U)' added): the one record has the new phone and the new text
+ok   editing a saved parcel's NAME, contact text and app: the one record is renamed and takes the new text and app — no second record
+ok   the buyer's one record has another phone and store: that SAME record takes the parcel's name, phone, store, contact text and app; 'last updated' is now
+ok   a corrected phone while the buyer also has a NEWER LINE record with the same text: the LINE record is untouched, the TikTok record follows the parcel
+ok   a save made as the signed-in browser role works and merges (the closed helpers do not block it)
+ok   two parcels of the buyer, the second with a new phone and store: one record, the NEW phone and store
+ok   the seller EDITS the older parcel (another store): the record still has the NEW phone and store — the older parcel writes nothing
+ok   second parcel: same phone, the name spelled differently → one record with the new spelling and store
+ok   …an edit of the older parcel does not bring the old spelling / store back (same PHONE is enough to be the same buyer)
+ok   two parcels with the SAME save time: the one with the bigger id is the newer one — one record, its phone and store
+ok   a newer parcel saved with another app (LINE) does not count: the older parcel's edit still reaches its record (store 033333)
+ok   a newer parcel of a LONGER username (@pedro1234) does not count: the older parcel's edit still reaches its record (store 033333)
+ok   the buyer's record was deleted in Customer Details, then the OLDER parcel is edited: the buyer is added again, as before (not lost)
+ok   an older parcel of a DIFFERENT buyer with the same contact word still updates its own record (as before)
+
+── 5. 7-11: nothing is merged before the verdicts (guard B) — the REAL order of the app ──
+ok   a WRONG store # (saved first, 'not_found' arrives later): exactly the live result — the buyer's good record (store 111111) is still there [Maria Santos|0911111111|111111|@pedro123 ; Maria Santos|0922222222|999999|@pedro123]
+ok   …and, as today, the parcel's own record with the WRONG store 999999 is in Customers too (the live statement writes it at the save, before any verdict — not changed by sql/150)
+ok   a RESTRICTED phone (saved first, verdict later): exactly the live result — the restricted phone is removed, the buyer's good record stays
+ok   …the same when the phone verdict arrives BEFORE the store verdict
+ok   no verdict ever arrives: exactly the live result, nothing merged
+ok   store 'valid', the phone verdict never arrives: exactly the live result, nothing merged
+ok   phone 'ok', the store verdict never arrives: exactly the live result, nothing merged
+ok   store 'unknown' (could not be checked): exactly the live result, nothing merged
+ok   store 'unchecked': exactly the live result, nothing merged
+ok   store still 'checking': exactly the live result, nothing merged
+ok   phone 'unknown': exactly the live result, nothing merged
+ok   a parcel with NO store # and a new name + phone: exactly the live result (the old record keeps its own name, phone and store)
+ok   a parcel already marked 'not_found' when it is saved: not added at all (the live rule), nothing merged
+ok   a parcel already marked 'checking' when it is saved: not added at all (the live rule), nothing merged
+ok   right after the save (no verdict yet): 2 records — the old one is NOT touched yet
+ok   phone 'ok' arrives first: still 2 records
+ok   store 'valid' arrives: NOW one record, with the new phone and store
+ok   more verdicts on the same parcel: still that one record
+ok   a restricted verdict AFTER the merge removes that buyer (the live rule) — the older record was already merged away (listed for the owner)
+ok   a parcel that is ALREADY checked when it is inserted (valid + ok in the insert itself): merged at once
+ok   a checked parcel's store # is edited to a WRONG one (the row still says 'valid' from the old store; 'not_found' arrives after): exactly the live result — the buyer's other record (store 222222) is NOT removed
+ok   a phone changed by a writer that does NOT clear the old 'ok' (not the app): the changing statement merges nothing — exactly the live result (2 records)
+ok   the store # is edited to a GOOD one and the app's fresh check says 'valid': now the buyer has one record with the new store
+ok   NOT COVERED, shown as it is — the store # is edited and NO fresh store verdict is ever written: right after the edit, 2 records (as today)…
+ok   …but the next write on that parcel (a repeated phone verdict) merges on the OLD 'valid': one record, with the unchecked store 999999
+ok   the newer parcel's phone is RESTRICTED: the buyer keeps the older parcel's record
+ok   …and a corrected phone on the OLDER parcel is saved to Customers (a restricted newer parcel does not count)
+ok   the newer parcel's store is REFUSED ('not_found'): 2 records, as today (the newer parcel's own record was written at its save)
+ok   …a repeated verdict on the OLDER, checked parcel: one record — the checked one (a refused newer parcel does not win)
+ok   the newer parcel is NOT decided yet (no verdict): a repeated verdict / an edit of the older parcel is handled exactly as the live function does — 2 records, nothing merged, nothing skipped
+ok   'store full' is no reason: the buyer is in Customers
+ok   a parcel with no phone: nothing, as before
+
+── 6. the parcel save ALWAYS succeeds ──
+ok   7-11: the update of the record throws → the edit of the parcel IS saved
+ok   7-11: …the buyer is added as before and nothing is removed (2 records)
+ok   7-11: the update of the record finds the record gone (another device) → the edit of the parcel IS saved
+ok   7-11: …the buyer is added as before and nothing is removed (2 records)
+ok   7-11: the delete of the other record throws → the parcel IS saved, its record has the new details, the other record simply stays (2)
+ok   7-11: …and without that failure the same save leaves ONE record (so the delete path really ran above)
+ok   7-11: scan_qr_lookup_on() is missing → the parcel IS saved, exactly as before (2 records, nothing merged)
+ok   7-11: scan_qr_username_key() is missing → the parcel IS saved, exactly as before (2 records, nothing merged)
+ok   7-11: guard C cannot read the parcels → the parcel IS saved, exactly as before (2 records)
+ok   7-11: …and with everything in place the same save leaves ONE record
+ok   FamilyMart: the update of the record throws → the parcel IS saved
+ok   FamilyMart: …the buyer is added as before and nothing is removed (2 records)
+ok   FamilyMart: the update of the record finds the record gone (another device) → the parcel IS saved
+ok   FamilyMart: …the buyer is added as before and nothing is removed (2 records)
+ok   FamilyMart: the delete of the other record throws → the parcel IS saved, its record has the new details, the other record simply stays (2)
+ok   FamilyMart: …and without that failure the same save leaves ONE record (so the delete path really ran above)
+ok   FamilyMart: scan_qr_lookup_on() is missing → the parcel IS saved, exactly as before (2 records, nothing merged)
+ok   FamilyMart: scan_qr_username_key() is missing → the parcel IS saved, exactly as before (2 records, nothing merged)
+ok   FamilyMart: guard C cannot read the parcels → the parcel IS saved, exactly as before (2 records)
+ok   FamilyMart: …and with everything in place the same save leaves ONE record
+ok   FamilyMart: a save the LIVE function already refuses (a store # Customers does not accept) is refused the same way — sql/150 neither adds nor hides failures
+
+── 7. the file refuses to overwrite a function it was not built from; rollback ──
+ok   a live function that is no longer the one this file was built from → the file STOPS and changes nothing
+ok   applying sql/150 a second time is fine
+ok   both functions carry the sql/150 part
+ok   rollback: both functions are the live ones again, character for character; the helpers are gone
+ok   after the rollback a listed seller's save is the old rule again (2 records per store, nothing merged)
+ok   no trigger and no index was added or removed by sql/150 or its rollback (2 triggers, 5 indexes as created here)
+
+── 8. what one save costs here (this temporary database; for comparison only) ──
+info one parcel (insert + 2 verdicts), 300 records in Customers: live functions 2.8 ms · sql/150, seller off 4.5 ms · sql/150, seller on 6.1 ms
+
+188 passed, 0 failed

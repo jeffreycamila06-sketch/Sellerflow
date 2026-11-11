@@ -34,6 +34,21 @@ Mga halimbawa ng contact na ginagamit ng maraming magkakaibang buyer ng iisang s
 `c` (60 record, 59 phone), `f` (37), `j` (36), `printer` (26 record, 25 phone), `d` (24), `user` (18 record, 16 phone),
 `1000` (10), at mga karaniwang unang pangalan (4–5 phone bawat isa).
 
+## 4b. Ilang record bawat (seller, username) — para sa bantay A ("isang ibang record lang")
+Binasa pagkatapos ng pangalawang review (TikTok o walang app; username ayon sa rule #4):
+| | 7-11 | FamilyMart |
+|---|---|---|
+| Username na 1 ang record | 37,964 | 454 |
+| Username na eksaktong 2 ang record | 1,415 | 1 |
+| …pareho ang phone o ang pangalan ng dalawa | 1,164 | 1 |
+| …walang pareho (hindi gagalawin) | 251 | 0 |
+| …pareho ang phone o pangalan at 1–2 letra lang ang "username" | 6 | 0 |
+| Username na 3+ ang record (hindi gagalawin) | 233 (1,069 record) | 0 |
+| …sa mga iyon, iisa ang phone | 40 | 0 |
+| …sa mga iyon, iisa ang pangalan | 38 | 0 |
+| …sa mga iyon, 3+ phone at 3+ pangalan | 70 | 0 |
+(Bahagyang iba ang kabuuan sa §3 dahil ilang oras ang pagitan ng dalawang basa.)
+
 ## 5. Kailan dumarating ang hatol (kaya may bantay B) — 16,163 parcel, 63 seller, huling 30 araw
 | store / phone | parcel |
 |---|---|
@@ -49,6 +64,7 @@ Ang app ay nagse-save muna nang walang hatol; ang hatol ay hiwalay na update pag
 ## 6. Bigat
 Sa pinakamalaking seller (7,643 record sa Customers), sa hugis ng tanong na ginagamit ng trigger para hanapin ang mga record
 ng isang username: 19.0 ms sa unang takbo, 7.2 ms sa pangalawa; 1 row lang ang natitira pagkatapos ng murang paunang salain.
+(Sinukat sa hugis ng unang bersyon; ang kasalukuyang tanong ay parehong salain, may dagdag lang na bilang.)
 May index ang `parcel_scans` at `fm_parcel_scans` sa (seller, petsa ng paggawa) — ginagamit ng bantay C.
 (Hindi nasukat sa live ang buong bagong function — hindi ito in-apply.)
 
