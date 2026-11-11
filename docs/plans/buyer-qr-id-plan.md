@@ -7,8 +7,8 @@ printer-guardian) at `docs/design/buyer-qr-id/` (mga mockup). Lahat ng query sa 
 Paano basahin: bawat pahayag ay may tatak —
 **[PATUNAY]** = may file:line / query result / script output sa dokumentong ito ·
 **[HINDI PA NAPAPATUNAYAN]** = hinala o disenyo pa lang; nakasulat kung paano ito mapapatunayan.
-Walang "pasado" o "ligtas" dito na walang patunay. **Ang planong ito ay bersyon 2**: binago matapos suriin ng dalawang
-hiwalay na reviewer (§13). Ang pinakamalaking pagbabago mula sa bersyon 1 ay nakalista sa §13.3.
+Walang "pasado" o "ligtas" dito na walang patunay. **Ang planong ito ay bersyon 3**: binago matapos ang dalawang ikot ng pagsusuri ng mga hiwalay na reviewer (§13).
+Ang mga ayos sa pangalawang ikot (§13.4) ay **hindi na muling ipinasuri** — nakasulat iyon nang tapat sa §15.
 
 ---
 
@@ -78,7 +78,7 @@ hiwalay na reviewer (§13). Ang pinakamalaking pagbabago mula sa bersyon 1 ay na
 ### 1.4 Stable na TikTok buyer ID
 | Pahayag | Patunay |
 |---|---|
-| Ang TikTok library (2.1.1-beta1) ay naglalabas ng `userId` at `secUid` sa bawat comment | `node_modules/tiktok-live-connector/dist/lib/_legacy/data-converter.js:123-128` |
+| Ang TikTok library (2.1.1-beta1) ay may field na `userId` at `secUid` sa comment (puwedeng `"0"`/blangko — §1.6) | `node_modules/tiktok-live-connector/dist/lib/_legacy/data-converter.js:123-128` |
 | Ang server ay `handle` (uniqueId), `name`, `comment`, `avatar`, `msgId` lang ang ipinapasa — **walang `userId`** | `server.js:1782-1818`; `server/initialComments.js:63-87` |
 | Ang app ay hindi nagbabasa ng `userId` kahit saan | `grep userId\|secUid` sa `useLiveFeed.ts`, `data.ts`, `orderLogic.ts` = 0 tugma |
 | Walang column para dito: `live_session_orders` (may `platform_meta` jsonb — Facebook/Shopee lang ang gumagamit), `customers`, mga parcel table | Query Q1, Q5 (`platform_meta` keys = `commenter_id, live_video_id, page_id`) |
@@ -90,7 +90,7 @@ hiwalay na reviewer (§13). Ang pinakamalaking pagbabago mula sa bersyon 1 ay na
 |---|---|
 | `platform_meta` ay naipapasa na ng `db.ts` nang walang pagbabago (kahit anong key) | `src/db.ts:170`, `:212`; `adapters/useOrders.ts:94` |
 | Ang order rows ay **hindi** binubura pagkalipas ng 10 araw nang basta-basta: natitira ang huling 7 natapos na session ng seller (pinakaluma ngayon: 2026-10-03; 178,656 rows) | Query Q7 (`purge_live_session_orders`) |
-| Ang session load ay hindi nagbabasa ng `platform_meta` (kailangang idagdag sa listahan ng column para sa Reprint) | `adapters/useSessionWindow.ts:132`, `:183` |
+| Ang session load ay hindi nagbabasa ng `platform_meta` (kailangang basahin ang code — `bq` lang — para sa Reprint, §7) | `adapters/useSessionWindow.ts:132`, `:183` |
 | May built-in na `sha256()` ang database (walang kailangang extension); pareho ang sagot nito sa Node: tag ng test seller = `EE246` sa pareho | Query Q8 + `qrcheck.output.txt` |
 | Lahat ng parcel table ay `ON DELETE CASCADE` sa account | Query Q8 |
 | Preview/allowlist system: `feature_access_emails` + `my_feature_access()` + `app_settings` switch | `adapters/featureAccess.ts:11-23`; `adapters/featureSwitches.ts:21-28` |
@@ -104,7 +104,7 @@ hiwalay na reviewer (§13). Ang pinakamalaking pagbabago mula sa bersyon 1 ay na
 | May **pangatlong daan** ng comment papunta sa order: Pin to print. Iba ang hugis: `chat.user.userId` (nakapaloob, hindi top-level) | `server/pinRelay.js:20-36`, `:42-61`; `server.js:1616-1622` |
 | Ang "earlier comments" (initial batch) ay tumatanggap ng **email id** bilang `sellerId`, hindi UUID | `server.js:1711` |
 | Ang `userId` sa library ay `string`; ang nawawalang numero ay puwedeng dumating bilang `"0"` o `""`, hindi `undefined` | `tiktok-schema.d.ts:1180`; `data-converter.js:126` |
-| Lahat ng 61 seller na nag-save ng 7-11 parcel sa huling 30 araw ay may store check (`parcel_check_access` enabled); sa 16,126 parcel: valid 13,972 · wala pang hatol 2,117 · unknown 33 · not_found 4 | Query Q9 |
+| Lahat ng 61 seller na nag-save ng 7-11 parcel sa huling 30 araw ay may store check (`parcel_check_access` enabled); sa 16,126 parcel: valid 13,972 · wala pang hatol 2,117 · unknown 33 · not_found 4 | Query Q9. (Paalala: ang `parcel_check_access` ay para sa phone check ng extension; ang `store_check_status` ay isinusulat ng app para sa lahat) |
 | Ang mga switch at feature map ay binabasa **isang beses bawat sign-in** (walang poll) | `adapters/featureSwitches.ts:1-3`; `adapters/featureAccess.ts:27-45` |
 | Ang dalawang bumabasa ng `platform_meta` sa server ay parehong naka-filter sa `platform = 'Facebook'` | `server.js:2364-2368`, `:2468-2470` (nakita ng auditor). [HINDI PA NAPAPATUNAYAN: mga live na database function] |
 
@@ -170,12 +170,23 @@ Mga katangian:
   (kuwenta, hindi sukat). Ang TAG (20 bits) ay puwedeng magkapareho sa dalawang seller (≈ 4% na may **kahit isang**
   pares sa 300 seller — kuwenta): ang epekto ay "bagong buyer" sa halip na "ibang shop"; walang data na nalalantad.
 
-**Sino ang nakakatanggap ng code (iisang gate, sa server):** ang server ang nagpapasya kung maglalagay ng
-`buyerQr` sa comment ng isang seller: global switch `buyer_qr_id_enabled` **o** feature key `buyer_qr_id` ng
-account (binabasa sa pag-connect; ang global switch ay may cache na ilang minuto). Ang app ay **walang sariling
-switch sa pag-print**: may code ang order → code ang QR. Bunga: (1) lahat ng phone ng seller ay pareho ang natatanggap
-— walang "isang phone code, isang phone link"; (2) ang pagpatay ng switch ay tumatalab sa loob ng ilang minuto kahit
-sa mga nakabukas na phone (hindi na naghihintay ng sign-in). Kapag hindi mabasa ng server ang switch → **walang code**.
+**Sino ang nakakatanggap ng code (gate sa server) — disenyo, HINDI PA NAPAPATUNAYAN:**
+- Ang server ang nagpapasya kung ilalagay ang `buyerQr` sa comment ng isang seller: global switch
+  `buyer_qr_id_enabled` **o** feature key `buyer_qr_id` ng account (at ang saklaw ng Tanong 3: plan + market).
+  May umiiral nang ganitong basa sa server: `feature_access_emails` + email (`server.js:1087-1088`), switch na may
+  60-segundong cache (`server.js:2559-2566`).
+- **Isang cache bawat seller (~60 s), nire-refresh sa background; hindi kailanman hinihintay sa loob ng chat handler.**
+  Ang code ay **laging kinukuwenta**; idinidikit sa comment **sa oras ng pagpapadala** ayon sa kasalukuyang gate —
+  pati sa reuse re-emit (ang ring ay nag-iimbak ng hilaw na value, hindi ng napagpasyahan na). Dahil per seller
+  (hindi per connection), pareho ang sagot sa lahat ng TikTok account at phone ng seller.
+- Bago ipadala ang "earlier comments" sa pag-connect: maikling hintay (≤ ~1 s) para sa unang basa ng gate; kapag
+  hindi dumating → walang code sa batch na iyon (tapat: posibleng may **ilang order sa simula ng live na link pa ang
+  QR**, tapos code na ang susunod — parehong nababasa ng Scan QR).
+- **Pagpatay:** sa loob ng ~1 minuto, wala nang code ang mga **bagong** comment, kahit sa nakabukas na phone. **Ang
+  mga order na may code na ay mananatiling may code** — ang Reprint, Print stickers at raffle nila ay code pa rin.
+- Ang app ay **walang switch sa pag-print**: may code ang order → code ang QR. Para lang sa **preview at test
+  print** (kung sample code o sample username ang ipapakita) ay may senyas ang app: feature key **o** switch na
+  binasa sa sign-in. Kapag hindi mabasa ng server ang gate → **walang code**.
 
 ---
 
@@ -188,11 +199,13 @@ sa mga nakabukas na phone (hindi na naghihintay ng sign-in). Kapag hindi mabasa 
 
 ### 4.1 Bagong SQL (Hakbang 2; susunod na libreng numero ay sql/149 — kumpirmahin sa oras ng paggawa)
 1. `parcel_scans.buyer_qr_id text null` at `fm_parcel_scans.buyer_qr_id text null` — additive, nullable, walang
-   default. May `CHECK` na eksaktong hugis ng code (idinadagdag na `NOT VALID`, aral ng sql/142). Index
+   default. **Walang `CHECK`** (ang constraint na pumalya ay pipigil sa save ng parcel): ang hugis ay tinitingnan sa
+   loob ng trigger at ang maling value ay binabalewala lang. Kasama: `buyer_qr_via text null` (`'qr'` o `'username'` —
+   paano nakilala ang buyer sa save na ito; kailangan para sa tatak na "unang ikinabit sa username"). Index
    `(user_id, buyer_qr_id) WHERE buyer_qr_id IS NOT NULL`.
 2. Isang table **`buyer_qr_details`** — ang huling na-save bawat code, bawat carrier:
    `user_id, qr_id, carrier ('711'|'fm'), name, phone, store_id, contact, contact_platform, source_created_at,
-   linked_via ('qr'|'username'|'typed'), first_saved_at, updated_at`, `PRIMARY KEY (user_id, qr_id, carrier)`,
+   linked_via, first_saved_at, cleared_at, updated_at`, `PRIMARY KEY (user_id, qr_id, carrier)`,
    `user_id → auth.users ON DELETE CASCADE`.
    RLS: `SELECT` at `DELETE` ng sariling row; **walang** `INSERT`/`UPDATE` policy (trigger lang ang nagsusulat).
 3. Dalawang **bagong, hiwalay** na trigger (hindi ginagalaw ang mga phonebook trigger):
@@ -204,18 +217,23 @@ sa mga nakabukas na phone (hindi na naghihintay ng sign-in). Kapag hindi mabasa 
      kasalukuyang tala (o wala pang tala). Kaya ang edit o late na hatol sa **lumang** parcel ay **hindi** umaagaw;
      ang edit sa **pinakabagong** parcel ay pumapasok. Walang query sa ibang parcel → hindi apektado ng "Clear
      exported" o ng 90-araw na purge.
-   - `phone_check_status = 'restricted'` at pareho ang phone → **burahin** ang tala (kapareho ng umiiral na rule sa
-     Customers). Hatol ng store na mali (`not_found` atbp.) sa pinagmulang parcel → **alisin ang store** sa tala
-     (pangalan/phone ay mananatili) — para hindi na kusang mapunan ang maling store.
+   - **Hindi kailanman binubura ang row ng tala — "nililinis" lang** (details → blangko, `cleared_at` = ngayon,
+     **nananatili ang `source_created_at`**). Kung buburahin, mawawala ang bantay at **babalik ang tala mula sa
+     luma o maling parcel** sa susunod na galaw nito (nakita sa pangalawang ikot: may sumusunod na UPDATE sa bawat
+     save, `ParcelScan.tsx:630`). Ang nilinis na tala ay "walang tala" para sa Scan QR.
+   - `phone_check_status = 'restricted'` at pareho ang phone → linisin (inuuna ito bago ang bantay). Hatol ng store
+     na **hindi** kabilang sa (valid / unchecked / unknown / wala) sa pinagmulang parcel → **alisin ang store** sa
+     tala (pangalan/phone ay mananatili).
    - Isang `upsert` sa primary key lang; `SET lock_timeout` na maikli sa function; buong laman sa
      `BEGIN … EXCEPTION WHEN OTHERS`. **Tapat na limitasyon:** ang `WHEN OTHERS` ay hindi sumasalo sa pagkansela ng
      statement (timeout); kaya maliit at mabilis ang ginagawa ng trigger. [HINDI PA NAPAPATUNAYAN — PGlite sa Hakbang 2.]
 4. RPC `buyer_qr_lookup(p_text, p_handle, p_carrier) → jsonb` (`SECURITY INVOKER`, bawat query ay may tahasang
-   `user_id = auth.uid()`), at `buyer_qr_forget(p_code, p_carrier)` (binubura ang sariling tala — para sa
-   "Hindi ito ang buyer").
+   `user_id = auth.uid()`), at `buyer_qr_forget(p_code, p_carrier)` — para sa "Hindi ito ang buyer": nililinis ang sariling tala
+   **at** inaalis ang `buyer_qr_id` sa sariling mga parcel na hindi pa na-export na may code na iyon (para hindi na
+   ito maibalik ng mga parcel na iyon).
 5. Dalawang switch sa `app_settings` (parehong seed `'false'`): `buyer_qr_id_enabled` (server: maglalagay ng code sa
-   comment) at `buyer_qr_scan_enabled` (app: gagamitin ng Scan QR ang lookup at magse-save ng code). Feature key
-   `buyer_qr_id` sa `my_feature_access()` (buuin mula sa LIVE na definition sa oras ng apply — aral ng sql/140).
+   comment) at `buyer_qr_scan_enabled` (app: gagamitin ng Scan QR ang lookup at magse-save ng code — **switch O feature key ng
+   account**, para masubukan sa piling account bago ang lahat). Feature key `buyer_qr_id` sa `my_feature_access()` (buuin mula sa LIVE na definition sa oras ng apply — aral ng sql/140).
 
 ### 4.2 Bakit ganito
 - **Rule 4 nang literal:** ang lalabas ay ang huling parcel na na-save na may code na iyon — pangalan, phone, store
@@ -254,8 +272,8 @@ sa mga nakabukas na phone (hindi na naghihintay ng sign-in). Kapag hindi mabasa 
 | H | Lumang sticker | walang tugma | @username lang ang napunan (**eksaktong gaya ngayon**) | toast gaya ngayon |
 | I | Hindi QR natin / hindi nabasa | — | walang napunan (**gaya ngayon**) | toast gaya ngayon |
 | J | Code o lumang sticker | hindi sumagot ang database (walang signal, timeout, error, wala pa ang RPC) | code: walang napunan; lumang sticker: @username lang (gaya ngayon) | "Hindi nahanap ngayon — i-type o gamitin ang Customers" |
-| K | Sample code ng test print / preview | — | walang napunan | "Test sticker ito" |
-| L | Kahit ano, **habang nag-e-edit ng naka-save na parcel** | — | **gaya ngayon lang**: contact/username ang napupunan; walang ikinakabit, walang binabago sa tala | gaya ngayon |
+| K | Sample code ng test print / preview (ID na puro `0` — hindi kailanman lalabas sa totoong buyer) | — | walang napunan | "Test sticker ito" |
+| L | Kahit ano, **habang nag-e-edit ng naka-save na parcel** | — | lumang sticker: @username gaya ngayon. Code: username kung alam mula sa order row, kung hindi ay wala. **Walang ikinakabit** sa pamamagitan ng scan | gaya ngayon |
 
 Mga tuntunin:
 - **Laging puwedeng i-edit** ang lahat ng napunan bago mag-Save. Walang field na naka-lock.
@@ -264,7 +282,13 @@ Mga tuntunin:
   TikTok o walang platform; hindi kailanman ang handle na "unknown" (fallback ng server, `server.js:1783`).
 - **Chip sa form:** "QR: @username ✕" habang may nakakabit na code. Ang ✕ ay nag-aalis ng code sa entry na ito
   (hindi binubura ang mga field). Sa berde/dilaw na kahon ay may **"Hindi ito ang buyer"** → binubura ang tala ng
-  code na iyon (`buyer_qr_forget`) at nagiging E.
+  code na iyon (`buyer_qr_forget`) at hinahanap ulit (puwedeng maging B, C/D o E).
+- **Sa edit ng naka-save na parcel:** binabasa ang code ng **parcel na iyon lang** (kapag wala pa ang column →
+  walang chip, tuloy ang edit). May chip → ang ✕ ay nag-aalis ng code sa parcel na iyon (`buyer_qr_id: null`). Kapag
+  ito ang pinakabagong parcel ng code, ang edit ay nagbabago ng lalabas sa susunod na scan — kaya pareho ang tanong
+  na "Papalitan ang details ni @x?".
+- **Pagbura ng parcel na may code:** kung ito ang pinagmulan ng tala, tatanungin: "Kalimutan din ang details ng QR
+  na ito?" (Kung hindi, mananatili ang tala — gaya ng Customers ngayon.)
 - **Bago mag-Save na may code:** kung may dating tala at **parehong iba** ang phone at pangalan → tanong muna:
   "Papalitan ang details ni @x?".
 - **Walang maling kabit dahil sa timing:** (1) ang Save ay naka-block habang may lookup na tumatakbo; (2) bawat
@@ -272,11 +296,20 @@ Mga tuntunin:
   (3) ang code ay kinukuha **sa mismong pindot ng Save** kasama ng mga field (bago ang anumang `await`); (4) ang
   code ay nabubura sa bawat Clear, Cancel, matagumpay na Save, paglipat sa susunod na file ng batch, at sa
   "hold" ng draft (`parcelDrafts.ts:43`); (5) hindi ito tumatawid sa 7-11 ⇄ 全家.
-- **📇 Customers habang may chip:** kapag binuksan ang Customers mula sa form na may code at nag-Import, **dala ng
-  parcel ang code** — kaya ang buyer na nahanap sa Customers ay naikakabit din.
+- **📇 Customers habang may chip** (disenyo — wala pang ganitong prop ang mga Customers screen,
+  `CustomerDetails.tsx:42`, `FmCustomerDetails.tsx:26`): kapag binuksan mula sa form na may code at nag-Import, dala
+  ng parcel ang code; **pagkatapos ng matagumpay na Import, nililinis ang form at ang chip** (ngayon, sinasara lang
+  ang overlay at naiiwan ang form — `ParcelScan.tsx:1721`). Ang Customers na binuksan mula sa Settings ay hindi
+  kailanman nagpapadala ng code.
+- **Dilaw hanggang kailan?** Ang buyer na unang nakilala sa username (C/D) ay may tatak na "unang ikinabit sa
+  username". Mungkahi: magiging berde ito sa **susunod na Save na QR mismo ang na-scan** (dalawang beses nang
+  tiningnan ng encoder). (Tanong 6b.)
+- **A2 "wala na sa Customers":** kapag itinama ang phone/pangalan **sa loob ng Customers**, ang lalabas sa QR ay ang
+  dating value (dilaw) hanggang may bagong Save. Ang parcel na walang phone ay laging A2.
+- Sa pagpipilian (D), minamarkahan ang row na tugma sa huling tala ng buyer, kung meron.
 - Presyo (Amount) ang natitirang ita-type. Dry/Frozen, mga check ng store/phone, batch cap, export —
   **walang pagbabago**.
-- Kapag naka-OFF ang `buyer_qr_scan_enabled`: ang Scan QR ay **eksaktong gaya ngayon** (ang code sticker ay
+- Kapag naka-OFF ang `buyer_qr_scan_enabled` (at walang feature key ang account): ang Scan QR ay **eksaktong gaya ngayon** (ang code sticker ay
   "No QR found"); walang tawag sa database, walang `buyer_qr_id` sa save.
 
 ---
@@ -395,7 +428,7 @@ Facebook/Instagram/Shopee buyers.
 2. **Ang code ay HINDI pumapasok sa JSON na ipinapadala sa native** (text sticker, WiFi sticker, slip): ihihiwalay
    sa itaas ng `printSlip` (`printing.ts:1281`) at dadalhin bilang hiwalay na field ng job, at ipapasok sa
    `imageStickerPayload` kung saan pumapasok ngayon ang `printStickerQr`. Ang umiiral na test
-   (`printing.test.ts:38-55`) ay `settings` lang ang binabantayan — kaya **bagong test**: may code + switch ON → ang
+   (`printing.test.ts:38-55`) ay `settings` lang ang binabantayan — kaya **bagong test**: order na may code → ang
    argument ng `printStickerNative`, `printStickerLan`, `printSlip` ay byte-identical sa walang code.
    [HINDI PA NAPAPATUNAYAN kung binabalewala ng lumang naka-install na app ang dagdag na key — kaya nga hindi natin ito ipapadala.]
 3. **Walang lookup o `crypto` sa loob ng print job** — ang code ay dumarating kasama ng order/row, kaya hindi
@@ -404,7 +437,7 @@ Facebook/Instagram/Shopee buyers.
    comment → itatatak sa order at sa row; ang print at lahat ng Reprint ay sumusunod sa order. Walang switch sa app
    para sa pag-print (ang gate ay nasa server, §3) — kaya walang "naka-OFF sa phone na ito" na kaso.
 5. Preview = print: ang mga sample (preview, test print, 11 admin language sample — 5 dito ay ≤ 6 char) ay
-   gagamit ng **sample code** na 27 character kapag naka-ON. Hindi gagalawin ang `buildTestBuyer()` (golden-pinned,
+   gagamit ng **sample code** na 27 character kapag may senyas ang app (feature key o switch na binasa sa sign-in — §3). Hindi gagalawin ang `buildTestBuyer()` (golden-pinned,
    `printerBridge.ts:152`). Ang Parcel Scan ay kikilala sa sample code bilang "test sticker", hindi "bagong buyer".
 6. `scripts/printing-paths.mjs:3-15` ay hindi naglilista ng `src/lib/qr.ts`, `src/lib/tiktokHandle.ts` at ng
    bagong `src/lib/buyerQr.ts` → idadagdag (kasama ang `server/pinRelay.js`) para dumaan sa printing gate.
@@ -421,20 +454,23 @@ Facebook/Instagram/Shopee buyers.
 | 0 | Server: kuwenta ng code + bilang sa log, **pero naka-OFF ang gate** (walang `buyerQr` na ipinapadala). Render deploy sa tahimik na oras, may Business Pulse check | Wala | Sa log ng ilang araw ng totoong live: ≥ 99% ng TikTok comment ay may **wastong** `userId` sa bawat isa sa 4 na daan; bilang ng `"0"`/blangko. **Kapag mababa → hinto, balik kay Jeff** |
 | 1 | SQL (additive) | Wala (walang nagsusulat pa) | `sql149-behaviour.mjs` berde; `get_advisors`; ang palyang trigger ay hindi pumipigil sa save |
 | 2 | Web deploy, parehong switch OFF | Wala: Scan QR = gaya ngayon; walang code na ipinapadala | Mga test na "OFF = gaya ngayon" (§11.2) |
-| 3 | `buyer_qr_scan_enabled` = ON muna (lahat ay marunong nang bumasa), pagkatapos feature key ng Jeff + googletest (server: may code na ang comment nila) | 2 account | Totoong papel at scan (§11.4); parehong code sa live / earlier comments / Pin / Reprint; **patunay ng "nagpalit ng username"** sa test account |
+| 3 | Feature key ng Jeff + googletest: (a) ang Scan QR nila ay gumagamit na ng lookup, (b) may code na ang comment nila. **Walang ibang seller ang nagbabago** (ang global na `scan` switch ay OFF pa) | 2 account | Totoong papel at scan (§11.4); parehong code sa live / earlier comments / Pin / Reprint; **patunay ng "nagpalit ng username"** sa test account |
 | 4 | Feature key ng ilang piling seller, ilang araw | piling seller | Walang maling napunan; bilang ng A/A2/B/C/D/E/F/J sa PostHog |
-| 5 | `buyer_qr_id_enabled` = ON | lahat ng saklaw (Tanong 3) | — |
+| 5 | `buyer_qr_scan_enabled` = ON **muna** (lahat ng Parcel Scan: gumagamit na ng lookup — **pati sa lumang username sticker**, estado G), ilang araw; saka `buyer_qr_id_enabled` = ON | lahat ng saklaw (Tanong 3) | Bilang ng G/D at ng "Hindi ito ang buyer" bago buksan ang code |
 
-Bakit "scan" muna bago "print": para sa unang code sticker, lahat ng na-refresh na device ay marunong nang bumasa.
-Ang device na may lumang bundle ay "No QR found" lang (hindi maling punô).
+Bakit "scan" muna bago "code" sa Phase 5: para sa unang code sticker ng lahat, ang mga na-refresh na device ay
+marunong nang bumasa. Ang device na may lumang bundle ay "No QR found" lang (hindi maling punô). **Tandaan:** ang
+pagbukas ng `scan` para sa lahat ay pagbabago na rin ng ugali — ang lumang username sticker ay magsisimulang
+magpuno ng details mula sa Customers (dilaw).
 
 **Pagkakasunod na dapat sundin** (hindi hiwa-hiwalay ang rollback — itinama):
-- Pataas: SQL → server → web → `scan` switch → feature key / `id` switch.
+- Pataas: server (Phase 0 — ligtas kahit wala pa ang SQL: ang switch na wala pa ay binabasa bilang OFF) → SQL → web →
+  feature key → `scan` switch → `id` switch.
 - Pababa: `id` switch OFF (server: tigil ang code sa loob ng ilang minuto, kahit sa nakabukas na phone) → `scan`
   switch OFF (tumatalab sa **susunod na bukas** ng app — isang beses lang binabasa ang switch) → web rollback →
-  **saka pa lang** ang SQL rollback. **Bawal ang SQL rollback habang live ang web na nagse-save ng `buyer_qr_id`**
-  (mabibigo ang save ng parcel na may code). Dahil hindi isinasama ng app ang column sa mga `select`, ang parcel na
-  **walang** code ay hindi apektado kahit mawala ang column.
+  **saka pa lang** ang SQL rollback. Ang mga nakabukas na phone ay may lumang JS hanggang mag-full close, kaya puwedeng
+  may nagpapadala pa ng `buyer_qr_id`: **ang rollback file ay nag-aalis ng mga trigger, RPC at table pero INIIWAN ang
+  mga nullable na column** (walang epekto ang naiwang column; ang pag-alis nito ay hiwalay, pagkalipas ng ilang araw).
 - Server rollback (Render) → wala nang code → QR gaya ngayon.
 - Ang mga code sticker na nasa parcel na: nababasa habang ON ang `scan`; kapag OFF → "No QR found" → Customers o type.
   Walang nasisirang data sa alinman.
@@ -505,6 +541,21 @@ Ang device na may lumang bundle ay "No QR found" lang (hindi maling punô).
 | D11 | Phase 0 na hindi nasusukat (N) | "Parehong code sa dalawang araw" ay nangangailangan ng naka-save na code | Phase 0 = bilang lang ng wastong `userId`. Ang "hindi nagbabago" ay sa Phase 3 pa mapapatunayan |
 | D12 | Account delete; privacy policy | Bagong table na may personal na data | CASCADE; Tanong 9 |
 
+### F. Nakita sa pangalawang ikot ng audit (lahat (N); ang ayos ay **hindi na muling ipinasuri**)
+| # | Panganib | Paano mangyayari | Ayos |
+|---|---|---|---|
+| F1 | **Bumabalik ang binurang tala** mula sa mali o lumang parcel | Ang bantay ay nalalaktawan kapag "walang tala"; laging may kasunod na UPDATE sa parcel | Hindi binubura — nililinis (§4.1); `forget` ay nag-aalis din ng code sa mga parcel |
+| F2 | Ang `scan` switch ay para sa lahat agad | Global lang sa bersyon 2 | Switch **o** feature key; lahat ay sa Phase 5 pa (§9) |
+| F3 | Gate sa server: hindi nababasa ulit sa mahabang live; "earlier comments" bago dumating ang sagot; ring na may lumang desisyon; magkaibang sagot bawat account | Gate na nakatali sa connection | Cache bawat seller, dikit sa oras ng padala, maikling hintay (§3). [HINDI PA NAPAPATUNAYAN] |
+| F4 | Naiiwan ang chip pagkatapos ng Import | Sinasara lang ang overlay | Linisin ang form + chip (§5); test |
+| F5 | Hindi makita/maalis ang code sa edit | Wala sa mga `select` | Basahin ang code ng isang row sa pagpasok sa edit (§5) |
+| F6 | Walang pinanggagalingan ang "unang ikinabit sa username" | Trigger ay parcel lang ang nakikita | `buyer_qr_via` sa parcel (§4.1); Tanong 6b |
+| F7 | SQL rollback habang may nakabukas na lumang phone | JS na hindi pa nare-refresh | Iniiwan ang mga column (§9) |
+| F8 | Parcel na binura agad pagkatapos i-save | Naiiwan ang tala at hinaharangan ang pagtutuwid mula sa mas lumang parcel | Tanong sa pagbura (§5) |
+| F9 | "Walang switch sa app" vs preview/test print; Reprint pagkatapos patayin | Hindi alam ng app ang gate ng server | Senyas para sa preview lang; nakasulat na ang mga order na may code ay code pa rin (§3) |
+| F10 | `CHECK` na pumipigil sa save | Constraint ay labas sa `EXCEPTION` ng trigger | Walang `CHECK`; tsek sa loob ng trigger (§4.1); test na tugma ang regex ng app at ng trigger |
+| F11 | Maliliit: in-place na edit sa Customers; "Hindi ito ang buyer" ≠ laging E; allow-list ng store; sample code; L para sa code | — | §5, §4.1 |
+
 ### E. Paggamit
 | # | Panganib | Ayos |
 |---|---|---|
@@ -545,6 +596,13 @@ mali → walang store sa tala. B8: restricted → nabura; susunod C/D kapag may 
 E2: Import na may dalang code. D3: sadyang error + naka-lock na row → naka-save pa rin ang parcel. D4: export ng 70
 row → walang sulat. D5: ibang user ang nagsusulat → `NEW.user_id`. D6: diretsong insert/update = tinanggihan; maling
 TAG = walang tala. D7: contract test. D10: RPC na wala/nag-error → J; SQL rollback order (script).
+F1: "Hindi ito ang buyer" / restricted → kasunod na UPDATE ng parehong parcel at edit ng mas lumang parcel ay
+**hindi** nagbabalik ng tala. F2: account na walang key + switch OFF → walang lookup. F3: gate na nagbago habang live →
+susunod na comment ay sumusunod; reuse re-emit ay sumusunod sa kasalukuyang gate; dalawang account ng iisang seller →
+parehong sagot. F4: Import → malinis ang form at chip; Customers mula sa Settings → walang code. F5: ✕ sa edit →
+`buyer_qr_id: null`; kulang na column → tuloy ang edit. F6: C → Save → tatak na "username"; susunod na QR save → berde
+(ayon sa sagot sa 6b). F7: rollback script → naka-save pa rin ang parcel na may `buyer_qr_id`. F10: maling hugis ng code
+→ naka-save ang parcel, walang tala; regex ng app = regex ng trigger.
 C5: laging 29 modules; sirang code → QR gaya ngayon. C6: preview = print na may sample code (pixel). C8: gate list.
 
 ### 11.4 Sa totoong device (si Jeff; hindi kayang patunayan mula rito)
@@ -647,8 +705,16 @@ trigger ng Customers; purge na nagtitira ng 7 session; feature map ay fail-close
 4. Apat na daan sa server (dagdag ang Pin; itinama ang "earlier comments"); mahigpit na tsek ng `userId`.
 5. Itinama ang mga pahayag: privacy ng code, "offline", "hiwa-hiwalay na rollback", "store na hindi valid".
 
-### 13.4 Pangalawang ikot ng audit (sa bersyon 2)
-> Pupunan: ipinasuri ulit ang mga binagong seksyon (§3–§5, §9, §10).
+### 13.4 Pangalawang ikot ng audit (sa bersyon 2) — 11 bagong nakita (3 HIGH)
+Ipinasuri ulit ang mga binagong seksyon sa parehong auditor. Hatol niya sa 21 orihinal: **15 FIXED · 5 PARTLY (5, 6, 7,
+10, 12) · 0 OPEN**, at 11 bago (R1–R11) — nasa §10-F (F1–F11) kasama ang ayos. Sinuri ko sa code: ang kasunod na
+UPDATE sa bawat save (`ParcelScan.tsx:630`), ang umiiral na basa ng feature key at 60 s na switch sa server
+(`server.js:1087-1088`, `:2559-2566`), at na sinasara lang ng Import ang overlay (`ParcelScan.tsx:1721`,
+`FmParcelScan.tsx:550`).
+
+**Tapat na kalagayan:** ang mga ayos sa R1–R11 (bersyon 3) ay **hindi na muling ipinasuri**. Dalawang ikot ang
+parehong naglabas ng mabibigat na butas, kaya **asahan na may natitira pa** — lalo na sa gate ng server (F3) at sa
+trigger (F1, F10). Ang mga ito ay dapat dumaan sa sariling audit sa Hakbang 2, kasama ang totoong code at PGlite.
 
 ---
 
@@ -675,6 +741,9 @@ trigger ng Customers; purge na nagtitira ng 7 session; feature map ay fail-close
 6. **Binura o in-edit ang buyer sa 📇 Customers.** Sa plano: hindi kusang nagbabago ang lalabas sa QR; ipinapakita
    lang na dilaw ("wala na sa Customers"). Gusto mo bang ang pagbura sa Customers ay bumura rin sa QR details?
 
+   **6b.** Buyer na unang nakilala sa username lang (dilaw): magiging berde sa susunod na Save na QR ang na-scan
+   (mungkahi) — o dilaw hanggang may ibang patunay?
+
 **Puwedeng sagutin habang ginagawa:**
 7. Iisang TikTok account na bumibili para sa dalawang tao: sapat na ba ang "huling na-save, i-edit kung iba"?
 8. Buyer na kilala sa 7-11 pero unang beses sa FamilyMart (o baliktad): pupunan ang pangalan at phone mula sa
@@ -683,6 +752,8 @@ trigger ng Customers; purge na nagtitira ng 7 session; feature map ay fail-close
 10. Sino ang mga unang susubok pagkatapos mo at ng googletest?
 11. Kailangan mo ba ng paraan para mag-print ng QR ng dating buyer **nang walang bagong order**? Sa plano: hindi.
 12. Mga salita sa screen (nasa mockup ay mungkahi lang, English muna).
+13. Kapag pinatay ang feature: ang mga order na may code na ay code pa rin sa Reprint (sa plano). Ayos ba?
+14. Pagbura ng parcel na may code: tatanungin kung kakalimutan din ang details ng QR (sa plano). Ayos ba?
 
 ---
 
@@ -703,6 +774,8 @@ trigger ng Customers; purge na nagtitira ng 7 session; feature map ay fail-close
 |---|---|
 | May wastong `userId` ang totoong comments sa lahat ng 4 na daan (lalo na ang Pin) | Phase 0 log |
 | Hindi nagbabago ang `userId` kapag nagpalit ng username | Phase 3: test account + query ng parehong `bq` na may 2 handle |
+| **Ang mga ayos ng pangalawang ikot (F1–F11) ay tama at kumpleto** | Hindi na ipinasuri ulit. Sariling audit sa Hakbang 2 |
+| Disenyo ng gate sa server (cache bawat seller, hintay bago ang "earlier comments", saklaw ayon sa plan/market) | Wala pang code; sacred zone → sariling audit + log sa Phase 0 |
 | Buong disenyo ng §4–§5 ay gumagana | Wala pang code. PGlite script + screen tests sa Hakbang 2 |
 | Ang trigger ay hindi pumipigil sa save sa lahat ng kaso (lalo na timeout) | PGlite; tapat na limitasyon sa §4.1 |
 | Lahat ng print path ay nasakop | Iisang helper + source test + "iisang order, iisang matrix" test |
