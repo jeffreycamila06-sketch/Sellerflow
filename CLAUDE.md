@@ -4857,6 +4857,8 @@ Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). 
   username's records have **3 or more DIFFERENT phones** (a word written for many buyers, e.g. `user` — `recordToFill` /
   `SCAN_QR_SHARED_PHONES`) · no record / error / over 4 s / a full page of candidates. Then the screen is exactly as before
   (username only, no message). No lookup while a saved parcel is edited.
+  The SAME username scanned again while details are in the form → nothing is touched, nothing is read. Another buyer app
+  picked while the answer is on its way → nothing is filled.
   Code: `adapters/scanQrLookup.ts` (rule #4 `usernameKeyOf`, the one read, `recordToFill`) + `adapters/useScanQrLookup.ts`
   (one hook, both screens). ⇄ draft carries the fill mark (`parcelDrafts.ts` `lookup`).
 - **It only READS Customers.** Saving a parcel → Customers is NOT changed by this branch (Jeff 2026-11-12: nothing is

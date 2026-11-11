@@ -29,24 +29,27 @@ node docs/design/scan-qr-lookup/built/make-built.cjs
 | `2-no-match` | `@newbuyer_tw` (walang record) | Username lang at ang dating mensahe |
 | `3-shared-word` | `@user` — sa preview, `user` ang contact ng 3 buyer na may 3 magkakaibang phone | Username lang at ang dating mensahe — kapareho ng `2-no-match` |
 
-Sa preview database may sadyang mga record na **hindi dapat gamitin**: `annc_tw2` (ibang username) at isang `annc_tw` na LINE
-ang app. Hindi sila ang napunan, at hindi sila kasama sa bilang ng phone.
+Sa preview database (7-11 at FamilyMart) may sadyang mga record na **hindi dapat gamitin**: `annc_tw2` (ibang username) at
+isang `annc_tw` na LINE ang app — parehong mas bago kaysa sa tamang record. Hindi sila ang napunan, at hindi sila kasama sa
+bilang ng phone. (Ang preview database ay hindi nagsasala gaya ng totoong database — ibinabalik nito ang lahat ng record ng
+seller, kaya ang huling tsek ng app ang nakikita sa mga larawan, hindi ang tanong sa database.)
 
-**Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): 24 larawan · elemento ng dating kahon / listahan sa screen: **0** sa lahat · pahinang may pahalang na scroll: **0** · ang hilera ng "Batch" ay 50 px sa lahat ng lapad. (Ang purple na header sa itaas ay hindi ginalaw ng branch na ito — kapareho ng nasa `main`.)
+**Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): __SHOTS__
 
 ## Mga test ng app
-Apat na file: `scanQrLookup.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx` — **157 test, lahat pumasa** (huling takbo bago ang commit na ito).
-Sinadyang sirain ang code ng app (sa hiwalay na kopya) — `proof/app-breakages.py` → `proof/app-breakages.txt`: **55 na paraan** — 54 ang nagpabagsak ng kahit isang test; 1 (tinanggal ang tsek na "walang record" sa hook) ang nahuli dahil nag-error ang takbo (unhandled error, exit 1), hindi ng isang `expect`. Kasama ang "tinanggal ang bantay na 3+ phone" → 8 test ang bumagsak. (takbo sa commit b1a7fb31 (pagkatapos isama ang main 0b30f3ec); 4 na test file ng app sa bawat sira)
+Apat na file: `scanQrLookup.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx` — __APPTESTS__
+Sinadyang sirain ang code ng app (sa hiwalay na kopya) — `proof/app-breakages.py` → `proof/app-breakages.txt`: __BREAKS__
 
 ## Naka-OFF = kapareho ng `main`
 `compare-with-main.cjs` — parehong hakbang (manual entry, Scan QR ng `@annc_tw`, na **may** 3 record) sa `main` (`0b30f3ec`,
 isinama na rin sa branch na ito) at sa branch na naka-OFF ang switch (`?qlookup=off`). Inihambing ang buong HTML ng form,
 ang mensahe at ang cursor — agad pagkatapos ng scan at 1.3 segundo pagkatapos; 7-11 at FamilyMart; 360 px at 1280 px.
-Resulta (`compare-with-main.txt`): **24 sa 24 magkapareho.** (Preview database, hindi production.)
+Resulta (`compare-with-main.txt`): __COMPARE__ (Preview database, hindi production.)
 
 ## Mga dapat malaman ni Jeff
 1. **Bantay na "3+ phone".** Binibilang lang ang sariling record ng username na iyon (TikTok o walang app, tugma ayon sa
-   rule #4); digits lang ng phone ang tinitingnan, kaya iisa ang `0911 222 333` at `0911222333`. Sa live ngayon (7-11):
+   rule #4), **lahat ng record, hindi lang ang pinakabago**; digits lang ng phone ang tinitingnan, kaya iisa ang
+   `0911 222 333` at `0911222333`. Sa live ngayon (7-11):
    **137 "username" (765 record, 12 seller) ang may 3+ phone** — hindi na pupunan ang mga iyon. FamilyMart: wala pa.
    (`proof/live-readonly-checks.md` §2.)
 2. **2 magkaibang phone → pinupunan pa rin mula sa pinakabago** (ayon sa utos: 3 o higit pa lang ang hindi). Live: 723
@@ -63,16 +66,34 @@ Resulta (`compare-with-main.txt`): **24 sa 24 magkapareho.** (Preview database, 
 7. **`pedro123 (U)` (walang `@`, may space) ay HINDI tugma** — ayon sa utos. Live: 2,295 record (7-11), 67 (FM).
 8. **Kapag 100 o higit pa ang ibinalik na kandidato** para sa isang scan, walang pinupunan (hindi mabibilang ang lahat ng
    phone). Sa live, 60 ang pinakamaraming record ng iisang username.
-9. **"Space" = karaniwang space, tab at bagong linya lang** (hindi ang full-width na 全形 space; wala pang ganito sa live).
+9. **Isang karaniwang space lang ang hinahanap pagkatapos ng `@` o ng username.** Ang record na may tab o 2+ space doon
+   (1 sa live) at ang full-width na 全形 space (0 sa live) ay hindi makikita ng paghahanap.
 10. **Walang admin bypass**; **pagkatapos ng Import**, nililinis ang buong entry kapag may natitirang detalyeng pinunan ng
     Scan QR.
-11. **Help guide:** idinagdag lang ang tungkol sa pagpuno ("If nothing is filled in, type the details as usual."). Walang
-    banggit tungkol sa pagpapalit ng entry sa Customers. `sql/116b` ay ni-regenerate; **hindi in-apply.**
+10b. **Parehong sticker na na-scan ulit** habang may laman ang form (hal. itinama ang pangalan): walang binubura at walang
+    bagong basa. Kapag ibang sticker ang sumunod, saka binabawi ang hindi ginalaw na detalye ng nauna.
+10c. **Pinalitan ang app ng buyer (hal. LINE) habang hinihintay ang sagot** → walang pinupunan.
+10d. **"Pinakabago" = huling naisulat na record.** Kapag ang lumang parcel ng buyer ay na-edit o na-recheck kamakailan, ang
+    record nito ang nagiging "pinakabago" — puwedeng lumang store ang mapunan. Nakikita ng encoder; walang petsa o babala
+    (inalis kasama ng kahon).
+10e. **Binibilang ang lahat ng record kailanman ng username.** Ang totoong buyer na may 3 magkakaibang phone sa Customers
+    (o 3 maling type) ay hindi na pupunan hangga't hindi binabawasan ang mga record niya sa Customers. `0911…` at `+886911…`
+    ay binibilang na dalawang magkaibang phone.
+10f. **Pinakabagong record na walang store #:** napupunan ang pangalan at phone, blangko ang store, at nasa Amount ang cursor.
+10g. **Cancel habang binabasa pa ang QR na larawan:** may isa pa ring basa sa Customers (kapag bukas ang feature) para sa
+    saradong form; walang lumalabas at malinis ang form pagbukas ulit.
+11. **Help guide:** tungkol lang sa pagpuno ang idinagdag (kasama ang "If nothing is filled in, type the details as usual."
+    at na ang panibagong scan ay pumapalit sa detalyeng pinunan ng nauna). Walang banggit tungkol sa pagpapalit ng entry sa
+    Customers. `sql/116b` ay ni-regenerate; **hindi in-apply.**
 12. **Para mabuksan:** i-apply ang `sql/149` (switch na naka-OFF + ang key), ilagay ang mga test account sa listahan, saka
     `sql/116b`. Hangga't hindi na-apply ang `sql/149`, naka-OFF ito sa lahat.
 
 ## HINDI PA NAPAPATUNAYAN
-- Ang totoong tanong ng app sa totoong API (lalo na ang space sa loob ng filter, at username na may `.` at `_`) at ang bilis
-  mula sa phone — walang login para subukin dito. Mapapatunayan sa scan ng totoong sticker gamit ang account na nasa listahan.
+- **Ang totoong tanong ng app sa totoong API** (lalo na ang space sa loob ng filter, at username na may `.` at `_`) at ang
+  bilis mula sa phone. Walang login para subukin dito, at hindi maabot ang API mula sa makinang ito. Ang mga test ay gumagamit
+  ng pekeng client, at ang preview database ay hindi nagsasala. Kung tanggihan ng totoong API ang tanong, ang resulta ay
+  "walang napupunan" para sa lahat, walang error na lalabas. Ang kasalukuyang search sa Customers ay gumagamit ng parehong
+  hugis ng tanong (may space, `@` at `.`), kaya mababa ang panganib — pero hindi iyon patunay.
+  **Mapapatunayan sa isang scan ng totoong sticker gamit ang account na nasa listahan, bago buksan sa iba.**
 - Kung gaano kadalas, sa totoong gamit, na ibang tao ang napunan (#2) — hindi masusukat mula rito.
 - Totoong phone at camera; dark theme (walang bagong salita o kahon sa screen).
