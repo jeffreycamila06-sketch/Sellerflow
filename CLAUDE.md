@@ -4849,3 +4849,27 @@ myship-711.js and app source untouched):
 - Tests: `ParcelScan.adminManualOnly.test.tsx` (real gate → no `<video>`, no getUserMedia, no credits fetch,
   admin screen = seller screen; control case proves the camera path still works; label ×8 langs), FamilyMart
   label in `ParcelScanBridge.test.tsx`. Web-only (Vercel after merge), no SQL, no Render.
+
+## 2026-11-12 — SCAN QR → FILL FROM CUSTOMERS (branch `claude/scan-qr-lookup`, NOT merged; sql/149 + sql/150 NOT applied)
+Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). Jeff's rule (2026-11-12): **no list, no box.**
+- **App:** after Scan QR, when that @username has a record in Customers → name, phone and store are filled from the NEWEST
+  record (`updated_at`, tie → id). Something already typed in name / phone / store → nothing is filled. No record / error /
+  over 4 s → exactly as before (username only, no message). No lookup while a saved parcel is edited.
+  Code: `adapters/scanQrLookup.ts` (rule #4 `usernameKeyOf`, the one read) + `adapters/useScanQrLookup.ts` (one hook, both
+  screens). ⇄ draft carries the fill mark (`parcelDrafts.ts` `lookup`).
+- **Gate:** `scanQrLookupVisible({ switchOn: featureSw.scanQrLookup, previewKey: hasFeature("scan_qr_lookup") })` in
+  RedesignApp → prop `lookupOn` (LAST prop of both screens — older tests pin those JSX lines). No admin bypass. Off = no
+  database call, same screen as main. Switch `app_settings.scan_qr_lookup_enabled` + feature key `scan_qr_lookup` come
+  from **sql/149 (NOT applied)** → until then the feature is off for everyone.
+- **Rule #4 (which contact text is a username):** `pedro123` / `@pedro123` exactly, or `@` + first word (`@pedro123 (U)`,
+  `@ pedro123`). Never `@pedro12`, `@pedro1234`, `(U) @pedro123`, `pedro123 (U)`, `@pedro123(U)`. TikTok or no app only.
+  One example list for app + database: `adapters/__tests__/fixtures/scanQrUsernameKey.json`.
+- **sql/150 (NOT applied; Jeff decides the guards first):** rebuilds the two parcel → Customers trigger functions from the
+  LIVE text (the file stops if the live md5 changed; the rollback file IS the live text). Narrower than Jeff's literal rule:
+  merges only when the username has exactly ONE other record and it has the parcel's phone or name (one save removes at
+  most one record); 7-11 waits for store `valid` + phone `ok`; an older parcel never undoes a newer checked one.
+  Open questions for Jeff + what is not covered: `docs/design/scan-qr-lookup/built/README.md`.
+- **Proof (temporary database, never live):** `scripts/sql150-behaviour.mjs` (PGlite, NOT in CI; how to run is in its header)
+  → `built/sql150-behaviour.txt`; deliberate breakages `built/proof/sql150-breakages.py` / `app-breakages.py`.
+  CI only pins the SQL text (`scanQrLookupSql150.test.ts`). ⚠️ `*.log` is git-ignored — keep proof outputs as `.txt`.
+- **Apply order when Jeff says go:** sql/149 → (decide) sql/150 → sql/116b (its Customers sentence is true only with sql/150).

@@ -26,8 +26,10 @@ node docs/design/scan-qr-lookup/built/make-built.cjs
 Sa preview database may sadyang mga record na **hindi dapat gamitin**: `annc_tw2` (ibang username) at isang `annc_tw` na LINE
 ang app. Hindi sila ang napunan.
 
-**Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): 16 larawan · bagong elemento sa screen: **0** ·
-pahinang may pahalang na scroll: **0** · parehong taas ng bar sa itaas sa lahat ng lapad.
+**Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): 16 larawan · elemento ng dating kahon / listahan
+sa screen: **0** · pahinang may pahalang na scroll: **0** · ang hilera ng "Batch" ay 50 px sa lahat ng lapad. (Ang purple na
+header sa itaas ay hindi ginalaw ng branch na ito — kapareho ng nasa `main`.) Kinuha ang mga larawan pagkatapos isama ang
+pinakabagong `main` (`4eef74f0`).
 
 ## Mga test ng app
 Limang file (`scanQrLookup.test.ts`, `scanQrLookupSql150.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx`).
@@ -36,7 +38,8 @@ tsek na "walang record") ay nahuli dahil nag-error ang takbo ng test (unhandled 
 (`proof/app-breakages.py` → `proof/app-breakages.txt`).
 
 ## Naka-OFF = kapareho ng `main`
-`compare-with-main.cjs` — parehong hakbang (manual entry, Scan QR ng `@annc_tw`, na **may** 3 record) sa `main` (`119257aa`)
+`compare-with-main.cjs` — parehong hakbang (manual entry, Scan QR ng `@annc_tw`, na **may** 3 record) sa `main` (`4eef74f0`,
+ang pinakabago noong sinulat ito — isinama na rin sa branch na ito)
 at sa branch na naka-OFF ang switch (`?qlookup=off`). Inihambing ang buong HTML ng form, ang mensahe at ang cursor — agad
 pagkatapos ng scan at 1.3 segundo pagkatapos; 7-11 at FamilyMart; 360 px at 1280 px.
 Resulta (`compare-with-main.txt`): **24 sa 24 magkapareho.** (Preview database, hindi production.)
