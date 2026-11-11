@@ -878,6 +878,29 @@ describe("the hook on its own — a screen that does not say which app (no picke
   });
 });
 
+describe("the hook on its own — only spaces in a field", () => {
+  // (the phone and store boxes of the two screens keep digits only, so spaces can reach the hook only from elsewhere)
+  it.each([
+    ["phone", { name: "", phone: "  ", store: "" }],
+    ["store", { name: "", phone: "", store: " " }],
+    ["name", { name: "\t ", phone: "", store: "" }],
+  ])("spaces in the %s count as nothing typed: the fill happens", async (_f, fields) => {
+    m.lookup.mockResolvedValue(found(rec("c1")));
+    const setFields = vi.fn();
+    const { result } = renderHook(() => useScanQrLookup({ on: true, store: "711", blocked: false, initial: null, fields: { ...fields, handle: "buyer_a" }, setFields }));
+    await act(async () => { result.current.scanned("buyer_a"); await Promise.resolve(); await Promise.resolve(); });
+    expect(setFields).toHaveBeenCalledTimes(1);
+  });
+  it("…and a real character in any of them stops it", async () => {
+    m.lookup.mockResolvedValue(found(rec("c1")));
+    const setFields = vi.fn();
+    const { result } = renderHook(() => useScanQrLookup({ on: true, store: "711", blocked: false, initial: null, fields: { name: "", phone: " 0", store: "", handle: "buyer_a" }, setFields }));
+    await act(async () => { result.current.scanned("buyer_a"); await Promise.resolve(); await Promise.resolve(); });
+    expect(m.lookup).toHaveBeenCalledTimes(1);
+    expect(setFields).not.toHaveBeenCalled();
+  });
+});
+
 describe("the ⇄ draft and what a fill remembers", () => {
   const mark = { handle: "a", filled: { name: "N", phone: "1", store: "2" } };
   it("it travels with its own screen's entry only; none = the draft exactly as before", () => {
