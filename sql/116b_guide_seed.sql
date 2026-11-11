@@ -344,14 +344,14 @@ Who sees what:
 - Sellers outside Taiwan do not see it.
 
 **Parcel Scan 7-11**
-1. Tap **Manual encode (no camera)** and type the customer name (2 to 10 letters — a Chinese character counts as 2, so 1 to 5 Chinese characters; no numbers or symbols), phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
+1. Tap **✏️ Manual add parcel** and type the customer name (2 to 10 letters — a Chinese character counts as 2, so 1 to 5 Chinese characters; no numbers or symbols), phone (10 digits starting 09), 7-11 store # (6 digits), amount and the buyer @username. If the buyer has no @username, tick **Buyer has no social handle**.
 2. **Scan QR** fills in the buyer @username from a SellerFlowLive sticker photo.
 3. **Buyer contact** (Plus / Pro / Master): under the amount, tap the buyer''s app — TikTok, LINE, WhatsApp, Facebook, Instagram or Other — then type the contact: TikTok or Instagram @username, LINE ID (not the phone number), WhatsApp number (Taiwan 09… works; other countries with the country code), Facebook name or profile link. The app you picked stays selected for the next parcel. Tick **Buyer has no contact** if there is none. A WhatsApp number that is not 8–15 digits shows a short message and cannot be saved. Scan QR still fills the TikTok @username.
 4. **Customers** keeps repeat buyers: search, then tap **Import** to add them as a new parcel (the buyer''s app and contact come back with them; you can change them before Import or with ✏️ Edit).
 5. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.
 
 **Parcel Scan FamilyMart (全家)** — in **Settings**, next to Parcel Scan 7-11.
-1. Tap **✏️ Add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
+1. Tap **✏️ Manual add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
 2. **▣ Scan QR**, **Buyer contact** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
 3. Tap **Export N parcel(s)**, then **Export**, and upload the file on 好賣+ → 大量匯單.
 4. **Batch N / limit** at the top shows your FamilyMart parcels not exported yet. The limit is the same as on 7-11. When it is full, export first — you can still edit or delete saved parcels.
