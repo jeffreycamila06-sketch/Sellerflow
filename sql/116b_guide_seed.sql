@@ -355,7 +355,7 @@ Who sees what:
 4. **Batch N / limit** at the top shows your FamilyMart parcels not exported yet. The limit is the same as on 7-11. When it is full, export first — you can still edit or delete saved parcels.
 
 Both:
-- If you can use both, tap **⇄ 全家** (on 7-11) or **⇄ 7-11** (on FamilyMart) at the top right to switch. What you were typing is still there when you come back. Each store keeps its own parcels, batch and export.
+- If you can use both, tap **⇄ 全家** (on 7-11) or **⇄ 7-11** (on FamilyMart) at the top right to switch. What you were typing is still there when you come back, as long as the app stays open. Each store keeps its own parcels, batch and export.
 - **Undo last export** puts the last exported parcels back. **Clear exported** removes exported parcels.
 - On a phone, turn on **Export on this phone** first (it is off by default).
 - Android: the file is saved to Downloads — use Chrome.

@@ -308,3 +308,145 @@ describe("6 — FamilyMart has no All OK / attention; 7-11's row is unchanged", 
     expect(s.getByTestId("ps-batch-n").textContent).toBe("0 / 50");
   });
 });
+
+describe("3b — Save → ⇄ → back BEFORE the save finishes: never a second save", () => {
+  const fillFm = (r: ReturnType<typeof fm>) => { type(r, "fms-name", "Jeffrey"); type(r, "fms-phone", "0958704782"); type(r, "fms-store", "022131"); type(r, "fms-amount", "500"); type(r, "fms-username", "@jeff"); };
+  const fill711 = (s: ReturnType<typeof seven>) => { type(s, "ps-name", "Juan"); type(s, "ps-phone", "0958704782"); type(s, "ps-store", "151003"); type(s, "ps-amount", "500"); type(s, "ps-notes", "@juan"); };
+
+  it("FamilyMart: back while saving → blank form, Save off; when it lands → 1 save only", async () => {
+    let land!: (v: unknown) => void;
+    m.saveFmScan.mockReturnValue(new Promise((res) => { land = res; }));
+    let r = fm();
+    await fmLoaded(r);
+    fireEvent.click(r.getByTestId("fms-manual"));
+    fillFm(r);
+    fireEvent.click(r.getByTestId("fms-save"));
+    r.unmount(); // ⇄ 7-11 while the save runs
+    r = fm();    // ⇄ 全家 — the save has NOT landed yet
+    await fmLoaded(r);
+    expect(r.getByTestId("fms-confirm").getAttribute("data-manual")).toBe("1");
+    expect([val(r, "fms-name"), val(r, "fms-phone"), val(r, "fms-store"), val(r, "fms-amount"), val(r, "fms-username")]).toEqual(["", "", "", "", ""]);
+    const save = r.getByTestId("fms-save") as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+    land({ ok: true, row: fmRow("n1") });
+    await waitFor(() => expect(readParcelDraft<{ name: string }>("fm")?.form.name).toBe(""));
+    expect(m.saveFmScan).toHaveBeenCalledTimes(1);
+  });
+  it("7-11: back while saving → blank form, Save off; when it lands → 1 save only", async () => {
+    let land!: (v: unknown) => void;
+    m.saveParcelScan.mockReturnValue(new Promise((res) => { land = res; }));
+    let s = seven();
+    fireEvent.click(await s.findByTestId("ps-manual"));
+    fill711(s);
+    await waitFor(() => expect((s.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(s.getByTestId("ps-save"));
+    s.unmount();
+    s = seven();
+    expect([val(s, "ps-name"), val(s, "ps-phone"), val(s, "ps-store"), val(s, "ps-amount"), val(s, "ps-notes")]).toEqual(["", "", "", "", ""]);
+    const save = s.getByTestId("ps-save") as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+    land({ ok: true, id: "srv-1" });
+    await waitFor(() => expect(m.saveParcelScan).toHaveBeenCalledTimes(1));
+    await new Promise((res) => setTimeout(res, 50));
+    expect(m.saveParcelScan).toHaveBeenCalledTimes(1);
+  });
+  it("a save that FAILS after ⇄ puts the typed entry back (FamilyMart and 7-11)", async () => {
+    let landFm!: (v: unknown) => void;
+    m.saveFmScan.mockReturnValue(new Promise((res) => { landFm = res; }));
+    let r = fm();
+    await fmLoaded(r);
+    fireEvent.click(r.getByTestId("fms-manual"));
+    fillFm(r);
+    fireEvent.click(r.getByTestId("fms-save"));
+    r.unmount();
+    landFm({ ok: false });
+    await waitFor(() => expect(readParcelDraft<{ name: string }>("fm")?.form.name).toBe("Jeffrey"));
+    r = fm();
+    expect(val(r, "fms-name")).toBe("Jeffrey");
+    expect(val(r, "fms-username")).toBe("@jeff");
+
+    let land7!: (v: unknown) => void;
+    m.saveParcelScan.mockReturnValue(new Promise((res) => { land7 = res; }));
+    let s = seven();
+    fireEvent.click(await s.findByTestId("ps-manual"));
+    fill711(s);
+    await waitFor(() => expect((s.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(s.getByTestId("ps-save"));
+    s.unmount();
+    land7({ ok: false, error: "x" });
+    await waitFor(() => expect(readParcelDraft<{ name: string }>("711")?.form.name).toBe("Juan"));
+    s = seven();
+    expect(val(s, "ps-name")).toBe("Juan");
+  });
+  it("a new parcel typed while the old save runs is kept, even if the old save fails", async () => {
+    let land!: (v: unknown) => void;
+    m.saveFmScan.mockReturnValue(new Promise((res) => { land = res; }));
+    let r = fm();
+    await fmLoaded(r);
+    fireEvent.click(r.getByTestId("fms-manual"));
+    fillFm(r);
+    fireEvent.click(r.getByTestId("fms-save"));
+    r.unmount();
+    r = fm();
+    await fmLoaded(r);
+    type(r, "fms-name", "Next Buyer");
+    land({ ok: false });
+    await new Promise((res) => setTimeout(res, 20));
+    expect(readParcelDraft<{ name: string }>("fm")?.form.name).toBe("Next Buyer");
+  });
+});
+
+describe("5b — FamilyMart: no NEW parcel until the saved list loaded OK", () => {
+  const blockedNew = (r: ReturnType<typeof fm>) => {
+    expect((r.getByTestId("fms-manual") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(r.getByTestId("fms-manual"));
+    expect(r.queryByTestId("fms-confirm")).toBeNull();
+  };
+  it("load FAILED → no Batch row, a short 'open again' note, Add parcel off", async () => {
+    m.loadFmScans.mockResolvedValue({ ok: false, rows: [] });
+    const r = fm();
+    await waitFor(() => expect(r.getByTestId("fms-load-err").textContent).toBe("Couldn't load your FamilyMart parcels. Close this screen and open it again."));
+    expect(r.queryByTestId("fms-batch")).toBeNull(); // never a fake "0 / 40"
+    blockedNew(r);
+  });
+  it("load threw → same", async () => {
+    m.loadFmScans.mockRejectedValue(new Error("network"));
+    const r = fm();
+    await waitFor(() => expect(r.getByTestId("fms-load-err")).toBeTruthy());
+    blockedNew(r);
+  });
+  it("load still PENDING → Add parcel off; a kept entry comes back but Save and From customers are off", async () => {
+    let r = fm({ contactOn: false });
+    await fmLoaded(r);
+    fireEvent.click(r.getByTestId("fms-manual"));
+    type(r, "fms-name", "Jeffrey"); type(r, "fms-phone", "0958704782"); type(r, "fms-store", "022131"); type(r, "fms-amount", "500"); type(r, "fms-username", "@jeff");
+    r.unmount();
+    let finish!: (v: unknown) => void;
+    m.loadFmScans.mockReturnValue(new Promise((res) => { finish = res; }));
+    r = fm();
+    expect(r.queryByTestId("fms-batch")).toBeNull();
+    expect(r.queryByTestId("fms-load-err")).toBeNull();
+    expect(val(r, "fms-name")).toBe("Jeffrey");
+    expect((r.getByTestId("fms-save") as HTMLButtonElement).disabled).toBe(true);
+    expect((r.getAllByTestId("fms-open-customers")[0] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(r.getByTestId("fms-save"));
+    expect(m.saveFmScan).not.toHaveBeenCalled();
+    finish({ ok: true, rows: fmRows(2) });
+    await waitFor(() => expect(r.getByTestId("fms-batch-n").textContent).toBe("2 / 40"));
+    expect((r.getByTestId("fms-save") as HTMLButtonElement).disabled).toBe(false); // load OK → normal
+  });
+  it("load OK → normal: Batch shows, Add parcel on, no note", async () => {
+    m.loadFmScans.mockResolvedValue({ ok: true, rows: fmRows(1) });
+    const r = fm();
+    await waitFor(() => expect(r.getByTestId("fms-batch-n").textContent).toBe("1 / 40"));
+    expect(r.queryByTestId("fms-load-err")).toBeNull();
+    expect((r.getByTestId("fms-manual") as HTMLButtonElement).disabled).toBe(false);
+  });
+  it("load failed: edit / delete of rows already on screen are not blocked by it (pinned in code)", () => {
+    const src = readFileSync("src/redesign/screens/FmParcelScan.tsx", "utf8");
+    expect(src).toContain("(newBlocked && !editing)");
+    expect(src).toContain("const newBlocked = !listOk || batchFull;");
+  });
+});
