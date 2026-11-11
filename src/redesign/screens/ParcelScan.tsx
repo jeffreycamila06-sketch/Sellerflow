@@ -134,9 +134,10 @@ type ExportClaim = {
   elsewhere: number;
 };
 
-// manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
-// surface entirely (not just disable) and show manual encode + an "AI … coming
-// soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
+// manualOnly = hide the camera / AI-scan / credits surface entirely (not just disable)
+// and show manual encode + an "AI … coming soon" line. Since Nov 11 2026 this is
+// EVERYONE, admins included (PARCEL_SCAN_CAMERA_FOR_ADMIN = false in adapters/parcelScan.ts);
+// manualOnly=false (the full camera surface) is kept for when that switch goes back on.
 // pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
 // no auth); defaults to the everyone-cap so standalone renders keep 40.
 // onBridge = the ⇄ 全家 button (RedesignApp passes it ONLY when the seller may use BOTH Parcel Scans).

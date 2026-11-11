@@ -91,11 +91,18 @@ export async function saveParcelManualEnabled(enabled: boolean): Promise<{ ok: b
   return setAppSetting(PARCEL_MANUAL_ENABLED_KEY, enabled ? "true" : "false");
 }
 
+// Camera / AI photo scan for ADMINS (Nov 11 2026: hidden — 0 photo-scanned parcels in 30 days).
+// false = admins get the SAME manual-only Parcel Scan as sellers: no camera, no photo picker,
+// no AI credits fetch; the camera never turns on. The camera/AI code in ParcelScan.tsx is kept:
+// set this to true to give admins the full scan surface again (sellers are manual-only either way).
+export const PARCEL_SCAN_CAMERA_FOR_ADMIN = false;
+
 // Pure visibility combiner (the RedesignApp gate, unit-tested). Admin sees the
-// full surface regardless of the switch; a paying+active seller sees it ONLY
+// screen regardless of the switch; a paying+active seller sees it ONLY
 // when the switch is ON (manualEnabled). Everyone else → nothing.
 //   visible    = feature ALLOWED → show nav tile + render the screen
-//   manualOnly = allowed but NOT admin → hide camera/AI/credits, manual + "soon"
+//   manualOnly = allowed, and not (admin with PARCEL_SCAN_CAMERA_FOR_ADMIN) → hide camera/AI/credits,
+//                manual + "soon" (today: everyone who can open it)
 //   locked     = NOT allowed, NOT admin, and a BASIC or FREE plan (active OR
 //                expired) → show the tile as a LOCKED upsell (a neutral
 //                contact-support popup), but NEVER render the screen. This is
@@ -121,7 +128,7 @@ export function parcelScanVisible(opts: {
   // feature isn't already allowed to them. Expiry does NOT matter here (basic
   // active AND expired both see the upsell tile). Case-insensitive.
   const locked = !visible && !admin && isBasicOrFreePlan(opts.plan);
-  return { visible, manualOnly: visible && !admin, locked };
+  return { visible, manualOnly: visible && !(admin && PARCEL_SCAN_CAMERA_FOR_ADMIN), locked };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

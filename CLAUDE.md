@@ -4837,3 +4837,15 @@ myship-711.js and app source untouched):
   awaited (one at a time, `warm.gaveUpBusy`). Just moving it was not enough: an awaited 10 s read still held the pass,
   and a held pass makes the next kick skip its live frozen request (+5.3 s in the sim). Sim test: gave-up 10 s →
   every live frozen request at the same time as with the read off. Source pin: after `readPending`, `void`, guarded.
+
+## 2026-11-11 — PARCEL SCAN: camera / AI photo scan hidden for admins too + one button name (branch `claude/parcel-scan-manual-only`, NOT merged)
+- Admins now get the SAME manual-only Parcel Scan as paying sellers: no live camera, no Take photo, no photo
+  library, no AI-scan credits fetch — the camera never turns on (0 photo-scanned parcels in 30 days). One switch:
+  **`PARCEL_SCAN_CAMERA_FOR_ADMIN = false`** in `adapters/parcelScan.ts` → `parcelScanVisible` returns
+  `manualOnly: true` for admins. The camera/AI code in `ParcelScan.tsx` is KEPT (switch → true brings it back
+  for admins only; sellers stay manual-only). Admin pending cap (50) and everything else unchanged.
+- Button name on both pages = **"✏️ Manual add parcel"** (`rd_ps2_manual` 7-11 + `rd_fms_add` FamilyMart, same
+  text in all 8 languages, no parentheses). Help guide + sql/116b updated.
+- Tests: `ParcelScan.adminManualOnly.test.tsx` (real gate → no `<video>`, no getUserMedia, no credits fetch,
+  admin screen = seller screen; control case proves the camera path still works; label ×8 langs), FamilyMart
+  label in `ParcelScanBridge.test.tsx`. Web-only (Vercel after merge), no SQL, no Render.

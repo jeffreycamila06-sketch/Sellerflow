@@ -3,6 +3,7 @@
 // ⚠️ FAIL-CLOSED is the contract: any read that isn't the literal "true" → OFF.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  PARCEL_SCAN_CAMERA_FOR_ADMIN,
   loadParcelManualEnabled, loadParcelManualEnabledMeta, saveParcelManualEnabled,
   parcelScanVisible, PARCEL_MANUAL_ENABLED_KEY,
 } from "../parcelScan";
@@ -79,9 +80,10 @@ describe("parcelScanVisible — the RedesignApp gate (pure, tier-gated)", () => 
   it("switch ON → BASIC active seller is LOCKED (visible tile, feature not allowed)", () => {
     expect(parcelScanVisible({ ...basic, manualEnabled: true })).toEqual({ visible: false, manualOnly: false, locked: true });
   });
-  it("admin → full access REGARDLESS of the switch or tier (never manual-only, never locked)", () => {
-    expect(parcelScanVisible({ ...admin, manualEnabled: false })).toEqual({ visible: true, manualOnly: false, locked: false });
-    expect(parcelScanVisible({ ...admin, manualEnabled: true })).toEqual({ visible: true, manualOnly: false, locked: false });
+  it("admin → can open it REGARDLESS of the switch or tier, never locked — and MANUAL-ONLY like sellers (camera/AI hidden, Nov 11 2026)", () => {
+    expect(PARCEL_SCAN_CAMERA_FOR_ADMIN).toBe(false);
+    expect(parcelScanVisible({ ...admin, manualEnabled: false })).toEqual({ visible: true, manualOnly: true, locked: false });
+    expect(parcelScanVisible({ ...admin, manualEnabled: true })).toEqual({ visible: true, manualOnly: true, locked: false });
   });
   it("free tier → LOCKED regardless of the switch (never visible)", () => {
     expect(parcelScanVisible({ ...free, manualEnabled: false })).toEqual({ visible: false, manualOnly: false, locked: true });
