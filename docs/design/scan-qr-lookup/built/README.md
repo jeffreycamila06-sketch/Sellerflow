@@ -37,8 +37,8 @@ seller, kaya ang huling tsek ng app ang nakikita sa mga larawan, hindi ang tanon
 **Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): 24 larawan · elemento ng dating kahon / listahan sa screen: **0** sa lahat · pahinang may pahalang na scroll: **0** · ang hilera ng "Batch" ay 50 px sa lahat ng lapad. (Ang purple na header sa itaas ay hindi ginalaw ng branch na ito — kapareho ng nasa `main`.)
 
 ## Mga test ng app
-Apat na file: `scanQrLookup.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx` — *(tumatakbo pa sa huling code — pupunan pagkatapos)*
-Sinadyang sirain ang code ng app (sa hiwalay na kopya) — `proof/app-breakages.py` → `proof/app-breakages.txt`: *(tumatakbo pa sa huling code — pupunan pagkatapos; ang kasalukuyang laman ng `proof/app-breakages.txt` ay ang takbo sa mas naunang commit `b1a7fb31`: 55 paraan, lahat nahuli)*
+Apat na file: `scanQrLookup.test.ts`, `ScanQrLookup.{screens,camera,offOn}.test.tsx` — **204 test, lahat pumasa** (huling takbo, commit `f0ce9471`).
+Sinadyang sirain ang code ng app (sa hiwalay na kopya) — `proof/app-breakages.py` → `proof/app-breakages.txt`: **79 na paraan, lahat nahuli** — 78 ang nagpabagsak ng kahit isang test; 1 (tinanggal ang tsek na "walang record" sa hook) ang nahuli dahil nag-error ang takbo (unhandled error, exit 1), hindi ng isang `expect`. Kapag tinanggal ang bantay na "3+ phone", 17 test ang bumabagsak. Sa unang buong takbo (commit `8b8424f1`) 2 ang hindi nahuli (space sa phone / store); dinagdagan ng test at inulit ang mga iyon sa `f0ce9471` — nakasulat sa itaas ng file kung alin.
 
 ## Naka-OFF = kapareho ng `main`
 `compare-with-main.cjs` — parehong hakbang (manual entry, Scan QR ng `@annc_tw`, na **may** 3 record) sa `main` (`0b30f3ec`,

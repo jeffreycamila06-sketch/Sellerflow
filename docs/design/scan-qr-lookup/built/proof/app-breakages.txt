@@ -1,4 +1,7 @@
-# takbo sa commit b1a7fb31 (pagkatapos isama ang main 0b30f3ec); 4 na test file ng app sa bawat sira
+# 79 na sinadyang sira sa code ng app; sa bawat isa pinatakbo ang 4 na test file ng app (hiwalay na kopya ng repo).
+# Buong takbo: commit 8b8424f1. Doon, 2 ang HINDI nahuli ("spaces in the phone / store count as typed").
+# Dinagdagan ng test (commit f0ce9471) at inulit ang 3 kasong "spaces…" sa commit na iyon — ang 3 linyang iyon sa ibaba
+# ay mula sa ulit na takbo (may tatak na [f0ce9471]).
 RED    5 : rule 4: 'pedro123 (U)' (no @) counts
 RED    4 : rule 4: glued '@pedro123(U)' counts
 RED    7 : rule 4: note in front '(U) @pedro123' counts
@@ -14,31 +17,55 @@ RED    3 : a query shape dropped ('@key …')
 RED    1 : no time limit
 RED    1 : a full page is trusted (no 'could not read')
 RED    1 : a full page with an exact record in it still fills
-RED    8 : shared-word guard removed (3+ phones still fill)
-RED    9 : shared-word guard at 4 phones
-RED   12 : shared-word guard at 2 phones
-RED    8 : shared-word guard counts RECORDS, not different phones
+RED   17 : shared-word guard removed (3+ phones still fill)
+RED   18 : shared-word guard at 4 phones
+RED   14 : shared-word guard at 2 phones
+RED   10 : shared-word guard counts RECORDS, not different phones
 RED    3 : shared-word guard: spaces / dashes make a new phone
 RED    1 : shared-word guard: a blank phone is counted
-RED    6 : the hook ignores the shared-word guard
+RED    7 : shared-word guard looks at the 3 newest records only
+RED    5 : shared-word guard looks at the 5 newest records only
+RED    1 : shared-word guard: a phone that is not a number is not counted
+RED    1 : the read asks for 1000 rows
+RED    6 : same sticker again: the untouched details are taken back
+RED    2 : same sticker again: nothing happens even with an emptied form
+RED    2 : another app picked while waiting is ignored (hook)
+RED    3 : a scan does not count as TikTok (hook)
+RED    1 : 7-11 screen never tells the hook the buyer's app
+RED    1 : FM screen never tells the hook the buyer's app
+RED    3 : 7-11 screen: the app flag ignores what the picker says
+RED    3 : FM screen: the app flag ignores what the picker says
+RED    1 : 7-11 screen: a hidden picker with another app left behind blocks the fill
+RED    1 : FM screen: a hidden picker with another app left behind blocks the fill
+RED    1 : no app told = not TikTok (hook default)
+RED    2 : same sticker again decided by the username field, not by the remembered fill
+RED    2 : same sticker again only counts when all three details are present
+RED    1 : phones compared on their last 4 digits
+RED    1 : spaces in the phone count as typed   [f0ce9471]
+RED    1 : spaces in the store count as typed   [f0ce9471]
+RED    1 : 7-11: a fill also blanks the Amount
+RED    1 : FM: a fill also blanks the Amount
+RED    3 : spaces in the name count as typed   [f0ce9471]
+RED    2 : a stored fill mark is used although the lookup is off
+RED   12 : the hook ignores the shared-word guard
 RED   11 : fm reads the 7-11 table
 RED    2 : focus steals cursor
-RED   14 : fills although something is typed
-RED   11 : fills when ANY ONE is blank (not all three)
-RED   13 : fills the OLDEST record
-RED   14 : A→B: untouched details not taken back
+RED   16 : fills although something is typed
+RED   15 : fills when ANY ONE is blank (not all three)
+RED   15 : fills the OLDEST record
+RED   20 : A→B: untouched details not taken back
 RED   11 : old answers not dropped
 RED    2 : username-changed check off
 RED    5 : reset takes no new number
 RED    2 : import clears an entry the seller fully retyped
 RED    3 : Save press does not drop the answer
-RED   20 : the fill is not remembered
+RED   32 : the fill is not remembered
 RED    2 : a scan keeps the old fill memory
 RED    6 : import never clears a filled entry
 RED    6 : import always clears the entry
 RED  run failed (unhandled error, exit 1) : 'no record' check dropped in the hook
-RED   12 : gate off: hook + 7-11 screen
-RED   10 : gate off: hook + FM screen
+RED   13 : gate off: hook + 7-11 screen
+RED   11 : gate off: hook + FM screen
 RED    2 : edit mode looks up: hook + 7-11
 RED    2 : edit mode looks up: hook + FM
 RED    3 : 7-11 clearForm keeps the fill memory
@@ -52,6 +79,6 @@ RED    1 : FM import keeps the old save error
 RED    1 : 7-11 photo marks kept after a fill
 RED    5 : 7-11 new photo keeps the fill memory (scanOne + clearForm)
 RED    1 : 7-11 photo Save press does not drop
-RED    4 : draft drops the fill memory
+RED    6 : draft drops the fill memory
 RED    1 : hold keeps the fill memory
-cases 0 - 55 of 55 | not caught / skipped: 0
+cases 0 - 79 of 79 | not caught: 0 (2 sa unang takbo, nahuli na pagkatapos ng dagdag na test)
