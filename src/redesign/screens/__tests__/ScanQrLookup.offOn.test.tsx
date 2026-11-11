@@ -1,0 +1,126 @@
+// Scan QR → Customers lookup with the REAL read (nothing of the lookup is mocked) and a recording
+// database client, from the screen down:
+//   OFF (switch off and login not listed) → the Customers tables are NEVER read by a scan.
+//   ON → exactly ONE read per scan, of THIS screen's Customers table only, own rows only.
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
+import { TProvider } from "../../i18n";
+import { clearParcelDrafts } from "../../adapters/parcelDrafts";
+
+const h = vi.hoisted(() => ({
+  reads: [] as { table: string; eq: unknown[][]; or: string[]; writes: string[] }[],
+  rows: {} as Record<string, Record<string, unknown>[]>,
+  decode: vi.fn(),
+}));
+vi.mock("../../../supabase", () => {
+  const from = (table: string) => {
+    const rec = { table, eq: [] as unknown[][], or: [] as string[], writes: [] as string[] };
+    h.reads.push(rec);
+    const q: unknown = new Proxy(function () { /* chain */ }, {
+      get(_t, prop: string) {
+        if (prop === "then") return (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve({ data: h.rows[table] ?? [], error: null, count: 0 }).then(res, rej);
+        return (...args: unknown[]) => {
+          if (prop === "eq") rec.eq.push(args);
+          if (prop === "or") rec.or.push(String(args[0]));
+          if (["insert", "update", "upsert", "delete"].includes(prop)) rec.writes.push(prop);
+          return q;
+        };
+      },
+    });
+    return q;
+  };
+  return {
+    isSupabaseConfigured: true,
+    supabase: {
+      from,
+      rpc: async () => ({ data: null, error: null }),
+      auth: { getSession: async () => ({ data: { session: { user: { id: "me-1" }, access_token: "t" } } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() { /* none */ } } } }) },
+    },
+  };
+});
+vi.mock("../../adapters/fmScan", async (orig) => ({
+  ...(await orig<typeof import("../../adapters/fmScan")>()),
+  saveFmScan: vi.fn(), loadFmScans: async () => ({ ok: true, rows: [] }), deleteFmScan: vi.fn(), loadFmGlobalFee: async () => 39,
+}));
+vi.mock("../../adapters/parcelScan", async (orig) => ({
+  ...(await orig<typeof import("../../adapters/parcelScan")>()),
+  saveParcelScan: vi.fn(), loadParcelScans: async () => ({ ok: true, rows: [] }),
+  loadLastExportBatch: async () => ({ ok: true, batch: null }), loadUndeliveredExports: async () => ({ ok: true, batches: [] }),
+  checkEmapStore: async () => ({ status: "valid" }), saveStoreCheck: async () => ({ ok: true }),
+  getCreditBalance: async () => ({ ok: true, balance: 5 }), updateParcelScan: async () => ({ ok: true }),
+}));
+vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
+vi.mock("../../adapters/qrDecode", () => ({ decodeQrFromFile: h.decode }));
+
+import ParcelScan from "../ParcelScan";
+import FmParcelScan from "../FmParcelScan";
+
+const CUSTOMER_TABLES = ["parcel_customers", "fm_parcel_customers"];
+const customerReads = () => h.reads.filter((r) => CUSTOMER_TABLES.includes(r.table));
+const row = (id: string, user: string, username: string, name: string) => ({
+  id, user_id: user, name, phone: "0911222333", store_id: "246810", notes: username, buyer_username: username, contact_platform: null, updated_at: "2026-11-01T02:00:00+00:00",
+});
+const SCREENS = {
+  "711": { p: "ps", handle: "ps-notes", table: "parcel_customers", col: "notes", el: (on: boolean) => <ParcelScan cur="NT$" manualOnly lookupOn={on} /> },
+  fm: { p: "fms", handle: "fms-username", table: "fm_parcel_customers", col: "buyer_username", el: (on: boolean) => <FmParcelScan cur="NT$" lookupOn={on} /> },
+};
+
+beforeEach(() => { h.reads.length = 0; h.rows = {}; h.decode.mockReset(); });
+afterEach(() => { cleanup(); clearParcelDrafts(); });
+
+describe.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("%s Parcel Scan — the real read", (key) => {
+  const S = SCREENS[key];
+  const id = (s: string) => `${S.p}-${s}`;
+  const openAndScan = async (on: boolean, payload: string, handle: string) => {
+    const r = render(<TProvider lang="en">{S.el(on)}</TProvider>);
+    await waitFor(() => expect((r.getByTestId(id("manual")) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(r.getByTestId(id("manual")));
+    h.reads.length = 0; // only what the SCAN reads counts from here
+    h.decode.mockResolvedValueOnce(payload);
+    fireEvent.change(r.getByTestId(id("qr-file")), { target: { files: [new File([new Uint8Array([1])], "s.jpg", { type: "image/jpeg" })] } });
+    await waitFor(() => expect((r.getByTestId(S.handle) as HTMLInputElement).value).toBe(handle));
+    await act(async () => { await new Promise((res) => setTimeout(res, 30)); });
+    return r;
+  };
+
+  it("OFF: a scan fills the username and reads NOTHING from the database", async () => {
+    h.rows[S.table] = [row("c1", "me-1", "maria_shops", "Maria Santos")];
+    const r = await openAndScan(false, "https://tiktok.com/@maria_shops", "maria_shops");
+    expect(customerReads()).toEqual([]);
+    expect(h.reads).toEqual([]); // no table at all
+    expect((r.getByTestId(id("name")) as HTMLInputElement).value).toBe("");
+    expect(r.queryByTestId(id("ql"))).toBeNull();
+  });
+
+  it("ON: ONE read, of this screen's Customers only, own rows only, read-only — and it fills the form", async () => {
+    h.rows[S.table] = [row("c1", "me-1", "@Maria_Shops", "Maria Santos")];
+    h.rows[S.table === "parcel_customers" ? "fm_parcel_customers" : "parcel_customers"] = [row("x1", "me-1", "maria_shops", "From The Other Screen")];
+    const r = await openAndScan(true, "https://tiktok.com/@maria_shops", "maria_shops");
+    await waitFor(() => expect((r.getByTestId(id("name")) as HTMLInputElement).value).toBe("Maria Santos"));
+    expect(h.reads).toHaveLength(1);
+    expect(h.reads[0].table).toBe(S.table);
+    expect(h.reads[0].eq).toEqual([["user_id", "me-1"]]);
+    expect(h.reads[0].or).toEqual([`${S.col}.ilike.maria_shops,${S.col}.ilike.@maria_shops`]);
+    expect(h.reads[0].writes).toEqual([]);
+  });
+
+  it("ON: a row of ANOTHER seller (even if the database handed it over) and a near-name are never shown", async () => {
+    h.rows[S.table] = [row("o1", "someone-else", "maria_shops", "Other Seller's Buyer"), row("n1", "me-1", "mariaXshops", "Near Name"), row("n2", "me-1", "maria_shops2", "Longer Name")];
+    const r = await openAndScan(true, "maria_shops", "maria_shops");
+    expect(customerReads()).toHaveLength(1);
+    expect((r.getByTestId(id("name")) as HTMLInputElement).value).toBe("");
+    expect(r.queryByTestId(id("ql"))).toBeNull();
+    expect(r.container.textContent).not.toContain("Other Seller's Buyer");
+  });
+
+  it("ON: @pedro123 does not bring up @pedro12's record, and the other way round", async () => {
+    h.rows[S.table] = [row("a", "me-1", "pedro12", "Pedro Twelve")];
+    let r = await openAndScan(true, "pedro123", "pedro123");
+    expect((r.getByTestId(id("name")) as HTMLInputElement).value).toBe("");
+    cleanup(); clearParcelDrafts();
+    h.rows[S.table] = [row("b", "me-1", "pedro123", "Pedro OneTwoThree")];
+    r = await openAndScan(true, "pedro12", "pedro12");
+    expect((r.getByTestId(id("name")) as HTMLInputElement).value).toBe("");
+    expect(r.queryByTestId(id("ql"))).toBeNull();
+  });
+});

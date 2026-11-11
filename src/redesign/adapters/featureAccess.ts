@@ -20,6 +20,7 @@ export const FEATURE_KEYS = [
   "buyer_contact", // buyer contact picker + Pickup Status contact buttons before the switch (sql/140)
   "one_sticker", // the new Live print pattern for this account before one_sticker_enabled (sql/146)
   "sticker_all_scripts", // every language on today's sticker for this account before the switch (sql/146)
+  "scan_qr_lookup", // Parcel Scan: Scan QR looks the username up in Customers, for this account before the switch (sql/149)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;
