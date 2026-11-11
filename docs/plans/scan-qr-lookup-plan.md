@@ -1,9 +1,10 @@
 # Scan QR → hanapin sa Customers — plano (Hakbang 1: plano + preview lang)
 
-> **PINALITAN — 2026-11-12 (Hakbang 3, desisyon ni Jeff):** wala nang listahan, kahon, petsa o "Gamitin". Kapag may record
-> ang username, diretsong napupunan mula sa **pinakabagong** record; kapag may naka-type na, walang pinupunan; walang tugma /
-> error = gaya ngayon, walang mensahe. Bagong tuntunin ng tugma ("@" + unang salita) at "isang username = isang record" sa
-> pag-save (`sql/150`, hindi pa in-apply). **Ang kasalukuyang gawi at mga patunay: `docs/design/scan-qr-lookup/built/README.md`.**
+> **Luma na ang planong ito.** Mga desisyon ni Jeff noong 2026-11-12: walang listahan at walang kahon — pagka-Scan QR,
+> diretsong pinupunan ang pangalan, phone at store mula sa pinakabagong record ng username; may naka-type na / walang record
+> / error = gaya ngayon, walang mensahe; kapag 3 o higit pang magkakaibang phone ang mga record ng "username" (salitang gamit
+> sa maraming buyer) = walang punan. **Walang binabago sa pag-save ng parcel sa Customers.**
+> **Ang kasalukuyang gawi at mga patunay: `docs/design/scan-qr-lookup/built/README.md`.**
 > Ang nasa ibaba ay ang plano ng Hakbang 1–2 at iniwan bilang kasaysayan.
 
 Branch `claude/scan-qr-lookup` mula sa `origin/main` `119257aa`. **Docs lang** — walang binago sa app code, server, SQL o
