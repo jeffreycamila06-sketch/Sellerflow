@@ -1,19 +1,22 @@
-// Scan QR → look the scanned @username up in the seller's OWN Customers of THIS screen
+// Scan QR → fill the buyer's saved details from the seller's OWN Customers of THIS screen
 // (7-11 Parcel Scan → parcel_customers.notes · FamilyMart Parcel Scan → fm_parcel_customers.buyer_username).
-// Jeff 2026-11-11. The sticker QR, the QR parser, printing, the save and the export are untouched.
+// Jeff 2026-11-12. The sticker QR, the QR parser, printing, the save and the export are untouched.
 //
-// Rules (Jeff's answers):
-//  • EXACT username only: trim, drop ONE leading "@", lower case, then equal. "pedro123" never
-//    matches "pedro12" (and the other way round); "_" and "." are ordinary characters.
-//  • Records saved as TikTok or with no app picked (contact_platform NULL / "tiktok") only.
-//  • "unknown" and blank are never looked up.
-//  • Every record of that username comes back, newest "last updated" first — 2+ = the seller picks.
-//  • A different username is a different person here: nothing is ever joined by phone or store.
+// What happens (nothing new is ever shown on screen):
+//  • the username has a record → name, phone and store come from the NEWEST record (last updated; same time → id)
+//  • something is already typed in name, phone or store → nothing is filled
+//  • no record / error / more than 4 s → exactly as before (username only), no message
 //
-// ONE read per scan (a user action), own rows only (explicit user_id + RLS), no poll. The query
-// asks the database for a case-insensitive match with and without "@"; in that comparison "_"
-// stands for any one character, so the app makes the FINAL exact check on every returned row
-// (matchLookupRows) — nothing the database returns is trusted as a match.
+// Which records belong to a username (the SAME rule as the database, sql/150 scan_qr_username_key):
+//  • the saved text is exactly "pedro123" or "@pedro123" (any letter case), or
+//  • it starts with "@" and the FIRST word after it (a space may come first) is exactly pedro123:
+//    "@pedro123 (U)", "@pedro123 #3", "@ pedro123", "@pedro123 Garcia (NA)"
+//  • never: "@pedro12", "@pedro1234", "(U) @pedro123", "Pedro Garcia", or anything with a space that does not start with "@"
+//  • the record's app is TikTok or none; "unknown" and blank are never looked up.
+//
+// ONE read per scan (a user action), own rows only (explicit user_id + RLS + a check in the app), no poll.
+// The database is asked for near matches ("_" stands for any one character there); the app makes the FINAL
+// exact check on every returned row — nothing the database returns is trusted as a match.
 import { isSupabaseConfigured, supabase } from "../../supabase";
 
 export type ScanQrLookupStore = "711" | "fm";
@@ -30,7 +33,7 @@ export interface ScanQrLookupRow {
   name: string;
   phone: string;
   storeId: string;
-  /** ISO time the Customers record was last WRITTEN ("last updated" — not "last used"). */
+  /** ISO time the Customers record was last written. */
   updatedAt: string;
 }
 /** A Customers row as read (before the exact check). */
@@ -38,9 +41,10 @@ export interface ScanQrLookupRaw extends ScanQrLookupRow {
   username: string;
   platform: string | null;
 }
-export type ScanQrLookupResult = { ok: true; rows: ScanQrLookupRow[]; more: boolean } | { ok: false };
+/** rows: every record of the username, newest first (rows[0] is the one to use). */
+export type ScanQrLookupResult = { ok: true; rows: ScanQrLookupRow[] } | { ok: false };
 
-/** trim → drop ONE leading "@" → lower case. */
+/** The scanned username: trim → drop ONE leading "@" → lower case. */
 export function lookupKey(raw: string | null | undefined): string {
   return String(raw ?? "").trim().replace(/^@/, "").trim().toLowerCase();
 }
@@ -48,6 +52,24 @@ export function lookupKey(raw: string | null | undefined): string {
 export function isLookupable(key: string): boolean {
   return /^[a-z0-9._]{1,50}$/.test(key) && key !== "unknown";
 }
+
+// "Space" here = the plain ones only (space, tab, new line …) — the same set the database rule uses.
+const WS = " \\t\\n\\r\\f\\v";
+const KEY_EXACT = new RegExp(`^[${WS}]*([A-Za-z0-9._]{1,50})[${WS}]*$`);
+const KEY_AT = new RegExp(`^[${WS}]*@[${WS}]*([A-Za-z0-9._]{1,50})(?:[${WS}][\\s\\S]*)?$`);
+/**
+ * The username a saved contact text stands for, lower case — "" when it stands for none.
+ * "pedro123" / "@pedro123" / "@pedro123 (U)" / "@ pedro123" → "pedro123";
+ * "(U) @pedro123" / "Pedro Garcia" / "pedro123 (U)" / "@pedro123(U)" / "unknown" → "".
+ * MUST stay equal to public.scan_qr_username_key() in sql/150 (same examples run against both).
+ */
+export function usernameKeyOf(text: string | null | undefined): string {
+  const v = String(text ?? "");
+  const m = KEY_EXACT.exec(v) ?? KEY_AT.exec(v);
+  const k = m ? m[1].toLowerCase() : "";
+  return k === "unknown" ? "" : k;
+}
+
 // TikTok is saved as "no app" (NULL); an explicit "tiktok" counts too. Any other app never matches.
 function platformOk(p: string | null | undefined): boolean {
   const v = String(p ?? "").trim().toLowerCase();
@@ -55,34 +77,33 @@ function platformOk(p: string | null | undefined): boolean {
 }
 
 /**
- * The FINAL check, in the app: exactly this username, TikTok / no app, never "unknown" or blank.
- * Newest "last updated" first (same time → by id, so the order never jumps).
+ * The FINAL check, in the app: the record stands for exactly this username, TikTok / no app.
+ * Newest "last updated" first (same time → by id, so the order never jumps) — the first one is used.
  */
 export function matchLookupRows(rows: readonly ScanQrLookupRaw[], key: string): ScanQrLookupRow[] {
   if (!isLookupable(key)) return [];
   return rows
-    .filter((r) => platformOk(r.platform) && lookupKey(r.username) === key)
+    .filter((r) => platformOk(r.platform) && usernameKeyOf(r.username) === key)
     .map((r) => ({ id: r.id, name: r.name, phone: r.phone, storeId: r.storeId, updatedAt: r.updatedAt }))
     .sort((a, b) => (a.updatedAt === b.updatedAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.updatedAt < b.updatedAt ? 1 : -1));
 }
 
-/** What differs between the records of one username: the store wins, then the phone, else only the name. */
-export function lookupDiffers(rows: readonly ScanQrLookupRow[]): "store" | "phone" | "name" {
-  if (new Set(rows.map((r) => r.storeId.trim())).size > 1) return "store";
-  if (new Set(rows.map((r) => r.phone.trim())).size > 1) return "phone";
-  return "name";
+/** What the database is asked for: the five shapes a record of this username can have. Pure. */
+export function lookupFilter(col: string, key: string): string {
+  // key is [a-z0-9._] only (isLookupable) — nothing in it can change the filter.
+  return [`${key}`, `@${key}`, `@${key} %`, `@ ${key}`, `@ ${key} %`].map((p) => `${col}.ilike.${p}`).join(",");
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
 
 /**
- * Every Customers record of this screen whose username is exactly `handle`.
- * ok:false = could not be read (no sign-in, error, more than `timeoutMs`) → the screen says so in one short line.
+ * Every Customers record of this screen that stands for `handle`, newest first.
+ * ok:false = could not be read (no sign-in, error, more than `timeoutMs`) — the screen then does nothing.
  * Never throws.
  */
 export async function lookupCustomersByHandle(store: ScanQrLookupStore, handle: string, timeoutMs = SCAN_QR_LOOKUP_TIMEOUT_MS): Promise<ScanQrLookupResult> {
   const key = lookupKey(handle);
-  if (!isLookupable(key)) return { ok: true, rows: [], more: false };
+  if (!isLookupable(key)) return { ok: true, rows: [] };
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return { ok: false };
   const src = SOURCES[store];
@@ -96,12 +117,12 @@ export async function lookupCustomersByHandle(store: ScanQrLookupStore, handle: 
       const { data: s } = await sb.auth.getSession();
       const me = s.session?.user?.id;
       if (!me) return { ok: false };
-      // key is [a-z0-9._] only (isLookupable) — nothing in it can change the filter.
       let q = sb.from(src.table)
         .select(`id, user_id, phone, name, store_id, ${src.col}, contact_platform, updated_at`)
         .eq("user_id", me)
-        .or(`${src.col}.ilike.${key},${src.col}.ilike.@${key}`)
+        .or(lookupFilter(src.col, key))
         .order("updated_at", { ascending: false })
+        .order("id", { ascending: true })
         .limit(SCAN_QR_LOOKUP_LIMIT);
       if (ctrl && typeof (q as { abortSignal?: unknown }).abortSignal === "function") q = q.abortSignal(ctrl.signal);
       const { data, error } = await q;
@@ -112,10 +133,10 @@ export async function lookupCustomersByHandle(store: ScanQrLookupStore, handle: 
         id: str(r.id), name: str(r.name), phone: str(r.phone), storeId: str(r.store_id), updatedAt: str(r.updated_at),
         username: str(r[src.col]), platform: r.contact_platform == null ? null : str(r.contact_platform),
       })), key);
-      const full = got.length >= SCAN_QR_LOOKUP_LIMIT;
-      // A full page with no exact record in it = not everything was seen → say "could not look up", never "none".
-      if (full && rows.length === 0) return { ok: false };
-      return { ok: true, rows, more: full };
+      // A full page with no exact record in it = not everything was seen → "could not read", never "none".
+      // (With at least one in the page, the first is the newest of all: the page is newest first.)
+      if (got.length >= SCAN_QR_LOOKUP_LIMIT && rows.length === 0) return { ok: false };
+      return { ok: true, rows };
     } catch {
       return { ok: false };
     }
@@ -127,69 +148,24 @@ export async function lookupCustomersByHandle(store: ScanQrLookupStore, handle: 
   }
 }
 
-// ── What the form remembers about a lookup (kept with the ⇄ draft of its own screen only) ──────
+// ── What the form remembers about a fill (kept with the ⇄ draft of its own screen only) ────────
 export interface LookupFields { name: string; phone: string; store: string }
-export interface ScanQrLookupMark {
-  /** Details now in the form came from this username's record; `filled` = exactly what was written. */
-  applied: { handle: string; updatedAt: string; filled: LookupFields } | null;
-  /** Records found but NOT written: 1 = a suggestion ("Use"), 2+ = the seller picks. */
-  pending: { handle: string; rows: ScanQrLookupRow[]; more: boolean } | null;
-}
-export type ScanQrLookupView =
-  | { kind: "none" }
-  | { kind: "failed" }
-  | { kind: "found"; handle: string; updatedAt: string }
-  // `failed` = the username now in the field could not be checked either
-  | { kind: "mismatch"; handle: string; failed: boolean }
-  // `from` = details still in the form came from ANOTHER username's record (shown with the suggestion / list)
-  | { kind: "suggest"; handle: string; row: ScanQrLookupRow; from: string | null }
-  | { kind: "choose"; handle: string; rows: ScanQrLookupRow[]; differs: "store" | "phone" | "name"; more: boolean; from: string | null };
-
-/**
- * What to show for the username that is in the field NOW. Pure.
- * `failedFor` = the username whose lookup could not be read (shown only while it is still in the field
- * and there is nothing else to show).
- */
-export function lookupView(mark: ScanQrLookupMark | null, fieldHandle: string, failedFor: string | null = null): ScanQrLookupView {
-  const now = lookupKey(fieldHandle);
-  const a = mark?.applied ?? null;
-  const p = mark?.pending ?? null;
-  if (p && p.rows.length > 0 && p.handle === now) {
-    const from = a && a.handle !== now ? a.handle : null;
-    return p.rows.length === 1
-      ? { kind: "suggest", handle: p.handle, row: p.rows[0], from }
-      : { kind: "choose", handle: p.handle, rows: p.rows, differs: lookupDiffers(p.rows), more: p.more, from };
-  }
-  const failed = failedFor !== null && failedFor !== "" && failedFor === now;
-  if (a) return a.handle === now ? { kind: "found", handle: a.handle, updatedAt: a.updatedAt } : { kind: "mismatch", handle: a.handle, failed };
-  if (failed) return { kind: "failed" };
-  return { kind: "none" };
-}
+/** The lookup wrote these details for this username. Nothing of it is shown; it only lets a later scan take them back. */
+export interface ScanQrLookupMark { handle: string; filled: LookupFields }
 
 /** The fields a new scan must blank: written by the lookup and not touched since. Pure. */
-export function untouchedFilled(applied: ScanQrLookupMark["applied"], cur: LookupFields): Partial<LookupFields> {
+export function untouchedFilled(mark: ScanQrLookupMark | null, cur: LookupFields): Partial<LookupFields> {
   const out: Partial<LookupFields> = {};
-  if (!applied) return out;
+  if (!mark) return out;
   for (const k of ["name", "phone", "store"] as const) {
-    if (applied.filled[k] !== "" && cur[k] === applied.filled[k]) out[k] = "";
+    if (mark.filled[k] !== "" && cur[k] === mark.filled[k]) out[k] = "";
   }
   return out;
 }
 
-/** Visible when the global switch is on OR this login is on the list. Off + not listed = exactly as before. */
+/** On when the global switch is on OR this login is on the list. Off + not listed = exactly as before. */
 export function scanQrLookupVisible(a: { switchOn: boolean; previewKey: boolean }): boolean {
   return a.switchOn === true || a.previewKey === true;
-}
-
-/** "last updated" date, Taipei time, in the app language. "" when the time is unreadable. */
-export function lookupDate(iso: string, locale: string): string {
-  const d = new Date(iso);
-  if (!iso || Number.isNaN(d.getTime())) return "";
-  try {
-    return new Intl.DateTimeFormat(locale, { timeZone: "Asia/Taipei", year: "numeric", month: "short", day: "numeric" }).format(d);
-  } catch {
-    return new Intl.DateTimeFormat("en", { timeZone: "Asia/Taipei", year: "numeric", month: "short", day: "numeric" }).format(d);
-  }
 }
 
 /** Put the cursor in `el` — unless the seller is typing in a field right now (never pull the cursor away). */

@@ -18,8 +18,8 @@ export interface ParcelDraft<F> {
   /** The buyer-contact app picked for this parcel. */
   platform: BuyerContactPlatform;
   /**
-   * Scan QR → Customers lookup: what the form remembers (whose details were filled in, records
-   * waiting to be picked). Travels with THIS screen's entry only; absent when there is none.
+   * Scan QR → fill from Customers: what the last fill wrote (so a later scan can take it back).
+   * Never shown. Travels with THIS screen's entry only; absent when there is none.
    */
   lookup?: ScanQrLookupMark | null;
 }

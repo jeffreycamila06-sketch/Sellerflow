@@ -1,5 +1,8 @@
-// Scan QR → look the scanned @username up in Customers (Jeff 2026-11-11, sql/149) — every
-// situation, on the 7-11 Parcel Scan AND the FamilyMart Parcel Scan (same tests, both screens).
+// Scan QR → fill from Customers (Jeff 2026-11-12, sql/149) — every situation, on the 7-11 Parcel Scan
+// AND the FamilyMart Parcel Scan (same tests, both screens).
+//   • a record of the username → name, phone and store from the NEWEST record. No list, no box, no words.
+//   • something typed in name, phone or store → nothing is filled, nothing is shown.
+//   • no record / error / too slow → exactly as before (username only), no message.
 // The QR decode and the lookup read are mocked here (the read itself: adapters/__tests__/scanQrLookup.test.ts;
 // the screen with the REAL read and a recording client: ScanQrLookup.offOn.test.tsx).
 import { useRef } from "react";
@@ -50,7 +53,7 @@ const SCREENS = {
     store: "711" as const, p: "ps", handle: "ps-notes",
     el: (x: P) => <ParcelScan cur="NT$" manualOnly {...x} />,
     valid: { name: "Ana Cruz", phone: "0912345678", store: "123456", amount: "500" },
-    savedArg: () => m.saveParcelScan.mock.calls[0]?.[0] as { name: string; phone: string; store_id: string; notes: string },
+    savedArg: () => m.saveParcelScan.mock.calls[0]?.[0] as unknown,
     savedName: () => (m.saveParcelScan.mock.calls[0]?.[0] as { name: string }).name,
     saved: m.saveParcelScan,
     seedRow: () => m.loadParcelScans.mockResolvedValue({ ok: true, rows: [{ id: "r1", customerName: "Saved Buyer", phone: "0912345678", storeId: "982063", amount: 550, notes: "@saved", status: "confirmed", storeCheckStatus: "valid", createdAt: "2026-11-10T00:00:00Z" }] }),
@@ -59,7 +62,7 @@ const SCREENS = {
     store: "fm" as const, p: "fms", handle: "fms-username",
     el: (x: P) => <FmParcelScan cur="NT$" {...x} />,
     valid: { name: "Jeffrey", phone: "0958704782", store: "022131", amount: "500" },
-    savedArg: () => m.saveFmScan.mock.calls[0]?.[0] as { recipientName: string },
+    savedArg: () => m.saveFmScan.mock.calls[0]?.[0] as unknown,
     savedName: () => (m.saveFmScan.mock.calls[0]?.[0] as { recipientName: string }).recipientName,
     saved: m.saveFmScan,
     seedRow: () => m.loadFmScans.mockResolvedValue({ ok: true, rows: [{ id: "r1", recipientName: "Jeffrey", phone: "0958704782", storeId: "022131", amount: 500, shippingFee: 39, orderDate: "2026-11-10", buyerUsername: "@saved", createdAt: "2026-11-10T03:00:00Z", exportedAt: null, exportBatchId: null }] }),
@@ -68,8 +71,10 @@ const SCREENS = {
 type Key = keyof typeof SCREENS;
 
 const rec = (id: string, over: Partial<ScanQrLookupRow> = {}): ScanQrLookupRow => ({ id, name: "Maria Santos", phone: "0911222333", storeId: "246810", updatedAt: "2026-11-01T02:00:00+00:00", ...over });
-const found = (...rows: ScanQrLookupRow[]): ScanQrLookupResult => ({ ok: true, rows, more: false });
+const found = (...rows: ScanQrLookupRow[]): ScanQrLookupResult => ({ ok: true, rows });
 const qrFile = () => new File([new Uint8Array([1])], "sticker.jpg", { type: "image/jpeg" });
+const MARIA = { name: "Maria Santos", phone: "0911222333", store: "246810" };
+const BLANK = { name: "", phone: "", store: "" };
 
 beforeEach(() => {
   Object.values(m).forEach((f) => f.mockReset());
@@ -83,7 +88,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); clearParcelDrafts(); vi.useRealTimers(); });
 
-describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %s Parcel Scan", (key) => {
+describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers — %s Parcel Scan", (key) => {
   const S = SCREENS[key];
   const id = (s: string) => `${S.p}-${s}`;
   const mount = (x: P = { lookupOn: true }) => render(<TProvider lang="en">{S.el(x)}</TProvider>);
@@ -91,7 +96,14 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
   const val = (r: R, t: string) => (r.getByTestId(t) as HTMLInputElement).value;
   const type = (r: R, t: string, v: string) => fireEvent.change(r.getByTestId(t), { target: { value: v } });
   const details = (r: R) => ({ name: val(r, id("name")), phone: val(r, id("phone")), store: val(r, id("store")) });
-  const BLANK = { name: "", phone: "", store: "" };
+  const typeDetails = (r: R, d: { name: string; phone: string; store: string }) => { type(r, id("name"), d.name); type(r, id("phone"), d.phone); type(r, id("store"), d.store); };
+  const card = (r: R) => r.getByTestId(id("confirm")).innerHTML;
+  const toast = (r: R) => r.queryByTestId(id("toast"))?.textContent ?? null;
+  // nothing of the removed list / box / words may exist anywhere on the screen
+  const nothingNew = (r: R) => {
+    expect(r.container.querySelector('[data-testid*="-ql"]')).toBeNull();
+    expect(r.container.textContent).not.toMatch(/Found in Customers|records for @|Not here|last updated|please check|Couldn't check|These details came from/i);
+  };
   const open = async (x?: P) => {
     const r = mount(x);
     await waitFor(() => expect(r.getByTestId(id("saved-list"))).toBeTruthy());
@@ -109,132 +121,112 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     if (handle !== undefined) await waitFor(() => expect(val(r, S.handle)).toBe(handle));
     await waitFor(() => expect((r.getByTestId(id("scan-qr")) as HTMLButtonElement).disabled).toBe(false)); // button free again
   };
-  const box = (r: R) => r.queryByTestId(id("ql"));
   // A lookup the test answers by hand (slow network).
   const slow = () => {
     let answer: (v: ScanQrLookupResult) => void = () => {};
     m.lookup.mockImplementationOnce(() => new Promise<ScanQrLookupResult>((res) => { answer = res; }));
     return (v: ScanQrLookupResult) => act(async () => { answer(v); await Promise.resolve(); });
   };
+  // The same screen with the lookup OFF, after the same scan (+ optional typing): what "exactly as before" looks like.
+  const offReference = async (payload: string, handle: string, typed?: { name: string; phone: string; store: string }) => {
+    const off = await open({ lookupOn: false });
+    await scan(off, payload, handle);
+    if (typed) typeDetails(off, typed);
+    const out = { card: card(off), toast: toast(off) };
+    expect(m.lookup).not.toHaveBeenCalled();
+    cleanup(); clearParcelDrafts();
+    return out;
+  };
 
-  it("ONE record: name, phone and store are filled; contact = the scanned username; blue box with 'please check' and the last-updated date; cursor in Amount", async () => {
+  it("a record of the username: name, phone and store are filled, the contact is the scanned username, the cursor is in Amount — and NOTHING new is on the screen", async () => {
+    const ref = await offReference("https://tiktok.com/@Maria_Shops", "Maria_Shops", MARIA); // lookup off + the same details typed by hand
     m.lookup.mockResolvedValue(found(rec("c1")));
     const r = await open();
     await scan(r, "https://tiktok.com/@Maria_Shops", "Maria_Shops");
-    await waitFor(() => expect(details(r)).toEqual({ name: "Maria Santos", phone: "0911222333", store: "246810" }));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
     expect(val(r, S.handle)).toBe("Maria_Shops");
     expect(val(r, id("amount"))).toBe("");
-    expect(box(r)?.getAttribute("data-kind")).toBe("found");
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("Found in Customers: @maria_shops — please check");
-    expect(r.getByTestId(id("ql-date")).textContent).toBe("last updated Nov 1, 2026");
     expect(document.activeElement).toBe(r.getByTestId(id("amount")));
     expect(m.lookup).toHaveBeenCalledTimes(1);
     expect(m.lookup).toHaveBeenCalledWith(S.store, "maria_shops"); // this screen's own Customers, never the other one's
-    // everything stays editable
-    type(r, id("name"), "Maria S.");
+    nothingNew(r);
+    expect(card(r) === ref.card).toBe(true); // the form is byte-for-byte the form of someone who typed the three details
+    expect(toast(r)).toBe(ref.toast);
+    type(r, id("name"), "Maria S."); // everything stays editable
     expect(val(r, id("name"))).toBe("Maria S.");
   });
 
-  it("2+ records: ALWAYS a list — nothing is chosen for the seller; all records, newest first, each with its date", async () => {
+  it("2+ records: NO list — the NEWEST record is filled straight away, nothing else appears", async () => {
+    const newest = { name: "Maria Santos", phone: "0911222333", store: "246810" };
+    const ref = await offReference("https://tiktok.com/@annc_tw", "annc_tw", newest);
     m.lookup.mockResolvedValue(found(
       rec("new", { name: "Maria Santos", storeId: "246810", updatedAt: "2026-11-09T02:00:00+00:00" }),
       rec("mid", { name: "Maria S", storeId: "135791", updatedAt: "2026-10-02T02:00:00+00:00" }),
-      rec("old", { name: "Mariah Santos", storeId: "246810", updatedAt: "2026-09-20T02:00:00+00:00" }),
+      rec("old", { name: "Mariah Santos", phone: "0955000111", storeId: "975310", updatedAt: "2026-09-20T02:00:00+00:00" }),
     ));
     const r = await open();
     await scan(r, "https://tiktok.com/@annc_tw", "annc_tw");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("choose"));
-    expect(details(r)).toEqual(BLANK); // nothing filled
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("3 records for @annc_tw — different stores");
-    const picks = r.getAllByTestId(id("ql-pick"));
-    expect(picks.map((b) => b.textContent)).toEqual([
-      "Maria Santos0911222333246810last updated Nov 9, 2026",
-      "Maria S0911222333135791last updated Oct 2, 2026",
-      "Mariah Santos0911222333246810last updated Sep 20, 2026",
-    ]);
-    for (const b of [...picks, r.getByTestId(id("ql-none"))]) expect(b.style.minHeight).toBe("44px"); // thumb-sized
-    fireEvent.click(picks[1]);
-    await waitFor(() => expect(details(r)).toEqual({ name: "Maria S", phone: "0911222333", store: "135791" }));
-    expect(box(r)?.getAttribute("data-kind")).toBe("found");
-    expect(r.getByTestId(id("ql-date")).textContent).toBe("last updated Oct 2, 2026");
-    expect(val(r, S.handle)).toBe("annc_tw");
+    await waitFor(() => expect(details(r)).toEqual(newest));
+    nothingNew(r);
+    expect(r.container.textContent).not.toContain("Mariah Santos"); // the older records are nowhere
+    expect(r.container.textContent).not.toContain("135791");
+    expect(card(r) === ref.card).toBe(true);
+    expect(document.activeElement).toBe(r.getByTestId(id("amount")));
   });
 
-  it("2 records that differ only in the name spelling: still a list (never picked for the seller)", async () => {
-    m.lookup.mockResolvedValue(found(rec("a", { name: "Maria Santos" }), rec("b", { name: "Maria Santoss", updatedAt: "2026-10-01T02:00:00+00:00" })));
+  it.each([
+    ["name", { name: "Typed Name", phone: "", store: "" }],
+    ["phone", { name: "", phone: "0999", store: "" }],
+    ["store", { name: "", phone: "", store: "1234" }],
+  ])("something is typed in the %s: NOTHING is filled and nothing is shown — the form is exactly the lookup-off form", async (_f, typed) => {
+    const ref = await offReference("buyer_a", "buyer_a", typed);
+    m.lookup.mockResolvedValue(found(rec("a"), rec("b", { storeId: "135791", updatedAt: "2026-10-01T02:00:00+00:00" })));
     const r = await open();
-    await scan(r, "annc_tw", "annc_tw");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("choose"));
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("2 records for @annc_tw");
-    expect(details(r)).toEqual(BLANK);
+    typeDetails(r, typed);
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(details(r)).toEqual(typed);
+    nothingNew(r);
+    expect(card(r) === ref.card).toBe(true);
+    expect(toast(r)).toBe(ref.toast);
+    expect(readParcelDraft(S.store) && "lookup" in readParcelDraft(S.store)!).toBe(false); // nothing is remembered either
   });
 
-  it("'Not here — I'll type it' closes the list and fills nothing", async () => {
-    m.lookup.mockResolvedValue(found(rec("a"), rec("b", { storeId: "135791" })));
-    const r = await open();
-    await scan(r, "annc_tw", "annc_tw");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("choose"));
-    expect(r.getByTestId(id("ql-none")).textContent).toBe("Not here — I'll type it");
-    fireEvent.click(r.getByTestId(id("ql-none")));
-    expect(box(r)).toBeNull();
-    expect(details(r)).toEqual(BLANK);
-    expect(val(r, S.handle)).toBe("annc_tw");
-  });
-
-  it("NO record: the form is exactly what it is with the lookup off — while waiting AND after (no box, no extra line, same toast, button free)", async () => {
-    const off = await open({ lookupOn: false });
-    await scan(off, "https://tiktok.com/@new_buyer", "new_buyer");
-    const offCard = off.getByTestId(id("confirm")).innerHTML;
-    const offToast = off.getByTestId(id("toast")).textContent;
-    expect(offToast).toBe("Filled @username from QR");
-    expect(m.lookup).not.toHaveBeenCalled();
-    cleanup(); clearParcelDrafts();
-
+  it("NO record: the form is exactly the lookup-off form — while waiting AND after (no extra line, same message, button free)", async () => {
+    const ref = await offReference("https://tiktok.com/@new_buyer", "new_buyer");
+    expect(ref.toast).toBe("Filled @username from QR");
     const answer = slow();
     const on = await open({ lookupOn: true });
     await scan(on, "https://tiktok.com/@new_buyer", "new_buyer");
     expect(m.lookup).toHaveBeenCalledTimes(1);
-    // still waiting for the answer: same form, same toast, Scan QR already free
-    expect(on.getByTestId(id("confirm")).innerHTML).toBe(offCard);
-    expect(on.getByTestId(id("toast")).textContent).toBe(offToast);
+    expect(card(on) === ref.card).toBe(true); // still waiting for the answer
+    expect(toast(on)).toBe(ref.toast);
     expect((on.getByTestId(id("scan-qr")) as HTMLButtonElement).disabled).toBe(false);
     await answer(found());
-    expect(on.getByTestId(id("confirm")).innerHTML).toBe(offCard);
-    expect(on.getByTestId(id("toast")).textContent).toBe(offToast);
-    expect(box(on)).toBeNull();
+    expect(card(on) === ref.card).toBe(true);
+    expect(toast(on)).toBe(ref.toast);
+    nothingNew(on);
   });
 
-  it("error / no signal / too slow: the username is in, one short line, nothing else; it goes away with the next scan", async () => {
-    m.lookup.mockResolvedValueOnce({ ok: false });
+  it("error / no signal / too slow: exactly the lookup-off form — username only, NO message", async () => {
+    const ref = await offReference("maria_shops", "maria_shops");
+    m.lookup.mockResolvedValue({ ok: false });
     const r = await open();
     await scan(r, "maria_shops", "maria_shops");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("failed"));
-    expect(box(r)?.textContent).toBe("Couldn't check Customers now — type it, or use Customers");
-    expect(r.getByTestId(id("toast")).textContent).toBe("Filled @username from QR"); // the scan's own message is not replaced
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
     expect(details(r)).toEqual(BLANK);
     expect(val(r, S.handle)).toBe("maria_shops");
-    // the SAME sticker again, and this time the answer comes (no record): the line is gone
-    const answer = slow();
-    await scan(r, "maria_shops", "maria_shops");
-    expect(box(r)).toBeNull(); // cleared by the scan itself, before any answer
-    await answer(found());
-    expect(m.lookup).toHaveBeenCalledTimes(2);
-    expect(box(r)).toBeNull();
-  });
-
-  it("the 'could not check' line is in Filipino too and does not say 'not found'", async () => {
-    m.lookup.mockResolvedValue({ ok: false });
-    const r = render(<TProvider lang="fil">{S.el({ lookupOn: true })}</TProvider>);
-    await waitFor(() => expect((r.getByTestId(id("manual")) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(r.getByTestId(id("manual")));
-    await scan(r, "maria_shops", "maria_shops");
-    await waitFor(() => expect(box(r)?.textContent).toBe("Hindi ma-check ang Customers ngayon — i-type, o gamitin ang Customers"));
+    expect(card(r) === ref.card).toBe(true);
+    expect(toast(r)).toBe(ref.toast); // only the scan's own message
+    nothingNew(r);
   });
 
   it("QR not readable / not a TikTok QR: as before — no lookup at all", async () => {
     const r = await open();
     await scan(r, null);
-    await waitFor(() => expect(r.getByTestId(id("toast")).textContent).toBe("No QR found — type the username"));
+    await waitFor(() => expect(toast(r)).toBe("No QR found — type the username"));
     await scan(r, "https://youtube.com/@someone");
     expect(val(r, S.handle)).toBe("");
     expect(m.lookup).not.toHaveBeenCalled();
@@ -244,70 +236,51 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     m.lookup.mockResolvedValueOnce(found(rec("a")));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
     m.lookup.mockResolvedValueOnce(found());
     await scan(r, "buyer_b", "buyer_b");
     await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
     expect(details(r)).toEqual(BLANK);
-    expect(box(r)).toBeNull();
+    nothingNew(r);
   });
 
-  it("scan A then scan B (one record): B's details replace A's, the box is about B", async () => {
+  it("scan A (filled) then scan B and B cannot be read: A's untouched details are gone all the same", async () => {
     m.lookup.mockResolvedValueOnce(found(rec("a")));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    m.lookup.mockResolvedValueOnce({ ok: false });
+    await scan(r, "buyer_b", "buyer_b");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+    expect(details(r)).toEqual(BLANK);
+  });
+
+  it("scan A then scan B (has a record): B's details replace A's", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("a")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
     m.lookup.mockResolvedValueOnce(found(rec("b", { name: "Pedro Reyes", phone: "0933444555", storeId: "975310" })));
     await scan(r, "buyer_b", "buyer_b");
     await waitFor(() => expect(details(r)).toEqual({ name: "Pedro Reyes", phone: "0933444555", store: "975310" }));
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("Found in Customers: @buyer_b — please check");
+    expect(val(r, S.handle)).toBe("buyer_b");
   });
 
-  it("scan A, the seller edits one detail, scan B (no record): the edited one stays, the untouched ones go, and the box says whose details they were", async () => {
+  it("scan A, the seller edits one detail, scan B: the edited one stays (it is typed), the untouched ones go, and B's record is NOT filled over it", async () => {
     m.lookup.mockResolvedValueOnce(found(rec("a")));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
     type(r, id("name"), "Maria Santos Jr");
-    m.lookup.mockResolvedValueOnce(found());
+    m.lookup.mockResolvedValueOnce(found(rec("b", { name: "Pedro Reyes", phone: "0933444555", storeId: "975310" })));
     await scan(r, "buyer_b", "buyer_b");
     await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
     expect(details(r)).toEqual({ name: "Maria Santos Jr", phone: "", store: "" });
-    expect(box(r)?.getAttribute("data-kind")).toBe("mismatch");
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("These details came from @buyer_a — please check");
+    nothingNew(r);
   });
 
-  it("the seller changes the username by hand after a fill: the box turns into 'these details came from @x'", async () => {
-    m.lookup.mockResolvedValue(found(rec("a")));
-    const r = await open();
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("found"));
-    type(r, S.handle, "someone_else");
-    expect(box(r)?.getAttribute("data-kind")).toBe("mismatch");
-    type(r, S.handle, "@Buyer_A");
-    expect(box(r)?.getAttribute("data-kind")).toBe("found");
-  });
-
-  it("something is typed already: never overwritten — a suggestion with 'Use'; 'Use' writes name, phone and store only", async () => {
-    m.lookup.mockResolvedValue(found(rec("a")));
-    const r = await open();
-    type(r, id("name"), "Typed Name");
-    type(r, id("amount"), "777");
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("suggest"));
-    expect(details(r)).toEqual({ name: "Typed Name", phone: "", store: "" });
-    expect(r.getByTestId(id("ql-row")).textContent).toBe("Maria Santos0911222333246810last updated Nov 1, 2026");
-    const use = r.getByTestId(id("ql-use"));
-    expect(use.textContent).toBe("Use");
-    expect(use.style.minHeight).toBe("44px");
-    fireEvent.click(use);
-    await waitFor(() => expect(details(r)).toEqual({ name: "Maria Santos", phone: "0911222333", store: "246810" }));
-    expect(val(r, id("amount"))).toBe("777");
-    expect(val(r, S.handle)).toBe("buyer_a");
-    expect(box(r)?.getAttribute("data-kind")).toBe("found");
-  });
-
-  it("slow answer: the seller typed while waiting → the answer never overwrites, it becomes a suggestion; the cursor is not pulled away", async () => {
+  it("slow answer: the seller typed while waiting → nothing is filled, the typing stays, the cursor is not pulled away", async () => {
     const answer = slow();
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
@@ -316,18 +289,18 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     type(r, id("phone"), "0999");
     await answer(found(rec("a")));
     expect(details(r)).toEqual({ name: "", phone: "0999", store: "" });
-    expect(box(r)?.getAttribute("data-kind")).toBe("suggest");
     expect(document.activeElement).toBe(phone);
+    nothingNew(r);
   });
 
-  it("one record while the cursor is in another field: filled, but the cursor stays where the seller is", async () => {
+  it("a record arrives while the cursor is in another field: filled, but the cursor stays where the seller is", async () => {
     const answer = slow();
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
     const handle = r.getByTestId(S.handle) as HTMLInputElement;
     handle.focus();
     await answer(found(rec("a")));
-    expect(details(r).name).toBe("Maria Santos");
+    expect(details(r)).toEqual(MARIA);
     expect(document.activeElement).toBe(handle);
   });
 
@@ -338,7 +311,6 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     type(r, S.handle, "other_person");
     await answer(found(rec("a")));
     expect(details(r)).toEqual(BLANK);
-    expect(box(r)).toBeNull();
   });
 
   it("two scans in a row: the newer one wins, the older answer is dropped whenever it arrives", async () => {
@@ -351,7 +323,6 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     expect(details(r)).toEqual(BLANK);
     await answerB(found(rec("b", { name: "Pedro Reyes" })));
     expect(details(r).name).toBe("Pedro Reyes");
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("Found in Customers: @buyer_b — please check");
     await answerA(found(rec("a")));
     expect(details(r).name).toBe("Pedro Reyes");
   });
@@ -365,7 +336,6 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     type(r, S.handle, "buyer_a");
     await answer(found(rec("a")));
     expect(details(r)).toEqual(BLANK);
-    expect(box(r)).toBeNull();
   });
 
   it("the same sticker scanned twice: only the answer of the LAST scan counts", async () => {
@@ -377,13 +347,12 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     await second(found());                 // the newest read says: no record
     await first(found(rec("a")));          // the older read arrives afterwards
     expect(details(r)).toEqual(BLANK);
-    expect(box(r)).toBeNull();
   });
 
   it("Save while the lookup is still running: what was typed is saved, Save is never held, and the late answer does NOT fill the next parcel", async () => {
     const answer = slow();
     const r = await open();
-    type(r, id("name"), S.valid.name); type(r, id("phone"), S.valid.phone); type(r, id("store"), S.valid.store); type(r, id("amount"), S.valid.amount);
+    typeDetails(r, S.valid); type(r, id("amount"), S.valid.amount);
     await scan(r, "buyer_a", "buyer_a");
     await waitFor(() => expect((r.getByTestId(id("save")) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(r.getByTestId(id("save")));
@@ -393,11 +362,32 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     await answer(found(rec("a")));
     expect(details(r)).toEqual(BLANK);
     expect(val(r, S.handle)).toBe("");
-    expect(box(r)).toBeNull();
   });
 
-  it("the filled form is an ordinary form: it is saved through the same Save, with the record's details and the scanned username", async () => {
-    m.lookup.mockResolvedValue(found(rec("a", S.valid)));
+  it("Save pressed while the lookup is running: its answer is dropped at that moment — even if the seller blanks the details while the save runs, nothing is filled under a save", async () => {
+    const answer = slow();
+    let finishSave: () => void = () => {};
+    const gate = new Promise<void>((res) => { finishSave = res; });
+    const real = S.saved.getMockImplementation();
+    S.saved.mockImplementationOnce(async (...a: unknown[]) => { await gate; return real ? real(...a) : { ok: true, id: "srv-1" }; });
+    const r = await open();
+    typeDetails(r, S.valid); type(r, id("amount"), S.valid.amount);
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect((r.getByTestId(id("save")) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(r.getByTestId(id("save")));
+    await waitFor(() => expect(S.saved).toHaveBeenCalledTimes(1));
+    typeDetails(r, BLANK); // blank form + the scanned username still in the field: an answer WOULD be filled — if it were not dropped
+    await answer(found(rec("a")));
+    expect(details(r)).toEqual(BLANK);
+    expect(readParcelDraft(S.store) && "lookup" in readParcelDraft(S.store)!).toBe(false);
+    await act(async () => { finishSave(); await Promise.resolve(); });
+    await waitFor(() => expect(val(r, S.handle)).toBe(""));
+    expect(S.savedName()).toBe(S.valid.name); // what was typed at the press is what was saved
+    nothingNew(r);
+  });
+
+  it("the filled form is an ordinary form: it is saved through the same Save, with the record's details and the scanned username; then a clean form", async () => {
+    m.lookup.mockResolvedValue(found(rec("a", { name: S.valid.name, phone: S.valid.phone, storeId: S.valid.store })));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
     await waitFor(() => expect(details(r).name).toBe(S.valid.name));
@@ -407,32 +397,36 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     await waitFor(() => expect(S.saved).toHaveBeenCalledTimes(1));
     expect(JSON.stringify(S.savedArg())).toContain(S.valid.name);
     expect(JSON.stringify(S.savedArg())).toContain("buyer_a");
-    // after the save: blank form for the next parcel, no box left over
     await waitFor(() => expect(details(r)).toEqual(BLANK));
-    expect(box(r)).toBeNull();
+    // the fill is forgotten with the save: a scan of B now has nothing of A to take back or leave behind
+    m.lookup.mockResolvedValue(found());
+    type(r, id("name"), S.valid.name); // the seller happens to type the same name for the next buyer
+    await scan(r, "buyer_b", "buyer_b");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+    expect(val(r, id("name"))).toBe(S.valid.name); // typed by hand → never taken back
   });
 
-  it("Cancel clears the box and the list; reopening the entry shows a clean form", async () => {
-    m.lookup.mockResolvedValue(found(rec("a"), rec("b", { storeId: "135791" })));
+  it("Cancel forgets the fill; reopening the entry shows a clean form", async () => {
+    m.lookup.mockResolvedValue(found(rec("a")));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("choose"));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
     fireEvent.click(r.getByTestId(id("manual-cancel")));
     fireEvent.click(r.getByTestId(id("manual")));
-    expect(box(r)).toBeNull();
+    expect(details(r)).toEqual(BLANK);
     expect(val(r, S.handle)).toBe("");
+    expect(readParcelDraft(S.store) && "lookup" in readParcelDraft(S.store)!).toBe(false);
   });
 
-  it("a finished import from Customers clears a looked-up entry completely — box, details AND username (nothing of buyer A is left for the next scan)", async () => {
+  it("a finished import from Customers clears a filled entry completely — details AND username (nothing of buyer A is left for the next scan)", async () => {
     m.lookup.mockResolvedValueOnce(found(rec("a")));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("found"));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
     type(r, id("phone"), "0999888777"); // the seller edited one detail
     fireEvent.click(r.getByTestId(id("open-customers")));
     fireEvent.click(await r.findByTestId("stub-imported"));
-    await waitFor(() => expect(box(r)).toBeNull());
-    expect(details(r)).toEqual(BLANK);
+    await waitFor(() => expect(details(r)).toEqual(BLANK));
     expect(val(r, S.handle)).toBe("");
     m.lookup.mockResolvedValueOnce(found());
     await scan(r, "buyer_b", "buyer_b");
@@ -440,15 +434,17 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     expect(details(r)).toEqual(BLANK);
   });
 
-  it("a finished import when nothing was looked up leaves the typed entry as it is (as before)", async () => {
+  it("a finished import when nothing was filled leaves the typed entry as it is (as before)", async () => {
+    m.lookup.mockResolvedValue(found(rec("a")));
     const r = await open();
-    type(r, id("name"), "Typed Name"); type(r, id("phone"), "0911"); type(r, S.handle, "typed_by_hand");
+    typeDetails(r, { name: "Typed Name", phone: "0911", store: "1234" });
+    await scan(r, "buyer_a", "buyer_a"); // a record exists, but something was typed → nothing filled
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(1));
     fireEvent.click(r.getByTestId(id("open-customers")));
     fireEvent.click(await r.findByTestId("stub-imported"));
     await waitFor(() => expect(r.queryByTestId("stub-imported")).toBeNull());
-    expect(details(r)).toEqual({ name: "Typed Name", phone: "0911", store: "" });
-    expect(val(r, S.handle)).toBe("typed_by_hand");
-    expect(m.lookup).not.toHaveBeenCalled();
+    expect(details(r)).toEqual({ name: "Typed Name", phone: "0911", store: "1234" });
+    expect(val(r, S.handle)).toBe("buyer_a");
   });
 
   it("an import while a lookup is still running drops its answer", async () => {
@@ -460,39 +456,24 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     await waitFor(() => expect(r.queryByTestId("stub-imported")).toBeNull());
     await answer(found(rec("a")));
     expect(details(r)).toEqual(BLANK);
-    expect(box(r)).toBeNull();
   });
 
-  it("a hand-typed entry with a suggestion the seller ignored is NOT cleared by an import (only the suggestion goes)", async () => {
-    m.lookup.mockResolvedValue(found(rec("a")));
-    const r = await open();
-    type(r, id("name"), "Typed Name"); type(r, id("phone"), "0911"); type(r, id("store"), "1234");
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("suggest"));
-    fireEvent.click(r.getByTestId(id("open-customers")));
-    fireEvent.click(await r.findByTestId("stub-imported"));
-    await waitFor(() => expect(box(r)).toBeNull());
-    expect(details(r)).toEqual({ name: "Typed Name", phone: "0911", store: "1234" });
-    expect(val(r, S.handle)).toBe("buyer_a");
-  });
-
-  it("the answer fills the form WHILE Customers is open: the finished import still clears the whole entry (the decision is made at that moment, not when Customers was opened)", async () => {
+  it("the answer fills the form WHILE Customers is open: the finished import still clears the whole entry (decided at that moment, not when Customers was opened)", async () => {
     const answer = slow();
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
     fireEvent.click(r.getByTestId(id("open-customers")));
     await r.findByTestId("stub-imported");
     await answer(found(rec("a")));
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos")); // filled behind the overlay
+    await waitFor(() => expect(details(r)).toEqual(MARIA)); // filled behind the overlay
     fireEvent.click(r.getByTestId("stub-imported"));
     await waitFor(() => expect(r.queryByTestId("stub-imported")).toBeNull());
     expect(details(r)).toEqual(BLANK);
     expect(val(r, S.handle)).toBe("");
-    expect(box(r)).toBeNull();
   });
 
-  it("an import after a failed Save on a looked-up entry leaves a clean form — no old save error", async () => {
-    m.lookup.mockResolvedValue(found(rec("a", S.valid)));
+  it("an import after a failed Save on a filled entry leaves a clean form — no old save error", async () => {
+    m.lookup.mockResolvedValue(found(rec("a", { name: S.valid.name, phone: S.valid.phone, storeId: S.valid.store })));
     S.saved.mockReset();
     S.saved.mockResolvedValue({ ok: false, error: "x" });
     const r = await open();
@@ -502,109 +483,14 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     await waitFor(() => expect((r.getByTestId(id("save")) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(r.getByTestId(id("save")));
     await waitFor(() => expect(r.getByTestId(id("save-err"))).toBeTruthy());
-    expect(details(r).name).toBe(S.valid.name); // a failed save keeps the entry and its box
-    expect(box(r)?.getAttribute("data-kind")).toBe("found");
+    expect(details(r).name).toBe(S.valid.name); // a failed save keeps the entry
     fireEvent.click(r.getByTestId(id("open-customers")));
     fireEvent.click(await r.findByTestId("stub-imported"));
     await waitFor(() => expect(details(r)).toEqual(BLANK));
     expect(r.queryByTestId(id("save-err"))).toBeNull();
   });
 
-  it("Save pressed while the lookup is running and the SAVE FAILS: the entry stays and the form says Customers was not checked (never looks like 'no record')", async () => {
-    const answer = slow();
-    S.saved.mockReset();
-    S.saved.mockResolvedValue({ ok: false, error: "x" });
-    const r = await open();
-    type(r, id("name"), S.valid.name); type(r, id("phone"), S.valid.phone); type(r, id("store"), S.valid.store); type(r, id("amount"), S.valid.amount);
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect((r.getByTestId(id("save")) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(r.getByTestId(id("save")));
-    await waitFor(() => expect(r.getByTestId(id("save-err"))).toBeTruthy());
-    await answer(found(rec("a")));
-    expect(details(r).name).toBe(S.valid.name);
-    expect(box(r)?.getAttribute("data-kind")).toBe("failed");
-  });
-
-  it("scan A, edit, scan B and B cannot be checked: the box says whose details these were AND that Customers was not checked", async () => {
-    m.lookup.mockResolvedValueOnce(found(rec("a")));
-    const r = await open();
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
-    type(r, id("phone"), "0999888777");
-    m.lookup.mockResolvedValueOnce({ ok: false });
-    await scan(r, "buyer_b", "buyer_b");
-    await waitFor(() => expect(r.queryByTestId(id("ql-failed"))).not.toBeNull());
-    expect(box(r)?.getAttribute("data-kind")).toBe("mismatch");
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("These details came from @buyer_a — please check");
-    expect(r.getByTestId(id("ql-failed")).textContent).toBe("Couldn't check Customers now — type it, or use Customers");
-  });
-
-  it("'Use' for B over what is left of A: the WHOLE record of B replaces it — an empty name in B's record blanks A's edited name", async () => {
-    m.lookup.mockResolvedValueOnce(found(rec("a")));
-    const r = await open();
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
-    type(r, id("name"), "Maria Santos Jr");
-    m.lookup.mockResolvedValueOnce(found(rec("b", { name: "", phone: "0933444555", storeId: "975310" })));
-    await scan(r, "buyer_b", "buyer_b");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("suggest"));
-    expect(r.getByTestId(id("ql-from")).textContent).toBe("These details came from @buyer_a — please check");
-    fireEvent.click(r.getByTestId(id("ql-use")));
-    await waitFor(() => expect(details(r)).toEqual({ name: "", phone: "0933444555", store: "975310" }));
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("Found in Customers: @buyer_b — please check");
-  });
-
-  it("scan A, the seller edits one detail, scan B (one record): the suggestion for B ALSO says the details in the form came from @A", async () => {
-    m.lookup.mockResolvedValueOnce(found(rec("a")));
-    const r = await open();
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
-    type(r, id("phone"), "0999888777");
-    m.lookup.mockResolvedValueOnce(found(rec("b", { name: "Pedro Reyes", phone: "0933444555", storeId: "975310" })));
-    await scan(r, "buyer_b", "buyer_b");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("suggest"));
-    expect(details(r)).toEqual({ name: "", phone: "0999888777", store: "" });
-    expect(r.getByTestId(id("ql-from")).textContent).toBe("These details came from @buyer_a — please check");
-    fireEvent.click(r.getByTestId(id("ql-use")));
-    await waitFor(() => expect(details(r)).toEqual({ name: "Pedro Reyes", phone: "0933444555", store: "975310" }));
-    expect(r.queryByTestId(id("ql-from"))).toBeNull();
-    expect(r.getByTestId(id("ql-title")).textContent).toBe("Found in Customers: @buyer_b — please check");
-  });
-
-  it("'Use' never blanks something typed: a record with an empty name keeps the typed name", async () => {
-    m.lookup.mockResolvedValue(found(rec("a", { name: "" })));
-    const r = await open();
-    type(r, id("name"), "Typed Name");
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("suggest"));
-    fireEvent.click(r.getByTestId(id("ql-use")));
-    await waitFor(() => expect(details(r)).toEqual({ name: "Typed Name", phone: "0911222333", store: "246810" }));
-  });
-
-  it("the answer arrives WHILE the Save is running: it is dropped, and the kept entry stays blank (⇄ and back can never bring the saved parcel again)", async () => {
-    const answer = slow();
-    let finishSave: () => void = () => {};
-    const gate = new Promise<void>((res) => { finishSave = res; });
-    const real = S.saved.getMockImplementation();
-    S.saved.mockImplementationOnce(async (...a: unknown[]) => { await gate; return real ? real(...a) : { ok: true, id: "srv-1" }; });
-    const r = await open();
-    type(r, id("name"), S.valid.name); type(r, id("phone"), S.valid.phone); type(r, id("store"), S.valid.store); type(r, id("amount"), S.valid.amount);
-    await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect((r.getByTestId(id("save")) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(r.getByTestId(id("save")));
-    await waitFor(() => expect(S.saved).toHaveBeenCalledTimes(1));
-    await answer(found(rec("a"), rec("b", { storeId: "135791" }))); // would be a list
-    expect(r.queryByTestId(id("ql-pick"))).toBeNull(); // no list
-    expect(box(r)?.getAttribute("data-kind")).toBe("failed"); // the form says it was not checked
-    const kept = readParcelDraft<Record<string, string>>(S.store);
-    expect(kept?.form.name ?? "").toBe(""); // still the blank hold
-    expect(kept && "lookup" in kept).toBe(false);
-    await act(async () => { finishSave(); await Promise.resolve(); });
-    await waitFor(() => expect(val(r, id("name"))).toBe(""));
-    expect(box(r)).toBeNull();
-  });
-
-  it("editing a SAVED parcel: Scan QR fills the username as before — no lookup, no box", async () => {
+  it("editing a SAVED parcel: Scan QR fills the username as before — no lookup", async () => {
     S.seedRow();
     m.lookup.mockResolvedValue(found(rec("a")));
     const r = mount({ lookupOn: true });
@@ -614,48 +500,31 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     await scan(r, "buyer_a", "buyer_a");
     expect(m.lookup).not.toHaveBeenCalled();
     expect(details(r)).toEqual(before);
-    expect(box(r)).toBeNull();
+    nothingNew(r);
   });
 
-  it("starting an edit while a lookup is running drops its answer; the box of the entry before is gone", async () => {
+  it("starting an edit while a lookup is running drops its answer — even when the edited parcel has the same username and blank details", async () => {
     S.seedRow();
     const answer = slow();
     const r = await open();
-    await scan(r, "buyer_a", "buyer_a");
+    await scan(r, "saved", "saved"); // the same username as the saved parcel that is edited next
     fireEvent.click(await r.findByTestId(id("row-edit"))); // straight from the open entry
     await waitFor(() => expect(r.getByTestId(id("confirm")).getAttribute("data-editing")).toBe("1"));
-    const before = details(r);
+    typeDetails(r, BLANK); // the seller blanks the saved details while editing
     await answer(found(rec("a")));
-    expect(details(r)).toEqual(before);
-    expect(box(r)).toBeNull();
-    // and with the saved parcel's own username put back by a scan: still nothing
-    await scan(r, "saved", "saved");
+    expect(details(r)).toEqual(BLANK);
+    await scan(r, "saved", "saved"); // and a scan while editing looks nothing up
     expect(m.lookup).toHaveBeenCalledTimes(1);
-    expect(details(r)).toEqual(before);
-  });
-
-  it("a box on the open entry is not shown on a saved parcel being edited, and is gone after the edit is cancelled", async () => {
-    S.seedRow();
-    m.lookup.mockResolvedValue(found(rec("a"), rec("b", { storeId: "135791" })));
-    const r = await open();
-    await scan(r, "saved", "saved"); // the same username as the saved parcel that is edited next
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("choose"));
-    fireEvent.click(await r.findByTestId(id("row-edit")));
-    await waitFor(() => expect(r.getByTestId(id("confirm")).getAttribute("data-editing")).toBe("1"));
-    expect(box(r)).toBeNull();
-    fireEvent.click(r.getByTestId(id("edit-cancel")));
-    if (!r.queryByTestId(id("confirm"))) fireEvent.click(r.getByTestId(id("manual")));
-    expect(box(r)).toBeNull();
     expect(details(r)).toEqual(BLANK);
   });
 
-  it("'no handle' was ticked before the scan: after a match the contact is the scanned username and the tick is off", async () => {
+  it("'no handle' was ticked before the scan: after a fill the contact is the scanned username and the tick is off", async () => {
     m.lookup.mockResolvedValue(found(rec("a")));
     const r = await open();
     fireEvent.click(r.getByTestId(id("no-handle")));
     expect((r.getByTestId(id("no-handle")) as HTMLInputElement).checked).toBe(true);
     await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(details(r).name).toBe("Maria Santos"));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
     expect((r.getByTestId(id("no-handle")) as HTMLInputElement).checked).toBe(false);
     expect(val(r, S.handle)).toBe("buyer_a");
   });
@@ -669,19 +538,18 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     expect(readParcelDraft<Record<string, string>>(S.store)?.form.name ?? "").toBe("");
   });
 
-  it("⇄ and back: the form AND the box return on this screen; a scan of B afterwards still clears A's untouched details", async () => {
+  it("⇄ and back: the filled form returns on this screen only; a scan of B afterwards still takes A's untouched details back", async () => {
     m.lookup.mockResolvedValueOnce(found(rec("a")));
     const r = await open();
     await scan(r, "buyer_a", "buyer_a");
-    await waitFor(() => expect(box(r)?.getAttribute("data-kind")).toBe("found"));
-    await waitFor(() => expect(readParcelDraft(S.store)?.lookup?.applied?.handle).toBe("buyer_a"));
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    await waitFor(() => expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA }));
     r.unmount();
-    // the OTHER store's entry never gets any of it
-    expect(readParcelDraft(S.store === "711" ? "fm" : "711")).toBeNull();
+    expect(readParcelDraft(S.store === "711" ? "fm" : "711")).toBeNull(); // the OTHER store's entry never gets any of it
     const back = mount({ lookupOn: true });
     await waitFor(() => expect(back.getByTestId(id("confirm"))).toBeTruthy());
-    expect(details(back)).toEqual({ name: "Maria Santos", phone: "0911222333", store: "246810" });
-    expect(back.getByTestId(id("ql-title")).textContent).toBe("Found in Customers: @buyer_a — please check");
+    expect(details(back)).toEqual(MARIA);
+    nothingNew(back);
     m.lookup.mockResolvedValueOnce(found());
     await scan(back, "buyer_b", "buyer_b");
     await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
@@ -695,26 +563,16 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → Customers lookup — %
     await act(async () => { await Promise.resolve(); });
     expect(m.lookup).not.toHaveBeenCalled();
     expect(details(r)).toEqual(BLANK);
-    expect(box(r)).toBeNull();
-    expect(r.getByTestId(id("toast")).textContent).toBe("Filled @username from QR");
+    expect(toast(r)).toBe("Filled @username from QR");
+    nothingNew(r);
     await waitFor(() => expect(readParcelDraft<Record<string, string>>(S.store)).not.toBeNull());
     expect(Object.keys(readParcelDraft(S.store)!).sort()).toEqual(["form", "noHandle", "platform"]); // the draft is what it was before
   });
-
-  it("the words are in the seller's language (Filipino shown), incl. the last-updated date", async () => {
-    m.lookup.mockResolvedValue(found(rec("c1")));
-    const r = render(<TProvider lang="fil">{S.el({ lookupOn: true })}</TProvider>);
-    await waitFor(() => expect((r.getByTestId(id("manual")) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(r.getByTestId(id("manual")));
-    await scan(r, "maria_shops", "maria_shops");
-    await waitFor(() => expect(r.getByTestId(id("ql-title")).textContent).toBe("Nahanap sa Customers: @maria_shops — pakisuri"));
-    expect(r.getByTestId(id("ql-date")).textContent).toMatch(/^huling na-update .*2026/);
-  });
 });
 
-describe("the ⇄ draft and the lookup mark", () => {
-  const mark = { applied: { handle: "a", updatedAt: "2026-11-01T00:00:00+00:00", filled: { name: "N", phone: "1", store: "2" } }, pending: null };
-  it("the mark travels with its own screen's entry only; no mark = the draft exactly as before", () => {
+describe("the ⇄ draft and what a fill remembers", () => {
+  const mark = { handle: "a", filled: { name: "N", phone: "1", store: "2" } };
+  it("it travels with its own screen's entry only; none = the draft exactly as before", () => {
     writeParcelDraft("711", { form: { name: "N" }, noHandle: false, platform: "tiktok", lookup: mark });
     expect(readParcelDraft("711")?.lookup).toEqual(mark);
     expect(readParcelDraft("fm")).toBeNull();
@@ -723,7 +581,7 @@ describe("the ⇄ draft and the lookup mark", () => {
     writeParcelDraft("fm", { form: { name: "X" }, noHandle: false, platform: "tiktok", lookup: null });
     expect(Object.keys(readParcelDraft("fm")!)).toEqual(["form", "noHandle", "platform"]);
   });
-  it("the hold before a Save blanks the mark with the form; a failed save puts both back", () => {
+  it("the hold before a Save blanks it with the form; a failed save puts both back", () => {
     writeParcelDraft("711", { form: { name: "N" }, noHandle: false, platform: "line", lookup: mark });
     const restore = holdParcelDraftForSave("711");
     expect(readParcelDraft("711")).toEqual({ form: { name: "" }, noHandle: false, platform: "line" });

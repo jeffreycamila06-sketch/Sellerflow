@@ -26,7 +26,6 @@ import { normalizeContact, contactError, platformOf, type BuyerContactPlatform }
 import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
 import { useScanQrLookup } from "../adapters/useScanQrLookup";
 import { focusUnlessTyping } from "../adapters/scanQrLookup";
-import ScanQrLookupBox from "../components/ScanQrLookupBox";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 // Same field styles as the 7-11 screen.
@@ -85,14 +84,15 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
   const flash = (m: string, ms = 2500) => { setToast(m); setTimeout(() => { if (aliveRef.current) setToast(""); }, ms); };
-  // Scan QR → look the username up in THIS screen's Customers (sql/149). lookupOn false (switch
-  // off and login not listed) → scanned() returns at once: no read, nothing on screen.
+  // Scan QR → fill name, phone and store from the newest record of that username in THIS screen's
+  // Customers (sql/149). Nothing new is ever shown. lookupOn false (switch off and login not listed)
+  // → scanned() returns at once: no read, no change.
   const amountRef = useRef<HTMLInputElement | null>(null);
   const lookup = useScanQrLookup({
     on: lookupOn, store: "fm", blocked: editing !== null, initial: draft0?.lookup ?? null,
     fields: { name: form.name, phone: form.phone, store: form.store, handle: form.username },
     setFields: (fn) => setForm((s) => ({ ...s, ...fn({ name: s.name, phone: s.phone, store: s.store }) })),
-    onApplied: (how) => { if (how === "auto") focusUnlessTyping(amountRef.current); },
+    onFilled: () => focusUnlessTyping(amountRef.current),
   });
   // Keep the open manual entry for the bridge (an edit of a saved parcel is not kept).
   useEffect(() => {
@@ -206,7 +206,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     setForm({ name: r.recipientName, phone: r.phone, store: r.storeId, amount: String(r.amount), username: r.buyerUsername ?? "" });
     setNoHandle(false);
     setPlatform(platformOf(r.contactPlatform));
-    lookup.reset(); // editing a saved parcel: no lookup, no box
+    lookup.reset(); // editing a saved parcel: no lookup
     setEditing({ id: r.id });
   };
   const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(false); };
@@ -373,7 +373,6 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                 <button onClick={() => { if (!newBlocked) setCustOpen(true); }} disabled={newBlocked} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: newBlocked ? "default" : "pointer", opacity: newBlocked ? 0.55 : 1, whiteSpace: "nowrap" }} data-testid="fms-open-customers">📇 {t.rd_ps2_from_customers}</button>
               )}
             </div>
-            {lookupOn && !editing && <ScanQrLookupBox view={lookup.view} onPick={lookup.pick} onDismiss={lookup.dismiss} testId="fms-ql" />}
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <label style={lbl}>{t.rd_ps2_name}</label>

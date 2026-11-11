@@ -36,7 +36,6 @@ import { normalizeContact, contactError, platformOf, type BuyerContactPlatform }
 import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
 import { useScanQrLookup } from "../adapters/useScanQrLookup";
 import { focusUnlessTyping } from "../adapters/scanQrLookup";
-import ScanQrLookupBox from "../components/ScanQrLookupBox";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -276,17 +275,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
   // existing row (no new scan, no credit charged). Only not-yet-exported rows.
   const [editing, setEditing] = useState<{ id: string } | null>(null);
-  // Scan QR → look the username up in THIS screen's Customers (sql/149). lookupOn false (switch
-  // off and login not listed) → scanned() returns at once: no read, nothing on screen.
+  // Scan QR → fill name, phone and store from the newest record of that username in THIS screen's
+  // Customers (sql/149). Nothing new is ever shown. lookupOn false (switch off and login not listed)
+  // → scanned() returns at once: no read, no change.
   const amountRef = useRef<HTMLInputElement | null>(null);
   const lookup = useScanQrLookup({
     on: lookupOn, store: "711", blocked: editing !== null, initial: draft0?.lookup ?? null,
     fields: { name: form.name, phone: form.phone, store: form.store, handle: form.notes },
     setFields: (fn) => setForm((s) => ({ ...s, ...fn({ name: s.name, phone: s.phone, store: s.store }) })),
-    onApplied: (how) => {
+    onFilled: () => {
       // the three fields now hold the Customers record, not the photo reading → no "hard to read" marks on them
       setConfid((c) => (c ? { ...c, name: "high", phone: "high", store_id: "high" } : c));
-      if (how === "auto") focusUnlessTyping(amountRef.current);
+      focusUnlessTyping(amountRef.current);
     },
   });
 
@@ -1007,7 +1007,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setPlatform(platformOf(r.contactPlatform)); // NULL = TikTok
     setEditLayer(isFrozenLayer(r.tempLayer) ? TEMP_FROZEN : TEMP_DRY);
     setConfid(null); // no low-confidence highlights on a manual edit
-    lookup.reset(); // editing a saved parcel: no lookup, no box
+    lookup.reset(); // editing a saved parcel: no lookup
     setEditing({ id: r.id });
   };
   const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(""); };
@@ -1367,7 +1367,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 >📇 {t.rd_ps2_from_customers}</button>
               )}
             </div>
-            {lookupOn && !editing && <ScanQrLookupBox view={lookup.view} onPick={lookup.pick} onDismiss={lookup.dismiss} testId="ps-ql" />}
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <label style={lbl}>{t.rd_ps2_name}{low("name") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>

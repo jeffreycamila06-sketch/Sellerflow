@@ -1,18 +1,20 @@
-// The Scan QR → Customers lookup, as ONE hook used by BOTH Parcel Scan screens (7-11 and
-// FamilyMart) so they can never drift. The screen keeps doing exactly what it does today on a
-// scan (username in the field, toast); then it calls scanned(handle) and this hook does the rest.
+// Scan QR → fill from Customers, as ONE hook used by BOTH Parcel Scan screens (7-11 and FamilyMart)
+// so they can never drift. The screen keeps doing exactly what it does today on a scan (username in
+// the field, toast); then it calls scanned(handle) and this hook does the rest. It shows NOTHING:
+// either name, phone and store are filled from the newest record of that username, or nothing happens.
 //
 // `on` false (switch off and login not listed) → scanned() returns at once: no read, no state.
 //
-// Guards (docs/plans/scan-qr-lookup-plan.md §4):
-//  B1  a new scan first blanks the details the lookup wrote and nobody touched since
-//  B7  an answer is written only while name, phone and store are still blank — else a suggestion
-//  B8/B9/B11  every scan / reset takes a new number; an answer with an old number is dropped
-//  B20 reset() at Clear / Cancel / Save / next photo / edit start / Import
+// Guards:
+//  • a new scan first blanks the details the last fill wrote and nobody touched since (A → B never mixes)
+//  • a fill happens only while name, phone and store are ALL still blank
+//  • every scan / reset / Save press takes a new number; an answer with an old number is dropped
+//  • the username in the field must still be the scanned one when the answer comes
+//  • reset() at Clear / Cancel / Save done / next photo / edit start / Import
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  isLookupable, lookupCustomersByHandle, lookupKey, lookupView, untouchedFilled,
-  type LookupFields, type ScanQrLookupMark, type ScanQrLookupRow, type ScanQrLookupStore, type ScanQrLookupView,
+  isLookupable, lookupCustomersByHandle, lookupKey, untouchedFilled,
+  type LookupFields, type ScanQrLookupMark, type ScanQrLookupStore,
 } from "./scanQrLookup";
 
 export interface ScanQrLookupOpts {
@@ -26,24 +28,19 @@ export interface ScanQrLookupOpts {
   fields: LookupFields & { handle: string };
   /** Write name / phone / store. `fn` gets the latest values and returns only what changes. */
   setFields: (fn: (cur: LookupFields) => Partial<LookupFields>) => void;
-  /** Details were written: "auto" (one record, blank form) or "picked" (the seller tapped a record / Use). */
-  onApplied?: (how: "auto" | "picked") => void;
+  /** Name, phone and store were just filled from Customers. */
+  onFilled?: () => void;
 }
 export interface ScanQrLookupApi {
+  /** What the last fill wrote (null = nothing). Never shown; travels with this screen's ⇄ draft. */
   mark: ScanQrLookupMark | null;
-  view: ScanQrLookupView;
   scanned: (handle: string) => void;
-  pick: (row: ScanQrLookupRow) => void;
-  dismiss: () => void;
   /**
-   * Clear / Cancel / Save done / next photo / edit start / Import: forget everything, drop any answer on its way.
-   * Returns true when the lookup had WRITTEN details into the form (read at call time, never from an old render).
+   * Clear / Cancel / Save done / next photo / edit start / Import: forget the fill, drop any answer on its way.
+   * Returns true when a fill had WRITTEN details into the form (read at call time, never from an old render).
    */
   reset: () => boolean;
-  /**
-   * Save pressed: an answer still on its way is dropped (it never lands on this or the next parcel).
-   * If one was on its way, the form says Customers could not be checked (so a failed save never looks like "no record").
-   */
+  /** Save pressed: an answer still on its way is dropped (it never lands on this or the next parcel). */
   drop: () => void;
 }
 
@@ -52,12 +49,7 @@ const blank = (f: LookupFields): boolean => f.name.trim() === "" && f.phone.trim
 export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
   const [mark, setMarkState] = useState<ScanQrLookupMark | null>(() => (opts.on ? opts.initial : null));
   const markRef = useRef<ScanQrLookupMark | null>(mark);
-  // the username whose lookup could not be read (error / no signal / too slow) — one short line, never kept with the draft
-  const [failedFor, setFailedFor] = useState<string | null>(null);
-  const failedRef = useRef<string | null>(null);
-  const setFailed = useCallback((v: string | null) => { if (failedRef.current !== v) { failedRef.current = v; setFailedFor(v); } }, []);
   const seqRef = useRef(0);
-  const flightRef = useRef<string | null>(null); // the username of a lookup whose answer has not come yet
   const aliveRef = useRef(true);
   const optsRef = useRef(opts);
   const fieldsRef = useRef(opts.fields);
@@ -66,39 +58,21 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
   useEffect(() => { optsRef.current = opts; fieldsRef.current = opts.fields; });
 
   const setMark = useCallback((next: ScanQrLookupMark | null) => {
-    const v = next && (next.applied || next.pending) ? next : null;
-    markRef.current = v;
-    setMarkState(v);
+    if (markRef.current === next) return;
+    markRef.current = next;
+    setMarkState(next);
   }, []);
-
-  const write = useCallback((row: ScanQrLookupRow, handle: string, how: "auto" | "picked") => {
-    // Only what the record really has: an empty value in the record never blanks something the seller typed.
-    // But when the form still holds details of ANOTHER username's record, the whole record replaces them
-    // (an empty value blanks the field) — nothing of the other buyer may stay under a "Found" box.
-    const other = markRef.current?.applied ?? null;
-    const whole = other !== null && other.handle !== handle;
-    const patch: Partial<LookupFields> = {};
-    if (whole || row.name.trim() !== "") patch.name = row.name;
-    if (whole || row.phone.trim() !== "") patch.phone = row.phone;
-    if (whole || row.storeId.trim() !== "") patch.store = row.storeId;
-    optsRef.current.setFields(() => patch);
-    fieldsRef.current = { ...fieldsRef.current, ...patch };
-    setFailed(null);
-    setMark({ applied: { handle, updatedAt: row.updatedAt, filled: { name: patch.name ?? "", phone: patch.phone ?? "", store: patch.store ?? "" } }, pending: null });
-    optsRef.current.onApplied?.(how);
-  }, [setMark, setFailed]);
 
   const scanned = useCallback((handle: string) => {
     const o = optsRef.current;
     if (!o.on || o.blocked) return;
     const key = lookupKey(handle);
     const seq = ++seqRef.current;
-    setFailed(null);
-    // B1 — the previous buyer's details the lookup wrote and nobody touched go away first.
-    const prev = markRef.current?.applied ?? null;
+    // The previous buyer's details that the last fill wrote and nobody touched go away first.
+    const prev = markRef.current;
     const cur = fieldsRef.current;
     const wipe = untouchedFilled(prev, cur);
-    if (Object.keys(wipe).length > 0 && prev) {
+    if (prev && Object.keys(wipe).length > 0) {
       const f = prev.filled;
       o.setFields((s) => {
         const out: Partial<LookupFields> = {};
@@ -106,53 +80,34 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
         return out;
       });
     }
-    const next = { ...cur, ...wipe, handle };
-    fieldsRef.current = next;
-    // Details the seller edited stay; while they do and the username is another one, the box says whose they were.
-    setMark({ applied: prev && prev.handle !== key && !blank(next) ? prev : null, pending: null });
-    flightRef.current = null;
+    fieldsRef.current = { ...cur, ...wipe, handle };
+    setMark(null);
     if (!isLookupable(key)) return;
-    flightRef.current = key;
     void lookupCustomersByHandle(o.store, key).then((res) => {
       if (!aliveRef.current || seq !== seqRef.current) return; // a newer scan / Save / Clear / leaving the screen
-      flightRef.current = null;
       const now = optsRef.current;
       if (!now.on || now.blocked) return;
       const f = fieldsRef.current;
       if (lookupKey(f.handle) !== key) return; // the username in the field is no longer the scanned one
-      if (!res.ok) { setFailed(key); return; }
-      if (res.rows.length === 0) return; // no record → exactly as before
-      if (res.rows.length === 1 && blank(f)) { write(res.rows[0], key, "auto"); return; }
-      setMark({ applied: markRef.current?.applied ?? null, pending: { handle: key, rows: res.rows, more: res.more } });
+      if (!res.ok || res.rows.length === 0) return; // could not read / no record → exactly as before
+      if (!blank(f)) return; // something is typed in name, phone or store → nothing is filled
+      const row = res.rows[0]; // the newest record of this username
+      const filled: LookupFields = { name: row.name, phone: row.phone, store: row.storeId };
+      now.setFields(() => filled);
+      fieldsRef.current = { ...f, ...filled };
+      setMark({ handle: key, filled });
+      now.onFilled?.();
     });
-  }, [setMark, setFailed, write]);
-
-  const pick = useCallback((row: ScanQrLookupRow) => {
-    const p = markRef.current?.pending;
-    if (!p || !p.rows.some((r) => r.id === row.id)) return;
-    write(row, p.handle, "picked");
-  }, [write]);
-
-  const dismiss = useCallback(() => {
-    const m = markRef.current;
-    if (m?.pending) setMark({ applied: m.applied, pending: null });
   }, [setMark]);
 
   const reset = useCallback((): boolean => {
     seqRef.current++;
-    flightRef.current = null;
-    setFailed(null);
-    const wrote = !!markRef.current?.applied;
-    if (markRef.current) setMark(null);
+    const wrote = markRef.current !== null;
+    setMark(null);
     return wrote;
-  }, [setMark, setFailed]);
+  }, [setMark]);
 
-  const drop = useCallback(() => {
-    seqRef.current++;
-    const key = flightRef.current;
-    flightRef.current = null;
-    if (key !== null) setFailed(key);
-  }, [setFailed]);
+  const drop = useCallback(() => { seqRef.current++; }, []);
 
-  return { mark, view: lookupView(mark, opts.fields.handle, failedFor), scanned, pick, dismiss, reset, drop };
+  return { mark, scanned, reset, drop };
 }
