@@ -54,10 +54,10 @@ afterEach(() => {
 describe("ParcelScan — paying seller (manualOnly)", () => {
   const seller = () => render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly /></TProvider>);
 
-  it("shows manual encode + the 'AI coming soon' line", async () => {
-    const { findByTestId, getByTestId } = seller();
+  it("shows manual encode, and no 'AI coming soon' line (not shown since Nov 11 2026)", async () => {
+    const { findByTestId, queryByTestId } = seller();
     await findByTestId("ps-manual");
-    expect(getByTestId("ps-ai-soon")).toBeTruthy();
+    expect(queryByTestId("ps-ai-soon")).toBeNull();
   });
 
   it("hides the camera, file picker, and all credit/scan UI", async () => {
