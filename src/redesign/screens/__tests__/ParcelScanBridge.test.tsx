@@ -443,6 +443,7 @@ describe("5b — FamilyMart: no NEW parcel until the saved list loaded OK", () =
     await waitFor(() => expect(r.getByTestId("fms-batch-n").textContent).toBe("1 / 40"));
     expect(r.queryByTestId("fms-load-err")).toBeNull();
     expect((r.getByTestId("fms-manual") as HTMLButtonElement).disabled).toBe(false);
+    expect(r.getByTestId("fms-manual").textContent).toBe("✏️ Manual add parcel"); // Nov 11 2026: same name as 7-11
   });
   it("load failed: edit / delete of rows already on screen are not blocked by it (pinned in code)", () => {
     const src = readFileSync("src/redesign/screens/FmParcelScan.tsx", "utf8");
