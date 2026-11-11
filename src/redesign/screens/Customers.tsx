@@ -9,9 +9,10 @@ import { CUSTOMERS, avColor, initials, fmt, type Customer } from "../data";
 import { headerBar, headerTitle, mono } from "../ui";
 import { filterCustomers, type ReadState } from "../adapters/useReadData";
 import { useT } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { fbNameOnly } from "../adapters/fbName";
 
-export default function Customers({ cur, customers = CUSTOMERS, state = "sample", onExport, hasMore = false, loadingMore = false, onLoadMore }: { cur: string; customers?: Customer[]; state?: ReadState; onExport?: () => void; hasMore?: boolean; loadingMore?: boolean; onLoadMore?: () => void }) {
+export default function Customers({ cur, onBack, customers = CUSTOMERS, state = "sample", onExport, hasMore = false, loadingMore = false, onLoadMore }: { cur: string; onBack?: () => void; customers?: Customer[]; state?: ReadState; onExport?: () => void; hasMore?: boolean; loadingMore?: boolean; onLoadMore?: () => void }) {
   const t = useT();
   const [query, setQuery] = useState("");
   const shown = filterCustomers(customers, query);
@@ -21,6 +22,7 @@ export default function Customers({ cur, customers = CUSTOMERS, state = "sample"
   return (
     <div>
       <div style={headerBar}>
+        <HeaderWithBack onBack={onBack}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div className="sfl-anim-beat" style={headerTitle}>{t.rd_cus_title}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -30,6 +32,7 @@ export default function Customers({ cur, customers = CUSTOMERS, state = "sample"
             <div style={{ fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{total} {t.rd_cus_total_suffix}</div>
           </div>
         </div>
+        </HeaderWithBack>
         {/* Batch B #4 — REAL search input (was a static decoration div):
             client-side filter over the LOADED pages, by name or @handle. */}
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.16)", borderRadius: 11, padding: "9px 12px" }}>

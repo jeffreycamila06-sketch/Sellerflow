@@ -8,6 +8,7 @@
 // then the device keeps today's sticker.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
+import { BackButton } from "./BackButton";
 import {
   recommendedSettings, renderOneSticker, SCALE_STEPS, qrSizeOk, isSmallClass, tooWideFor, NOTE_TONE,
   type OneStickerSettings, type PartKey, type Weight, type OneStickerInput, type FitWarning, type FitNote,
@@ -311,7 +312,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   return (
     <div data-testid="os-screen">
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={p.onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "9px 12px 9px 9px", minHeight: TAP, borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>{t.rd_back}</button>
+        <BackButton onClick={p.onBack} />
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.rd_set_live_pattern}</div>
       </div>
 

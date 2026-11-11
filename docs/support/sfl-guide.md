@@ -17,7 +17,7 @@ SellerFlowLive helps you sell on live video without writing orders in a notebook
 The app works in English, Filipino, Bahasa Indonesia, Tiếng Việt, 中文 (简体), 中文 (繁體), ไทย and Български. Printer connection and live connect work in the SellerFlowLive phone app; some things (like exporting files) work better in a browser on a computer.
 
 ## screens — Main screens and the bottom bar
-Last checked: 2026-10-28
+Last checked: 2026-11-11
 Keywords: screens, menu, bottom bar, tabs, navigation, where, nasaan, saan makikita, live, orders, products, sales, settings, 在哪里, 選單, 页面
 
 The bar at the bottom of the app has five buttons:
@@ -27,6 +27,8 @@ The bar at the bottom of the app has five buttons:
 - **Orders** — every order in this session, with search and date ranges. Each order has **↻ Reprint**. A tab at the top switches to **Miners** (your top buyers).
 - **Products** — your items, prices, stock and **Live code** for Auto mode.
 - **Settings** — shop tools and your account (see the "Settings screen" section).
+
+Every other screen has **‹ Back** at the top left. It takes you back to where you came from. Tapping a button in the bottom bar always starts fresh from that tab.
 
 ## settings-tiles — The Settings screen
 Last checked: 2026-10-28

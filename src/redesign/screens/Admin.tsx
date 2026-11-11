@@ -28,6 +28,7 @@ import { AdminCountryCtx, type AdminCountryApi, type CountryInfo } from "../adap
 import { useAdminCountries, resolveUserCountry } from "../adapters/adminCountry";
 import AdminHelpChat from "../components/AdminHelpChat";
 import { useT, tpl, type RedesignT } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { isIOS } from "../adapters/platform";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { relativeTime } from "../adapters/useReadData";
@@ -72,7 +73,7 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs, platformViewAs = "all", onSetPlatformViewAs }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: ViewAs; onSetViewAs?: (v: ViewAs) => void; platformViewAs?: PlatformViewAs; onSetPlatformViewAs?: (v: PlatformViewAs) => void }) {
+export default function Admin({ onBack, onOpenPanel, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs, platformViewAs = "all", onSetPlatformViewAs }: { onBack?: () => void; onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: ViewAs; onSetViewAs?: (v: ViewAs) => void; platformViewAs?: PlatformViewAs; onSetPlatformViewAs?: (v: PlatformViewAs) => void }) {
   const t = useT();
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   // Batch B #2 — the owner card shows the REAL signed-in admin (was the
@@ -82,12 +83,14 @@ export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr
   return (
     <div>
       <div style={headerBar}>
+        <HeaderWithBack onBack={onBack}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div><div className="sfl-anim-beat" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_adm_title}</div><div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{t.rd_adm_subtitle}</div></div>
           <button onClick={() => onOpenPanel("notifs")} title={t.rd_adm_notifications} style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
           </button>
         </div>
+        </HeaderWithBack>
       </div>
       <div style={{ padding: "14px 14px 22px" }}>
         <div style={{ ...card, marginBottom: 14 }}>

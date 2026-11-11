@@ -25,6 +25,7 @@ import {
 } from "../adapters/shippingSettings";
 import { isAppShell } from "../adapters/appShell";
 import { useT, tpl, type RedesignT } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { fbHandleIsId } from "../adapters/fbName";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -47,11 +48,12 @@ const nameErrText = (t: RedesignT, e: EntryErrors["name"]): string =>
 const amountErrText = (t: RedesignT, e: EntryErrors["amounts"]): string =>
   e === "fee_range" ? t.rd_shp_err_fee : e === "order_range" ? t.rd_shp_err_order : e === "total_low" ? t.rd_shp_err_total_low : e === "total_high" ? t.rd_shp_err_total_high : "";
 
-export default function Shipping({ cur, buyers = [], sessionKey, legacyKey, windowDays = 1, plan, onUpgrade }: {
+export default function Shipping({ cur, buyers = [], sessionKey, legacyKey, windowDays = 1, plan, onUpgrade, onBack }: {
   cur: string; buyers?: Buyer[]; sessionKey: string; windowDays?: number;
   // Build 11 (H3): the old day/window key, passed only while Shipping is keyed by session.
   legacyKey?: string;
   plan?: string; onUpgrade?: () => void; // upgrade prompt hidden on iOS (no prop)
+  onBack?: () => void;
 }) {
   const t = useT();
   const groups = useMemo(() => buyerGroupsFrom(buyers), [buyers]);
@@ -316,6 +318,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, legacyKey, wind
   return (
     <div>
       <div style={headerBar}>
+        <HeaderWithBack onBack={onBack}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div className="sfl-anim-beat" style={headerTitle}>{t.rd_sh_shipping}</div>
           <span style={{ fontSize: 11.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "5px 10px", borderRadius: 8 }}>
@@ -325,6 +328,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, legacyKey, wind
         <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 6 }}>
           {t.rd_shp_sub} · {windowDays > 1 ? tpl(t.rd_shp_window_nd, { n: windowDays }) : t.rd_shp_window_today}
         </div>
+        </HeaderWithBack>
       </div>
 
       <div style={{ padding: "14px 14px 22px" }}>

@@ -15,13 +15,15 @@ insert into public.support_guide (id, title, checked, keywords, body) values
 - See your orders in **Orders**, your numbers in **Sales**, and your items and stock in **Products**.
 
 The app works in English, Filipino, Bahasa Indonesia, Tiếng Việt, 中文 (简体), 中文 (繁體), ไทย and Български. Printer connection and live connect work in the SellerFlowLive phone app; some things (like exporting files) work better in a browser on a computer.'),
-  ('screens', 'Main screens and the bottom bar', '2026-10-28'::date, 'screens, menu, bottom bar, tabs, navigation, where, nasaan, saan makikita, live, orders, products, sales, settings, 在哪里, 選單, 页面', 'The bar at the bottom of the app has five buttons:
+  ('screens', 'Main screens and the bottom bar', '2026-11-11'::date, 'screens, menu, bottom bar, tabs, navigation, where, nasaan, saan makikita, live, orders, products, sales, settings, 在哪里, 選單, 页面', 'The bar at the bottom of the app has five buttons:
 
 - **Live** — pick your live source, **Connect**, and watch comments come in. Each comment has **1-Click** and **Type price** buttons. Ordered comments show **Reprint**. The header shows when your session ends ("Session ends …"). The number of buyers and orders shows at the top of the comments.
 - **Sales** — your sales report: totals, trends, top buyers and best sellers.
 - **Orders** — every order in this session, with search and date ranges. Each order has **↻ Reprint**. A tab at the top switches to **Miners** (your top buyers).
 - **Products** — your items, prices, stock and **Live code** for Auto mode.
-- **Settings** — shop tools and your account (see the "Settings screen" section).'),
+- **Settings** — shop tools and your account (see the "Settings screen" section).
+
+Every other screen has **‹ Back** at the top left. It takes you back to where you came from. Tapping a button in the bottom bar always starts fresh from that tab.'),
   ('settings-tiles', 'The Settings screen', '2026-10-28'::date, 'settings, tiles, shop tools, account, general settings, customers, log out, setting, ayos, 设置, 設定, 账号', 'Tap **Settings** in the bottom bar. You will see tiles:
 
 - **Invite friends** — share the app link with other sellers.

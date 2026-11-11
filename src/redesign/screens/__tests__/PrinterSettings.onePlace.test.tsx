@@ -132,8 +132,10 @@ describe("guardian gap 3: an unknown Niimbot (limit 50 mm)", () => {
 describe("RedesignApp wiring (source)", () => {
   const app = fs.readFileSync("src/redesign/RedesignApp.tsx", "utf8");
   it("Change on the Live print pattern opens Printer settings (list open) and Back returns to the Live print pattern", () => {
-    expect(app).toContain('onChangeSize={() => { setPsBack("printpattern"); setPsSizeOpen(true); setScreen("printersettings"); }}');
-    expect(app).toContain("onBack={() => setScreen(psBack)}");
+    // Back button rule (2026-11-11): setScreen records the origin (Live print pattern); Back returns there.
+    expect(app).toContain('onChangeSize={() => { setPsSizeOpen(true); setScreen("printersettings"); }}');
+    const psBlock = app.slice(app.indexOf("<PrinterSettings"), app.indexOf("<PrinterSettings") + 200);
+    expect(psBlock).toContain("onBack={() => goBack()}");
   });
   it("the Live print pattern gets the size from Printer settings (oneStickerSizeNow) — the same size every print uses", () => {
     expect(app).toContain("size={osSizeNow ?? { w: 100, h: 60 }}");
@@ -145,6 +147,6 @@ describe("RedesignApp wiring (source)", () => {
     expect(app).toContain("oneSize={osSizeMode && osSizeNow ?");
     expect(app).toContain('oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot")');
     expect(app).toContain("customSize={oneStickerOn && !osSizeMode ?");
-    expect(app).toContain('sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && psBack === "printpattern"))}');
+    expect(app).toContain('sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && navOrigins.printersettings === "printpattern"))}');
   });
 });

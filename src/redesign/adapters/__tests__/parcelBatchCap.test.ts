@@ -52,7 +52,7 @@ describe("wiring", () => {
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain("const parcelPendingCap = maxPendingParcels(auth.profile?.email, auth.profile?.role);");
     expect(app).toContain('pendingCap={parcelPendingCap} contactOn={buyerContactOn} />'); // sql/140 buyer contact rides the same mount
-    expect(app).toContain("<CustomerDetails cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />");
+    expect(app).toContain("<CustomerDetails onBack={() => goBack()} cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />");
   });
   it("the screens use the prop (default 40) — no hard-coded cap left in their logic", () => {
     const ps = readFileSync("src/redesign/screens/ParcelScan.tsx", "utf8");

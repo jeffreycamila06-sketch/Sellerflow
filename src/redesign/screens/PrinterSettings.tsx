@@ -29,6 +29,7 @@ import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor, qrSizeOk } fro
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { useT, tpl } from "../i18n";
+import { BackButton } from "../components/BackButton";
 import { isAppShell } from "../adapters/appShell";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
@@ -395,7 +396,7 @@ export default function PrinterSettings({
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
+        <BackButton onClick={onBack} />
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>{t.rd_ps_title}</div>
       </div>
 

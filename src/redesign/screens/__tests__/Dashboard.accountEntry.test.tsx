@@ -87,19 +87,17 @@ describe("(c/d) Facebook honest gate — no green-able Connect, real Telegram an
 
 describe("(b) back-target wiring — RedesignApp source contract (regression guard)", () => {
   const src = readFileSync(join(__dirname, "../../RedesignApp.tsx"), "utf-8");
-  it("Live-originated manage → chanBack 'dashboard'; Settings-originated → 'settings'; onBack uses chanBack", () => {
-    // From Live (the new TikTok row): sets chanBack("dashboard") then navigates.
-    expect(src).toMatch(/onManageTT=\{\(\)\s*=>\s*\{[^}]*setChanBack\("dashboard"\)[^}]*setScreen\("ttchannels"\)/);
-    // From Settings (SettingsHub): sets chanBack("settings").
-    expect(src).toMatch(/onManageChannel=\{\(p\)\s*=>\s*\{\s*setChanBack\("settings"\)/);
-    // ManageChannels Back returns to the recorded origin (NOT a hardcoded settings).
-    // Scope the assertion to the ManageChannels render line so other screens'
-    // legitimate onBack→settings don't false-match.
+  it("Live-originated manage → back to Live; Settings-originated → back to Settings; onBack = the recorded origin", () => {
+    // Back button rule (2026-11-11): setScreen records where each screen was opened from (adapters/backNav),
+    // so the call sites just navigate; Back returns to that origin (never a hard-coded screen).
+    expect(src).toMatch(/onManageTT=\{\(\)\s*=>\s*\{[^}]*setScreen\("ttchannels"\)/);
+    expect(src).toMatch(/onManageChannel=\{\(p\)\s*=>\s*\{\s*setScreen\(settingsChannelScreen/);
     const mcLine = src.split("\n").find((l) => l.includes("<ManageChannels")) || "";
-    expect(mcLine).toMatch(/onBack=\{\(\)\s*=>\s*setScreen\(chanBack\)\}/);
-    expect(mcLine).not.toMatch(/setScreen\("settings"\)/); // old hardcode gone from THIS line
-    // Default origin is settings (so a stray entry can't dump the seller on Live).
-    expect(src).toMatch(/useState<Screen>\("settings"\)/);
+    expect(mcLine).toMatch(/onBack=\{\(\)\s*=>\s*goBack\(\)\}/);
+    expect(mcLine).not.toMatch(/setScreen\("settings"\)/); // no hard-coded target on THIS line
+    expect(src).toContain("const origins = navigateOrigins(cur.origins, cur.screen, to);");
+    // Default origin is Settings (backNav DEFAULT_BACK) — a stray entry never dumps the seller on Live.
+    expect(readFileSync(join(__dirname, "../../adapters/backNav.ts"), "utf-8")).toMatch(/ttchannels: "settings", fbchannels: "settings"/);
   });
 });
 
@@ -109,7 +107,7 @@ describe("(f) no-account Connect → manage screen (Addendum 2 — doConnect sou
   const start = src.indexOf("const doConnect = async");
   const body = src.slice(start, src.indexOf("\n  };", start) + 5); // doConnect fn body
   it("zero-account TikTok Connect navigates to ttchannels with back=dashboard (no popup)", () => {
-    expect(body).toMatch(/if \(platform === "TikTok"\) \{ setTtOpen\(false\); setChanBack\("dashboard"\); setScreen\("ttchannels"\); return; \}/);
+    expect(body).toMatch(/if \(platform === "TikTok"\) \{ setTtOpen\(false\); setScreen\("ttchannels"\); return; \}/); // origin (Live) recorded by setScreen
     // The old one-liner that opened the modal for ALL platforms is gone.
     expect(body).not.toMatch(/if \(!acct\) \{ setConnectOpen\(platform\); return; \}/);
   });

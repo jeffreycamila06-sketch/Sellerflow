@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { card } from "../ui";
 import { useT } from "../i18n";
+import { BackButton } from "../components/BackButton";
 
 export default function DeleteAccount({ onBack, email = "", onConfirm }: {
   onBack: () => void;
@@ -34,7 +35,7 @@ export default function DeleteAccount({ onBack, email = "", onConfirm }: {
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ background: "rgba(255,255,255,.18)", border: "none", width: 32, height: 32, borderRadius: 9, color: "#fff", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+        <BackButton onClick={onBack} />
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>{t.rd_del_title}</div>
       </div>
       <div style={{ padding: "18px 16px 24px" }}>

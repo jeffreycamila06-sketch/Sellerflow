@@ -189,7 +189,7 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(src).toContain("fbReconnectIds={fbReconnectIds} fbKeepDisconnect={featureSw.fbStopReasons}");
   });
   it("Connect on a Page that needs reconnect → Authorize screen (switch on); lost-access Disconnect stops the last live Page", () => {
-    expect(src).toContain('if (featureSw.fbStopReasons && fbReconnectIds.includes(selectedPage.pageId)) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }');
+    expect(src).toContain('if (featureSw.fbStopReasons && fbReconnectIds.includes(selectedPage.pageId)) { setFbOpen(false); setScreen("fbpages"); return; }');
     expect(src).toContain("if (featureSw.fbStopReasons && fbLastLivePageRef.current) void fbDisconnect(fbLastLivePageRef.current);");
   });
 });

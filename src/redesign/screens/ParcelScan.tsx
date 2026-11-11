@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch, loadUndeliveredExports, confirmExportDelivered,
@@ -139,7 +140,7 @@ type ExportClaim = {
 // pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
 // no auth); defaults to the everyone-cap so standalone renders keep 40.
 // onBridge = the ⇄ 全家 button (RedesignApp passes it ONLY when the seller may use BOTH Parcel Scans).
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, frozenCheckOn = false, onBridge }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; frozenCheckOn?: boolean; onBridge?: () => void }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, frozenCheckOn = false, onBridge, onBack }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; frozenCheckOn?: boolean; onBridge?: () => void; onBack?: () => void }) {
   // sql/142: the frozen (冷凍) store check's lines, export exclusion and ⟳ exist only while the
   // app_settings switch reads exactly 'true' — off, a 冷凍 row looks exactly like main (✅).
   const fzOn = frozenCheckOn;
@@ -1129,11 +1130,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           while the seller scrolls (one sticky block; the header itself is unchanged). */}
       <div style={{ position: "sticky", top: 0, zIndex: 5 }} data-testid="ps-top">
         <div style={{ ...headerBar, position: "relative", ...(onBridge ? { paddingRight: 104 } : {}) }}>
+          <HeaderWithBack onBack={onBack}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div className="sfl-anim-beat" style={headerTitle}>{t.rd_ps2_title}</div>
             <StoreBadge store="711" />
           </div>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_ps2_sub}</div>
+          </HeaderWithBack>
           {onBridge && <BridgeButton to="fm" onClick={onBridge} />}
         </div>
         {(statsShown || attnToast) && (

@@ -14,6 +14,7 @@ import LiveSettingModal from "../components/LiveSettingModal";
 import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { accountList } from "../adapters/connect";
 import ChannelsList, { type ManageChan } from "../components/ChannelsList";
 
@@ -68,6 +69,7 @@ export default function GeneralSettings({
   cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
   onToast,
   motionOn = true, onToggleMotion,
+  onBack,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
   auto: AutoControls; cur?: string; // cur retained (optional) for callers; no longer used here (auto price editor moved to Products)
@@ -75,6 +77,7 @@ export default function GeneralSettings({
   profileOpen: boolean; onToggleProfile: () => void;
   printerIdx: number; printerOpen: boolean; printerFocus?: number; onPrinterFocused?: () => void; onTogglePrinter: () => void; onPickPrinter: (i: number, alreadySetUp: boolean) => void; onPrintPattern: () => void; printPatternNew?: boolean; // ONE STICKER: "New" badge until the seller opens the new screen
   onSubscription: () => void; onSupport: () => void; onDelete: () => void;
+  onBack?: () => void; // ‹ Back (RedesignApp: back to where General Settings was opened from)
   account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
   // Phase 5i — real self-edit save (upsertUser → seller_profiles). Profile card writes
   // ONLY name/store/phone — NOT tiktok/facebook (the Channels editor is the sole account writer).
@@ -284,7 +287,7 @@ export default function GeneralSettings({
   };
   return (
     <div>
-      <div style={headerBar}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_set_title}</div></div>
+      <div style={headerBar}><HeaderWithBack onBack={onBack}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_set_title}</div></HeaderWithBack></div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
 
         {/* PROFILE (appears once) */}

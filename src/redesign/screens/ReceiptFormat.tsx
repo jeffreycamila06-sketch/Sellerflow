@@ -5,6 +5,7 @@
 // A missing table / failed read shows a note on THIS screen only.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
+import { BackButton } from "../components/BackButton";
 import {
   loadReceiptSettings, saveReceiptSettings, downscaleQrFile,
   OPENING_MAX, NOTE_MAX, EMPTY_RECEIPT_SETTINGS, type ReceiptSettings,
@@ -79,7 +80,7 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
   return (
     <div data-testid="receipt-format">
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
+        <BackButton onClick={onBack} />
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, letterSpacing: "-.01em" }}>{t.rd_rc_title}</div>
       </div>
 

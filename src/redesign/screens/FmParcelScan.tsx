@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
+import { HeaderWithBack } from "../components/BackButton";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { isAndroid } from "../adapters/platform";
@@ -59,7 +60,7 @@ function latestBatch(rows: FmScanRow[]): { id: string; ids: string[] } | null {
 // pendingCap = the SAME per-account batch limit as the 7-11 screen (maxPendingParcels in RedesignApp),
 // counted on FamilyMart parcels only. At the limit no NEW parcel can be saved until an export; edit
 // and delete of saved parcels stay open.
-export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; contactOn?: boolean; onBridge?: () => void; pendingCap?: number }) {
+export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge, pendingCap = MAX_PENDING_PARCELS, onBack }: { cur?: string; contactOn?: boolean; onBridge?: () => void; pendingCap?: number; onBack?: () => void }) {
   const t = useT();
   // Bridge: the manual entry the seller left open here (typed, not saved) comes back as it was.
   const [draft0] = useState(() => readParcelDraft<Form>("fm"));
@@ -298,11 +299,13 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5 }} data-testid="fms-top">
         <div style={{ ...headerBar, position: "relative", ...(onBridge ? { paddingRight: 104 } : {}) }}>
+          <HeaderWithBack onBack={onBack}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div className="sfl-anim-beat" style={headerTitle}>{t.rd_fms_title}</div>
             <StoreBadge store="fm" />
           </div>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_fms_sub}</div>
+          </HeaderWithBack>
           {onBridge && <BridgeButton to="711" onClick={onBridge} />}
         </div>
         {/* Batch = parcels not exported yet / the account's limit (same look as the 7-11 Batch pill).
