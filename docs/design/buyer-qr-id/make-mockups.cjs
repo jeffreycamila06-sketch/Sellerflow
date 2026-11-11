@@ -23,10 +23,10 @@ const C = {
 const STATES = (fm) => [
   { id: "1-before-scan" },
   { id: "2-known-buyer", tone: "ok", icon: "✓", title: "Buyer found by QR · @maria_shops",
-    body: "Details filled from your Customers (last used Nov 3). Check them, then type the amount.",
+    body: "Filled with the details you last saved for this buyer (Nov 3). Check them, then type the amount.", actions: ["Not this buyer"],
     fill: { name: "王小美", phone: "0912345678", store: fm ? "022131" : "266402", contact: "maria_shops" }, chip: "@maria_shops", focusAmount: true },
   { id: "3-new-buyer", tone: "info", icon: "＋", title: "New buyer · @newbuyer_tw",
-    body: "No saved details for this QR yet. Type them once — next time this QR fills them.",
+    body: "No saved details for this QR yet. Type them once — next time this QR fills them.", actions: ["Find in Customers"],
     fill: { contact: "newbuyer_tw" }, chip: "@newbuyer_tw" },
   { id: "4-other-shop", tone: "bad", icon: "✕", title: "This sticker is from another shop",
     body: "Nothing was filled. Scan a sticker printed from this account, or use Customers." },
@@ -35,7 +35,7 @@ const STATES = (fm) => [
     fill: { name: "王小美", phone: "0912345678", store: fm ? "022131" : "266402", contact: "maria_shops" } },
   { id: "6-other-carrier", tone: "warn", icon: "!", title: "Buyer found by QR · @maria_shops",
     body: fm ? "Name and phone are from this buyer's 7-11 details. Type the FamilyMart store." : "Name and phone are from this buyer's FamilyMart details. Type the 7-11 store.",
-    fill: { name: "王小美", phone: "0912345678", contact: "maria_shops" }, chip: "@maria_shops" },
+    fill: { name: "王小美", phone: "0912345678", contact: "maria_shops" }, chip: "@maria_shops", actions: ["Not this buyer"] },
   { id: "7-choose", tone: "warn", icon: "!", title: "Found by username @annc_tw · 3 saved details",
     body: "Pick the right one, or type new details.", chip: "@annc_tw", fill: { contact: "annc_tw" },
     choices: [["陳安安", "0922333444", fm ? "022131" : "133712", "Nov 3"], ["陳安安", "0955123456", fm ? "018274" : "991120", "Oct 12"], ["Ann Chen", "0922333444", fm ? "022131" : "150210", "Sep 28"]] },
@@ -68,10 +68,11 @@ async function applyState(p, fm, st) {
       box.style.cssText = `margin:0 0 10px;padding:9px 11px;border-radius:11px;border:1px solid ${c.bd};background:${c.bg};display:flex;gap:9px;align-items:flex-start;`;
       const chip = st.chip ? `<span style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border-strong);background:var(--surface);font-size:10.5px;font-weight:700;color:var(--text)">▣ QR: ${st.chip} <span style="color:var(--text-dim);font-weight:800">✕</span></span>` : "";
       const rows = (st.choices || []).map((r, i) => `<button type="button" style="display:flex;width:100%;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;padding:8px 10px;border-radius:9px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);font-family:var(--font-ui);font-size:12px;font-weight:700;text-align:left;min-height:44px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[0]} · ${r[1]} · ${r[2]}</span><span style="flex-shrink:0;font-size:10.5px;font-weight:600;color:var(--text-dim)">${r[3]}</span></button>`).join("");
+      const acts = (st.actions || []).map((a) => `<span style="display:inline-flex;align-items:center;margin:6px 0 0 6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border-strong);background:transparent;font-size:10.5px;font-weight:700;color:var(--text-dim);text-decoration:underline">${a}</span>`).join("");
       const none = st.choices ? `<button type="button" style="margin-top:6px;padding:8px 10px;border-radius:9px;border:1px dashed var(--border-strong);background:transparent;color:var(--text-dim);font-family:var(--font-ui);font-size:12px;font-weight:700;width:100%;min-height:44px">None of these — I'll type the details</button>` : "";
       box.innerHTML = `<div style="flex-shrink:0;width:20px;height:20px;border-radius:999px;background:${c.fg};color:var(--surface);font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;margin-top:1px">${st.icon}</div>` +
         `<div style="min-width:0;flex:1"><div style="font-size:12.5px;font-weight:800;color:var(--text);overflow-wrap:anywhere">${st.title}</div>` +
-        `<div style="font-size:11.5px;font-weight:600;color:var(--text-dim);margin-top:2px;line-height:1.35">${st.body}</div>${chip}${rows}${none}</div>`;
+        `<div style="font-size:11.5px;font-weight:600;color:var(--text-dim);margin-top:2px;line-height:1.35">${st.body}</div>${chip}${acts}${rows}${none}</div>`;
       head.insertAdjacentElement("afterend", box);
       const tag = document.createElement("div");
       tag.setAttribute("data-mock", "tag");
