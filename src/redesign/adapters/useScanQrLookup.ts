@@ -37,7 +37,8 @@ export interface ScanQrLookupApi {
   scanned: (handle: string) => void;
   /**
    * Clear / Cancel / Save done / next photo / edit start / Import: forget the fill, drop any answer on its way.
-   * Returns true when a fill had WRITTEN details into the form (read at call time, never from an old render).
+   * Returns true when details a fill WROTE are still in the form (read at call time, never from an old render);
+   * false when nothing was filled, or the seller has since retyped all of it.
    */
   reset: () => boolean;
   /** Save pressed: an answer still on its way is dropped (it never lands on this or the next parcel). */
@@ -102,7 +103,8 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
 
   const reset = useCallback((): boolean => {
     seqRef.current++;
-    const wrote = markRef.current !== null;
+    const m = markRef.current;
+    const wrote = m !== null && Object.keys(untouchedFilled(m, fieldsRef.current)).length > 0;
     setMark(null);
     return wrote;
   }, [setMark]);

@@ -447,6 +447,37 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     expect(val(r, S.handle)).toBe("buyer_a");
   });
 
+  it("scan A (filled), scan B (no record), then the seller types B's details by hand: A's fill is forgotten — a finished import leaves the typed entry alone", async () => {
+    m.lookup.mockResolvedValueOnce(found(rec("a")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    m.lookup.mockResolvedValueOnce(found());
+    await scan(r, "buyer_b", "buyer_b");
+    await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+    expect(details(r)).toEqual(BLANK);
+    await waitFor(() => expect(readParcelDraft(S.store) && "lookup" in readParcelDraft(S.store)!).toBe(false)); // nothing of A is remembered
+    typeDetails(r, { name: "Typed For B", phone: "0977", store: "5555" });
+    fireEvent.click(r.getByTestId(id("open-customers")));
+    fireEvent.click(await r.findByTestId("stub-imported"));
+    await waitFor(() => expect(r.queryByTestId("stub-imported")).toBeNull());
+    expect(details(r)).toEqual({ name: "Typed For B", phone: "0977", store: "5555" });
+    expect(val(r, S.handle)).toBe("buyer_b");
+  });
+
+  it("the seller retyped ALL the filled details by hand: a finished import leaves that typed entry alone", async () => {
+    m.lookup.mockResolvedValue(found(rec("a")));
+    const r = await open();
+    await scan(r, "buyer_a", "buyer_a");
+    await waitFor(() => expect(details(r)).toEqual(MARIA));
+    typeDetails(r, { name: "Typed Again", phone: "0977", store: "5555" });
+    fireEvent.click(r.getByTestId(id("open-customers")));
+    fireEvent.click(await r.findByTestId("stub-imported"));
+    await waitFor(() => expect(r.queryByTestId("stub-imported")).toBeNull());
+    expect(details(r)).toEqual({ name: "Typed Again", phone: "0977", store: "5555" });
+    expect(val(r, S.handle)).toBe("buyer_a");
+  });
+
   it("an import while a lookup is still running drops its answer", async () => {
     const answer = slow();
     const r = await open();

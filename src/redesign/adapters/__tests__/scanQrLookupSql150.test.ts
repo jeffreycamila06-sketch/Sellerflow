@@ -64,15 +64,17 @@ describe("sql/150 — the new part", () => {
     const f = fn(up, name);
     expect(f).toContain(`v_key := public.scan_qr_username_key(${text});`);
     expect(f).toContain("if v_key is not null\n       and (new.contact_platform is null or new.contact_platform = 'tiktok')\n       and public.scan_qr_lookup_on(new.user_id) then");
-    // the records looked at: this seller, TikTok or no app, the same username by the same rule; newest first, then id
-    expect(f).toContain(`from public.${table} c\n       where c.user_id = new.user_id\n         and (c.contact_platform is null or c.contact_platform = 'tiktok')`);
-    expect(f).toContain(`and public.scan_qr_username_key(${col}) = v_key;`);
+    // the records looked at: this seller, TikTok or no app, the same username by the same rule, the SAME BUYER
+    // (guard A: same phone or same name); newest first, then id
+    expect(f).toContain(`from public.${table} c\n         where c.user_id = new.user_id\n           and (c.contact_platform is null or c.contact_platform = 'tiktok')`);
+    expect(f).toContain(`and public.scan_qr_username_key(${col}) = v_key\n           and (c.phone = v_phone\n                or (v_name is not null and lower(trim(coalesce(c.name, ''))) = lower(v_name)));  -- (A)`);
+    expect(f).toContain(`and public.scan_qr_username_key(${col}) = v_key;`); // re-checked when the other records are deleted
     expect(f).toContain("array_agg(c.id order by c.updated_at desc, c.id)");
     // only this seller's rows of this table are ever updated or deleted by the new part
     const other = table === "parcel_customers" ? "fm_parcel_customers" : "public.parcel_customers";
     expect(f).not.toContain(other);
     expect(f.match(/delete from public\.\w+ c\n {7}where c\.user_id = new\.user_id\n {9}and c\.id = any\(v_ids\)\n {9}and c\.id <> v_keep/g)).toHaveLength(1);
-    expect(f).toContain("where c.id = v_keep\n             and c.user_id = new.user_id;");
+    expect(f).toContain("where c.id = v_keep\n               and c.user_id = new.user_id;");
   });
   it.each(Object.keys(LIVE))("%s: an error in the new part or in the clean-up can never fail the parcel save", (name) => {
     const f = fn(up, name);
@@ -81,7 +83,27 @@ describe("sql/150 — the new part", () => {
     // the unchanged statement runs unless the parcel is already written; the clean-up comes after it
     expect(f.indexOf("if not v_done then")).toBeGreaterThan(f.indexOf("exception when others then"));
     expect(f.indexOf("delete from public.", f.indexOf("if not v_done then"))).toBeGreaterThan(f.indexOf("if not v_done then"));
-    expect(f).toContain("if found then\n            v_done := true;");
+    expect(f).toContain("if found then\n              v_done := true;");
+    expect(f).toContain("v_ids := null; v_keep := null; v_done := false; v_skip := false;"); // a caught error resets everything → as before
+  });
+  it("guard B (7-11): nothing is merged before the store is checked 'valid' AND the phone is checked 'ok'; FamilyMart parcels have no verdicts", () => {
+    const seven = fn(up, "upsert_parcel_customer"), fm = fn(up, "upsert_fm_parcel_customer");
+    expect(seven).toContain("elsif new.store_check_status = 'valid' and new.phone_check_status = 'ok' then  -- (B)");
+    expect(seven.indexOf("-- (B)")).toBeLessThan(seven.indexOf("array_agg(c.id"));
+    expect(fm).not.toMatch(/store_check_status|phone_check_status/);
+  });
+  it.each([
+    ["upsert_parcel_customer", "parcel_scans", "p.notes", "p.customer_name"],
+    ["upsert_fm_parcel_customer", "fm_parcel_scans", "p.buyer_username", "p.recipient_name"],
+  ])("%s — guard C: an older parcel of the same buyer + username writes nothing when a newer one exists", (name, scans, col, ncol) => {
+    const f = fn(up, name);
+    expect(f).toContain(`from public.${scans} p\n         where p.user_id = new.user_id\n           and p.id <> new.id\n           and p.created_at >= new.created_at\n           and (p.created_at > new.created_at or p.id > new.id)`);
+    expect(f).toContain(`and public.scan_qr_username_key(${col}) = v_key\n           and (trim(coalesce(p.phone, '')) = v_phone\n                or (v_name is not null and lower(trim(coalesce(${ncol}, ''))) = lower(v_name)))`);
+    expect(f).toContain("v_skip := true;  -- (C)");
+    expect(f).toContain("  if v_skip then\n    return new;\n  end if;");
+    // the skip comes after the live filters (restricted phone, wrong store) and before any write of the new part
+    expect(f.indexOf("if v_skip then")).toBeLessThan(f.indexOf("if not v_done then"));
+    if (name === "upsert_parcel_customer") expect(f.indexOf("-- Rule 1: explicit non-valid store check")).toBeLessThan(f.indexOf("-- (C)"));
   });
   it("rule #4 in the database is the two patterns the app uses (plain space, tab and new lines only)", () => {
     expect(up).toContain("substring(p_text from '^[ \\t\\n\\r\\f\\v]*([A-Za-z0-9._]{1,50})[ \\t\\n\\r\\f\\v]*$'),");

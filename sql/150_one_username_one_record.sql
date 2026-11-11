@@ -16,17 +16,32 @@
 --
 -- WHAT IS NEW — only for a seller whose account has Scan QR lookup on (switch 'true' OR login listed):
 --   When the saved parcel has a username (rule #4), and its app is TikTok or none:
---     · the seller's records of that same username in that table are found (rule #4, TikTok or no app);
+--     · the seller's records of that same username AND the same buyer (same phone, or same name) in that
+--       table are found (rule #4, TikTok or no app);
 --     · none → exactly as before (same phone + name decides);
 --     · some → ONE stays and takes the parcel's name, phone, store, full contact text and app, updated now:
 --         – normally the NEWEST of them;
 --         – but if a record with the parcel's phone + name already exists, THAT one stays (it is the
 --           record the unchanged statement writes to; the unique index allows no second one) — a safe merge;
---       the seller's OTHER records of that username in that table are deleted.
+--       that buyer's OTHER records of that username in that table are deleted.
 --   A parcel with no contact / "no social handle" / another app (LINE, WhatsApp …) / a contact that is not
 --   a username (rule #4) → exactly as before. A seller without Scan QR lookup → exactly as before.
 --   Any error inside the new part → exactly as before, and the clean-up is skipped. The parcel save never
 --   fails because of it.
+--
+-- THREE GUARDS (added after the independent review, 2026-11-12 — each one only ever makes the new part do
+-- LESS; when a guard says "no", the result is exactly the live behaviour and nothing is deleted):
+--   (A) SAME BUYER ONLY — a record is merged only when it has the parcel's phone or the parcel's name.
+--       Why: the contact field is free text. In the live data one seller has 60 buyers (59 phones) saved
+--       with the contact "c"; others use "user", "printer", a first name … Without this guard the first
+--       new parcel with such a word would delete all of those buyers' records.
+--   (B) 7-11: ONLY AFTER THE VERDICTS — store_check_status = 'valid' AND phone_check_status = 'ok'.
+--       Why: the app saves the parcel first and the verdicts arrive seconds later. Without this guard a
+--       wrong store # or a restricted phone would replace the buyer's good record before it is known.
+--       (A parcel that never gets both verdicts is handled exactly as before, for good.)
+--   (C) NEWEST PARCEL WINS — when a newer parcel of the same buyer + username exists, an older parcel
+--       (late verdict, re-check, edit) writes NOTHING to Customers.
+--       Why: otherwise an old parcel would put the buyer's old phone / store back over the new one.
 --
 -- Old data is NOT touched in bulk: no backfill, no mass delete. A username is tidied only when a new parcel
 -- of that username is saved. Editing a buyer on the Customer Details screen is not affected (parcel save only).
@@ -121,6 +136,7 @@ declare
   v_ids   uuid[];            -- this seller's records of that username, newest first
   v_keep  uuid;              -- the one record that stays
   v_done  boolean := false;  -- true = the parcel is already written into v_keep
+  v_skip  boolean := false;  -- true = an OLDER parcel of this buyer: it writes nothing to Customers
 begin
   if v_phone = '' then
     return new;
@@ -141,54 +157,83 @@ begin
     return new;
   end if;
 
-  -- sql/150 — one username = one record. Runs only when this parcel has a username (rule #4), its app is
-  -- TikTok or none, and the seller's account has Scan QR lookup on. Anything else, and ANY error in here,
-  -- falls through to the statement below exactly as before — the parcel save itself can never fail from this.
+  -- sql/150 — one username = one record PER BUYER. Runs only when this parcel has a username (rule #4), its
+  -- app is TikTok or none, and the seller's account has Scan QR lookup on. Three guards keep it from ever
+  -- removing a record it should not; whenever one says "no", and on ANY error in here, the statement below
+  -- runs exactly as before — the parcel save itself can never fail from this.
+  --   (C) an OLDER parcel never writes over what a newer parcel of the same buyer + username wrote;
+  --   (B) only once this parcel's store is checked 'valid' and its phone is checked 'ok' (never before a
+  --       verdict: a wrong store or a restricted phone must not replace a good record);
+  --   (A) only records of the SAME BUYER are merged: same phone, or same name. A one-word contact that
+  --       many different buyers share ("c", "user", a first name …) is therefore never merged.
   begin
     v_key := public.scan_qr_username_key(v_notes);
     if v_key is not null
        and (new.contact_platform is null or new.contact_platform = 'tiktok')
        and public.scan_qr_lookup_on(new.user_id) then
-      select array_agg(c.id order by c.updated_at desc, c.id)
-        into v_ids
-        from public.parcel_customers c
-       where c.user_id = new.user_id
-         and (c.contact_platform is null or c.contact_platform = 'tiktok')
-         and c.notes is not null
-         and position(v_key in lower(c.notes)) > 0
-         and public.scan_qr_username_key(c.notes) = v_key;
-      if v_ids is not null then
-        -- The record the statement below writes to (same phone + name), if there is one. It must take the
-        -- parcel (the unique index allows no second one), so it is the record that stays.
-        select c.id
-          into v_keep
+      if exists (
+        select 1
+          from public.parcel_scans p
+         where p.user_id = new.user_id
+           and p.id <> new.id
+           and p.created_at >= new.created_at
+           and (p.created_at > new.created_at or p.id > new.id)
+           and (p.contact_platform is null or p.contact_platform = 'tiktok')
+           and p.notes is not null
+           and position(v_key in lower(p.notes)) > 0
+           and public.scan_qr_username_key(p.notes) = v_key
+           and (trim(coalesce(p.phone, '')) = v_phone
+                or (v_name is not null and lower(trim(coalesce(p.customer_name, ''))) = lower(v_name)))
+      ) then
+        v_skip := true;  -- (C)
+      elsif new.store_check_status = 'valid' and new.phone_check_status = 'ok' then  -- (B)
+        select array_agg(c.id order by c.updated_at desc, c.id)
+          into v_ids
           from public.parcel_customers c
          where c.user_id = new.user_id
-           and c.phone = v_phone
-           and lower(trim(coalesce(c.name, ''))) = lower(trim(coalesce(v_name, '')));
-        if v_keep is null then
-          -- No such record: the NEWEST record of this username takes the new name, phone, store and contact.
-          v_keep := v_ids[1];
-          update public.parcel_customers c
-             set name             = v_name,
-                 phone            = v_phone,
-                 store_id         = coalesce(nullif(trim(coalesce(new.store_id,'')), ''), c.store_id),
-                 notes            = v_notes,
-                 contact_platform = new.contact_platform,
-                 updated_at       = now()
-           where c.id = v_keep
-             and c.user_id = new.user_id;
-          if found then
-            v_done := true;
-          else
-            v_ids := null; v_keep := null;  -- the record went away meanwhile → as before, no clean-up
+           and (c.contact_platform is null or c.contact_platform = 'tiktok')
+           and c.notes is not null
+           and position(v_key in lower(c.notes)) > 0
+           and public.scan_qr_username_key(c.notes) = v_key
+           and (c.phone = v_phone
+                or (v_name is not null and lower(trim(coalesce(c.name, ''))) = lower(v_name)));  -- (A)
+        if v_ids is not null then
+          -- The record the statement below writes to (same phone + name), if there is one. It must take the
+          -- parcel (the unique index allows no second one), so it is the record that stays.
+          select c.id
+            into v_keep
+            from public.parcel_customers c
+           where c.user_id = new.user_id
+             and c.phone = v_phone
+             and lower(trim(coalesce(c.name, ''))) = lower(trim(coalesce(v_name, '')));
+          if v_keep is null then
+            -- No such record: the NEWEST record of this buyer + username takes the new name, phone, store and contact.
+            v_keep := v_ids[1];
+            update public.parcel_customers c
+               set name             = v_name,
+                   phone            = v_phone,
+                   store_id         = coalesce(nullif(trim(coalesce(new.store_id,'')), ''), c.store_id),
+                   notes            = v_notes,
+                   contact_platform = new.contact_platform,
+                   updated_at       = now()
+             where c.id = v_keep
+               and c.user_id = new.user_id;
+            if found then
+              v_done := true;
+            else
+              v_ids := null; v_keep := null;  -- the record went away meanwhile → as before, no clean-up
+            end if;
           end if;
         end if;
       end if;
     end if;
   exception when others then
-    v_ids := null; v_keep := null; v_done := false;  -- as before, no clean-up
+    v_ids := null; v_keep := null; v_done := false; v_skip := false;  -- as before, no clean-up
   end;
+
+  if v_skip then
+    return new;
+  end if;
 
   if not v_done then
   insert into public.parcel_customers (user_id, phone, name, store_id, notes, contact_platform, updated_at)
@@ -208,7 +253,7 @@ begin
         updated_at       = now();
   end if;
 
-  -- sql/150 — the other records of this username go (only after the parcel is safely in v_keep).
+  -- sql/150 — this buyer's other records of this username go (only after the parcel is safely in v_keep).
   if v_ids is not null and v_keep is not null then
     begin
       delete from public.parcel_customers c
@@ -240,58 +285,87 @@ declare
   v_ids   uuid[];            -- this seller's records of that username, newest first
   v_keep  uuid;              -- the one record that stays
   v_done  boolean := false;  -- true = the parcel is already written into v_keep
+  v_skip  boolean := false;  -- true = an OLDER parcel of this buyer: it writes nothing to Customers
 begin
   if v_phone = '' then
     return new;
   end if;
-  -- sql/150 — one username = one record. Runs only when this parcel has a username (rule #4), its app is
-  -- TikTok or none, and the seller's account has Scan QR lookup on. Anything else, and ANY error in here,
-  -- falls through to the statement below exactly as before — the parcel save itself can never fail from this.
+  -- sql/150 — one username = one record PER BUYER. Runs only when this parcel has a username (rule #4), its
+  -- app is TikTok or none, and the seller's account has Scan QR lookup on. Two guards keep it from ever
+  -- removing a record it should not; whenever one says "no", and on ANY error in here, the statement below
+  -- runs exactly as before — the parcel save itself can never fail from this. (FamilyMart parcels carry no
+  -- store / phone verdict, so there is no guard (B) here.)
+  --   (C) an OLDER parcel never writes over what a newer parcel of the same buyer + username wrote;
+  --   (A) only records of the SAME BUYER are merged: same phone, or same name. A one-word contact that
+  --       many different buyers share ("c", "user", a first name …) is therefore never merged.
   begin
     v_key := public.scan_qr_username_key(v_user);
     if v_key is not null
        and (new.contact_platform is null or new.contact_platform = 'tiktok')
        and public.scan_qr_lookup_on(new.user_id) then
-      select array_agg(c.id order by c.updated_at desc, c.id)
-        into v_ids
-        from public.fm_parcel_customers c
-       where c.user_id = new.user_id
-         and (c.contact_platform is null or c.contact_platform = 'tiktok')
-         and c.buyer_username is not null
-         and position(v_key in lower(c.buyer_username)) > 0
-         and public.scan_qr_username_key(c.buyer_username) = v_key;
-      if v_ids is not null then
-        -- The record the statement below writes to (same phone + name), if there is one. It must take the
-        -- parcel (the unique index allows no second one), so it is the record that stays.
-        select c.id
-          into v_keep
+      if exists (
+        select 1
+          from public.fm_parcel_scans p
+         where p.user_id = new.user_id
+           and p.id <> new.id
+           and p.created_at >= new.created_at
+           and (p.created_at > new.created_at or p.id > new.id)
+           and (p.contact_platform is null or p.contact_platform = 'tiktok')
+           and p.buyer_username is not null
+           and position(v_key in lower(p.buyer_username)) > 0
+           and public.scan_qr_username_key(p.buyer_username) = v_key
+           and (trim(coalesce(p.phone, '')) = v_phone
+                or (v_name is not null and lower(trim(coalesce(p.recipient_name, ''))) = lower(v_name)))
+      ) then
+        v_skip := true;  -- (C)
+      else
+        select array_agg(c.id order by c.updated_at desc, c.id)
+          into v_ids
           from public.fm_parcel_customers c
          where c.user_id = new.user_id
-           and c.phone = v_phone
-           and lower(trim(coalesce(c.name, ''))) = lower(trim(coalesce(v_name, '')));
-        if v_keep is null then
-          -- No such record: the NEWEST record of this username takes the new name, phone, store and contact.
-          v_keep := v_ids[1];
-          update public.fm_parcel_customers c
-             set name             = v_name,
-                 phone            = v_phone,
-                 store_id         = coalesce(nullif(trim(coalesce(new.store_id, '')), ''), c.store_id),
-                 buyer_username   = v_user,
-                 contact_platform = new.contact_platform,
-                 updated_at       = now()
-           where c.id = v_keep
-             and c.user_id = new.user_id;
-          if found then
-            v_done := true;
-          else
-            v_ids := null; v_keep := null;  -- the record went away meanwhile → as before, no clean-up
+           and (c.contact_platform is null or c.contact_platform = 'tiktok')
+           and c.buyer_username is not null
+           and position(v_key in lower(c.buyer_username)) > 0
+           and public.scan_qr_username_key(c.buyer_username) = v_key
+           and (c.phone = v_phone
+                or (v_name is not null and lower(trim(coalesce(c.name, ''))) = lower(v_name)));  -- (A)
+        if v_ids is not null then
+          -- The record the statement below writes to (same phone + name), if there is one. It must take the
+          -- parcel (the unique index allows no second one), so it is the record that stays.
+          select c.id
+            into v_keep
+            from public.fm_parcel_customers c
+           where c.user_id = new.user_id
+             and c.phone = v_phone
+             and lower(trim(coalesce(c.name, ''))) = lower(trim(coalesce(v_name, '')));
+          if v_keep is null then
+            -- No such record: the NEWEST record of this buyer + username takes the new name, phone, store and contact.
+            v_keep := v_ids[1];
+            update public.fm_parcel_customers c
+               set name             = v_name,
+                   phone            = v_phone,
+                   store_id         = coalesce(nullif(trim(coalesce(new.store_id, '')), ''), c.store_id),
+                   buyer_username   = v_user,
+                   contact_platform = new.contact_platform,
+                   updated_at       = now()
+             where c.id = v_keep
+               and c.user_id = new.user_id;
+            if found then
+              v_done := true;
+            else
+              v_ids := null; v_keep := null;  -- the record went away meanwhile → as before, no clean-up
+            end if;
           end if;
         end if;
       end if;
     end if;
   exception when others then
-    v_ids := null; v_keep := null; v_done := false;  -- as before, no clean-up
+    v_ids := null; v_keep := null; v_done := false; v_skip := false;  -- as before, no clean-up
   end;
+
+  if v_skip then
+    return new;
+  end if;
 
   if not v_done then
   insert into public.fm_parcel_customers (user_id, phone, name, store_id, buyer_username, contact_platform, updated_at)
@@ -311,7 +385,7 @@ begin
         updated_at       = now();
   end if;
 
-  -- sql/150 — the other records of this username go (only after the parcel is safely in v_keep).
+  -- sql/150 — this buyer's other records of this username go (only after the parcel is safely in v_keep).
   if v_ids is not null and v_keep is not null then
     begin
       delete from public.fm_parcel_customers c
