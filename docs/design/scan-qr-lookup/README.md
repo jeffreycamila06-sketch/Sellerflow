@@ -13,7 +13,7 @@ Mga lapad: iPhone 390, Android 360, Android 430, laptop 1280.
 | Estado | Ano ang ipinapakita | Totoo o drowing? |
 |---|---|---|
 | `1-before-scan` | Bago i-scan — ang screen ngayon | Totoong screen, walang binago |
-| `2-one-match` | Isang tugma sa Customers: napunan ang pangalan, phone, store at buyer contact; presyo na lang; "Found in Customers: @x — please check · last used ‹petsa›" | Totoong mga field (tinype ang sample); ang kahon ay drowing |
+| `2-one-match` | Isang tugma sa Customers: napunan ang pangalan, phone, store at buyer contact; presyo na lang; "Found in Customers: @x — please check · last updated ‹petsa›" | Totoong mga field (tinype ang sample); ang kahon ay drowing |
 | `3-many-matches` | Tatlong record para sa iisang username, **iba-iba ang store**: pagpipilian, pinakabago sa itaas, + "None of these — I'll type the details". Walang kusang napunan maliban sa username | Ang kahon at pagpipilian ay drowing |
 | `4-no-match` | Walang tugma: @username lang, **eksaktong gaya ngayon** | **Totoong screen**: isang totoong QR (`https://tiktok.com/@newbuyer_tw`) ang ipinasa sa totoong Scan QR — ang app mismo ang nagbasa at nagpuno, at ito ang toast nito ngayon. Tatak: "REAL SCREEN · same as today" |
 

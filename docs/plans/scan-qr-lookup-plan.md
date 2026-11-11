@@ -17,7 +17,9 @@ kung paano mapapatunayan. Walang "pasado" na walang patunay.
   gaya ngayon.
 - **Hindi kailangan ng SQL o index** para sa hanap: sinukat sa pinakamalaking seller (7,643 record) — 19 ms (51 ms sa unang
   takbo). [PATUNAY §1.3]
-- **95.8% ng username ay iisa lang ang record** → kusang punô. 4.2% ay may 2 o higit pa → pagpipilian. [PATUNAY §1.2]
+- **95.8% ng username ay iisa lang ang record** → kusang punô. 4.2% ay may 2 o higit pa → pagpipilian. [PATUNAY §1.2 —
+  bahagi ito ng mga **username**, hindi ng mga **scan**: ang mga suki ang mas madalas i-scan at sila ang may maraming record,
+  kaya mas madalas sa 4.2% ang pagpipilian sa totoong gamit. Hindi pa nasusukat.]
 - Web lang ang babaguhin (Hakbang 2): dalawang screen + isang maliit na adapter. Walang bagong app build, walang Render deploy.
 
 ---
@@ -33,8 +35,12 @@ kung paano mapapatunayan. Walang "pasado" na walang patunay.
 | Customers 7-11: ang username ay nasa `notes`; FamilyMart: nasa `buyer_username`; pareho may `contact_platform` (NULL = TikTok / luma) | `adapters/parcelCustomers.ts:50`; `adapters/fmCustomers.ts:43` |
 | Ang hanap ng Customers ngayon ay "naglalaman" (`%…%`), hindi eksakto, hanggang 30 resulta | `parcelCustomers.ts:72-88`; `fmCustomers.ts:47-58` |
 | Ang draft ng ⇄ ay `form` / `noHandle` / `platform` lang, sa memory, hiwalay bawat screen; ang "hold" bago mag-save ay nagbablangko ng `form` | `adapters/parcelDrafts.ts:12-43` |
-| Sariling data lang: RLS ng dalawang table ay `user_id = auth.uid()` sa SELECT | Query Q2 (2026-11-11, `pg_policies`) |
-| Ang trigger na nagsusulat sa Customers ay nagti-trim ng username | Query Q3 (`upsert_parcel_customer`, `upsert_fm_parcel_customer`) |
+| Sariling data lang: RLS ng dalawang table ay `user_id = auth.uid()` sa SELECT | read-only query sa live DB, 2026-11-11 (`pg_policies`); `sql/35:52-53`, `sql/121:42-43` |
+| Ang trigger na nagsusulat sa Customers ay nagti-trim ng username | `sql/140:66`, `:122`; live na function (`pg_get_functiondef`, 2026-11-11) |
+| **Ang TikTok ay naka-save bilang "walang platform" (NULL)**, at ganoon din ang bawat contact na na-save habang naka-off ang pagpili ng app — kaya ang "walang platform" ay may halong Instagram / LINE / Facebook na tinype lang bilang text | `ParcelScan.tsx:169`, `FmParcelScan.tsx:77`, `CustomerDetails.tsx:191`; `buyerContact.ts:124-133` |
+| WhatsApp ay naka-save bilang `+numero` at LINE bilang maliliit na titik na walang `@`, **bawat isa may sariling platform** — hindi kailanman tutugma | `buyerContact.ts:126-127` |
+| **Ang petsa ng row sa Customers (`updated_at`) ay petsa ng huling SULAT, hindi ng huling gamit:** isinusulat ulit ng trigger ang row (kasama ang store) sa bawat sulat sa parcel — pati sa late na hatol ng store/phone at sa edit ng **lumang** parcel | `sql/140:99-102`, `:107-110`; live na trigger (`pg_get_triggerdef`, 2026-11-11) |
+| Ang preview database (para sa mga larawan) ay hindi nagsasala ng `.or()` / `.ilike()` — hindi nito maipapakita ang totoong resulta ng hanap | `src/dev/fakeSupabase.ts:101-102` |
 
 ### 1.2 Data — ilan ang record bawat username [PATUNAY: read-only query, 2026-11-11]
 "Kwalipikado" = TikTok o walang platform, hugis-username, hindi "unknown" (ang tuntunin ng utos).
@@ -59,6 +65,9 @@ kung paano mapapatunayan. Walang "pasado" na walang patunay.
 | Seller / pinakamaraming row ng isang seller | 74 / 7,643 | 26 / 138 |
 
 Ibig sabihin: kailangan talaga ang "hindi case-sensitive" at "walang @" — 15,469 ang may malaking titik at 8,395 ang may `@`.
+Mga pag-iingat sa pagbasa ng talahanayan: (1) bahagi ito ng mga username, hindi ng mga scan (§0); (2) dalawang buwan pa
+lang ang table, kaya ang "walang lampas 90 araw" ay wala pang sinasabi tungkol sa luma; (3) sa FamilyMart, 41% ng contact ay
+hindi hugis-username at hindi kailanman tutugma.
 
 ### 1.3 Bilis ng hanap — kailangan ba ng index o SQL? [PATUNAY: `EXPLAIN (ANALYZE, BUFFERS)`, pinakamalaking seller, 7,643 row]
 Ang query na katumbas ng gagawin ng app (sariling `user_id` + username na may at walang `@`, hindi case-sensitive + TikTok o
@@ -93,14 +102,22 @@ Scan QR ─► nabasa ang QR?
 - **Tuntunin ng tugma (utos 2):** tanggalin ang espasyo sa dulo, tanggalin ang isang `@` sa unahan, gawing maliliit na titik;
   **eksaktong pareho** sa na-scan na username. Mga row lang na `contact_platform` ay wala o `tiktok`. **Hindi kailanman**
   hahanapin ang "unknown" o blangko.
-- **Paano:** isang query sa table ng screen — sariling `user_id` (tahasan, bukod pa sa RLS), username na may at walang `@`
-  gamit ang hindi case-sensitive na paghahambing, pinakabago muna, hanggang 20 row. Sa ganitong paghahambing, ang `_` sa
-  username ay tumutugma sa kahit anong isang character — kaya **ang app ang gumagawa ng huling eksaktong tsek** sa bawat
-  ibinalik na row (purong function, may test). Walang maling tugma kahit maluwag ang query.
+- **Paano:** isang query sa table ng screen — sariling `user_id` (tahasan, bukod pa sa RLS) at **isang** kondisyon:
+  username na may o walang `@`, hindi case-sensitive; pinakabago muna, hanggang 20 row. Sa ganitong paghahambing, ang `_` sa
+  username ay tumutugma sa kahit anong isang character, kaya: (a) ang `_` ay ie-escape sa query para eksakto na ito mismo
+  [HINDI PA NAPAPATUNAYAN sa PostgREST — susubukin sa totoong request ang `a.b`, `a_b` at `_._`]; at (b) **ang app pa rin
+  ang gumagawa ng huling tsek** sa bawat ibinalik na row — eksaktong username, platform, at hindi "unknown" (purong function,
+  may test). Ang platform ay **hindi** sinasala sa query, sa app lang — mas simple ang query at tama pa rin sa preview.
+- Kapag eksaktong 20 ang ibinalik: "20+" ang ipapakita (hindi mabibilang ang kabuuan mula sa 20 row).
 - **Hiwalay ang dalawang screen:** 7-11 → `parcel_customers.notes`; FamilyMart → `fm_parcel_customers.buyer_username`.
   Walang binabasa mula sa kabila, kahit walang tugma.
 - **Egress:** isang query bawat scan (kilos ng user), hanggang 20 maliliit na row. Walang poll.
-- **May hangganan ang hintay:** 4 na segundo; lampas → sitwasyon 6.
+- **May hangganan ang hintay:** 4 na segundo; lampas → sitwasyon 6, at ang sagot na dumating pagkatapos ay itinatapon.
+- **Habang naghihintay (para manatiling "eksaktong gaya ngayon" ang walang tugma):** ang @username at ang toast ay lumalabas
+  **agad** gaya ngayon; ang pindutang Scan QR ay malaya na agad pagkatapos mabasa ang QR, gaya ngayon; **walang spinner o
+  dagdag na tanda**. Ang resulta ay inilalapat lang kung blangko pa ang pangalan, phone at store. Kapag walang tugma,
+  **walang anumang lumalabas** — bago, habang, o pagkatapos ng hintay. (Kapalit: kung mabilis mag-type ang encoder bago
+  dumating ang sagot, mungkahi na lang ang lalabas — B7.)
 
 ---
 
@@ -110,7 +127,7 @@ Scan QR ─► nabasa ang QR?
 |---|---|---|
 | 1 | **Walang binago sa QR/printing/server** | Parehong QR, parehong parser. Walang file ng printing, server o SQL na gagalawin |
 | 2 | **Paghahanap** | §2.1 |
-| 3 | **Isang tugma** | Napupunan ang **pangalan, phone, store**; ang buyer contact ay ang @username na na-scan (TikTok), gaya ngayon. Kahon: **"Nahanap sa Customers: @x — pakisuri · huling ginamit ‹petsa›"**. Cursor sa **Amount**. Lahat puwedeng i-edit |
+| 3 | **Isang tugma** | Napupunan ang **pangalan, phone, store**; ang buyer contact ay ang @username na na-scan — TikTok ang napili at naka-off ang "no contact", gaya ng ginagawa ng Scan QR ngayon (ito rin ang username na nasa record, sa eksaktong tuntunin). Kahon: **"Nahanap sa Customers: @x — pakisuri · huling na-update ‹petsa›"**. Cursor sa **Amount**, **kung walang field na kasalukuyang tina-type-an**. Lahat puwedeng i-edit |
 | 4 | **Higit sa isang tugma** | **Walang kusang napupunan** maliban sa @username. Pagpipilian — pinakabago sa itaas, bawat hanay: pangalan · phone · **store** · petsa. Pamagat: **"3 record para kay @x — iba-iba ang store"** (o "iba-iba ang phone"; kung pangalan lang ang iba: "3 record para kay @x"). Huling pindutan: **"Wala rito — ita-type ko"**. Hanggang 5 ang ipinapakita; kung higit: "at N pa — buksan ang Customers" |
 | 5 | **Walang tugma** | @username lang, toast gaya ngayon — **eksaktong gaya ngayon** (walang kahon, walang dagdag na mensahe) |
 | 6 | **Hindi nabasa** | Gaya ngayon |
@@ -119,35 +136,41 @@ Scan QR ─► nabasa ang QR?
 
 **Kailan HINDI kusang pinupunan (kahit isa ang tugma):**
 - **May naka-type na** sa pangalan, phone o store (hal. galing sa OCR ng camera sa 7-11, o tinype na ng encoder) → hindi
-  pinapatungan. Lalabas ang tugma bilang **mungkahi**: "Nahanap sa Customers: @x" + pindutang **"Gamitin"**.
+  pinapatungan. Lalabas ang tugma bilang **mungkahi**: "Nahanap sa Customers: @x" + pindutang **"Gamitin"**. Ang "Gamitin" ay
+  nagsusulat **lang** ng pangalan, phone at store; ang amount, contact, platform at "no contact" ay hindi ginagalaw.
 - **Nag-e-edit ng naka-save na parcel** → Scan QR ay **gaya ngayon lang** (@username). Walang hanap.
 
 ---
 
 ## 4. MGA BUTAS AT AYOS
-"Ayos" = gagawin sa Hakbang 2; bawat isa ay may test sa §5. Wala pang napatunayan sa mga ito.
+"Ayos" = gagawin sa Hakbang 2; bawat isa ay may test sa §5. Wala pang napatunayan sa mga ito. (R) = nakita ng hiwalay na reviewer.
 
 | # | Panganib | Paano mangyayari | Ayos |
 |---|---|---|---|
 | B1 | **Details ni A, username ni B** | Na-scan si A (napunan), tapos na-scan si B na walang tugma → ngayon, username lang ang pinapalitan → naiwan ang pangalan/phone/store ni A | Tinatandaan ng form kung alin ang **kusang napunan at hindi pa ginalaw**. Sa bagong scan: ang mga iyon ay **binubura muna** bago ilapat ang bagong resulta. Kung ginalaw na ng encoder → hindi binubura, pero dilaw na babala: "Bagong username — pakisuri ang details" |
 | B2 | Pinalitan ng encoder ang username sa field pagkatapos mapunan | Details ng dating buyer, bagong username | Ang kahon ay nakatali sa username na hinanap; kapag iba na ang nasa field → nagiging babala: "Ang details ay galing kay @x — pakisuri" |
 | B3 | **Username na ginamit na ng ibang tao** | Binitawan ng dating may-ari, kinuha ng iba → details ng dating tao | Hindi ito matutukoy mula sa username lang. Kaya: laging "pakisuri", laging may **petsa ng huling gamit** at **pangalan** sa kahon. Kapareho ng panganib ngayon kapag naghanap sa Customers. (Aral mula sa kinanselang plano: walang "berde/tiyak" dito — lahat ay "pakisuri") |
-| B4 | **Lumang record** | Lumipat na ng store o nagpalit ng phone | Petsa ng huling gamit sa kahon at sa bawat hanay. Ngayon, walang record na lampas 90 araw [§1.2]; Tanong 3 kung gusto ng mas matinding babala kapag luma |
+| B4 | **Lumang record** | Lumipat na ng store o nagpalit ng phone | Petsa sa kahon at sa bawat hanay. Dalawang buwan pa lang ang table [§1.2]; Tanong 3 kung gusto ng mas matinding babala kapag luma |
+| B4b | **Ang petsa at store ng record ay puwedeng galing sa LUMANG parcel** (R) | Lumipat ng store ang buyer; pagkatapos, may nag-edit o nag-recheck ng mas lumang parcel niya, o dumating ang late na hatol → ibinabalik ng umiiral na trigger ang lumang store sa Customers, **na may petsa ngayon** [§1.1] | Hindi ito naaayos nang hindi ginagalaw ang trigger (labas sa utos). Kaya: ang tawag ay **"huling na-update"**, hindi "huling ginamit"; laging "pakisuri"; at sa pagpipilian, ang "pinakabago sa itaas" ay ayon sa petsa ng update. Umiiral na rin ito sa 📇 Customers ngayon |
 | B5 | **Dobleng record** (725 username: parehong phone at store, baybay ng pangalan lang ang iba) | Typo sa pangalan sa nakaraan | Pagpipilian pa rin (magkaiba ang pangalan); pinakabago sa itaas. Hindi pinagsasama nang kusa — desisyon ng encoder |
 | B6 | **Iba-ibang store / phone** (435 / 795 username) | Bumibili para sa iba; lumipat | Pagpipilian, hindi kusang pumipili; malinaw na "iba-iba ang store" |
 | B7 | **Mabagal na network** | Dumating ang sagot pagkatapos mag-type ng encoder | Bawat hanap ay may token; ang sagot ay inilalapat **lang** kung pareho pa ang entry at **blangko pa** ang pangalan/phone/store. Kung hindi → mungkahi lang, o itinatapon |
 | B8 | **Race sa Save** | Pinindot ang Save habang naghahanap; dumating ang sagot pagkatapos | **Hindi hinaharangan ang Save** (walang ikinakabit sa Save). Ang Save, Cancel, Clear at paglipat sa susunod na litrato ay nagpapalit ng token → itinatapon ang huling sagot, kaya **hindi nito mapupunan ang susunod na parcel** |
 | B9 | **Dalawang sunod na scan** | Mabilis na magkasunod | Ang bago ang panalo; itinatapon ang sagot ng nauna |
-| B10 | **⇄ bridge** | Lumipat sa kabilang screen habang may napunan | Ang napunang form ay kasama na sa draft ngayon (`form`). Idadagdag sa draft ang maliit na tanda (aling username, petsa, alin ang kusang napunan) para bumalik ang kahon. **Hindi tumatawid** sa kabilang screen. Ang "hold" bago mag-save (`parcelDrafts.ts:43`) ay dapat ding magbura ng tandang ito. Ang pagpipilian (sitwasyon 4) ay hindi ibinabalik — i-scan ulit |
+| B10 | **⇄ bridge** | Lumipat sa kabilang screen habang may napunan | Ang draft ay para **lang sa manual entry** (`ParcelScan.tsx:299-302`, `FmParcelScan.tsx:84`) — ang confirm card ng camera at ang edit ay walang draft, ngayon at pagkatapos. Ang napunang form ay kasama na sa draft (`form`). Idadagdag ang maliit na tanda (aling username, petsa, alin ang kusang napunan) para bumalik ang kahon **at manatili ang bantay ng B1**. Dalawang lugar ang dapat galawin, kung hindi ay babalik ang form na walang kahon: ang pag-iimbak (`parcelDrafts.ts:31` — tatlong field lang ang kinokopya ngayon) at ang "hold" (`:43` — dapat burahin ang tanda). **Hindi tumatawid** sa kabilang screen. Ang pagpipilian (sitwasyon 4) ay hindi ibinabalik — i-scan ulit |
 | B11 | Hanap habang lumilipat ng screen | Dumating ang sagot pagkaalis | Itinatapon (token + naka-mount na tsek; ang 7-11 handler ay walang ganitong tsek ngayon, ang FamilyMart ay meron — `FmParcelScan.tsx:212`) |
 | B12 | **Maling tugma dahil sa `_`** | Maluwag ang query | Huling eksaktong tsek sa app (§2.1) |
-| B13 | "unknown" o hindi TikTok | Naka-save na LINE/WhatsApp/Facebook contact na kapareho ng username | Hindi kailanman tinutugma (tuntunin ng platform); "unknown" ay hindi hinahanap |
+| B13 | **Contact na hindi TikTok pero walang platform** (R) | Ang "walang platform" ay may halong Instagram/LINE/Facebook na tinype bilang text [§1.1]. Buyer na may IG na `maria_shops` (walang platform) + ibang tao sa TikTok na @maria_shops → isang tugma → details ng unang tao | Sinusunod ng plano ang utos nang literal ("TikTok o walang platform"). **Hindi ito matutukoy** mula sa data. Bantay: "pakisuri" + pangalan sa kahon. Ang contact na **may** platform (WhatsApp, LINE, Facebook, Instagram, Other) ay hindi kailanman tinutugma; "unknown" ay hindi hinahanap. **Tanong 2** |
 | B14 | Data ng ibang seller | Admin account; maling filter | Tahasang `user_id` + RLS na sariling row lang [§1.1]. Test na may dalawang user |
 | B15 | Store na mali o sarado na sa Customers | Naka-save noon na mali | Hindi bago: ang bawat bagong parcel ay dumadaan pa rin sa parehong check ng store/phone pagkatapos ng Save (walang binago) |
 | B16 | Buyer na inalis sa Customers (restricted na phone) | Umiiral na tuntunin | Walang tugma → gaya ngayon |
 | B17 | Higit sa 20 record sa isang username (pinakamarami: 47) | — | 5 ang ipinapakita + "at N pa — buksan ang Customers" |
 | B18 | Pagkakaiba ng tuntunin ng 7-11 at FamilyMart sa pangalan/phone | Record na hindi na pumapasa sa validation ngayon | Ang napunan ay dumadaan sa parehong validation ng form; pula ang field kung mali, gaya ng tinype |
 | B19 | Hindi sinasadyang pagbabago kapag naka-OFF | — | Naka-OFF → walang query, parehong DOM at parehong save gaya ngayon (permanenteng test) |
+| B20 | **Naiiwang kahon o pagpipilian sa susunod na parcel** (R) | Ang token lang ang napapalitan; ang kahon ay nasa screen pa | Binubura ang kahon, ang pagpipilian at ang tanda ng "kusang napunan" sa **bawat** isa: `clearForm` (`ParcelScan.tsx:164`), paglipat sa susunod na litrato (`:680`), simula ng edit (`:991`), cancel ng edit (`:993`), matagumpay na Save, Cancel, at matagumpay na Import mula sa Customers (na hindi naglilinis ng form ngayon — `ParcelScan.tsx:1721`, `FmParcelScan.tsx:550`); pareho sa FamilyMart |
+| B21 | Marka ng OCR sa field na napunan ng hanap (R) | Sa confirm card ng camera, may "mababang tiwala" na marka ang ilang field | Ang "Gamitin" ay nag-aalis ng marka sa tatlong field na isinulat nito |
+| B22 | Nahihila ang cursor habang nagta-type (R) | Dumating ang sagot habang may tina-type | Ang cursor ay inililipat sa Amount **lang** kung walang field na naka-focus |
+| B23 | Mali ang ipinapakita ng preview (R) | Ang preview database ay hindi nagsasala [§1.1] | Ang huling tsek ay nasa app (§2.1), kaya tama pa rin sa preview; ang totoong query ay susubukin sa test account |
 
 ---
 
@@ -165,6 +188,16 @@ Scan QR ─► nabasa ang QR?
   naghahanap → naka-save ang tinype, ang **susunod** na entry ay blangko; dalawang scan → huli ang panalo; umalis sa screen → walang error.
 - **B10:** ⇄ at pagbalik → form at kahon ay naibalik; ang kabilang screen ay walang napunan; "hold" → nabura ang lahat.
 - **May naka-type na / OCR / edit mode:** hindi pinapatungan; "Gamitin" → pinupunan; edit mode → walang query.
+- **Mula sa review:** row na walang platform pero hindi TikTok ang laman → tumutugma (ayon sa utos; naka-pin ang napiling
+  ugali — Tanong 2); lumang parcel na in-edit → nagbago ang store at petsa ng row → "huling na-update" ang salita; **ang
+  screen HABANG naghihintay** sa walang-tugma = ngayon (walang spinner, malaya ang pindutan); kahon at pagpipilian ay
+  nawawala sa bawat lugar ng B20, pati sa Import at sa pagpasok sa edit habang may hanap; platform at "unknown" ay muling
+  sinusuri sa app; higit sa 20 halos-kapangalan → nakikita pa rin ang totoong tugma; username na may `.` at `_` sa totoong
+  request; "no contact" o LINE na napili bago mag-scan → pagkatapos ng tugma: contact = na-scan, TikTok, naka-off ang "no
+  contact"; "Gamitin" → pangalan, phone, store lang; sagot pagkatapos ng timeout → itinatapon; FamilyMart: pumapasa sa
+  sarili nitong validation, hindi nagagalaw ang petsa ng order at fee; puno na ang batch at Frozen mode → walang binabago
+  ang hanap sa Save; ⇄ at pagbalik, tapos scan ng B → nabubura pa rin ang hindi ginalaw na details ng A; mga hanay ng
+  pagpipilian ≥ 44 px sa 360 px; petsa sa oras ng Taipei sa 8 wika; cursor ay hindi inaagaw.
 - **Walang binago:** payload ng Save (7-11 at FM) ay kapareho ng ngayon; export, batch cap, mga check — mga umiiral na suite,
   hindi ginagalaw. Naka-OFF → walang query at parehong DOM (B19).
 - **RLS / B14:** dalawang user sa PGlite o sa test account → walang row ng iba.
@@ -188,7 +221,26 @@ Scan QR ─► nabasa ang QR?
 ---
 
 ## 7. Self-audit (hiwalay na reviewer)
-> Pupunan pagkatapos ng review.
+Sinuri ng hiwalay na reviewer ang unang draft laban sa code at sa utos — hindi niya nakita ang pangangatwiran ko. **10 nakita
+(walang CRITICAL; 1 MEDIUM/HIGH, 4 MEDIUM, 5 LOW)**, lahat isinama. Sinuri ko muna sa code ang dalawang pinakamabigat.
+| # | Bigat | Nakita | Sinuri ko? | Ayos |
+|---|---|---|---|---|
+| 1 | MED/HIGH | Mali ang "hindi kailanman tinutugma ang hindi TikTok": ang "walang platform" ay may halong ibang app | Oo: `ParcelScan.tsx:169`, `CustomerDetails.tsx:191`, `buyerContact.ts:124-133` | §1.1, B13 (itinama), Tanong 2 |
+| 2 | MED | Ang petsa ng record ay huling sulat, hindi huling gamit; puwedeng lumang store | Oo: live na trigger (§1.1) | §1.1, B4b; "huling na-update" |
+| 3 | MED | Hindi tinukoy ang itsura habang naghihintay ("eksaktong gaya ngayon") | — | §2.1 |
+| 4 | MED | Hindi nakalista kung saan binubura ang kahon / pagpipilian / tanda | — | B20 |
+| 5 | MED/LOW | Kulang ang spec ng query (dalawang OR; preview; `_` at limit 20; "at N pa") | Oo: `fakeSupabase.ts:101-102` | §2.1, B23 |
+| 6 | LOW | Draft: manual entry lang; dalawang lugar ang dapat galawin | — | B10 |
+| 7 | LOW | Confirm card ng camera: marka ng OCR; ano ang isinusulat ng "Gamitin" | — | §3, B21 |
+| 8 | LOW | Cursor sa Amount ay puwedeng umagaw | — | §3, B22 |
+| 9 | LOW | Mahina ang konklusyon mula sa §1.2 (username ≠ scan; 2 buwan pa lang) | — | §0, §1.2 |
+| 10 | LOW | Mga desisyong hindi naitanong (4 s; 5 sa 20; kusang pagbura sa B1; petsa) | — | Tanong 8 |
+Mga pahayag na sinuri niya at **tama**: ang ginagawa ng Scan QR at ng parser ngayon; mga column at ang hanap ngayon; ang
+laman ng draft; sariling row lang sa SELECT sa dalawang table (`sql/35:52-53`, `sql/121:42-43`); nagti-trim ang trigger;
+WhatsApp/LINE ay may sariling platform; ang contact sa isang tugma ay kapareho ng nasa record; **totoo ang B1**; walang
+mounted check ang 7-11 handler; walang file ng printing, server, parser o schema sa listahan ng gagalawin.
+Hindi niya sinuri: ang mga bilang at oras ng §1.2/§1.3, mga live na policy, ang PostgREST, at ang mga mockup.
+**Tapat na kalagayan:** ang mga ayos sa 10 na ito ay hindi na muling ipinasuri.
 
 ---
 
@@ -196,21 +248,26 @@ Scan QR ─► nabasa ang QR?
 1. **Paglabas:** (a) bukas agad sa lahat ng may Parcel Scan, o (b) may switch na naka-OFF muna (admin lang ang makakakita
    hangga't hindi binubuksan)? Ang (b) ay nangangailangan ng **isang row** sa `app_settings` kapag bubuksan na (walang
    pagbabago sa schema).
-2. **Kulay ng kahon ng isang tugma:** asul ("Nahanap sa Customers… pakisuri") gaya ng nasa mockup, o dilaw gaya ng
-   pagpipilian?
-3. **Lumang record:** gusto mo bang mas matinding babala kapag matagal nang hindi nagamit ang record (hal. lampas 90 o 180
-   araw)? Ngayon ay petsa lang ang ipinapakita.
-4. **May naka-type na** (hal. galing sa OCR ng camera): sa plano, hindi pinapatungan — mungkahi na may pindutang "Gamitin".
-   Ayos ba?
-5. **Nag-e-edit ng naka-save na parcel:** sa plano, Scan QR ay gaya ngayon (walang hanap). Ayos ba?
+2. **"TikTok o walang platform":** ang "walang platform" ay may halong Instagram/LINE/Facebook na tinype bilang text (halos
+   lahat ng record ay walang platform). Kaya puwedeng tumugma ang TikTok na @x sa record na ang "x" ay IG ng ibang tao.
+   (a) Tanggapin gaya ng utos — "pakisuri" ang bantay (nasa plano); o (b) TikTok lang na **tahasang** naka-save bilang TikTok
+   — pero halos walang ganoong record ngayon, kaya halos walang matutugma.
+3. **Lumang record:** gusto mo bang mas matinding babala kapag matagal nang hindi na-update ang record (hal. lampas 90 o 180
+   araw)? Ngayon ay petsa lang.
+4. **May naka-type na** (hal. galing sa camera): hindi pinapatungan — mungkahi na may pindutang "Gamitin". Ayos ba?
+5. **Nag-e-edit ng naka-save na parcel:** Scan QR ay gaya ngayon (walang hanap). Ayos ba?
 6. **Dobleng record na pangalan lang ang iba** (725 username): pagpipilian pa rin, o kusang piliin ang pinakabago?
-7. Mga salita sa screen (nasa mockup ay mungkahi lang, English muna).
+7. **Kulay ng kahon ng isang tugma:** asul gaya ng nasa mockup, o dilaw gaya ng pagpipilian?
+8. **Mga pinili ko na puwede mong baguhin:** hintay na hanggang 4 na segundo; 5 ang ipinapakita sa pagpipilian; kapag
+   nag-scan ng bagong username, **kusang binubura** ang details na kusang napunan at hindi pa ginalaw (B1); ang petsa ay
+   "huling na-update".
+9. Mga salita sa screen (nasa mockup ay mungkahi lang, English muna).
 
 ---
 
 ## 9. Ano ang may patunay at ano ang HINDI PA
-**May patunay:** ang ginagawa ng Scan QR at ng parser ngayon (§1.1); ang bilang ng record bawat username at ang kalagayan ng
-naka-save na username (§1.2); ang bilis ng hanap sa database at na walang index na kailangan (§1.3); na ang "walang tugma" sa
+**May patunay:** ang ginagawa ng Scan QR at ng parser ngayon, paano naka-save ang platform, at na ang petsa ng record ay petsa
+ng huling sulat (§1.1); ang bilang ng record bawat username at ang kalagayan ng naka-save na username (§1.2); ang bilis ng hanap sa database at na walang index na kailangan (§1.3); na ang "walang tugma" sa
 mockup ay ang totoong screen ngayon (totoong QR na ipinasa sa totoong Scan QR — `docs/design/scan-qr-lookup/README.md`).
 
 **HINDI PA NAPAPATUNAYAN:**
@@ -219,4 +276,8 @@ mockup ay ang totoong screen ngayon (totoong QR na ipinasa sa totoong Scan QR �
 | Gumagana ang disenyo ng §2–§4 | Wala pang code; mga test ng §5 |
 | Bilis mula sa phone, kasama ang network; ang eksaktong query sa PostgREST | Sukat sa test account sa Hakbang 2 |
 | Itsura ng mga kahon sa dark theme at sa 8 wika | Totoong screen sa Hakbang 2 (light at English lang ang mockup) |
-| Na sapat ang "pakisuri" para hindi mapunan ng maling tao (B3) | Hindi ito mapapatunayan ng test — umaasa sa pagsusuri ng encoder |
+| Na sapat ang "pakisuri" para hindi mapunan ng maling tao (B3, B13) | Hindi ito mapapatunayan ng test — umaasa sa pagsusuri ng encoder |
+| Na ang mga record na walang platform ay TikTok username talaga | Hindi matutukoy mula sa data (Tanong 2) |
+| Gaano kadalas lalabas ang pagpipilian sa totoong gamit (bahagi ng mga **scan**) | Analytics pagkatapos ilabas |
+| Na gumagana ang pag-escape ng `_` at ang mga username na may `.` sa totoong request | Test account sa Hakbang 2 |
+| Tama at kumpleto ang mga ayos sa 10 nakita ng reviewer (§7) | Hindi na ipinasuri ulit |

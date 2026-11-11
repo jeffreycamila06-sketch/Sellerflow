@@ -27,7 +27,7 @@ const STATES = (fm) => {
   return [
     { id: "1-before-scan" },
     { id: "2-one-match", tone: "info", icon: "✓", title: "Found in Customers: @maria_shops — please check",
-      body: "Last used Nov 3. Check the details, then type the amount.",
+      body: "Last updated Nov 3. Check the details, then type the amount.",
       fill: { name: "王小美", phone: "0912345678", store, contact: "maria_shops" }, focusAmount: true },
     { id: "3-many-matches", tone: "warn", icon: "!", title: "3 saved records for @annc_tw — different stores",
       body: "Pick the right one (newest first), or type the details.", fill: { contact: "annc_tw" },
