@@ -69,10 +69,12 @@ Resulta (`compare-with-main.txt`): **24 sa 24 magkapareho.** (Preview database, 
 9. **Isang karaniwang space lang ang hinahanap pagkatapos ng `@` o ng username.** Ang record na may tab o 2+ space doon
    (1 sa live) at ang full-width na 全形 space (0 sa live) ay hindi makikita ng paghahanap.
 10. **Walang admin bypass**; **pagkatapos ng Import**, nililinis ang buong entry kapag may natitirang detalyeng pinunan ng
-    Scan QR.
-10b. **Parehong sticker na na-scan ulit** habang may laman ang form (hal. itinama ang pangalan): walang binubura at walang
-    bagong basa. Kapag ibang sticker ang sumunod, saka binabawi ang hindi ginalaw na detalye ng nauna.
-10c. **Pinalitan ang app ng buyer (hal. LINE) habang hinihintay ang sagot** → walang pinupunan.
+    Scan QR — kasama ang anumang itinama roon at ang na-type na amount.
+10b. **Parehong sticker na na-scan ulit** habang nasa form pa ang napunan nito (hal. itinama ang pangalan): walang binubura
+    at walang bagong basa. Para mapunan ulit, burahin muna ang pangalan, phone at store (lahat ng tatlo). Kapag ibang
+    sticker ang sumunod, saka binabawi ang hindi ginalaw na detalye ng nauna.
+10c. **Pinalitan ang app ng buyer (hal. LINE) habang hinihintay ang sagot** → walang pinupunan. (Kapag pinalitan
+    pagkatapos nang mapunan, nananatili ang napunan.)
 10d. **"Pinakabago" = huling naisulat na record.** Kapag ang lumang parcel ng buyer ay na-edit o na-recheck kamakailan, ang
     record nito ang nagiging "pinakabago" — puwedeng lumang store ang mapunan. Nakikita ng encoder; walang petsa o babala
     (inalis kasama ng kahon).
@@ -83,7 +85,8 @@ Resulta (`compare-with-main.txt`): **24 sa 24 magkapareho.** (Preview database, 
 10g. **Cancel habang binabasa pa ang QR na larawan:** may isa pa ring basa sa Customers (kapag bukas ang feature) para sa
     saradong form; walang lumalabas at malinis ang form pagbukas ulit.
 11. **Help guide:** tungkol lang sa pagpuno ang idinagdag (kasama ang "If nothing is filled in, type the details as usual."
-    at na ang panibagong scan ay pumapalit sa detalyeng pinunan ng nauna). Walang banggit tungkol sa pagpapalit ng entry sa
+    na binubura ng panibagong scan ang detalyeng pinunan ng nauna, at na nililinis ng Import ang entry na pinunan ng scan).
+    Walang banggit tungkol sa pagpapalit ng entry sa
     Customers. `sql/116b` ay ni-regenerate; **hindi in-apply.**
 12. **Para mabuksan:** i-apply ang `sql/149` (switch na naka-OFF + ang key), ilagay ang mga test account sa listahan, saka
     `sql/116b`. Hangga't hindi na-apply ang `sql/149`, naka-OFF ito sa lahat.

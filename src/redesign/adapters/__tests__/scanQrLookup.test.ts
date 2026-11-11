@@ -214,6 +214,11 @@ describe("which record is used — and the word that is NOT one person's usernam
     for (const phones of [[A, A, B, C], [A, A, A, B, B, C], [A, B, A, B, A, C], [A, A, A, A, A, A, B, C], [C, A, A, B]]) expect(recordToFill(list(phones)), phones.join(",")).toBeNull();
     for (const phones of [[A, A, B, B], [A, A, A, A, A, A, A, B], [A, B, A, B, A, B, A, B, A]]) expect(recordToFill(list(phones))?.id, phones.join(",")).toBe("r0");
   });
+  it("the WHOLE number is compared — two phones with the same last digits are two phones", () => {
+    expect(distinctPhones([row("a", "0911000001"), row("b", "0922000001"), row("c", "0933000001")])).toBe(3);
+    expect(recordToFill([row("a", "0911000001"), row("b", "0922000001"), row("c", "0933000001")])).toBeNull();
+    expect(recordToFill([row("a", "0911000001"), row("b", "0922000001")])?.id).toBe("a");
+  });
   it("phones that are not numbers are compared as written", () => {
     expect(distinctPhones([row("a", "abc"), row("b", "abd"), row("c", "abc")])).toBe(2);
     expect(recordToFill([row("a", "abc"), row("b", "abd"), row("c", "abe")])).toBeNull();

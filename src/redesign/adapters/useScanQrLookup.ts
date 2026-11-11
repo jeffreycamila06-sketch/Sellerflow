@@ -7,7 +7,8 @@
 //
 // Guards:
 //  • a new scan first blanks the details the last fill wrote and nobody touched since (A → B never mixes)
-//  • the SAME username scanned again while details are in the form: nothing is touched and nothing is read
+//  • the SAME username scanned again while details are in the form: nothing is touched (and, when the fill of the
+//    earlier scan is still remembered, nothing is read)
 //  • a fill happens only while name, phone and store are ALL still blank
 //  • no fill when the username's records have 3 or more different phones (a word used for many buyers)
 //  • every scan / reset / Save press takes a new number; an answer with an old number is dropped
