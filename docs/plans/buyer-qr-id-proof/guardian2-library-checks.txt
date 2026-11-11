@@ -1,0 +1,9 @@
+auto vs forced-same-version vs mock-today, URL len 1..30 at M: 30/30 identical
+format D strongest ECC at v3 by handle length 1..30 (Q/M/L; 4 = only v4-M fits; l = only v4-L; x = neither): QQQQQMMMMMMMMMMLLLLLLLLLLL4444
+format C (lowercase byte link + alnum code)                                                              : QMMMMMMMMMMLLLLLLLLLLL44444444
+v4 at M fits format D for handle lengths: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+v4 at M fits format C for handle lengths: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+decode (jsQR) + today's handleFromQrPayload (handle case kept) + URL parse host/path/?b: 120/120 ok 
+alphanumeric segment with a lowercase letter: THROWS(illegal char :a) · with "_": THROWS(illegal char :_) · with "?": THROWS(illegal char :?) · "HTTPS://TIKTOK.COM/": ok
+forced v3 at M, 16-char handle: null (library throws 'code length overflow' → caught) · forced v3 at L, 25-char handle: fits · 30-char: v3L null v4M fits v4L fits
+ms per matrix: today url M 1.384 · code v3 (M then L try) 10ch 1.653 · 20ch (M throws, then L) 1.313

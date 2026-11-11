@@ -1,0 +1,95 @@
+== 1. Version per username length (v2 = 25 modules, v3 = 29, v4 = 33, v5 = 37) ==
+code lengths: base32 8 = 40 bits, 10 = 50 bits, 12 = 60 bits, 13 = 65 bits · digits 15 = 49.8 bits, 18 = 59.8 bits
+
+A today (link only)                            code= 0 ECC M | 222222333333333333333344 | v3 up to 22 chars | orders at ≤v3: 99.7% | at ≤v4: 100.0%
+A today (link only)                            code= 0 ECC L | 222222222222333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code= 8 ECC M | 333333333334444444444444 | v3 up to 11 chars | orders at ≤v3: 56.5% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code= 8 ECC L | 233333333333333333333344 | v3 up to 22 chars | orders at ≤v3: 99.7% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code=10 ECC M | 333333333444444444444444 | v3 up to  9 chars | orders at ≤v3: 31.1% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code=10 ECC L | 333333333333333333334444 | v3 up to 20 chars | orders at ≤v3: 99.1% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code=12 ECC M | 333333344444444444444444 | v3 up to  7 chars | orders at ≤v3: 7.1% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code=12 ECC L | 333333333333333333444444 | v3 up to 18 chars | orders at ≤v3: 97.7% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code=13 ECC M | 333333444444444444444444 | v3 up to  6 chars | orders at ≤v3: 1.7% | at ≤v4: 100.0%
+B all byte  ?b=CODE                            code=13 ECC L | 333333333333333334444444 | v3 up to 17 chars | orders at ≤v3: 95.9% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code= 8 ECC M | 333333333333444444444444 | v3 up to 12 chars | orders at ≤v3: 67.0% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code= 8 ECC L | 223333333333333333333334 | v3 up to 23 chars | orders at ≤v3: 99.9% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code=10 ECC M | 333333333334444444444444 | v3 up to 11 chars | orders at ≤v3: 56.5% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code=10 ECC L | 233333333333333333333344 | v3 up to 22 chars | orders at ≤v3: 99.7% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code=12 ECC M | 333333333444444444444444 | v3 up to  9 chars | orders at ≤v3: 31.1% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code=12 ECC L | 333333333333333333334444 | v3 up to 20 chars | orders at ≤v3: 99.1% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code=13 ECC M | 333333334444444444444444 | v3 up to  8 chars | orders at ≤v3: 17.9% | at ≤v4: 100.0%
+C byte link + alnum CODE                       code=13 ECC L | 333333333333333333344444 | v3 up to 19 chars | orders at ≤v3: 98.5% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code= 8 ECC M | 333333333333333344444444 | v3 up to 16 chars | orders at ≤v3: 91.0% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code= 8 ECC L | 222222333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=10 ECC M | 333333333333333444444444 | v3 up to 15 chars | orders at ≤v3: 87.3% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=10 ECC L | 222223333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=12 ECC M | 333333333333344444444444 | v3 up to 13 chars | orders at ≤v3: 75.4% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=12 ECC L | 222333333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=13 ECC M | 333333333333344444444444 | v3 up to 13 chars | orders at ≤v3: 75.4% | at ≤v4: 100.0%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=13 ECC L | 222333333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+E as D, digits-only code (numeric mode)        code=15 ECC M | 333333333333333444444444 | v3 up to 15 chars | orders at ≤v3: 87.3% | at ≤v4: 100.0%
+E as D, digits-only code (numeric mode)        code=15 ECC L | 222223333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+E as D, digits-only code (numeric mode)        code=18 ECC M | 333333333333334444444444 | v3 up to 14 chars | orders at ≤v3: 82.4% | at ≤v4: 100.0%
+E as D, digits-only code (numeric mode)        code=18 ECC L | 222233333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+F as C, digits-only code (numeric mode)        code=15 ECC M | 333333333334444444444444 | v3 up to 11 chars | orders at ≤v3: 56.5% | at ≤v4: 100.0%
+F as C, digits-only code (numeric mode)        code=15 ECC L | 233333333333333333333344 | v3 up to 22 chars | orders at ≤v3: 99.7% | at ≤v4: 100.0%
+F as C, digits-only code (numeric mode)        code=18 ECC M | 333333333344444444444444 | v3 up to 10 chars | orders at ≤v3: 44.5% | at ≤v4: 100.0%
+F as C, digits-only code (numeric mode)        code=18 ECC L | 333333333333333333333444 | v3 up to 21 chars | orders at ≤v3: 99.5% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code= 8 ECC M | 223333333333333333444444 | v3 up to 18 chars | orders at ≤v3: 97.7% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code= 8 ECC L | 222222223333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code=10 ECC M | 233333333333333334444444 | v3 up to 17 chars | orders at ≤v3: 95.9% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code=10 ECC L | 222222233333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code=12 ECC M | 333333333333333444444444 | v3 up to 15 chars | orders at ≤v3: 87.3% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code=12 ECC L | 222223333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code=13 ECC M | 333333333333333444444444 | v3 up to 15 chars | orders at ≤v3: 87.3% | at ≤v4: 100.0%
+G as D, no param name  ?CODE                   code=13 ECC L | 222223333333333333333333 | v3 up to 24 chars | orders at ≤v3: 100.0% | at ≤v4: 100.0%
+
+(the 24 digits = the version for username length 1,2,…,24)
+
+== 2. "Strongest ECC that still fits version 3" — format D (the proposal) and C (lower-case fallback) ==
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=10 | per username length 1..24: Q Q Q Q Q M M M M M M M M M M L L L L L L L L L
+                                                        share of orders: ECC Q 0.1% · ECC M 87.1% · ECC L 12.7%
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   code=12 | per username length 1..24: Q Q Q M M M M M M M M M M L L L L L L L L L L L
+                                                        share of orders: ECC Q 0.0% · ECC M 75.4% · ECC L 24.6%
+G as D, no param name  ?CODE                   code=10 | per username length 1..24: Q Q Q Q Q Q Q M M M M M M M M M M L L L L L L L
+                                                        share of orders: ECC Q 7.1% · ECC M 88.8% · ECC L 4.1%
+C byte link + alnum CODE                       code=10 | per username length 1..24: Q M M M M M M M M M M L L L L L L L L L L L v4 v4
+                                                        share of orders: ECC Q 0.0% · ECC M 56.5% · ECC L 43.3% · needs v4 0.3%
+
+== 3. Does it decode, and what do today's parser and a URL parser make of it? ==
+B all byte  ?b=CODE                            ECC M modules=33 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=3AHRZ6DMV2
+B all byte  ?b=CODE                            ECC L modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=3AHRZ6DMV2
+C byte link + alnum CODE                       ECC M modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=3AHRZ6DMV2
+C byte link + alnum CODE                       ECC L modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=3AHRZ6DMV2
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   ECC M modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=3AHRZ6DMV2
+D ALNUM 'HTTPS://TIKTOK.COM/' + byte + alnum   ECC L modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=3AHRZ6DMV2
+E as D, digits-only code (numeric mode)        ECC M modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=307418529630741
+E as D, digits-only code (numeric mode)        ECC L modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=307418529630741
+F as C, digits-only code (numeric mode)        ECC M modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=307418529630741
+F as C, digits-only code (numeric mode)        ECC L modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?b=307418529630741
+G as D, no param name  ?CODE                   ECC M modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?3AHRZ6DMV2
+G as D, no param name  ?CODE                   ECC L modules=29 jsQR=true today'sParser→@maria_live URL host=tiktok.com path=/@maria_live query=?3AHRZ6DMV2
+
+== 4. Simulated damage at version 3: ECC M vs L (jsQR, 4 px/module, 400 tries each) — a SIMULATION, not paper ==
+flip      0.01 of modules flipped                     ECC M reads  68% · ECC L reads  59%
+flip      0.02 of modules flipped                     ECC M reads  32% · ECC L reads   4%
+flip      0.04 of modules flipped                     ECC M reads   0% · ECC L reads   0%
+flip      0.06 of modules flipped                     ECC M reads   0% · ECC L reads   0%
+flip      0.08 of modules flipped                     ECC M reads   0% · ECC L reads   0%
+whiteline    2 px wide white line (4 px = 1 module)   ECC M reads  86% · ECC L reads  88%
+whiteline    4 px wide white line (4 px = 1 module)   ECC M reads  81% · ECC L reads  70%
+whiteline    6 px wide white line (4 px = 1 module)   ECC M reads  66% · ECC L reads  60%
+whiteline    8 px wide white line (4 px = 1 module)   ECC M reads  42% · ECC L reads  18%
+whiteline   12 px wide white line (4 px = 1 module)   ECC M reads  25% · ECC L reads   0%
+blotch       3 modules square black blotch            ECC M reads  84% · ECC L reads  84%
+blotch       4 modules square black blotch            ECC M reads  76% · ECC L reads  76%
+blotch       5 modules square black blotch            ECC M reads  75% · ECC L reads  71%
+blotch       6 modules square black blotch            ECC M reads  71% · ECC L reads  58%
+blotch       8 modules square black blotch            ECC M reads  61% · ECC L reads   3%
+
+== 5. Chance that two buyers of ONE seller get the same code (birthday bound n²/2^(bits+1)) ==
+40 bits: 8,000 buyers → 1 in 34,360 · 50,000 buyers → 1 in 880 · 100,000 buyers → 1 in 220 · 1,000,000 buyers → 1 in 2
+50 bits: 8,000 buyers → 1 in 35,184,372 · 50,000 buyers → 1 in 900,720 · 100,000 buyers → 1 in 225,180 · 1,000,000 buyers → 1 in 2,252
+60 bits: 8,000 buyers → 1 in 36,028,797,019 · 50,000 buyers → 1 in 922,337,204 · 100,000 buyers → 1 in 230,584,301 · 1,000,000 buyers → 1 in 2,305,843
+65 bits: 8,000 buyers → 1 in 1,152,921,504,607 · 50,000 buyers → 1 in 29,514,790,518 · 100,000 buyers → 1 in 7,378,697,629 · 1,000,000 buyers → 1 in 73,786,976
+(largest seller today: 7,977 TikTok buyers in the CRM table)

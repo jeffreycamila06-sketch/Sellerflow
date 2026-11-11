@@ -19,27 +19,29 @@ const C = {
   info: { bd: "var(--accent)", bg: "var(--accent-soft)", fg: "var(--accent-text, var(--accent))" },
   bad: { bd: "var(--danger)", bg: "var(--danger-soft)", fg: "var(--danger)" },
 };
-// state → what the encoder sees right after Scan QR
-const STATES = (fm) => [
-  { id: "1-before-scan" },
-  { id: "2-known-buyer", tone: "ok", icon: "✓", title: "Buyer found by QR · @maria_shops",
-    body: "Filled with the details you last saved for this buyer (Nov 3). Check them, then type the amount.", actions: ["Not this buyer"],
-    fill: { name: "王小美", phone: "0912345678", store: fm ? "022131" : "266402", contact: "maria_shops" }, chip: "@maria_shops", focusAmount: true },
-  { id: "3-new-buyer", tone: "info", icon: "＋", title: "New buyer · @newbuyer_tw",
-    body: "No saved details for this QR yet. Type them once — next time this QR fills them.", actions: ["Find in Customers"],
-    fill: { contact: "newbuyer_tw" }, chip: "@newbuyer_tw" },
-  { id: "4-other-shop", tone: "bad", icon: "✕", title: "This sticker is from another shop",
-    body: "Nothing was filled. Scan a sticker printed from this account, or use Customers." },
-  { id: "5-old-sticker", tone: "warn", icon: "!", title: "Old sticker · found by username @maria_shops",
-    body: "These are the details saved for this username. Please check before saving — a username can change owner.",
-    fill: { name: "王小美", phone: "0912345678", store: fm ? "022131" : "266402", contact: "maria_shops" } },
-  { id: "6-other-carrier", tone: "warn", icon: "!", title: "Buyer found by QR · @maria_shops",
-    body: fm ? "Name and phone are from this buyer's 7-11 details. Type the FamilyMart store." : "Name and phone are from this buyer's FamilyMart details. Type the 7-11 store.",
-    fill: { name: "王小美", phone: "0912345678", contact: "maria_shops" }, chip: "@maria_shops", actions: ["Not this buyer"] },
-  { id: "7-choose", tone: "warn", icon: "!", title: "Found by username @annc_tw · 3 saved details",
-    body: "Pick the right one, or type new details.", chip: "@annc_tw", fill: { contact: "annc_tw" },
-    choices: [["陳安安", "0922333444", fm ? "022131" : "133712", "Nov 3"], ["陳安安", "0955123456", fm ? "018274" : "991120", "Oct 12"], ["Ann Chen", "0922333444", fm ? "022131" : "150210", "Sep 28"]] },
-];
+// state → what the encoder sees right after Scan QR (plan v4: three kinds of result —
+// GREEN = known by the QR code · YELLOW = filled but "please check", with ONE reason · NOTE = a short message)
+const STATES = (fm) => {
+  const store = fm ? "022131" : "266402", store2 = fm ? "018274" : "133712";
+  return [
+    { id: "1-before-scan" },
+    { id: "2-green-known", tone: "ok", icon: "✓", title: "Buyer found · @maria_shops",
+      body: "Last used Nov 3. Check the details, then type the amount.",
+      fill: { name: "王小美", phone: "0912345678", store, contact: "maria_shops" }, chip: "@maria_shops", focusAmount: true },
+    { id: "3-yellow-two-stores", tone: "warn", icon: "!", title: "This buyer used 2 stores — please check",
+      body: "The newest is selected. Tap another to use it.", chip: "@maria_shops",
+      fill: { name: "王小美", phone: "0912345678", store, contact: "maria_shops" },
+      choices: [["王小美", "0912345678", store, "Nov 3", true], ["王小美", "0912345678", store2, "Oct 12", false]] },
+    { id: "4-yellow-username", tone: "warn", icon: "!", title: "Found by username @maria_shops — please check",
+      body: "This sticker has no buyer code. These are the details saved in Customers for this username (last used Oct 28).",
+      fill: { name: "王小美", phone: "0912345678", store, contact: "maria_shops" } },
+    { id: "5-yellow-username-changed", tone: "warn", icon: "!", title: "The sticker shows a new username — please check",
+      body: "Saved contact: @maria_shops · on the sticker: @maria_live.", chip: "@maria_live", actions: ["Use @maria_live"],
+      fill: { name: "王小美", phone: "0912345678", store, contact: "maria_shops" } },
+    { id: "6-note-no-details", note: "Filled @newbuyer_tw from QR — type the name, phone and store once.",
+      fill: { contact: "newbuyer_tw" }, chip: "@newbuyer_tw" },
+  ];
+};
 
 async function openManual(p, fm) {
   await p.goto("http://localhost:5199/", { waitUntil: "networkidle" });
@@ -59,6 +61,22 @@ async function applyState(p, fm, st) {
   if (f.phone) await p.fill(`[data-testid="${k}-phone"]`, f.phone);
   if (f.store) await p.fill(`[data-testid="${k}-store"]`, f.store);
   if (f.contact) await p.locator(`[data-testid="${k}-bc-field"] input:not([type="checkbox"])`).first().fill(f.contact);
+  if (st.note) {
+    await p.evaluate(({ k, st }) => {
+      const cardEl = document.querySelector(`[data-testid="${k}-confirm"]`);
+      const head = cardEl.children[0];
+      const line = document.createElement("div");
+      line.setAttribute("data-mock", "note");
+      line.style.cssText = "margin:0 0 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--text-dim);line-height:1.35";
+      line.innerHTML = `<span>${st.note}</span>` + (st.chip ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--border-strong);background:var(--surface);font-size:10.5px;font-weight:700;color:var(--text)">▣ QR: ${st.chip} <span style="color:var(--text-dim);font-weight:800">✕</span></span>` : "");
+      head.insertAdjacentElement("afterend", line);
+      const tag = document.createElement("div");
+      tag.setAttribute("data-mock", "tag");
+      tag.textContent = "MOCKUP · not built yet";
+      tag.style.cssText = "position:fixed;right:8px;bottom:6px;z-index:99999;padding:2px 7px;border-radius:6px;background:#111;color:#fff;font:700 10px/1.4 system-ui;opacity:.85;pointer-events:none";
+      document.body.appendChild(tag);
+    }, { k, st });
+  }
   if (st.title) {
     await p.evaluate(({ k, st, c }) => {
       const cardEl = document.querySelector(`[data-testid="${k}-confirm"]`);
@@ -67,9 +85,9 @@ async function applyState(p, fm, st) {
       box.setAttribute("data-mock", "banner");
       box.style.cssText = `margin:0 0 10px;padding:9px 11px;border-radius:11px;border:1px solid ${c.bd};background:${c.bg};display:flex;gap:9px;align-items:flex-start;`;
       const chip = st.chip ? `<span style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border-strong);background:var(--surface);font-size:10.5px;font-weight:700;color:var(--text)">▣ QR: ${st.chip} <span style="color:var(--text-dim);font-weight:800">✕</span></span>` : "";
-      const rows = (st.choices || []).map((r, i) => `<button type="button" style="display:flex;width:100%;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;padding:8px 10px;border-radius:9px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);font-family:var(--font-ui);font-size:12px;font-weight:700;text-align:left;min-height:44px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[0]} · ${r[1]} · ${r[2]}</span><span style="flex-shrink:0;font-size:10.5px;font-weight:600;color:var(--text-dim)">${r[3]}</span></button>`).join("");
-      const acts = (st.actions || []).map((a) => `<span style="display:inline-flex;align-items:center;margin:6px 0 0 6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border-strong);background:transparent;font-size:10.5px;font-weight:700;color:var(--text-dim);text-decoration:underline">${a}</span>`).join("");
-      const none = st.choices ? `<button type="button" style="margin-top:6px;padding:8px 10px;border-radius:9px;border:1px dashed var(--border-strong);background:transparent;color:var(--text-dim);font-family:var(--font-ui);font-size:12px;font-weight:700;width:100%;min-height:44px">None of these — I'll type the details</button>` : "";
+      const rows = (st.choices || []).map((r) => `<button type="button" style="display:flex;width:100%;align-items:center;gap:8px;margin-top:6px;padding:8px 10px;border-radius:9px;border:${r[4] ? "2px solid var(--accent)" : "1px solid var(--border-strong)"};background:var(--surface);color:var(--text);font-family:var(--font-ui);font-size:12px;font-weight:700;text-align:left;min-height:44px"><span style="flex-shrink:0;width:14px;height:14px;border-radius:999px;border:2px solid ${r[4] ? "var(--accent)" : "var(--border-strong)"};background:${r[4] ? "var(--accent)" : "transparent"};box-shadow:inset 0 0 0 2px var(--surface)"></span><span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[0]} · ${r[1]} · ${r[2]}</span><span style="flex-shrink:0;font-size:10.5px;font-weight:600;color:var(--text-dim)">${r[3]}</span></button>`).join("");
+      const acts = (st.actions || []).map((a) => `<span style="display:inline-flex;align-items:center;margin:6px 0 0 6px;padding:3px 8px;border-radius:999px;border:1px solid var(--border-strong);background:transparent;font-size:10.5px;font-weight:700;color:var(--accent-text, var(--accent));border-color:var(--accent)">${a}</span>`).join("");
+      const none = "";
       box.innerHTML = `<div style="flex-shrink:0;width:20px;height:20px;border-radius:999px;background:${c.fg};color:var(--surface);font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;margin-top:1px">${st.icon}</div>` +
         `<div style="min-width:0;flex:1"><div style="font-size:12.5px;font-weight:800;color:var(--text);overflow-wrap:anywhere">${st.title}</div>` +
         `<div style="font-size:11.5px;font-weight:600;color:var(--text-dim);margin-top:2px;line-height:1.35">${st.body}</div>${chip}${acts}${rows}${none}</div>`;

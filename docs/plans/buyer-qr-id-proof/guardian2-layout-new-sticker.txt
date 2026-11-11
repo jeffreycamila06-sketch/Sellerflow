@@ -1,0 +1,580 @@
+SUMMARY 1S: handles 7-22 chars, code v3 vs today's link — identical layout (every line, QR box, warnings) in 480/480 cases · ECC L vs ECC M vs today (10 and 15 chars) identical layout 192/192 · printed QR decodes to the link+code and today's parser returns the handle 531/531 · smallest QR-to-label-right-edge gap 16 dots · v4-M drops the module to 4 dots where v3 keeps more: 0 cases
+50x30 | AIMO D520 | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×1 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | AIMO D520 | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | AIMO D520 | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | XP-420B | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | XP-420B | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×1 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES
+50x30 | XP-420B | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | XP-420B | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | XP-420B | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | XP-420B | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | XP-420B | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | XP-420B | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | XP-420B | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | XP-420B | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×1 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | Flash Y41BT | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | Flash Y41BT | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 20d bPx 46 [name:width] | CODE v3 v3 5d/mod 18.1mm gapR 20d bPx 46 [name:width] TEXT CHANGES
+50x30 | Niimbot | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 20d bPx 46 [name:width] | CODE v3 v3 5d/mod 18.1mm gapR 20d bPx 46 [name:width] TEXT CHANGES
+50x30 | Niimbot | Buyer#×1 | @16ch | v3-L v3 5d/mod 18.1mm gapR 20d bPx 46 [name:width] | v4-M v4 5d/mod 20.6mm gapR 20d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×1 | @22ch | v3-L v3 5d/mod 18.1mm gapR 20d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 20d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×1 | @24ch | TODAY v4 5d/mod 20.6mm gapR 20d bPx 46 [name:width,user:width] | CODE v3 v3 5d/mod 18.1mm gapR 20d bPx 46 [name:width,user:width] TEXT CHANGES
+50x30 | Niimbot | Buyer#×1 | @24ch | v3-L v3 5d/mod 18.1mm gapR 20d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 20d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 65 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller] TEXT CHANGES
+50x30 | Niimbot | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 65 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller] TEXT CHANGES
+50x30 | Niimbot | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | Niimbot | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 65 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller] TEXT CHANGES
+50x30 | Niimbot | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 65 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller] TEXT CHANGES
+50x30 | Niimbot | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x30 | Niimbot | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | Niimbot | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | laptop | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 46 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width] TEXT CHANGES
+50x30 | laptop | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×1 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES
+50x30 | laptop | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 46 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 46 [name:width,user:width] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | laptop | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 69 [] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | laptop | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | laptop | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | laptop | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 70 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] TEXT CHANGES
+50x30 | laptop | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x30 | laptop | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] TEXT CHANGES
+50x30 | laptop | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×1 | @2ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | AIMO D520 | Buyer#×1 | @6ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | AIMO D520 | Buyer#×1 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×1 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×1 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES
+50x40 | AIMO D520 | Buyer#×1 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | AIMO D520 | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | AIMO D520 | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | AIMO D520 | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | AIMO D520 | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | AIMO D520 | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | AIMO D520 | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | AIMO D520 | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×1 | @2ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | XP-420B | Buyer#×1 | @6ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | XP-420B | Buyer#×1 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×1 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×1 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES
+50x40 | XP-420B | Buyer#×1 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | XP-420B | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | XP-420B | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | XP-420B | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | XP-420B | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | XP-420B | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | XP-420B | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | XP-420B | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×1 | @2ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | Flash Y41BT | Buyer#×1 | @6ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | Flash Y41BT | Buyer#×1 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×1 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×1 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES
+50x40 | Flash Y41BT | Buyer#×1 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Flash Y41BT | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Flash Y41BT | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | Flash Y41BT | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Flash Y41BT | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Flash Y41BT | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Flash Y41BT | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | Flash Y41BT | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×1 | @2ch | TODAY v2 5d/mod 15.6mm gapR 20d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 57 [name:width] QR only
+50x40 | Niimbot | Buyer#×1 | @6ch | TODAY v2 5d/mod 15.6mm gapR 20d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 57 [name:width] QR only
+50x40 | Niimbot | Buyer#×1 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×1 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×1 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 57 [name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 57 [name:width,user:width] TEXT CHANGES
+50x40 | Niimbot | Buyer#×1 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 61 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Niimbot | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 61 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Niimbot | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | Niimbot | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 61 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Niimbot | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 61 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | Niimbot | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | Niimbot | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | Niimbot | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 60 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 57 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×1 | @2ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | laptop | Buyer#×1 | @6ch | TODAY v2 5d/mod 15.6mm gapR 16d bPx 57 [name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] QR only
+50x40 | laptop | Buyer#×1 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×1 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×1 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES
+50x40 | laptop | Buyer#×1 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 57 [name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 57 [name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | laptop | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | laptop | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | laptop | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | laptop | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 67 [buyer:smaller,name:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] TEXT CHANGES
+50x40 | laptop | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+50x40 | laptop | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] TEXT CHANGES
+50x40 | laptop | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 65 [buyer:smaller,name:width,user:width] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 60 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | AIMO D520 | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | AIMO D520 | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | XP-420B | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | XP-420B | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES
+60x40 | XP-420B | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | XP-420B | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | XP-420B | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | XP-420B | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | XP-420B | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | XP-420B | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | XP-420B | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | XP-420B | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | Flash Y41BT | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | Flash Y41BT | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 20d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 20d bPx 61 [name:width] TEXT CHANGES
+60x40 | Niimbot | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 20d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 20d bPx 61 [name:width] TEXT CHANGES
+60x40 | Niimbot | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 20d bPx 61 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 20d bPx 61 [name:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 20d bPx 61 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 20d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×1 | @24ch | TODAY v4 5d/mod 20.6mm gapR 20d bPx 61 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 20d bPx 61 [name:width,user:width] TEXT CHANGES
+60x40 | Niimbot | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 20d bPx 61 [name:width,user:width] | v4-M v4 5d/mod 20.6mm gapR 20d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 87 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] TEXT CHANGES
+60x40 | Niimbot | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 87 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] TEXT CHANGES
+60x40 | Niimbot | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] TEXT CHANGES
+60x40 | Niimbot | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 87 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] TEXT CHANGES
+60x40 | Niimbot | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 87 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] TEXT CHANGES
+60x40 | Niimbot | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+60x40 | Niimbot | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] TEXT CHANGES
+60x40 | Niimbot | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 82 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 78 [buyer:smaller,name:width,user:width] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | laptop | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 61 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] TEXT CHANGES
+60x40 | laptop | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES
+60x40 | laptop | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 61 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 61 [name:width,user:width] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | laptop | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | laptop | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | laptop | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | laptop | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 91 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | laptop | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+60x40 | laptop | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] TEXT CHANGES
+60x40 | laptop | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 87 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 82 [buyer:smaller,user:width] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | AIMO D520 | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | AIMO D520 | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | XP-420B | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | XP-420B | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES
+70x50 | XP-420B | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | XP-420B | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | XP-420B | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | XP-420B | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | XP-420B | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | XP-420B | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | XP-420B | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | XP-420B | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Flash Y41BT | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | Flash Y41BT | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 20d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 20d bPx 76 [name:width] TEXT CHANGES
+70x50 | Niimbot | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 20d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 20d bPx 76 [name:width] TEXT CHANGES
+70x50 | Niimbot | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 20d bPx 76 [name:width] | v4-M v4 6d/mod 24.8mm gapR 20d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 20d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 20d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 20d bPx 76 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 20d bPx 76 [name:width,user:width] TEXT CHANGES
+70x50 | Niimbot | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 20d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 20d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 109 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] TEXT CHANGES
+70x50 | Niimbot | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 109 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] TEXT CHANGES
+70x50 | Niimbot | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] TEXT CHANGES
+70x50 | Niimbot | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 109 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] TEXT CHANGES
+70x50 | Niimbot | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 20d bPx 109 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] TEXT CHANGES
+70x50 | Niimbot | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | Niimbot | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] TEXT CHANGES
+70x50 | Niimbot | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 20d bPx 105 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 20d bPx 101 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | laptop | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [name:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES
+70x50 | laptop | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES
+70x50 | laptop | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [name:width,user:width] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | laptop | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | laptop | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | laptop | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | laptop | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 113 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | laptop | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+70x50 | laptop | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] TEXT CHANGES
+70x50 | laptop | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 109 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 105 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | AIMO D520 | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | AIMO D520 | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | AIMO D520 | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [] QR bigger only
+80x50 | AIMO D520 | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | AIMO D520 | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES
+80x50 | AIMO D520 | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | AIMO D520 | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | AIMO D520 | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | AIMO D520 | Buyer#×1.5 | @16ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | AIMO D520 | Buyer#×1.5 | @22ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | AIMO D520 | Buyer#×1.5 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] TEXT CHANGES
+80x50 | AIMO D520 | Buyer#×1.5 | @24ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] TEXT CHANGES vs v3
+80x50 | AIMO D520 | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | AIMO D520 | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | AIMO D520 | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | AIMO D520 | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | AIMO D520 | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | AIMO D520 | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | XP-420B | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | XP-420B | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | XP-420B | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [] QR bigger only
+80x50 | XP-420B | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | XP-420B | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES
+80x50 | XP-420B | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | XP-420B | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | XP-420B | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | XP-420B | Buyer#×1.5 | @16ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | XP-420B | Buyer#×1.5 | @22ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | XP-420B | Buyer#×1.5 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] TEXT CHANGES
+80x50 | XP-420B | Buyer#×1.5 | @24ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] TEXT CHANGES vs v3
+80x50 | XP-420B | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | XP-420B | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | XP-420B | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | XP-420B | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | XP-420B | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | XP-420B | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | Flash Y41BT | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | Flash Y41BT | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | Flash Y41BT | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [] QR bigger only
+80x50 | Flash Y41BT | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | Flash Y41BT | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES
+80x50 | Flash Y41BT | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | Flash Y41BT | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | Flash Y41BT | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | Flash Y41BT | Buyer#×1.5 | @16ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | Flash Y41BT | Buyer#×1.5 | @22ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | Flash Y41BT | Buyer#×1.5 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] TEXT CHANGES
+80x50 | Flash Y41BT | Buyer#×1.5 | @24ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] TEXT CHANGES vs v3
+80x50 | Flash Y41BT | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | Flash Y41BT | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | Flash Y41BT | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | Flash Y41BT | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | Flash Y41BT | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | Flash Y41BT | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | laptop | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | laptop | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 76 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [] QR only
+80x50 | laptop | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [] QR bigger only
+80x50 | laptop | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | laptop | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES
+80x50 | laptop | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 76 [user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 76 [user:width] TEXT CHANGES vs v3
+80x50 | laptop | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | laptop | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 114 [] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] QR only
+80x50 | laptop | Buyer#×1.5 | @16ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | laptop | Buyer#×1.5 | @22ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [] QR bigger only
+80x50 | laptop | Buyer#×1.5 | @24ch | TODAY v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] | CODE v3 v3 5d/mod 18.1mm gapR 16d bPx 114 [] TEXT CHANGES
+80x50 | laptop | Buyer#×1.5 | @24ch | v3-L v3 5d/mod 18.1mm gapR 16d bPx 114 [] | v4-M v4 5d/mod 20.6mm gapR 16d bPx 114 [user:width] TEXT CHANGES vs v3
+80x50 | laptop | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | laptop | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | laptop | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | laptop | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x50 | laptop | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x50 | laptop | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | AIMO D520 | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | AIMO D520 | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | XP-420B | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | XP-420B | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES
+80x60 | XP-420B | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | XP-420B | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | XP-420B | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | XP-420B | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | XP-420B | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | XP-420B | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | XP-420B | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | XP-420B | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | Flash Y41BT | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | Flash Y41BT | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | laptop | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES
+80x60 | laptop | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES
+80x60 | laptop | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [name:width,user:width] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [name:width,user:width] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×1.5 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | laptop | Buyer#×1.5 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | laptop | Buyer#×1.5 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×1.5 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×1.5 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | laptop | Buyer#×1.5 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | laptop | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 135 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | laptop | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+80x60 | laptop | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] TEXT CHANGES
+80x60 | laptop | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 131 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 127 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | AIMO D520 | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | AIMO D520 | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | AIMO D520 | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | AIMO D520 | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | AIMO D520 | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | AIMO D520 | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | AIMO D520 | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | AIMO D520 | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | AIMO D520 | Buyer#×1.5 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | AIMO D520 | Buyer#×1.5 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | AIMO D520 | Buyer#×1.5 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | AIMO D520 | Buyer#×1.5 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | AIMO D520 | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | AIMO D520 | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | AIMO D520 | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | AIMO D520 | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | AIMO D520 | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | AIMO D520 | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | XP-420B | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | XP-420B | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | XP-420B | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | XP-420B | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | XP-420B | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | XP-420B | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | XP-420B | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | XP-420B | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | XP-420B | Buyer#×1.5 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | XP-420B | Buyer#×1.5 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | XP-420B | Buyer#×1.5 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | XP-420B | Buyer#×1.5 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | XP-420B | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | XP-420B | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | XP-420B | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | XP-420B | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | XP-420B | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | XP-420B | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | Flash Y41BT | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | Flash Y41BT | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | Flash Y41BT | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | Flash Y41BT | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | Flash Y41BT | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | Flash Y41BT | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | Flash Y41BT | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | Flash Y41BT | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | Flash Y41BT | Buyer#×1.5 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | Flash Y41BT | Buyer#×1.5 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | Flash Y41BT | Buyer#×1.5 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | Flash Y41BT | Buyer#×1.5 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | Flash Y41BT | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | Flash Y41BT | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | Flash Y41BT | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | Flash Y41BT | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | Flash Y41BT | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | Flash Y41BT | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | laptop | Buyer#×1 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | laptop | Buyer#×1 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | laptop | Buyer#×1 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | laptop | Buyer#×1 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | laptop | Buyer#×1 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 91 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 91 [] QR only
+100x60 | laptop | Buyer#×1 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 91 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 91 [] QR bigger only
+100x60 | laptop | Buyer#×1.5 | @2ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | laptop | Buyer#×1.5 | @6ch | TODAY v2 6d/mod 18.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | laptop | Buyer#×1.5 | @16ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | laptop | Buyer#×1.5 | @22ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | laptop | Buyer#×1.5 | @24ch | TODAY v4 6d/mod 24.8mm gapR 16d bPx 137 [] | CODE v3 v3 6d/mod 21.8mm gapR 16d bPx 137 [] QR only
+100x60 | laptop | Buyer#×1.5 | @24ch | v3-L v3 6d/mod 21.8mm gapR 16d bPx 137 [] | v4-M v4 6d/mod 24.8mm gapR 16d bPx 137 [] QR bigger only
+100x60 | laptop | Buyer#×2 | @2ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | laptop | Buyer#×2 | @6ch | TODAY v2 4d/mod 12.5mm gapR 16d bPx 179 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | laptop | Buyer#×2 | @16ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | laptop | Buyer#×2 | @22ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+100x60 | laptop | Buyer#×2 | @24ch | TODAY v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] | CODE v3 v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] TEXT CHANGES
+100x60 | laptop | Buyer#×2 | @24ch | v3-L v3 4d/mod 14.5mm gapR 16d bPx 174 [buyer:smaller] | v4-M v4 4d/mod 16.5mm gapR 16d bPx 170 [buyer:smaller] TEXT CHANGES vs v3
+1S 60x40 with the @username row OFF and qr ON: QR STILL PRINTS (v3 6d/mod 21.8mm gapR 16d)
+1S 45x30 qr forced ON, code sticker: no QR
+v4mod4: 
