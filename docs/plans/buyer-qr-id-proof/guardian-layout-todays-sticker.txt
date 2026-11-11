@@ -1,0 +1,185 @@
+100x60 d520 short @2ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic short @2ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 short @6ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic short @6ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 short @10ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic short @10ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 short @22ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic short @22ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 short @24ch: TODAY v4 33x4=132d foot164 x0=628 y0=308 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic short @24ch: TODAY v4 33x4=132d foot164 x0=628 y0=308 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 longC @2ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic longC @2ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 longC @6ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic longC @6ch: TODAY v2 25x4=100d foot132 x0=660 y0=340 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 longC @10ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic longC @10ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 longC @22ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic longC @22ch: TODAY v3 29x4=116d foot148 x0=644 y0=324 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 d520 longC @24ch: TODAY v4 33x4=132d foot164 x0=628 y0=308 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+100x60 generic longC @24ch: TODAY v4 33x4=132d foot164 x0=628 y0=308 | NEW v3 29x4=116d foot148 x0=644 y0=324 | QR-only
+80x60 d520 short @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic short @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 d520 short @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic short @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 d520 short @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic short @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 d520 short @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic short @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 d520 short @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=308 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic short @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=308 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 d520 longC @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | TEXT REFLOW
+80x60 generic longC @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | TEXT REFLOW
+80x60 d520 longC @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | TEXT REFLOW
+80x60 generic longC @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=340 | NEW v3 29x4=116d foot148 x0=484 y0=324 | TEXT REFLOW
+80x60 d520 longC @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic longC @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 d520 longC @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic longC @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=324 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 d520 longC @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=308 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x60 generic longC @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=308 | NEW v3 29x4=116d foot148 x0=484 y0=324 | QR-only
+80x50 d520 short @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic short @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 short @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic short @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 short @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic short @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 short @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic short @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 short @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=228 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic short @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=228 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 longC @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic longC @2ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 longC @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic longC @6ch: TODAY v2 25x4=100d foot132 x0=500 y0=260 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 longC @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic longC @10ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 longC @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic longC @22ch: TODAY v3 29x4=116d foot148 x0=484 y0=244 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 d520 longC @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=228 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+80x50 generic longC @24ch: TODAY v4 33x4=132d foot164 x0=468 y0=228 | NEW v3 29x4=116d foot148 x0=484 y0=244 | QR-only
+70x50 d520 short @2ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic short @2ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 short @6ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic short @6ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 short @10ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic short @10ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 short @22ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic short @22ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 short @24ch: TODAY v4 33x4=132d foot164 x0=388 y0=228 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic short @24ch: TODAY v4 33x4=132d foot164 x0=388 y0=228 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 longC @2ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic longC @2ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 longC @6ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic longC @6ch: TODAY v2 25x4=100d foot132 x0=420 y0=260 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 longC @10ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic longC @10ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 longC @22ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic longC @22ch: TODAY v3 29x4=116d foot148 x0=404 y0=244 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 d520 longC @24ch: TODAY v4 33x4=132d foot164 x0=388 y0=228 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+70x50 generic longC @24ch: TODAY v4 33x4=132d foot164 x0=388 y0=228 | NEW v3 29x4=116d foot148 x0=404 y0=244 | QR-only
+60x40 d520 short @2ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+60x40 d520 short @6ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+60x40 d520 short @10ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+60x40 d520 short @22ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+60x40 d520 short @24ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=283 y0=57 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+60x40 d520 longC @2ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | TEXT REFLOW
+60x40 d520 longC @6ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | TEXT REFLOW
+60x40 d520 longC @10ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+60x40 d520 longC @22ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+60x40 d520 longC @24ch: TODAY NONE | NEW NONE | IDENTICAL(!)
+60x40 generic(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=283 y0=57 | NEW v3 29x5=145d foot185 x0=303 y0=67 | TEXT REFLOW
+50x30 d520 short @2ch: TODAY v2 25x5=125d foot165 x0=231 y0=37 | NEW v3 29x5=145d foot185 x0=211 y0=27 | TEXT REFLOW
+50x30 generic(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+50x30 niimbot(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+50x30 d520 short @6ch: TODAY v2 25x5=125d foot165 x0=231 y0=37 | NEW v3 29x5=145d foot185 x0=211 y0=27 | TEXT REFLOW
+50x30 generic(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+50x30 niimbot(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+50x30 d520 short @10ch: TODAY v3 29x5=145d foot185 x0=211 y0=27 | NEW v3 29x5=145d foot185 x0=211 y0=27 | QR-only
+50x30 generic(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+50x30 niimbot(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+50x30 d520 short @22ch: TODAY v3 29x5=145d foot185 x0=211 y0=27 | NEW v3 29x5=145d foot185 x0=211 y0=27 | QR-only
+50x30 generic(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+50x30 niimbot(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+50x30 d520 short @24ch: TODAY v4 33x5=165d foot205 x0=191 y0=17 | NEW v3 29x5=145d foot185 x0=211 y0=27 | TEXT REFLOW
+50x30 generic(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=195 y0=17 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+50x30 niimbot(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=183 y0=9 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+50x30 d520 longC @2ch: TODAY v2 25x5=125d foot165 x0=231 y0=37 | NEW v3 29x5=145d foot185 x0=211 y0=27 | TEXT REFLOW
+50x30 generic(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+50x30 niimbot(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+50x30 d520 longC @6ch: TODAY v2 25x5=125d foot165 x0=231 y0=37 | NEW v3 29x5=145d foot185 x0=211 y0=27 | TEXT REFLOW
+50x30 generic(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+50x30 niimbot(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+50x30 d520 longC @10ch: TODAY v3 29x5=145d foot185 x0=211 y0=27 | NEW v3 29x5=145d foot185 x0=211 y0=27 | QR-only
+50x30 generic(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+50x30 niimbot(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+50x30 d520 longC @22ch: TODAY v3 29x5=145d foot185 x0=211 y0=27 | NEW v3 29x5=145d foot185 x0=211 y0=27 | QR-only
+50x30 generic(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+50x30 niimbot(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+50x30 d520 longC @24ch: TODAY v4 33x5=165d foot205 x0=191 y0=17 | NEW v3 29x5=145d foot185 x0=211 y0=27 | TEXT REFLOW
+50x30 generic(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=195 y0=17 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+50x30 niimbot(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=183 y0=9 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+compactV2 60x40 d520(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 d520(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 d520(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 d520(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 d520(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=283 y0=57 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=283 y0=57 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 d520(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | TEXT REFLOW
+compactV2 60x40 generic(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | TEXT REFLOW
+compactV2 60x40 d520(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | TEXT REFLOW
+compactV2 60x40 generic(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=323 y0=77 | NEW v3 29x5=145d foot185 x0=303 y0=67 | TEXT REFLOW
+compactV2 60x40 d520(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 d520(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=303 y0=67 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 d520(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=283 y0=57 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 60x40 generic(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=283 y0=57 | NEW v3 29x5=145d foot185 x0=303 y0=67 | QR-only
+compactV2 50x30 d520(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 generic(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 niimbot(fontC) short @2ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+compactV2 50x30 d520(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 generic(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 niimbot(fontC) short @6ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+compactV2 50x30 d520(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 generic(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 niimbot(fontC) short @10ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+compactV2 50x30 d520(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 generic(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 niimbot(fontC) short @22ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+compactV2 50x30 d520(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=195 y0=17 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 generic(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=195 y0=17 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 niimbot(fontC) short @24ch: TODAY v4 33x5=165d foot205 x0=183 y0=9 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+compactV2 50x30 d520(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 generic(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 niimbot(fontC) longC @2ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+compactV2 50x30 d520(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 generic(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=235 y0=37 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 niimbot(fontC) longC @6ch: TODAY v2 25x5=125d foot165 x0=223 y0=29 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+compactV2 50x30 d520(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 generic(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 niimbot(fontC) longC @10ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+compactV2 50x30 d520(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 generic(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=215 y0=27 | NEW v3 29x5=145d foot185 x0=215 y0=27 | QR-only
+compactV2 50x30 niimbot(fontC) longC @22ch: TODAY v3 29x5=145d foot185 x0=203 y0=19 | NEW v3 29x5=145d foot185 x0=203 y0=19 | QR-only
+compactV2 50x30 d520(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=195 y0=17 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 generic(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=195 y0=17 | NEW v3 29x5=145d foot185 x0=215 y0=27 | TEXT REFLOW
+compactV2 50x30 niimbot(fontC) longC @24ch: TODAY v4 33x5=165d foot205 x0=183 y0=9 | NEW v3 29x5=145d foot185 x0=203 y0=19 | TEXT REFLOW
+P9 web @2ch: TODAY 16.5mm | NEW 18.5mm
+P9 web @6ch: TODAY 16.5mm | NEW 18.5mm
+P9 web @10ch: TODAY 18.5mm | NEW 18.5mm
+P9 web @22ch: TODAY 18.5mm | NEW 18.5mm
+P9 web @24ch: TODAY 20.5mm | NEW 18.5mm

@@ -1,0 +1,49 @@
+import { describe, it, expect, vi, beforeAll } from "vitest";
+const R = "/home/user/Sellerflow/src/redesign/adapters";
+const g = globalThis as unknown as { __QR_TEXT?: string | null };
+vi.mock("/home/user/Sellerflow/src/lib/tiktokHandle.ts", async (orig) => {
+  const o = await orig<typeof import("/home/user/Sellerflow/src/lib/tiktokHandle")>();
+  return { ...o, tiktokProfileUrl: (h: string) => { const u = o.tiktokProfileUrl(h); return u && g.__QR_TEXT ? g.__QR_TEXT : u; } };
+});
+import { recommendedSettings, layoutSticker, STANDARD_SIZES, type OneStickerSettings } from "/home/user/Sellerflow/src/redesign/adapters/oneSticker";
+import { oneStickerInputFrom, renderOptsFor, oneStickerFonts, type OneStickerPath } from "/home/user/Sellerflow/src/redesign/adapters/oneStickerPrint";
+import { knownTsplJob } from "/home/user/Sellerflow/src/redesign/adapters/printerModels";
+import { installNodeFallbackDrawer, installSans } from "/home/user/Sellerflow/src/redesign/adapters/__tests__/oneSticker.harness";
+import type { Buyer } from "/home/user/Sellerflow/src/lib/orderTypes";
+const AT = Date.UTC(2026, 10, 10, 6, 5);
+const buyer = (handle: string, num = 8888): Buyer => ({ num, name: "Nguyễn Thị Ngọc", handle, platform: "TikTok", totalSpent: 0, totalOrders: 1,
+  orders: [{ orderNum: AT, item: "A2 x2 350", qty: 1, price: 0, total: 0, time: "14:05", handle, name: "Nguyễn Thị Ngọc", bNum: num, platform: "TikTok", status: "New", date: "2026-11-10" }] } as unknown as Buyer);
+const ID = "SFB1-EE246-6S371M557HNBR1GA";
+const HANDLES = ["ab", "abcdef", "maria_live", "a".repeat(22), "abcdefghijklmnopqrstuvwx"];
+const PATHS: OneStickerPath[] = ["d520", "tspl", "niimbot", "laptop"];
+beforeAll(() => { installSans(); installNodeFallbackDrawer(); });
+async function lay(path: OneStickerPath, s: OneStickerSettings, b: Buyer) {
+  const inp = oneStickerInputFrom(b, "My Shop", AT, false);
+  const fonts = await oneStickerFonts(s, inp);
+  const L = layoutSticker(s, inp, fonts, renderOptsFor(path, s, path === "tspl" ? knownTsplJob("Y41BT-0FC4_LE") : {}));
+  const bl = L.lines.filter((l) => l.part === "buyer" && l.run.text !== "Buyer")[0];
+  return { n: L.qr?.matrix.length ?? 0, mod: L.qr?.mod ?? 0, x: L.qr?.x ?? -1, y: L.qr?.y ?? -1, buyerPx: bl?.px ?? 0, commentPx: L.commentPx, warn: L.warnings.map((w) => `${w.part}:${w.kind}`).sort().join(","), lines: L.lines.map((l) => `${l.part}|${l.run.text}|${l.px}|${l.x}|${l.baseline}`).join("\n") };
+}
+describe("1S today vs fixed v3", () => {
+  it("measure", async () => {
+    const out: string[] = [];
+    const sizes = [...STANDARD_SIZES.map((z) => [z.w, z.h]), [50, 40], [55, 30], [110, 80]];
+    for (const [w, h] of sizes) for (const path of PATHS) {
+      if (path === "niimbot" && w > 70) continue;
+      for (const bs of [1, 1.5, 2]) {
+        const base = recommendedSettings({ w, h, ...(STANDARD_SIZES.some((z) => z.w === w && z.h === h) ? {} : { custom: true }) });
+        const s: OneStickerSettings = { ...base, qr: true, parts: { ...base.parts, buyer: { ...base.parts.buyer, scale: bs } } };
+        for (const hd of HANDLES) {
+          g.__QR_TEXT = null; const a = await lay(path, s, buyer(hd));
+          g.__QR_TEXT = ID; const b = await lay(path, s, buyer(hd));
+          const same = a.lines === b.lines && a.mod === b.mod && a.x === b.x && a.y === b.y && a.warn === b.warn;
+          const sym = (q: typeof a) => q.mod ? `${q.n}x${q.mod}=${q.n * q.mod}d(${(q.n * q.mod / 8).toFixed(1)}mm)` : "none";
+          if (!same || hd === "maria_live") out.push(`${w}x${h} ${path} buyer×${bs} @${hd.length}ch: TODAY qr ${sym(a)} x${a.x} buyerPx ${a.buyerPx} cPx ${a.commentPx} [${a.warn}]  NEW qr ${sym(b)} x${b.x} buyerPx ${b.buyerPx} cPx ${b.commentPx} [${b.warn}] ${same ? "SAME" : "DIFF" + (a.lines !== b.lines ? "+text" : "")}`);
+        }
+      }
+    }
+    g.__QR_TEXT = null;
+    require("node:fs").writeFileSync("/tmp/claude-0/-home-user-Sellerflow/f82fc959-bbb8-440f-a00b-655a41b015d2/scratchpad/out1s.txt", out.join("\n"));
+    expect(out.length).toBeGreaterThan(0);
+  }, 600000);
+});

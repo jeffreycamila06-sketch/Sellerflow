@@ -282,13 +282,83 @@ App (redesign adapters/screens lang; `App.tsx`, `db.ts` hindi gagalawin):
 
 ---
 
-## 8. Epekto sa printing
+## 8. Epekto sa printing (sinuri ng printer-guardian — hiwalay na reviewer)
 
-> Hinihintay ang ulat ng **printer-guardian** (hiwalay na reviewer). Ilalagay rito ang nakita niya at ang ayos.
-> Hangga't wala, lahat ng nasa seksyong ito ay [HINDI PA NAPAPATUNAYAN].
+Hatol ng guardian: **"GAPS FOUND (12)"** — tama ang bahagi ng laki ng QR; ang mga kulang ay kung paano umaabot
+ang code sa **bawat** paraan ng pag-print. Lahat ng 12 ay nasa §13 kasama ang ayos. Ang mga sukat niya ay
+naka-save sa `docs/plans/buyer-qr-id-proof/guardian-layout-*.txt` (at ang dalawang test na gumawa nito).
 
-Layunin ng disenyo (hindi pa patunay): text lang sa loob ng QR ang papalitan; walang pagbabago sa posisyon,
-laki ng module, 2 mm sa kanan, "walang QR sa ilalim ng 50×30", mga toggle, native code, o anumang text sa label.
+### 8.1 Lahat ng lugar na gumagawa/gumuguhit ng QR [PATUNAY: file:line mula sa guardian; 3 file lang ang nag-i-import ng `qrMatrix`]
+| # | Lugar | Mga path na pinapakain |
+|---|---|---|
+| a | `stickerRaster.ts:1092-1118` `stickerQrPlacement` | sticker ngayon: D520 70×50…100×60, 50×30, generic ≥ 70×50 |
+| b | `stickerRaster.ts:1368-1383` `propQrPlacement` | font C: generic 50×30/60×40, Niimbot, D520 compact v2 |
+| c | `oneSticker.ts:295-298` `layoutSticker` | bagong sticker (lahat ng printer + laptop picture + preview nito) |
+| d | `printing.ts:1260-1272` `webStickerQrSvg` (gamit sa `:1330`) | laptop/web HTML |
+
+Mga gate na dapat ding makakita ng bagong field: `imageStickerPayload` (`printing.ts:514-516`, tinatawag sa
+`:527`, `:611`, `:671`), `oneStickerInputFrom` (`oneStickerPrint.ts:281-298`, tinatawag sa `printing.ts:741`, `:1412`).
+Walang QR code sa native Java/Swift o sa `server/` (grep = 0).
+
+Mga lugar na **wala sa unang draft ko** at idinagdag dahil sa guardian:
+- **Preview at sample:** `stickerPreview.ts:11-30`, `ExactStickerPreview.tsx:31`, `PrintPattern.tsx:149/162/166`,
+  `OneStickerPattern.tsx:47/221`, `oneStickerPrint.ts:303` (`ONE_STICKER_SAMPLE`), `adminLangSamples.ts` (11 sample),
+  `printerBridge.ts:172` (test buyer), `oneSticker.ts:523-532` (worst-case list).
+- **Mga nagpi-print na gumagawa ng sariling buyer:** Pin to print (`pinToPrint.ts:61-76` + `server/pinRelay.js:42-54`),
+  raffle (`raffle.ts:99-110`), Print stickers screen (`Print.tsx:29/32`), at **tatlong ruta ng Reprint**
+  (`reprint.ts:36-47`, `ordersSearch.ts:44-66`, at ang mga raw-row na ruta na umaasa sa select ng `useSessionWindow.ts:132/:183`).
+
+### 8.2 Ano ang magbabago sa papel [PATUNAY: sukat ng guardian — `guardian-layout-new-sticker.txt` 384 kaso, `guardian-layout-todays-sticker.txt` 185 kaso]
+- **Username na 7–22 character (98% ng order rows):** ang layout na may lumang URL at may bagong code ay
+  **magkapareho** — 96 sa 96 na kaso sa bagong sticker (9 laki × 4 path × Buyer # 1×/1.5×/2×, username na 10 char),
+  at "QR-only" (tuldok lang ng QR ang naiba) sa sticker ngayon. Sukat ito ng layout, **hindi pa papel**.
+- **Username na 1–6 character (1.7%)** — lalaki ang QR mula 25 → 29 modules:
+  sticker ngayon 70×50…100×60: QR block 132 → 148 dots (2 mm mas kaliwa/taas; 2 mm mas makitid ang comment);
+  50×30 at font C 60×40: 165 → 185 dots, may nakitang paglipat/pagliit ng text; laptop: 16.5 → 18.5 mm.
+  Bagong sticker: sa karamihan parehong 6-dot module pero mas malaki ang QR (18.8 → 21.8 mm); **liliit ang tuldok ng
+  QR** sa 50×40 (5 → 4 dots), Niimbot 50×30 (6 → 5), 80×50 at 110×80 kapag Buyer # 1.5× (6 → 5); at Buyer # na
+  1.5×/2× ay 4–5 dots na mas maliit sa karamihan ng laki (bagong dilaw na "made smaller" sa 50×30).
+- **Username na 23–24 character (0.3%)** — liliit ang QR (33 → 29 modules): kabaligtaran ng nasa itaas (mas maraming lugar sa text).
+- D520 60×40 na walang compact v2: walang QR ngayon, wala pa rin.
+- **Ibig sabihin:** para sa 1.7%, ang sticker ay magiging kapareho ng nakukuha na ng 98% ngayon — pero **iba sa
+  sticker nila ngayon**. Hindi ito "walang nagbago". [HINDI PA NAPAPATUNAYAN: paglipat ng text para sa lahat ng
+  klase ng comment (dalawang comment lang ang sinukat); itsura at scan sa totoong papel.]
+- **Opsyon na mas maliit na QR (25 modules) sa hinaharap:** ang parehong 27 character ay kasya sa v2 kung
+  "Alphanumeric mode" ang QR (sukat ng guardian). Mas malaki ang tuldok sa masisikip na laki, pero babaguhin
+  nito ang sticker ng 98% ng buyers at halos walang karanasan sa papel. **Rekomendasyon ng guardian at ng plano:
+  v3 muna; ang v2 ay hiwalay na pagbabago na may sariling larawan at paper test** (hindi magbabago ang text ng code).
+
+### 8.3 Bagong app build? [PATUNAY sa code; HINDI PA sa device]
+Hindi kailangan para sa printing: lahat ng QR ay iginuguhit sa TypeScript at ipinapadala bilang picture
+(`printStickerBitmap`, `printRawTspl`, `printStickerImage`, o browser page). Walang Java/Swift na gagalawin →
+walang goldens, walang Mac XCTest gate, walang store release. (Hiwalay: Render deploy at SQL.)
+Hindi nagpi-print ng QR ngayon at **hindi apektado**: text sticker (lumang app / Classic / offline na font / SPP
+fallback), iOS WiFi sticker, slip/resibo, D520 60×40 na walang compact v2, bagong sticker na mas maliit sa 50×30,
+Facebook/Instagram/Shopee buyers.
+
+### 8.4 Mga kondisyon ng guardian na isinama sa plano
+1. **Iisang helper** `stickerQrMatrix(handle, buyerQr)` (text + ECC "M" + mode sa iisang lugar); tumatanggap lang ng
+   eksaktong 27-character na pattern — anumang iba (sirang value mula sa DB/relay) → URL ngayon; test na laging 29 modules.
+   Source test: `qrMatrix(` at `tiktokProfileUrl(` ay hindi lumalabas saanman sa `src/redesign` maliban sa helper.
+2. **Ang code ay HINDI pumapasok sa JSON na ipinapadala sa native** (text sticker, WiFi sticker, slip): ihihiwalay
+   sa itaas ng `printSlip` (`printing.ts:1281`) at dadalhin bilang hiwalay na field ng job, at ipapasok sa
+   `imageStickerPayload` kung saan pumapasok ngayon ang `printStickerQr`. Ang umiiral na test
+   (`printing.test.ts:38-55`) ay `settings` lang ang binabantayan — kaya **bagong test**: may code + switch ON → ang
+   argument ng `printStickerNative`, `printStickerLan`, `printSlip` ay byte-identical sa walang code.
+   [HINDI PA NAPAPATUNAYAN kung binabalewala ng lumang naka-install na app ang dagdag na key — kaya nga hindi natin ito ipapadala.]
+3. **Walang lookup o `crypto` sa loob ng print job** — ang code ay dumarating kasama ng order/row, kaya hindi
+   nagagalaw ang 35 s watchdog at ang 8 s na paghihintay ng font.
+4. **Isang desisyon sa oras ng paggawa ng order** (`useOrders.ts:225`, katabi ng `autoCode`): doon itatatak ang code
+   kung naka-ON; ang row at ang print ay sumusunod sa order. Reprint sa device na naka-OFF ang switch → sumusunod
+   pa rin sa order (ang switch ay para sa **bagong** order lang).
+5. Preview = print: ang mga sample (preview, test print, 11 admin language sample — 5 dito ay ≤ 6 char) ay
+   gagamit ng **sample code** na 27 character kapag naka-ON. Hindi gagalawin ang `buildTestBuyer()` (golden-pinned,
+   `printerBridge.ts:152`). Ang Parcel Scan ay kikilala sa sample code bilang "test sticker", hindi "bagong buyer".
+6. `scripts/printing-paths.mjs:3-15` ay hindi naglilista ng `src/lib/qr.ts`, `src/lib/tiktokHandle.ts` at ng
+   bagong `src/lib/buyerQr.ts` → idadagdag (kasama ang `server/pinRelay.js`) para dumaan sa printing gate.
+7. `PRINTING_MAP.md` ia-update sa parehong branch (row 16, bagong switch + field, mga test, at ang mga lumang
+   line number na napansin ng guardian: `webStickerQrSvg` ay nasa 1260-1272, hindi 989-1001; atbp.).
+8. Mga larawang TODAY-vs-NEW at ang paper test na hinihingi ng guardian: nasa §11.4 at §11.5.
 
 ---
 

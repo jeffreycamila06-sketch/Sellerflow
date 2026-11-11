@@ -1,0 +1,54 @@
+import { describe, it, expect, vi } from "vitest";
+const g = globalThis as unknown as { __QR_TEXT?: string | null };
+vi.mock("/home/user/Sellerflow/src/lib/tiktokHandle.ts", async (orig) => {
+  const o = await orig<typeof import("/home/user/Sellerflow/src/lib/tiktokHandle")>();
+  return { ...o, tiktokProfileUrl: (h: string) => { const u = o.tiktokProfileUrl(h); return u && g.__QR_TEXT ? g.__QR_TEXT : u; } };
+});
+import { buildNativeStickerPayload, imageStickerPayload, imagePathAtlases, setStickerQrEntitled, setStickerQrOn, DEF_SETTINGS, webStickerQrSvg, NIIMBOT_CANVAS, setStickerCompactV2 } from "/home/user/Sellerflow/src/redesign/adapters/printing";
+import { renderStickerBitmap, stickerQrPlacement, propQrPlacement, propSizes, stickerDrawOps, STICKER_LAYOUTS, W50, H50, type FullRaster, type QrPlacement } from "/home/user/Sellerflow/src/redesign/adapters/stickerRaster";
+import { LATIN_ATLAS } from "/home/user/Sellerflow/src/redesign/adapters/glyphAtlas.latin";
+import type { Buyer } from "/home/user/Sellerflow/src/lib/orderTypes";
+const AT = Date.UTC(2026, 10, 10, 6, 5);
+const buyer = (handle: string, item: string): Buyer => ({ num: 128, name: "Maria Santos", handle, platform: "TikTok", totalSpent: 0, totalOrders: 1,
+  orders: [{ orderNum: AT, item, qty: 1, price: 0, total: 0, time: "14:05", handle, name: "Maria Santos", bNum: 128, platform: "TikTok", status: "New", date: "2026-11-10" }] } as unknown as Buyer);
+const ID = "SFB1-EE246-6S371M557HNBR1GA";
+const HANDLES = ["ab", "abcdef", "maria_live", "a".repeat(22), "abcdefghijklmnopqrstuvwx"];
+const ITEMS = ["A2 x2 350", "black dress size M please reserve two pieces thank you so much"];
+const SIZES: [string, number, number][] = [["100x60", 100, 60], ["80x60", 80, 60], ["80x50", 80, 50], ["70x50", 70, 50], ["60x40", 60, 40], ["50x30", 50, 30]];
+const blank = (r: FullRaster, qs: (QrPlacement | null)[]) => { const b = Uint8Array.from(r.buf); for (const q of qs) if (q) for (let y = q.y0; y < Math.min(r.h, q.y0 + q.foot); y++) for (let x = q.x0; x < Math.min(r.w, q.x0 + q.foot); x++) b[y * r.rowBytes + (x >> 3)] &= ~(0x80 >> (x & 7)); return Buffer.from(b).toString("base64"); };
+describe("legacy today vs fixed v3", () => {
+  it("measure", async () => {
+    const store = new Map<string, string>();
+    (globalThis as unknown as { localStorage: Storage }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); }, removeItem: (k: string) => { store.delete(k); }, clear: () => store.clear(), key: () => null, length: 0 } as unknown as Storage;
+    setStickerQrEntitled(true); setStickerQrOn(true);
+    const out: string[] = [];
+    for (const v2 of [false, true]) {
+      setStickerCompactV2(v2);
+      for (const [key, w, h] of SIZES) for (const item of ITEMS) for (const hd of HANDLES) for (const path of ["d520", "generic", "niimbot"] as const) {
+        if (path === "niimbot" && key !== "50x30") continue;
+        if (v2 && !(key === "50x30" || key === "60x40")) continue;
+        const np = buildNativeStickerPayload(buyer(hd, item), "NT$", "My Shop", { ...DEF_SETTINGS, stickerSize: key }, AT);
+        const img = imageStickerPayload(np, "TikTok", false);
+        const run = async (text: string | null) => {
+          g.__QR_TEXT = text;
+          let atl; 
+          if (path === "d520") atl = v2 ? await imagePathAtlases(np, img) : { latin: LATIN_ATLAS, cjk: {} };
+          else atl = await imagePathAtlases(np, img);
+          const r = renderStickerBitmap(img, w, h, atl, "extended", path === "niimbot" ? NIIMBOT_CANVAS : undefined);
+          const prop = !!(atl as { proportional?: unknown }).proportional && (key === "50x30" || key === "60x40");
+          const q = prop ? propQrPlacement(img, r.w, r.h, path === "niimbot" ? NIIMBOT_CANVAS.edge : propSizes(w, true).edge) : stickerQrPlacement(img, STICKER_LAYOUTS[key].wDots, h * 8, h);
+          return { r, q, prop };
+        };
+        const a = await run(null), b = await run(ID);
+        const d = (q: QrPlacement | null) => q ? `v${(q.matrix.length - 17) / 4} ${q.matrix.length}x${q.scale}=${q.matrix.length * q.scale}d foot${q.foot} x0=${q.x0} y0=${q.y0}` : "NONE";
+        const textSame = blank(a.r, [a.q, b.q]) === blank(b.r, [a.q, b.q]);
+        const allSame = Buffer.from(a.r.buf).equals(Buffer.from(b.r.buf));
+        out.push(`${v2 ? "compactV2 " : ""}${key} ${path}${a.prop ? "(fontC)" : ""} ${item.length > 12 ? "longC" : "short"} @${hd.length}ch: TODAY ${d(a.q)} | NEW ${d(b.q)} | ${allSame ? "IDENTICAL(!)" : textSame ? "QR-only" : "TEXT REFLOW"}`);
+      }
+    }
+    g.__QR_TEXT = null;
+    for (const hd of HANDLES) { const a = webStickerQrSvg(hd); g.__QR_TEXT = ID; const b = webStickerQrSvg(hd); g.__QR_TEXT = null; out.push(`P9 web @${hd.length}ch: TODAY ${a?.sizeMm}mm | NEW ${b?.sizeMm}mm`); }
+    require("node:fs").writeFileSync("/tmp/claude-0/-home-user-Sellerflow/f82fc959-bbb8-440f-a00b-655a41b015d2/scratchpad/outlegacy.txt", out.join("\n"));
+    expect(out.length).toBeGreaterThan(0);
+  }, 600000);
+});
