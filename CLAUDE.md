@@ -4986,3 +4986,29 @@ Web only (Vercel after merge). No server, no schema change.
   with any store #; the Import is what refuses it), Scan QR lookup, printing, server.
 - **Guide:** `docs/support/sfl-guide.md` + `sql/116b` regenerated. `sql/152_guide_fm_store_zero.sql`
   (+ rollback) changes ONLY that phrase in the `parcel-scan` row of `support_guide`.
+
+## 2026-11-12 — LIVE PRINT PATTERN: TikTok / Facebook VIEW (branch `claude/pattern-platform-view`, NOT merged; sql/153 NOT applied)
+Web only (Vercel after merge). No change to the sticker engine, layouts, settings, print paths or switches.
+(`claude/fm-store-zero` above IS merged: main `8253c004`; sql/152 still not applied.)
+- **Screen (`components/OneStickerPattern.tsx`, `os-view`):** four buttons in one row above the preview —
+  TikTok · Facebook · Instagram (Soon) · Shopee (Soon, `rd_soon`). Always TikTok when the screen opens; the pick
+  is component state only (never saved, not a setting, Save is not affected).
+- **Samples (`adapters/stickerViewSample.ts`):** TikTok = today's `sampleInput` / `sampleBuyer` (unchanged).
+  Facebook = the same buyer (#128 Maria Santos) as a Facebook order (platform Facebook, handle = the name),
+  input built by `printableBuyer` + `oneStickerInputFrom` + `fbNameOnly` — the functions a real order uses.
+  The fit notes follow the view (they are measured on the preview's input).
+- **Printer Test:** `onTest(draft, "default", unsaved)` in the TikTok view (today's three arguments);
+  the Facebook view adds a 4th argument `"facebook"` → RedesignApp prints `viewSampleBuyer("facebook")` through
+  the same `oneStickerTestPrint`. Admin language chips (their own sample) and the long-comment tests: unchanged.
+- **Proof:** `stickerView.tiktokMain.test.ts` (TikTok view = main's bytes on D520 / TSPL / ESC-POS / CPCL /
+  Niimbot / laptop; fingerprints taken by running the file on main 8253c004 — if a later branch changes the
+  sample sticker on purpose, retake them with `SFL_PRINT_GOLDEN=<file>`), `stickerView.facebook.test.ts`
+  (Facebook view = a real Facebook order through `printSlip`, same bytes, 6 paths). Pictures:
+  `docs/design/pattern-view/`.
+- **Guide:** one line in the `stickers` section + `sql/116b` regenerated; `sql/153_guide_pattern_view.sql`
+  (+ rollback) adds only that line to the `stickers` row.
+- **Test-print fallback (same branch, the ONE print-code change):** `oneStickerTestOnBt` (printing.ts) — when a test
+  print falls back to today's sticker (picture failed / too wide / old-Bluetooth send failed) it now uses `printSlip`'s
+  rule for a Facebook buyer (`printableBuyer`, `printBuyerUsername:false`, name-only flag only when the @username line
+  is on) → name only, no "@name" (the admin Facebook chip had the same gap on main). TikTok: same objects → unchanged.
+  Proof: `stickerView.fallback.test.ts` (fails on the old code).
