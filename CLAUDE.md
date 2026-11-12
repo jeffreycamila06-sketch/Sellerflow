@@ -4887,7 +4887,12 @@ Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). 
 - **Apply order when Jeff says go:** sql/149 (switch off + the key) → add the test accounts to `feature_access_emails` →
   sql/116b (guide).
 
-## 2026-11-12 — FAMILYMART (全家) PICKUP CHECK (branch `claude/fm-pickup-check`, NOT merged; sql/151 NOT applied; Render NOT deployed)
+## 2026-11-12 — FAMILYMART (全家) PICKUP CHECK (✅ MERGED to main 2026-11-12, audit passed; OFF — sql/151 NOT applied; Render NOT deployed)
+**Status after the merge:** the code is on `main` but does NOTHING yet. It starts working only when ALL THREE are done:
+(1) `sql/151_fm_pickup_check.sql` applied (by Jeff / chat-Claude — it also creates the switch row, 'false');
+(2) **Render MANUAL deploy** ("Deploy latest commit", quiet window, Business Pulse check first) — the check is server code;
+(3) `app_settings.fm_check_enabled` set to exactly `'true'`. Until then every job is main's old behaviour plus one small
+settings read. `sql/116b` (help guide) is also NOT applied yet. Nothing in `app_settings` was changed by the merge.
 Pickup Status: Check now, the automatic check, the urgent check and the new-parcels check after a Sync also
 check 全家 rows (carrier `fm`, 11-digit 寄件編號), in the SAME job. Server only — no new screen or button.
 **What a seller sees change:** 全家 rows get newer statuses by themselves, and the small "not checked for 24 h"
