@@ -1,15 +1,15 @@
-// Runs sql/84 → sql/85 → sql/87 → sql/153 (+ its rollback) on a real Postgres (PGlite, WASM)
+// Runs sql/84 → sql/85 → sql/87 → sql/154 (+ its rollback) on a real Postgres (PGlite, WASM)
 // against a stub of the live schema and checks:
 //   A) the DOWNGRADE rule that is already live (sql/84 + 85 + 87, nothing new): after a plan
 //      downgrade only the oldest accounts up to the new plan number may go live, on EVERY
 //      platform; the rest are "not covered"; an upgrade brings them back; nothing is deleted;
 //      adding across platforms uses ONE total; re-authorizing an existing account passes.
-//   B) sql/153: admin_connected_accounts, admin_seller_accounts, admin_downgrade_remove
+//   B) sql/154: admin_connected_accounts, admin_seller_accounts, admin_downgrade_remove
 //      (admin only, exact-fit check, what is removed and what is NOT, plan patch, seats).
 //   C) the rollback.
 // Not part of CI (PGlite is not a dependency). Run from a scratch folder:
 //   mkdir /tmp/pg153 && cd /tmp/pg153 && npm i @electric-sql/pglite@0.2.17
-//   cp <repo>/scripts/sql153-behaviour.mjs . && node sql153-behaviour.mjs <repo>/sql
+//   cp <repo>/scripts/sql154-behaviour.mjs . && node sql154-behaviour.mjs <repo>/sql
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 const dir = process.argv[2];
@@ -142,8 +142,8 @@ await sw("account_total_enforce", "true"); await sw("account_live_enforce", "tru
   ok((await check(ADMIN, "tiktok", "boss")).exempt === true, "an admin account is exempt at live start");
 }
 
-// ── B) sql/153 ────────────────────────────────────────────────────────────────
-await db.exec(src("153_admin_accounts.sql")); await db.exec(src("153_admin_accounts.sql")); // twice = safe
+// ── B) sql/154 ────────────────────────────────────────────────────────────────
+await db.exec(src("154_admin_accounts.sql")); await db.exec(src("154_admin_accounts.sql")); // twice = safe
 const rpc = (uid, sql, p) => as(uid, async () => (await q(sql, p)).rows[0].j);
 const tryRpc = (uid, sql, p) => try_(() => as(uid, () => q(sql, p)));
 const DOWN = "select admin_downgrade_remove($1,$2,$3,$4,$5,$6::jsonb) j";
@@ -247,7 +247,7 @@ ok((await check(t2, "facebook", "T2P")).allowed === true, "…and the kept Page 
 ok(/account_limit/.test(await try_(() => q("insert into fb_pages(user_id,page_id) values ($1,'T1NEW')", [t1]))), "after the removal the seller is AT the Basic limit: a new Page is refused");
 
 // ── C) rollback ───────────────────────────────────────────────────────────────
-await db.exec(src("153_admin_accounts_rollback.sql")); await db.exec(src("153_admin_accounts_rollback.sql"));
+await db.exec(src("154_admin_accounts_rollback.sql")); await db.exec(src("154_admin_accounts_rollback.sql"));
 ok((await q("select count(*)::int c from pg_proc where proname in ('admin_connected_accounts','admin_seller_accounts','admin_downgrade_remove')")).rows[0].c === 0, "rollback: the three functions are gone (run twice)");
 ok((await check(t2, "facebook", "T2P")).allowed === true && (await q("select count(*)::int c from account_seats")).rows[0].c > 0, "rollback: the account total keeps working, no data touched");
 

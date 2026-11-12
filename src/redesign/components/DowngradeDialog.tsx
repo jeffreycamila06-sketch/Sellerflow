@@ -1,4 +1,4 @@
-// Admin plan DOWNGRADE confirm (sql/153). Shown BEFORE the plan is saved when the seller has
+// Admin plan DOWNGRADE confirm (sql/154). Shown BEFORE the plan is saved when the seller has
 // more accounts (TikTok + Facebook + Instagram + Shopee) than the new plan allows. A checkbox
 // list of every account; the newest ones are pre-checked so exactly N − M go. OK stays off
 // until exactly N − M are checked. Cancel changes nothing (the plan stays too).

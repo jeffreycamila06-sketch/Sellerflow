@@ -1040,9 +1040,9 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     void listShopeeBeta().then((m) => { if (alive) setShopeeBeta(m); });
     return () => { alive = false; };
   }, [panel, listShopeeBeta]);
-  // Connected Facebook Pages / Instagram accounts / Shopee shops of every seller (sql/153):
+  // Connected Facebook Pages / Instagram accounts / Shopee shops of every seller (sql/154):
   // one admin-only read when the sellers panel opens (zero poll), re-read after a change.
-  // null = not read (sql/153 not applied / error) → the cards show TikTok only, as before.
+  // null = not read (sql/154 not applied / error) → the cards show TikTok only, as before.
   const [connected, setConnected] = useState<Record<string, ConnectedAccount[]> | null>(null);
   const [connectedTick, setConnectedTick] = useState(0);
   const canReadConnected = !!actions;
@@ -1147,7 +1147,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
       if (r.ok) setPlan(u.email, label);
       return r;
     });
-  // Plan DOWNGRADE (sql/153): when the seller's TOTAL accounts (TikTok + Facebook + Instagram +
+  // Plan DOWNGRADE (sql/154): when the seller's TOTAL accounts (TikTok + Facebook + Instagram +
   // Shopee) is over the new plan's number, the confirm dialog opens BEFORE anything is saved.
   // Not a lower plan / within the limit / an admin or exempt seller → the plain plan change.
   // The read failed for a real reason → nothing is changed (never treated as "nothing to remove").
@@ -1356,7 +1356,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                           <button onClick={() => { setAddIdx(i); setAddVal(""); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_adm_add_days}</button>
                         )}
                       </div>
-                      {/* Connected by the seller (sql/153): Facebook Pages / Instagram / Shopee, name + date. Read-only. */}
+                      {/* Connected by the seller (sql/154): Facebook Pages / Instagram / Shopee, name + date. Read-only. */}
                       {connectedOf(u.email).length > 0 && (
                         <div data-testid="adm-connected" style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 3 }}>
                           {connectedOf(u.email).map((c) => (
@@ -1714,7 +1714,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
               <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", margin: "12px 0 2px" }}>{t.rd_adm_fb_manual}</label>
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, lineHeight: 1.4 }}>{t.rd_adm_fb_manual_hint}</div>
               <textarea value={editFb} onChange={(e) => setEditFb(e.target.value)} rows={2} placeholder={t.rd_adm_one_per_line} style={editTa} />
-              {/* Connected by the seller (sql/153) — read-only; counted in the plan number. */}
+              {/* Connected by the seller (sql/154) — read-only; counted in the plan number. */}
               {connected && (
                 <div data-testid="adm-edit-connected" style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_adm_connected}</div>

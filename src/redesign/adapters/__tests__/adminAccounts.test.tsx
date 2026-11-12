@@ -1,5 +1,5 @@
-// Admin accounts (sql/153) — the pure rules, the reads, the ONE-step write and the best-effort
-// live stop. Database + server boundary mocked (the SQL itself: scripts/sql153-behaviour.mjs).
+// Admin accounts (sql/154) — the pure rules, the reads, the ONE-step write and the best-effort
+// live stop. Database + server boundary mocked (the SQL itself: scripts/sql154-behaviour.mjs).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 

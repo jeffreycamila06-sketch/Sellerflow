@@ -1,4 +1,4 @@
-// Admin → Manage sellers (sql/153):
+// Admin → Manage sellers (sql/154):
 //   • the card shows the Pages / Instagram / Shopee accounts the seller CONNECTED (name + date)
 //     and "Accounts N" counts them (Kevin: 1 TikTok + 1 Page = 2);
 //   • a plan DOWNGRADE that leaves the seller over the new plan's TOTAL opens a confirm dialog
@@ -90,7 +90,7 @@ describe("Manage sellers card — connected accounts", () => {
     expect(within(card(r, "solo@x.com")).queryByTestId("adm-connected")).toBeNull();
     expect(within(card(r, "solo@x.com")).getByTestId("adm-accounts").textContent).toBe("1");
   });
-  it("the read fails (sql/153 not applied) → the card is exactly as before: TikTok count, no lines", async () => {
+  it("the read fails (sql/154 not applied) → the card is exactly as before: TikTok count, no lines", async () => {
     DB.connected = null;
     const r = view(actions());
     await waitFor(() => expect(DB.rpcs.some((c) => c.fn === "admin_connected_accounts")).toBe(true));
@@ -234,7 +234,7 @@ describe("plan downgrade over the TOTAL → confirm dialog before saving", () =>
     expect(a.downgradeRemove).not.toHaveBeenCalled();
     expect(r.queryByTestId("dg-dialog")).toBeNull();
   });
-  it("sql/153 not applied yet (function missing) → the plan change works as before, nothing removed", async () => {
+  it("sql/154 not applied yet (function missing) → the plan change works as before, nothing removed", async () => {
     DB.sellerError = { code: "PGRST202", message: "Could not find the function public.admin_seller_accounts(p_user) in the schema cache" };
     const a = actions();
     const r = view(a);

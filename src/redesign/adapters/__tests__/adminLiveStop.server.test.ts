@@ -1,4 +1,4 @@
-// Admin downgrade (sql/153), server half: POST /admin/accounts/stop-removed stops the running
+// Admin downgrade (sql/154), server half: POST /admin/accounts/stop-removed stops the running
 // live of an account the admin just REMOVED — and can never stop one that is still connected.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";

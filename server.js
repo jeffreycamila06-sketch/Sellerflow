@@ -2859,7 +2859,7 @@ try {
   console.error("[IG] init failed — Instagram disabled, TikTok/Facebook/Shopee unaffected:", e && e.message);
 }
 
-// Admin downgrade (sql/153): stop the running live of an account the admin just REMOVED.
+// Admin downgrade (sql/154): stop the running live of an account the admin just REMOVED.
 // Admin only. It stops ONLY an account whose row is really gone (re-read here with the
 // service key) — a still-connected account is never touched (server/adminLiveStop.js).
 // Counts only in the log: no names, no ids of Pages / shops.

@@ -1,12 +1,12 @@
-// sql/153 contract (reads the file itself; behaviour = scripts/sql153-behaviour.mjs on PGlite).
+// sql/154 contract (reads the file itself; behaviour = scripts/sql154-behaviour.mjs on PGlite).
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 
-const sql = readFileSync("sql/153_admin_accounts.sql", "utf8");
+const sql = readFileSync("sql/154_admin_accounts.sql", "utf8");
 const code = sql.replace(/^\s*--.*$/gm, "");
 const fn = (name: string) => { const i = code.indexOf(`function public.${name}(`); return code.slice(i, code.indexOf("$$;", i)); };
 
-describe("sql/153 — admin accounts", () => {
+describe("sql/154 — admin accounts", () => {
   it("adds three functions and nothing else: no table, column, trigger, policy or switch", () => {
     expect(code.match(/create or replace function public\.(\w+)/g)).toEqual([
       "create or replace function public.admin_connected_accounts", "create or replace function public.admin_seller_accounts", "create or replace function public.admin_downgrade_remove",
@@ -57,13 +57,13 @@ describe("sql/153 — admin accounts", () => {
   it("one transaction with a lock timeout; the rollback drops exactly the three functions", () => {
     expect(sql).toMatch(/set lock_timeout = '2s';\s*begin;/);
     expect(sql.trim().endsWith("commit;")).toBe(true);
-    const back = readFileSync("sql/153_admin_accounts_rollback.sql", "utf8").replace(/^\s*--.*$/gm, "");
+    const back = readFileSync("sql/154_admin_accounts_rollback.sql", "utf8").replace(/^\s*--.*$/gm, "");
     expect(back.match(/drop function if exists public\.(\w+)/g)).toEqual([
       "drop function if exists public.admin_downgrade_remove", "drop function if exists public.admin_seller_accounts", "drop function if exists public.admin_connected_accounts",
     ]);
     expect(back).not.toMatch(/drop table|delete from|truncate|alter table/i);
   });
   it("the behaviour script exists", () => {
-    expect(existsSync("scripts/sql153-behaviour.mjs")).toBe(true);
+    expect(existsSync("scripts/sql154-behaviour.mjs")).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-// Admin downgrade (sql/153) — stop the running live of an account the admin just REMOVED.
+// Admin downgrade (sql/154) — stop the running live of an account the admin just REMOVED.
 // PURE (injected deps), unit-tested by vitest; server.js only wires it.
 //
 // Why it exists: the Facebook / Instagram / Shopee pollers keep their token in memory and

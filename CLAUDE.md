@@ -4987,7 +4987,7 @@ Web only (Vercel after merge). No server, no schema change.
 - **Guide:** `docs/support/sfl-guide.md` + `sql/116b` regenerated. `sql/152_guide_fm_store_zero.sql`
   (+ rollback) changes ONLY that phrase in the `parcel-scan` row of `support_guide`.
 
-## 2026-11-13 — ADMIN: CONNECTED ACCOUNTS + DOWNGRADE REMOVES THE EXTRAS (branch `account-total-connected`, NOT merged; sql/153 NOT applied; Render NOT deployed)
+## 2026-11-13 — ADMIN: CONNECTED ACCOUNTS + DOWNGRADE REMOVES THE EXTRAS (branch `account-total-connected`, NOT merged; sql/154 NOT applied; Render NOT deployed)
 **Investigation first (read-only, Nov 13):** the plan number is ALREADY one TOTAL across TikTok + Facebook +
 Instagram + Shopee in production, since Oct 10 — do not "fix" it again:
 - **Adding:** database triggers (sql/84 + sql/87, `account_total_enforce='true'`) count all four on every new TikTok
@@ -4997,12 +4997,12 @@ Instagram + Shopee in production, since Oct 10 — do not "fix" it again:
 - **Going live:** `account_live_check` (sql/85, `account_live_enforce='true'`) ranks ALL four platforms oldest first;
   `/connect/tiktok`, `/fb/connect`, `/ig/connect`, `/shopee/connect` all ask it — only when no live is already running
   for that account. After a downgrade the newer accounts are refused at live start and labelled "Not covered by your
-  plan" in Manage; an upgrade brings them back; nothing is deleted. Proof: `scripts/sql153-behaviour.mjs` part A.
+  plan" in Manage; an upgrade brings them back; nothing is deleted. Proof: `scripts/sql154-behaviour.mjs` part A.
 - The real gap was the ADMIN screen: "Accounts N" counted TikTok names only and the "Facebook pages" box is the old
   typed list (`seller_profiles.facebook`), not `fb_pages` (browser RLS = own rows only).
 
 **What this branch adds:**
-- **sql/153 (+rollback), three admin-only functions (is_admin() inside), no table / trigger / existing function changed:**
+- **sql/154 (+rollback), three admin-only functions (is_admin() inside), no table / trigger / existing function changed:**
   `admin_connected_accounts()` (every seller's Pages / Instagram / shops: name + date), `admin_seller_accounts(p_user)`
   (one seller, all four platforms, in `account_live_ranking` order), `admin_downgrade_remove(...)` (ONE transaction:
   plan patch + removal; refuses unless what is left is EXACTLY the new plan's number — `accounts_changed`).
@@ -5013,7 +5013,7 @@ Instagram + Shopee in production, since Oct 10 — do not "fix" it again:
   OK only with exactly N − M checked. OK = `actions.downgradeRemove` (same `planChangePatch` as the plan buttons +
   the removal, one database call) → audit row "changed plan … removed N: …". Cancel = nothing.
   Within the limit / upgrade / admin or exempt seller → the plain plan change. `admin_seller_accounts` missing
-  (sql/153 not applied) → plain plan change; any other read failure → NOTHING is changed.
+  (sql/154 not applied) → plain plan change; any other read failure → NOTHING is changed.
 - **Never automatic:** `admin_downgrade_remove` has ONE caller (`adapters/adminAccounts.ts`, from the dialog's confirm).
   Expire, plan expiry and every automatic change remove nothing (test-pinned).
 - **Server (Render manual deploy): `POST /admin/accounts/stop-removed`** (requireAuth + requireAdmin,
@@ -5022,6 +5022,6 @@ Instagram + Shopee in production, since Oct 10 — do not "fix" it again:
   still-connected account or an unreadable row is never stopped. The pollers / callbacks / connect routes are NOT
   edited. Before the deploy the app's call fails quietly: the removal is done and the toast says a running live keeps
   going until it ends. A removed TikTok name is not disconnected (it is refused at its next connect).
-- **Order:** apply sql/153 → merge (Vercel) → Render deploy in a quiet window (Business Pulse check first).
+- **Order:** apply sql/154 → merge (Vercel) → Render deploy in a quiet window (Business Pulse check first).
 - ⚠️ Not changed: admin "Edit accounts" can still type TikTok names past the total (an admin is never blocked by the
   add trigger, by design in sql/84); such extras are simply not covered at live start.

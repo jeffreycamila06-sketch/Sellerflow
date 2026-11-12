@@ -107,7 +107,7 @@ export interface AdminActions {
   shopeeBetaStart: (email: string, userId: string) => Promise<AdminResult & { expiresAt?: string }>;
   shopeeBetaRemove: (email: string, userId: string) => Promise<AdminResult>;
   shopeeBetaList: () => Promise<Record<string, string>>;
-  // Plan DOWNGRADE that also removes the chosen accounts (sql/153) — ONE database step: the
+  // Plan DOWNGRADE that also removes the chosen accounts (sql/154) — ONE database step: the
   // same plan patch as changePlan + the removal. Called ONLY from the admin's downgrade confirm
   // dialog (never on expiry or any automatic change). Afterwards the server is asked (best
   // effort) to stop a live still running for a removed Page / Instagram account / shop;

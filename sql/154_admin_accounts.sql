@@ -1,5 +1,5 @@
--- sql/153 — ADMIN: a seller's CONNECTED accounts + plan downgrade that removes the extras.   NOT APPLIED.
--- Needs sql/84, sql/85 and sql/87 (all live). Rollback: sql/153_admin_accounts_rollback.sql.
+-- sql/154 — ADMIN: a seller's CONNECTED accounts + plan downgrade that removes the extras.   NOT APPLIED.
+-- Needs sql/84, sql/85 and sql/87 (all live). Rollback: sql/154_admin_accounts_rollback.sql.
 -- No table, no column, no trigger, no change to any existing function: three NEW admin-only
 -- functions. Each one checks is_admin() inside — do NOT revoke EXECUTE from authenticated
 -- (admins ARE authenticated).
@@ -124,10 +124,11 @@ begin
   if not public.is_admin() then raise exception 'forbidden' using errcode = '42501'; end if;
   if p_user is null or v_plan not in ('free', 'trial', 'basic', 'plus', 'pro', 'master') then raise exception 'bad_request'; end if;
   if p_remove is null or jsonb_typeof(p_remove) <> 'array' or jsonb_array_length(p_remove) = 0 then raise exception 'bad_selection'; end if;
-  -- The same lock every add / remove of this seller takes (sql/84): nothing changes under us.
-  perform pg_advisory_xact_lock(hashtextextended('account_total:' || p_user::text, 0));
+  -- Row lock FIRST, then the per-seller lock (sql/84) — the same order a seller's own TikTok save
+  -- takes them (row update → trigger → advisory lock), so the two can never deadlock.
   select sp.role, sp.tiktok into v_role, v_list from public.seller_profiles sp where sp.auth_user_id = p_user for update;
   if not found then raise exception 'not_found'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('account_total:' || p_user::text, 0));
   if lower(coalesce(v_role, '')) = 'admin'
      or exists (select 1 from public.account_limit_exempt e where e.user_id = p_user) then
     raise exception 'not_limited';

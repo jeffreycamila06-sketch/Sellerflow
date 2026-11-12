@@ -1,5 +1,5 @@
 // Admin → Manage sellers: a seller's CONNECTED accounts (Facebook Pages / Instagram / Shopee
-// shops, sql/153) next to the registered TikTok names, and the plan-downgrade removal.
+// shops, sql/154) next to the registered TikTok names, and the plan-downgrade removal.
 //   • loadConnectedAccounts()  one small admin-only read per panel open (zero poll)
 //   • loadSellerAccounts(uid)  one seller, all four platforms, oldest first (the dialog)
 //   • downgradeRemoveRpc(...)  ONE database step: plan + removal of the chosen accounts
@@ -33,7 +33,7 @@ export function parseConnected(raw: unknown): Record<string, ConnectedAccount[]>
   return out;
 }
 
-// null = could not be read (not an admin, sql/153 not applied yet, network) → the card shows
+// null = could not be read (not an admin, sql/154 not applied yet, network) → the card shows
 // TikTok only, exactly as before.
 export async function loadConnectedAccounts(): Promise<Record<string, ConnectedAccount[]> | null> {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -67,7 +67,7 @@ export function parseSellerAccounts(raw: unknown): SellerAccounts | null {
   return { plan: String(r.plan || ""), limit, unlimited: r.unlimited === true, total: accounts.length, accounts };
 }
 
-// ok | missing (sql/153 is not applied: the plan change goes on as before) | error (a real
+// ok | missing (sql/154 is not applied: the plan change goes on as before) | error (a real
 // failure: the plan change is NOT made — a failed read is never treated as "nothing to remove").
 export type SellerAccountsRead = { status: "ok"; data: SellerAccounts } | { status: "missing" } | { status: "error" };
 export async function loadSellerAccounts(userId: string): Promise<SellerAccountsRead> {
