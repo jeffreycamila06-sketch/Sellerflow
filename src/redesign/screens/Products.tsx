@@ -14,6 +14,8 @@ import { useBrandedExport } from "../adapters/useBrandedExport";
 import { useT } from "../i18n";
 import { loadProductImagePaths, compressProductImage, uploadProductImage, removeProductImage, forgetProductImage, productImageUrl } from "../adapters/productImages";
 import { priceInput, hasCents } from "../../lib/money";
+import { PIC_GRID_COLUMNS, PIC_GRID_GAP, PIC_GRID_PADDING, placeholderLetter } from "../adapters/productGrid";
+import PictureViewer from "../components/PictureViewer";
 
 const nowMs = () => Date.now(); // module-level (keeps the impure call out of the component's render-purity analysis)
 const STOCK_ADJUST_DEBOUNCE_MS = 600; // coalesce rapid ±taps into ONE atomic write
@@ -31,6 +33,10 @@ const sheetBtn = (primary: boolean): CSSProperties => (primary
   ? { padding: "9px 16px", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }
   : { padding: "9px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" });
 const stockColor = (s: number) => (s === 0 ? "var(--danger)" : s <= 5 ? "var(--warn)" : "var(--ok)");
+// Pictures layout (approved preview, Nov 12 2026): smaller − / + and the 2 × 2 card buttons.
+const stepBtnSm = (disabled: boolean): CSSProperties => ({ width: 22, height: 22, flexShrink: 0, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: disabled ? "var(--text-muted)" : "var(--text)", fontSize: 12, fontWeight: 800, lineHeight: 1, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "var(--font-ui)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 });
+const cardBtn: CSSProperties = { fontSize: 11.5, fontWeight: 700, padding: 5, borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" };
+const picBadge: CSSProperties = { position: "absolute", fontSize: 11, fontWeight: 700, lineHeight: 1, color: "#fff", background: "rgba(0,0,0,.45)", padding: "3px 5px", borderRadius: 6, pointerEvents: "none" };
 const stepBtn = (disabled: boolean): CSSProperties => ({ width: 26, height: 26, flexShrink: 0, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: disabled ? "var(--text-muted)" : "var(--text)", fontSize: 15, fontWeight: 800, lineHeight: 1, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "var(--font-ui)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 });
 
 export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold, inventoryV2 = false, productImages = false }: {
@@ -87,6 +93,8 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const clearNewPic = () => setNewPic((p) => { if (p?.url) { try { URL.revokeObjectURL(p.url); } catch { /* ignore */ } } return null; });
   const [picErr, setPicErr] = useState("");
   const picInput = useRef<HTMLInputElement | null>(null);
+  // Full-screen viewer (tap a picture): what to show + the element to give focus back to.
+  const [viewer, setViewer] = useState<{ src: string; caption: string; opener: HTMLElement | null } | null>(null);
   useEffect(() => {
     if (!productImages) return;
     let live = true;
@@ -406,6 +414,57 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
         })}
       </div>
 
+      {productImages ? (
+      <div data-testid="prd-grid" style={{ padding: PIC_GRID_PADDING, display: "grid", gridTemplateColumns: PIC_GRID_COLUMNS, gap: PIC_GRID_GAP }}>
+        {filtered.length === 0 && <div style={{ gridColumn: "1 / -1", fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "20px 0" }}>{t.rd_prd_empty}</div>}
+        {filtered.map((p) => {
+          const url = imgUrl(p.id);
+          return (
+          <div key={p.id} data-testid={`prd-card-${p.id}`} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", boxShadow: "var(--shadow)", display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {/* Square picture box (padding-bottom 100% + absolutely placed picture) — a tall or wide
+                picture can never stretch it; cover = fills the square like a shop listing. */}
+            <div data-testid={`prd-picbox-${p.id}`} style={{ position: "relative", width: "100%", height: 0, paddingBottom: "100%", background: avColor(p.name), overflow: "hidden" }}>
+              {url ? (
+                <button type="button" data-testid={`prd-thumb-btn-${p.id}`} aria-label={`${t.rd_prd_pic_open}: ${p.name}`}
+                  onClick={(e) => setViewer({ src: url, caption: p.name, opener: e.currentTarget })}
+                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", padding: 0, margin: 0, border: "none", background: "transparent", cursor: "zoom-in", display: "block" }}>
+                  <img src={url} alt={p.name} loading="lazy" data-testid={`prd-thumb-${p.id}`} onError={() => markBroken(url)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <span aria-hidden="true" data-testid={`prd-zoom-${p.id}`} style={{ ...picBadge, right: 6, bottom: 6 }}>⤢</span>
+                </button>
+              ) : (
+                <span data-testid={`prd-ph-${p.id}`} style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40, fontWeight: 800, color: "rgba(255,255,255,.9)", fontFamily: "var(--font-display)" }}>{placeholderLetter(p.name)}</span>
+              )}
+              <span style={{ position: "absolute", top: 8, right: 8, fontSize: 9.5, fontWeight: 700, color: "#fff", background: "rgba(0,0,0,.3)", padding: "3px 7px", borderRadius: 6, pointerEvents: "none" }}>{p.platform}</span>
+            </div>
+            <div style={{ padding: "8px 9px 9px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+              <div data-testid={`prd-name-${p.id}`} title={p.name} style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", lineHeight: 1.25, minHeight: "2.5em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>{p.name}</div>
+              <div data-testid={`prd-codes-${p.id}`} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, minHeight: 18 }}>
+                <span style={{ fontFamily: mono, fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.sku}</span>
+                {p.liveCode && p.liveCode.trim() && (
+                  <span title={t.rd_prd_live_code} style={{ fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "1px 6px", borderRadius: 5, flexShrink: 0 }}>{p.liveCode.trim()}</span>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, minWidth: 0 }}>
+                <span data-testid={`prd-price-${p.id}`} style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--danger)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur}{fmt(p.price)}</span>
+                {/* Quick stock edit — atomic, debounced, race-safe (see bumpStock). */}
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }} title={t.rd_prd_quick_stock}>
+                  <button onClick={() => bumpStock(p.id, -1)} disabled={p.stock === 0} data-testid={`stock-dec-${p.id}`} aria-label={t.rd_prd_stock_minus} style={stepBtnSm(p.stock === 0)}>−</button>
+                  <span data-testid={`stock-val-${p.id}`} style={{ minWidth: 22, textAlign: "center", fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: stockColor(p.stock) }}>{p.stock}</span>
+                  <button onClick={() => bumpStock(p.id, 1)} data-testid={`stock-inc-${p.id}`} aria-label={t.rd_prd_stock_plus} style={stepBtnSm(false)}>+</button>
+                </div>
+              </div>
+              <div data-testid={`prd-btns-${p.id}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                <button onClick={() => openEdit(p)} style={{ ...cardBtn, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none" }}>{t.rd_prd_edit_btn}</button>
+                <button onClick={() => del(p.id)} style={{ ...cardBtn, color: "var(--danger)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_delete_btn}</button>
+                {inventoryV2 && <button onClick={() => { setRestockFor(p); setRestockQty(""); }} data-testid={`restock-${p.id}`} style={{ ...cardBtn, color: "var(--ok)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_restock}</button>}
+                {inventoryV2 && <button onClick={() => openHistory(p)} data-testid={`history-${p.id}`} style={{ ...cardBtn, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_history}</button>}
+              </div>
+            </div>
+          </div>
+          );
+        })}
+      </div>
+      ) : (
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
         {filtered.length === 0 && <div style={{ gridColumn: "1 / -1", fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "20px 0" }}>{t.rd_prd_empty}</div>}
         {filtered.map((p) => (
@@ -446,6 +505,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
           </div>
         ))}
       </div>
+      )}
 
       {/* Batch D #11 — cloud-sync failure pill (app-toast style, auto-dismiss) */}
       {note && (
@@ -512,13 +572,22 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                   const hasPic = eid === null ? !!newPic : imgPaths.has(eid);
                   return (
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 10, overflow: "hidden", background: avColor(form.name), display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                      <span style={{ fontSize: 16, fontWeight: 800, color: "rgba(255,255,255,.9)", fontFamily: "var(--font-display)" }}>{initials(form.name)}</span>
-                      {preview && <img src={preview} alt={form.name} data-testid="prd-pic-preview" onError={() => { if (eid !== null) markBroken(preview); }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+                    {/* 160 × 160, the WHOLE picture (contain); tap → full-screen viewer. */}
+                    <div data-testid="prd-pic-box" style={{ width: 160, height: 160, flexShrink: 0, borderRadius: 14, overflow: "hidden", background: preview ? "var(--surface-2)" : avColor(form.name), border: "1px solid var(--border)", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                      {preview ? (
+                        <button type="button" data-testid="prd-pic-view" aria-label={`${t.rd_prd_pic_open}: ${form.name}`}
+                          onClick={(e) => setViewer({ src: preview, caption: form.name, opener: e.currentTarget })}
+                          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", padding: 0, margin: 0, border: "none", background: "transparent", cursor: "zoom-in", display: "block" }}>
+                          <img src={preview} alt={form.name} data-testid="prd-pic-preview" onError={() => { if (eid !== null) markBroken(preview); }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                          <span aria-hidden="true" style={{ ...picBadge, right: 6, bottom: 6, padding: "4px 7px" }}>⤢ {t.rd_prd_pic_view}</span>
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: 40, fontWeight: 800, color: "rgba(255,255,255,.9)", fontFamily: "var(--font-display)" }}>{placeholderLetter(form.name)}</span>
+                      )}
                     </div>
                     <input ref={picInput} type="file" accept="image/*" data-testid="prd-pic-input" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void onPickPic(f); }} />
                     {picBusy ? <span data-testid="prd-pic-busy" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{picBusy === "up" ? t.rd_prd_pic_uploading : picBusy === "rm" ? t.rd_prd_pic_removing : "…"}</span> : (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <div data-testid="prd-pic-actions" style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
                         <button type="button" onClick={() => picInput.current?.click()} data-testid="prd-pic-add" style={sheetBtn(false)}>{hasPic ? t.rd_prd_pic_replace : t.rd_prd_pic_add}</button>
                         {hasPic && <button type="button" onClick={() => { if (eid === null) clearNewPic(); else void onRemovePic(); }} data-testid="prd-pic-remove" style={{ ...sheetBtn(false), color: "var(--danger)" }}>{t.rd_prd_pic_remove}</button>}
                       </div>
@@ -537,6 +606,8 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
           </form>
         </div>
       )}
+
+      {viewer && <PictureViewer src={viewer.src} caption={viewer.caption} opener={viewer.opener} closeLabel={t.rd_close} onClose={() => setViewer(null)} />}
     </div>
   );
 }

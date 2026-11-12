@@ -209,7 +209,7 @@ Use each code for one product only.'),
   ('auto-print-pinned', 'Auto-print pinned comments', '2026-11-11'::date, 'pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtomatikong print, 置顶, 置頂留言, 自动打印', '**Settings → General Settings → LIVE SETUP → Auto-print pinned comments** (TikTok).
 
 Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.'),
-  ('products-stock', 'Products, codes and stock', '2026-11-11'::date, 'products, product, item, stock, inventory, price, code, restock, add product, produkto, stocks, 商品, 库存, 庫存, 補貨', 'Open **Products** in the bottom bar.
+  ('products-stock', 'Products, codes and stock', '2026-11-12'::date, 'products, product, item, stock, inventory, price, code, restock, add product, picture, photo, larawan, produkto, stocks, 商品, 库存, 庫存, 補貨, 商品圖片', 'Open **Products** in the bottom bar.
 
 - **+ Add** — enter **Name**, **Item code**, **Live code** (optional, for Auto mode), **Price**, **Stock**, **Platform**, then **Save**. The status (Active, Low stock, Out of stock) follows the stock.
 - **Search name or item code** to find a product.
@@ -218,7 +218,9 @@ Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the 
 - **⬇ Export** gives an **Excel (.xlsx)** or **PDF** list. In the phone app, Excel opens the share menu (save to Files or send it); PDF works on a computer browser.
 - Auto mode orders take stock off automatically.
 
-Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live setup settings. Admin turns these on per account. If you don''t see one, it isn''t turned on for your account yet — ask Admin.'),
+Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live setup settings. Admin turns these on per account. If you don''t see one, it isn''t turned on for your account yet — ask Admin.
+
+**Product picture**: in **Edit**, tap **Add picture** and take a photo or pick one from your gallery (iPhone photos work too). The app turns it the right way up and makes it smaller for you — no need to crop or resize. The product list shows each picture as a square; tap a picture (⤢) to see the whole picture, then tap ✕ or outside it to close.'),
   ('reprint', 'Reprint a sticker', '2026-10-28'::date, 'reprint, print again, sticker, copy, missed print, i-print ulit, ulitin print, 重印, 補印, 重新打印', 'A reprint prints a copy of the order''s sticker. **No new order is created.**
 
 - On **Live**: tap **Reprint** on the ordered comment row.
