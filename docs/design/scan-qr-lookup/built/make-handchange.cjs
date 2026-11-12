@@ -3,7 +3,7 @@
 //   A) the username retyped another way (@ANNC_TW)            → nothing is erased
 //   B) one detail changed by the seller, then another username → the changed one stays, the untouched ones go
 //   C) (fresh entry) another username typed                    → all three filled details go     [pictures: before / after]
-//   D) (fresh entry) the "no handle" tick                      → all three filled details go
+//   D) (fresh entry) the "no handle" tick                      → nothing is erased (changed 2026-11-12, audit fix)
 //   1) npx vite --config vite.preview.config.ts --port 5199
 //   2) node docs/design/scan-qr-lookup/built/make-handchange.cjs
 const { chromium } = require("playwright");
@@ -94,7 +94,7 @@ const fmt = (o) => `username="${o.username}" name="${o.name}" phone="${o.phone}"
     await scan(p, k, "https://tiktok.com/@annc_tw");
     check(`${tag} D) scanned again → filled again`, await read(p, k, user), F);
     await p.click(tick);
-    check(`${tag} D) "no handle" ticked → all three go`, await read(p, k, user), { name: "", phone: "", store: "" });
+    check(`${tag} D) "no handle" ticked → nothing is erased`, await read(p, k, user), F);
     await p.close();
   }
   console.log(bad === 0 ? "ALL AS EXPECTED" : `NOT AS EXPECTED: ${bad}`);

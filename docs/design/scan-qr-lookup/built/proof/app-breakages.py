@@ -1,3 +1,5 @@
+# NOTE (2026-11-12): written for the code BEFORE the audit fix of that day (note after the username, "no handle" tick,
+# more rule-#4 shapes). Not updated or re-run for it — the hand-change / tick anchors no longer match the source.
 import subprocess, re, sys
 ROOT=sys.argv[1].rstrip('/')+'/'
 A=ROOT+'src/redesign/adapters/scanQrLookup.ts'

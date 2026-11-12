@@ -5,7 +5,8 @@
 //   • the username's records have 3+ different phones (a word used for many buyers) → nothing is filled.
 //   • no record / error / too slow → exactly as before (username only), no message.
 //   • the username changed BY HAND after a fill to one that is no longer that buyer's → the filled details nobody
-//     touched go (as at a scan of another buyer); the same username typed another way → nothing is erased.
+//     touched go (as at a scan of another buyer); the same username typed another way, or with a note after it
+//     ("x (U)", "x(U)", "x #3") → nothing is erased. The "no handle" tick erases nothing either.
 // The QR decode and the lookup read are mocked here (the read itself: adapters/__tests__/scanQrLookup.test.ts;
 // the screen with the REAL read and a recording client: ScanQrLookup.offOn.test.tsx).
 import { useRef } from "react";
@@ -852,19 +853,22 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
       expect(readParcelDraft(S.store)?.lookup).toBeUndefined();
     });
 
+    // The lookup-off screen is given by hand what the lookup-on screen ends with (typed details where they stay).
     it.each([
-      ["B's username is typed", (r: R) => { type(r, S.handle, "buyer_b"); }],
-      ["the 'no handle' box is ticked", (r: R) => { fireEvent.click(r.getByTestId(id("no-handle"))); }],
-    ] as [string, (r: R) => void][])("NOTHING new appears when %s after a fill: the whole screen is byte-for-byte the lookup-off screen after the same steps", async (_how, change) => {
+      ["B's username is typed", BLANK, (r: R) => { type(r, S.handle, "buyer_b"); }],
+      ["a note is typed after the username", MARIA, (r: R) => { type(r, S.handle, "buyer_a (U)"); }],
+      ["the 'no handle' box is ticked", MARIA, (r: R) => { fireEvent.click(r.getByTestId(id("no-handle"))); }],
+    ] as [string, typeof MARIA, (r: R) => void][])("NOTHING new appears when %s after a fill: the whole screen is byte-for-byte the lookup-off screen after the same steps", async (_how, left, change) => {
       const off = await open({ lookupOn: false });
       await scan(off, "buyer_a", "buyer_a");
+      typeDetails(off, left);
       change(off);
       const ref = { card: card(off), toast: toast(off), whole: off.container.innerHTML };
       expect(m.lookup).not.toHaveBeenCalled();
       cleanup(); clearParcelDrafts();
       const r = await filledA();
       change(r);
-      expect(details(r)).toEqual(BLANK);
+      expect(details(r)).toEqual(left);
       expect(card(r) === ref.card).toBe(true);
       expect(toast(r)).toBe(ref.toast);
       expect(r.container.innerHTML === ref.whole).toBe(true); // no new line, box, message or mark anywhere on the screen
@@ -891,6 +895,10 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
       ["a note after the @username", "@buyer_a (U)"],
       ["a space after the @", "@ buyer_a"],
       ["spaces around it", "  buyer_a "],
+      ["a note with no @ in front", "buyer_a (U)"],
+      ["a note stuck to it, no @", "buyer_a(U)"],
+      ["a note stuck to the @username", "@buyer_a(U)"],
+      ["a # note", "buyer_a #3"],
     ])("the SAME username typed with %s: nothing is erased — and the fill is still remembered", async (_how, text) => {
       const r = await filledA();
       type(r, S.handle, text);
@@ -916,8 +924,6 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     it.each([
       ["one letter removed", "buyer_"],
       ["one letter added", "buyer_ab"],
-      ["a note with no @ in front (rule #4: not a username)", "buyer_a (U)"],
-      ["a note stuck to the @username (rule #4: not a username)", "@buyer_a(U)"],
       ["the field emptied", ""],
     ])("%s is no longer A's username: the untouched details go", async (_how, text) => {
       const r = await filledA();
@@ -928,16 +934,29 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     });
 
     // What the rule means key by key (Scan QR writes the username WITHOUT an "@"):
-    it("a note typed key by key after the scanned username, no @ in front: the details go at the first key that makes it another text (rule #4) — an @ added afterwards does not bring them back", async () => {
+    it("a note typed key by key after the scanned username, no @ in front: nothing is erased at any key — nor when an @ is added afterwards", async () => {
       const r = await filledA();
-      type(r, S.handle, "buyer_a ");
-      expect(details(r)).toEqual(MARIA); // a plain space after it is still A's username
-      type(r, S.handle, "buyer_a (");
-      expect(details(r)).toEqual(BLANK);
-      type(r, S.handle, "buyer_a (U)");
-      type(r, S.handle, "@buyer_a (U)");
-      expect(details(r)).toEqual(BLANK);
+      for (const text of ["buyer_a ", "buyer_a (", "buyer_a (U", "buyer_a (U)", "@buyer_a (U)"]) {
+        type(r, S.handle, text);
+        expect(details(r), text).toEqual(MARIA);
+      }
+      expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA });
       expect(m.lookup).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(["buyer_a(U)", "buyer_a #3", "buyer_a#3", "@buyer_a(U)", "BUYER_A (u)", "buyer_a - paid", "buyer_a Garcia"])("a note right after the username (%j), typed key by key: nothing is erased at any key", async (full) => {
+      const r = await filledA();
+      for (let i = "buyer_a".length + (full.startsWith("@") ? 2 : 1); i <= full.length; i++) {
+        type(r, S.handle, full.slice(0, i));
+        expect(details(r), full.slice(0, i)).toEqual(MARIA);
+      }
+    });
+
+    it.each(["buyer_a1", "buyer_a.x", "buyer_a_2", "buyer_ab (U)", "maria88", "x buyer_a", "(U) buyer_a"])("%j is another username (or does not start with A's): the untouched details go", async (text) => {
+      const r = await filledA();
+      type(r, S.handle, text);
+      expect(details(r)).toEqual(BLANK);
+      expect(readParcelDraft(S.store)?.lookup).toBeUndefined();
     });
 
     it("the SAME note with the @ typed in front FIRST: nothing is erased at any key", async () => {
@@ -956,10 +975,10 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
       expect(m.lookup).toHaveBeenCalledTimes(1);
     });
 
-    it("a full-width space after the username (rule #4 knows the plain spaces only) is another text: the details go", async () => {
+    it("a full-width space after the username is not a username character: still the same buyer, nothing is erased", async () => {
       const r = await filledA();
       type(r, S.handle, "buyer_a\u3000");
-      expect(details(r)).toEqual(BLANK);
+      expect(details(r)).toEqual(MARIA);
     });
 
     it("the answer is still on its way: B is typed and then A's username is typed back — the answer for A is used", async () => {
@@ -984,13 +1003,37 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
       expect(m.lookup).toHaveBeenCalledTimes(2);
     });
 
-    it("the 'no handle' tick empties the username field: A's untouched details go with it, a changed one stays", async () => {
+    it("the 'no handle' tick empties the username field but erases NONE of the filled details; another username typed afterwards still takes the untouched ones", async () => {
       const r = await filledA();
       type(r, id("name"), "Maria S.");
       fireEvent.click(r.getByTestId(id("no-handle")));
       expect(val(r, S.handle)).toBe("");
+      expect((r.getByTestId(id("no-handle")) as HTMLInputElement).checked).toBe(true);
+      expect(details(r)).toEqual({ ...MARIA, name: "Maria S." });
+      expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA });
+      fireEvent.click(r.getByTestId(id("no-handle"))); // unticked again: still nothing erased
+      expect(details(r)).toEqual({ ...MARIA, name: "Maria S." });
+      type(r, S.handle, "buyer_a"); // A's username typed back: the same buyer
+      expect(details(r)).toEqual({ ...MARIA, name: "Maria S." });
+      type(r, S.handle, "buyer_b"); // another buyer: the untouched details go, the changed one stays
       expect(details(r)).toEqual({ name: "Maria S.", phone: "", store: "" });
-      expect(readParcelDraft(S.store)?.lookup).toBeUndefined();
+    });
+
+    it("the 'no handle' tick on a filled entry, then Save: the parcel is saved with the filled details and no username", async () => {
+      const mine = { name: S.valid.name, phone: S.valid.phone, store: S.valid.store }; // details this screen accepts
+      m.lookup.mockResolvedValueOnce(found(rec("a", { name: mine.name, phone: mine.phone, storeId: mine.store })));
+      const r = await open();
+      await scan(r, "buyer_a", "buyer_a");
+      await waitFor(() => expect(details(r)).toEqual(mine));
+      type(r, id("amount"), "500");
+      fireEvent.click(r.getByTestId(id("no-handle")));
+      expect(details(r)).toEqual(mine);
+      await waitFor(() => expect((r.getByTestId(id("save")) as HTMLButtonElement).disabled).toBe(false));
+      fireEvent.click(r.getByTestId(id("save")));
+      await waitFor(() => expect(S.saved).toHaveBeenCalledTimes(1));
+      expect(S.savedName()).toBe(mine.name);
+      expect(JSON.stringify(S.savedArg())).toContain(mine.phone);
+      expect(JSON.stringify(S.savedArg())).not.toContain("buyer_a");
     });
 
     it("with the app picker shown: the same username typed another way erases nothing; B's username takes A's untouched details", async () => {
@@ -1013,10 +1056,23 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
       expect(details(r)).toEqual(BLANK);
     });
 
-    it("with the app picker shown: the 'no contact' tick empties the field and takes A's untouched details", async () => {
+    it("with the app picker shown: the 'no contact' tick empties the field but erases NONE of the filled details; the field emptied BY TYPING, or another username, still does", async () => {
       const r = await filledA({ lookupOn: true, contactOn: true });
       fireEvent.click(r.getByTestId(id("bc-none")));
       expect(val(r, id("bc-input"))).toBe("");
+      expect(details(r)).toEqual(MARIA);
+      expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA });
+      type(r, id("bc-input"), "buyer_a (U)"); // typing unticks; the same buyer with a note
+      expect(details(r)).toEqual(MARIA);
+      type(r, id("bc-input"), ""); // emptied by typing = a hand change
+      expect(details(r)).toEqual(BLANK);
+    });
+
+    it("with the app picker shown: ticked, unticked, then the field emptied by typing right away — that typing is still a hand change", async () => {
+      const r = await filledA({ lookupOn: true, contactOn: true });
+      fireEvent.click(r.getByTestId(id("bc-none")));
+      fireEvent.click(r.getByTestId(id("bc-none")));
+      type(r, id("bc-input"), "b");
       expect(details(r)).toEqual(BLANK);
     });
 
@@ -1191,13 +1247,13 @@ describe("the hook on its own — the username changed by hand", () => {
     expect(setFields).not.toHaveBeenCalled();
     expect(result.current.mark).toBeNull();
   });
-  it.each(["buyer_a", "BUYER_A", "@buyer_a", "@Buyer_A (U)", "@ buyer_a", " buyer_a\t"])("the same username (%j): nothing happens, the fill stays remembered", (text) => {
+  it.each(["buyer_a", "BUYER_A", "@buyer_a", "@Buyer_A (U)", "@ buyer_a", " buyer_a\t", "buyer_a (U)", "buyer_a(U)", "@buyer_a(U)", "buyer_a #3", "buyer_a#3", "buyer_a Garcia", "buyer_a,"])("the same username (%j): nothing happens, the fill stays remembered", (text) => {
     const { result, setFields } = hook();
     act(() => { result.current.changedByHand(text); });
     expect(setFields).not.toHaveBeenCalled();
     expect(result.current.mark).toEqual(MARK);
   });
-  it.each(["buyer_", "buyer_a (U)", "@buyer_a(U)", "(U) @buyer_a", "", "unknown"])("no longer that username (%j): taken back", (text) => {
+  it.each(["buyer_", "buyer_ab", "buyer_a1 (U)", "buyer_a.b", "maria88", "(U) @buyer_a", "@@buyer_a", "", "unknown"])("no longer that username (%j): taken back", (text) => {
     const { result, setFields } = hook();
     act(() => { result.current.changedByHand(text); });
     expect(setFields).toHaveBeenCalledTimes(1);

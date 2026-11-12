@@ -37,5 +37,10 @@ Pupunan ang mga iyon mula sa pinakabagong record (ayon sa utos: 3 o higit pa lan
 Bilang `authenticated` na kumikilos bilang isang seller: 7,643 sariling row ang kita; **0** row ng ibang seller sa
 `parcel_customers` at sa `fm_parcel_customers`.
 
+## Paunawa (2026-11-12, ayos mula sa audit)
+Ang mga bilang sa itaas ay sinukat sa LUMANG rule #4. Tugma na ngayon ang `x (U)`, `x(U)`, `x #3` at `@x(U)`, kaya ang
+"HINDI tugma" na 2,295 / 67 at 102 / 8 ay tutugma na (ang may tala na nagsisimula sa `(` o `#`), at puwedeng tumaas ang bilang
+ng username na may 3+ phone. **Hindi inulit ang pagsukat.**
+
 ## Hindi nasukat dito
 - Ang bilis ng mismong tanong ng app mula sa phone, at ang eksaktong tanong sa totoong API — walang login para subukin.

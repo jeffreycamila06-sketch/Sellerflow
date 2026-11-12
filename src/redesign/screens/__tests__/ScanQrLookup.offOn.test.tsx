@@ -105,7 +105,9 @@ describe.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("%s Parcel Scan 
     expect(h.reads).toHaveLength(1);
     expect(h.reads[0].table).toBe(S.table);
     expect(h.reads[0].eq).toEqual([["user_id", "me-1"]]);
-    expect(h.reads[0].or).toEqual([`${S.col}.ilike.maria_shops,${S.col}.ilike.@maria_shops,${S.col}.ilike.@maria_shops %,${S.col}.ilike.@ maria_shops,${S.col}.ilike.@ maria_shops %`]);
+    expect(h.reads[0].or).toEqual([`${S.col}.ilike.maria_shops,${S.col}.ilike.@maria_shops,${S.col}.ilike.@maria_shops %,${S.col}.ilike.@ maria_shops,${S.col}.ilike.@ maria_shops %`
+      + `,${S.col}.ilike."maria_shops (%",${S.col}.ilike."maria_shops(%",${S.col}.ilike."maria_shops #%",${S.col}.ilike."maria_shops#%"`
+      + `,${S.col}.ilike."@maria_shops(%",${S.col}.ilike."@maria_shops#%",${S.col}.ilike."@ maria_shops(%",${S.col}.ilike."@ maria_shops#%"`]);
     expect(h.reads[0].writes).toEqual([]);
     expect(r.container.querySelector('[data-testid*="-ql"]')).toBeNull();
   });
@@ -156,7 +158,8 @@ describe.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("%s Parcel Scan 
 
   it.each([
     ["@pedro123", true], ["pedro123", true], ["@PEDRO123", true], ["@pedro123 (U)", true], ["@pedro123 #3", true], ["@ pedro123", true], ["@pedro123 Garcia (NA)", true],
-    ["@pedro12", false], ["@pedro1234", false], ["(U) @pedro123", false], ["Pedro Garcia", false], ["pedro123 (U)", false], ["@pedro123(U)", false],
+    ["pedro123 (U)", true], ["pedro123(U)", true], ["pedro123 #3", true], ["@pedro123(U)", true],
+    ["@pedro12", false], ["@pedro1234", false], ["(U) @pedro123", false], ["Pedro Garcia", false], ["pedro123 Garcia", false], ["pedro12 (U)", false], ["pedro1234(U)", false],
   ])("ON, rule #4: a record saved as %j — filled for a scan of @pedro123? %s", async (saved, fills) => {
     h.rows[S.table] = [row("a", "me-1", saved as string, "Record Name")];
     const r = await openAndScan(true, "pedro123", "pedro123");

@@ -4859,12 +4859,14 @@ Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). 
   (username only, no message). No lookup while a saved parcel is edited.
   The SAME username scanned again while its filled details are in the form → nothing is touched, nothing is read.
   Another buyer app picked while the answer is on its way → nothing is filled.
-  The username changed BY HAND after a fill (typing, paste, or the "no handle" tick emptying the field) to a text that
-  no longer stands for that buyer (rule #4 key) → the filled details nobody touched are blanked and the fill is forgotten
-  — the same code as a scan of another buyer (`lookup.changedByHand()`, called from each screen's `handleByHand`, the ONE
-  function that writes the username field for a hand change). Same username in another letter case / with `@` /
-  `@x (U)` → nothing is erased. Typing never reads Customers (typing the username back does not refill; a new Scan QR
-  does). Not with the switch off, not while a saved parcel is edited.
+  The username changed BY HAND after a fill (typing or paste) to ANOTHER username → the filled details nobody touched
+  are blanked and the fill is forgotten — the same code as a scan of another buyer (`lookup.changedByHand()`, called
+  from each screen's `handleByHand`). "Still the same buyer" = `sameUsernameTyped`: without the spaces / one `@` in
+  front, lower case, the text STARTS with the filled username and the next character is not a username character
+  (`pedro123 (U)`, `pedro123(U)`, `pedro123 #3`, `@Pedro123` → nothing erased; `pedro12`, `pedro1234`, `maria88`,
+  emptied by typing → erased). The **"no handle" / "no contact" tick erases nothing** (the screens write the empty
+  username themselves and do not call the hook). Typing never reads Customers (a new Scan QR does). Not with the
+  switch off, not while a saved parcel is edited.
   Code: `adapters/scanQrLookup.ts` (rule #4 `usernameKeyOf`, the one read, `recordToFill`) + `adapters/useScanQrLookup.ts`
   (one hook, both screens). ⇄ draft carries the fill mark (`parcelDrafts.ts` `lookup`).
 - **It only READS Customers.** Saving a parcel → Customers is NOT changed by this branch (Jeff 2026-11-12: nothing is
@@ -4873,8 +4875,11 @@ Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). 
   RedesignApp → prop `lookupOn` (LAST prop of both screens — older tests pin those JSX lines). No admin bypass. Off = no
   database call, same screen as main. Switch `app_settings.scan_qr_lookup_enabled` + feature key `scan_qr_lookup` come
   from **sql/149 (NOT applied)** → until then the feature is off for everyone.
-- **Rule #4 (which contact text is a username):** `pedro123` / `@pedro123` exactly, or `@` + first word (`@pedro123 (U)`,
-  `@ pedro123`). Never `@pedro12`, `@pedro1234`, `(U) @pedro123`, `pedro123 (U)`, `@pedro123(U)`. TikTok or no app only.
+- **Rule #4 (which contact text is a username):** `pedro123` / `@pedro123` exactly, `@` + first word (`@pedro123 (U)`,
+  `@ pedro123`), or the username followed by a note that starts with `(` or `#`, with or without `@` / a space
+  (`pedro123 (U)`, `pedro123(U)`, `pedro123 #3`, `@pedro123(U)`). Never `@pedro12`, `@pedro1234`, `(U) @pedro123`,
+  `Pedro Garcia`, `pedro123 Garcia`. TikTok or no app only. The database is asked for 13 shapes (`lookupFilter`; the 8
+  note shapes are in double quotes because they hold a bracket) — ⚠️ not yet run against the real API.
   Examples: `adapters/__tests__/fixtures/scanQrUsernameKey.json`.
 - **Evidence:** `docs/design/scan-qr-lookup/built/` — README (behaviour, what Jeff should know), screenshots
   (`make-built.cjs`), main-vs-branch with the switch off (`compare-with-main.cjs`), deliberate breakages

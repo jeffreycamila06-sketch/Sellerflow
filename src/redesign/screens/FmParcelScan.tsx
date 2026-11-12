@@ -141,9 +141,14 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   }, []);
 
   const F = (patch: Partial<Form>) => setForm((s) => ({ ...s, ...patch }));
-  // The username field changed BY HAND (typing or pasting in it, or the "no handle" tick emptying it). The lookup is told: when
-  // the text no longer stands for the buyer a Scan QR filled, that buyer's untouched details go with it.
+  // The username field changed BY HAND (typing or pasting in it). The lookup is told: when the text is no longer the
+  // username a Scan QR filled, that buyer's untouched details go with it.
   const handleByHand = (v: string) => { F({ username: v }); lookup.changedByHand(v); };
+  // The "no handle" tick empties the username but is NOT a hand change of it: details a Scan QR filled stay.
+  // (The picker field reports its own tick as onNoContact(true) and then an empty value — that one value is written as is.)
+  const tickedRef = useRef(false);
+  const noHandleTick = (on: boolean) => { setNoHandle(on); tickedRef.current = on; if (on) F({ username: "" }); };
+  const contactValue = (v: string) => { const fromTick = tickedRef.current; tickedRef.current = false; if (fromTick && v === "") F({ username: "" }); else handleByHand(v); };
   const clearForm = () => { setForm(emptyForm); setNoHandle(false); lookup.reset(); };
 
   // The parcel as it will be saved. New: today (Taipei) + the FamilyMart fee. Edit: keeps its own.
@@ -402,8 +407,8 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
               {contactOn ? (
                 <div>
                   <input ref={qrRef} type="file" accept="image/*" hidden data-testid="fms-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
-                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.username} onValue={handleByHand}
-                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) handleByHand(""); }}
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.username} onValue={contactValue}
+                    noContact={noHandle} onNoContact={noHandleTick}
                     invalid={handleBad && !isEmpty} testId="fms-bc" inputId="fms-handle" />
                 </div>
               ) : (
@@ -421,7 +426,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps2_handle_hint}</div>
                 {handleBad && !isEmpty && <div style={errTxt} data-testid="fms-handle-err">{t.rd_ps2_err_handle}</div>}
                 <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer", fontSize: 12, color: "var(--text-dim)" }}>
-                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) handleByHand(""); }} data-testid="fms-no-handle" />
+                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) F({ username: "" }); }} data-testid="fms-no-handle" />
                   {t.rd_ps2_no_handle}
                 </label>
               </div>

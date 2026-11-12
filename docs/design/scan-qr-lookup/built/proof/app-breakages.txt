@@ -1,3 +1,5 @@
+# PAUNAWA: ang mga takbong ito ay BAGO ang ayos mula sa audit (2026-11-12: tala pagkatapos ng username, tsek na "walang handle",
+# dagdag na hugis ng rule #4). Hindi inulit, at hindi in-update ang app-breakages.py para doon (may mga anchor na hindi na tugma).
 # 105 na sinadyang sira sa code ng app; sa bawat isa pinatakbo ang 4 na test file ng app, sa hiwalay na kopya ng repo.
 # Kaso 1-79 (ang mga dati): takbo sa commit 079ff20c. Kaso 80-105 (para sa "username na pinalitan nang kamay"): takbo sa
 # commit 55c00df7 (pagkatapos ng review: pinalitan ang pangalan ng function at dinagdagan ng 3 kaso at ng mga test).

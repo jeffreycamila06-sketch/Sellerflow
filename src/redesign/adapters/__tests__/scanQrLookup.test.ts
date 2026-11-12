@@ -38,7 +38,7 @@ vi.mock("../../../supabase", () => {
 });
 
 import {
-  distinctPhones, isLookupable, lookupCustomersByHandle, lookupFilter, lookupKey, matchLookupRows, recordToFill, scanQrLookupVisible, untouchedFilled, usernameKeyOf,
+  distinctPhones, isLookupable, lookupCustomersByHandle, lookupFilter, lookupKey, matchLookupRows, recordToFill, sameUsernameTyped, scanQrLookupVisible, untouchedFilled, usernameKeyOf,
   SCAN_QR_LOOKUP_LIMIT, SCAN_QR_LOOKUP_TIMEOUT_MS, SCAN_QR_SHARED_PHONES, type ScanQrLookupRaw,
 } from "../scanQrLookup";
 
@@ -65,7 +65,9 @@ describe("rule #4 — which saved text stands for which username", () => {
   });
   it("Jeff's examples, word for word", () => {
     for (const t of ["@pedro123", "pedro123", "@PEDRO123", "@pedro123 (U)", "@pedro123 #3", "@ pedro123", "@pedro123 Garcia (NA)"]) expect(usernameKeyOf(t), t).toBe("pedro123");
-    for (const t of ["@pedro12", "@pedro1234", "(U) @pedro123", "Pedro Garcia", "pedro123 (U)", "pedro12 3"]) expect(usernameKeyOf(t), t).not.toBe("pedro123");
+    // a note that starts with "(" or "#", with or without "@", with or without a space before it (2026-11-12, audit)
+    for (const t of ["pedro123 (U)", "pedro123(U)", "pedro123 #3", "pedro123#3", "@pedro123(U)", "@pedro123#3", "PEDRO123  (U) paid"]) expect(usernameKeyOf(t), t).toBe("pedro123");
+    for (const t of ["@pedro12", "@pedro1234", "(U) @pedro123", "Pedro Garcia", "pedro123 Garcia", "pedro12 3", "pedro12 (U)", "pedro1234(U)", "pedro123, paid", "pedro123 - paid"]) expect(usernameKeyOf(t), t).not.toBe("pedro123");
     expect(usernameKeyOf(null)).toBe("");
     expect(usernameKeyOf(undefined)).toBe("");
   });
@@ -80,10 +82,11 @@ describe("rule #4 — which saved text stands for which username", () => {
     const rows = [
       raw("exact", "pedro123"), raw("at", "@Pedro123"), raw("note", "@pedro123 (U)"), raw("num", "@pedro123 #3"), raw("sp", "@ pedro123"), raw("more", "@pedro123 Garcia (NA)"),
       raw("short", "@pedro12"), raw("long", "@pedro1234"), raw("front", "(U) @pedro123"), raw("name", "Pedro Garcia"), raw("noat", "pedro123 (U)"), raw("glued", "@pedro123(U)"),
+      raw("gluedplain", "pedro123(U)"), raw("hash", "pedro123 #3"), raw("words", "pedro123 Garcia"), raw("longnote", "pedro1234 (U)"),
     ];
-    expect(matchLookupRows(rows, "pedro123").map((r) => r.id).sort()).toEqual(["at", "exact", "more", "note", "num", "sp"]);
+    expect(matchLookupRows(rows, "pedro123").map((r) => r.id).sort()).toEqual(["at", "exact", "glued", "gluedplain", "hash", "more", "noat", "note", "num", "sp"]);
     expect(matchLookupRows(rows, "pedro12").map((r) => r.id)).toEqual(["short"]);
-    expect(matchLookupRows(rows, "pedro1234").map((r) => r.id)).toEqual(["long"]);
+    expect(matchLookupRows(rows, "pedro1234").map((r) => r.id).sort()).toEqual(["long", "longnote"]);
     expect(matchLookupRows(rows, "pedro")).toEqual([]);
     expect(matchLookupRows(rows, "garcia")).toEqual([]);
   });
@@ -108,8 +111,14 @@ describe("rule #4 — which saved text stands for which username", () => {
 });
 
 describe("the read — one per scan, this screen's table, own rows only", () => {
-  it("asks for the five shapes a record of the username can have", () => {
-    expect(lookupFilter("notes", "pedro123")).toBe("notes.ilike.pedro123,notes.ilike.@pedro123,notes.ilike.@pedro123 %,notes.ilike.@ pedro123,notes.ilike.@ pedro123 %");
+  it("asks for the shapes a record of the username can have (the five plain ones, then the notes that start with ( or #)", () => {
+    expect(lookupFilter("notes", "pedro123")).toBe(
+      "notes.ilike.pedro123,notes.ilike.@pedro123,notes.ilike.@pedro123 %,notes.ilike.@ pedro123,notes.ilike.@ pedro123 %"
+      + ',notes.ilike."pedro123 (%",notes.ilike."pedro123(%",notes.ilike."pedro123 #%",notes.ilike."pedro123#%"'
+      + ',notes.ilike."@pedro123(%",notes.ilike."@pedro123#%",notes.ilike."@ pedro123(%",notes.ilike."@ pedro123#%"');
+    // never a bare "key %" (that would bring every "pedro123 Garcia"-like name along) and every bracket is inside quotes
+    expect(lookupFilter("notes", "pedro123")).not.toMatch(/ilike\.pedro123 %|ilike\."pedro123 %"/);
+    expect(lookupFilter("notes", "pedro123").replace(/"[^"]*"/g, "")).not.toMatch(/[()#]/);
   });
   it("7-11 reads parcel_customers.notes; FamilyMart reads fm_parcel_customers.buyer_username — never the other", async () => {
     h.data = [db("1", "@Maria_Shops (U)")];
@@ -318,6 +327,20 @@ describe("the hook with the REAL read — Customers cannot be read (audit LOW-3)
   });
 });
 
+describe("the username changed by hand — is it still the filled buyer's username?", () => {
+  it("yes: the same username in any letter case, with an @, with spaces, or followed by anything that is not a username character", () => {
+    for (const t of ["pedro123", "PEDRO123", "@pedro123", " @ Pedro123 ", "pedro123 (U)", "pedro123(U)", "pedro123 #3", "pedro123#3", "@pedro123 (U)", "@pedro123(U)", "pedro123 Garcia", "pedro123,", "pedro123-x", "pedro123\u3000", "pedro123 "]) {
+      expect(sameUsernameTyped(t, "pedro123"), t).toBe(true);
+    }
+  });
+  it("no: a shorter or longer username, another one, a text that does not start with it, blank", () => {
+    for (const t of ["pedro12", "pedro1234", "pedro123a", "pedro123.x", "pedro123_2", "maria88", "(U) pedro123", "x pedro123", "@@pedro123", "", "   ", "@", null, undefined]) {
+      expect(sameUsernameTyped(t as string | null | undefined, "pedro123"), String(t)).toBe(false);
+    }
+    expect(sameUsernameTyped("anything", "")).toBe(false);
+  });
+});
+
 describe("the username changed by hand — both screens tell the hook, at every place the field is written by hand", () => {
   it.each([["ParcelScan.tsx", "notes"], ["FmParcelScan.tsx", "username"]])("%s", (file, col) => {
     const src = readFileSync(`src/redesign/screens/${file}`, "utf8");
@@ -326,17 +349,21 @@ describe("the username changed by hand — both screens tell the hook, at every 
     // through F(…) the field's text is written in exactly two places: that function, and the Scan QR handler (which calls
     // lookup.scanned). (Clear, edit start and a new photo replace the WHOLE form with setForm and call lookup.reset() —
     // their own tests are in ScanQrLookup.screens / .camera.)
-    expect(src.match(new RegExp(`F\\(\\{ ${col}: [^}]*\\}\\)`, "g"))).toEqual([`F({ ${col}: v })`, `F({ ${col}: handle.slice(0, 50) })`]);
-    // the picker field (typing and paste), the plain field, and both "no handle" ticks
-    expect(src).toContain("onValue={handleByHand}");
-    expect(src).toContain('onNoContact={(on) => { setNoHandle(on); if (on) handleByHand(""); }}');
+    expect((src.match(new RegExp(`F\\(\\{ ${col}: [^}]*\\}\\)`, "g")) ?? []).sort()).toEqual([`F({ ${col}: "" })`, `F({ ${col}: "" })`, `F({ ${col}: "" })`, `F({ ${col}: handle.slice(0, 50) })`, `F({ ${col}: v })`]);
+    // the picker field (typing and paste) and the plain field tell the hook
+    expect(src).toContain("onValue={contactValue}");
+    expect(src).toContain("else handleByHand(v); };");
     expect(src).toContain("const v = e.target.value.slice(0, 50); handleByHand(v);");
-    expect(src).toContain('const on = e.target.checked; setNoHandle(on); if (on) handleByHand(""); }}');
-    expect((src.match(/handleByHand\(/g) ?? []).length).toBe(3);
+    expect((src.match(/handleByHand\(/g) ?? []).length).toBe(2);
+    // the "no handle" ticks write the empty username themselves and do NOT tell the hook (the filled details stay)
+    expect(src).toContain("noContact={noHandle} onNoContact={noHandleTick}");
+    expect(src).toContain(`const noHandleTick = (on: boolean) => { setNoHandle(on); tickedRef.current = on; if (on) F({ ${col}: "" }); };`);
+    expect(src).toContain(`const on = e.target.checked; setNoHandle(on); if (on) F({ ${col}: "" }); }}`);
+    expect(src).not.toMatch(/handleByHand\(""\)|changedByHand\(""\)/);
   });
   it("the hook decides with rule #4 and takes the details back with the same code a scan of another buyer uses", () => {
     const hook = readFileSync("src/redesign/adapters/useScanQrLookup.ts", "utf8");
-    expect(hook).toContain("if (usernameKeyOf(handle) === prev.handle) return;");
+    expect(hook).toContain("if (sameUsernameTyped(handle, prev.handle)) return;");
     expect((hook.match(/takeBack\(o, prev, /g) ?? []).length).toBe(2); // scanned() and changedByHand()
   });
 });

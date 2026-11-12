@@ -1085,9 +1085,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || contactErr || (batchFull && !editing) || frozen.blocked;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
-  // The username field changed BY HAND (typing or pasting in it, or the "no handle" tick emptying it). The lookup is told: when
-  // the text no longer stands for the buyer a Scan QR filled, that buyer's untouched details go with it.
+  // The username field changed BY HAND (typing or pasting in it). The lookup is told: when the text is no longer the
+  // username a Scan QR filled, that buyer's untouched details go with it.
   const handleByHand = (v: string) => { F({ notes: v }); lookup.changedByHand(v); };
+  // The "no handle" tick empties the username but is NOT a hand change of it: details a Scan QR filled stay.
+  // (The picker field reports its own tick as onNoContact(true) and then an empty value — that one value is written as is.)
+  const tickedRef = useRef(false);
+  const noHandleTick = (on: boolean) => { setNoHandle(on); tickedRef.current = on; if (on) F({ notes: "" }); };
+  const contactValue = (v: string) => { const fromTick = tickedRef.current; tickedRef.current = false; if (fromTick && v === "") F({ notes: "" }); else handleByHand(v); };
 
   // "Scan QR" — decode the buyer @username off the printed SFL sticker (camera photo or
   // an uploaded label image) and auto-fill the required handle field VERBATIM. No QR
@@ -1407,8 +1412,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               {contactOn ? (
                 <div>
                   <input ref={qrRef} type="file" accept="image/*" hidden data-testid="ps-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
-                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.notes} onValue={handleByHand}
-                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) handleByHand(""); }}
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.notes} onValue={contactValue}
+                    noContact={noHandle} onNoContact={noHandleTick}
                     invalid={errs.handle && !errs.empty} testId="ps-bc" inputId="ps-handle" />
                 </div>
               ) : (<>
@@ -1439,7 +1444,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 {/* Escape hatch — checking it clears + disables the input and lets Save through
                     with a BLANK handle (col J stays empty). Never persisted; resets per parcel. */}
                 <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer", fontSize: 12, color: "var(--text-dim)" }}>
-                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) handleByHand(""); }} data-testid="ps-no-handle" />
+                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) F({ notes: "" }); }} data-testid="ps-no-handle" />
                   {t.rd_ps2_no_handle}
                 </label>
               </div>

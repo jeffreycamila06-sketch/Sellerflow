@@ -6,11 +6,21 @@
 - ang mga record ng "username" ay may **3 o higit pang magkakaibang phone** (salitang isinusulat para sa maraming buyer, hal.
   `user`) → walang pinupunan;
 - walang record / error / lampas 4 segundo → eksaktong gaya ngayon (username lang);
-- **pagkatapos mapunan, pinalitan NANG KAMAY ang username** (type, paste, o ang tsek na "walang handle" na nagbubura sa
-  field) at hindi na ito tumutukoy sa buyer na iyon (rule #4) → binubura ang mga napunang detalye na **hindi ginalaw** ng
-  encoder at kinakalimutan ang punan — parehong code ng pag-scan ng ibang buyer. Ang ginalaw na ng encoder ay nananatili.
-  Parehong username na iba lang ang laki ng letra, may `@`, o `@username (tala)` → walang binubura. Walang bagong UI o
-  mensahe. Hindi tumatakbo kapag naka-OFF ang switch o habang nag-e-edit ng naka-save na parcel.
+- **pagkatapos mapunan, pinalitan NANG KAMAY ang username** (type o paste) at **ibang username na** → binubura ang mga
+  napunang detalye na **hindi ginalaw** ng encoder at kinakalimutan ang punan — parehong code ng pag-scan ng ibang buyer.
+  Ang ginalaw na ng encoder ay nananatili. "Parehong buyer pa rin" kapag ang text (walang `@` at space sa unahan, maliit
+  na letra) ay **nagsisimula pa rin sa napunang username at ang kasunod ay hindi character ng username**: `pedro123 (U)`,
+  `pedro123(U)`, `pedro123 #3`, `@Pedro123` → walang binubura. `pedro12`, `pedro1234`, `maria88`, binura sa pag-type →
+  binubura. **Ang tsek na "walang handle / no contact" ay walang binubura.** Walang bagong UI o mensahe. Hindi tumatakbo
+  kapag naka-OFF ang switch o habang nag-e-edit ng naka-save na parcel.
+
+> **Ayos mula sa audit (2026-11-12, magaan na takbo).** Tatlong binago pagkatapos ng mga takbo sa ibaba: (1) ang tala
+> pagkatapos ng username ay hindi na nagbubura; (2) ang tsek na "walang handle" ay hindi na nagbubura; (3) tugma na rin sa
+> Customers ang `pedro123 (U)`, `pedro123(U)`, `pedro123 #3`, `@pedro123(U)` (dagdag na 8 hugis sa tanong sa database).
+> **Hindi inulit** para dito: ang mga sinadyang pagsira (`proof/`), ang hiwalay na reviewer, ang mga larawan,
+> `make-handchange.txt` (ang kaso D doon ay lumang gawi) at `compare-with-main.txt`. Pinatakbo lang: typecheck at ang 4 na
+> test file ng Scan QR lookup (361 test); ang buong suite ay sa CI. Ang mga bilang sa live (`proof/live-readonly-checks.md`)
+> ay sinukat sa lumang rule #4 — hindi inulit; ngayon mas maraming record ang tutugma (hal. 2,295 na `x (U)` sa 7-11).
 
 **BUMABASA lang ito ng Customers. Walang binago sa pag-save ng parcel sa Customers** — walang binubura, walang pinapalitan,
 walang bagong SQL para doon (7-11 at FamilyMart ay eksaktong gaya ng live ngayon).
@@ -92,8 +102,8 @@ database, hindi production.)
    username lang ang nasa field (hal. `annc_tw`).
 5. **Puwedeng mapunan ang store # na hindi pa pumasa sa tsek** — isinusulat ng kasalukuyang pag-save ang record ng parcel bago
    pa dumating ang hatol ng store (gawi ngayon, hindi binago). Tine-tsek pa rin ang store ng bagong parcel pagka-save.
-6. **`@pedro123(U)` (walang space bago ang tala) ay HINDI tugma** — literal na "unang salita". Live: 102 record (7-11), 8 (FM).
-7. **`pedro123 (U)` (walang `@`, may space) ay HINDI tugma** — ayon sa utos. Live: 2,295 record (7-11), 67 (FM).
+6. ~~`@pedro123(U)` (walang space bago ang tala) ay HINDI tugma~~ — **TUGMA NA** (ayos mula sa audit). `@pedro123,` at `@pedro123/ig` ay hindi pa rin. Live: 102 record (7-11), 8 (FM).
+7. ~~`pedro123 (U)` (walang `@`, may space) ay HINDI tugma~~ — **TUGMA NA** (ayos mula sa audit; tala na nagsisimula sa `(` o `#`). `pedro123 Garcia` ay hindi pa rin. Live: 2,295 record (7-11), 67 (FM).
 8. **Kapag 100 o higit pa ang ibinalik na kandidato** para sa isang scan, walang pinupunan (hindi mabibilang ang lahat ng
    phone). Sa live, 60 ang pinakamaraming record ng iisang username.
 9. **Isang karaniwang space lang ang hinahanap pagkatapos ng `@` o ng username.** Ang record na may tab o 2+ space doon
@@ -105,35 +115,25 @@ database, hindi production.)
     sticker ang sumunod, saka binabawi ang hindi ginalaw na detalye ng nauna.
 10c. **Pinalitan ang app ng buyer (hal. LINE) habang hinihintay ang sagot** → walang pinupunan. (Kapag pinalitan
     pagkatapos nang mapunan, nananatili ang napunan.)
-10h. **Username na pinalitan nang kamay — ISANG pindot lang ay sapat na.** Hindi alam ng app kung kailan "tapos" ang
-    pag-type, kaya sa unang pindot na nagpapaiba sa username (hal. isang backspace: `pedro123` → `pedro12`) ay nabubura na
-    ang mga napunang detalye na hindi ginalaw. **Ang pag-type pabalik ng tamang username ay HINDI nagbabalik sa mga ito**
-    (ang pag-type ay hindi bumabasa ng Customers) — i-scan ulit ang sticker para mapunan ulit.
-10i. **Ang QR ay naglalagay ng username na WALANG `@`** (`pedro123`). Kapag dinagdagan ito ng encoder ng tala nang walang
-    `@` (`pedro123 (U)`), ayon sa rule #4 ay hindi na iyon username → **nabubura ang mga napunang detalye na hindi
-    ginalaw.** Kapag may `@` (`@pedro123 (U)`) ay walang nabubura. Live: 2,295 naka-save na contact (7-11) at 67 (FM) ang
-    hugis na `x (U)` na walang `@` — ibig sabihin may mga encoder na ganito mag-type. Mahalaga rin ang **pagkakasunod**: kapag inuna ang `@` saka ang tala,
-    walang nabubura; kapag inuna ang tala saka ang `@`, nabura na at hindi na bumabalik. **Tanong 1 sa ibaba.**
-10j. **Ang tsek na "walang handle / no contact"** ay nagbubura sa username field, kaya itinuring itong pagpalit nang kamay:
-    nabubura rin ang mga napunang detalye na hindi ginalaw. (Hindi ito tahasang nasa utos — sabihin kung ayaw.)
+10h. **Username na pinalitan nang kamay — ISANG pindot lang ay sapat na kapag naging ibang username.** Hal. isang backspace
+    (`pedro123` → `pedro12`) ay nagbubura na ng mga napunang detalye na hindi ginalaw, at **ang pag-type pabalik ay HINDI
+    nagbabalik sa mga ito** — i-scan ulit ang sticker. Ang pagdagdag ng tala (`pedro123 (U)`, `pedro123(U)`, `pedro123 #3`)
+    ay **hindi** nagbubura.
+10i. **Mas maluwag ang tsek sa pag-type kaysa sa pagtutugma sa Customers.** Sa pag-type, kahit anong hindi character ng
+    username ang kasunod ay parehong buyer pa rin (`pedro123 Garcia`, `pedro123, bayad`, full-width na space). Sa
+    pagtutugma ng record, `(` o `#` lang ang puwedeng simula ng tala kapag walang `@` — kaya ang record na naka-save bilang
+    `pedro123 Garcia` ay hindi pupunan sa susunod na scan.
+10j. **Ang tsek na "walang handle / no contact"** pagkatapos mapunan ay nagbubura ng username pero **hindi ng napunang
+    detalye**; mase-save ang parcel na may detalye ni A at walang username.
 10k. **Ang pagpili ng ibang app** (hal. LINE) pagkatapos mapunan, nang hindi ginagalaw ang text ng username, ay **walang
-    binubura** (ang utos ay tungkol sa username field). Kapag nag-type na ng bagong contact, saka nabubura. Ibig sabihin
-    puwedeng ma-save ang napunang detalye ni A na LINE ang app at `pedro123` ang contact. **Tanong 4 sa ibaba.**
-10l. **"Ginalaw" = iba na ang laman.** Ang detalyeng in-type ulit ng encoder sa eksaktong parehong laman ng napunan ay
-    itinuturing na hindi ginalaw, kaya nabubura rin (ganito na rin sa pag-scan ng ibang buyer).
-10m. **Full-width na space** (mula sa Chinese keyboard) pagkatapos ng username ay hindi "karaniwang space" ng rule #4, kaya
-    nabubura rin ang mga napunan. Ayon ito sa rule #4 gaya ng pagkakasulat; sabihin kung gusto mong payagan.
-10n. **Habang hinihintay pa ang sagot** ng Customers, mas mahigpit ang tsek kaysa pagkatapos mapunan: kapag ginawang
-    `@pedro123 (U)` ang field bago dumating ang sagot, hindi na pinupunan (dati nang ganito; hindi binago).
-10d. **"Pinakabago" = huling naisulat na record.** Kapag ang lumang parcel ng buyer ay na-edit o na-recheck kamakailan, ang
-    record nito ang nagiging "pinakabago" — puwedeng lumang store ang mapunan. Nakikita ng encoder; walang petsa o babala
-    (inalis kasama ng kahon).
-10e. **Binibilang ang lahat ng record kailanman ng username.** Ang totoong buyer na may 3 magkakaibang phone sa Customers
-    (o 3 maling type) ay hindi na pupunan hangga't hindi binabawasan ang mga record niya sa Customers. `0911…` at `+886911…`
-    ay binibilang na dalawang magkaibang phone.
-10f. **Pinakabagong record na walang store #:** napupunan ang pangalan at phone, blangko ang store, at nasa Amount ang cursor.
-10g. **Cancel habang binabasa pa ang QR na larawan:** may isa pa ring basa sa Customers (kapag bukas ang feature) para sa
-    saradong form; walang lumalabas at malinis ang form pagbukas ulit.
+    binubura**. Kapag nag-type na ng ibang contact, saka nabubura. **Tanong 2 sa ibaba.**
+10l. **"Ginalaw" = iba na ang laman.** Ang detalyeng in-type ulit sa eksaktong parehong laman ng napunan ay itinuturing na
+    hindi ginalaw (ganito na rin sa pag-scan ng ibang buyer).
+10m. **Habang hinihintay pa ang sagot** ng Customers, mas mahigpit ang tsek: kapag ginawang `pedro123 (U)` ang field bago
+    dumating ang sagot, hindi na pinupunan (dati nang ganito; hindi binago).
+10n. **Tanong sa database:** 13 hugis na ngayon (5 dati + 8 para sa tala na `(` / `#`). Ang 8 bago ay may bracket kaya
+    nakapaloob sa panipi. Kapag tinanggihan ng totoong API ang hugis na ito, **walang mapupunan kahit kanino** (walang
+    error na lalabas) — tingnan ang "HINDI PA NAPAPATUNAYAN".
 11. **Help guide:** tungkol lang sa pagpuno ang idinagdag (kasama ang "If nothing is filled in, type the details as usual."
     na binubura ng panibagong scan ang detalyeng pinunan ng nauna, at na nililinis ng Import ang entry na pinunan ng scan).
     Walang banggit tungkol sa pagpapalit ng entry sa
@@ -142,21 +142,17 @@ database, hindi production.)
     `sql/116b`. Hangga't hindi na-apply ang `sql/149`, naka-OFF ito sa lahat.
 
 ## Mga tanong kay Jeff (username na pinalitan nang kamay)
-Ang nakagawa ngayon ay ang **(a)** sa bawat isa — eksakto sa utos. Wala sa mga (b)/(c) ang ginawa.
-1. **Tala na walang `@` pagkatapos ng scan** (`pedro123 (U)`, tingnan ang 10i) — (a) hayaan: nabubura ang napunan;
-   (b) para sa tsek na ito lang, ituring na si A pa rin kapag ang **unang salita** ng field ay ang username ni A;
-   (c) ang Scan QR na mismo ang maglagay ng `@` sa unahan (mas malaki: iba na ang contact na mase-save at ma-e-export).
-2. **Isang pindot, walang balik** (10h) — (a) hayaan; (b) "itabi at ibalik": kapag ang field ay bumalik sa username ni A
-   at blangko pa ang pangalan, phone at store, ibalik ang binura **nang hindi bumabasa ng Customers** (kalimutan ito sa
-   susunod na scan, Clear/Save, o kapag may in-type sa tatlong field).
-3. **Tsek na "walang handle"** (10j) — (a) hayaan: binubura ang hindi ginalaw; (b) huwag ituring na pagpalit nang kamay.
-4. **Ibang app na pinili pagkatapos mapunan** (10k) — (a) hayaan: walang binubura; (b) burahin din ang hindi ginalaw
-   kapag hindi na TikTok ang app.
-5. **Autocorrect ng keyboard sa username field** — hindi naka-off ngayon sa dalawang screen (dati na). Kapag binago ng
-   keyboard ang username, mabubura rin ang mga napunan. Ang pag-off nito ay pagbabago sa field para sa LAHAT (kahit
-   naka-OFF ang switch), kaya hindi ginawa rito.
+Nasagot na ng ayos mula sa audit: ang tala pagkatapos ng username, at ang tsek na "walang handle". Natitira:
+1. **Isang pindot, walang balik** (10h) — (a) hayaan (ngayon); (b) "itabi at ibalik": kapag ang field ay bumalik sa
+   username ni A at blangko pa ang pangalan, phone at store, ibalik ang binura nang hindi bumabasa ng Customers.
+2. **Ibang app na pinili pagkatapos mapunan** (10k) — (a) hayaan: walang binubura (ngayon); (b) burahin din ang hindi
+   ginalaw kapag hindi na TikTok ang app.
+3. **Autocorrect ng keyboard sa username field** — hindi naka-off sa dalawang screen (dati na). Ang pag-off nito ay
+   pagbabago sa field para sa LAHAT (kahit naka-OFF ang switch), kaya hindi ginawa rito.
 
 ## HINDI PA NAPAPATUNAYAN
+- **Ang 8 bagong hugis ng tanong (may bracket, nakapanipi)** ay hindi pa napapatakbo sa totoong API. Mapapatunayan sa isang
+  scan ng totoong sticker ng buyer na may record na `username (U)`, gamit ang account na nasa listahan, bago buksan sa iba.
 - **Ang totoong tanong ng app sa totoong API** (lalo na ang space sa loob ng filter, at username na may `.` at `_`) at ang
   bilis mula sa phone. Walang login para subukin dito, at hindi maabot ang API mula sa makinang ito. Ang mga test ay gumagamit
   ng pekeng client, at ang preview database ay hindi nagsasala. Kung tanggihan ng totoong API ang tanong, ang resulta ay

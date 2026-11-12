@@ -61,14 +61,17 @@ export function isLookupable(key: string): boolean {
 const WS = " \\t\\n\\r\\f\\v";
 const KEY_EXACT = new RegExp(`^[${WS}]*([A-Za-z0-9._]{1,50})[${WS}]*$`);
 const KEY_AT = new RegExp(`^[${WS}]*@[${WS}]*([A-Za-z0-9._]{1,50})(?:[${WS}][\\s\\S]*)?$`);
+// the username, then a note that starts with "(" or "#" — with or without "@", with or without a space before it
+const KEY_NOTE = new RegExp(`^[${WS}]*@?[${WS}]*([A-Za-z0-9._]{1,50})[${WS}]*[(#][\\s\\S]*$`);
 /**
  * The username a saved contact text stands for, lower case — "" when it stands for none.
- * "pedro123" / "@pedro123" / "@pedro123 (U)" / "@ pedro123" → "pedro123";
- * "(U) @pedro123" / "Pedro Garcia" / "pedro123 (U)" / "@pedro123(U)" / "unknown" → "".
+ * "pedro123" / "@pedro123" / "@pedro123 (U)" / "@ pedro123" / "pedro123 (U)" / "pedro123(U)" / "pedro123 #3" /
+ * "@pedro123(U)" → "pedro123";
+ * "(U) @pedro123" / "Pedro Garcia" / "pedro123 Garcia" / "@pedro123," / "unknown" → "".
  */
 export function usernameKeyOf(text: string | null | undefined): string {
   const v = String(text ?? "");
-  const m = KEY_EXACT.exec(v) ?? KEY_AT.exec(v);
+  const m = KEY_EXACT.exec(v) ?? KEY_AT.exec(v) ?? KEY_NOTE.exec(v);
   const k = m ? m[1].toLowerCase() : "";
   return k === "unknown" ? "" : k;
 }
@@ -114,10 +117,31 @@ export function recordToFill(rows: readonly ScanQrLookupRow[]): ScanQrLookupRow 
   return rows[0] ?? null;
 }
 
-/** What the database is asked for: the five shapes a record of this username can have. Pure. */
+/**
+ * What the database is asked for: the shapes a record of this username can have. The app's own check
+ * (matchLookupRows) decides afterwards — the database only narrows the candidates. Pure.
+ */
 export function lookupFilter(col: string, key: string): string {
   // key is [a-z0-9._] only (isLookupable) — nothing in it can change the filter.
-  return [`${key}`, `@${key}`, `@${key} %`, `@ ${key}`, `@ ${key} %`].map((p) => `${col}.ilike.${p}`).join(",");
+  const plain = [`${key}`, `@${key}`, `@${key} %`, `@ ${key}`, `@ ${key} %`].map((p) => `${col}.ilike.${p}`);
+  // a note that starts with "(" or "#" ("@key (…" and "@key #…" are already in "@key %"). These hold a
+  // bracket, so each value is in double quotes.
+  const note = [`${key} (%`, `${key}(%`, `${key} #%`, `${key}#%`, `@${key}(%`, `@${key}#%`, `@ ${key}(%`, `@ ${key}#%`].map((p) => `${col}.ilike."${p}"`);
+  return [...plain, ...note].join(",");
+}
+
+/**
+ * After a fill for `key`: does the text now in the username field still say that username? Yes when — without
+ * the spaces and one "@" in front, in lower case — it starts with it and what follows is not a username
+ * character: "pedro123", "@Pedro123", "pedro123 (U)", "pedro123(U)", "pedro123 #3". No for "pedro12",
+ * "pedro1234", "maria88", "". Pure.
+ */
+export function sameUsernameTyped(text: string | null | undefined, key: string): boolean {
+  if (key === "") return false;
+  const v = String(text ?? "").replace(/^\s*@?\s*/, "").toLowerCase();
+  if (!v.startsWith(key)) return false;
+  const next = v.charAt(key.length);
+  return next === "" || !/[a-z0-9._]/.test(next);
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));

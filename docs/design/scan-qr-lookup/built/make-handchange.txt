@@ -1,3 +1,5 @@
+#  NOTE: this run is from BEFORE the 2026-11-12 audit fix and was not repeated. Case D below shows the old behaviour
+#  (the "no handle" tick erased the details); it now erases nothing. Cases A-C are unchanged.
 --  711  360px after Scan QR: username="annc_tw" name="陳安安" phone="0922333444" store="266402"
 OK  711  360px A) retyped "@ANNC_TW" → nothing erased: username="@ANNC_TW" name="陳安安" phone="0922333444" store="266402"
 OK  711  360px B) phone changed by the seller, then "another_buyer" → phone stays, name + store go: username="another_buyer" name="" phone="0999888777" store=""

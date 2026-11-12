@@ -14,12 +14,14 @@
 //  • every scan / reset / Save press takes a new number; an answer with an old number is dropped
 //  • the username in the field must still be the scanned one when the answer comes, and the buyer's app
 //    must still be TikTok (the seller did not pick another app while waiting)
-//  • the username changed BY HAND to one that no longer stands for the filled buyer (rule #4): the details the
-//    fill wrote and nobody touched go away and the fill is forgotten — the same as a scan of another buyer
+//  • the username changed BY HAND to another one (the text no longer starts with the filled username, or goes on
+//    with more username characters): the details the fill wrote and nobody touched go away and the fill is
+//    forgotten — the same as a scan of another buyer. A note after the username ("pedro123 (U)") changes nothing.
+//    The "no handle" tick is not a hand change: the screens do not call changedByHand for it.
 //  • reset() at Clear / Cancel / Save done / next photo / edit start / Import
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  isLookupable, lookupCustomersByHandle, lookupKey, recordToFill, untouchedFilled, usernameKeyOf,
+  isLookupable, lookupCustomersByHandle, lookupKey, recordToFill, sameUsernameTyped, untouchedFilled,
   type LookupFields, type ScanQrLookupMark, type ScanQrLookupStore,
 } from "./scanQrLookup";
 
@@ -44,11 +46,11 @@ export interface ScanQrLookupApi {
   mark: ScanQrLookupMark | null;
   scanned: (handle: string) => void;
   /**
-   * The seller changed the username field BY HAND (typed or pasted in it, or emptied it with the "no handle" tick) —
-   * call it with the field's new text. While that text still stands for the filled buyer (rule #4: another letter
-   * case, an "@", a note after "@username") nothing happens. When it no longer does, the details the fill wrote and
-   * nobody touched are blanked and the fill is forgotten. It never reads Customers. Does nothing with the lookup off,
-   * during an edit, or with no fill.
+   * The seller changed the username field BY HAND (typed or pasted in it) — call it with the field's new text.
+   * While that text still starts with the filled username and goes on with something that is not a username
+   * character (another letter case, an "@" in front, a note such as " (U)", "(U)", " #3") nothing happens.
+   * Otherwise the details the fill wrote and nobody touched are blanked and the fill is forgotten. It never reads
+   * Customers. Does nothing with the lookup off, during an edit, or with no fill. NOT called for the "no handle" tick.
    */
   changedByHand: (handle: string) => void;
   /**
@@ -137,7 +139,7 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     fieldsRef.current = { ...fieldsRef.current, handle }; // the form says this now (an answer on its way checks it)
     const prev = markRef.current;
     if (!prev) return; // nothing was filled → typing is just typing
-    if (usernameKeyOf(handle) === prev.handle) return; // still the filled buyer's username
+    if (sameUsernameTyped(handle, prev.handle)) return; // still the filled buyer's username (a note after it is fine)
     takeBack(o, prev, fieldsRef.current, handle);
   }, [takeBack]);
 

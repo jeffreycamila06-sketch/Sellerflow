@@ -1,5 +1,5 @@
 {
- "about": "Rule #4 (Jeff 2026-11-12): the username a saved contact text stands for (usernameKeyOf in adapters/scanQrLookup.ts).",
+ "about": "Rule #4 (Jeff 2026-11-12; notes that start with ( or # added the same day after the audit): the username a saved contact text stands for (usernameKeyOf in adapters/scanQrLookup.ts).",
  "cases": [
   {
    "text": "pedro123",
@@ -93,8 +93,8 @@
   },
   {
    "text": "pedro123 (U)",
-   "key": "",
-   "why": "no @ and a space"
+   "key": "pedro123",
+   "why": "a note that starts with ( — no @ needed"
   },
   {
    "text": "pedro123 Garcia",
@@ -103,8 +103,8 @@
   },
   {
    "text": "@pedro123(U)",
-   "key": "",
-   "why": "nothing may be glued to the username"
+   "key": "pedro123",
+   "why": "a note that starts with ( may be glued to the username"
   },
   {
    "text": "@pedro123,",
@@ -235,6 +235,86 @@
    "text": "@pedro123 (U)",
    "key": "",
    "why": "a no-break space is not a space here"
+  },
+  {
+   "text": "pedro123(U)",
+   "key": "pedro123",
+   "why": "a note that starts with ( glued, no @"
+  },
+  {
+   "text": "pedro123 #3",
+   "key": "pedro123",
+   "why": "a note that starts with # — no @ needed"
+  },
+  {
+   "text": "pedro123#3",
+   "key": "pedro123",
+   "why": "a note that starts with # glued, no @"
+  },
+  {
+   "text": "@pedro123#3",
+   "key": "pedro123",
+   "why": "a note that starts with # glued to the @username"
+  },
+  {
+   "text": "pedro123  (U) paid",
+   "key": "pedro123",
+   "why": "more than one space before the note"
+  },
+  {
+   "text": "PEDRO123 (u)",
+   "key": "pedro123",
+   "why": "any letter case, a note"
+  },
+  {
+   "text": "@ pedro123(U)",
+   "key": "pedro123",
+   "why": "a space after @ and a glued note"
+  },
+  {
+   "text": "pedro12 (U)",
+   "key": "pedro12",
+   "why": "a shorter username with a note is another username"
+  },
+  {
+   "text": "pedro1234(U)",
+   "key": "pedro1234",
+   "why": "a longer username with a note is another username"
+  },
+  {
+   "text": "pedro123 - paid",
+   "key": "",
+   "why": "only ( or # may start a note when there is no @"
+  },
+  {
+   "text": "pedro123, paid",
+   "key": "",
+   "why": "only ( or # may start a note"
+  },
+  {
+   "text": "pedro123 Garcia (U)",
+   "key": "",
+   "why": "words before the note: not a username"
+  },
+  {
+   "text": "(pedro123)",
+   "key": "",
+   "why": "does not start with the username"
+  },
+  {
+   "text": "#pedro123",
+   "key": "",
+   "why": "does not start with the username"
+  },
+  {
+   "text": "unknown (U)",
+   "key": "",
+   "why": "unknown is never a username"
+  },
+  {
+   "text": "pedro123　(U)",
+   "key": "",
+   "why": "a full-width space is not a space here"
   }
  ]
 }
