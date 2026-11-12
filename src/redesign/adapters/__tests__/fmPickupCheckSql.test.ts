@@ -1,15 +1,15 @@
-// Contract for sql/150 (全家 parcels are checked too). Behaviour is proved on Postgres by
-// scripts/sql150-behaviour.mjs; this pins the shape so an edit can't quietly drop a guard.
+// Contract for sql/151 (全家 parcels are checked too). Behaviour is proved on Postgres by
+// scripts/sql151-behaviour.mjs; this pins the shape so an edit can't quietly drop a guard.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { FM_SETTING_ENABLED, FM_SETTING_COOLDOWN, FM_SETTING_CAPTCHA, FM_SETTING_PICKUP } from "../../../../server/fmTrackingRunner.js";
 
-const up = readFileSync("sql/150_fm_pickup_check.sql", "utf8");
-const down = readFileSync("sql/150_fm_pickup_check_rollback.sql", "utf8");
+const up = readFileSync("sql/151_fm_pickup_check.sql", "utf8");
+const down = readFileSync("sql/151_fm_pickup_check_rollback.sql", "utf8");
 const live119 = readFileSync("sql/119_fm_pickup.sql", "utf8");
 const body = (sql: string, fn: string) => sql.match(new RegExp(`function public\\.${fn}\\([\\s\\S]*?\\$function\\$;`))![0];
 
-describe("sql/150 — 全家 pickup check", () => {
+describe("sql/151 — 全家 pickup check", () => {
   it("the kill switch is seeded OFF and is the key the server reads", () => {
     expect(up).toContain(`('${FM_SETTING_ENABLED}', 'false') on conflict (key) do nothing`);
     expect([FM_SETTING_ENABLED, FM_SETTING_COOLDOWN, FM_SETTING_CAPTCHA, FM_SETTING_PICKUP]).toEqual(["fm_check_enabled", "fm_check_cooldown_until", "fm_check_captcha", "fm_pickup_enabled"]);

@@ -184,7 +184,7 @@ describe("gate — kill switch, pause, who", () => {
     expect(fmGateFrom({ enabled: "true", cooldownUntil: "2026-11-12T04:00:00.000Z" }, NOW)).toEqual({ run: false, reason: "cooldown" });
     expect(fmGateFrom({ enabled: "true", cooldownUntil: "2026-11-12T02:00:00.000Z" }, NOW).run).toBe(true);
   });
-  it("no fm_check_enabled row (sql/150 not applied) → off, after ONE small read and nothing else", async () => {
+  it("no fm_check_enabled row (sql/151 not applied) → off, after ONE small read and nothing else", async () => {
     const db = fakeDb({ rows: [row("a", A)] });
     expect(await readFmGate(db, U1, NOW)).toEqual({ run: false, reason: "disabled" });
     expect(db.queries.map((q) => q.table)).toEqual(["app_settings"]);
@@ -356,7 +356,7 @@ describe("limits", () => {
     expect(out).toMatchObject({ reason: "daily_cap", checked: 2, failed: false }); // 7 + 16 ≤ 25, then 14 + 16 > 25
     expect(site.log.length).toBe(14);
   });
-  it("a daily counter that cannot be read (sql/150 not applied) → nothing is sent", async () => {
+  it("a daily counter that cannot be read (sql/151 not applied) → nothing is sent", async () => {
     const db = fakeDb({ settings: ON, rows: [row("a", A)], dailyError: true });
     const site = makeSite();
     const { out } = await run(db, site);

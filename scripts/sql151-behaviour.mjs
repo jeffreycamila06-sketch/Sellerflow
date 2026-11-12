@@ -1,10 +1,10 @@
-// Runs sql/119, then sql/150 (+ its rollback) on a real Postgres (PGlite, WASM) against the stub
+// Runs sql/119, then sql/151 (+ its rollback) on a real Postgres (PGlite, WASM) against the stub
 // of the live parcel_tracking schema kept in scripts/sql119-behaviour.mjs: the 全家 check switch,
 // who it is open for, the new-parcels job after a 全家 upload, the automatic check seeing 全家
 // rows, the upload never lowering a row the check has answered, 7-11 unchanged, clean rollback.
 // Not part of CI (PGlite is not a dependency). Run from a scratch folder:
-//   mkdir /tmp/pg150 && cd /tmp/pg150 && npm i @electric-sql/pglite@0.2.17
-//   cp <repo>/scripts/sql150-behaviour.mjs . && node sql150-behaviour.mjs <repo>
+//   mkdir /tmp/pg151 && cd /tmp/pg151 && npm i @electric-sql/pglite@0.2.17
+//   cp <repo>/scripts/sql151-behaviour.mjs . && node sql151-behaviour.mjs <repo>
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 
@@ -26,7 +26,7 @@ await db.exec("update app_settings set value='true' where key='fm_pickup_enabled
 const fnDef = async (name) => (await db.query("select pg_get_functiondef(p.oid) d from pg_proc p where p.proname = $1", [name])).rows[0]?.d ?? null;
 const before = { enq: await fnDef("parcel_tracking_enqueue_new"), auto: await fnDef("parcel_tracking_auto_check"), up: await fnDef("fm_pickup_upload") };
 
-await db.exec(read("sql/150_fm_pickup_check.sql"));
+await db.exec(read("sql/151_fm_pickup_check.sql"));
 const as = async (uid, sql, params = []) => {
   await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${uid}',false);`);
   try { return (await db.query(sql, params)).rows; } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub','',false);`); }
@@ -124,10 +124,10 @@ await upload(A, [{ order_no: "K3", status: "hide" }]);
 ok(await one("K3") === undefined, "a cancelled order is still removed");
 
 // ── 5. rollback ──
-await db.exec(read("sql/150_fm_pickup_check_rollback.sql"));
-ok(await fnDef("parcel_tracking_enqueue_new") === before.enq, "rollback: job trigger function = before 150");
-ok(await fnDef("parcel_tracking_auto_check") === before.auto, "rollback: automatic check = before 150");
-ok(await fnDef("fm_pickup_upload") === before.up, "rollback: upload = before 150");
+await db.exec(read("sql/151_fm_pickup_check_rollback.sql"));
+ok(await fnDef("parcel_tracking_enqueue_new") === before.enq, "rollback: job trigger function = before 151");
+ok(await fnDef("parcel_tracking_auto_check") === before.auto, "rollback: automatic check = before 151");
+ok(await fnDef("fm_pickup_upload") === before.up, "rollback: upload = before 151");
 ok(await fnDef("fm_check_open_for") === null && await fnDef("fm_check_open") === null && await fnDef("fm_upload_keeps") === null, "rollback: new functions gone");
 ok((await db.query("select count(*)::int n from information_schema.tables where table_name='fm_tracking_daily'")).rows[0].n === 0, "rollback: daily counter gone");
 ok((await db.query("select count(*)::int n from app_settings where key like 'fm_check%'")).rows[0].n === 0, "rollback: switch rows gone");

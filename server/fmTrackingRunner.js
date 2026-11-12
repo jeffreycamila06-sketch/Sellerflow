@@ -9,9 +9,9 @@
 // Safety, all separate from 7-11:
 //   • kill switch  app_settings fm_check_enabled — exactly 'true' to run (missing row = off)
 //   • who          fm_pickup_enabled = 'true', OR the seller is on the fm_pickup preview list
-//                  (RPC fm_check_open_for, sql/150)
+//                  (RPC fm_check_open_for, sql/151)
 //   • breaker      3 failed sessions in a row → stop + fm_check_cooldown_until (4 hours)
-//   • daily cap    fm_tracking_daily (sql/150), per Taipei day, checked BEFORE each session
+//   • daily cap    fm_tracking_daily (sql/151), per Taipei day, checked BEFORE each session
 //   • pace         one request at a time, a pause between requests and between sessions, backoff
 //   • health       one parcel_tracking_health row per job, kind 'fm'
 // Logs carry the user id and COUNTS only — never a parcel number, a name or a phone.
@@ -184,7 +184,7 @@ export async function readFmGate(serviceSb, userId, nowDate) {
   return { run: true, reason: null, image: imageSettingsFrom(map[FM_SETTING_CAPTCHA]) };
 }
 
-// ── Daily counter (sql/150 fm_tracking_daily), per Taipei day ──────────────────
+// ── Daily counter (sql/151 fm_tracking_daily), per Taipei day ──────────────────
 export async function readFmDaily(serviceSb, day) {
   const { data, error } = await serviceSb.from("fm_tracking_daily").select("requests,captcha_tries,captcha_hits,parcels").eq("day", day).maybeSingle();
   if (error) return { error };

@@ -4887,7 +4887,7 @@ Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). 
 - **Apply order when Jeff says go:** sql/149 (switch off + the key) → add the test accounts to `feature_access_emails` →
   sql/116b (guide).
 
-## 2026-11-12 — FAMILYMART (全家) PICKUP CHECK (branch `claude/fm-pickup-check`, NOT merged; sql/150 NOT applied; Render NOT deployed)
+## 2026-11-12 — FAMILYMART (全家) PICKUP CHECK (branch `claude/fm-pickup-check`, NOT merged; sql/151 NOT applied; Render NOT deployed)
 Pickup Status: Check now, the automatic check, the urgent check and the new-parcels check after a Sync also
 check 全家 rows (carrier `fm`, 11-digit 寄件編號), in the SAME job, after the 7-11 part. Server only — no app UI.
 - **Files:** NEW `server/fmTracking.js` (pure: step codes → status, one session with injected steps),
@@ -4900,12 +4900,12 @@ check 全家 rows (carrier `fm`, 11-digit 寄件編號), in the SAME job, after 
   A 全家 failure never changes the 7-11 job result. ⚠️ The other way round is NOT true: the 全家 part rides on the
   job, so while 7-11 checking is off / paused / over its daily cap, 全家 is not checked either.
 - **Who:** `fm_check_enabled` AND (`fm_pickup_enabled` = 'true' OR the seller is on the `fm_pickup` preview list —
-  RPC `fm_check_open_for`, sql/150).
+  RPC `fm_check_open_for`, sql/151).
 - **Statuses (whole history, not only the newest step):** any 11/12/31 or a way-back step (ORDER_NO ≠ EC_ORDER_NO)
   → returned, even under a newest 09; 09 → picked up; newest 08 → at store; 02–073 → in transit ("drop off before"
   cleared); 01 only / not found → only the check time; unknown code → status `unknown` + one log line with the code;
   40 訂單失效 → the row is DELETED. The check never writes `tracking_no`.
-- **Upload vs check (sql/150 `fm_upload_keeps`):** an upload no longer lowers a row the check has answered
+- **Upload vs check (sql/151 `fm_upload_keeps`):** an upload no longer lowers a row the check has answered
   (returned stays; picked up stays unless the upload says returned; at store never back to in transit).
 - ⚠️ **GUESSES, not confirmed on the real site:** the paths of GetVerificationCode / ChkVerificationCode /
   GetOrderDetail (`FM_PATHS`), 5 parcels per captcha (`FM_PARCELS_PER_SESSION` — the job lowers it by itself when the
@@ -4913,8 +4913,9 @@ check 全家 rows (carrier `fm`, 11-digit 寄件編號), in the SAME job, after 
   `app_settings.fm_check_captcha`, JSON e.g. `{"threshold":140,"invert":true,"scale":3}`). OCR was run only on
   pictures drawn to look like the captcha, never on a real one. Each session logs `captcha=hits/tries`.
 - **Urgent button:** still appears through a 7-11 parcel only (`parcel_tracking_request_check` not changed).
+- ⚠️ The SQL is **151**, not 150: `scanQrLookup.test.ts` forbids any `scripts/sql150-behaviour.mjs` (the removed Scan QR database change).
 - **Proof:** `fmTracking` / `fmCaptchaImage` / `fmTrackingRunner` / `fmWorker` `.server.test.ts`,
-  `fmPickupCheckSql.test.ts`, `scripts/sql150-behaviour.mjs` (PGlite, 39 checks, stub schema).
-- **Order when Jeff says go:** sql/150 (switch off) → Render deploy (quiet window, Business Pulse check first) →
+  `fmPickupCheckSql.test.ts`, `scripts/sql151-behaviour.mjs` (PGlite, 39 checks, stub schema).
+- **Order when Jeff says go:** sql/151 (switch off) → Render deploy (quiet window, Business Pulse check first) →
   measure real captchas, set `fm_check_captcha` if needed → `fm_check_enabled` = 'true' → sql/116b (guide).
-  Either of the first two may go first: without sql/150 the server finds no switch row and does nothing for 全家.
+  Either of the first two may go first: without sql/151 the server finds no switch row and does nothing for 全家.
