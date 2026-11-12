@@ -1003,6 +1003,16 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR â†’ fill from Customers â€
       nothingNew(r);
     });
 
+    it("with the app picker shown: picking ANOTHER APP after the fill, the username text untouched, erases nothing and the fill stays remembered (as before this fix)", async () => {
+      const r = await filledA({ lookupOn: true, contactOn: true });
+      fireEvent.click(r.getByTestId(id("bc-pick-line")));
+      expect(r.getByTestId(id("bc-pick-line")).getAttribute("data-selected")).toBe("1");
+      expect(details(r)).toEqual(MARIA);
+      expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA });
+      type(r, id("bc-input"), "line_id_of_someone"); // a new contact typed for that app IS a hand change
+      expect(details(r)).toEqual(BLANK);
+    });
+
     it("with the app picker shown: the 'no contact' tick empties the field and takes A's untouched details", async () => {
       const r = await filledA({ lookupOn: true, contactOn: true });
       fireEvent.click(r.getByTestId(id("bc-none")));
