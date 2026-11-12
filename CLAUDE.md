@@ -5007,3 +5007,8 @@ Web only (Vercel after merge). No change to the sticker engine, layouts, setting
   `docs/design/pattern-view/`.
 - **Guide:** one line in the `stickers` section + `sql/116b` regenerated; `sql/153_guide_pattern_view.sql`
   (+ rollback) adds only that line to the `stickers` row.
+- **Test-print fallback (same branch, the ONE print-code change):** `oneStickerTestOnBt` (printing.ts) — when a test
+  print falls back to today's sticker (picture failed / too wide / old-Bluetooth send failed) it now uses `printSlip`'s
+  rule for a Facebook buyer (`printableBuyer`, `printBuyerUsername:false`, name-only flag only when the @username line
+  is on) → name only, no "@name" (the admin Facebook chip had the same gap on main). TikTok: same objects → unchanged.
+  Proof: `stickerView.fallback.test.ts` (fails on the old code).
