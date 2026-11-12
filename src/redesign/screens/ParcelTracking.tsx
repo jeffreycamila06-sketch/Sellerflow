@@ -207,7 +207,7 @@ function Buyer({ row, t, nowMs, buyerName, platform = null }: { row: ParcelTrack
     : <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", fontStyle: "italic", ...ellipsis, display: "block" }}>{t.rd_pt_no_username}</span>;
   // 全家 switch on → every row carries its carrier; off → no label (exactly as before).
   const carrier = row.carrier
-    ? <span data-testid="pt-carrier" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{row.carrier === "fm" ? "全家" : "7-11"}</span>
+    ? <span data-testid="pt-carrier" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: `1px solid var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-border)`, background: `var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-bg)`, fontSize: 10.5, fontWeight: 700, color: `var(--carrier-${row.carrier === "fm" ? "fm" : "711"}-text)`, whiteSpace: "nowrap" }}>{row.carrier === "fm" ? "FamilyMart" : "7-Eleven"}</span>
     : null;
   const notDropped = row.carrier === "fm" && row.status === "in_transit" && !!row.pickupDeadline
     ? <span data-testid="pt-not-dropped" style={{ display: "inline-block", marginTop: 3, marginRight: 4, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--warn)", fontSize: 10.5, fontWeight: 700, color: "var(--warn)", whiteSpace: "nowrap" }}>{t.rd_pt_fm_not_dropped}</span>

@@ -379,7 +379,7 @@ Who has it:
 2. Tap **Sync from FamilyMart** and pick the file. A green note shows how many parcels were updated.
 3. For newer statuses, tap **Check now** — it refreshes your 7-11 and 全家 parcels together — or upload a new file. If your 全家 parcels did not change after **Check now**, upload a new file.
 
-- 7-11 and 全家 parcels are in one list. Each row has a small **7-11** or **全家** label.
+- 7-11 and 全家 parcels are in one list. Each row has a small coloured **7-Eleven** or **FamilyMart** label.
 - **Buyer waiting for pickup** rows have a button for the buyer''s app: **WhatsApp** opens the chat with a ready reminder (name, store, amount, pick-up-by date); **LINE** and **Instagram** open the buyer and copy the reminder so you can paste it; **Facebook** opens the buyer''s Facebook (**Messenger** when it is a username) and copies the reminder; **TikTok** opens the buyer''s TikTok profile; **Copy message** copies the reminder; **Copy** copies the contact. The app comes from what you picked in Parcel Scan; parcels saved before this had a TikTok @username and open TikTok.
 - Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
 - Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
