@@ -97,6 +97,18 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
 - **Server automatic receipt:** `server/fbAutoReceipt.js:18,79` → `drawReceiptPng` (server/receiptDraw.js:95, @napi-rs/canvas, bundled Noto Sans / TC / SC / Thai). It uses the raw `live_session_orders` rows, so **edits made in the manual sheet are not used** (receiptDraw.js:9-10).
 - **Shared pure layout:** `src/lib/receiptLayout.js` (`layoutReceipt`, caps 400 lines and 12000 px).
 - **Send endpoints:** `POST /fb/receipt/info` and `/fb/receipt/send` (server/fbReceipt.js:418-420).
+- **Payment QR picture upload (2026-11-12, branch `receipt-qr-picture`):** `downscaleQrFile` (receiptSettings.ts) now
+  decodes through the product-picture helper `decodeUpright` (productImages.ts: EXIF turn + HEIC via lazy heic2any)
+  BEFORE the unchanged ≤ 600 px / PNG-first / `QR_DATA_URL_CAP` encoding; the whole picture is drawn (never cropped);
+  the saved format (data URL in `seller_receipt_settings.qr_image`) is unchanged. Receipt Format screen: the QR
+  preview is a 160 × 160 white box, `objectFit: contain` (a cut QR can't be scanned), buttons wrap below on narrow
+  phones. **No drawing change:** `receiptLayout.js`, `receiptImage.ts`, `server/receiptDraw.js`, the QR size inside
+  the receipt, the sample picture, Messenger send, sold-out message and auto receipt are untouched (git diff).
+  Proof: `ReceiptFormat.qrPicture.test.tsx` + `docs/design/receipt-qr-picture/` (TODAY vs NEW cards at 360/390/412/
+  430/1280, the sample receipt picture byte-identical, and `proof.txt`: sideways JPG / HEIC / phone screenshot →
+  upright PNG under the cap, QR still decodes with jsQR; main fails on HEIC with `decode_failed`).
+  ⚠ productImages.ts ↔ receiptSettings.ts import each other (fitWithin / decodeUpright): fine because both are used
+  only inside functions — never use either at module load time.
 
 ### P11 — Previews (display only)
 - **Live print pattern CSS mock:** PrintPattern.tsx ~166+. Shown on laptop, on WiFi, and whenever the image-path condition is false. ⚠ This mock **honours the Date/time and name toggles that no printer honours** (172, 179) and is not what P9 prints.
@@ -319,7 +331,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | P7 iOS LAN sticker | printerRouting.test.ts, nativePrintQueue.test.ts, printing.failure.test.ts (routing only). Bytes share P2's goldens via `buildTsplSticker`. | ⚠ no test of the TCP path |
 | P8 ESC/POS slip | printing.test.ts:65-75 (payload shape only), receiptGate / i18nWiring (bridge mocks) | **❌ no byte test of `buildEscPosSlip` (Java or Swift). No Big5 test.** |
 | P9 web | printing.test.ts:77-180 (HTML string asserts), printing.webQr.test.ts, webPrintQueue.test.ts, kioskLauncher.test.ts, notPrintedStore.test.ts, useOrders.kioskFalseSave.test.tsx, Dashboard.notPrinted.test.tsx | **❌ no rendered-picture check.** The string tests *pin the gaps* (trunc 14, no multipliers). |
-| P10 receipt picture | receiptImage.test.ts, receiptDraw.server.test.ts, buyerReceipt.test.ts, receiptSettings.test.ts, receiptSheetLayout / Lines / receiptSend / receiptGate (.tsx), fbAutoReceipt*.server.test.ts | ⚠ layout ops tested; no pixel diff phone vs server |
+| P10 receipt picture | receiptImage.test.ts, receiptDraw.server.test.ts, buyerReceipt.test.ts, receiptSettings.test.ts, ReceiptFormat.qrPicture.test.tsx, receiptSheetLayout / Lines / receiptSend / receiptGate (.tsx), fbAutoReceipt*.server.test.ts | ⚠ layout ops tested; no pixel diff phone vs server |
 | P11 previews | backButton.app.test.tsx, BackButton.screens.test.tsx (header Back, 2026-11-11), PrintPattern.test / .honestSteps / .shopName / .spacing / .v2, stickerSpacing.compactDefault.test.tsx, stickerQrMove.test.tsx | ⚠ **no test asserts preview pixels == print pixels per path/size.** Nothing covers compact v2, font C or Niimbot in the preview. |
 | P12 test prints | backButton.app.test.tsx, BackButton.screens.test.tsx (header Back, 2026-11-11), testPrintComment.test.tsx, printerSetupFlow.test.tsx, PrinterSettings.test.tsx, PrinterModal.test.tsx, btOff.test.tsx, adminLangTest.print.test.ts (admin language test: new-sticker input = the preview's for all 11 samples on the D520 picture; Today's = today's bytes on a saved device, D520 — generic / Niimbot / laptop by code reading), OneStickerPattern.adminLang.test.tsx (admin-only gate, chip → preview + notes, route + unsaved flag) | ⚠ WiFi `testPrint` shim untested; native test pages untested |
 | TikTok / Facebook view | stickerView.tiktokMain.test.ts (TikTok view Printer Test = main's bytes on D520 / TSPL / ESC-POS / CPCL / Niimbot / laptop — fingerprints taken on main 8253c004), stickerView.facebook.test.ts (Facebook view Printer Test = a real Facebook order through `printSlip`, same bytes, same 6 paths, both handle shapes), OneStickerPattern.view.test.tsx (buttons, Soon ×8 languages, default TikTok, not saved), stickerView.fallback.test.ts (the test print's fallback to today's sticker = a real order's: D520 / TSPL picture-failed, Niimbot too-wide, D520 old-Bluetooth send failed → TEXT; Facebook and TikTok) | ✅ the bytes handed to the bridge (laptop: the picture). Pictures: docs/design/pattern-view/. TEXT / WiFi phone: not byte-tested (same `printSlip` call as an order). |
