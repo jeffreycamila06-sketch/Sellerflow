@@ -14,10 +14,12 @@
 //  • every scan / reset / Save press takes a new number; an answer with an old number is dropped
 //  • the username in the field must still be the scanned one when the answer comes, and the buyer's app
 //    must still be TikTok (the seller did not pick another app while waiting)
+//  • the username changed BY HAND to one that no longer stands for the filled buyer (rule #4): the details the
+//    fill wrote and nobody touched go away and the fill is forgotten — the same as a scan of another buyer
 //  • reset() at Clear / Cancel / Save done / next photo / edit start / Import
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  isLookupable, lookupCustomersByHandle, lookupKey, recordToFill, untouchedFilled,
+  isLookupable, lookupCustomersByHandle, lookupKey, recordToFill, untouchedFilled, usernameKeyOf,
   type LookupFields, type ScanQrLookupMark, type ScanQrLookupStore,
 } from "./scanQrLookup";
 
@@ -41,6 +43,13 @@ export interface ScanQrLookupApi {
   /** What the last fill wrote (null = nothing). Never shown; travels with this screen's ⇄ draft. */
   mark: ScanQrLookupMark | null;
   scanned: (handle: string) => void;
+  /**
+   * The seller changed the username field BY HAND (typed in it, or emptied it with the "no handle" tick) — call it
+   * with the field's new text. While that text still stands for the filled buyer (rule #4: another letter case, an
+   * "@", a note after "@username") nothing happens. When it no longer does, the details the fill wrote and nobody
+   * touched are blanked and the fill is forgotten. Does nothing with the lookup off, during an edit, or with no fill.
+   */
+  typed: (handle: string) => void;
   /**
    * Clear / Cancel / Save done / next photo / edit start / Import: forget the fill, drop any answer on its way.
    * Returns true when details a fill WROTE are still in the form (read at call time, never from an old render);
@@ -71,6 +80,21 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     setMarkState(next);
   }, []);
 
+  // Blank the details the fill `prev` wrote and nobody touched since, and forget the fill. The form now says `handle`.
+  const takeBack = useCallback((o: ScanQrLookupOpts, prev: ScanQrLookupMark | null, cur: LookupFields & { handle: string }, handle: string) => {
+    const wipe = untouchedFilled(prev, cur);
+    if (prev && Object.keys(wipe).length > 0) {
+      const f = prev.filled;
+      o.setFields((s) => {
+        const out: Partial<LookupFields> = {};
+        for (const k of ["name", "phone", "store"] as const) if (f[k] !== "" && s[k] === f[k]) out[k] = "";
+        return out;
+      });
+    }
+    fieldsRef.current = { ...cur, ...wipe, handle };
+    setMark(null);
+  }, [setMark]);
+
   const scanned = useCallback((handle: string) => {
     const o = optsRef.current;
     if (!o.on || o.blocked) return;
@@ -83,17 +107,7 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     // twice): what is there stays — nothing is taken back, nothing is read. With an emptied form it is a new lookup.
     if (prev && prev.handle === key && !blank(cur)) { fieldsRef.current = { ...cur, handle }; return; }
     // The previous buyer's details that the last fill wrote and nobody touched go away first.
-    const wipe = untouchedFilled(prev, cur);
-    if (prev && Object.keys(wipe).length > 0) {
-      const f = prev.filled;
-      o.setFields((s) => {
-        const out: Partial<LookupFields> = {};
-        for (const k of ["name", "phone", "store"] as const) if (f[k] !== "" && s[k] === f[k]) out[k] = "";
-        return out;
-      });
-    }
-    fieldsRef.current = { ...cur, ...wipe, handle };
-    setMark(null);
+    takeBack(o, prev, cur, handle);
     if (!isLookupable(key)) return;
     void lookupCustomersByHandle(o.store, key).then((res) => {
       if (!aliveRef.current || seq !== seqRef.current) return; // a newer scan / Save / Clear / leaving the screen
@@ -112,7 +126,16 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
       setMark({ handle: key, filled });
       now.onFilled?.();
     });
-  }, [setMark]);
+  }, [setMark, takeBack]);
+
+  const typed = useCallback((handle: string) => {
+    const o = optsRef.current;
+    if (!o.on || o.blocked) return;
+    const prev = markRef.current;
+    if (!prev) return; // nothing was filled → typing is just typing
+    if (usernameKeyOf(handle) === prev.handle) return; // still the filled buyer's username
+    takeBack(o, prev, fieldsRef.current, handle);
+  }, [takeBack]);
 
   const reset = useCallback((): boolean => {
     seqRef.current++;
@@ -124,5 +147,5 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
 
   const drop = useCallback(() => { seqRef.current++; }, []);
 
-  return { mark, scanned, reset, drop };
+  return { mark, scanned, typed, reset, drop };
 }

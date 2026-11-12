@@ -6,6 +6,9 @@ P=ROOT+'src/redesign/screens/ParcelScan.tsx'
 F=ROOT+'src/redesign/screens/FmParcelScan.tsx'
 D=ROOT+'src/redesign/adapters/parcelDrafts.ts'
 SG='if (lookupOn && !editing) lookup.scanned('
+GS='if (!o.on || o.blocked) return;\n    const key = lookupKey(handle);'   # the gate line of scanned()
+GT='if (!o.on || o.blocked) return;\n    const prev = markRef.current;\n    if (!prev) return;'   # the gate line of typed()
+SAME='if (usernameKeyOf(handle) === prev.handle) return;'
 IMP7='if (lookup.reset()) { clearForm(); setSaveErr(""); }'
 IMPF='if (lookup.reset()) { clearForm(); setSaveErr(false); }'
 muts=[
@@ -71,10 +74,10 @@ muts=[
  ("import never clears a filled entry", [(H,'    return wrote;\n','    return false;\n')]),
  ("import always clears the entry", [(H,'    return wrote;\n','    return true;\n')]),
  ("'no record' check dropped in the hook", [(H,'      if (!row) return; // exactly as before\n','')]),
- ("gate off: hook + 7-11 screen", [(H,'if (!o.on || o.blocked) return;','if (o.blocked) return;'),(H,'if (!now.on || now.blocked) return;','if (now.blocked) return;'),(P,SG,'if (!editing) lookup.scanned(')]),
- ("gate off: hook + FM screen", [(H,'if (!o.on || o.blocked) return;','if (o.blocked) return;'),(H,'if (!now.on || now.blocked) return;','if (now.blocked) return;'),(F,SG,'if (!editing) lookup.scanned(')]),
- ("edit mode looks up: hook + 7-11", [(H,'if (!o.on || o.blocked) return;','if (!o.on) return;'),(H,'if (!now.on || now.blocked) return;','if (!now.on) return;'),(P,SG,'if (lookupOn) lookup.scanned(')]),
- ("edit mode looks up: hook + FM", [(H,'if (!o.on || o.blocked) return;','if (!o.on) return;'),(H,'if (!now.on || now.blocked) return;','if (!now.on) return;'),(F,SG,'if (lookupOn) lookup.scanned(')]),
+ ("gate off: hook + 7-11 screen", [(H,GS,GS.replace('!o.on || o.blocked','o.blocked')),(H,'if (!now.on || now.blocked) return;','if (now.blocked) return;'),(P,SG,'if (!editing) lookup.scanned(')]),
+ ("gate off: hook + FM screen", [(H,GS,GS.replace('!o.on || o.blocked','o.blocked')),(H,'if (!now.on || now.blocked) return;','if (now.blocked) return;'),(F,SG,'if (!editing) lookup.scanned(')]),
+ ("edit mode looks up: hook + 7-11", [(H,GS,GS.replace('!o.on || o.blocked','!o.on')),(H,'if (!now.on || now.blocked) return;','if (!now.on) return;'),(P,SG,'if (lookupOn) lookup.scanned(')]),
+ ("edit mode looks up: hook + FM", [(H,GS,GS.replace('!o.on || o.blocked','!o.on')),(H,'if (!now.on || now.blocked) return;','if (!now.on) return;'),(F,SG,'if (lookupOn) lookup.scanned(')]),
  ("7-11 clearForm keeps the fill memory", [(P,'setForm(emptyForm); setNoHandle(false); lookup.reset(); };','setForm(emptyForm); setNoHandle(false); };')]),
  ("FM clearForm keeps the fill memory", [(F,'setForm(emptyForm); setNoHandle(false); lookup.reset(); };','setForm(emptyForm); setNoHandle(false); };')]),
  ("7-11 edit start: answer not dropped (reset + blocked off)", [(P,'    lookup.reset(); // editing a saved parcel: no lookup\n',''),(H,'if (!now.on || now.blocked) return;','if (!now.on) return;')]),
@@ -88,6 +91,29 @@ muts=[
  ("7-11 photo Save press does not drop", [(P,'    setSaving(true); setSaveErr("");\n    lookup.drop(); // an answer still on its way must not land during or after this save','    setSaving(true); setSaveErr("");')]),
  ("draft drops the fill memory", [(D,'...(draft.lookup ? { lookup: draft.lookup } : {}) });','});')]),
  ("hold keeps the fill memory", [(D,'{ form: blankOf(before.form), noHandle: false, platform: before.platform }','{ ...before, form: blankOf(before.form), noHandle: false }')]),
+ ("hand change: the 7-11 screen does not tell the hook", [(P,'{ F({ notes: v }); lookup.typed(v); }','{ F({ notes: v }); }')]),
+ ("hand change: the FM screen does not tell the hook", [(F,'{ F({ username: v }); lookup.typed(v); }','{ F({ username: v }); }')]),
+ ("hand change: 7-11 picker field (typing, paste) does not tell the hook", [(P,'value={form.notes} onValue={handleByHand}','value={form.notes} onValue={(v) => F({ notes: v })}')]),
+ ("hand change: FM picker field (typing, paste) does not tell the hook", [(F,'value={form.username} onValue={handleByHand}','value={form.username} onValue={(v) => F({ username: v })}')]),
+ ("hand change: 7-11 plain field does not tell the hook", [(P,'const v = e.target.value.slice(0, 50); handleByHand(v);','const v = e.target.value.slice(0, 50); F({ notes: v });')]),
+ ("hand change: FM plain field does not tell the hook", [(F,'const v = e.target.value.slice(0, 50); handleByHand(v);','const v = e.target.value.slice(0, 50); F({ username: v });')]),
+ ("hand change: 7-11 plain 'no handle' tick does not tell the hook", [(P,'setNoHandle(on); if (on) handleByHand(""); }} data-testid="ps-no-handle"','setNoHandle(on); if (on) F({ notes: "" }); }} data-testid="ps-no-handle"')]),
+ ("hand change: FM plain 'no handle' tick does not tell the hook", [(F,'setNoHandle(on); if (on) handleByHand(""); }} data-testid="fms-no-handle"','setNoHandle(on); if (on) F({ username: "" }); }} data-testid="fms-no-handle"')]),
+ ("hand change: 7-11 picker 'no contact' callback writes the field directly", [(P,'onNoContact={(on) => { setNoHandle(on); if (on) handleByHand(""); }}','onNoContact={(on) => { setNoHandle(on); if (on) F({ notes: "" }); }}')]),
+ ("hand change: FM picker 'no contact' callback writes the field directly", [(F,'onNoContact={(on) => { setNoHandle(on); if (on) handleByHand(""); }}','onNoContact={(on) => { setNoHandle(on); if (on) F({ username: "" }); }}')]),
+ ("hand change: the same username typed another way erases too (no check)", [(H,'    '+SAME+' // still the filled buyer\'s username\n','')]),
+ ("hand change: only the exact same text counts as the same username", [(H,SAME,'if (handle === prev.handle) return;')]),
+ ("hand change: compared like a scan, not with rule #4 ('@x (U)' erases)", [(H,SAME,'if (lookupKey(handle) === prev.handle) return;')]),
+ ("hand change: a shorter text that A's username starts with still counts as A", [(H,SAME,'if (prev.handle.startsWith(usernameKeyOf(handle))) return;')]),
+ ("hand change: a longer text that starts with A's username still counts as A", [(H,SAME,'if (usernameKeyOf(handle).startsWith(prev.handle)) return;')]),
+ ("hand change: any text that CONTAINS A's username counts as A ('x (U)', '@x(U)')", [(H,SAME,'if (handle.toLowerCase().includes(prev.handle)) return;')]),
+ ("hand change: never erases (typed() does nothing)", [(H,'    takeBack(o, prev, fieldsRef.current, handle);\n  }, [takeBack]);','  }, [takeBack]);')]),
+ ("hand change: the details go but the fill is NOT forgotten", [(H,'    takeBack(o, prev, fieldsRef.current, handle);\n  }, [takeBack]);','    takeBack(o, prev, fieldsRef.current, handle); setMark(prev);\n  }, [takeBack]);')]),
+ ("hand change: the fill is forgotten but the details stay", [(H,'    takeBack(o, prev, fieldsRef.current, handle);\n  }, [takeBack]);','    setMark(null);\n  }, [takeBack]);')]),
+ ("hand change: runs while a saved parcel is edited", [(H,GT,GT.replace('!o.on || o.blocked','!o.on'))]),
+ ("hand change: runs with the lookup turned off", [(H,GT,GT.replace('!o.on || o.blocked','o.blocked'))]),
+ ("take back: a detail the seller changed is erased too (scan of B and hand change)", [(H,'for (const k of ["name", "phone", "store"] as const) if (f[k] !== "" && s[k] === f[k]) out[k] = "";','for (const k of ["name", "phone", "store"] as const) if (f[k] !== "") out[k] = "";')]),
+ ("take back: everything in the form is erased, filled or not (scan of B and hand change)", [(H,'    const wipe = untouchedFilled(prev, cur);\n    if (prev && Object.keys(wipe).length > 0) {\n      const f = prev.filled;\n      o.setFields((s) => {','    const wipe = untouchedFilled(prev, cur);\n    if (prev) {\n      const f = prev.filled;\n      o.setFields(() => ({ name: "", phone: "", store: "" })); if (false) o.setFields((s) => {')]),
 ]
 tests=['src/redesign/adapters/__tests__/scanQrLookup.test.ts','src/redesign/screens/__tests__/ScanQrLookup.screens.test.tsx','src/redesign/screens/__tests__/ScanQrLookup.offOn.test.tsx','src/redesign/screens/__tests__/ScanQrLookup.camera.test.tsx']
 lo,hi=int(sys.argv[2]),int(sys.argv[3])

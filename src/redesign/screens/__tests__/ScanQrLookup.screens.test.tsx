@@ -4,6 +4,8 @@
 //   • something typed in name, phone or store → nothing is filled, nothing is shown.
 //   • the username's records have 3+ different phones (a word used for many buyers) → nothing is filled.
 //   • no record / error / too slow → exactly as before (username only), no message.
+//   • the username changed BY HAND after a fill to one that is no longer that buyer's → the filled details nobody
+//     touched go (as at a scan of another buyer); the same username typed another way → nothing is erased.
 // The QR decode and the lookup read are mocked here (the read itself: adapters/__tests__/scanQrLookup.test.ts;
 // the screen with the REAL read and a recording client: ScanQrLookup.offOn.test.tsx).
 import { useRef } from "react";
@@ -59,6 +61,7 @@ const SCREENS = {
     savedName: () => (m.saveParcelScan.mock.calls[0]?.[0] as { name: string }).name,
     saved: m.saveParcelScan,
     seedRow: () => m.loadParcelScans.mockResolvedValue({ ok: true, rows: [{ id: "r1", customerName: "Saved Buyer", phone: "0912345678", storeId: "982063", amount: 550, notes: "@saved", status: "confirmed", storeCheckStatus: "valid", createdAt: "2026-11-10T00:00:00Z" }] }),
+    seedMariaRow: () => m.loadParcelScans.mockResolvedValue({ ok: true, rows: [{ id: "r1", customerName: "Maria Santos", phone: "0911222333", storeId: "246810", amount: 550, notes: "@saved", status: "confirmed", storeCheckStatus: "valid", createdAt: "2026-11-10T00:00:00Z" }] }),
   },
   fm: {
     store: "fm" as const, p: "fms", handle: "fms-username",
@@ -68,6 +71,7 @@ const SCREENS = {
     savedName: () => (m.saveFmScan.mock.calls[0]?.[0] as { recipientName: string }).recipientName,
     saved: m.saveFmScan,
     seedRow: () => m.loadFmScans.mockResolvedValue({ ok: true, rows: [{ id: "r1", recipientName: "Jeffrey", phone: "0958704782", storeId: "022131", amount: 500, shippingFee: 39, orderDate: "2026-11-10", buyerUsername: "@saved", createdAt: "2026-11-10T03:00:00Z", exportedAt: null, exportBatchId: null }] }),
+    seedMariaRow: () => m.loadFmScans.mockResolvedValue({ ok: true, rows: [{ id: "r1", recipientName: "Maria Santos", phone: "0911222333", storeId: "246810", amount: 500, shippingFee: 39, orderDate: "2026-11-10", buyerUsername: "@saved", createdAt: "2026-11-10T03:00:00Z", exportedAt: null, exportBatchId: null }] }),
   },
 };
 type Key = keyof typeof SCREENS;
@@ -821,6 +825,174 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
     expect(details(back)).toEqual(BLANK);
   });
 
+  // ── The username is changed BY HAND after a fill (audit LOW-1, Jeff 2026-11-12) ─────────────────────────────
+  // Before: buyer A's name, phone and store stayed in the form under the username typed over A's.
+  // Now: when the text no longer stands for A (rule #4), the filled details nobody touched go — as at a scan of B.
+  describe("the username is changed BY HAND after a fill", () => {
+    // Scan A's sticker with a record in Customers → the form holds MARIA and remembers the fill.
+    const filledA = async (x: P = { lookupOn: true }) => {
+      m.lookup.mockResolvedValueOnce(found(rec("a")));
+      const r = await open(x);
+      await scan(r, "buyer_a", x.contactOn ? undefined : "buyer_a");
+      await waitFor(() => expect(details(r)).toEqual(MARIA));
+      await waitFor(() => expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA }));
+      return r;
+    };
+
+    it("scan A (filled), then the seller TYPES B's username: none of A's details stay with it — no read, nothing new on the screen, the fill is forgotten", async () => {
+      const r = await filledA();
+      type(r, id("amount"), "650");
+      type(r, S.handle, "buyer_b");
+      expect(details(r)).toEqual(BLANK);
+      expect(val(r, S.handle)).toBe("buyer_b");
+      expect(val(r, id("amount"))).toBe("650"); // the amount is never the lookup's
+      expect(m.lookup).toHaveBeenCalledTimes(1); // typing never reads Customers
+      nothingNew(r);
+      await waitFor(() => expect(readParcelDraft<{ form: Record<string, string> }>(S.store)?.form[key === "711" ? "notes" : "username"]).toBe("buyer_b"));
+      expect(readParcelDraft(S.store)?.lookup).toBeUndefined();
+    });
+
+    it("a detail the seller already changed stays; only the untouched ones go", async () => {
+      const r = await filledA();
+      type(r, id("phone"), "0999888777");
+      type(r, S.handle, "buyer_b");
+      expect(details(r)).toEqual({ name: "", phone: "0999888777", store: "" });
+    });
+
+    it("all three details were retyped by the seller: typing another username erases none of them", async () => {
+      const r = await filledA();
+      typeDetails(r, { name: S.valid.name, phone: S.valid.phone, store: S.valid.store });
+      type(r, S.handle, "buyer_b");
+      expect(details(r)).toEqual({ name: S.valid.name, phone: S.valid.phone, store: S.valid.store });
+    });
+
+    it.each([
+      ["another letter case", "BUYER_A"],
+      ["an @ in front", "@buyer_a"],
+      ["an @ and another letter case", "@Buyer_A"],
+      ["a note after the @username", "@buyer_a (U)"],
+      ["a space after the @", "@ buyer_a"],
+      ["spaces around it", "  buyer_a "],
+    ])("the SAME username typed with %s: nothing is erased — and the fill is still remembered", async (_how, text) => {
+      const r = await filledA();
+      type(r, S.handle, text);
+      expect(details(r)).toEqual(MARIA);
+      expect(val(r, S.handle)).toBe(text);
+      expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA }); // still remembered …
+      m.lookup.mockResolvedValueOnce(found());
+      await scan(r, "buyer_b", "buyer_b"); // … so a scan of another buyer still takes A's details back
+      await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(2));
+      expect(details(r)).toEqual(BLANK);
+    });
+
+    it.each([
+      ["one letter removed", "buyer_"],
+      ["one letter added", "buyer_ab"],
+      ["a note with no @ in front (rule #4: not a username)", "buyer_a (U)"],
+      ["a note stuck to the @username (rule #4: not a username)", "@buyer_a(U)"],
+      ["the field emptied", ""],
+    ])("%s is no longer A's username: the untouched details go", async (_how, text) => {
+      const r = await filledA();
+      type(r, S.handle, text);
+      expect(details(r)).toEqual(BLANK);
+      expect(val(r, S.handle)).toBe(text);
+      expect(readParcelDraft(S.store)?.lookup).toBeUndefined();
+    });
+
+    it("typing A's username back does NOT bring the details back (only a Scan QR reads Customers) — scanning the sticker again does", async () => {
+      const r = await filledA();
+      type(r, S.handle, "buyer_");
+      type(r, S.handle, "buyer_a");
+      expect(details(r)).toEqual(BLANK);
+      expect(m.lookup).toHaveBeenCalledTimes(1);
+      m.lookup.mockResolvedValueOnce(found(rec("a")));
+      await scan(r, "buyer_a", "buyer_a");
+      await waitFor(() => expect(details(r)).toEqual(MARIA));
+      expect(m.lookup).toHaveBeenCalledTimes(2);
+    });
+
+    it("the 'no handle' tick empties the username field: A's untouched details go with it, a changed one stays", async () => {
+      const r = await filledA();
+      type(r, id("name"), "Maria S.");
+      fireEvent.click(r.getByTestId(id("no-handle")));
+      expect(val(r, S.handle)).toBe("");
+      expect(details(r)).toEqual({ name: "Maria S.", phone: "", store: "" });
+      expect(readParcelDraft(S.store)?.lookup).toBeUndefined();
+    });
+
+    it("with the app picker shown: the same username typed another way erases nothing; B's username takes A's untouched details", async () => {
+      const r = await filledA({ lookupOn: true, contactOn: true });
+      type(r, id("bc-input"), "@BUYER_A");
+      expect(details(r)).toEqual(MARIA);
+      type(r, id("bc-input"), "buyer_b");
+      expect(details(r)).toEqual(BLANK);
+      expect(m.lookup).toHaveBeenCalledTimes(1);
+      nothingNew(r);
+    });
+
+    it("with the app picker shown: the 'no contact' tick empties the field and takes A's untouched details", async () => {
+      const r = await filledA({ lookupOn: true, contactOn: true });
+      fireEvent.click(r.getByTestId(id("bc-none")));
+      expect(val(r, id("bc-input"))).toBe("");
+      expect(details(r)).toEqual(BLANK);
+    });
+
+    it("with the app picker shown: a PASTED text (two lines) over A's username takes A's untouched details too", async () => {
+      const r = await filledA({ lookupOn: true, contactOn: true });
+      const input = r.getByTestId(id("bc-input")) as HTMLInputElement;
+      input.setSelectionRange(0, input.value.length); // the paste replaces what is there
+      fireEvent.paste(input, { clipboardData: { getData: () => "buyer_b\nsecond line" } });
+      expect(val(r, id("bc-input"))).toBe("buyer_b second line");
+      expect(details(r)).toEqual(BLANK);
+    });
+
+    it("while a SAVED parcel is edited nothing of this runs: typing another username changes the username only — even when the saved details are the very ones a scan had just filled", async () => {
+      S.seedMariaRow();
+      const r = await filledA();
+      fireEvent.click(await r.findByTestId(id("row-edit"))); // straight from the filled entry
+      await waitFor(() => expect(r.getByTestId(id("confirm")).getAttribute("data-editing")).toBe("1"));
+      expect(details(r)).toEqual(MARIA); // the saved parcel's own details
+      type(r, S.handle, "someone_else");
+      expect(details(r)).toEqual(MARIA);
+      fireEvent.click(r.getByTestId(id("no-handle")));
+      expect(details(r)).toEqual(MARIA);
+      expect(m.lookup).toHaveBeenCalledTimes(1);
+    });
+
+    it("⇄ and back, then B's username typed by hand: the fill that came back with the entry is taken back the same way", async () => {
+      const r = await filledA();
+      r.unmount();
+      const back = mount({ lookupOn: true });
+      await waitFor(() => expect(back.getByTestId(id("confirm"))).toBeTruthy());
+      expect(details(back)).toEqual(MARIA);
+      type(back, S.handle, "buyer_b");
+      expect(details(back)).toEqual(BLANK);
+    });
+
+    it("switch OFF (the ⇄ entry still carries a fill from when it was on): typing another username erases nothing", async () => {
+      const r = await filledA();
+      r.unmount();
+      const off = mount({ lookupOn: false });
+      await waitFor(() => expect(off.getByTestId(id("confirm"))).toBeTruthy());
+      expect(details(off)).toEqual(MARIA);
+      type(off, S.handle, "buyer_b");
+      expect(details(off)).toEqual(MARIA);
+      fireEvent.click(off.getByTestId(id("no-handle")));
+      expect(details(off)).toEqual(MARIA);
+      expect(m.lookup).toHaveBeenCalledTimes(1);
+    });
+
+    it("nothing was filled (no record): typing in the username field is just typing — what the seller typed stays", async () => {
+      m.lookup.mockResolvedValueOnce(found());
+      const r = await open();
+      await scan(r, "buyer_a", "buyer_a");
+      await waitFor(() => expect(m.lookup).toHaveBeenCalledTimes(1));
+      typeDetails(r, MARIA); // typed by hand — the very same text a fill would have written
+      type(r, S.handle, "buyer_b");
+      expect(details(r)).toEqual(MARIA);
+    });
+  });
+
   it("switch OFF and not listed: Scan QR does what it did before — username only, the lookup is never called, nothing is kept with the draft", async () => {
     m.lookup.mockResolvedValue(found(rec("a")));
     const r = await open({ lookupOn: false });
@@ -898,6 +1070,117 @@ describe("the hook on its own — only spaces in a field", () => {
     await act(async () => { result.current.scanned("buyer_a"); await Promise.resolve(); await Promise.resolve(); });
     expect(m.lookup).toHaveBeenCalledTimes(1);
     expect(setFields).not.toHaveBeenCalled();
+  });
+});
+
+describe("the hook on its own — the username changed by hand (typed)", () => {
+  const MARK = { handle: "buyer_a", filled: MARIA };
+  const hook = (over: Partial<Parameters<typeof useScanQrLookup>[0]> = {}) => {
+    const setFields = vi.fn();
+    const h = renderHook((p: Partial<Parameters<typeof useScanQrLookup>[0]>) => useScanQrLookup({
+      on: true, store: "711", blocked: false, initial: MARK, fields: { ...MARIA, handle: "buyer_a" }, setFields, ...over, ...p,
+    }), { initialProps: {} });
+    return { ...h, setFields };
+  };
+  const wiped = (setFields: ReturnType<typeof vi.fn>, cur: { name: string; phone: string; store: string }) =>
+    (setFields.mock.calls[0][0] as (c: unknown) => unknown)(cur);
+
+  it("another username: the untouched filled details are blanked (and only those), the fill is forgotten, nothing is read", () => {
+    const { result, setFields } = hook();
+    act(() => { result.current.typed("buyer_b"); });
+    expect(setFields).toHaveBeenCalledTimes(1);
+    expect(wiped(setFields, MARIA)).toEqual(BLANK);
+    expect(wiped(setFields, { ...MARIA, phone: "0999888777" })).toEqual({ name: "", store: "" }); // judged on the form as it IS at that moment
+    expect(result.current.mark).toBeNull();
+    expect(m.lookup).not.toHaveBeenCalled();
+  });
+  it("a detail the seller changed is not in what gets blanked", () => {
+    const { result, setFields } = hook({ fields: { ...MARIA, phone: "0999888777", handle: "buyer_a" } });
+    act(() => { result.current.typed("buyer_b"); });
+    expect(wiped(setFields, { ...MARIA, phone: "0999888777" })).toEqual({ name: "", store: "" });
+    expect(result.current.mark).toBeNull();
+  });
+  it("all three were changed by the seller: nothing is written to the form, the fill is still forgotten", () => {
+    const { result, setFields } = hook({ fields: { name: "A", phone: "1", store: "2", handle: "buyer_a" } });
+    act(() => { result.current.typed("buyer_b"); });
+    expect(setFields).not.toHaveBeenCalled();
+    expect(result.current.mark).toBeNull();
+  });
+  it.each(["buyer_a", "BUYER_A", "@buyer_a", "@Buyer_A (U)", "@ buyer_a", " buyer_a\t"])("the same username (%j): nothing happens, the fill stays remembered", (text) => {
+    const { result, setFields } = hook();
+    act(() => { result.current.typed(text); });
+    expect(setFields).not.toHaveBeenCalled();
+    expect(result.current.mark).toEqual(MARK);
+  });
+  it.each(["buyer_", "buyer_a (U)", "@buyer_a(U)", "(U) @buyer_a", "", "unknown"])("no longer that username (%j): taken back", (text) => {
+    const { result, setFields } = hook();
+    act(() => { result.current.typed(text); });
+    expect(setFields).toHaveBeenCalledTimes(1);
+    expect(result.current.mark).toBeNull();
+  });
+  it("while a saved parcel is edited (blocked): nothing happens, whatever is typed", () => {
+    const { result, setFields } = hook({ blocked: true });
+    act(() => { result.current.typed("buyer_b"); result.current.typed(""); });
+    expect(setFields).not.toHaveBeenCalled();
+    expect(result.current.mark).toEqual(MARK);
+  });
+  it("the lookup was turned off after the fill: nothing happens", () => {
+    const { result, setFields, rerender } = hook();
+    rerender({ on: false });
+    act(() => { result.current.typed("buyer_b"); });
+    expect(setFields).not.toHaveBeenCalled();
+  });
+  it("the lookup is off from the start: no fill is ever remembered and nothing happens", () => {
+    const { result, setFields } = hook({ on: false });
+    expect(result.current.mark).toBeNull();
+    act(() => { result.current.typed("buyer_b"); });
+    expect(setFields).not.toHaveBeenCalled();
+  });
+  it("nothing was filled: typing does nothing", () => {
+    const { result, setFields } = hook({ initial: null });
+    act(() => { result.current.typed("buyer_b"); });
+    expect(setFields).not.toHaveBeenCalled();
+  });
+  it("typed twice in one go (before the screen re-draws): the form is written once", () => {
+    const { result, setFields } = hook();
+    act(() => { result.current.typed("buyer_b"); result.current.typed("buyer_bc"); });
+    expect(setFields).toHaveBeenCalledTimes(1);
+  });
+  it("after the username was changed by hand, a scan of that same new username is an ordinary first scan", async () => {
+    m.lookup.mockResolvedValue(found(rec("b", { name: "Ben Tan", phone: "0922333444", storeId: "135790" })));
+    const { result, setFields, rerender } = hook();
+    act(() => { result.current.typed("buyer_b"); });
+    rerender({ fields: { ...BLANK, handle: "buyer_b" } }); // the screen re-drew with the blanked form
+    await act(async () => { result.current.scanned("buyer_b"); await Promise.resolve(); await Promise.resolve(); });
+    expect(m.lookup).toHaveBeenCalledTimes(1);
+    expect(result.current.mark).toEqual({ handle: "buyer_b", filled: { name: "Ben Tan", phone: "0922333444", store: "135790" } });
+    expect(setFields).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the hook on its own — the read fails (audit LOW-3)", () => {
+  it("could not read → nothing is filled, nothing is remembered, onFilled is not called, and no error is thrown", async () => {
+    m.lookup.mockResolvedValue({ ok: false });
+    const setFields = vi.fn(); const onFilled = vi.fn();
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const { result } = renderHook(() => useScanQrLookup({ on: true, store: "711", blocked: false, initial: null, fields: { ...BLANK, handle: "buyer_a" }, setFields, onFilled }));
+      let threw: unknown = null;
+      await act(async () => {
+        try { result.current.scanned("buyer_a"); } catch (e) { threw = e; }
+        await Promise.resolve(); await Promise.resolve();
+        await new Promise((res) => setTimeout(res, 0));
+      });
+      expect(threw).toBeNull();
+      expect(m.lookup).toHaveBeenCalledTimes(1);
+      expect(setFields).not.toHaveBeenCalled();
+      expect(onFilled).not.toHaveBeenCalled();
+      expect(result.current.mark).toBeNull();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 });
 

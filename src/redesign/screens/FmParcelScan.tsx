@@ -141,6 +141,9 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   }, []);
 
   const F = (patch: Partial<Form>) => setForm((s) => ({ ...s, ...patch }));
+  // The username field changed BY HAND (typing in it, or the "no handle" tick emptying it). The lookup is told: when
+  // the text no longer stands for the buyer a Scan QR filled, that buyer's untouched details go with it.
+  const handleByHand = (v: string) => { F({ username: v }); lookup.typed(v); };
   const clearForm = () => { setForm(emptyForm); setNoHandle(false); lookup.reset(); };
 
   // The parcel as it will be saved. New: today (Taipei) + the FamilyMart fee. Edit: keeps its own.
@@ -399,8 +402,8 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
               {contactOn ? (
                 <div>
                   <input ref={qrRef} type="file" accept="image/*" hidden data-testid="fms-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
-                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.username} onValue={(v) => F({ username: v })}
-                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) F({ username: "" }); }}
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.username} onValue={handleByHand}
+                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) handleByHand(""); }}
                     invalid={handleBad && !isEmpty} testId="fms-bc" inputId="fms-handle" />
                 </div>
               ) : (
@@ -413,12 +416,12 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                 </div>
                 <input ref={qrRef} type="file" accept="image/*" hidden data-testid="fms-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
                 <input id="fms-handle" value={form.username}
-                  onChange={(e) => { const v = e.target.value.slice(0, 50); F({ username: v }); if (v.trim() !== "" && noHandle) setNoHandle(false); }}
+                  onChange={(e) => { const v = e.target.value.slice(0, 50); handleByHand(v); if (v.trim() !== "" && noHandle) setNoHandle(false); }}
                   maxLength={50} placeholder="@username" style={{ ...input, ...(noHandle ? { opacity: 0.5 } : {}) }} data-testid="fms-username" aria-invalid={handleBad && !isEmpty} />
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps2_handle_hint}</div>
                 {handleBad && !isEmpty && <div style={errTxt} data-testid="fms-handle-err">{t.rd_ps2_err_handle}</div>}
                 <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer", fontSize: 12, color: "var(--text-dim)" }}>
-                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) F({ username: "" }); }} data-testid="fms-no-handle" />
+                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) handleByHand(""); }} data-testid="fms-no-handle" />
                   {t.rd_ps2_no_handle}
                 </label>
               </div>

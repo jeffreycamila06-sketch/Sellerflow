@@ -30,9 +30,27 @@ async function run(b, base, fm, w) {
       focus: document.activeElement?.getAttribute("data-testid") ?? document.activeElement?.tagName,
     }), k));
   }
+  // Then the username is changed BY HAND (the path the hand-change fix touches) — with the switch off it must be main's.
+  const grab = () => p.evaluate((k) => ({
+    card: document.querySelector(`[data-testid="${k}-confirm"]`).outerHTML,
+    toast: document.querySelector(`[data-testid="${k}-toast"]`)?.outerHTML ?? null,
+    focus: document.activeElement?.getAttribute("data-testid") ?? document.activeElement?.tagName,
+  }), k);
+  const user = (await p.locator(`[data-testid="${k}-bc-input"]`).count()) > 0 ? `[data-testid="${k}-bc-input"]` : `[data-testid="${fm ? "fms-username" : "ps-notes"}"]`;
+  await p.fill(`[data-testid="${k}-name"]`, "Maria Santos");
+  await p.fill(`[data-testid="${k}-phone"]`, "0911222333");
+  await p.fill(`[data-testid="${k}-store"]`, "246810");
+  await p.fill(user, "another_buyer");
+  await p.waitForTimeout(3200); // the scan's message has gone by now on both sides
+  shots.push(await grab());
+  const tick = (await p.locator(`[data-testid="${k}-bc-none"]`).count()) > 0 ? `[data-testid="${k}-bc-none"]` : `[data-testid="${k}-no-handle"]`;
+  await p.click(tick);
+  await p.waitForTimeout(200);
+  shots.push(await grab());
   await p.close();
   return shots;
 }
+const STEP = ["right after scan      ", "1.3 s later           ", "username typed by hand", "'no handle' ticked     "];
 (async () => {
   const b = await chromium.launch();
   let bad = 0;
@@ -42,7 +60,7 @@ async function run(b, base, fm, w) {
     for (let i = 0; i < a.length; i++) for (const key of ["card", "toast", "focus"]) {
       const same = a[i][key] === c[i][key];
       if (!same) bad++;
-      console.log(`${fm ? "fm " : "711"} ${w}px ${i === 0 ? "right after scan" : "1.3 s later    "} ${key.padEnd(5)}: ${same ? "IDENTICAL" : "DIFFERENT"} (${String(a[i][key]).length} chars)`);
+      console.log(`${fm ? "fm " : "711"} ${w}px ${STEP[i]} ${key.padEnd(5)}: ${same ? "IDENTICAL" : "DIFFERENT"} (${String(a[i][key]).length} chars)`);
     }
   }
   console.log(bad === 0 ? "ALL IDENTICAL" : `DIFFERENCES: ${bad}`);

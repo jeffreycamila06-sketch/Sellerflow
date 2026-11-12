@@ -4,6 +4,7 @@
 // The Supabase client is a recording fake — no network.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
+import { renderHook, act } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
   calls: [] as { table: string; select: string; eq: [string, unknown][]; or: string[]; order: unknown[][]; limit: number | null; aborted: boolean }[],
@@ -40,6 +41,8 @@ import {
   distinctPhones, isLookupable, lookupCustomersByHandle, lookupFilter, lookupKey, matchLookupRows, recordToFill, scanQrLookupVisible, untouchedFilled, usernameKeyOf,
   SCAN_QR_LOOKUP_LIMIT, SCAN_QR_LOOKUP_TIMEOUT_MS, SCAN_QR_SHARED_PHONES, type ScanQrLookupRaw,
 } from "../scanQrLookup";
+
+import { useScanQrLookup } from "../useScanQrLookup";
 
 const FIXTURES = JSON.parse(readFileSync("src/redesign/adapters/__tests__/fixtures/scanQrUsernameKey.json", "utf8")) as { cases: { text: string; key: string; why: string }[] };
 
@@ -272,6 +275,67 @@ describe("what the form remembers, and the gate", () => {
     expect(readFileSync("src/redesign/i18n/index.tsx", "utf8")).not.toMatch(/rd_ql_/);
     const code = ["src/redesign/adapters/scanQrLookup.ts", "src/redesign/adapters/useScanQrLookup.ts", "src/redesign/screens/ParcelScan.tsx", "src/redesign/screens/FmParcelScan.tsx"].map((f) => readFileSync(f, "utf8")).join("\n");
     expect(code).not.toMatch(/ScanQrLookupBox|lookupView|rd_ql_|-ql["`-]/);
+  });
+});
+
+describe("the hook with the REAL read — Customers cannot be read (audit LOW-3)", () => {
+  const BLANK = { name: "", phone: "", store: "" };
+  const failing = { then: () => Promise.reject(new Error("no signal")) } as unknown as Promise<void>; // rejects only when it is awaited
+  it.each([
+    ["the database answers with an error", () => { h.error = { message: "boom" }; }],
+    ["the request itself fails (no signal)", () => { h.hold = failing; }],
+    ["nobody is signed in", () => { h.session = null; }],
+    ["no database is set up", () => { h.configured = false; }],
+  ] as [string, () => void][])("%s → nothing is filled, nothing is remembered, and no error is thrown", async (_why, arrange) => {
+    h.data = [db("c1", "buyer_a")]; // a record that WOULD fill the form if the read worked
+    arrange();
+    const setFields = vi.fn(); const onFilled = vi.fn();
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const { result } = renderHook(() => useScanQrLookup({ on: true, store: "711", blocked: false, initial: null, fields: { ...BLANK, handle: "buyer_a" }, setFields, onFilled }));
+      let threw: unknown = null;
+      await act(async () => {
+        try { result.current.scanned("buyer_a"); } catch (e) { threw = e; }
+        for (let i = 0; i < 3; i++) await new Promise((res) => setTimeout(res, 0));
+      });
+      expect(threw).toBeNull();
+      expect(setFields).not.toHaveBeenCalled();
+      expect(onFilled).not.toHaveBeenCalled();
+      expect(result.current.mark).toBeNull();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+  it("the very same hook and record with a read that works: the form IS filled (the cases above fail for the read, not for the test)", async () => {
+    h.data = [db("c1", "buyer_a")];
+    const setFields = vi.fn();
+    const { result } = renderHook(() => useScanQrLookup({ on: true, store: "711", blocked: false, initial: null, fields: { ...BLANK, handle: "buyer_a" }, setFields }));
+    await act(async () => { result.current.scanned("buyer_a"); for (let i = 0; i < 3; i++) await new Promise((res) => setTimeout(res, 0)); });
+    expect(setFields).toHaveBeenCalledTimes(1);
+    expect(result.current.mark).toEqual({ handle: "buyer_a", filled: { name: "Name c1", phone: "0912345678", store: "123456" } });
+  });
+});
+
+describe("the username changed by hand — both screens tell the hook, at every place the field is written by hand", () => {
+  it.each([["ParcelScan.tsx", "notes"], ["FmParcelScan.tsx", "username"]])("%s", (file, col) => {
+    const src = readFileSync(`src/redesign/screens/${file}`, "utf8");
+    // ONE function writes the field for a hand change, and it tells the hook
+    expect(src).toContain(`const handleByHand = (v: string) => { F({ ${col}: v }); lookup.typed(v); };`);
+    // the field's text is written in exactly two places: that function, and the Scan QR handler (which calls lookup.scanned)
+    expect(src.match(new RegExp(`F\\(\\{ ${col}: [^}]*\\}\\)`, "g"))).toEqual([`F({ ${col}: v })`, `F({ ${col}: handle.slice(0, 50) })`]);
+    // the picker field (typing and paste), the plain field, and both "no handle" ticks
+    expect(src).toContain("onValue={handleByHand}");
+    expect(src).toContain('onNoContact={(on) => { setNoHandle(on); if (on) handleByHand(""); }}');
+    expect(src).toContain("const v = e.target.value.slice(0, 50); handleByHand(v);");
+    expect(src).toContain('const on = e.target.checked; setNoHandle(on); if (on) handleByHand(""); }}');
+    expect((src.match(/handleByHand\(/g) ?? []).length).toBe(3);
+  });
+  it("the hook decides with rule #4 and takes the details back with the same code a scan of another buyer uses", () => {
+    const hook = readFileSync("src/redesign/adapters/useScanQrLookup.ts", "utf8");
+    expect(hook).toContain("if (usernameKeyOf(handle) === prev.handle) return;");
+    expect((hook.match(/takeBack\(o, prev, /g) ?? []).length).toBe(2); // scanned() and typed()
   });
 });
 

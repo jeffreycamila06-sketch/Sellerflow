@@ -1,11 +1,16 @@
-# Scan QR → punan mula sa Customers — Hakbang 4 (mga desisyon ni Jeff, 2026-11-12)
+# Scan QR → punan mula sa Customers — Hakbang 4 + ayos sa username na pinalitan nang kamay (mga desisyon ni Jeff, 2026-11-12)
 
 **Walang listahan, walang kahon, walang mensahe.** Pagka-Scan QR (kapag bukas ang feature para sa account):
 - may record ang username → diretsong napupunan ang pangalan, phone at store mula sa **pinakabagong** record;
 - may naka-type na sa pangalan, phone o store → walang pinupunan;
 - ang mga record ng "username" ay may **3 o higit pang magkakaibang phone** (salitang isinusulat para sa maraming buyer, hal.
   `user`) → walang pinupunan;
-- walang record / error / lampas 4 segundo → eksaktong gaya ngayon (username lang).
+- walang record / error / lampas 4 segundo → eksaktong gaya ngayon (username lang);
+- **pagkatapos mapunan, pinalitan NANG KAMAY ang username** (type, paste, o ang tsek na "walang handle" na nagbubura sa
+  field) at hindi na ito tumutukoy sa buyer na iyon (rule #4) → binubura ang mga napunang detalye na **hindi ginalaw** ng
+  encoder at kinakalimutan ang punan — parehong code ng pag-scan ng ibang buyer. Ang ginalaw na ng encoder ay nananatili.
+  Parehong username na iba lang ang laki ng letra, may `@`, o `@username (tala)` → walang binubura. Walang bagong UI o
+  mensahe. Hindi tumatakbo kapag naka-OFF ang switch o habang nag-e-edit ng naka-save na parcel.
 
 **BUMABASA lang ito ng Customers. Walang binago sa pag-save ng parcel sa Customers** — walang binubura, walang pinapalitan,
 walang bagong SQL para doon (7-11 at FamilyMart ay eksaktong gaya ng live ngayon).
@@ -75,6 +80,18 @@ Resulta (`compare-with-main.txt`): **24 sa 24 magkapareho.** (Preview database, 
     sticker ang sumunod, saka binabawi ang hindi ginalaw na detalye ng nauna.
 10c. **Pinalitan ang app ng buyer (hal. LINE) habang hinihintay ang sagot** → walang pinupunan. (Kapag pinalitan
     pagkatapos nang mapunan, nananatili ang napunan.)
+10h. **Username na pinalitan nang kamay — ISANG pindot lang ay sapat na.** Hindi alam ng app kung kailan "tapos" ang
+    pag-type, kaya sa unang pindot na nagpapaiba sa username (hal. isang backspace: `pedro123` → `pedro12`) ay nabubura na
+    ang mga napunang detalye na hindi ginalaw. **Ang pag-type pabalik ng tamang username ay HINDI nagbabalik sa mga ito**
+    (ang pag-type ay hindi bumabasa ng Customers) — i-scan ulit ang sticker para mapunan ulit.
+10i. **Ang QR ay naglalagay ng username na WALANG `@`** (`pedro123`). Kapag dinagdagan ito ng encoder ng tala nang walang
+    `@` (`pedro123 (U)`), ayon sa rule #4 ay hindi na iyon username → **nabubura ang mga napunang detalye na hindi
+    ginalaw.** Kapag may `@` (`@pedro123 (U)`) ay walang nabubura. Live: 2,295 naka-save na contact (7-11) at 67 (FM) ang
+    hugis na `x (U)` na walang `@` — ibig sabihin may mga encoder na ganito mag-type. **Tanong kay Jeff sa ibaba.**
+10j. **Ang tsek na "walang handle / no contact"** ay nagbubura sa username field, kaya itinuring itong pagpalit nang kamay:
+    nabubura rin ang mga napunang detalye na hindi ginalaw. (Hindi ito tahasang nasa utos — sabihin kung ayaw.)
+10k. **Ang pagpili ng ibang app** (hal. LINE) pagkatapos mapunan, nang hindi ginagalaw ang text ng username, ay **walang
+    binubura** (ang utos ay tungkol sa username field). Kapag nag-type na ng bagong contact, saka nabubura.
 10d. **"Pinakabago" = huling naisulat na record.** Kapag ang lumang parcel ng buyer ay na-edit o na-recheck kamakailan, ang
     record nito ang nagiging "pinakabago" — puwedeng lumang store ang mapunan. Nakikita ng encoder; walang petsa o babala
     (inalis kasama ng kahon).
