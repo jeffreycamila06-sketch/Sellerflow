@@ -85,7 +85,7 @@ describe("the docs the plan asks for", () => {
     expect(read("public/privacy/index.html")).toContain("including a buyer contact (phone number or messaging ID) you record for a parcel");
     const guide = read("docs/support/sfl-guide.md");
     expect(guide).toContain("## parcel-scan — Parcel Scan (7-11) and Customer Details\nLast checked: 2026-11-12");
-    expect(guide).toContain("## pickup-status — Pickup Status\nLast checked: 2026-11-04");
+    expect(guide).toContain("## pickup-status — Pickup Status\nLast checked: 2026-11-12");
     expect(guide).toContain("**Buyer contact** (Plus / Pro / Master)");
     expect(guide).not.toMatch(/contact_platform|sql\/140|RLS|trigger/);           // user-level words only
     expect(read("sql/116b_guide_seed.sql")).toContain("Buyer contact");

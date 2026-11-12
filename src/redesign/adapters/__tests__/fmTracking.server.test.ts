@@ -1,0 +1,230 @@
+// server/fmTracking.js — the PURE FamilyMart (全家) tracking core: what the site's step history
+// means for a parcel, what is written to its row, and one session with injected steps.
+// The four fixtures are the code sequences of four real parcels (owner, 2026-11-12).
+import { describe, it, expect, vi } from "vitest";
+import {
+  classifyFm, fmRowChange, parseFmAnswer, inquiryItem, detailSteps, runFmSession, fmTime, fmDay,
+  isFmTrackingNo, cleanFmCaptcha, FM_CODES, FM_PATHS, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES,
+} from "../../../../server/fmTracking.js";
+
+type Step = Record<string, unknown>;
+// One step. `orderNo` differs from `ec` on the way back.
+const step = (ec: string, code: string, date: string, time: string, rtn: string, orderNo = ec, store = "全家取件店"): Step => ({
+  ORDER_NO: orderNo, EC_ORDER_NO: ec, ORDER_STATUS: code, ORDER_DATE: date, ORDER_TIME: time,
+  STATUS_D: (FM_CODES as Record<string, string>)[code] ?? "新狀態", SEND_STORE_NAME: "全家寄件店", RCV_STORE_NAME: store,
+  RCV_STORE_ADDRESS: "某路1號", ORDER_DATE_RTN: rtn, ORDER_DATE_R: "", RCV_STORE_PHONE: "",
+});
+// codes newest first → steps with falling dates.
+const history = (ec: string, codes: string[], rtn: string, at: Record<number, [string, string]> = {}, wayBack: { idx: number[]; orderNo: string; rtn: string } | null = null): Step[] =>
+  codes.map((code, i) => {
+    const [d, t] = at[i] ?? [`2026/10/${String(28 - i).padStart(2, "0")}`, "10:00"];
+    const back = wayBack && wayBack.idx.includes(i);
+    return step(ec, code, d, t, back ? wayBack!.rtn : rtn, back ? wayBack!.orderNo : ec, back ? "全家寄件店" : "全家取件店");
+  });
+
+const AT_STORE = history("16354220151", ["08", "073", "07", "06", "043", "042", "04", "03", "02", "01"], "2026/11/18", { 0: ["2026/11/11", "04:31"] });
+const PICKED = history("16354226527", ["09", "08", "073", "07", "06", "043", "042", "04", "03", "02", "01"], "2026/11/18", { 0: ["2026/11/11", "08:55"], 1: ["2026/11/09", "05:10"] });
+// 09,08,073,07,06,043,[31],04,[12],[11],08,073,07,06,043,042,04,03,02,01 — the first 6 and the "04"
+// (index 7) are the way back (ORDER_NO 16353664329, RTN 2026/11/13); the rest is the original leg.
+const RETURNED = history("16352835793",
+  ["09", "08", "073", "07", "06", "043", "31", "04", "12", "11", "08", "073", "07", "06", "043", "042", "04", "03", "02", "01"],
+  "2026/11/02", { 0: ["2026/11/08", "15:02"], 9: ["2026/11/03", "01:21"], 10: ["2026/10/26", "04:40"] },
+  { idx: [0, 1, 2, 3, 4, 5, 7], orderNo: "16353664329", rtn: "2026/11/13" });
+const EXPIRED = history("16351746626", ["40", "01"], "");
+
+describe("classifyFm — the four real parcels", () => {
+  it("at the store: newest 08 → at_store, arrived at the 08, deadline = ORDER_DATE_RTN", () => {
+    const r = classifyFm(AT_STORE, "16354220151");
+    expect(r).toMatchObject({ kind: "at_store", status_message: "貨件配達取件店舖", pickup_deadline: "2026-11-18", rec_store: "全家取件店" });
+    expect(r.at).toBe("2026-11-10T20:31:00.000Z"); // 2026/11/11 04:31 Taipei
+    expect(r.arrived_at).toBe(r.at);
+  });
+  it("picked up: a 09 and no return → picked_up at the time of the 09", () => {
+    const r = classifyFm(PICKED, "16354226527");
+    expect(r).toMatchObject({ kind: "picked_up", status_message: "已完成取件" });
+    expect(r.at).toBe("2026-11-11T00:55:00.000Z"); // 2026/11/11 08:55 Taipei
+    expect(r.arrived_at).toBe("2026-11-08T21:10:00.000Z");
+  });
+  it("returned: newest step is 09 已完成取件 (the SELLER collected it) → returned, NOT picked_up", () => {
+    const r = classifyFm(RETURNED, "16352835793");
+    expect(r.kind).toBe("returned");
+    expect(r.status_message).toBe("未取退回物流中心");  // the first 11, not 已完成取件
+    expect(r.at).toBe("2026-11-02T17:21:00.000Z");      // the first 11: 2026/11/03 01:21 Taipei
+    expect(r.pickup_deadline).toBe("2026-11-02");       // the ORIGINAL leg's deadline, not 2026/11/13
+    expect(r.arrived_at).toBe("2026-10-25T20:40:00.000Z"); // the original leg's 08
+  });
+  it("expired: newest 40 → expired", () => {
+    expect(classifyFm(EXPIRED, "16351746626").kind).toBe("expired");
+  });
+});
+
+describe("classifyFm — the rules one by one", () => {
+  const ec = "16300000001";
+  it("returned by ANY 11 / 12 / 31, wherever it is", () => {
+    for (const code of ["11", "12", "31"]) expect(classifyFm(history(ec, ["04", code, "08", "02", "01"], "2026/11/02"), ec).kind).toBe("returned");
+  });
+  it("returned by a way-back step alone (ORDER_NO ≠ EC_ORDER_NO), even under a 09", () => {
+    const steps = history(ec, ["09", "08", "04", "08", "02", "01"], "2026/11/02", {}, { idx: [0, 1, 2], orderNo: "16399999999", rtn: "2026/11/13" });
+    const r = classifyFm(steps, ec);
+    expect(r.kind).toBe("returned");
+    expect(r.pickup_deadline).toBe("2026-11-02");
+  });
+  it("in transit for every code 02–073 as the newest step; no deadline", () => {
+    for (const code of ["02", "03", "04", "042", "043", "06", "07", "073"]) {
+      expect(classifyFm(history(ec, [code, "01"], ""), ec)).toMatchObject({ kind: "in_transit", pickup_deadline: null });
+    }
+  });
+  it("01 only → not_shipped", () => {
+    expect(classifyFm(history(ec, ["01"], ""), ec).kind).toBe("not_shipped");
+  });
+  it("a code we do not know → unknown, with the code — no guess, even when the rest says picked up", () => {
+    const r = classifyFm(history(ec, ["09", "55", "08", "02", "01"], "2026/11/02"), ec);
+    expect(r).toMatchObject({ kind: "unknown", unknownCode: "55", status_message: "新狀態" });
+    expect(classifyFm(history(ec, ["99"], ""), ec).kind).toBe("unknown");
+  });
+  it("no steps at all → unknown", () => {
+    expect(classifyFm([], ec)).toMatchObject({ kind: "unknown", unknownCode: "none" });
+    expect(classifyFm(null, ec).kind).toBe("unknown");
+  });
+  it("a one-digit code is read as two digits (1 → 01)", () => {
+    expect(classifyFm([{ ...step(ec, "01", "2026/11/01", "09:00", ""), ORDER_STATUS: 1 }], ec).kind).toBe("not_shipped");
+  });
+});
+
+describe("fmRowChange — what is written", () => {
+  const now = "2026-11-12T03:00:00.000Z";
+  const row = { id: "r1", arrived_at: null, rec_store: null };
+  it("at_store: status, message, deadline, arrival and store (only when the row has none)", () => {
+    const c = fmRowChange(classifyFm(AT_STORE, "16354220151"), row, now);
+    expect(c).toEqual({ action: "update", patch: {
+      last_polled_at: now, arrived_at: "2026-11-10T20:31:00.000Z", rec_store: "全家取件店", status: "at_store",
+      status_message: "貨件配達取件店舖", terminal: false, pickup_deadline: "2026-11-18",
+    } });
+    const kept = fmRowChange(classifyFm(AT_STORE, "16354220151"), { id: "r1", arrived_at: "2026-11-01T00:00:00.000Z", rec_store: "上傳的店名" }, now) as { patch: Record<string, unknown> };
+    expect(kept.patch).not.toHaveProperty("arrived_at");
+    expect(kept.patch).not.toHaveProperty("rec_store");
+  });
+  it("picked_up / returned: finished, with the real time of the step", () => {
+    expect(fmRowChange(classifyFm(PICKED, "16354226527"), row, now)).toMatchObject({ action: "update", patch: { status: "picked_up", terminal: true, picked_up_at: "2026-11-11T00:55:00.000Z" } });
+    expect(fmRowChange(classifyFm(RETURNED, "16352835793"), row, now)).toMatchObject({ action: "update", patch: { status: "returned", terminal: true, returned_at: "2026-11-02T17:21:00.000Z", pickup_deadline: "2026-11-02" } });
+  });
+  it("in transit: the 'drop off before' date from the upload is cleared", () => {
+    expect(fmRowChange(classifyFm(history("16300000001", ["03", "02", "01"], ""), "16300000001"), row, now))
+      .toEqual({ action: "update", patch: { last_polled_at: now, status: "in_transit", status_message: "貨件前往物流中心", terminal: false, pickup_deadline: null } });
+  });
+  it("01 only and not found: nothing but the check time (the status is never lowered)", () => {
+    expect(fmRowChange(classifyFm(history("16300000001", ["01"], ""), "16300000001"), row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
+    expect(fmRowChange({ kind: "not_found" }, row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
+  });
+  it("unknown: status 'unknown' — deadline and arrival are left as they are", () => {
+    const c = fmRowChange({ kind: "unknown", unknownCode: "55", status_message: "新狀態" }, row, now);
+    expect(c).toEqual({ action: "update", patch: { last_polled_at: now, status: "unknown", status_message: "新狀態" } });
+  });
+  it("expired (40): the row is removed", () => {
+    expect(fmRowChange(classifyFm(EXPIRED, "16351746626"), row, now)).toEqual({ action: "delete" });
+  });
+  it("never writes tracking_no", () => {
+    for (const steps of [AT_STORE, PICKED, RETURNED]) {
+      const c = fmRowChange(classifyFm(steps, String(steps[0].EC_ORDER_NO)), row, now) as { patch: Record<string, unknown> };
+      expect(c.patch).not.toHaveProperty("tracking_no");
+    }
+  });
+});
+
+describe("answers", () => {
+  it("parseFmAnswer: {\"d\":\"<JSON string>\"} is parsed twice", () => {
+    expect(parseFmAnswer('{"d":"{\\"Code\\":\\"jIGhjbm2N||Y=\\"}"}')).toEqual({ Code: "jIGhjbm2N||Y=" });
+    expect(parseFmAnswer({ d: { success: "1" } })).toEqual({ success: "1" });
+    for (const bad of ["<html>blocked</html>", "{}", '{"d":"not json"}', '{"d":null}', '{"Message":"error"}']) {
+      expect(() => parseFmAnswer(bad)).toThrow(/bad_answer/);
+    }
+  });
+  it("inquiryItem: found, CNT 0 → not found, any other shape or ErrorCode throws", () => {
+    const found = { ErrorCode: "000", ErrorMessage: "成功", List: [{ EC_ORDER_NO: "16351746626", CNT: 1.0, ORDER_NO: "16351746626", ORDERMESSAGE: "訂單失效" }] };
+    expect(inquiryItem(found, "16351746626")).toEqual({ found: true, orderNo: "16351746626" });
+    const none = { ErrorCode: "000", ErrorMessage: "成功", List: [{ EC_ORDER_NO: "L26A1113SG", CNT: 0.0, ORDER_NO: null, ORDERMESSAGE: null }] };
+    expect(inquiryItem(none, "L26A1113SG")).toEqual({ found: false, orderNo: null });
+    expect(inquiryItem({ ErrorCode: "000", List: [] }, "16351746626")).toEqual({ found: false, orderNo: null });
+    expect(() => inquiryItem({ ErrorCode: "999", ErrorMessage: "x", List: [] }, "1")).toThrow(/inquiry_error/);
+    expect(() => inquiryItem({ ErrorCode: "000", List: null }, "1")).toThrow(/inquiry_shape/);
+    expect(() => inquiryItem(null, "1")).toThrow(/inquiry_shape/);
+  });
+  it("detailSteps: a bare list or { List }, anything else throws", () => {
+    expect(detailSteps(AT_STORE)).toBe(AT_STORE);
+    expect(detailSteps({ ErrorCode: "000", List: PICKED })).toBe(PICKED);
+    expect(() => detailSteps({ ErrorCode: "500", List: [] })).toThrow(/detail_error/);
+    expect(() => detailSteps({ Message: "x" })).toThrow(/detail_shape/);
+  });
+  it("dates, numbers, captcha text", () => {
+    expect(fmTime("2026/11/03", "01:21")).toBe("2026-11-02T17:21:00.000Z");
+    expect(fmTime("", "01:21")).toBeNull();
+    expect(fmDay("2026/11/2")).toBe("2026-11-02");
+    expect(fmDay("")).toBeNull();
+    expect(isFmTrackingNo("16351746626")).toBe(true);
+    for (const bad of ["L26A1113SG", "1635174662", "163517466261", "", null, "1635174662a"]) expect(isFmTrackingNo(bad)).toBe(false);
+    expect(cleanFmCaptcha(" 04 31-80\n")).toBe("043180");
+  });
+  it("only the InquiryOrders path is confirmed; the guesses are constants", () => {
+    expect(FM_PATHS.inquiry).toBe("list.aspx/InquiryOrders");
+    expect(Object.keys(FM_PATHS).sort()).toEqual(["checkCode", "codeImage", "detail", "getCode", "index", "inquiry", "list"]);
+    expect(FM_PARCELS_PER_SESSION).toBe(5);
+    expect(FM_MAX_CAPTCHA_TRIES).toBe(4);
+  });
+});
+
+describe("runFmSession — one session with injected steps", () => {
+  const answers: Record<string, Step[] | null> = { "16354220151": AT_STORE, "16354226527": PICKED, "16352835793": RETURNED, "16351746626": EXPIRED, "16300000009": null };
+  const makeDeps = (solves: string[], right = "043180") => {
+    const calls: string[] = [];
+    let n = 0;
+    const deps = {
+      openIndex: vi.fn(async () => { calls.push("index"); }),
+      getCode: vi.fn(async () => { calls.push("code"); return `C${++n}`; }),
+      getImage: vi.fn(async (code: string) => { calls.push(`image:${code}`); return new Uint8Array([1]); }),
+      solve: vi.fn(async () => solves.shift() ?? ""),
+      checkCode: vi.fn(async (digits: string, code: string) => { calls.push(`check:${digits}:${code}`); return digits === right; }),
+      openList: vi.fn(async () => { calls.push("list"); }),
+      inquiry: vi.fn(async (no: string) => { calls.push(`inq:${no}`); return { ErrorCode: "000", List: [{ EC_ORDER_NO: no, CNT: answers[no] ? 1 : 0, ORDER_NO: answers[no] ? no : null }] }; }),
+      detail: vi.fn(async (no: string, orderNo: string) => { calls.push(`det:${no}:${orderNo}`); return { ErrorCode: "000", List: answers[no] }; }),
+    };
+    return { deps, calls };
+  };
+
+  it("captcha right the first time → every parcel asked in order, each classified", async () => {
+    const { deps, calls } = makeDeps(["043180"]);
+    const res = await runFmSession(["16354220151", "16300000009", "16352835793", "16351746626"], deps);
+    expect(res).toMatchObject({ captchaTries: 1, captchaHits: 1, error: null });
+    expect(res.results.map((r: { result: { kind: string } }) => r.result.kind)).toEqual(["at_store", "not_found", "returned", "expired"]);
+    expect(calls).toEqual(["index", "code", "image:C1", "check:043180:C1", "list",
+      "inq:16354220151", "det:16354220151:16354220151", "inq:16300000009", "inq:16352835793", "det:16352835793:16352835793", "inq:16351746626", "det:16351746626:16351746626"]);
+  });
+  it("a wrong captcha → a NEW captcha; text that is not 6 digits is not even sent", async () => {
+    const { deps, calls } = makeDeps(["999999", "12 34", "043180"]);
+    const res = await runFmSession(["16354220151"], deps);
+    expect(res).toMatchObject({ captchaTries: 3, captchaHits: 1, error: null });
+    expect(calls.filter((c) => c.startsWith("check:"))).toEqual(["check:999999:C1", "check:043180:C3"]); // "1234" was never checked
+    expect(deps.getCode).toHaveBeenCalledTimes(3);
+    expect(deps.openIndex).toHaveBeenCalledTimes(1); // the same session all along
+  });
+  it("captcha never right → stops after the limit, no parcel is asked", async () => {
+    const { deps } = makeDeps(["111111", "222222", "333333", "444444", "043180"]);
+    const res = await runFmSession(["16354220151"], deps);
+    expect(res).toMatchObject({ captchaTries: 4, captchaHits: 0, error: "captcha_failed", results: [] });
+    expect(deps.inquiry).not.toHaveBeenCalled();
+    expect(deps.openList).not.toHaveBeenCalled();
+  });
+  it("the site stops answering mid-session → what was answered is kept, the error is named", async () => {
+    const { deps } = makeDeps(["043180"]);
+    let n = 0;
+    deps.inquiry.mockImplementation(async (no: string) => (++n > 2 ? { ErrorCode: "999", List: null } : { ErrorCode: "000", List: [{ EC_ORDER_NO: no, CNT: 1, ORDER_NO: no }] }));
+    const res = await runFmSession(["16354220151", "16354226527", "16352835793"], deps);
+    expect(res.results.map((r: { tracking_no: string }) => r.tracking_no)).toEqual(["16354220151", "16354226527"]);
+    expect(res.error).toBe("inquiry_shape");
+    expect(res.detail).toContain("code=999");
+  });
+  it("a thrown step (network / HTTP) ends the session with its code", async () => {
+    const { deps } = makeDeps(["043180"]);
+    deps.getCode.mockRejectedValueOnce(Object.assign(new Error("code_http_403"), { code: "code_http_403" }));
+    expect(await runFmSession(["16354220151"], deps)).toMatchObject({ error: "code_http_403", results: [] });
+  });
+});

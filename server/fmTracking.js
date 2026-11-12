@@ -1,0 +1,235 @@
+// FamilyMart (全家) tracking — the PURE core (no network, no OCR, no database). What the site
+// answers → what a parcel's row becomes, and one query session with injected steps.
+// The real HTTP / OCR / database is server/fmTrackingRunner.js.
+//
+// Contract (taken by the owner from the browser, 2026-11-12):
+//   base  https://ecfme.fme.com.tw/FMEDCFPWebV2_II/  (embedded in fmec.famiport.com.tw/FP_Entrance/QueryBox)
+//   1. GET  index.aspx                      → session cookies
+//   2. POST GetVerificationCode {}          → {"Code":"…"}
+//   3. GET  CodeHandler.ashx?Code=…         → GIF, 6 digits
+//   4. POST ChkVerificationCode {"P_CODE":"043180","P_VCODE":"<Code>"} → {"success":"1"}
+//   5. GET  list.aspx
+//   6. POST list.aspx/InquiryOrders {"ListEC_ORDER_NO":"<寄件編號>"}   → {"ErrorCode":"000","List":[{EC_ORDER_NO,CNT,ORDER_NO,…}]}
+//   7. POST GetOrderDetail {"EC_ORDER_NO","RCV_USER_NAME":null,"ORDER_NO"} → the steps, NEWEST FIRST
+//   Every JSON answer is {"d":"<JSON string>"} — parsed twice.
+//
+// ⚠️ GUESSES (only step 6's path is confirmed). When the site answers something else the session
+// stops and logs one clear line; change the value here.
+export const FM_BASE = "https://ecfme.fme.com.tw/FMEDCFPWebV2_II/";
+export const FM_ORIGIN = "https://ecfme.fme.com.tw";
+export const FM_EMBED_REFERER = "https://fmec.famiport.com.tw/";
+export const FM_PATHS = Object.freeze({
+  index: "index.aspx",
+  getCode: "index.aspx/GetVerificationCode",   // GUESS (page method of index.aspx)
+  codeImage: "CodeHandler.ashx",
+  checkCode: "index.aspx/ChkVerificationCode", // GUESS (page method of index.aspx)
+  list: "list.aspx",
+  inquiry: "list.aspx/InquiryOrders",          // confirmed
+  detail: "list.aspx/GetOrderDetail",          // GUESS (page method of list.aspx)
+});
+export const fmUrl = (path) => FM_BASE + path;
+export const FM_PARCELS_PER_SESSION = 5;  // GUESS: parcels asked after one solved captcha
+export const FM_MAX_CAPTCHA_TRIES = 4;    // a wrong captcha → a new one, at most this many per session
+export const FM_CAPTCHA_DIGITS = 6;
+
+// ORDER_STATUS codes seen on 4 real parcels.
+export const FM_CODES = Object.freeze({
+  "01": "訂單成立未寄件", "02": "已完成寄件", "03": "貨件前往物流中心", "04": "貨件抵達物流中心",
+  "042": "貨件跨區轉運中", "043": "物流中心理貨中", "06": "貨件已完成理貨", "07": "貨件等待配送中",
+  "073": "貨件進行配送中", "08": "貨件配達取件店舖", "09": "已完成取件", "11": "未取退回物流中心",
+  "12": "貨件已退回物流中心", "31": "即將退回寄件店", "40": "訂單失效",
+});
+const RETURN_CODES = new Set(["11", "12", "31"]);
+const TRANSIT_CODES = new Set(["02", "03", "04", "042", "043", "06", "07", "073"]);
+
+export function fmError(code, detail = "") {
+  const e = new Error(code);
+  e.code = code;
+  e.detail = detail;
+  return e;
+}
+
+// Only letters, digits, _ and - reach a log line (never a name, a phone or a parcel number).
+export const safeWord = (v, max = 24) => String(v ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, max) || "-";
+export const safeKeys = (o) => (o && typeof o === "object" ? Object.keys(o).slice(0, 8).map((k) => safeWord(k)).join(",") : typeof o);
+
+// 寄件編號 = 11 digits. The 好賣+ 訂單編號 (e.g. L26A1113SG) is never found by the site.
+export function isFmTrackingNo(v) {
+  return /^\d{11}$/.test(String(v ?? "").trim());
+}
+
+// Digits only. A captcha is used only when exactly FM_CAPTCHA_DIGITS are left.
+export function cleanFmCaptcha(raw) {
+  return String(raw ?? "").replace(/\D/g, "");
+}
+
+// {"d":"<JSON string>"} → the inner object. Throws fmError("bad_answer") for anything else.
+export function parseFmAnswer(text) {
+  let outer;
+  try { outer = typeof text === "string" ? JSON.parse(text) : text; } catch { throw fmError("bad_answer", "not_json"); }
+  if (!outer || typeof outer !== "object" || !("d" in outer)) throw fmError("bad_answer", `keys=${safeKeys(outer)}`);
+  let inner = outer.d;
+  if (typeof inner === "string") { try { inner = JSON.parse(inner); } catch { throw fmError("bad_answer", "d_not_json"); } }
+  if (inner === null || typeof inner !== "object") throw fmError("bad_answer", `d=${typeof inner}`);
+  return inner;
+}
+
+// "2026/11/11" + "04:31" (Taipei) → ISO; null when unreadable.
+export function fmTime(date, time) {
+  const d = String(date ?? "").trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  if (!d) return null;
+  const t = String(time ?? "").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  const pad = (n) => String(n).padStart(2, "0");
+  const ms = Date.parse(`${d[1]}-${pad(d[2])}-${pad(d[3])}T${t ? `${pad(t[1])}:${t[2]}:${t[3] || "00"}` : "00:00:00"}+08:00`);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+// "2026/11/18" → "2026-11-18"; null when unreadable.
+export function fmDay(date) {
+  const d = String(date ?? "").trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  if (!d) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  const out = `${d[1]}-${pad(d[2])}-${pad(d[3])}`;
+  return Number.isFinite(Date.parse(`${out}T00:00:00Z`)) ? out : null;
+}
+
+const codeOf = (s) => { const c = String(s?.ORDER_STATUS ?? "").trim(); return /^\d$/.test(c) ? `0${c}` : c; };
+const text = (v) => { const s = String(v ?? "").trim(); return s || null; };
+
+// The whole history (NEWEST FIRST) → what the parcel is. Returns
+//   { kind, status_message, at, pickup_deadline, arrived_at, rec_store, unknownCode? }
+//   kind ∈ returned | picked_up | at_store | in_transit | not_shipped | expired | unknown
+// Rules (owner, 2026-11-12):
+//   • a code we do not know anywhere → unknown (no guess)
+//   • RETURNED when ANY step is 11 / 12 / 31, or any step's ORDER_NO differs from its EC_ORDER_NO
+//     (the way back) — even when the newest step is 09 已完成取件 (the SELLER collected the return).
+//     at = the first 11. The buyer's deadline = ORDER_DATE_RTN of the ORIGINAL leg.
+//   • newest 40 → expired (the order is void)
+//   • any 09 → picked_up (at = the 09)        • newest 08 → at_store (deadline = ORDER_DATE_RTN)
+//   • newest 02–073 → in_transit               • newest 01 → not_shipped (the row keeps its status)
+export function classifyFm(steps, ecOrderNo) {
+  const list = Array.isArray(steps) ? steps.filter((s) => s && typeof s === "object") : [];
+  const none = { status_message: null, at: null, pickup_deadline: null, arrived_at: null, rec_store: null };
+  if (!list.length) return { ...none, kind: "unknown", unknownCode: "none" };
+  const codes = list.map(codeOf);
+  const unknownAt = codes.findIndex((c) => !(c in FM_CODES));
+  if (unknownAt >= 0) return { ...none, kind: "unknown", unknownCode: safeWord(codes[unknownAt], 8), status_message: text(list[unknownAt].STATUS_D) };
+
+  const own = String(ecOrderNo ?? "").trim();
+  const isWayBack = (s) => {
+    const o = String(s.ORDER_NO ?? "").trim(), e = String(s.EC_ORDER_NO ?? own).trim();
+    return !!o && !!e && o !== e;
+  };
+  const timeOf = (s) => (s ? fmTime(s.ORDER_DATE, s.ORDER_TIME) : null);
+  const msgOf = (s, c) => (s ? text(s.STATUS_D) || FM_CODES[c] || null : null);
+  const original = list.filter((s) => !isWayBack(s));
+  const originalCodes = original.map(codeOf);
+  const arrivedStep = original[originalCodes.indexOf("08")] || null; // the buyer's store
+  const arrived_at = timeOf(arrivedStep);
+  const rec_store = arrivedStep ? text(arrivedStep.RCV_STORE_NAME) : null;
+  const newest = codes[0];
+
+  const wayBack = list.filter(isWayBack);
+  if (codes.some((c) => RETURN_CODES.has(c)) || wayBack.length) {
+    const lastIndex = (c) => codes.lastIndexOf(c); // the list is newest first → the last one is the earliest
+    const first11 = lastIndex("11") >= 0 ? list[lastIndex("11")] : null;
+    const firstOther = [lastIndex("12"), lastIndex("31")].filter((i) => i >= 0).sort((a, b) => b - a)[0];
+    const decided = first11 || (firstOther != null ? list[firstOther] : null) || wayBack[wayBack.length - 1];
+    const deadlineStep = arrivedStep && fmDay(arrivedStep.ORDER_DATE_RTN) ? arrivedStep : original.find((s) => fmDay(s.ORDER_DATE_RTN));
+    return {
+      kind: "returned", status_message: msgOf(decided, codeOf(decided)), at: timeOf(decided),
+      pickup_deadline: deadlineStep ? fmDay(deadlineStep.ORDER_DATE_RTN) : null, arrived_at, rec_store,
+    };
+  }
+  if (newest === "40") return { ...none, kind: "expired", status_message: msgOf(list[0], "40"), at: timeOf(list[0]) };
+  const picked = codes.indexOf("09");
+  if (picked >= 0) return { kind: "picked_up", status_message: msgOf(list[picked], "09"), at: timeOf(list[picked]), pickup_deadline: null, arrived_at, rec_store };
+  if (newest === "08") {
+    return { kind: "at_store", status_message: msgOf(list[0], "08"), at: timeOf(list[0]), pickup_deadline: fmDay(list[0].ORDER_DATE_RTN), arrived_at: timeOf(list[0]), rec_store: text(list[0].RCV_STORE_NAME) };
+  }
+  if (TRANSIT_CODES.has(newest)) return { ...none, kind: "in_transit", status_message: msgOf(list[0], newest), at: timeOf(list[0]) };
+  return { ...none, kind: "not_shipped", status_message: msgOf(list[0], newest), at: timeOf(list[0]) }; // 01
+}
+
+// InquiryOrders answer → { found, orderNo }. CNT 0 / ORDER_NO null = the site does not know it.
+// Throws when the answer is not the expected shape (session over, blocked, changed).
+export function inquiryItem(answer, ecOrderNo) {
+  const code = String(answer?.ErrorCode ?? "");
+  if (!answer || !Array.isArray(answer.List)) throw fmError("inquiry_shape", `keys=${safeKeys(answer)} code=${safeWord(code, 8)}`);
+  if (code !== "000") throw fmError("inquiry_error", `code=${safeWord(code, 8)}`);
+  const own = String(ecOrderNo);
+  const item = answer.List.find((x) => String(x?.EC_ORDER_NO ?? "") === own) || (answer.List.length === 1 ? answer.List[0] : null);
+  const orderNo = String(item?.ORDER_NO ?? "").trim();
+  if (!item || !(Number(item.CNT) > 0) || !orderNo) return { found: false, orderNo: null };
+  return { found: true, orderNo };
+}
+
+// GetOrderDetail answer → the steps. Accepts a bare list or { List: [...] }.
+export function detailSteps(answer) {
+  if (Array.isArray(answer)) return answer;
+  if (answer && Array.isArray(answer.List)) {
+    const code = String(answer.ErrorCode ?? "000");
+    if (code !== "000") throw fmError("detail_error", `code=${safeWord(code, 8)}`);
+    return answer.List;
+  }
+  throw fmError("detail_shape", `keys=${safeKeys(answer)}`);
+}
+
+// One classified parcel → what to do with its row. `row` = the stored row (arrived_at, rec_store).
+//   { action: "delete" } | { action: "update", patch }
+// not_found / not_shipped change nothing but the check time. arrived_at and rec_store are written
+// only when the row has none. The check never writes tracking_no.
+export function fmRowChange(result, row, nowIso) {
+  const base = { last_polled_at: nowIso };
+  const once = {};
+  if (result.arrived_at && !row?.arrived_at) once.arrived_at = result.arrived_at;
+  if (result.rec_store && !row?.rec_store) once.rec_store = result.rec_store;
+  switch (result.kind) {
+    case "expired": return { action: "delete" };
+    case "returned":
+      return { action: "update", patch: { ...base, ...once, status: "returned", status_message: result.status_message, terminal: true, returned_at: result.at || nowIso, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
+    case "picked_up":
+      return { action: "update", patch: { ...base, ...once, status: "picked_up", status_message: result.status_message, terminal: true, picked_up_at: result.at || nowIso } };
+    case "at_store":
+      return { action: "update", patch: { ...base, ...once, status: "at_store", status_message: result.status_message, terminal: false, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
+    case "in_transit": // on its way → the "drop off before …" date from the upload no longer applies
+      return { action: "update", patch: { ...base, status: "in_transit", status_message: result.status_message, terminal: false, pickup_deadline: null } };
+    case "unknown":
+      return { action: "update", patch: { ...base, status: "unknown", status_message: result.status_message } };
+    default: // not_found, not_shipped
+      return { action: "update", patch: base };
+  }
+}
+
+// ONE session: captcha (retried), then each parcel. Steps are injected:
+//   deps.openIndex()            deps.getCode() → "<Code>"        deps.getImage(code) → bytes
+//   deps.solve(bytes) → text    deps.checkCode(digits, code) → boolean
+//   deps.openList()             deps.inquiry(no) → answer        deps.detail(no, orderNo) → answer
+// Returns { results: [{ tracking_no, result }], captchaTries, captchaHits, error, detail }.
+// `results` holds every parcel answered before an error — the caller keeps them.
+export async function runFmSession(codes, deps, { maxTries = FM_MAX_CAPTCHA_TRIES } = {}) {
+  const out = { results: [], captchaTries: 0, captchaHits: 0, error: null, detail: "" };
+  try {
+    await deps.openIndex();
+    let solved = false;
+    for (let i = 0; i < maxTries && !solved; i++) {
+      const code = await deps.getCode();
+      const image = await deps.getImage(code);
+      const digits = cleanFmCaptcha(await deps.solve(image));
+      out.captchaTries += 1;
+      if (digits.length !== FM_CAPTCHA_DIGITS) continue; // not 6 digits → a new captcha (no check request)
+      solved = await deps.checkCode(digits, code);
+      if (solved) out.captchaHits += 1;
+    }
+    if (!solved) { out.error = "captcha_failed"; return out; }
+    await deps.openList();
+    for (const no of codes) {
+      const item = inquiryItem(await deps.inquiry(no), no);
+      if (!item.found) { out.results.push({ tracking_no: no, result: { kind: "not_found" } }); continue; }
+      out.results.push({ tracking_no: no, result: classifyFm(detailSteps(await deps.detail(no, item.orderNo)), no) });
+    }
+  } catch (e) {
+    out.error = (e && e.code) || (e && e.name === "AbortError" ? "timeout" : "threw");
+    out.detail = (e && e.detail) || "";
+  }
+  return out;
+}
