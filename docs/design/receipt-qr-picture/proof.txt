@@ -1,0 +1,27 @@
+Receipt format — Payment QR picture: proof (2026-11-12, Chromium via Playwright)
+
+== 1. Upload: downscaleQrFile on real files (red square = top-left corner of the upright picture; qr = jsQR decode of the SAVED picture) ==
+-- NEW (this branch)
+{"f":"bank_qr_screenshot.png","type":"image/png","inKB":36,"w":277,"h":600,"format":"image/png","chars":18670,"underCap":true,"topLeft":"28,100,200","qr":"https://example.com/pay/demo-shop-12345"}
+{"f":"qr_photo_o6.jpg","type":"image/jpeg","inKB":282,"w":450,"h":600,"format":"image/png","chars":16590,"underCap":true,"topLeft":"254,0,0","qr":"https://example.com/pay/demo-shop-12345"}
+{"f":"qr_photo.heic","type":"image/heic","inKB":96,"w":450,"h":600,"format":"image/png","chars":16786,"underCap":true,"topLeft":"254,0,0","qr":"https://example.com/pay/demo-shop-12345"}
+{"f":"qr_photo.heic","type":"(none)","inKB":96,"w":450,"h":600,"format":"image/png","chars":16786,"underCap":true,"topLeft":"254,0,0","qr":"https://example.com/pay/demo-shop-12345"}
+-- TODAY (main)
+{"f":"bank_qr_screenshot.png","type":"image/png","inKB":36,"w":277,"h":600,"format":"image/png","chars":34634,"underCap":true,"topLeft":"28,100,200","qr":"https://example.com/pay/demo-shop-12345"}
+{"f":"qr_photo_o6.jpg","type":"image/jpeg","inKB":282,"w":450,"h":600,"format":"image/png","chars":19546,"underCap":true,"topLeft":"254,0,0","qr":"https://example.com/pay/demo-shop-12345"}
+{"f":"qr_photo.heic","type":"image/heic","error":"decode_failed"}
+{"f":"qr_photo.heic","type":"(none)","error":"decode_failed"}
+
+Files: bank_qr_screenshot.png = 1170x2532 phone screenshot of a bank QR page; qr_photo_o6.jpg = 12 MP phone photo of a printed QR stored sideways with EXIF orientation 6; qr_photo.heic = same photo as iPhone HEIC. Chromium cannot read HEIC itself, so the HEIC rows show the lazy heic2any path (laptop Chrome / Android).
+Note: the PNG byte count differs from main (same size and format) because the new path decodes with createImageBitmap first; still under QR_DATA_URL_CAP, QR decodes.
+
+== 2. QR card measurements + sample receipt picture hash (same saved QR on both) ==
+-- TODAY
+[{"tag":"today","view":"w360","thumb":"70x72","fit":"contain","cardRight":346,"buttons":[[112,550,235],[247,557,330]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"today","view":"iphone390","thumb":"72x72","fit":"contain","cardRight":376,"buttons":[[114,557,241],[253,557,335]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"today","view":"android412","thumb":"72x72","fit":"contain","cardRight":398,"buttons":[[114,557,241],[253,557,335]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"today","view":"w430","thumb":"72x72","fit":"contain","cardRight":416,"buttons":[[114,557,241],[253,557,335]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"today","view":"laptop1280","thumb":"72x72","fit":"contain","cardRight":1266,"buttons":[[114,520,241],[253,520,335]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}}]
+-- NEW
+[{"tag":"new","view":"w360","thumb":"158x158","fit":"contain","cardRight":346,"buttons":[[30,539,190],[202,580,329],[202,623,285]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"new","view":"iphone390","thumb":"158x158","fit":"contain","cardRight":376,"buttons":[[30,489,190],[202,530,329],[202,573,285]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"new","view":"android412","thumb":"158x158","fit":"contain","cardRight":398,"buttons":[[30,539,190],[202,580,329],[202,623,285]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"new","view":"w430","thumb":"158x158","fit":"contain","cardRight":416,"buttons":[[30,539,190],[202,580,329],[202,623,285]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}},{"tag":"new","view":"laptop1280","thumb":"158x158","fit":"contain","cardRight":1266,"buttons":[[30,502,190],[202,543,329],[202,586,285]],"hScroll":false,"sample":{"bytes":99192,"sha256":"9911cc3d5ab0d5315dd3460c450c8101a27d929e015885e4a8db06a4361bcb49"}}]
+
+-- NEW at an extra-narrow 300 px (buttons wrap below the box: x=30):
+{"view":"w300","thumb":"158x158","fit":"contain","cardRight":286,"buttons":[[30,435,190],[30,607,157],[30,650,113]],"hScroll":false}
+
+thumb = the picture inside the 160x160 box (1 px border each side). sample.sha256 identical in all 10 runs = the receipt picture (with the QR) is byte-identical.
