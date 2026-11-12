@@ -885,6 +885,16 @@ describe.each(Object.keys(SCREENS) as Key[])("Scan QR → fill from Customers �
       expect(details(r)).toEqual(BLANK);
     });
 
+    it("the same username retyped with a note, then A's sticker scanned AGAIN: it is still the same buyer — nothing is taken back, nothing is read again", async () => {
+      const r = await filledA();
+      type(r, S.handle, "@buyer_a (U)"); // not the text a scan writes, but still A's username (rule #4)
+      await scan(r, "buyer_a", "buyer_a");
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(m.lookup).toHaveBeenCalledTimes(1); // decided by the remembered fill, not by the text in the field
+      expect(details(r)).toEqual(MARIA);
+      expect(readParcelDraft(S.store)?.lookup).toEqual({ handle: "buyer_a", filled: MARIA });
+    });
+
     it.each([
       ["one letter removed", "buyer_"],
       ["one letter added", "buyer_ab"],
@@ -1117,6 +1127,16 @@ describe("the hook on its own — the username changed by hand (typed)", () => {
     act(() => { result.current.typed(text); });
     expect(setFields).toHaveBeenCalledTimes(1);
     expect(result.current.mark).toBeNull();
+  });
+  it("the field says the same username another way and that sticker is scanned again: nothing is read, nothing is written", async () => {
+    m.lookup.mockResolvedValue(found(rec("a")));
+    const { result, setFields, rerender } = hook();
+    act(() => { result.current.typed("@buyer_a (U)"); });
+    rerender({ fields: { ...MARIA, handle: "@buyer_a (U)" } });
+    await act(async () => { result.current.scanned("buyer_a"); await Promise.resolve(); await Promise.resolve(); });
+    expect(m.lookup).not.toHaveBeenCalled();
+    expect(setFields).not.toHaveBeenCalled();
+    expect(result.current.mark).toEqual(MARK);
   });
   it("while a saved parcel is edited (blocked): nothing happens, whatever is typed", () => {
     const { result, setFields } = hook({ blocked: true });

@@ -1,11 +1,14 @@
-# 79 na sinadyang sira sa code ng app; sa bawat isa pinatakbo ang 4 na test file ng app (hiwalay na kopya ng repo).
-# Buong takbo: commit 8b8424f1. Doon, 2 ang HINDI nahuli ("spaces in the phone / store count as typed").
-# Dinagdagan ng test (commit f0ce9471) at inulit ang 3 kasong "spaces…" sa commit na iyon — ang 3 linyang iyon sa ibaba
-# ay mula sa ulit na takbo (may tatak na [f0ce9471]).
-RED    5 : rule 4: 'pedro123 (U)' (no @) counts
-RED    4 : rule 4: glued '@pedro123(U)' counts
-RED    7 : rule 4: note in front '(U) @pedro123' counts
-RED    9 : rule 4: case-sensitive
+# 102 na sinadyang sira sa code ng app (79 dati + 23 bago para sa "username na pinalitan nang kamay"); sa bawat isa
+# pinatakbo ang 4 na test file ng app, sa hiwalay na kopya ng repo.
+# Buong takbo: commit 079ff20c. Doon, 1 ang HINDI nahuli: "same sticker again decided by the username field, not by
+# the remembered fill" — dati itong nahuhuli ng test na "nag-type ng B tapos nag-scan ng B", pero dahil ang pag-type ng B
+# ay nagpapalimot na ngayon sa punan, hindi na umaabot doon ang sirang iyon. Dinagdagan ng test (parehong username na
+# may tala, tapos na-scan ulit ang parehong sticker) at inulit ang kasong iyon — ang linyang iyon sa ibaba ay mula sa
+# ulit na takbo (may tatak na [ulit]). Ang orihinal na linya: "GREEN — NOT CAUGHT".
+RED    8 : rule 4: 'pedro123 (U)' (no @) counts
+RED    7 : rule 4: glued '@pedro123(U)' counts
+RED    8 : rule 4: note in front '(U) @pedro123' counts
+RED   17 : rule 4: case-sensitive
 RED    1 : rule 4: 'unknown' is a username
 RED   10 : rule 4: prefix match (pedro12 ⊂ pedro123)
 RED    7 : any app matches
@@ -38,29 +41,29 @@ RED    3 : FM screen: the app flag ignores what the picker says
 RED    1 : 7-11 screen: a hidden picker with another app left behind blocks the fill
 RED    1 : FM screen: a hidden picker with another app left behind blocks the fill
 RED    1 : no app told = not TikTok (hook default)
-RED    2 : same sticker again decided by the username field, not by the remembered fill
+RED    3 : same sticker again decided by the username field, not by the remembered fill   [ulit, may bagong test]
 RED    2 : same sticker again only counts when all three details are present
 RED    1 : phones compared on their last 4 digits
-RED    1 : spaces in the phone count as typed   [f0ce9471]
-RED    1 : spaces in the store count as typed   [f0ce9471]
-RED    1 : 7-11: a fill also blanks the Amount
-RED    1 : FM: a fill also blanks the Amount
-RED    3 : spaces in the name count as typed   [f0ce9471]
-RED    2 : a stored fill mark is used although the lookup is off
+RED    1 : spaces in the phone count as typed
+RED    1 : spaces in the store count as typed
+RED    2 : 7-11: a fill also blanks the Amount
+RED    2 : FM: a fill also blanks the Amount
+RED    3 : spaces in the name count as typed
+RED    3 : a stored fill mark is used although the lookup is off
 RED   12 : the hook ignores the shared-word guard
 RED   11 : fm reads the 7-11 table
 RED    2 : focus steals cursor
-RED   16 : fills although something is typed
-RED   15 : fills when ANY ONE is blank (not all three)
+RED   17 : fills although something is typed
+RED   16 : fills when ANY ONE is blank (not all three)
 RED   15 : fills the OLDEST record
-RED   20 : A→B: untouched details not taken back
+RED   68 : A→B: untouched details not taken back
 RED   11 : old answers not dropped
 RED    2 : username-changed check off
 RED    5 : reset takes no new number
 RED    2 : import clears an entry the seller fully retyped
 RED    3 : Save press does not drop the answer
-RED   32 : the fill is not remembered
-RED    2 : a scan keeps the old fill memory
+RED   78 : the fill is not remembered
+RED   25 : a scan keeps the old fill memory
 RED    6 : import never clears a filled entry
 RED    6 : import always clears the entry
 RED  run failed (unhandled error, exit 1) : 'no record' check dropped in the hook
@@ -79,6 +82,29 @@ RED    1 : FM import keeps the old save error
 RED    1 : 7-11 photo marks kept after a fill
 RED    5 : 7-11 new photo keeps the fill memory (scanOne + clearForm)
 RED    1 : 7-11 photo Save press does not drop
-RED    6 : draft drops the fill memory
+RED   50 : draft drops the fill memory
 RED    1 : hold keeps the fill memory
-cases 0 - 79 of 79 | not caught: 0 (2 sa unang takbo, nahuli na pagkatapos ng dagdag na test)
+RED   14 : hand change: the 7-11 screen does not tell the hook
+RED   14 : hand change: the FM screen does not tell the hook
+RED    3 : hand change: 7-11 picker field (typing, paste) does not tell the hook
+RED    3 : hand change: FM picker field (typing, paste) does not tell the hook
+RED   10 : hand change: 7-11 plain field does not tell the hook
+RED   10 : hand change: FM plain field does not tell the hook
+RED    2 : hand change: 7-11 plain 'no handle' tick does not tell the hook
+RED    2 : hand change: FM plain 'no handle' tick does not tell the hook
+RED    1 : hand change: 7-11 picker 'no contact' callback writes the field directly
+RED    1 : hand change: FM picker 'no contact' callback writes the field directly
+RED   21 : hand change: the same username typed another way erases too (no check)
+RED   20 : hand change: only the exact same text counts as the same username
+RED    4 : hand change: compared like a scan, not with rule #4 ('@x (U)' erases)
+RED   23 : hand change: a shorter text that A's username starts with still counts as A
+RED    3 : hand change: a longer text that starts with A's username still counts as A
+RED   10 : hand change: any text that CONTAINS A's username counts as A ('x (U)', '@x(U)')
+RED   38 : hand change: never erases (typed() does nothing)
+RED   23 : hand change: the details go but the fill is NOT forgotten
+RED   39 : hand change: the fill is forgotten but the details stay
+RED    1 : hand change: runs while a saved parcel is edited
+RED    1 : hand change: runs with the lookup turned off
+RED   10 : take back: a detail the seller changed is erased too (scan of B and hand change)
+RED   13 : take back: everything in the form is erased, filled or not (scan of B and hand change)
+# kabuuan: 102 RED, 0 hindi nahuli / nilaktawan (sa 102)
