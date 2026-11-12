@@ -9,7 +9,7 @@ vi.mock("../oneStickerPrint", async (orig) => {
   return { ...m, renderOneStickerFor: async (...a: Parameters<typeof m.renderOneStickerFor>) => { if (ctl.failPicture) throw new Error("picture failed (test)"); return m.renderOneStickerFor(...a); } };
 });
 
-import { printOneStickerTest, printSlip, DEF_SETTINGS, __resetNativePrintQueue, setStickerQrEntitled, setStickerQrOn, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE, type Settings } from "../printing";
+import { printOneStickerTest, printSlip, DEF_SETTINGS, __resetNativePrintQueue, setStickerQrEntitled, setStickerQrOn, ONE_STICKER_FALLBACK, ONE_STICKER_TOO_WIDE, BITMAP_SPP_FAILED, type Settings } from "../printing";
 import { saveOneSticker, setOneStickerVisible, sampleBuyer, __resetOneStickerState, LS_ONE_STICKER } from "../oneStickerPrint";
 import { recommendedSettings } from "../oneSticker";
 import { rememberSavedPrinter, __resetSavedPrinter } from "../savedPrinter";
@@ -75,5 +75,35 @@ describe("test print that falls back to today's sticker", () => {
     saveOneSticker(draft); setOneStickerVisible(true);
     const real = await fallbackSend(c, () => printSlip(sampleBuyer(undefined, AT), "NT$", SHOP, cfg));
     expect(real === test).toBe(true);
+  }, 120000);
+  // old Bluetooth: the picture is made but the send fails → the TEXT sticker (printStickerNative)
+  const sppSend = async (send: () => unknown): Promise<string> => {
+    __resetNativePrintQueue(); __resetSavedPrinter();
+    const native = vi.fn(async (_a: unknown) => ({ ok: true }));
+    const bitmap = vi.fn(async (_a: unknown) => ({ ok: false, code: BITMAP_SPP_FAILED, message: "" }));
+    rememberSavedPrinter({ address: "AA", name: "D520BT-Z" });
+    (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: bitmap };
+    await send();
+    await vi.waitFor(() => expect(native.mock.calls.length).toBe(1), { timeout: 20000, interval: 10 });
+    expect(bitmap.mock.calls.length, "the picture was tried once").toBe(1);
+    const handed = JSON.stringify(native.mock.calls[0][0]);
+    delete (window as W).SellerFlowPrinter;
+    return handed;
+  };
+  it("old-Bluetooth send failed → TEXT sticker: the Facebook sample = a real Facebook order (no @name); TikTok = a real TikTok order", async () => {
+    reset();
+    const fbTest = await sppSend(() => printOneStickerTest(draft, viewSampleBuyer("facebook", undefined, AT), "NT$", SHOP, cfg));
+    expect(fbTest).not.toContain("@Maria Santos");
+    for (const handle of ["Maria Santos", "24681357902468135"]) {
+      reset();
+      saveOneSticker(draft); setOneStickerVisible(true);
+      expect(await sppSend(() => printSlip(realFacebookOrder(handle), "NT$", SHOP, cfg)) === fbTest, handle).toBe(true);
+    }
+    reset();
+    const ttTest = await sppSend(() => printOneStickerTest(draft, sampleBuyer(undefined, AT), "NT$", SHOP, cfg));
+    reset();
+    saveOneSticker(draft); setOneStickerVisible(true);
+    expect(await sppSend(() => printSlip(sampleBuyer(undefined, AT), "NT$", SHOP, cfg)) === ttTest).toBe(true);
+    expect(ttTest).toContain("maria_live");
   }, 120000);
 });
