@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { parseZip, readEntryText } from "../shippingXlsmPatch";
 import { rowsOf } from "../parcelExportRead";
 import {
-  buildFmXlsx, fmScanCells, splitForExport, validateFmScan, fmExportFilename, inputToDb,
+  buildFmXlsx, fmScanCells, splitForExport, validateFmScan, validateFmScanForSave, fmExportFilename, inputToDb, FM_ERROR_KEY,
   FM_SCAN_HEADERS, FM_SCAN_MAX_PER_FILE, type FmScanInput,
 } from "../fmScan";
 
@@ -84,5 +85,59 @@ describe("validateFmScan — FamilyMart rules", () => {
   });
   it("saved row is normalized (no dashes, @username kept, blank → null)", () => {
     expect(inputToDb({ ...ok, phone: "0958 704 782", buyerUsername: " " })).toMatchObject({ phone: "0958704782", store_id: "022131", amount: 500, shipping_fee: 39, buyer_username: null });
+  });
+});
+
+// FamilyMart store # = 6 digits starting with 0 — asked when a parcel is SAVED (new, edit, Import).
+describe("validateFmScanForSave — the store # starts with 0", () => {
+  it.each([
+    ["022131", undefined],
+    ["0 2 2 1 3 1", undefined],
+    ["122131", "store_zero"], // 6 digits, not starting with 0
+    ["1", "store_zero"],      // told at the first digit
+    ["0221", "store"],        // starts with 0, not 6 digits yet → the 6-digit message
+    ["", "store"],
+  ] as [string, string | undefined][])("store %j → %s", (storeId, want) => {
+    expect(validateFmScanForSave({ ...ok, storeId }, TODAY).storeId).toBe(want);
+  });
+  it("every other rule is validateFmScan's", () => {
+    expect(validateFmScanForSave(ok, TODAY)).toEqual({});
+    const bad = { ...ok, phone: "0858", amount: "9", recipientName: " " };
+    expect(validateFmScanForSave(bad, TODAY)).toEqual(validateFmScan(bad, TODAY));
+  });
+  it("parcels already saved are judged as before: validateFmScan has no starts-with-0 rule", () => {
+    expect(validateFmScan({ ...ok, storeId: "122131" }, TODAY)).toEqual({});
+  });
+  it("the message exists in all 8 languages", async () => {
+    const { buildT } = await import("../../i18n");
+    expect(FM_ERROR_KEY.store_zero).toBe("rd_fms_e_store_zero");
+    expect(buildT("en").rd_fms_e_store_zero).toBe("FamilyMart store # starts with 0 (6 digits).");
+    for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"]) {
+      const msg = buildT(lang).rd_fms_e_store_zero;
+      expect(msg).toContain("0");
+      expect(msg).toContain("6");
+      if (lang !== "en") expect(msg).not.toBe(buildT("en").rd_fms_e_store_zero);
+    }
+  });
+});
+
+describe("help guide — FamilyMart store # (sql/152, one row)", () => {
+  const OLD = "FamilyMart store # (6 digits — ", NEW = "FamilyMart store # (6 digits starting with 0 — ";
+  it("the guide and the generated seed carry the new words", () => {
+    for (const f of ["docs/support/sfl-guide.md", "sql/116b_guide_seed.sql"]) {
+      const txt = readFileSync(f, "utf8");
+      expect(txt).toContain(NEW);
+      expect(txt).not.toContain(OLD);
+    }
+  });
+  it("sql/152 replaces that phrase in the 'parcel-scan' row only; the rollback puts it back", () => {
+    const sql = readFileSync("sql/152_guide_fm_store_zero.sql", "utf8");
+    expect(sql).toContain(`replace(body, '${OLD}', '${NEW}')`);
+    expect(sql).toContain("where id = 'parcel-scan'");
+    expect(sql.match(/\bupdate\b/g)).toHaveLength(1);
+    expect(sql).not.toMatch(/\b(insert|delete|drop|alter|create)\b/i);
+    const back = readFileSync("sql/152_guide_fm_store_zero_rollback.sql", "utf8");
+    expect(back).toContain(`replace(body, '${NEW}', '${OLD}')`);
+    expect(back).toContain("where id = 'parcel-scan'");
   });
 });

@@ -35,11 +35,11 @@ export interface FmScanInput {
 
 export type FmScanField = "recipientName" | "phone" | "storeId" | "amount" | "shippingFee" | "orderDate" | "buyerUsername" | "total";
 export type FmScanError =
-  | "name_required" | "name_long" | "phone" | "store" | "amount" | "fee" | "total" | "date" | "username_long";
+  | "name_required" | "name_long" | "phone" | "store" | "store_zero" | "amount" | "fee" | "total" | "date" | "username_long";
 
 // The i18n key for each problem (screens show t[FM_ERROR_KEY[e]]).
 export const FM_ERROR_KEY = {
-  name_required: "rd_fms_e_name_required", name_long: "rd_fms_e_name_long", phone: "rd_fms_e_phone", store: "rd_fms_e_store",
+  name_required: "rd_fms_e_name_required", name_long: "rd_fms_e_name_long", phone: "rd_fms_e_phone", store: "rd_fms_e_store", store_zero: "rd_fms_e_store_zero",
   amount: "rd_fms_e_amount", fee: "rd_fms_e_fee", total: "rd_fms_e_total", date: "rd_fms_e_date", username_long: "rd_fms_e_username_long",
 } as const satisfies Record<FmScanError, string>;
 
@@ -68,6 +68,16 @@ export function validateFmScan(input: FmScanInput, today: string): Partial<Recor
   const d = /^\d{4}-\d{2}-\d{2}$/.test(input.orderDate) ? daysBetween(input.orderDate, today) : NaN;
   if (!(d >= 0 && d <= FM_SCAN_DATE_WINDOW_DAYS)) e.orderDate = "date";
   if (input.buyerUsername.trim().length > 100) e.buyerUsername = "username_long";
+  return e;
+}
+
+// The rules when a parcel is SAVED — new parcel, edit of a saved parcel, Import from FamilyMart
+// Customers: validateFmScan + the FamilyMart store # must start with 0. Parcels already saved
+// are still judged by validateFmScan (list flag, export), so nothing changes for them until edited.
+export function validateFmScanForSave(input: FmScanInput, today: string): Partial<Record<FmScanField, FmScanError>> {
+  const e = validateFmScan(input, today);
+  const store = normStore(input.storeId);
+  if (store !== "" && !store.startsWith("0")) e.storeId = "store_zero";
   return e;
 }
 
