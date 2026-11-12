@@ -73,7 +73,7 @@ describe("1 — the ⇄ button shows only when BOTH Parcel Scans are allowed", (
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain("const parcelBridge = parcelBridgeVisible(parcelAllowed, fmScanAllowed);");
     expect(src).toContain('onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} lookupOn={scanQrLookupOn} />'); // + the Scan QR lookup gate (sql/149)
-    expect(src).toContain('<FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} lookupOn={scanQrLookupOn} />');
+    expect(src).toContain('<FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} lookupOn={scanQrLookupOn} storeCheckOn={fmStoreCheckOn} />'); // + the FamilyMart store # check gate (sql/154)
     expect(src).not.toMatch(/pushState/); // no history entries → leaving goes to Settings, never back and forth
   });
   it("7-11: no onBridge → no button; with it → '⇄ 全家', ≥ 44 px, opens FamilyMart", async () => {

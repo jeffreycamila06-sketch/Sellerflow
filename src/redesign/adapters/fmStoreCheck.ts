@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
 import type { FmScanRow } from "./fmScan";
+import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export type FmStoreVerdict = "valid" | "not_found" | "unknown";
 export const FM_STORE_CHECK_GIVE_UP_MS = 6000;  // one check gives up after this (→ unknown)
@@ -33,13 +34,13 @@ export async function askFmStore(storeId: string, giveUpMs = FM_STORE_CHECK_GIVE
   const timer = setTimeout(() => ctl.abort(), giveUpMs);
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-    const r = await fetch(`${SERVER}/admin/fm-store-check`, {
+    const r = await fetch(withCodes(`${SERVER}/admin/fm-store-check`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ storeId }),
       signal: ctl.signal,
     });
-    const j = await r.json().catch(() => ({})) as { success?: boolean; status?: string };
+    const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; status?: string })));
     if (!r.ok || !j.success) return { status: "unknown", noAnswer: true };
     return { status: j.status === "valid" || j.status === "not_found" ? j.status : "unknown" };
   } catch {
