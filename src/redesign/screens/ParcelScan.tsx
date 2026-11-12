@@ -34,6 +34,8 @@ import CustomerDetails from "./CustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
 import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
 import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
+import { useScanQrLookup } from "../adapters/useScanQrLookup";
+import { focusUnlessTyping } from "../adapters/scanQrLookup";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -141,7 +143,7 @@ type ExportClaim = {
 // pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
 // no auth); defaults to the everyone-cap so standalone renders keep 40.
 // onBridge = the ⇄ 全家 button (RedesignApp passes it ONLY when the seller may use BOTH Parcel Scans).
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, frozenCheckOn = false, onBridge, onBack }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; frozenCheckOn?: boolean; onBridge?: () => void; onBack?: () => void }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS, contactOn = false, lookupOn = false, frozenCheckOn = false, onBridge, onBack }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number; contactOn?: boolean; lookupOn?: boolean; frozenCheckOn?: boolean; onBridge?: () => void; onBack?: () => void }) {
   // sql/142: the frozen (冷凍) store check's lines, export exclusion and ⟳ exist only while the
   // app_settings switch reads exactly 'true' — off, a 冷凍 row looks exactly like main (✅).
   const fzOn = frozenCheckOn;
@@ -162,7 +164,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // (no localStorage) so skipping is a per-parcel choice, not a habit: it resets on every
   // form clear (clearForm) — i.e. after each save, on cancel, and when a scan populates.
   const [noHandle, setNoHandle] = useState(() => draft0?.noHandle ?? false);
-  const clearForm = () => { setForm(emptyForm); setNoHandle(false); };
+  const clearForm = () => { setForm(emptyForm); setNoHandle(false); lookup.reset(); };
   // Buyer contact platform (sql/140). STAYS on the last chosen one after each save (a batch is
   // usually from one app); only an edit pre-fills it from the row. Saved as NULL for TikTok and
   // for "no contact" (NULL = TikTok / legacy). Nothing here renders unless contactOn.
@@ -274,6 +276,20 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
   // existing row (no new scan, no credit charged). Only not-yet-exported rows.
   const [editing, setEditing] = useState<{ id: string } | null>(null);
+  // Scan QR → fill name, phone and store from the newest record of that username in THIS screen's
+  // Customers (sql/149). Nothing new is ever shown. lookupOn false (switch off and login not listed)
+  // → scanned() returns at once: no read, no change.
+  const amountRef = useRef<HTMLInputElement | null>(null);
+  const lookup = useScanQrLookup({
+    on: lookupOn, store: "711", blocked: editing !== null, tiktok: !contactOn || platform === "tiktok", initial: draft0?.lookup ?? null,
+    fields: { name: form.name, phone: form.phone, store: form.store, handle: form.notes },
+    setFields: (fn) => setForm((s) => ({ ...s, ...fn({ name: s.name, phone: s.phone, store: s.store }) })),
+    onFilled: () => {
+      // the three fields now hold the Customers record, not the photo reading → no "hard to read" marks on them
+      setConfid((c) => (c ? { ...c, name: "high", phone: "high", store_id: "high" } : c));
+      focusUnlessTyping(amountRef.current);
+    },
+  });
 
   // In-app camera (web getUserMedia). Default ON where supported; a live video
   // element (videoRef) streams the rear camera while idle, a shutter captures a
@@ -299,8 +315,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Keep the open manual entry for the bridge (a scan confirm or an edit of a saved parcel is not kept).
   useEffect(() => {
     if (editing) return;
-    writeParcelDraft<FormState>("711", manual ? { form, noHandle, platform } : null);
-  }, [manual, editing, form, noHandle, platform]);
+    writeParcelDraft<FormState>("711", manual ? { form, noHandle, platform, ...(lookup.mark ? { lookup: lookup.mark } : {}) } : null);
+  }, [manual, editing, form, noHandle, platform, lookup.mark]);
   // Camera runs only while the tab/app is foregrounded (privacy + battery); a
   // visibilitychange effect drives this, and it re-acquires on return. retryTick
   // re-runs the acquire effect when the OS ends a track (e.g. a phone call).
@@ -550,6 +566,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         }
         if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
         setForm(fieldsToForm(r.fields)); setNoHandle(false); // a fresh scan starts with the handle required
+        lookup.reset(); // a new photo is a new parcel
         setConfid(r.confidence ?? null);
         setRawExtraction({ fields: r.fields, confidence: r.confidence });
         setPhase("confirm");
@@ -674,6 +691,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const onSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
+    lookup.drop(); // an answer still on its way must not land during or after this save
     const ok = await commitNewParcel(formToFields(withContact(form)));
     setSaving(false);
     if (!ok) return;
@@ -690,6 +708,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setSaving(true); setSaveErr("");
     // The kept entry goes blank BEFORE the save: ⇄ and back while it runs = an empty form, never
     // the same parcel a second time. A failed save puts it back.
+    lookup.drop(); // an answer still on its way must not land during or after this save
     const restoreDraft = holdParcelDraftForSave("711");
     let ok = false;
     try { ok = await commitNewParcel(formToFields(withContact(form))); } finally { if (!ok) restoreDraft(); }
@@ -989,6 +1008,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setPlatform(platformOf(r.contactPlatform)); // NULL = TikTok
     setEditLayer(isFrozenLayer(r.tempLayer) ? TEMP_FROZEN : TEMP_DRY);
     setConfid(null); // no low-confidence highlights on a manual edit
+    lookup.reset(); // editing a saved parcel: no lookup
     setEditing({ id: r.id });
   };
   const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(""); };
@@ -1065,6 +1085,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || contactErr || (batchFull && !editing) || frozen.blocked;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
+  // The username field changed BY HAND (typing or pasting in it). The lookup is told: when the text is no longer the
+  // username a Scan QR filled, that buyer's untouched details go with it.
+  const handleByHand = (v: string) => { F({ notes: v }); lookup.changedByHand(v); };
+  // The "no handle" tick empties the username but is NOT a hand change of it: details a Scan QR filled stay.
+  // (The picker field reports its own tick as onNoContact(true) and then an empty value — that one value is written as is.)
+  const tickedRef = useRef(false);
+  const noHandleTick = (on: boolean) => { setNoHandle(on); tickedRef.current = on; if (on) F({ notes: "" }); };
+  const contactValue = (v: string) => { const fromTick = tickedRef.current; tickedRef.current = false; if (fromTick && v === "") F({ notes: "" }); else handleByHand(v); };
 
   // "Scan QR" — decode the buyer @username off the printed SFL sticker (camera photo or
   // an uploaded label image) and auto-fill the required handle field VERBATIM. No QR
@@ -1083,6 +1111,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         setNoHandle(false);                // text present → "no handle" can't be true (rule 4)
         if (contactOn) setPlatform("tiktok"); // a sticker QR is always the buyer's TikTok
         setToast(t.rd_ps2_qr_filled); setTimeout(() => setToast(""), 2500);
+        if (lookupOn && !editing) lookup.scanned(handle.slice(0, 50)); // then look this username up in Customers
       } else {
         setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); // field left as-is
       }
@@ -1373,7 +1402,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               {frozen.allowed && !editing && formLayer === TEMP_FROZEN && <div style={{ ...frozenBadge, alignSelf: "start", justifySelf: "start" }} data-testid="ps-form-frozen">❄ 冷凍 · {frozenFeeTxt}</div>}
               <div>
                 <label style={lbl}>{t.rd_ps2_amount} ({cur}){low("amount") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
-                <input value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono, ...(low("amount") ? { border: lowConfBorder } : {}) }} data-testid="ps-amount" />
+                <input ref={amountRef} value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono, ...(low("amount") ? { border: lowConfBorder } : {}) }} data-testid="ps-amount" />
                 {errs.amount
                   ? (amountTooHigh(form.amount, formFee)
                     ? <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount_max, { max: `${cur}${MAX_PARCEL_TOTAL - formFee}` })}</div>
@@ -1383,8 +1412,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               {contactOn ? (
                 <div>
                   <input ref={qrRef} type="file" accept="image/*" hidden data-testid="ps-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
-                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.notes} onValue={(v) => F({ notes: v })}
-                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) F({ notes: "" }); }}
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.notes} onValue={contactValue}
+                    noContact={noHandle} onNoContact={noHandleTick}
                     invalid={errs.handle && !errs.empty} testId="ps-bc" inputId="ps-handle" />
                 </div>
               ) : (<>
@@ -1403,7 +1432,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 <input
                   id="ps-handle"
                   value={form.notes}
-                  onChange={(e) => { const v = e.target.value.slice(0, 50); F({ notes: v }); if (v.trim() !== "" && noHandle) setNoHandle(false); }} // typing text un-ticks "no handle" (rule 4)
+                  onChange={(e) => { const v = e.target.value.slice(0, 50); handleByHand(v); if (v.trim() !== "" && noHandle) setNoHandle(false); }} // typing text un-ticks "no handle" (rule 4)
                   maxLength={50}
                   placeholder="@username"
                   style={{ ...input, ...(noHandle ? { opacity: 0.5 } : {}) }} // dim cue while "no handle" is ticked; typing re-enables it (auto-unticks)
@@ -1715,7 +1744,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="ps-customers-close"
             >✕</button>
-            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); reloadSaved(); }} />
+            <CustomerDetails cur={cur} pendingCap={pendingCap} frozenState={frozen} waitFrozen={waitFrozen} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.reset()) { clearForm(); setSaveErr(""); } reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,

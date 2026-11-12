@@ -29,10 +29,11 @@ export const FEATURE_SWITCH_KEYS = {
   frozenStoreCheck: "frozen_store_check_enabled", // Parcel Checker frozen (冷凍) store check — the app shows the frozen lines only while this is 'true' (sql/142, seeded 'false')
   oneSticker: "one_sticker_enabled", // ONE STICKER: the new Live print pattern screen for every seller (sql/144, seeded 'false'; admins see it before) — each device opts in by Save
   stickerAllScripts: "sticker_all_scripts_enabled", // every language prints on today's sticker (sql/144, seeded 'false')
+  scanQrLookup: "scan_qr_lookup_enabled", // Parcel Scan: Scan QR also looks the username up in Customers (sql/149, seeded 'false')
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false, scanQrLookup: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {

@@ -69,7 +69,7 @@ describe("sql/117 my_feature_access", () => {
     const body = readFileSync(file, "utf8");
     return [...body.slice(body.indexOf("keys(k) as (")).split("\n  )")[0].matchAll(/\('([a-z0-9_]+)'\)/g)].map((m) => m[1]);
   };
-  it("keys = the sql/116 list plus parcel_cap_70 / fm_pickup / test_printers / tiktok_send / fb_post_sales; the latest (sql/146 one sticker) matches the app's FEATURE_KEYS", () => {
+  it("keys = the sql/116 list plus parcel_cap_70 / fm_pickup / test_printers / tiktok_send / fb_post_sales; the latest (sql/149 Scan QR lookup) matches the app's FEATURE_KEYS", () => {
     const k116 = keysOf("sql/116_help_bot.sql");
     const k117 = keysOf("sql/117_parcel_cap_70.sql");
     expect(k116[k116.length - 1]).toBe("support_ai_preview");
@@ -86,7 +86,10 @@ describe("sql/117 my_feature_access", () => {
     expect(k140).toEqual([...k137, "buyer_contact"]);
     const k146 = keysOf("sql/146_one_sticker_feature_access.sql"); // the LATEST my_feature_access list (one sticker per account)
     expect(k146).toEqual([...k140, "one_sticker", "sticker_all_scripts"]);
-    expect([...k146].sort()).toEqual([...FEATURE_KEYS].sort());
+    const k149 = keysOf("sql/149_scan_qr_lookup.sql"); // the LATEST my_feature_access list (Scan QR → Customers lookup)
+    expect(k149).toEqual([...k146, "scan_qr_lookup"]);
+    expect([...k149].sort()).toEqual([...FEATURE_KEYS].sort());
+    expect(keysOf("sql/149_scan_qr_lookup_rollback.sql")).toEqual(k146);
     expect(keysOf("sql/146_one_sticker_feature_access_rollback.sql")).toEqual(k140);
     expect(keysOf("sql/140_buyer_contact_rollback.sql")).toEqual(k137);
     expect(keysOf("sql/137_fb_post_sales_rollback.sql")).toEqual(k126);

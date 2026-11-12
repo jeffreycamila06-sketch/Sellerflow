@@ -4849,3 +4849,40 @@ myship-711.js and app source untouched):
 - Tests: `ParcelScan.adminManualOnly.test.tsx` (real gate → no `<video>`, no getUserMedia, no credits fetch,
   admin screen = seller screen; control case proves the camera path still works; label ×8 langs), FamilyMart
   label in `ParcelScanBridge.test.tsx`. Web-only (Vercel after merge), no SQL, no Render.
+
+## 2026-11-12 — SCAN QR → FILL FROM CUSTOMERS (branch `claude/scan-qr-lookup`, NOT merged; sql/149 NOT applied)
+Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). Jeff's rule (2026-11-12): **no list, no box.**
+- **App:** after Scan QR, when that @username has a record in Customers → name, phone and store are filled from the NEWEST
+  record (`updated_at`, tie → id). Nothing is filled when: something is already typed in name / phone / store · the
+  username's records have **3 or more DIFFERENT phones** (a word written for many buyers, e.g. `user` — `recordToFill` /
+  `SCAN_QR_SHARED_PHONES`) · no record / error / over 4 s / a full page of candidates. Then the screen is exactly as before
+  (username only, no message). No lookup while a saved parcel is edited.
+  The SAME username scanned again while its filled details are in the form → nothing is touched, nothing is read.
+  Another buyer app picked while the answer is on its way → nothing is filled.
+  The username changed BY HAND after a fill (typing or paste) to ANOTHER username → the filled details nobody touched
+  are blanked and the fill is forgotten — the same code as a scan of another buyer (`lookup.changedByHand()`, called
+  from each screen's `handleByHand`). "Still the same buyer" = `sameUsernameTyped`: without the spaces / one `@` in
+  front, lower case, the text STARTS with the filled username and the next character is not a username character
+  (`pedro123 (U)`, `pedro123(U)`, `pedro123 #3`, `@Pedro123` → nothing erased; `pedro12`, `pedro1234`, `maria88`,
+  emptied by typing → erased). The **"no handle" / "no contact" tick erases nothing** (the screens write the empty
+  username themselves and do not call the hook). Typing never reads Customers (a new Scan QR does). Not with the
+  switch off, not while a saved parcel is edited.
+  Code: `adapters/scanQrLookup.ts` (rule #4 `usernameKeyOf`, the one read, `recordToFill`) + `adapters/useScanQrLookup.ts`
+  (one hook, both screens). ⇄ draft carries the fill mark (`parcelDrafts.ts` `lookup`).
+- **It only READS Customers.** Saving a parcel → Customers is NOT changed by this branch (Jeff 2026-11-12: nothing is
+  deleted or rewritten there). No new SQL function, no schema change.
+- **Gate:** `scanQrLookupVisible({ switchOn: featureSw.scanQrLookup, previewKey: hasFeature("scan_qr_lookup") })` in
+  RedesignApp → prop `lookupOn` (LAST prop of both screens — older tests pin those JSX lines). No admin bypass. Off = no
+  database call, same screen as main. Switch `app_settings.scan_qr_lookup_enabled` + feature key `scan_qr_lookup` come
+  from **sql/149 (NOT applied)** → until then the feature is off for everyone.
+- **Rule #4 (which contact text is a username):** `pedro123` / `@pedro123` exactly, `@` + first word (`@pedro123 (U)`,
+  `@ pedro123`), or the username followed by a note that starts with `(` or `#`, with or without `@` / a space
+  (`pedro123 (U)`, `pedro123(U)`, `pedro123 #3`, `@pedro123(U)`). Never `@pedro12`, `@pedro1234`, `(U) @pedro123`,
+  `Pedro Garcia`, `pedro123 Garcia`. TikTok or no app only. The database is asked for 13 shapes (`lookupFilter`; the 8
+  note shapes are in double quotes because they hold a bracket) — ⚠️ not yet run against the real API.
+  Examples: `adapters/__tests__/fixtures/scanQrUsernameKey.json`.
+- **Evidence:** `docs/design/scan-qr-lookup/built/` — README (behaviour, what Jeff should know), screenshots
+  (`make-built.cjs`), main-vs-branch with the switch off (`compare-with-main.cjs`), deliberate breakages
+  (`proof/app-breakages.py`). ⚠️ `*.log` is git-ignored — keep proof outputs as `.txt`.
+- **Apply order when Jeff says go:** sql/149 (switch off + the key) → add the test accounts to `feature_access_emails` →
+  sql/116b (guide).

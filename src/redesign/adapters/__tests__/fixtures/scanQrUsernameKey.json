@@ -1,0 +1,320 @@
+{
+ "about": "Rule #4 (Jeff 2026-11-12; notes that start with ( or # added the same day after the audit): the username a saved contact text stands for (usernameKeyOf in adapters/scanQrLookup.ts).",
+ "cases": [
+  {
+   "text": "pedro123",
+   "key": "pedro123",
+   "why": "exact"
+  },
+  {
+   "text": "@pedro123",
+   "key": "pedro123",
+   "why": "exact with @"
+  },
+  {
+   "text": "@Pedro123",
+   "key": "pedro123",
+   "why": "any letter case"
+  },
+  {
+   "text": "PEDRO123",
+   "key": "pedro123",
+   "why": "any letter case, no @"
+  },
+  {
+   "text": "@pedro123 (U)",
+   "key": "pedro123",
+   "why": "@ + first word, then a note"
+  },
+  {
+   "text": "@pedro123 #3",
+   "key": "pedro123",
+   "why": "@ + first word, then a note"
+  },
+  {
+   "text": "@ pedro123",
+   "key": "pedro123",
+   "why": "a space after @"
+  },
+  {
+   "text": "@pedro123 Garcia (NA)",
+   "key": "pedro123",
+   "why": "@ + first word, then more words"
+  },
+  {
+   "text": "@  pedro123  (U)",
+   "key": "pedro123",
+   "why": "more than one space"
+  },
+  {
+   "text": " @pedro123 ",
+   "key": "pedro123",
+   "why": "spaces around"
+  },
+  {
+   "text": "  pedro123  ",
+   "key": "pedro123",
+   "why": "spaces around, no @"
+  },
+  {
+   "text": "@pedro123\t(U)",
+   "key": "pedro123",
+   "why": "a tab counts as a space"
+  },
+  {
+   "text": "@pedro123\n(U) second line",
+   "key": "pedro123",
+   "why": "a new line counts as a space"
+  },
+  {
+   "text": "@ pedro123 (U)",
+   "key": "pedro123",
+   "why": "space after @ and a note"
+  },
+  {
+   "text": "@pedro12",
+   "key": "pedro12",
+   "why": "a shorter username is another username"
+  },
+  {
+   "text": "@pedro1234",
+   "key": "pedro1234",
+   "why": "a longer username is another username"
+  },
+  {
+   "text": "(U) @pedro123",
+   "key": "",
+   "why": "does not start with @"
+  },
+  {
+   "text": "Pedro Garcia",
+   "key": "",
+   "why": "no @ and a space"
+  },
+  {
+   "text": "pedro123 (U)",
+   "key": "pedro123",
+   "why": "a note that starts with ( — no @ needed"
+  },
+  {
+   "text": "pedro123 Garcia",
+   "key": "",
+   "why": "no @ and a space"
+  },
+  {
+   "text": "@pedro123(U)",
+   "key": "pedro123",
+   "why": "a note that starts with ( may be glued to the username"
+  },
+  {
+   "text": "@pedro123,",
+   "key": "",
+   "why": "nothing may be glued to the username"
+  },
+  {
+   "text": "@pedro123/ig",
+   "key": "",
+   "why": "nothing may be glued to the username"
+  },
+  {
+   "text": "@@pedro123",
+   "key": "",
+   "why": "two @"
+  },
+  {
+   "text": "x@pedro123",
+   "key": "",
+   "why": "does not start with @"
+  },
+  {
+   "text": "@",
+   "key": "",
+   "why": "only @"
+  },
+  {
+   "text": "@ ",
+   "key": "",
+   "why": "only @"
+  },
+  {
+   "text": "",
+   "key": "",
+   "why": "blank"
+  },
+  {
+   "text": "   ",
+   "key": "",
+   "why": "blank"
+  },
+  {
+   "text": "unknown",
+   "key": "",
+   "why": "unknown is never a username"
+  },
+  {
+   "text": "@unknown",
+   "key": "",
+   "why": "unknown is never a username"
+  },
+  {
+   "text": "@Unknown (U)",
+   "key": "",
+   "why": "unknown is never a username"
+  },
+  {
+   "text": "unknown1",
+   "key": "unknown1",
+   "why": "only the exact word unknown is refused"
+  },
+  {
+   "text": "@maria_shops",
+   "key": "maria_shops",
+   "why": "underscore"
+  },
+  {
+   "text": "@a.b_c9 x",
+   "key": "a.b_c9",
+   "why": "dot and underscore"
+  },
+  {
+   "text": "_._",
+   "key": "_._",
+   "why": "dots and underscores only"
+  },
+  {
+   "text": "@Zona.nyaman1933",
+   "key": "zona.nyaman1933",
+   "why": "dot"
+  },
+  {
+   "text": "0912345678",
+   "key": "0912345678",
+   "why": "digits only is still one word"
+  },
+  {
+   "text": "+886912345678",
+   "key": "",
+   "why": "a + is not a username character"
+  },
+  {
+   "text": "@pédro",
+   "key": "",
+   "why": "an accented letter is not a username character"
+  },
+  {
+   "text": "@陳小美",
+   "key": "",
+   "why": "Chinese is not a username character"
+  },
+  {
+   "text": "@pedro-123",
+   "key": "",
+   "why": "a dash is not a username character"
+  },
+  {
+   "text": "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "why": "50 characters is the longest"
+  },
+  {
+   "text": "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "key": "",
+   "why": "51 characters is too long"
+  },
+  {
+   "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "key": "",
+   "why": "51 characters is too long"
+  },
+  {
+   "text": "@pedro123　(U)",
+   "key": "",
+   "why": "a full-width space is not a space here"
+  },
+  {
+   "text": "@pedro123 (U)",
+   "key": "",
+   "why": "a no-break space is not a space here"
+  },
+  {
+   "text": "pedro123(U)",
+   "key": "pedro123",
+   "why": "a note that starts with ( glued, no @"
+  },
+  {
+   "text": "pedro123 #3",
+   "key": "pedro123",
+   "why": "a note that starts with # — no @ needed"
+  },
+  {
+   "text": "pedro123#3",
+   "key": "pedro123",
+   "why": "a note that starts with # glued, no @"
+  },
+  {
+   "text": "@pedro123#3",
+   "key": "pedro123",
+   "why": "a note that starts with # glued to the @username"
+  },
+  {
+   "text": "pedro123  (U) paid",
+   "key": "pedro123",
+   "why": "more than one space before the note"
+  },
+  {
+   "text": "PEDRO123 (u)",
+   "key": "pedro123",
+   "why": "any letter case, a note"
+  },
+  {
+   "text": "@ pedro123(U)",
+   "key": "pedro123",
+   "why": "a space after @ and a glued note"
+  },
+  {
+   "text": "pedro12 (U)",
+   "key": "pedro12",
+   "why": "a shorter username with a note is another username"
+  },
+  {
+   "text": "pedro1234(U)",
+   "key": "pedro1234",
+   "why": "a longer username with a note is another username"
+  },
+  {
+   "text": "pedro123 - paid",
+   "key": "",
+   "why": "only ( or # may start a note when there is no @"
+  },
+  {
+   "text": "pedro123, paid",
+   "key": "",
+   "why": "only ( or # may start a note"
+  },
+  {
+   "text": "pedro123 Garcia (U)",
+   "key": "",
+   "why": "words before the note: not a username"
+  },
+  {
+   "text": "(pedro123)",
+   "key": "",
+   "why": "does not start with the username"
+  },
+  {
+   "text": "#pedro123",
+   "key": "",
+   "why": "does not start with the username"
+  },
+  {
+   "text": "unknown (U)",
+   "key": "",
+   "why": "unknown is never a username"
+  },
+  {
+   "text": "pedro123　(U)",
+   "key": "",
+   "why": "a full-width space is not a space here"
+  }
+ ]
+}

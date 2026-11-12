@@ -7,6 +7,7 @@
 // a slot. RedesignApp clears everything when the signed-in user changes (a shared phone never
 // shows one seller's typing to another).
 import type { BuyerContactPlatform } from "./buyerContact";
+import type { ScanQrLookupMark } from "./scanQrLookup";
 
 export type ParcelDraftStore = "711" | "fm";
 export interface ParcelDraft<F> {
@@ -16,6 +17,11 @@ export interface ParcelDraft<F> {
   noHandle: boolean;
   /** The buyer-contact app picked for this parcel. */
   platform: BuyerContactPlatform;
+  /**
+   * Scan QR → fill from Customers: what the last fill wrote (so a later scan can take it back).
+   * Never shown. Travels with THIS screen's entry only; absent when there is none.
+   */
+  lookup?: ScanQrLookupMark | null;
 }
 
 const drafts = new Map<ParcelDraftStore, ParcelDraft<unknown>>();
@@ -28,7 +34,7 @@ export function readParcelDraft<F>(store: ParcelDraftStore): ParcelDraft<F> | nu
 
 /** Keep (or with null, forget) this store's open manual entry. The other store is never touched. */
 export function writeParcelDraft<F>(store: ParcelDraftStore, draft: ParcelDraft<F> | null): void {
-  if (draft) drafts.set(store, { form: { ...draft.form }, noHandle: draft.noHandle, platform: draft.platform });
+  if (draft) drafts.set(store, { form: { ...draft.form }, noHandle: draft.noHandle, platform: draft.platform, ...(draft.lookup ? { lookup: draft.lookup } : {}) });
   else drafts.delete(store);
 }
 
@@ -40,7 +46,8 @@ export function writeParcelDraft<F>(store: ParcelDraftStore, draft: ParcelDraft<
  */
 export function holdParcelDraftForSave(store: ParcelDraftStore): () => void {
   const before = drafts.get(store) ?? null;
-  writeParcelDraft(store, before ? { ...before, form: blankOf(before.form), noHandle: false } : null);
+  // the blank entry carries no lookup mark either (the saved parcel's fill is never remembered for the next one)
+  writeParcelDraft(store, before ? { form: blankOf(before.form), noHandle: false, platform: before.platform } : null);
   const held = drafts.get(store) ?? null;
   return () => {
     if ((drafts.get(store) ?? null) !== held) return;

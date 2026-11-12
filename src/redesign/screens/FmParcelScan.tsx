@@ -24,6 +24,8 @@ import FmCustomerDetails from "./FmCustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
 import { normalizeContact, contactError, platformOf, type BuyerContactPlatform } from "../adapters/buyerContact";
 import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../adapters/parcelDrafts";
+import { useScanQrLookup } from "../adapters/useScanQrLookup";
+import { focusUnlessTyping } from "../adapters/scanQrLookup";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
 
 // Same field styles as the 7-11 screen.
@@ -60,7 +62,7 @@ function latestBatch(rows: FmScanRow[]): { id: string; ids: string[] } | null {
 // pendingCap = the SAME per-account batch limit as the 7-11 screen (maxPendingParcels in RedesignApp),
 // counted on FamilyMart parcels only. At the limit no NEW parcel can be saved until an export; edit
 // and delete of saved parcels stay open.
-export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge, pendingCap = MAX_PENDING_PARCELS, onBack }: { cur?: string; contactOn?: boolean; onBridge?: () => void; pendingCap?: number; onBack?: () => void }) {
+export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn = false, onBridge, pendingCap = MAX_PENDING_PARCELS, onBack }: { cur?: string; contactOn?: boolean; lookupOn?: boolean; onBridge?: () => void; pendingCap?: number; onBack?: () => void }) {
   const t = useT();
   // Bridge: the manual entry the seller left open here (typed, not saved) comes back as it was.
   const [draft0] = useState(() => readParcelDraft<Form>("fm"));
@@ -78,14 +80,27 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
   const [manual, setManual] = useState(() => draft0 !== null);
   const [manualCount, setManualCount] = useState(0);
   const [editing, setEditing] = useState<{ id: string } | null>(null);
+  const [toast, setToast] = useState("");
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+  const flash = (m: string, ms = 2500) => { setToast(m); setTimeout(() => { if (aliveRef.current) setToast(""); }, ms); };
+  // Scan QR → fill name, phone and store from the newest record of that username in THIS screen's
+  // Customers (sql/149). Nothing new is ever shown. lookupOn false (switch off and login not listed)
+  // → scanned() returns at once: no read, no change.
+  const amountRef = useRef<HTMLInputElement | null>(null);
+  const lookup = useScanQrLookup({
+    on: lookupOn, store: "fm", blocked: editing !== null, tiktok: !contactOn || platform === "tiktok", initial: draft0?.lookup ?? null,
+    fields: { name: form.name, phone: form.phone, store: form.store, handle: form.username },
+    setFields: (fn) => setForm((s) => ({ ...s, ...fn({ name: s.name, phone: s.phone, store: s.store }) })),
+    onFilled: () => focusUnlessTyping(amountRef.current),
+  });
   // Keep the open manual entry for the bridge (an edit of a saved parcel is not kept).
   useEffect(() => {
     if (editing) return;
-    writeParcelDraft<Form>("fm", manual ? { form, noHandle, platform } : null);
-  }, [manual, editing, form, noHandle, platform]);
+    writeParcelDraft<Form>("fm", manual ? { form, noHandle, platform, ...(lookup.mark ? { lookup: lookup.mark } : {}) } : null);
+  }, [manual, editing, form, noHandle, platform, lookup.mark]);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState(false);
-  const [toast, setToast] = useState("");
   const [qrBusy, setQrBusy] = useState(false);
   const qrRef = useRef<HTMLInputElement | null>(null);
   const [tab, setTab] = useState<Tab>("all");
@@ -100,8 +115,6 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState(false);
   const [custOpen, setCustOpen] = useState(false);
-  const aliveRef = useRef(true);
-  useEffect(() => () => { aliveRef.current = false; }, []);
 
   const [narrow, setNarrow] = useState(() => isNarrowViewport());
   useEffect(() => {
@@ -127,9 +140,16 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
     void loadFmGlobalFee().then((f) => { if (aliveRef.current) setFee(f); });
   }, []);
 
-  const flash = (m: string, ms = 2500) => { setToast(m); setTimeout(() => { if (aliveRef.current) setToast(""); }, ms); };
   const F = (patch: Partial<Form>) => setForm((s) => ({ ...s, ...patch }));
-  const clearForm = () => { setForm(emptyForm); setNoHandle(false); };
+  // The username field changed BY HAND (typing or pasting in it). The lookup is told: when the text is no longer the
+  // username a Scan QR filled, that buyer's untouched details go with it.
+  const handleByHand = (v: string) => { F({ username: v }); lookup.changedByHand(v); };
+  // The "no handle" tick empties the username but is NOT a hand change of it: details a Scan QR filled stay.
+  // (The picker field reports its own tick as onNoContact(true) and then an empty value — that one value is written as is.)
+  const tickedRef = useRef(false);
+  const noHandleTick = (on: boolean) => { setNoHandle(on); tickedRef.current = on; if (on) F({ username: "" }); };
+  const contactValue = (v: string) => { const fromTick = tickedRef.current; tickedRef.current = false; if (fromTick && v === "") F({ username: "" }); else handleByHand(v); };
+  const clearForm = () => { setForm(emptyForm); setNoHandle(false); lookup.reset(); };
 
   // The parcel as it will be saved. New: today (Taipei) + the FamilyMart fee. Edit: keeps its own.
   const today = taipeiDayId();
@@ -164,6 +184,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
     setSaving(true); setSaveErr(false);
     // The kept entry goes blank BEFORE the save: ⇄ and back while it runs = an empty form, never
     // the same parcel a second time. A failed save puts it back.
+    lookup.drop(); // an answer still on its way must not land during or after this save
     const restoreDraft = holdParcelDraftForSave("fm");
     let ok = false;
     try { ok = await commitNew(); } finally { if (!ok) restoreDraft(); }
@@ -193,6 +214,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
     setForm({ name: r.recipientName, phone: r.phone, store: r.storeId, amount: String(r.amount), username: r.buyerUsername ?? "" });
     setNoHandle(false);
     setPlatform(platformOf(r.contactPlatform));
+    lookup.reset(); // editing a saved parcel: no lookup
     setEditing({ id: r.id });
   };
   const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(false); };
@@ -206,7 +228,10 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
     try {
       const decoded = await decodeQrFromFile(file);
       const handle = decoded ? handleFromQrPayload(decoded) : null;
-      if (handle) { F({ username: handle.slice(0, 50) }); setNoHandle(false); if (contactOn) setPlatform("tiktok"); flash(t.rd_ps2_qr_filled); }
+      if (handle) {
+        F({ username: handle.slice(0, 50) }); setNoHandle(false); if (contactOn) setPlatform("tiktok"); flash(t.rd_ps2_qr_filled);
+        if (lookupOn && !editing) lookup.scanned(handle.slice(0, 50)); // then look this username up in Customers
+      }
       else flash(t.rd_ps2_qr_none);
     } catch { flash(t.rd_ps2_qr_none); }
     finally { if (aliveRef.current) setQrBusy(false); }
@@ -376,14 +401,14 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
               </div>
               <div>
                 <label style={lbl}>{t.rd_ps2_amount} ({cur})</label>
-                <input value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono }} data-testid="fms-amount" />
+                <input ref={amountRef} value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono }} data-testid="fms-amount" />
                 {showErr(form.amount, errs.amount ?? errs.total)}
               </div>
               {contactOn ? (
                 <div>
                   <input ref={qrRef} type="file" accept="image/*" hidden data-testid="fms-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
-                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.username} onValue={(v) => F({ username: v })}
-                    noContact={noHandle} onNoContact={(on) => { setNoHandle(on); if (on) F({ username: "" }); }}
+                  <BuyerContactField platform={platform} onPlatform={setPlatform} value={form.username} onValue={contactValue}
+                    noContact={noHandle} onNoContact={noHandleTick}
                     invalid={handleBad && !isEmpty} testId="fms-bc" inputId="fms-handle" />
                 </div>
               ) : (
@@ -396,7 +421,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
                 </div>
                 <input ref={qrRef} type="file" accept="image/*" hidden data-testid="fms-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
                 <input id="fms-handle" value={form.username}
-                  onChange={(e) => { const v = e.target.value.slice(0, 50); F({ username: v }); if (v.trim() !== "" && noHandle) setNoHandle(false); }}
+                  onChange={(e) => { const v = e.target.value.slice(0, 50); handleByHand(v); if (v.trim() !== "" && noHandle) setNoHandle(false); }}
                   maxLength={50} placeholder="@username" style={{ ...input, ...(noHandle ? { opacity: 0.5 } : {}) }} data-testid="fms-username" aria-invalid={handleBad && !isEmpty} />
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps2_handle_hint}</div>
                 {handleBad && !isEmpty && <div style={errTxt} data-testid="fms-handle-err">{t.rd_ps2_err_handle}</div>}
@@ -547,7 +572,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, onBridge,
             <button onClick={() => setCustOpen(false)} aria-label={t.rd_cd_close}
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="fms-customers-close">✕</button>
-            <FmCustomerDetails cur={cur} fee={fee} contactOn={contactOn} onImported={() => { setCustOpen(false); reloadSaved(); }} />
+            <FmCustomerDetails cur={cur} fee={fee} contactOn={contactOn} onImported={() => { setCustOpen(false); if (lookup.reset()) { clearForm(); setSaveErr(false); } reloadSaved(); }} />
           </div>
         </div>,
         portalRoot,

@@ -63,7 +63,7 @@ describe("Settings tile", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(src).toContain('const fmScanAllowed = parcelAllowed && (featureSw.fmScan || hasFeature("fm_pickup"));');
     expect(src).toContain('onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}');
-    expect(src).toContain('{screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} />}'); // buyer contact (sql/140) rides the same mount
+    expect(src).toContain('{screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} lookupOn={scanQrLookupOn} />}'); // buyer contact (sql/140) + the Scan QR lookup gate (sql/149) ride the same mount
   });
 });
 

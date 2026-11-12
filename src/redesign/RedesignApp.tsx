@@ -37,6 +37,7 @@ import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type 
 import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
 import { parcelTrackingVisible, parcelTrackingLocked, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
 import { buyerContactVisible } from "./adapters/buyerContact";
+import { scanQrLookupVisible } from "./adapters/scanQrLookup";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -888,6 +889,9 @@ export default function RedesignApp() {
   // Buyer contact picker + Pickup Status contact buttons (sql/140): admin, the preview key, or
   // (switch on) a Plus/Pro/Master seller — never off-market. Off → every screen is today's.
   const buyerContactOn = buyerContactVisible({ role: auth.profile?.role, plan: auth.profile?.plan, switchOn: featureSw.buyerContact, previewKey: hasFeature("buyer_contact"), marketHidden: hideParcelScan });
+  // Parcel Scan: Scan QR also looks the username up in Customers (sql/149). Switch OR this login on the list —
+  // off and not listed = Scan QR exactly as before (no read). No admin bypass.
+  const scanQrLookupOn = scanQrLookupVisible({ switchOn: featureSw.scanQrLookup, previewKey: hasFeature("scan_qr_lookup") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
   const helpBotIosOn = useHelpBotSwitch(authed && isIOS() ? (authUserId || "") : "", "support_ai_ios");
@@ -2907,10 +2911,10 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => goBack()} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && shippingGate === "open" && <Shipping onBack={() => goBack()} cur={cur} buyers={liveSession.session.buyers} sessionKey={shipSessionKey} {...(shipSessionKey !== shipLegacyKey ? { legacyKey: shipLegacyKey } : {})} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <ParcelScan onBack={() => goBack()} cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} />
+            <ParcelScan onBack={() => goBack()} cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} lookupOn={scanQrLookupOn} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails onBack={() => goBack()} cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />}
-          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} />}
+          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} lookupOn={scanQrLookupOn} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking onBack={() => goBack()} userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} contactOn={buyerContactOn} />}
           {screen === "customerdata" && <CustomerData onBack={() => goBack()} onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal onBack={() => goBack(authed ? "menu" : anonScreen())} />}
