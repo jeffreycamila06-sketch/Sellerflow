@@ -28,6 +28,7 @@
     "country-flag-icons": "1.6.20",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "heic2any": "^0.0.4",
     "html2canvas": "^1.4.1",
     "jsqr": "^1.4.0",
     "libphonenumber-js": "^1.13.8",

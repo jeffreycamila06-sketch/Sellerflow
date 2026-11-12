@@ -42,6 +42,8 @@ vi.mock("../productsDb", () => ({
   loadStockMovements: vi.fn(async () => []),
 }));
 vi.mock("../productImages", async (orig) => ({ ...(await orig<typeof import("../productImages")>()), compressProductImage: vi.fn() }));
+const heic = vi.hoisted(() => ({ fn: vi.fn() }));
+vi.mock("heic2any", () => ({ default: heic.fn }));
 import Products from "../../screens/Products";
 import { TProvider } from "../../i18n";
 import { deleteProductDb, saveProductDbResult } from "../productsDb";
@@ -98,13 +100,13 @@ describe("switch ON", () => {
     expect(img.getAttribute("src")).toBe("https://cdn.test/product-images/u1/7.jpg");
     expect(img.getAttribute("loading")).toBe("lazy");
     expect(screen.queryByTestId("prd-thumb-8")).toBeNull();
-    expect(screen.getByText("BB")).toBeTruthy(); // initials placeholder for the product without a picture
+    expect(screen.getByTestId("prd-ph-8").textContent).toBe("B"); // coloured letter placeholder (approved preview, Nov 12 2026)
   });
   it("a picture that fails to load falls back to the placeholder", async () => {
     view({ productImages: true });
     fireEvent.error(await screen.findByTestId("prd-thumb-7"));
     expect(screen.queryByTestId("prd-thumb-7")).toBeNull();
-    expect(screen.getByText("RD")).toBeTruthy();
+    expect(screen.getByTestId("prd-ph-7").textContent).toBe("R");
   });
   it("Add picture uploads to {uid}/{local_id}.jpg with upsert, then stores the path", async () => {
     compressMock.mockResolvedValue({ ok: true, blob: new Blob(["x"], { type: "image/jpeg" }), width: 800, height: 600 });
@@ -230,7 +232,7 @@ describe("switch ON — picture in the ADD form (A1)", () => {
     fireEvent.click(screen.getByText("Save"));
     expect(await screen.findByText(/Couldn't save the picture/)).toBeTruthy();
     expect(screen.getByText("New Hat")).toBeTruthy();
-    expect(document.querySelector('[data-testid^="prd-thumb-"]:not([data-testid="prd-thumb-7"])')).toBeNull();
+    expect(document.querySelector('[data-testid^="prd-thumb-"]:not([data-testid="prd-thumb-7"]):not([data-testid^="prd-thumb-btn-"])')).toBeNull();
   });
   it("Cancel releases the held picture at once", async () => {
     await fillAndPick();
@@ -298,9 +300,19 @@ describe("compression", () => {
   const dataUrlOf = (bytes: number) => "data:image/jpeg;base64," + "A".repeat(Math.ceil(bytes / 3) * 4);
   let canvases: { w: number; h: number; q: number }[] = [];
   let sizeFor: (w: number, q: number) => number = () => 1000;
+  let transforms: number[][] = [];
+  let draws: number[][] = [];
+  // A real JPEG header tagged EXIF orientation 6 (stored sideways, "turn 90° clockwise").
+  const O6 = "/9j/4AAQSkZJRgABAQAAAQABAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDACgcHiMeGSgjISMtKygwPGRBPDc3PHtYXUlkkYCZlo+AjIqgtObDoKrarYqMyP/L2u71////m8H////6/+b9//j/2wBDASstLTw1PHZBQXb4pYyl+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj/wAARCAABAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCUAdYf/9k=";
+  const o6Blob = () => { const b = atob(O6); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return new Blob([a], { type: "image/jpeg" }); };
   beforeEach(() => {
     canvases = [];
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ fillRect() {}, drawImage() {}, fillStyle: "" } as unknown as CanvasRenderingContext2D);
+    transforms = []; draws = []; sizeFor = () => 1000;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      fillRect() {}, fillStyle: "",
+      setTransform(...m: number[]) { transforms.push(m); },
+      drawImage(_s: unknown, ...a: number[]) { draws.push(a); },
+    } as unknown as CanvasRenderingContext2D);
     vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockImplementation(function (this: HTMLCanvasElement, _t?: string, q?: number) {
       canvases.push({ w: this.width, h: this.height, q: q ?? 0 });
       return dataUrlOf(sizeFor(this.width, q ?? 0));
@@ -312,44 +324,79 @@ describe("compression", () => {
     (globalThis as unknown as { Image: unknown }).Image = FakeImage;
     try { await fn(); } finally { globalThis.Image = Orig; }
   };
-  it("keeps the longest side ≤ 800 px (landscape and portrait), JPEG quality 0.8 first", async () => {
-    await withImage(4000, 3000, async () => {
-      const r = await real.compressProductImage(new Blob(["x"]));
-      expect(r).toMatchObject({ ok: true, width: 800, height: 600 });
-      expect(canvases[0]).toEqual({ w: 800, h: 600, q: 0.8 });
+  it("keeps the longest side ≤ 1600 px (landscape and portrait), JPEG quality 0.85 first, whole picture (no crop)", async () => {
+    await withImage(4032, 3024, async () => {
+      const r = await real.compressProductImage(new Blob(["x"]), { autoRotates: true });
+      expect(r).toMatchObject({ ok: true, width: 1600, height: 1200 }); // same 4:3 shape = nothing cut off
+      expect(canvases[0]).toEqual({ w: 1600, h: 1200, q: 0.85 });
     });
-    await withImage(1000, 3000, async () => {
-      const r = await real.compressProductImage(new Blob(["x"]));
-      expect(r).toMatchObject({ ok: true, width: 267, height: 800 });
+    await withImage(3024, 4032, async () => {
+      const r = await real.compressProductImage(new Blob(["x"]), { autoRotates: true });
+      expect(r).toMatchObject({ ok: true, width: 1200, height: 1600 });
     });
-    expect(Math.max(...canvases.flatMap((c) => [c.w, c.h]))).toBeLessThanOrEqual(800);
+    expect(Math.max(...canvases.flatMap((c) => [c.w, c.h]))).toBeLessThanOrEqual(1600);
   });
   it("a small picture is never enlarged", async () => {
     await withImage(300, 200, async () => {
-      expect(await real.compressProductImage(new Blob(["x"]))).toMatchObject({ ok: true, width: 300, height: 200 });
+      expect(await real.compressProductImage(new Blob(["x"]), { autoRotates: true })).toMatchObject({ ok: true, width: 300, height: 200 });
     });
   });
-  it("over the ~150 KB target → lower quality / smaller size until it fits", async () => {
-    sizeFor = (w, q) => (w >= 800 && q >= 0.7 ? 250_000 : 120_000);
-    await withImage(4000, 3000, async () => {
-      const r = await real.compressProductImage(new Blob(["x"]));
-      expect(r.ok && r.blob.size).toBeLessThanOrEqual(150 * 1024);
-      expect(canvases.map((c) => c.q)).toEqual([0.8, 0.7, 0.6]);
+  it("over the bucket limit at 0.85 → lower quality first, then smaller sizes, until it fits", async () => {
+    sizeFor = (w, q) => (w >= 1600 && q >= 0.75 ? 450_000 : 300_000);
+    await withImage(4032, 3024, async () => {
+      const r = await real.compressProductImage(new Blob(["x"]), { autoRotates: true });
+      expect(r.ok && r.blob.size).toBeLessThanOrEqual(392 * 1024);
+      expect(r.ok && r.width).toBe(1600); // still full size, only the quality went down
+      expect(canvases.map((c) => c.q)).toEqual([0.85, 0.75, 0.65]);
     });
   });
   it("nothing under the target but under 400 KB → the smallest is kept", async () => {
-    sizeFor = (w, q) => 200_000 + Math.round(w * q * 10);
-    await withImage(4000, 3000, async () => {
-      const r = await real.compressProductImage(new Blob(["x"]));
+    sizeFor = (w, q) => 402_000 + Math.round(w * q); // every encoding is over the 392 KB target, all under 400 KB
+    await withImage(4032, 3024, async () => {
+      const r = await real.compressProductImage(new Blob(["x"]), { autoRotates: true });
       expect(r.ok).toBe(true);
       expect(r.ok && r.blob.size).toBeLessThanOrEqual(400 * 1024);
-      expect(r.ok && r.width).toBe(480); // the 0.6 scale at the lowest quality was the smallest
+      expect(r.ok && r.width).toBe(880); // the 0.55 scale at the lowest quality was the smallest
     });
+  });
+  it("a phone photo stored sideways (EXIF 6): turned upright ourselves when the decoder doesn't — portrait out", async () => {
+    await withImage(4032, 3024, async () => { // stored landscape, shown portrait
+      const r = await real.compressProductImage(o6Blob(), { autoRotates: false });
+      expect(r).toMatchObject({ ok: true, width: 1200, height: 1600 });
+      expect(transforms[0]).toEqual([0, 1, -1, 0, 1200, 0]); // turn 90° clockwise
+      expect(draws[0]).toEqual([0, 0, 1600, 1200]); // the stored (sideways) picture, whole, scaled
+    });
+  });
+  it("…and left alone when the decoder already turned it (no double turn)", async () => {
+    await withImage(3024, 4032, async () => { // decoder gave the upright picture
+      const r = await real.compressProductImage(o6Blob(), { autoRotates: true });
+      expect(r).toMatchObject({ ok: true, width: 1200, height: 1600 });
+      expect(transforms).toEqual([]);
+      expect(draws[0]).toEqual([0, 0, 1200, 1600]);
+    });
+  });
+  it("HEIC the browser can't read → converted to JPEG first, then shrunk; other unreadable files are not", async () => {
+    const Orig = globalThis.Image;
+    let n = 0;
+    class FlakyImage { naturalWidth = 3024; naturalHeight = 4032; onload: (() => void) | null = null; onerror: (() => void) | null = null; set src(_s: string) { const k = n++; setTimeout(() => (k === 0 ? this.onerror?.() : this.onload?.()), 0); } }
+    (globalThis as unknown as { Image: unknown }).Image = FlakyImage;
+    heic.fn.mockResolvedValue(new Blob(["jpeg"], { type: "image/jpeg" }));
+    try {
+      const r = await real.compressProductImage(new File(["heic-bytes"], "IMG_0001.HEIC", { type: "image/heic" }), { autoRotates: true });
+      expect(heic.fn).toHaveBeenCalledTimes(1);
+      expect(heic.fn.mock.calls[0][0]).toMatchObject({ toType: "image/jpeg" });
+      expect(r).toMatchObject({ ok: true, width: 1200, height: 1600 });
+      heic.fn.mockClear(); n = 0;
+      class BadImage { onload: (() => void) | null = null; onerror: (() => void) | null = null; set src(_s: string) { setTimeout(() => this.onerror?.(), 0); } }
+      (globalThis as unknown as { Image: unknown }).Image = BadImage;
+      expect(await real.compressProductImage(new File(["??"], "x.pdf", { type: "application/pdf" }), { autoRotates: true })).toEqual({ ok: false, reason: "unreadable" });
+      expect(heic.fn).not.toHaveBeenCalled();
+    } finally { globalThis.Image = Orig; }
   });
   it("still over 400 KB at every size and quality → refused", async () => {
     sizeFor = () => 500_000;
     await withImage(4000, 3000, async () => {
-      expect(await real.compressProductImage(new Blob(["x"]))).toEqual({ ok: false, reason: "too_big" });
+      expect(await real.compressProductImage(new Blob(["x"]), { autoRotates: true })).toEqual({ ok: false, reason: "too_big" });
     });
   });
   it("an unreadable file is refused", async () => {
