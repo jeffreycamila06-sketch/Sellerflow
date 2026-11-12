@@ -39,6 +39,7 @@ import { createAutoReceiptRunner, AUTO_RECEIPT_DELAY_MS, AUTO_RECEIPT_TICK_MS } 
 import { createFbSoldout } from "./server/fbSoldout.js";
 import { createFbPostSales } from "./server/fbPostSales.js";
 import { withAppSecretProof } from "./server/fbHardening.js";
+import { createFbDiagHandler, FB_DIAG_PATH } from "./server/fbDiag.js";
 import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanCheck, createFbAccessHandler } from "./server/fbAccess.js";
 import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
@@ -2577,6 +2578,20 @@ try {
     const requireFbAvailable = createFbLock({ fbEnabled, isFbTester });
     // What the app may show: Facebook (the lock's decision) + Messenger receipts (fb_receipt_access).
     app.get("/fb/access", requireAuth, createFbAccessHandler({ fbEnabled, isFbTester, hasReceiptAccess: (uid) => store.hasReceiptAccess(uid) }));
+    // Admin-only, READ-ONLY comment diagnostics for one Page (server/fbDiag.js): debug_token,
+    // tasks, the live the poller would pick, comment counts. IDs / counts / scopes only. Not used
+    // by the poller, printing, receipts or any seller flow.
+    app.get(FB_DIAG_PATH, requireAuth, requireAdmin, createFbDiagHandler({
+      config: fbCfg,
+      readPageRows: async (pageId) => {
+        const { data, error } = await serviceSb.from("fb_pages").select("*").eq("page_id", String(pageId));
+        if (error) throw new Error("fb_pages_read_failed");
+        return data || [];
+      },
+      fetchImpl: withAppSecretProof(globalThis.fetch, fbCfg.appSecret),
+      appFetch: globalThis.fetch,
+      log: (line) => console.log(line),
+    }));
     // Facebook-only plan check on /fb/connect: a free plan must be "active" (the shared
     // checkPlanActive lets "free" through whatever its status). plan_status is not on the
     // request, so a free (or unknown) plan costs one service-role read here.
