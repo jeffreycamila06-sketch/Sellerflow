@@ -117,6 +117,29 @@ describe("runFbDiag — the answer", () => {
     expect(out.comments_live).toMatchObject({ ok: false, error: { http: 403, code: 200, error_subcode: 2069030, message: "Permissions error" } });
     expect(out.comments_video).toBeNull();
   });
+  it("tasks refused by Graph → id/name kept, tasks_error reported", async () => {
+    const g = fakeGraph({ ...HAPPY, [`/${PAGE}`]: (u: URL) => (u.searchParams.get("fields") === "tasks"
+      ? { status: 400, body: { error: { code: 100, message: "(#100) Tried accessing nonexisting field (tasks)" } } }
+      : { status: 200, body: { id: PAGE, name: "Jewels by ZN" } }) });
+    const out = await runFbDiag({ config, pageId: PAGE, rows: [row()], fetchImpl: g.fetchImpl, appFetch: g.fetchImpl });
+    expect(out.page).toMatchObject({ id: PAGE, name_present: true, tasks: null, tasks_error: { http: 400, code: 100 } });
+  });
+  it("page_only follows the poller-filter block (no_filter, newest first)", async () => {
+    const g = fakeGraph({ ...HAPPY, [`/${LV}/comments`]: (u: URL) => (u.searchParams.get("live_filter") === "no_filter"
+      ? { status: 200, body: { data: [{ id: "b1", created_time: "t", from: { id: "555" } }], summary: { total_count: 50 } } }
+      : { status: 200, body: { data: [{ id: "c1", created_time: "t", from: { id: PAGE } }], summary: { total_count: 50 } } }) });
+    const out = await runFbDiag({ config, pageId: PAGE, rows: [row()], fetchImpl: g.fetchImpl, appFetch: g.fetchImpl });
+    expect(out.page_only).toBe(false);
+  });
+  it("a long error message with the token past character 160 leaves no part of the token", async () => {
+    const LONG = "EAAG" + "x".repeat(60) + "LONGTOKENTAIL" + "y".repeat(140);
+    const pad = "p".repeat(100);
+    const g = fakeGraph({ ...HAPPY, [`/${PAGE}`]: { status: 400, body: { error: { code: 190, message: `${pad} token ${LONG} end` } } } });
+    const out = await runFbDiag({ config, pageId: PAGE, rows: [row({ access_token: encryptToken(LONG, config.tokenKey) })], fetchImpl: g.fetchImpl, appFetch: g.fetchImpl });
+    const text = JSON.stringify(out);
+    expect(text).not.toContain("EAAG" + "x".repeat(10));
+    expect(text).not.toContain("LONGTOKENTAIL");
+  });
   it("no row → page_not_found; unreadable token → token_unreadable; no Graph call", async () => {
     const g = fakeGraph(HAPPY);
     expect(await runFbDiag({ config, pageId: PAGE, rows: [], fetchImpl: g.fetchImpl, appFetch: g.fetchImpl })).toMatchObject({ ok: false, error: "page_not_found" });

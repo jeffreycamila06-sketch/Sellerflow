@@ -26,10 +26,11 @@ const errOf = (status, body, secrets) => {
   const c = classifyGraphError(status, body);
   return { http: status ?? null, code: c.code > 0 ? c.code : null, error_subcode: c.subcode, type: c.type, message: shortMsg(c.message, secrets) };
 };
+// Remove secrets FIRST, then cut to 160 — cutting first could leave a token's opening part behind.
 const shortMsg = (m, secrets) => {
-  let s = maskSecretText(m || "", "", 160);
+  let s = String(m || "");
   for (const x of secrets) if (x) s = s.split(x).join("[redacted]");
-  return s;
+  return maskSecretText(s, "", 160);
 };
 const thrown = (e) => ({ http: null, code: null, error_subcode: null, type: null, message: e && (e.name === "AbortError" || e.message === "graph_timeout") ? "timeout" : "request_failed" });
 
@@ -104,11 +105,19 @@ export async function runFbDiag({ config, pageId, rows, fetchImpl, appFetch, now
 
   // 2. The Page's tasks (role) as seen with this token.
   try {
-    const { status, body } = await graphGet({ fetchImpl, url: url(`/${pageId}`, { fields: "id,name,tasks", access_token: token }) });
+    const { status, body } = await graphGet({ fetchImpl, url: url(`/${pageId}`, { fields: "id,name", access_token: token }) });
     out.page = status === 200 && body && !body.error
-      ? { id: body.id != null ? String(body.id) : null, name_present: !!body.name, tasks: Array.isArray(body.tasks) ? body.tasks.map(String) : null }
+      ? { id: body.id != null ? String(body.id) : null, name_present: !!body.name, tasks: null }
       : { error: errOf(status, body, secrets) };
   } catch (e) { out.page = { error: thrown(e) }; }
+  // 2b. tasks in its own call: if Graph refuses the field, id/name above are not lost.
+  if (out.page && !out.page.error) {
+    try {
+      const { status, body } = await graphGet({ fetchImpl, url: url(`/${pageId}`, { fields: "tasks", access_token: token }) });
+      if (status === 200 && body && !body.error) out.page.tasks = Array.isArray(body.tasks) ? body.tasks.map(String) : null;
+      else out.page.tasks_error = errOf(status, body, secrets);
+    } catch (e) { out.page.tasks_error = thrown(e); }
+  }
 
   // 3. The live video — the poller's own functions, in the poller's order (live_videos; code 10 → videos).
   let live;
@@ -145,7 +154,9 @@ export async function runFbDiag({ config, pageId, rows, fetchImpl, appFetch, now
     // 5. The video object behind the live_video, when it is a different id.
     out.comments_video = videoId && videoId !== lv ? await commentsOn({ fetchImpl, objectId: videoId, pageId, token, secrets }) : null;
   }
-  out.page_only = !!(out.comments_live && out.comments_live.ok && out.comments_live.returned > 0 && out.comments_live.from_others === 0 && out.comments_live.from_missing === 0);
+  // page_only from what the poller actually asks (no_filter, newest first); falls back to the plain block.
+  const pc = out.comments_live_poller_filters && out.comments_live_poller_filters.ok ? out.comments_live_poller_filters : out.comments_live;
+  out.page_only = !!(pc && pc.ok && pc.returned > 0 && pc.from_others === 0 && pc.from_missing === 0);
   return scrub(out, secrets);
 }
 
