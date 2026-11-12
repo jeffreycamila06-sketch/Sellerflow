@@ -37,8 +37,27 @@ describe("Pickup Status — 全家", () => {
     expect(r.getByTestId("pt-fm-sync").textContent).toBe("Sync from FamilyMart");
     expect(r.getByTestId("pt-sync").textContent).toBe("Sync from 7-11");
     const labels = r.getAllByTestId("pt-carrier").map((e) => e.textContent);
-    expect(labels).toContain("7-11");
-    expect(labels).toContain("全家");
+    expect(labels).toContain("7-Eleven");
+    expect(labels).toContain("FamilyMart");
+    // each brand has its own colours (theme tokens, light + dark in design-tokens.css)
+    for (const e of r.getAllByTestId("pt-carrier")) {
+      const k = e.textContent === "FamilyMart" ? "fm" : "711";
+      const st = e.getAttribute("style") ?? "";
+      expect(st).toContain(`var(--carrier-${k}-bg)`);
+      expect(st).toContain(`var(--carrier-${k}-text)`);
+      expect(st).toContain(`var(--carrier-${k}-border)`);
+    }
+  });
+
+  it("the carrier label is the same brand name in all 8 languages", async () => {
+    for (const lang of ["en", "fil", "zh", "zh-TW", "vi", "th", "id", "bg"]) {
+      loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711"), row("L26A", "fm")], totals });
+      const r = render(<TProvider lang={lang}><ParcelTracking fm /></TProvider>);
+      await waitFor(() => expect(r.getAllByTestId("pt-carrier").length).toBeGreaterThan(0));
+      const labels = [...new Set(r.getAllByTestId("pt-carrier").map((e) => e.textContent))].sort();
+      expect(labels).toEqual(["7-Eleven", "FamilyMart"]);
+      r.unmount();
+    }
   });
 
   it("wrong file → 'This isn't a 全家 Order export'; success → toast + reload", async () => {

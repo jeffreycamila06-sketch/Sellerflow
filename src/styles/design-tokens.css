@@ -54,6 +54,9 @@
   /* U10 — danger tint (danger @ 10%): screens referenced var(--danger-soft, …)
      with divergent inline fallbacks; defining it makes the tint theme-consistent. */
   --danger-soft: rgba(225,29,72,.1);
+  /* Pickup Status carrier label: 7-Eleven (orange) / FamilyMart (teal) */
+  --carrier-711-bg: #FFF1E3; --carrier-711-text: #B4520A; --carrier-711-border: #F6B77A;
+  --carrier-fm-bg: #E3F6F4; --carrier-fm-text: #0B7A70; --carrier-fm-border: #86D3CB;
   --btag-old-fg: #166534; /* buyer-tag pill text (fb_polish_v2) */
   --btag-new-fg: #991b1b;
   --warn-soft: rgba(217,119,6,.1); /* Buyer Alert amber row tint (warn @ 10%) */
@@ -102,6 +105,8 @@
   --warn: #fbbf24;
   --danger: #fb7185;
   --danger-soft: rgba(251,113,133,.16);
+  --carrier-711-bg: #3A2412; --carrier-711-text: #FFB774; --carrier-711-border: #7A4A1E;
+  --carrier-fm-bg: #0F3330; --carrier-fm-text: #6FE0D3; --carrier-fm-border: #1F6A62;
   --btag-old-fg: #86efac; /* buyer-tag pill text (fb_polish_v2) — light on the dark pill */
   --btag-new-fg: #fecaca;
   --warn-soft: rgba(251,191,36,.14);
