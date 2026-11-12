@@ -1271,6 +1271,7 @@ const RAW: Record<string, Row> = {
 
   // ════ Admin — shared/lists ════
   rd_adm_sample_note: { en: "Sample data — not live yet", fil: "Sample data — hindi pa live", zh: "示例数据——尚未上线", "zh-TW": "範例資料——尚未上線", vi: "Dữ liệu mẫu — chưa chạy thật", th: "ข้อมูลตัวอย่าง — ยังไม่ใช้งานจริง", id: "Data contoh — belum aktif", bg: "Примерни данни — още не са активни" },
+  rd_os_view_aria: { en: "Sticker view", fil: "View ng sticker", zh: "贴纸预览平台", "zh-TW": "貼紙預覽平台", vi: "Kiểu xem nhãn", th: "มุมมองสติกเกอร์", id: "Tampilan stiker", bg: "Изглед на стикера" },
   rd_soon: { en: "Soon", fil: "Malapit na", zh: "即将推出", "zh-TW": "即將推出", vi: "Sắp có", th: "เร็ว ๆ นี้", id: "Segera", bg: "Скоро" },
   rd_soon_title: { en: "Coming soon — not ready yet", fil: "Malapit na — hindi pa handa", zh: "即将推出——尚未开放", "zh-TW": "即將推出——尚未開放", vi: "Sắp ra mắt — chưa dùng được", th: "เร็ว ๆ นี้ — ยังใช้ไม่ได้", id: "Segera hadir — belum bisa dipakai", bg: "Очаквай скоро — още не работи" },
   rd_adm_none: { en: "None.", fil: "Wala.", zh: "无。", "zh-TW": "無。", vi: "Không có.", th: "ไม่มี", id: "Tidak ada.", bg: "Няма." },

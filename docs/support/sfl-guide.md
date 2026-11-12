@@ -462,7 +462,7 @@ Keywords: wifi, wi-fi, receipt printer, slip, ip address, 9100, xprinter, networ
 "Printer didn't respond. Check it's on." — check the printer is on, the phone and printer are on the same WiFi, and the number is right (it can change after the router restarts).
 
 ## stickers — Sticker sizes, layout, Chinese names and QR
-Last checked: 2026-11-11
+Last checked: 2026-11-12
 Keywords: sticker size, paper size, 100x60, 60x40, 50x30, layout, chinese name, qr, print pattern, laki ng sticker, buyer number, shop name, 贴纸尺寸, 标签尺寸, 中文名, 二维码
 
 **Sizes** (phone app, Bluetooth printer): 100x60mm (Standard), 80x60mm, 80x50mm, 70x50mm, 60x40mm, and 50x30mm on the newer printers. Pick in **Printer settings → Sticker size**. The size must match the paper in your printer. A Niimbot prints the 50x30 sticker.
@@ -474,6 +474,7 @@ With the **new LIVE print pattern** on your account, **Printer settings → Stic
 **Layout settings**: **Settings → General Settings → LIVE SETUP → LIVE print pattern**. Turn each part on or off and pick its size: Shop name, Buyer #, TikTok name, TikTok username, Comment / Price. Date & time (and the SellerFlowLive logo row, where your screen shows it) are a fixed size — you can't change them. The Date & time switch on this screen only changes the picture on the screen: the sticker always prints the date and time. Use **Printer Test** to check, then **Save settings**. Warnings like "Some text runs past the edge of the sticker on this size" mean the text is too long for that size.
 
 **New LIVE print pattern** (shows a **New** badge when it is on for your account): the picture at the top is exactly what your Bluetooth sticker printer or your computer prints. A WiFi printer, or a phone that prints the text sticker (older app or text mode), keeps printing your usual sticker — the screen tells you when that is the case.
+- Tap **TikTok** or **Facebook** above the picture to see how that sticker will print; **Printer Test** prints the one you picked. Instagram and Shopee are coming soon.
 - **Sticker size**: shown under the picture ("Sticker size: 100×60 mm"). Tap **Change** to pick another size in **Printer settings**; the picture and your prints always use that size. If the size is too wide for your printer, the screen says so — pick a smaller size in **Printer settings**.
 - For **Shop name, Buyer #, Name, @username, Comment / Price**: tap **−** / **+** for the size, **Normal / Bold / Extra** for how thick, and the switch to turn it on or off. **Date & time** always prints, at a fixed size. **Print QR on sticker** is for TikTok buyers. The QR needs a sticker at least **50×30 mm**: on a smaller size it is turned off and can't be turned on. If you go back to a bigger size, turn it on again yourself.
 - The notes under the picture say if everything fits, if a long comment was made smaller or cut with "…", if a line was made smaller so it fits, or (in red) if something is too big for the label — make it smaller. When a size can't go bigger, its **+** turns grey. If you change the sticker size or turn on the QR and the Buyer # no longer fits, it is made smaller for you ("Buyer # lowered to fit this size").

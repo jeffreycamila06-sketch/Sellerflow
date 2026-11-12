@@ -906,9 +906,15 @@ async function oneStickerTestOnBt(bridge: NonNullable<Window["SellerFlowPrinter"
   // "today" (picture failed / too wide): today's test sticker. Never the saved pattern's size.
   // "text-spp": the picture send failed on this printer → straight to the TEXT sticker (as a real print
   // does), never today's picture at the TEXT size
-  if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(buyer, cur, storeName, { ...cfg, stickerSize: textStickerSizeFor(draft.size) }, fbName, undefined, true, r === "text-spp")), via: "bluetooth" };
+  // The fallback prints what a REAL order prints there (printSlip's own rule): a Facebook buyer = the
+  // name only — handle hidden, no "@name" line. Every other buyer: the same buyer + settings objects
+  // (TikTok test prints unchanged).
+  const old = printableBuyer(buyer);
+  const oldFb = fbName && cfg.printBuyerUsername !== false;
+  const oldCfg: Settings = oldFb ? { ...cfg, printBuyerUsername: false } : cfg;
+  if (r === "text" || r === "text-spp") return { ...(await printStickerViaBluetooth(old, cur, storeName, { ...oldCfg, stickerSize: textStickerSizeFor(draft.size) }, oldFb, undefined, true, r === "text-spp")), via: "bluetooth" };
   if (r === "today" || r === "too-wide") {
-    const t = await printStickerViaBluetooth(buyer, cur, storeName, cfg, fbName, undefined, true);
+    const t = await printStickerViaBluetooth(old, cur, storeName, oldCfg, oldFb, undefined, true);
     return { ...t, code: t.ok ? (r === "too-wide" ? ONE_STICKER_TOO_WIDE : ONE_STICKER_FALLBACK) : t.code, via: "bluetooth" };
   }
   return { ...r, via: "bluetooth" };
