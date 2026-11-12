@@ -336,7 +336,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
               <button key={v.key} type="button" disabled={v.soon || adminTesting} aria-pressed={on} data-testid={`os-view-${v.key}`} onClick={() => { if (!v.soon && !adminTesting) setView(v.key as StickerView); }}
                 style={{ minHeight: TAP, padding: "4px 2px", border: "none", borderRadius: 9, background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-text)" : v.soon ? "var(--text-muted)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: v.soon ? "default" : "pointer", display: "grid", placeItems: "center", gap: 2, opacity: v.soon ? 0.75 : 1, minWidth: 0 }}>
                 <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{v.label}</span>
-                {v.soon && <span data-testid={`os-view-${v.key}-soon`} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase", padding: "1px 6px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{t.rd_soon}</span>}
+                {v.soon && <span data-testid={`os-view-${v.key}-soon`} style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", padding: "1px 4px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)", whiteSpace: "normal", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{t.rd_soon}</span>}
               </button>
             );
           })}
