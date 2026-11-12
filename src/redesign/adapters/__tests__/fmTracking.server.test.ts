@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   classifyFm, fmRowChange, parseFmAnswer, inquiryItem, detailSteps, stepsFault, runFmSession, fmTime, fmDay,
-  isFmTrackingNo, cleanFmCaptcha, newestFirst, safeKeys, FM_CODES, FM_PATHS, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES, FM_ANSWER_KINDS,
+  isFmTrackingNo, cleanFmCaptcha, newestFirst, safeKeys, safeCode, FM_CODES, FM_PATHS, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES, FM_ANSWER_KINDS,
 } from "../../../../server/fmTracking.js";
 
 type Step = Record<string, unknown>;
@@ -28,7 +28,12 @@ const PICKED = history("16354226527", ["09", "08", "073", "07", "06", "043", "04
 // (index 7) are the way back (ORDER_NO 16353664329, RTN 2026/11/13); the rest is the original leg.
 const RETURNED = history("16352835793",
   ["09", "08", "073", "07", "06", "043", "31", "04", "12", "11", "08", "073", "07", "06", "043", "042", "04", "03", "02", "01"],
-  "2026/11/02", { 0: ["2026/11/08", "15:02"], 9: ["2026/11/03", "01:21"], 10: ["2026/10/26", "04:40"] },
+  "2026/11/02", {
+    0: ["2026/11/08", "15:02"], 9: ["2026/11/03", "01:21"], 10: ["2026/10/26", "04:40"],   // the three times of the real parcel
+    // the way back in between, in order (filled in: only the code order of the real parcel is known)
+    1: ["2026/11/08", "09:00"], 2: ["2026/11/07", "20:00"], 3: ["2026/11/07", "10:00"], 4: ["2026/11/06", "20:00"],
+    5: ["2026/11/06", "10:00"], 6: ["2026/11/05", "10:00"], 7: ["2026/11/04", "20:00"], 8: ["2026/11/04", "10:00"],
+  },
   { idx: [0, 1, 2, 3, 4, 5, 7], orderNo: "16353664329", rtn: "2026/11/13" });
 const EXPIRED = history("16351746626", ["40", "01"], "");
 
@@ -114,6 +119,23 @@ describe("classifyFm — the rules one by one", () => {
     const noTime = [step(ec, "01", "2026/11/01", "", ""), step(ec, "02", "2026/11/02", "08:00", "")];
     expect(newestFirst(noTime)).toEqual(noTime);
   });
+  it("with a return step the original leg is ONLY the steps older than the first return step — also when every step has an ORDER_NO", () => {
+    // every step carries the parcel's own ORDER_NO (nothing marks the way back) — the 08 / deadline after the 11 are the seller's
+    const list = [
+      step(ec, "09", "2026/11/20", "10:00", "2026/11/26", ec, "全家寄件店"), step(ec, "08", "2026/11/19", "10:00", "2026/11/26", ec, "全家寄件店"),
+      step(ec, "31", "2026/11/14", "10:00", "2026/11/26", ec, "全家寄件店"), step(ec, "12", "2026/11/12", "10:00", "", ec, ""), step(ec, "11", "2026/11/11", "10:00", "", ec, ""),
+      step(ec, "08", "2026/11/03", "10:00", "2026/11/10"), step(ec, "02", "2026/11/01", "10:00", ""), step(ec, "01", "2026/10/31", "10:00", ""),
+    ];
+    expect(classifyFm(list, ec)).toMatchObject({
+      kind: "returned", rec_store: "全家取件店", pickup_deadline: "2026-11-10",
+      arrived_at: fmTime("2026/11/03", "10:00"), at: fmTime("2026/11/11", "10:00"),
+    });
+    // no 08 before the first return step → no store, no arrival, and the deadline is NOT taken from the way back
+    expect(classifyFm([...list.slice(0, 5), list[6], list[7]], ec)).toMatchObject({ kind: "returned", rec_store: null, arrived_at: null, pickup_deadline: null });
+    // a way-back step OLDER than the first return step is not the original leg either
+    const odd = [...list.slice(0, 5), step(ec, "08", "2026/11/05", "10:00", "2026/11/30", "16399999999", "別的店"), ...list.slice(5)];
+    expect(classifyFm(odd, ec)).toMatchObject({ kind: "returned", rec_store: "全家取件店", pickup_deadline: "2026-11-10" });
+  });
   it("no ORDER_NO on any step + a return: an 08 AFTER the first 11 is not the buyer's store", () => {
     const bare = (code: string, date: string, store: string, rtn = ""): Step => ({ EC_ORDER_NO: ec, ORDER_STATUS: code, ORDER_DATE: date, ORDER_TIME: "10:00", STATUS_D: "", RCV_STORE_NAME: store, ORDER_DATE_RTN: rtn });
     const list = [
@@ -189,6 +211,11 @@ describe("log words", () => {
     expect(safeKeys({ "16354220151": 1, "0912345678": 2, ErrorCode: "000", List2: [] })).toBe("#,#,ErrorCode,List#");
     expect(safeKeys({ "tel:0912-345-678": 1 })).toBe("tel#-#-#");
     expect(safeKeys(null)).toBe("object");
+    // a code the site sent: 4 characters at most — a longer value could be a parcel number or a phone
+    expect([safeCode("000"), safeCode("E0014"), safeCode("16354220151"), safeCode("0912345678"), safeCode("")]).toEqual(["000", "E001", "1635", "0912", "-"]);
+    expect(classifyFm([step("16300000001", "16354220151", "2026/11/01", "10:00", "")], "16300000001")).toMatchObject({ kind: "unknown", unknownCode: "1635" });
+    expect(() => inquiryItem({ ErrorCode: "0912345678", List: [] }, "16354220151")).toThrow(expect.objectContaining({ code: "inquiry_error", detail: "code=0912" }));
+    expect(() => detailSteps({ ErrorCode: "16354220151", List: [] })).toThrow(expect.objectContaining({ code: "detail_error", detail: "code=1635" }));
     expect(() => inquiryItem({ "16354220151": [] }, "16354220151")).toThrow(expect.objectContaining({ detail: expect.stringMatching(/^keys=# code=/) }));
   });
 });

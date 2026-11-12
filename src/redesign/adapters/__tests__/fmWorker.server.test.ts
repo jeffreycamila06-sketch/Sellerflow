@@ -198,7 +198,7 @@ describe("全家 runs — ONE result", () => {
     expect(accessUpdates(sb)).toEqual([]);    // 7-11 had parcels and checked none → "last checked" is not stamped
   });
 
-  it("the press: given back ONLY when 7-11 AND 全家 answered nothing; decided once, at the end", async () => {
+  it("the press: the 7-11 rule of before decides — and it is never given back when 全家 answered; decided once, at the end", async () => {
     const none = () => vi.fn(async () => ({ batchesRun: 1, updated: 0, unknowns: 0, notFound: 0, captchaFails: 1, failures: 1, retired: 0, tripped: false, stopReason: "time_limit", sent: 4 }));
     // only 全家 parcels, all answered → kept (no give-back-then-count-again)
     const a = await runOne({ job: job("manual"), rows: [] }, fmOn());
@@ -213,12 +213,24 @@ describe("全家 runs — ONE result", () => {
     expect(jobUpdates(b.sb)).toEqual([expect.objectContaining({ status: "done", parcels_total: 3, parcels_checked: 0 })]);
     expect(accessUpdates(b.sb)).toEqual([]);
     expect(trail(b.sb).indexOf("rpc.parcel_tracking_refund_press")).toBeGreaterThan(trail(b.sb).indexOf("parcel_tracking_jobs.update"));
-    // 7-11 answered nothing, 全家 answered nothing → given back
+    // 7-11 had a parcel, ended 'done' with 0 answered (time limit): main keeps the press → kept here too, whatever 全家 did
     const c = await runOne({ job: job("manual"), rows: [row711("a")] }, { ...fmOn({ checked: 0, failed: true }), checkRowsImpl: none() });
-    expect(refunds(c.sb).length).toBe(1);
-    // 7-11 answered nothing, 全家 answered → kept
+    expect(jobUpdates(c.sb)[0]).toMatchObject({ status: "done", error: "partial", parcels_checked: 0 });
+    expect(refunds(c.sb)).toEqual([]);
     const d = await runOne({ job: job("manual"), rows: [row711("a")] }, { ...fmOn(), checkRowsImpl: none() });
     expect(refunds(d.sb)).toEqual([]);
+    // 7-11 FAILED (breaker): main gives the press back → given back when 全家 answered nothing, kept when it answered
+    const tripped = () => vi.fn(async () => ({ batchesRun: 3, updated: 0, unknowns: 0, notFound: 0, captchaFails: 3, failures: 3, retired: 0, tripped: true, stopReason: "circuit_open", sent: 9 }));
+    const f = await runOne({ job: job("manual"), rows: [row711("a")] }, { ...fmOn({ checked: 0, failed: true }), checkRowsImpl: tripped() });
+    expect(refunds(f.sb).length).toBe(1);
+    const g = await runOne({ job: job("manual"), rows: [row711("a")] }, { ...fmOn(), checkRowsImpl: tripped() });
+    expect(refunds(g.sb)).toEqual([]);
+    // for every case above with 全家 answering nothing, the decision is the one a job WITHOUT 全家 makes
+    for (const [rows, check] of [[[], none()], [[row711("a")], none()], [[row711("a")], tripped()]] as [Row[], ReturnType<typeof none>][]) {
+      const plain = await runOne({ job: job("manual"), rows }, { planFmImpl: planOff, checkRowsImpl: check });
+      const withFm = await runOne({ job: job("manual"), rows }, { ...fmOn({ checked: 0, failed: true }), checkRowsImpl: check });
+      expect(refunds(withFm.sb)).toEqual(refunds(plain.sb));
+    }
     // an admin's / an automatic job never used a press
     const e = await runOne({ job: job("manual", { created_by: "admin" }), rows: [] }, fmOn({ checked: 0, failed: true }));
     expect(refunds(e.sb)).toEqual([]);
@@ -340,12 +352,16 @@ describe("fmStampsLastChecked / fmRefundsPress", () => {
     expect(fmStampsLastChecked(job("urgent"), 2, 2, ok)).toBe(false);
     expect(fmStampsLastChecked(job("new_parcels"), 0, 0, ok)).toBe(false);
   });
-  it("the press is given back only for a seller's Check now where nothing at all was answered", () => {
-    expect(fmRefundsPress(job("manual"), 0, { ...ok, checked: 0 })).toBe(true);
-    expect(fmRefundsPress(job("manual"), 0, ok)).toBe(false);
-    expect(fmRefundsPress(job("manual"), 2, { ...ok, checked: 0 })).toBe(false);
-    expect(fmRefundsPress(job("manual", { created_by: "admin" }), 0, { ...ok, checked: 0 })).toBe(false);
-    expect(fmRefundsPress(job("auto"), 0, { ...ok, checked: 0 })).toBe(false);
-    expect(fmRefundsPress(job("urgent"), 0, { ...ok, checked: 0 })).toBe(false);
+  it("the press: shouldRefundPress on the 7-11 status and total, and never when 全家 answered", () => {
+    const none = { ...ok, checked: 0 };
+    expect(fmRefundsPress(job("manual"), "done", 0, none)).toBe(true);        // nothing to check for 7-11, nothing answered by 全家
+    expect(fmRefundsPress(job("manual"), "failed", 2, none)).toBe(true);      // 7-11 failed
+    expect(fmRefundsPress(job("manual"), "done", 2, none)).toBe(false);       // 7-11 had parcels and ended 'done' → main keeps the press
+    expect(fmRefundsPress(job("manual"), "skipped", 2, none)).toBe(false);    // 7-11 over its daily cap → main keeps the press
+    expect(fmRefundsPress(job("manual"), "done", 0, ok)).toBe(false);         // 全家 answered → never given back
+    expect(fmRefundsPress(job("manual"), "failed", 2, ok)).toBe(false);
+    expect(fmRefundsPress(job("manual", { created_by: "admin" }), "done", 0, none)).toBe(false);
+    expect(fmRefundsPress(job("auto"), "failed", 0, none)).toBe(false);
+    expect(fmRefundsPress(job("urgent"), "done", 0, none)).toBe(false);
   });
 });

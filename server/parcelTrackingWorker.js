@@ -112,7 +112,8 @@ export function shouldRefundPress(job, status, total) {
 //     before, untouched; the only extra work is one small settings read.
 //   • When it will: the 7-11 numbers (health row, duration, memory figures) are taken first, the job
 //     row stays 'running' while the 全家 parcels are checked, and then ONE final job row, ONE press
-//     decision and ONE message to the app are written (finishJobWithFm).
+//     decision (the 7-11 rule; never given back when 全家 answered) and ONE message to the app are
+//     written (finishJobWithFm).
 const FM_KINDS = new Set(["manual", "auto", "urgent", "new_parcels"]); // never the daily health job
 // The 全家 part can never hold the worker longer than this; after it the job is finished with what
 // the 全家 part had written so far, and the left-behind work is told to stop.
@@ -126,12 +127,11 @@ export function fmStampsLastChecked(job, sevenChecked, sevenTotal, fm) {
   return sevenChecked > 0 || (sevenTotal === 0 && !!fm && fm.checked > 0);
 }
 
-// PURE — is the seller's press given back at the end of a job whose 全家 part ran? Only when
-// NOTHING was answered, by 7-11 and by 全家 together. (Admin / automatic / urgent / new-parcels jobs
-// never used a press.)
-export function fmRefundsPress(job, sevenChecked, fm) {
-  if (job.kind !== "manual" || job.created_by !== "seller") return false;
-  return sevenChecked === 0 && !(fm && fm.checked > 0);
+// PURE — is the seller's press given back at the end of a job whose 全家 part ran? The 7-11 rule
+// of before decides (shouldRefundPress on the 7-11 status and total) — except that a press is never
+// given back when the 全家 part answered a parcel.
+export function fmRefundsPress(job, sevenStatus, sevenTotal, fm) {
+  return shouldRefundPress(job, sevenStatus, sevenTotal) && !(fm && fm.checked > 0);
 }
 
 // PURE — Taipei hour (0–23).
@@ -299,7 +299,7 @@ export function createWorker(opts) {
       status, error, finished_at: t.toISOString(), parcels_total: allTotal, parcels_checked: allChecked, requests_used: requests,
     }).eq("id", job.id);
     if (jErr) logger.error(`${TAG} job update failed job=${job.id}:`, jErr.code || "error");
-    if (fmRefundsPress(job, checked, fm)) {
+    if (fmRefundsPress(job, status, total, fm)) {
       const { error: rErr } = await serviceSb.rpc("parcel_tracking_refund_press", { p_job_id: job.id });
       if (rErr) logger.error(`${TAG} press refund failed user=${job.user_id}:`, rErr.code || "error");
       else logger.log(`${TAG} press refunded user=${job.user_id}`);

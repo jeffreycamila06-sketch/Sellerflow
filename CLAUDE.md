@@ -4902,19 +4902,26 @@ marker (`isStale`, needs `last_polled_at`) now shows on 全家 rows too.
   read right before the job row is finished. **Will run → `finishJobWithFm`:** the 7-11 health row and duration are
   written first, the job row STAYS 'running' while 全家 is checked (`runFmPlan` inside a `Promise.race` of
   `FM_PART_MAX_MS`, 8 min + 2 min), then ONE final job row (status / error of the 7-11 part, counts = 7-11 + 全家),
-  ONE message to the app, ONE log line. **The press** is decided once, at the end: given back only when 7-11 AND
-  全家 answered nothing (`fmRefundsPress`). "Last checked": 7-11 checked a parcel, or 7-11 had nothing to check
+  ONE message to the app, ONE log line. **The press** is decided once, at the end, by main's own rule on the
+  7-11 status and total (`shouldRefundPress`) — and never given back when 全家 answered a parcel (`fmRefundsPress`). "Last checked": 7-11 checked a parcel, or 7-11 had nothing to check
   and 全家 answered (`fmStampsLastChecked`).
 - **Only one 全家 part at a time:** at the race limit the worker sets `control.cancelled` (checked by the runner
-  before every session, every request and every write — nothing more is sent or written), finishes the job with
+  before every session, every request and every write — nothing more is sent, no parcel / failure count / pause
+  is written; only the day's request counter still is, it counts what was sent), finishes the job with
   the count so far, and adds the 全家 time to the job's duration (the worker's rest). While that left-behind part
   has not come back (`fmInFlight`), the next jobs skip 全家. One session lasts at most `FM_SESSION_MAX_MS` (2 min);
-  no session starts unless a whole one still fits before the race limit.
+  no session starts unless a whole one still fits before the race limit — asked at the top of each round and
+  again after the pause between sessions and after the OCR start (`mayNotStart`).
 - **Separate from 7-11:** own kill switch `app_settings.fm_check_enabled` (exact 'true'; missing = off), own breaker:
   3 sessions in a row that the SITE failed (HTML, http error, bad JSON, captcha never solved, timeout, another
   shape), counted ACROSS jobs in `fm_check_fail_streak`, back to 0 at the first good session →
   `fm_check_cooldown_until` (4 h) and the count is written back to 0 with it. NOT counted: one parcel's unusable
-  answer (`detail_empty` / `detail_mismatch`), a broken or too slow OCR (the 全家 part of that job stops,
+  answer (`detail_empty` / `detail_mismatch`; and `inquiry_error` / `inquiry_shape` / `detail_error` /
+  `detail_shape` the FIRST time — `FM_ONE_PARCEL_ERRORS`: that parcel gets the check time only and the rest is
+  asked again; the SAME error on the next session's different parcel is the site and is counted. A stop in the
+  middle of a group does not make the groups smaller: that parcel is asked once more, first in the next session;
+  only when that session then stops the same way on another parcel is it the site's limit per captcha), a broken
+  or too slow OCR (the 全家 part of that job stops,
   reason `ocr_unavailable`, worker terminated), a job the worker gave up.
   Also its own daily counter (`fm_tracking_daily`, 1,500 requests/day), 60 parcels and 8 min per job, own health row
   (`parcel_tracking_health.kind = 'fm'`), log tag `[FM-CHECK]`. Every `fm_check_*` key is hidden from sellers'
@@ -4924,8 +4931,9 @@ marker (`isStale`, needs `last_polled_at`) now shows on 全家 rows too.
   RPC `fm_check_open_for`, sql/151).
 - **Statuses (whole history), in this order** — the steps are first sorted newest first by their own date and time:
   any 11/12/31 or a way-back step (ORDER_NO ≠ EC_ORDER_NO) → returned, even under a newest 09, next to a 40 and
-  next to an unknown code (when NO step has an ORDER_NO, the buyer's store is the 08 BEFORE the first 11/12/31 —
-  a later 08 is the seller's own store). A 40 訂單失效 → the row is DELETED only when every step is 01 or 40 (the
+  next to an unknown code. With a 11/12/31 the buyer's store, arrival and deadline come ONLY from the steps older
+  than the first of them that are not way-back steps (a later 08 is the seller's own store, with or without an
+  ORDER_NO). A 40 訂單失效 → the row is DELETED only when every step is 01 or 40 (the
   row id is logged); 40 with any other step → nothing but the check time, one log line.
   An unknown code → the row KEEPS its status (check time only), one log line with the code. 09 → picked up;
   newest 08 → at store; 02–073 → in transit ("drop off before" cleared); 01 only / not found → check time only.
@@ -4933,7 +4941,8 @@ marker (`isStale`, needs `last_polled_at`) now shows on 全家 rows too.
 - **An answer must be for the parcel asked:** InquiryOrders is used only when its EC_ORDER_NO matches; a parcel the
   site knows but with no step (`detail_empty`) or with a step of another EC_ORDER_NO (`detail_mismatch`) keeps its
   status — only `last_polled_at` is written (no `fm_answered_at`) — and every parcel after it in that session is
-  asked again. Key names in a log line have every run of digits replaced by `#` (`safeKeys`).
+  asked again. Key names in a log line have every run of digits replaced by `#` (`safeKeys`); a code the site sent
+  (ErrorCode, an unknown step code) is cut to 4 characters (`safeCode`).
 - **`parcel_tracking.fm_answered_at` (sql/151, nullable):** stamped ONLY by a real answer (returned / picked up /
   at store / in transit). The upload rule `fm_upload_keeps` reads it (not `last_polled_at`): an answered row is not
   lowered (returned stays; picked up stays unless the upload says returned; at store never back to in transit),

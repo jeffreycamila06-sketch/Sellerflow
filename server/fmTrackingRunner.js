@@ -22,7 +22,7 @@
 //
 // ⚠️ TESSERACT RAM: the OCR worker is created only when a session is sent and terminated at the end.
 import {
-  runFmSession, fmUrl, fmRowChange, parseFmAnswer, isFmTrackingNo, safeWord, safeKeys, fmError,
+  runFmSession, fmUrl, fmRowChange, parseFmAnswer, isFmTrackingNo, safeWord, safeCode, safeKeys, fmError,
   FM_PATHS, FM_ORIGIN, FM_EMBED_REFERER, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES,
 } from "./fmTracking.js";
 import { captchaToBmp, imageSettingsFrom, FM_CAPTCHA_IMAGE, FM_CAPTCHA_MAX_BYTES } from "./fmCaptchaImage.js";
@@ -316,21 +316,36 @@ export async function selectFmRows(serviceSb, userId, pageSize = FM_PAGE_SIZE) {
 }
 
 // ── The session loop ───────────────────────────────────────────────────────────
+// Errors that can be about ONE parcel (its inquiry or its detail answered an error / another shape) —
+// or about the site. One alone is treated as that parcel's; the same one again on the NEXT session,
+// for another parcel, is the site.
+export const FM_ONE_PARCEL_ERRORS = Object.freeze(["inquiry_error", "inquiry_shape", "detail_error", "detail_shape"]);
+
 // PURE — what a finished session means for the job.
+//   res        the session's result
+//   prevFault  { error, code } when the session RIGHT BEFORE this one ended on a one-parcel error, else null
+//   failedCode the parcel this session stopped at (the first one not answered)
 //   "ok"        no error
-//   "limit"     the site stopped answering after some parcels (an inquiry error after ≥ 1 answer): that
-//               is how many one captcha buys — not a failure; the rest is asked in a new session
-//   "parcel"    the site KNOWS the parcel but sent steps we cannot use (detail_empty / detail_mismatch):
-//               a fault of that ONE parcel — not a failure of the site, never counted by the breaker
+//   "parcel"    ONE parcel's answer could not be used: its status is left alone (check time only), the
+//               parcels after it are asked again, the breaker does not count it, the group size stays.
+//               Always for detail_empty / detail_mismatch; for a FM_ONE_PARCEL_ERRORS error unless the
+//               session right before ended the same way on another parcel.
+//   "limit"     an inquiry error after ≥ 1 answer, twice in a row on different parcels: that is how many
+//               one captcha buys — not a failure; smaller groups from now on
 //   "ocr"       our own OCR is broken or too slow — the job stops, not a failure of the site
 //   "cancelled" the worker gave this job up (its time limit) — nothing more is sent or written
-//   "failed"    the SITE failed: captcha never solved, HTML / http error, bad JSON, timeout, another shape
-export function fmSessionOutcome(res) {
+//   "failed"    the SITE failed: captcha never solved, HTML / http error, bad JSON, timeout, the index
+//               page, or a one-parcel error repeated on the next parcel
+export function fmSessionOutcome(res, { prevFault = null, failedCode = null } = {}) {
   if (!res.error) return "ok";
   if (res.error === "cancelled") return "cancelled";
   if (res.error === "ocr_unavailable") return "ocr";
   if (res.error === "detail_empty" || res.error === "detail_mismatch") return "parcel";
-  if (res.results.length > 0 && (res.error === "inquiry_shape" || res.error === "inquiry_error")) return "limit";
+  if (FM_ONE_PARCEL_ERRORS.includes(res.error)) {
+    const again = !!prevFault && prevFault.error === res.error && String(prevFault.code) !== String(failedCode);
+    if (!again) return "parcel";
+    return res.results.length > 0 && res.error.startsWith("inquiry_") ? "limit" : "failed";
+  }
   return "failed";
 }
 
@@ -338,7 +353,9 @@ export function fmSessionOutcome(res) {
 // writes each answer back by id + user_id + carrier + not-finished. Never throws for a row /
 // database fault. `failStreak` = failed sessions in a row BEFORE this job (app_settings).
 //   control    { cancelled, checked } — the worker sets `cancelled` when it gives the job up: checked
-//              before every session, every request and every write. `checked` is kept up to date.
+//              before every session, every request and every write of a parcel / the failure count /
+//              the pause (the day's request counter is still written: it counts what was sent).
+//              `checked` is kept up to date.
 //   hardStopAt no session starts unless a whole session (limits.sessionMaxMs) still fits before it
 export async function checkFmRows({
   serviceSb, rows, userId, daily, fetchImpl = fetch, ocr: givenOcr = null, makeOcr = null, image = FM_CAPTCHA_IMAGE,
@@ -376,6 +393,8 @@ export async function checkFmRows({
   const queue = [...byCode.keys()];
   const retried = new Set();
   let perSession = Math.max(1, perSessionStart), consecutive = Math.max(0, Number(failStreak) || 0), backoff = 0;
+  let prevFault = null;   // { error, code } — the session right before ended on a one-parcel error
+  let dailyDirty = false; // requests were sent since the daily counter was last written
   let ocr = givenOcr;
   const pause = () => sleep(requestGapMs + Math.floor(Math.random() * requestJitterMs));
   // A broken / too slow OCR ends the session at once (no more captchas are fetched for nothing).
@@ -401,13 +420,20 @@ export async function checkFmRows({
     }
   };
 
+  // May a NEW session start now? Sets the stop reason when not. Asked at the top of every round and
+  // again after everything that takes time before the parcels are taken from the queue.
+  const mayNotStart = () => {
+    if (cancelled()) { stats.stopReason = "cancelled"; return true; }
+    if (deadlineAt != null && now().getTime() >= deadlineAt) { logger.warn(`${FM_TAG} time limit hit — stopping`); stats.stopReason = "time_limit"; return true; }
+    // Never start a session that could still be running when the worker gives the job up.
+    if (hardStopAt != null && now().getTime() + sessionMaxMs > hardStopAt) { logger.warn(`${FM_TAG} not enough time left for one more session — stopping`); stats.stopReason = "time_limit"; return true; }
+    return false;
+  };
+
   try {
     job: while (queue.length) {
-      if (cancelled()) { stats.stopReason = "cancelled"; break; }
       if (stats.sessions >= maxSessions) { stats.stopReason = "run_cap"; break; }
-      if (deadlineAt != null && now().getTime() >= deadlineAt) { logger.warn(`${FM_TAG} time limit hit — stopping`); stats.stopReason = "time_limit"; break; }
-      // Never start a session that could still be running when the worker gives the job up.
-      if (hardStopAt != null && now().getTime() + sessionMaxMs > hardStopAt) { logger.warn(`${FM_TAG} not enough time left for one more session — stopping`); stats.stopReason = "time_limit"; break; }
+      if (mayNotStart()) break;
       const today = taipeiDay(now());
       if (today !== daily.day) { // the job crossed 00:00 Taipei → the new day's counter
         await writeFmDaily(serviceSb, daily, logger);
@@ -415,31 +441,35 @@ export async function checkFmRows({
         Object.assign(daily, { day: today, requests: 0, captchaTries: 0, captchaHits: 0, parcels: 0 }, r.error ? {} : r);
       }
       if (!underFmCap(daily.requests, dailyRequestCap, perSession)) { logger.warn(`${FM_TAG} daily request cap hit (${daily.requests}/${dailyRequestCap}) — stopping`); stats.stopReason = "daily_cap"; break; }
-      if (stats.sessions > 0) await sleep(sessionGapMs + Math.floor(Math.random() * sessionJitterMs) + backoff);
-      if (cancelled()) { stats.stopReason = "cancelled"; break; }
+      if (stats.sessions > 0) {
+        await sleep(sessionGapMs + Math.floor(Math.random() * sessionJitterMs) + backoff);
+        if (mayNotStart()) break; // the pause may have used up the time that was left
+      }
       if (!ocr && makeOcr) {
         try { ocr = await makeOcr({ image, logger }); } catch (e) {
           logger.error(`${FM_TAG} OCR could not start (${safeWord((e && e.code) || "error", 40)}) — nothing is sent`);
           stats.stopReason = "ocr_unavailable";
           break;
         }
+        if (mayNotStart()) break; // starting the OCR can take up to a minute
       }
 
       const group = queue.splice(0, perSession);
       const jar = makeFmCookieJar(); // one jar for the whole session
       sessionEndsAt = now().getTime() + sessionMaxMs;
+      dailyDirty = true;
       const res = await sessionImpl(group, fmSessionSteps({ send: countingFetch, jar, pause, solve, timeoutMs: requestTimeoutMs }));
       sessionEndsAt = null;
       stats.sessions += 1;
       stats.captchaTries += res.captchaTries; stats.captchaHits += res.captchaHits;
       daily.captchaTries += res.captchaTries; daily.captchaHits += res.captchaHits;
       const answered = res.results.length;
-      logger.log(`${FM_TAG} session user=${userId} captcha=${res.captchaHits}/${res.captchaTries} parcels=${answered}/${group.length}${res.error ? ` error=${safeWord(res.error, 40)}${res.detail ? ` (${String(res.detail).replace(/[^A-Za-z0-9_=,.# -]/g, "").slice(0, 80)})` : ""}` : ""}`);
+      logger.log(`${FM_TAG} session user=${userId} captcha=${res.captchaHits}/${res.captchaTries} parcels=${answered}/${group.length}${res.error ? ` error=${safeWord(res.error, 40)}${res.detail ? ` (${String(res.detail).replace(/[^A-Za-z0-9_=,.# -]/g, "").replace(/\d{5,}/g, "#").slice(0, 80)})` : ""}` : ""}`);
       if (cancelled()) { stats.stopReason = "cancelled"; break; } // given up: nothing more is written
 
       const nowIso = now().toISOString();
       for (const { tracking_no, result } of res.results) {
-        if (result.kind === "unknown") { stats.unknowns += 1; logger.warn(`${FM_TAG} UNKNOWN step code=${safeWord(result.unknownCode, 8)} — the parcel keeps its status, add the code to FM_CODES`); }
+        if (result.kind === "unknown") { stats.unknowns += 1; logger.warn(`${FM_TAG} UNKNOWN step code=${safeCode(result.unknownCode)} — the parcel keeps its status, add the code to FM_CODES`); }
         if (result.kind === "void_unclear") { stats.unknowns += 1; logger.warn(`${FM_TAG} step 40 together with other steps — the parcel is NOT removed and keeps its status`); }
         for (const row of byCode.get(String(tracking_no)) || []) {
           if (cancelled()) { stats.stopReason = "cancelled"; break job; }
@@ -460,9 +490,11 @@ export async function checkFmRows({
       if (cancelled()) { stats.stopReason = "cancelled"; break; }
       daily.parcels += answered;
       await writeFmDaily(serviceSb, daily, logger);
+      dailyDirty = false;
 
-      const outcome = fmSessionOutcome(res);
       const left = group.slice(answered);
+      const outcome = fmSessionOutcome(res, { prevFault, failedCode: left[0] });
+      prevFault = null;
       // A broken OCR — also one that broke while its session ended another way — stops the job.
       if (outcome === "ocr" || (ocr && ocr.dead)) {
         logger.error(`${FM_TAG} OCR is not working — the 全家 check of this job stops (not counted as a failure of the site)`);
@@ -476,6 +508,8 @@ export async function checkFmRows({
       if (outcome === "ok" || outcome === "limit") {
         await siteWorked();
         if (outcome === "limit") {
+          // Two sessions in a row stopped the same way on different parcels: it is the site's limit per
+          // captcha, not those parcels. Smaller groups from now on.
           if (answered < perSession) { perSession = answered; logger.warn(`${FM_TAG} the site answered ${answered} parcel(s) per captcha — FM_PARCELS_PER_SESSION is too high, using ${answered} for this job`); }
           requeueOnce(left);
         }
@@ -486,12 +520,20 @@ export async function checkFmRows({
         // written, so it does not lead every later job. Not a failure of the site: not counted.
         stats.parcelFaults += 1;
         logger.warn(`${FM_TAG} one parcel's answer could not be used (${safeWord(res.error, 20)}) — status untouched, the rest is asked again`);
-        await stampOnly(left.slice(0, 1), nowIso);
+        const couldBeSite = FM_ONE_PARCEL_ERRORS.includes(res.error);
+        // Stopped in the MIDDLE of a group on an error that could also be the site's limit per captcha:
+        // that parcel is asked once more, FIRST in the next session. There it either answers (it was the
+        // limit — the next stop confirms it) or fails alone (it is that parcel). The group size stays.
+        const askFirst = couldBeSite && answered > 0 && !retried.has(left[0]);
+        if (askFirst) retried.add(left[0]); else await stampOnly(left.slice(0, 1), nowIso);
         if (answered > 0) await siteWorked();
-        queue.unshift(...left.slice(1)); // every parcel after it, however often this happens (the queue gets shorter each time)
+        queue.unshift(...(askFirst ? left : left.slice(1))); // the parcels after it, however often this happens (the queue gets shorter each time)
+        // Remembered, so the SAME error on the next, different parcel is counted as the site's.
+        if (couldBeSite) prevFault = { error: res.error, code: left[0] };
         continue;
       }
       // The SITE failed: back off, count it (across jobs), stop after FM_BREAKER_FAILURES in a row.
+      if (FM_ONE_PARCEL_ERRORS.includes(res.error)) prevFault = { error: res.error, code: left[0] }; // still the site while it repeats
       stats.failures += 1; consecutive += 1;
       backoff = Math.min(maxBackoffMs, backoff ? backoff * 2 : baseBackoffMs);
       const tripped = consecutive >= FM_BREAKER_FAILURES;
@@ -510,6 +552,8 @@ export async function checkFmRows({
       }
     }
   } finally {
+    // Requests that were sent are counted for the day whatever ended the job — also when it was given up.
+    if (dailyDirty) { try { await writeFmDaily(serviceSb, daily, logger); } catch { /* the next job reads the older count */ } }
     if (!givenOcr && ocr) { try { await ocr.terminate(); } catch { /* already gone */ } }
   }
   return stats;

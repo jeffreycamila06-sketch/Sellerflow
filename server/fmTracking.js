@@ -51,6 +51,9 @@ export function fmError(code, detail = "") {
 
 // Only letters, digits, _ and - reach a log line (never a name, a phone or a parcel number).
 export const safeWord = (v, max = 24) => String(v ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, max) || "-";
+// A code the SITE sent (ErrorCode, an unknown ORDER_STATUS), for a log line: at most 4 characters —
+// a longer value could be a parcel number or a phone.
+export const safeCode = (v) => safeWord(v, 4);
 // Key names of an answer, for a log line. Every run of digits becomes # — a key can be a parcel number or a phone.
 export const safeKeys = (o) => (o && typeof o === "object" ? Object.keys(o).slice(0, 8).map((k) => safeWord(k).replace(/\d+/g, "#")).join(",") : typeof o);
 
@@ -121,10 +124,10 @@ export function newestFirst(steps) {
 //   1. RETURNED when ANY step is 11 / 12 / 31, or any step's ORDER_NO differs from its EC_ORDER_NO
 //      (the way back) — even when the newest step is 09 已完成取件 (the SELLER collected the return),
 //      even next to a 40 訂單失效, and even when another step has a code we do not know.
-//      at = the first 11. The buyer's deadline = ORDER_DATE_RTN of the ORIGINAL leg. The buyer's
-//      store = the 08 of the original leg: the steps that are not on the way back; when NO step
-//      carries an ORDER_NO the way back cannot be told that way, so only steps OLDER than the first
-//      11 / 12 / 31 count (an 08 after it is the seller's own store).
+//      at = the first 11. The buyer's store, arrival and deadline (ORDER_DATE_RTN) come from the
+//      ORIGINAL leg only: with a 11 / 12 / 31, the steps OLDER than the first of them that are not
+//      on the way back (an 08 after it is the seller's own store, with or without an ORDER_NO);
+//      with a way-back step alone, the steps that are not on the way back.
 //   2. a 40 訂單失效 anywhere: when EVERY step is 01 or 40 → expired; with any other step →
 //      void_unclear (the row is left as it is, one log line)
 //   3. a code we do not know → unknown (no guess: the row keeps its status, one log line with the code)
@@ -147,8 +150,9 @@ export function classifyFm(steps, ecOrderNo) {
   const msgOf = (s, c) => (s ? text(s.STATUS_D) || FM_CODES[c] || null : null);
   // The list is newest first → the LAST index of a code is its earliest step.
   const firstReturnAt = Math.max(...[...RETURN_CODES].map((c) => codes.lastIndexOf(c)));
-  const noOrderNo = list.every((s) => !text(s.ORDER_NO));
-  const original = noOrderNo && firstReturnAt >= 0 ? list.slice(firstReturnAt + 1) : list.filter((s) => !isWayBack(s));
+  // The ORIGINAL leg (seller → buyer's store). With a return step: only the steps OLDER than the first
+  // return step, and never a way-back step — whether or not the steps carry an ORDER_NO.
+  const original = (firstReturnAt >= 0 ? list.slice(firstReturnAt + 1) : list).filter((s) => !isWayBack(s));
   const originalCodes = original.map(codeOf);
   const arrivedStep = original[originalCodes.indexOf("08")] || null; // the buyer's store
   const arrived_at = timeOf(arrivedStep);
@@ -173,7 +177,7 @@ export function classifyFm(steps, ecOrderNo) {
     return { ...none, kind: "void_unclear", status_message: text(list[at40].STATUS_D) || FM_CODES["40"] };
   }
   const unknownAt = codes.findIndex((c) => !(c in FM_CODES));
-  if (unknownAt >= 0) return { ...none, kind: "unknown", unknownCode: safeWord(codes[unknownAt], 8), status_message: text(list[unknownAt].STATUS_D) };
+  if (unknownAt >= 0) return { ...none, kind: "unknown", unknownCode: safeCode(codes[unknownAt]), status_message: text(list[unknownAt].STATUS_D) };
   const picked = codes.indexOf("09");
   if (picked >= 0) return { kind: "picked_up", status_message: msgOf(list[picked], "09"), at: timeOf(list[picked]), pickup_deadline: null, arrived_at, rec_store };
   if (newest === "08") {
@@ -187,8 +191,8 @@ export function classifyFm(steps, ecOrderNo) {
 // Throws when the answer is not the expected shape (session over, blocked, changed).
 export function inquiryItem(answer, ecOrderNo) {
   const code = String(answer?.ErrorCode ?? "");
-  if (!answer || !Array.isArray(answer.List)) throw fmError("inquiry_shape", `keys=${safeKeys(answer)} code=${safeWord(code, 8)}`);
-  if (code !== "000") throw fmError("inquiry_error", `code=${safeWord(code, 8)}`);
+  if (!answer || !Array.isArray(answer.List)) throw fmError("inquiry_shape", `keys=${safeKeys(answer)} code=${safeCode(code)}`);
+  if (code !== "000") throw fmError("inquiry_error", `code=${safeCode(code)}`);
   const own = String(ecOrderNo).trim();
   const item = answer.List.find((x) => String(x?.EC_ORDER_NO ?? "").trim() === own); // only the parcel asked — never "the one item there is"
   const orderNo = String(item?.ORDER_NO ?? "").trim();
@@ -201,7 +205,7 @@ export function detailSteps(answer) {
   if (Array.isArray(answer)) return answer;
   if (answer && Array.isArray(answer.List)) {
     const code = String(answer.ErrorCode ?? "000");
-    if (code !== "000") throw fmError("detail_error", `code=${safeWord(code, 8)}`);
+    if (code !== "000") throw fmError("detail_error", `code=${safeCode(code)}`);
     return answer.List;
   }
   throw fmError("detail_shape", `keys=${safeKeys(answer)}`);
