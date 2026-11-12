@@ -654,7 +654,7 @@ export function isStale(row: Pick<ParcelTrackingRow, "terminal" | "status" | "la
 // PURE — mirrors the server's urgent rule: an at-store live parcel due today or tomorrow.
 export function urgentEligible(rows: ParcelTrackingRow[], today: string): boolean {
   return rows.some((r) => {
-    if (r.terminal || r.status !== "at_store" || r.carrier === "fm") return false; // 全家 is never checked by us
+    if (r.terminal || r.status !== "at_store" || r.carrier === "fm") return false; // a 全家 parcel never makes the Urgent button appear (same as the server's rule)
     const d = daysUntilDate(r.pickupDeadline, today);
     return d !== null && d <= 1;
   });
