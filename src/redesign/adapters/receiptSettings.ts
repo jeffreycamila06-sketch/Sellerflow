@@ -4,6 +4,7 @@
 // read error is reported to the caller as { ok: false } — the screen shows a note, nothing
 // else in the app depends on it.
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { decodeUpright } from "./productImages";
 
 export const OPENING_MAX = 300;
 export const NOTE_MAX = 1000;
@@ -81,31 +82,26 @@ export function encodeUnderCap(encode: (scale: number, quality: number | null) =
   return null;
 }
 
-// Browser-only: read the picked file, draw it at ≤ 600px longest side, encode under the cap.
-export async function downscaleQrFile(file: Blob): Promise<string | null> {
-  const src = await new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result || ""));
-    r.onerror = () => reject(new Error("read_failed"));
-    r.readAsDataURL(file);
-  });
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = () => reject(new Error("decode_failed"));
-    i.src = src;
-  });
-  const base = fitWithin(img.naturalWidth, img.naturalHeight);
-  if (!base.w) return null;
-  return encodeUnderCap((scale, quality) => {
-    const c = document.createElement("canvas");
-    c.width = Math.max(1, Math.round(base.w * scale));
-    c.height = Math.max(1, Math.round(base.h * scale));
-    const ctx = c.getContext("2d");
-    if (!ctx) return "";
-    ctx.fillStyle = "#ffffff";                      // JPEG has no alpha — keep a white backing
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.drawImage(img, 0, 0, c.width, c.height);
-    return quality == null ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", quality);
-  });
+// Browser-only: read the picked file (photo, gallery, HEIC) and turn it the right way up with the
+// product-picture helper (decodeUpright), then draw the WHOLE picture (never cropped) at ≤ 600px
+// longest side and encode under the cap — PNG first, as before. Throws on an unreadable file (the
+// screen shows "couldn't use this picture"), as before. opts.autoRotates is for tests.
+export async function downscaleQrFile(file: Blob, opts: { autoRotates?: boolean } = {}): Promise<string | null> {
+  const up = await decodeUpright(file, opts);
+  if (!up) throw new Error("decode_failed");
+  try {
+    const base = fitWithin(up.w, up.h);
+    if (!base.w) return null;
+    return encodeUnderCap((scale, quality) => {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(base.w * scale));
+      c.height = Math.max(1, Math.round(base.h * scale));
+      const ctx = c.getContext("2d");
+      if (!ctx) return "";
+      ctx.fillStyle = "#ffffff";                      // JPEG has no alpha — keep a white backing
+      ctx.fillRect(0, 0, c.width, c.height);
+      up.draw(ctx, c.width, c.height);
+      return quality == null ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", quality);
+    });
+  } finally { up.done(); }
 }

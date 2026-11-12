@@ -104,10 +104,20 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
             <div style={card}>
               <span style={label}>{t.rd_rc_qr}</span>
               <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }}>{t.rd_rc_qr_hint}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {s.qrImage && <img src={s.qrImage} alt="" data-testid="rc-qr-thumb" style={{ width: 72, height: 72, objectFit: "contain", borderRadius: 8, border: "1px solid var(--border)", background: "#fff" }} />}
-                <button type="button" style={btn(false)} onClick={() => fileRef.current?.click()}>{t.rd_rc_qr_pick}</button>
-                {s.qrImage && <button type="button" data-testid="rc-qr-remove" style={{ ...btn(false), color: "var(--danger)" }} onClick={() => setS((x) => ({ ...x, qrImage: null }))}>{t.rd_rc_qr_remove}</button>}
+              {/* 160 × 160 (= the product edit dialog picture). The WHOLE QR is shown (contain, never
+                  cover/crop — a cut QR can't be scanned) on white. The buttons sit to the right and
+                  wrap below the box on a narrow phone. Tapping the box = "Choose picture". */}
+              <div data-testid="rc-qr-row" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                {s.qrImage && (
+                  <button type="button" data-testid="rc-qr-box" aria-label={t.rd_rc_qr_pick} onClick={() => fileRef.current?.click()}
+                    style={{ width: 160, height: 160, flexShrink: 0, padding: 0, margin: 0, boxSizing: "border-box", borderRadius: 14, border: "1px solid var(--border)", background: "#fff", overflow: "hidden", cursor: "pointer", display: "block" }}>
+                    <img src={s.qrImage} alt="" data-testid="rc-qr-thumb" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+                  </button>
+                )}
+                <div data-testid="rc-qr-actions" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                  <button type="button" style={btn(false)} onClick={() => fileRef.current?.click()}>{t.rd_rc_qr_pick}</button>
+                  {s.qrImage && <button type="button" data-testid="rc-qr-remove" style={{ ...btn(false), color: "var(--danger)" }} onClick={() => setS((x) => ({ ...x, qrImage: null }))}>{t.rd_rc_qr_remove}</button>}
+                </div>
                 <input ref={fileRef} type="file" accept="image/*" hidden data-testid="rc-qr-file" onChange={(e) => void pickQr(e.target.files?.[0])} />
               </div>
             </div>

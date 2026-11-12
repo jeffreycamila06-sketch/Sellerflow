@@ -188,24 +188,45 @@ async function heicToJpeg(file: Blob): Promise<Blob | null> {
   } catch { return null; }
 }
 
-export type CompressResult = { ok: true; blob: Blob; width: number; height: number } | { ok: false; reason: "too_big" | "unreadable" };
+// One decoded picture, the right way up: its shown size (w × h, after the EXIF turn) and a
+// draw(ctx, cw, ch) that paints the WHOLE picture upright into a cw × ch canvas (never cropped).
+// Shared by product pictures and the receipt Payment QR (receiptSettings.downscaleQrFile).
+export type UprightPicture = { w: number; h: number; draw: (ctx: CanvasRenderingContext2D, cw: number, ch: number) => void; done: () => void };
 
-// Browser-only: decode the picked file (photo, gallery, HEIC), turn it the right way up, draw the
-// WHOLE picture at ≤ 1600 px longest side on white, encode JPEG. opts.autoRotates is for tests.
-export async function compressProductImage(file: Blob, opts: { autoRotates?: boolean } = {}): Promise<CompressResult> {
+// Browser-only: decode a picked file (photo, gallery, HEIC the browser can't read → converted
+// first) and work out the turn. null = not a picture we can read. opts.autoRotates is for tests.
+export async function decodeUpright(file: Blob, opts: { autoRotates?: boolean } = {}): Promise<UprightPicture | null> {
   let head = await readHead(file);
   let decoded = await decodeOnce(file, opts.autoRotates);
   if (!decoded && isHeic((file as Blob).type, head)) {
     const jpeg = await heicToJpeg(file);
     if (jpeg) { head = await readHead(jpeg); decoded = await decodeOnce(jpeg, opts.autoRotates); }
   }
-  if (!decoded) return { ok: false, reason: "unreadable" };
+  if (!decoded) return null;
+  const d = decoded;
+  const info = readJpegInfo(head);
+  // Turn it ourselves only when the decoder didn't (the tag is then still to be applied).
+  const turn = d.rotated ? 1 : info.orientation;
+  const shown = orientedSize(d.w, d.h, turn);
+  return {
+    w: shown.w, h: shown.h, done: d.done,
+    draw: (ctx, cw, ch) => {
+      const raw = orientedSize(cw, ch, turn); // the stored picture's size at this canvas size
+      if (turn !== 1 && typeof ctx.setTransform === "function") ctx.setTransform(...orientationMatrix(turn, raw.w, raw.h));
+      ctx.drawImage(d.src, 0, 0, raw.w, raw.h);
+    },
+  };
+}
+
+export type CompressResult = { ok: true; blob: Blob; width: number; height: number } | { ok: false; reason: "too_big" | "unreadable" };
+
+// Browser-only: decode the picked file (photo, gallery, HEIC), turn it the right way up, draw the
+// WHOLE picture at ≤ 1600 px longest side on white, encode JPEG. opts.autoRotates is for tests.
+export async function compressProductImage(file: Blob, opts: { autoRotates?: boolean } = {}): Promise<CompressResult> {
+  const up = await decodeUpright(file, opts);
+  if (!up) return { ok: false, reason: "unreadable" };
   try {
-    const info = readJpegInfo(head);
-    // Turn it ourselves only when the decoder didn't (the tag is then still to be applied).
-    const turn = decoded.rotated ? 1 : info.orientation;
-    const shown = orientedSize(decoded.w, decoded.h, turn);
-    const base = fitWithin(shown.w, shown.h, PRODUCT_IMAGE_MAX_SIDE);
+    const base = fitWithin(up.w, up.h, PRODUCT_IMAGE_MAX_SIDE);
     if (!base.w) return { ok: false, reason: "unreadable" };
     const picked = chooseEncoding((scale, quality) => {
       const c = document.createElement("canvas");
@@ -216,9 +237,7 @@ export async function compressProductImage(file: Blob, opts: { autoRotates?: boo
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, c.width, c.height);
       try { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high"; } catch { /* older canvas */ }
-      const raw = orientedSize(c.width, c.height, turn); // the stored picture's size at this scale
-      if (turn !== 1 && typeof ctx.setTransform === "function") ctx.setTransform(...orientationMatrix(turn, raw.w, raw.h));
-      ctx.drawImage(decoded.src, 0, 0, raw.w, raw.h);
+      up.draw(ctx, c.width, c.height);
       const url = c.toDataURL("image/jpeg", quality);
       const blob = dataUrlToBlob(url);
       return blob ? Object.assign(blob, { w: c.width, h: c.height }) : null;
@@ -226,7 +245,7 @@ export async function compressProductImage(file: Blob, opts: { autoRotates?: boo
     if (!picked) return { ok: false, reason: "too_big" };
     const p = picked as Blob & { w: number; h: number };
     return { ok: true, blob: p, width: p.w, height: p.h };
-  } finally { decoded.done(); }
+  } finally { up.done(); }
 }
 
 function dataUrlToBlob(url: string): Blob | null {
