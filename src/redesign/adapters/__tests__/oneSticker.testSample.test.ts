@@ -28,7 +28,7 @@ describe("test prints = the preview's sample", () => {
     expect(inp.handle).not.toMatch(/sellerflow/i);
     expect(tiktokProfileUrl(inp.handle ?? "")).toBe("https://tiktok.com/@maria_live");
     const app = fs.readFileSync(path.join(__dirname, "../../RedesignApp.tsx"), "utf8");
-    const onTest = app.slice(app.indexOf("onTest={(draft, sample, unsaved)"), app.indexOf("onTest={(draft, sample, unsaved)") + 900);
+    const onTest = app.slice(app.indexOf("onTest={(draft, sample, unsaved, view)"), app.indexOf("onTest={(draft, sample, unsaved, view)") + 900);
     expect(onTest).toContain("sampleBuyer(");
     expect(onTest).not.toContain("buildTestBuyer");
     expect(onTest).toContain("await oneStickerTestPrint(draft, buyer, unsaved)");

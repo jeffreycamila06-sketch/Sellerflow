@@ -17,6 +17,7 @@ import { oneStickerScreenFonts, renderOptsFor, sampleInput, AUTO_SAVE_PATHS, typ
 import type { OneStickerDevicePath } from "../adapters/printing";
 import { cachedFit, rememberFit, startScreenFit, type StepCaps } from "../adapters/oneStickerScreen";
 import { ADMIN_LANG_SAMPLES, ADMIN_DEFAULT_SAMPLE, adminSampleInput, type AdminLangSample } from "../adapters/adminLangSamples";
+import { STICKER_VIEWS, viewSampleInput, type StickerView } from "../adapters/stickerViewSample";
 
 const sameSettings = (a: OneStickerSettings, b: OneStickerSettings) => JSON.stringify(a) === JSON.stringify(b);
 const nextStep = (v: number, dir: 1 | -1): number => {
@@ -174,7 +175,8 @@ export interface OneStickerPatternProps {
   printerLimit?: { model: string; maxLabelMm: number } | null; // the widest label it takes (oneStickerLimitFor — an unknown Niimbot = 50 mm); absent = tooWideFor(printerName)
   genericBold?: boolean;           // the saved printer gets the 1-dot ink (Y41BT / XP-420B)
   qrAllowed: boolean;              // "Print QR on sticker" is available for this account
-  onTest: (draft: OneStickerSettings, sample: "default" | "en" | "zh", unsaved: boolean) => void;
+  // `view` is passed ONLY for Printer Test in the Facebook view (TikTok view = today's three arguments)
+  onTest: (draft: OneStickerSettings, sample: "default" | "en" | "zh", unsaved: boolean, view?: StickerView) => void;
   onToast?: (msg: string) => void; // a short message (Reset → "Back to recommended settings")
   // ADMIN ONLY (never shown to sellers, whatever the switches): the language test chips + "New / Today's
   // sticker". Printer Test then prints the picked sample through the normal print functions.
@@ -218,7 +220,10 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const [langKey, setLangKey] = useState<string | null>(null);
   const [route, setRoute] = useState<"new" | "today">("new");
   const adminSample = admin && langKey ? ADMIN_LANG_SAMPLES.find((x) => x.key === langKey) ?? null : null;
-  const input = useMemo(() => (adminSample ? adminSampleInput(adminSample, p.shopName) : sampleInput(p.shopName)), [p.shopName, adminSample]);
+  // TikTok / Facebook view: which sample buyer is shown and test-printed. Always TikTok when the screen
+  // opens; never saved. An admin language chip is its own sample (unchanged).
+  const [view, setView] = useState<StickerView>("tiktok");
+  const input = useMemo(() => (adminSample ? adminSampleInput(adminSample, p.shopName) : view === "facebook" ? viewSampleInput("facebook", p.shopName) : sampleInput(p.shopName)), [p.shopName, adminSample, view]);
   // admin: Printer Test prints the picked sample (or the screen's own) on the chosen sticker
   const adminTesting = admin && (!!adminSample || route === "today");
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
@@ -320,6 +325,19 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
       <div className="os-wrap">
       <div className="os-body" data-testid="os-body">
         <div className="os-pv" data-testid="os-pv-col">
+        {/* the view: TikTok · Facebook · Instagram (Soon) · Shopee (Soon) — one row, above the preview */}
+        <div role="group" aria-label={t.rd_os_view_aria} data-testid="os-view" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4, padding: 4, marginBottom: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>
+          {STICKER_VIEWS.map((v) => {
+            const on = !v.soon && view === v.key;
+            return (
+              <button key={v.key} type="button" disabled={v.soon} aria-pressed={on} data-testid={`os-view-${v.key}`} onClick={() => { if (!v.soon) setView(v.key as StickerView); }}
+                style={{ minHeight: TAP, padding: "4px 2px", border: "none", borderRadius: 9, background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-text)" : v.soon ? "var(--text-muted)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: v.soon ? "default" : "pointer", display: "grid", placeItems: "center", gap: 2, opacity: v.soon ? 0.75 : 1, minWidth: 0 }}>
+                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{v.label}</span>
+                {v.soon && <span data-testid={`os-view-${v.key}-soon`} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase", padding: "1px 6px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{t.rd_soon}</span>}
+              </button>
+            );
+          })}
+        </div>
         {/* 1. the exact picture */}
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)", display: "grid", gap: 8, justifyItems: "center" }}>
           <OneStickerPreview settings={sEff} input={input} path={path} job={p.genericBold ? { bold: true } : {}} onFailed={setPvFailed} onRetry={() => setPvAttempt((a) => a + 1)} />
@@ -353,7 +371,7 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         {p.devicePath === "wifi" && <div data-testid="os-wifi-path" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_os_wifi_path}</div>}
 
         {/* 2. test prints (today's buttons) */}
-        <button onClick={() => (adminTesting ? p.onTestSample!(sEff, adminSample ?? ADMIN_DEFAULT_SAMPLE, route, dirty || !saved) : p.onTest(sEff, "default", dirty || !saved))} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}><span aria-hidden="true">🖨 </span>{t.rd_pp_printer_test}</button>
+        <button onClick={() => (adminTesting ? p.onTestSample!(sEff, adminSample ?? ADMIN_DEFAULT_SAMPLE, route, dirty || !saved) : view === "facebook" ? p.onTest(sEff, "default", dirty || !saved, "facebook") : p.onTest(sEff, "default", dirty || !saved))} data-testid="os-test" style={{ width: "100%", marginTop: 11, padding: "12px 0", minHeight: 44, border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)" }}><span aria-hidden="true">🖨 </span>{t.rd_pp_printer_test}</button>
         {longTests && <div data-testid="os-long-tests" style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={() => p.onTest(sEff, "en", dirty || !saved)} data-testid="os-test-en" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_latin}</button>
           <button onClick={() => p.onTest(sEff, "zh", dirty || !saved)} data-testid="os-test-zh" style={{ flex: 1, minWidth: 0, padding: "10px 6px", minHeight: 44, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_pp_v2_test_cjk}</button>

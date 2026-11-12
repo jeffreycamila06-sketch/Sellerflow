@@ -136,6 +136,7 @@ import { createCooldownRetry, retryAllowed } from "./adapters/cooldownRetry";
 import { liveGateOf, switchStopTargets, settleStops, runConfirmedSwitch } from "./adapters/fbConnectV2";
 import { useFbStopToast, needsReconnect, loadFbPageExpiries } from "./adapters/fbStopReasons";
 import { fbHandleIsId } from "./adapters/fbName";
+import { viewSampleBuyer } from "./adapters/stickerViewSample";
 import { useAccountCoverage, coveredTikTokNames, liveRefusedText, ACCOUNT_NOT_COVERED } from "./adapters/accountLive";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
@@ -3002,9 +3003,10 @@ export default function RedesignApp() {
               genericBold={!!knownTsplJob(savedBtPrinter()?.name).bold}
               qrAllowed={stickerQrAllowed}
               onToast={(msg) => setToast({ msg, kind: "ok" })}
-              onTest={(draft, sample, unsaved) => void (async () => {
+              onTest={(draft, sample, unsaved, view) => void (async () => {
                 // the SAME sample as the preview (#128 Maria Santos @maria_live); the long tests swap the comment only
-                const buyer: Buyer = sampleBuyer(sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : ONE_STICKER_SAMPLE.items[0]);
+                // Facebook view: the same buyer as a Facebook order, through the same print functions
+                const buyer: Buyer = view === "facebook" ? viewSampleBuyer("facebook") : sampleBuyer(sample === "en" ? V2_SAMPLE_LATIN : sample === "zh" ? V2_SAMPLE_CJK : ONE_STICKER_SAMPLE.items[0]);
                 await oneStickerTestPrint(draft, buyer, unsaved);
               })()}
               // ADMIN ONLY: the language test chips. "new" = the same test print as above with the picked
