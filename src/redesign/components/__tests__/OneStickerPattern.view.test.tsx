@@ -83,5 +83,14 @@ describe("TikTok / Facebook view", () => {
     expect(onTestSample).toHaveBeenCalledTimes(1);
     expect(onTestSample.mock.calls[0][1]).toMatchObject({ key: "zh", platform: "TikTok" });
     expect(onTest).toHaveBeenCalledTimes(1);
+    // while an admin test is picked the view buttons are off (the chip is the sample); clearing it brings the view back
+    expect(pressed("facebook")).toBe("false");
+    expect((screen.getByTestId("os-view-facebook") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("os-admin-lang-zh"));
+    expect(pressed("facebook")).toBe("true");
+    fireEvent.click(screen.getByTestId("os-admin-route-today"));
+    expect(pressed("facebook")).toBe("false");
+    fireEvent.click(screen.getByTestId("os-test"));
+    expect(onTestSample.mock.calls[1][1]).toMatchObject({ key: "default", platform: "TikTok" }); // as before
   });
 });

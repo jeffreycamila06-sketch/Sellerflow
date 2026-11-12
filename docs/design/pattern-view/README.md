@@ -15,6 +15,8 @@ settings with the QR on, 60×40 mm (Niimbot: 50×30 mm):
 | Niimbot | `niimbot-tiktok-view.png` | `niimbot-facebook-view.png` |
 | Laptop | `laptop-tiktok-view.png` | `laptop-facebook-view.png` |
 
+Facebook view at the other sizes (D520): `d520-facebook-view-50x30.png`, `-70x50`, `-80x50`, `-80x60`, `-100x60`.
+
 Remake them: `SFL_VIEW_PICS=$PWD/docs/design/pattern-view npx vitest run src/redesign/adapters/__tests__/stickerView.facebook.test.ts`
 
 Proof (tests): `stickerView.tiktokMain.test.ts` (TikTok view = main's bytes), `stickerView.facebook.test.ts`

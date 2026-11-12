@@ -222,10 +222,13 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
   const adminSample = admin && langKey ? ADMIN_LANG_SAMPLES.find((x) => x.key === langKey) ?? null : null;
   // TikTok / Facebook view: which sample buyer is shown and test-printed. Always TikTok when the screen
   // opens; never saved. An admin language chip is its own sample (unchanged).
-  const [view, setView] = useState<StickerView>("tiktok");
-  const input = useMemo(() => (adminSample ? adminSampleInput(adminSample, p.shopName) : view === "facebook" ? viewSampleInput("facebook", p.shopName) : sampleInput(p.shopName)), [p.shopName, adminSample, view]);
+  const [view0, setView] = useState<StickerView>("tiktok");
   // admin: Printer Test prints the picked sample (or the screen's own) on the chosen sticker
   const adminTesting = admin && (!!adminSample || route === "today");
+  // an admin test (a language chip / "Today's sticker") is its own sample, exactly as before: the view rests
+  // on TikTok and its buttons are off until the admin test is cleared (admins only — a seller never has one)
+  const view: StickerView = adminTesting ? "tiktok" : view0;
+  const input = useMemo(() => (adminSample ? adminSampleInput(adminSample, p.shopName) : view === "facebook" ? viewSampleInput("facebook", p.shopName) : sampleInput(p.shopName)), [p.shopName, adminSample, view]);
   const sEff = p.qrAllowed ? s : { ...s, qr: false };
   const [pvAttempt, setPvAttempt] = useState(0);
   const [pvFailed, setPvFailed] = useState(false);
@@ -328,9 +331,9 @@ export default function OneStickerPattern(p: OneStickerPatternProps) {
         {/* the view: TikTok · Facebook · Instagram (Soon) · Shopee (Soon) — one row, above the preview */}
         <div role="group" aria-label={t.rd_os_view_aria} data-testid="os-view" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4, padding: 4, marginBottom: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>
           {STICKER_VIEWS.map((v) => {
-            const on = !v.soon && view === v.key;
+            const on = !v.soon && !adminTesting && view === v.key;
             return (
-              <button key={v.key} type="button" disabled={v.soon} aria-pressed={on} data-testid={`os-view-${v.key}`} onClick={() => { if (!v.soon) setView(v.key as StickerView); }}
+              <button key={v.key} type="button" disabled={v.soon || adminTesting} aria-pressed={on} data-testid={`os-view-${v.key}`} onClick={() => { if (!v.soon && !adminTesting) setView(v.key as StickerView); }}
                 style={{ minHeight: TAP, padding: "4px 2px", border: "none", borderRadius: 9, background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-text)" : v.soon ? "var(--text-muted)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: v.soon ? "default" : "pointer", display: "grid", placeItems: "center", gap: 2, opacity: v.soon ? 0.75 : 1, minWidth: 0 }}>
                 <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{v.label}</span>
                 {v.soon && <span data-testid={`os-view-${v.key}-soon`} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase", padding: "1px 6px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent-fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{t.rd_soon}</span>}

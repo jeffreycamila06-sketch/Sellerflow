@@ -20,7 +20,8 @@ vi.mock("../oneStickerPrint", async (orig) => {
 });
 
 import { printOneStickerTest, printSlip } from "../printing";
-import { saveOneSticker, setOneStickerVisible, sampleBuyer, sampleInput, ONE_STICKER_SAMPLE } from "../oneStickerPrint";
+import { saveOneSticker, setOneStickerVisible, sampleBuyer, sampleInput, renderOneStickerFor, ONE_STICKER_SAMPLE } from "../oneStickerPrint";
+import { recommendedSettings } from "../oneSticker";
 import { viewSampleBuyer, viewSampleInput, STICKER_VIEWS } from "../stickerViewSample";
 import { installNodeFallbackDrawer, installSans } from "./oneSticker.harness";
 import { AT, SHOP, VIEW_PATHS, MAIN_TIKTOK, cfgFor, draftFor, resetAll, sentOn, sha } from "./stickerView.harness";
@@ -73,6 +74,14 @@ describe("Facebook view: Printer Test = a real Facebook order, on every print pa
       save(`${p}-facebook-view.png`, test.raster);
       resetAll();
       save(`${p}-tiktok-view.png`, (await sentOn(p, () => printOneStickerTest(draft, sampleBuyer(undefined, AT), "NT$", SHOP, cfg))).raster);
+    }
+    // every size on the D520 path (pictures only)
+    if (process.env.SFL_VIEW_PICS && p === "d520") {
+      for (const [w, h] of [[50, 30], [70, 50], [80, 50], [80, 60], [100, 60]]) {
+        const d = { ...recommendedSettings({ w, h }), qr: true };
+        const png = rasterPng(await renderOneStickerFor("d520", d, viewSampleInput("facebook", SHOP, AT)), 1);
+        if (png) fs.writeFileSync(path.join(process.env.SFL_VIEW_PICS, `d520-facebook-view-${w}x${h}.png`), png);
+      }
     }
     // and it is a different sticker from the TikTok view (no @username, no QR)
     expect(sha(test.handed)).not.toBe(MAIN_TIKTOK[p]);
