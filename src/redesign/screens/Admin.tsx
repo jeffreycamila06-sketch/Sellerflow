@@ -38,6 +38,8 @@ import { translateBroadcast } from "../adapters/broadcastTranslate";
 import { LANGS } from "../data";
 import { isAdminRole } from "../../lib/roles";
 import { confirmEmailMatches } from "../adapters/adminDelete";
+import { loadConnectedAccounts, loadSellerAccounts, accountsTotal, extraAccounts, isLowerPlan, removalSummary, fmtAcctDate, PLATFORM_LABEL, type ConnectedAccount, type SellerAccount } from "../adapters/adminAccounts";
+import DowngradeDialog from "../components/DowngradeDialog";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 // Sample/not-wired marker for the Admin panels that have no real backend yet
@@ -1038,6 +1040,22 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     void listShopeeBeta().then((m) => { if (alive) setShopeeBeta(m); });
     return () => { alive = false; };
   }, [panel, listShopeeBeta]);
+  // Connected Facebook Pages / Instagram accounts / Shopee shops of every seller (sql/153):
+  // one admin-only read when the sellers panel opens (zero poll), re-read after a change.
+  // null = not read (sql/153 not applied / error) → the cards show TikTok only, as before.
+  const [connected, setConnected] = useState<Record<string, ConnectedAccount[]> | null>(null);
+  const [connectedTick, setConnectedTick] = useState(0);
+  const canReadConnected = !!actions;
+  useEffect(() => {
+    if (panel !== "sellers" || !canReadConnected) return;
+    let alive = true;
+    void loadConnectedAccounts().then((m) => { if (alive) setConnected(m); });
+    return () => { alive = false; };
+  }, [panel, canReadConnected, connectedTick]);
+  const connectedOf = (email: string): ConnectedAccount[] => {
+    const uid = rawByEmail[email]?.authUserId || "";
+    return (uid && connected && connected[uid]) || [];
+  };
   // Client-side seller search — email + connected @handles + contact note + PHONE.
   // Filters the already-loaded users array (rawByEmail carries the real handles AND
   // the phone from listUsers select("*")); no new query, admin-only panel.
@@ -1123,12 +1141,54 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
   };
   // Pass the seller's CURRENT plan/status/expiry so a tier switch preserves
   // plan_expiry (only activation from free/expired opens a fresh window).
-  const doPlan = (u: User, plan: Plan, label: string) =>
+  const changePlanPlain = (u: User, plan: Plan, label: string) =>
     void run(tpl(t.rd_adm_act_setplan, { plan: label }), u.email, async () => {
       const r = await actions!.changePlan(u.email, plan, { plan: u.plan, status: u.planStatus || "active", expiry: u.planExpiry || "" });
       if (r.ok) setPlan(u.email, label);
       return r;
     });
+  // Plan DOWNGRADE (sql/153): when the seller's TOTAL accounts (TikTok + Facebook + Instagram +
+  // Shopee) is over the new plan's number, the confirm dialog opens BEFORE anything is saved.
+  // Not a lower plan / within the limit / an admin or exempt seller → the plain plan change.
+  // The read failed for a real reason → nothing is changed (never treated as "nothing to remove").
+  const [dg, setDg] = useState<{ user: User; plan: Plan; label: string; userId: string; limit: number; accounts: SellerAccount[] } | null>(null);
+  const doPlan = async (u: User, plan: Plan, label: string) => {
+    if (!actions || busy) return;
+    const userId = rawByEmail[u.email]?.authUserId || "";
+    const current = userPlans[u.email] || u.plan;
+    if (!userId || !isLowerPlan(current, plan)) { changePlanPlain(u, plan, label); return; }
+    setBusy(true);
+    let read: Awaited<ReturnType<typeof loadSellerAccounts>>;
+    try { read = await loadSellerAccounts(userId); } finally { setBusy(false); }
+    if (read.status === "error") { notify(t.rd_adm_dg_read_failed, "err"); return; }
+    if (read.status === "ok" && extraAccounts(read.data, plan) > 0) {
+      setDg({ user: u, plan, label, userId, limit: read.data.total - extraAccounts(read.data, plan), accounts: read.data.accounts });
+      return;
+    }
+    changePlanPlain(u, plan, label);
+  };
+  const confirmDowngrade = async (remove: SellerAccount[]) => {
+    if (!dg || !actions || busy) return;
+    const { user: u, plan, label, userId } = dg;
+    const items = remove.map((a) => ({ platform: a.platform, key: a.key, name: a.name }));
+    setBusy(true);
+    try {
+      const r = await actions.downgradeRemove(u.email, userId, plan, { plan: u.plan, status: u.planStatus || "active", expiry: u.planExpiry || "" }, items);
+      if (r.ok) {
+        setDg(null); setPlan(u.email, label); setConnectedTick((n) => n + 1); onChanged?.();
+        notify(tpl(r.liveStopped === false ? t.rd_adm_dg_done_live : t.rd_adm_dg_done, { plan: label, list: removalSummary(items) }), "ok");
+      } else if (r.error === "accounts_changed") {
+        setDg(null); setConnectedTick((n) => n + 1); onChanged?.();
+        notify(t.rd_adm_dg_changed, "err");
+      } else {
+        notify(t.rd_adm_dg_failed, "err");
+      }
+    } catch {
+      notify(t.rd_adm_dg_failed, "err");
+    } finally {
+      setBusy(false);
+    }
+  };
   const doPassword = (email: string) =>
     void run(t.rd_adm_act_setpw, email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
   // Phase 2 FULL WIPE — irreversible: the prompt REPLACES the plain confirm and
@@ -1283,7 +1343,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 9, fontSize: 11, color: "var(--text-dim)" }}>
                         <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_days}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{daysDisplay(days)}</span></span>
-                        <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_accounts}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{u.accounts}</span></span>
+                        <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_accounts}</span> <span data-testid="adm-accounts" style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{rawByEmail[u.email] && connected ? accountsTotal(rawByEmail[u.email].profile.tiktok, connectedOf(u.email)) : u.accounts}</span></span>
                         {addIdx === i ? (
                           <span style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
                             <input value={addVal} onChange={(e) => setAddVal(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doAddDays(u, parseInt(addVal || "0", 10) || 0); } }} inputMode="numeric" autoFocus placeholder={t.rd_adm_days_ph} style={{ width: 54, padding: "4px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 11, fontWeight: 700, outline: "none" }} />
@@ -1296,12 +1356,24 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                           <button onClick={() => { setAddIdx(i); setAddVal(""); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_adm_add_days}</button>
                         )}
                       </div>
+                      {/* Connected by the seller (sql/153): Facebook Pages / Instagram / Shopee, name + date. Read-only. */}
+                      {connectedOf(u.email).length > 0 && (
+                        <div data-testid="adm-connected" style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 3 }}>
+                          {connectedOf(u.email).map((c) => (
+                            <div key={`${c.platform}:${c.key}`} style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.35, overflowWrap: "anywhere" }}>
+                              <span style={{ color: "var(--text-muted)" }}>{PLATFORM_LABEL[c.platform]}</span>{" "}
+                              <span style={{ fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
+                              {fmtAcctDate(c.connectedAt) && <span style={{ color: "var(--text-muted)" }}> · {tpl(t.rd_adm_acct_since, { date: fmtAcctDate(c.connectedAt) })}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                        <button onClick={() => actions ? doPlan(u, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
-                        <button onClick={() => actions ? doPlan(u, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
-                        <button onClick={() => actions ? doPlan(u, "plus", "Plus") : setPlan(u.email, "Plus")} style={planBtn}>Plus</button>
-                        <button onClick={() => actions ? doPlan(u, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
-                        <button onClick={() => actions ? doPlan(u, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
+                        <button onClick={() => actions ? void doPlan(u, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
+                        <button onClick={() => actions ? void doPlan(u, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
+                        <button onClick={() => actions ? void doPlan(u, "plus", "Plus") : setPlan(u.email, "Plus")} style={planBtn}>Plus</button>
+                        <button onClick={() => actions ? void doPlan(u, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
+                        <button onClick={() => actions ? void doPlan(u, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
                       </div>
                       {/* Add Scan Credits (Part 2) — manual top-up after a Wise/Telegram payment. */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11, color: "var(--text-dim)" }}>
@@ -1639,8 +1711,29 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
             <div style={{ padding: "14px 16px" }}>
               <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_tiktok_accounts}</label>
               <textarea value={editTt} onChange={(e) => setEditTt(e.target.value)} rows={3} placeholder={t.rd_adm_one_per_line} style={editTa} />
-              <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", margin: "12px 0 6px" }}>{t.rd_adm_fb_pages}</label>
-              <textarea value={editFb} onChange={(e) => setEditFb(e.target.value)} rows={3} placeholder={t.rd_adm_one_per_line} style={editTa} />
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", margin: "12px 0 2px" }}>{t.rd_adm_fb_manual}</label>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, lineHeight: 1.4 }}>{t.rd_adm_fb_manual_hint}</div>
+              <textarea value={editFb} onChange={(e) => setEditFb(e.target.value)} rows={2} placeholder={t.rd_adm_one_per_line} style={editTa} />
+              {/* Connected by the seller (sql/153) — read-only; counted in the plan number. */}
+              {connected && (
+                <div data-testid="adm-edit-connected" style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_adm_connected}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 6px", lineHeight: 1.4 }}>{t.rd_adm_connected_hint}</div>
+                  {connectedOf(editEmail).length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_adm_connected_none}</div>
+                  ) : (
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                      {connectedOf(editEmail).map((c, ci) => (
+                        <div key={`${c.platform}:${c.key}`} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "8px 10px", borderTop: ci ? "1px solid var(--border)" : "none", fontSize: 12 }}>
+                          <span style={{ flexShrink: 0, color: "var(--text-muted)", fontWeight: 700 }}>{PLATFORM_LABEL[c.platform]}</span>
+                          <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{c.name}</span>
+                          {fmtAcctDate(c.connectedAt) && <span style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: 11 }}>{fmtAcctDate(c.connectedAt)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Market country (ISO-2). "" = default (TW). Sets seller_profiles.country. */}
               <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", margin: "12px 0 6px" }}>{t.rd_adm_country}</label>
               <select value={editCountry} onChange={(e) => setEditCountry(e.target.value)} data-testid="admin-edit-country" style={{ ...editTa, height: 40, padding: "0 10px" }}>
@@ -1661,6 +1754,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           </div>
         </div>
       )}
+      {dg && <DowngradeDialog key={`${dg.user.email}:${dg.plan}`} email={dg.user.email} planLabel={dg.label} limit={dg.limit} accounts={dg.accounts} busy={busy} onCancel={() => { if (!busy) setDg(null); }} onConfirm={(remove) => void confirmDowngrade(remove)} />}
       {countryInfo && <AdminCountryPicker info={countryInfo} onClose={() => setCountryFor(null)} onSave={(iso) => countries.save(countryInfo.userId, iso)} />}
     </div>
     </AdminCountryCtx.Provider>

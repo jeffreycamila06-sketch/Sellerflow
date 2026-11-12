@@ -22,6 +22,7 @@ import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs } from "./server/p
 import { validGmShape, parseGmPage } from "./server/myshipValidate.js";
 import { accountCapVerdict } from "./server/accountCap.js";
 import { checkAccountLive, createLiveAdmissions } from "./server/accountLive.js";
+import { parseStopItems, stopRemovedAccounts } from "./server/adminLiveStop.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
 import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
@@ -30,6 +31,7 @@ import { createShopeeRuntime } from "./server/shopeeLive.js";
 import { fbConfig } from "./server/fbConfig.js";
 import { createFbRuntime, replayFbStatus } from "./server/fbLive.js";
 import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
+import { IG_PLATFORM } from "./server/igComment.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
 import { opaqueErrors } from "./server/errorCodes.js";
@@ -2856,6 +2858,31 @@ try {
   igRuntime = null;
   console.error("[IG] init failed — Instagram disabled, TikTok/Facebook/Shopee unaffected:", e && e.message);
 }
+
+// Admin downgrade (sql/153): stop the running live of an account the admin just REMOVED.
+// Admin only. It stops ONLY an account whose row is really gone (re-read here with the
+// service key) — a still-connected account is never touched (server/adminLiveStop.js).
+// Counts only in the log: no names, no ids of Pages / shops.
+app.post("/admin/accounts/stop-removed", requireAuth, requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  const userId = String(body.user_id || "").trim();
+  const items = parseStopItems(body.accounts);
+  if (!/^[0-9a-f-]{36}$/i.test(userId) || items.length === 0) return res.status(400).json({ ok: false, error: "bad_request" });
+  if (!serviceSb) return res.status(503).json({ ok: false, error: "unavailable" });
+  const gone = (table, col, cast) => async (uid, key) => {
+    const { count, error } = await serviceSb.from(table).select("id", { count: "exact", head: true }).eq("user_id", uid).eq(col, cast(key));
+    if (error) throw new Error("read_failed");
+    return (count || 0) > 0;
+  };
+  const runtimes = {
+    ...(fbRuntime ? { facebook: { stillConnected: gone("fb_pages", "page_id", String), stop: (uid, key) => fbRuntime.stopPoller(liveKey(uid, "Facebook", key), "removed") } } : {}),
+    ...(igRuntime ? { instagram: { stillConnected: gone("ig_accounts", "ig_user_id", String), stop: (uid, key) => igRuntime.stopPoller(liveKey(uid, IG_PLATFORM, key), "removed") } } : {}),
+    ...(shopeeRuntime ? { shopee: { stillConnected: gone("shopee_shops", "shop_id", Number), stop: (uid, key) => shopeeRuntime.stopPoller(liveKey(uid, "Shopee", key), "removed") } } : {}),
+  };
+  const out = await stopRemovedAccounts({ userId, items, runtimes });
+  console.log(`[ADMIN] stop-removed admin=${req.sellerId} user=${userId} asked=${items.length} stopped=${out.stopped}`);
+  return res.json({ ok: true, stopped: out.stopped, results: out.results });
+});
 
 // Build 11 (M8) — LAST: any error a route or the body parser passes on gets a plain answer,
 // never Express's trace page (server/finalErrorHandler.js). Must stay after every route.
