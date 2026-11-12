@@ -141,7 +141,7 @@ describe("redaction — never a token, the app secret, a buyer name or comment t
     });
     const logs: string[] = [];
     const app = express();
-    app.get(FB_DIAG_PATH, createFbDiagHandler({ config, readPageRows: async () => [row()], fetchImpl: g.fetchImpl, appFetch: g.fetchImpl, log: (l) => logs.push(l) }));
+    app.get(FB_DIAG_PATH, createFbDiagHandler({ config, readPageRows: async () => [row()], fetchImpl: g.fetchImpl, appFetch: g.fetchImpl, log: (l: string) => { logs.push(l); } }));
     const srv = app.listen(0); const port = (srv.address() as { port: number }).port;
     try {
       const r = await fetch(`http://127.0.0.1:${port}${FB_DIAG_PATH}?page_id=${PAGE}`);

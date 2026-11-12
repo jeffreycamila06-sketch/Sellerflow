@@ -158,7 +158,7 @@ export function scrub(obj, secrets) {
 
 // Express handler. Mounted behind requireAuth + requireAdmin in server.js. readPageRows(pageId)
 // → the fb_pages rows (throws on a database error). log(line) gets one IDs-only line.
-export function createFbDiagHandler({ config, readPageRows, fetchImpl, appFetch, log = () => {} }) {
+export function createFbDiagHandler({ config, readPageRows, fetchImpl, appFetch, log = (line) => { void line; } }) {
   return async function fbDiag(req, res) {
     res.set("Cache-Control", "no-store");
     const pageId = String((req.query && req.query.page_id) || "").trim();
