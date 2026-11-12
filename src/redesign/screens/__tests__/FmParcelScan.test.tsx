@@ -118,7 +118,7 @@ describe("FmParcelScan screen", () => {
     const r = view();
     await loaded(r);
     fireEvent.click(r.getByTestId("fms-manual"));
-    type(r, "name", "Jeffrey"); type(r, "phone", "0858"); type(r, "store", "2213"); type(r, "amount", "15");
+    type(r, "name", "Jeffrey"); type(r, "phone", "0858"); type(r, "store", "0221"); type(r, "amount", "15");
     const errs = r.getAllByTestId("fms-field-err").map((e) => e.textContent);
     expect(errs).toEqual(["Phone must be 10 digits starting with 09.", "Store number must be 6 digits (e.g. 022131).", "Item amount + shipping must be 60 to 20,000."]);
     expect(r.getByTestId("fms-handle-err")).toBeTruthy();
@@ -257,5 +257,78 @@ describe("FmParcelScan screen", () => {
     fireEvent.click(r.getByTestId("fcd-import"));
     await waitFor(() => expect(r.getByTestId("fcd-import-err").textContent).toBe("Store number must be 6 digits (e.g. 022131)."));
     expect(m.saveFmScan).not.toHaveBeenCalled();
+  });
+
+  // ── FamilyMart store # = 6 digits starting with 0 (asked when a parcel is saved) ──────────────
+  const ZERO_MSG = "FamilyMart store # starts with 0 (6 digits).";
+  const storeErr = (r: ReturnType<typeof view>) => r.queryAllByTestId("fms-field-err").map((e) => e.textContent);
+
+  it("new parcel: a store # not starting with 0 shows the message under the field and cannot be saved", async () => {
+    m.saveFmScan.mockResolvedValue({ ok: true, row: row("n1") });
+    const r = view();
+    await loaded(r);
+    fireEvent.click(r.getByTestId("fms-manual"));
+    fill(r);
+    expect(storeErr(r)).toEqual([]);
+    type(r, "store", "1");
+    expect(storeErr(r)).toEqual([ZERO_MSG]); // told at the first digit
+    type(r, "store", "122131");
+    expect(storeErr(r)).toEqual([ZERO_MSG]);
+    // the message sits right under the store field, in the phone error's style
+    const under = r.getByTestId("fms-store").nextElementSibling as HTMLElement;
+    expect(under.getAttribute("data-testid")).toBe("fms-field-err");
+    type(r, "phone", "0858");
+    const [phoneErr, zeroErr] = r.getAllByTestId("fms-field-err") as HTMLElement[];
+    expect(zeroErr.getAttribute("style")).toBe(phoneErr.getAttribute("style"));
+    type(r, "phone", "0958704782");
+    expect((r.getByTestId("fms-save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(r.getByTestId("fms-save"));
+    expect(m.saveFmScan).not.toHaveBeenCalled();
+    type(r, "store", "022131");
+    expect(storeErr(r)).toEqual([]);
+    expect((r.getByTestId("fms-save") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(r.getByTestId("fms-save"));
+    await waitFor(() => expect(m.saveFmScan).toHaveBeenCalledWith(expect.objectContaining({ storeId: "022131" })));
+  });
+
+  it("edit of a saved parcel: same message, not saved until the store # starts with 0", async () => {
+    m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("a", { storeId: "122131" })] });
+    m.saveFmScan.mockResolvedValue({ ok: true, row: row("a") });
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("fms-row")).toHaveLength(1));
+    fireEvent.click(r.getByTestId("fms-row-edit"));
+    expect(r.getByTestId("fms-confirm").getAttribute("data-editing")).toBe("1");
+    expect(storeErr(r)).toEqual([ZERO_MSG]);
+    expect((r.getByTestId("fms-save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(r.getByTestId("fms-save"));
+    expect(m.saveFmScan).not.toHaveBeenCalled();
+    type(r, "store", "022131");
+    expect(storeErr(r)).toEqual([]);
+    fireEvent.click(r.getByTestId("fms-save"));
+    await waitFor(() => expect(m.saveFmScan).toHaveBeenCalledWith(expect.objectContaining({ storeId: "022131" }), "a"));
+  });
+
+  it("Import from FamilyMart Customers: a store # not starting with 0 shows the message and is not imported", async () => {
+    m.loadRecentFmCustomers.mockResolvedValue({ ok: true, rows: [{ id: "c1", phone: "0958704782", name: "Jeffrey", storeId: "122131", buyerUsername: "@jeff", createdAt: "", updatedAt: "" }] });
+    const r = view();
+    await loaded(r);
+    fireEvent.click(r.getByTestId("fms-manual"));
+    fireEvent.click(r.getByTestId("fms-open-customers"));
+    await waitFor(() => expect(r.getAllByTestId("fcd-row")).toHaveLength(1));
+    fireEvent.click(r.getByTestId("fcd-row-main"));
+    fireEvent.change(r.getByTestId("fcd-price"), { target: { value: "300" } });
+    fireEvent.click(r.getByTestId("fcd-import"));
+    await waitFor(() => expect(r.getByTestId("fcd-import-err").textContent).toBe(ZERO_MSG));
+    expect(m.saveFmScan).not.toHaveBeenCalled();
+    expect(r.getByTestId("fms-customers-overlay")).toBeTruthy(); // still open, nothing imported
+  });
+
+  it("a parcel saved before the rule is left as it is: no red flag, still in the export", async () => {
+    m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("old", { storeId: "122131" }), row("b")] });
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("fms-row")).toHaveLength(2));
+    expect(r.getAllByTestId("fms-row").map((x) => x.getAttribute("data-flag"))).toEqual(["", ""]);
+    expect(r.queryByTestId("fms-row-problem")).toBeNull();
+    expect(r.getByTestId("fms-export-btn").textContent).toContain("2");
   });
 });

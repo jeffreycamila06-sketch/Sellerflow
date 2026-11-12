@@ -18,7 +18,7 @@ import { validHandle, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import {
   FM_ERROR_KEY, FM_SCAN_DEFAULT_FEE, type FmScanError, type FmScanInput, type FmScanRow,
   buildFmExport, deleteFmExported, deleteFmScan, deliverFmFiles, loadFmGlobalFee, loadFmScans,
-  markFmExported, saveFmScan, undoFmExport, validateFmScan,
+  markFmExported, saveFmScan, undoFmExport, validateFmScan, validateFmScanForSave,
 } from "../adapters/fmScan";
 import FmCustomerDetails from "./FmCustomerDetails";
 import BuyerContactField from "../components/BuyerContactField";
@@ -160,7 +160,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     orderDate: editRow ? editRow.orderDate : today,
     buyerUsername: noHandle ? "" : (contactOn ? normalizeContact(platform, form.username) : form.username),
   };
-  const errs = validateFmScan(parcel, today);
+  const errs = validateFmScanForSave(parcel, today); // new + edit: the store # must also start with 0
   const handleBad = !noHandle && !validHandle(form.username);
   const contactBad = contactOn && !noHandle && contactError(platform, form.username) !== "";
   const isEmpty = Object.values(form).every((v) => v.trim() === "");

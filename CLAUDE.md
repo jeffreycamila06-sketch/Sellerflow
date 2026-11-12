@@ -4973,3 +4973,16 @@ marker (`isStale`, needs `last_polled_at`) now shows on 全家 rows too.
 - **Order when Jeff says go:** sql/151 (switch off) → Render deploy (quiet window, Business Pulse check first) →
   measure real captchas, set `fm_check_captcha` if needed → `fm_check_enabled` = 'true' → sql/116b (guide).
   Either of the first two may go first: without sql/151 the server finds no switch row and does nothing for 全家.
+
+## 2026-11-12 — FAMILYMART STORE # MUST START WITH 0 (branch `claude/fm-store-zero`, NOT merged; sql/152 NOT applied)
+Web only (Vercel after merge). No server, no schema change.
+- **Rule:** when a FamilyMart parcel is SAVED — new parcel, edit of a saved parcel, Import from FamilyMart
+  Customers — the store # must be 6 digits starting with 0. `validateFmScanForSave` in `adapters/fmScan.ts`
+  (= `validateFmScan` + error `store_zero` when the store # is not empty and does not start with 0).
+  Message `rd_fms_e_store_zero` (8 languages), shown under the field like the phone error; Save stays off.
+- **Parcels already saved are NOT re-judged:** the list flag and the export still use `validateFmScan`
+  (6 digits). A saved parcel with a store # not starting with 0 is exported as before until it is edited.
+- Not touched: 7-11, the export file, the FamilyMart Customers edit form (a customer can still be saved
+  with any store #; the Import is what refuses it), Scan QR lookup, printing, server.
+- **Guide:** `docs/support/sfl-guide.md` + `sql/116b` regenerated. `sql/152_guide_fm_store_zero.sql`
+  (+ rollback) changes ONLY that phrase in the `parcel-scan` row of `support_guide`.

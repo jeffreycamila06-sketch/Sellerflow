@@ -353,7 +353,7 @@ Who sees what:
 5. Tap **Export N parcel(s)**, then **Export**, and upload the file on the 賣貨便 website.
 
 **Parcel Scan FamilyMart (全家)** — in **Settings**, next to Parcel Scan 7-11.
-1. Tap **✏️ Manual add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
+1. Tap **✏️ Manual add parcel** and type the customer name, phone (10 digits starting 09), FamilyMart store # (6 digits starting with 0 — the number on a FamilyMart receipt works, e.g. 022131), amount and the buyer @username (or tick **Buyer has no social handle**).
 2. **▣ Scan QR**, **Buyer contact** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
 3. Tap **Export N parcel(s)**, then **Export**, and upload the file on 好賣+ → 大量匯單.
 4. **Batch N / limit** at the top shows your FamilyMart parcels not exported yet. The limit is the same as on 7-11. When it is full, export first — you can still edit or delete saved parcels.

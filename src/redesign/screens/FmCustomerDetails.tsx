@@ -9,7 +9,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { searchFmCustomers, loadRecentFmCustomers, updateFmCustomer, deleteFmCustomer, countFmCustomers, type FmCustomer } from "../adapters/fmCustomers";
-import { FM_ERROR_KEY, FM_SCAN_DEFAULT_FEE, loadFmGlobalFee, saveFmScan, validateFmScan, type FmScanInput } from "../adapters/fmScan";
+import { FM_ERROR_KEY, FM_SCAN_DEFAULT_FEE, loadFmGlobalFee, saveFmScan, validateFmScanForSave, type FmScanInput } from "../adapters/fmScan";
 import { validHandle } from "../adapters/parcelScan";
 import { priceInput, hasCents } from "../../lib/money";
 import BuyerContactField from "../components/BuyerContactField";
@@ -108,7 +108,7 @@ export default function FmCustomerDetails({ cur = "NT$", onImported, fee: feeOve
       recipientName: c.name, phone: c.phone, storeId: c.storeId, amount: price,
       shippingFee: String(fee), orderDate: taipeiDayId(), buyerUsername: noHandle ? "" : (contactOn ? normalizeContact(platform, handle) : handle),
     };
-    const errs = validateFmScan(parcel, parcel.orderDate);
+    const errs = validateFmScanForSave(parcel, parcel.orderDate);
     const first = errs.recipientName ?? errs.phone ?? errs.storeId ?? errs.amount ?? errs.total ?? errs.buyerUsername;
     if (first) { setImportErr(t[FM_ERROR_KEY[first]]); return; }
     if (!noHandle && !validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
