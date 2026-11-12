@@ -44,12 +44,13 @@ export interface ScanQrLookupApi {
   mark: ScanQrLookupMark | null;
   scanned: (handle: string) => void;
   /**
-   * The seller changed the username field BY HAND (typed in it, or emptied it with the "no handle" tick) — call it
-   * with the field's new text. While that text still stands for the filled buyer (rule #4: another letter case, an
-   * "@", a note after "@username") nothing happens. When it no longer does, the details the fill wrote and nobody
-   * touched are blanked and the fill is forgotten. Does nothing with the lookup off, during an edit, or with no fill.
+   * The seller changed the username field BY HAND (typed or pasted in it, or emptied it with the "no handle" tick) —
+   * call it with the field's new text. While that text still stands for the filled buyer (rule #4: another letter
+   * case, an "@", a note after "@username") nothing happens. When it no longer does, the details the fill wrote and
+   * nobody touched are blanked and the fill is forgotten. It never reads Customers. Does nothing with the lookup off,
+   * during an edit, or with no fill.
    */
-  typed: (handle: string) => void;
+  changedByHand: (handle: string) => void;
   /**
    * Clear / Cancel / Save done / next photo / edit start / Import: forget the fill, drop any answer on its way.
    * Returns true when details a fill WROTE are still in the form (read at call time, never from an old render);
@@ -128,9 +129,12 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
     });
   }, [setMark, takeBack]);
 
-  const typed = useCallback((handle: string) => {
+  const changedByHand = useCallback((handle: string) => {
     const o = optsRef.current;
+    // Off, or a saved parcel is being edited. (A second line of defence: the screens hold no fill in either case —
+    // an off screen never takes one over from a draft, and starting an edit calls reset().)
     if (!o.on || o.blocked) return;
+    fieldsRef.current = { ...fieldsRef.current, handle }; // the form says this now (an answer on its way checks it)
     const prev = markRef.current;
     if (!prev) return; // nothing was filled → typing is just typing
     if (usernameKeyOf(handle) === prev.handle) return; // still the filled buyer's username
@@ -147,5 +151,5 @@ export function useScanQrLookup(opts: ScanQrLookupOpts): ScanQrLookupApi {
 
   const drop = useCallback(() => { seqRef.current++; }, []);
 
-  return { mark, scanned, typed, reset, drop };
+  return { mark, scanned, changedByHand, reset, drop };
 }

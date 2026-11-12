@@ -96,6 +96,22 @@ describe("7-11 photo path — Scan QR → fill from Customers", () => {
     expect(r.container.textContent).not.toContain("Old Name");
   });
 
+  it("after a fill on the photo card, another username typed by hand takes the filled details back — same as on the manual entry", async () => {
+    m.scanParcel.mockResolvedValue(read(null, null, null));
+    m.lookup.mockResolvedValue(found(rec("new")));
+    const r = mount(true);
+    await pickPhotos(r, 1);
+    await scanQr(r, "maria_shops", "maria_shops");
+    await waitFor(() => expect(details(r)).toEqual({ name: "Maria Santos", phone: "0911222333", store: "246810" }));
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "@Maria_Shops" } }); // the same username: nothing happens
+    expect(details(r)).toEqual({ name: "Maria Santos", phone: "0911222333", store: "246810" });
+    fireEvent.change(r.getByTestId("ps-phone"), { target: { value: "0999888777" } }); // the seller corrects one detail
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "someone_else" } });
+    expect(details(r)).toEqual({ name: "", phone: "0999888777", store: "" });
+    expect(m.lookup).toHaveBeenCalledTimes(1);
+    nothingNew(r);
+  });
+
   it("the photo gave only ONE of the three (the phone): nothing is filled", async () => {
     m.scanParcel.mockResolvedValue(read(null, "0911222338", null));
     m.lookup.mockResolvedValue(found(rec("a")));

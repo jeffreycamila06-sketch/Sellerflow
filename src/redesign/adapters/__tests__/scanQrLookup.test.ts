@@ -322,8 +322,10 @@ describe("the username changed by hand — both screens tell the hook, at every 
   it.each([["ParcelScan.tsx", "notes"], ["FmParcelScan.tsx", "username"]])("%s", (file, col) => {
     const src = readFileSync(`src/redesign/screens/${file}`, "utf8");
     // ONE function writes the field for a hand change, and it tells the hook
-    expect(src).toContain(`const handleByHand = (v: string) => { F({ ${col}: v }); lookup.typed(v); };`);
-    // the field's text is written in exactly two places: that function, and the Scan QR handler (which calls lookup.scanned)
+    expect(src).toContain(`const handleByHand = (v: string) => { F({ ${col}: v }); lookup.changedByHand(v); };`);
+    // through F(…) the field's text is written in exactly two places: that function, and the Scan QR handler (which calls
+    // lookup.scanned). (Clear, edit start and a new photo replace the WHOLE form with setForm and call lookup.reset() —
+    // their own tests are in ScanQrLookup.screens / .camera.)
     expect(src.match(new RegExp(`F\\(\\{ ${col}: [^}]*\\}\\)`, "g"))).toEqual([`F({ ${col}: v })`, `F({ ${col}: handle.slice(0, 50) })`]);
     // the picker field (typing and paste), the plain field, and both "no handle" ticks
     expect(src).toContain("onValue={handleByHand}");
@@ -335,7 +337,7 @@ describe("the username changed by hand — both screens tell the hook, at every 
   it("the hook decides with rule #4 and takes the details back with the same code a scan of another buyer uses", () => {
     const hook = readFileSync("src/redesign/adapters/useScanQrLookup.ts", "utf8");
     expect(hook).toContain("if (usernameKeyOf(handle) === prev.handle) return;");
-    expect((hook.match(/takeBack\(o, prev, /g) ?? []).length).toBe(2); // scanned() and typed()
+    expect((hook.match(/takeBack\(o, prev, /g) ?? []).length).toBe(2); // scanned() and changedByHand()
   });
 });
 

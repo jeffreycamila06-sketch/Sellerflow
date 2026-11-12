@@ -141,9 +141,9 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   }, []);
 
   const F = (patch: Partial<Form>) => setForm((s) => ({ ...s, ...patch }));
-  // The username field changed BY HAND (typing in it, or the "no handle" tick emptying it). The lookup is told: when
+  // The username field changed BY HAND (typing or pasting in it, or the "no handle" tick emptying it). The lookup is told: when
   // the text no longer stands for the buyer a Scan QR filled, that buyer's untouched details go with it.
-  const handleByHand = (v: string) => { F({ username: v }); lookup.typed(v); };
+  const handleByHand = (v: string) => { F({ username: v }); lookup.changedByHand(v); };
   const clearForm = () => { setForm(emptyForm); setNoHandle(false); lookup.reset(); };
 
   // The parcel as it will be saved. New: today (Taipei) + the FamilyMart fee. Edit: keeps its own.

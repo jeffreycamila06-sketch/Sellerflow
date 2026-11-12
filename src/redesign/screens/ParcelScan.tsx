@@ -1085,9 +1085,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || contactErr || (batchFull && !editing) || frozen.blocked;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
-  // The username field changed BY HAND (typing in it, or the "no handle" tick emptying it). The lookup is told: when
+  // The username field changed BY HAND (typing or pasting in it, or the "no handle" tick emptying it). The lookup is told: when
   // the text no longer stands for the buyer a Scan QR filled, that buyer's untouched details go with it.
-  const handleByHand = (v: string) => { F({ notes: v }); lookup.typed(v); };
+  const handleByHand = (v: string) => { F({ notes: v }); lookup.changedByHand(v); };
 
   // "Scan QR" — decode the buyer @username off the printed SFL sticker (camera photo or
   // an uploaded label image) and auto-fill the required handle field VERBATIM. No QR

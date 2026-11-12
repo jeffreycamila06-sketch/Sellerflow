@@ -25,7 +25,7 @@ npx vite --config vite.preview.config.ts --port 5199
 node docs/design/scan-qr-lookup/built/make-built.cjs
 ```
 
-## Mga larawan (24)
+## Mga larawan (28)
 `<711|fm>_<sitwasyon>_<lapad>.jpg` — lapad: `iphone390`, `android360`, `android430`, `laptop1280`.
 
 | Sitwasyon | Na-scan | Ano ang makikita |
@@ -33,11 +33,21 @@ node docs/design/scan-qr-lookup/built/make-built.cjs
 | `1-filled` | `@annc_tw` — may 3 record sa preview (2 magkaibang phone); ang pinakabago ay naka-save bilang `@annc_tw (U)` | Napunan ang pangalan, phone at store ng pinakabagong record; cursor sa Amount. Walang kahon, walang listahan |
 | `2-no-match` | `@newbuyer_tw` (walang record) | Username lang at ang dating mensahe |
 | `3-shared-word` | `@user` — sa preview, `user` ang contact ng 3 buyer na may 3 magkakaibang phone | Username lang at ang dating mensahe — kapareho ng `2-no-match` |
+| `4-hand-change-before` / `-after` (iphone390 lang) | `@annc_tw`, tapos **in-type nang kamay** ang `another_buyer` sa username | Bago: napunan. Pagkatapos: blangko ang pangalan, phone at store; walang bagong linya o mensahe (ang pulang paalala sa store # ay ang dati nang paalala ng blangkong store) |
 
 Sa preview database (7-11 at FamilyMart) may sadyang mga record na **hindi dapat gamitin**: `annc_tw2` (ibang username) at
 isang `annc_tw` na LINE ang app — parehong mas bago kaysa sa tamang record. Hindi sila ang napunan, at hindi sila kasama sa
 bilang ng phone. (Ang preview database ay hindi nagsasala gaya ng totoong database — ibinabalik nito ang lahat ng record ng
 seller, kaya ang huling tsek ng app ang nakikita sa mga larawan, hindi ang tanong sa database.)
+
+Ang 24 na larawan ng sitwasyon 1–3 ay mula sa Hakbang 4 (**hindi inulit** sa ikot na ito — walang binago sa itsura). Ang 4 na
+larawan ng sitwasyon 4 ay bago (`make-handchange.cjs`).
+
+**Username na pinalitan nang kamay — totoong browser, naka-ON** (`make-handchange.cjs` → `make-handchange.txt`): 7-11 at
+FamilyMart × 360 / 390 / 430 / 1280 px × 6 tsek = **48 tsek, lahat ayon sa inaasahan**: (A) parehong username na `@ANNC_TW` →
+walang nabura; (B) binago ng seller ang phone, tapos ibang username → nanatili ang phone, nabura ang pangalan at store;
+(C) ibang username → nabura ang tatlo; (D) tsek na "walang handle" → nabura ang tatlo. Bagong elemento sa screen: 0;
+pahinang may pahalang na scroll: 0. (Preview database, hindi production.)
 
 **Sinukat ng script habang kinukuha ang mga larawan** (`make-built.txt`): 24 larawan · elemento ng dating kahon / listahan sa screen: **0** sa lahat · pahinang may pahalang na scroll: **0** · ang hilera ng "Batch" ay 50 px sa lahat ng lapad. (Ang purple na header sa itaas ay hindi ginalaw ng branch na ito — kapareho ng nasa `main`.)
 
