@@ -4889,24 +4889,51 @@ Taiwan Parcel Scan only (7-11 `ParcelScan.tsx`, FamilyMart `FmParcelScan.tsx`). 
 
 ## 2026-11-12 — FAMILYMART (全家) PICKUP CHECK (branch `claude/fm-pickup-check`, NOT merged; sql/151 NOT applied; Render NOT deployed)
 Pickup Status: Check now, the automatic check, the urgent check and the new-parcels check after a Sync also
-check 全家 rows (carrier `fm`, 11-digit 寄件編號), in the SAME job, after the 7-11 part. Server only — no app UI.
+check 全家 rows (carrier `fm`, 11-digit 寄件編號), in the SAME job. Server only — no new screen or button.
+**What a seller sees change:** 全家 rows get newer statuses by themselves, and the small "not checked for 24 h"
+marker (`isStale`, needs `last_polled_at`) now shows on 全家 rows too.
 - **Files:** NEW `server/fmTracking.js` (pure: step codes → status, one session with injected steps),
   `server/fmCaptchaImage.js` (pure: GIF → black/white BMP for OCR, own GIF reader, no dependency),
-  `server/fmTrackingRunner.js` (HTTP, cookie jar, OCR, gate, cap, breaker, DB). EDIT `server/parcelTrackingWorker.js`
-  (`runFm` after the 7-11 check, own try/catch). `parcelTracking.js`, `parcelTrackingRunner.js`, `server.js` NOT edited.
+  `server/fmTrackingRunner.js` (HTTP, cookie jar, OCR, gate, cap, breaker, DB). EDIT `server/parcelTrackingWorker.js`.
+  `parcelTracking.js`, `parcelTrackingRunner.js`, `server.js` NOT edited.
+- **Order inside a job (audit fix):** the 7-11 part is FINISHED first exactly as on main (`finishJob` is main's code:
+  job row, health row, press refund, last checked, purge, follow-up, message to the app, log). Only then
+  `fmAfter` runs the 全家 part, inside a `Promise.race` of `FM_PART_MAX_MS` (8 min + 2 min), and adds its numbers
+  with ONE small update of `parcels_total` / `parcels_checked` + a second message to the app. With the switch off
+  the only difference from main is one small settings read as the last database call of the job.
+  "Last checked" is stamped by the 全家 part only when the 7-11 part had nothing to check and 全家 answered
+  (`fmStampsLastChecked`). A seller's Check now with 全家 parcels only: the 7-11 part gives the press back (as
+  main does for "nothing to check"); when 全家 then answered, the press counts again (`fmKeepsPress`) — the
+  12-hour rule holds; when 全家 answered nothing, the press stays given back.
 - **Separate from 7-11:** own kill switch `app_settings.fm_check_enabled` (exact 'true'; missing = off), own breaker
-  (3 failed sessions → `fm_check_cooldown_until`, 4 h), own daily counter (`fm_tracking_daily`, 1,500 requests/day),
-  60 parcels and 8 min per job, own health row (`parcel_tracking_health.kind = 'fm'`), log tag `[FM-CHECK]`.
-  A 全家 failure never changes the 7-11 job result. ⚠️ The other way round is NOT true: the 全家 part rides on the
-  job, so while 7-11 checking is off / paused / over its daily cap, 全家 is not checked either.
+  (3 failed sessions in a row, counted ACROSS jobs in `fm_check_fail_streak`, back to 0 at the first good session →
+  `fm_check_cooldown_until`, 4 h; the count is NOT reset by the pause, so one more failure after it pauses again),
+  own daily counter (`fm_tracking_daily`, 1,500 requests/day), 60 parcels and 8 min per job, own health row
+  (`parcel_tracking_health.kind = 'fm'`), log tag `[FM-CHECK]`. Every `fm_check_*` key is hidden from sellers'
+  browsers (sql/151 adds a condition to the `app_settings_select` policy; admins read all).
+  ⚠️ The 全家 part rides on the job: while 7-11 checking is off / paused / over its daily cap, 全家 is not checked.
 - **Who:** `fm_check_enabled` AND (`fm_pickup_enabled` = 'true' OR the seller is on the `fm_pickup` preview list —
   RPC `fm_check_open_for`, sql/151).
-- **Statuses (whole history, not only the newest step):** any 11/12/31 or a way-back step (ORDER_NO ≠ EC_ORDER_NO)
-  → returned, even under a newest 09; 09 → picked up; newest 08 → at store; 02–073 → in transit ("drop off before"
-  cleared); 01 only / not found → only the check time; unknown code → status `unknown` + one log line with the code;
-  40 訂單失效 → the row is DELETED. The check never writes `tracking_no`.
-- **Upload vs check (sql/151 `fm_upload_keeps`):** an upload no longer lowers a row the check has answered
-  (returned stays; picked up stays unless the upload says returned; at store never back to in transit).
+- **Statuses (whole history), in this order:** a 40 訂單失效 → the row is DELETED only when every step is 01 or 40
+  (the row id is logged); 40 with any other step → nothing but the check time, one log line. Any 11/12/31 or a
+  way-back step (ORDER_NO ≠ EC_ORDER_NO) → returned, even under a newest 09 and even next to an unknown code.
+  An unknown code → the row KEEPS its status (check time only), one log line with the code. 09 → picked up;
+  newest 08 → at store; 02–073 → in transit ("drop off before" cleared); 01 only / not found → check time only.
+  The check never writes `tracking_no`; every write carries id + user + carrier 'fm' + `terminal = false`.
+- **An answer must be for the parcel asked:** InquiryOrders is used only when its EC_ORDER_NO matches; a parcel the
+  site knows but with no step (`detail_empty`) or with a step of another EC_ORDER_NO (`detail_mismatch`) gets NO
+  write at all and the session counts as failed.
+- **`parcel_tracking.fm_answered_at` (sql/151, nullable):** stamped ONLY by a real answer (returned / picked up /
+  at store / in transit). The upload rule `fm_upload_keeps` reads it (not `last_polled_at`): an answered row is not
+  lowered (returned stays; picked up stays unless the upload says returned; at store never back to in transit),
+  and `fm_upload_keeps_deadline` keeps the row's pickup deadline while the status stays the same (answered row,
+  or at store and the upload has no date).
+  🔧 **When the check got a parcel WRONG:** `update parcel_tracking set fm_answered_at = null where id = '<row id>';`
+  then have the seller upload the 好賣+ Order export again — the upload sets the row (a finished row too).
+  To stop the check for everyone: `fm_check_enabled` = 'false'.
+- **Requests / OCR limits:** 15 s per request up to the last byte of the answer; JSON answer ≤ 1 MB; captcha
+  picture ≤ 200 KB and ≤ 400 × 200 px; a picture that is not a readable captcha GIF is answered "" (never handed
+  to tesseract); the tesseract worker is created with an errorHandler, 60 s to start, 20 s per read.
 - ⚠️ **GUESSES, not confirmed on the real site:** the paths of GetVerificationCode / ChkVerificationCode /
   GetOrderDetail (`FM_PATHS`), 5 parcels per captcha (`FM_PARCELS_PER_SESSION` — the job lowers it by itself when the
   site answers fewer), and the captcha picture settings (`FM_CAPTCHA_IMAGE`; changeable WITHOUT a deploy through
@@ -4915,7 +4942,7 @@ check 全家 rows (carrier `fm`, 11-digit 寄件編號), in the SAME job, after 
 - **Urgent button:** still appears through a 7-11 parcel only (`parcel_tracking_request_check` not changed).
 - ⚠️ The SQL is **151**, not 150: `scanQrLookup.test.ts` forbids any `scripts/sql150-behaviour.mjs` (the removed Scan QR database change).
 - **Proof:** `fmTracking` / `fmCaptchaImage` / `fmTrackingRunner` / `fmWorker` `.server.test.ts`,
-  `fmPickupCheckSql.test.ts`, `scripts/sql151-behaviour.mjs` (PGlite, 39 checks, stub schema).
+  `fmPickupCheckSql.test.ts`, `scripts/sql151-behaviour.mjs` (PGlite, 57 checks, stub schema).
 - **Order when Jeff says go:** sql/151 (switch off) → Render deploy (quiet window, Business Pulse check first) →
   measure real captchas, set `fm_check_captcha` if needed → `fm_check_enabled` = 'true' → sql/116b (guide).
   Either of the first two may go first: without sql/151 the server finds no switch row and does nothing for 全家.

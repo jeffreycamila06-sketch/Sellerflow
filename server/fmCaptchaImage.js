@@ -21,6 +21,10 @@ export const FM_CAPTCHA_IMAGE = Object.freeze({
 const fail = (code) => { const e = new Error(code); e.code = code; return e; };
 const MAX_SIDE = 2000;
 const MAX_PIXELS = 1000 * 1000;
+// A captcha is a small picture. Anything bigger is not read at all (never handed to OCR).
+export const FM_CAPTCHA_MAX_BYTES = 200 * 1024;
+export const FM_CAPTCHA_MAX_WIDTH = 400;
+export const FM_CAPTCHA_MAX_HEIGHT = 200;
 
 // PURE — settings from the app_settings value (a JSON string or an object). Anything missing or
 // invalid keeps the constant above; every number is clamped.
@@ -85,12 +89,13 @@ function lzw(minCodeSize, data, pixelCount) {
 
 // PURE — first frame of a GIF → { width, height, gray } (gray = one 0–255 value per pixel, row by row).
 // Throws { code } for anything that is not a readable GIF.
-export function decodeGif(input) {
+export function decodeGif(input, { maxWidth = MAX_SIDE, maxHeight = MAX_SIDE } = {}) {
   const b = input instanceof Uint8Array ? input : new Uint8Array(input || []);
   if (b.length < 14 || b[0] !== 0x47 || b[1] !== 0x49 || b[2] !== 0x46) throw fail("not_gif");
   const le16 = (p) => b[p] | (b[p + 1] << 8);
   const width = le16(6), height = le16(8);
   if (!width || !height || width > MAX_SIDE || height > MAX_SIDE || width * height > MAX_PIXELS) throw fail("gif_bad_size");
+  if (width > maxWidth || height > maxHeight) throw fail("gif_too_big"); // checked on the header, before any decoding
   let p = 13, gct = null;
   if (b[10] & 0x80) { const n = 3 * (1 << ((b[10] & 7) + 1)); if (p + n > b.length) throw fail("gif_truncated"); gct = b.subarray(p, p + n); p += n; }
   const skipBlocks = () => { while (p < b.length) { const sz = b[p++]; if (!sz) return; p += sz; } };
@@ -209,8 +214,10 @@ export function maskToBmp(ink, width, height, settings = FM_CAPTCHA_IMAGE) {
 }
 
 // PURE — captcha GIF bytes → { bmp, width, height } ready for OCR. Throws { code } when the bytes
-// are not a readable GIF (the caller then hands the original bytes to OCR as they are).
+// are not a readable GIF, or the picture is bigger than a captcha (200 KB, 400 × 200 px). The caller
+// then answers "" — the bytes are NEVER handed to OCR as they are.
 export function captchaToBmp(bytes, settings = FM_CAPTCHA_IMAGE) {
-  const img = decodeGif(bytes);
+  if (bytes && bytes.length > FM_CAPTCHA_MAX_BYTES) throw fail("captcha_too_large");
+  const img = decodeGif(bytes, { maxWidth: FM_CAPTCHA_MAX_WIDTH, maxHeight: FM_CAPTCHA_MAX_HEIGHT });
   return maskToBmp(inkMask(img.gray, img.width, img.height, settings), img.width, img.height, settings);
 }

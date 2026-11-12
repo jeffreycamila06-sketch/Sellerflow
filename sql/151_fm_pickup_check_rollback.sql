@@ -215,10 +215,15 @@ begin
 end;
 $function$;
 
+drop function public.fm_upload_keeps_deadline(text, timestamptz, text, date);
 drop function public.fm_upload_keeps(text, timestamptz, text);
 drop function public.fm_check_open();
 drop function public.fm_check_open_for(uuid);
 drop table public.fm_tracking_daily;
-delete from public.app_settings where key in ('fm_check_enabled', 'fm_check_cooldown_until', 'fm_check_captcha');
+alter table public.parcel_tracking drop column fm_answered_at;
+-- The policy exactly as it was live before sql/151.
+alter policy app_settings_select on public.app_settings
+  using ((left(key, 13) <> 'parcel_check_') or public.is_admin());
+delete from public.app_settings where left(key, 9) = 'fm_check_';
 
 commit;

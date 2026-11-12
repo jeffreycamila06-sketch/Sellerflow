@@ -3,8 +3,8 @@
 // The four fixtures are the code sequences of four real parcels (owner, 2026-11-12).
 import { describe, it, expect, vi } from "vitest";
 import {
-  classifyFm, fmRowChange, parseFmAnswer, inquiryItem, detailSteps, runFmSession, fmTime, fmDay,
-  isFmTrackingNo, cleanFmCaptcha, FM_CODES, FM_PATHS, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES,
+  classifyFm, fmRowChange, parseFmAnswer, inquiryItem, detailSteps, stepsFault, runFmSession, fmTime, fmDay,
+  isFmTrackingNo, cleanFmCaptcha, FM_CODES, FM_PATHS, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES, FM_ANSWER_KINDS,
 } from "../../../../server/fmTracking.js";
 
 type Step = Record<string, unknown>;
@@ -82,6 +82,19 @@ describe("classifyFm — the rules one by one", () => {
     expect(r).toMatchObject({ kind: "unknown", unknownCode: "55", status_message: "新狀態" });
     expect(classifyFm(history(ec, ["99"], ""), ec).kind).toBe("unknown");
   });
+  it("[A] a RETURN wins over a code we do not know: 11 / 12 / 31 or a way-back step → returned", () => {
+    for (const code of ["11", "12", "31"]) {
+      expect(classifyFm(history(ec, ["55", code, "08", "02", "01"], "2026/11/02"), ec)).toMatchObject({ kind: "returned", pickup_deadline: "2026-11-02" });
+    }
+    const wayBack = history(ec, ["55", "04", "08", "02", "01"], "2026/11/02", {}, { idx: [0, 1], orderNo: "16399999999", rtn: "2026/11/13" });
+    expect(classifyFm(wayBack, ec).kind).toBe("returned");
+  });
+  it("[B] 40: the row is removed ONLY when every step is 01 or 40; with any other step it is left alone", () => {
+    for (const codes of [["40", "01"], ["40"], ["40", "01", "01"], ["01", "40"]]) expect(classifyFm(history(ec, codes, ""), ec).kind).toBe("expired");
+    for (const codes of [["40", "02", "01"], ["40", "08", "02", "01"], ["40", "09", "08", "01"], ["40", "11", "08", "01"], ["40", "55", "01"], ["02", "40", "01"]]) {
+      expect(classifyFm(history(ec, codes, "2026/11/02"), ec).kind).toBe("void_unclear");
+    }
+  });
   it("no steps at all → unknown", () => {
     expect(classifyFm([], ec)).toMatchObject({ kind: "unknown", unknownCode: "none" });
     expect(classifyFm(null, ec).kind).toBe("unknown");
@@ -97,7 +110,7 @@ describe("fmRowChange — what is written", () => {
   it("at_store: status, message, deadline, arrival and store (only when the row has none)", () => {
     const c = fmRowChange(classifyFm(AT_STORE, "16354220151"), row, now);
     expect(c).toEqual({ action: "update", patch: {
-      last_polled_at: now, arrived_at: "2026-11-10T20:31:00.000Z", rec_store: "全家取件店", status: "at_store",
+      last_polled_at: now, fm_answered_at: now, arrived_at: "2026-11-10T20:31:00.000Z", rec_store: "全家取件店", status: "at_store",
       status_message: "貨件配達取件店舖", terminal: false, pickup_deadline: "2026-11-18",
     } });
     const kept = fmRowChange(classifyFm(AT_STORE, "16354220151"), { id: "r1", arrived_at: "2026-11-01T00:00:00.000Z", rec_store: "上傳的店名" }, now) as { patch: Record<string, unknown> };
@@ -110,15 +123,22 @@ describe("fmRowChange — what is written", () => {
   });
   it("in transit: the 'drop off before' date from the upload is cleared", () => {
     expect(fmRowChange(classifyFm(history("16300000001", ["03", "02", "01"], ""), "16300000001"), row, now))
-      .toEqual({ action: "update", patch: { last_polled_at: now, status: "in_transit", status_message: "貨件前往物流中心", terminal: false, pickup_deadline: null } });
+      .toEqual({ action: "update", patch: { last_polled_at: now, fm_answered_at: now, status: "in_transit", status_message: "貨件前往物流中心", terminal: false, pickup_deadline: null } });
   });
   it("01 only and not found: nothing but the check time (the status is never lowered)", () => {
     expect(fmRowChange(classifyFm(history("16300000001", ["01"], ""), "16300000001"), row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
     expect(fmRowChange({ kind: "not_found" }, row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
   });
-  it("unknown: status 'unknown' — deadline and arrival are left as they are", () => {
-    const c = fmRowChange({ kind: "unknown", unknownCode: "55", status_message: "新狀態" }, row, now);
-    expect(c).toEqual({ action: "update", patch: { last_polled_at: now, status: "unknown", status_message: "新狀態" } });
+  it("[A][B] unknown code and '40 with other steps': the row keeps its status — only the check time", () => {
+    expect(fmRowChange({ kind: "unknown", unknownCode: "55", status_message: "新狀態" }, row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
+    expect(fmRowChange({ kind: "void_unclear", status_message: "訂單失效" }, row, now)).toEqual({ action: "update", patch: { last_polled_at: now } });
+  });
+  it("fm_answered_at is stamped by the four real answers and by nothing else", () => {
+    expect([...FM_ANSWER_KINDS].sort()).toEqual(["at_store", "in_transit", "picked_up", "returned"]);
+    for (const kind of FM_ANSWER_KINDS) expect((fmRowChange({ kind, status_message: "x", at: now, pickup_deadline: null }, row, now) as { patch: Record<string, unknown> }).patch.fm_answered_at).toBe(now);
+    for (const kind of ["not_found", "not_shipped", "unknown", "void_unclear"]) {
+      expect((fmRowChange({ kind }, row, now) as { patch: Record<string, unknown> }).patch).toEqual({ last_polled_at: now });
+    }
   });
   it("expired (40): the row is removed", () => {
     expect(fmRowChange(classifyFm(EXPIRED, "16351746626"), row, now)).toEqual({ action: "delete" });
@@ -145,6 +165,9 @@ describe("answers", () => {
     const none = { ErrorCode: "000", ErrorMessage: "成功", List: [{ EC_ORDER_NO: "L26A1113SG", CNT: 0.0, ORDER_NO: null, ORDERMESSAGE: null }] };
     expect(inquiryItem(none, "L26A1113SG")).toEqual({ found: false, orderNo: null });
     expect(inquiryItem({ ErrorCode: "000", List: [] }, "16351746626")).toEqual({ found: false, orderNo: null });
+    // the answer must be for the parcel we asked — the one item of the list is never taken on trust
+    const other = { ErrorCode: "000", List: [{ EC_ORDER_NO: "16399999999", CNT: 1.0, ORDER_NO: "16399999999" }] };
+    expect(inquiryItem(other, "16351746626")).toEqual({ found: false, orderNo: null });
     expect(() => inquiryItem({ ErrorCode: "999", ErrorMessage: "x", List: [] }, "1")).toThrow(/inquiry_error/);
     expect(() => inquiryItem({ ErrorCode: "000", List: null }, "1")).toThrow(/inquiry_shape/);
     expect(() => inquiryItem(null, "1")).toThrow(/inquiry_shape/);
@@ -154,6 +177,14 @@ describe("answers", () => {
     expect(detailSteps({ ErrorCode: "000", List: PICKED })).toBe(PICKED);
     expect(() => detailSteps({ ErrorCode: "500", List: [] })).toThrow(/detail_error/);
     expect(() => detailSteps({ Message: "x" })).toThrow(/detail_shape/);
+  });
+  it("stepsFault: an empty list, or a step for another parcel (or for none), cannot be used", () => {
+    expect(stepsFault(AT_STORE, "16354220151")).toBeNull();
+    expect(stepsFault(RETURNED, "16352835793")).toBeNull(); // the way back carries the same EC_ORDER_NO
+    expect(stepsFault([], "16354220151")).toBe("detail_empty");
+    expect(stepsFault(AT_STORE, "16354226527")).toBe("detail_mismatch");
+    expect(stepsFault([...PICKED, { ...PICKED[0], EC_ORDER_NO: "16399999999" }], "16354226527")).toBe("detail_mismatch");
+    expect(stepsFault([{ ...PICKED[0], EC_ORDER_NO: undefined }], "16354226527")).toBe("detail_mismatch");
   });
   it("dates, numbers, captcha text", () => {
     expect(fmTime("2026/11/03", "01:21")).toBe("2026-11-02T17:21:00.000Z");
@@ -221,6 +252,19 @@ describe("runFmSession — one session with injected steps", () => {
     expect(res.results.map((r: { tracking_no: string }) => r.tracking_no)).toEqual(["16354220151", "16354226527"]);
     expect(res.error).toBe("inquiry_shape");
     expect(res.detail).toContain("code=999");
+  });
+  it("the site knows the parcel but sends NO step → detail_empty: nothing for that parcel, the session is an error", async () => {
+    const { deps } = makeDeps(["043180"]);
+    deps.detail.mockImplementation(async (no: string) => ({ ErrorCode: "000", List: no === "16354226527" ? [] : answers[no] }));
+    const res = await runFmSession(["16354220151", "16354226527", "16352835793"], deps);
+    expect(res.error).toBe("detail_empty");
+    expect(res.results.map((r: { tracking_no: string }) => r.tracking_no)).toEqual(["16354220151"]); // not the faulty one, not the ones after it
+  });
+  it("steps of ANOTHER parcel → detail_mismatch: nothing for that parcel", async () => {
+    const { deps } = makeDeps(["043180"]);
+    deps.detail.mockImplementation(async () => ({ ErrorCode: "000", List: PICKED })); // every answer is parcel 16354226527
+    const res = await runFmSession(["16354220151", "16354226527"], deps);
+    expect(res).toMatchObject({ error: "detail_mismatch", results: [] });
   });
   it("a thrown step (network / HTTP) ends the session with its code", async () => {
     const { deps } = makeDeps(["043180"]);

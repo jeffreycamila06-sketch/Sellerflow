@@ -97,22 +97,31 @@ const text = (v) => { const s = String(v ?? "").trim(); return s || null; };
 
 // The whole history (NEWEST FIRST) → what the parcel is. Returns
 //   { kind, status_message, at, pickup_deadline, arrived_at, rec_store, unknownCode? }
-//   kind ∈ returned | picked_up | at_store | in_transit | not_shipped | expired | unknown
-// Rules (owner, 2026-11-12):
-//   • a code we do not know anywhere → unknown (no guess)
-//   • RETURNED when ANY step is 11 / 12 / 31, or any step's ORDER_NO differs from its EC_ORDER_NO
-//     (the way back) — even when the newest step is 09 已完成取件 (the SELLER collected the return).
-//     at = the first 11. The buyer's deadline = ORDER_DATE_RTN of the ORIGINAL leg.
-//   • newest 40 → expired (the order is void)
-//   • any 09 → picked_up (at = the 09)        • newest 08 → at_store (deadline = ORDER_DATE_RTN)
-//   • newest 02–073 → in_transit               • newest 01 → not_shipped (the row keeps its status)
+//   kind ∈ returned | picked_up | at_store | in_transit   ← real answers (written to the row)
+//        | expired                                         ← the row is removed
+//        | not_shipped | unknown | void_unclear            ← nothing but the check time is written
+// Rules, in this order (owner, 2026-11-12, audit round):
+//   1. a 40 訂單失效 anywhere: when EVERY step is 01 or 40 → expired; with any other step →
+//      void_unclear (the row is left as it is, one log line)
+//   2. RETURNED when ANY step is 11 / 12 / 31, or any step's ORDER_NO differs from its EC_ORDER_NO
+//      (the way back) — even when the newest step is 09 已完成取件 (the SELLER collected the return),
+//      and even when another step has a code we do not know. at = the first 11. The buyer's
+//      deadline = ORDER_DATE_RTN of the ORIGINAL leg.
+//   3. a code we do not know → unknown (no guess: the row keeps its status, one log line with the code)
+//   4. any 09 → picked_up (at = the 09)        newest 08 → at_store (deadline = ORDER_DATE_RTN)
+//      newest 02–073 → in_transit               newest 01 → not_shipped
+// The caller has already made sure the list is not empty and every step belongs to the parcel asked
+// (stepsFault); an empty list here still answers unknown.
 export function classifyFm(steps, ecOrderNo) {
   const list = Array.isArray(steps) ? steps.filter((s) => s && typeof s === "object") : [];
   const none = { status_message: null, at: null, pickup_deadline: null, arrived_at: null, rec_store: null };
   if (!list.length) return { ...none, kind: "unknown", unknownCode: "none" };
   const codes = list.map(codeOf);
-  const unknownAt = codes.findIndex((c) => !(c in FM_CODES));
-  if (unknownAt >= 0) return { ...none, kind: "unknown", unknownCode: safeWord(codes[unknownAt], 8), status_message: text(list[unknownAt].STATUS_D) };
+  if (codes.includes("40")) {
+    const at40 = codes.indexOf("40");
+    if (codes.every((c) => c === "01" || c === "40")) return { ...none, kind: "expired", status_message: text(list[at40].STATUS_D) || FM_CODES["40"], at: fmTime(list[at40].ORDER_DATE, list[at40].ORDER_TIME) };
+    return { ...none, kind: "void_unclear", status_message: text(list[at40].STATUS_D) || FM_CODES["40"] };
+  }
 
   const own = String(ecOrderNo ?? "").trim();
   const isWayBack = (s) => {
@@ -140,7 +149,8 @@ export function classifyFm(steps, ecOrderNo) {
       pickup_deadline: deadlineStep ? fmDay(deadlineStep.ORDER_DATE_RTN) : null, arrived_at, rec_store,
     };
   }
-  if (newest === "40") return { ...none, kind: "expired", status_message: msgOf(list[0], "40"), at: timeOf(list[0]) };
+  const unknownAt = codes.findIndex((c) => !(c in FM_CODES));
+  if (unknownAt >= 0) return { ...none, kind: "unknown", unknownCode: safeWord(codes[unknownAt], 8), status_message: text(list[unknownAt].STATUS_D) };
   const picked = codes.indexOf("09");
   if (picked >= 0) return { kind: "picked_up", status_message: msgOf(list[picked], "09"), at: timeOf(list[picked]), pickup_deadline: null, arrived_at, rec_store };
   if (newest === "08") {
@@ -156,8 +166,8 @@ export function inquiryItem(answer, ecOrderNo) {
   const code = String(answer?.ErrorCode ?? "");
   if (!answer || !Array.isArray(answer.List)) throw fmError("inquiry_shape", `keys=${safeKeys(answer)} code=${safeWord(code, 8)}`);
   if (code !== "000") throw fmError("inquiry_error", `code=${safeWord(code, 8)}`);
-  const own = String(ecOrderNo);
-  const item = answer.List.find((x) => String(x?.EC_ORDER_NO ?? "") === own) || (answer.List.length === 1 ? answer.List[0] : null);
+  const own = String(ecOrderNo).trim();
+  const item = answer.List.find((x) => String(x?.EC_ORDER_NO ?? "").trim() === own); // only the parcel asked — never "the one item there is"
   const orderNo = String(item?.ORDER_NO ?? "").trim();
   if (!item || !(Number(item.CNT) > 0) || !orderNo) return { found: false, orderNo: null };
   return { found: true, orderNo };
@@ -174,28 +184,44 @@ export function detailSteps(answer) {
   throw fmError("detail_shape", `keys=${safeKeys(answer)}`);
 }
 
+// The steps of a parcel the site said it KNOWS must be usable: not empty, and every step for the
+// parcel we asked. Returns the fault code, or null.
+//   detail_empty    — the site found the parcel but sent no step
+//   detail_mismatch — a step carries another (or no) EC_ORDER_NO
+// Either way nothing is written for that parcel and the session counts as failed.
+export function stepsFault(steps, ecOrderNo) {
+  const list = Array.isArray(steps) ? steps : [];
+  if (!list.length) return "detail_empty";
+  const own = String(ecOrderNo ?? "").trim();
+  if (list.some((s) => !s || typeof s !== "object" || String(s.EC_ORDER_NO ?? "").trim() !== own)) return "detail_mismatch";
+  return null;
+}
+
+// The four REAL answers. Only these change the row's status and stamp fm_answered_at (sql/151) —
+// the mark that tells the 好賣+ upload "the check has answered this row, do not lower it".
+export const FM_ANSWER_KINDS = Object.freeze(["returned", "picked_up", "at_store", "in_transit"]);
+
 // One classified parcel → what to do with its row. `row` = the stored row (arrived_at, rec_store).
 //   { action: "delete" } | { action: "update", patch }
-// not_found / not_shipped change nothing but the check time. arrived_at and rec_store are written
-// only when the row has none. The check never writes tracking_no.
+// not_found / not_shipped / unknown / void_unclear change nothing but the check time. arrived_at and
+// rec_store are written only when the row has none. The check never writes tracking_no.
 export function fmRowChange(result, row, nowIso) {
   const base = { last_polled_at: nowIso };
+  const answered = { ...base, fm_answered_at: nowIso };
   const once = {};
   if (result.arrived_at && !row?.arrived_at) once.arrived_at = result.arrived_at;
   if (result.rec_store && !row?.rec_store) once.rec_store = result.rec_store;
   switch (result.kind) {
     case "expired": return { action: "delete" };
     case "returned":
-      return { action: "update", patch: { ...base, ...once, status: "returned", status_message: result.status_message, terminal: true, returned_at: result.at || nowIso, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
+      return { action: "update", patch: { ...answered, ...once, status: "returned", status_message: result.status_message, terminal: true, returned_at: result.at || nowIso, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
     case "picked_up":
-      return { action: "update", patch: { ...base, ...once, status: "picked_up", status_message: result.status_message, terminal: true, picked_up_at: result.at || nowIso } };
+      return { action: "update", patch: { ...answered, ...once, status: "picked_up", status_message: result.status_message, terminal: true, picked_up_at: result.at || nowIso } };
     case "at_store":
-      return { action: "update", patch: { ...base, ...once, status: "at_store", status_message: result.status_message, terminal: false, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
+      return { action: "update", patch: { ...answered, ...once, status: "at_store", status_message: result.status_message, terminal: false, ...(result.pickup_deadline ? { pickup_deadline: result.pickup_deadline } : {}) } };
     case "in_transit": // on its way → the "drop off before …" date from the upload no longer applies
-      return { action: "update", patch: { ...base, status: "in_transit", status_message: result.status_message, terminal: false, pickup_deadline: null } };
-    case "unknown":
-      return { action: "update", patch: { ...base, status: "unknown", status_message: result.status_message } };
-    default: // not_found, not_shipped
+      return { action: "update", patch: { ...answered, status: "in_transit", status_message: result.status_message, terminal: false, pickup_deadline: null } };
+    default: // not_found, not_shipped, unknown, void_unclear
       return { action: "update", patch: base };
   }
 }
@@ -225,7 +251,10 @@ export async function runFmSession(codes, deps, { maxTries = FM_MAX_CAPTCHA_TRIE
     for (const no of codes) {
       const item = inquiryItem(await deps.inquiry(no), no);
       if (!item.found) { out.results.push({ tracking_no: no, result: { kind: "not_found" } }); continue; }
-      out.results.push({ tracking_no: no, result: classifyFm(detailSteps(await deps.detail(no, item.orderNo)), no) });
+      const steps = detailSteps(await deps.detail(no, item.orderNo));
+      const fault = stepsFault(steps, no);
+      if (fault) throw fmError(fault); // nothing is written for this parcel
+      out.results.push({ tracking_no: no, result: classifyFm(steps, no) });
     }
   } catch (e) {
     out.error = (e && e.code) || (e && e.name === "AbortError" ? "timeout" : "threw");

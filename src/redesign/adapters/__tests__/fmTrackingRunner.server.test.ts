@@ -3,10 +3,12 @@
 // the daily cap, the breaker, a changed answer, which rows are asked, what is written, the logs.
 import { describe, it, expect, vi } from "vitest";
 import {
-  runFmForJob, checkFmRows, readFmGate, fmGateFrom, selectFmRows, underFmCap, fmMaxRequestsPerSession,
+  runFmForJob, checkFmRows, readFmGate, fmGateFrom, selectFmRows, underFmCap, fmMaxRequestsPerSession, createFmOcr,
+  fmSessionOutcome, fmStreakFrom, readCapped,
   FM_DAILY_REQUEST_CAP, FM_PARCELS_PER_JOB, FM_JOB_MAX_MS, FM_BREAKER_FAILURES, FM_BREAKER_COOLDOWN_MS,
-  FM_SETTING_ENABLED, FM_SETTING_COOLDOWN,
+  FM_SETTING_ENABLED, FM_SETTING_COOLDOWN, FM_SETTING_STREAK, FM_JSON_MAX_BYTES, FM_FETCH_TIMEOUT_MS,
 } from "../../../../server/fmTrackingRunner.js";
+import { FM_CAPTCHA_MAX_BYTES } from "../../../../server/fmCaptchaImage.js";
 import { FM_CODES, FM_BASE } from "../../../../server/fmTracking.js";
 
 const NOW = new Date("2026-11-12T03:00:00.000Z"); // 11:00 Taipei
@@ -29,17 +31,23 @@ const ANSWERS: Record<string, Step[] | null> = {
 };
 
 // ── a fake 全家 site ────────────────────────────────────────────────────────────
-type SiteOpts = { answers?: Record<string, Step[] | null>; perCaptcha?: number; http?: Record<string, number>; codeAnswer?: unknown };
+type SiteOpts = {
+  answers?: Record<string, Step[] | null>; perCaptcha?: number; http?: Record<string, number>; codeAnswer?: unknown;
+  detailFor?: Record<string, Step[]>;   // GetOrderDetail answers these steps for that parcel, whatever was asked
+  stallBody?: string;                   // this path sends its headers, then never finishes its body
+  bigBody?: Record<string, number>;     // this path answers a body of that many bytes
+};
 function makeSite(o: SiteOpts = {}) {
   const answers = o.answers ?? ANSWERS;
   const log: { method: string; path: string; cookie: string; body: Record<string, unknown> | null }[] = [];
   const sessions = new Map<string, { verified: boolean; asked: number; codes: Map<string, string> }>();
   let sess = 0, codeN = 0, active = 0, maxActive = 0;
   const wrap = (inner: unknown) => JSON.stringify({ d: JSON.stringify(inner) });
-  const res = (status: number, body: string | Uint8Array, cookies: string[] = []) => ({
-    status, headers: { getSetCookie: () => cookies },
-    text: async () => (typeof body === "string" ? body : ""),
-    arrayBuffer: async () => (typeof body === "string" ? new TextEncoder().encode(body).buffer : body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)),
+  const never = new Promise<never>(() => {});
+  const res = (status: number, body: string | Uint8Array, cookies: string[] = [], stalled = false) => ({
+    status, headers: { getSetCookie: () => cookies, get: () => null },
+    text: async () => (stalled ? never : typeof body === "string" ? body : ""),
+    arrayBuffer: async () => (stalled ? never : typeof body === "string" ? new TextEncoder().encode(body).buffer : body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)),
   });
   const fetchImpl = async (url: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
     active += 1; maxActive = Math.max(maxActive, active);
@@ -53,6 +61,8 @@ function makeSite(o: SiteOpts = {}) {
       const body = init.body ? JSON.parse(init.body) as Record<string, unknown> : null;
       log.push({ method, path, cookie, body });
       if (o.http?.[path]) return res(o.http[path], "blocked");
+      if (o.stallBody === path) return res(200, "", [], true);
+      if (o.bigBody?.[path]) return res(200, new Uint8Array(o.bigBody[path]));
       if (path === "index.aspx" && method === "GET") {
         const id = `S${++sess}`;
         sessions.set(id, { verified: false, asked: 0, codes: new Map() });
@@ -79,7 +89,10 @@ function makeSite(o: SiteOpts = {}) {
         const no = String(body?.ListEC_ORDER_NO);
         return res(200, wrap({ ErrorCode: "000", ErrorMessage: "成功", List: [{ EC_ORDER_NO: no, CNT: answers[no] ? 1.0 : 0.0, ORDER_NO: answers[no] ? no : null, ORDERMESSAGE: null }] }));
       }
-      if (path === "list.aspx/GetOrderDetail") return res(200, wrap({ ErrorCode: "000", ErrorMessage: "成功", List: answers[String(body?.EC_ORDER_NO)] ?? [] }));
+      if (path === "list.aspx/GetOrderDetail") {
+        const no = String(body?.EC_ORDER_NO);
+        return res(200, wrap({ ErrorCode: "000", ErrorMessage: "成功", List: o.detailFor?.[no] ?? answers[no] ?? [] }));
+      }
       return res(404, "");
     } finally { active -= 1; }
   };
@@ -128,8 +141,8 @@ function fakeDb(cfg: DbCfg = {}) {
         const r = q.filters.find((f) => f[0] === "range") as [string, number, number];
         return { data: matching(q).slice(r[1], r[2] + 1), error: null };
       }
-      if (q.op === "update") { for (const r of matching(q)) Object.assign(r, q.patch as Row); return { data: null, error: null }; }
-      if (q.op === "delete") { for (const r of matching(q)) rows.splice(rows.indexOf(r), 1); return { data: null, error: null }; }
+      if (q.op === "update") { const hit = matching(q); for (const r of hit) Object.assign(r, q.patch as Row); return { data: hit.map((r) => ({ id: r.id })), error: null }; }
+      if (q.op === "delete") { const hit = matching(q); for (const r of hit) rows.splice(rows.indexOf(r), 1); return { data: hit.map((r) => ({ id: r.id })), error: null }; }
     }
     return { data: null, error: null };
   };
@@ -240,15 +253,18 @@ describe("a whole job against the fake site", () => {
     const by = Object.fromEntries(db.rows.map((r) => [r.id, r]));
     expect(by.a).toMatchObject({ status: "at_store", terminal: false, pickup_deadline: "2026-11-18", status_message: "貨件配達取件店舖", rec_store: "全家取件店", last_polled_at: NOW.toISOString() });
     expect(by.a.arrived_at).toBeTruthy();
+    // fm_answered_at: stamped by a real answer only
+    for (const id of ["a", "p", "r", "t"]) expect(by[id].fm_answered_at).toBe(NOW.toISOString());
+    expect(by.n.fm_answered_at).toBeUndefined();
     expect(by.p).toMatchObject({ status: "picked_up", terminal: true });
     expect(by.p.picked_up_at).toBeTruthy();
     expect(by.r).toMatchObject({ status: "returned", terminal: true, status_message: "未取退回物流中心", pickup_deadline: "2026-11-02" });
     expect(by.x).toBeUndefined();                                                                        // 40 → removed
     expect(by.n).toMatchObject({ status: "at_store", pickup_deadline: "2026-11-20", last_polled_at: NOW.toISOString() }); // not found → nothing but the check time
     expect(by.t).toMatchObject({ status: "in_transit", pickup_deadline: null });                          // on its way → no "drop off before"
-    // every write: by id + this user + carrier fm, and never the tracking number
+    // every write: by id + this user + carrier fm + NOT FINISHED, and never the tracking number
     for (const w of db.writes()) {
-      expect(w.filters).toEqual(expect.arrayContaining([["eq", "user_id", U1], ["eq", "carrier", "fm"]]));
+      expect(w.filters).toEqual(expect.arrayContaining([["eq", "user_id", U1], ["eq", "carrier", "fm"], ["eq", "terminal", false]]));
       expect(w.filters.some((f) => f[0] === "eq" && f[1] === "id")).toBe(true);
       if (w.patch) expect(w.patch).not.toHaveProperty("tracking_no");
     }
@@ -265,6 +281,7 @@ describe("a whole job against the fake site", () => {
     const text = lines(logger);
     expect(text).toMatch(/\[FM-CHECK\] session user=user-1 captcha=1\/1 parcels=5\/5/);
     expect(text).toMatch(/\[FM-CHECK\] done job=J1 user=user-1 kind=manual checked=6\/6 .*removed=1 .*captcha=2\/2/);
+    expect(text).toMatch(/\[FM-CHECK\] removed row id=x user=user-1/); // the row id — not the parcel number
   });
 
   it("ONE cookie jar from the first request of a session to its last; a new session starts clean", async () => {
@@ -321,13 +338,56 @@ describe("a whole job against the fake site", () => {
     expect(db.rows[0]).toMatchObject({ status: "at_store", pickup_deadline: "2026-11-20", terminal: false });
   });
 
-  it("an unknown step code → the parcel is 'unknown', one clear line with the code", async () => {
+  it("[A] an unknown step code → the parcel KEEPS its status (only the check time), one clear line with the code", async () => {
     const db = fakeDb({ settings: ON, rows: [row("a", A, { status: "at_store", pickup_deadline: "2026-11-20", arrived_at: "2026-11-09T00:00:00.000Z" })] });
     const site = makeSite({ answers: { [A]: steps(A, ["77", "08", "02", "01"]) } });
     const { out, logger } = await run(db, site);
     expect(out.checked).toBe(1);
-    expect(db.rows[0]).toMatchObject({ status: "unknown", terminal: false, pickup_deadline: "2026-11-20", arrived_at: "2026-11-09T00:00:00.000Z" });
+    expect(db.rows[0]).toMatchObject({ status: "at_store", terminal: false, pickup_deadline: "2026-11-20", arrived_at: "2026-11-09T00:00:00.000Z", last_polled_at: NOW.toISOString() });
+    expect(db.rows[0].fm_answered_at).toBeUndefined();
     expect(lines(logger)).toMatch(/UNKNOWN step code=77/);
+  });
+
+  it("[B] step 40 together with other steps → the parcel is NOT removed and keeps its status; said in the log", async () => {
+    const db = fakeDb({ settings: ON, rows: [row("a", A, { status: "at_store", pickup_deadline: "2026-11-20" })] });
+    const site = makeSite({ answers: { [A]: steps(A, ["40", "08", "02", "01"]) } });
+    const { out, logger } = await run(db, site);
+    expect(out).toMatchObject({ checked: 1, failed: false });
+    expect(db.rows.length).toBe(1);
+    expect(db.rows[0]).toMatchObject({ status: "at_store", pickup_deadline: "2026-11-20", last_polled_at: NOW.toISOString() });
+    expect(lines(logger)).toMatch(/step 40 together with other steps — the parcel is NOT removed/);
+  });
+
+  it("the site knows a parcel but sends no step (or another parcel's steps) → nothing is written for it, the session counts as failed, the rest is asked again", async () => {
+    for (const [name, opts, error] of [
+      ["empty", { answers: { ...ANSWERS, [P]: [] } }, "detail_empty"],
+      ["mismatch", { detailFor: { [P]: ANSWERS[A]! } }, "detail_mismatch"],
+    ] as [string, SiteOpts, string][]) {
+      const db = fakeDb({ settings: ON, rows: [row("a", A), row("p", P, { status: "at_store", pickup_deadline: "2026-11-20" }), row("t", T)] });
+      const site = makeSite(opts);
+      const { out, logger } = await run(db, site);
+      const by = Object.fromEntries(db.rows.map((r) => [r.id, r]));
+      expect(by.p, name).toEqual(row("p", P, { status: "at_store", pickup_deadline: "2026-11-20" })); // not one field written
+      expect(by.a.status, name).toBe("at_store");
+      expect(by.t.fm_answered_at, name).toBe(NOW.toISOString());   // the parcel after it was asked in a new session
+      expect(out, name).toMatchObject({ total: 3, checked: 2 });
+      expect(db.settings[FM_SETTING_STREAK], name).toBe("0");       // counted as a failure (1), then a good session put it back to 0
+      expect(db.queries.filter((q) => q.table === "app_settings" && q.op === "upsert").map((q) => (q.patch as Row).value), name).toEqual(["1", "0"]);
+      expect(lines(logger), name).toContain(`error=${error}`);
+      expect(db.health()[0], name).toMatchObject({ errors: 1 });
+    }
+  });
+
+  it("a row an upload finished meanwhile is not written by the check (and not counted)", async () => {
+    const live = row("a", A), done = row("p", P, { terminal: true, status: "returned" });
+    const db = fakeDb({ settings: ON, rows: [live, done] });
+    const stats = await checkFmRows({
+      serviceSb: db, rows: [row("a", A), row("p", P)], userId: U1, daily: { day: "2026-11-12", requests: 0, captchaTries: 0, captchaHits: 0, parcels: 0 },
+      fetchImpl: makeSite().fetchImpl, makeOcr: makeOcr().factory, now: () => NOW, logger: quiet() as unknown as Console, limits: FAST,
+    });
+    expect(stats.checked).toBe(1);
+    expect(db.rows.find((r) => r.id === "p")).toMatchObject({ status: "returned", terminal: true });
+    expect(db.rows.find((r) => r.id === "p")!.last_polled_at).toBeNull();
   });
 });
 
@@ -371,6 +431,7 @@ describe("limits", () => {
     expect(out).toMatchObject({ checked: 0, failed: true, reason: "circuit_open" });
     expect(site.log.length).toBe(3); // three tries, then it stops — not twenty
     expect(db.settings[FM_SETTING_COOLDOWN]).toBe(new Date(NOW.getTime() + FM_BREAKER_COOLDOWN_MS).toISOString());
+    expect(db.settings[FM_SETTING_STREAK]).toBe("3");
     expect(db.rows.every((r) => r.status === "at_store" && r.pickup_deadline === "2026-11-20" && r.terminal === false)).toBe(true);
     expect(db.rows.filter((r) => r.last_polled_at).length).toBe(15); // the 3 failed groups are stamped so they do not lead the next job
     expect(lines(logger)).toMatch(/CIRCUIT OPEN — 3 failed sessions in a row/);
@@ -378,6 +439,36 @@ describe("limits", () => {
     expect(db.health()[0]).toMatchObject({ kind: "fm", ok: false, reason: "circuit_open", errors: 3 });
     // the pause now stops the next job before any request
     expect(await readFmGate(db, U1, NOW)).toEqual({ run: false, reason: "cooldown" });
+  });
+  it("the count of failed sessions is kept ACROSS jobs: 2 from earlier jobs + 1 now = the breaker; a good session puts it back to 0", async () => {
+    expect([fmStreakFrom(undefined), fmStreakFrom("2"), fmStreakFrom(" 3 "), fmStreakFrom("-1"), fmStreakFrom("x"), fmStreakFrom("123")]).toEqual([0, 2, 3, 0, 0, 0]);
+    // job 3 after two failed one-session jobs: ONE more failure opens the breaker
+    const third = fakeDb({ settings: { ...ON, [FM_SETTING_STREAK]: "2" }, rows: [row("a", A), row("p", P)] });
+    const blocked = makeSite({ http: { "index.aspx": 403 } });
+    const r1 = await run(third, blocked);
+    expect(r1.out).toMatchObject({ reason: "circuit_open", checked: 0 });
+    expect(blocked.log.length).toBe(1);
+    expect(third.settings[FM_SETTING_STREAK]).toBe("3");
+    expect(third.settings[FM_SETTING_COOLDOWN]).toBeTruthy();
+    // a job whose first session is good: the count goes back to 0 and stays there
+    const healed = fakeDb({ settings: { ...ON, [FM_SETTING_STREAK]: "2" }, rows: [row("a", A)] });
+    const r2 = await run(healed, makeSite());
+    expect(r2.out).toMatchObject({ checked: 1, reason: null });
+    expect(healed.settings[FM_SETTING_STREAK]).toBe("0");
+    expect(healed.settings[FM_SETTING_COOLDOWN]).toBeUndefined();
+    // …and with nothing failed before, a good job writes nothing about it
+    const clean = fakeDb({ settings: ON, rows: [row("a", A)] });
+    await run(clean, makeSite());
+    expect(clean.queries.some((q) => q.table === "app_settings" && q.op === "upsert")).toBe(false);
+  });
+  it("fmSessionOutcome: what counts as a failed session", () => {
+    const res = (error: string | null, answered: number) => ({ error, results: Array.from({ length: answered }, () => ({})) });
+    expect(fmSessionOutcome(res(null, 3))).toBe("ok");
+    expect(fmSessionOutcome(res("inquiry_shape", 2))).toBe("limit");   // the site answers fewer per captcha — not a failure
+    expect(fmSessionOutcome(res("inquiry_shape", 0))).toBe("failed");
+    expect(fmSessionOutcome(res("detail_empty", 2))).toBe("fault");
+    expect(fmSessionOutcome(res("detail_mismatch", 0))).toBe("fault");
+    for (const e of ["captcha_failed", "timeout", "index_http_403", "detail_bad_answer", "image_too_large"]) expect(fmSessionOutcome(res(e, 1))).toBe("failed");
   });
   it("the time limit stops the job between sessions", async () => {
     const db = fakeDb({ settings: ON, rows: [row("a", A), row("p", P)] });
@@ -429,5 +520,97 @@ describe("privacy and isolation", () => {
       checkImpl: async () => { throw new Error("boom"); },
     });
     expect(out).toEqual({ ran: true, reason: "threw", total: 1, checked: 0, failed: true, requests: 0 });
+  });
+});
+
+describe("OCR start (createFmOcr) — no tesseract here, the worker is a stand-in", () => {
+  const GIF = "R0lGODlhggAoAIQAAEdHR1lZWV9fX2ZmZnBwcHh4eH9/f4KCgoiIiJGRkZiYmKCgoKioqK+vr7CwsLe3t7+/v8DAwMfHx8/Pz9DQ0NjY2N/f3+Dg4Ofn5+vr6wAAAAAAAAAAAAAAAAAAAAAAACwAAAAAggAoAAAI";
+  const fakeWorker = (recognize: (b: unknown) => Promise<unknown>) => ({ setParameters: vi.fn(async () => {}), recognize: vi.fn(recognize), terminate: vi.fn(async () => {}) });
+  it("a picture that is not a readable captcha GIF is answered '' — the bytes are NEVER handed to OCR", async () => {
+    const w = fakeWorker(async () => ({ data: { text: "123456" } }));
+    const logger = quiet();
+    const ocr = await createFmOcr({ createWorkerImpl: async () => w, logger: logger as unknown as Console });
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(await ocr.solve(png)).toBe("");
+    expect(await ocr.solve(new TextEncoder().encode("<html>blocked</html>"))).toBe("");
+    expect(await ocr.solve(new Uint8Array(Buffer.from(GIF, "base64")))).toBe(""); // a cut-off GIF
+    expect(await ocr.solve(new Uint8Array(FM_CAPTCHA_MAX_BYTES + 1))).toBe("");
+    expect(w.recognize).not.toHaveBeenCalled();
+    expect(lines(logger)).toMatch(/captcha picture not read \(not_gif\) — answered empty, not given to OCR/);
+  });
+  it("the worker is created with an error handler (a worker fault never throws out of the library) and digits-only settings", async () => {
+    const w = fakeWorker(async () => ({ data: { text: "1" } }));
+    const create = vi.fn(async (..._a: unknown[]) => w);
+    const logger = quiet();
+    await createFmOcr({ createWorkerImpl: create, logger: logger as unknown as Console });
+    const opts = create.mock.calls[0][2] as { errorHandler: (e: unknown) => void };
+    expect(typeof opts.errorHandler).toBe("function");
+    expect(() => opts.errorHandler(new Error("fetch failed"))).not.toThrow();
+    expect(lines(logger)).toMatch(/OCR worker fault/);
+    expect(w.setParameters).toHaveBeenCalledWith({ tessedit_char_whitelist: "0123456789", tessedit_pageseg_mode: "7" });
+  });
+  it("a worker that never starts → an error after the time limit; a late worker is stopped", async () => {
+    let release: (w: unknown) => void = () => {};
+    const w = fakeWorker(async () => ({ data: { text: "1" } }));
+    const create = () => new Promise((r) => { release = r; });
+    await expect(createFmOcr({ createWorkerImpl: create, startTimeoutMs: 20, logger: quiet() as unknown as Console })).rejects.toMatchObject({ code: "ocr_start_timeout" });
+    release(w);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(w.terminate).toHaveBeenCalled();
+    await expect(createFmOcr({ createWorkerImpl: async () => { throw new Error("no"); }, logger: quiet() as unknown as Console })).rejects.toMatchObject({ code: "ocr_start_failed" });
+  });
+  it("a job whose OCR cannot start sends nothing and is a failed 全家 part", async () => {
+    const db = fakeDb({ settings: ON, rows: [row("a", A)] });
+    const site = makeSite();
+    const out = await runFmForJob({
+      serviceSb: db, job: job(), scopeOf: all, fetchImpl: site.fetchImpl, now: () => NOW, logger: quiet(), limits: FAST,
+      makeOcr: async () => { throw Object.assign(new Error("ocr_start_timeout"), { code: "ocr_start_timeout" }); },
+    });
+    expect(out).toMatchObject({ checked: 0, failed: true, reason: "ocr_unavailable" });
+    expect(site.log.length).toBe(0);
+  });
+});
+
+describe("requests: the time limit covers the whole answer; answers have a size limit", () => {
+  it("limits: 15 s per request, 1 MB per JSON answer", () => {
+    expect([FM_FETCH_TIMEOUT_MS, FM_JSON_MAX_BYTES]).toEqual([15000, 1024 * 1024]);
+  });
+  it("headers arrive, the body never ends → the request times out (JSON, and the captcha picture)", async () => {
+    for (const path of ["index.aspx/GetVerificationCode", "CodeHandler.ashx", "list.aspx/InquiryOrders"]) {
+      const db = fakeDb({ settings: ON, rows: [row("a", A, { status: "at_store" })] });
+      const site = makeSite({ stallBody: path });
+      const started = Date.now();
+      const { out, logger } = await run(db, site, { limits: { ...FAST, requestTimeoutMs: 30, maxSessions: 1 } });
+      expect(Date.now() - started, path).toBeLessThan(2000);
+      expect(out, path).toMatchObject({ checked: 0, failed: true });
+      expect(lines(logger), path).toMatch(/error=timeout/);
+      expect(db.rows[0].status, path).toBe("at_store");
+    }
+  });
+  it("a JSON answer over 1 MB and a captcha picture over 200 KB are not read", async () => {
+    for (const [path, bytes, error] of [
+      ["list.aspx/InquiryOrders", FM_JSON_MAX_BYTES + 1, "inquiry_too_large"],
+      ["index.aspx/GetVerificationCode", FM_JSON_MAX_BYTES + 1, "code_too_large"],
+      ["CodeHandler.ashx", FM_CAPTCHA_MAX_BYTES + 1, "image_too_large"],
+    ] as [string, number, string][]) {
+      const db = fakeDb({ settings: ON, rows: [row("a", A)] });
+      const { out, logger } = await run(db, makeSite({ bigBody: { [path]: bytes } }), { limits: { ...FAST, maxSessions: 1 } });
+      expect(out, path).toMatchObject({ checked: 0, failed: true });
+      expect(lines(logger), path).toContain(`error=${error}`);
+    }
+  });
+  it("readCapped: a declared length over the limit is refused before reading; a stream is cut at the limit", async () => {
+    const declared = { headers: { get: () => "5000" }, arrayBuffer: vi.fn(async () => new ArrayBuffer(10)) };
+    await expect(readCapped(declared, 1000, "x")).rejects.toMatchObject({ code: "x_too_large" });
+    expect(declared.arrayBuffer).not.toHaveBeenCalled();
+    let cancelled = false, served = 0;
+    const stream = { headers: { get: () => null }, body: { getReader: () => ({
+      read: async () => { served += 1; return { done: false, value: new Uint8Array(400) }; },
+      cancel: async () => { cancelled = true; },
+    }) } };
+    await expect(readCapped(stream, 1000, "x")).rejects.toMatchObject({ code: "x_too_large" });
+    expect([cancelled, served]).toEqual([true, 3]); // stopped at the first chunk past the limit
+    const small = { headers: { get: () => null }, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
+    expect(Array.from(await readCapped(small, 1000, "x"))).toEqual([1, 2, 3]);
   });
 });

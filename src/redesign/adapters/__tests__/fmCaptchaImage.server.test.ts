@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import {
   decodeGif, otsu, inkMask, maskToBmp, captchaToBmp, imageSettingsFrom, FM_CAPTCHA_IMAGE,
+  FM_CAPTCHA_MAX_BYTES, FM_CAPTCHA_MAX_WIDTH, FM_CAPTCHA_MAX_HEIGHT,
 } from "../../../../server/fmCaptchaImage.js";
 
 const GIF = {
@@ -37,6 +38,26 @@ describe("decodeGif", () => {
     expect(() => decodeGif(huge)).toThrow(/gif_bad_size/);
     // a cut-off file is never read as a blank picture
     for (const cut of [20, 60, 200, 600]) expect(() => decodeGif(bytes(GIF.plain.b64).subarray(0, cut))).toThrow(/gif_/);
+  });
+});
+
+describe("a captcha is a small picture", () => {
+  it("limits: 200 KB, 400 × 200 px", () => {
+    expect([FM_CAPTCHA_MAX_BYTES, FM_CAPTCHA_MAX_WIDTH, FM_CAPTCHA_MAX_HEIGHT]).toEqual([200 * 1024, 400, 200]);
+  });
+  it("a picture wider or taller than a captcha is refused on its header — before anything is decoded", () => {
+    const wide = bytes(GIF.plain.b64); wide[6] = 0x91; wide[7] = 0x01;   // 401 px wide
+    const tall = bytes(GIF.plain.b64); tall[8] = 0xc9; tall[9] = 0x00;   // 201 px tall
+    expect(() => captchaToBmp(wide)).toThrow(/gif_too_big/);
+    expect(() => captchaToBmp(tall)).toThrow(/gif_too_big/);
+    const edge = bytes(GIF.plain.b64); edge[6] = 0x90; edge[7] = 0x01;   // exactly 400 wide passes the size check
+    expect(() => captchaToBmp(edge)).not.toThrow(/gif_too_big/);
+    expect(() => decodeGif(wide)).not.toThrow(/gif_too_big/);            // the limit belongs to the captcha, not to the GIF reader
+  });
+  it("more than 200 KB is refused without being read", () => {
+    const big = new Uint8Array(FM_CAPTCHA_MAX_BYTES + 1);
+    big.set(bytes(GIF.plain.b64));
+    expect(() => captchaToBmp(big)).toThrow(/captcha_too_large/);
   });
 });
 

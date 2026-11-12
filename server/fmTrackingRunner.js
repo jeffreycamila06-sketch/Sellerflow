@@ -10,7 +10,9 @@
 //   • kill switch  app_settings fm_check_enabled — exactly 'true' to run (missing row = off)
 //   • who          fm_pickup_enabled = 'true', OR the seller is on the fm_pickup preview list
 //                  (RPC fm_check_open_for, sql/151)
-//   • breaker      3 failed sessions in a row → stop + fm_check_cooldown_until (4 hours)
+//   • breaker      3 failed sessions in a row — counted ACROSS jobs in app_settings
+//                  fm_check_fail_streak, back to 0 at the first good session — → stop +
+//                  fm_check_cooldown_until (4 hours)
 //   • daily cap    fm_tracking_daily (sql/151), per Taipei day, checked BEFORE each session
 //   • pace         one request at a time, a pause between requests and between sessions, backoff
 //   • health       one parcel_tracking_health row per job, kind 'fm'
@@ -21,7 +23,7 @@ import {
   runFmSession, fmUrl, fmRowChange, parseFmAnswer, isFmTrackingNo, safeWord, fmError,
   FM_PATHS, FM_ORIGIN, FM_EMBED_REFERER, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES,
 } from "./fmTracking.js";
-import { captchaToBmp, imageSettingsFrom, FM_CAPTCHA_IMAGE } from "./fmCaptchaImage.js";
+import { captchaToBmp, imageSettingsFrom, FM_CAPTCHA_IMAGE, FM_CAPTCHA_MAX_BYTES } from "./fmCaptchaImage.js";
 import { writePollHealth, taipeiDay } from "./parcelTrackingRunner.js";
 
 export const FM_TAG = "[FM-CHECK]";
@@ -29,6 +31,7 @@ export const FM_SETTING_ENABLED = "fm_check_enabled";            // the kill swi
 export const FM_SETTING_COOLDOWN = "fm_check_cooldown_until";    // written by the breaker
 export const FM_SETTING_PICKUP = "fm_pickup_enabled";            // 全家 open for every seller (sql/119)
 export const FM_SETTING_CAPTCHA = "fm_check_captcha";            // optional JSON: picture settings without a deploy
+export const FM_SETTING_STREAK = "fm_check_fail_streak";         // failed sessions in a row, across jobs
 
 // Limits (owner, 2026-11-12).
 export const FM_DAILY_REQUEST_CAP = 1500;        // every request to the 全家 site, per Taipei day
@@ -42,7 +45,10 @@ export const FM_SESSION_GAP_MS = 4000;           // between two sessions (+ jitt
 export const FM_SESSION_JITTER_MS = 3000;
 export const FM_BASE_BACKOFF_MS = 4000;
 export const FM_MAX_BACKOFF_MS = 60000;
-export const FM_FETCH_TIMEOUT_MS = 15000;
+export const FM_FETCH_TIMEOUT_MS = 15000;         // one request, from sending it to the LAST byte of its answer
+export const FM_JSON_MAX_BYTES = 1024 * 1024;    // a JSON answer bigger than this is not read
+export const FM_OCR_START_TIMEOUT_MS = 60000;    // starting the OCR worker
+export const FM_OCR_SOLVE_TIMEOUT_MS = 20000;    // reading one captcha
 export const FM_OCR_PSM = "7";                   // tesseract page mode: one text line
 export const FM_PAGE_SIZE = 1000;
 // The most one session can send: index + (code, picture, check) per captcha try + list + 2 per parcel.
@@ -53,10 +59,46 @@ const DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── HTTP ───────────────────────────────────────────────────────────────────────
-async function fetchWithTimeout(fetchImpl, url, opts, timeoutMs = FM_FETCH_TIMEOUT_MS) {
+// One request INCLUDING reading its answer: `read(res)` runs inside the same time limit, so a
+// server that sends the headers and then stalls the body cannot hold the job. The limit also
+// works when the transport ignores the abort signal.
+async function requestWithin(fetchImpl, url, opts, read, timeoutMs = FM_FETCH_TIMEOUT_MS) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-  try { return await fetchImpl(url, { ...opts, signal: ctrl.signal }); } finally { clearTimeout(t); }
+  let timer = null;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => { ctrl.abort(); reject(fmError("timeout")); }, timeoutMs);
+  });
+  const work = (async () => {
+    const res = await fetchImpl(url, { ...opts, signal: ctrl.signal });
+    return read(res);
+  })();
+  work.catch(() => {}); // a late failure after the limit is not an unhandled rejection
+  try { return await Promise.race([work, late]); } finally { clearTimeout(timer); }
+}
+// The body, at most `maxBytes` — more is an error and the rest is not read.
+export async function readCapped(res, maxBytes, step = "answer") {
+  const tooLarge = () => fmError(`${step}_too_large`);
+  const declared = Number(res && res.headers && typeof res.headers.get === "function" ? res.headers.get("content-length") : NaN);
+  if (Number.isFinite(declared) && declared > maxBytes) throw tooLarge();
+  const reader = res && res.body && typeof res.body.getReader === "function" ? res.body.getReader() : null;
+  if (!reader) {
+    const all = new Uint8Array(await res.arrayBuffer());
+    if (all.length > maxBytes) throw tooLarge();
+    return all;
+  }
+  const parts = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > maxBytes) { try { await reader.cancel(); } catch { /* already closed */ } throw tooLarge(); }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const part of parts) { out.set(part, o); o += part.length; }
+  return out;
 }
 function rawSetCookies(res) {
   const h = res && res.headers;
@@ -84,34 +126,35 @@ const httpFail = (step, status) => fmError(`${step}_http_${safeWord(status, 3)}`
 
 // The steps of one session against the real site. `send` = the (counting) fetch; `pause` runs
 // before every request but the first, so requests never go out back to back.
-export function fmSessionSteps({ send, jar, pause = async () => {}, solve }) {
+export function fmSessionSteps({ send, jar, pause = async () => {}, solve, timeoutMs = FM_FETCH_TIMEOUT_MS }) {
   let sent = 0;
-  const call = async (step, url, opts) => {
+  // `read(res)` turns the answer into the value the step needs — inside the request's time limit.
+  const call = async (step, url, opts, read) => {
     if (sent > 0) await pause();
     sent += 1;
     const headers = { "User-Agent": DESKTOP_UA, "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8", ...opts.headers };
     const cookie = jar.header();
     if (cookie) headers.Cookie = cookie;
-    const res = await fetchWithTimeout(send, url, { redirect: "follow", ...opts, headers });
-    jar.absorb(res);
-    if (isHttpFailure(res.status)) throw httpFail(step, res.status);
-    return res;
+    return requestWithin(send, url, { redirect: "follow", ...opts, headers }, async (res) => {
+      jar.absorb(res);
+      if (isHttpFailure(res.status)) throw httpFail(step, res.status);
+      return read(res);
+    }, timeoutMs);
   };
-  const page = (step, path, referer) => call(step, fmUrl(path), { headers: { Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: referer } })
-    .then(async (res) => { await res.text(); });
-  const post = async (step, path, body, refererPath) => {
-    const res = await call(step, fmUrl(path), {
-      method: "POST",
-      headers: {
-        Accept: "application/json, text/javascript, */*; q=0.01", "Content-Type": "application/json; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest", Origin: FM_ORIGIN, Referer: fmUrl(refererPath),
-      },
-      body: JSON.stringify(body),
-    });
-    let txt;
-    try { txt = await res.text(); } catch { throw fmError(`${step}_unreadable`); }
+  // A page is opened for its cookies only; its body is not needed and is dropped unread.
+  const page = (step, path, referer) => call(step, fmUrl(path), { headers: { Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: referer } },
+    async (res) => { try { if (res.body && typeof res.body.cancel === "function") await res.body.cancel(); } catch { /* nothing to drop */ } });
+  const post = (step, path, body, refererPath) => call(step, fmUrl(path), {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/javascript, */*; q=0.01", "Content-Type": "application/json; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest", Origin: FM_ORIGIN, Referer: fmUrl(refererPath),
+    },
+    body: JSON.stringify(body),
+  }, async (res) => {
+    const txt = new TextDecoder().decode(await readCapped(res, FM_JSON_MAX_BYTES, step));
     try { return parseFmAnswer(txt); } catch (e) { throw fmError(`${step}_bad_answer`, e.detail || ""); }
-  };
+  });
   return {
     openIndex: () => page("index", FM_PATHS.index, FM_EMBED_REFERER),
     getCode: async () => {
@@ -120,10 +163,9 @@ export function fmSessionSteps({ send, jar, pause = async () => {}, solve }) {
       if (!code) throw fmError("code_shape", `keys=${Object.keys(a).slice(0, 8).map((k) => safeWord(k)).join(",")}`);
       return code;
     },
-    getImage: async (code) => {
-      const res = await call("image", `${fmUrl(FM_PATHS.codeImage)}?Code=${encodeURIComponent(code)}`, { headers: { Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", Referer: fmUrl(FM_PATHS.index) } });
-      return new Uint8Array(await res.arrayBuffer());
-    },
+    getImage: (code) => call("image", `${fmUrl(FM_PATHS.codeImage)}?Code=${encodeURIComponent(code)}`,
+      { headers: { Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", Referer: fmUrl(FM_PATHS.index) } },
+      (res) => readCapped(res, FM_CAPTCHA_MAX_BYTES, "image")),
     solve,
     checkCode: async (digits, code) => {
       const a = await post("check", FM_PATHS.checkCode, { P_CODE: digits, P_VCODE: code }, FM_PATHS.index);
@@ -137,24 +179,58 @@ export function fmSessionSteps({ send, jar, pause = async () => {}, solve }) {
 }
 
 // ── OCR (tesseract.js) — created for one job, terminated after it ──────────────
-export async function createFmOcr({ image = FM_CAPTCHA_IMAGE, psm = FM_OCR_PSM, logger = console } = {}) {
-  // Lazy + Vite-opaque, exactly like the 7-11 worker: tests inject a fake and never get here.
-  const pkg = "tesseract.js";
-  const { createWorker } = await import(/* @vite-ignore */ pkg);
-  const worker = await createWorker("eng");
-  await worker.setParameters({ tessedit_char_whitelist: "0123456789", tessedit_pageseg_mode: psm });
-  let warned = false;
+// Within `ms`, or reject with the given code. The timer never keeps the process alive.
+function within(promise, ms, code) {
+  Promise.resolve(promise).catch(() => {}); // a failure AFTER the limit must never be an unhandled rejection
+  let timer = null;
+  const late = new Promise((_, reject) => { timer = setTimeout(() => reject(fmError(code)), ms); timer.unref?.(); });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+// opts: { image?, psm?, logger?, createWorkerImpl?, startTimeoutMs?, solveTimeoutMs? }
+//   • a picture that is not a readable captcha GIF (or is too big) is answered "" — the bytes are
+//     NEVER handed to tesseract as they are
+//   • the worker is created with an errorHandler, so a worker fault rejects a promise here and
+//     never throws out of the library into the server
+//   • starting the worker and every single read have a time limit; after a read that timed out the
+//     worker is given up (every later read answers "")
+export async function createFmOcr({
+  image = FM_CAPTCHA_IMAGE, psm = FM_OCR_PSM, logger = console, createWorkerImpl = null,
+  startTimeoutMs = FM_OCR_START_TIMEOUT_MS, solveTimeoutMs = FM_OCR_SOLVE_TIMEOUT_MS,
+} = {}) {
+  let create = createWorkerImpl;
+  if (!create) {
+    // Lazy + Vite-opaque, exactly like the 7-11 worker: tests inject createWorkerImpl and never get here.
+    const pkg = "tesseract.js";
+    ({ createWorker: create } = await import(/* @vite-ignore */ pkg));
+  }
+  let faults = 0;
+  const errorHandler = (e) => { faults += 1; if (faults === 1) logger.warn(`${FM_TAG} OCR worker fault:`, safeWord(String((e && e.message) || e || "error").slice(0, 40), 40)); };
+  const starting = (async () => {
+    const w = await create("eng", 1, { errorHandler });
+    await w.setParameters({ tessedit_char_whitelist: "0123456789", tessedit_pageseg_mode: psm });
+    return w;
+  })();
+  let worker;
+  try { worker = await within(starting, startTimeoutMs, "ocr_start_timeout"); } catch (e) {
+    starting.then((w) => w.terminate(), () => {}).catch(() => {}); // a late worker is not left running
+    throw fmError((e && e.code) === "ocr_start_timeout" ? "ocr_start_timeout" : "ocr_start_failed");
+  }
+  let dead = false, warned = false;
+  const note = (why) => { if (!warned) { warned = true; logger.warn(`${FM_TAG} captcha picture not read (${safeWord(why)}) — answered empty, not given to OCR`); } };
   return {
     solve: async (bytes) => {
-      let input;
-      try { input = Buffer.from(captchaToBmp(bytes, image).bmp); } catch (e) {
-        if (!warned) { warned = true; logger.warn(`${FM_TAG} captcha picture not read as a GIF (${safeWord(e && e.code)}) — given to OCR as it is`); }
-        input = Buffer.from(bytes);
+      if (dead) return "";
+      let bmp;
+      try { bmp = captchaToBmp(bytes, image).bmp; } catch (e) { note((e && e.code) || "error"); return ""; }
+      try {
+        const { data } = await within(worker.recognize(Buffer.from(bmp)), solveTimeoutMs, "ocr_solve_timeout");
+        return (data && data.text) || "";
+      } catch (e) {
+        if ((e && e.code) === "ocr_solve_timeout") { dead = true; logger.warn(`${FM_TAG} OCR read took over ${Math.round(solveTimeoutMs / 1000)} s — OCR given up for this job`); }
+        return "";
       }
-      const { data } = await worker.recognize(input);
-      return (data && data.text) || "";
     },
-    terminate: () => worker.terminate(),
+    terminate: async () => { try { await within(Promise.resolve(worker.terminate()), 5000, "ocr_stop_timeout"); } catch { /* gone, or stuck — nothing more to do */ } },
   };
 }
 
@@ -171,7 +247,7 @@ export function fmGateFrom({ enabled, cooldownUntil }, nowDate) {
 // and 全家 is not open for everyone. Any read error → do not run.
 export async function readFmGate(serviceSb, userId, nowDate) {
   const { data, error } = await serviceSb.from("app_settings").select("key,value")
-    .in("key", [FM_SETTING_ENABLED, FM_SETTING_COOLDOWN, FM_SETTING_PICKUP, FM_SETTING_CAPTCHA]);
+    .in("key", [FM_SETTING_ENABLED, FM_SETTING_COOLDOWN, FM_SETTING_PICKUP, FM_SETTING_CAPTCHA, FM_SETTING_STREAK]);
   if (error) return { run: false, reason: "settings_read_failed" };
   const map = Object.fromEntries((data || []).map((r) => [r.key, r.value]));
   const gate = fmGateFrom({ enabled: map[FM_SETTING_ENABLED], cooldownUntil: map[FM_SETTING_COOLDOWN] }, nowDate);
@@ -181,7 +257,18 @@ export async function readFmGate(serviceSb, userId, nowDate) {
     if (oErr) return { run: false, reason: "access_read_failed" };
     if (open !== true) return { run: false, reason: "not_allowed" };
   }
-  return { run: true, reason: null, image: imageSettingsFrom(map[FM_SETTING_CAPTCHA]) };
+  return { run: true, reason: null, image: imageSettingsFrom(map[FM_SETTING_CAPTCHA]), failStreak: fmStreakFrom(map[FM_SETTING_STREAK]) };
+}
+
+// PURE — the stored count of failed sessions in a row: a whole number 0–99, anything else 0.
+export function fmStreakFrom(raw) {
+  const s = String(raw ?? "").trim();
+  return /^\d{1,2}$/.test(s) ? Number(s) : 0;
+}
+async function writeFmStreak(serviceSb, n, nowDate, logger) {
+  const { error } = await serviceSb.from("app_settings")
+    .upsert({ key: FM_SETTING_STREAK, value: String(n), updated_at: nowDate.toISOString() }, { onConflict: "key" });
+  if (error) logger.error(`${FM_TAG} failure count write failed:`, error.code || "error");
 }
 
 // ── Daily counter (sql/151 fm_tracking_daily), per Taipei day ──────────────────
@@ -223,17 +310,33 @@ export async function selectFmRows(serviceSb, userId, pageSize = FM_PAGE_SIZE) {
 }
 
 // ── The session loop ───────────────────────────────────────────────────────────
+// PURE — what a finished session means for the job.
+//   "ok"     no error
+//   "limit"  the site stopped answering after some parcels (an inquiry error after ≥ 1 answer): that
+//            is how many one captcha buys — not a failure; the rest is asked in a new session
+//   "fault"  the site KNOWS the parcel but sent steps we cannot use (detail_empty / detail_mismatch):
+//            a failed session, and nothing at all is written for that parcel
+//   "failed" everything else (captcha never solved, HTTP error, time limit, another shape, …)
+export function fmSessionOutcome(res) {
+  if (!res.error) return "ok";
+  if (res.error === "detail_empty" || res.error === "detail_mismatch") return "fault";
+  if (res.results.length > 0 && (res.error === "inquiry_shape" || res.error === "inquiry_error")) return "limit";
+  return "failed";
+}
+
 // Asks `rows` (one seller's 全家 rows, already in the order to check) session by session and
-// writes each answer back by id + user_id + carrier. Never throws for a row / database fault.
+// writes each answer back by id + user_id + carrier + not-finished. Never throws for a row /
+// database fault. `failStreak` = failed sessions in a row BEFORE this job (app_settings).
 export async function checkFmRows({
   serviceSb, rows, userId, daily, fetchImpl = fetch, ocr: givenOcr = null, makeOcr = null, image = FM_CAPTCHA_IMAGE,
-  now = () => new Date(), logger = console, limits = {}, deadlineAt = null, sessionImpl = runFmSession,
+  now = () => new Date(), logger = console, limits = {}, deadlineAt = null, sessionImpl = runFmSession, failStreak = 0,
 }) {
   const {
     dailyRequestCap = FM_DAILY_REQUEST_CAP, perSession: perSessionStart = FM_PARCELS_PER_SESSION,
     requestGapMs = FM_REQUEST_GAP_MS, requestJitterMs = FM_REQUEST_JITTER_MS,
     sessionGapMs = FM_SESSION_GAP_MS, sessionJitterMs = FM_SESSION_JITTER_MS,
     baseBackoffMs = FM_BASE_BACKOFF_MS, maxBackoffMs = FM_MAX_BACKOFF_MS, maxSessions = 60,
+    requestTimeoutMs = FM_FETCH_TIMEOUT_MS,
   } = limits;
   const stats = {
     sessions: 0, checked: 0, removed: 0, notFound: 0, notShipped: 0, unknowns: 0, failures: 0,
@@ -250,10 +353,13 @@ export async function checkFmRows({
   }
   const queue = [...byCode.keys()];
   const retried = new Set();
-  let perSession = Math.max(1, perSessionStart), consecutive = 0, backoff = 0;
+  let perSession = Math.max(1, perSessionStart), consecutive = Math.max(0, Number(failStreak) || 0), backoff = 0;
   let ocr = givenOcr;
   const pause = () => sleep(requestGapMs + Math.floor(Math.random() * requestJitterMs));
   const solve = async (bytes) => { try { return await ocr.solve(bytes); } catch { return ""; } };
+  // Every write of the check: this row, this seller, 全家, and still not finished.
+  const mine = (q, row) => q.eq("id", row.id).eq("user_id", userId).eq("carrier", "fm").eq("terminal", false);
+  const requeueOnce = (codes) => { const again = codes.filter((c) => !retried.has(c)); again.forEach((c) => retried.add(c)); queue.unshift(...again); };
 
   try {
     while (queue.length) {
@@ -267,11 +373,17 @@ export async function checkFmRows({
       }
       if (!underFmCap(daily.requests, dailyRequestCap, perSession)) { logger.warn(`${FM_TAG} daily request cap hit (${daily.requests}/${dailyRequestCap}) — stopping`); stats.stopReason = "daily_cap"; break; }
       if (stats.sessions > 0) await sleep(sessionGapMs + Math.floor(Math.random() * sessionJitterMs) + backoff);
-      if (!ocr && makeOcr) ocr = await makeOcr({ image, logger });
+      if (!ocr && makeOcr) {
+        try { ocr = await makeOcr({ image, logger }); } catch (e) {
+          logger.error(`${FM_TAG} OCR could not start (${safeWord((e && e.code) || "error", 40)}) — nothing is sent`);
+          stats.stopReason = "ocr_unavailable";
+          break;
+        }
+      }
 
       const group = queue.splice(0, perSession);
       const jar = makeFmCookieJar(); // one jar for the whole session
-      const res = await sessionImpl(group, fmSessionSteps({ send: countingFetch, jar, pause, solve }));
+      const res = await sessionImpl(group, fmSessionSteps({ send: countingFetch, jar, pause, solve, timeoutMs: requestTimeoutMs }));
       stats.sessions += 1;
       stats.captchaTries += res.captchaTries; stats.captchaHits += res.captchaHits;
       daily.captchaTries += res.captchaTries; daily.captchaHits += res.captchaHits;
@@ -280,16 +392,18 @@ export async function checkFmRows({
 
       const nowIso = now().toISOString();
       for (const { tracking_no, result } of res.results) {
-        if (result.kind === "unknown") { stats.unknowns += 1; logger.warn(`${FM_TAG} UNKNOWN step code=${safeWord(result.unknownCode, 8)} — the parcel is marked unknown, add the code to FM_CODES`); }
+        if (result.kind === "unknown") { stats.unknowns += 1; logger.warn(`${FM_TAG} UNKNOWN step code=${safeWord(result.unknownCode, 8)} — the parcel keeps its status, add the code to FM_CODES`); }
+        if (result.kind === "void_unclear") { stats.unknowns += 1; logger.warn(`${FM_TAG} step 40 together with other steps — the parcel is NOT removed and keeps its status`); }
         for (const row of byCode.get(String(tracking_no)) || []) {
           const change = fmRowChange(result, row, nowIso);
           const q = change.action === "delete"
-            ? serviceSb.from("parcel_tracking").delete().eq("id", row.id).eq("user_id", userId).eq("carrier", "fm")
-            : serviceSb.from("parcel_tracking").update(change.patch).eq("id", row.id).eq("user_id", userId).eq("carrier", "fm");
-          const { error } = await q;
+            ? mine(serviceSb.from("parcel_tracking").delete(), row)
+            : mine(serviceSb.from("parcel_tracking").update(change.patch), row);
+          const { data, error } = await q.select("id");
           if (error) { logger.error(`${FM_TAG} row write failed:`, error.code || "error"); continue; }
+          if (!(data || []).length) continue; // finished by an upload meanwhile → nothing was written
           stats.checked += 1;
-          if (change.action === "delete") stats.removed += 1;
+          if (change.action === "delete") { stats.removed += 1; logger.log(`${FM_TAG} removed row id=${row.id} user=${userId} (order void: only steps 01 / 40)`); }
           else if (result.kind === "not_found") stats.notFound += 1;
           else if (result.kind === "not_shipped") stats.notShipped += 1;
         }
@@ -297,25 +411,33 @@ export async function checkFmRows({
       daily.parcels += answered;
       await writeFmDaily(serviceSb, daily, logger);
 
-      if (!res.error) { consecutive = 0; backoff = 0; continue; }
+      const outcome = fmSessionOutcome(res);
       const left = group.slice(answered);
-      if (answered > 0) {
-        // The site stopped answering after `answered` parcels: that is how many one captcha buys.
-        // Ask the rest in a new session (once), and keep sessions that size for the rest of the job.
-        consecutive = 0; backoff = 0;
-        if (answered < perSession) { perSession = answered; logger.warn(`${FM_TAG} the site answered ${answered} parcel(s) per captcha — FM_PARCELS_PER_SESSION is too high, using ${answered} for this job`); }
-        const again = left.filter((c) => !retried.has(c));
-        again.forEach((c) => retried.add(c));
-        queue.unshift(...again);
+      if (outcome === "ok" || outcome === "limit") {
+        // A good session: the count of failures in a row goes back to 0 (also in app_settings).
+        if (consecutive > 0) { consecutive = 0; await writeFmStreak(serviceSb, 0, now(), logger); }
+        backoff = 0;
+        if (outcome === "limit") {
+          if (answered < perSession) { perSession = answered; logger.warn(`${FM_TAG} the site answered ${answered} parcel(s) per captcha — FM_PARCELS_PER_SESSION is too high, using ${answered} for this job`); }
+          requeueOnce(left);
+        }
         continue;
       }
-      // Nothing answered → a failed session: back off, stamp the attempt so these rows do not lead
-      // the next job, and stop after FM_BREAKER_FAILURES in a row.
+      // A failed session: back off, count it (across jobs), stop after FM_BREAKER_FAILURES in a row.
       stats.failures += 1; consecutive += 1;
       backoff = Math.min(maxBackoffMs, backoff ? backoff * 2 : baseBackoffMs);
-      for (const code of left) {
-        for (const row of byCode.get(code) || []) {
-          await serviceSb.from("parcel_tracking").update({ last_polled_at: nowIso }).eq("id", row.id).eq("user_id", userId).eq("carrier", "fm");
+      await writeFmStreak(serviceSb, consecutive, now(), logger);
+      if (outcome === "fault") {
+        // The parcel whose steps could not be used gets NO write at all; the ones after it are asked once more.
+        requeueOnce(left.slice(1));
+      } else if (answered > 0) {
+        requeueOnce(left);
+      } else {
+        // Nothing answered: stamp the attempt so these rows do not lead the next job. Status untouched.
+        for (const code of left) {
+          for (const row of byCode.get(code) || []) {
+            await mine(serviceSb.from("parcel_tracking").update({ last_polled_at: nowIso }), row);
+          }
         }
       }
       if (consecutive >= FM_BREAKER_FAILURES) {
@@ -323,7 +445,7 @@ export async function checkFmRows({
         const until = new Date(now().getTime() + FM_BREAKER_COOLDOWN_MS).toISOString();
         const { error: cErr } = await serviceSb.from("app_settings")
           .upsert({ key: FM_SETTING_COOLDOWN, value: until, updated_at: now().toISOString() }, { onConflict: "key" });
-        logger.error(`${FM_TAG} 🔴 CIRCUIT OPEN — ${FM_BREAKER_FAILURES} failed sessions in a row — 全家 check paused until ${until}${cErr ? " (pause write FAILED)" : ""}`);
+        logger.error(`${FM_TAG} 🔴 CIRCUIT OPEN — ${consecutive} failed sessions in a row — 全家 check paused until ${until}${cErr ? " (pause write FAILED)" : ""}`);
         break;
       }
     }
@@ -370,7 +492,7 @@ export async function runFmForJob(opts) {
     } else {
       const fmDeadline = startedMs + (limits.jobMaxMs ?? FM_JOB_MAX_MS);
       stats = await checkImpl({
-        serviceSb, rows, userId: job.user_id, daily: { day, ...d }, fetchImpl, ocr, makeOcr, image: gate.image,
+        serviceSb, rows, userId: job.user_id, daily: { day, ...d }, fetchImpl, ocr, makeOcr, image: gate.image, failStreak: gate.failStreak,
         now, logger, limits, deadlineAt: deadlineAt == null ? fmDeadline : Math.min(deadlineAt, fmDeadline),
       });
     }

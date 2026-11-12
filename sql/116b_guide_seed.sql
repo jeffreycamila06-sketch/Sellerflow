@@ -383,7 +383,7 @@ Who has it:
 - Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
 - Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
 - "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
-- A 全家 parcel is no longer in the list — its order was cancelled or it expired on 好賣+ (訂單失效) because it was not dropped off in time.
+- A 全家 parcel is no longer in the list — its order was cancelled or it expired on 好賣+ (訂單失效).
 - "This isn''t a 全家 Order export" — pick the Order export file from 好賣+ and try again.'),
   ('buyer-alert', 'Buyer Alert (returns and pickup deadlines)', '2026-10-14'::date, 'buyer alert, returns, returned parcels, bogus buyer, joy reserver, pickup deadline, days left, forgive, 退件, 取件期限, 原諒, hindi kinuha, patawarin', '**Buyer Alert** shows a warning on a buyer''s comment while you are live:
 - **⚠ N returns** — this buyer has returned parcels.
