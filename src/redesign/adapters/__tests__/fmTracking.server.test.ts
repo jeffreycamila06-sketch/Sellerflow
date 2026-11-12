@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   classifyFm, fmRowChange, parseFmAnswer, inquiryItem, detailSteps, stepsFault, runFmSession, fmTime, fmDay,
-  isFmTrackingNo, cleanFmCaptcha, FM_CODES, FM_PATHS, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES, FM_ANSWER_KINDS,
+  isFmTrackingNo, cleanFmCaptcha, newestFirst, safeKeys, FM_CODES, FM_PATHS, FM_PARCELS_PER_SESSION, FM_MAX_CAPTCHA_TRIES, FM_ANSWER_KINDS,
 } from "../../../../server/fmTracking.js";
 
 type Step = Record<string, unknown>;
@@ -91,9 +91,42 @@ describe("classifyFm — the rules one by one", () => {
   });
   it("[B] 40: the row is removed ONLY when every step is 01 or 40; with any other step it is left alone", () => {
     for (const codes of [["40", "01"], ["40"], ["40", "01", "01"], ["01", "40"]]) expect(classifyFm(history(ec, codes, ""), ec).kind).toBe("expired");
-    for (const codes of [["40", "02", "01"], ["40", "08", "02", "01"], ["40", "09", "08", "01"], ["40", "11", "08", "01"], ["40", "55", "01"], ["02", "40", "01"]]) {
+    for (const codes of [["40", "02", "01"], ["40", "08", "02", "01"], ["40", "09", "08", "01"], ["40", "55", "01"], ["02", "40", "01"]]) {
       expect(classifyFm(history(ec, codes, "2026/11/02"), ec).kind).toBe("void_unclear");
     }
+  });
+  it("a 40 together with a return (11 / 12 / 31 or a way-back step) → returned — the row is NOT removed", () => {
+    for (const codes of [["40", "11", "08", "01"], ["40", "12", "11", "08", "02", "01"], ["31", "40", "08", "01"]]) {
+      expect(classifyFm(history(ec, codes, "2026/11/02"), ec).kind, codes.join(",")).toBe("returned");
+    }
+    const wayBack = history(ec, ["40", "08", "08", "02", "01"], "2026/11/02", {}, { idx: [1], orderNo: "16399999999", rtn: "2026/11/13" });
+    expect(classifyFm(wayBack, ec).kind).toBe("returned");
+  });
+  it("the steps are put newest first by their own date before anything is decided", () => {
+    const upsideDown = [...AT_STORE].reverse();                       // the site sends oldest first
+    expect(classifyFm(upsideDown, "16354220151")).toEqual(classifyFm(AT_STORE, "16354220151"));
+    expect(classifyFm(upsideDown, "16354220151").kind).toBe("at_store");   // read as given it would be "not shipped" (01 on top)
+    const shuffled = [RETURNED[7], RETURNED[0], ...RETURNED.slice(8), ...RETURNED.slice(1, 7)];
+    expect(classifyFm(shuffled, "16352835793")).toEqual(classifyFm(RETURNED, "16352835793"));
+    // same minute → the site's order is kept; a step without a readable time → nothing is reordered
+    const a = step(ec, "08", "2026/11/05", "09:00", "2026/11/12"), b = step(ec, "073", "2026/11/05", "09:00", "");
+    expect(newestFirst([a, b])).toEqual([a, b]);
+    const noTime = [step(ec, "01", "2026/11/01", "", ""), step(ec, "02", "2026/11/02", "08:00", "")];
+    expect(newestFirst(noTime)).toEqual(noTime);
+  });
+  it("no ORDER_NO on any step + a return: an 08 AFTER the first 11 is not the buyer's store", () => {
+    const bare = (code: string, date: string, store: string, rtn = ""): Step => ({ EC_ORDER_NO: ec, ORDER_STATUS: code, ORDER_DATE: date, ORDER_TIME: "10:00", STATUS_D: "", RCV_STORE_NAME: store, ORDER_DATE_RTN: rtn });
+    const list = [
+      bare("09", "2026/11/20", "全家寄件店"), bare("08", "2026/11/19", "全家寄件店", "2026/11/26"),   // the seller's own store, on the way back
+      bare("12", "2026/11/12", ""), bare("11", "2026/11/11", ""),
+      bare("08", "2026/11/03", "全家取件店", "2026/11/10"), bare("02", "2026/11/01", ""), bare("01", "2026/10/31", ""),
+    ];
+    expect(classifyFm(list, ec)).toMatchObject({
+      kind: "returned", rec_store: "全家取件店", pickup_deadline: "2026-11-10",
+      arrived_at: fmTime("2026/11/03", "10:00"), at: fmTime("2026/11/11", "10:00"),
+    });
+    // …and with no 08 before the return, the later 08 is still not taken
+    expect(classifyFm([list[0], list[1], list[2], list[3], list[5], list[6]], ec)).toMatchObject({ kind: "returned", rec_store: null, arrived_at: null, pickup_deadline: null });
   });
   it("no steps at all → unknown", () => {
     expect(classifyFm([], ec)).toMatchObject({ kind: "unknown", unknownCode: "none" });
@@ -148,6 +181,15 @@ describe("fmRowChange — what is written", () => {
       const c = fmRowChange(classifyFm(steps, String(steps[0].EC_ORDER_NO)), row, now) as { patch: Record<string, unknown> };
       expect(c.patch).not.toHaveProperty("tracking_no");
     }
+  });
+});
+
+describe("log words", () => {
+  it("safeKeys: every run of digits in a key name becomes # (a key can be a parcel number or a phone)", () => {
+    expect(safeKeys({ "16354220151": 1, "0912345678": 2, ErrorCode: "000", List2: [] })).toBe("#,#,ErrorCode,List#");
+    expect(safeKeys({ "tel:0912-345-678": 1 })).toBe("tel#-#-#");
+    expect(safeKeys(null)).toBe("object");
+    expect(() => inquiryItem({ "16354220151": [] }, "16354220151")).toThrow(expect.objectContaining({ detail: expect.stringMatching(/^keys=# code=/) }));
   });
 });
 

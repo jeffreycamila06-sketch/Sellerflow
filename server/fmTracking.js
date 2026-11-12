@@ -51,7 +51,8 @@ export function fmError(code, detail = "") {
 
 // Only letters, digits, _ and - reach a log line (never a name, a phone or a parcel number).
 export const safeWord = (v, max = 24) => String(v ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, max) || "-";
-export const safeKeys = (o) => (o && typeof o === "object" ? Object.keys(o).slice(0, 8).map((k) => safeWord(k)).join(",") : typeof o);
+// Key names of an answer, for a log line. Every run of digits becomes # — a key can be a parcel number or a phone.
+export const safeKeys = (o) => (o && typeof o === "object" ? Object.keys(o).slice(0, 8).map((k) => safeWord(k).replace(/\d+/g, "#")).join(",") : typeof o);
 
 // 寄件編號 = 11 digits. The 好賣+ 訂單編號 (e.g. L26A1113SG) is never found by the site.
 export function isFmTrackingNo(v) {
@@ -95,33 +96,47 @@ export function fmDay(date) {
 const codeOf = (s) => { const c = String(s?.ORDER_STATUS ?? "").trim(); return /^\d$/.test(c) ? `0${c}` : c; };
 const text = (v) => { const s = String(v ?? "").trim(); return s || null; };
 
-// The whole history (NEWEST FIRST) → what the parcel is. Returns
+// When a step happened (ms), or NaN — both the date and the time must be readable.
+const stepMs = (s) => {
+  if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(String(s?.ORDER_TIME ?? "").trim())) return NaN;
+  const iso = fmTime(s.ORDER_DATE, s.ORDER_TIME);
+  return iso ? Date.parse(iso) : NaN;
+};
+// The steps NEWEST FIRST by their own date and time, whatever order the site sent them in. Steps of
+// the same minute keep the site's order. When any step has no readable time the site's order is kept.
+export function newestFirst(steps) {
+  const list = Array.isArray(steps) ? steps.filter((s) => s && typeof s === "object") : [];
+  const at = list.map(stepMs);
+  if (at.some((t) => !Number.isFinite(t))) return list;
+  return list.map((s, i) => ({ s, t: at[i], i })).sort((x, y) => y.t - x.t || x.i - y.i).map((x) => x.s);
+}
+
+// The whole history → what the parcel is. Returns
 //   { kind, status_message, at, pickup_deadline, arrived_at, rec_store, unknownCode? }
 //   kind ∈ returned | picked_up | at_store | in_transit   ← real answers (written to the row)
 //        | expired                                         ← the row is removed
 //        | not_shipped | unknown | void_unclear            ← nothing but the check time is written
-// Rules, in this order (owner, 2026-11-12, audit round):
-//   1. a 40 訂單失效 anywhere: when EVERY step is 01 or 40 → expired; with any other step →
-//      void_unclear (the row is left as it is, one log line)
-//   2. RETURNED when ANY step is 11 / 12 / 31, or any step's ORDER_NO differs from its EC_ORDER_NO
+// The steps are first put newest first by their own date (newestFirst). Rules, in this order
+// (owner, 2026-11-12, audit rounds):
+//   1. RETURNED when ANY step is 11 / 12 / 31, or any step's ORDER_NO differs from its EC_ORDER_NO
 //      (the way back) — even when the newest step is 09 已完成取件 (the SELLER collected the return),
-//      and even when another step has a code we do not know. at = the first 11. The buyer's
-//      deadline = ORDER_DATE_RTN of the ORIGINAL leg.
+//      even next to a 40 訂單失效, and even when another step has a code we do not know.
+//      at = the first 11. The buyer's deadline = ORDER_DATE_RTN of the ORIGINAL leg. The buyer's
+//      store = the 08 of the original leg: the steps that are not on the way back; when NO step
+//      carries an ORDER_NO the way back cannot be told that way, so only steps OLDER than the first
+//      11 / 12 / 31 count (an 08 after it is the seller's own store).
+//   2. a 40 訂單失效 anywhere: when EVERY step is 01 or 40 → expired; with any other step →
+//      void_unclear (the row is left as it is, one log line)
 //   3. a code we do not know → unknown (no guess: the row keeps its status, one log line with the code)
 //   4. any 09 → picked_up (at = the 09)        newest 08 → at_store (deadline = ORDER_DATE_RTN)
 //      newest 02–073 → in_transit               newest 01 → not_shipped
 // The caller has already made sure the list is not empty and every step belongs to the parcel asked
 // (stepsFault); an empty list here still answers unknown.
 export function classifyFm(steps, ecOrderNo) {
-  const list = Array.isArray(steps) ? steps.filter((s) => s && typeof s === "object") : [];
+  const list = newestFirst(steps);
   const none = { status_message: null, at: null, pickup_deadline: null, arrived_at: null, rec_store: null };
   if (!list.length) return { ...none, kind: "unknown", unknownCode: "none" };
   const codes = list.map(codeOf);
-  if (codes.includes("40")) {
-    const at40 = codes.indexOf("40");
-    if (codes.every((c) => c === "01" || c === "40")) return { ...none, kind: "expired", status_message: text(list[at40].STATUS_D) || FM_CODES["40"], at: fmTime(list[at40].ORDER_DATE, list[at40].ORDER_TIME) };
-    return { ...none, kind: "void_unclear", status_message: text(list[at40].STATUS_D) || FM_CODES["40"] };
-  }
 
   const own = String(ecOrderNo ?? "").trim();
   const isWayBack = (s) => {
@@ -130,7 +145,10 @@ export function classifyFm(steps, ecOrderNo) {
   };
   const timeOf = (s) => (s ? fmTime(s.ORDER_DATE, s.ORDER_TIME) : null);
   const msgOf = (s, c) => (s ? text(s.STATUS_D) || FM_CODES[c] || null : null);
-  const original = list.filter((s) => !isWayBack(s));
+  // The list is newest first → the LAST index of a code is its earliest step.
+  const firstReturnAt = Math.max(...[...RETURN_CODES].map((c) => codes.lastIndexOf(c)));
+  const noOrderNo = list.every((s) => !text(s.ORDER_NO));
+  const original = noOrderNo && firstReturnAt >= 0 ? list.slice(firstReturnAt + 1) : list.filter((s) => !isWayBack(s));
   const originalCodes = original.map(codeOf);
   const arrivedStep = original[originalCodes.indexOf("08")] || null; // the buyer's store
   const arrived_at = timeOf(arrivedStep);
@@ -138,8 +156,8 @@ export function classifyFm(steps, ecOrderNo) {
   const newest = codes[0];
 
   const wayBack = list.filter(isWayBack);
-  if (codes.some((c) => RETURN_CODES.has(c)) || wayBack.length) {
-    const lastIndex = (c) => codes.lastIndexOf(c); // the list is newest first → the last one is the earliest
+  if (firstReturnAt >= 0 || wayBack.length) {
+    const lastIndex = (c) => codes.lastIndexOf(c);
     const first11 = lastIndex("11") >= 0 ? list[lastIndex("11")] : null;
     const firstOther = [lastIndex("12"), lastIndex("31")].filter((i) => i >= 0).sort((a, b) => b - a)[0];
     const decided = first11 || (firstOther != null ? list[firstOther] : null) || wayBack[wayBack.length - 1];
@@ -148,6 +166,11 @@ export function classifyFm(steps, ecOrderNo) {
       kind: "returned", status_message: msgOf(decided, codeOf(decided)), at: timeOf(decided),
       pickup_deadline: deadlineStep ? fmDay(deadlineStep.ORDER_DATE_RTN) : null, arrived_at, rec_store,
     };
+  }
+  if (codes.includes("40")) {
+    const at40 = codes.indexOf("40");
+    if (codes.every((c) => c === "01" || c === "40")) return { ...none, kind: "expired", status_message: text(list[at40].STATUS_D) || FM_CODES["40"], at: fmTime(list[at40].ORDER_DATE, list[at40].ORDER_TIME) };
+    return { ...none, kind: "void_unclear", status_message: text(list[at40].STATUS_D) || FM_CODES["40"] };
   }
   const unknownAt = codes.findIndex((c) => !(c in FM_CODES));
   if (unknownAt >= 0) return { ...none, kind: "unknown", unknownCode: safeWord(codes[unknownAt], 8), status_message: text(list[unknownAt].STATUS_D) };
@@ -188,7 +211,8 @@ export function detailSteps(answer) {
 // parcel we asked. Returns the fault code, or null.
 //   detail_empty    — the site found the parcel but sent no step
 //   detail_mismatch — a step carries another (or no) EC_ORDER_NO
-// Either way nothing is written for that parcel and the session counts as failed.
+// Either way this is a fault of that PARCEL's answer, not of the site: its status is left alone
+// (only the check time is written) and the rest of the session's parcels are asked again.
 export function stepsFault(steps, ecOrderNo) {
   const list = Array.isArray(steps) ? steps : [];
   if (!list.length) return "detail_empty";
@@ -253,7 +277,7 @@ export async function runFmSession(codes, deps, { maxTries = FM_MAX_CAPTCHA_TRIE
       if (!item.found) { out.results.push({ tracking_no: no, result: { kind: "not_found" } }); continue; }
       const steps = detailSteps(await deps.detail(no, item.orderNo));
       const fault = stepsFault(steps, no);
-      if (fault) throw fmError(fault); // nothing is written for this parcel
+      if (fault) throw fmError(fault); // this parcel's status is not touched
       out.results.push({ tracking_no: no, result: classifyFm(steps, no) });
     }
   } catch (e) {

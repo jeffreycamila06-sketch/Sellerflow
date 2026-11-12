@@ -18,7 +18,7 @@ import {
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MEMORY_LIMIT_MB } from "./observability.js";
 import { AUTO_SETTING_KEYS, autoSettingsFrom, autoTier, autoScope, overMemoryLimit, clampSetting } from "./parcelTrackingAuto.js";
-import { runFmForJob, FM_PARCELS_PER_JOB, FM_JOB_MAX_MS } from "./fmTrackingRunner.js";
+import { planFmForJob, runFmPlan, FM_PARCELS_PER_JOB, FM_JOB_MAX_MS } from "./fmTrackingRunner.js";
 
 export const WORKER_TICK_MS = 20 * 1000;
 export const JOB_MAX_MS = 30 * 60 * 1000;
@@ -106,26 +106,32 @@ export function shouldRefundPress(job, status, total) {
   return status === "failed" || (status === "done" && total === 0);
 }
 
-// 全家 (FamilyMart) part of a job — see server/fmTrackingRunner.js. The 7-11 part is FINISHED first,
-// exactly as before (job row, health row, press refund, last checked, purge, follow-up, message to the
-// app, log line). Only then the 全家 part runs, and its numbers are added to the job row in one small
-// separate update. Nothing the 全家 part does — or fails to do — can change the 7-11 result.
+// 全家 (FamilyMart) part of a job — see server/fmTrackingRunner.js.
+//   • The worker first asks whether the 全家 part WILL run for this job (switch on, seller allowed,
+//     a 全家 parcel to check). When it will not, the job is finished by finishJob — the code of
+//     before, untouched; the only extra work is one small settings read.
+//   • When it will: the 7-11 numbers (health row, duration, memory figures) are taken first, the job
+//     row stays 'running' while the 全家 parcels are checked, and then ONE final job row, ONE press
+//     decision and ONE message to the app are written (finishJobWithFm).
 const FM_KINDS = new Set(["manual", "auto", "urgent", "new_parcels"]); // never the daily health job
-const FM_NONE = Object.freeze({ ran: false, reason: null, total: 0, checked: 0, failed: false, requests: 0 });
-// The 全家 part can never hold the worker longer than this: after it, the job is left as the 7-11 part finished it.
+// The 全家 part can never hold the worker longer than this; after it the job is finished with what
+// the 全家 part had written so far, and the left-behind work is told to stop.
 export const FM_PART_MAX_MS = FM_JOB_MAX_MS + 2 * 60 * 1000;
+export const FM_PLAN_MAX_MS = 20 * 1000; // the "will it run?" question may not hold a job either
 
-// PURE — is "last checked" stamped by the 全家 part? Only when the 7-11 part had nothing to check
-// (it stamps its own) and the 全家 part answered at least one parcel. Manual and automatic jobs only.
-export function fmStampsLastChecked(job, sevenTotal, fm) {
-  return (job.kind === "manual" || job.kind === "auto") && sevenTotal === 0 && !!fm && fm.checked > 0;
+// PURE — is "last checked" stamped? As before when the 7-11 part checked a parcel; also when the
+// 7-11 part had nothing to check and the 全家 part answered at least one. Manual and automatic jobs only.
+export function fmStampsLastChecked(job, sevenChecked, sevenTotal, fm) {
+  if (job.kind !== "manual" && job.kind !== "auto") return false;
+  return sevenChecked > 0 || (sevenTotal === 0 && !!fm && fm.checked > 0);
 }
 
-// PURE — the 7-11 part gives the press back when it had nothing to check (as before). When the
-// 全家 part then DID check parcels, the press counts again (the 12-hour rule holds for a seller
-// with 全家 parcels only). A failed 全家 part leaves the press given back.
-export function fmKeepsPress(job, sevenStatus, sevenTotal, fm) {
-  return job.kind === "manual" && job.created_by === "seller" && sevenStatus === "done" && sevenTotal === 0 && !!fm && fm.checked > 0;
+// PURE — is the seller's press given back at the end of a job whose 全家 part ran? Only when
+// NOTHING was answered, by 7-11 and by 全家 together. (Admin / automatic / urgent / new-parcels jobs
+// never used a press.)
+export function fmRefundsPress(job, sevenChecked, fm) {
+  if (job.kind !== "manual" || job.created_by !== "seller") return false;
+  return sevenChecked === 0 && !(fm && fm.checked > 0);
 }
 
 // PURE — Taipei hour (0–23).
@@ -142,16 +148,18 @@ function startLoopDelay() {
   return () => { h.disable(); return { p99: Math.round(h.percentile(99) / 1e6), max: Math.round(h.max / 1e6) }; };
 }
 
-// opts: { serviceSb, fetchImpl?, makeOcr?, now?, logger?, emit?(userId, payload), runFmImpl?, makeFmOcr?, fmLimits?, fmPartMaxMs?,
-//         healthUserId?, limits?, checkRowsImpl?, memoryUsage?, loopDelay? }
+// opts: { serviceSb, fetchImpl?, makeOcr?, now?, logger?, emit?(userId, payload), planFmImpl?, runFmImpl?, makeFmOcr?, fmLimits?,
+//         fmPartMaxMs?, fmPlanMaxMs?, healthUserId?, limits?, checkRowsImpl?, memoryUsage?, loopDelay? }
 export function createWorker(opts) {
   const {
     serviceSb, fetchImpl = fetch, makeOcr = null, now = () => new Date(), logger = console,
     emit = () => {}, healthUserId = "", limits = {}, checkRowsImpl = checkRows,
     memoryUsage = () => process.memoryUsage(), loopDelay = startLoopDelay,
-    runFmImpl = runFmForJob, makeFmOcr = undefined, fmLimits = {}, fmPartMaxMs = FM_PART_MAX_MS,
+    planFmImpl = planFmForJob, runFmImpl = runFmPlan, makeFmOcr = undefined, fmLimits = {},
+    fmPartMaxMs = FM_PART_MAX_MS, fmPlanMaxMs = FM_PLAN_MAX_MS,
   } = opts;
   let running = false, busyMs = 0, restUntil = 0, healthDay = "", timer = null;
+  let fmInFlight = false; // a 全家 part that was left behind at its time limit and has not come back yet
 
   async function maybeEnqueueHealth(t) {
     const day = taipeiDay(t);
@@ -216,65 +224,115 @@ export function createWorker(opts) {
     return { job: job.id, status, error, checked, total, durationMs };
   }
 
-  // The 全家 part of a job that the 7-11 part has ALREADY finished (`out` = what finishJob returned).
-  // Returns `out` itself when the 全家 part did not run (switch off, not allowed, nothing due, time out).
-  async function fmAfter(job, out, { auto, tier, caps, startedMs }) {
-    if (!FM_KINDS.has(job.kind)) return out;
-    const fmStartMs = now().getTime();
-    let fm = FM_NONE;
-    let raceTimer = null;
+  // Will the 全家 part run for this job? Returns the plan ({ rows, … }) or null. Never throws, never
+  // holds the job longer than fmPlanMaxMs.
+  async function fmPlanFor(job, { auto, tier, caps }) {
+    if (!FM_KINDS.has(job.kind)) return null;
+    if (fmInFlight) { // only ONE 全家 part at a time
+      logger.warn(`${TAG} FamilyMart part skipped job=${job.id} user=${job.user_id}: an earlier one is still running`);
+      return null;
+    }
+    let planTimer = null;
     try {
-      if (auto && overMemoryLimit(memoryUsage().rss, MEMORY_LIMIT_MB, auto.memPct)) return out;
+      if (auto && overMemoryLimit(memoryUsage().rss, MEMORY_LIMIT_MB, auto.memPct)) return null;
       const fmScope = (list) => (auto
         ? autoScope(list, now(), { ...auto, maxParcels: Math.min(auto.maxParcels, FM_PARCELS_PER_JOB) }, tier)
         : scopeForJob(job, list, now(), { ...caps, parcels: FM_PARCELS_PER_JOB }));
-      const work = Promise.resolve(runFmImpl({
-        serviceSb, job, scopeOf: fmScope, fetchImpl, now, logger, limits: fmLimits,
-        deadlineAt: startedMs + JOB_MAX_MS, ...(makeFmOcr ? { makeOcr: makeFmOcr } : {}),
-      })).then((f) => ({ ...FM_NONE, ...f }), (e) => {
-        logger.error(`${TAG} FamilyMart part threw job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");
-        return FM_NONE;
-      });
-      const giveUp = new Promise((resolve) => {
-        raceTimer = setTimeout(() => {
-          logger.error(`${TAG} FamilyMart part still running after ${Math.round(fmPartMaxMs / 60000)} min — left behind job=${job.id} user=${job.user_id}`);
-          resolve(FM_NONE);
-        }, fmPartMaxMs);
-        raceTimer.unref?.();
-      });
-      fm = await Promise.race([work, giveUp]);
+      const asked = Promise.resolve().then(() => planFmImpl({ serviceSb, job, scopeOf: fmScope, now, logger, limits: fmLimits }));
+      asked.catch(() => {}); // a late failure after the limit is not an unhandled rejection
+      const late = new Promise((resolve) => { planTimer = setTimeout(() => resolve(null), fmPlanMaxMs); planTimer.unref?.(); });
+      const plan = await Promise.race([asked, late]);
+      return plan && plan.run && Array.isArray(plan.rows) && plan.rows.length ? plan : null;
     } catch (e) {
-      logger.error(`${TAG} FamilyMart part threw job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");
-      return out;
+      logger.error(`${TAG} FamilyMart plan threw job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");
+      return null;
     } finally {
-      if (raceTimer) clearTimeout(raceTimer);
+      if (planTimer) clearTimeout(planTimer);
     }
-    if (!fm.ran) return out;
-    try {
-      const t = now();
-      const allChecked = out.checked + fm.checked, allTotal = out.total + fm.total;
-      const { error: jErr } = await serviceSb.from("parcel_tracking_jobs")
-        .update({ parcels_total: allTotal, parcels_checked: allChecked }).eq("id", job.id);
-      if (jErr) logger.error(`${TAG} job count update failed job=${job.id}:`, jErr.code || "error");
-      const access = {};
-      if (fmStampsLastChecked(job, out.total, fm)) access.last_completed_at = t.toISOString();
-      if (fmKeepsPress(job, out.status, out.total, fm)) {
-        const pressed = new Date(job.requested_at || t.toISOString());
-        access.last_manual_check_at = pressed.toISOString();
-        access.last_manual_check_day = taipeiDay(pressed);
-      }
-      if (Object.keys(access).length) {
-        const { error: aErr } = await serviceSb.from("parcel_tracking_access").update(access).eq("user_id", job.user_id);
-        if (aErr) logger.error(`${TAG} access write failed user=${job.user_id}:`, aErr.code || "error");
-      }
-      try { emit(job.user_id, { user_id: job.user_id, job_id: job.id, kind: job.kind, checked: allChecked, total: allTotal }); } catch { /* socket down — the client polls */ }
-      const fmMs = t.getTime() - fmStartMs;
-      logger.log(`${TAG} FamilyMart job=${job.id} user=${job.user_id} kind=${job.kind} checked=${fm.checked}/${fm.total}${fm.reason ? ` reason=${fm.reason}` : ""} ${fmMs}ms`);
-      return { ...out, checked: allChecked, total: allTotal, durationMs: out.durationMs + fmMs };
-    } catch (e) {
-      logger.error(`${TAG} FamilyMart follow-up failed job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");
-      return out;
+  }
+
+  // The 全家 part itself, inside its time limit. Always answers { reason, total, checked, requests }.
+  // At the limit the left-behind work is told to stop (control.cancelled) and the count so far is used.
+  async function runFmPart(job, plan, startedMs, fmStartMs) {
+    const total = plan.rows.length;
+    const control = { cancelled: false, checked: 0 };
+    const soFar = (reason) => ({ reason, total, checked: Number(control.checked) || 0, requests: 0 });
+    let raceTimer = null;
+    fmInFlight = true;
+    const work = Promise.resolve().then(() => runFmImpl({
+      serviceSb, job, plan, fetchImpl, now, logger, limits: fmLimits, control,
+      deadlineAt: startedMs + JOB_MAX_MS, hardStopAt: fmStartMs + fmPartMaxMs, ...(makeFmOcr ? { makeOcr: makeFmOcr } : {}),
+    })).then((f) => ({ reason: (f && f.reason) || null, total, checked: Number(f && f.checked) || 0, requests: Number(f && f.requests) || 0 }), (e) => {
+      logger.error(`${TAG} FamilyMart part threw job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");
+      return soFar("threw");
+    }).finally(() => { fmInFlight = false; });
+    const giveUp = new Promise((resolve) => {
+      raceTimer = setTimeout(() => {
+        control.cancelled = true;
+        logger.error(`${TAG} FamilyMart part still running after ${Math.round(fmPartMaxMs / 60000)} min — told to stop, job=${job.id} user=${job.user_id} finished without waiting for it`);
+        resolve(soFar("timeout"));
+      }, fmPartMaxMs);
+      raceTimer.unref?.();
+    });
+    try { return await Promise.race([work, giveUp]); } finally { clearTimeout(raceTimer); }
+  }
+
+  // A job whose 全家 part RUNS (plan from fmPlanFor). Same writes as finishJob, in this order:
+  //   1. the 7-11 part's own numbers — duration and health row — BEFORE the 全家 part starts
+  //   2. the 全家 part (the job row is still 'running')
+  //   3. ONE final job row (status / error of the 7-11 part, counts = 7-11 + 全家), ONE press decision,
+  //      "last checked", purge, follow-up, ONE message to the app, ONE log line
+  async function finishJobWithFm(job, { status, error = null, checked = 0, total = 0, requests = 0, batches = 0, failures = 0, retired = 0, startedMs, stats = "" }, plan) {
+    const durationMs = now().getTime() - startedMs;
+    await writePollHealth(serviceSb, {
+      ran_at: new Date(startedMs).toISOString(), ok: status !== "failed", reason: error, queries: batches, updated: checked,
+      errors: failures, duration_ms: durationMs, sellers: 1, skipped_cap: 0, retired, requests, kind: job.kind, job_id: job.id,
+    }, logger);
+
+    const fmStartMs = now().getTime();
+    const fm = await runFmPart(job, plan, startedMs, fmStartMs);
+    const fmMs = now().getTime() - fmStartMs;
+
+    const t = now();
+    const allChecked = checked + fm.checked, allTotal = total + fm.total;
+    const { error: jErr } = await serviceSb.from("parcel_tracking_jobs").update({
+      status, error, finished_at: t.toISOString(), parcels_total: allTotal, parcels_checked: allChecked, requests_used: requests,
+    }).eq("id", job.id);
+    if (jErr) logger.error(`${TAG} job update failed job=${job.id}:`, jErr.code || "error");
+    if (fmRefundsPress(job, checked, fm)) {
+      const { error: rErr } = await serviceSb.rpc("parcel_tracking_refund_press", { p_job_id: job.id });
+      if (rErr) logger.error(`${TAG} press refund failed user=${job.user_id}:`, rErr.code || "error");
+      else logger.log(`${TAG} press refunded user=${job.user_id}`);
     }
+    if (fmStampsLastChecked(job, checked, total, fm)) {
+      const { error: aErr } = await serviceSb.from("parcel_tracking_access").update({ last_completed_at: t.toISOString() }).eq("user_id", job.user_id);
+      if (aErr) logger.error(`${TAG} last_completed_at write failed user=${job.user_id}:`, aErr.code || "error");
+    }
+    await purgeRetention(serviceSb, [job.user_id], t, logger, TAG);
+    if (job.started_at) { // rows inserted while the job ran — same follow-up as finishJob
+      const freshQuery = (sevenElevenOnly) => {
+        let q = serviceSb.from("parcel_tracking").select("id")
+          .eq("user_id", job.user_id).eq("terminal", false);
+        if (sevenElevenOnly) q = q.eq("carrier", "711");
+        return q.is("last_polled_at", null).gte("created_at", job.started_at).limit(1);
+      };
+      let { data: fresh, error: freshErr } = await freshQuery(true);
+      if (isMissingCarrierColumn(freshErr)) ({ data: fresh } = await freshQuery(false));
+      if ((fresh || []).length) {
+        await serviceSb.rpc("parcel_tracking_enqueue_job", { p_user_id: job.user_id, p_kind: "new_parcels", p_created_by: "followup", p_requested_at: job.started_at });
+        logger.log(`${TAG} follow-up new_parcels queued user=${job.user_id}`);
+      }
+    }
+    try { emit(job.user_id, { user_id: job.user_id, job_id: job.id, kind: job.kind, checked: allChecked, total: allTotal }); } catch { /* socket down — the client polls */ }
+    logger.log(`${TAG} done job=${job.id} user=${job.user_id} kind=${job.kind} status=${status}${error ? ` error=${error}` : ""} checked=${allChecked}/${allTotal} requests=${requests} ${durationMs}ms${stats} familymart=${fm.checked}/${fm.total}${fm.reason ? ` (${fm.reason})` : ""} ${fmMs}ms`);
+    // The worker's rest counts the 全家 time too — also when the 全家 part was cut off at its limit.
+    return { job: job.id, status, error, checked: allChecked, total: allTotal, durationMs: durationMs + fmMs };
+  }
+
+  // The normal end of a job: with the 全家 part when it will run, otherwise exactly as before.
+  async function finishNormal(job, res, fmCtx) {
+    const plan = await fmPlanFor(job, fmCtx);
+    return plan ? finishJobWithFm(job, res, plan) : finishJob(job, res);
   }
 
   async function runJob(job) {
@@ -349,8 +407,8 @@ export function createWorker(opts) {
       // Count only the held-back rows this job would otherwise have queried.
       const skipped = split.skipped.length ? scopeOf(split.skipped).rows.length : 0;
       const skipStat = skipped ? ` transit_skipped=${skipped}` : "";
-      const fmCtx = { auto, tier, caps, startedMs };
-      if (!scope.rows.length) return fmAfter(job, await finishJob(job, { status: "done", error: null, startedMs, stats: autoStats() + skipStat }), fmCtx);
+      const fmCtx = { auto, tier, caps };
+      if (!scope.rows.length) return finishNormal(job, { status: "done", error: null, startedMs, stats: autoStats() + skipStat }, fmCtx);
 
       if (isAuto) stopDelay = loopDelay();
       const r = await checkRowsImpl({
@@ -358,10 +416,10 @@ export function createWorker(opts) {
         deadlineAt: startedMs + JOB_MAX_MS, requestBudget: budget,
       });
       const out = jobOutcome({ stopReason: r.stopReason, tripped: r.tripped, checked: r.updated, capped: scope.capped });
-      return fmAfter(job, await finishJob(job, {
+      return finishNormal(job, {
         ...out, checked: r.updated, total: scope.rows.length, requests: r.sent, batches: r.batchesRun,
         failures: r.failures, retired: r.retired, startedMs, stats: autoStats() + skipStat,
-      }), fmCtx);
+      }, fmCtx);
     } catch (e) {
       logger.error(`${TAG} job threw job=${job.id} user=${job.user_id}:`, (e && e.code) || "threw");
       return finishJob(job, { status: "failed", error: "threw", startedMs, stats: autoStats() });
