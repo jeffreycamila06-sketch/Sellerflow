@@ -109,9 +109,9 @@ export default function ReceiptFormat({ cur, onBack, soldout, autoReceipt, polis
                   wrap below the box on a narrow phone. Tapping the box = "Choose picture". */}
               <div data-testid="rc-qr-row" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 {s.qrImage && (
-                  <button type="button" data-testid="rc-qr-box" aria-label={t.rd_rc_qr_pick} onClick={() => fileRef.current?.click()}
+                  <button type="button" data-testid="rc-qr-box" onClick={() => fileRef.current?.click()}
                     style={{ width: 160, height: 160, flexShrink: 0, padding: 0, margin: 0, boxSizing: "border-box", borderRadius: 14, border: "1px solid var(--border)", background: "#fff", overflow: "hidden", cursor: "pointer", display: "block" }}>
-                    <img src={s.qrImage} alt="" data-testid="rc-qr-thumb" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+                    <img src={s.qrImage} alt={t.rd_rc_qr} data-testid="rc-qr-thumb" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
                   </button>
                 )}
                 <div data-testid="rc-qr-actions" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
