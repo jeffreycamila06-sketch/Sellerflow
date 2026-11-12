@@ -26,6 +26,8 @@ export interface FmScanRow {
   createdAt: string;
   exportedAt: string | null;
   exportBatchId: string | null;
+  // Store # check (sql/154) — read and written ONLY while the check is on for this account.
+  storeCheckStatus?: string | null; // 'valid' | 'not_found' | 'unknown' | 'checking' (on screen only) | null
 }
 
 export interface FmScanInput {
@@ -212,6 +214,7 @@ function toRow(r: Record<string, unknown>): FmScanRow {
     buyerUsername: r.buyer_username == null ? null : String(r.buyer_username), createdAt: String(r.created_at ?? ""),
     ...(r.contact_platform != null ? { contactPlatform: String(r.contact_platform) } : {}),
     exportedAt: r.exported_at == null ? null : String(r.exported_at), exportBatchId: r.export_batch_id == null ? null : String(r.export_batch_id),
+    ...(r.store_check_status != null ? { storeCheckStatus: String(r.store_check_status) } : {}),
   };
 }
 async function uid(): Promise<string | null> {
@@ -220,12 +223,14 @@ async function uid(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
-export async function loadFmScans(): Promise<{ ok: boolean; rows: FmScanRow[] }> {
+// withStoreCheck (sql/154): also read the store # check columns — ONLY passed when the check is on.
+export const FM_STORE_CHECK_COLS = "store_check_status";
+export async function loadFmScans(withStoreCheck?: boolean): Promise<{ ok: boolean; rows: FmScanRow[] }> {
   const me = await uid();
   if (!me) return { ok: false, rows: [] };
-  const { data, error } = await supabase!.from("fm_parcel_scans").select(COLS).eq("user_id", me).order("created_at", { ascending: false }).limit(2000);
+  const { data, error } = await supabase!.from("fm_parcel_scans").select(withStoreCheck ? `${COLS}, ${FM_STORE_CHECK_COLS}` : COLS).eq("user_id", me).order("created_at", { ascending: false }).limit(2000);
   if (error) return { ok: false, rows: [] };
-  return { ok: true, rows: (data ?? []).map((r) => toRow(r as Record<string, unknown>)) };
+  return { ok: true, rows: ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => toRow(r)) };
 }
 
 export function inputToDb(input: FmScanInput) {
@@ -237,10 +242,14 @@ export function inputToDb(input: FmScanInput) {
 }
 
 // contactPlatform (sql/140): only sent when passed (picker on, or null to clear a stale platform).
-export async function saveFmScan(input: FmScanInput, id?: string, contactPlatform?: string | null): Promise<{ ok: boolean; row?: FmScanRow }> {
+// clearStoreCheck (sql/154): the store # of a saved parcel changed while the check is on → its old answer goes.
+export async function saveFmScan(input: FmScanInput, id?: string, contactPlatform?: string | null, clearStoreCheck?: boolean): Promise<{ ok: boolean; row?: FmScanRow }> {
   const me = await uid();
   if (!me) return { ok: false };
-  const db = { ...inputToDb(input), ...(contactPlatform !== undefined ? { contact_platform: contactPlatform } : {}) };
+  const db = {
+    ...inputToDb(input), ...(contactPlatform !== undefined ? { contact_platform: contactPlatform } : {}),
+    ...(id && clearStoreCheck ? { store_check_status: null, store_check_at: null } : {}),
+  };
   const q = id
     ? supabase!.from("fm_parcel_scans").update(db).eq("id", id).eq("user_id", me)
     : supabase!.from("fm_parcel_scans").insert({ user_id: me, ...db });

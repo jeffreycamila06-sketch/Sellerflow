@@ -5012,3 +5012,28 @@ Web only (Vercel after merge). No change to the sticker engine, layouts, setting
   rule for a Facebook buyer (`printableBuyer`, `printBuyerUsername:false`, name-only flag only when the @username line
   is on) → name only, no "@name" (the admin Facebook chip had the same gap on main). TikTok: same objects → unchanged.
   Proof: `stickerView.fallback.test.ts` (fails on the old code).
+
+## 2026-11-12 — FAMILYMART STORE # CHECK (branch `claude/fm-store-check`, NOT merged; sql/154 + sql/155 NOT applied; needs a Render deploy)
+Parcel Scan FamilyMart copies the 7-11 wrong-store-code flow. OFF for everyone until sql/154 is applied AND
+(`app_settings.fm_store_check_enabled` = 'true' OR the login has feature key `fm_store_check`). Off = the screen as
+before (no server call, the new columns are never selected).
+- **Server (MANUAL Render deploy):** `server/fmStoreCheck.js` + route `POST /admin/fm-store-check` (requireAuth +
+  requirePlanActive + its own per-seller limiter, 6 digits only). Verdict `valid | not_found | unknown`; `closed`
+  (封閉型店舖) is logged only — still valid. Plain GET of FamilyMart's store map; an answer of no known shape →
+  open default.aspx, keep cookies, ask once more; ONE 5 s limit for the whole lookup; 12 h cache per store #
+  (never 'unknown'). Env: `FM_STORE_ENDPOINT`, `FM_STORE_DEFAULT_URL`, `FM_STORE_QUERY`, `FM_STORE_TIMEOUT_MS`.
+  Log `[FM_STORE_CHECK] store=… result=… closed=…` (+ a ≤160-char RAW line on unknown).
+  ⚠️ Shapes were measured in a BROWSER, never from Render (cookie need, charset, reachability unknown) — read the
+  first `[FM_STORE_CHECK]` lines after the deploy. Without the deploy every check is "Can't verify store".
+- **sql/154:** `fm_parcel_scans.store_check_status / store_check_at` (nullable, add-only), the switch row, the key.
+- **App:** `adapters/fmStoreCheck.ts` (`useFmStoreChecks`: one check at a time, rows with no answer on open / after
+  save / import / a changed store #; each gives up after 6 s; two no-answers in a row end the automatic checks for
+  that open; ≤ 60 automatic checks per open) + `FmParcelScan` prop `storeCheckOn`. Row: ⏳ checking, ❌ wrong store
+  code (red, Re-check, kept out of the export), ⚠️ can't verify (Re-check, exported), ✅ Store OK (`rd_fms_sc_ok`).
+  Top bar attention half, alert toast + one vibrate per new wrong code, tabs "Wrong code · n" / "⚠ Needs attention".
+  ONE difference from 7-11: Export is disabled and says "Checking stores…" while a check runs.
+  The attention count = wrong store codes + rows that break a FamilyMart rule (the rows already shown red).
+- ZERO diff in ParcelScan.tsx, parcelScan.ts, parcelAttention.ts, server/emapCheck.js, chrome-extension/;
+  server.js and the i18n file are add-only. Small 7-11 helpers that are not exported were copied (`storeBadge`).
+- **Order:** sql/154 → Render deploy → add test logins to `feature_access_emails` → watch the log → switch on →
+  sql/155 / sql/116b (guide).

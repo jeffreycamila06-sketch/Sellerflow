@@ -38,6 +38,7 @@ import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
 import { parcelTrackingVisible, parcelTrackingLocked, loadParcelTrackingAccess, useAutoPickupCheck } from "./adapters/parcelTracking";
 import { buyerContactVisible } from "./adapters/buyerContact";
 import { scanQrLookupVisible } from "./adapters/scanQrLookup";
+import { fmStoreCheckVisible } from "./adapters/fmStoreCheck";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -893,6 +894,8 @@ export default function RedesignApp() {
   // Parcel Scan: Scan QR also looks the username up in Customers (sql/149). Switch OR this login on the list —
   // off and not listed = Scan QR exactly as before (no read). No admin bypass.
   const scanQrLookupOn = scanQrLookupVisible({ switchOn: featureSw.scanQrLookup, previewKey: hasFeature("scan_qr_lookup") });
+  // Parcel Scan FamilyMart: store # check (sql/154). Switch OR this login on the list; off = the screen as before.
+  const fmStoreCheckOn = fmStoreCheckVisible({ switchOn: featureSw.fmStoreCheck, previewKey: hasFeature("fm_store_check") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.
   const helpBotIosOn = useHelpBotSwitch(authed && isIOS() ? (authUserId || "") : "", "support_ai_ios");
@@ -2915,7 +2918,7 @@ export default function RedesignApp() {
             <ParcelScan onBack={() => goBack()} cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} contactOn={buyerContactOn} frozenCheckOn={featureSw.frozenStoreCheck} onBridge={parcelBridge ? () => setScreen("fmparcelscan") : undefined} lookupOn={scanQrLookupOn} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails onBack={() => goBack()} cur={cur} pendingCap={parcelPendingCap} contactOn={buyerContactOn} />}
-          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} lookupOn={scanQrLookupOn} />}
+          {screen === "fmparcelscan" && fmScanAllowed && <FmParcelScan onBack={() => goBack()} cur={cur} contactOn={buyerContactOn} pendingCap={parcelPendingCap} onBridge={parcelBridge ? openParcelScan : undefined} lookupOn={scanQrLookupOn} storeCheckOn={fmStoreCheckOn} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking onBack={() => goBack()} userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} contactOn={buyerContactOn} />}
           {screen === "customerdata" && <CustomerData onBack={() => goBack()} onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal onBack={() => goBack(authed ? "menu" : anonScreen())} />}
