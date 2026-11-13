@@ -5149,5 +5149,9 @@ change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sende
   (`&#38;`, `&#x26;`) are decoded in one pass with the named ones.
 - **Fix Round 3:** `CarQty` is no longer set — it goes exactly as served (measured: the page's `jsNext()` never changes
   it); a served form without `CarQty` is not an error.
+- **Diagnostics (branch `claude/pc-probe-diag`, after the first Render run gave store.cart http=500 form=0):** when the cart
+  page is not a usable logged-in form the `store.cart` line adds `sent_cookies` / `cookie_names` / `set_cookie_names`
+  (NAMES only, max 15, odd → `?`), `page=login|server_error|blocked|other` and, on a redirect, `loc=<path>`; every
+  request uses a Mac Chrome 130 User-Agent.
 - ⚠️ NOT proven: everything about the real sites — no real request was made (fake fetch only). Remove the two env vars
   when the answer is known.

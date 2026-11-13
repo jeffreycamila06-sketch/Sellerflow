@@ -34,7 +34,7 @@ const MAINT_START_H = 1, MAINT_END_H = 5;    // Asia/Taipei hours [1, 5) — sam
 
 const MYSHIP = "myship.7-11.com.tw";
 const EMAP_HOSTS = ["emap.unipcsc.com.tw", "emap.pcsc.com.tw"];
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const RESTRICTION_RE = /多次未取|限制使用取貨付款|無法於平台成立訂單/;
 const TOKEN_RE = /var\s+tokenID\s*=\s*'([^']+)'/;
 const GUID_RE = /eshop[Gg]uid\s*[:=]\s*["']([^"']{8,})["']/;
@@ -234,6 +234,36 @@ async function readCapped(r) {
   return new TextDecoder("utf-8").decode(all);
 }
 
+// ── diagnostics for a cart page that is not a usable logged-in form ─────────
+// Cookie NAMES only (never a value): at most 15, each cut to 40 characters; a name with any
+// character outside [A-Za-z0-9_.-] becomes "?".
+const COOKIE_NAME_MAX = 15;
+export function safeCookieNames(names) {
+  return (names || []).slice(0, COOKIE_NAME_MAX)
+    .map((n) => { const s = String(n ?? ""); return /^[A-Za-z0-9_.-]+$/.test(s) ? s.slice(0, 40) : "?"; })
+    .join(",");
+}
+// The name part of each Set-Cookie header (the text before the first "=").
+function setCookieNamesOf(headers) {
+  const list = typeof headers?.getSetCookie === "function" ? headers.getSetCookie() : [];
+  const single = list.length ? [] : [headers?.get?.("set-cookie")].filter(Boolean);
+  return [...list, ...single].map((c) => { const first = String(c).split(";")[0]; const eq = first.indexOf("="); return eq > 0 ? first.slice(0, eq).trim() : ""; }).filter(Boolean);
+}
+// One word for what the page looks like; the first match wins.
+export function pageKind(text) {
+  const t = String(text ?? "");
+  if (/OpenPoint|登入|login/i.test(t)) return "login";
+  if (/Runtime Error|Server Error|系統錯誤|發生錯誤/i.test(t)) return "server_error";
+  if (/Access Denied|Forbidden|Request Rejected|captcha/i.test(t)) return "blocked";
+  return "other";
+}
+// The path of a redirect target only (no host, no query); odd characters → "?".
+export function safeLocPath(location, base) {
+  let path = "";
+  try { path = new URL(String(location), base).pathname; } catch { return "?"; }
+  return /^[A-Za-z0-9_./~-]{1,120}$/.test(path) ? path : "?";
+}
+
 function createJar(seed) {
   const hosts = new Map();
   const of = (host) => { if (!hosts.has(host)) hosts.set(host, new Map()); return hosts.get(host); };
@@ -246,6 +276,7 @@ function createJar(seed) {
   for (const [host, raw] of Object.entries(seed || {})) String(raw || "").split(";").forEach((p) => put(host, p));
   return {
     header: (host) => [...of(host)].map(([k, v]) => `${k}=${v}`).join("; "),
+    names: (host) => [...of(host).keys()],
     store: (host, headers) => {
       const list = typeof headers?.getSetCookie === "function" ? headers.getSetCookie() : [];
       const single = list.length ? [] : [headers?.get?.("set-cookie")].filter(Boolean);
@@ -308,13 +339,15 @@ export async function runPcServerProbe(opts = {}) {
       const headers = { "user-agent": UA, ...(init.headers || {}) };
       const cookie = jar ? jar.header(u.hostname) : "";
       if (cookie) headers.cookie = cookie;
+      const sentNames = cookie ? jar.names(u.hostname) : [];
       const r = await guarded(url, { method: init.method || "GET", headers, body: init.body, redirect: "manual", signal: ctl.signal });
       if (jar) jar.store(u.hostname, r.headers);
+      const setNames = setCookieNamesOf(r.headers);
       const text = await readCapped(r);
-      if (text === null) return { fail: "too_big", ms: now() - t0, host: u.hostname, path: u.pathname };
+      if (text === null) return { fail: "too_big", ms: now() - t0, host: u.hostname, path: u.pathname, sentNames, setNames };
       const ct = String(r.headers?.get?.("content-type") || "").split(";")[0].trim().toLowerCase();
       return {
-        status: r.status, host: u.hostname, path: u.pathname, text, ms: now() - t0,
+        status: r.status, host: u.hostname, path: u.pathname, text, ms: now() - t0, sentNames, setNames,
         ct: SAFE_CT_RE.test(ct) ? ct : "",
         location: r.status >= 300 && r.status < 400 ? String(r.headers?.get?.("location") || "") : "",
       };
@@ -420,7 +453,15 @@ export async function runPcServerProbe(opts = {}) {
       const f1 = forms1.find((f) => f.id === "MyCart") || null;
       const sidLen = f1 ? String(fieldOf(f1, "MemberSid") ?? "").length : 0;
       const loggedIn = sidLen >= 4;
-      record(store, stepOf("store.cart", p1, Boolean(f1) && loggedIn, `bytes=${p1.text ? p1.text.length : 0} form=${f1 ? 1 : 0} fields=${f1 ? f1.fields.length : 0} logged_in=${loggedIn ? 1 : 0}${p1.fail ? ` kind=${p1.fail}` : ""}`));
+      // not a usable logged-in form → what was sent / set and what the page looks like (names and words only)
+      const diag = Boolean(f1) && loggedIn ? "" : [
+        ` sent_cookies=${(p1.sentNames || []).length}`,
+        ` cookie_names=${safeCookieNames(p1.sentNames)}`,
+        ` set_cookie_names=${safeCookieNames(p1.setNames)}`,
+        ` page=${pageKind(p1.text)}`,
+        p1.location ? ` loc=${safeLocPath(p1.location, cartUrl)}` : "",
+      ].join("");
+      record(store, stepOf("store.cart", p1, Boolean(f1) && loggedIn, `bytes=${p1.text ? p1.text.length : 0} form=${f1 ? 1 : 0} fields=${f1 ? f1.fields.length : 0} logged_in=${loggedIn ? 1 : 0}${p1.fail ? ` kind=${p1.fail}` : ""}${diag}`));
       if (p1.fail) stop(p1.fail);
       else if (!f1) stop("cart_form_missing");
       else if (!loggedIn) stop("login_not_accepted");

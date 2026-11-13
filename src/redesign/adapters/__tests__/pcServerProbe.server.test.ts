@@ -8,7 +8,7 @@ import http from "node:http";
 import express from "express";
 import {
   runPcServerProbe, createGuardedFetch, isAllowedProbeUrl, isMaintWindow, parseForms, parseProbeConfig,
-  createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled,
+  createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, safeCookieNames, pageKind, safeLocPath,
   PC_PROBE_LIMIT_WINDOW_MS, PC_PROBE_BOOT_DELAY_MS, PC_PROBE_REQUEST_MS, PC_PROBE_BODY_MAX, PC_PROBE_SETTINGS_MS, PC_PROBE_MAX_HOPS,
 } from "../../../../server/pcServerProbe.js";
 import { createWindowLimiter } from "../../../../server/rateWindow.js";
@@ -522,6 +522,62 @@ describe("fix round 2", () => {
     expect(f.action).toBe("/x?a=1&b=2");
     expect(f.fields).toEqual([["a", "1&2&3&4'"], ["lit", "&#38;"], ["s", "A&B"], ["t", "x<y>"]]);
     expect(parseForms('İİİ<form id="q"><input name="n" value="v"></form>')[0]).toEqual({ id: "q", action: "", method: "get", fields: [["n", "v"]] });
+  });
+});
+
+describe("cart diagnostics (names and words only)", () => {
+  const cartRoute = `GET myship.7-11.com.tw/cart/easy/${GM}`;
+  const cartNote = (logs: string[]) => logs.find((l) => l.includes("store.cart")) || "";
+  it("a 500 cart page: sent_cookies / cookie_names / set_cookie_names / page, never a cookie value", async () => {
+    const s = fullSite({ [cartRoute]: { status: 500, body: "<html>Runtime Error</html>", cookies: [`TS01ab=${MARK.setCookie}; path=/`, `odd name=${MARK.setCookie}x`] } });
+    const { result, logs } = await run(s.f, { env: ON });
+    const line = cartNote(logs);
+    expect(line).toContain("http=500");
+    expect(line).toContain("sent_cookies=2");
+    expect(line).toContain("cookie_names=auth,other");
+    expect(line).toContain("set_cookie_names=TS01ab,?");
+    expect(line).toContain("page=server_error");
+    expect(line).not.toContain("loc=");
+    const all = JSON.stringify(result) + logs.join("\n");
+    for (const v of [MARK.cookie, MARK.setCookie]) expect(all).not.toContain(v);
+  });
+  it("a redirect: loc = the path only (no host, no query); page kind from the body", async () => {
+    const s = fullSite({ [cartRoute]: { status: 302, location: `https://myship.7-11.com.tw/Login/Index?return=${MARK.field}`, body: "請登入" } });
+    const { logs } = await run(s.f, { env: ON });
+    const line = cartNote(logs);
+    expect(line).toContain("loc=/Login/Index");
+    expect(line).toContain("page=login");
+    expect(line).not.toContain(MARK.field);
+    expect(line).not.toContain("myship.7-11.com.tw/Login");
+  });
+  it("a usable logged-in cart page adds no diagnostics", async () => {
+    const { logs } = await run(fullSite().f, { env: ON });
+    const line = cartNote(logs);
+    for (const k of ["sent_cookies=", "cookie_names=", "set_cookie_names=", "page=", "loc="]) expect(line).not.toContain(k);
+  });
+  it("names: only [A-Za-z0-9_.-], max 15, each cut to 40 characters; odd ones → ?", () => {
+    expect(safeCookieNames(["a.b-c_1", "x y", "名", "a=b", ""])).toBe("a.b-c_1,?,?,?,?");
+    expect(safeCookieNames(["A".repeat(60)])).toBe("A".repeat(40));
+    expect(safeCookieNames(Array.from({ length: 20 }, (_, i) => `n${i}`)).split(",")).toHaveLength(15);
+    expect(safeCookieNames([])).toBe("");
+  });
+  it("page kind: first match wins; else other", () => {
+    expect(pageKind("OpenPoint Runtime Error Forbidden")).toBe("login");
+    expect(pageKind("系統錯誤 captcha")).toBe("server_error");
+    expect(pageKind("Request Rejected")).toBe("blocked");
+    expect(pageKind("<html>hello</html>")).toBe("other");
+    expect(pageKind(undefined)).toBe("other");
+  });
+  it("loc path: no host, no query; odd characters → ?", () => {
+    expect(safeLocPath("/a/b?x=1#y", "https://myship.7-11.com.tw/")).toBe("/a/b");
+    expect(safeLocPath("https://other.example/p/q?z", "https://myship.7-11.com.tw/")).toBe("/p/q");
+    expect(safeLocPath("/a b<x>", "https://myship.7-11.com.tw/")).toBe("?");
+  });
+  it("every probe request uses the Mac Chrome user-agent", async () => {
+    const s = fullSite();
+    await run(s.f, { env: ON });
+    expect(s.calls.length).toBeGreaterThan(3);
+    for (const c of s.calls) expect(c.headers["user-agent"]).toBe("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
   });
 });
 
