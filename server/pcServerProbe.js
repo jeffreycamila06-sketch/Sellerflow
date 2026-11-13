@@ -122,7 +122,7 @@ function withFields(fields, patch) {
   const out = fields.map((x) => [x[0], x[1]]);
   for (const [k, v] of Object.entries(patch)) {
     const at = out.findIndex((x) => x[0] === k);
-    if (at >= 0) out[at][1] = String(v); else out.push([k, String(v)]);
+    if (at >= 0) out[at][1] = String(v); // a name the form does not have is never added
   }
   return out;
 }
@@ -306,20 +306,26 @@ export async function runPcServerProbe(opts = {}) {
       else if (!f1) stop("cart_form_missing");
       else if (!loggedIn) stop("login_not_accepted");
       else {
-        // 2. the cart form → page 2
-        const fee = Number(fieldOf(f1, "fee_1"));
-        const total = 62 + (Number.isFinite(fee) ? fee : 0);
-        const body2 = encode(withFields(f1.fields, {
-          item_name_1: "test", item_price_1: 62, item_qty_1: 1, item_amt_1: 62, Count: 1, Sum: 62,
-          Total: total, Seller_GoodsTotalAmt: total, Agree: "on",
-        }));
+        // 2. the cart form → page 2. Measured on the real page: the fee is the NAMED field
+        //    fullAmountFee_1; nine fields get the values the browser sends for one item (name
+        //    "test", price 62, qty 1); every other field goes exactly as served. A field name the
+        //    served form does not have is never added.
+        const feeRaw = fieldOf(f1, "fullAmountFee_1");
+        const fee = feeRaw === undefined || String(feeRaw).trim() === "" ? NaN : Number(feeRaw);
+        const patch = Number.isFinite(fee) ? {
+          item_name_1: "test", item_price_1: 62, item_qty_1: 1, item_amt_1: 62, Sum: 62, CarQty: 1,
+          Carm_Cgptshipprice: fee, Total: 62 + fee, Seller_GoodsTotalAmt: 62 + fee,
+        } : {};
+        const missing = Object.keys(patch).filter((name) => fieldOf(f1, name) === undefined);
         const url2 = new URL(f1.action || "/cart/detail", cartUrl).toString();
-        const p2 = !Number.isFinite(fee) ? { fail: "fee_missing", ms: 0 } : await follow(jar, await request(jar, url2, {
-          method: "POST", body: body2,
-          headers: { "content-type": "application/x-www-form-urlencoded", origin: `https://${MYSHIP}`, referer: cartUrl },
-        }), url2);
+        const p2 = !Number.isFinite(fee) ? { fail: "fee_missing", ms: 0 }
+          : missing.length ? { fail: "cart_field_missing", ms: 0 }
+          : await follow(jar, await request(jar, url2, {
+            method: "POST", body: encode(withFields(f1.fields, patch)),
+            headers: { "content-type": "application/x-www-form-urlencoded", origin: `https://${MYSHIP}`, referer: cartUrl },
+          }), url2);
         const f2 = !p2.fail && p2.status === 200 ? parseForms(p2.text).find((f) => f.id === "MyCart") : null;
-        record(store, stepOf("store.detail", p2, Boolean(f2), `bytes=${p2.text ? p2.text.length : 0} form=${f2 ? 1 : 0} fields=${f2 ? f2.fields.length : 0}${p2.fail ? ` kind=${p2.fail}` : ""}`));
+        record(store, stepOf("store.detail", p2, Boolean(f2), `bytes=${p2.text ? p2.text.length : 0} form=${f2 ? 1 : 0} fields=${f2 ? f2.fields.length : 0}${Number.isFinite(fee) ? ` fee=${fee}` : ""}${p2.fail ? ` kind=${p2.fail}` : ""}${missing.length ? ` missing=${missing.join(",")}` : ""}`));
         if (p2.fail) stop(p2.fail);
         else if (!f2) stop("detail_form_missing");
         else {

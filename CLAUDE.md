@@ -5126,6 +5126,11 @@ change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sende
   `ok` / `restricted` / `unknown` + kind. Receiver name in the body is a placeholder (`PROBE_NAME`).
 - **Store step:** cart page (logged in = `MemberSid` ≥ 4 chars, else `login_not_accepted`) → `/cart/detail` → `/CPF3101/MAP/`
   → the served E-Map form → `byIDData` for store 198002 (`open / full / company / not_found / unknown`).
+  Page-1 POST (Fix Round 1, measured on the real page): fee = the NAMED field `fullAmountFee_1` (`fee_1`, `Count`,
+  `Agree` have no name and are never sent); nine fields are set (`item_name_1` test, `item_price_1` 62, `item_qty_1` 1,
+  `item_amt_1` 62, `Sum` 62, `CarQty` 1, `Carm_Cgptshipprice` fee, `Total` / `Seller_GoodsTotalAmt` 62 + fee), every
+  other field as served, no name ever added. No fee → `fee_missing`; one of the nine names not served →
+  `cart_field_missing` (names in the note). `store.detail` logs `fee=<n>`.
 - **Guards:** one fetch wrapper with a URL allowlist (the named paths on `myship.7-11.com.tw`, `default.aspx` /
   `byIDData.aspx` under `/ecmap/` or `/mobilemap/` on the two E-Map hosts); `/cart/finish` is never requested; redirects
   are followed by hand through the same allowlist (max 3); no retries; 10 s per request, 40 s per run. The hour never
