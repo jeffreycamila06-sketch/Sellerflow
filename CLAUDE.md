@@ -5140,5 +5140,12 @@ change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sende
   (`too_big`); the settings read has a 10 s limit inside the 40 s run; content-type is logged only when plain, a refused
   redirect / form action is recorded as `refused` only (no host, no path); the cart form is posted only to exactly
   `https://myship.7-11.com.tw/cart/detail` (`cart_action_refused`); more than 3 redirects → `too_many_redirects`.
+- **Fix Round 2 (audit of `5a8a522c`):** every search in `parseForms` stays inside the element that contains it
+  (`idx(s, needle, from, to)` — the page for a form, the form for a field, the select for an option); a plain `indexOf`
+  read to the end of the page each time it found nothing. Clock guard `parseForms(html, { budgetMs = 250 })`: past the
+  budget → an empty list with `.slow = true` → the step stops with kind `parse_too_slow`, no request after it
+  (`runPcServerProbe` option `parseBudgetMs`, tests only). Browser parity: a `disabled` input / select / textarea is
+  never sent; `checked` / `selected` / `disabled` are read with quoted attribute values removed; numeric entities
+  (`&#38;`, `&#x26;`) are decoded in one pass with the named ones.
 - ⚠️ NOT proven: everything about the real sites — no real request was made (fake fetch only). Remove the two env vars
   when the answer is known.

@@ -27,6 +27,7 @@ export const PC_PROBE_EMAP_STORE = "198002"; // store asked in the full-store ch
 export const PC_PROBE_MAX_HOPS = 3;
 export const PC_PROBE_BODY_MAX = 1024 * 1024; // 1 MB per answer (the real cart page is about 160 KB)
 export const PC_PROBE_SETTINGS_MS = 10_000;
+export const PC_PROBE_PARSE_MS = 250; // hard clock limit for reading the forms of one page
 const CART_DETAIL_URL = "https://myship.7-11.com.tw/cart/detail";
 const SAFE_CT_RE = /^[a-z0-9/+.-]{1,60}$/;
 const MAINT_START_H = 1, MAINT_END_H = 5;    // Asia/Taipei hours [1, 5) — same as the extension
@@ -74,8 +75,13 @@ export function createGuardedFetch(fetchImpl) {
 }
 
 // ── small helpers ────────────────────────────────────────────────────────────
-const decodeEntities = (s) => String(s)
-  .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+// Named and numeric entities, decoded in ONE pass (so "&amp;#38;" stays the text "&#38;").
+const NAMED_ENTITIES = { quot: '"', apos: "'", lt: "<", gt: ">", amp: "&" };
+const decodeEntities = (s) => String(s).replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|(quot|apos|lt|gt|amp));/g, (m, dec, hex, named) => {
+  if (named) return NAMED_ENTITIES[named];
+  const cp = dec ? Number(dec) : parseInt(hex, 16);
+  return cp > 0 && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff) ? String.fromCodePoint(cp) : m;
+});
 
 // The attribute regex starts only at the beginning of a name (lookbehind), so a long run of
 // name characters is tried once — linear time on any input.
@@ -86,63 +92,95 @@ function attrsOf(tag) {
   return out;
 }
 
-// Next "<name" tag at or after `from` and before `to`, found with indexOf (never a regex over the
-// page). Returns { start, attrs, end } or null. A tag with no ">" before `to` is not a tag.
-function nextTag(lower, html, name, from, to) {
+// A tag's text with every quoted attribute value taken out, so a word inside a value
+// (title="not checked") is never read as the attribute itself.
+const bareOf = (attrs) => attrs.replace(/"[^"]*"|'[^']*'/g, " ");
+const FLAG_RE = {
+  checked: /(?:^|[\s/])checked(?=[\s=/]|$)/i,
+  selected: /(?:^|[\s/])selected(?=[\s=/]|$)/i,
+  disabled: /(?:^|[\s/])disabled(?=[\s=/]|$)/i,
+};
+const hasFlag = (bare, word) => FLAG_RE[word].test(bare);
+
+// indexOf inside [from, to) ONLY. A plain indexOf that finds nothing keeps reading to the end of
+// the page; on a page of many small elements that is the whole page once per element.
+const idx = (s, needle, from, to) => {
+  if (from >= to) return -1;
+  const i = s.substring(from, to).indexOf(needle);
+  return i < 0 ? -1 : i + from;
+};
+
+// Next "<name" tag that lies wholly inside [from, to). Returns { start, attrs, end } or null.
+// A tag with no ">" before `to` is not a tag. `over()` is the clock guard.
+function nextTag(lower, html, name, from, to, over) {
   const needle = `<${name}`;
-  for (let i = lower.indexOf(needle, from); i >= 0 && i < to; i = lower.indexOf(needle, i + needle.length)) {
+  for (let i = idx(lower, needle, from, to); i >= 0; i = idx(lower, needle, i + needle.length, to)) {
+    if (over()) return null;
     const after = lower.charCodeAt(i + needle.length);
     const boundary = after === 62 || after === 47 || after === 32 || after === 9 || after === 10 || after === 13; // > / space tab LF CR
     if (!boundary) continue;
-    const gt = html.indexOf(">", i + needle.length);
-    if (gt < 0 || gt >= to) return null;
+    const gt = idx(html, ">", i + needle.length, to);
+    if (gt < 0) return null;
     return { start: i, attrs: html.slice(i + needle.length, gt), end: gt + 1 };
   }
   return null;
 }
 
 // Forms of a page: [{ id, action, method, fields: [[name, value], …] }] — fields in page order, as a
-// browser would send them (unchecked boxes, buttons and files are left out). Linear time: every
-// element is located by indexOf scanning; an element that is never closed is skipped.
-export function parseForms(html) {
+// browser's FormData would send them (unchecked boxes, disabled controls, buttons and files are
+// left out). Linear time: every search stays inside the element that contains it (the page for a
+// form, the form for a field, the select for an option); an element that is never closed is
+// skipped. Hard limit: past `budgetMs` on the clock the answer is an EMPTY list with .slow = true.
+export function parseForms(html, { budgetMs = PC_PROBE_PARSE_MS } = {}) {
+  const t0 = performance.now();
+  let slow = false;
+  const over = () => slow || (slow = performance.now() - t0 >= budgetMs);
+  const tooSlow = () => Object.assign([], { slow: true });
   const src = String(html);
-  const lower = src.toLowerCase();
+  let lower = src.toLowerCase();
+  // a few letters change length when lowered (İ); the two strings must line up index for index
+  if (lower.length !== src.length) lower = src.replace(/[A-Z]+/g, (m) => m.toLowerCase());
   const forms = [];
   let pos = 0;
   for (;;) {
-    const open = nextTag(lower, src, "form", pos, src.length);
+    if (over()) return tooSlow();
+    const open = nextTag(lower, src, "form", pos, src.length, over);
     if (!open) break;
-    const close = lower.indexOf("</form", open.end);
+    const close = idx(lower, "</form", open.end, src.length);
     if (close < 0) break; // never closed: this form (and anything after it) is skipped
     const a = attrsOf(open.attrs);
     const fields = [];
     // the three kinds of field, walked in page order; each "next" is looked up again only once passed
     const kinds = ["input", "select", "textarea"];
-    const next = kinds.map((k) => nextTag(lower, src, k, open.end, close));
+    const next = kinds.map((k) => nextTag(lower, src, k, open.end, close, over));
     let at = open.end;
     for (;;) {
+      if (over()) return tooSlow();
       let pick = -1;
       for (let k = 0; k < kinds.length; k++) if (next[k] && (pick < 0 || next[k].start < next[pick].start)) pick = k;
       if (pick < 0) break;
       const tag = next[pick];
+      const bare = bareOf(tag.attrs);
+      const disabled = hasFlag(bare, "disabled");
       at = tag.end;
       if (pick === 0) {
         const ia = attrsOf(tag.attrs);
         const type = String(ia.type || "text").toLowerCase();
-        const skip = !ia.name || ["submit", "button", "image", "file", "reset"].includes(type)
-          || ((type === "checkbox" || type === "radio") && !/\schecked\b/i.test(tag.attrs));
+        const skip = disabled || !ia.name || ["submit", "button", "image", "file", "reset"].includes(type)
+          || ((type === "checkbox" || type === "radio") && !hasFlag(bare, "checked"));
         if (!skip) fields.push([ia.name, ia.value ?? (type === "checkbox" || type === "radio" ? "on" : "")]);
       } else {
-        const closer = pick === 1 ? "</select" : "</textarea";
-        const end = lower.indexOf(closer, tag.end);
-        if (end < 0 || end > close) { next[pick] = null; continue; } // never closed inside this form: skipped
-        const name = attrsOf(tag.attrs).name;
+        const end = idx(lower, pick === 1 ? "</select" : "</textarea", tag.end, close);
+        if (end < 0) { next[pick] = null; continue; } // never closed inside this form: skipped (and so is every later one)
+        const name = disabled ? "" : attrsOf(tag.attrs).name;
         if (pick === 1) {
           let chosen = null, chosenEnd = end;
-          for (let o = nextTag(lower, src, "option", tag.end, end); o; o = nextTag(lower, src, "option", o.end, end)) {
-            const selected = /\sselected\b/i.test(o.attrs);
+          for (let o = nextTag(lower, src, "option", tag.end, end, over); o && name; o = nextTag(lower, src, "option", o.end, end, over)) {
+            if (over()) return tooSlow();
+            const selected = hasFlag(bareOf(o.attrs), "selected");
             if (!chosen || selected) {
-              const stop = [lower.indexOf("<option", o.end), lower.indexOf("</option", o.end)].filter((x) => x >= 0 && x <= end);
+              // the option's text ends at the next "<option" or "</option", looked for inside the select only
+              const stop = [idx(lower, "<option", o.end, end), idx(lower, "</option", o.end, end)].filter((x) => x >= 0);
               chosen = o; chosenEnd = stop.length ? Math.min(...stop) : end;
               if (selected) break;
             }
@@ -153,12 +191,12 @@ export function parseForms(html) {
         }
         at = end;
       }
-      for (let k = 0; k < kinds.length; k++) if (next[k] && next[k].start < at) next[k] = nextTag(lower, src, kinds[k], at, close);
+      for (let k = 0; k < kinds.length; k++) if (next[k] && next[k].start < at) next[k] = nextTag(lower, src, kinds[k], at, close, over);
     }
     forms.push({ id: a.id || "", action: a.action || "", method: String(a.method || "get").toLowerCase(), fields });
     pos = close + 6;
   }
-  return forms;
+  return slow ? tooSlow() : forms;
 }
 
 const fieldOf = (form, name) => { const f = form.fields.find((x) => x[0] === name); return f ? f[1] : undefined; };
@@ -238,10 +276,11 @@ export function parseProbeConfig({ gms, sender, buyer }) {
 }
 
 // ── the run ──────────────────────────────────────────────────────────────────
-// opts: fetchImpl, now (() => ms), log, readSetting (async key → string|null), env.
+// opts: fetchImpl, now (() => ms), log, readSetting (async key → string|null), env, parseBudgetMs.
 // Never throws.
 export async function runPcServerProbe(opts = {}) {
-  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env } = opts;
+  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS } = opts;
+  const parse = (html) => parseForms(html, { budgetMs: parseBudgetMs });
   if (!pcProbeEnabled(env)) return { disabled: true };
   const startedAt = now();
   const maintWindow = isMaintWindow(startedAt);
@@ -376,7 +415,9 @@ export async function runPcServerProbe(opts = {}) {
       const stop = (kind) => { store.kind = kind; };
       // 1. the cart page
       const p1 = await request(jar, cartUrl);
-      const f1 = !p1.fail && p1.status === 200 ? parseForms(p1.text).find((f) => f.id === "MyCart") : null;
+      const forms1 = !p1.fail && p1.status === 200 ? parse(p1.text) : [];
+      if (forms1.slow) p1.fail = "parse_too_slow";
+      const f1 = forms1.find((f) => f.id === "MyCart") || null;
       const sidLen = f1 ? String(fieldOf(f1, "MemberSid") ?? "").length : 0;
       const loggedIn = sidLen >= 4;
       record(store, stepOf("store.cart", p1, Boolean(f1) && loggedIn, `bytes=${p1.text ? p1.text.length : 0} form=${f1 ? 1 : 0} fields=${f1 ? f1.fields.length : 0} logged_in=${loggedIn ? 1 : 0}${p1.fail ? ` kind=${p1.fail}` : ""}`));
@@ -404,7 +445,9 @@ export async function runPcServerProbe(opts = {}) {
             method: "POST", body: encode(withFields(f1.fields, patch)),
             headers: { "content-type": "application/x-www-form-urlencoded", origin: `https://${MYSHIP}`, referer: cartUrl },
           }), url2);
-        const f2 = !p2.fail && p2.status === 200 ? parseForms(p2.text).find((f) => f.id === "MyCart") : null;
+        const forms2 = !p2.fail && p2.status === 200 ? parse(p2.text) : [];
+        if (forms2.slow) p2.fail = "parse_too_slow";
+        const f2 = forms2.find((f) => f.id === "MyCart") || null;
         record(store, stepOf("store.detail", p2, Boolean(f2), `bytes=${p2.text ? p2.text.length : 0} form=${f2 ? 1 : 0} fields=${f2 ? f2.fields.length : 0}${Number.isFinite(fee) ? ` fee=${fee}` : ""}${p2.fail ? ` kind=${p2.fail}` : ""}${missing.length ? ` missing=${missing.join(",")}` : ""}`));
         if (p2.fail) stop(p2.fail);
         else if (!f2) stop("detail_form_missing");
@@ -415,7 +458,8 @@ export async function runPcServerProbe(opts = {}) {
             method: "POST", body: encode(f2.fields),
             headers: { "content-type": "application/x-www-form-urlencoded", origin: `https://${MYSHIP}`, referer: p2.finalUrl || url2 },
           }), url3);
-          const forms3 = !p3.fail && p3.status === 200 ? parseForms(p3.text) : [];
+          const forms3 = !p3.fail && p3.status === 200 ? parse(p3.text) : [];
+          if (forms3.slow) p3.fail = "parse_too_slow";
           const f3 = forms3.length === 1 ? forms3[0] : null;
           let action3 = null;
           try { action3 = f3 ? new URL(f3.action, p3.finalUrl || url3) : null; } catch { action3 = null; }

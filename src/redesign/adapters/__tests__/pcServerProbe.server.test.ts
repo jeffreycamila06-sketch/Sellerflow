@@ -455,6 +455,61 @@ describe("fix round 1, part 2", () => {
   });
 });
 
+describe("fix round 2", () => {
+  const MB = 1024 * 1024;
+  const rep = (unit: string) => unit.repeat(Math.ceil(MB / unit.length)).slice(0, MB);
+  const SHAPES: Array<[string, () => string, number]> = [
+    ["<form></form> ×N", () => rep("<form></form>"), 80_659],
+    ["<form><textarea name=a></form> ×N", () => rep("<form><textarea name=a></form>"), 34_952],
+    ["<form><select name=a></select></form> ×N", () => rep("<form><select name=a></select></form>"), 28_339],
+    ["<form><input name=a></form> ×N", () => rep("<form><input name=a></form>"), 38_836],
+    ["one form, <select name=a><option>x</select> ×N", () => `<form>${rep("<select name=a><option>x</select>")}</form>`, 1],
+    ["forms inside comments ×N", () => rep("<!-- <form><input name=a></form> -->"), 29_127],
+    ["mixed case ×N", () => rep("<FoRm><InPuT NaMe=a></fOrM>"), 38_836],
+    ["250 KB of unclosed <form>", () => "<form>".repeat(41_667) + "x".repeat(MB - 250_002), 0],
+    ["23,000 unclosed <input ", () => `<form>${"<input ".repeat(23_000)}${"y".repeat(MB - 161_013)}</form>`, 1],
+    ["<form aaaa…>", () => `<form ${"a".repeat(MB - 14)}></form>`, 1],
+  ];
+  it.each(SHAPES)("1 linear at 1 MB: %s parses in under 300 ms", (_name, build, forms) => {
+    const html = build();
+    expect(html.length).toBeGreaterThanOrEqual(MB);
+    let best = Infinity; let r = parseForms("");
+    for (let n = 0; n < 3; n++) { const t0 = performance.now(); r = parseForms(html, { budgetMs: 60_000 }); best = Math.min(best, performance.now() - t0); }
+    expect(best).toBeLessThan(300);
+    expect(r.length).toBe(forms);
+  });
+  it("1 the clock guard: past the budget the answer is an empty list marked slow", () => {
+    const slow = parseForms('<form id="MyCart"><input name="a" value="1"></form>', { budgetMs: 0 });
+    expect(slow).toHaveLength(0);
+    expect((slow as unknown as { slow?: boolean }).slow).toBe(true);
+    expect((parseForms("<form><input name=a></form>") as unknown as { slow?: boolean }).slow).toBeUndefined();
+  });
+  it("1 a forced budget (0) stops the store step with parse_too_slow and no request after it", async () => {
+    const s = fullSite();
+    const logs: string[] = [];
+    const result = await runPcServerProbe({
+      fetchImpl: s.f as unknown as typeof fetch, now: () => NOON, log: (l: string) => logs.push(l), readSetting: settings(), env: ON, parseBudgetMs: 0,
+    });
+    expect(result.store).toMatchObject({ verdict: "unknown", kind: "parse_too_slow" });
+    expect(s.calls.slice(2).map((c) => `${c.method} ${c.host}${c.path}`)).toEqual([`GET myship.7-11.com.tw/cart/easy/${GM}`]);
+    expect(logs.some((l) => l.includes("store.cart") && l.includes("kind=parse_too_slow"))).toBe(true);
+  });
+  it("2a a disabled control is never sent (input, select, textarea)", () => {
+    const [f] = parseForms('<form><input name="a" value="1" disabled><input name="b" value="2"><input name="c" value="3" DISABLED="disabled"><select name="s" disabled><option value="9" selected>x</select><select name="s2"><option value="8">y</select><textarea name="t" disabled>no</textarea><textarea name="t2">yes</textarea><input name="data" data-disabled="1" value="4"></form>');
+    expect(f.fields).toEqual([["b", "2"], ["s2", "8"], ["t2", "yes"], ["data", "4"]]);
+  });
+  it("2b checked / selected / disabled are read outside quoted values only", () => {
+    const [f] = parseForms(`<form><input type="checkbox" name="c1" title="not checked"><input type="checkbox" name="c2" title='x' checked><input type="checkbox" name="c3" value="checked"><input type="checkbox" name="c4" checked="checked" value="v"><input name="d1" title="is disabled" value="1"><select name="s"><option value="1" label="not selected">a<option value="2">b</select><select name="s3"><option value="1">a<option value="2" title="x"selected>b</select></form>`);
+    expect(f.fields).toEqual([["c2", "on"], ["c4", "v"], ["d1", "1"], ["s", "1"], ["s3", "2"]]);
+  });
+  it("2c numeric entities are decoded in attribute values, option text and textarea text; letters that change length when lowered do not shift the page", () => {
+    const [f] = parseForms('<form action="/x?a=1&#38;b=2"><input name="a" value="1&#38;2&#x26;3&amp;4&#39;"><input name="lit" value="&amp;#38;"><select name="s"><option selected>A&#x26;B</select><textarea name="t">x&#60;y&#x3E;</textarea></form>');
+    expect(f.action).toBe("/x?a=1&b=2");
+    expect(f.fields).toEqual([["a", "1&2&3&4'"], ["lit", "&#38;"], ["s", "A&B"], ["t", "x<y>"]]);
+    expect(parseForms('İİİ<form id="q"><input name="n" value="v"></form>')[0]).toEqual({ id: "q", action: "", method: "get", fields: [["n", "v"]] });
+  });
+});
+
 describe("2 wiring", () => {
   const post = (port: number) => new Promise<{ status: number; json: Record<string, unknown> }>((res, rej) => {
     const req = http.request({ host: "127.0.0.1", port, path: "/admin/pc-server-probe", method: "POST" }, (r) => {
