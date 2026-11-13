@@ -16,6 +16,7 @@ import { getAppSetting, setAppSetting } from "./appSettings";
 import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft, isBasicOrFreePlan } from "../../lib/planWindow";
 import { TEMP_FROZEN, type FrozenConfig } from "./parcelFrozen";
+import { lateFrozenWatch } from "./parcelFrozenExport";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_MAX_ORDER, SHIP_DEFAULT_FEE, type AmountError } from "./shipping";
 import { decodeServerJson, sellerSafeWord, withCodes } from "../../lib/errCodes.js";
 import { hasFeature } from "./featureAccess";
@@ -633,12 +634,16 @@ export const rowCheckUnresolved = (r: ParcelScanRow, frozenOn = false): boolean 
 // still await (checker slow/down — keep watching cheaply); null = no poll.
 export const VERDICT_POLL_FAST_MS = 3000;
 export const VERDICT_POLL_SLOW_MS = 30000;
-export function verdictPollMs(rows: ParcelScanRow[], now: number, freshMs: number, frozenOn = false): number | null {
+export function verdictPollMs(rows: ParcelScanRow[], now: number, freshMs: number, frozenOn = false, frozenEdits?: ReadonlyMap<string, number>): number | null {
   let any = false;
   for (const r of rows) {
-    if (!rowAwaitsVerdict(r, frozenOn)) continue;
+    // sql/157: an exported 冷凍 parcel still without its frozen answer is watched for a while too, so a
+    // late "can't receive frozen" shows without reopening the screen (switch on only; dry rows never).
+    if (!rowAwaitsVerdict(r, frozenOn) && !lateFrozenWatch(r, now, frozenOn, frozenEdits)) continue;
     any = true;
-    const t = Date.parse(r.createdAt);
+    // a 冷凍 parcel whose store / layer was just edited counts as fresh again (its answer is on its way)
+    const e = frozenOn && r.tempLayer === TEMP_FROZEN ? frozenEdits?.get(r.id) : undefined;
+    const t = e != null ? Math.max(Date.parse(r.createdAt) || 0, e) : Date.parse(r.createdAt);
     if (!Number.isFinite(t) || now - t < freshMs) return VERDICT_POLL_FAST_MS;
   }
   return any ? VERDICT_POLL_SLOW_MS : null;
