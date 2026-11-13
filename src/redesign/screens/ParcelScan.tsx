@@ -17,6 +17,7 @@ import {
   rowCheckUnresolved, verdictPollMs, mergeExtensionVerdicts, storeClear, wrongStoreCode, minParcelAmount,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
+import { frozenHoldRows, frozenHoldState, frozenUnchecked, exportedFrozenRefused, exportedFrozenUnchecked, FROZEN_HOLD_MS } from "../adapters/parcelFrozenExport";
 import { newlyFlagged, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
 import { problemOf, problemRows, newProblemRows, alertStoreCode, ATTN_TOAST_MS, ATTN_VIBRATE_MS, ATTN_HIGHLIGHT_MS } from "../adapters/parcelAttention";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobile, exportFilename } from "../adapters/shippingExport";
@@ -227,7 +228,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [tab, setTab] = useState<"all" | "wrong" | "full" | "restricted" | "attention">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
-  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "pending"; n: number } | { kind: "undo" } | { kind: "enablephone" } | { kind: "mode"; to: TempLayer } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "pending"; n: number } | { kind: "frozenwait"; ids: string[]; startedAt: number } | { kind: "frozenask"; n: number } | { kind: "frozenno"; n: number; rest: number } | { kind: "undo" } | { kind: "enablephone" } | { kind: "mode"; to: TempLayer } | null>(null);
   // FIX 5 / 2b — the most recent export run (batch id + the row ids it exported), so
   // an accidental export can be undone (rows → 'confirmed', back in the ready list).
   // Loaded on screen open from ANY device (loadLastExportBatch, newest by the DB-
@@ -431,7 +432,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (fresh.length > 0) {
       const first = fresh[0];
       const kind = problemOf(first, fzOn);
-      const reason = kind === "wrong_store" ? t.rd_ps2_x_wrong_store : kind === "full" ? t.rd_ps2_x_store_full : kind === "no_frozen" ? t.rd_ps2_x_no_frozen : t.rd_ps2_x_restricted;
+      const reason = kind === "wrong_store" ? t.rd_ps2_x_wrong_store : kind === "full" ? t.rd_ps2_x_store_full : kind === "no_frozen" ? t.rd_ps2_x_no_frozen : kind === "no_frozen_exported" ? t.rd_ps2_x_no_frozen_exported : t.rd_ps2_x_restricted;
       const code = alertStoreCode(first);
       setAlerted(new Set([...alerted, ...fresh.map((r) => r.id)]));
       setAttnToast((prev) => ({ seq: (prev?.seq ?? 0) + 1, text: `⚠ ${reason}${code ? ` · ${code}` : ""}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ""}` }));
@@ -928,12 +929,54 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Export-time guard: parcels still "⏳ Checking…" (phone OR store half unresolved)
   // stop being checked once exported. Ask first — "Wait" (default) or "Export anyway".
   // NEVER a hard block (the checker may be down); only while the checks feature is on.
-  const askExport = () => {
-    if (frozen.blocked) return; // unknown Dry / Frozen state → no export until Retry works
-    const pending = checkOn ? readyRows.filter((r) => rowCheckUnresolved(r, fzOn)).length : 0;
+  // sql/157 — a 冷凍 parcel never leaves before its store's frozen answer (checks + frozen switch on):
+  //   1. a fresh 冷凍 parcel whose answer is still on its way → the export HOLDS ("Checking if this
+  //      store accepts frozen…") and goes on BY ITSELF when the answer lands (frozenHoldTick);
+  //   2. a 冷凍 parcel without a real answer and nothing to wait for (the hold ran out, the checker
+  //      gave up, an old parcel, the checker's night rest) → the frozen question: Wait / Export
+  //      anyway (then the parcel carries "Frozen not checked");
+  //   3. the normal "still being checked" question for the phone / store halves, then the export.
+  // A dry parcel and a 冷凍 parcel with an answer (cached or live) skip 1 and 2: no delay at all.
+  const frozenGate = checkOn && fzOn;
+  const exportAfterFrozen = (frozenAsked: boolean) => {
+    if (frozenGate && !frozenAsked) {
+      const n = readyRows.filter(frozenUnchecked).length;
+      if (n > 0) { setDeleteErr(""); setConfirm({ kind: "frozenask", n }); return; }
+    }
+    // frozenGate: the frozen half was handled above → only the phone / store halves are asked here.
+    const pending = checkOn ? readyRows.filter((r) => rowCheckUnresolved(r, frozenGate ? false : fzOn)).length : 0;
     if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
     openExportDialog();
   };
+  const askExport = () => {
+    if (frozen.blocked) return; // unknown Dry / Frozen state → no export until Retry works
+    const hold = frozenHoldRows(readyRows, Date.now(), frozenGate);
+    if (hold.length > 0) { setDeleteErr(""); setConfirm({ kind: "frozenwait", ids: hold.map((r) => r.id), startedAt: Date.now() }); return; }
+    exportAfterFrozen(false);
+  };
+  // While the hold is open: twice a second, look at the held parcels (the verdict poll above keeps
+  // reading them every 3 s). All answered → a refused store shows the usual warning, otherwise the
+  // export goes on by itself. Still waiting after FROZEN_HOLD_MS → the frozen question (never a
+  // block). Cancel just closes the hold; nothing is exported.
+  const holdTickRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    holdTickRef.current = () => {
+      if (confirm?.kind !== "frozenwait") return;
+      const st = frozenHoldState(rows, confirm.ids);
+      if (st.waiting > 0) {
+        if (Date.now() - confirm.startedAt >= FROZEN_HOLD_MS) setConfirm({ kind: "frozenask", n: st.waiting });
+        return;
+      }
+      if (st.refused > 0) { setConfirm({ kind: "frozenno", n: st.refused, rest: readyCount }); return; }
+      exportAfterFrozen(false);
+    };
+  });
+  const holding = confirm?.kind === "frozenwait";
+  useEffect(() => {
+    if (!holding) return;
+    const id = setInterval(() => holdTickRef.current(), 500);
+    return () => clearInterval(id);
+  }, [holding]);
 
   // FIX 5 — undo the last export run: revert its rows to 'confirmed' (DB +
   // local), returning them to the ready list. Confirmed via the same dialog.
@@ -1593,8 +1636,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             // null / unknown = an amber "checking" line instead of the green all-clear. Dry rows: nothing.
             const frozenRow = fzOn && isFrozenLayer(r.tempLayer);
             const frozenNo = frozenRow && r.status !== "exported" && r.frozenStoreStatus === "no_frozen";
-            const frozenOk = !frozenRow || r.status === "exported" || r.frozenStoreStatus === "ok"; // exported 冷凍 rows keep ✅
-            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r) || frozenNo;
+            // sql/157 — an EXPORTED 冷凍 row: its late "can't receive frozen" is a red warning; exported
+            // without a real answer = an amber "Frozen not checked" note (24 h); otherwise it keeps ✅.
+            const frozenNoExported = exportedFrozenRefused(r, fzOn);
+            const frozenNoteExported = checkOn && exportedFrozenUnchecked(r, nowMs, fzOn);
+            const frozenOk = !frozenRow || r.frozenStoreStatus === "ok" || (r.status === "exported" && !frozenNoExported && !frozenNoteExported);
+            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r) || frozenNo || frozenNoExported;
             const rowOrange = !rowRed && r.storeFullStatus === "full";
             const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
@@ -1623,6 +1670,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {/* sql/142: the store can't receive frozen — red, may wrap to 2 lines on a phone (never cut) */}
                   {frozenNo && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)", overflowWrap: "anywhere", whiteSpace: "normal" }} data-testid="ps-frozen-no">{t.rd_ps2_frozen_no}</div>
+                  )}
+                  {/* sql/157: exported BEFORE its frozen answer, and the store can't receive frozen — the seller must act */}
+                  {frozenNoExported && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)", overflowWrap: "anywhere", whiteSpace: "normal" }} data-testid="ps-frozen-no-exported">{t.rd_ps2_frozen_no_exported}</div>
+                  )}
+                  {frozenNoteExported && !rowRed && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)", overflowWrap: "anywhere" }} data-testid="ps-frozen-not-checked">{t.rd_ps2_frozen_not_checked}</div>
                   )}
                   {r.phoneCheckStatus === "restricted" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-badge-restricted">
@@ -1692,6 +1746,15 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     <div>{t.rd_ps2_phx_title}</div>
                     <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.55 }} data-testid="ps-enablephone-body">{t.rd_ps2_phx_body}</div>
                   </>
+                : confirm.kind === "frozenwait"
+                ? <div data-testid="ps-frozen-wait" role="status" aria-live="polite">
+                    <div>❄ {(confirm.ids.length > 1 ? tpl(t.rd_ps2_frozen_wait_n, { n: String(confirm.ids.length) }) : t.rd_ps2_frozen_wait).replace(/…$/, "")}<span className="sfl-anim-ellip" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
+                    <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.55 }} data-testid="ps-frozen-wait-sub">{t.rd_ps2_frozen_wait_sub}</div>
+                  </div>
+                : confirm.kind === "frozenask"
+                ? <span data-testid="ps-frozen-ask">{tpl(t.rd_ps2_frozen_ask_q, { n: String(confirm.n) })}</span>
+                : confirm.kind === "frozenno"
+                ? <span data-testid="ps-frozen-no-q" style={{ color: "var(--danger, #dc2626)" }}>{tpl(t.rd_ps2_frozen_no_q, { n: String(confirm.n) })}</span>
                 : confirm.kind === "pending"
                 ? <span data-testid="ps-pending-msg">{tpl(t.rd_ps2_pending_q, { n: String(confirm.n) })}</span>
                 : confirm.kind === "export"
@@ -1708,11 +1771,19 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err}</div>}
             {confirm.kind === "export" && exportPrep === "error" && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-prebuild-err">{t.rd_ps2_x_failed}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button onClick={closeConfirm} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{confirm.kind === "pending" ? t.rd_ps2_pending_wait : t.rd_ps2_cancel}</button>
+              <button onClick={closeConfirm} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer", ...(confirm.kind === "frozenwait" || confirm.kind === "frozenask" || confirm.kind === "frozenno" ? { minHeight: 44 } : {}) }} data-testid="ps-confirm-cancel">{confirm.kind === "pending" || confirm.kind === "frozenask" ? t.rd_ps2_pending_wait : confirm.kind === "frozenno" ? t.rd_ps2_frozen_ok_btn : t.rd_ps2_cancel}</button>
               {confirm.kind === "mode"
                 ? <button onClick={() => void doSwitchMode()} disabled={modeBusy} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: modeBusy ? "default" : "pointer", opacity: modeBusy ? 0.7 : 1 }} data-testid="ps-confirm-mode">{t.rd_ps2_mode_go}</button>
                 : confirm.kind === "enablephone"
                 ? <button onClick={enablePhoneExport} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-enablephone">{t.rd_ps2_phx_go}</button>
+                : confirm.kind === "frozenwait"
+                ? null
+                : confirm.kind === "frozenask"
+                ? <button onClick={() => exportAfterFrozen(true)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer", minHeight: 44 }} data-testid="ps-frozen-export-anyway">{t.rd_ps2_pending_anyway}</button>
+                : confirm.kind === "frozenno"
+                ? (confirm.rest > 0
+                    ? <button onClick={() => exportAfterFrozen(false)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer", minHeight: 44 }} data-testid="ps-frozen-export-rest">{tpl(t.rd_ps2_frozen_no_rest, { n: String(confirm.rest) })}</button>
+                    : null)
                 : confirm.kind === "pending"
                 ? <button onClick={openExportDialog} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export-anyway">{t.rd_ps2_pending_anyway}</button>
                 : confirm.kind === "export"

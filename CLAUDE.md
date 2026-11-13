@@ -5111,3 +5111,40 @@ on main (no server call, no `store_check` column in any select / update — prov
   server.js and the i18n file are add-only. Small 7-11 helpers that are not exported were copied (`storeBadge`).
 - **Order:** sql/155 → Render deploy → add test logins to `feature_access_emails` → watch the log → switch on →
   sql/156 (guide; `sql/116b` already carries the same text).
+
+## 2026-11-13 — FROZEN PARCEL: THE EXPORT WAITS FOR THE FROZEN ANSWER (branch `frozen-export-wait`, NOT merged; sql/157 NOT applied; NO extension change, NO Render)
+Real cases Nov 13: two 冷凍 parcels exported ~20 s after saving, before the live frozen answer. Store 217237
+answered no_frozen 7.8 s AFTER the export; the seller was never told.
+- **Why (traced):** (1) the export only asked the general "N parcels are still being checked — Wait / Export anyway"
+  question, which can be skipped at once; (2) `admin_parcel_frozen_verdict` (sql/142) updated the row with
+  `and status <> 'exported'` → the checker's answer went to the cache + log but the parcel row stayed NULL.
+  The Chrome extension already sends the answer — it is NOT changed.
+- **sql/157 (+rollback):** the same function, ONE condition: an EXPORTED 冷凍 parcel with no real answer (NULL /
+  'unknown') receives its FIRST real answer (ok / no_frozen). An answered exported parcel never changes; 'unknown' is
+  never written to an exported parcel; not-exported parcels exactly as before. `admin_parcel_frozen_pending` is NOT
+  changed (an exported parcel is still never handed out — only an answer already on its way is kept).
+  Either order with the web is safe. `scripts/sql157-behaviour.mjs` (PGlite, 26 checks, both real timelines).
+  The file ends with an OPTIONAL commented one-time update (last 3 days, no_frozen from the cache) — not run.
+- **App (`adapters/parcelFrozenExport.ts` — its own module because many tests replace all of `adapters/parcelScan`;
+  `ParcelScan.tsx` `askExport`):** only with checks on AND the frozen switch on, 冷凍 rows only.
+  1. **Hold:** a fresh 冷凍 parcel (saved < 2 min ago) with NO answer → dialog "Checking if this store accepts frozen…"
+     (Cancel only). The 3 s verdict poll keeps reading; twice a second the hold looks: all answered → goes on BY ITSELF
+     to the normal export step (the phone still needs the seller's tap there — the share sheet must open from a tap);
+     a store that refuses → warning, that parcel is not exported ("Export the other N" when others are ready).
+  2. **Never forever:** after `FROZEN_HOLD_MS` (30 s), or at once when there is nothing to wait for (parcel older than
+     2 min, the checker answered 'unknown', 01:00–05:00 Taipei = the checker's rest) → the frozen question
+     Wait / Export anyway. Exported like that, the row shows the amber **"Frozen not checked"** note (24 h).
+  3. Then the unchanged phone / store question, then the export.
+  - **After an export:** the screen keeps reading for an exported 冷凍 parcel without an answer for 10 min
+    (`lateFrozenWatch`); a late no_frozen = red row + "Already exported, but this store can't receive frozen…" +
+    top bar + alert (`problemOf` kind `no_frozen_exported`). No ⟳ on an exported row. Replaces the old rule
+    "an exported 冷凍 row always keeps ✅".
+  - A dry parcel, a 冷凍 parcel with an answer (cached = instant trigger, or live), switch off, checks off: no hold,
+    no new line, same DOM as before (test-pinned).
+- ⚠️ **Not covered (known):** a parcel exported with "Export anyway" BEFORE the checker picked it up is never checked
+  (pending skips exported parcels) — it keeps the "Frozen not checked" note. The warning lives on the Parcel Scan
+  list; Pickup Status is not linked to parcel_scans rows (tracking numbers are made after the upload), so nothing
+  is shown there. The export re-reads the list right before it claims: a 冷凍 parcel saved on ANOTHER device
+  seconds earlier can still leave without its answer (then the late warning applies).
+- Help guide: no change (it has no frozen section; frozen is for allowed sellers only).
+- **Order:** apply sql/157 → merge (Vercel). No Render deploy, no extension install.
