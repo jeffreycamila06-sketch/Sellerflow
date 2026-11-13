@@ -5158,3 +5158,47 @@ answered no_frozen 7.8 s AFTER the export; the seller was never told.
   seconds earlier can still leave without its answer (then the late warning applies).
 - Help guide: no change (it has no frozen section; frozen is for allowed sellers only).
 - **Order:** apply sql/157 → merge (Vercel). No Render deploy, no extension install.
+
+## 2026-11-13 — 7-11 SERVER PROBE (branch `claude/pc-server-probe`, NOT merged; diagnostic only; needs a Render deploy to run)
+Question: can the Render server do the two checks the Parcel Checker extension does today (restricted phone, full
+store)? `server/pcServerProbe.js` only LOGS what happened. It writes nothing (no parcel, no setting, no checker
+change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sender_phone`, `parcel_check_probe_buyer`).
+`chrome-extension/` was read, never edited.
+- **Env (Render):** `PC_SERVER_PROBE` = exactly `1` turns it on (anything else: route answers 404 `disabled`, no boot
+  timer). `PC_PROBE_MYSHIP_COOKIE` = the Cookie header of a logged-in 賣貨便 session (owner sets it; never logged or
+  returned) — without it only the phone step runs (`store … no_cookie`).
+- **Runs:** once 90 s after the server starts, and `POST /admin/pc-server-probe` (requireAuth + requireAdmin, 1 run per
+  10 minutes for the whole server). Answer / log: `[PC_PROBE] <step> http=<n> ms=<n> <note> maint=0|1`, one line per step.
+- **Phone step:** the extension's `checkRestricted` with no cookies (token page → `CheckoutValidation`); verdict
+  `ok` / `restricted` / `unknown` + kind. Receiver name in the body is a placeholder (`PROBE_NAME`).
+- **Store step:** cart page (logged in = `MemberSid` ≥ 4 chars, else `login_not_accepted`) → `/cart/detail` → `/CPF3101/MAP/`
+  → the served E-Map form → `byIDData` for store 198002 (`open / full / company / not_found / unknown`).
+  Page-1 POST (Fix Round 1, measured on the real page): fee = the NAMED field `fullAmountFee_1` (`fee_1`, `Count`,
+  `Agree` have no name and are never sent); eight fields are set (`item_name_1` test, `item_price_1` 62, `item_qty_1` 1,
+  `item_amt_1` 62, `Sum` 62, `Carm_Cgptshipprice` fee, `Total` / `Seller_GoodsTotalAmt` 62 + fee), every
+  other field as served, no name ever added. No fee → `fee_missing`; one of the eight names not served →
+  `cart_field_missing` (names in the note). `store.detail` logs `fee=<n>`.
+- **Guards:** one fetch wrapper with a URL allowlist (the named paths on `myship.7-11.com.tw`, `default.aspx` /
+  `byIDData.aspx` under `/ecmap/` or `/mobilemap/` on the two E-Map hosts); `/cart/finish` is never requested; redirects
+  are followed by hand through the same allowlist (max 3); no retries; 10 s per request, 40 s per run. The hour never
+  stops a run — `maint` only says the run started 01:00–05:00 Taipei.
+- **Fix Round 1, part 2 (audit):** `parseForms` is linear (indexOf scanning, fields in page order, an unclosed element
+  is skipped — it runs on the live server's event loop); each answer is read as a stream and stopped at 1 MB
+  (`too_big`); the settings read has a 10 s limit inside the 40 s run; content-type is logged only when plain, a refused
+  redirect / form action is recorded as `refused` only (no host, no path); the cart form is posted only to exactly
+  `https://myship.7-11.com.tw/cart/detail` (`cart_action_refused`); more than 3 redirects → `too_many_redirects`.
+- **Fix Round 2 (audit of `5a8a522c`):** every search in `parseForms` stays inside the element that contains it
+  (`idx(s, needle, from, to)` — the page for a form, the form for a field, the select for an option); a plain `indexOf`
+  read to the end of the page each time it found nothing. Clock guard `parseForms(html, { budgetMs = 250 })`: past the
+  budget → an empty list with `.slow = true` → the step stops with kind `parse_too_slow`, no request after it
+  (`runPcServerProbe` option `parseBudgetMs`, tests only). Browser parity: a `disabled` input / select / textarea is
+  never sent; `checked` / `selected` / `disabled` are read with quoted attribute values removed; numeric entities
+  (`&#38;`, `&#x26;`) are decoded in one pass with the named ones.
+- **Fix Round 3:** `CarQty` is no longer set — it goes exactly as served (measured: the page's `jsNext()` never changes
+  it); a served form without `CarQty` is not an error.
+- **Diagnostics (branch `claude/pc-probe-diag`, after the first Render run gave store.cart http=500 form=0):** when the cart
+  page is not a usable logged-in form the `store.cart` line adds `sent_cookies` / `cookie_names` / `set_cookie_names`
+  (NAMES only, max 15, odd → `?`), `page=login|server_error|blocked|other` and, on a redirect, `loc=<path>`; every
+  request uses a Mac Chrome 130 User-Agent.
+- ⚠️ NOT proven: everything about the real sites — no real request was made (fake fetch only). Remove the two env vars
+  when the answer is known.

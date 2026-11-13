@@ -48,6 +48,7 @@ import { createFbFlagReader, createFbTesterReader, createFbLock, createFbPlanChe
 import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
 import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
+import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1238,6 +1239,14 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
   });
   return res.status(out.status).json(out.body);
 });
+
+// 7-11 server probe (server/pcServerProbe.js) — DIAGNOSTIC ONLY: logs whether this server can do
+// the phone / full-store checks. Writes nothing. Off unless env PC_SERVER_PROBE is exactly "1"
+// (off = 404 here and no boot timer). Admin only; 1 run per 10 minutes for the whole server.
+const runPcProbe = () => runPcServerProbe({ readSetting });
+const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
+app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed }));
+schedulePcProbeBoot({ run: runPcProbe, enabled: pcProbeEnabled() });
 
 // Parcel Scan FamilyMart — store # check (server/fmStoreCheck.js; the handler is in
 // server/fmStoreCheckRoute.js). Same auth as the 7-11 check below, its own per-seller limit.
