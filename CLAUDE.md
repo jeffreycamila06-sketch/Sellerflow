@@ -5111,3 +5111,24 @@ on main (no server call, no `store_check` column in any select / update — prov
   server.js and the i18n file are add-only. Small 7-11 helpers that are not exported were copied (`storeBadge`).
 - **Order:** sql/155 → Render deploy → add test logins to `feature_access_emails` → watch the log → switch on →
   sql/156 (guide; `sql/116b` already carries the same text).
+
+## 2026-11-13 — 7-11 SERVER PROBE (branch `claude/pc-server-probe`, NOT merged; diagnostic only; needs a Render deploy to run)
+Question: can the Render server do the two checks the Parcel Checker extension does today (restricted phone, full
+store)? `server/pcServerProbe.js` only LOGS what happened. It writes nothing (no parcel, no setting, no checker
+change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sender_phone`, `parcel_check_probe_buyer`).
+`chrome-extension/` was read, never edited.
+- **Env (Render):** `PC_SERVER_PROBE` = exactly `1` turns it on (anything else: route answers 404 `disabled`, no boot
+  timer). `PC_PROBE_MYSHIP_COOKIE` = the Cookie header of a logged-in 賣貨便 session (owner sets it; never logged or
+  returned) — without it only the phone step runs (`store … no_cookie`).
+- **Runs:** once 90 s after the server starts, and `POST /admin/pc-server-probe` (requireAuth + requireAdmin, 1 run per
+  10 minutes for the whole server). Answer / log: `[PC_PROBE] <step> http=<n> ms=<n> <note> maint=0|1`, one line per step.
+- **Phone step:** the extension's `checkRestricted` with no cookies (token page → `CheckoutValidation`); verdict
+  `ok` / `restricted` / `unknown` + kind. Receiver name in the body is a placeholder (`PROBE_NAME`).
+- **Store step:** cart page (logged in = `MemberSid` ≥ 4 chars, else `login_not_accepted`) → `/cart/detail` → `/CPF3101/MAP/`
+  → the served E-Map form → `byIDData` for store 198002 (`open / full / company / not_found / unknown`).
+- **Guards:** one fetch wrapper with a URL allowlist (the named paths on `myship.7-11.com.tw`, `default.aspx` /
+  `byIDData.aspx` under `/ecmap/` or `/mobilemap/` on the two E-Map hosts); `/cart/finish` is never requested; redirects
+  are followed by hand through the same allowlist (max 3); no retries; 10 s per request, 40 s per run. The hour never
+  stops a run — `maint` only says the run started 01:00–05:00 Taipei.
+- ⚠️ NOT proven: everything about the real sites — no real request was made (fake fetch only). Remove the two env vars
+  when the answer is known.
