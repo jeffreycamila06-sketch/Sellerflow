@@ -2,7 +2,7 @@
 // ⚠️ Fake fetch only. The pages below are made up; NO real request to 7-11 / uniOPEN was made.
 import { describe, it, expect, vi } from "vitest";
 import {
-  runPcLoginWalk, readPage, scriptPathsOf, isAllowedWalkHost,
+  runPcLoginWalk, readPage, scriptPathsOf, isAllowedWalkHost, PC_WALK_PARSE_MS,
   PC_WALK_START_URL, PC_WALK_MAX_SCRIPTS_FETCHED, PC_WALK_MAX_REQUESTS,
 } from "../../../../server/pcLoginWalk.js";
 import { PC_PROBE_BODY_MAX } from "../../../../server/pcServerProbe.js";
@@ -128,5 +128,43 @@ describe("pcLoginWalk", () => {
     const p = readPage(LOGIN_PAGE, "https://member.uniopen.com/Account/Login?q=MARKQUERY");
     expect(JSON.stringify({ ...p, scriptUrls: [] })).not.toMatch(/MARK/);
     expect(scriptPathsOf(`"/a/login" "/b/<script>/auth" "/plain/path" 'https://x.com/verify/sms?MARKQUERY'`)).toEqual(["/a/login", "/verify/sms"]);
+  });
+
+  describe("hostile 1 MB pages: linear time + clock guard", () => {
+    const MB = 1024 * 1024;
+    const fill = (unit: string) => unit.repeat(Math.ceil(MB / unit.length)).slice(0, MB);
+    const fastest = (fn: () => void) => {
+      let best = Infinity;
+      for (let r = 0; r < 3; r++) { const t = performance.now(); fn(); best = Math.min(best, performance.now() - t); }
+      return best;
+    };
+    const SHAPES: Record<string, string> = {
+      "<input with no >": fill("<input "),
+      "<script a ×N": fill("<script a"),
+      "<img src=x ×N": fill("<img src=x "),
+    };
+    for (const [label, page] of Object.entries(SHAPES)) {
+      it(`readPage: ${label} (1 MB) under 300 ms`, () => {
+        const ms = fastest(() => readPage(page, "https://member.uniopen.com/login"));
+        console.log(`[timing] readPage ${label}: ${ms.toFixed(1)} ms`);
+        expect(ms).toBeLessThan(300);
+      });
+    }
+    it("scriptPathsOf: 1 MB of unclosed quotes under 300 ms", () => {
+      const ms = fastest(() => scriptPathsOf(fill('"' + "a".repeat(299))));
+      console.log(`[timing] scriptPathsOf unclosed quotes: ${ms.toFixed(1)} ms`);
+      expect(ms).toBeLessThan(300);
+    });
+    it("past the budget: what was read so far, slow = true", () => {
+      const p = readPage(fill("<input name=a>"), "https://member.uniopen.com/login", { budgetMs: -1 });
+      expect(p.slow).toBe(true);
+      expect(readPage(LOGIN_PAGE, "https://member.uniopen.com/login").slow).toBe(false);
+      expect(scriptPathsOf(fill('"/login/a" '), { budgetMs: -1 }).slow).toBe(true);
+      expect(PC_WALK_PARSE_MS).toBe(250);
+    });
+    it("a tag with no > stops the read; a tag over 4000 chars is skipped", () => {
+      const p = readPage(`<form id="f"><input name="a"><input name="b" ${"x".repeat(5000)}><input name="c"><input name="d"`, "https://member.uniopen.com/login");
+      expect(p.forms[0].fields).toEqual(["a:text", "c:text"]);
+    });
   });
 });

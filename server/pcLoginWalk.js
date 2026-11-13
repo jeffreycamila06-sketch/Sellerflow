@@ -69,9 +69,38 @@ function attrsOf(tag) {
   return out;
 }
 
-// One regex pass over the page; tags in page order. Bounded tag length → linear time.
-const TAG_RE = /<(\/?)(form|input|select|textarea|button|img|script)\b([^>]{0,4000})>/gi;
-export function readPage(html, pageUrl) {
+// The tags of a page in page order, read with indexOf (no regex over the whole page): find "<",
+// read the tag name, then find the next ">" ONCE. No ">" after a tag → the rest of the page is
+// ignored. A tag longer than PC_WALK_TAG_MAX characters is skipped. Linear time; on top of that a
+// clock guard: past `budgetMs` the answer is what was read so far, with slow = true.
+export const PC_WALK_TAG_MAX = 4000;
+export const PC_WALK_PARSE_MS = 250;
+const TAG_NAMES = ["form", "input", "select", "textarea", "button", "img", "script"];
+const isWordCode = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+function* tagsOf(text, over) {
+  const lower = text.toLowerCase();
+  let pos = 0;
+  for (;;) {
+    if (over()) return;
+    const lt = lower.indexOf("<", pos);
+    if (lt < 0) return;
+    const closing = lower.charCodeAt(lt + 1) === 47; // "/"
+    const nameAt = lt + (closing ? 2 : 1);
+    const name = TAG_NAMES.find((n) => lower.startsWith(n, nameAt));
+    if (!name || isWordCode(lower.charCodeAt(nameAt + name.length))) { pos = lt + 1; continue; }
+    const after = nameAt + name.length;
+    const gt = text.indexOf(">", after);
+    if (gt < 0) return; // never closed: the rest of the page is ignored
+    pos = gt + 1;
+    if (gt - lt > PC_WALK_TAG_MAX) continue; // too long: skipped
+    yield { closing, name, attrs: text.slice(after, gt) };
+  }
+}
+
+export function readPage(html, pageUrl, { budgetMs = PC_WALK_PARSE_MS } = {}) {
+  const t0 = performance.now();
+  let slow = false;
+  const over = () => { if (!slow && performance.now() - t0 > budgetMs) slow = true; return slow; };
   const text = String(html ?? "");
   let host = "";
   try { host = new URL(pageUrl).hostname; } catch { /* nothing */ }
@@ -82,19 +111,18 @@ export function readPage(html, pageUrl) {
   let captchaPath = null;
   const scripts = [];
   const scriptUrls = [];
-  for (let m = TAG_RE.exec(text); m; m = TAG_RE.exec(text)) {
-    const closing = m[1] === "/";
-    const name = m[2].toLowerCase();
+  for (const m of tagsOf(text, over)) {
+    const { closing, name } = m;
     if (name === "form") {
       if (closing) { cur = null; continue; }
-      const a = attrsOf(m[3]);
+      const a = attrsOf(m.attrs);
       const method = String(a.method || "GET").toUpperCase();
       cur = { id: a.id ? safeName(a.id) : "-", method: method === "GET" || method === "POST" ? method : "?", action: hostPathOf(a.action ?? pageUrl, pageUrl), fields: [] };
       forms.push(cur);
       continue;
     }
     if (closing) continue;
-    const a = attrsOf(m[3]);
+    const a = attrsOf(m.attrs);
     if (name === "img") {
       if (captchaPath === null && a.src && CAPTCHA_IMG_RE.test(a.src)) {
         try { captchaPath = safePath(new URL(a.src, pageUrl).pathname); } catch { captchaPath = "?"; }
@@ -121,6 +149,7 @@ export function readPage(html, pageUrl) {
   }
   if (loose.fields.length) forms.push(loose);
   return {
+    slow,
     forms,
     fieldCount,
     captchaPath,
@@ -139,19 +168,42 @@ export function readPage(html, pageUrl) {
 }
 
 // Quoted URL paths inside a script that hold one of the walk's words. Path only, safe chars only.
-const QUOTED_RE = /(["'`])([^"'`\s]{1,300})\1/g;
-export function scriptPathsOf(source) {
+// A quoted run = 1..300 characters with no quote and no whitespace, closed by the same quote it
+// opened with. One pass: a run's scan stops at the next quote, so no character is scanned twice
+// by a run. Clock guard like readPage: past `budgetMs` the answer has slow = true.
+const isQuote = (c) => c === 34 || c === 39 || c === 96; // " ' `
+const WS_RE = /\s/;
+const isSpaceAt = (text, j, c) => (c <= 32 ? c === 32 || (c >= 9 && c <= 13) : c > 127 && WS_RE.test(text[j]));
+export function scriptPathsOf(source, { budgetMs = PC_WALK_PARSE_MS } = {}) {
+  const t0 = performance.now();
   const out = new Set();
   const text = String(source ?? "");
-  for (let m = QUOTED_RE.exec(text); m; m = QUOTED_RE.exec(text)) {
-    let s = m[2];
+  let slow = false;
+  for (let i = 0; i < text.length; i++) {
+    const q = text.charCodeAt(i);
+    if (!isQuote(q)) continue;
+    if ((i & 1023) === 0 && performance.now() - t0 > budgetMs) { slow = true; break; }
+    let j = i + 1;
+    const end = Math.min(text.length, i + 302);
+    while (j < end) {
+      const c = text.charCodeAt(j);
+      if (isQuote(c) || isSpaceAt(text, j, c)) break;
+      j++;
+    }
+    const len = j - i - 1;
+    if (j >= text.length || text.charCodeAt(j) !== q || len < 1 || len > 300) continue;
+    i = j; // a match ends at its closing quote; the next search starts after it
+    let s = text.slice(j - len, j);
     if (/^https?:\/\//i.test(s)) { try { s = new URL(s).pathname; } catch { continue; } }
     s = s.split(/[?#]/)[0];
     if (!s.includes("/") || !SCRIPT_WORD_RE.test(s)) continue;
     if (!/^[A-Za-z0-9_./-]{1,100}$/.test(s)) continue;
     out.add(s);
   }
-  return [...out];
+  if (!slow && performance.now() - t0 > budgetMs) slow = true;
+  const list = [...out];
+  Object.defineProperty(list, "slow", { value: slow, enumerable: false }); // not part of the list itself
+  return list;
 }
 
 // ── the cookie jar (this walk only; a cookie goes back only to the host that set it) ──
@@ -237,7 +289,7 @@ export async function runPcLoginWalk(opts = {}) {
 
   if (page) {
     const info = readPage(page.text, page.url);
-    say(`page host=${hostPathOf(page.url, page.url)} forms=${info.forms.length} fields=${info.fieldCount}`);
+    say(`page host=${hostPathOf(page.url, page.url)} forms=${info.forms.length} fields=${info.fieldCount}${info.slow ? " slow=1" : ""}`);
     info.forms.slice(0, 10).forEach((f, i) => {
       say(`form i=${i + 1} id=${f.id} method=${f.method} action=${f.action} fields=${f.fields.join(",") || "-"}`);
     });
@@ -254,7 +306,7 @@ export async function runPcLoginWalk(opts = {}) {
         if (res.refused) { say(`${where} refused`); continue; }
         if (res.error) { say(`${where} error=${res.error}`); if (res.error === "run_timeout" || res.error === "max_requests") break; continue; }
         const paths = res.text == null ? [] : scriptPathsOf(res.text);
-        say(`${where} http=${res.r.status} bytes=${res.text == null ? "too_big" : res.text.length} found=${paths.length}`);
+        say(`${where} http=${res.r.status} bytes=${res.text == null ? "too_big" : res.text.length} found=${paths.length}${paths.slow ? " slow=1" : ""}`);
         for (const p of paths) { if (found.size >= PC_WALK_MAX_SCRIPT_PATHS) break; found.add(p); }
       }
       say(`script_paths=${[...found].join(",") || "-"}`);
