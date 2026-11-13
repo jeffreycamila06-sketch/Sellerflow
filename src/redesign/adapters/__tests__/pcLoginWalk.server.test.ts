@@ -159,7 +159,7 @@ describe("pcLoginWalk", () => {
       const p = readPage(fill("<input name=a>"), "https://member.uniopen.com/login", { budgetMs: -1 });
       expect(p.slow).toBe(true);
       expect(readPage(LOGIN_PAGE, "https://member.uniopen.com/login").slow).toBe(false);
-      expect(scriptPathsOf(fill('"/login/a" '), { budgetMs: -1 }).slow).toBe(true);
+      expect((scriptPathsOf(fill('"/login/a" '), { budgetMs: -1 }) as string[] & { slow?: boolean }).slow).toBe(true);
       expect(PC_WALK_PARSE_MS).toBe(250);
     });
     it("a tag with no > stops the read; a tag over 4000 chars is skipped", () => {
