@@ -4987,6 +4987,45 @@ Web only (Vercel after merge). No server, no schema change.
 - **Guide:** `docs/support/sfl-guide.md` + `sql/116b` regenerated. `sql/152_guide_fm_store_zero.sql`
   (+ rollback) changes ONLY that phrase in the `parcel-scan` row of `support_guide`.
 
+## 2026-11-13 — ADMIN: CONNECTED ACCOUNTS + DOWNGRADE REMOVES THE EXTRAS (branch `account-total-connected`, NOT merged; sql/154 NOT applied; Render NOT deployed)
+**Investigation first (read-only, Nov 13):** the plan number is ALREADY one TOTAL across TikTok + Facebook +
+Instagram + Shopee in production, since Oct 10 — do not "fix" it again:
+- **Adding:** database triggers (sql/84 + sql/87, `account_total_enforce='true'`) count all four on every new TikTok
+  name / `fb_pages` / `ig_accounts` / `shopee_shops` row. The per-platform count in the three OAuth callbacks
+  (`fbLive.js` ~763, `igLive.js` ~192, `shopeeLive.js` ~202) is only a first check; the save right after hits the
+  trigger (`account_limit`). Re-authorizing an existing row always passes.
+- **Going live:** `account_live_check` (sql/85, `account_live_enforce='true'`) ranks ALL four platforms oldest first;
+  `/connect/tiktok`, `/fb/connect`, `/ig/connect`, `/shopee/connect` all ask it — only when no live is already running
+  for that account. After a downgrade the newer accounts are refused at live start and labelled "Not covered by your
+  plan" in Manage; an upgrade brings them back; nothing is deleted. Proof: `scripts/sql154-behaviour.mjs` part A.
+- The real gap was the ADMIN screen: "Accounts N" counted TikTok names only and the "Facebook pages" box is the old
+  typed list (`seller_profiles.facebook`), not `fb_pages` (browser RLS = own rows only).
+
+**What this branch adds:**
+- **sql/154 (+rollback), three admin-only functions (is_admin() inside), no table / trigger / existing function changed:**
+  `admin_connected_accounts()` (every seller's Pages / Instagram / shops: name + date), `admin_seller_accounts(p_user)`
+  (one seller, all four platforms, in `account_live_ranking` order), `admin_downgrade_remove(...)` (ONE transaction:
+  plan patch + removal; refuses unless what is left is EXACTLY the new plan's number — `accounts_changed`).
+- **Admin card:** connected accounts listed read-only (name + "since" date), "Accounts N" = TikTok names + connected.
+  Edit accounts: the old box is labelled "Facebook names (old typed list)"; connected ones are a read-only list.
+- **Downgrade dialog (`components/DowngradeDialog.tsx`):** a plan button for a LOWER plan (`isLowerPlan`) with
+  total > new number opens it BEFORE anything is saved: every account, the newest N − M pre-checked (highest rank),
+  OK only with exactly N − M checked. OK = `actions.downgradeRemove` (same `planChangePatch` as the plan buttons +
+  the removal, one database call) → audit row "changed plan … removed N: …". Cancel = nothing.
+  Within the limit / upgrade / admin or exempt seller → the plain plan change. `admin_seller_accounts` missing
+  (sql/154 not applied) → plain plan change; any other read failure → NOTHING is changed.
+- **Never automatic:** `admin_downgrade_remove` has ONE caller (`adapters/adminAccounts.ts`, from the dialog's confirm).
+  Expire, plan expiry and every automatic change remove nothing (test-pinned).
+- **Server (Render manual deploy): `POST /admin/accounts/stop-removed`** (requireAuth + requireAdmin,
+  `server/adminLiveStop.js`). The FB / IG / Shopee pollers cache their token, so a deleted row alone does not stop a
+  running live. This route stops ONLY an account whose row is really gone (re-read with the service key); a
+  still-connected account or an unreadable row is never stopped. The pollers / callbacks / connect routes are NOT
+  edited. Before the deploy the app's call fails quietly: the removal is done and the toast says a running live keeps
+  going until it ends. A removed TikTok name is not disconnected (it is refused at its next connect).
+- **Order:** apply sql/154 → merge (Vercel) → Render deploy in a quiet window (Business Pulse check first).
+- ⚠️ Not changed: admin "Edit accounts" can still type TikTok names past the total (an admin is never blocked by the
+  add trigger, by design in sql/84); such extras are simply not covered at live start.
+
 ## 2026-11-12 — LIVE PRINT PATTERN: TikTok / Facebook VIEW (branch `claude/pattern-platform-view`, NOT merged; sql/153 NOT applied)
 Web only (Vercel after merge). No change to the sticker engine, layouts, settings, print paths or switches.
 (`claude/fm-store-zero` above IS merged: main `8253c004`; sql/152 still not applied.)
