@@ -211,7 +211,7 @@ function withFields(fields, patch) {
 const encode = (fields) => new URLSearchParams(fields).toString();
 
 // The answer as text, never more than PC_PROBE_BODY_MAX bytes in memory. null = too big.
-async function readCapped(r) {
+export async function readCapped(r) {
   const declared = Number(r.headers?.get?.("content-length"));
   if (Number.isFinite(declared) && declared > PC_PROBE_BODY_MAX) { try { await r.body?.cancel?.(); } catch { /* nothing */ } return null; }
   const reader = r.body?.getReader?.();

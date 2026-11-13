@@ -49,6 +49,7 @@ import { createShopeeLinkRuntime } from "./server/shopeeLiveLink.js";
 import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "./server/socketSafety.js";
 import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
 import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
+import { runPcLoginWalk } from "./server/pcLoginWalk.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1246,7 +1247,10 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 const runPcProbe = () => runPcServerProbe({ readSetting });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
 app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed }));
-schedulePcProbeBoot({ run: runPcProbe, enabled: pcProbeEnabled() });
+// Boot: the probe, then ONCE the 7-11 login walk (server/pcLoginWalk.js — GET only, read-only,
+// same PC_SERVER_PROBE switch; the admin route above runs the probe only).
+const runPcProbeBoot = () => runPcProbe().catch(() => {}).then(() => runPcLoginWalk());
+schedulePcProbeBoot({ run: runPcProbeBoot, enabled: pcProbeEnabled() });
 
 // Parcel Scan FamilyMart — store # check (server/fmStoreCheck.js; the handler is in
 // server/fmStoreCheckRoute.js). Same auth as the 7-11 check below, its own per-seller limit.

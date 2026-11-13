@@ -616,7 +616,8 @@ describe("2 wiring", () => {
     const src = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8");
     expect(src).toContain('app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed }));');
     expect(src).toContain("const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });");
-    expect(src).toContain("schedulePcProbeBoot({ run: runPcProbe, enabled: pcProbeEnabled() });");
+    expect(src).toContain("schedulePcProbeBoot({ run: runPcProbeBoot, enabled: pcProbeEnabled() });");
+    expect(src).toContain("const runPcProbeBoot = () => runPcProbe().catch(() => {}).then(() => runPcLoginWalk());");
   });
   it("boot run: no timer at all when off; when on, ONE unref'd timer of 90 s whose run never throws", async () => {
     const off = vi.fn();
