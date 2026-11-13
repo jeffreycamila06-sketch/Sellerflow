@@ -12,7 +12,8 @@
 -- 1. admin_parcel_frozen_verdict, ONE condition: an EXPORTED 冷凍 parcel whose frozen answer is still NULL / 'unknown' now receives its FIRST real
 --   answer (ok / no_frozen). Then:
 --     · an exported parcel that already has ok / no_frozen never changes (as before);
---     · 'unknown' is never written to an exported parcel (as before);
+--     · 'unknown' is never written to an exported parcel's status — only its check time is stamped, so
+--       the pending read holds it back 10 min like any 'unknown' (the warm-up gate is never blocked);
 --     · a parcel that is not exported: exactly as before.
 -- 2. admin_parcel_frozen_pending: also checks a 冷凍 parcel exported in the last 24 hours without its
 --    answer (see its block below). admin_parcel_checks_pending (the dry checker) is NOT changed.
@@ -45,10 +46,12 @@ begin
 
   update parcel_scans set
     -- 'unknown' (no answer) never overwrites a real no_frozen (a blocked store stays blocked)
-    frozen_store_status     = case when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end,
+    frozen_store_status     = case when status = 'exported' and p_status = 'unknown' then frozen_store_status
+                                   when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end,
     frozen_store_checked_at = now()
   where id = p_id
     and ( status <> 'exported'
+          or ( p_status = 'unknown' and (frozen_store_status is null or frozen_store_status = 'unknown') )
           -- sql/157: an EXPORTED parcel that never got a real answer receives its FIRST real one
           -- (ok / no_frozen) — so the seller can be warned. An exported parcel that already has a
           -- real answer never changes, and 'unknown' is never written to an exported parcel.
@@ -127,8 +130,8 @@ begin
                   or (ps.frozen_store_status = 'no_frozen' and ps.frozen_store_checked_at < now() - v_no_ttl) ) )
           -- sql/157: an exported parcel without a real answer (exported in the last 24 hours)
           or ( ps.status = 'exported' and ps.exported_at > now() - v_late
-               and ( ps.frozen_store_status is null
-                  or (ps.frozen_store_status = 'unknown' and ps.frozen_store_checked_at < now() - v_retry) ) ) )
+               and (ps.frozen_store_status is null or ps.frozen_store_status = 'unknown')
+               and (ps.frozen_store_checked_at is null or ps.frozen_store_checked_at < now() - v_retry) ) )
   ),
   one as (
     select distinct on (cd.store_id) cd.id, cd.store_id, cd.created_at, cd.ex

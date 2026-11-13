@@ -86,7 +86,9 @@ ok((await t.row(p2)).s === "no_frozen", "an exported parcel with 'no_frozen' is 
 // 'unknown' is never written to an exported parcel
 const p3 = await t.ins(A, "111111"); await t.exportIt(p3);
 await t.verdict(p3, "111111", "unknown");
-ok((await t.row(p3)).s === null && (await t.row(p3)).at === null, "'unknown' is never written to an exported parcel");
+ok((await t.row(p3)).s === null && (await t.row(p3)).at !== null, "'unknown' is never written to an exported parcel (only its check time is stamped)");
+// the stamped time holds an exported parcel back for 10 min after an 'unknown' (the warm-up gate is not blocked)
+{ const r = await t.pending(25); ok(!r.some((x) => x.id === p3), "exported + 'unknown' answer: not handed out again within 10 min (warm-up not blocked)"); }
 await t.verdict(p3, "111111", "no_frozen");
 ok((await t.row(p3)).s === "no_frozen", "…and a real answer after that still lands");
 // an exported parcel that had 'unknown' before its export gets the first real answer

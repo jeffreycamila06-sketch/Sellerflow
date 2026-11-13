@@ -21,13 +21,16 @@ describe("sql/157 — a late frozen answer reaches an exported parcel", () => {
     expect(code(up)).not.toMatch(/drop function|create table|alter table|create trigger|create policy|create index|admin_parcel_checks_pending|insert into app_settings|update app_settings/i);
     expect(code(up)).not.toMatch(/^\s*(update|insert|delete)\s+public\./im); // no data statement outside the function (the optional backfill is a comment)
   });
-  it("the ONLY difference from sql/142's function is the UPDATE's WHERE", () => {
+  it("the ONLY differences from sql/142's function: exported 'unknown' keeps the status, and the UPDATE's WHERE", () => {
     const a = norm(fnOf(base)), b = norm(fnOf(up));
     const oldWhere = "where id = p_id and status <> 'exported';";
-    const newWhere = "where id = p_id and ( status <> 'exported' or ( p_status in ('ok', 'no_frozen') and (frozen_store_status is null or frozen_store_status = 'unknown') ) );";
+    const newWhere = "where id = p_id and ( status <> 'exported' or ( p_status = 'unknown' and (frozen_store_status is null or frozen_store_status = 'unknown') ) or ( p_status in ('ok', 'no_frozen') and (frozen_store_status is null or frozen_store_status = 'unknown') ) );";
+    const oldCase = "frozen_store_status = case when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end,";
+    const newCase = "frozen_store_status = case when status = 'exported' and p_status = 'unknown' then frozen_store_status when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end,";
     expect(a).toContain(oldWhere);
     expect(b).toContain(newWhere);
-    expect(b.replace(newWhere, oldWhere)).toBe(a);
+    expect(b).toContain(newCase);
+    expect(b.replace(newWhere, oldWhere).replace(newCase, oldCase)).toBe(a);
   });
   it("still admin-only, still 冷凍 only, still the checked store only; 'unknown' still never beats no_frozen", () => {
     const f = code(fnOf(up));
@@ -35,7 +38,7 @@ describe("sql/157 — a late frozen answer reaches an exported parcel", () => {
     expect(f.indexOf("if not public.is_admin()")).toBeLessThan(f.indexOf("update parcel_scans"));
     expect(f).toContain("if v_layer is distinct from '冷凍' then return; end if;");
     expect(f).toContain("if p_expected_store is not null and v_store is distinct from p_expected_store then return; end if;");
-    expect(f).toContain("case when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end");
+    expect(f).toContain("when p_status = 'unknown' and frozen_store_status = 'no_frozen' then frozen_store_status else p_status end");
     expect(f).toMatch(/security definer set search_path = public/);
   });
   it("grants as before (never public / anon; authenticated calls it, is_admin() is inside)", () => {
@@ -55,7 +58,7 @@ describe("sql/157 — a late frozen answer reaches an exported parcel", () => {
     expect(f).toContain("( ps.status <> 'exported' and ( ps.frozen_store_status is null or (ps.frozen_store_status = 'unknown' and ps.frozen_store_checked_at < now() - v_retry) or (ps.frozen_store_status = 'no_frozen' and ps.frozen_store_checked_at < now() - v_no_ttl) ) )");
     expect(f).toContain("( ps.status <> 'exported' and ( (ps.frozen_store_status is null and ps.frozen_store_checked_at is null) or ps.frozen_store_status = 'unknown' ) )");
     // the exported branches: 24 h, no real answer, same 'unknown' retry
-    expect(f).toContain("or ( ps.status = 'exported' and ps.exported_at > now() - v_late and ( ps.frozen_store_status is null or (ps.frozen_store_status = 'unknown' and ps.frozen_store_checked_at < now() - v_retry) ) ) )");
+    expect(f).toContain("or ( ps.status = 'exported' and ps.exported_at > now() - v_late and (ps.frozen_store_status is null or ps.frozen_store_status = 'unknown') and (ps.frozen_store_checked_at is null or ps.frozen_store_checked_at < now() - v_retry) ) )");
     expect(f).toContain("or ( ps.status = 'exported' and ps.exported_at > now() - v_late and (ps.frozen_store_status is null or ps.frozen_store_status = 'unknown') ) )");
     // same cache freshness, same per-store floor, same limit, not-exported first
     for (const k of ["(c.status = 'no_frozen' and c.checked_at > now() - v_no_ttl)", "(c.status = 'ok' and c.checked_at > now() - v_ok_ttl)", "(c.checked_at is null or c.checked_at < now() - v_floor)", "limit least(greatest(coalesce(p_limit, 3), 1), 25);", "join parcel_check_access acc on acc.user_id = ps.user_id and acc.enabled", "if not public.is_admin() then raise exception 'forbidden'; end if;", "if coalesce(v_enabled, 'false') <> 'true' then return; end if;"]) expect(f).toContain(k);
