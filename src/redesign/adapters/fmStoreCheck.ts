@@ -2,8 +2,10 @@
 // wrong-store-code flow (ParcelScan.tsx runStoreCheck + store_check_status), on fm_parcel_scans.
 // On = the switch fm_store_check_enabled OR this login has the key "fm_store_check". Off = the
 // screen never calls anything here (no server call, no new column read, no new label).
-// A check NEVER blocks a save: any doubt (timeout, offline, limit, server not deployed) is
-// 'unknown' ("Can't verify store" + Re-check). Only 'not_found' keeps a parcel out of the file.
+// A check NEVER blocks a save. Only a real answer is kept: 'valid' or 'not_found'. Anything else
+// (timeout, offline, limit, server not deployed, an answer of 'unknown') is written nowhere and
+// never replaces a real answer — the row then shows "Can't verify store" + Re-check.
+// Only 'not_found' keeps a parcel out of the export file.
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { SERVER } from "./serverIdentity";
@@ -11,54 +13,62 @@ import type { FmScanRow } from "./fmScan";
 import { decodeServerJson, withCodes } from "../../lib/errCodes.js";
 
 export type FmStoreVerdict = "valid" | "not_found" | "unknown";
-export const FM_STORE_CHECK_GIVE_UP_MS = 6000;  // one check gives up after this (→ unknown)
-export const FM_STORE_CHECK_MAX_PER_OPEN = 60;  // automatic checks per screen open, at most
-export const FM_STORE_CHECK_STOP_AFTER = 2;     // no-answers in a row → no more automatic checks this open
+export type FmStoreAnswerStatus = "valid" | "not_found";
+export const FM_STORE_CHECK_GIVE_UP_MS = 6000;   // one check gives up after this (→ unknown)
+export const FM_STORE_CHECK_BACKLOG_MAX = 60;    // parcels already in the list at open: at most this many are asked per open
+export const FM_STORE_CHECK_STOP_AFTER = 2;      // failures in a row → everything queued is dropped
 
 export function fmStoreCheckVisible(a: { switchOn: boolean; previewKey: boolean }): boolean {
   return a.switchOn === true || a.previewKey === true;
 }
 
-// Not exported, a 6-digit store #, no answer yet (null). 'unknown' is an answer: the seller taps Re-check.
-export const needsFmStoreCheck = (r: FmScanRow): boolean => !r.exportedAt && /^\d{6}$/.test(r.storeId) && r.storeCheckStatus == null;
+const real = (s: unknown): s is FmStoreAnswerStatus => s === "valid" || s === "not_found";
+// A parcel the check is about: not exported, a 6-digit store #.
+export const fmStoreCheckable = (r: FmScanRow): boolean => !r.exportedAt && /^\d{6}$/.test(r.storeId);
 // The FamilyMart "wrong store code" problem (a parcel already exported is done — never a problem).
 export const fmWrongStore = (r: FmScanRow): boolean => !r.exportedAt && r.storeCheckStatus === "not_found";
+export const fmStoreKey = (r: Pick<FmScanRow, "id" | "storeId">): string => `${r.id}:${r.storeId}`;
 
 export interface FmStoreAnswer { status: FmStoreVerdict; noAnswer?: boolean }
+const NO_ANSWER: FmStoreAnswer = { status: "unknown", noAnswer: true };
 
-// Asks the server. Gives up after giveUpMs. Never throws. noAnswer = the server did not answer
-// (offline, timeout, limit, not deployed) — as opposed to an answer that says 'unknown'.
-export async function askFmStore(storeId: string, giveUpMs = FM_STORE_CHECK_GIVE_UP_MS): Promise<FmStoreAnswer> {
-  if (!/^\d{6}$/.test(storeId)) return { status: "unknown" };
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), giveUpMs);
+async function askServer(storeId: string, fresh: boolean, signal: AbortSignal): Promise<FmStoreAnswer> {
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
     const r = await fetch(withCodes(`${SERVER}/admin/fm-store-check`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
-      body: JSON.stringify({ storeId }),
-      signal: ctl.signal,
+      body: JSON.stringify(fresh ? { storeId, fresh: true } : { storeId }),
+      signal,
     });
     const j = decodeServerJson(await r.json().catch(() => ({} as { success?: boolean; status?: string })));
-    if (!r.ok || !j.success) return { status: "unknown", noAnswer: true };
-    return { status: j.status === "valid" || j.status === "not_found" ? j.status : "unknown" };
+    if (!r.ok || !j.success) return NO_ANSWER;
+    return { status: real(j.status) ? j.status : "unknown" };
   } catch {
-    return { status: "unknown", noAnswer: true };
-  } finally {
-    clearTimeout(timer);
+    return NO_ANSWER;
   }
 }
 
-// Writes the answer on the seller's own row — only while the row still has that store #.
-export async function writeFmStoreCheck(id: string, storeId: string, status: FmStoreVerdict): Promise<boolean> {
-  if (!isSupabaseConfigured || !supabase) return false;
+// Asks the server. The WHOLE ask (the session read included) gives up after giveUpMs → unknown.
+// fresh = a Re-check tap (the server asks FamilyMart again). Never throws.
+export function askFmStore(storeId: string, fresh = false, giveUpMs = FM_STORE_CHECK_GIVE_UP_MS): Promise<FmStoreAnswer> {
+  if (!/^\d{6}$/.test(storeId)) return Promise.resolve({ status: "unknown" });
+  const ctl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const giveUp = new Promise<FmStoreAnswer>((res) => { timer = setTimeout(() => { ctl.abort(); res(NO_ANSWER); }, giveUpMs); });
+  return Promise.race([askServer(storeId, fresh, ctl.signal), giveUp]).finally(() => clearTimeout(timer));
+}
+
+// Writes a REAL answer on the seller's own row, with the store # it is for — only while the row
+// still has that store #.
+export async function writeFmStoreCheck(id: string, storeId: string, status: FmStoreAnswerStatus): Promise<boolean> {
+  if (!real(status) || !isSupabaseConfigured || !supabase) return false;
   try {
     const { data } = await supabase.auth.getSession();
     const me = data.session?.user?.id;
     if (!me) return false;
     const { error } = await supabase.from("fm_parcel_scans")
-      .update({ store_check_status: status, store_check_at: new Date().toISOString() })
+      .update({ store_check_status: status, store_check_at: new Date().toISOString(), store_check_store_id: storeId })
       .eq("id", id).eq("user_id", me).eq("store_id", storeId);
     return !error;
   } catch {
@@ -66,71 +76,115 @@ export async function writeFmStoreCheck(id: string, storeId: string, status: FmS
   }
 }
 
-// Checks, one after the other, every not-exported parcel with no answer yet: the ones on screen
-// when it opens, a parcel just saved or imported, a parcel whose store # was just changed (its
-// old answer is cleared by the save). The row shows "checking", then the answer. recheck() =
-// the row's Re-check button. checking = a check is running or waiting (Export waits for it; one
-// check never takes more than FM_STORE_CHECK_GIVE_UP_MS, and two no-answers in a row end the
-// automatic checks for this open, so the button can never stay stuck).
-export function useFmStoreChecks(on: boolean, rows: FmScanRow[], setRows: Dispatch<SetStateAction<FmScanRow[]>>): { checking: boolean; recheck: (id: string, storeId: string) => void } {
-  const [busy, setBusy] = useState(false);
+type Job = { id: string; storeId: string; backlog: boolean; fresh: boolean };
+
+// One check at a time.
+//   BACKLOG = parcels with no answer that were already in the list when the checks started
+//             (ready turned true). At most FM_STORE_CHECK_BACKLOG_MAX of them are asked per open.
+//   NEW     = a parcel saved / imported / whose store # changed after that, and every Re-check
+//             tap. Never counted, never skipped because of that cap.
+// A failure = no answer OR an answer of 'unknown'. Two in a row → everything queued right now is
+// dropped (stop). While stopped the backlog is not asked; a later NEW item is still asked. The
+// first real answer ends the stop and the backlog goes on.
+// busy = the parcels waiting or being asked (their row says "Checking store…"; Export waits).
+// ready = the list on screen was read WITH the check columns.
+export function useFmStoreChecks(on: boolean, ready: boolean, rows: FmScanRow[], setRows: Dispatch<SetStateAction<FmScanRow[]>>): {
+  busy: ReadonlySet<string>; checking: boolean; recheck: (id: string, storeId: string) => void;
+} {
+  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
   const rowsRef = useRef(rows);
-  const manual = useRef<{ id: string; storeId: string }[]>([]);
+  const queue = useRef<Job[]>([]);
+  const parked = useRef<Job[]>([]);            // backlog jobs dropped by a stop
+  const inFlight = useRef<string | null>(null);
+  const known = useRef<Map<string, string> | null>(null); // parcel id → the store # last seen (null = checks not started)
+  const answers = useRef(new Map<string, FmStoreAnswerStatus>());
   const running = useRef(false);
   const stopped = useRef(false);
-  const misses = useRef(0);
-  const autoCount = useRef(0);
+  const fails = useRef(0);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
+  const sync = useCallback(() => {
+    const next = new Set(queue.current.map(fmStoreKey));
+    if (inFlight.current) next.add(inFlight.current);
+    if (alive.current) setBusy(next);
+  }, []);
+
   const run = useCallback(() => {
-    if (running.current) return;
-    const next = (): { id: string; storeId: string; auto: boolean } | null => {
-      const m = manual.current.shift();
-      if (m) return { ...m, auto: false };
-      if (stopped.current) return null;
-      const r = rowsRef.current.find(needsFmStoreCheck);
-      return r ? { id: r.id, storeId: r.storeId, auto: true } : null;
-    };
-    let job = next();
-    if (!job) return;
+    if (running.current || queue.current.length === 0) { sync(); return; }
     running.current = true;
-    setBusy(true);
     void (async () => {
       try {
-        for (; job && alive.current; job = next()) {
-          const { id, storeId, auto } = job;
-          if (auto && ++autoCount.current >= FM_STORE_CHECK_MAX_PER_OPEN) stopped.current = true;
-          const same = (x: FmScanRow) => x.id === id && x.storeId === storeId;
-          const put = (status: string) => {
-            rowsRef.current = rowsRef.current.map((x) => (same(x) ? { ...x, storeCheckStatus: status } : x)); // the loop's own view, before React renders
-            setRows((list) => list.map((x) => (same(x) ? { ...x, storeCheckStatus: status } : x)));
-          };
-          put("checking");
-          const a = await askFmStore(storeId);
-          if (a.noAnswer) { if (++misses.current >= FM_STORE_CHECK_STOP_AFTER) stopped.current = true; }
-          else { misses.current = 0; if (!auto) stopped.current = autoCount.current >= FM_STORE_CHECK_MAX_PER_OPEN; }
-          void writeFmStoreCheck(id, storeId, a.status); // best-effort
+        for (let job = queue.current.shift(); job && alive.current; job = queue.current.shift()) {
+          const key = fmStoreKey(job);
+          const { id, storeId } = job;
+          // gone, exported or its store # changed meanwhile → nothing to ask
+          if (!rowsRef.current.some((x) => x.id === id && x.storeId === storeId && fmStoreCheckable(x))) continue;
+          inFlight.current = key; sync();
+          const a = await askFmStore(storeId, job.fresh);
+          inFlight.current = null;
           if (!alive.current) return;
-          put(a.status);
+          if (real(a.status)) {
+            const status = a.status;
+            fails.current = 0;
+            if (stopped.current) { stopped.current = false; queue.current.push(...parked.current); parked.current = []; }
+            answers.current.set(key, status);
+            void writeFmStoreCheck(id, storeId, status); // best-effort
+            setRows((list) => list.map((x) => (x.id === id && x.storeId === storeId ? { ...x, storeCheckStatus: status } : x)));
+          } else if (++fails.current >= FM_STORE_CHECK_STOP_AFTER) {
+            // nothing is written and the row keeps what it had; everything queued right now is dropped
+            stopped.current = true;
+            parked.current.push(...queue.current.filter((j) => j.backlog));
+            queue.current = [];
+          }
+          sync();
         }
       } finally {
         running.current = false;
-        if (alive.current) setBusy(false);
+        inFlight.current = null;
+        sync();
       }
     })();
-  }, [setRows]);
+  }, [setRows, sync]);
+
+  const add = useCallback((job: Job) => {
+    const key = fmStoreKey(job);
+    if (inFlight.current === key || queue.current.some((j) => fmStoreKey(j) === key)) return; // already waiting / being asked
+    parked.current = parked.current.filter((j) => fmStoreKey(j) !== key);
+    const firstBacklog = queue.current.findIndex((j) => j.backlog);
+    if (job.backlog || firstBacklog < 0) queue.current.push(job);
+    else queue.current.splice(firstBacklog, 0, job); // NEW goes before the backlog
+  }, []);
 
   useEffect(() => {
     rowsRef.current = rows;
-    if (on) run();
-  }, [on, rows, run]);
-
-  const recheck = useCallback((id: string, storeId: string) => {
-    if (!on || !/^\d{6}$/.test(storeId)) return;
-    manual.current.push({ id, storeId });
+    if (!on || !ready) return;
+    // an answer this screen already got is never lost to a list reload that raced its write
+    const stale = (r: FmScanRow) => fmStoreCheckable(r) && answers.current.has(fmStoreKey(r)) && r.storeCheckStatus !== answers.current.get(fmStoreKey(r));
+    if (rows.some(stale)) {
+      setRows((list) => list.map((x) => (stale(x) ? { ...x, storeCheckStatus: answers.current.get(fmStoreKey(x)) } : x)));
+      return;
+    }
+    if (known.current === null) {
+      known.current = new Map(rows.map((r) => [r.id, r.storeId]));
+      rows.filter((r) => fmStoreCheckable(r) && !real(r.storeCheckStatus)).slice(0, FM_STORE_CHECK_BACKLOG_MAX)
+        .forEach((r) => add({ id: r.id, storeId: r.storeId, backlog: true, fresh: false }));
+    } else {
+      for (const r of rows) {
+        if (known.current.get(r.id) === r.storeId) continue; // a parcel not seen before, or its store # changed
+        known.current.set(r.id, r.storeId);
+        if (fmStoreCheckable(r) && !real(r.storeCheckStatus)) add({ id: r.id, storeId: r.storeId, backlog: false, fresh: false });
+      }
+    }
     run();
-  }, [on, run]);
+  }, [on, ready, rows, add, run, setRows]);
 
-  return { checking: on && (busy || rows.some((r) => !r.exportedAt && r.storeCheckStatus === "checking")), recheck };
+  // The row's Re-check button. Asks FamilyMart again.
+  const recheck = useCallback((id: string, storeId: string) => {
+    if (!on || !ready || !/^\d{6}$/.test(storeId)) return;
+    add({ id, storeId, backlog: false, fresh: true });
+    run();
+  }, [on, ready, add, run]);
+
+  return { busy, checking: on && busy.size > 0, recheck };
 }

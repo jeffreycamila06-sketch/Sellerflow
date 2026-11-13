@@ -27,7 +27,7 @@ import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../ad
 import { useScanQrLookup } from "../adapters/useScanQrLookup";
 import { focusUnlessTyping } from "../adapters/scanQrLookup";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
-import { useFmStoreChecks, fmWrongStore } from "../adapters/fmStoreCheck";
+import { useFmStoreChecks, fmWrongStore, fmStoreCheckable, fmStoreKey } from "../adapters/fmStoreCheck";
 import { newProblemRows, alertStoreCode, ATTN_TOAST_MS, ATTN_VIBRATE_MS, ATTN_HIGHLIGHT_MS } from "../adapters/parcelAttention";
 import { triggerHaptic } from "../adapters/camera";
 
@@ -141,19 +141,27 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   const exportHidden = onMobile && !phoneExport;
 
   // Store # check (sql/154). Off = loadFmScans() exactly as before and nothing of it ever runs.
+  // scReady = the list on screen was read WITH the check columns (no check, label or alert before that —
+  // also when the check turns on while the screen is already open: the list is read again first).
   const loadList = () => (storeCheckOn ? loadFmScans(true) : loadFmScans());
-  const { checking, recheck } = useFmStoreChecks(storeCheckOn, rows, setRows);
+  const [scLoaded, setScLoaded] = useState(false);
+  const scReady = storeCheckOn && scLoaded;
+  const { busy, checking, recheck } = useFmStoreChecks(storeCheckOn, scReady, rows, setRows);
   const reloadSaved = () => {
     void loadList().then((r) => { if (aliveRef.current && r.ok) { setRows(r.rows); setListOk(true); } });
   };
   useEffect(() => {
+    let live = true;
     void loadList().then((r) => {
-      if (!aliveRef.current) return;
-      if (r.ok) { setRows(r.rows); setLastExportBatch(latestBatch(r.rows)); setListOk(true); }
+      if (!aliveRef.current || !live) return;
+      if (r.ok) { setRows(r.rows); setLastExportBatch(latestBatch(r.rows)); setListOk(true); if (storeCheckOn) setScLoaded(true); }
       setListLoaded(true);
-    }, () => { if (aliveRef.current) setListLoaded(true); });
+    }, () => { if (aliveRef.current && live) setListLoaded(true); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read when the screen opens (and again if the store # check turns on)
+  }, [storeCheckOn]);
+  useEffect(() => {
     void loadFmGlobalFee().then((f) => { if (aliveRef.current) setFee(f); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once when the screen opens
   }, []);
 
   const F = (patch: Partial<Form>) => setForm((s) => ({ ...s, ...patch }));
@@ -215,13 +223,13 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     // picker on → its value; off → clear a STALE platform when the handle changed (v2 item 7).
     const usernameChanged = (editRow?.buyerUsername ?? "") !== parcel.buyerUsername.trim();
     const contactArg: string | null | undefined = contactOn ? platformToSave : (editRow?.contactPlatform != null && usernameChanged ? null : undefined);
-    // Store # check on: a changed store # clears the old answer (it is checked again); the same store # keeps it.
-    const storeChanged = storeCheckOn && !!editRow && editRow.storeId !== parcel.storeId.replace(/\s/g, "");
-    const r = storeChanged ? await saveFmScan(parcel, editing.id, contactArg, true)
-      : contactArg === undefined ? await saveFmScan(parcel, editing.id) : await saveFmScan(parcel, editing.id, contactArg);
+    const r = contactArg === undefined ? await saveFmScan(parcel, editing.id) : await saveFmScan(parcel, editing.id, contactArg);
     setSaving(false);
     if (!r.ok || !r.row) { setSaveErr(true); return; }
-    setRows((list) => list.map((x) => (x.id === editing.id ? (storeCheckOn && !storeChanged && x.storeCheckStatus != null ? { ...r.row!, storeCheckStatus: x.storeCheckStatus } : r.row!) : x)));
+    // Store # check on: the same store # keeps its answer; a changed store # has none (an answer belongs
+    // to one store #) and the check hook asks for it as a new parcel.
+    const saved = r.row;
+    setRows((list) => list.map((x) => (x.id === editing.id ? (storeCheckOn && x.storeId === saved.storeId && x.storeCheckStatus != null ? { ...saved, storeCheckStatus: x.storeCheckStatus } : saved) : x)));
     setEditing(null); clearForm();
     flash(t.rd_ps2_saved_toast);
   };
@@ -259,7 +267,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   // ── Export (好賣+ 大量匯單). Ready = not exported and passes FamilyMart's rules. ─────────────
   const pending = rows.filter((r) => !r.exportedAt);
   const problemOf = (r: FmScanRow) => firstError(validateFmScan(rowInput(r), today));
-  const wrongStore = (r: FmScanRow) => storeCheckOn && fmWrongStore(r);
+  const wrongStore = (r: FmScanRow) => scReady && fmWrongStore(r);
   const attentionOf = (r: FmScanRow): Attention | undefined => problemOf(r) ?? (wrongStore(r) ? "wrong_store" : undefined);
   const attentionText = (a: Attention) => (a === "wrong_store" ? t.rd_ps2_x_wrong_store : t[FM_ERROR_KEY[a]]);
   const readyRows = pending.filter((r) => !attentionOf(r));
@@ -329,15 +337,15 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   const ask = (c: Confirm) => { setDeleteErr(false); setConfirm(c); };
 
   // ── Store # check on: the 7-11 "needs attention" half, the new-problem alert, the tabs ──────
-  const wrongRows = storeCheckOn ? rows.filter(fmWrongStore) : [];
-  const problems = storeCheckOn ? pending.filter((r) => attentionOf(r)) : [];
+  const wrongRows = scReady ? rows.filter(fmWrongStore) : [];
+  const problems = scReady ? pending.filter((r) => attentionOf(r)) : [];
   const problemCount = problems.length;
   // Alerted ids: seeded with the wrong codes present when the list first loads (no alert for
   // those), then every NEW wrong store code alerts once — never again for the same parcel.
   const [alerted, setAlerted] = useState<ReadonlySet<string> | null>(null);
   const [attnToast, setAttnToast] = useState<{ seq: number; text: string } | null>(null);
-  if (storeCheckOn && listLoaded && alerted === null) setAlerted(new Set(wrongRows.map((r) => r.id))); // adjust-during-render
-  else if (storeCheckOn && alerted !== null) {
+  if (scReady && alerted === null) setAlerted(new Set(wrongRows.map((r) => r.id))); // adjust-during-render
+  else if (scReady && alerted !== null) {
     const fresh = newProblemRows(alerted, wrongRows);
     if (fresh.length > 0) {
       const code = alertStoreCode(fresh[0]);
@@ -377,8 +385,8 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     ["new", `${t.rd_fms_tab_new} · ${pending.length}`],
     ["done", `${t.rd_fms_tab_done} · ${exportedCount}`],
   ];
-  if (storeCheckOn) tabDefs.push(["wrong", `${t.rd_ps2_tab_wrong} · ${wrongRows.length}`]);
-  if (storeCheckOn && problemCount > 0) tabDefs.push(["attention", `⚠ ${t.rd_ps2_tab_attn} · ${problemCount}`]);
+  if (scReady) tabDefs.push(["wrong", `${t.rd_ps2_tab_wrong} · ${wrongRows.length}`]);
+  if (scReady && problemCount > 0) tabDefs.push(["attention", `⚠ ${t.rd_ps2_tab_attn} · ${problemCount}`]);
   // A tab that is gone (its last parcel was fixed) falls back to All.
   const activeTab: Tab = tabDefs.some(([k]) => k === tab) ? tab : "all";
   const shown = activeTab === "new" ? pending : activeTab === "done" ? rows.filter((r) => r.exportedAt) : activeTab === "wrong" ? wrongRows : activeTab === "attention" ? problems : rows;
@@ -413,7 +421,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                 <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="fms-batch-n">{pendingCount} / {pendingCap}</span>
               </div>
               {/* Store # check on — the 7-11 attention half: red "⚠ N need attention" (tap → those parcels) or green "✓ All OK". */}
-              {storeCheckOn && (problemCount > 0 ? (
+              {scReady && (problemCount > 0 ? (
                 <button type="button" onClick={openAttention} aria-label={t.rd_ps2_attn_open} title={t.rd_ps2_attn_open} data-testid="fms-attn" data-state="problem"
                   style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid #dc2626", background: "#dc2626", color: "#fff", fontSize: 12, fontWeight: 900, lineHeight: 1.2, cursor: "pointer", minWidth: 0, textAlign: "center", fontFamily: "var(--font-ui)", overflowWrap: "anywhere" }}>
                   {tpl(t.rd_ps2_attn_bar, { n: String(problemCount) })}
@@ -602,10 +610,14 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
             const problem = r.exportedAt ? undefined : problemOf(r);
             // Store # check (on only) — like the 7-11 row: not_found = red row + "❌ Wrong store code",
             // unknown = "⚠️ Can't verify store", checking = "⏳ Checking store…", valid = "✅ Store OK".
-            const sc = storeCheckOn && !r.exportedAt ? r.storeCheckStatus : undefined;
+            // With the check on, a not-exported parcel with a 6-digit store # is never blank: no answer and
+            // not being checked = "Can't verify store" + Re-check (display only — nothing is written).
+            const scOn = scReady && fmStoreCheckable(r);
+            const scBusy = scOn && busy.has(fmStoreKey(r));
+            const sc = !scOn ? undefined : scBusy ? "checking" : r.storeCheckStatus === "valid" || r.storeCheckStatus === "not_found" ? r.storeCheckStatus : "unknown";
             const badge = storeBadge(sc);
-            const canRecheck = /^\d{6}$/.test(r.storeId) && (sc === "not_found" || sc === "unknown");
-            const flagged = !!problem || sc === "not_found";
+            const canRecheck = sc === "not_found" || sc === "unknown";
+            const flagged = !!problem || (scOn && r.storeCheckStatus === "not_found");
             return (
               <div key={r.id} data-testid="fms-row" data-row-id={r.id} data-flag={flagged ? "red" : ""} data-highlight={hl?.id === r.id ? "1" : undefined}
                 style={{ padding: flagged ? "9px 8px" : "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", ...(flagged ? { border: "1.5px solid var(--danger, #dc2626)", borderRadius: 10, boxShadow: "0 0 6px -1px var(--danger, #dc2626)", margin: "4px 0" } : {}), ...(hl?.id === r.id ? { outline: "3px solid var(--danger, #dc2626)", outlineOffset: 2, borderRadius: 10 } : {}) }}>

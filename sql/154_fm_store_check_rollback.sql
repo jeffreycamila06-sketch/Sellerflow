@@ -2,9 +2,9 @@
 -- sql/154 ROLLBACK — Parcel Scan FamilyMart store # check.
 -- ============================================================================
 -- NOT APPLIED. Removes the switch row, the per-account rows, the key (my_feature_access() back to
--- the sql/149 list) and the two columns (the saved answers are lost; parcels are untouched).
+-- the sql/149 list) and the three columns (the saved answers are lost; parcels are untouched).
 -- ⚠️ Turn the switch off / remove the logins FIRST and let sellers reopen the app: an app that
---   still has the check on selects the two columns and its list would fail to load.
+--   still has the check on selects the three columns and its list would fail to load.
 -- ⚠️ If my_feature_access() gained OTHER keys after sql/154, rebuild it from the LIVE definition
 --   minus 'fm_store_check' instead of running the version below.
 -- ============================================================================
@@ -36,6 +36,7 @@ $function$;
 
 alter table public.fm_parcel_scans
   drop column if exists store_check_status,
-  drop column if exists store_check_at;
+  drop column if exists store_check_at,
+  drop column if exists store_check_store_id;
 
 commit;

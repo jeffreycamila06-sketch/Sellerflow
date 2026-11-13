@@ -11,7 +11,8 @@ import { normPlatform } from "./src/lib/helpBotGuard.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
-import { checkFmStore } from "./server/fmStoreCheck.js";
+import { checkFmStore, FM_STORE_CHECK_MAX_PER_MIN } from "./server/fmStoreCheck.js";
+import { createFmStoreCheckHandler } from "./server/fmStoreCheckRoute.js";
 import { createOcr, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
 import { createWorker as createParcelWorker } from "./server/parcelTrackingWorker.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId, rateLimitLabel, rateLimitStatsFor, noteRateLimit, cooldownKeyMatches, listCooldowns, EMPTY_RATE_LIMIT_STATS, EMPTY_ROOM_STATS, noteRoom, roomsTodayCount, eulerUsage, readLimit, EULER_DAILY_ROOMS_DEFAULT, EULER_CONCURRENT_DEFAULT, isDailyRoomsLabel, dailyCooldownMs, isTikTokUserNotFound, isTikTokLookupFailed, nestedRateLimitError, isKnownRateLimitShape, NOT_FOUND_FINAL_STREAK } from "./server/connectionHealth.js";
@@ -1236,27 +1237,11 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
   return res.status(out.status).json(out.body);
 });
 
-// Parcel Scan FamilyMart — store # check (server/fmStoreCheck.js). Same auth and per-seller
-// limit as the 7-11 check above (its own counter). 6 digits only. Best-effort: 'unknown' on any
-// doubt, never blocks. Log = store # + verdict + closed; a short piece of FamilyMart's page on 'unknown'
-// (no buyer name or phone ever reaches this route).
-const fmStoreCheckAllowed = createWindowLimiter({ max: EMAP_CHECK_MAX_PER_MIN, windowMs: 60_000 });
-app.post("/admin/fm-store-check", requireAuth, requirePlanActive, async (req, res) => {
-  const storeId = String((req.body && req.body.storeId) || "").trim();
-  if (!/^\d{6}$/.test(storeId)) {
-    return res.status(400).json({ success: false, error: "bad_store_id" });
-  }
-  if (!fmStoreCheckAllowed(req.sellerId)) {
-    return res.status(429).json({ success: false, error: "rate_limited", message: "Too many store checks. Please wait a minute and try again." });
-  }
-  const startedAt = Date.now();
-  const result = await checkFmStore(storeId);
-  console.log(`[FM_STORE_CHECK] store=${storeId} result=${result.status} closed=${result.closed === true}${result.cached ? " cached" : ""}${result.retried ? " retried" : ""} ms=${Date.now() - startedAt}`);
-  if (result.status === "unknown" && result.raw) {
-    console.log(`[FM_STORE_CHECK] RAW store=${storeId} ${JSON.stringify(String(result.raw))}`);
-  }
-  return res.json({ success: true, storeId: result.storeId, status: result.status });
-});
+// Parcel Scan FamilyMart — store # check (server/fmStoreCheck.js; the handler is in
+// server/fmStoreCheckRoute.js). Same auth as the 7-11 check below, its own per-seller limit.
+// Best-effort: 'unknown' on any doubt, never blocks.
+const fmStoreCheckAllowed = createWindowLimiter({ max: FM_STORE_CHECK_MAX_PER_MIN, windowMs: 60_000 });
+app.post("/admin/fm-store-check", requireAuth, requirePlanActive, createFmStoreCheckHandler({ check: checkFmStore, allowed: fmStoreCheckAllowed }));
 
 // Parcel Scan A2 — 7-11 E-Map store-code check. requireAuth ONLY (relaxed from
 // requireAdmin 2026-09-10): manual encode is open to paying sellers, and their

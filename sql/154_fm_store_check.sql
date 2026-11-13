@@ -2,12 +2,15 @@
 -- sql/154 — Parcel Scan FamilyMart: store # check (Jeff 2026-11-12).
 -- ============================================================================
 -- NOT APPLIED. Jeff / chat applies via Supabase MCP after review. ADD-ONLY:
---   1. fm_parcel_scans gains two nullable columns, like parcel_scans in sql/26 (no default, no backfill, no index):
---        store_check_status  text         'valid' | 'not_found' | 'unknown' | null (not checked)
+--   1. fm_parcel_scans gains three nullable columns (no default, no backfill, no index, no trigger):
+--        store_check_status  text         'valid' | 'not_found' | null (not checked / could not be verified)
 --        store_check_at      timestamptz  when the app wrote the answer
+--        store_check_store_id text        the store # that answer is for. The app counts an answer only
+--                                         while it equals the row's store_id (a store # changed by a
+--                                         device with the check off / an old app = not checked again).
 --      Written by the seller's own app (existing RLS: own rows). Nothing else reads them.
 --      The Customers trigger (trg_upsert_fm_parcel_customer) lists its columns and does NOT
---      fire on these two.
+--      fire on these three.
 --   2. app_settings row  fm_store_check_enabled = 'false'  (the switch for EVERY seller — starts OFF).
 --   3. my_feature_access() gains the key  fm_store_check  (this login tries it before the switch).
 -- The app: store check on = fm_store_check_enabled is 'true' OR this login has the key.
@@ -33,7 +36,7 @@
 --   select public.my_feature_access() ? 'fm_store_check';                                  -- true
 --   select value from public.app_settings where key = 'fm_store_check_enabled';            -- false
 --   select count(*) from information_schema.columns where table_schema='public'
---     and table_name='fm_parcel_scans' and column_name like 'store_check_%';               -- 2
+--     and table_name='fm_parcel_scans' and column_name like 'store_check_%';               -- 3
 -- Rollback: sql/154_fm_store_check_rollback.sql
 -- ============================================================================
 begin;
@@ -41,7 +44,8 @@ set local lock_timeout = '2s';
 
 alter table public.fm_parcel_scans
   add column if not exists store_check_status text null,
-  add column if not exists store_check_at     timestamptz null;
+  add column if not exists store_check_at     timestamptz null,
+  add column if not exists store_check_store_id text null;
 
 insert into public.app_settings (key, value) values ('fm_store_check_enabled', 'false')
 on conflict (key) do nothing;

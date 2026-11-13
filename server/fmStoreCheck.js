@@ -17,7 +17,15 @@ export const FM_STORE_ENDPOINT = process.env.FM_STORE_ENDPOINT || "https://mfme.
 export const FM_STORE_DEFAULT_URL = process.env.FM_STORE_DEFAULT_URL || "https://mfme.map.com.tw/default.aspx";
 export const FM_STORE_QUERY = process.env.FM_STORE_QUERY || "cvsname=WWW.FAMILY.COM.TW&cvsid=1&cvstemp=test&exchange=true&cvslink=&city=&area=";
 export const FM_STORE_TIMEOUT_MS = Number(process.env.FM_STORE_TIMEOUT_MS) || 5000;
-export const FM_STORE_CACHE_MS = 12 * 60 * 60 * 1000;
+export const FM_STORE_CACHE_MS = 12 * 60 * 60 * 1000;      // a store that exists is kept 12 hours
+export const FM_STORE_NOT_FOUND_CACHE_MS = 10 * 60 * 1000;  // "no such store" is kept 10 minutes only
+// CANARY — never a false "wrong store code". Before this server answers 'not_found' for any
+// store, a store that really exists must have answered 'valid' from THIS server in the last
+// 10 minutes. If it did not (the site blocks this server, answers everything "sorry", changed
+// its page), the answer is 'unknown'. (FamilyMart's version of the 7-11 gate EMAP_CHECK_CONFIRMED.)
+export const FM_STORE_CANARY = /^\d{6}$/.test(String(process.env.FM_STORE_CANARY || "").trim()) ? String(process.env.FM_STORE_CANARY).trim() : "022131";
+export const FM_STORE_CANARY_FRESH_MS = 10 * 60 * 1000;
+export const FM_STORE_CHECK_MAX_PER_MIN = 120; // per seller — one batch is 40–70 parcels
 export const FM_STORE_CACHE_MAX = 5000;
 export const FM_STORE_BODY_MAX = 512 * 1024; // a store page is a few KB; anything bigger is not it
 
@@ -65,22 +73,26 @@ export function parseFmStoreVerdict(storeId, body) {
     if (m[1] !== id || !/地址\s*[：:]/.test(text)) return { status: "unknown" };
     return { status: "valid", closed: /封閉型店[舖鋪]/.test(text) };
   }
-  if (/抱歉無此店[鋪舖]/.test(text) && text.length <= 200) return { status: "not_found" };
+  // Measured: the WHOLE answer for a missing store is this one sentence. A page that merely
+  // contains it is not that answer.
+  if (text === "抱歉無此店鋪" || text === "抱歉無此店舖") return { status: "not_found" };
   return { status: "unknown" };
 }
 
-// ── cache: one entry per store #, 12 hours, bounded size. 'unknown' is never kept. ──────────
-export function createFmStoreCache({ ttlMs = FM_STORE_CACHE_MS, max = FM_STORE_CACHE_MAX } = {}) {
+// ── cache: one entry per store #, bounded size. 'valid' 12 hours, 'not_found' 10 minutes,
+// 'unknown' never.
+export function createFmStoreCache({ ttlMs = FM_STORE_CACHE_MS, notFoundTtlMs = FM_STORE_NOT_FOUND_CACHE_MS, max = FM_STORE_CACHE_MAX } = {}) {
   const map = new Map();
+  const life = (v) => (v.status === "not_found" ? notFoundTtlMs : ttlMs);
   return {
     get(id, now = Date.now()) {
       const e = map.get(id);
       if (!e) return null;
-      if (now - e.at >= ttlMs) { map.delete(id); return null; }
+      if (now - e.at >= life(e.v)) { map.delete(id); return null; }
       return e.v;
     },
     set(id, v, now = Date.now()) {
-      if (!v || v.status === "unknown") return;
+      if (!v || (v.status !== "valid" && v.status !== "not_found")) return;
       map.delete(id);
       map.set(id, { at: now, v });
       while (map.size > max) map.delete(map.keys().next().value); // oldest first
@@ -89,6 +101,7 @@ export function createFmStoreCache({ ttlMs = FM_STORE_CACHE_MS, max = FM_STORE_C
   };
 }
 const sharedCache = createFmStoreCache();
+const sharedCanary = { okAt: 0 }; // when the canary store last answered 'valid' from this server
 
 function cookiesOf(resp) {
   let list = [];
@@ -118,42 +131,72 @@ async function getText(url, { fetchImpl, signal, cookie }) {
   }
 }
 
-// Full lookup. Returns { storeId, status, closed?, cached?, retried?, raw? }. raw is for the
-// SERVER log only (a short piece of FamilyMart's page — never buyer data). Never throws.
+// One store asked on the site: plain GET; an answer of none of the known shapes → open
+// default.aspx, keep its cookies, ask ONCE more. (A timeout / network error is not retried: the
+// time is already spent.) Runs under the caller's abort signal. Never throws.
+async function lookupStore(id, { fetchImpl, signal, endpoint, defaultUrl, query }) {
+  const url = fmStoreUrl(id, endpoint, query);
+  const first = await getText(url, { fetchImpl, signal });
+  let verdict = first.ok ? parseFmStoreVerdict(id, first.text) : { status: "unknown" };
+  let raw = first.ok ? first.text : first.raw;
+  let retried = false;
+  if (verdict.status === "unknown" && !signal.aborted && (first.ok || first.resp)) {
+    retried = true;
+    const home = await getText(`${defaultUrl}?${query}`, { fetchImpl, signal });
+    const cookie = [first.resp ? cookiesOf(first.resp) : "", home.resp ? cookiesOf(home.resp) : ""].filter(Boolean).join("; ");
+    if (!signal.aborted) {
+      const second = await getText(url, { fetchImpl, signal, cookie });
+      if (second.ok) { verdict = parseFmStoreVerdict(id, second.text); raw = second.text; } else raw = second.raw;
+    }
+  }
+  return { verdict, raw, retried };
+}
+
+// Full lookup. Returns { storeId, status, closed?, cached?, retried?, raw?, canaryFailed? }.
+// raw is for the SERVER log only (a short piece of FamilyMart's page — never buyer data).
+// opts.fresh = the seller tapped Re-check: the cache is not READ (the new answer is still stored).
+// Never throws.
 export async function checkFmStore(storeId, opts = {}) {
   const id = String(storeId || "").trim();
   const {
     fetchImpl = fetch, timeoutMs = FM_STORE_TIMEOUT_MS, endpoint = FM_STORE_ENDPOINT,
     defaultUrl = FM_STORE_DEFAULT_URL, query = FM_STORE_QUERY, cache = sharedCache, now = Date.now(),
+    fresh = false, canary = FM_STORE_CANARY, canaryState = sharedCanary,
   } = opts;
   if (!/^\d{6}$/.test(id)) return { storeId: id, status: "unknown" };
-  const hit = cache.get(id, now);
-  if (hit) return { storeId: id, ...hit, cached: true };
 
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeoutMs); // ONE limit for the whole lookup (both tries)
+  const timer = setTimeout(() => ctl.abort(), timeoutMs); // ONE limit for the whole lookup (the canary included)
+  const site = { fetchImpl, signal: ctl.signal, endpoint, defaultUrl, query };
+  // 'not_found' may be answered only with a fresh canary. null = OK, else what the canary said.
+  const canaryProblem = async () => {
+    if (id === canary) return null; // the canary's own lookup is never judged by the canary
+    if (canaryState.okAt > 0 && now - canaryState.okAt < FM_STORE_CANARY_FRESH_MS) return null;
+    const c = ctl.signal.aborted ? { verdict: { status: "unknown" } } : await lookupStore(canary, site);
+    if (c.verdict.status === "valid") { canaryState.okAt = now; cache.set(canary, { status: "valid", closed: c.verdict.closed === true }, now); return null; }
+    return c.verdict.status;
+  };
   try {
-    const url = fmStoreUrl(id, endpoint, query);
-    const first = await getText(url, { fetchImpl, signal: ctl.signal });
-    let verdict = first.ok ? parseFmStoreVerdict(id, first.text) : { status: "unknown" };
-    let raw = first.ok ? first.text : first.raw;
-    let retried = false;
-    // The answer is none of the known shapes → open default.aspx, keep its cookies, ask once more.
-    // (A timeout / network error is not retried: the time is already spent.)
-    if (verdict.status === "unknown" && !ctl.signal.aborted && (first.ok || first.resp)) {
-      retried = true;
-      const home = await getText(`${defaultUrl}?${query}`, { fetchImpl, signal: ctl.signal });
-      const cookie = [first.resp ? cookiesOf(first.resp) : "", home.resp ? cookiesOf(home.resp) : ""].filter(Boolean).join("; ");
-      if (!ctl.signal.aborted) {
-        const second = await getText(url, { fetchImpl, signal: ctl.signal, cookie });
-        if (second.ok) { verdict = parseFmStoreVerdict(id, second.text); raw = second.text; } else raw = second.raw;
-      }
+    const hit = fresh ? null : cache.get(id, now);
+    if (hit) {
+      if (hit.status !== "not_found") return { storeId: id, ...hit, cached: true };
+      const bad = await canaryProblem();
+      return bad ? { storeId: id, status: "unknown", cached: true, canaryFailed: { store: canary, got: bad } } : { storeId: id, ...hit, cached: true };
     }
+    const { verdict, raw, retried } = await lookupStore(id, site);
     const out = { storeId: id, status: verdict.status };
-    if (verdict.status === "valid") out.closed = verdict.closed === true;
     if (retried) out.retried = true;
-    if (verdict.status === "unknown") out.raw = plain(raw).slice(0, RAW_SNIPPET);
-    else cache.set(id, { status: verdict.status, ...(verdict.status === "valid" ? { closed: verdict.closed === true } : {}) }, now);
+    if (verdict.status === "valid") {
+      out.closed = verdict.closed === true;
+      if (id === canary) canaryState.okAt = now;
+      cache.set(id, { status: "valid", closed: out.closed }, now);
+    } else if (verdict.status === "not_found") {
+      const bad = await canaryProblem();
+      if (bad) { out.status = "unknown"; out.canaryFailed = { store: canary, got: bad }; } // not cached
+      else cache.set(id, { status: "not_found" }, now);
+    } else {
+      out.raw = plain(raw).slice(0, RAW_SNIPPET);
+    }
     return out;
   } catch {
     return { storeId: id, status: "unknown", raw: "error" };
