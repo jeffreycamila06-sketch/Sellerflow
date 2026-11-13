@@ -211,22 +211,64 @@ describe("8. switch OFF → a 冷凍 row looks exactly like main", () => {
   });
 });
 
-describe("9. exported 冷凍 rows keep ✅", () => {
-  it("an exported row with no_frozen / null is neither red nor amber and shows the all-clear", async () => {
-    h.rows = [frozen({ id: "x-no", status: "exported", frozenStoreStatus: "no_frozen" }), frozen({ id: "x-null", status: "exported" })];
+describe("9. exported 冷凍 rows (sql/157: a late answer is shown; an answered or old one keeps ✅)", () => {
+  const OLD = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+  it("exported + ok, and exported + no answer from days ago → the all-clear, nothing frozen-specific, no ⟳", async () => {
+    h.rows = [frozen({ id: "x-ok", status: "exported", frozenStoreStatus: "ok" }), frozen({ id: "x-old", status: "exported", createdAt: OLD })];
     const r = view();
-    for (const id of ["x-no", "x-null"]) {
+    for (const id of ["x-ok", "x-old"]) {
       const row = await waitFor(() => rowEl(r, id));
       expect(row.getAttribute("data-flag"), id).toBe("");
-      expect(row.querySelector('[data-testid="ps-frozen-no"], [data-testid="ps-frozen-unchecked"]'), id).toBeNull();
+      expect(row.querySelector('[data-testid="ps-frozen-no"], [data-testid="ps-frozen-unchecked"], [data-testid="ps-frozen-no-exported"], [data-testid="ps-frozen-not-checked"]'), id).toBeNull();
       expect(row.querySelector('[data-testid="ps-ext-clear"]'), id).toBeTruthy();
       expect(row.querySelector('[data-testid="ps-ext-recheck"]'), `${id}: no ⟳ on an exported row`).toBeNull();
     }
     expect(r.getByTestId("ps-attn").getAttribute("data-state")).toBe("ok");
   });
-  it("problemOf: an exported 冷凍 no_frozen row is not a problem (switch on)", () => {
-    expect(problemOf(frozen({ id: "x", status: "exported", frozenStoreStatus: "no_frozen" }), true)).toBeNull();
+  it("exported today WITHOUT an answer → the amber 'Frozen not checked' note (not red, no all-clear, no ⟳)", async () => {
+    h.rows = [frozen({ id: "x-null", status: "exported" }), frozen({ id: "x-unk", status: "exported", frozenStoreStatus: "unknown" })];
+    const r = view();
+    for (const id of ["x-null", "x-unk"]) {
+      const row = await waitFor(() => rowEl(r, id));
+      expect(row.getAttribute("data-flag"), id).toBe("");
+      expect(row.querySelector('[data-testid="ps-frozen-not-checked"]')?.textContent, id).toBe("❄ Frozen not checked");
+      expect(row.querySelector('[data-testid="ps-ext-clear"]'), id).toBeNull();
+      expect(row.querySelector('[data-testid="ps-ext-recheck"]'), id).toBeNull();
+    }
+    expect(r.getByTestId("ps-attn").getAttribute("data-state")).toBe("ok"); // a note, not a problem
+  });
+  it("exported + no_frozen (the answer came after the export) → red warning on the parcel, counted in the top bar, no ⟳", async () => {
+    h.rows = [frozen({ id: "x-no", status: "exported", frozenStoreStatus: "no_frozen" })];
+    const r = view();
+    const row = await waitFor(() => rowEl(r, "x-no"));
+    expect(row.getAttribute("data-flag")).toBe("red");
+    const line = row.querySelector('[data-testid="ps-frozen-no-exported"]') as HTMLElement;
+    expect(line.textContent).toBe("❄ Already exported, but this store can't receive frozen. Don't send it there — ask the buyer for another 7\u201111."); // non-breaking hyphen: "7‑11" never splits on a phone
+    expect(line.style.overflowWrap).toBe("anywhere");
+    expect(line.style.whiteSpace).toBe("normal");
+    expect(row.querySelector('[data-testid="ps-frozen-no"]')).toBeNull(); // the not-exported wording is not used here
+    expect(row.querySelector('[data-testid="ps-ext-clear"]')).toBeNull();
+    expect(row.querySelector('[data-testid="ps-ext-recheck"]')).toBeNull();
+    expect(row.querySelector('[data-testid="ps-exported-tag"]')).toBeTruthy(); // still exported
+    expect(r.getByTestId("ps-attn").getAttribute("data-state")).toBe("problem");
+  });
+  it("switch OFF: an exported 冷凍 row with no_frozen / no answer looks exactly like main (the all-clear)", async () => {
+    h.rows = [frozen({ id: "x-no", status: "exported", frozenStoreStatus: "no_frozen" }), frozen({ id: "x-null", status: "exported" })];
+    const r = view("en", false);
+    for (const id of ["x-no", "x-null"]) {
+      const row = await waitFor(() => rowEl(r, id));
+      expect(row.getAttribute("data-flag"), id).toBe("");
+      expect(row.querySelector('[data-testid="ps-frozen-no-exported"], [data-testid="ps-frozen-not-checked"]'), id).toBeNull();
+      expect(row.querySelector('[data-testid="ps-ext-clear"]'), id).toBeTruthy();
+    }
+    expect(r.getByTestId("ps-attn").getAttribute("data-state")).toBe("ok");
+  });
+  it("problemOf: an exported 冷凍 no_frozen row is its own problem kind (switch on); a not-exported one keeps 'no_frozen'; switch off → none", () => {
+    expect(problemOf(frozen({ id: "x", status: "exported", frozenStoreStatus: "no_frozen" }), true)).toBe("no_frozen_exported");
     expect(problemOf(frozen({ id: "y", status: "pending", frozenStoreStatus: "no_frozen" }), true)).toBe("no_frozen");
+    expect(problemOf(frozen({ id: "x", status: "exported", frozenStoreStatus: "no_frozen" }), false)).toBeNull();
+    expect(problemOf(frozen({ id: "z", status: "exported" }), true)).toBeNull();              // no answer = a note, never a problem
+    expect(problemOf(mk({ id: "d", status: "exported", frozenStoreStatus: "no_frozen" }), true)).toBeNull(); // a DRY row never reads the frozen column
   });
 });
 

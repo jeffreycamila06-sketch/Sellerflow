@@ -276,7 +276,7 @@ describe("M3 · the 3 s badge poll backs off for old rows", () => {
   });
   it("the screen uses the helper's cadence (no hard-coded 3000 left)", () => {
     const screen = readFileSync("src/redesign/screens/ParcelScan.tsx", "utf8");
-    expect(screen).toContain("const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS, fzOn) : null;"); // fzOn (sql/142): frozen rows await only while the switch is on
+    expect(screen).toContain("const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS, fzOn, frozenEdits) : null;"); // fzOn (sql/142): frozen rows await only while the switch is on; frozenEdits (sql/157): a just-edited frozen row counts as fresh
     expect(screen).toContain("}, pollMs);");
     expect(screen).not.toContain("}, 3000);");
   });
