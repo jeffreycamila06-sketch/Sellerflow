@@ -12,7 +12,7 @@ update public.support_guide
    set body = replace(body,
          E'4. **Batch N / limit** at the top shows your FamilyMart parcels not exported yet. The limit is the same as on 7-11. When it is full, export first — you can still edit or delete saved parcels.\n',
          E'4. **Batch N / limit** at the top shows your FamilyMart parcels not exported yet. The limit is the same as on 7-11. When it is full, export first — you can still edit or delete saved parcels.\n5. If your account has the store check: after you save, the parcel''s store # is checked. **✅ Store OK** means the store was found. **❌ Wrong store code** (red) means FamilyMart has no such store — ask the buyer for the right number and edit the parcel; it is left out of the export file until fixed. **⚠️ Can''t verify store** — tap **Re-check**; the parcel can still be exported. The top bar shows **✓ All OK** or **⚠ N need attention**. If parcels are still being checked when you export, you are asked to wait or export anyway.\n'),
-       checked = '2026-11-13'::date,
+       checked = '2026-11-12'::date,
        updated_at = now()
  where id = 'parcel-scan'
    and position('4. **Batch N / limit** at the top shows your FamilyMart parc' in body) > 0
