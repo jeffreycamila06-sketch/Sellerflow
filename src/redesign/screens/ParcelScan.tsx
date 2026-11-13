@@ -17,7 +17,7 @@ import {
   rowCheckUnresolved, verdictPollMs, mergeExtensionVerdicts, storeClear, wrongStoreCode, minParcelAmount,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
-import { frozenHoldRows, frozenHoldState, frozenUnchecked, exportedFrozenRefused, exportedFrozenUnchecked, FROZEN_HOLD_MS } from "../adapters/parcelFrozenExport";
+import { frozenHoldRows, frozenHoldState, frozenUnchecked, exportedFrozenRefused, exportedFrozenUnchecked, lateFrozenWatch, frozenEdits, noteFrozenEdit, forgetFrozenEdit, FROZEN_HOLD_MS } from "../adapters/parcelFrozenExport";
 import { newlyFlagged, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
 import { problemOf, problemRows, newProblemRows, alertStoreCode, ATTN_TOAST_MS, ATTN_VIBRATE_MS, ATTN_HIGHLIGHT_MS } from "../adapters/parcelAttention";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobile, exportFilename } from "../adapters/shippingExport";
@@ -401,7 +401,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   useEffect(() => { verdictSnapRef.current = rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus })); }, [listLoaded]);
   // M3: 3 s while a fresh (<3 min) row awaits, 30 s when only older rows do
   // (checker slow/down — watch cheaply), off when none await.
-  const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS, fzOn) : null;
+  const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS, fzOn, frozenEdits) : null;
   useEffect(() => {
     if (pollMs === null || !pageVisible) return;
     let live = true;
@@ -465,7 +465,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hlSeq]);
-  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && (!(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)) || (fzOn && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus !== "ok")));
+  // sql/157: an exported 冷凍 parcel still waiting for its late answer keeps the clock moving too, so its
+  // 10-minute watch really ends (a frozen clock would keep it "fresh" and re-read the list every 3 s forever).
+  const anyUnresolved = checkOn && rows.some((r) => (r.status !== "exported" && (!(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)) || (fzOn && isFrozenLayer(r.tempLayer) && r.frozenStoreStatus !== "ok"))) || lateFrozenWatch(r, nowMs, fzOn, frozenEdits));
   useEffect(() => {
     if (!anyUnresolved || !pageVisible) return;
     const id = setInterval(() => setNowMs(Date.now()), 15000);
@@ -888,6 +890,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     const r = frozenRow ? await resetExtensionChecks(id, true) : await resetExtensionChecks(id); // 冷凍 + switch on → the frozen verdict is reset too; a dry row = today's exact call
     setDeleting(false);
     if (!r.ok) { setDeleteErr(r.error || "recheck_failed"); return; }
+    if (frozenRow) noteFrozenEdit(id); // its frozen answer is on its way again → a quick export waits for it
     if (aliveRef.current) {
       setRows((prev) => prev.map((x) => (x.id === id
         ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null, frozenStoreStatus: null }
@@ -950,7 +953,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   };
   const askExport = () => {
     if (frozen.blocked) return; // unknown Dry / Frozen state → no export until Retry works
-    const hold = frozenHoldRows(readyRows, Date.now(), frozenGate);
+    const hold = frozenHoldRows(readyRows, Date.now(), frozenGate, frozenEdits);
     if (hold.length > 0) { setDeleteErr(""); setConfirm({ kind: "frozenwait", ids: hold.map((r) => r.id), startedAt: Date.now() }); return; }
     exportAfterFrozen(false);
   };
@@ -964,7 +967,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       if (confirm?.kind !== "frozenwait") return;
       const st = frozenHoldState(rows, confirm.ids);
       if (st.waiting > 0) {
-        if (Date.now() - confirm.startedAt >= FROZEN_HOLD_MS) setConfirm({ kind: "frozenask", n: st.waiting });
+        if (Date.now() - confirm.startedAt >= FROZEN_HOLD_MS) setConfirm({ kind: "frozenask", n: readyRows.filter(frozenUnchecked).length }); // every 冷凍 parcel that would leave unchecked, not only the held ones
         return;
       }
       if (st.refused > 0) { setConfirm({ kind: "frozenno", n: st.refused, rest: readyCount }); return; }
@@ -1083,6 +1086,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       : await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged, ...(frozenReset ? { frozen: true } : {}) }, layer, contactArg);
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
+    // sql/157: a new store # or a Dry → Frozen switch resets the frozen answer → an export right after
+    // waits for the new one (counted from now, not from when the parcel was first saved)
+    const nowFrozen = isFrozenLayer(layer ?? prev?.tempLayer);
+    if (!nowFrozen) forgetFrozenEdit(id);
+    else if (frozenReset || (layer != null && !isFrozenLayer(prev?.tempLayer))) noteFrozenEdit(id);
     if (aliveRef.current) {
       setRows((list) => list.map((x) => (x.id === id ? {
         ...x,

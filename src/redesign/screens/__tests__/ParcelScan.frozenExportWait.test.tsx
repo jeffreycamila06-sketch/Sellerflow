@@ -14,7 +14,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 import { verdictPollMs, rowAwaitsVerdict, splitScansForExport, VERDICT_POLL_FAST_MS, VERDICT_POLL_SLOW_MS } from "../../adapters/parcelScan";
 import {
   frozenHoldRows, frozenHoldState, frozenCheckerResting, frozenUnchecked, exportedFrozenRefused, exportedFrozenUnchecked, lateFrozenWatch,
-  FROZEN_HOLD_MS, FROZEN_HOLD_FRESH_MS, FROZEN_LATE_WATCH_MS, FROZEN_NOTE_MAX_AGE_MS,
+  _clearFrozenEdits, FROZEN_HOLD_MS, FROZEN_HOLD_FRESH_MS, FROZEN_LATE_WATCH_MS, FROZEN_NOTE_MAX_AGE_MS,
 } from "../../adapters/parcelFrozenExport";
 import { FROZEN_OFF, TEMP_FROZEN, type FrozenState } from "../../adapters/parcelFrozen";
 
@@ -72,6 +72,7 @@ beforeEach(() => {
   h.loadParcelScans.mockReset(); h.loadParcelScans.mockImplementation(async () => ({ ok: true, rows: h.rows }));
   h.loadFrozenState.mockReset(); h.loadFrozenState.mockImplementation(async () => h.state ?? FROZEN_OFF);
   h.resetExtensionChecks.mockClear(); h.updateParcelScan.mockClear(); h.markScansExported.mockClear();
+  _clearFrozenEdits();
 });
 
 
@@ -221,6 +222,71 @@ describe("A) the hold", () => {
     expect(q(r, "ps-frozen-ask")).toBeTruthy();
     expect(q(r, "ps-confirm-export")).toBeNull();
   });
+  it("after 30 s the question counts EVERY frozen parcel that would leave unchecked, not only the held ones", async () => {
+    h.rows = [
+      frozen({ id: "fresh", storeId: "111111", createdAt: at(DAY) }),                                   // held
+      frozen({ id: "old", storeId: "222222", createdAt: at(DAY - FROZEN_HOLD_FRESH_MS - 60_000) }),      // too old to hold, still unchecked
+      frozen({ id: "unk", storeId: "333333", createdAt: at(DAY), frozenStoreStatus: "unknown" }),        // the checker gave up
+      frozen({ id: "fine", storeId: "444444", createdAt: at(DAY), frozenStoreStatus: "ok" }),            // answered: not counted
+      mk({ id: "dry", storeId: "555555", createdAt: at(DAY) }),                                          // dry: not counted
+    ];
+    const r = await open();
+    tapExport(r);
+    expect(q(r, "ps-frozen-wait")?.textContent).toContain("Checking if this store accepts frozen");
+    await advance(FROZEN_HOLD_MS + 600);
+    expect(q(r, "ps-frozen-ask")?.textContent).toContain("❄ 3 frozen parcel(s)");                     // fresh + old + unknown
+  });
+  it("a frozen parcel saved long ago but whose STORE # was just edited waits for its new answer (counted from the edit)", async () => {
+    const old = at(DAY - 30 * 60_000);
+    h.rows = [frozen({ id: "e1", storeId: "968551", createdAt: old, frozenStoreStatus: "ok" })];
+    const r = await open();
+    fireEvent.click((r.container.querySelector('[data-row-id="e1"]') as HTMLElement).querySelector('[data-testid="ps-row-edit"]')!);
+    fireEvent.change(r.getByTestId("ps-store"), { target: { value: "151003" } });
+    fireEvent.click(r.getByTestId("ps-save"));
+    await flush(); await flush();
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: true, phoneCheck: false, frozen: true });
+    h.rows = [frozen({ id: "e1", storeId: "151003", createdAt: old })];                                  // the DB row: verdict reset by the edit
+    await advance(1_000);
+    tapExport(r);
+    expect(q(r, "ps-frozen-wait")).toBeTruthy();                                                        // waits (before: the question at once)
+    expect(q(r, "ps-frozen-ask")).toBeNull();
+    h.rows = [frozen({ id: "e1", storeId: "151003", createdAt: old, frozenStoreStatus: "no_frozen" })];
+    await advance(4_000);                                                                               // read every 3 s: the edit counts as fresh
+    expect(q(r, "ps-frozen-no-q")).toBeTruthy();
+    expect(h.markScansExported).not.toHaveBeenCalled();
+  });
+  it("a dry parcel saved long ago and just switched to Frozen also waits; 2 min after the edit it no longer does", async () => {
+    const old = at(DAY - 30 * 60_000);
+    h.rows = [mk({ id: "e2", createdAt: old })];
+    const r = await open();
+    fireEvent.click((r.container.querySelector('[data-row-id="e2"]') as HTMLElement).querySelector('[data-testid="ps-row-edit"]')!);
+    fireEvent.click(r.getByTestId("ps-edit-layer-frozen"));
+    fireEvent.click(r.getByTestId("ps-save"));
+    await flush(); await flush();
+    h.rows = [frozen({ id: "e2", createdAt: old })];
+    await advance(1_000);
+    tapExport(r);
+    expect(q(r, "ps-frozen-wait")).toBeTruthy();
+    fireEvent.click(q(r, "ps-confirm-cancel") as HTMLElement);
+    await advance(FROZEN_HOLD_FRESH_MS);
+    tapExport(r);
+    expect(q(r, "ps-frozen-wait")).toBeNull();
+    expect(q(r, "ps-frozen-ask")).toBeTruthy();
+  });
+  it("an edit that does not touch the store # or the layer (name only) does NOT restart the wait", async () => {
+    const old = at(DAY - 30 * 60_000);
+    h.rows = [frozen({ id: "e3", createdAt: old })];
+    const r = await open();
+    fireEvent.click((r.container.querySelector('[data-row-id="e3"]') as HTMLElement).querySelector('[data-testid="ps-row-edit"]')!);
+    fireEvent.change(r.getByTestId("ps-name"), { target: { value: "王小美" } });
+    fireEvent.click(r.getByTestId("ps-save"));
+    await flush(); await flush();
+    expect(h.updateParcelScan).toHaveBeenCalledTimes(1);
+    expect(h.updateParcelScan.mock.calls[0][2]).toEqual({ storeFull: false, phoneCheck: false });          // no frozen reset
+    tapExport(r);
+    expect(q(r, "ps-frozen-wait")).toBeNull();
+    expect(q(r, "ps-frozen-ask")).toBeTruthy();
+  });
   it("nothing to wait for → no 30 s hold, the frozen question at once: an old parcel, an 'unknown' one, the checker's night rest", async () => {
     for (const [name, rows, now] of [
       ["older than 2 min", [frozen({ id: "p1", createdAt: at(DAY - FROZEN_HOLD_FRESH_MS - 1000) })], DAY],
@@ -264,6 +330,21 @@ describe("B) the answer that arrives after the export", () => {
     expect(row.querySelector('[data-testid="ps-frozen-not-checked"]')).toBeNull();
     expect(row.querySelector('[data-testid="ps-ext-clear"]')).toBeTruthy();
     expect(q(r, "ps-attn-toast")).toBeNull();
+  });
+  it("the screen open with one exported frozen parcel and no answer: reading STOPS after the 10-minute watch (audit: it went on every 3 s forever)", async () => {
+    h.rows = [frozen({ id: "x1", status: "exported", createdAt: at(DAY - 20_000) })];
+    const r = await open();
+    const big = async (ms: number) => { for (let left = ms; left > 0; left -= 3_000) { await act(async () => { await vi.advanceTimersByTimeAsync(Math.min(3_000, left)); }); await flush(); } };
+    await big(60_000);
+    const early = h.loadParcelScans.mock.calls.length;
+    expect(early).toBeGreaterThan(5);                                                                   // the watch does read (every 3 s, then 30 s)
+    await big(11 * 60_000);
+    const at11 = h.loadParcelScans.mock.calls.length;
+    await big(5 * 60_000);
+    expect(h.loadParcelScans.mock.calls.length).toBe(at11);                                             // no new read after the watch ended
+    await big(20 * 60_000);
+    expect(h.loadParcelScans.mock.calls.length).toBe(at11);
+    expect(r.container.querySelector('[data-row-id="x1"] [data-testid="ps-frozen-not-checked"]')).toBeTruthy(); // the note stays
   });
   it("the late watch is short: 10 min after the parcel was saved the screen stops reading for it", () => {
     const row = frozen({ id: "p", status: "exported", createdAt: at(DAY) });
@@ -323,6 +404,20 @@ describe("pure rules", () => {
     expect(frozenHoldRows([f({ id: "a" })], DAY + FROZEN_HOLD_FRESH_MS, true)).toEqual([]);                  // too old to wait for
     const night = Date.parse("2026-11-13T18:30:00Z");                                                        // 02:30 Taipei
     expect(frozenHoldRows([f({ id: "a", createdAt: at(night) })], night, true)).toEqual([]);
+  });
+  it("edit time: a reset frozen answer counts from the edit for the hold, the late watch and the read speed; never for a dry row", () => {
+    const old = f({ id: "a", createdAt: at(DAY - 60 * 60_000) });
+    const edits = new Map([["a", DAY - 10_000]]);
+    expect(frozenHoldRows([old], DAY, true)).toEqual([]);
+    expect(frozenHoldRows([old], DAY, true, edits).map((r) => r.id)).toEqual(["a"]);
+    expect(frozenHoldRows([old], DAY - 10_000 + FROZEN_HOLD_FRESH_MS, true, edits)).toEqual([]);
+    const ex = f({ id: "a", status: "exported", createdAt: at(DAY - 60 * 60_000) });
+    expect([lateFrozenWatch(ex, DAY, true), lateFrozenWatch(ex, DAY, true, edits)]).toEqual([false, true]);
+    expect(verdictPollMs([old], DAY, 180_000, true)).toBe(VERDICT_POLL_SLOW_MS);
+    expect(verdictPollMs([old], DAY, 180_000, true, edits)).toBe(VERDICT_POLL_FAST_MS);
+    const dry = mk({ id: "a", createdAt: at(DAY - 60 * 60_000), phoneCheckStatus: null as unknown as string });
+    expect(verdictPollMs([dry], DAY, 180_000, true, edits)).toBe(verdictPollMs([dry], DAY, 180_000, true));   // a dry row ignores the edit map
+    expect(frozenHoldRows([mk({ id: "a", createdAt: at(DAY) })], DAY, true, edits)).toEqual([]);
   });
   it("frozenCheckerResting: 01:00 ≤ Taipei time < 05:00", () => {
     const tp = (hhmm: string) => Date.parse(`2026-11-13T${hhmm}:00+08:00`);

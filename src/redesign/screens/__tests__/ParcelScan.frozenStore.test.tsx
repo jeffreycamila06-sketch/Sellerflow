@@ -243,7 +243,7 @@ describe("9. exported 冷凍 rows (sql/157: a late answer is shown; an answered 
     const row = await waitFor(() => rowEl(r, "x-no"));
     expect(row.getAttribute("data-flag")).toBe("red");
     const line = row.querySelector('[data-testid="ps-frozen-no-exported"]') as HTMLElement;
-    expect(line.textContent).toBe("❄ Already exported, but this store can't receive frozen. Don't send it there — ask the buyer for another 7-11.");
+    expect(line.textContent).toBe("❄ Already exported, but this store can't receive frozen. Don't send it there — ask the buyer for another 7\u201111."); // non-breaking hyphen: "7‑11" never splits on a phone
     expect(line.style.overflowWrap).toBe("anywhere");
     expect(line.style.whiteSpace).toBe("normal");
     expect(row.querySelector('[data-testid="ps-frozen-no"]')).toBeNull(); // the not-exported wording is not used here

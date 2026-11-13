@@ -5119,30 +5119,40 @@ answered no_frozen 7.8 s AFTER the export; the seller was never told.
   question, which can be skipped at once; (2) `admin_parcel_frozen_verdict` (sql/142) updated the row with
   `and status <> 'exported'` → the checker's answer went to the cache + log but the parcel row stayed NULL.
   The Chrome extension already sends the answer — it is NOT changed.
-- **sql/157 (+rollback):** the same function, ONE condition: an EXPORTED 冷凍 parcel with no real answer (NULL /
-  'unknown') receives its FIRST real answer (ok / no_frozen). An answered exported parcel never changes; 'unknown' is
-  never written to an exported parcel; not-exported parcels exactly as before. `admin_parcel_frozen_pending` is NOT
-  changed (an exported parcel is still never handed out — only an answer already on its way is kept).
-  Either order with the web is safe. `scripts/sql157-behaviour.mjs` (PGlite, 26 checks, both real timelines).
-  The file ends with an OPTIONAL commented one-time update (last 3 days, no_frozen from the cache) — not run.
+- **sql/157 (+rollback):** TWO functions (live definitions checked 2026-11-13 = sql/142's text):
+  (1) `admin_parcel_frozen_verdict`, ONE condition: an EXPORTED 冷凍 parcel with no real answer (NULL / 'unknown')
+  receives its FIRST real answer (ok / no_frozen); an answered exported parcel never changes; 'unknown' is never
+  written to an exported parcel; not-exported parcels exactly as before.
+  (2) `admin_parcel_frozen_pending` (closes the "Export anyway" gap): a 冷凍 parcel EXPORTED in the last 24 h with no
+  real answer gets a FRESH cached answer (same freshness: no_frozen 30 d, ok 7 d) or, with no fresh cache, is handed
+  out for a live check (same 10-min store floor, same 'unknown' retry, same limit) — always AFTER every not-exported
+  parcel (per store and in the list). Older than 24 h / answered → never. `admin_parcel_checks_pending` (dry), the
+  dry verdict and the extension: NOT changed. Rollback restores both sql/142 functions (= live) word for word.
+  Either order with the web is safe. `scripts/sql157-behaviour.mjs` (PGlite, 47 checks, both real timelines,
+  not-exported-only data = sql/142's rows/order/depth/writes). Optional commented one-time update at the end — not run.
 - **App (`adapters/parcelFrozenExport.ts` — its own module because many tests replace all of `adapters/parcelScan`;
   `ParcelScan.tsx` `askExport`):** only with checks on AND the frozen switch on, 冷凍 rows only.
-  1. **Hold:** a fresh 冷凍 parcel (saved < 2 min ago) with NO answer → dialog "Checking if this store accepts frozen…"
+  1. **Hold:** a fresh 冷凍 parcel (saved < 2 min ago, OR its store # / Dry→Frozen changed or ⟳ Recheck tapped on
+     this device < 2 min ago — `frozenEdits`, kept for the app session) with NO answer → dialog "Checking if this store accepts frozen…"
      (Cancel only). The 3 s verdict poll keeps reading; twice a second the hold looks: all answered → goes on BY ITSELF
      to the normal export step (the phone still needs the seller's tap there — the share sheet must open from a tap);
      a store that refuses → warning, that parcel is not exported ("Export the other N" when others are ready).
   2. **Never forever:** after `FROZEN_HOLD_MS` (30 s), or at once when there is nothing to wait for (parcel older than
      2 min, the checker answered 'unknown', 01:00–05:00 Taipei = the checker's rest) → the frozen question
-     Wait / Export anyway. Exported like that, the row shows the amber **"Frozen not checked"** note (24 h).
+     Wait / Export anyway, counting EVERY 冷凍 parcel that would leave unchecked. Exported like that, the row shows the
+     amber **"Frozen not checked"** note (24 h).
   3. Then the unchanged phone / store question, then the export.
   - **After an export:** the screen keeps reading for an exported 冷凍 parcel without an answer for 10 min
-    (`lateFrozenWatch`); a late no_frozen = red row + "Already exported, but this store can't receive frozen…" +
+    (`lateFrozenWatch`, also keeps the screen clock moving so the watch really ends — audit fix: it re-read every
+    3 s forever); a late no_frozen = red row + "Already exported, but this store can't receive frozen…" +
     top bar + alert (`problemOf` kind `no_frozen_exported`). No ⟳ on an exported row. Replaces the old rule
-    "an exported 冷凍 row always keeps ✅".
+    "an exported 冷凍 row always keeps ✅". The red warning has NO expiry (stays until deleted / "Clear exported",
+    same as the dry "full" warning — Jeff's choice). "7‑11" in it uses a non-breaking hyphen.
   - A dry parcel, a 冷凍 parcel with an answer (cached = instant trigger, or live), switch off, checks off: no hold,
     no new line, same DOM as before (test-pinned).
-- ⚠️ **Not covered (known):** a parcel exported with "Export anyway" BEFORE the checker picked it up is never checked
-  (pending skips exported parcels) — it keeps the "Frozen not checked" note. The warning lives on the Parcel Scan
+- ⚠️ **Not covered (known):** an "Export anyway" parcel is now checked for 24 h after its export (sql/157 (2)); after
+  that it keeps the "Frozen not checked" note. An edit made on another device / before the app was reopened is not
+  known to `frozenEdits` (that parcel gets the question at once). The warning lives on the Parcel Scan
   list; Pickup Status is not linked to parcel_scans rows (tracking numbers are made after the upload), so nothing
   is shown there. The export re-reads the list right before it claims: a 冷凍 parcel saved on ANOTHER device
   seconds earlier can still leave without its answer (then the late warning applies).
