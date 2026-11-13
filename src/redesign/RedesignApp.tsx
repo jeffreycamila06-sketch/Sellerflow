@@ -894,7 +894,7 @@ export default function RedesignApp() {
   // Parcel Scan: Scan QR also looks the username up in Customers (sql/149). Switch OR this login on the list —
   // off and not listed = Scan QR exactly as before (no read). No admin bypass.
   const scanQrLookupOn = scanQrLookupVisible({ switchOn: featureSw.scanQrLookup, previewKey: hasFeature("scan_qr_lookup") });
-  // Parcel Scan FamilyMart: store # check (sql/154). Switch OR this login on the list; off = the screen as before.
+  // Parcel Scan FamilyMart: store # check (sql/155). Switch OR this login on the list; off = the screen as before.
   const fmStoreCheckOn = fmStoreCheckVisible({ switchOn: featureSw.fmStoreCheck, previewKey: hasFeature("fm_store_check") });
   const helpBotOn = useHelpBotSwitch(authed ? (authUserId || "") : "");
   // iPhone's own help-chat switch (support_ai_ios) — read only inside the iPhone app.

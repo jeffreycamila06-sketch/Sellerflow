@@ -20,8 +20,7 @@ const resp = (body: string | Uint8Array, init: { status?: number; ct?: string; c
   arrayBuffer: async () => { const u = typeof body === "string" ? new TextEncoder().encode(body) : body; return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength); },
 });
 const NOW = 1_800_000_000_000;
-// canaryState.okAt = NOW → the canary answered 'valid' just now (tests of the canary pass their own state)
-const opts = (fetchImpl: unknown) => ({ fetchImpl: fetchImpl as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW, canaryState: { okAt: NOW } });
+const opts = (fetchImpl: unknown) => ({ fetchImpl: fetchImpl as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW });
 
 describe("parseFmStoreVerdict — the three measured shapes", () => {
   it("no such store (015905): the whole answer is the sorry sentence → not_found (either 鋪 / 舖, tags and spaces around it allowed)", () => {
@@ -80,10 +79,11 @@ describe("checkFmStore", () => {
     const f = vi.fn()
       .mockResolvedValueOnce(resp("<html><body>session</body></html>"))
       .mockResolvedValueOnce(resp("<html>home</html>", { cookies: ["ASP.NET_SessionId=abc; path=/; HttpOnly"] }))
-      .mockResolvedValueOnce(resp(NONE));
+      .mockResolvedValueOnce(resp(NONE))
+      .mockResolvedValueOnce(resp(storePage(FM_STORE_CANARY))); // the canary confirms the not_found
     const r = await checkFmStore("015905", opts(f));
     expect(r).toMatchObject({ status: "not_found", retried: true });
-    expect(f).toHaveBeenCalledTimes(3);
+    expect(f).toHaveBeenCalledTimes(4);
     expect(String(f.mock.calls[1][0])).toContain("default.aspx");
     expect(f.mock.calls[2][1].headers.Cookie).toBe("ASP.NET_SessionId=abc");
   });
@@ -103,11 +103,10 @@ describe("checkFmStore", () => {
     expect(Date.now() - t0).toBeLessThan(1500);
     expect(hang).toHaveBeenCalledTimes(1); // a timeout is not retried
   });
-  it("1c cache: valid is kept 12 hours, not_found 10 minutes only, unknown never; the size is bounded", async () => {
+  it("cache: valid is kept 12 hours, not_found 10 minutes only, unknown never; the size is bounded", async () => {
     const cache = createFmStoreCache();
-    const canaryState = { okAt: 0 };
     const f = vi.fn(async (u: string) => resp(String(u).includes("pkey=015905") ? NONE : storePage(String(u).match(/pkey=(\d{6})/)![1])));
-    const o = { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, canaryState };
+    const o = { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200 };
     await checkFmStore("022777", { ...o, now: NOW });
     expect(await checkFmStore("022777", { ...o, now: NOW + 11 * 3600_000 })).toMatchObject({ status: "valid", cached: true });
     expect(f).toHaveBeenCalledTimes(1);
@@ -115,9 +114,6 @@ describe("checkFmStore", () => {
     expect(f).toHaveBeenCalledTimes(2);
     const t1 = NOW + 20 * 3600_000;
     expect((await checkFmStore("015905", { ...o, now: t1 })).status).toBe("not_found"); // 015905 + the canary
-    const n = f.mock.calls.length;
-    expect(await checkFmStore("015905", { ...o, now: t1 + 9 * 60_000 })).toMatchObject({ status: "not_found", cached: true });
-    expect(f.mock.calls.length).toBe(n); // 9 minutes: from the cache, canary still fresh
     await checkFmStore("015905", { ...o, now: t1 + 11 * 60_000 });
     expect(f.mock.calls.filter((c) => String(c[0]).includes("pkey=015905")).length).toBe(2); // 11 minutes: asked again
     const bad = vi.fn(async () => resp("x", { status: 500 }));
@@ -130,63 +126,81 @@ describe("checkFmStore", () => {
     expect(small.size()).toBe(2);
     expect(small.get("000001")).toBeNull();
   });
-  it("1d fresh (a Re-check tap): the cache is not read, the new answer is still stored", async () => {
+  it("fresh (a Re-check tap): the cache is not read; a fresh not_found AND a fresh valid answer are stored", async () => {
     const cache = createFmStoreCache();
     let page = storePage("022777");
-    const f = vi.fn(async () => resp(page));
-    const o = { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW, canaryState: { okAt: NOW } };
+    const f = vi.fn(async (u: string) => resp(String(u).includes(`pkey=${FM_STORE_CANARY}`) ? storePage(FM_STORE_CANARY) : page));
+    const o = { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW };
     await checkFmStore("022777", o);
     page = NONE;
     expect((await checkFmStore("022777", o)).status).toBe("valid"); // cached
     expect(f).toHaveBeenCalledTimes(1);
     expect(await checkFmStore("022777", { ...o, fresh: true })).toMatchObject({ status: "not_found" });
-    expect(f).toHaveBeenCalledTimes(2);
     expect(await checkFmStore("022777", o)).toMatchObject({ status: "not_found", cached: true }); // the new answer replaced the old one
+    page = storePage("022777");
+    expect(await checkFmStore("022777", { ...o, fresh: true })).toMatchObject({ status: "valid" });
+    expect(cache.get("022777", NOW)).toMatchObject({ status: "valid" }); // a fresh valid answer is stored
+    expect(await checkFmStore("022777", o)).toMatchObject({ status: "valid", cached: true });
   });
 });
 
-describe("1b canary — never a false 'wrong store code'", () => {
+describe("canary — never a false 'wrong store code'", () => {
   const siteWith = (canaryPage: string) => vi.fn(async (u: string) => resp(String(u).includes(`pkey=${FM_STORE_CANARY}`) ? canaryPage : NONE));
+  const pkeys = (f: { mock: { calls: unknown[][] } }) => f.mock.calls.map((c) => String(c[0]).match(/pkey=(\d{6})/)![1]);
   it("default canary store is 022131", () => { expect(FM_STORE_CANARY).toBe("022131"); });
-  it("no fresh canary → the canary is asked now; valid → not_found stands and is cached", async () => {
+  it("1a EVERY not_found from the site is confirmed with the canary right then (no 10-minute trust)", async () => {
     const f = siteWith(storePage(FM_STORE_CANARY));
-    const cache = createFmStoreCache(); const canaryState = { okAt: 0 };
-    const r = await checkFmStore("015905", { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW, canaryState });
-    expect(r.status).toBe("not_found");
-    expect(f.mock.calls.map((c) => String(c[0]).match(/pkey=(\d{6})/)![1])).toEqual(["015905", FM_STORE_CANARY]);
-    expect(canaryState.okAt).toBe(NOW);
+    const cache = createFmStoreCache();
+    const o = { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200 };
+    expect((await checkFmStore("015905", { ...o, now: NOW })).status).toBe("not_found");
     expect(cache.get("015905", NOW)).toEqual({ status: "not_found" });
-    // within 10 minutes the canary is not asked again
-    await checkFmStore("015906", { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW + 9 * 60_000, canaryState });
-    expect(f).toHaveBeenCalledTimes(3);
-    // after 10 minutes it is
-    await checkFmStore("015907", { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW + 11 * 60_000, canaryState });
-    expect(f).toHaveBeenCalledTimes(5);
+    expect((await checkFmStore("015906", { ...o, now: NOW + 60_000 })).status).toBe("not_found"); // 1 minute later: canary asked again
+    expect(pkeys(f)).toEqual(["015905", FM_STORE_CANARY, "015906", FM_STORE_CANARY]);
   });
-  it("the site answers 'sorry' for EVERYTHING (canary too) → unknown, not cached, canaryFailed says what the canary got", async () => {
+  it("1a a cached not_found is answered from the cache with NO canary lookup", async () => {
+    const f = siteWith(storePage(FM_STORE_CANARY));
+    const cache = createFmStoreCache();
+    const o = { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200 };
+    await checkFmStore("015905", { ...o, now: NOW });
+    const n = f.mock.calls.length;
+    expect(await checkFmStore("015905", { ...o, now: NOW + 9 * 60_000 })).toEqual({ storeId: "015905", status: "not_found", cached: true });
+    expect(f.mock.calls.length).toBe(n);
+  });
+  it("1a the canary is not valid (site says 'sorry' for everything) → unknown, not cached, canaryFailed", async () => {
     const f = siteWith(NONE);
     const cache = createFmStoreCache();
-    const r = await checkFmStore("015905", { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW, canaryState: { okAt: 0 } });
+    const r = await checkFmStore("015905", { fetchImpl: f as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW });
     expect(r).toMatchObject({ status: "unknown", canaryFailed: { store: FM_STORE_CANARY, got: "not_found" } });
     expect(cache.get("015905", NOW)).toBeNull();
   });
   it("the canary cannot be read (error page) → unknown", async () => {
     const f = siteWith("<html><body>Service Unavailable</body></html>");
-    const r = await checkFmStore("015905", { fetchImpl: f as unknown as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW, canaryState: { okAt: 0 } });
+    const r = await checkFmStore("015905", { fetchImpl: f as unknown as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW });
     expect(r).toMatchObject({ status: "unknown", canaryFailed: { store: FM_STORE_CANARY, got: "unknown" } });
   });
-  it("the canary's own lookup is never judged by the canary; a valid answer for it counts as a fresh canary", async () => {
-    const sorry = vi.fn(async () => resp(NONE));
-    expect((await checkFmStore(FM_STORE_CANARY, { fetchImpl: sorry as unknown as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW, canaryState: { okAt: 0 } })).status).toBe("not_found");
-    expect(sorry).toHaveBeenCalledTimes(1);
-    const state = { okAt: 0 };
-    const ok = vi.fn(async () => resp(storePage(FM_STORE_CANARY)));
-    await checkFmStore(FM_STORE_CANARY, { fetchImpl: ok as unknown as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW, canaryState: state });
-    expect(state.okAt).toBe(NOW);
+  it("1b a not_found for the canary store itself → unknown, never cached, canaryFailed — also when fresh; no extra request", async () => {
+    for (const fresh of [false, true]) {
+      const sorry = vi.fn(async () => resp(NONE));
+      const cache = createFmStoreCache();
+      const r = await checkFmStore(FM_STORE_CANARY, { fetchImpl: sorry as unknown as typeof fetch, cache, timeoutMs: 200, now: NOW, fresh });
+      expect(r).toMatchObject({ status: "unknown", canaryFailed: { store: FM_STORE_CANARY, got: "not_found" } });
+      expect(cache.get(FM_STORE_CANARY, NOW)).toBeNull();
+      expect(sorry).toHaveBeenCalledTimes(1);
+    }
+  });
+  it("the canary lookup stays inside the ONE time limit of the whole check", async () => {
+    // the store answers 'sorry' quickly; the canary hangs until it is aborted
+    const f = vi.fn((u: string, o: { signal: AbortSignal }) => String(u).includes(`pkey=${FM_STORE_CANARY}`)
+      ? new Promise((_res, rej) => o.signal.addEventListener("abort", () => rej(Object.assign(new Error("aborted"), { name: "AbortError" }))))
+      : Promise.resolve(resp(NONE)));
+    const t0 = Date.now();
+    const r = await checkFmStore("015905", { fetchImpl: f as unknown as typeof fetch, cache: createFmStoreCache(), timeoutMs: 80, now: NOW });
+    expect(r.status).toBe("unknown");
+    expect(Date.now() - t0).toBeLessThan(1000);
   });
   it("a valid store needs no canary", async () => {
     const f = vi.fn(async () => resp(storePage("022777")));
-    await checkFmStore("022777", { fetchImpl: f as unknown as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW, canaryState: { okAt: 0 } });
+    await checkFmStore("022777", { fetchImpl: f as unknown as typeof fetch, cache: createFmStoreCache(), timeoutMs: 200, now: NOW });
     expect(f).toHaveBeenCalledTimes(1);
   });
 });
@@ -217,10 +231,15 @@ describe("the route, really run (auth stubbed)", () => {
       expect(check).toHaveBeenLastCalledWith("022131", { fresh: false });
       await post(s.port, { storeId: "022131", fresh: true });
       expect(check).toHaveBeenLastCalledWith("022131", { fresh: true });
-      for (const bad of [{}, { storeId: "12345" }, { storeId: "1234567" }, { storeId: "02213a" }, { storeId: "0221 31" }]) {
+      for (const notTrue of ["true", 1, "1", {}]) { // only the boolean true counts as fresh
+        await post(s.port, { storeId: "022131", fresh: notTrue });
+        expect(check).toHaveBeenLastCalledWith("022131", { fresh: false });
+      }
+      // 1c: a string of 6 digits only — a number, an array or an object is refused too (never a 500)
+      for (const bad of [{}, { storeId: "12345" }, { storeId: "1234567" }, { storeId: "02213a" }, { storeId: "0221 31" }, { storeId: 221310 }, { storeId: ["022131"] }, { storeId: { toString: 1 } }, { storeId: null }]) {
         expect(await post(s.port, bad)).toEqual({ status: 400, json: { success: false, error: "bad_store_id" } });
       }
-      expect(check).toHaveBeenCalledTimes(2);
+      expect(check).toHaveBeenCalledTimes(6);
       expect(s.logs[0]).toMatch(/^\[FM_STORE_CHECK\] store=022131 result=valid closed=true ms=\d+$/);
     } finally { await s.close(); }
   });
@@ -257,12 +276,12 @@ describe("server.js wiring (source contract)", () => {
   });
 });
 
-describe("sql/154 (file only — not applied)", () => {
-  const up = readFileSync(resolve(__dirname, "../../../../sql/154_fm_store_check.sql"), "utf8");
+describe("sql/155 (file only — not applied)", () => {
+  const up = readFileSync(resolve(__dirname, "../../../../sql/155_fm_store_check.sql"), "utf8");
   it("adds three nullable columns to fm_parcel_scans only (no trigger), the switch starts 'false', one new key; the rollback drops them", () => {
     expect(up).toContain("alter table public.fm_parcel_scans\n  add column if not exists store_check_status text null,\n  add column if not exists store_check_at     timestamptz null,\n  add column if not exists store_check_store_id text null;");
     expect(up.replace(/^--.*$/gm, "")).not.toMatch(/create\s+(or replace\s+)?trigger/i);
-    const down = readFileSync(resolve(__dirname, "../../../../sql/154_fm_store_check_rollback.sql"), "utf8");
+    const down = readFileSync(resolve(__dirname, "../../../../sql/155_fm_store_check_rollback.sql"), "utf8");
     for (const c of ["store_check_status", "store_check_at", "store_check_store_id"]) expect(down).toContain(`drop column if exists ${c}`);
     expect(up.replace(/^--.*$/gm, "")).not.toMatch(/public\.parcel_scans\b/);
     expect(up).toContain("insert into public.app_settings (key, value) values ('fm_store_check_enabled', 'false')");

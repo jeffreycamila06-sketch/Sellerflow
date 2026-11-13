@@ -26,7 +26,7 @@ export interface FmScanRow {
   createdAt: string;
   exportedAt: string | null;
   exportBatchId: string | null;
-  // Store # check (sql/154) — read and written ONLY while the check is on for this account.
+  // Store # check (sql/155) — read and written ONLY while the check is on for this account.
   // 'valid' | 'not_found' — only an answer written FOR THIS store # (store_check_store_id = store_id) counts.
   storeCheckStatus?: string | null;
 }
@@ -232,7 +232,7 @@ async function uid(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
-// withStoreCheck (sql/154): also read the store # check columns — ONLY passed when the check is on.
+// withStoreCheck (sql/155): also read the store # check columns — ONLY passed when the check is on.
 export const FM_STORE_CHECK_COLS = "store_check_status, store_check_store_id";
 export async function loadFmScans(withStoreCheck?: boolean): Promise<{ ok: boolean; rows: FmScanRow[] }> {
   const me = await uid();

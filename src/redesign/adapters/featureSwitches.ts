@@ -30,7 +30,7 @@ export const FEATURE_SWITCH_KEYS = {
   oneSticker: "one_sticker_enabled", // ONE STICKER: the new Live print pattern screen for every seller (sql/144, seeded 'false'; admins see it before) — each device opts in by Save
   stickerAllScripts: "sticker_all_scripts_enabled", // every language prints on today's sticker (sql/144, seeded 'false')
   scanQrLookup: "scan_qr_lookup_enabled", // Parcel Scan: Scan QR also looks the username up in Customers (sql/149, seeded 'false')
-  fmStoreCheck: "fm_store_check_enabled", // Parcel Scan FamilyMart: the store # is checked after a save (sql/154, seeded 'false')
+  fmStoreCheck: "fm_store_check_enabled", // Parcel Scan FamilyMart: the store # is checked after a save (sql/155, seeded 'false')
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;

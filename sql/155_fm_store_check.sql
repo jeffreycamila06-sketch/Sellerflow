@@ -1,5 +1,5 @@
 -- ============================================================================
--- sql/154 — Parcel Scan FamilyMart: store # check (Jeff 2026-11-12).
+-- sql/155 — Parcel Scan FamilyMart: store # check (Jeff 2026-11-12).
 -- ============================================================================
 -- NOT APPLIED. Jeff / chat applies via Supabase MCP after review. ADD-ONLY:
 --   1. fm_parcel_scans gains three nullable columns (no default, no backfill, no index, no trigger):
@@ -18,8 +18,9 @@
 -- columns and never calls the server).
 --
 -- ⚠️ ORDER: apply this BEFORE turning the switch on / adding a login (the app selects the new
---   columns only when the check is on). The server route needs the Render deploy; without it
---   every check is 'unknown' (nothing shown, nothing blocked).
+--   columns only when the check is on). The server route needs the Render deploy; without it,
+--   with the check on, every row says "Can't verify store" (nothing is kept out of the export).
+--   Order: this file -> Render deploy -> test logins.
 -- ⚠️ my_feature_access(): build the function from the LIVE definition at apply time
 --   (select pg_get_functiondef('public.my_feature_access'::regproc)) keeping EVERY key it already
 --   has + 'fm_store_check'. The version below = the live list read on 2026-11-12 (= sql/149) + the one.
@@ -37,7 +38,7 @@
 --   select value from public.app_settings where key = 'fm_store_check_enabled';            -- false
 --   select count(*) from information_schema.columns where table_schema='public'
 --     and table_name='fm_parcel_scans' and column_name like 'store_check_%';               -- 3
--- Rollback: sql/154_fm_store_check_rollback.sql
+-- Rollback: sql/155_fm_store_check_rollback.sql
 -- ============================================================================
 begin;
 set local lock_timeout = '2s';

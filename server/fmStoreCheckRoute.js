@@ -5,8 +5,9 @@
 // No buyer name or phone ever reaches this route.
 export function createFmStoreCheckHandler({ check, allowed, log = console.log }) {
   return async function fmStoreCheckHandler(req, res) {
-    const storeId = String((req.body && req.body.storeId) || "").trim();
-    if (!/^\d{6}$/.test(storeId)) {
+    const sent = req.body ? req.body.storeId : undefined;
+    const storeId = typeof sent === "string" ? sent.trim() : "";
+    if (!/^\d{6}$/.test(storeId)) { // a string of 6 digits only; any other type is refused
       return res.status(400).json({ success: false, error: "bad_store_id" });
     }
     if (!allowed(req.sellerId)) {

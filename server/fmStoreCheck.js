@@ -19,12 +19,12 @@ export const FM_STORE_QUERY = process.env.FM_STORE_QUERY || "cvsname=WWW.FAMILY.
 export const FM_STORE_TIMEOUT_MS = Number(process.env.FM_STORE_TIMEOUT_MS) || 5000;
 export const FM_STORE_CACHE_MS = 12 * 60 * 60 * 1000;      // a store that exists is kept 12 hours
 export const FM_STORE_NOT_FOUND_CACHE_MS = 10 * 60 * 1000;  // "no such store" is kept 10 minutes only
-// CANARY — never a false "wrong store code". Before this server answers 'not_found' for any
-// store, a store that really exists must have answered 'valid' from THIS server in the last
-// 10 minutes. If it did not (the site blocks this server, answers everything "sorry", changed
-// its page), the answer is 'unknown'. (FamilyMart's version of the 7-11 gate EMAP_CHECK_CONFIRMED.)
+// CANARY — never a false "wrong store code". Every 'not_found' that comes from the site is
+// confirmed right then: a store that really exists is looked up in the same 5 s. If it does
+// not answer 'valid' (the site blocks this server, answers everything "sorry", changed its
+// page), the answer is 'unknown'. A 'not_found' for the canary store itself is 'unknown' too.
+// (FamilyMart's version of the 7-11 gate EMAP_CHECK_CONFIRMED.)
 export const FM_STORE_CANARY = /^\d{6}$/.test(String(process.env.FM_STORE_CANARY || "").trim()) ? String(process.env.FM_STORE_CANARY).trim() : "022131";
-export const FM_STORE_CANARY_FRESH_MS = 10 * 60 * 1000;
 export const FM_STORE_CHECK_MAX_PER_MIN = 120; // per seller — one batch is 40–70 parcels
 export const FM_STORE_CACHE_MAX = 5000;
 export const FM_STORE_BODY_MAX = 512 * 1024; // a store page is a few KB; anything bigger is not it
@@ -101,7 +101,6 @@ export function createFmStoreCache({ ttlMs = FM_STORE_CACHE_MS, notFoundTtlMs = 
   };
 }
 const sharedCache = createFmStoreCache();
-const sharedCanary = { okAt: 0 }; // when the canary store last answered 'valid' from this server
 
 function cookiesOf(resp) {
   let list = [];
@@ -161,34 +160,30 @@ export async function checkFmStore(storeId, opts = {}) {
   const {
     fetchImpl = fetch, timeoutMs = FM_STORE_TIMEOUT_MS, endpoint = FM_STORE_ENDPOINT,
     defaultUrl = FM_STORE_DEFAULT_URL, query = FM_STORE_QUERY, cache = sharedCache, now = Date.now(),
-    fresh = false, canary = FM_STORE_CANARY, canaryState = sharedCanary,
+    fresh = false, canary = FM_STORE_CANARY,
   } = opts;
   if (!/^\d{6}$/.test(id)) return { storeId: id, status: "unknown" };
 
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs); // ONE limit for the whole lookup (the canary included)
   const site = { fetchImpl, signal: ctl.signal, endpoint, defaultUrl, query };
-  // 'not_found' may be answered only with a fresh canary. null = OK, else what the canary said.
+  // A 'not_found' that comes from the SITE is confirmed every time: the canary store is looked up
+  // right then, inside the same limit. null = the canary is fine, else what it said.
+  // A 'not_found' for the canary store itself is never believed (it is a store that exists).
   const canaryProblem = async () => {
-    if (id === canary) return null; // the canary's own lookup is never judged by the canary
-    if (canaryState.okAt > 0 && now - canaryState.okAt < FM_STORE_CANARY_FRESH_MS) return null;
+    if (id === canary) return "not_found";
     const c = ctl.signal.aborted ? { verdict: { status: "unknown" } } : await lookupStore(canary, site);
-    if (c.verdict.status === "valid") { canaryState.okAt = now; cache.set(canary, { status: "valid", closed: c.verdict.closed === true }, now); return null; }
+    if (c.verdict.status === "valid") { cache.set(canary, { status: "valid", closed: c.verdict.closed === true }, now); return null; }
     return c.verdict.status;
   };
   try {
     const hit = fresh ? null : cache.get(id, now);
-    if (hit) {
-      if (hit.status !== "not_found") return { storeId: id, ...hit, cached: true };
-      const bad = await canaryProblem();
-      return bad ? { storeId: id, status: "unknown", cached: true, canaryFailed: { store: canary, got: bad } } : { storeId: id, ...hit, cached: true };
-    }
+    if (hit) return { storeId: id, ...hit, cached: true }; // a cached answer: no canary lookup
     const { verdict, raw, retried } = await lookupStore(id, site);
     const out = { storeId: id, status: verdict.status };
     if (retried) out.retried = true;
     if (verdict.status === "valid") {
       out.closed = verdict.closed === true;
-      if (id === canary) canaryState.okAt = now;
       cache.set(id, { status: "valid", closed: out.closed }, now);
     } else if (verdict.status === "not_found") {
       const bad = await canaryProblem();

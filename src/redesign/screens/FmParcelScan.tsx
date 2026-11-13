@@ -55,7 +55,7 @@ function storeBadge(status: string | null | undefined): { icon: string; color: s
   if (status === "checking") return { icon: "⏳", color: "var(--text-dim)", key: "rd_ps2_store_checking" };
   return null;
 }
-type Confirm = { kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | { kind: "enablephone" };
+type Confirm = { kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "pending"; n: number } | { kind: "undo" } | { kind: "enablephone" };
 
 const rowInput = (r: FmScanRow): FmScanInput => ({
   recipientName: r.recipientName, phone: r.phone, storeId: r.storeId, amount: String(r.amount),
@@ -140,13 +140,14 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   const disablePhoneExport = () => { writePhoneExport(false); setPhoneExport(false); };
   const exportHidden = onMobile && !phoneExport;
 
-  // Store # check (sql/154). Off = loadFmScans() exactly as before and nothing of it ever runs.
+  // Store # check (sql/155). Off = loadFmScans() exactly as before and nothing of it ever runs.
   // scReady = the list on screen was read WITH the check columns (no check, label or alert before that —
   // also when the check turns on while the screen is already open: the list is read again first).
   const loadList = () => (storeCheckOn ? loadFmScans(true) : loadFmScans());
   const [scLoaded, setScLoaded] = useState(false);
+  if (!storeCheckOn && scLoaded) setScLoaded(false); // check turned off: turning it on again reads the list again first
   const scReady = storeCheckOn && scLoaded;
-  const { busy, checking, recheck } = useFmStoreChecks(storeCheckOn, scReady, rows, setRows);
+  const { busy, recheck } = useFmStoreChecks(storeCheckOn, scReady, rows, setRows);
   const reloadSaved = () => {
     void loadList().then((r) => { if (aliveRef.current && r.ok) { setRows(r.rows); setListOk(true); } });
   };
@@ -277,7 +278,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   // Builds and hands over the files right inside the tap (the phone share sheet needs it).
   // Parcels are marked exported ONLY after the files were really delivered.
   const runExport = () => {
-    if (exportBusy || !readyCount || checking) return;
+    if (exportBusy || !readyCount) return;
     setExportErr(false); setAppFail(false); setAndroidSaved(false); setExportSummary(null); setUndoErr(false);
     const ready = readyRows;
     const attention = pending.filter((r) => attentionOf(r)).map((r) => ({ name: r.recipientName || r.phone || "—", reason: attentionOf(r)! }));
@@ -335,6 +336,11 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     setConfirm(null);
   };
   const ask = (c: Confirm) => { setDeleteErr(false); setConfirm(c); };
+  // Export tap — same as 7-11: parcels of the file still being checked → ask first (wait / export anyway).
+  const askExport = () => {
+    const n = scReady ? readyRows.filter((r) => busy.has(fmStoreKey(r))).length : 0;
+    ask(n > 0 ? { kind: "pending", n } : { kind: "export" });
+  };
 
   // ── Store # check on: the 7-11 "needs attention" half, the new-problem alert, the tabs ──────
   const wrongRows = scReady ? rows.filter(fmWrongStore) : [];
@@ -412,7 +418,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
           {onBridge && <BridgeButton to="711" onClick={onBridge} />}
         </div>
         {/* Batch = parcels not exported yet / the account's limit (same look as the 7-11 Batch pill).
-            The "All OK" / "need attention" half appears only while the store # check is on (sql/154). */}
+            The "All OK" / "need attention" half appears only while the store # check is on (sql/155). */}
         {listOk && (
           <div style={{ padding: "8px 14px", background: "var(--app-bg)", borderBottom: "1px solid var(--border)" }} data-testid="fms-topbar">
             <div style={{ display: "flex", gap: 6 }}>
@@ -557,9 +563,9 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
             <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_fms_x_title}</div>
             <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_fms_x_hint}</div>
             {/* Store # check on: no export while a store is being checked (好賣+ stops at the first wrong row). */}
-            <button onClick={() => ask({ kind: "export" })} disabled={exportBusy || readyCount === 0 || checking}
-              style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 || checking ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 || checking ? "default" : "pointer" }}
-              data-testid="fms-export-btn">📄 {exportBusy ? t.rd_ps2_x_exporting : checking ? t.rd_fms_sc_checking : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
+            <button onClick={askExport} disabled={exportBusy || readyCount === 0}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 ? "default" : "pointer" }}
+              data-testid="fms-export-btn">📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
             {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="fms-export-err">{t.rd_ps2_x_failed}</div>}
             {appFail && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 11px", marginTop: 8, lineHeight: 1.5 }} data-testid="fms-export-appfail">{isAndroid() ? t.rd_ps2_x_app_fail_android : t.rd_ps2_x_app_fail}</div>}
             {androidSaved && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok, #16a34a)", marginTop: 8, lineHeight: 1.5 }} data-testid="fms-export-saved">{t.rd_ps2_x_saved_android_fm}</div>}
@@ -660,6 +666,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                     <div>{t.rd_ps2_phx_title}</div>
                     <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.55 }}>{t.rd_fms_phx_body}</div>
                   </>
+                : confirm.kind === "pending" ? <span data-testid="fms-pending-msg">{tpl(t.rd_ps2_pending_q, { n: String(confirm.n) })}</span>
                 : confirm.kind === "export" ? tpl(t.rd_ps2_x_confirm_q, { n: String(readyCount) })
                   : confirm.kind === "undo" ? tpl(t.rd_ps2_undo_q, { n: String(lastExportBatch?.ids.length ?? 0) })
                     : confirm.kind === "exported" ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) })
@@ -667,12 +674,14 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
             </div>
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="fms-delete-err">{t.rd_ps2_delete_err}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="fms-confirm-cancel">{t.rd_ps2_cancel}</button>
+              <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="fms-confirm-cancel">{confirm.kind === "pending" ? t.rd_ps2_pending_wait : t.rd_ps2_cancel}</button>
               {confirm.kind === "enablephone"
                 ? <button onClick={enablePhoneExport} style={btnFull(true)} data-testid="fms-confirm-enablephone">{t.rd_ps2_phx_go}</button>
+                : confirm.kind === "pending"
+                  ? <button onClick={() => ask({ kind: "export" })} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="fms-confirm-export-anyway">{t.rd_ps2_pending_anyway}</button>
                 : confirm.kind === "export"
                   // No await before the files are handed over — the phone share sheet keeps the tap.
-                  ? <button onClick={() => { setConfirm(null); runExport(); }} disabled={checking} style={btnFull(!checking)} data-testid="fms-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>
+                  ? <button onClick={() => { setConfirm(null); runExport(); }} style={btnFull(true)} data-testid="fms-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>
                   : confirm.kind === "undo"
                     ? <button onClick={() => void doUndo()} style={btnFull(true)} data-testid="fms-confirm-undo">↩ {t.rd_ps2_undo_go}</button>
                     : <button onClick={() => void doDelete()} disabled={deleting} style={{ ...btnFull(true), background: "var(--danger)", opacity: deleting ? 0.7 : 1, cursor: deleting ? "default" : "pointer" }} data-testid="fms-confirm-delete">{t.rd_ps2_delete}</button>}

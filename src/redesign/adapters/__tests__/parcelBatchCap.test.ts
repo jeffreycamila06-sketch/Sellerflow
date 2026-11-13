@@ -88,10 +88,10 @@ describe("sql/117 my_feature_access", () => {
     expect(k146).toEqual([...k140, "one_sticker", "sticker_all_scripts"]);
     const k149 = keysOf("sql/149_scan_qr_lookup.sql"); // the LATEST my_feature_access list (Scan QR → Customers lookup)
     expect(k149).toEqual([...k146, "scan_qr_lookup"]);
-    const k154 = keysOf("sql/154_fm_store_check.sql"); // the LATEST my_feature_access list (FamilyMart store # check)
-    expect(k154).toEqual([...k149, "fm_store_check"]);
-    expect([...k154].sort()).toEqual([...FEATURE_KEYS].sort());
-    expect(keysOf("sql/154_fm_store_check_rollback.sql")).toEqual(k149);
+    const k155 = keysOf("sql/155_fm_store_check.sql"); // the LATEST my_feature_access list (FamilyMart store # check)
+    expect(k155).toEqual([...k149, "fm_store_check"]);
+    expect([...k155].sort()).toEqual([...FEATURE_KEYS].sort());
+    expect(keysOf("sql/155_fm_store_check_rollback.sql")).toEqual(k149);
     expect(keysOf("sql/149_scan_qr_lookup_rollback.sql")).toEqual(k146);
     expect(keysOf("sql/146_one_sticker_feature_access_rollback.sql")).toEqual(k140);
     expect(keysOf("sql/140_buyer_contact_rollback.sql")).toEqual(k137);

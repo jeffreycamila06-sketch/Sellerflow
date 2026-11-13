@@ -1,9 +1,12 @@
-// Parcel Scan FamilyMart — store # check (sql/154): the 7-11 wrong-store-code flow on the
-// FamilyMart screen, plus Fix Round 1 (the checks never stop silently; only real answers are kept).
+// Parcel Scan FamilyMart — store # check (sql/155): the 7-11 wrong-store-code flow on the
+// FamilyMart screen, plus Fix Round 1 (the checks never stop silently; only real answers are kept)
+// and Fix Round 2 (Export is never disabled by a check; a stop sets everything aside; off = forgotten).
 // The switch-off proof with the REAL fmScan adapter is in FmParcelScan.storeCheckOff.test.tsx.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, waitFor, act, renderHook } from "@testing-library/react";
 import { useState } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { TProvider } from "../../i18n";
 
 const m = vi.hoisted(() => ({
@@ -37,6 +40,8 @@ const badgeOf = (r: R, id: string) => rowEl(r, id)?.querySelector('[data-testid=
 const recheckOf = (r: R, id: string) => rowEl(r, id).querySelector('[data-testid="fms-recheck"]') as HTMLElement;
 const exportBtn = (r: R) => r.getByTestId("fms-export-btn") as HTMLButtonElement;
 const checkWrites = () => fake.writes().filter((w) => "store_check_status" in w);
+// every row is on screen and none is waiting for / in a check
+const settled = (r: R) => waitFor(() => { expect(r.container.querySelector("[data-row-id]")).not.toBeNull(); expect(r.container.textContent).not.toContain("Checking store…"); });
 
 beforeEach(() => {
   Object.values(m).forEach((f) => f.mockReset());
@@ -91,7 +96,7 @@ describe("switch on — the row, the top bar, the alert, the tabs, the export", 
     expect(r.queryByTestId("fms-attn-toast")).toBeNull();
   });
 
-  it("opening the screen checks a row with no answer: '⏳ Checking store…', Export waits, then the answer + the alert once; the answer is written WITH its store #", async () => {
+  it("opening the screen checks a row with no answer: '⏳ Checking store…', Export stays enabled, then the answer + the alert once; the answer is written WITH its store #", async () => {
     let release: (v: unknown) => void = () => {};
     fetchMock.mockImplementation(() => new Promise((res) => { release = res; }));
     m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("p", { storeId: "015905" }), row("v", { storeCheckStatus: "valid" })] });
@@ -99,15 +104,15 @@ describe("switch on — the row, the top bar, the alert, the tabs, the export", 
     await waitFor(() => expect(badgeOf(r, "p")?.textContent).toContain("Checking store"));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(bodyOf(0)).toEqual({ storeId: "015905" });
-    expect(exportBtn(r).disabled).toBe(true);
-    expect(exportBtn(r).textContent).toContain("Checking stores…");
+    expect(exportBtn(r).disabled).toBe(false); // 3a: a check never disables Export
+    expect(exportBtn(r).textContent).not.toContain("Checking");
     expect(r.getByTestId("fms-attn").getAttribute("data-state")).toBe("ok");
     await act(async () => { release(answer("not_found")); });
     await waitFor(() => expect(badgeOf(r, "p")?.textContent).toContain("Wrong store code"));
     expect(r.getByTestId("fms-attn-toast").textContent).toBe("⚠ wrong store code · 015905");
     expect(m.haptic).toHaveBeenCalledTimes(1);
     expect(r.getByTestId("fms-attn").textContent).toBe("⚠ 1 need attention");
-    await waitFor(() => expect(exportBtn(r).disabled).toBe(false));
+    await settled(r);
     expect(exportBtn(r).textContent).toContain("1"); // only the valid one
     await waitFor(() => expect(checkWrites().length).toBe(1));
     expect(checkWrites()[0]).toMatchObject({ store_check_status: "not_found", store_check_store_id: "015905" });
@@ -135,7 +140,7 @@ describe("switch on — the row, the top bar, the alert, the tabs, the export", 
     m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("v", { storeCheckStatus: "valid" }), row("n", { storeCheckStatus: "not_found" }), row("u")] });
     const r = screen(true);
     await waitFor(() => expect(badgeOf(r, "u")?.textContent).toContain("Can't verify store"));
-    await waitFor(() => expect(exportBtn(r).disabled).toBe(false));
+    await settled(r);
     fireEvent.click(exportBtn(r));
     fireEvent.click(r.getByTestId("fms-confirm-export"));
     await waitFor(() => expect(m.markFmExported).toHaveBeenCalled());
@@ -166,7 +171,7 @@ describe("2 — the checks never stop silently", () => {
     m.saveFmScan.mockImplementation(async (input: { storeId: string }) => ({ ok: true, row: row("fresh1", { storeId: input.storeId }) }));
     const r = render(<TProvider lang="en"><FmParcelScan storeCheckOn pendingCap={100} /></TProvider>);
     await waitFor(() => expect(r.getAllByTestId("fms-store-ok").length).toBe(60), { timeout: 8000 });
-    await waitFor(() => expect(exportBtn(r).disabled).toBe(false));
+    await settled(r);
     expect(fetchMock).toHaveBeenCalledTimes(60);
     for (const id of ["b60", "b61"]) { expect(badgeOf(r, id)!.textContent).toContain("Can't verify store"); expect(recheckOf(r, id)).not.toBeNull(); }
     expect(checkWrites().length).toBe(60);
@@ -191,7 +196,7 @@ describe("2 — the checks never stop silently", () => {
     m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("a"), row("b"), row("c"), row("d")] });
     const r = screen(true);
     await waitFor(() => expect(badgeOf(r, "d")?.textContent).toContain("Can't verify store"));
-    await waitFor(() => expect(exportBtn(r).disabled).toBe(false));
+    await settled(r);
     expect(fetchMock).toHaveBeenCalledTimes(2); // c and d were never asked
     for (const id of ["a", "b", "c", "d"]) { expect(badgeOf(r, id)!.textContent).toContain("Can't verify store"); expect(recheckOf(r, id)).not.toBeNull(); }
     expect(exportBtn(r).textContent).toContain("4"); // not verified ≠ blocked
@@ -213,7 +218,7 @@ describe("2 — the checks never stop silently", () => {
       await waitFor(() => expect(badgeOf(r, "n")?.textContent).toContain("Wrong store code"));
       expect(rowEl(r, "n").getAttribute("data-flag")).toBe("red");
     }
-    await waitFor(() => expect(exportBtn(r).disabled).toBe(false));
+    await settled(r);
     expect(exportBtn(r).textContent).toContain("1");
     expect(r.getByTestId("fms-attn").textContent).toBe("⚠ 1 need attention");
     expect(checkWrites().length).toBe(0);
@@ -278,6 +283,182 @@ describe("2 — the checks never stop silently", () => {
   });
 });
 
+// ── Fix Round 2 ────────────────────────────────────────────────────────────────────────────
+type Held = { storeId: string; res: (v: unknown) => void };
+const holdFetch = () => {
+  const held: Held[] = [];
+  fetchMock.mockImplementation((_u: string, o: { body: string }) => new Promise((res) => { held.push({ storeId: JSON.parse(o.body).storeId, res }); }));
+  return {
+    held,
+    asked: () => held.map((h) => h.storeId),
+    until: (n: number) => waitFor(() => expect(held.length).toBe(n)),
+    reply: (i: number, status: string) => act(async () => { held[i].res(answer(status)); }),
+  };
+};
+const useH = (p: { on: boolean; ready: boolean; initial: FmScanRow[] }) => { const [rows, setRows] = useState(p.initial); return { rows, setRows, ...useFmStoreChecks(p.on, p.ready, rows, setRows) }; };
+const hook = (initial: FmScanRow[]) => renderHook((p: { on: boolean; ready: boolean; initial: FmScanRow[] }) => useH(p), { initialProps: { on: true, ready: true, initial } });
+const S = (n: number) => `02200${n}`;
+
+describe("round 2 — the hook", () => {
+  it("2a a stop sets EVERYTHING queued aside (NEW too); the first real answer puts it all back, NEW before BACKLOG", async () => {
+    const f = holdFetch();
+    const h = hook([row("b1", { storeId: S(1) }), row("b2", { storeId: S(2) }), row("b3", { storeId: S(3) }), row("v", { storeId: S(9), storeCheckStatus: "valid" })]);
+    await f.until(1); // b1 is being asked
+    act(() => { h.result.current.setRows((l) => [...l, row("n1", { storeId: S(4) }), row("n2", { storeId: S(5) })]); });
+    await f.reply(0, "unknown"); await f.until(2);
+    await f.reply(1, "unknown"); // second failure in a row → stop
+    await waitFor(() => expect(h.result.current.busy.size).toBe(0));
+    expect(f.asked()).toEqual([S(1), S(4)]);
+    act(() => { h.result.current.recheck("v", S(9)); });
+    await f.until(3); await f.reply(2, "valid"); // a real answer
+    await f.until(4); await f.reply(3, "valid");
+    await f.until(5); await f.reply(4, "valid");
+    await f.until(6); await f.reply(5, "valid");
+    expect(f.asked()).toEqual([S(1), S(4), S(9), S(5), S(2), S(3)]); // n2 (NEW) first, then the backlog
+    await waitFor(() => expect(h.result.current.busy.size).toBe(0));
+  });
+  it("NEW is asked before BACKLOG", async () => {
+    const f = holdFetch();
+    const h = hook([row("b1", { storeId: S(1) }), row("b2", { storeId: S(2) })]);
+    await f.until(1);
+    act(() => { h.result.current.setRows((l) => [...l, row("n", { storeId: S(4) })]); });
+    await f.reply(0, "valid"); await f.until(2); await f.reply(1, "valid"); await f.until(3);
+    expect(f.asked()).toEqual([S(1), S(4), S(2)]);
+  });
+  it("2b the check turns off: the queue is forgotten; the check on its way writes nothing and asks nothing more", async () => {
+    const f = holdFetch();
+    const h = hook([row("a", { storeId: S(1) }), row("b", { storeId: S(2) })]);
+    await f.until(1);
+    expect(h.result.current.busy.size).toBe(2);
+    h.rerender({ on: false, ready: false, initial: [] });
+    expect(h.result.current.busy.size).toBe(0);
+    await f.reply(0, "not_found");
+    await new Promise((res) => setTimeout(res, 30));
+    expect(f.held.length).toBe(1);
+    expect(checkWrites().length).toBe(0);
+    expect(h.result.current.rows.every((x) => x.storeCheckStatus === undefined)).toBe(true);
+    // on again = a clean start: the same rows are a backlog again
+    h.rerender({ on: true, ready: true, initial: [] });
+    await f.until(2);
+    expect(f.held[1].storeId).toBe(S(1));
+  });
+  it("2c an answer put back after a list re-read is written to the row again", async () => {
+    const f = holdFetch();
+    const h = hook([row("a", { storeId: S(1) })]);
+    await f.until(1); await f.reply(0, "valid");
+    await waitFor(() => expect(checkWrites().length).toBe(1));
+    act(() => { h.result.current.setRows([row("a", { storeId: S(1) })]); }); // a re-read that raced the write
+    await waitFor(() => expect(h.result.current.rows[0].storeCheckStatus).toBe("valid"));
+    expect(checkWrites().length).toBe(2);
+    expect(checkWrites()[1]).toMatchObject({ store_check_status: "valid", store_check_store_id: S(1) });
+    expect(f.held.length).toBe(1); // not asked again
+  });
+  it("2d no flash: the parcel is 'being checked' in the same pass that shows it (queued before paint)", () => {
+    holdFetch();
+    const h = hook([row("a", { storeId: S(1) })]);
+    expect(h.result.current.busy.has(`a:${S(1)}`)).toBe(true);
+    act(() => { h.result.current.setRows((l) => [...l, row("n", { storeId: S(2) })]); });
+    expect(h.result.current.busy.has(`n:${S(2)}`)).toBe(true);
+    const src = readFileSync(resolve(__dirname, "../../adapters/fmStoreCheck.ts"), "utf8");
+    expect(src).toMatch(/useLayoutEffect\(\(\) => \{\n\s+rowsRef\.current = rows;/);
+  });
+  it("an answer that arrives after the store # changed is not applied", async () => {
+    const f = holdFetch();
+    const h = hook([row("a", { storeId: S(1) })]);
+    await f.until(1);
+    act(() => { h.result.current.setRows((l) => l.map((x) => ({ ...x, storeId: S(2) }))); });
+    await f.reply(0, "not_found");
+    await f.until(2); // the new store # is asked
+    expect(f.held[1].storeId).toBe(S(2));
+    expect(h.result.current.rows[0].storeCheckStatus).toBeUndefined();
+  });
+  it("a queued parcel that was deleted, exported or changed is not asked", async () => {
+    const f = holdFetch();
+    const h = hook([row("a", { storeId: S(1) }), row("del", { storeId: S(2) }), row("exp", { storeId: S(3) }), row("chg", { storeId: S(4) })]);
+    await f.until(1);
+    act(() => { h.result.current.setRows((l) => l.filter((x) => x.id !== "del").map((x) => (x.id === "exp" ? { ...x, exportedAt: "2026-10-11T04:00:00Z" } : x.id === "chg" ? { ...x, storeId: "12" } : x))); });
+    await f.reply(0, "valid");
+    await waitFor(() => expect(h.result.current.busy.size).toBe(0));
+    expect(f.asked()).toEqual([S(1)]);
+  });
+  it("no write after the screen closes", async () => {
+    const f = holdFetch();
+    const h = hook([row("a", { storeId: S(1) }), row("b", { storeId: S(2) })]);
+    await f.until(1);
+    h.unmount();
+    await f.reply(0, "not_found");
+    await new Promise((res) => setTimeout(res, 30));
+    expect(checkWrites().length).toBe(0);
+    expect(f.held.length).toBe(1);
+  });
+});
+
+describe("round 2 — the screen", () => {
+  it("2b off then on again: the list is read again WITH the check columns before any check", async () => {
+    fetchMock.mockImplementation(async () => answer("valid"));
+    m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("v", { storeCheckStatus: "valid" })] });
+    const r = screen(true);
+    await waitFor(() => expect(rowEl(r, "v")?.querySelector('[data-testid="fms-store-ok"]')).not.toBeNull());
+    r.rerender(<TProvider lang="en"><FmParcelScan storeCheckOn={false} /></TProvider>);
+    await waitFor(() => expect(m.loadFmScans).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(r.queryByTestId("fms-store-ok")).toBeNull());
+    let give: (v: unknown) => void = () => {};
+    m.loadFmScans.mockImplementationOnce(() => new Promise((res) => { give = res; }));
+    r.rerender(<TProvider lang="en"><FmParcelScan storeCheckOn /></TProvider>);
+    await waitFor(() => expect(m.loadFmScans).toHaveBeenCalledTimes(3));
+    expect(m.loadFmScans.mock.calls[2]).toEqual([true]);
+    expect(r.queryByTestId("fms-store-badge")).toBeNull(); // nothing of the check before the list is read again
+    expect(r.queryByTestId("fms-store-ok")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await act(async () => { give({ ok: true, rows: [row("v", { storeCheckStatus: "valid" })] }); });
+    await waitFor(() => expect(r.queryByTestId("fms-store-ok")).not.toBeNull());
+  });
+  it("3b Export while parcels of the file are still being checked → the 7-11 question; Wait closes it; Export anyway goes on to the normal confirm", async () => {
+    fetchMock.mockImplementation(() => new Promise(() => {})); // never answers during this test
+    // p1 + p2 would go into the file; bad breaks a FamilyMart rule (not in the file) → not counted
+    m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("p1", { storeId: S(1) }), row("p2", { storeId: S(2) }), row("bad", { storeId: S(3), phone: "123" }), row("v", { storeCheckStatus: "valid" })] });
+    const r = screen(true);
+    await waitFor(() => expect(badgeOf(r, "p1")?.textContent).toContain("Checking store"));
+    fireEvent.click(exportBtn(r));
+    expect(r.getByTestId("fms-pending-msg").textContent).toBe("2 parcel(s) are still being checked. Exported parcels won't be checked anymore. Wait a moment, or export anyway?");
+    expect(r.getByTestId("fms-confirm-cancel").textContent).toBe("Wait");
+    expect(r.queryByTestId("fms-confirm-export")).toBeNull();
+    fireEvent.click(r.getByTestId("fms-confirm-cancel"));
+    expect(r.queryByTestId("fms-pending-msg")).toBeNull();
+    expect(m.deliverFmFiles).not.toHaveBeenCalled();
+    fireEvent.click(exportBtn(r));
+    expect(r.getByTestId("fms-confirm-export-anyway").textContent).toBe("Export anyway");
+    fireEvent.click(r.getByTestId("fms-confirm-export-anyway"));
+    expect(r.queryByTestId("fms-pending-msg")).toBeNull();
+    fireEvent.click(r.getByTestId("fms-confirm-export")); // the normal confirm
+    await waitFor(() => expect(m.markFmExported).toHaveBeenCalled());
+    expect((m.markFmExported.mock.calls[0][0] as string[]).slice().sort()).toEqual(["p1", "p2", "v"]);
+  });
+  it("3b nothing being checked → the normal confirm at once; 3c the old key is gone", async () => {
+    m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("v", { storeCheckStatus: "valid" })] });
+    const r = screen(true);
+    await settled(r);
+    fireEvent.click(exportBtn(r));
+    expect(r.queryByTestId("fms-pending-msg")).toBeNull();
+    expect(r.getByTestId("fms-confirm-export")).not.toBeNull();
+    const src = (f: string) => readFileSync(resolve(__dirname, f), "utf8");
+    expect(src("../../i18n/index.tsx")).not.toContain("rd_fms_sc_checking");
+    expect(src("../FmParcelScan.tsx")).not.toContain("rd_fms_sc_checking");
+    expect(src("../../i18n/index.tsx").match(/^\s*rd_fms_sc_\w+:/gm)).toEqual([expect.stringContaining("rd_fms_sc_ok")]);
+  });
+  it("3d the guide says what happens at export; an exported parcel is never counted as wrong", async () => {
+    const guide = readFileSync(resolve(__dirname, "../../../../docs/support/sfl-guide.md"), "utf8");
+    expect(guide).toContain("If parcels are still being checked when you export, you are asked to wait or export anyway.");
+    expect(guide).not.toContain("Checking stores…");
+    m.loadFmScans.mockResolvedValue({ ok: true, rows: [row("x", { storeCheckStatus: "not_found", storeId: "015905", exportedAt: "2026-10-11T04:00:00Z", exportBatchId: "b" }), row("v", { storeCheckStatus: "valid" })] });
+    const r = screen(true);
+    await settled(r);
+    expect(r.getByTestId("fms-tab-wrong").textContent).toContain("· 0");
+    expect(r.getByTestId("fms-attn").getAttribute("data-state")).toBe("ok");
+    expect(rowEl(r, "x").getAttribute("data-flag")).not.toBe("red");
+  });
+});
+
 describe("the hook and the ask", () => {
   const useHarness = (initial: FmScanRow[]) => { const [rows, setRows] = useState(initial); return { rows, ...useFmStoreChecks(true, true, rows, setRows) }; };
   it("2f Re-check on a parcel that is already waiting or being checked does nothing (one call)", async () => {
@@ -288,7 +469,7 @@ describe("the hook and the ask", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     act(() => { h.result.current.recheck("v", "022131"); });
     await act(async () => { release(answer("valid")); });
-    await waitFor(() => expect(h.result.current.checking).toBe(false));
+    await waitFor(() => expect(h.result.current.busy.size).toBe(0));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("2d an 'unknown' answer never replaces a real one on screen", async () => {
@@ -296,7 +477,7 @@ describe("the hook and the ask", () => {
     const h = renderHook(() => useHarness([row("v", { storeCheckStatus: "valid" })]));
     act(() => { h.result.current.recheck("v", "022131"); });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(h.result.current.checking).toBe(false));
+    await waitFor(() => expect(h.result.current.busy.size).toBe(0));
     expect(h.result.current.rows[0].storeCheckStatus).toBe("valid");
     expect(checkWrites().length).toBe(0);
   });
