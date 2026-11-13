@@ -5127,9 +5127,9 @@ change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sende
 - **Store step:** cart page (logged in = `MemberSid` ≥ 4 chars, else `login_not_accepted`) → `/cart/detail` → `/CPF3101/MAP/`
   → the served E-Map form → `byIDData` for store 198002 (`open / full / company / not_found / unknown`).
   Page-1 POST (Fix Round 1, measured on the real page): fee = the NAMED field `fullAmountFee_1` (`fee_1`, `Count`,
-  `Agree` have no name and are never sent); nine fields are set (`item_name_1` test, `item_price_1` 62, `item_qty_1` 1,
-  `item_amt_1` 62, `Sum` 62, `CarQty` 1, `Carm_Cgptshipprice` fee, `Total` / `Seller_GoodsTotalAmt` 62 + fee), every
-  other field as served, no name ever added. No fee → `fee_missing`; one of the nine names not served →
+  `Agree` have no name and are never sent); eight fields are set (`item_name_1` test, `item_price_1` 62, `item_qty_1` 1,
+  `item_amt_1` 62, `Sum` 62, `Carm_Cgptshipprice` fee, `Total` / `Seller_GoodsTotalAmt` 62 + fee), every
+  other field as served, no name ever added. No fee → `fee_missing`; one of the eight names not served →
   `cart_field_missing` (names in the note). `store.detail` logs `fee=<n>`.
 - **Guards:** one fetch wrapper with a URL allowlist (the named paths on `myship.7-11.com.tw`, `default.aspx` /
   `byIDData.aspx` under `/ecmap/` or `/mobilemap/` on the two E-Map hosts); `/cart/finish` is never requested; redirects
@@ -5147,5 +5147,7 @@ change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sende
   (`runPcServerProbe` option `parseBudgetMs`, tests only). Browser parity: a `disabled` input / select / textarea is
   never sent; `checked` / `selected` / `disabled` are read with quoted attribute values removed; numeric entities
   (`&#38;`, `&#x26;`) are decoded in one pass with the named ones.
+- **Fix Round 3:** `CarQty` is no longer set — it goes exactly as served (measured: the page's `jsNext()` never changes
+  it); a served form without `CarQty` is not an error.
 - ⚠️ NOT proven: everything about the real sites — no real request was made (fake fetch only). Remove the two env vars
   when the answer is known.

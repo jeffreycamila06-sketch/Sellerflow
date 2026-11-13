@@ -426,13 +426,14 @@ export async function runPcServerProbe(opts = {}) {
       else if (!loggedIn) stop("login_not_accepted");
       else {
         // 2. the cart form → page 2. Measured on the real page: the fee is the NAMED field
-        //    fullAmountFee_1; nine fields get the values the browser sends for one item (name
-        //    "test", price 62, qty 1); every other field goes exactly as served. A field name the
-        //    served form does not have is never added.
+        //    fullAmountFee_1; eight fields get the values the browser sends for one item (name
+        //    "test", price 62, qty 1); every other field goes exactly as served — CarQty included
+        //    (the page's jsNext() never changes it, so it is not set and not required). A field
+        //    name the served form does not have is never added.
         const feeRaw = fieldOf(f1, "fullAmountFee_1");
         const fee = feeRaw === undefined || String(feeRaw).trim() === "" ? NaN : Number(feeRaw);
         const patch = Number.isFinite(fee) ? {
-          item_name_1: "test", item_price_1: 62, item_qty_1: 1, item_amt_1: 62, Sum: 62, CarQty: 1,
+          item_name_1: "test", item_price_1: 62, item_qty_1: 1, item_amt_1: 62, Sum: 62,
           Carm_Cgptshipprice: fee, Total: 62 + fee, Seller_GoodsTotalAmt: 62 + fee,
         } : {};
         const missing = Object.keys(patch).filter((name) => fieldOf(f1, name) === undefined);

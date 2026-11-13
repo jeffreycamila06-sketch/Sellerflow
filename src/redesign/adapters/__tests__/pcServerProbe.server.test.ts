@@ -49,10 +49,10 @@ const site = (routes: Record<string, Reply | ((c: Call) => Reply)>) => {
 // id but NO name (never submitted); the fee is the NAMED fullAmountFee_1; six totals are served as 0.
 const CART_NAMES = ["MemberSid", "__RequestVerificationToken", "Cgdm_Id", "item_name_1", "item_price_1", "item_qty_1", "item_amt_1",
   "fullAmountFee_1", "Sum", "CarQty", "Carm_Cgptshipprice", "Total", "Seller_GoodsTotalAmt", "tail"];
-const cartPage = (sid: string, o: { drop?: string[]; fee?: string } = {}) => {
+const cartPage = (sid: string, o: { drop?: string[]; fee?: string; carQty?: string } = {}) => {
   const served: Record<string, string> = {
     MemberSid: sid, __RequestVerificationToken: MARK.field, Cgdm_Id: `${MARK.field}2`, item_name_1: "", item_price_1: "", item_qty_1: "",
-    item_amt_1: "0", fullAmountFee_1: o.fee ?? "38", Sum: "0", CarQty: "0", Carm_Cgptshipprice: "0", Total: "0", Seller_GoodsTotalAmt: "0", tail: `${MARK.field}3`,
+    item_amt_1: "0", fullAmountFee_1: o.fee ?? "38", Sum: "0", CarQty: o.carQty ?? "0", Carm_Cgptshipprice: "0", Total: "0", Seller_GoodsTotalAmt: "0", tail: `${MARK.field}3`,
   };
   const inputs = CART_NAMES.filter((n) => !(o.drop || []).includes(n)).map((n) => `<input type="hidden" name="${n}" value="${served[n]}">`).join("");
   return `<html><script>var tokenID = '${MARK.token}';</script>
@@ -194,13 +194,14 @@ describe("1b store step (only with the cookie env)", () => {
     expect(detail.headers.cookie).toContain(`ASP.NET_SessionId=${MARK.setCookie}`);
     expect(emap.headers.cookie).toBeUndefined();
     expect(byid.headers.cookie).toBe(`emapsess=${MARK.setCookie}2`);
-    // step 2: exactly the served names in the served order; nine values set (fee 38 → 100); the rest unchanged.
+    // step 2: exactly the served names in the served order; eight values set (fee 38 → 100); the rest — CarQty
+    // included — unchanged.
     // fee_1 / Count / Agree (no name on the page) and the submit button are never sent.
     const sent = [...new URLSearchParams(detail.body)];
     expect(sent.map((x) => x[0])).toEqual(CART_NAMES);
     expect(Object.fromEntries(sent)).toEqual({
       MemberSid: MARK.sid, __RequestVerificationToken: MARK.field, Cgdm_Id: `${MARK.field}2`, fullAmountFee_1: "38", tail: `${MARK.field}3`,
-      item_name_1: "test", item_price_1: "62", item_qty_1: "1", item_amt_1: "62", Sum: "62", CarQty: "1",
+      item_name_1: "test", item_price_1: "62", item_qty_1: "1", item_amt_1: "62", Sum: "62", CarQty: "0",
       Carm_Cgptshipprice: "38", Total: "100", Seller_GoodsTotalAmt: "100",
     });
     expect(result.store.steps[1].note).toContain("fee=38");
@@ -235,13 +236,27 @@ describe("1b store step (only with the cookie env)", () => {
       expect(s.calls.length).toBe(3);
     }
   });
-  it("one of the nine names is not in the served form → cart_field_missing (names only), nothing posted, no name added", async () => {
-    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage(MARK.sid, { drop: ["CarQty", "Sum"] }) } });
+  it("one of the eight names is not in the served form → cart_field_missing (names only), nothing posted, no name added", async () => {
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage(MARK.sid, { drop: ["Total", "Sum"] }) } });
     const { result, logs } = await run(s.f, { env: ON });
     expect(result.store).toMatchObject({ verdict: "unknown", kind: "cart_field_missing" });
-    expect(result.store.steps[1].note).toContain("missing=Sum,CarQty");
-    expect(logs.some((l) => l.includes("store.detail") && l.includes("kind=cart_field_missing missing=Sum,CarQty"))).toBe(true);
+    expect(result.store.steps[1].note).toContain("missing=Sum,Total");
+    expect(logs.some((l) => l.includes("store.detail") && l.includes("kind=cart_field_missing missing=Sum,Total"))).toBe(true);
     expect(s.calls.length).toBe(3);
+  });
+  it("CarQty is sent exactly as served (0 → 0, 1 → 1); a form without CarQty is posted without it", async () => {
+    for (const carQty of ["0", "1"]) {
+      const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage(MARK.sid, { carQty }) } });
+      const { result } = await run(s.f, { env: ON });
+      expect(result.store.kind).toBe("");
+      const detail = s.calls.find((c) => c.method === "POST" && c.path === "/cart/detail");
+      expect(new URLSearchParams(detail!.body).get("CarQty")).toBe(carQty);
+    }
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage(MARK.sid, { drop: ["CarQty"] }) } });
+    const { result } = await run(s.f, { env: ON });
+    expect(result.store).toMatchObject({ verdict: "full", kind: "" });
+    const detail = s.calls.find((c) => c.method === "POST" && c.path === "/cart/detail");
+    expect(new URLSearchParams(detail!.body).has("CarQty")).toBe(false);
   });
   it("no cookie env → the store step makes no request", async () => {
     const s = fullSite();
