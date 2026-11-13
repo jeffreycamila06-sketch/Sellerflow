@@ -9,7 +9,7 @@ import express from "express";
 import {
   runPcServerProbe, createGuardedFetch, isAllowedProbeUrl, isMaintWindow, parseForms, parseProbeConfig,
   createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled,
-  PC_PROBE_LIMIT_WINDOW_MS, PC_PROBE_BOOT_DELAY_MS, PC_PROBE_REQUEST_MS,
+  PC_PROBE_LIMIT_WINDOW_MS, PC_PROBE_BOOT_DELAY_MS, PC_PROBE_REQUEST_MS, PC_PROBE_BODY_MAX, PC_PROBE_SETTINGS_MS, PC_PROBE_MAX_HOPS,
 } from "../../../../server/pcServerProbe.js";
 import { createWindowLimiter } from "../../../../server/rateWindow.js";
 
@@ -22,7 +22,7 @@ const MARK = {
 const NOON = Date.UTC(2026, 10, 13, 4, 0, 0);   // 12:00 Asia/Taipei
 const TWO_AM = Date.UTC(2026, 10, 13, 18, 0, 0); // 02:00 Asia/Taipei
 
-type Call = { method: string; url: string; host: string; path: string; headers: Record<string, string>; body: string };
+type Call = { method: string; url: string; host: string; path: string; headers: Record<string, string>; body: string; redirect?: string };
 type Reply = { status?: number; ct?: string; body?: string; location?: string; cookies?: string[] };
 const reply = (r: Reply) => ({
   status: r.status ?? 200, ok: (r.status ?? 200) >= 200 && (r.status ?? 200) < 300,
@@ -34,9 +34,9 @@ const reply = (r: Reply) => ({
 });
 const site = (routes: Record<string, Reply | ((c: Call) => Reply)>) => {
   const calls: Call[] = [];
-  const f = vi.fn(async (url: string, init: { method?: string; headers?: Record<string, string>; body?: string }) => {
+  const f = vi.fn(async (url: string, init: { method?: string; headers?: Record<string, string>; body?: string; redirect?: string }) => {
     const u = new URL(url);
-    const c: Call = { method: init.method || "GET", url, host: u.hostname, path: u.pathname, headers: init.headers || {}, body: String(init.body ?? "") };
+    const c: Call = { method: init.method || "GET", url, host: u.hostname, path: u.pathname, headers: init.headers || {}, body: String(init.body ?? ""), redirect: init.redirect };
     calls.push(c);
     const hit = routes[`${c.method} ${u.hostname}${u.pathname}`];
     if (!hit) return reply({ status: 404, body: "nope" });
@@ -334,6 +334,124 @@ describe("1c hard guards", () => {
   it("parseForms sends what a browser would: unchecked boxes and buttons are left out", () => {
     const [f] = parseForms('<form id="a" action="/x" method="POST"><input name="h" type="hidden" value="1&amp;2"><input type="checkbox" name="c1"><input type="checkbox" name="c2" checked><input type="submit" name="s" value="go"><select name="sel"><option value="1">a<option value="2" selected>b</select><textarea name="t">hi</textarea></form>');
     expect(f).toEqual({ id: "a", action: "/x", method: "post", fields: [["h", "1&2"], ["c2", "on"], ["sel", "2"], ["t", "hi"]] });
+  });
+});
+
+describe("fix round 1, part 2", () => {
+  it("1 parseForms is linear: hostile pages parse in under 100 ms; an unclosed element is skipped", () => {
+    const timed = (html: string) => { const t0 = performance.now(); const r = parseForms(html); return { ms: performance.now() - t0, r }; };
+    const a = timed("<form>".repeat(42_000));                              // 250 KB of unclosed <form>
+    const b = timed(`<form>${"<input ".repeat(23_000)}</form>`);            // 23,000 unclosed <input
+    const c = timed(`<form ${"a".repeat(63_000)}>x</form>`);                // a 63 KB <form aaaa…>
+    for (const x of [a, b, c]) expect(x.ms).toBeLessThan(100);
+    expect(a.r).toEqual([]);
+    expect(b.r[0].fields).toEqual([]);
+    expect(c.r.length).toBe(1);
+    // unclosed select / textarea are skipped, the fields around them are kept, in page order
+    const [f] = parseForms('<form id="a"><input name="x" value="1"><select name="s"><option value="9"><input name="y" value="2"><textarea name="t">never closed<input name="z" value="3"></form><form id="b"><input name="k" value="v"></form>');
+    expect(f.fields).toEqual([["x", "1"], ["y", "2"], ["z", "3"]]);
+    expect(parseForms('<FORM ID="q" ACTION="/x"><INPUT NAME="n" VALUE="v"><select name="s"><option>one<option selected>two</select></FORM>')[0])
+      .toEqual({ id: "q", action: "/x", method: "get", fields: [["n", "v"], ["s", "two"]] });
+  });
+  it("2 an answer is read as a stream and stopped at 1 MB → too_big, never more than the cap in memory", async () => {
+    expect(PC_PROBE_BODY_MAX).toBe(1024 * 1024);
+    let reads = 0; const cancel = vi.fn(async () => {});
+    const endless = { getReader: () => ({ read: async () => { reads += 1; return { done: false, value: new Uint8Array(300 * 1024) }; }, cancel }) };
+    const f = vi.fn(async () => ({ ...reply({}), body: endless, text: async () => { throw new Error("text() must not be used"); } }));
+    const { result } = await run(f, { env: { PC_SERVER_PROBE: "1" } });
+    expect(result.phone).toMatchObject({ verdict: "unknown", kind: "too_big" });
+    expect(reads).toBe(4); // 300 KB × 4 passes the cap; nothing more is read
+    expect(cancel).toHaveBeenCalledTimes(1);
+    // a declared length over the cap is refused before any read
+    let read2 = 0;
+    const g = vi.fn(async () => ({ ...reply({}), headers: { get: (k: string) => (k.toLowerCase() === "content-length" ? String(5 * 1024 * 1024) : null), getSetCookie: () => [] }, body: { getReader: () => ({ read: async () => { read2 += 1; return { done: true, value: undefined }; }, cancel }), cancel } }));
+    expect((await run(g, { env: { PC_SERVER_PROBE: "1" } })).result.phone.kind).toBe("too_big");
+    expect(read2).toBe(0);
+    // a normal streamed page is read whole
+    const page = new TextEncoder().encode(cartPage(MARK.sid));
+    const h = vi.fn(async (u: string) => (String(u).includes("/cart/easy/")
+      ? { ...reply({}), body: { getReader: () => { let sent = false; return { read: async () => (sent ? { done: true, value: undefined } : ((sent = true), { done: false, value: page })), cancel }; } } }
+      : reply({ ct: "application/json", body: JSON.stringify({ Status: true }) })));
+    expect((await run(h, { env: { PC_SERVER_PROBE: "1" } })).result.phone.verdict).toBe("ok");
+  });
+  it("3 the settings read has a 10 s limit → config_missing, no request; the time counts in the run", async () => {
+    vi.useFakeTimers();
+    const s = fullSite();
+    const logs: string[] = [];
+    const p = runPcServerProbe({ fetchImpl: s.f as unknown as typeof fetch, log: (l: string) => logs.push(l), readSetting: () => new Promise(() => {}), env: ON });
+    await vi.advanceTimersByTimeAsync(PC_PROBE_SETTINGS_MS + 20);
+    const result = await p;
+    expect(PC_PROBE_SETTINGS_MS).toBe(10_000);
+    expect(result.phone.kind).toBe("config_missing");
+    expect(result.store.kind).toBe("config_missing");
+    expect(s.f).not.toHaveBeenCalled();
+    expect(result.ms).toBeGreaterThanOrEqual(10_000);
+  });
+  it("4 nothing chosen by the far side is copied out: content-type only when plain; a refused redirect / action is just 'refused'", async () => {
+    const evilCt = "text/html MARKCT <script>";
+    const s = fullSite({
+      [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage(MARK.sid), ct: evilCt },
+      "POST myship.7-11.com.tw/CPF3101/MAP/": { status: 302, location: "https://MARKHOST.example.com/MARKPATH?x=MARKQUERY" },
+    });
+    const { result, logs } = await run(s.f, { env: ON });
+    const all = `${logs.join("\n")}\n${JSON.stringify(result)}`;
+    for (const m of ["MARKCT", "MARKHOST", "markhost", "MARKPATH", "MARKQUERY", "example.com", "<script>"]) expect(all.includes(m), m).toBe(false);
+    expect(result.phone.steps[0].note).toContain("ct=- ");
+    expect(result.store.kind).toBe("refused");
+    expect(result.store.steps[2]).toMatchObject({ step: "store.map", http: 0, path: "" });
+    const ok = await run(fullSite().f, { env: ON });
+    expect(ok.result.phone.steps[1].note).toContain("ct=application/json ");
+    // a refused E-Map form action: the word only
+    const bad = await run(fullSite({ [`GET myship.7-11.com.tw/eMap/MM1/${GM}`]: { body: mapPage("https://MARKHOST.example.com/ecmap/default.aspx") } }).f, { env: ON });
+    expect(`${bad.logs.join("\n")}${JSON.stringify(bad.result)}`).not.toMatch(/MARKHOST|example\.com/i);
+  });
+  it("5 the cart form is posted only to exactly https://myship.7-11.com.tw/cart/detail → else cart_action_refused, no POST", async () => {
+    for (const action of ["/cart/finish", "/cart/detail/x", "/cart/detail?x=1", "https://emap.pcsc.com.tw/ecmap/default.aspx", "https://evil.example.com/cart/detail", "http://myship.7-11.com.tw/cart/detail", "//evil.example.com/cart/detail"]) {
+      const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage(MARK.sid).replace('action="/cart/detail"', `action="${action}"`) } });
+      const { result, logs } = await run(s.f, { env: ON });
+      expect(result.store.kind, action).toBe("cart_action_refused");
+      expect(s.calls.length, action).toBe(3);
+      expect(logs.join("\n")).not.toContain("example.com");
+    }
+    const same = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage(MARK.sid).replace('action="/cart/detail"', 'action="https://myship.7-11.com.tw/cart/detail"') } });
+    expect((await run(same.f, { env: ON })).result.store.verdict).toBe("full");
+  });
+  it("6 allowlist edges: anchored paths, no explicit port, exact E-Map host, bounded shop id", () => {
+    for (const bad of [
+      "https://myship.7-11.com.tw/cart/detail/x", "https://myship.7-11.com.tw/x/cart/detail", "https://myship.7-11.com.tw/CPF3101/MAP/x",
+      "https://myship.7-11.com.tw:8443/cart/detail", "https://myship.7-11.com.tw:444/cart/detail", "https://emap.pcsc.com.tw:8080/ecmap/default.aspx",
+      "https://evil-emap.pcsc.com.tw/ecmap/default.aspx", "https://emap.pcsc.com.tw.evil.com/ecmap/default.aspx", "https://xemap.unipcsc.com.tw/ecmap/byIDData.aspx",
+      "https://emap.pcsc.com.tw/ecmap/x/default.aspx", `https://myship.7-11.com.tw/cart/easy/GM${"1".repeat(40)}`, "https://myship.7-11.com.tw/cart/easy/GM12",
+    ]) expect(isAllowedProbeUrl(bad), bad).toBe(false);
+  });
+  it("6 the redirect hop cap: after 3 hops the run stops (too_many_redirects), no 4th hop", async () => {
+    expect(PC_PROBE_MAX_HOPS).toBe(3);
+    const s = fullSite({
+      "POST myship.7-11.com.tw/CPF3101/MAP/": { status: 302, location: `/eMap/MM1/${GM}` },
+      [`GET myship.7-11.com.tw/eMap/MM1/${GM}`]: { status: 302, location: `/eMap/MM1/${GM}` },
+    });
+    const { result } = await run(s.f, { env: ON });
+    expect(result.store.kind).toBe("too_many_redirects");
+    expect(s.calls.filter((c) => c.path === `/eMap/MM1/${GM}`).length).toBe(3);
+  });
+  it("6 every request uses redirect 'manual'; the phone step sends no cookie even when the cookie env is set", async () => {
+    const s = fullSite();
+    await run(s.f, { env: ON });
+    expect(s.calls.length).toBe(8);
+    expect(s.calls.every((c) => c.redirect === "manual")).toBe(true);
+    for (const c of s.calls.slice(0, 2)) expect(Object.keys(c.headers).map((k) => k.toLowerCase())).not.toContain("cookie");
+    expect(s.calls[2].headers.cookie).toContain(MARK.cookie); // the store step does
+  });
+  it("6 a log function that throws does not stop the run", async () => {
+    const s = fullSite();
+    const result = await runPcServerProbe({ fetchImpl: s.f as unknown as typeof fetch, now: () => NOON, log: () => { throw new Error("log is broken"); }, readSetting: settings(), env: ON });
+    expect(result).toMatchObject({ phone: { verdict: "ok" }, store: { verdict: "full" } });
+    expect(s.calls.length).toBe(8);
+  });
+  it("6 schedulePcProbeBoot sets exactly one timer", () => {
+    const timers = vi.fn((_fn: () => void, _ms: number) => ({ unref: () => {} }));
+    schedulePcProbeBoot({ run: vi.fn(), enabled: true, setTimeoutImpl: timers as never });
+    expect(timers).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -5135,5 +5135,10 @@ change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sende
   `byIDData.aspx` under `/ecmap/` or `/mobilemap/` on the two E-Map hosts); `/cart/finish` is never requested; redirects
   are followed by hand through the same allowlist (max 3); no retries; 10 s per request, 40 s per run. The hour never
   stops a run — `maint` only says the run started 01:00–05:00 Taipei.
+- **Fix Round 1, part 2 (audit):** `parseForms` is linear (indexOf scanning, fields in page order, an unclosed element
+  is skipped — it runs on the live server's event loop); each answer is read as a stream and stopped at 1 MB
+  (`too_big`); the settings read has a 10 s limit inside the 40 s run; content-type is logged only when plain, a refused
+  redirect / form action is recorded as `refused` only (no host, no path); the cart form is posted only to exactly
+  `https://myship.7-11.com.tw/cart/detail` (`cart_action_refused`); more than 3 redirects → `too_many_redirects`.
 - ⚠️ NOT proven: everything about the real sites — no real request was made (fake fetch only). Remove the two env vars
   when the answer is known.

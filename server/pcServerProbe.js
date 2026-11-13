@@ -25,6 +25,10 @@ export const PC_PROBE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // route: 1 run per 10 m
 export const PC_PROBE_STORE_ID = "195965";   // store id sent in the phone check body
 export const PC_PROBE_EMAP_STORE = "198002"; // store asked in the full-store check
 export const PC_PROBE_MAX_HOPS = 3;
+export const PC_PROBE_BODY_MAX = 1024 * 1024; // 1 MB per answer (the real cart page is about 160 KB)
+export const PC_PROBE_SETTINGS_MS = 10_000;
+const CART_DETAIL_URL = "https://myship.7-11.com.tw/cart/detail";
+const SAFE_CT_RE = /^[a-z0-9/+.-]{1,60}$/;
 const MAINT_START_H = 1, MAINT_END_H = 5;    // Asia/Taipei hours [1, 5) — same as the extension
 
 const MYSHIP = "myship.7-11.com.tw";
@@ -44,11 +48,11 @@ export function isMaintWindow(nowMs) {
 
 // ── allowlist ────────────────────────────────────────────────────────────────
 const MYSHIP_PATHS = [
-  /^\/cart\/easy\/GM\d+$/,
+  /^\/cart\/easy\/GM\d{6,20}$/,
   /^\/CPF3101\/CheckoutValidation\/$/,
   /^\/cart\/detail$/,
   /^\/CPF3101\/MAP\/$/,
-  /^\/eMap\/MM1\/GM\d+$/i,
+  /^\/eMap\/MM1\/GM\d{6,20}$/i,
 ];
 const EMAP_PATHS = [/^\/(ecmap|mobilemap)\/(default|byIDData)\.aspx$/i];
 
@@ -73,46 +77,86 @@ export function createGuardedFetch(fetchImpl) {
 const decodeEntities = (s) => String(s)
   .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
+// The attribute regex starts only at the beginning of a name (lookbehind), so a long run of
+// name characters is tried once — linear time on any input.
 function attrsOf(tag) {
   const out = {};
-  const re = /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
+  const re = /(?<![\w:-])([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
   for (let m = re.exec(tag); m; m = re.exec(tag)) out[m[1].toLowerCase()] = decodeEntities(m[2] ?? m[3] ?? m[4] ?? "");
   return out;
 }
 
-// Forms of a page: [{ id, action, method, fields: [[name, value], …] }] — fields as a browser
-// would send them (unchecked boxes, buttons and files are left out).
+// Next "<name" tag at or after `from` and before `to`, found with indexOf (never a regex over the
+// page). Returns { start, attrs, end } or null. A tag with no ">" before `to` is not a tag.
+function nextTag(lower, html, name, from, to) {
+  const needle = `<${name}`;
+  for (let i = lower.indexOf(needle, from); i >= 0 && i < to; i = lower.indexOf(needle, i + needle.length)) {
+    const after = lower.charCodeAt(i + needle.length);
+    const boundary = after === 62 || after === 47 || after === 32 || after === 9 || after === 10 || after === 13; // > / space tab LF CR
+    if (!boundary) continue;
+    const gt = html.indexOf(">", i + needle.length);
+    if (gt < 0 || gt >= to) return null;
+    return { start: i, attrs: html.slice(i + needle.length, gt), end: gt + 1 };
+  }
+  return null;
+}
+
+// Forms of a page: [{ id, action, method, fields: [[name, value], …] }] — fields in page order, as a
+// browser would send them (unchecked boxes, buttons and files are left out). Linear time: every
+// element is located by indexOf scanning; an element that is never closed is skipped.
 export function parseForms(html) {
+  const src = String(html);
+  const lower = src.toLowerCase();
   const forms = [];
-  const formRe = /<form\b([^>]*)>([\s\S]*?)<\/form>/gi;
-  for (let f = formRe.exec(String(html)); f; f = formRe.exec(String(html))) {
-    const a = attrsOf(f[1]);
-    const body = f[2];
+  let pos = 0;
+  for (;;) {
+    const open = nextTag(lower, src, "form", pos, src.length);
+    if (!open) break;
+    const close = lower.indexOf("</form", open.end);
+    if (close < 0) break; // never closed: this form (and anything after it) is skipped
+    const a = attrsOf(open.attrs);
     const fields = [];
-    const inputRe = /<input\b([^>]*)>/gi;
-    for (let i = inputRe.exec(body); i; i = inputRe.exec(body)) {
-      const ia = attrsOf(i[1]);
-      const type = String(ia.type || "text").toLowerCase();
-      if (!ia.name || ["submit", "button", "image", "file", "reset"].includes(type)) continue;
-      if ((type === "checkbox" || type === "radio") && !/\schecked\b/i.test(i[1])) continue;
-      fields.push([ia.name, ia.value ?? (type === "checkbox" || type === "radio" ? "on" : "")]);
-    }
-    const selRe = /<select\b([^>]*)>([\s\S]*?)<\/select>/gi;
-    for (let s = selRe.exec(body); s; s = selRe.exec(body)) {
-      const sa = attrsOf(s[1]);
-      if (!sa.name) continue;
-      const opts = [...s[2].matchAll(/<option\b([^>]*)>([\s\S]*?)(?=<option\b|<\/option>|$)/gi)];
-      const pick = opts.find((o) => /\sselected\b/i.test(o[1])) || opts[0];
-      if (!pick) continue;
-      const oa = attrsOf(pick[1]);
-      fields.push([sa.name, oa.value ?? decodeEntities(pick[2].trim())]);
-    }
-    const taRe = /<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi;
-    for (let t = taRe.exec(body); t; t = taRe.exec(body)) {
-      const ta = attrsOf(t[1]);
-      if (ta.name) fields.push([ta.name, decodeEntities(t[2])]);
+    // the three kinds of field, walked in page order; each "next" is looked up again only once passed
+    const kinds = ["input", "select", "textarea"];
+    const next = kinds.map((k) => nextTag(lower, src, k, open.end, close));
+    let at = open.end;
+    for (;;) {
+      let pick = -1;
+      for (let k = 0; k < kinds.length; k++) if (next[k] && (pick < 0 || next[k].start < next[pick].start)) pick = k;
+      if (pick < 0) break;
+      const tag = next[pick];
+      at = tag.end;
+      if (pick === 0) {
+        const ia = attrsOf(tag.attrs);
+        const type = String(ia.type || "text").toLowerCase();
+        const skip = !ia.name || ["submit", "button", "image", "file", "reset"].includes(type)
+          || ((type === "checkbox" || type === "radio") && !/\schecked\b/i.test(tag.attrs));
+        if (!skip) fields.push([ia.name, ia.value ?? (type === "checkbox" || type === "radio" ? "on" : "")]);
+      } else {
+        const closer = pick === 1 ? "</select" : "</textarea";
+        const end = lower.indexOf(closer, tag.end);
+        if (end < 0 || end > close) { next[pick] = null; continue; } // never closed inside this form: skipped
+        const name = attrsOf(tag.attrs).name;
+        if (pick === 1) {
+          let chosen = null, chosenEnd = end;
+          for (let o = nextTag(lower, src, "option", tag.end, end); o; o = nextTag(lower, src, "option", o.end, end)) {
+            const selected = /\sselected\b/i.test(o.attrs);
+            if (!chosen || selected) {
+              const stop = [lower.indexOf("<option", o.end), lower.indexOf("</option", o.end)].filter((x) => x >= 0 && x <= end);
+              chosen = o; chosenEnd = stop.length ? Math.min(...stop) : end;
+              if (selected) break;
+            }
+          }
+          if (name && chosen) fields.push([name, attrsOf(chosen.attrs).value ?? decodeEntities(src.slice(chosen.end, chosenEnd).trim())]);
+        } else if (name) {
+          fields.push([name, decodeEntities(src.slice(tag.end, end))]);
+        }
+        at = end;
+      }
+      for (let k = 0; k < kinds.length; k++) if (next[k] && next[k].start < at) next[k] = nextTag(lower, src, kinds[k], at, close);
     }
     forms.push({ id: a.id || "", action: a.action || "", method: String(a.method || "get").toLowerCase(), fields });
+    pos = close + 6;
   }
   return forms;
 }
@@ -127,6 +171,30 @@ function withFields(fields, patch) {
   return out;
 }
 const encode = (fields) => new URLSearchParams(fields).toString();
+
+// The answer as text, never more than PC_PROBE_BODY_MAX bytes in memory. null = too big.
+async function readCapped(r) {
+  const declared = Number(r.headers?.get?.("content-length"));
+  if (Number.isFinite(declared) && declared > PC_PROBE_BODY_MAX) { try { await r.body?.cancel?.(); } catch { /* nothing */ } return null; }
+  const reader = r.body?.getReader?.();
+  if (!reader) { // no stream (a test double): the text, still refused past the cap
+    const t = String(await r.text());
+    return t.length > PC_PROBE_BODY_MAX ? null : t;
+  }
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > PC_PROBE_BODY_MAX) { try { await reader.cancel(); } catch { /* nothing */ } return null; }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let off = 0;
+  for (const c of chunks) { all.set(c, off); off += c.byteLength; }
+  return new TextDecoder("utf-8").decode(all);
+}
 
 function createJar(seed) {
   const hosts = new Map();
@@ -192,7 +260,8 @@ export async function runPcServerProbe(opts = {}) {
   const request = async (jar, url, init = {}) => {
     const left = PC_PROBE_RUN_MS - (now() - startedAt);
     if (left <= 0) return { fail: "budget", ms: 0 };
-    const u = new URL(url);
+    let u;
+    try { u = new URL(url); } catch { return { fail: "refused", ms: 0 }; }
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), Math.min(PC_PROBE_REQUEST_MS, left));
     const t0 = now();
@@ -202,14 +271,18 @@ export async function runPcServerProbe(opts = {}) {
       if (cookie) headers.cookie = cookie;
       const r = await guarded(url, { method: init.method || "GET", headers, body: init.body, redirect: "manual", signal: ctl.signal });
       if (jar) jar.store(u.hostname, r.headers);
-      const text = await r.text();
+      const text = await readCapped(r);
+      if (text === null) return { fail: "too_big", ms: now() - t0, host: u.hostname, path: u.pathname };
+      const ct = String(r.headers?.get?.("content-type") || "").split(";")[0].trim().toLowerCase();
       return {
         status: r.status, host: u.hostname, path: u.pathname, text, ms: now() - t0,
-        ct: String(r.headers?.get?.("content-type") || "").split(";")[0].trim(),
+        ct: SAFE_CT_RE.test(ct) ? ct : "",
         location: r.status >= 300 && r.status < 400 ? String(r.headers?.get?.("location") || "") : "",
       };
     } catch (e) {
-      const kind = e?.refused ? "refused" : e?.name === "AbortError" || ctl.signal.aborted ? "timeout" : "network";
+      // a refused URL came from the far side (a redirect / a form action): only the word is recorded
+      if (e?.refused) return { fail: "refused", ms: 0 };
+      const kind = e?.name === "AbortError" || ctl.signal.aborted ? "timeout" : "network";
       return { fail: kind, ms: now() - t0, host: u.hostname, path: u.pathname };
     } finally {
       clearTimeout(timer);
@@ -226,6 +299,7 @@ export async function runPcServerProbe(opts = {}) {
       base = next;
       res = await request(jar, next, { headers: { referer: baseUrl } });
     }
+    if (!res.fail && res.location) return { fail: "too_many_redirects", ms: res.ms, hops };
     return { ...res, hops, finalUrl: base };
   };
 
@@ -237,10 +311,14 @@ export async function runPcServerProbe(opts = {}) {
   let cfg = { gm: "", sender: "", buyer: "" };
   try {
     if (typeof readSetting === "function") {
-      const [gms, sender, buyer] = await Promise.all([
-        readSetting("parcel_check_shared_gms"), readSetting("parcel_check_sender_phone"), readSetting("parcel_check_probe_buyer"),
-      ]);
-      cfg = parseProbeConfig({ gms, sender, buyer });
+      let settingsTimer;
+      const tooSlow = new Promise((_res, rej) => { settingsTimer = setTimeout(() => rej(new Error("settings_timeout")), PC_PROBE_SETTINGS_MS); });
+      try {
+        const [gms, sender, buyer] = await Promise.race([Promise.all([
+          readSetting("parcel_check_shared_gms"), readSetting("parcel_check_sender_phone"), readSetting("parcel_check_probe_buyer"),
+        ]), tooSlow]);
+        cfg = parseProbeConfig({ gms, sender, buyer });
+      } finally { clearTimeout(settingsTimer); }
     }
   } catch { cfg = { gm: "", sender: "", buyer: "" }; }
   const cartUrl = cfg.gm ? `https://${MYSHIP}/cart/easy/${cfg.gm}` : "";
@@ -317,8 +395,10 @@ export async function runPcServerProbe(opts = {}) {
           Carm_Cgptshipprice: fee, Total: 62 + fee, Seller_GoodsTotalAmt: 62 + fee,
         } : {};
         const missing = Object.keys(patch).filter((name) => fieldOf(f1, name) === undefined);
-        const url2 = new URL(f1.action || "/cart/detail", cartUrl).toString();
-        const p2 = !Number.isFinite(fee) ? { fail: "fee_missing", ms: 0 }
+        let url2 = "";
+        try { url2 = new URL(f1.action || "/cart/detail", cartUrl).toString(); } catch { url2 = ""; }
+        const p2 = url2 !== CART_DETAIL_URL ? { fail: "cart_action_refused", ms: 0 }
+          : !Number.isFinite(fee) ? { fail: "fee_missing", ms: 0 }
           : missing.length ? { fail: "cart_field_missing", ms: 0 }
           : await follow(jar, await request(jar, url2, {
             method: "POST", body: encode(withFields(f1.fields, patch)),
