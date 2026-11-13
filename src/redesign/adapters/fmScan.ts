@@ -26,6 +26,9 @@ export interface FmScanRow {
   createdAt: string;
   exportedAt: string | null;
   exportBatchId: string | null;
+  // Store # check (sql/155) — read and written ONLY while the check is on for this account.
+  // 'valid' | 'not_found' — only an answer written FOR THIS store # (store_check_store_id = store_id) counts.
+  storeCheckStatus?: string | null;
 }
 
 export interface FmScanInput {
@@ -205,6 +208,14 @@ export function deliverFmFiles(files: { name: string; bytes: Uint8Array }[], app
 
 // ── database (own rows, RLS) ───────────────────────────────────────────────────
 const COLS = "id, recipient_name, phone, store_id, amount, shipping_fee, order_date, buyer_username, contact_platform, created_at, exported_at, export_batch_id";
+// The saved store # answer of a database row — only 'valid' / 'not_found', and only when it was
+// written for the store # the row has NOW. Anything else = not checked.
+export function fmStoreAnswerOf(r: Record<string, unknown>): "valid" | "not_found" | null {
+  const st = r.store_check_status;
+  if (st !== "valid" && st !== "not_found") return null;
+  const forStore = String(r.store_check_store_id ?? "");
+  return forStore !== "" && forStore === String(r.store_id ?? "") ? st : null;
+}
 function toRow(r: Record<string, unknown>): FmScanRow {
   return {
     id: String(r.id), recipientName: String(r.recipient_name ?? ""), phone: String(r.phone ?? ""), storeId: String(r.store_id ?? ""),
@@ -212,6 +223,7 @@ function toRow(r: Record<string, unknown>): FmScanRow {
     buyerUsername: r.buyer_username == null ? null : String(r.buyer_username), createdAt: String(r.created_at ?? ""),
     ...(r.contact_platform != null ? { contactPlatform: String(r.contact_platform) } : {}),
     exportedAt: r.exported_at == null ? null : String(r.exported_at), exportBatchId: r.export_batch_id == null ? null : String(r.export_batch_id),
+    ...(fmStoreAnswerOf(r) ? { storeCheckStatus: fmStoreAnswerOf(r)! } : {}),
   };
 }
 async function uid(): Promise<string | null> {
@@ -220,12 +232,14 @@ async function uid(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
-export async function loadFmScans(): Promise<{ ok: boolean; rows: FmScanRow[] }> {
+// withStoreCheck (sql/155): also read the store # check columns — ONLY passed when the check is on.
+export const FM_STORE_CHECK_COLS = "store_check_status, store_check_store_id";
+export async function loadFmScans(withStoreCheck?: boolean): Promise<{ ok: boolean; rows: FmScanRow[] }> {
   const me = await uid();
   if (!me) return { ok: false, rows: [] };
-  const { data, error } = await supabase!.from("fm_parcel_scans").select(COLS).eq("user_id", me).order("created_at", { ascending: false }).limit(2000);
+  const { data, error } = await supabase!.from("fm_parcel_scans").select(withStoreCheck ? `${COLS}, ${FM_STORE_CHECK_COLS}` : COLS).eq("user_id", me).order("created_at", { ascending: false }).limit(2000);
   if (error) return { ok: false, rows: [] };
-  return { ok: true, rows: (data ?? []).map((r) => toRow(r as Record<string, unknown>)) };
+  return { ok: true, rows: ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => toRow(r)) };
 }
 
 export function inputToDb(input: FmScanInput) {

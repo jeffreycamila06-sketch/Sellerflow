@@ -5051,3 +5051,63 @@ Web only (Vercel after merge). No change to the sticker engine, layouts, setting
   rule for a Facebook buyer (`printableBuyer`, `printBuyerUsername:false`, name-only flag only when the @username line
   is on) → name only, no "@name" (the admin Facebook chip had the same gap on main). TikTok: same objects → unchanged.
   Proof: `stickerView.fallback.test.ts` (fails on the old code).
+
+## 2026-11-12 — FAMILYMART STORE # CHECK (branch `claude/fm-store-check`, NOT merged; sql/155 + sql/156 NOT applied; needs a Render deploy)
+(Fix Round 2, 2026-11-13: main `de90a99b` merged in. Main has its own `sql/154_admin_accounts.sql`, so the files of
+this branch are now **`sql/155_fm_store_check.sql`** and **`sql/156_guide_fm_store_check.sql`** (+ rollbacks).)
+Parcel Scan FamilyMart copies the 7-11 wrong-store-code flow. OFF for everyone until sql/155 is applied AND
+(`app_settings.fm_store_check_enabled` = 'true' OR the login has feature key `fm_store_check`). Off = the screen as
+on main (no server call, no `store_check` column in any select / update — proven with the real adapter in
+`FmParcelScan.storeCheckOff.test.tsx`).
+- **Server (MANUAL Render deploy):** `server/fmStoreCheck.js` + `server/fmStoreCheckRoute.js` (the handler, so a test
+  really runs it) + route `POST /admin/fm-store-check` (requireAuth + requirePlanActive, `storeId` must be a STRING of
+  6 digits — any other type is 400, its own per-seller limit `FM_STORE_CHECK_MAX_PER_MIN = 120`; the 7-11 number is
+  unchanged). Verdict `valid | not_found | unknown`; `closed` (封閉型店舖) is logged only — still valid. Plain GET of
+  FamilyMart's store map; an answer of no known shape → open default.aspx, keep cookies, ask once more; ONE 5 s limit
+  for the whole lookup.
+  - **`not_found` only when the page text is EXACTLY the sorry sentence** (抱歉無此店鋪 / 舖). Any other page = unknown.
+  - **Canary (never a false "wrong store code"):** EVERY `not_found` that comes from the site is confirmed right then —
+    the store `FM_STORE_CANARY` (default `022131`) is looked up inside the same 5 s (no "seen in the last 10 minutes").
+    Canary not `valid` → `unknown`, not cached, log `[FM_STORE_CHECK] canary_failed store=… got=…`.
+    A `not_found` for the canary store ITSELF → `unknown`, never cached, `canary_failed store=<canary> got=not_found`
+    (also on a Re-check). A CACHED `not_found` is answered from the cache with no canary lookup.
+    If that store ever closes: set `FM_STORE_CANARY` on Render.
+  - Cache per store #: `valid` 12 h, `not_found` 10 min, `unknown` never. Body `fresh: true` (boolean true only — a
+    Re-check tap) skips the cache read; the new answer is still stored.
+  - Env: `FM_STORE_ENDPOINT`, `FM_STORE_DEFAULT_URL`, `FM_STORE_QUERY`, `FM_STORE_TIMEOUT_MS`, `FM_STORE_CANARY`.
+    Log `[FM_STORE_CHECK] store=… result=… closed=…` (+ a ≤160-char RAW line on unknown).
+  ⚠️ Shapes were measured in a BROWSER, never from Render (cookie need, charset, reachability unknown) — read the
+  first `[FM_STORE_CHECK]` lines after the deploy. Without the deploy, with the check on, every row says
+  "Can't verify store".
+- **sql/155:** `fm_parcel_scans.store_check_status / store_check_at / store_check_store_id` (nullable, add-only, no
+  trigger), the switch row, the key. **An answer belongs to one store #:** the app writes the checked store # with it
+  and counts it only while `store_check_store_id = store_id` (`fmStoreAnswerOf`) — a store # changed by a device with
+  the check off / an old app = not checked.
+- **App:** `adapters/fmStoreCheck.ts` (`useFmStoreChecks(on, ready, rows, setRows)` → `{ busy, recheck }`), one check
+  at a time:
+  - BACKLOG = rows with no answer already in the list when the checks start (≤ 60 asked per open). NEW = a parcel
+    saved / imported / whose store # changed after that, and every Re-check tap (never counted, asked first).
+  - A failure = no answer OR an `unknown` answer. Two in a row → EVERYTHING queued (NEW too) is set aside; a later NEW
+    item is still asked; the first real answer puts it all back, NEW before BACKLOG.
+  - **Only real answers are kept:** `valid` / `not_found` are written (with the store #). `unknown` / no answer are
+    written nowhere and never replace a real answer — a failed Re-check on a red row stays red and out of the file.
+    An answer put back on a row after a list re-read is written to the row again.
+  - The whole ask (session read included) gives up after 6 s. A Re-check on a row already waiting does nothing.
+  - `ready` = the list was read WITH the check columns (the check turning on while the screen is open reloads the
+    list first; no alert for a wrong code already saved).
+  - Check turns OFF while the screen is open (`on` / `ready` false): queue, set-aside list and everything remembered
+    are forgotten; a check already on its way writes nothing and asks nothing more (`gen`). The screen's `scLoaded`
+    goes back to false → turning on again reads the list WITH the check columns first.
+  - The queueing runs in `useLayoutEffect` (before paint): no "Can't verify store" frame before "Checking store…".
+  - Row (not exported, 6-digit store #) is never blank: ⏳ Checking store… / ✅ Store OK (`rd_fms_sc_ok`) / ❌ Wrong
+    store code (red, Re-check, kept out of the export) / ⚠️ Can't verify store + Re-check (display only, exported).
+  Top bar attention half, alert toast + one vibrate per new wrong code, tabs "Wrong code · n" / "⚠ Needs attention".
+  **Export = same as 7-11:** never disabled because of a check. Tap Export while n > 0 parcels OF THE FILE are still
+  waiting / being checked → the 7-11 question (`rd_ps2_pending_q`, Wait = `rd_ps2_pending_wait`, Export anyway =
+  `rd_ps2_pending_anyway` → the normal export confirm). n = 0 → the normal confirm.
+  The attention count = wrong store codes + rows that break a FamilyMart rule (the rows already shown red).
+  New i18n keys: ONE (`rd_fms_sc_ok`); every other word reuses the 7-11 keys.
+- ZERO diff in ParcelScan.tsx, parcelScan.ts, parcelAttention.ts, server/emapCheck.js, chrome-extension/;
+  server.js and the i18n file are add-only. Small 7-11 helpers that are not exported were copied (`storeBadge`).
+- **Order:** sql/155 → Render deploy → add test logins to `feature_access_emails` → watch the log → switch on →
+  sql/156 (guide; `sql/116b` already carries the same text).

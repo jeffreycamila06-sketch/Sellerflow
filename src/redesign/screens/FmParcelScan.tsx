@@ -27,6 +27,9 @@ import { readParcelDraft, writeParcelDraft, holdParcelDraftForSave } from "../ad
 import { useScanQrLookup } from "../adapters/useScanQrLookup";
 import { focusUnlessTyping } from "../adapters/scanQrLookup";
 import { BridgeButton, StoreBadge } from "../components/ParcelBridge";
+import { useFmStoreChecks, fmWrongStore, fmStoreCheckable, fmStoreKey } from "../adapters/fmStoreCheck";
+import { newProblemRows, alertStoreCode, ATTN_TOAST_MS, ATTN_VIBRATE_MS, ATTN_HIGHLIGHT_MS } from "../adapters/parcelAttention";
+import { triggerHaptic } from "../adapters/camera";
 
 // Same field styles as the 7-11 screen.
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -42,8 +45,17 @@ const writePhoneExport = (on: boolean): void => { try { if (on) localStorage.set
 
 type Form = { name: string; phone: string; store: string; amount: string; username: string };
 const emptyForm: Form = { name: "", phone: "", store: "", amount: "", username: "" };
-type Tab = "all" | "new" | "done";
-type Confirm = { kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | { kind: "enablephone" };
+type Tab = "all" | "new" | "done" | "wrong" | "attention";
+// A parcel kept out of the file: a FamilyMart rule, or (store # check on) a wrong store code.
+type Attention = FmScanError | "wrong_store";
+// The store # check line of a row — the SAME icons, colours and words as the 7-11 screen.
+function storeBadge(status: string | null | undefined): { icon: string; color: string; key: "rd_ps2_store_bad" | "rd_ps2_store_unknown" | "rd_ps2_store_checking" } | null {
+  if (status === "not_found") return { icon: "❌", color: "var(--danger)", key: "rd_ps2_store_bad" };
+  if (status === "unknown") return { icon: "⚠️", color: "var(--text-dim)", key: "rd_ps2_store_unknown" };
+  if (status === "checking") return { icon: "⏳", color: "var(--text-dim)", key: "rd_ps2_store_checking" };
+  return null;
+}
+type Confirm = { kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "pending"; n: number } | { kind: "undo" } | { kind: "enablephone" };
 
 const rowInput = (r: FmScanRow): FmScanInput => ({
   recipientName: r.recipientName, phone: r.phone, storeId: r.storeId, amount: String(r.amount),
@@ -62,7 +74,7 @@ function latestBatch(rows: FmScanRow[]): { id: string; ids: string[] } | null {
 // pendingCap = the SAME per-account batch limit as the 7-11 screen (maxPendingParcels in RedesignApp),
 // counted on FamilyMart parcels only. At the limit no NEW parcel can be saved until an export; edit
 // and delete of saved parcels stay open.
-export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn = false, onBridge, pendingCap = MAX_PENDING_PARCELS, onBack }: { cur?: string; contactOn?: boolean; lookupOn?: boolean; onBridge?: () => void; pendingCap?: number; onBack?: () => void }) {
+export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn = false, onBridge, pendingCap = MAX_PENDING_PARCELS, onBack, storeCheckOn = false }: { cur?: string; contactOn?: boolean; lookupOn?: boolean; onBridge?: () => void; pendingCap?: number; onBack?: () => void; storeCheckOn?: boolean }) {
   const t = useT();
   // Bridge: the manual entry the seller left open here (typed, not saved) comes back as it was.
   const [draft0] = useState(() => readParcelDraft<Form>("fm"));
@@ -111,7 +123,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   const [exportErr, setExportErr] = useState(false);
   const [appFail, setAppFail] = useState(false);
   const [androidSaved, setAndroidSaved] = useState(false); // Android browser download landed → "saved to Downloads" line
-  const [exportSummary, setExportSummary] = useState<{ exported: number; attention: { name: string; reason: FmScanError }[] } | null>(null);
+  const [exportSummary, setExportSummary] = useState<{ exported: number; attention: { name: string; reason: Attention }[] } | null>(null);
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState(false);
   const [custOpen, setCustOpen] = useState(false);
@@ -128,15 +140,28 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   const disablePhoneExport = () => { writePhoneExport(false); setPhoneExport(false); };
   const exportHidden = onMobile && !phoneExport;
 
+  // Store # check (sql/155). Off = loadFmScans() exactly as before and nothing of it ever runs.
+  // scReady = the list on screen was read WITH the check columns (no check, label or alert before that —
+  // also when the check turns on while the screen is already open: the list is read again first).
+  const loadList = () => (storeCheckOn ? loadFmScans(true) : loadFmScans());
+  const [scLoaded, setScLoaded] = useState(false);
+  if (!storeCheckOn && scLoaded) setScLoaded(false); // check turned off: turning it on again reads the list again first
+  const scReady = storeCheckOn && scLoaded;
+  const { busy, recheck } = useFmStoreChecks(storeCheckOn, scReady, rows, setRows);
   const reloadSaved = () => {
-    void loadFmScans().then((r) => { if (aliveRef.current && r.ok) { setRows(r.rows); setListOk(true); } });
+    void loadList().then((r) => { if (aliveRef.current && r.ok) { setRows(r.rows); setListOk(true); } });
   };
   useEffect(() => {
-    void loadFmScans().then((r) => {
-      if (!aliveRef.current) return;
-      if (r.ok) { setRows(r.rows); setLastExportBatch(latestBatch(r.rows)); setListOk(true); }
+    let live = true;
+    void loadList().then((r) => {
+      if (!aliveRef.current || !live) return;
+      if (r.ok) { setRows(r.rows); setLastExportBatch(latestBatch(r.rows)); setListOk(true); if (storeCheckOn) setScLoaded(true); }
       setListLoaded(true);
-    }, () => { if (aliveRef.current) setListLoaded(true); });
+    }, () => { if (aliveRef.current && live) setListLoaded(true); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read when the screen opens (and again if the store # check turns on)
+  }, [storeCheckOn]);
+  useEffect(() => {
     void loadFmGlobalFee().then((f) => { if (aliveRef.current) setFee(f); });
   }, []);
 
@@ -202,7 +227,10 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     const r = contactArg === undefined ? await saveFmScan(parcel, editing.id) : await saveFmScan(parcel, editing.id, contactArg);
     setSaving(false);
     if (!r.ok || !r.row) { setSaveErr(true); return; }
-    setRows((list) => list.map((x) => (x.id === editing.id ? r.row! : x)));
+    // Store # check on: the same store # keeps its answer; a changed store # has none (an answer belongs
+    // to one store #) and the check hook asks for it as a new parcel.
+    const saved = r.row;
+    setRows((list) => list.map((x) => (x.id === editing.id ? (storeCheckOn && x.storeId === saved.storeId && x.storeCheckStatus != null ? { ...saved, storeCheckStatus: x.storeCheckStatus } : saved) : x)));
     setEditing(null); clearForm();
     flash(t.rd_ps2_saved_toast);
   };
@@ -240,7 +268,10 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
   // ── Export (好賣+ 大量匯單). Ready = not exported and passes FamilyMart's rules. ─────────────
   const pending = rows.filter((r) => !r.exportedAt);
   const problemOf = (r: FmScanRow) => firstError(validateFmScan(rowInput(r), today));
-  const readyRows = pending.filter((r) => !problemOf(r));
+  const wrongStore = (r: FmScanRow) => scReady && fmWrongStore(r);
+  const attentionOf = (r: FmScanRow): Attention | undefined => problemOf(r) ?? (wrongStore(r) ? "wrong_store" : undefined);
+  const attentionText = (a: Attention) => (a === "wrong_store" ? t.rd_ps2_x_wrong_store : t[FM_ERROR_KEY[a]]);
+  const readyRows = pending.filter((r) => !attentionOf(r));
   const readyCount = readyRows.length;
   const exportedCount = rows.length - pending.length;
 
@@ -250,7 +281,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     if (exportBusy || !readyCount) return;
     setExportErr(false); setAppFail(false); setAndroidSaved(false); setExportSummary(null); setUndoErr(false);
     const ready = readyRows;
-    const attention = pending.filter((r) => problemOf(r)).map((r) => ({ name: r.recipientName || r.phone || "—", reason: problemOf(r)! }));
+    const attention = pending.filter((r) => attentionOf(r)).map((r) => ({ name: r.recipientName || r.phone || "—", reason: attentionOf(r)! }));
     const { files, nowMs } = buildFmExport(ready);
     const appShell = isAppShell();
     setExportBusy(true);
@@ -305,13 +336,66 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
     setConfirm(null);
   };
   const ask = (c: Confirm) => { setDeleteErr(false); setConfirm(c); };
+  // Export tap — same as 7-11: parcels of the file still being checked → ask first (wait / export anyway).
+  const askExport = () => {
+    const n = scReady ? readyRows.filter((r) => busy.has(fmStoreKey(r))).length : 0;
+    ask(n > 0 ? { kind: "pending", n } : { kind: "export" });
+  };
+
+  // ── Store # check on: the 7-11 "needs attention" half, the new-problem alert, the tabs ──────
+  const wrongRows = scReady ? rows.filter(fmWrongStore) : [];
+  const problems = scReady ? pending.filter((r) => attentionOf(r)) : [];
+  const problemCount = problems.length;
+  // Alerted ids: seeded with the wrong codes present when the list first loads (no alert for
+  // those), then every NEW wrong store code alerts once — never again for the same parcel.
+  const [alerted, setAlerted] = useState<ReadonlySet<string> | null>(null);
+  const [attnToast, setAttnToast] = useState<{ seq: number; text: string } | null>(null);
+  if (scReady && alerted === null) setAlerted(new Set(wrongRows.map((r) => r.id))); // adjust-during-render
+  else if (scReady && alerted !== null) {
+    const fresh = newProblemRows(alerted, wrongRows);
+    if (fresh.length > 0) {
+      const code = alertStoreCode(fresh[0]);
+      setAlerted(new Set([...alerted, ...fresh.map((r) => r.id)]));
+      setAttnToast((prev) => ({ seq: (prev?.seq ?? 0) + 1, text: `⚠ ${t.rd_ps2_x_wrong_store}${code ? ` · ${code}` : ""}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ""}` }));
+    }
+  }
+  const attnSeq = attnToast?.seq ?? 0;
+  useEffect(() => {
+    if (!attnSeq) return;
+    triggerHaptic(ATTN_VIBRATE_MS);
+    const id = setTimeout(() => setAttnToast(null), ATTN_TOAST_MS);
+    return () => clearTimeout(id);
+  }, [attnSeq]);
+  // Tap the red half → the "needs attention" filter, scroll to the first problem parcel, ring it.
+  const [hl, setHl] = useState<{ id: string; seq: number } | null>(null);
+  const savedListRef = useRef<HTMLDivElement | null>(null);
+  const openAttention = () => {
+    if (problemCount === 0) return;
+    setTab("attention");
+    setHl((prev) => ({ id: problems[0].id, seq: (prev?.seq ?? 0) + 1 }));
+  };
+  const hlSeq = hl?.seq ?? 0;
+  useEffect(() => {
+    if (!hlSeq || !hl) return;
+    const list = savedListRef.current;
+    const el = list?.querySelector(`[data-row-id="${hl.id.replace(/["\\]/g, "\\$&")}"]`) ?? list;
+    const reduce = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try { (el as HTMLElement | null)?.scrollIntoView?.({ block: "center", behavior: reduce ? "auto" : "smooth" }); } catch { /* ignore */ }
+    const id = setTimeout(() => setHl(null), ATTN_HIGHLIGHT_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hlSeq]);
 
   const tabDefs: [Tab, string][] = [
     ["all", `${t.rd_ps2_tab_all} · ${rows.length}`],
     ["new", `${t.rd_fms_tab_new} · ${pending.length}`],
     ["done", `${t.rd_fms_tab_done} · ${exportedCount}`],
   ];
-  const shown = tab === "new" ? pending : tab === "done" ? rows.filter((r) => r.exportedAt) : rows;
+  if (scReady) tabDefs.push(["wrong", `${t.rd_ps2_tab_wrong} · ${wrongRows.length}`]);
+  if (scReady && problemCount > 0) tabDefs.push(["attention", `⚠ ${t.rd_ps2_tab_attn} · ${problemCount}`]);
+  // A tab that is gone (its last parcel was fixed) falls back to All.
+  const activeTab: Tab = tabDefs.some(([k]) => k === tab) ? tab : "all";
+  const shown = activeTab === "new" ? pending : activeTab === "done" ? rows.filter((r) => r.exportedAt) : activeTab === "wrong" ? wrongRows : activeTab === "attention" ? problems : rows;
   const timeOf = (iso: string): string => {
     const d = new Date(iso);
     return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
@@ -334,15 +418,33 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
           {onBridge && <BridgeButton to="711" onClick={onBridge} />}
         </div>
         {/* Batch = parcels not exported yet / the account's limit (same look as the 7-11 Batch pill).
-            No "All OK" / "need attention" here — FamilyMart store codes are not checked yet. */}
+            The "All OK" / "need attention" half appears only while the store # check is on (sql/155). */}
         {listOk && (
           <div style={{ padding: "8px 14px", background: "var(--app-bg)", borderBottom: "1px solid var(--border)" }} data-testid="fms-topbar">
             <div style={{ display: "flex", gap: 6 }}>
-              <div style={{ flex: "0 1 50%", padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="fms-batch" data-full={batchFull ? "1" : undefined}>
+              <div style={{ flex: storeCheckOn ? 1 : "0 1 50%", padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="fms-batch" data-full={batchFull ? "1" : undefined}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_batch}</span>
                 <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="fms-batch-n">{pendingCount} / {pendingCap}</span>
               </div>
+              {/* Store # check on — the 7-11 attention half: red "⚠ N need attention" (tap → those parcels) or green "✓ All OK". */}
+              {scReady && (problemCount > 0 ? (
+                <button type="button" onClick={openAttention} aria-label={t.rd_ps2_attn_open} title={t.rd_ps2_attn_open} data-testid="fms-attn" data-state="problem"
+                  style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid #dc2626", background: "#dc2626", color: "#fff", fontSize: 12, fontWeight: 900, lineHeight: 1.2, cursor: "pointer", minWidth: 0, textAlign: "center", fontFamily: "var(--font-ui)", overflowWrap: "anywhere" }}>
+                  {tpl(t.rd_ps2_attn_bar, { n: String(problemCount) })}
+                </button>
+              ) : (
+                <div data-testid="fms-attn" data-state="ok"
+                  style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--ok, #16a34a)", background: "var(--surface-2)", color: "var(--ok, #16a34a)", fontSize: 12, fontWeight: 900, lineHeight: 1.2, minWidth: 0, textAlign: "center", overflowWrap: "anywhere", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {t.rd_ps2_attn_ok_all}
+                </div>
+              ))}
             </div>
+            {attnToast && (
+              <div role="alert" aria-live="assertive" data-testid="fms-attn-toast"
+                style={{ marginTop: 6, padding: "9px 12px", borderRadius: 10, background: "#dc2626", color: "#fff", fontSize: 13, fontWeight: 800, lineHeight: 1.35, boxShadow: "0 8px 22px rgba(220,38,38,.35)", overflowWrap: "anywhere" }}>
+                {attnToast.text}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -460,7 +562,8 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
           <div style={card} data-testid="fms-export-card">
             <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_fms_x_title}</div>
             <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_fms_x_hint}</div>
-            <button onClick={() => ask({ kind: "export" })} disabled={exportBusy || readyCount === 0}
+            {/* Store # check on: no export while a store is being checked (好賣+ stops at the first wrong row). */}
+            <button onClick={askExport} disabled={exportBusy || readyCount === 0}
               style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 ? "default" : "pointer" }}
               data-testid="fms-export-btn">📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
             {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="fms-export-err">{t.rd_ps2_x_failed}</div>}
@@ -480,7 +583,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                     {exportSummary.attention.map((a, i) => (
                       <div key={i} style={{ fontSize: 11, color: "var(--danger)", display: "flex", justifyContent: "space-between", gap: 8 }} data-testid="fms-export-attn-row">
                         <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
-                        <span style={{ flexShrink: 0 }}>{t[FM_ERROR_KEY[a.reason]]}</span>
+                        <span style={{ flexShrink: 0 }}>{attentionText(a.reason)}</span>
                       </div>
                     ))}
                   </div>
@@ -490,7 +593,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
           </div>
         )}
 
-        <div style={card} data-testid="fms-saved-list">
+        <div style={card} data-testid="fms-saved-list" ref={savedListRef}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <div style={{ fontSize: 12.5, fontWeight: 800 }}>{t.rd_ps2_saved} {rows.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 700 }}>· {rows.length}</span>}</div>
             {exportedCount > 0 && (
@@ -499,19 +602,31 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
           </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }} data-testid="fms-tabs">
             {tabDefs.map(([key, label]) => {
-              const on = tab === key;
+              const on = activeTab === key;
               return (
                 <button key={key} onClick={() => setTab(key)} aria-pressed={on} data-testid={`fms-tab-${key}`}
                   style={{ flex: 1, minWidth: 78, padding: "7px 8px", borderRadius: 9, border: on ? "1px solid var(--accent)" : "1px solid var(--border-strong)", background: on ? "var(--accent)" : "var(--surface-2)", color: on ? "#fff" : "var(--text-dim)", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>{label}</button>
               );
             })}
           </div>
-          {listLoaded && shown.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="fms-empty">{t.rd_fms_empty}</div>}
+          {listLoaded && shown.length === 0 && (activeTab === "wrong" && rows.length > 0
+            ? <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="fms-wrong-empty">{t.rd_ps2_wrong_empty}</div>
+            : <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="fms-empty">{t.rd_fms_empty}</div>)}
           {shown.map((r) => {
             const problem = r.exportedAt ? undefined : problemOf(r);
+            // Store # check (on only) — like the 7-11 row: not_found = red row + "❌ Wrong store code",
+            // unknown = "⚠️ Can't verify store", checking = "⏳ Checking store…", valid = "✅ Store OK".
+            // With the check on, a not-exported parcel with a 6-digit store # is never blank: no answer and
+            // not being checked = "Can't verify store" + Re-check (display only — nothing is written).
+            const scOn = scReady && fmStoreCheckable(r);
+            const scBusy = scOn && busy.has(fmStoreKey(r));
+            const sc = !scOn ? undefined : scBusy ? "checking" : r.storeCheckStatus === "valid" || r.storeCheckStatus === "not_found" ? r.storeCheckStatus : "unknown";
+            const badge = storeBadge(sc);
+            const canRecheck = sc === "not_found" || sc === "unknown";
+            const flagged = !!problem || (scOn && r.storeCheckStatus === "not_found");
             return (
-              <div key={r.id} data-testid="fms-row" data-row-id={r.id} data-flag={problem ? "red" : ""}
-                style={{ padding: problem ? "9px 8px" : "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", ...(problem ? { border: "1.5px solid var(--danger, #dc2626)", borderRadius: 10, boxShadow: "0 0 6px -1px var(--danger, #dc2626)", margin: "4px 0" } : {}) }}>
+              <div key={r.id} data-testid="fms-row" data-row-id={r.id} data-flag={flagged ? "red" : ""} data-highlight={hl?.id === r.id ? "1" : undefined}
+                style={{ padding: flagged ? "9px 8px" : "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", ...(flagged ? { border: "1.5px solid var(--danger, #dc2626)", borderRadius: 10, boxShadow: "0 0 6px -1px var(--danger, #dc2626)", margin: "4px 0" } : {}), ...(hl?.id === r.id ? { outline: "3px solid var(--danger, #dc2626)", outlineOffset: 2, borderRadius: 10 } : {}) }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {r.recipientName || "—"}
@@ -520,6 +635,13 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: mono }}>{[r.phone, r.storeId].filter(Boolean).join(" · ") || "—"}</div>
                   {problem && <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger)" }} data-testid="fms-row-problem">{t[FM_ERROR_KEY[problem]]}</div>}
+                  {badge && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: badge.color }} data-testid="fms-store-badge" data-status={sc || ""}>
+                      {badge.icon} {t[badge.key]}
+                      {canRecheck && <button onClick={() => recheck(r.id, r.storeId)} style={{ marginLeft: 8, padding: "1px 7px", borderRadius: 7, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 10, fontWeight: 700, cursor: "pointer" }} data-testid="fms-recheck">{t.rd_ps2_recheck}</button>}
+                    </div>
+                  )}
+                  {sc === "valid" && <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="fms-store-ok" title={t.rd_fms_sc_ok}>✅ {t.rd_fms_sc_ok}</div>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                   <div style={{ textAlign: "right" }}>
@@ -544,6 +666,7 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
                     <div>{t.rd_ps2_phx_title}</div>
                     <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.55 }}>{t.rd_fms_phx_body}</div>
                   </>
+                : confirm.kind === "pending" ? <span data-testid="fms-pending-msg">{tpl(t.rd_ps2_pending_q, { n: String(confirm.n) })}</span>
                 : confirm.kind === "export" ? tpl(t.rd_ps2_x_confirm_q, { n: String(readyCount) })
                   : confirm.kind === "undo" ? tpl(t.rd_ps2_undo_q, { n: String(lastExportBatch?.ids.length ?? 0) })
                     : confirm.kind === "exported" ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) })
@@ -551,9 +674,11 @@ export default function FmParcelScan({ cur = "NT$", contactOn = false, lookupOn 
             </div>
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="fms-delete-err">{t.rd_ps2_delete_err}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="fms-confirm-cancel">{t.rd_ps2_cancel}</button>
+              <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="fms-confirm-cancel">{confirm.kind === "pending" ? t.rd_ps2_pending_wait : t.rd_ps2_cancel}</button>
               {confirm.kind === "enablephone"
                 ? <button onClick={enablePhoneExport} style={btnFull(true)} data-testid="fms-confirm-enablephone">{t.rd_ps2_phx_go}</button>
+                : confirm.kind === "pending"
+                  ? <button onClick={() => ask({ kind: "export" })} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="fms-confirm-export-anyway">{t.rd_ps2_pending_anyway}</button>
                 : confirm.kind === "export"
                   // No await before the files are handed over — the phone share sheet keeps the tap.
                   ? <button onClick={() => { setConfirm(null); runExport(); }} style={btnFull(true)} data-testid="fms-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>

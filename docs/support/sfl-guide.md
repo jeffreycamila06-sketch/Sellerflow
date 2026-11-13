@@ -543,6 +543,7 @@ Who sees what:
 2. **▣ Scan QR**, **Buyer contact** and **📇 Customers** work the same as 7-11. FamilyMart customers are kept separate from your 7-11 customers.
 3. Tap **Export N parcel(s)**, then **Export**, and upload the file on 好賣+ → 大量匯單.
 4. **Batch N / limit** at the top shows your FamilyMart parcels not exported yet. The limit is the same as on 7-11. When it is full, export first — you can still edit or delete saved parcels.
+5. If your account has the store check: after you save, the parcel's store # is checked. **✅ Store OK** means the store was found. **❌ Wrong store code** (red) means FamilyMart has no such store — ask the buyer for the right number and edit the parcel; it is left out of the export file until fixed. **⚠️ Can't verify store** — tap **Re-check**; the parcel can still be exported. The top bar shows **✓ All OK** or **⚠ N need attention**. If parcels are still being checked when you export, you are asked to wait or export anyway.
 
 Both:
 - If you can use both, tap **⇄ 全家** (on 7-11) or **⇄ 7-11** (on FamilyMart) at the top right to switch. What you were typing is still there when you come back, as long as the app stays open. Each store keeps its own parcels, batch and export.
