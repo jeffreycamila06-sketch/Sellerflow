@@ -15,6 +15,7 @@ import { hardDeleteUser } from "./adminDelete";
 import { readEdgeError } from "./edgeError";
 import { maxAcc, accountList, accountText } from "./connect";
 import { planDaysLeft, isTimeLimitedPlan } from "../../lib/planWindow";
+import { downgradeRemoveRpc, stopRemovedLives, removalSummary, type RemovalItem } from "./adminAccounts";
 
 export type Plan = "free" | "trial" | "basic" | "plus" | "pro" | "master";
 export interface AdminResult { ok: boolean; error?: string }
@@ -106,6 +107,12 @@ export interface AdminActions {
   shopeeBetaStart: (email: string, userId: string) => Promise<AdminResult & { expiresAt?: string }>;
   shopeeBetaRemove: (email: string, userId: string) => Promise<AdminResult>;
   shopeeBetaList: () => Promise<Record<string, string>>;
+  // Plan DOWNGRADE that also removes the chosen accounts (sql/154) — ONE database step: the
+  // same plan patch as changePlan + the removal. Called ONLY from the admin's downgrade confirm
+  // dialog (never on expiry or any automatic change). Afterwards the server is asked (best
+  // effort) to stop a live still running for a removed Page / Instagram account / shop;
+  // liveStopped=false = that call could not be made (the removal itself is done).
+  downgradeRemove: (email: string, userId: string, plan: Plan, current: { plan: string; status: string; expiry: string }, items: RemovalItem[]) => Promise<AdminResult & { liveStopped?: boolean }>;
 }
 
 // PURE — parse + plan-cap split, copied VERBATIM from App.tsx saveEditSeller
@@ -343,5 +350,14 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
       return out;
     } catch { return {}; }
   }, []);
-  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts, setContactNote, addCredits, shopeeBetaStart, shopeeBetaRemove, shopeeBetaList };
+  const downgradeRemove = useCallback(async (email: string, userId: string, plan: Plan, current: { plan: string; status: string; expiry: string }, items: RemovalItem[]): Promise<AdminResult & { liveStopped?: boolean }> => {
+    const patch = planChangePatch(plan, 1, current, new Date()); // the SAME patch the plan buttons send
+    const r = await downgradeRemoveRpc(userId, patch, items);
+    if (!r.ok) return r;
+    const detail = patch.planExpiry === undefined ? `→ ${plan} (tier change, expiry kept)` : `→ ${plan} (1mo, activated)`;
+    audit("changed plan", email, `${detail}; removed ${items.length}: ${removalSummary(items)}`);
+    const liveStopped = await stopRemovedLives(userId, items);
+    return { ok: true, liveStopped };
+  }, [audit]);
+  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts, setContactNote, addCredits, shopeeBetaStart, shopeeBetaRemove, shopeeBetaList, downgradeRemove };
 }
