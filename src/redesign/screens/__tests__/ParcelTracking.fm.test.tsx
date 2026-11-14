@@ -77,14 +77,14 @@ describe("Pickup Status — 全家", () => {
     expect(loadParcelTracking).toHaveBeenCalledWith(true);
   });
 
-  it("no shipped parcels in the file → neutral info notice, not the red error", async () => {
+  it("no orders in the file → neutral info notice, not the red error", async () => {
     loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
     const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
     await waitFor(() => expect(r.getByTestId("pt-fm-sync")).toBeTruthy());
     uploadFmExport.mockResolvedValueOnce({ ok: false, error: "empty", notShipped: 4 });
     fireEvent.change(r.getByTestId("pt-fm-sync-file"), { target: { files: [new File([new Uint8Array([1])], "x.xlsx")] } });
     await waitFor(() => expect(r.getByTestId("pt-sync-note").getAttribute("data-tone")).toBe("info"));
-    expect(r.getByTestId("pt-sync-note").textContent).toContain("FamilyMart file read OK. No shipped parcels in it yet — orders still being processed or cancelled are not shown.");
+    expect(r.getByTestId("pt-sync-note").textContent).toContain("FamilyMart file read OK. There are no orders in it yet.");
     expect(r.getByTestId("pt-sync-note").getAttribute("role")).toBe("status");
     expect(r.queryByTestId("pt-sync-error")).toBeNull();
   });
