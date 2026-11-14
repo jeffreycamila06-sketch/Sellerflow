@@ -55,10 +55,7 @@ describe("fmStatusOf — status mapping table", () => {
     [{ status: "已到店", shipped: d, picked: "", returned: "", cancelled: "" }, "at_store"],
     [{ status: "配送中", shipped: d, picked: "", returned: "", cancelled: "" }, "in_transit"],
     [{ status: "怪怪的", shipped: d, picked: "", returned: "", cancelled: "" }, "in_transit"],
-    // 處理中 / 已成立 (no 寄件編號, no 寄件日期): the order exists → In transit (Jeff, like 7-11)
-    [{ status: "已成立", shipped: "", picked: "", returned: "", cancelled: "" }, "in_transit"],
-    [{ status: "處理中", shipped: "", picked: "", returned: "", cancelled: "" }, "in_transit"],
-    [{ status: "處理中", shipped: "", picked: "", returned: "", cancelled: d }, "hide"],
+    [{ status: "已成立", shipped: "", picked: "", returned: "", cancelled: "" }, null],
     [{ status: "出貨中", shipped: "", picked: "", returned: "", cancelled: "", trackingNo: "16351746626" }, "in_transit"],
     [{ status: "出貨中", shipped: "", picked: "", returned: "", cancelled: d, trackingNo: "16351746626" }, "hide"],
   ])("%j → %s", (input, want) => { expect(fmStatusOf(input)).toBe(want); });
@@ -85,12 +82,9 @@ describe("helpers", () => {
 
 describe("real 好賣+ export (Jeff's file)", () => {
   const one = async (extra: Record<string, Cell>) => parseFmExport(xlsx([{ ...REAL, ...extra }]));
-  it("is accepted; 處理中 with no dates = In transit, no tracking number, no deadline yet", async () => {
+  it("is accepted; 處理中 with no dates = not shipped yet", async () => {
     const r = await one({});
-    if (!r.ok) throw new Error("rejected");
-    expect(r.notShipped).toBe(0);
-    expect(r.rows).toHaveLength(1);
-    expect(r.rows[0]).toMatchObject({ order_no: "L26A110WW1", status: "in_transit", status_message: "處理中", tracking_no: null, pickup_deadline: null, buyer_username: "汽泡水" });
+    expect(r).toEqual({ ok: true, rows: [], notShipped: 1 });
   });
   it("+寄件日期 → in transit, every field read through the suffixed headers", async () => {
     const r = await one({ "寄件日期": "2026/10/12" });
@@ -129,21 +123,9 @@ describe("not dropped off yet (出貨中 + 寄件編號, no 寄件日期)", () =
     const r = await one({ "取消日期": "2026/10/13" });
     expect(r.ok && r.rows[0].status).toBe("hide");
   });
-  it("處理中 with neither 寄件編號 nor 寄件日期 → In transit; + 取消日期 → hide", async () => {
+  it("處理中 with neither 寄件編號 nor 寄件日期 stays hidden", async () => {
     const r = await parseFmExport(xlsx([REAL]));
-    expect(r.ok && r.rows.map((x) => x.status)).toEqual(["in_transit"]);
-    const c = await parseFmExport(xlsx([{ ...REAL, "取消日期": "2026/10/12" }]));
-    expect(c.ok && c.rows.map((x) => x.status)).toEqual(["hide"]);
-  });
-  it("same 訂單編號 before and after the 寄件編號 appears → one parcel (fm_pickup_upload keys on it and keeps the number)", async () => {
-    const before = await parseFmExport(xlsx([REAL]));
-    const after = await parseFmExport(xlsx([{ ...REAL, "訂單狀態": "出貨中", "寄件編號": "16351746626" }]));
-    if (!before.ok || !after.ok) throw new Error("rejected");
-    expect(before.rows[0]).toMatchObject({ order_no: "L26A110WW1", tracking_no: null });
-    expect(after.rows[0]).toMatchObject({ order_no: "L26A110WW1", tracking_no: "16351746626" });
-    const sql = readFileSync(resolve(__dirname, "../../../../sql/119_fm_pickup.sql"), "utf8");
-    expect(sql).toMatch(/on conflict \(user_id, cm_order_no\) where carrier = 'fm' do update set/);
-    expect(sql).toMatch(/tracking_no\s+= coalesce\(excluded\.tracking_no, t\.tracking_no\)/);
+    expect(r).toEqual({ ok: true, rows: [], notShipped: 1 });
   });
   it("deadline year: from 訂購日期, next year when the status date is earlier in the year", () => {
     expect(fmDropOffDeadline("10/11 17:05", "2026/10/11")).toBe("2026-10-25");
@@ -177,9 +159,8 @@ describe("parseFmExport — real export shape", () => {
     ]));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.notShipped).toBe(0);
-    expect(r.rows).toHaveLength(3);
-    expect(r.rows[2]).toMatchObject({ order_no: "L26A110WW3", status: "in_transit", tracking_no: null });
+    expect(r.notShipped).toBe(1);
+    expect(r.rows).toHaveLength(2);
     expect(r.rows[0]).toMatchObject({ order_no: "L26A110WW1", status: "at_store", status_message: "已到店", tracking_no: "FM123", pickup_deadline: "2026-10-12", buyer_username: "juan_dela.cruz", recipient_name: "J*f*r*y", recipient_phone: "0*5*****8*", store_id: "022131", rec_store: "樹林新柑園店", order_amount: 539, ship_type: "C2C" });
     expect(r.rows[1]).toMatchObject({ status: "picked_up", picked_up_at: "2026-10-06T13:00:00+08:00", pickup_deadline: null, tracking_no: null, store_id: "022131" });
   });
@@ -236,14 +217,10 @@ const V2: Record<string, Cell> = {
 };
 
 describe("Good-selling version Order export (46 columns, one row per product)", () => {
-  it("has 46 columns and is accepted; 處理中 with no 寄件編號 → In transit; + 取消日期 → hide", async () => {
+  it("has 46 columns and is accepted; 處理中 with no 寄件編號 → not shown", async () => {
     expect(HEADERS_V2).toHaveLength(46);
     const r = await parseFmExport(xlsx([V2], HEADERS_V2));
-    if (!r.ok) throw new Error("rejected");
-    expect(r.rows).toHaveLength(1);
-    expect(r.rows[0]).toMatchObject({ order_no: "G26B01TEST", status: "in_transit", status_message: "處理中", tracking_no: null, buyer_username: "test_buyer.1" });
-    const c = await parseFmExport(xlsx([{ ...V2, "取消日期": "2026/11/03" }], HEADERS_V2));
-    expect(c.ok && c.rows.map((x) => x.status)).toEqual(["hide"]);
+    expect(r).toEqual({ ok: true, rows: [], notShipped: 1 });
   });
   it("+寄件日期 → in transit, fields read from the v2 names; @username from 商品名稱", async () => {
     const r = await parseFmExport(xlsx([{ ...V2, "訂單狀態": "配送中", "寄件編號": "16351746626", "寄件日期": "2026/11/02" }], HEADERS_V2));
@@ -279,3 +256,43 @@ describe("Good-selling version Order export (46 columns, one row per product)", 
     expect(await parseFmExport(xlsx([V2], HEADERS_V2.filter((h) => h !== "商品名稱")))).toEqual({ ok: false, error: "not_fm_export" });
   });
 });
+
+describe("orders without a delivery number (處理中) are not shown, and counted", () => {
+  const shipped = (no: string) => ({ ...REAL, "訂單編號": no, "訂單狀態": "配送中", "寄件編號": `1635174662${no.slice(-1)}`, "寄件日期": "2026/10/12" });
+  const waiting = (no: string) => ({ ...REAL, "訂單編號": no });
+  const FILE = () => xlsx([shipped("L26A110WW1"), waiting("L26A110WW2"), shipped("L26A110WW3"), waiting("L26A110WW4"), shipped("L26A110WW5")]);
+  beforeEach(() => rpc.mockReset());
+  it("3 shipped + 2 處理中 → 3 parcels, notShipped 2", async () => {
+    const r = await parseFmExport(FILE());
+    if (!r.ok) throw new Error("rejected");
+    expect(r.rows.map((x) => x.order_no)).toEqual(["L26A110WW1", "L26A110WW3", "L26A110WW5"]);
+    expect(r.notShipped).toBe(2);
+  });
+  it("Good-selling version: same rule", async () => {
+    const v2s = { ...V2, "訂單狀態": "配送中", "寄件編號": "16351746626", "寄件日期": "2026/11/02" };
+    const r = await parseFmExport(xlsx([v2s, { ...V2, "訂單編號": "G26B01WAIT" }], HEADERS_V2));
+    if (!r.ok) throw new Error("rejected");
+    expect(r.rows.map((x) => x.order_no)).toEqual(["G26B01TEST"]);
+    expect(r.notShipped).toBe(1);
+  });
+  it("only 處理中 → 0 parcels, the count comes back, the server is never called", async () => {
+    const res = await uploadFmExport(xlsx([waiting("L26A110WW2"), waiting("L26A110WW4")]));
+    expect(res).toEqual({ ok: false, error: "empty", notShipped: 2 });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("no 處理中 → notShipped 0", async () => {
+    rpc.mockResolvedValue({ data: { ok: true, inserted: 1, updated: 0, hidden: 0, skipped: 0 }, error: null });
+    const res = await uploadFmExport(xlsx([shipped("L26A110WW1")]));
+    expect(res).toMatchObject({ ok: true, notShipped: 0 });
+  });
+  it("re-sync of the same file → the same 3 parcels (keyed by 訂單編號, no duplicates)", async () => {
+    rpc.mockResolvedValue({ data: { ok: true, inserted: 3, updated: 0, hidden: 0, skipped: 0 }, error: null });
+    await uploadFmExport(FILE());
+    await uploadFmExport(FILE());
+    const sent = rpc.mock.calls.map((c) => (c[1] as { p_rows: { order_no: string }[] }).p_rows.map((x) => x.order_no));
+    expect(sent).toEqual([["L26A110WW1", "L26A110WW3", "L26A110WW5"], ["L26A110WW1", "L26A110WW3", "L26A110WW5"]]);
+    const sql = readFileSync(resolve(__dirname, "../../../../sql/119_fm_pickup.sql"), "utf8");
+    expect(sql).toMatch(/on conflict \(user_id, cm_order_no\) where carrier = 'fm' do update set/);
+  });
+});
+

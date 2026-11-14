@@ -77,14 +77,14 @@ describe("Pickup Status — 全家", () => {
     expect(loadParcelTracking).toHaveBeenCalledWith(true);
   });
 
-  it("no orders in the file → neutral info notice, not the red error", async () => {
+  it("no shipped parcels in the file → neutral info notice, not the red error", async () => {
     loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
     const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
     await waitFor(() => expect(r.getByTestId("pt-fm-sync")).toBeTruthy());
-    uploadFmExport.mockResolvedValueOnce({ ok: false, error: "empty", notShipped: 4 });
+    uploadFmExport.mockResolvedValueOnce({ ok: false, error: "empty", notShipped: 0 });
     fireEvent.change(r.getByTestId("pt-fm-sync-file"), { target: { files: [new File([new Uint8Array([1])], "x.xlsx")] } });
     await waitFor(() => expect(r.getByTestId("pt-sync-note").getAttribute("data-tone")).toBe("info"));
-    expect(r.getByTestId("pt-sync-note").textContent).toContain("FamilyMart file read OK. There are no orders in it yet.");
+    expect(r.getByTestId("pt-sync-note").textContent).toContain("FamilyMart file read OK. No shipped parcels in it yet — orders still being processed or cancelled are not shown.");
     expect(r.getByTestId("pt-sync-note").getAttribute("role")).toBe("status");
     expect(r.queryByTestId("pt-sync-error")).toBeNull();
   });
@@ -130,5 +130,42 @@ describe("Pickup Status — 全家", () => {
     await waitFor(() => expect(r.getByTestId("pt-sync-how-toggle")).toBeTruthy());
     fireEvent.click(r.getByTestId("pt-sync-how-toggle"));
     expect(r.getByTestId("pt-sync-how-fm").textContent).toContain("ALL ORDERS");
+  });
+});
+
+describe("Pickup Status — 全家 orders without a delivery number (處理中)", () => {
+  const MSG = " orders have no delivery number yet — in 好賣+ tap Get the delivery number, then export and sync again.";
+  const sync = async (res: Record<string, unknown>) => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: [row("F1", "711")], totals });
+    const r = render(<TProvider lang="en"><ParcelTracking fm /></TProvider>);
+    await waitFor(() => expect(r.getByTestId("pt-fm-sync")).toBeTruthy());
+    uploadFmExport.mockResolvedValueOnce(res);
+    fireEvent.change(r.getByTestId("pt-fm-sync-file"), { target: { files: [new File([new Uint8Array([1])], "x.xlsx")] } });
+    await waitFor(() => expect(r.getByTestId("pt-sync-note")).toBeTruthy());
+    return r;
+  };
+  it("3 shipped + 2 處理中 → the normal result AND '2 orders have no delivery number yet…' in the same note", async () => {
+    const r = await sync({ ok: true, inserted: 3, updated: 0, hidden: 0, atStore: 1, notShipped: 2 });
+    const note = r.getByTestId("pt-sync-note");
+    expect(note.textContent).toContain("FamilyMart: 3 parcels updated (1 waiting pickup).");
+    expect(note.textContent).toContain("2" + MSG);
+    expect(note.getAttribute("data-tone")).toBe("ok");
+    expect(r.queryByTestId("pt-sync-error")).toBeNull();
+  });
+  it("only 處理中 → the message replaces 'No shipped parcels' (1 order / N orders), not an error", async () => {
+    const one = await sync({ ok: false, error: "empty", notShipped: 1 });
+    expect(one.getByTestId("pt-sync-note").textContent).toContain("1 order has no delivery number yet — in 好賣+ tap Get the delivery number, then export and sync again.");
+    expect(one.getByTestId("pt-sync-note").textContent).not.toContain("No shipped parcels");
+    expect(one.getByTestId("pt-sync-note").getAttribute("data-tone")).toBe("info");
+    expect(one.queryByTestId("pt-sync-error")).toBeNull();
+    one.unmount();
+    const many = await sync({ ok: false, error: "empty", notShipped: 5 });
+    expect(many.getByTestId("pt-sync-note").textContent).toContain("5" + MSG);
+    expect(many.getByTestId("pt-sync-note").textContent).not.toContain("No shipped parcels");
+  });
+  it("no 處理中 in the file → no delivery-number message", async () => {
+    const r = await sync({ ok: true, inserted: 3, updated: 0, hidden: 0, atStore: 0, notShipped: 0 });
+    expect(r.getByTestId("pt-sync-note").textContent).toContain("FamilyMart: 3 parcels updated (0 waiting pickup).");
+    expect(r.getByTestId("pt-sync-note").textContent).not.toContain("delivery number");
   });
 });

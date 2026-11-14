@@ -574,8 +574,8 @@ Who has it:
 - **Buyer waiting for pickup** rows have a button for the buyer's app: **WhatsApp** opens the chat with a ready reminder (name, store, amount, pick-up-by date); **LINE** and **Instagram** open the buyer and copy the reminder so you can paste it; **Facebook** opens the buyer's Facebook (**Messenger** when it is a username) and copies the reminder; **TikTok** opens the buyer's TikTok profile; **Copy message** copies the reminder; **Copy** copies the contact. The app comes from what you picked in Parcel Scan; parcels saved before this had a TikTok @username and open TikTok.
 - Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
 - Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
-- A new 全家 order shows as **In transit** right away, even before it is shipped.
-- "FamilyMart file read OK. There are no orders in it yet" — that is not an error.
+- "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
+- "N orders have no delivery number yet" — in 好賣+ tap **Get the delivery number**, then download the Order export again and sync.
 - A 全家 parcel is no longer in the list — its order was cancelled or it expired on 好賣+ (訂單失效).
 - "This isn't a 全家 Order export" — pick the Order export file from 好賣+ and try again.
 

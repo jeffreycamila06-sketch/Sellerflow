@@ -92,10 +92,8 @@ const seenUnknown = new Set<string>();
 
 export interface FmStatusInput { status: string; shipped: string; picked: string; returned: string; cancelled: string; deadline?: string; trackingNo?: string }
 
-// PURE. Every order that exists is shown, like 7-11 (Jeff): an order still 處理中 (no 寄件編號,
-// no 寄件日期, not cancelled) is In transit. The row is keyed by 訂單編號 (fm_pickup_upload), so
-// it stays ONE parcel when its 寄件編號 appears on a later upload.
-export function fmStatusOf(r: FmStatusInput): FmStatus {
+// PURE. null = not shipped yet (處理中: no 寄件編號 and no 寄件日期) → not shown.
+export function fmStatusOf(r: FmStatusInput): FmStatus | null {
   const has = (v: string) => String(v ?? "").trim() !== "";
   if (has(r.cancelled)) return "hide";
   if (has(r.returned)) return "returned";
@@ -104,8 +102,7 @@ export function fmStatusOf(r: FmStatusInput): FmStatus {
   if (has(r.shipped)) return ARRIVED.test(r.status || "") || has(r.deadline ?? "") ? "at_store" : "in_transit";
   // Tracking number issued, not dropped off yet (出貨中) → in transit, like 7-11.
   if (has(r.trackingNo ?? "")) return "in_transit";
-  // 處理中: not shipped yet, but the order exists → In transit too.
-  return "in_transit";
+  return null;
 }
 
 // 好賣+ voids a tracking number this many days after it was issued.
