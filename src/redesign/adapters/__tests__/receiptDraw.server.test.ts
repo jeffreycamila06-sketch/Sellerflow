@@ -86,6 +86,27 @@ describe("drawReceiptPng", () => {
       expect(ga.equals(gb)).toBe(false);
     }
   });
+  it("card format: the server draws the card box (fill + stroke) and the inset rules; no shipping fee → no shipping row", async () => {
+    const input = receiptInputFromRows(ROWS, { opening: "", note: "" });
+    expect(input).not.toHaveProperty("shippingFee");
+    const layout = serverLayout(input, fakeMeasure, null);
+    const card = layout.ops.find((o) => o.kind === "box") as { x: number; y: number; w: number; h: number };
+    expect(card).toBeTruthy();
+    expect(layout.ops.filter((o) => o.kind === "box")).toHaveLength(1);            // card only, no shipping tint
+    const rules = layout.ops.filter((o) => o.kind === "rule") as { y: number; x0: number; x1: number }[];
+    const png = await drawReceiptPng(ROWS, { opening: "", note: "" });
+    const { loadImage, createCanvas } = await import("@napi-rs/canvas");
+    const img = await loadImage(png);
+    const c = createCanvas(img.width, img.height); const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const px = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3));
+    expect(px(card.x + 30, card.y + 10)).toEqual([0xfb, 0xfb, 0xfd]);           // inside the card: #fbfbfd
+    expect(px(10, card.y + 10)).toEqual([255, 255, 255]);                         // outside: white
+    expect(px(card.x + 1, card.y + Math.round(card.h / 2))).not.toEqual([255, 255, 255]); // the stroke
+    const r = rules[0];
+    expect(px(Math.round((r.x0 + r.x1) / 2), r.y)).toEqual([0xe2, 0xe1, 0xea]);  // rule colour, inside the card
+    expect(px(r.x0 - 8, r.y)).toEqual([0xfb, 0xfb, 0xfd]);                         // rule stops at the inset
+  });
   it("a 20-item receipt with a QR is a PNG under 400 KB", async () => {
     const { createCanvas } = await import("@napi-rs/canvas");
     const q = createCanvas(600, 600); const qc = q.getContext("2d");

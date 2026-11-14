@@ -43,6 +43,7 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
   const [note, setNote] = useState("");
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [formatLoaded, setFormatLoaded] = useState(false); // saved format finished loading (ok or failed)
+  const [shipping, setShipping] = useState(""); // Shipping fee for THIS receipt — empty on every open, never saved
 
   // Prefill opening / note / QR from the saved settings (read-only here).
   useEffect(() => {
@@ -60,7 +61,8 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
     // Only lines with an item (after trim) are on the picture and in the total; the picture numbers
     // them 1..n with no gaps. Preview and the sent picture both use this same input.
     lines: shownLines.map((l) => ({ item: l.item.trim(), total: Number(l.price) > 0 ? Number(l.price) : 0 })),
-    labels: { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more },
+    shippingFee: Number(shipping) > 0 ? Number(shipping) : 0,
+    labels: { total: t.rd_rc_pic_total, toBeConfirmed: t.rd_rc_pic_tbc, more: t.rd_rc_pic_more, shipping: t.rd_rc_pic_shipping, howToPay: t.rd_rc_pic_howto, scanToPay: t.rd_rc_pic_scan },
   };
   const picture = useReceiptPicture(pictureInput);
 
@@ -188,8 +190,20 @@ export default function ReceiptSheet({ receipt, cur, onClose, sessionId = null, 
           + {t.rd_rs_add_line}
         </button>
 
+        <span style={label}>{t.rd_rs_shipping}</span>
+        <input data-testid="rs-shipping" aria-label={t.rd_rs_shipping} placeholder={t.rd_rs_optional} inputMode={hasCents(cur) ? "decimal" : "numeric"}
+          value={shipping} onChange={(e) => setShipping(priceInput(e.target.value, cur))} style={{ ...input, width: 140, textAlign: "right" }} />
+
         <span style={label}>{t.rd_rc_note}</span>
         <textarea data-testid="rs-note" value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} style={{ ...input, width: "100%", minHeight: 80, resize: "vertical" }} />
+
+        {/* Payment QR — read-only here (set it in Receipt format). The WHOLE QR, never cropped. */}
+        <span style={label}>{t.rd_rc_qr}</span>
+        {qrImage
+          ? <div data-testid="rs-qr-box" style={{ width: 160, height: 160, boxSizing: "border-box", borderRadius: 14, border: "1px solid var(--border)", background: "#fff", overflow: "hidden" }}>
+              <img src={qrImage} alt={t.rd_rc_qr} data-testid="rs-qr-img" className="sfl-no-hover" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+            </div>
+          : formatLoaded && <div data-testid="rs-qr-none" style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>{t.rd_rs_qr_none}</div>}
 
         <div style={{ marginTop: 12 }}>
           {picture.url
