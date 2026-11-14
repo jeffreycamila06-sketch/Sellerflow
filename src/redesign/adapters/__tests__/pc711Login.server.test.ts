@@ -159,7 +159,7 @@ describe("pc711 login — the real OPENPOINT AJAX flow", () => {
     const { login } = make(s.f, { store: m.store });
     const st = await login.start();
     await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
-    const r = await login.sms({ flowId: st.flowId, code: SMS });
+    const r = (await login.sms({ flowId: st.flowId, code: SMS })) as { step?: string; message?: string; captcha?: string };
     expect(r.step).toBe("restart");
     expect(r.message).toBe("簡訊驗證碼錯誤次數過多");
     expect(r.captcha).toMatch(/^data:image\/gif;base64,/);
