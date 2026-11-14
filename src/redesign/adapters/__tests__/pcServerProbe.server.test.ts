@@ -298,6 +298,13 @@ describe("1b store step (only with the saved 7-11 login)", () => {
     expect(relogins).toBe(1);
     expect(result.store.kind).toBe("login_not_accepted");
   });
+  it("a transient cart failure (network/timeout) → NO re-login; only a real logged-out page triggers one", async () => {
+    let relogins = 0;
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: () => { throw new Error("boom"); } });
+    const { result } = await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => { relogins += 1; return { cookies: { "myship.7-11.com.tw": "auth=NEWSESS" } }; } } });
+    expect(relogins).toBe(0); // a transient failure is not a logged-out verdict
+    expect(result.store.kind).toBe("network");
+  });
   it("the E-Map form is posted only to the two E-Map hosts", async () => {
     const s = fullSite({ [`GET myship.7-11.com.tw/eMap/MM1/${GM}`]: { body: mapPage("https://evil.example.com/ecmap/default.aspx") } });
     const { result } = await run(s.f, { env: ON });

@@ -1251,7 +1251,8 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 const pc711 = createPc711Login({ store: createPc711Store(serviceSb), readSetting, env: process.env });
 pc711.load().catch(() => {});
 const pc711Allowed = createWindowLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
-const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed });
+const pc711StatusAllowed = createWindowLimiter({ max: 120, windowMs: 10 * 60 * 1000 });
+const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed, statusAllowed: pc711StatusAllowed });
 const pc711Json = express.json({ limit: "4kb" });
 app.post("/admin/pc711/login/start", requireAuth, requireAdmin, pc711Json, pc711Routes.start);
 app.post("/admin/pc711/login/captcha", requireAuth, requireAdmin, pc711Json, pc711Routes.captcha);

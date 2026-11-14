@@ -32,6 +32,7 @@ export const PC711_QUICK_PER_DAY = 6;
 export const PC711_BODY_MAX = 1024 * 1024;
 export const PC711_IMAGE_MAX = 200 * 1024;
 const MYSHIP = "myship.7-11.com.tw";
+const OPENPOINT = "bu-group.openpoint.com.tw"; // the password and the SMS code may only be sent here
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const TAG = "[PC711_LOGIN]";
 
@@ -46,15 +47,19 @@ export function isAllowedPc711Url(url) {
 }
 
 // ── the key and the encrypted blob ───────────────────────────────────────────
-// PC711_SESSION_KEY = 64 hex characters, or base64 of 32 bytes. Anything else = no key.
+// PC711_SESSION_KEY = 64 hex characters, or base64 of 32 bytes (used as-is). Any other string of
+// ≥ 32 characters (a Render "Generate" value) is hashed with SHA-256 to the 32-byte key. Shorter
+// than 32 characters → no key (state key_missing).
 export function sessionKeyFrom(env = process.env) {
   const raw = String(env?.PC711_SESSION_KEY ?? "").trim();
   if (!raw) return null;
   if (/^[0-9a-fA-F]{64}$/.test(raw)) return Buffer.from(raw, "hex");
   try {
     const b = Buffer.from(raw, "base64");
-    return b.length === 32 ? b : null;
-  } catch { return null; }
+    if (b.length === 32) return b;
+  } catch { /* not base64 */ }
+  if (raw.length >= 32) return crypto.createHash("sha256").update(raw, "utf8").digest();
+  return null;
 }
 export function encryptBlob(obj, key) {
   const iv = crypto.randomBytes(12);
@@ -270,6 +275,33 @@ export function normalizeMobile(raw) {
   return /^09\d{8}$/.test(d) ? d : "";
 }
 
+// Does the answer actually SHOW the SMS step? The measured login page always carries #smsCodeForm,
+// so its presence is not enough — a wrong 驗證碼 / password returns the same page. A marker is: the
+// page says the code was sent (已發送 / 已寄送 / …sent), a JSON answer says so, or the SMS block is
+// shown while the login block is hidden. Words only; nothing the admin typed is read.
+export function smsShownMarker(html, ct = "") {
+  const src = String(html);
+  if (/已發送|已寄送|已傳送|簡訊(?:驗證碼)?(?:已|即將)?(?:發送|寄送|傳送)|(?:verification|sms|otp)[^<]{0,24}\bsent\b|\bcode\b[^<]{0,8}\bsent\b/i.test(src)) return true;
+  if (/json/i.test(ct)) {
+    try {
+      const flat = JSON.stringify(JSON.parse(src)).toLowerCase();
+      if (/"(?:smssent|sent|sendsms|issmssent|otpsent)"\s*:\s*(?:true|1|"?y)/.test(flat)) return true;
+      if (/"(?:step|next|stage)"\s*:\s*"?sms/.test(flat)) return true;
+    } catch { /* not json */ }
+  }
+  const hiddenNear = (id) => {
+    const at = src.search(new RegExp(`<form\\b[^>]{0,400}id=["']${id}["']`, "i"));
+    if (at < 0) return null; // the form is absent
+    const gt = src.indexOf(">", at); // the form's OWN opening tag only (a sibling form must not bleed in)
+    const tag = src.slice(at, gt < 0 ? at + 400 : gt + 1);
+    return /display\s*:\s*none|visibility\s*:\s*hidden|\b(?:hidden|d-none|is-hidden|hide)\b/i.test(tag);
+  };
+  return hiddenNear("smsCodeForm") === false && hiddenNear("loginForm") === true;
+}
+
+// The host a form would post / get to. The password and the SMS code go only to OPENPOINT.
+const actionHost = (form, pageUrl) => { try { return new URL(form.action || pageUrl, pageUrl).hostname; } catch { return ""; } };
+
 const taipeiDay = (ms) => new Date(ms + 8 * 3600 * 1000).toISOString().slice(0, 10);
 const word = (w) => String(w || "").replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "-";
 
@@ -284,6 +316,9 @@ export function createPc711Login(opts = {}) {
   let flow = null;         // the one login flow in progress
 
   const say = (step, http, ms, w) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${word(w)}`); } catch { /* never stops */ } };
+  // submit logs several fixed words (the form ids are sanitized; everything else is 0/1/html/json)
+  const sayWords = (step, http, ms, words) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${words}`); } catch { /* never stops */ } };
+  const idWord = (s) => String(s || "").replace(/[^a-z0-9_-]/gi, "").slice(0, 24);
 
   // One request through the host list, the jar and a 15 s limit. binary=true keeps the bytes.
   async function request(jar, url, init = {}) {
@@ -468,6 +503,8 @@ export function createPc711Login(opts = {}) {
     if (!pw || pw.length > 64) return { step: "error", message: "bad_password" };
     if (!/^[A-Za-z0-9]{3,10}$/.test(vc)) return { step: "error", message: "bad_code" };
     const f = flow;
+    // the password + the 驗證碼 go ONLY to OPENPOINT: the login form's action host is pinned here
+    if (actionHost(f.loginForm, f.pageUrl) !== OPENPOINT) { say("submit", 0, 0, "refused_host"); return { step: "error", message: "refused_host" }; }
     const patch = { mobile: m, passwd_d: pw, verifyCode: vc };
     const fields = f.loginForm.fields.map(([k, v]) => [k, Object.prototype.hasOwnProperty.call(patch, k) ? patch[k] : v]);
     for (const k of Object.keys(patch)) if (!fields.some((x) => x[0] === k)) fields.push([k, patch[k]]);
@@ -477,20 +514,27 @@ export function createPc711Login(opts = {}) {
     if (res.fail) { say("submit", 0, res.ms, res.fail); return { step: "error", message: "unreachable" }; }
     const info = pageInfo(res.text);
     phoneTail = m.slice(-3);
-    if (info.smsForm) {
-      f.sms = { form: info.smsForm, url: res.url };
-      say("submit", res.status, res.ms, "sms");
-      return { step: "sms", phoneTail };
-    }
+    // decide by what the answer shows, NOT just that #smsCodeForm is on the page (it always is)
+    const ctKind = /json/i.test(res.ct) ? "json" : "html";
+    const errText = pageErrorText(res.text, [m, pw, vc]);
+    const smsMarker = smsShownMarker(res.text, res.ct);
+    const formIds = (info.forms.map((x) => idWord(x.id)).filter(Boolean).slice(0, 6).join(",")) || "-";
+    sayWords("submit", res.status, res.ms, `forms=${formIds} err=${errText ? 1 : 0} ct=${ctKind} sms_marker=${smsMarker ? 1 : 0}`);
+    // (a) the page shows an error → wrong 驗證碼 / password / etc.
+    if (errText) return { step: "error", message: errText };
+    // (b) reached myship = logged in
     if (res.host === MYSHIP) {
       const li = await finishLogin(f.jar, res);
-      say("submit", res.status, res.ms, li.ok ? "connected" : li.word);
       if (li.ok) { flow = null; return { step: "connected" }; }
       return { step: "error", message: li.word };
     }
-    const msg = pageErrorText(res.text, [m, pw, vc]);
-    say("submit", res.status, res.ms, info.loginForm ? "login_again" : "unknown_page");
-    return { step: "error", message: msg || (info.loginForm ? "login_failed" : "unknown_page") };
+    // (c) SMS step — ONLY when it is really shown (login form gone, or an explicit sent marker)
+    if (info.smsForm && (!info.loginForm || smsMarker)) {
+      f.sms = { form: info.smsForm, url: res.url };
+      return { step: "sms", phoneTail };
+    }
+    // (d)
+    return { step: "error", message: "login_failed" };
   }
 
   async function finishLogin(jar, res) {
@@ -514,6 +558,8 @@ export function createPc711Login(opts = {}) {
     const c = String(code ?? "").replace(/\s/g, "");
     if (!/^\d{4,8}$/.test(c)) return { step: "error", message: "bad_sms" };
     const f = flow;
+    // the SMS code goes ONLY to OPENPOINT: the SMS form's action host is pinned here
+    if (actionHost(f.sms.form, f.sms.url) !== OPENPOINT) { say("sms", 0, 0, "refused_host"); return { step: "error", message: "refused_host" }; }
     let k = 0;
     const fields = f.sms.form.fields.map(([n, v]) => {
       if (n === "smsCode") return [n, c];
@@ -600,7 +646,9 @@ export function createPc711Login(opts = {}) {
 }
 
 // ── routes (server.js mounts these behind requireAuth + requireAdmin + its own limiter) ──
-export function createPc711Handlers(login, { allowed = () => Boolean(1) } = {}) {
+// allowed = the login limiter (the costly routes); statusAllowed = the read-only status limiter,
+// kept separate so polling status never uses up the login budget. Default: status is unlimited.
+export function createPc711Handlers(login, { allowed = () => Boolean(1), statusAllowed = () => Boolean(1) } = {}) {
   const guard = (fn) => async (req, res) => {
     if (!allowed(req.authUserId || "admin")) return res.status(429).json({ error: "rate_limited" });
     try {
@@ -618,7 +666,7 @@ export function createPc711Handlers(login, { allowed = () => Boolean(1) } = {}) 
     sms: guard((b) => login.sms({ flowId: String(b.flowId || ""), code: b.code })),
     disconnect: guard(() => login.disconnect()),
     status: async (req, res) => {
-      if (!allowed(req.authUserId || "admin")) return res.status(429).json({ error: "rate_limited" });
+      if (!statusAllowed(req.authUserId || "admin")) return res.status(429).json({ error: "rate_limited" });
       return res.json(login.status());
     },
   };

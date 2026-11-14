@@ -460,9 +460,10 @@ export async function runPcServerProbe(opts = {}) {
         return { p1, f1, loggedIn: sidLen >= 4 };
       };
       let { p1, f1, loggedIn } = await openCart();
-      // logged out (no form / an error page / the login page) → ONE quick re-login with the saved
-      // session (pc711Login decides; it never types a password), then the cart page once more
-      if (!(f1 && loggedIn) && p1.fail !== "parse_too_slow" && session && typeof session.relogin === "function") {
+      // ONE quick re-login ONLY when the cart page actually came back and says logged out (no form /
+      // an error page / no MemberSid). A transient failure — timeout / network / too_big /
+      // parse_too_slow — never triggers a re-login (pc711Login decides; it never types a password).
+      if (!p1.fail && !(f1 && loggedIn) && session && typeof session.relogin === "function") {
         const again = await call(session.relogin);
         record(store, stepOf("store.relogin", null, Boolean(again && again.cookies), again && again.cookies ? "ok" : "no"));
         if (again && again.cookies) { jar = createJar(again.cookies); ({ p1, f1, loggedIn } = await openCart()); }
