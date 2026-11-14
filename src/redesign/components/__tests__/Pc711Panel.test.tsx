@@ -148,12 +148,13 @@ describe("Pc711Panel — Test now + Shadow", () => {
     push("/status", { body: CONNECTED });
     push("/shadow", { body: {
       enabled: true,
-      today: { n: 12, store: { n: 8, matchPct: 88 }, phone: { n: 4, matchPct: 100 }, avgMs: 1450 },
+      today: { n: 14, store: { n: 8, matchPct: 88, errors: 2 }, phone: { n: 4, matchPct: 100, errors: 0 }, avgMs: 1450 },
       mismatches: [{ kind: "store", ext: "open", srv: "full", at: "2026-11-14T03:05:00Z" }, { kind: "phone", ext: "ok", srv: "restricted", at: "2026-11-14T03:07:00Z" }],
     } });
     renderPanel();
-    await waitFor(() => expect(screen.getByTestId("pc711-shadow-n").textContent).toBe("12"));
+    await waitFor(() => expect(screen.getByTestId("pc711-shadow-n").textContent).toBe("14"));
     expect(screen.getByTestId("pc711-shadow-store").textContent).toBe("88% match (8)");
+    expect(screen.getByTestId("pc711-shadow-errors").textContent).toBe("Store full 2 · Phone 0");
     expect(screen.getByTestId("pc711-shadow-phone").textContent).toBe("100% match (4)");
     expect(screen.getByTestId("pc711-shadow-avg").textContent).toBe("1450 ms");
     const lines = screen.getAllByTestId("pc711-shadow-mis").map((e) => e.textContent);
@@ -163,7 +164,7 @@ describe("Pc711Panel — Test now + Shadow", () => {
 
   it("Shadow off → says so; nothing compared → dashes", async () => {
     push("/status", { body: CONNECTED });
-    push("/shadow", { body: { enabled: false, today: { n: 0, store: { n: 0, matchPct: null }, phone: { n: 0, matchPct: null }, avgMs: null }, mismatches: [] } });
+    push("/shadow", { body: { enabled: false, today: { n: 0, store: { n: 0, matchPct: null, errors: 0 }, phone: { n: 0, matchPct: null, errors: 0 }, avgMs: null }, mismatches: [] } });
     renderPanel();
     await waitFor(() => expect(screen.getByTestId("pc711-shadow-off")).toBeTruthy());
     expect(screen.getByTestId("pc711-shadow-store").textContent).toBe("—");

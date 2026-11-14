@@ -58,7 +58,8 @@ async function call(path: string, body?: Record<string, unknown>): Promise<Pc711
 
 // Admin → 7-11 Login "Shadow" block (server/pc711Shadow.js): today's compared / match % per kind /
 // server average ms + the last 5 mismatches (no ids). Read when the panel opens — never polled.
-export interface Pc711ShadowPart { n: number; matchPct: number | null }
+// n = compared with a real server answer (match true + false); errors = server errors (match NULL).
+export interface Pc711ShadowPart { n: number; matchPct: number | null; errors: number }
 export interface Pc711Shadow {
   enabled: boolean;
   today: { n: number; store: Pc711ShadowPart; phone: Pc711ShadowPart; avgMs: number | null };
@@ -68,7 +69,8 @@ const part = (x: unknown): Pc711ShadowPart => {
   const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
   const n = Number(o.n);
   const p = o.matchPct === null || o.matchPct === undefined ? null : Number(o.matchPct);
-  return { n: Number.isFinite(n) ? n : 0, matchPct: p !== null && Number.isFinite(p) ? p : null };
+  const e = Number(o.errors);
+  return { n: Number.isFinite(n) ? n : 0, matchPct: p !== null && Number.isFinite(p) ? p : null, errors: Number.isFinite(e) && e > 0 ? e : 0 };
 };
 export function toPc711Shadow(j: unknown): Pc711Shadow | null {
   const o = (j && typeof j === "object" ? j : null) as Record<string, unknown> | null;

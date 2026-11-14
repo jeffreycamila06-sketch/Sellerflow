@@ -30,6 +30,11 @@ export function toExtWord(kind, verdict) {
   return words.includes(v) ? v : "unknown";
 }
 /** One short word for the note column (never data). */
+/** The server check did not reach a real answer (threw, timeout, http error, bad_input,
+ *  unexpected_answer, needs_login …): its word is "unknown" WITH a reason. Not a mismatch. */
+export function isServerError(srvWord, kind) {
+  return srvWord === "unknown" && String(kind ?? "").trim() !== "";
+}
 export function noteWord(w) {
   const s = String(w ?? "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 32);
   return s || null;
@@ -66,13 +71,19 @@ export function pickJobs(scans, done, sinceMs, limit = SHADOW_BATCH) {
 // and read/write pc711_shadow — and nothing else.
 export function createShadowDb(sb) {
   return {
+    // Newest first: two reads (store verdicts / phone verdicts in the window, each newest 30),
+    // merged by id — so a busy day never hides the latest parcels behind older ones.
     async recentScans(sinceIso) {
-      const { data, error } = await sb.from("parcel_scans")
-        .select("id,store_id,phone,customer_name,store_full_status,store_full_at,phone_check_status,phone_check_at")
-        .or(`store_full_at.gte.${sinceIso},phone_check_at.gte.${sinceIso}`)
-        .limit(60);
-      if (error) throw error;
-      return data || [];
+      const cols = "id,store_id,phone,customer_name,store_full_status,store_full_at,phone_check_status,phone_check_at";
+      const [a, b] = await Promise.all([
+        sb.from("parcel_scans").select(cols).gte("store_full_at", sinceIso).order("store_full_at", { ascending: false }).limit(30),
+        sb.from("parcel_scans").select(cols).gte("phone_check_at", sinceIso).order("phone_check_at", { ascending: false }).limit(30),
+      ]);
+      if (a.error) throw a.error;
+      if (b.error) throw b.error;
+      const byId = new Map();
+      for (const r of [...(a.data || []), ...(b.data || [])]) if (r && !byId.has(r.id)) byId.set(r.id, r);
+      return [...byId.values()];
     },
     async doneFor(ids) {
       if (!ids.length) return [];
@@ -147,23 +158,29 @@ export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.no
         const t0 = now();
         let r;
         try { r = await check(job.input); } catch { r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "error" }; }
+        if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "error" };
         lastEnd = now();
         used += 1;
         checked += 1;
         const after = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
-        if ((r && (r.kind === "login_not_accepted" || r.kind === "no_session")) || (after && after.state === "needs_login")) {
+        const loggedOut = r.kind === "login_not_accepted" || r.kind === "no_session" || Boolean(after && after.state === "needs_login");
+        const srv = toExtWord(job.kind, r.verdict);
+        const ms = Math.max(0, Math.round(Number(r.ms) || lastEnd - t0));
+        const http = Number(r.http) || 0;
+        // A server error (no real answer) is NOT a mismatch: match = NULL, note = why.
+        const errKind = loggedOut ? "needs_login" : isServerError(srv, r.kind) ? String(r.kind) : "";
+        const match = errKind ? null : srv === job.ext;
+        try {
+          await db.insert({ scan_id: job.scanId, kind: job.kind, ext_verdict: job.ext, srv_verdict: srv, srv_ms: ms, srv_http: http, match, note: noteWord(errKind || r.kind) });
+        } catch { /* the next tick tries again */ }
+        const maint = `maint=${isMaintWindow(lastEnd) ? 1 : 0}`;
+        if (errKind) say(`kind=${job.kind} match=- err=${noteWord(errKind)} ms=${ms} http=${http} ${maint}`);
+        else say(`kind=${job.kind} match=${match ? 1 : 0} ms=${ms} http=${http} ${maint}`);
+        if (loggedOut) {
           stoppedSince = st.since ?? null;
-          say(`kind=${job.kind} stop=needs_login maint=${isMaintWindow(lastEnd) ? 1 : 0}`);
+          say(`kind=${job.kind} stop=needs_login ${maint}`);
           break;
         }
-        const srv = toExtWord(job.kind, r?.verdict);
-        const ms = Math.max(0, Math.round(Number(r?.ms) || lastEnd - t0));
-        const http = Number(r?.http) || 0;
-        const match = srv === job.ext;
-        try {
-          await db.insert({ scan_id: job.scanId, kind: job.kind, ext_verdict: job.ext, srv_verdict: srv, srv_ms: ms, srv_http: http, match, note: noteWord(r?.kind) });
-        } catch { /* the next tick tries again */ }
-        say(`kind=${job.kind} match=${match ? 1 : 0} ms=${ms} http=${http} maint=${isMaintWindow(lastEnd) ? 1 : 0}`);
       }
       return { checked };
     } catch {
@@ -192,12 +209,14 @@ export async function shadowSummary(db, readSetting, nowMs = Date.now()) {
   let enabled = false;
   try { enabled = String((await readSetting(SHADOW_SWITCH)) ?? "") === "true"; } catch { enabled = false; }
   const rows = await db.rowsSince(d.startIso);
+  // match % = match true / (true + false); server-error rows (match NULL) are left out and counted apart.
   const part = (kind) => {
     const r = rows.filter((x) => x.kind === kind);
-    const m = r.filter((x) => x.match === true).length;
-    return { n: r.length, matchPct: r.length ? Math.round((m * 100) / r.length) : null };
+    const yes = r.filter((x) => x.match === true).length;
+    const no = r.filter((x) => x.match === false).length;
+    return { n: yes + no, matchPct: yes + no ? Math.round((yes * 100) / (yes + no)) : null, errors: r.filter((x) => x.match !== true && x.match !== false).length };
   };
-  const ms = rows.map((x) => Number(x.srv_ms)).filter((x) => Number.isFinite(x) && x >= 0);
+  const ms = rows.filter((x) => x.match === true || x.match === false).map((x) => Number(x.srv_ms)).filter((x) => Number.isFinite(x) && x >= 0);
   const mis = await db.lastMismatches(5);
   return {
     enabled,

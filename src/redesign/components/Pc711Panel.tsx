@@ -39,6 +39,7 @@ function ShadowBlock() {
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_today}</span><span data-testid="pc711-shadow-n" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.n}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_store}</span><span data-testid="pc711-shadow-store" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.store)}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_phone}</span><span data-testid="pc711-shadow-phone" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.phone)}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_errors}</span><span data-testid="pc711-shadow-errors" style={{ color: "var(--text)", fontWeight: 600 }}>{`${t.rd_pc711_sh_store} ${s.today.store.errors} · ${t.rd_pc711_sh_phone} ${s.today.phone.errors}`}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_avg}</span><span data-testid="pc711-shadow-avg" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.avgMs === null ? "—" : `${s.today.avgMs} ms`}</span>
           </div>
           {s.mismatches.length > 0 && (

@@ -163,7 +163,8 @@ describe("the job", () => {
     const s = setup({ pc711: pc, check: async () => answer });
     await s.job.tick();
     expect(s.check).toHaveBeenCalledTimes(1);
-    expect(s.inserted).toEqual([]);
+    expect(s.inserted).toHaveLength(1);
+    expect(s.inserted[0]).toMatchObject({ match: null, note: "needs_login" }); // not a mismatch
     expect(s.logs.some((l) => l.includes("stop=needs_login"))).toBe(true);
     expect(await s.job.tick()).toEqual({ skipped: "stopped" });
     expect(s.check).toHaveBeenCalledTimes(1);
@@ -171,7 +172,7 @@ describe("the job", () => {
     answer = { verdict: "open", http: 200, ms: 5, kind: "" };
     s.advance(SHADOW_GAP_MS);
     expect((await s.job.tick()).checked).toBeGreaterThan(0);
-    expect(s.inserted.length).toBeGreaterThan(0);
+    expect(s.inserted.some((r) => r.match === true)).toBe(true);
   });
   it("log lines: [PC711_SHADOW] kind=… match=0/1 ms=… http=… — never a phone, store id or name", async () => {
     const s = setup({ scans: [scan("s1", { phone_check_status: "restricted" })] });
@@ -187,6 +188,66 @@ describe("the job", () => {
   });
 });
 
+describe("server errors are not mismatches", () => {
+  const cases: [string, (i: unknown) => Promise<unknown>, string][] = [
+    ["thrown", async () => { throw new Error("boom"); }, "error"],
+    ["timed out", async () => ({ verdict: "unknown", http: 0, ms: 4000, kind: "timeout" }), "timeout"],
+    ["http 500", async () => ({ verdict: "unknown", http: 500, ms: 300, kind: "http" }), "http"],
+    ["bad input", async () => ({ verdict: "unknown", http: 0, ms: 0, kind: "bad_input" }), "bad_input"],
+    ["unexpected answer", async () => ({ verdict: "unknown", http: 200, ms: 900, kind: "unexpected_answer" }), "unexpected_answer"],
+  ];
+  it.each(cases)("%s → match NULL, note = the kind", async (_label, check, note) => {
+    const s = setup({ scans: [scan("s1", { phone_check_at: ago(90) })], check: check as never }); // store job only
+    await s.job.tick();
+    expect(s.inserted).toEqual([expect.objectContaining({ scan_id: "s1", kind: "store", srv_verdict: "unknown", match: null, note })]);
+    expect(s.logs[0]).toMatch(new RegExp(`^\\[PC711_SHADOW\\] kind=store match=- err=${note} ms=\\d+ http=\\d+ maint=[01]$`));
+  });
+  it("a REAL answer that differs (server full, extension open) is still a mismatch (match false)", async () => {
+    const s = setup({ scans: [scan("s1", { phone_check_at: ago(90) })], check: async () => ({ verdict: "full", http: 200, ms: 800, kind: "" }) });
+    await s.job.tick();
+    expect(s.inserted).toEqual([expect.objectContaining({ kind: "store", ext_verdict: "open", srv_verdict: "full", match: false, note: null })]);
+  });
+  it("summary: match % = true / (true + false); NULL rows left out and counted as server errors per kind", async () => {
+    const f = fakeSb({ rows: [
+      { kind: "store", match: true, srv_ms: 1000 }, { kind: "store", match: false, srv_ms: 1000 },
+      { kind: "store", match: null, srv_ms: 9000 }, { kind: "store", match: null, srv_ms: 9000 },
+      { kind: "phone", match: true, srv_ms: 400 }, { kind: "phone", match: null, srv_ms: 5000 },
+    ] });
+    const out = await shadowSummary(createShadowDb(f.sb as never), async () => "true", NOW);
+    expect(out.today.store).toEqual({ n: 2, matchPct: 50, errors: 2 });
+    expect(out.today.phone).toEqual({ n: 1, matchPct: 100, errors: 1 });
+    expect(out.today.avgMs).toBe(800); // real answers only (1000, 1000, 400)
+    expect(out.today.n).toBe(6);
+  });
+});
+
+describe("newest first", () => {
+  it("100 recent scans, the newest 3 not compared yet → exactly those 3 are picked", () => {
+    const rows = Array.from({ length: 100 }, (_, i) => scan(`s${i}`, { store_full_at: new Date(NOW - (i + 1) * 15_000).toISOString(), phone_check_status: null }));
+    const done = rows.slice(3).map((r) => ({ scan_id: r.id, kind: "store" }));
+    const jobs = pickJobs(rows, done, NOW - SHADOW_LOOKBACK_MS, 3);
+    expect(jobs.map((j) => j.scanId)).toEqual(["s0", "s1", "s2"]);
+  });
+  it("recentScans = two reads (store_full_at / phone_check_at ≥ since, newest first, 30 each), merged by id", async () => {
+    const q: { gte?: string; order?: string; asc?: boolean; limit?: number }[] = [];
+    const sb = { from: (table: string) => {
+      expect(table).toBe("parcel_scans");
+      const me: { gte?: string; order?: string; asc?: boolean; limit?: number } = {};
+      q.push(me);
+      const chain = {
+        select: () => chain,
+        gte: (col: string) => { me.gte = col; return chain; },
+        order: (col: string, o: { ascending: boolean }) => { me.order = col; me.asc = o.ascending; return chain; },
+        limit: (n: number) => { me.limit = n; return Promise.resolve({ data: me.gte === "store_full_at" ? [scan("a"), scan("b")] : [scan("b"), scan("c")], error: null }); },
+      };
+      return chain;
+    } };
+    const got = await createShadowDb(sb as never).recentScans(ago(30));
+    expect(q).toEqual([{ gte: "store_full_at", order: "store_full_at", asc: false, limit: 30 }, { gte: "phone_check_at", order: "phone_check_at", asc: false, limit: 30 }]);
+    expect(got.map((r: { id: string }) => r.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
 describe("admin summary", () => {
   it("today's compared / match % per kind / server average ms + the last mismatches (no ids)", async () => {
     const f = fakeSb({
@@ -196,7 +257,7 @@ describe("admin summary", () => {
     const out = await shadowSummary(createShadowDb(f.sb as never), async () => "true", NOW);
     expect(out).toEqual({
       enabled: true,
-      today: { n: 3, store: { n: 2, matchPct: 50 }, phone: { n: 1, matchPct: 100 }, avgMs: 1200 },
+      today: { n: 3, store: { n: 2, matchPct: 50, errors: 0 }, phone: { n: 1, matchPct: 100, errors: 0 }, avgMs: 1200 },
       mismatches: [{ kind: "store", ext: "open", srv: "full", at: "2026-11-14T03:05:00Z" }],
     });
     expect(JSON.stringify(out)).not.toContain("SECRET");
