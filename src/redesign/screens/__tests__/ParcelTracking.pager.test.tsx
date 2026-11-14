@@ -127,6 +127,25 @@ describe("pages of 50", () => {
 });
 
 describe("store filter", () => {
+  it("opens UPWARD when the button is near the bottom (the bottom nav would hide the options), downward otherwise", async () => {
+    const r = await open([...rowsOf(3, { carrier: "711" }), ...rowsOf(2, { carrier: "fm" })]);
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    const btn = r.getByTestId("pt-store-btn");
+    const at = (bottom: number) => { btn.getBoundingClientRect = () => ({ top: bottom - 40, bottom, left: 0, right: 0, width: 0, height: 40, x: 0, y: bottom - 40, toJSON() {} }) as DOMRect; };
+    at(760); // 40px left below — less than the menu (130px)
+    fireEvent.click(btn);
+    const up = r.getByTestId("pt-store-menu");
+    expect(up.getAttribute("data-dir")).toBe("up");
+    expect(up.style.bottom).toBe("calc(100% + 4px)");
+    expect(up.style.top).toBe("");
+    fireEvent.click(btn); // close
+    at(200); // plenty of room below
+    fireEvent.click(btn);
+    const down = r.getByTestId("pt-store-menu");
+    expect(down.getAttribute("data-dir")).toBe("down");
+    expect(down.style.top).toBe("calc(100% + 4px)");
+    expect(down.style.bottom).toBe("");
+  });
   it("only with 全家 on: no fm → no filter button", async () => {
     const r = await open(rowsOf(3), false);
     expect(r.queryByTestId("pt-store-btn")).toBeNull();

@@ -451,8 +451,12 @@ const STORE_FILTERS: StoreFilter[] = ["all", "711", "fm"];
 const carrierKey = (r: ParcelTrackingRow): "711" | "fm" => (r.carrier === "fm" ? "fm" : "711");
 const storeLabel = (s: StoreFilter, t: T) => (s === "all" ? t.rd_pt_store_all : s === "fm" ? t.rd_pt_store_fm : t.rd_pt_store_711);
 
+// Menu height: 3 rows × 40px + 4px padding top/bottom + 1px border top/bottom.
+const STORE_MENU_H = 3 * 40 + 2 * 4 + 2 * 1;
+
 function StoreFilterButton({ value, counts, onPick, t }: { value: StoreFilter; counts: Record<StoreFilter, number>; onPick: (s: StoreFilter) => void; t: T }) {
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false); // opens upward when there is no room below (the bottom nav would hide it)
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -466,13 +470,22 @@ function StoreFilterButton({ value, counts, onPick, t }: { value: StoreFilter; c
   const on = value !== "all";
   return (
     <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-label={t.rd_pt_store_filter} aria-haspopup="menu" aria-expanded={open} data-testid="pt-store-btn"
+      <button type="button" onClick={(e) => {
+        if (!open) {
+          // Room below = to the bottom of the real scroller (the app's .sfl-scroll), else the viewport.
+          const btnBottom = e.currentTarget.getBoundingClientRect().bottom;
+          const sc = scrollerOf(e.currentTarget);
+          const limit = sc ? sc.getBoundingClientRect().bottom : window.innerHeight;
+          setUp(limit - btnBottom - 4 < STORE_MENU_H);
+        }
+        setOpen((o) => !o);
+      }} aria-label={t.rd_pt_store_filter} aria-haspopup="menu" aria-expanded={open} data-testid="pt-store-btn"
         style={{ ...btn, minHeight: 40, padding: "0 12px", whiteSpace: "nowrap", ...(on ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "var(--accent-text)" } : {}) }}>
         {storeLabel(value, t)} ▾
       </button>
       {open && (
-        <div role="menu" data-testid="pt-store-menu"
-          style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 30, minWidth: 180, background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 4 }}>
+        <div role="menu" data-testid="pt-store-menu" data-dir={up ? "up" : "down"}
+          style={{ position: "absolute", right: 0, ...(up ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }), zIndex: 30, minWidth: 180, background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 4 }}>
           {STORE_FILTERS.map((s) => (
             <button key={s} type="button" role="menuitemradio" aria-checked={s === value} onClick={() => { onPick(s); setOpen(false); }} data-testid={`pt-store-opt-${s}`}
               style={{ display: "flex", width: "100%", alignItems: "center", gap: 10, minHeight: 40, padding: "0 10px", border: "none", borderRadius: 8, background: s === value ? "var(--accent-soft)" : "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: s === value ? 700 : 500, cursor: "pointer", textAlign: "left" }}>

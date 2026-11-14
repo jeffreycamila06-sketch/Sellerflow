@@ -21,7 +21,7 @@ import { TProvider } from "../../i18n";
 
 // jsdom has no PointerEvent: a MouseEvent with a pointerId carries clientY through fireEvent.
 if (typeof window.PointerEvent === "undefined") {
-  class PE extends MouseEvent { pointerId: number; constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerId = init.pointerId ?? 1; } }
+  class PE extends MouseEvent { pointerId: number; pointerType: string; constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerId = init.pointerId ?? 1; this.pointerType = init.pointerType ?? ""; } }
   (window as unknown as { PointerEvent: unknown }).PointerEvent = PE;
 }
 
@@ -80,10 +80,12 @@ describe("DragBar", () => {
     expect(scrollTo).toHaveBeenLastCalledWith(0, 3000);
   });
 
-  it("a tap on the track (not the thumb) jumps there", async () => {
+  it("a MOUSE click on the track (not the thumb) jumps there; a touch press on the track does nothing", async () => {
     const r = mountBar();
     await waitFor(() => expect(thumb(r).style.top).toBe("0px"));
-    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: BAR_TOP + 28 + SPAN * 0.25, pointerId: 1 });
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: BAR_TOP + 28 + SPAN * 0.25, pointerId: 1, pointerType: "touch" });
+    expect(scrollTo).not.toHaveBeenCalled();
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: BAR_TOP + 28 + SPAN * 0.25, pointerId: 1, pointerType: "mouse" });
     expect(scrollTo).toHaveBeenLastCalledWith(0, 750);
   });
 
@@ -152,12 +154,18 @@ describe("DragBar in a scroll box (the real app)", () => {
   it("dragging to the middle sets the box's scrollTop ≈ 50% (the window is not scrolled)", async () => {
     const r = mountInBox();
     await waitFor(() => expect(r.getByTestId("pt-dragbar-thumb").style.top).toBe("0px"));
-    fireEvent.pointerDown(r.getByTestId("pt-dragbar-thumb"), { clientY: 178 + 10, pointerId: 1 });
-    fireEvent.pointerMove(r.getByTestId("pt-dragbar-thumb"), { clientY: 178 + 309 + 10, pointerId: 1 });
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar-thumb"), { clientY: 178 + 10, pointerId: 1, pointerType: "touch" }); // touch drags the thumb
+    fireEvent.pointerMove(r.getByTestId("pt-dragbar-thumb"), { clientY: 178 + 309 + 10, pointerId: 1, pointerType: "touch" });
     expect(box.top).toBe(1500);
     expect(scrollTo).not.toHaveBeenCalled();
     fireEvent.pointerUp(r.getByTestId("pt-dragbar-thumb"), { pointerId: 1 });
-    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: 178 + 28 + 618 * 0.25, pointerId: 1 }); // tap the track
+    // touch / pen on the track (e.g. a slightly-off tap next to Chase / Copy) → no jump
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: 178 + 28 + 618 * 0.25, pointerId: 1, pointerType: "touch" });
+    expect(box.top).toBe(1500);
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: 178 + 28 + 618 * 0.25, pointerId: 1, pointerType: "pen" });
+    expect(box.top).toBe(1500);
+    // mouse click on the track → jumps
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: 178 + 28 + 618 * 0.25, pointerId: 1, pointerType: "mouse" });
     expect(box.top).toBe(750);
   });
 });

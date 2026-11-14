@@ -117,9 +117,12 @@ export default function DragBar({ headerRef, dep, label }: { headerRef: RefObjec
     try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* best-effort */ }
     setDragging(false); // the list stays where it is
   };
-  // A tap on the track (not the thumb) jumps there: the thumb's middle lands on the tap.
+  // A MOUSE click on the track (not the thumb) jumps there: the thumb's middle lands on the click.
+  // Touch / pen on the track does nothing — on phones the Chase / Copy button ends 1px from the
+  // strip, so a slightly-off tap must never jump the list; only the thumb drags.
   const onTrackDown = (e: RPointerEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
+    if (e.pointerType !== "mouse") return;
     scrollToFraction(fractionAt(e.clientY, THUMB / 2));
   };
 
