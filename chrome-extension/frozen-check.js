@@ -46,8 +46,9 @@
 // NIGHT (1.18.2): the 01:00–05:00 Taipei window (7-ELEVEN maintenance) no longer turns the LIVE
 // frozen lane off — it works like the dry lane does at night. The pending read runs (so sql/157's
 // cache step gives instant answers from store_frozen_cache) and the live request is sent; a real
-// answer is written as usual; a no-answer / timeout / maintenance page writes NOTHING and is NOT
-// counted (no lane pause), that store is asked again 10 min later (the per-store floor). A block
+// answer is written as usual; a no-answer / timeout / maintenance page is written 'unknown' like by
+// day (the database holds the parcel back 10 min, so the queue still empties and the retry survives
+// a restart) but is NOT counted and does NOT pause the lane. A block
 // (captcha / login / 403 / 429) is never treated as a harmless no-answer: it is written 'unknown'
 // exactly like by day. Every night request logs `[PC-FROZEN] night send store=… result=…`.
 // The window state is re-checked with the leader right before the request (a pass decided by day
@@ -408,30 +409,33 @@
   // 1.18.2 — the live request at NIGHT (01:00–05:00 Taipei). The message carries `night: true` so the
   // content script reads an E-Map maintenance page as a no-answer (not a verdict). A real answer (ok /
   // no_frozen, or NO2 / close = 'unknown' that E-Map really said) is written as by day. A no-answer
-  // (no reply, the 3 s cap, timeout, maintenance page, an odd page) writes NOTHING and is NOT counted:
-  // no lane pause; the per-store floor (set at the request) asks that store again in 10 min. A block
-  // (captcha / login / 403 / 429) is never a harmless no-answer: written 'unknown' exactly like by day.
+  // (no reply, the 3 s cap, timeout, maintenance page, an odd page) is ALSO written 'unknown' (the
+  // database then holds the parcel back 10 min) but is NOT counted and does NOT pause the lane. A block
+  // (captcha / login / 403 / 429) is written 'unknown' exactly like by day.
   async function sendNight(rpc, tabId, row) {
-    let resp = null;
+    let resp = null; let threw = "";
     st.storeAt.set(row.store_id, Date.now());               // the floor starts at the request, answered or not
     try { resp = await withTimeout(pcSendTab(tabId, { type: "PC_FROZEN_CHECK", row, night: true }), CHECK_TIMEOUT_MS, "frozen check"); }
-    catch (e) { log(`night send store=${row.store_id} row=${row.id} result=no_answer (${(e && e.message) || "check threw"}) — nothing written, retry in 10 min`); return; }
-    const status = verdictOf(resp);
-    const reason = resp ? String(resp.frozen_reason || "") : "emap tab not responding";
-    const blocked = isBlocked(resp, reason);
-    if (status === "unknown" && !blocked && noAnswer(resp, reason)) {
-      log(`night send store=${row.store_id} row=${row.id} result=no_answer (${reason}) — nothing written, retry in 10 min`);
-      return;
-    }
+    catch (e) { threw = (e && e.message) || "check threw"; resp = null; }
+    const status = threw ? "unknown" : verdictOf(resp);
+    const reason = threw || (resp ? String(resp.frozen_reason || "") : "emap tab not responding");
+    const blocked = !threw && isBlocked(resp, reason);
+    // A night no-answer is written 'unknown' exactly like by day (the database then holds that parcel back
+    // 10 min — sql/142/157 stamp checked_at, never overwrite no_frozen, only stamp the time on an exported
+    // parcel — so the pending queue empties for the warm-up / other stores and the retry survives a restart).
+    // What stays night-only: NO lane pause and it is not counted.
+    const noAns = status === "unknown" && !blocked && (Boolean(threw) || noAnswer(resp, reason));
     try {
       const w = await withTimeout(fetch(`${rpc.cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_frozen_verdict`, {
         method: "POST", headers: rpc.rpcHeaders,
         body: JSON.stringify({ p_id: row.id, p_expected_store: row.store_id, p_status: status }),
       }), DB_TIMEOUT_MS, "verdict write");
       if (!w.ok) log(`row=${row.id} verdict rpc_${w.status}`);
-      st.checks += 1; if (status === "unknown") st.unknowns += 1;
-      log(`night send store=${row.store_id} row=${row.id} result=${status}${blocked ? " (blocked)" : ""}${reason ? ` (${reason})` : ""}`);
-    } catch (e) { log(`night send store=${row.store_id} row=${row.id} result=${status} — verdict write failed: ${(e && e.message) || "network"}`); }
+      if (!noAns) { st.checks += 1; if (status === "unknown") st.unknowns += 1; }
+      log(noAns
+        ? `night send store=${row.store_id} row=${row.id} result=no_answer → unknown (retry in 10 min) (${reason})`
+        : `night send store=${row.store_id} row=${row.id} result=${status}${blocked ? " (blocked)" : ""}${reason ? ` (${reason})` : ""}`);
+    } catch (e) { log(`night send store=${row.store_id} row=${row.id} result=${noAns ? "no_answer → unknown" : status} — verdict write failed: ${(e && e.message) || "network"}`); }
   }
 
   // ── WARM-UP ───────────────────────────────────────────────────────────────────

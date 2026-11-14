@@ -1,4 +1,4 @@
--- sql/157 — FROZEN (冷凍) verdict for a parcel that was EXPORTED before the answer came.   NOT APPLIED.
+-- sql/157 — FROZEN (冷凍) verdict for a parcel that was EXPORTED before the answer came.   APPLIED in production (Nov 14 2026).
 -- Needs sql/142 (live). Rollback: sql/157_frozen_verdict_exported_rollback.sql (= sql/142's function).
 --
 -- WHY (real cases, Nov 13 2026): two 冷凍 parcels were exported ~20 s after they were saved, before

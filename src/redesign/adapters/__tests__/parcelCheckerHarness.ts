@@ -167,6 +167,7 @@ export type BootOpts = {
   frozenSwitch?: "true" | "false" | "missing" | "error";
   frozenPending?: unknown[] | "error" | (() => unknown[]); // admin_parcel_frozen_pending rows (default []); a function = read at each call
   frozenVerdictHttp?: number;               // admin_parcel_frozen_verdict status (default 200)
+  onFrozenVerdict?: (body: { p_id?: string; p_expected_store?: string; p_status?: string }) => void; // sees each verdict write (a test's database model)
   extDir?: string;                          // read the worker from another folder (e.g. main's copy)
   frozenScript?: boolean;                   // the frozen content script answers PC_FROZEN_PING (default true); false = until injected
   frozenModuleSrc?: string | null;          // importScripts("frozen-check.js"): null = file missing (throws), a string = that source instead
@@ -328,6 +329,7 @@ export function bootWorker(opts: BootOpts = {}) {
     }
     if (/admin_parcel_frozen_verdict/.test(url)) {
       const st = opts.frozenVerdictHttp ?? 200;
+      if (opts.onFrozenVerdict && st >= 200 && st < 300) opts.onFrozenVerdict(JSON.parse(String(init?.body ?? "{}")));
       return { ok: st >= 200 && st < 300, status: st, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
     }
     const body = /admin_parcel_checks_pending/.test(url) ? rows
