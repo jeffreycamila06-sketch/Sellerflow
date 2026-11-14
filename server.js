@@ -50,6 +50,7 @@ import { safeSocketHandler, safeSocketMiddleware, socketToken, strField } from "
 import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow.js";
 import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
 import { runPcLoginWalk } from "./server/pcLoginWalk.js";
+import { createPc711Login, createPc711Handlers, createPc711Store } from "./server/pc711Login.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -153,7 +154,7 @@ const defaultJsonParser = express.json();
 // token check runs before any body handling (the B1 auth-before-parser discipline).
 // /fb/receipt/send carries a base64 receipt picture (≤ 4 MB) — it parses its own body with a
 // 6mb limit AFTER auth + its rate limit (server/fbReceipt.js), same discipline as parcel-scan.
-app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" ? next() : defaultJsonParser(req, res, next)));
+app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" || req.path === "/admin/product-images-sweep" || req.path === "/fb/receipt/send" || req.path.startsWith("/admin/pc711/") ? next() : defaultJsonParser(req, res, next)));
 // Build 10 — error/reason words leave as short codes on the app-facing routes (server/errorCodes.js).
 app.use(opaqueErrors());
 
@@ -1244,7 +1245,21 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
 // 7-11 server probe (server/pcServerProbe.js) — DIAGNOSTIC ONLY: logs whether this server can do
 // the phone / full-store checks. Writes nothing. Off unless env PC_SERVER_PROBE is exactly "1"
 // (off = 404 here and no boot timer). Admin only; 1 run per 10 minutes for the whole server.
-const runPcProbe = () => runPcServerProbe({ readSetting });
+// 7-11 checker login (server/pc711Login.js): the server's own 7-11 session, connected by the admin
+// in Admin → 7-11 Login. Admin only, 4kb bodies, its own limiter (20 per 10 minutes). The probe's
+// STORE step uses this session (and its one quick re-login). Loaded at boot so a deploy keeps it.
+const pc711 = createPc711Login({ store: createPc711Store(serviceSb), readSetting, env: process.env });
+pc711.load().catch(() => {});
+const pc711Allowed = createWindowLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
+const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed });
+const pc711Json = express.json({ limit: "4kb" });
+app.post("/admin/pc711/login/start", requireAuth, requireAdmin, pc711Json, pc711Routes.start);
+app.post("/admin/pc711/login/captcha", requireAuth, requireAdmin, pc711Json, pc711Routes.captcha);
+app.post("/admin/pc711/login/submit", requireAuth, requireAdmin, pc711Json, pc711Routes.submit);
+app.post("/admin/pc711/login/sms", requireAuth, requireAdmin, pc711Json, pc711Routes.sms);
+app.post("/admin/pc711/disconnect", requireAuth, requireAdmin, pc711Json, pc711Routes.disconnect);
+app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
+const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies } });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
 app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed }));
 // Boot: the probe, then ONCE the 7-11 login walk (server/pcLoginWalk.js — GET only, read-only,
