@@ -51,6 +51,7 @@ import { createWindowLimiter, EMAP_CHECK_MAX_PER_MIN } from "./server/rateWindow
 import { runPcServerProbe, createPcProbeHandler, schedulePcProbeBoot, pcProbeEnabled, PC_PROBE_LIMIT_WINDOW_MS } from "./server/pcServerProbe.js";
 import { runPcLoginWalk } from "./server/pcLoginWalk.js";
 import { createPc711Login, createPc711Handlers, createPc711Store } from "./server/pc711Login.js";
+import { createPc711Shadow, createShadowDb, shadowSummary, shadowHistory } from "./server/pc711Shadow.js";
 
 const app = express();
 app.disable("x-powered-by"); // Build 10b — no framework name in every answer
@@ -1264,7 +1265,32 @@ app.post("/admin/pc711/disconnect", requireAuth, requireAdmin, pc711Json, pc711R
 app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
 const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies } });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
-app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed }));
+app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed, windowMs: PC_PROBE_LIMIT_WINDOW_MS }));
+// 7-11 server checker SHADOW (server/pc711Shadow.js, sql/159): compares the server's answer with the
+// extension's on parcels the extension already checked. Off until app_settings pc711_shadow_enabled =
+// 'true' AND the 7-11 login is connected. Writes only pc711_shadow; never parcel_scans.
+const pc711ShadowCheck = async (input) => {
+  const t0 = Date.now();
+  const r = await runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies }, target: input, gate: false, log: () => {} });
+  const part = input.kind === "phone" ? r.phone : r.store; // "store" and "frozen" both run the store chain
+  const steps = (part && part.steps) || [];
+  // steps / raw go to pc711Shadow, which keeps only step name + http + ms + ok + a short word.
+  return { verdict: (part && part.verdict) || "unknown", http: steps.length ? steps[steps.length - 1].http || 0 : 0, ms: Date.now() - t0, kind: (part && part.kind) || "", raw: (part && part.raw) || "", steps };
+};
+if (serviceSb) {
+  const pc711ShadowDb = createShadowDb(serviceSb);
+  createPc711Shadow({ db: pc711ShadowDb, check: pc711ShadowCheck, pc711, readSetting }).start();
+  app.get("/admin/pc711/shadow", requireAuth, requireAdmin, async (req, res) => {
+    if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
+    try { return res.json(await shadowSummary(pc711ShadowDb, readSetting)); } catch { return res.status(500).json({ error: "failed" }); }
+  });
+  app.get("/admin/pc711/shadow/history", requireAuth, requireAdmin, async (req, res) => {
+    if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
+    try {
+      return res.json(await shadowHistory(pc711ShadowDb, { day: String(req.query.day || ""), filter: String(req.query.filter || ""), kind: String(req.query.kind || ""), page: Number(req.query.page) || 0 }));
+    } catch { return res.status(500).json({ error: "failed" }); }
+  });
+}
 // Boot: the probe, then ONCE the 7-11 login walk (server/pcLoginWalk.js — GET only, read-only,
 // same PC_SERVER_PROBE switch; the admin route above runs the probe only).
 const runPcProbeBoot = () => runPcProbe().catch(() => {}).then(() => runPcLoginWalk());
