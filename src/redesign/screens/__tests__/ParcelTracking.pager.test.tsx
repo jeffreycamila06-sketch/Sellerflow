@@ -73,6 +73,30 @@ describe("pages of 50", () => {
       window.scrollTo = old;
     }
   });
+  it("in the app the list's box scrolls: a page change calls box.scrollTo(scrollTop + listTop − headerBottom − 8)", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: rowsOf(120) });
+    const boxScroll = vi.fn();
+    const fit = (el: HTMLDivElement | null) => {
+      if (!el) return;
+      Object.defineProperty(el, "scrollTop", { configurable: true, get: () => 900, set: () => {} });
+      (el as unknown as { scrollTo: unknown }).scrollTo = boxScroll;
+    };
+    const winScroll = vi.fn();
+    const old = window.scrollTo;
+    window.scrollTo = winScroll as unknown as typeof window.scrollTo;
+    try {
+      const r = render(<div ref={fit} style={{ overflowY: "auto" }}><TProvider lang="en"><ParcelTracking fm /></TProvider></div>);
+      await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBeGreaterThan(0));
+      const rect = (top: number, bottom: number) => (() => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} })) as () => DOMRect;
+      r.getByTestId("pt-header").getBoundingClientRect = rect(0, 150);                             // Android header
+      (r.getByTestId("pt-page-top").previousElementSibling as HTMLElement).getBoundingClientRect = rect(-400, -400);
+      fireEvent.click(r.getByTestId("pt-page-next"));
+      expect(boxScroll).toHaveBeenCalledWith({ top: 900 + (-400 - 150 - 8), behavior: "smooth" });
+      expect(winScroll).not.toHaveBeenCalled();
+    } finally {
+      window.scrollTo = old;
+    }
+  });
   it("50 rows → no page bar and no top line (as today)", async () => {
     const r = await open(rowsOf(50));
     expect(r.getAllByTestId("pt-row")).toHaveLength(50);
@@ -103,6 +127,25 @@ describe("pages of 50", () => {
 });
 
 describe("store filter", () => {
+  it("opens UPWARD when the button is near the bottom (the bottom nav would hide the options), downward otherwise", async () => {
+    const r = await open([...rowsOf(3, { carrier: "711" }), ...rowsOf(2, { carrier: "fm" })]);
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    const btn = r.getByTestId("pt-store-btn");
+    const at = (bottom: number) => { btn.getBoundingClientRect = () => ({ top: bottom - 40, bottom, left: 0, right: 0, width: 0, height: 40, x: 0, y: bottom - 40, toJSON() {} }) as DOMRect; };
+    at(760); // 40px left below — less than the menu (130px)
+    fireEvent.click(btn);
+    const up = r.getByTestId("pt-store-menu");
+    expect(up.getAttribute("data-dir")).toBe("up");
+    expect(up.style.bottom).toBe("calc(100% + 4px)");
+    expect(up.style.top).toBe("");
+    fireEvent.click(btn); // close
+    at(200); // plenty of room below
+    fireEvent.click(btn);
+    const down = r.getByTestId("pt-store-menu");
+    expect(down.getAttribute("data-dir")).toBe("down");
+    expect(down.style.top).toBe("calc(100% + 4px)");
+    expect(down.style.bottom).toBe("");
+  });
   it("only with 全家 on: no fm → no filter button", async () => {
     const r = await open(rowsOf(3), false);
     expect(r.queryByTestId("pt-store-btn")).toBeNull();
