@@ -5258,3 +5258,45 @@ server/fmStoreCheck*.js).
   no vitest harness → `node --check` + the server-core unit suite + the wiring source-contract pin.
 - **ORDER when Jeff says go:** merge → set `PC711_SESSION_KEY` on Render (64 hex / base64 of 32 bytes) →
   apply sql/158 → Render deploy → Admin → 7-11 Login → Connect.
+
+### FIX ROUND 2 — rewritten to the REAL OPENPOINT AJAX API (branch `claude/pc711-login-r2` off main `721e2e15`, NOT merged)
+The first live Connect showed NO picture + error "E0": OPENPOINT login is NOT a plain HTML form. The login
+steps are rewritten to OPENPOINT's own jQuery `$.ajax` calls (POST, `application/x-www-form-urlencoded`,
+`X-Requested-With: XMLHttpRequest`, `Accept: application/json`, Referer = authorize page, Origin =
+`https://bu-group.openpoint.com.tw`, same jar; HTTP 2xx = success JSON, non-2xx = `{codeId,codeDescription}`).
+The old `loginForm`/`smsCodeForm` HTML-submit path + `captchaCandidates`/`findQuickLogin`/`pageInfo` are
+REMOVED (the form-based description above is superseded). base = `https://bu-group.openpoint.com.tw`.
+- **START:** GET myship `/Member/Login/` → follow to `/auth/service/authorize` → read INLINE-script vars
+  (`readScriptVars`): oidc_client_id (or clientId), state, nonce, scope, maxAge, codeChallenge, loginTxId,
+  redirectUri (+ token). Any required var missing → `login_page_changed` (missing NAMES logged). A non-empty
+  `token` (from the page or an answer) = BU mode → sent on later calls; `bu=0|1` logged, never guessed.
+  Picture = POST `/auth/service/getCaptcha` (empty body) → `{imgInfo:<base64>}` → `data:image/gif;base64,…`;
+  ↻ = the same call.
+- **SEND SMS (step 1→2):** POST `/auth/service/ajax/login/validate` with mobileCountry=886, mobile,
+  passwd=**base64(UTF-8 password)**, verify=<5-digit picture code>, verifyType=sms, oidc_client_id (+token).
+  2xx → keep `identifier` (shown on step 2 as "Code prefix (識別碼): X") + `isOtpAlnum` (SMS may have letters).
+  Non-2xx → `codeDescription`; B111002/B111003/B151002 = wrong picture → also return a fresh picture; 704 = password.
+- **CONNECT (step 2):** POST `/auth/service/ajax/login/doLoginForOidc` with the same fields + smsCode + state,
+  nonce, scope, max_age, code_challenge, trust_browser=Y, login_tx_id (+token). 2xx → redirect =
+  `answer.redirect || {lgtk,…}` → POST (form) to `/auth/service/OidcRedirect.html` (404 → `/auth/OidcRedirect.html`
+  once; which is logged) → follow to myship `/Member/FromUniopen?code=…` → MemberSid check → save session.
+  codeId **735** = too many wrong SMS → flow ended, **back to step 1 with a new picture** (`step:"restart"`).
+- **SEND AGAIN:** POST `/auth/service/ajax/login/member/resend-sms-code` (mobile, mobileCountry=886,
+  oidc_client_id); stays on step 2, 60 s timer.
+- **🔑 PASSWORD/picture code = SERVER MEMORY ONLY (Jeff's decision):** kept inside the one login flow because
+  7-11 asks for them again at step 3. NEVER in the database, a log, or an answer. Wiped on: connected, any
+  flow-ending error, **Back** (new `/login/back` route), a new Connect, the 10-min expiry, disconnect, server
+  restart. Admin lock note = "Password is used only to log in and is never saved."
+- **QUICK RE-LOGIN (unproven, limits 1/10 min + 6/day):** JSON `/auth/service/ajax/login/oidc/quick-login/
+  candidates` → `/select` → `/OidcQuickLoginHandoff.html`, cookies only. Any step that smells of a passkey /
+  password / picture / SMS → `needs_login`, STOP. Never types a password.
+- **Routes now:** +`/admin/pc711/login/resend` +`/admin/pc711/login/back` (the rest unchanged; status keeps its
+  own 120/10-min limiter). **UI:** step 2 shows the prefix when present, the 6 boxes accept upper-cased letters
+  when isOtpAlnum, "Send again" calls resend, "Back" calls back; every error shows a sentence — a bare token
+  like "E0" is never echoed (7-11's `codeDescription` is shown as-is). Logs: `captcha … ok|no_img`,
+  `validate/login/resend … code=<codeId>`, `redirect … hops=… myship=0|1 path=service|auth`.
+- ⚠️ **NOT PROVEN:** the exact route PATHS, field names, the OidcRedirect form post and the quick-login JSON —
+  all read from OPENPOINT's scripts in a browser (the container cannot reach 7-11). Every test uses a fake
+  server built from those names; the first real `[PC711_LOGIN]` lines are the proof. Same fence as round 1
+  (chrome-extension/, ParcelScan.tsx, parcelScan.ts, server/emapCheck.js, server/fmStoreCheck*.js all untouched).
+- **ORDER (unchanged):** merge → set `PC711_SESSION_KEY` on Render → apply sql/158 → Render deploy → Connect.

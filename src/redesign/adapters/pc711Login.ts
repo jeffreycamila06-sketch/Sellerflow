@@ -62,6 +62,8 @@ export const pc711Api = {
   captcha: (flowId: string) => call("/admin/pc711/login/captcha", { flowId }),
   submit: (flowId: string, mobile: string, password: string, verifyCode: string) => call("/admin/pc711/login/submit", { flowId, mobile, password, verifyCode }),
   sms: (flowId: string, code: string) => call("/admin/pc711/login/sms", { flowId, code }),
+  resend: (flowId: string) => call("/admin/pc711/login/resend", { flowId }),
+  back: (flowId: string) => call("/admin/pc711/login/back", { flowId }),
   disconnect: () => call("/admin/pc711/disconnect", {}),
   test: () => call("/admin/pc-server-probe", {}),
 };
@@ -79,13 +81,14 @@ export function usePc711Status(enabled = true): { status: Pc711Status | null; re
   return { status, refresh };
 }
 
-// "123456" pasted into any box fills all six; anything else = the digits typed so far.
-export function fillSmsBoxes(prev: string[], index: number, typed: string): string[] {
-  const digits = String(typed || "").replace(/\D/g, "");
+// "123456" pasted into any box fills all six; anything else = the chars typed so far. When the SMS
+// code may contain letters (isOtpAlnum), letters are kept and upper-cased; otherwise digits only.
+export function fillSmsBoxes(prev: string[], index: number, typed: string, alnum = false): string[] {
+  const clean = alnum ? String(typed || "").toUpperCase().replace(/[^A-Z0-9]/g, "") : String(typed || "").replace(/\D/g, "");
   const next = prev.slice(0, 6);
   while (next.length < 6) next.push("");
-  if (digits.length >= 6) return digits.slice(0, 6).split("");
-  if (!digits) { next[index] = ""; return next; }
-  for (let i = 0; i < digits.length && index + i < 6; i++) next[index + i] = digits[i];
+  if (clean.length >= 6) return clean.slice(0, 6).split("");
+  if (!clean) { next[index] = ""; return next; }
+  for (let i = 0; i < clean.length && index + i < 6; i++) next[index + i] = clean[i];
   return next;
 }

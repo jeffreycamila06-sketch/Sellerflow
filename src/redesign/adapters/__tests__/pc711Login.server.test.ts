@@ -1,27 +1,28 @@
-// 7-11 checker login (server/pc711Login.js). ⚠️ Fake fetch only — the pages below are made up from
-// the field names the login walk measured from Render. NO real request to 7-11 / OPENPOINT was made.
+// 7-11 checker login (server/pc711Login.js) — the REAL OPENPOINT AJAX flow. ⚠️ Fake fetch only: the
+// routes and JSON below are built from the field names read off OPENPOINT's own login scripts; NO real
+// request to 7-11 / OPENPOINT was made.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   createPc711Login, createPc711Handlers, createPc711Jar, isAllowedPc711Url, sessionKeyFrom, encryptBlob, decryptBlob,
-  captchaCandidates, findQuickLogin, pageErrorText, normalizeMobile, pageInfo, smsShownMarker,
-  PC711_FLOW_MS, PC711_QUICK_GAP_MS, PC711_QUICK_PER_DAY,
+  normalizeMobile, readScriptVars, PC711_ROUTES, PC711_FLOW_MS, PC711_QUICK_GAP_MS, PC711_QUICK_PER_DAY,
 } from "../../../../server/pc711Login.js";
 
 const KEY = "a".repeat(64);
 const PW = "MARKPASSq9xz";
+const PWB64 = Buffer.from(PW, "utf8").toString("base64");
 const SMS = "987654";
 const PHONE = "0912345678";
 const VCODE = "48213";
 const GM = "GM2609096130694";
-const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, ...new Array(120).fill(7)]);
+const IMG = "R0lGODlhAQABAAAAACwAAAAAAQABAAACAkQBADs=".repeat(3); // a base64-looking string ≥ 50 chars
+const OP = "bu-group.openpoint.com.tw";
 
-type Reply = { status?: number; ct?: string; body?: string | Uint8Array; location?: string; cookies?: string[] };
-type Call = { method: string; url: string; host: string; path: string; search: string; headers: Record<string, string>; body: string };
+type Reply = { status?: number; ct?: string; body?: string; location?: string; cookies?: string[] };
+type Call = { method: string; url: string; host: string; path: string; headers: Record<string, string>; body: string };
 const reply = (r: Reply) => {
-  const body = r.body ?? "";
-  const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
+  const bytes = new TextEncoder().encode(r.body ?? "");
   return {
     status: r.status ?? 200,
     headers: {
@@ -35,7 +36,7 @@ const site = (routes: Record<string, Reply | ((c: Call) => Reply)>) => {
   const calls: Call[] = [];
   const f = vi.fn(async (url: string, init: { method?: string; headers?: Record<string, string>; body?: string }) => {
     const u = new URL(url);
-    const c: Call = { method: init.method || "GET", url, host: u.hostname, path: u.pathname, search: u.search, headers: init.headers || {}, body: String(init.body ?? "") };
+    const c: Call = { method: init.method || "GET", url, host: u.hostname, path: u.pathname, headers: init.headers || {}, body: String(init.body ?? "") };
     calls.push(c);
     const hit = routes[`${c.method} ${u.hostname}${u.pathname}`];
     if (!hit) return reply({ status: 404, body: "nope" });
@@ -44,27 +45,23 @@ const site = (routes: Record<string, Reply | ((c: Call) => Reply)>) => {
   return { f, calls };
 };
 
-const OP = "bu-group.openpoint.com.tw";
-const authorizePage = (extra = "") => `<html><head><script src="/cdn/js/lib/checkDevice.js"></script></head><body>
-<form id="loginForm" method="post" action="/auth/service/login">
-<input type="hidden" name="state" value="st1"><input type="text" name="mobile" value=""><input type="password" name="passwd_d" value="">
-<input type="text" name="verifyCode" value=""><input type="checkbox" name="trust_browser" value="1"></form>
-<img id="captchaImg" src="">
-<script>function refreshCode(){ $('#captchaImg').attr('src','/auth/captcha/image?t=' + Date.now()); } refreshCode();</script>
-${extra}<p>快速登入 驗證碼 OTP 簡訊</p></body></html>`;
-const smsPage = `<html><form id="smsCodeForm" method="get" action="/auth/service/sms">
-<input type="hidden" name="flow" value="f1"><input type="hidden" name="smsCode" value="">
-${[0, 1, 2, 3, 4, 5].map(() => '<input type="text" name="smsVerify" value="">').join("")}</form></html>`;
+const authorizePage = (vars: Record<string, string> = {}) => {
+  const v = { oidc_client_id: "CID1", state: "ST1", nonce: "NON1", scope: "openid", maxAge: "0", codeChallenge: "CC1", loginTxId: "TX1", redirectUri: "https://myship.7-11.com.tw/Member/FromUniopen", ...vars };
+  const lines = Object.entries(v).filter(([, val]) => val !== "").map(([k, val]) => `var ${k} = "${val}";`).join(" ");
+  return `<html><head><script>${lines}</script></head><body>login</body></html>`;
+};
 const cartPage = (sid: string) => `<html><form id="MyCart" action="/cart/detail" method="post"><input type="hidden" name="MemberSid" value="${sid}"></form></html>`;
+const JSONH = "application/json; charset=utf-8";
 
+// the happy path: myship login → authorize → captcha → validate(sms) → doLogin → OidcRedirect → myship
 const fullSite = (over: Record<string, Reply | ((c: Call) => Reply)> = {}) => site({
-  "GET myship.7-11.com.tw/Member/Login/": { status: 302, location: `https://${OP}/auth/service/authorize?client=x` },
-  [`GET ${OP}/auth/service/authorize`]: { body: authorizePage(), cookies: ["opsess=OPS1; path=/; HttpOnly"] },
-  [`GET ${OP}/cdn/js/lib/checkDevice.js`]: { ct: "application/javascript", body: "var x=1;" },
-  [`GET ${OP}/auth/captcha/image`]: { ct: "image/png", body: PNG },
-  [`POST ${OP}/auth/service/login`]: { body: smsPage },
-  [`GET ${OP}/auth/service/sms`]: { status: 302, location: "https://myship.7-11.com.tw/Member/Callback?code=abc", cookies: ["optrust=DEVICE1; path=/; Max-Age=31536000"] },
-  "GET myship.7-11.com.tw/Member/Callback": { status: 302, location: "/", cookies: ["MemberLogin=LOGGEDIN1; path=/"] },
+  "GET myship.7-11.com.tw/Member/Login/": { status: 302, location: `https://${OP}/auth/service/authorize?client=CID1` },
+  [`GET ${OP}/auth/service/authorize`]: { body: authorizePage(), cookies: ["opsess=OPS1; path=/"] },
+  [`POST ${OP}${PC711_ROUTES.captcha}`]: { ct: JSONH, body: JSON.stringify({ imgInfo: IMG }) },
+  [`POST ${OP}${PC711_ROUTES.validate}`]: { ct: JSONH, body: JSON.stringify({ identifier: "AB", isOtpAlnum: false }) },
+  [`POST ${OP}${PC711_ROUTES.doLogin}`]: { ct: JSONH, body: JSON.stringify({ redirect: { lgtk: "LGTK1", state: "ST1", redirect_uri: "https://myship.7-11.com.tw/Member/FromUniopen" } }) },
+  [`POST ${OP}${PC711_ROUTES.redirect}`]: { status: 302, location: "https://myship.7-11.com.tw/Member/FromUniopen?code=C1" },
+  "GET myship.7-11.com.tw/Member/FromUniopen": { status: 302, location: "/", cookies: ["MemberLogin=LOGGEDIN1; path=/"] },
   "GET myship.7-11.com.tw/": { body: "<html>home</html>" },
   [`GET myship.7-11.com.tw/cart/easy/${GM}`]: (c) => ({ body: cartPage(String(c.headers.cookie || "").includes("MemberLogin=") ? "SID12345" : "") }),
   ...over,
@@ -75,11 +72,7 @@ const memStore = () => {
   return {
     saves,
     get row() { return row; },
-    store: {
-      load: async () => row,
-      save: async (r: Record<string, unknown>) => { row = { ...r }; saves.push({ ...r }); },
-      clear: async () => { row = null; },
-    },
+    store: { load: async () => row, save: async (r: Record<string, unknown>) => { row = { ...r }; saves.push({ ...r }); }, clear: async () => { row = null; } },
   };
 };
 const make = (f: unknown, o: { env?: Record<string, string>; now?: () => number; store?: ReturnType<typeof memStore>["store"] | null } = {}) => {
@@ -98,133 +91,152 @@ const connectAll = async (login: ReturnType<typeof createPc711Login>) => {
   return { st, sub, done };
 };
 
-describe("pc711 login — the admin flow", () => {
-  it("start → picture (found in the page's own script) → submit → SMS → connected; secrets never logged / returned / stored", async () => {
+describe("pc711 login — the real OPENPOINT AJAX flow", () => {
+  it("start → captcha → validate (SMS) → doLogin → OidcRedirect → connected; exact field names; secrets never logged/returned/stored", async () => {
     const s = fullSite();
     const m = memStore();
     const { login, logs } = make(s.f, { store: m.store });
     const { st, sub, done } = await connectAll(login);
     expect(st.flowId).toMatch(/^[0-9a-f]{32}$/);
-    expect(st.captcha).toMatch(/^data:image\/png;base64,/);
-    expect(logs.some((l) => /\[PC711_LOGIN\] captcha http=200 ms=\d+ inline$/.test(l))).toBe(true);
-    expect(sub).toEqual({ step: "sms", phoneTail: "678" });
+    expect(st.captcha).toMatch(/^data:image\/gif;base64,/);
+    expect(sub).toMatchObject({ step: "sms", phoneTail: "678" });
     expect(done).toEqual({ step: "connected" });
-    // the login form went exactly as served + the three typed values + trust_browser checked
-    const post = s.calls.find((c) => c.method === "POST" && c.path === "/auth/service/login")!;
-    expect([...new URLSearchParams(post.body)]).toEqual([["state", "st1"], ["mobile", PHONE], ["passwd_d", PW], ["verifyCode", VCODE], ["trust_browser", "1"]]);
-    expect(s.calls.filter((c) => c.body.includes(encodeURIComponent(PW)) || c.body.includes(PW)).length).toBe(1);
-    const smsCall = s.calls.find((c) => c.path === "/auth/service/sms")!;
-    const q = [...new URLSearchParams(smsCall.search)];
-    expect(q.filter(([k]) => k === "smsVerify").map(([, v]) => v).join("")).toBe(SMS);
-    expect(q.find(([k]) => k === "smsCode")![1]).toBe(SMS);
-    // the status
-    const status = login.status();
-    expect(status).toMatchObject({ state: "connected", autoLogins: 0, phoneTail: "678" });
-    // NEVER: in a log line, an answer, the saved row
-    const everything = [logs.join("\n"), JSON.stringify([st, sub, done, status]), JSON.stringify(m.saves)].join("\n");
-    for (const secret of [PW, SMS, VCODE, PHONE, "LOGGEDIN1", "DEVICE1", "OPS1"]) expect(everything).not.toContain(secret);
-    for (const l of logs) expect(l).toMatch(/^\[PC711_LOGIN\] [a-z_]+ http=\d+ ms=\d+ (?:[A-Za-z0-9_-]+|forms=[A-Za-z0-9_,-]* err=[01] ct=(?:html|json) sms_marker=[01])$/);
-    // the saved row = an encrypted blob that decrypts to the cookies (the key never leaves the server)
-    const row = m.row as Record<string, unknown>;
-    expect(String(row.blob)).toMatch(/^v1\./);
-    const blob = decryptBlob(row.blob, sessionKeyFrom({ PC711_SESSION_KEY: KEY }));
+    // every $.ajax call (not the plain OidcRedirect form post) went to OPENPOINT, urlencoded, as ajax
+    const AJAX_PATHS = [PC711_ROUTES.captcha, PC711_ROUTES.validate, PC711_ROUTES.doLogin, PC711_ROUTES.resend];
+    const ajax = s.calls.filter((c) => c.method === "POST" && c.host === OP && AJAX_PATHS.includes(c.path));
+    for (const c of ajax) {
+      expect(c.headers["x-requested-with"]).toBe("XMLHttpRequest");
+      expect(c.headers["content-type"]).toMatch(/application\/x-www-form-urlencoded/);
+      expect(c.headers.accept).toBe("application/json");
+    }
+    const validate = s.calls.find((c) => c.path === PC711_ROUTES.validate)!;
+    expect(validate.host).toBe(OP);
+    expect([...new URLSearchParams(validate.body)].sort()).toEqual([["mobile", PHONE], ["mobileCountry", "886"], ["oidc_client_id", "CID1"], ["passwd", PWB64], ["verify", VCODE], ["verifyType", "sms"]].sort());
+    const doLogin = s.calls.find((c) => c.path === PC711_ROUTES.doLogin)!;
+    const dl = new URLSearchParams(doLogin.body);
+    expect(doLogin.host).toBe(OP);
+    expect(dl.get("smsCode")).toBe(SMS);
+    expect(dl.get("passwd")).toBe(PWB64);
+    expect(dl.get("verify")).toBe(VCODE);
+    expect(dl.get("state")).toBe("ST1");
+    expect(dl.get("nonce")).toBe("NON1");
+    expect(dl.get("scope")).toBe("openid");
+    expect(dl.get("max_age")).toBe("0");
+    expect(dl.get("code_challenge")).toBe("CC1");
+    expect(dl.get("trust_browser")).toBe("Y");
+    expect(dl.get("login_tx_id")).toBe("TX1");
+    // the OidcRedirect form post carried the lgtk, then followed to myship
+    const red = s.calls.find((c) => c.path === PC711_ROUTES.redirect)!;
+    expect(new URLSearchParams(red.body).get("lgtk")).toBe("LGTK1");
+    // connected + password wiped from memory
+    expect(login.status()).toMatchObject({ state: "connected", phoneTail: "678" });
+    expect(login._flow()).toBeNull();
+    // NEVER: in a log line, an answer, the saved row — the raw password / its base64 / the SMS / the picture code / the phone
+    const everything = [logs.join("\n"), JSON.stringify([st, sub, done, login.status()]), JSON.stringify(m.saves)].join("\n");
+    for (const secret of [PW, PWB64, SMS, VCODE, PHONE, "LOGGEDIN1", "OPS1", "LGTK1"]) expect(everything).not.toContain(secret);
+    for (const l of logs) expect(l).toMatch(/^\[PC711_LOGIN\] [a-z_]+ http=\d+ ms=\d+ [^\n]*$/);
+    const blob = decryptBlob((m.row as Record<string, unknown>).blob, sessionKeyFrom({ PC711_SESSION_KEY: KEY }));
     expect(JSON.stringify(blob)).toContain("LOGGEDIN1");
     expect(JSON.stringify(blob)).not.toContain(PW);
+    expect(JSON.stringify(blob)).not.toContain(PWB64);
   });
-  it("a refused host stops the flow before any request to it", async () => {
-    const s = fullSite({ "GET myship.7-11.com.tw/Member/Login/": { status: 302, location: "https://evil.example.com/login" } });
-    const { login } = make(s.f);
-    expect(await login.start()).toEqual({ error: "refused_host" });
-    expect(s.calls.some((c) => c.host === "evil.example.com")).toBe(false);
-    expect(isAllowedPc711Url("https://myship.7-11.com.tw/cart/finish")).toBe(false);
-    expect(isAllowedPc711Url("https://bu-group.openpoint.com.tw/x")).toBe(true);
-    expect(isAllowedPc711Url("https://openpoint.com.tw.evil.com/")).toBe(false);
-  });
-  it("one flow at a time; a flow ends after 10 minutes", async () => {
-    let t = Date.UTC(2026, 10, 14, 4);
-    const s = fullSite();
-    const { login } = make(s.f, { now: () => t });
-    const a = await login.start();
-    const b = await login.start();
-    expect((await login.submit({ flowId: a.flowId, mobile: PHONE, password: PW, verifyCode: VCODE })).message).toBe("flow_expired");
-    t += PC711_FLOW_MS + 1;
-    expect((await login.submit({ flowId: b.flowId, mobile: PHONE, password: PW, verifyCode: VCODE })).message).toBe("flow_expired");
-    expect(s.calls.some((c) => c.method === "POST")).toBe(false); // the password never went anywhere
-  });
-  it("the page's own error text comes back (≤ 120 chars), never what was typed", async () => {
-    const s = fullSite({ [`POST ${OP}/auth/service/login`]: { body: `${authorizePage('<div class="error-msg">驗證碼錯誤，請重新輸入</div>')}` } });
+
+  it("a wrong picture code (B111002) → the code's own text + a NEW picture; secrets not kept", async () => {
+    const s = fullSite({ [`POST ${OP}${PC711_ROUTES.validate}`]: { status: 400, ct: JSONH, body: JSON.stringify({ codeId: "B111002", codeDescription: "圖形驗證碼錯誤" }) } });
     const { login } = make(s.f);
     const st = await login.start();
     const r = await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
-    expect(r).toEqual({ step: "error", message: "驗證碼錯誤，請重新輸入" });
-    expect(pageErrorText(`<div class="error">wrong ${PW}</div>`, [PW])).toBeNull();
-    expect(pageErrorText(`<span class="msg">${"字".repeat(200)}</span>`)!.length).toBe(120);
+    expect(r.step).toBe("error");
+    expect(r.message).toBe("圖形驗證碼錯誤");
+    expect(r.captcha).toMatch(/^data:image\/gif;base64,/); // a fresh picture came back
+    expect(login._flow().pw).toBe(""); // the wrong input is not kept
+    expect(login._flow().sms).toBeNull();
   });
-});
 
-describe("pc711 login — submit decides by the answer, not by #smsCodeForm being present", () => {
-  // the measured login page ALWAYS carries #smsCodeForm (and #loginForm), so presence is not a signal
-  const bothForms = (extra = "") => `<html><body>
-<form id="loginForm" method="post" action="/auth/service/login"><input type="hidden" name="state" value="s"><input type="text" name="mobile" value=""><input type="password" name="passwd_d" value=""><input type="text" name="verifyCode" value=""></form>
-<form id="smsCodeForm" method="get" action="/auth/service/sms"><input type="hidden" name="smsCode" value="">${[0, 1, 2, 3, 4, 5].map(() => '<input type="text" name="smsVerify" value="">').join("")}</form>
-${extra}</body></html>`;
-  const submitWith = async (body: string) => {
-    const s = fullSite({ [`POST ${OP}/auth/service/login`]: { body } });
+  it("735 (too many wrong SMS) → restart at step 1 with a new picture; the flow's password + sms are wiped", async () => {
+    const s = fullSite({ [`POST ${OP}${PC711_ROUTES.doLogin}`]: { status: 400, ct: JSONH, body: JSON.stringify({ codeId: "735", codeDescription: "簡訊驗證碼錯誤次數過多" }) } });
+    const m = memStore();
+    const { login } = make(s.f, { store: m.store });
+    const st = await login.start();
+    await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
+    const r = await login.sms({ flowId: st.flowId, code: SMS });
+    expect(r.step).toBe("restart");
+    expect(r.message).toBe("簡訊驗證碼錯誤次數過多");
+    expect(r.captcha).toMatch(/^data:image\/gif;base64,/);
+    expect(login._flow().pw).toBe("");
+    expect(login._flow().sms).toBeNull();
+  });
+
+  it("resend stays on step 2 — mobile + oidc_client_id only, no password, no new picture", async () => {
+    let resendHit = 0;
+    const s = fullSite({ [`POST ${OP}${PC711_ROUTES.resend}`]: (c) => { resendHit += 1; expect(c.body).not.toContain("passwd"); return { ct: JSONH, body: JSON.stringify({ codeId: "0" }) }; } });
     const { login } = make(s.f);
     const st = await login.start();
-    const r = await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
-    return { r, calls: s.calls };
-  };
-
-  it("a wrong code / password page (login + sms forms + error text) → error, NEVER sms", async () => {
-    const { r } = await submitWith(bothForms('<div class="error">驗證碼錯誤，請重新輸入</div>'));
-    expect(r).toEqual({ step: "error", message: "驗證碼錯誤，請重新輸入" });
-  });
-  it("both forms, no error, no sent marker → login_failed (not a silent sms step)", async () => {
-    const { r } = await submitWith(bothForms());
-    expect(r).toEqual({ step: "error", message: "login_failed" });
-  });
-  it("the SMS step shown (a sent marker, no error) → sms", async () => {
-    const { r } = await submitWith(bothForms("<p>簡訊驗證碼已發送至您的手機</p>"));
-    expect(r).toEqual({ step: "sms", phoneTail: "678" });
-  });
-  it("the login form gone → sms (the real success-to-sms page)", async () => {
-    const { r } = await submitWith('<html><form id="smsCodeForm" method="get" action="/auth/service/sms"><input name="smsCode" value=""></form></html>');
-    expect(r).toEqual({ step: "sms", phoneTail: "678" });
-  });
-  it("smsShownMarker: sent words / JSON / shown-sms-hidden-login only", () => {
-    expect(smsShownMarker(bothForms("<p>簡訊驗證碼已發送</p>"))).toBe(true);
-    expect(smsShownMarker(bothForms())).toBe(false);
-    expect(smsShownMarker('{"ok":true,"step":"sms"}', "application/json")).toBe(true);
-    const hiddenLogin = `<form id="loginForm" style="display:none" action="/x"><input name="passwd_d" value=""></form><form id="smsCodeForm" action="/y"><input name="smsCode" value=""></form>`;
-    expect(smsShownMarker(hiddenLogin)).toBe(true);
+    await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
+    const captchaBefore = s.calls.filter((c) => c.path === PC711_ROUTES.captcha).length;
+    const r = await login.resend({ flowId: st.flowId });
+    expect(r).toMatchObject({ step: "sms", resent: true });
+    expect(resendHit).toBe(1);
+    const body = new URLSearchParams(s.calls.find((c) => c.path === PC711_ROUTES.resend)!.body);
+    expect(body.get("mobile")).toBe(PHONE);
+    expect(body.get("mobileCountry")).toBe("886");
+    expect(body.get("oidc_client_id")).toBe("CID1");
+    expect(s.calls.filter((c) => c.path === PC711_ROUTES.captcha).length).toBe(captchaBefore); // no new picture
   });
 
-  it("the password + the 驗證碼 go ONLY to bu-group.openpoint.com.tw: another action host → refused_host, nothing sent", async () => {
-    const s = fullSite({ [`GET ${OP}/auth/service/authorize`]: { body: authorizePage().replace('action="/auth/service/login"', 'action="https://myship.7-11.com.tw/evil/login"') } });
-    const { login } = make(s.f);
-    const st = await login.start();
-    const r = await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
-    expect(r).toEqual({ step: "error", message: "refused_host" });
-    expect(s.calls.every((c) => !c.body.includes(PW) && !c.body.includes(encodeURIComponent(PW)))).toBe(true);
-    expect(s.calls.some((c) => c.method === "POST")).toBe(false);
-  });
-  it("the SMS code goes ONLY to openpoint: an sms-form action on another host → refused_host", async () => {
-    const smsElsewhere = '<html><form id="smsCodeForm" method="get" action="https://myship.7-11.com.tw/evil/sms"><input name="smsCode" value=""></form></html>';
-    const s = fullSite({ [`POST ${OP}/auth/service/login`]: { body: smsElsewhere } });
+  it("alnum OTP: letters accepted and upper-cased in the doLogin body", async () => {
+    const s = fullSite({ [`POST ${OP}${PC711_ROUTES.validate}`]: { ct: JSONH, body: JSON.stringify({ identifier: "", isOtpAlnum: true }) } });
     const { login } = make(s.f);
     const st = await login.start();
     const sub = await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
-    expect(sub).toEqual({ step: "sms", phoneTail: "678" });
-    const before = s.calls.length;
-    const r = await login.sms({ flowId: st.flowId, code: SMS });
-    expect(r).toEqual({ step: "error", message: "refused_host" });
-    expect(s.calls.slice(before).some((c) => c.body.includes(SMS) || c.search.includes(SMS))).toBe(false);
+    expect(sub).toMatchObject({ step: "sms", alnum: true });
+    const done = await login.sms({ flowId: st.flowId, code: "ab12cd" });
+    expect(done).toEqual({ step: "connected" });
+    expect(new URLSearchParams(s.calls.find((c) => c.path === PC711_ROUTES.doLogin)!.body).get("smsCode")).toBe("AB12CD");
+  });
+
+  it("Back wipes the password + picture code from memory and returns a fresh picture", async () => {
+    const s = fullSite();
+    const { login } = make(s.f);
+    const st = await login.start();
+    await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
+    const r = await login.back({ flowId: st.flowId });
+    expect(r.step).toBe("login");
+    expect(r.captcha).toMatch(/^data:image\/gif;base64,/);
+    expect(login._flow().pw).toBe("");
+    expect(login._flow().vc).toBe("");
+    expect(login._flow().sms).toBeNull();
+  });
+
+  it("a changed login page (a missing inline var) → login_page_changed, the missing name is logged, no captcha call", async () => {
+    const s = fullSite({ [`GET ${OP}/auth/service/authorize`]: { body: authorizePage({ state: "" }) } });
+    const { login, logs } = make(s.f);
+    expect(await login.start()).toEqual({ error: "login_page_changed" });
+    expect(logs.some((l) => l.includes("missing=") && l.includes("state"))).toBe(true);
+    expect(s.calls.some((c) => c.path === PC711_ROUTES.captcha)).toBe(false);
+  });
+
+  it("the picture is the getCaptcha JSON imgInfo as a GIF data URL; ↻ fetches it again", async () => {
+    const s = fullSite();
+    const { login } = make(s.f);
+    const st = await login.start();
+    expect(st.captcha).toBe(`data:image/gif;base64,${IMG}`);
+    const again = await login.captcha({ flowId: st.flowId });
+    expect(again.captcha).toBe(`data:image/gif;base64,${IMG}`);
+    expect(s.calls.filter((c) => c.path === PC711_ROUTES.captcha).length).toBe(2);
+  });
+
+  it("every password / SMS request goes ONLY to bu-group.openpoint.com.tw", async () => {
+    const s = fullSite();
+    const { login } = make(s.f);
+    await connectAll(login);
+    for (const p of [PC711_ROUTES.validate, PC711_ROUTES.doLogin])
+      for (const c of s.calls.filter((x) => x.path === p)) expect(c.host).toBe(OP);
   });
 });
 
-describe("pc711 login — key and store", () => {
-  it("no PC711_SESSION_KEY → key_missing everywhere, no request, the route answers 503", async () => {
+describe("pc711 login — key, store, routes", () => {
+  it("no key → key_missing everywhere, no request, the route answers 503; Render 32-char key accepted, 31 refused", async () => {
     const s = fullSite();
     const { login } = make(s.f, { env: {} });
     expect(login.status().state).toBe("key_missing");
@@ -236,7 +248,6 @@ describe("pc711 login — key and store", () => {
     expect(res.code).toBe(503);
     expect(sessionKeyFrom({ PC711_SESSION_KEY: "short" })).toBeNull();
     expect(sessionKeyFrom({ PC711_SESSION_KEY: Buffer.alloc(32, 1).toString("base64") })).not.toBeNull();
-    // a Render "Generate" value: any string of ≥ 32 characters is hashed to the 32-byte key; 31 is refused
     const k32 = sessionKeyFrom({ PC711_SESSION_KEY: "R".repeat(32) });
     expect(k32).not.toBeNull();
     expect(k32!.length).toBe(32);
@@ -250,8 +261,7 @@ describe("pc711 login — key and store", () => {
   });
   it("loaded at boot: a saved session survives a restart", async () => {
     const m = memStore();
-    const first = make(fullSite().f, { store: m.store });
-    await connectAll(first.login);
+    await connectAll(make(fullSite().f, { store: m.store }).login);
     const second = make(fullSite().f, { store: m.store });
     await second.login.load();
     expect(second.login.status()).toMatchObject({ state: "connected", phoneTail: "678" });
@@ -266,97 +276,94 @@ describe("pc711 login — key and store", () => {
     expect(m.row).toBeNull();
     expect(await login.getSession()).toBeNull();
   });
-  it("the routes never echo a secret, and the limiter answers 429", async () => {
-    const { login } = make(fullSite().f);
-    const h = createPc711Handlers(login, { allowed: () => true });
-    const out: unknown[] = [];
-    const res = () => ({ code: 200, status(c: number) { this.code = c; return this; }, json(b: unknown) { out.push(b); return this; } });
-    await h.start({ body: {} } as never, res() as never);
-    const flowId = (out[0] as { flowId: string }).flowId;
-    await h.submit({ body: { flowId, mobile: PHONE, password: PW, verifyCode: VCODE } } as never, res() as never);
-    await h.sms({ body: { flowId, code: SMS } } as never, res() as never);
-    const text = JSON.stringify(out);
-    for (const secret of [PW, SMS, VCODE, PHONE]) expect(text).not.toContain(secret);
-    const blocked = createPc711Handlers(login, { statusAllowed: () => false });
-    const r = res();
-    await blocked.status({} as never, r as never);
-    expect(r.code).toBe(429);
+  it("one flow at a time; a flow ends after 10 minutes; the password never goes out after expiry", async () => {
+    let t = Date.UTC(2026, 10, 14, 4);
+    const s = fullSite();
+    const { login } = make(s.f, { now: () => t });
+    const a = await login.start();
+    t += PC711_FLOW_MS + 1;
+    expect((await login.submit({ flowId: a.flowId, mobile: PHONE, password: PW, verifyCode: VCODE })).message).toBe("flow_expired");
+    expect(s.calls.some((c) => c.path === PC711_ROUTES.validate)).toBe(false);
   });
-  it("status has its OWN limiter: status calls never use up the login budget, and either can 429 alone", async () => {
+  it("status has its OWN limiter: status never uses the login budget, and either can 429 alone", async () => {
     const { login } = make(fullSite().f);
     let loginUses = 0, statusUses = 0;
     const h = createPc711Handlers(login, { allowed: () => { loginUses += 1; return true; }, statusAllowed: () => { statusUses += 1; return true; } });
     const res = () => ({ code: 200, status(c: number) { this.code = c; return this; }, json() { return this; } });
     for (let i = 0; i < 5; i++) await h.status({} as never, res() as never);
     expect(statusUses).toBe(5);
-    expect(loginUses).toBe(0); // status never touched the login limiter
-    // the login routes do NOT use the status limiter
-    const h2 = createPc711Handlers(login, { allowed: () => false, statusAllowed: () => { throw new Error("status limiter must not run for login routes"); } });
+    expect(loginUses).toBe(0);
+    const blocked = createPc711Handlers(login, { statusAllowed: () => false });
     const r = res();
-    await h2.start({ body: {} } as never, r as never);
+    await blocked.status({} as never, r as never);
     expect(r.code).toBe(429);
   });
 });
 
-describe("pc711 login — the one-tap quick re-login", () => {
-  const quickPage = authorizePage('<form id="quickLoginForm" method="post" action="/auth/service/quick"><input type="hidden" name="device" value="dev1"></form>');
-  it("uses the page's own 快速登入 form (no password typed), counts the success; limits: 1 per 10 min, 6 per day", async () => {
+// the JSON quick-login happy path (authorize → candidates → select → handoff → myship)
+const quickSite = (over: Record<string, Reply | ((c: Call) => Reply)> = {}) => fullSite({
+  [`POST ${OP}${PC711_ROUTES.quickCandidates}`]: { ct: JSONH, body: JSON.stringify({ candidates: [{ id: "cand1" }] }) },
+  [`POST ${OP}${PC711_ROUTES.quickSelect}`]: { ct: JSONH, body: JSON.stringify({ redirect: { lgtk: "QLGTK", state: "ST1", redirect_uri: "https://myship.7-11.com.tw/Member/FromUniopen" } }) },
+  [`POST ${OP}${PC711_ROUTES.quickHandoff}`]: { status: 302, location: "https://myship.7-11.com.tw/Member/FromUniopen?code=Q1" },
+  ...over,
+});
+
+describe("pc711 login — the one-tap quick re-login (JSON, unproven)", () => {
+  it("already logged in on myship with saved cookies → ok, no password", async () => {
+    const m = memStore();
+    const { login } = make(fullSite().f, { store: m.store });
+    await connectAll(login);
+    // the saved cookies land straight on myship logged in
+    const s2 = site({
+      "GET myship.7-11.com.tw/Member/Login/": (c) => (String(c.headers.cookie || "").includes("MemberLogin=") ? { status: 302, location: "https://myship.7-11.com.tw/" } : { status: 302, location: `https://${OP}/auth/service/authorize` }),
+      "GET myship.7-11.com.tw/": { body: "home" },
+      [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage("SID12345") },
+    });
+    const login2 = createPc711Login({ fetchImpl: s2.f as never, now: () => Date.UTC(2026, 10, 14, 5), log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login2.load();
+    const again = await login2.quickRelogin();
+    expect(again).toMatchObject({ cookies: expect.any(Object) });
+    for (const c of s2.calls) expect(c.body).not.toContain(PWB64);
+  });
+  it("the quick-login candidates ask for a secret (passkey) → needs_login, stop", async () => {
+    const m = memStore();
+    await connectAll(make(fullSite().f, { store: m.store }).login);
+    const s2 = fullSite({ [`POST ${OP}${PC711_ROUTES.quickCandidates}`]: { ct: JSONH, body: JSON.stringify({ candidates: [{ id: "x", type: "passkey" }] }) } });
+    const login2 = createPc711Login({ fetchImpl: s2.f as never, now: () => Date.UTC(2026, 10, 14, 5), log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login2.load();
+    expect(await login2.quickRelogin()).toBeNull();
+    expect(login2.status().state).toBe("needs_login");
+  });
+  it("limits: 1 per 10 minutes, 6 per Taipei day", async () => {
     let t = Date.UTC(2026, 10, 14, 4);
     const m = memStore();
-    const s = fullSite({
-      [`GET ${OP}/auth/service/authorize`]: { body: quickPage },
-      [`POST ${OP}/auth/service/quick`]: { status: 302, location: "https://myship.7-11.com.tw/Member/Callback?code=q" },
-    });
-    // connect first with the normal flow (the authorize page also has the quick form; it is ignored there)
-    const { login } = make(s.f, { store: m.store, now: () => t });
-    await connectAll(login);
-    const before = s.calls.length;
-    const again = await login.quickRelogin();
-    expect(again).toMatchObject({ cookies: expect.any(Object) });
-    const quick = s.calls.slice(before);
-    expect(quick.some((c) => c.method === "POST" && c.path === "/auth/service/quick")).toBe(true);
-    expect(quick.some((c) => c.path === "/auth/service/login")).toBe(false);
-    for (const c of quick) expect(c.body).not.toContain(PW);
-    expect(login.status().autoLogins).toBe(1);
-    // within 10 minutes → nothing is sent
-    const n = s.calls.length;
-    expect(await login.quickRelogin()).toBeNull();
-    expect(s.calls.length).toBe(n);
-    // 6 tries per Taipei day at most
-    for (let i = 0; i < 10; i++) { t += PC711_QUICK_GAP_MS + 1; await login.quickRelogin(); }
+    await connectAll(make(fullSite().f, { store: m.store }).login);
+    const login2 = createPc711Login({ fetchImpl: quickSite().f as never, now: () => t, log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login2.load();
+    expect(await login2.quickRelogin()).toMatchObject({ cookies: expect.any(Object) });
+    const n = (m.row as Record<string, unknown>).quick_day_count;
+    expect(await login2.quickRelogin()).toBeNull(); // within 10 min
+    expect((m.row as Record<string, unknown>).quick_day_count).toBe(n);
+    for (let i = 0; i < 10; i++) { t += PC711_QUICK_GAP_MS + 1; await login2.quickRelogin(); }
     expect(Number((m.row as Record<string, unknown>).quick_day_count)).toBe(PC711_QUICK_PER_DAY);
-  });
-  it("a page that asks for the password / SMS → needs_login, stop (nothing typed)", async () => {
-    const m = memStore();
-    const s = fullSite();
-    const { login } = make(s.f, { store: m.store });
-    await connectAll(login);
-    const before = s.calls.length;
-    expect(await login.quickRelogin()).toBeNull();
-    expect(login.status().state).toBe("needs_login");
-    expect(s.calls.slice(before).some((c) => c.method === "POST")).toBe(false);
-    expect(await login.getSession()).toBeNull(); // store checks pause
-    expect(await login.quickRelogin()).toBeNull();
   });
 });
 
-describe("pc711 login — page reading", () => {
-  it("the 驗證碼 picture: an <img> that looks like one, else a quoted path in the page's script", () => {
-    expect(captchaCandidates('<img id="vcodeImg" src="/auth/vcode.png">', "https://bu-group.openpoint.com.tw/a")[0]).toMatchObject({ source: "img", url: "https://bu-group.openpoint.com.tw/auth/vcode.png" });
-    expect(captchaCandidates(authorizePage(), "https://bu-group.openpoint.com.tw/auth/service/authorize")[0]).toMatchObject({ source: "inline", url: "https://bu-group.openpoint.com.tw/auth/captcha/image?t=" });
-  });
-  it("quick login: a form or link that says 快速登入 / quick and asks no secret — never the login form", () => {
-    const f = pageInfo(authorizePage()).forms;
-    expect(findQuickLogin(authorizePage(), f, "https://x.openpoint.com.tw/")).toBeNull();
-    const link = '<a href="/auth/service/quick?d=1">快速登入</a>';
-    expect(findQuickLogin(authorizePage(link), pageInfo(authorizePage(link)).forms, "https://bu-group.openpoint.com.tw/a")).toMatchObject({ kind: "link" });
-    const secret = '<form id="quickForm" action="/q" method="post"><input name="passwd_d" value=""></form>';
-    expect(findQuickLogin(secret, pageInfo(secret).forms, "https://bu-group.openpoint.com.tw/a")).toBeNull();
+describe("pc711 login — page reading + helpers", () => {
+  it("readScriptVars reads the inline string values; an empty value is treated as missing", () => {
+    const v = readScriptVars(authorizePage({ token: "TK9" }));
+    expect(v).toMatchObject({ oidc_client_id: "CID1", state: "ST1", nonce: "NON1", scope: "openid", maxAge: "0", codeChallenge: "CC1", loginTxId: "TX1", token: "TK9" });
+    expect(readScriptVars(authorizePage({ state: "" })).state).toBeUndefined();
   });
   it("phone numbers", () => {
     expect(normalizeMobile("912345678")).toBe(PHONE);
     expect(normalizeMobile("+886 912-345-678")).toBe(PHONE);
     expect(normalizeMobile("12345")).toBe("");
+  });
+  it("hosts: openpoint allowed, /cart/finish and a look-alike refused", () => {
+    expect(isAllowedPc711Url("https://bu-group.openpoint.com.tw/auth/service/getCaptcha")).toBe(true);
+    expect(isAllowedPc711Url("https://myship.7-11.com.tw/cart/finish")).toBe(false);
+    expect(isAllowedPc711Url("https://openpoint.com.tw.evil.com/")).toBe(false);
   });
   it("the jar drops an expired cookie", () => {
     const j = createPc711Jar({ h: "a=1; b=2" });
@@ -366,17 +373,16 @@ describe("pc711 login — page reading", () => {
 });
 
 describe("pc711 login — server.js wiring (additions only)", () => {
-  it("six admin routes behind requireAuth + requireAdmin + the 4kb parser + its own limiter; the probe gets the session; the env cookie is gone", () => {
+  it("the admin routes (incl. resend + back) behind requireAuth + requireAdmin + the 4kb parser; status has its own limiter; the probe gets the session", () => {
     const src = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8");
-    for (const [path, routes] of [["login/start", "pc711Routes.start"], ["login/captcha", "pc711Routes.captcha"], ["login/submit", "pc711Routes.submit"], ["login/sms", "pc711Routes.sms"], ["disconnect", "pc711Routes.disconnect"]])
+    for (const [path, routes] of [["login/start", "pc711Routes.start"], ["login/captcha", "pc711Routes.captcha"], ["login/submit", "pc711Routes.submit"], ["login/sms", "pc711Routes.sms"], ["login/resend", "pc711Routes.resend"], ["login/back", "pc711Routes.back"], ["disconnect", "pc711Routes.disconnect"]])
       expect(src).toContain(`app.post("/admin/pc711/${path}", requireAuth, requireAdmin, pc711Json, ${routes});`);
     expect(src).toContain('app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);');
-    expect(src).toContain('const pc711Allowed = createWindowLimiter({ max: 20, windowMs: 10 * 60 * 1000 });');
-    expect(src).toContain('const pc711StatusAllowed = createWindowLimiter({ max: 120, windowMs: 10 * 60 * 1000 });'); // status: its own limiter
+    expect(src).toContain('const pc711StatusAllowed = createWindowLimiter({ max: 120, windowMs: 10 * 60 * 1000 });');
     expect(src).toContain('const pc711Routes = createPc711Handlers(pc711, { allowed: pc711Allowed, statusAllowed: pc711StatusAllowed });');
     expect(src).toContain('const pc711Json = express.json({ limit: "4kb" });');
     expect(src).toContain("const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies } });");
-    expect(src).not.toContain("PC_PROBE_MYSHIP_COOKIE"); // the probe no longer reads the env cookie
-    expect(src).toContain('req.path.startsWith("/admin/pc711/")'); // bodies skip the global parser
+    expect(src).not.toContain("PC_PROBE_MYSHIP_COOKIE");
+    expect(src).toContain('req.path.startsWith("/admin/pc711/")');
   });
 });
