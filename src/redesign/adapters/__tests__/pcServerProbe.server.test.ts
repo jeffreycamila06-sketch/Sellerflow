@@ -82,15 +82,20 @@ const fullSite = (over: Record<string, Reply | ((c: Call) => Reply)> = {}) => si
 const settings = (over: Record<string, string | null> = {}) => async (key: string) => ({
   parcel_check_shared_gms: JSON.stringify([GM, "GM2610017302504"]), parcel_check_sender_phone: MARK.sender, parcel_check_probe_buyer: MARK.buyer, ...over,
 } as Record<string, string | null>)[key] ?? null;
-const run = (f: unknown, o: { env?: Record<string, string>; now?: number; readSetting?: (k: string) => Promise<string | null> } = {}) => {
+// The saved 7-11 login (server/pc711Login.js) — the ONLY cookie source of the store step. ON also
+// carries the old env cookie, which must never be read.
+const SESSION = { get: async () => ({ cookies: { "myship.7-11.com.tw": `auth=${MARK.cookie}; other=${MARK.cookie}2` } }) };
+const ON = { PC_SERVER_PROBE: "1", PC_PROBE_MYSHIP_COOKIE: "auth=MARKENVCOOKIE" };
+type Sess = { get?: () => Promise<unknown>; relogin?: () => Promise<unknown>; save?: (d: unknown) => Promise<unknown> } | null;
+const run = (f: unknown, o: { env?: Record<string, string>; now?: number; readSetting?: (k: string) => Promise<string | null>; session?: Sess } = {}) => {
   const logs: string[] = [];
   const p = runPcServerProbe({
     fetchImpl: f as typeof fetch, now: () => o.now ?? NOON, log: (l: string) => logs.push(l),
     readSetting: o.readSetting ?? settings(), env: o.env ?? { PC_SERVER_PROBE: "1" },
+    session: (o.session !== undefined ? o.session : o.env === ON ? SESSION : null) as never,
   });
   return p.then((result) => ({ result, logs }));
 };
-const ON = { PC_SERVER_PROBE: "1", PC_PROBE_MYSHIP_COOKIE: `auth=${MARK.cookie}; other=${MARK.cookie}2` };
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -123,7 +128,7 @@ describe("1a phone step (no cookies)", () => {
     });
     expect(post.headers["user-agent"]).toMatch(/Mozilla/);
     for (const c of s.calls) expect(Object.keys(c.headers).map((k) => k.toLowerCase())).not.toContain("cookie");
-    expect(result.store).toMatchObject({ kind: "no_cookie" }); // no cookie env → the store step is skipped
+    expect(result.store).toMatchObject({ kind: "no_session" }); // no saved 7-11 login → the store step is skipped
   });
   it("verdicts like the extension: restricted only for the real wording; other refusals / shapes are unknown + a kind", async () => {
     const cases: [Reply, string, string][] = [
@@ -179,7 +184,7 @@ describe("1a phone step (no cookies)", () => {
   });
 });
 
-describe("1b store step (only with the cookie env)", () => {
+describe("1b store step (only with the saved 7-11 login)", () => {
   it("happy path: cart → detail → MAP → the served E-Map form → byIDData; verdict mapped like the extension", async () => {
     const s = fullSite();
     const { result } = await run(s.f, { env: ON });
@@ -189,7 +194,7 @@ describe("1b store step (only with the cookie env)", () => {
       `GET myship.7-11.com.tw/eMap/MM1/${GM}`, "POST emap.unipcsc.com.tw/ecmap/default.aspx", "POST emap.unipcsc.com.tw/ecmap/byIDData.aspx",
     ]);
     const [cart, detail, map, , emap, byid] = s.calls.slice(2);
-    // the cookie jar: seeded from the env for myship, every Set-Cookie applied, one jar per host
+    // the cookie jar: seeded from the saved session for myship, every Set-Cookie applied, one jar per host
     expect(cart.headers.cookie).toBe(`auth=${MARK.cookie}; other=${MARK.cookie}2`);
     expect(detail.headers.cookie).toContain(`ASP.NET_SessionId=${MARK.setCookie}`);
     expect(emap.headers.cookie).toBeUndefined();
@@ -258,11 +263,47 @@ describe("1b store step (only with the cookie env)", () => {
     const detail = s.calls.find((c) => c.method === "POST" && c.path === "/cart/detail");
     expect(new URLSearchParams(detail!.body).has("CarQty")).toBe(false);
   });
-  it("no cookie env → the store step makes no request", async () => {
+  it("no saved 7-11 login → the store step makes no request (the env cookie is never read)", async () => {
     const s = fullSite();
-    const { result } = await run(s.f, { env: { PC_SERVER_PROBE: "1", PC_PROBE_MYSHIP_COOKIE: "  " } });
-    expect(result.store.kind).toBe("no_cookie");
+    const { result, logs } = await run(s.f, { env: ON, session: null });
+    expect(result.store.kind).toBe("no_session");
     expect(s.calls.length).toBe(2);
+    expect(logs.some((l) => l.includes("store.skip") && l.includes("no_session"))).toBe(true);
+    for (const c of s.calls) expect(String(c.headers.cookie || "")).not.toContain("MARKENVCOOKIE");
+  });
+  it("uses the saved session, never the env cookie; a logged-in cart saves the jar back", async () => {
+    const s = fullSite();
+    const saved: unknown[] = [];
+    const { result } = await run(s.f, { env: ON, session: { ...SESSION, save: async (d) => { saved.push(d); } } });
+    expect(result.store.verdict).toBe("full");
+    for (const c of s.calls) expect(String(c.headers.cookie || "")).not.toContain("MARKENVCOOKIE");
+    expect(String(s.calls[2].headers.cookie)).toContain(MARK.cookie);
+    expect(saved.length).toBe(1);
+    expect(JSON.stringify(saved[0])).toContain(`ASP.NET_SessionId=${MARK.setCookie}`);
+  });
+  it("logged out → ONE quick re-login, then the cart page once more with the new session", async () => {
+    let relogins = 0;
+    const s = fullSite({
+      [`GET myship.7-11.com.tw/cart/easy/${GM}`]: (c) => (String(c.headers.cookie || "").includes("NEWSESS") ? { body: cartPage(MARK.sid) } : { status: 500, body: "<html>Server Error</html>" }),
+    });
+    const { result, logs } = await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => { relogins += 1; return { cookies: { "myship.7-11.com.tw": "auth=NEWSESS" } }; } } });
+    expect(relogins).toBe(1);
+    expect(result.store.verdict).toBe("full");
+    expect(logs.some((l) => l.includes("store.relogin") && l.includes(" ok "))).toBe(true);
+  });
+  it("logged out and the quick re-login gives nothing → the store step stops (login_not_accepted), one try only", async () => {
+    let relogins = 0;
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: { body: cartPage("") } });
+    const { result } = await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => { relogins += 1; return null; } } });
+    expect(relogins).toBe(1);
+    expect(result.store.kind).toBe("login_not_accepted");
+  });
+  it("a transient cart failure (network/timeout) → NO re-login; only a real logged-out page triggers one", async () => {
+    let relogins = 0;
+    const s = fullSite({ [`GET myship.7-11.com.tw/cart/easy/${GM}`]: () => { throw new Error("boom"); } });
+    const { result } = await run(s.f, { env: ON, session: { ...SESSION, relogin: async () => { relogins += 1; return { cookies: { "myship.7-11.com.tw": "auth=NEWSESS" } }; } } });
+    expect(relogins).toBe(0); // a transient failure is not a logged-out verdict
+    expect(result.store.kind).toBe("network");
   });
   it("the E-Map form is posted only to the two E-Map hosts", async () => {
     const s = fullSite({ [`GET myship.7-11.com.tw/eMap/MM1/${GM}`]: { body: mapPage("https://evil.example.com/ecmap/default.aspx") } });
@@ -342,7 +383,7 @@ describe("1c hard guards", () => {
     const s = fullSite();
     const f = vi.fn(async (u: string, init: never) => { t += 15_000; return s.f(u, init); });
     const logs: string[] = [];
-    const result = await runPcServerProbe({ fetchImpl: f as unknown as typeof fetch, now: () => t, log: (l: string) => logs.push(l), readSetting: settings(), env: ON });
+    const result = await runPcServerProbe({ fetchImpl: f as unknown as typeof fetch, now: () => t, log: (l: string) => logs.push(l), readSetting: settings(), env: ON, session: SESSION as never });
     expect(f).toHaveBeenCalledTimes(3); // 0 s, 15 s, 30 s — the next one would start at 45 s
     expect(result.store.kind).toBe("budget");
   });
@@ -393,7 +434,7 @@ describe("fix round 1, part 2", () => {
     vi.useFakeTimers();
     const s = fullSite();
     const logs: string[] = [];
-    const p = runPcServerProbe({ fetchImpl: s.f as unknown as typeof fetch, log: (l: string) => logs.push(l), readSetting: () => new Promise(() => {}), env: ON });
+    const p = runPcServerProbe({ fetchImpl: s.f as unknown as typeof fetch, log: (l: string) => logs.push(l), readSetting: () => new Promise(() => {}), env: ON, session: SESSION as never });
     await vi.advanceTimersByTimeAsync(PC_PROBE_SETTINGS_MS + 20);
     const result = await p;
     expect(PC_PROBE_SETTINGS_MS).toBe(10_000);
@@ -459,7 +500,7 @@ describe("fix round 1, part 2", () => {
   });
   it("6 a log function that throws does not stop the run", async () => {
     const s = fullSite();
-    const result = await runPcServerProbe({ fetchImpl: s.f as unknown as typeof fetch, now: () => NOON, log: () => { throw new Error("log is broken"); }, readSetting: settings(), env: ON });
+    const result = await runPcServerProbe({ fetchImpl: s.f as unknown as typeof fetch, now: () => NOON, log: () => { throw new Error("log is broken"); }, readSetting: settings(), env: ON, session: SESSION as never });
     expect(result).toMatchObject({ phone: { verdict: "ok" }, store: { verdict: "full" } });
     expect(s.calls.length).toBe(8);
   });
@@ -503,7 +544,7 @@ describe("fix round 2", () => {
     const s = fullSite();
     const logs: string[] = [];
     const result = await runPcServerProbe({
-      fetchImpl: s.f as unknown as typeof fetch, now: () => NOON, log: (l: string) => logs.push(l), readSetting: settings(), env: ON, parseBudgetMs: 0,
+      fetchImpl: s.f as unknown as typeof fetch, now: () => NOON, log: (l: string) => logs.push(l), readSetting: settings(), env: ON, session: SESSION as never, parseBudgetMs: 0,
     });
     expect(result.store).toMatchObject({ verdict: "unknown", kind: "parse_too_slow" });
     expect(s.calls.slice(2).map((c) => `${c.method} ${c.host}${c.path}`)).toEqual([`GET myship.7-11.com.tw/cart/easy/${GM}`]);

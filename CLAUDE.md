@@ -5165,8 +5165,8 @@ store)? `server/pcServerProbe.js` only LOGS what happened. It writes nothing (no
 change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sender_phone`, `parcel_check_probe_buyer`).
 `chrome-extension/` was read, never edited.
 - **Env (Render):** `PC_SERVER_PROBE` = exactly `1` turns it on (anything else: route answers 404 `disabled`, no boot
-  timer). `PC_PROBE_MYSHIP_COOKIE` = the Cookie header of a logged-in 賣貨便 session (owner sets it; never logged or
-  returned) — without it only the phone step runs (`store … no_cookie`).
+  timer). The STORE step uses the saved 7-11 login (the 2026-11-14 7-11 CHECKER LOGIN below); with no saved
+  login it logs `store … no_session`. (The old `PC_PROBE_MYSHIP_COOKIE` env cookie is removed.)
 - **Runs:** once 90 s after the server starts, and `POST /admin/pc-server-probe` (requireAuth + requireAdmin, 1 run per
   10 minutes for the whole server). Answer / log: `[PC_PROBE] <step> http=<n> ms=<n> <note> maint=0|1`, one line per step.
 - **Phone step:** the extension's `checkRestricted` with no cookies (token page → `CheckoutValidation`); verdict
@@ -5203,3 +5203,58 @@ change) and reads three settings (`parcel_check_shared_gms`, `parcel_check_sende
 - ⚠️ NOT proven: everything about the real sites — no real request was made (fake fetch only). Remove the two env vars
   when the answer is known.
 - **Login walk (branch `claude/pc-login-walk`):** `server/pcLoginWalk.js` runs ONCE after the probe's boot run (same `PC_SERVER_PROBE` switch): GET only, own cookie jar (never `PC_PROBE_MYSHIP_COOKIE`), from `myship.7-11.com.tw/Member/Login/` through ≤ 6 redirects on myship / uniopen / openpoint hosts (else `refused host=`), logs `[PC_LOGIN_WALK]` hop host+path+http+bytes+ct, then the last page's form ids / methods / action host+path, field NAMES:types (≤ 30), captcha image path, recaptcha/hcaptcha/turnstile + 驗證碼/OTP/簡訊/快速登入 yes/no, first-party script paths; a JS app (< 3 fields) → ≤ 3 scripts (1 MB) scanned for quoted login/otp/captcha/… paths (≤ 40). 10 s / request, 40 s, ≤ 12 requests. Never a value.
+
+
+## 2026-11-14 — 7-11 CHECKER LOGIN (admin) (branch `claude/pc711-login`, NOT merged; sql/158 NOT applied; needs PC711_SESSION_KEY + a Render deploy)
+The Render server logs in to 7-11 (OPENPOINT) ITSELF, once, with the admin typing phone + password +
+驗證碼 + SMS code in a new **Admin → Controls → 7-11 Login** tile. 7-11 is asked to remember the server
+(trust_browser); the server keeps the session, logs itself back in with the page's one-tap 快速登入 when it
+can, and the probe's STORE step uses THIS session instead of the old env cookie (`PC_PROBE_MYSHIP_COOKIE`
+is removed from the code). Sellers unaffected; the Chrome extension + every parcel verdict untouched
+(fence proven: ZERO diff in chrome-extension/, ParcelScan.tsx, parcelScan.ts, server/emapCheck.js,
+server/fmStoreCheck*.js).
+- **Measured from Render (the login walk):** myship /Member/Login/ → 302 →
+  `https://bu-group.openpoint.com.tw/auth/service/authorize` (200, plain HTML, no recaptcha/hcaptcha/
+  turnstile). Forms #loginForm (POST: mobile, passwd_d, verifyCode, trust_browser), #smsCodeForm
+  (GET: smsCode + 6× smsVerify), #appSmsCodeForm, #oidcDialogForm (consent). Scripts incl.
+  `/cdn/js/lib/checkDevice.js`.
+- **The 驗證碼 picture (how it's found, NOT confirmed on the real site):** it is NOT a plain `<img src>`.
+  `captchaCandidates()` collects, in order: an `<img>` whose attrs look like a code (captcha/verif/
+  valid/vcode…) with a non-empty `src`/`data-src`; then a quoted real PATH in the page's own inline
+  script that contains captcha/verifyCode/validateCode/… (must contain a `/`, so `#captchaImg` is
+  skipped); then the same search inside up to 4 first-party `<script src>` files. `fetchPicture()` GETs
+  each candidate and keeps the first that returns image bytes / a `data:image` / a base64 string in JSON
+  → a `data:` URL for the Admin UI. ↻ re-GETs the same URL with a cache-bust. The way it was found is the
+  one log word (`img` / `inline` / `script`).
+- **The 快速登入 path (how it's found, NOT confirmed):** `findQuickLogin()` — a form whose id/action says
+  quick/fast and that asks NO password/驗證碼/SMS field; else a link or button whose text is 快速登入 (or
+  id/onclick says quick) and whose href/`location=` is a real URL. The quick re-login walks authorize →
+  (consent form, as served) → the quick control, then checks myship is logged in. Anything that shows the
+  password or SMS form → state `needs_login`, STOP (it never types a password).
+- **Files:** NEW `server/pc711Login.js` (the whole login + jar + AES-256-GCM blob + createPc711Handlers +
+  createPc711Store), `src/redesign/adapters/pc711Login.ts` (client), `src/redesign/components/Pc711Panel.tsx`
+  (the tile's bottom-sheet), `sql/158_pc711_session.sql` (+ rollback) + 4 test files. EDIT `server.js`
+  (6 admin routes + the probe `session`), `server/pcServerProbe.js` (STORE uses the session + ONE quick
+  re-login; env cookie gone), `src/redesign/screens/Admin.tsx` (tile + panel + attention dot), i18n
+  (51 `rd_pc711_*` keys ×8 langs, English text in all).
+- **Routes** (requireAuth + requireAdmin, `express.json({limit:"4kb"})`, own limiter 20/10 min):
+  POST /admin/pc711/login/start → { flowId, captcha } · /captcha (fresh picture) · /submit {mobile,
+  password,verifyCode} → {step:"sms",phoneTail} | {step:"error",message} · /sms {code} → connected ·
+  /disconnect · GET /admin/pc711/status → {state:not_connected|connected|needs_login|key_missing, since,
+  lastOkAt, autoLogins, phoneTail, lastProblem}. The Admin "Test now" button = the existing probe route.
+- **HARD RULES (test-pinned):** password + SMS used once, never stored / logged / returned; no request or
+  response body ever logged; hosts = myship.7-11.com.tw + bu-group.openpoint.com.tw + the two E-Map hosts
+  (anything else refused before any request); /cart/finish never requested; one flow at a time, 10-min
+  expiry; log lines = `[PC711_LOGIN] <step> http=<n> ms=<n> <one word>`. Quick re-login ≤ 1 per 10 min and
+  6 per Taipei day. Session saved only as `v1.` AES-256-GCM (key env `PC711_SESSION_KEY`); no key → state
+  key_missing, routes 503, nothing stored; loaded at boot so a deploy keeps the login.
+- **sql/158:** one-row table `pc711_session` (encrypted blob + timestamps + state), RLS on, NO policies,
+  service role only; nothing in the app reads it. Rollback drops it.
+- ⚠️ **NOT PROVEN:** everything about the real 7-11 / OPENPOINT pages — the container cannot reach 7-11
+  (`bu-group.openpoint.com.tw` is outside the session's allowed network; it must be allowed to try live).
+  Every test uses a FAKE page built from the walk's field names. The 驗證碼 fetch and 快速登入 control are
+  FOUND on the page at run time and the finding word is logged; the first real run's `[PC711_LOGIN]` lines
+  (start → captcha → submit → sms) are the proof. Tests: 835/835-style suites pass locally; server.js has
+  no vitest harness → `node --check` + the server-core unit suite + the wiring source-contract pin.
+- **ORDER when Jeff says go:** merge → set `PC711_SESSION_KEY` on Render (64 hex / base64 of 32 bytes) →
+  apply sql/158 → Render deploy → Admin → 7-11 Login → Connect.

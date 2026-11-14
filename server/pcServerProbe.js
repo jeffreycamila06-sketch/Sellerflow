@@ -5,8 +5,8 @@
 //
 // OFF unless env PC_SERVER_PROBE is exactly "1". Importing this file starts nothing.
 //   PHONE step  — mirrors chrome-extension/myship-711.js checkRestricted with anon=true.
-//   STORE step  — only with env PC_PROBE_MYSHIP_COOKIE (the Cookie header of a logged-in
-//                 賣貨便 session, set by the owner). Mirrors chrome-extension/emap-711.js.
+//   STORE step  — only with the saved 7-11 login session (server/pc711Login.js, connected by
+//                 the admin in Admin → 7-11 Login). Mirrors chrome-extension/emap-711.js.
 //
 // HARD RULES
 //   - Every request goes through one wrapper with a URL allowlist (below). Anything else is
@@ -274,9 +274,11 @@ function createJar(seed) {
     of(host).set(first.slice(0, eq).trim(), first.slice(eq + 1).trim());
   };
   for (const [host, raw] of Object.entries(seed || {})) String(raw || "").split(";").forEach((p) => put(host, p));
+  const header = (host) => [...of(host)].map(([k, v]) => `${k}=${v}`).join("; ");
   return {
-    header: (host) => [...of(host)].map(([k, v]) => `${k}=${v}`).join("; "),
+    header,
     names: (host) => [...of(host).keys()],
+    dump: () => Object.fromEntries([...hosts.keys()].map((h) => [h, header(h)]).filter(([, v]) => v)),
     store: (host, headers) => {
       const list = typeof headers?.getSetCookie === "function" ? headers.getSetCookie() : [];
       const single = list.length ? [] : [headers?.get?.("set-cookie")].filter(Boolean);
@@ -307,10 +309,11 @@ export function parseProbeConfig({ gms, sender, buyer }) {
 }
 
 // ── the run ──────────────────────────────────────────────────────────────────
-// opts: fetchImpl, now (() => ms), log, readSetting (async key → string|null), env, parseBudgetMs.
+// opts: fetchImpl, now (() => ms), log, readSetting (async key → string|null), env, parseBudgetMs,
+// session ({ get, relogin, save } from server/pc711Login.js: the saved 7-11 login).
 // Never throws.
 export async function runPcServerProbe(opts = {}) {
-  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS } = opts;
+  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS, session = null } = opts;
   const parse = (html) => parseForms(html, { budgetMs: parseBudgetMs });
   if (!pcProbeEnabled(env)) return { disabled: true };
   const startedAt = now();
@@ -438,21 +441,34 @@ export async function runPcServerProbe(opts = {}) {
     phone.kind = "error";
   }
 
-  // ── STORE (only with the owner's logged-in cookie) ───────────────────────────
+  // ── STORE (only with the saved 7-11 login session) ───────────────────────────
   try {
-    const seed = String(env?.PC_PROBE_MYSHIP_COOKIE ?? "").trim();
-    if (!seed) { store.kind = "no_cookie"; record(store, stepOf("store.skip", null, false, "no_cookie")); }
+    const call = async (fn) => { try { return typeof fn === "function" ? await fn() : null; } catch { return null; } };
+    const saved = session ? await call(session.get) : null;
+    if (!saved || !saved.cookies) { store.kind = "no_session"; record(store, stepOf("store.skip", null, false, "no_session")); }
     else if (!cfg.gm) { store.kind = "config_missing"; record(store, stepOf("store.config", null, false, "config_missing")); }
     else {
-      const jar = createJar({ [MYSHIP]: seed });
+      let jar = createJar(saved.cookies);
       const stop = (kind) => { store.kind = kind; };
       // 1. the cart page
-      const p1 = await request(jar, cartUrl);
-      const forms1 = !p1.fail && p1.status === 200 ? parse(p1.text) : [];
-      if (forms1.slow) p1.fail = "parse_too_slow";
-      const f1 = forms1.find((f) => f.id === "MyCart") || null;
-      const sidLen = f1 ? String(fieldOf(f1, "MemberSid") ?? "").length : 0;
-      const loggedIn = sidLen >= 4;
+      const openCart = async () => {
+        const p1 = await request(jar, cartUrl);
+        const forms1 = !p1.fail && p1.status === 200 ? parse(p1.text) : [];
+        if (forms1.slow) p1.fail = "parse_too_slow";
+        const f1 = forms1.find((f) => f.id === "MyCart") || null;
+        const sidLen = f1 ? String(fieldOf(f1, "MemberSid") ?? "").length : 0;
+        return { p1, f1, loggedIn: sidLen >= 4 };
+      };
+      let { p1, f1, loggedIn } = await openCart();
+      // ONE quick re-login ONLY when the cart page actually came back and says logged out (no form /
+      // an error page / no MemberSid). A transient failure — timeout / network / too_big /
+      // parse_too_slow — never triggers a re-login (pc711Login decides; it never types a password).
+      if (!p1.fail && !(f1 && loggedIn) && session && typeof session.relogin === "function") {
+        const again = await call(session.relogin);
+        record(store, stepOf("store.relogin", null, Boolean(again && again.cookies), again && again.cookies ? "ok" : "no"));
+        if (again && again.cookies) { jar = createJar(again.cookies); ({ p1, f1, loggedIn } = await openCart()); }
+      }
+      if (f1 && loggedIn && session) await call(() => session.save && session.save(jar.dump()));
       // not a usable logged-in form → what was sent / set and what the page looks like (names and words only)
       const diag = Boolean(f1) && loggedIn ? "" : [
         ` sent_cookies=${(p1.sentNames || []).length}`,
