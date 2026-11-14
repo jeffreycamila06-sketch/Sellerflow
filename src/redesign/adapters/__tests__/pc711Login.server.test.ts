@@ -216,6 +216,25 @@ describe("pc711 login — the real OPENPOINT AJAX flow", () => {
     expect(s.calls.some((c) => c.path === PC711_ROUTES.captcha)).toBe(false);
   });
 
+  it("maxAge present-but-empty + empty token (the real page) → start() still succeeds + gets the picture; doLogin max_age is sent empty", async () => {
+    const emptyMax = `<html><head><script>
+var oidc_client_id = "CID1"; var state = "ST1"; var nonce = "NON1"; var scope = "openid";
+var maxAge = ''; var codeChallenge = "CC1"; var loginTxId = "TX1"; var token = "";
+var redirectUri = "https://myship.7-11.com.tw/Member/FromUniopen";
+</script></head><body>login</body></html>`;
+    const s = fullSite({ [`GET ${OP}/auth/service/authorize`]: { body: emptyMax } });
+    const { login } = make(s.f);
+    const st = await login.start();
+    expect(st.flowId).toMatch(/^[0-9a-f]{32}$/);
+    expect(st.captcha).toMatch(/^data:image\/gif;base64,/);
+    await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
+    const done = await login.sms({ flowId: st.flowId, code: SMS });
+    expect(done).toEqual({ step: "connected" });
+    const dl = new URLSearchParams(s.calls.find((c) => c.path === PC711_ROUTES.doLogin)!.body);
+    expect(dl.has("max_age")).toBe(true);
+    expect(dl.get("max_age")).toBe(""); // sent exactly as the page has it
+  });
+
   it("the picture is the getCaptcha JSON imgInfo as a GIF data URL; ↻ fetches it again", async () => {
     const s = fullSite();
     const { login } = make(s.f);
@@ -325,6 +344,19 @@ describe("pc711 login — the one-tap quick re-login (JSON, unproven)", () => {
     expect(again).toMatchObject({ cookies: expect.any(Object) });
     for (const c of s2.calls) expect(c.body).not.toContain(PWB64);
   });
+  it("the quick-login candidates + select calls are JSON (not urlencoded)", async () => {
+    const m = memStore();
+    await connectAll(make(fullSite().f, { store: m.store }).login);
+    const s2 = quickSite();
+    const login2 = createPc711Login({ fetchImpl: s2.f as never, now: () => Date.UTC(2026, 10, 14, 5), log: () => {}, store: m.store, env: { PC711_SESSION_KEY: KEY }, readSetting: async () => JSON.stringify([GM]) });
+    await login2.load();
+    expect(await login2.quickRelogin()).toMatchObject({ cookies: expect.any(Object) });
+    for (const p of [PC711_ROUTES.quickCandidates, PC711_ROUTES.quickSelect]) {
+      const c = s2.calls.find((x) => x.path === p)!;
+      expect(c.headers["content-type"]).toMatch(/application\/json/);
+      expect(() => JSON.parse(c.body)).not.toThrow();
+    }
+  });
   it("the quick-login candidates ask for a secret (passkey) → needs_login, stop", async () => {
     const m = memStore();
     await connectAll(make(fullSite().f, { store: m.store }).login);
@@ -350,10 +382,13 @@ describe("pc711 login — the one-tap quick re-login (JSON, unproven)", () => {
 });
 
 describe("pc711 login — page reading + helpers", () => {
-  it("readScriptVars reads the inline string values; an empty value is treated as missing", () => {
+  it("readScriptVars: a present var keeps its value (incl. empty ''); an absent var is not set", () => {
     const v = readScriptVars(authorizePage({ token: "TK9" }));
     expect(v).toMatchObject({ oidc_client_id: "CID1", state: "ST1", nonce: "NON1", scope: "openid", maxAge: "0", codeChallenge: "CC1", loginTxId: "TX1", token: "TK9" });
-    expect(readScriptVars(authorizePage({ state: "" })).state).toBeUndefined();
+    // present but empty (the real page's `var maxAge = '';`) → ""
+    expect(readScriptVars(`<script>var maxAge = ''; var token = "";</script>`)).toMatchObject({ maxAge: "", token: "" });
+    // not written at all → absent from the map
+    expect(readScriptVars(`<script>var state = "ST1";</script>`).nonce).toBeUndefined();
   });
   it("phone numbers", () => {
     expect(normalizeMobile("912345678")).toBe(PHONE);

@@ -5300,3 +5300,15 @@ REMOVED (the form-based description above is superseded). base = `https://bu-gro
   server built from those names; the first real `[PC711_LOGIN]` lines are the proof. Same fence as round 1
   (chrome-extension/, ParcelScan.tsx, parcelScan.ts, server/emapCheck.js, server/fmStoreCheck*.js all untouched).
 - **ORDER (unchanged):** merge → set `PC711_SESSION_KEY` on Render → apply sql/158 → Render deploy → Connect.
+
+### FIX ROUND 3 — measured-page details (branch `claude/pc711-login-r2`, NOT merged)
+Measured on the REAL authorize page (nothing typed): `readScriptVars` finds state/nonce/scope/codeChallenge
+(= the URL), oidc_client_id/clientId, loginTxId, redirectUri — but **maxAge is PRESENT AND EMPTY (`maxAge=''`)
+and token is empty**. The getCaptcha POST already works (200 `{codeId,codeDescription,imgInfo}`, imgInfo ~2.3k).
+- **readScriptVars** now keeps a present var's value even when empty (`""`); only an absent name is dropped.
+  `start()` requires only **state, nonce, codeChallenge, loginTxId, redirectUri + a client id** to be present AND
+  NON-EMPTY (`REQUIRED_NONEMPTY`); **maxAge and token may be empty** — `max_age` is sent as `""` exactly as served.
+  So the real page no longer answers `login_page_changed (missing=maxAge)`.
+- **Quick re-login** candidates/select now POST **JSON** (`application/json; charset=UTF-8`, `ajaxJson`) to match
+  OPENPOINT's postQuickLoginJson; field names stay unproven; any non-2xx / passkey-password-picture-SMS → `needs_login`.
+  The OidcQuickLoginHandoff form post stays urlencoded.

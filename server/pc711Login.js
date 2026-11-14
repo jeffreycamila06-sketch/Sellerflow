@@ -61,7 +61,9 @@ export const PC711_ROUTES = {
 };
 // the inline-script values read from the authorize page; a client id (one of the first two) + the rest
 export const PC711_PAGE_VARS = ["oidc_client_id", "clientId", "state", "nonce", "scope", "maxAge", "codeChallenge", "loginTxId", "redirectUri", "token"];
-const REQUIRED_VARS = ["state", "nonce", "scope", "maxAge", "codeChallenge", "loginTxId", "redirectUri"];
+// these must be PRESENT AND NON-EMPTY (+ a client id, checked separately). On the real page maxAge and
+// token are present but EMPTY, and scope may vary — none of those are required to be non-empty.
+const REQUIRED_NONEMPTY = ["state", "nonce", "codeChallenge", "loginTxId", "redirectUri"];
 // 7-11 codeIds for a wrong picture code (fetch a new picture); 704 = password; 735 = too many wrong SMS
 const WRONG_CAPTCHA = ["B111002", "B111003", "B151002"];
 const QUICK_SECRET_RE = /passkey|webauthn|credential|fido|password|passwd|captcha|otp|smscode|verifycode/i;
@@ -147,14 +149,15 @@ export function createPc711Jar(seed = {}) {
 const fieldOf = (form, name) => { const f = form.fields.find((x) => x[0] === name); return f ? f[1] : undefined; };
 
 // The JS string values set in the authorize page's inline scripts: `name = "x"` / `name: "x"` /
-// `"name":"x"`. Returns { name: value } only for the names that are present with a NON-EMPTY value.
+// `"name":"x"`. A name that is PRESENT keeps its value (which may be the empty string ""); a name that
+// is NOT found is simply absent from the map. So the real page's `var maxAge = '';` reads back as "".
 export function readScriptVars(html, names = PC711_PAGE_VARS) {
   const src = String(html);
   const found = {};
   for (const n of names) {
     const re = new RegExp(`["']?\\b${n}\\b["']?\\s*[:=]\\s*(["'])([^"']*)\\1`);
     const m = src.match(re);
-    if (m && m[2] !== "") found[n] = m[2];
+    if (m) found[n] = m[2]; // present → value (possibly ""); absent → not set
   }
   return found;
 }
@@ -251,6 +254,23 @@ export function createPc711Login(opts = {}) {
       body: new URLSearchParams(fields).toString(),
       headers: {
         "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "x-requested-with": "XMLHttpRequest", accept: "application/json",
+        origin: `https://${OPENPOINT}`, referer: referer || AUTHORIZE_REF,
+      },
+    });
+    if (res.fail) return { fail: res.fail, ms: res.ms, status: 0, json: null };
+    let json = null;
+    try { json = JSON.parse(res.text); } catch { json = null; }
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, json, ms: res.ms, ct: res.ct };
+  }
+
+  // Same, but the body is JSON (OPENPOINT's quick-login postQuickLoginJson sends application/json).
+  async function ajaxJson(jar, path, obj, referer) {
+    const res = await request(jar, `https://${OPENPOINT}${path}`, {
+      method: "POST",
+      body: JSON.stringify(obj || {}),
+      headers: {
+        "content-type": "application/json; charset=UTF-8",
         "x-requested-with": "XMLHttpRequest", accept: "application/json",
         origin: `https://${OPENPOINT}`, referer: referer || AUTHORIZE_REF,
       },
@@ -361,12 +381,14 @@ export function createPc711Login(opts = {}) {
     }
     const found = readScriptVars(res.text, PC711_PAGE_VARS);
     const cid = found.oidc_client_id || found.clientId || "";
-    const missing = REQUIRED_VARS.filter((n) => !found[n]);
+    // state/nonce/codeChallenge/loginTxId/redirectUri + a client id must be present AND non-empty;
+    // maxAge and token may be empty (the real page has them empty) and are sent as "" exactly as served
+    const missing = REQUIRED_NONEMPTY.filter((n) => !found[n]);
     if (!cid) missing.unshift("client_id");
     if (missing.length) { sayWords("start", res.status, res.ms, `missing=${missing.slice(0, 8).join(",")}`); return { error: "login_page_changed" }; }
     const token = found.token || "";
     sayWords("start", res.status, res.ms, `page bu=${token ? 1 : 0}`);
-    const f = { id: newId(), at: now(), jar, pageUrl: res.url, vars: { ...found, oidc_client_id: cid }, token, mobile: "", pw: "", vc: "", sms: null };
+    const f = { id: newId(), at: now(), jar, pageUrl: res.url, vars: { ...found, oidc_client_id: cid, maxAge: found.maxAge ?? "", scope: found.scope ?? "" }, token, mobile: "", pw: "", vc: "", sms: null };
     flow = f;
     const pic = await fetchCaptcha(jar, res.url);
     if (!pic) return { flowId: f.id, captcha: null, error: "captcha_not_found" };
@@ -431,7 +453,7 @@ export function createPc711Login(opts = {}) {
     const cid = v.oidc_client_id;
     const fields = {
       mobileCountry: "886", mobile: f.mobile, passwd: b64(f.pw), verify: f.vc, smsCode: c,
-      oidc_client_id: cid, state: v.state, nonce: v.nonce, scope: v.scope, max_age: String(v.maxAge),
+      oidc_client_id: cid, state: v.state, nonce: v.nonce, scope: v.scope ?? "", max_age: String(v.maxAge ?? ""),
       code_challenge: v.codeChallenge, trust_browser: "Y", login_tx_id: v.loginTxId,
     };
     if (f.token) fields.token = f.token;
@@ -538,7 +560,8 @@ export function createPc711Login(opts = {}) {
     const cid = vars.oidc_client_id || vars.clientId || "";
     if (!cid) return needsLogin("asks_login");
     const tokenF = vars.token ? { token: vars.token } : {};
-    const cand = await ajax(jar, PC711_ROUTES.quickCandidates, { oidc_client_id: cid, ...tokenF }, auth.url);
+    // the quick-login calls are JSON (postQuickLoginJson), not urlencoded
+    const cand = await ajaxJson(jar, PC711_ROUTES.quickCandidates, { oidc_client_id: cid, ...tokenF }, auth.url);
     if (cand.fail) { say("quick", 0, cand.ms, cand.fail); await persist({ last_problem: cand.fail }); return null; }
     if (!cand.ok) return needsLogin("candidates_no");
     if (QUICK_SECRET_RE.test(JSON.stringify(cand.json || {}))) return needsLogin("asks_secret");
@@ -546,9 +569,9 @@ export function createPc711Login(opts = {}) {
     const pick = list[0];
     const pid = pick && (pick.id ?? pick.candidateId ?? pick.key ?? "");
     if (!pid) return needsLogin("no_candidate");
-    const sel = await ajax(jar, PC711_ROUTES.quickSelect, {
-      oidc_client_id: cid, candidate_id: String(pid), state: vars.state, nonce: vars.nonce, scope: vars.scope,
-      max_age: String(vars.maxAge), code_challenge: vars.codeChallenge, trust_browser: "Y", login_tx_id: vars.loginTxId, ...tokenF,
+    const sel = await ajaxJson(jar, PC711_ROUTES.quickSelect, {
+      oidc_client_id: cid, candidate_id: String(pid), state: vars.state, nonce: vars.nonce, scope: vars.scope ?? "",
+      max_age: String(vars.maxAge ?? ""), code_challenge: vars.codeChallenge, trust_browser: "Y", login_tx_id: vars.loginTxId, ...tokenF,
     }, auth.url);
     if (sel.fail) { say("quick", 0, sel.ms, sel.fail); await persist({ last_problem: sel.fail }); return null; }
     if (!sel.ok) return needsLogin("select_no");
