@@ -553,7 +553,7 @@ Both:
 - A field with a mistake shows a short message under it.
 
 ## pickup-status — Pickup Status
-Last checked: 2026-11-12
+Last checked: 2026-11-14
 Keywords: pickup status, pickup, tracking, returned, not picked up, 7-11, chase buyer, hindi kinuha, 取件, 取貨狀態, 退件, 物流, 全家, FamilyMart, 好賣+, order export, whatsapp, line, messenger, instagram, copy message, remind buyer, 催取件訊息, 提醒買家, nhắc người mua, เตือนผู้ซื้อ, ingatkan pembeli
 
 **Pickup Status** (Taiwan only) shows your parcels in tabs: **In transit**, **Buyer waiting for pickup**, **Picked up** and **Returned**, so you can remind buyers.
@@ -575,6 +575,7 @@ Who has it:
 - Each parcel shows its **price**. Type an amount in the search box (for example 350) to find parcels with that price.
 - Some parcels show **Not dropped off yet** and **Drop off before (date)**. Drop the parcel off before that date.
 - "FamilyMart file read OK. No shipped parcels in it yet" — that is not an error.
+- "N orders have no delivery number yet" — in 好賣+ tap **Get the delivery number**, then download the Order export again and sync.
 - A 全家 parcel is no longer in the list — its order was cancelled or it expired on 好賣+ (訂單失效).
 - "This isn't a 全家 Order export" — pick the Order export file from 好賣+ and try again.
 

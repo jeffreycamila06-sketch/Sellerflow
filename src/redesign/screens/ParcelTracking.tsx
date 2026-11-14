@@ -391,6 +391,12 @@ function fmErrorText(res: FmUploadResult, t: T): string {
   }
 }
 
+// "N orders have no delivery number yet — …" (n = 1 has its own sentence); "" when n = 0.
+function fmNoDeliveryText(n: number, t: T): string {
+  if (!(n > 0)) return "";
+  return n === 1 ? t.rd_pt_fm_no_dn_one : tpl(t.rd_pt_fm_no_dn, { n });
+}
+
 // Same width in ready / checking / locked (fits the longest locale + the hourglass).
 const CHECK_BTN_MIN_W = 150;
 
@@ -625,9 +631,12 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
     try { res = await uploadFmExport(new Uint8Array(await file.arrayBuffer())); } catch { res = { ok: false, error: "network" }; }
     setFmSyncing(false);
     setSyncNote(null);
-    if (!res.ok && res.error === "empty") { setSyncNote({ tone: "info", text: t.rd_pt_fm_empty }); return; }
+    // Orders in the file without a 寄件編號 yet (not shown): tell the seller how to get them in.
+    const noDn = fmNoDeliveryText(res.notShipped ?? 0, t);
+    if (!res.ok && res.error === "empty") { setSyncNote({ tone: "info", text: noDn || t.rd_pt_fm_empty }); return; }
     if (!res.ok) { setSyncErr(fmErrorText(res, t)); return; }
-    setSyncNote({ tone: "ok", text: tpl(t.rd_pt_fm_done, { n: (res.inserted ?? 0) + (res.updated ?? 0) + (res.hidden ?? 0), w: res.atStore ?? 0 }) });
+    const done = tpl(t.rd_pt_fm_done, { n: (res.inserted ?? 0) + (res.updated ?? 0) + (res.hidden ?? 0), w: res.atStore ?? 0 });
+    setSyncNote({ tone: "ok", text: noDn ? `${done} ${noDn}` : done });
     await load();
   };
 

@@ -13,16 +13,21 @@ import { FM_SCAN_DEFAULT_PRODUCT } from "./fmScan";
 
 export const FM_MAX_ROWS = 2000;
 
+// Each key may match ONE OF several header names: the first name is the original 好賣+ Order
+// export; the next ones are the "Good-selling version" export (one row per product). The
+// names are tried in order, so a file with the first name always reads exactly as before.
 const H = {
-  orderNo: "訂單編號", status: "訂單狀態", deadline: "取貨截止日", name: "收件人姓名",
-  phone: "取件人手機", trackingNo: "寄件編號", shipType: "配送方式", storeId: "取件店號",
-  storeName: "取件店名", total: "訂單總金額", content: "訂單內容", shipped: "寄件日期",
-  picked: "取件日期", returned: "包裹退回取件日期", cancelled: "取消日期",
-  statusTime: "訂單狀態時間", orderDate: "訂購日期",
-} as const;
+  orderNo: ["訂單編號"], status: ["訂單狀態"], deadline: ["取貨截止日"], name: ["收件人姓名", "取件人姓名"],
+  phone: ["取件人手機"], trackingNo: ["寄件編號"], shipType: ["配送方式", "運送方式"], storeId: ["取件店號"],
+  storeName: ["取件店名"], total: ["訂單總金額", "訂單總額"], content: ["訂單內容"], shipped: ["寄件日期"],
+  picked: ["取件日期", "取貨日期"], returned: ["包裹退回取件日期", "包裹未取退回日期"], cancelled: ["取消日期"],
+  statusTime: ["訂單狀態時間"], orderDate: ["訂購日期", "訂單成立日期"],
+  // Good-selling version: no 訂單內容 — it is built from these (one row per product).
+  productName: ["商品名稱"], spec1: ["商品規格1"], spec2: ["商品規格2"], qty: ["商品數量"],
+} as const satisfies Record<string, readonly string[]>;
 type Key = keyof typeof H;
-// Without these the file is not a 全家 Order export.
-const REQUIRED: Key[] = ["orderNo", "status", "shipped", "picked", "returned", "cancelled", "content"];
+// Without these the file is not a 全家 Order export (plus 訂單內容 OR 商品名稱).
+const REQUIRED: Key[] = ["orderNo", "status", "shipped", "picked", "returned", "cancelled"];
 
 export type FmStatus = "at_store" | "in_transit" | "picked_up" | "returned" | "hide";
 
@@ -166,19 +171,46 @@ export async function parseFmExport(bytes: Uint8Array): Promise<{ ok: true; rows
   const header = sheetRows.find((r) => r.rn === 1);
   if (!header) return bad;
   const col: Partial<Record<Key, string>> = {};
-  for (const [c, v] of Object.entries(header.cells)) {
-    for (const k of Object.keys(H) as Key[]) if (!col[k] && headerMatches(v, H[k])) col[k] = c;
+  const cells = Object.entries(header.cells);
+  for (const k of Object.keys(H) as Key[]) {
+    for (const name of H[k]) {
+      const hit = cells.find(([, v]) => headerMatches(v, name));
+      if (hit) { col[k] = hit[0]; break; }
+    }
   }
-  if (REQUIRED.some((k) => !col[k])) return bad;
+  if (REQUIRED.some((k) => !col[k]) || (!col.content && !col.productName)) return bad;
 
   const data = sheetRows.filter((r) => r.rn >= 2).sort((a, b) => a.rn - b.rn)
     .filter((r) => String(r.cells[col.orderNo!] ?? "").trim() !== "");
   if (data.length > FM_MAX_ROWS) return { ok: false, error: "too_many" };
 
-  const get = (r: (typeof data)[number], k: Key) => (col[k] ? String(r.cells[col[k]!] ?? "") : "");
+  type DataRow = (typeof data)[number];
+  const get = (r: DataRow, k: Key) => (col[k] ? String(r.cells[col[k]!] ?? "") : "");
+  // 訂單內容 when the file has it; else (Good-selling version) one order = several product rows
+  // with the same 訂單編號: the order fields come from its first row and the products are
+  // joined into the same "name  qty" shape (商品名稱 [規格1] [規格2]  數量), " / " between them.
+  const orders: { first: DataRow; content: string }[] = [];
+  if (col.content) {
+    for (const r of data) orders.push({ first: r, content: get(r, "content") });
+  } else {
+    const productOf = (r: DataRow) => {
+      const name = [get(r, "productName"), get(r, "spec1"), get(r, "spec2")].map((v) => v.trim()).filter(Boolean).join(" ");
+      const qty = get(r, "qty").trim();
+      return qty ? `${name}  ${qty}` : name;
+    };
+    const byNo = new Map<string, { first: DataRow; parts: string[] }>();
+    for (const r of data) {
+      const no = get(r, "orderNo").trim();
+      const g = byNo.get(no);
+      const part = productOf(r);
+      if (g) { if (part) g.parts.push(part); } else byNo.set(no, { first: r, parts: part ? [part] : [] });
+    }
+    for (const g of byNo.values()) orders.push({ first: g.first, content: g.parts.join(" / ") });
+  }
+
   const rows: FmRow[] = [];
   let notShipped = 0;
-  for (const r of data) {
+  for (const { first: r, content } of orders) {
     const statusText = get(r, "status").trim();
     const shipped = get(r, "shipped");
     const status = fmStatusOf({ status: statusText, shipped, picked: get(r, "picked"), returned: get(r, "returned"), cancelled: get(r, "cancelled"), deadline: get(r, "deadline"), trackingNo: get(r, "trackingNo") });
@@ -197,7 +229,7 @@ export async function parseFmExport(bytes: Uint8Array): Promise<{ ok: true; rows
           : null,
       picked_up_at: status === "picked_up" ? fmTimestamp(get(r, "picked")) : null,
       returned_at: status === "returned" ? fmTimestamp(get(r, "returned")) : null,
-      buyer_username: fmBuyerUsername(get(r, "content")),
+      buyer_username: fmBuyerUsername(content),
       recipient_name: get(r, "name").trim() || null,
       recipient_phone: get(r, "phone").trim() || null,
       store_id: storeIdOf(get(r, "storeId")),
