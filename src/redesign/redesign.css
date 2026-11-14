@@ -796,3 +796,8 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
   .sfl-cty-wrap { align-items: center; padding: 24px; }
   .sfl-cty-card { max-width: 440px; border-radius: 18px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
 }
+
+/* Pickup Status own drag bar (components/DragBar.tsx): while that screen is open the
+   browser's page scrollbar is hidden; the class is removed when the screen closes. */
+html.pt-dragbar { scrollbar-width: none; }
+html.pt-dragbar::-webkit-scrollbar, html.pt-dragbar body::-webkit-scrollbar { display: none; }

@@ -17,6 +17,7 @@
 // / not-yet-updated rows (the old "Other" bucket) so nothing disappears.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
+import DragBar from "../components/DragBar";
 import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
 import { useLang } from "../i18n/langContext";
@@ -917,6 +918,9 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
               })()
         )}
       </div>
+
+      {/* The screen's own drag bar (right edge, under the sticky header); re-measured on every list change. */}
+      <DragBar headerRef={headerRef} dep={`${state}|${tab}|${store}|${searchQ}|${page}|${rows.length}`} label={t.rd_pt_dragbar} />
 
       {toast && (
         <div style={{ position: "fixed", left: "50%", bottom: 30, transform: "translateX(-50%)", width: "max-content", maxWidth: "calc(100vw - 32px)", textAlign: "center", background: "var(--text)", color: "var(--surface)", padding: "9px 16px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, zIndex: 60 }} data-testid="pt-toast">
