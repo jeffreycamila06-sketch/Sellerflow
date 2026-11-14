@@ -304,6 +304,24 @@ describe("pc711 login — key, store, routes", () => {
     expect((await login.submit({ flowId: a.flowId, mobile: PHONE, password: PW, verifyCode: VCODE })).message).toBe("flow_expired");
     expect(s.calls.some((c) => c.path === PC711_ROUTES.validate)).toBe(false);
   });
+  it("an abandoned flow wipes the password + picture code from memory after 10 minutes, with no further call", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-11-14T04:00:00Z"));
+      const { login } = make(fullSite().f, { now: () => Date.now() });
+      const st = await login.start();
+      await login.submit({ flowId: st.flowId, mobile: PHONE, password: PW, verifyCode: VCODE });
+      // right after submit the secrets are held in memory (needed for step 3)
+      expect(login._flow()).not.toBeNull();
+      expect(login._flow().pw).toBe(PW);
+      expect(login._flow().vc).toBe(VCODE);
+      // 10 minutes pass with no further call → the timer wipes the secrets and drops the flow
+      await vi.advanceTimersByTimeAsync(PC711_FLOW_MS + 1000);
+      expect(login._flow()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("status has its OWN limiter: status never uses the login budget, and either can 429 alone", async () => {
     const { login } = make(fullSite().f);
     let loginUses = 0, statusUses = 0;

@@ -357,11 +357,20 @@ export function createPc711Login(opts = {}) {
   // ── the admin login flow ─────────────────────────────────────────────────────
   const flowAlive = (id) => flow && flow.id === id && now() - flow.at < PC711_FLOW_MS;
   const wipeSecrets = (f) => { if (f) { f.pw = ""; f.vc = ""; } };
+  // memory only, at most PC711_FLOW_MS: an abandoned flow is wiped + dropped by its own timer.
+  const clearFlowTimer = (f) => { if (f && f.timer) { try { clearTimeout(f.timer); } catch { /* ignore */ } f.timer = null; } };
+  const armFlowTimer = (f) => {
+    f.timer = setTimeout(() => {
+      if (flow && flow === f) { wipeSecrets(f); f.sms = null; flow = null; say("expire", 0, 0, "flow"); }
+    }, PC711_FLOW_MS);
+    if (f.timer && typeof f.timer.unref === "function") f.timer.unref();
+  };
 
   // STEP 1 opens: GET myship login → follow to the OPENPOINT authorize page → read its inline vars →
   // get the picture.
   async function start() {
     if (!key) return { error: "key_missing" };
+    if (flow) clearFlowTimer(flow);
     flow = null;
     // keep the saved OPENPOINT cookies (a remembered device may be asked fewer questions); drop myship
     const saved = sessionCookies() || {};
@@ -388,8 +397,9 @@ export function createPc711Login(opts = {}) {
     if (missing.length) { sayWords("start", res.status, res.ms, `missing=${missing.slice(0, 8).join(",")}`); return { error: "login_page_changed" }; }
     const token = found.token || "";
     sayWords("start", res.status, res.ms, `page bu=${token ? 1 : 0}`);
-    const f = { id: newId(), at: now(), jar, pageUrl: res.url, vars: { ...found, oidc_client_id: cid, maxAge: found.maxAge ?? "", scope: found.scope ?? "" }, token, mobile: "", pw: "", vc: "", sms: null };
+    const f = { id: newId(), at: now(), jar, pageUrl: res.url, vars: { ...found, oidc_client_id: cid, maxAge: found.maxAge ?? "", scope: found.scope ?? "" }, token, mobile: "", pw: "", vc: "", sms: null, timer: null };
     flow = f;
+    armFlowTimer(f);
     const pic = await fetchCaptcha(jar, res.url);
     if (!pic) return { flowId: f.id, captcha: null, error: "captcha_not_found" };
     return { flowId: f.id, captcha: pic };
@@ -485,6 +495,7 @@ export function createPc711Login(opts = {}) {
     const li = await checkLoggedIn(f.jar);
     if (!li.ok) return { step: "error", message: "login_failed" };
     await saveSession(f.jar.dump(), { since: new Date(now()).toISOString(), last_ok_at: new Date(now()).toISOString(), auto_logins: Number(row?.auto_logins || 0) });
+    clearFlowTimer(f);
     flow = null;
     return { step: "connected" };
   }
@@ -509,6 +520,7 @@ export function createPc711Login(opts = {}) {
     if (!flowAlive(flowId) || !flow) return { step: "error", message: "flow_expired" };
     const f = flow;
     wipeSecrets(f); f.sms = null;
+    clearFlowTimer(f); armFlowTimer(f); // back to step 1 → a fresh 10-minute window
     const pic = await fetchCaptcha(f.jar, f.pageUrl);
     say("back", 0, 0, pic ? "ok" : "no_img");
     return pic ? { step: "login", captcha: pic } : { step: "login", captcha: null, error: "captcha_not_found" };
@@ -516,6 +528,7 @@ export function createPc711Login(opts = {}) {
 
   async function disconnect() {
     if (!key) return { error: "key_missing" };
+    if (flow) clearFlowTimer(flow);
     flow = null; phoneTail = "";
     row = null;
     if (store) await store.clear();
