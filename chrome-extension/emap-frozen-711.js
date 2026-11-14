@@ -15,10 +15,10 @@
 // 1.18.0: every answer also carries `blocked` — true for HTTP 403 / 429 or a captcha / login page
 // instead of an answer. The warm-up lane stops itself on it; the live lane treats it like any other
 // 'unknown' (unchanged).
-// 1.18.0 NIGHT: only a message with `nightWarm: true` (the warm-up's 01:00–05:00 probe) treats an E-Map
-// maintenance page (redirect path or body) as a transient no-answer. Every other request — the live lane
-// and the day warm-up — keeps the 1.17.0 order and outcome: a non-answer page = 'unknown', not transient,
-// the next check uses the other section.
+// 1.18.0 NIGHT: only a message with `nightWarm: true` (the warm-up's 01:00–05:00 probe) or — 1.18.2 —
+// `night: true` (the live lane's 01:00–05:00 request) treats an E-Map maintenance page (redirect path or
+// body) as a transient no-answer. Every DAY request keeps the 1.17.0 order and outcome: a non-answer
+// page = 'unknown', not transient, the next check uses the other section.
 // Never writes anything; never executes page code (guid read from the MAIN-world helper
 // emap-guid-main.js over its DOM event, or from the page SOURCE text).
 (function sellerFlowEmapFrozen() {
@@ -39,6 +39,10 @@
   const MAINT_URL_RE = /maint|維護|upgrade|update\.(aspx|html?)|closed?\.(aspx|html?)|sorry|busy/i;
   const MAINT_BODY_RE = /維護|维护|系統更新|系统更新|暫停服務|暂停服务|maintenance|maintain|under construction/i;
   const STRONG_BLOCK_RE = /captcha|驗證碼|验证码|recaptcha|robot/i;   // these win over a maintenance look
+  // 1.18.2 night reading only: "robot" counts as its own word, and never inside a <meta …> tag
+  // (<meta name="robots"> is on ordinary pages, maintenance pages included)
+  const STRONG_BLOCK_NIGHT_RE = /captcha|驗證碼|验证码|recaptcha|\brobot\b/i;
+  const stripMeta = (html) => String(html).replace(/<meta\b[^>]*>/gi, " ");
   // a login form / password input = a sign-in page, even when it also looks like maintenance
   const LOGIN_FORM_RE = /<input\b[^>]*\btype\s*=\s*["']?password\b|<form\b[^>]*login/i;
   const pathOf = (u) => { try { return new URL(String(u || ""), location.href).pathname; } catch { return ""; } };
@@ -104,8 +108,9 @@
         body, signal: ctrl.signal,
       });
       const httpBlock = r.status === 403 || r.status === 429;
-      const urlBlock = BLOCK_PAGE_RE.test(String(r.url || ""));
-      if (nightWarm) {                                       // the night warm-up probe ONLY
+      // 1.18.2 night: the redirect's PATH only (a "login" word in its query string is not a block); day: as before
+      const urlBlock = BLOCK_PAGE_RE.test(nightWarm ? pathOf(r.url) : String(r.url || ""));
+      if (nightWarm) {                                       // night requests ONLY (warm-up probe + live lane)
         if (httpBlock) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: false, blocked: true };
         if (urlBlock) return { verdict: null, reason: `${endpoint} redirected to a login / captcha page`, transient: false, blocked: true };
         if (MAINT_URL_RE.test(pathOf(r.url))) return { verdict: null, reason: `${endpoint} redirected to a maintenance page`, transient: true, maintenance: true };
@@ -117,8 +122,9 @@
       const v = parseFrozen(text);
       if (v) return { verdict: v, reason: "", transient: false };
       const page = String(text).slice(0, 4000);
-      const pageBlock = BLOCK_PAGE_RE.test(page) || LOGIN_FORM_RE.test(page);
-      if (nightWarm && !STRONG_BLOCK_RE.test(page) && !LOGIN_FORM_RE.test(page) && MAINT_BODY_RE.test(page)) {
+      // night: <meta …> tags (e.g. <meta name="robots">) never count; day: as before
+      const pageBlock = BLOCK_PAGE_RE.test(nightWarm ? stripMeta(page) : page) || LOGIN_FORM_RE.test(page);
+      if (nightWarm && !STRONG_BLOCK_NIGHT_RE.test(stripMeta(page)) && !LOGIN_FORM_RE.test(page) && MAINT_BODY_RE.test(page)) {
         return { verdict: null, reason: `${endpoint} maintenance page`, transient: true, maintenance: true };
       }
       const head = String(text).replace(/\s+/g, " ").slice(0, 60);
@@ -143,7 +149,8 @@
     if (!message || message.type !== "PC_FROZEN_CHECK" || !message.row) return false; // not ours
     (async () => {
       const guid = await getGuid();
-      const res = await checkFrozenStore(message.row.store_id, guid, message.nightWarm === true);
+      // night = the warm-up's night probe OR (1.18.2) the live lane's night request; a day message has neither
+      const res = await checkFrozenStore(message.row.store_id, guid, message.nightWarm === true || message.night === true);
       sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: res.status, frozen_reason: res.reason, transient: Boolean(res.transient), blocked: Boolean(res.blocked), maintenance: Boolean(res.maintenance), guidFound: guid !== null, endpoint: res.endpoint });
     })().catch((e) => sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: "unknown", frozen_reason: `frozen check threw: ${(e && e.message) || "error"}`, transient: true, guidFound: false, endpoint: endpointOf(section) }));
     return true;

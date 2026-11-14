@@ -104,7 +104,7 @@ describe("on + idle", () => {
     expect(st.lastAt).toBeTypeOf("number");
     expect(w.calls.logs.some((l) => /\[PC-WARMUP\] warm-up store=600001 → ok/.test(l))).toBe(true);
   });
-  it("standby → nothing; maintenance window (01:00–05:00 Taipei): the LIVE frozen lane stays off (warm-up night rules: see 'night')", async () => {
+  it("standby → nothing; maintenance window (01:00–05:00 Taipei), 1.18.2: a waiting frozen parcel IS checked live at night (warm-up switch off → no probe)", async () => {
     const done = new Set<string>();
     const sb = await boot({ lease: STANDBY, warmupSwitch: "true", warmupNext: storeList(20, done) });
     await ticks(sb.w, sb.clock, 40);
@@ -114,8 +114,9 @@ describe("on + idle", () => {
     await w.booted;
     await ticks(w, clock, 40);
     expect(warmMsgs(w)).toEqual([]);
-    expect(liveFrozenMsgs(w)).toEqual([]);                                  // a frozen parcel waits for 05:00, as before
-    expect(count(w, /admin_parcel_frozen_pending/)).toBe(0);                // no frozen pending read in the window either
+    expect(liveFrozenMsgs(w).length).toBeGreaterThan(0);                    // 1.18.2: no longer waits for 05:00
+    expect(liveFrozenMsgs(w).every((m) => m.night === true)).toBe(true);
+    expect(count(w, /admin_parcel_frozen_pending/)).toBeGreaterThan(0);     // the pending read runs at night (sql/157's cache step)
   });
 });
 
@@ -664,7 +665,7 @@ describe("round 4 — the load retry without a warm-up step, stopTriedAt in mem"
   });
 });
 
-describe("night (01:00–05:00 Taipei) — warm-up may probe; nothing else changes", () => {
+describe("night (01:00–05:00 Taipei) — warm-up may probe behind the real parcels (1.18.2: the live lane runs too)", () => {
   const MIN = 60 * S;
   const TN = Date.UTC(2026, 0, 15, 17, 30, 0); // 01:30 Taipei
   async function nightBoot(opts: Opts) {
@@ -678,17 +679,38 @@ describe("night (01:00–05:00 Taipei) — warm-up may probe; nothing else chang
   }
   // what emap-frozen-711.js answers for an E-Map maintenance page (200 body or a redirect)
   const MAINT = { frozen_store_status: "unknown", frozen_reason: "/ecmap/byIDData.aspx maintenance page", transient: true, blocked: false, maintenance: true };
-  it("night probe → real verdict → the normal 60 s pace (verdicts written); a waiting frozen parcel still gets NO live check", async () => {
-    const done = new Set<string>(); const at: number[] = []; const ref = { t: 0 };
-    const { w, clock } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, done), frozenPending: [{ id: "fz-1", store_id: "968551", queue_depth: 1 }],
-      frozenReply: (row) => { at.push(ref.t); done.add(String(row?.store_id)); return { frozen_store_status: "no_frozen", frozen_reason: "", transient: false }; } });
+  it("night probe → real verdict → the normal 60 s pace (verdicts written); 1.18.2: a waiting frozen parcel goes FIRST, live, then the warm-up", async () => {
+    const done = new Set<string>(); const at: number[] = []; const ref = { t: 0 }; const order: string[] = [];
+    let live = true;                                                        // the real parcel waits until its verdict is written
+    const { w, clock } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, done), frozenPending: () => (live ? [{ id: "fz-1", store_id: "968551", queue_depth: 1 }] : []),
+      frozenReply: (row) => {
+        order.push(String(row?.id));
+        if (row?.id === "fz-1") { live = false; return { frozen_store_status: "no_frozen", frozen_reason: "", transient: false }; }
+        at.push(ref.t); done.add(String(row?.store_id)); return { frozen_store_status: "no_frozen", frozen_reason: "", transient: false };
+      } });
     for (let i = 0; i < 12 * 10; i++) { ref.t = clock.t; await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
-    expect(at.length).toBeGreaterThanOrEqual(8);                            // ~1 per minute over 10 min
+    expect(order[0]).toBe("fz-1");                                          // the real parcel first, before any warm-up probe
+    expect(order.filter((x) => x === "fz-1")).toHaveLength(1);
+    expect(liveFrozenMsgs(w).every((m) => m.night === true)).toBe(true);
+    expect(w.calls.logs).toContain("[PC-FROZEN] night send store=968551 row=fz-1 result=no_frozen");
+    expect(at.length).toBeGreaterThanOrEqual(7);                            // then ~1 per minute
     for (let i = 1; i < at.length; i++) expect(at[i] - at[i - 1]).toBeGreaterThanOrEqual(60 * S);
     expect(bodiesOf(w, /admin_frozen_warmup_verdict/).length).toBe(at.length);
-    expect(liveFrozenMsgs(w)).toEqual([]);                                  // the live frozen lane keeps the window
-    expect(count(w, /admin_parcel_frozen_pending/)).toBe(0);
+    expect(count(w, /admin_parcel_frozen_pending/)).toBeGreaterThan(0);
     expect(w.calls.logs.some((l) => /\[PC-WARMUP\] warm-up store=600001 → no_frozen/.test(l))).toBe(true);
+  });
+  it("1.18.2: at night a waiting frozen parcel holds the warm-up back, exactly like by day (no probe while it is pending)", async () => {
+    const done = new Set<string>();
+    // a warm-up store list is already in hand (saved before a restart) → only the send gate stands between
+    // the waiting real parcel and a warm-up probe (the list-read gate is not needed to hold it back)
+    const { w, clock } = await nightBoot({ warmupSwitch: "true", warmupNext: storeList(50, done), frozenPending: [{ id: "fz-1", store_id: "968551", queue_depth: 1 }],
+      initialStorage: { pc_frozen_warmup: { on: false, mem: { lastAt: 0, queueAt: TN, pauseUntil: 0, misses: 0, pauses: 0, stopped: false, queue: ["600001", "600002", "600003", "600004", "600005"] } } },
+      frozenReply: () => null });                                           // the live check never gets an answer → it stays pending
+    expect((w.evalIn("pcFrozenKick.__test.warm") as { queue: string[] }).queue).toHaveLength(5);
+    for (let i = 0; i < 12 * 25; i++) { await w.sb.pcTick(); await flush(); clock.t += 5 * S; }
+    expect(warmMsgs(w)).toEqual([]);
+    expect(count(w, /admin_frozen_warmup_next/)).toBe(0);
+    expect(liveFrozenMsgs(w).length).toBeGreaterThanOrEqual(2);             // retried every 10 min, never counted
   });
   for (const [name, reply] of [["a maintenance page", MAINT], ["no answer (timeout)", null], ["an empty / odd page", { frozen_store_status: "unknown", frozen_reason: '/ecmap/byIDData.aspx unexpected response: ""', transient: false, blocked: false }]] as const) {
     it(`night ${name} → nothing written, next probe 10 min later, never a miss / pause / stop`, async () => {

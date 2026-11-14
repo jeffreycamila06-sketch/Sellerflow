@@ -346,6 +346,40 @@ describe("emap-frozen-711.js — the frozen (cate=27) E-Map check", () => {
       expect((await ask({ text: "<html>系統維護中，請輸入驗證碼</html>" })).r).toMatchObject({ blocked: true });
       expect((await ask({ url: "https://emap.unipcsc.com.tw/maintain/Login.aspx" })).r).toMatchObject({ blocked: true });
     });
+    // 1.18.2 — the live lane's night request carries `night: true` (the warm-up keeps `nightWarm: true`)
+    const askFlag = async (a: { ok?: boolean; status?: number; text?: string; url?: string }, flag: "night" | "nightWarm" | "day") => {
+      const e = load(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { answer: () => a });
+      const msg = flag === "day" ? { type: "PC_FROZEN_CHECK", row: { id: "x", store_id: "968551" } } : { type: "PC_FROZEN_CHECK", row: { id: "x", store_id: "968551" }, [flag]: true };
+      return e.send(msg as Msg);
+    };
+    const META_MAINT = "<html><head><meta name=\"robots\" content=\"noindex,nofollow\"><title>系統維護中</title></head><body>系統維護中，請於 05:00 後再試</body></html>";
+    it("1.18.2 NIGHT (live lane night:true and warm-up nightWarm:true): <meta name=\"robots\"> on a maintenance page → still a no-answer (transient, maintenance, NOT blocked)", async () => {
+      for (const flag of ["night", "nightWarm"] as const) {
+        expect(await askFlag({ text: META_MAINT }, flag), flag).toMatchObject({ frozen_store_status: "unknown", transient: true, maintenance: true, blocked: false });
+      }
+    });
+    const META_ODD = "<html><head><meta name=\"robots\" content=\"noindex\"></head><body>Bad request</body></html>";
+    it("1.18.2 NIGHT: an odd page whose only 'robot' is inside <meta name=\"robots\"> → a plain no-answer (unknown, NOT blocked)", async () => {
+      for (const flag of ["night", "nightWarm"] as const) {
+        expect(await askFlag({ text: META_ODD }, flag), flag).toMatchObject({ frozen_store_status: "unknown", transient: false, blocked: false });
+      }
+    });
+    it("1.18.2 NIGHT: the word 'robot' on its own still blocks; so does a captcha word", async () => {
+      expect(await askFlag({ text: "<html><body>系統維護中 — are you a robot?</body></html>" }, "night")).toMatchObject({ blocked: true });
+      expect(await askFlag({ text: "<html><body>系統維護中，請輸入驗證碼</body></html>" }, "night")).toMatchObject({ blocked: true });
+    });
+    it("1.18.2 NIGHT: 'login' in the redirect's QUERY STRING is not a block (error.aspx bounce, maintenance redirect); a login PATH still is", async () => {
+      expect(await askFlag({ url: "https://emap.unipcsc.com.tw/ecmap/error.aspx?ReturnUrl=%2FLogin.aspx" }, "night")).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: false });
+      expect(await askFlag({ url: "https://emap.unipcsc.com.tw/maintain.aspx?from=login" }, "night")).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true, maintenance: true });
+      expect(await askFlag({ url: "https://emap.unipcsc.com.tw/member/Login.aspx?x=1" }, "night")).toMatchObject({ blocked: true });
+    });
+    it.skipIf(!has117)("1.18.2 DAY is unchanged for these pages: the same answer as main's emap-frozen-711.js (meta robots / query-string login stay 'blocked' by day)", async () => {
+      for (const a of [{ text: META_MAINT }, { text: META_ODD }, { url: "https://emap.unipcsc.com.tw/ecmap/error.aspx?ReturnUrl=%2FLogin.aspx" }, { url: "https://emap.unipcsc.com.tw/maintain.aspx?from=login" }]) {
+        const mine = await askFlag(a, "day");
+        const main = await load117(a).send("x");
+        for (const k of ["frozen_store_status", "transient", "blocked", "maintenance", "frozen_reason"]) expect(mine[k], `${JSON.stringify(a)} ${k}`).toEqual(main[k]);
+      }
+    });
     it("HTTP 503 (a common maintenance answer) → transient, not blocked (night and day — as in 1.17.0)", async () => {
       for (const night of [true, false]) expect((await ask({ ok: false, status: 503, text: "Service Unavailable" }, night)).r).toMatchObject({ frozen_store_status: "unknown", blocked: false, transient: true });
     });

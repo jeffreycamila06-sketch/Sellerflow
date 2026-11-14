@@ -5112,7 +5112,7 @@ on main (no server call, no `store_check` column in any select / update — prov
 - **Order:** sql/155 → Render deploy → add test logins to `feature_access_emails` → watch the log → switch on →
   sql/156 (guide; `sql/116b` already carries the same text).
 
-## 2026-11-13 — FROZEN PARCEL: THE EXPORT WAITS FOR THE FROZEN ANSWER (branch `frozen-export-wait`, NOT merged; sql/157 NOT applied; NO extension change, NO Render)
+## 2026-11-13 — FROZEN PARCEL: THE EXPORT WAITS FOR THE FROZEN ANSWER (✅ merged to main; sql/157 APPLIED in production Nov 14 2026; NO extension change, NO Render)
 Real cases Nov 13: two 冷凍 parcels exported ~20 s after saving, before the live frozen answer. Store 217237
 answered no_frozen 7.8 s AFTER the export; the seller was never told.
 - **Why (traced):** (1) the export only asked the general "N parcels are still being checked — Wait / Export anyway"
@@ -5157,7 +5157,7 @@ answered no_frozen 7.8 s AFTER the export; the seller was never told.
   is shown there. The export re-reads the list right before it claims: a 冷凍 parcel saved on ANOTHER device
   seconds earlier can still leave without its answer (then the late warning applies).
 - Help guide: no change (it has no frozen section; frozen is for allowed sellers only).
-- **Order:** apply sql/157 → merge (Vercel). No Render deploy, no extension install.
+- **Order (done):** sql/157 applied (Nov 14 2026) + merged (Vercel). No Render deploy, no extension install.
 
 ## 2026-11-13 — 7-11 SERVER PROBE (branch `claude/pc-server-probe`, NOT merged; diagnostic only; needs a Render deploy to run)
 Question: can the Render server do the two checks the Parcel Checker extension does today (restricted phone, full
@@ -5312,3 +5312,39 @@ and token is empty**. The getCaptcha POST already works (200 `{codeId,codeDescri
 - **Quick re-login** candidates/select now POST **JSON** (`application/json; charset=UTF-8`, `ajaxJson`) to match
   OPENPOINT's postQuickLoginJson; field names stay unproven; any non-2xx / passkey-password-picture-SMS → `needs_login`.
   The OidcQuickLoginHandoff form post stays urlencoded.
+## 2026-11-14 — FROZEN LIVE LANE WORKS AT NIGHT: extension 1.18.2 (branch `frozen-night-lane`, NOT merged; NO SQL, NO Render)
+Before: the LIVE frozen lane was fully off 01:00–05:00 Taipei (no pending read, no request) → a frozen parcel
+made at night got no answer, not even from `store_frozen_cache`, until 05:00 (last 7 days: 3 of 135 frozen
+parcels, all exported before 05:00 without an answer). The dry lane keeps working at night.
+- **Extension (`frozen-check.js` + one line in `emap-frozen-711.js`; background.js UNTOUCHED):**
+  - At night the frozen pending read RUNS (sql/157's cache step answers from `store_frozen_cache`) and the live
+    request is SENT with `night: true` (the content script then reads an E-Map maintenance page as a no-answer —
+    the same reading the warm-up's `nightWarm` flag already had).
+  - `sendNight`: a real answer (ok / no_frozen, or NO2 / close = 'unknown' E-Map really said) → written as usual.
+    A no-answer (no reply, 3 s cap, timeout, maintenance page, odd page) → written **'unknown'** exactly like by day
+    (audit fix: writing NOTHING kept the parcel NULL → returned by every pending read → the night warm-up never ran,
+    a 4th store never got its turn behind 3 stuck ones, and a restart asked the stuck store again at once). The
+    database then holds that parcel 10 min (sql/142/157 stamp `checked_at`; 'unknown' never overwrites no_frozen; an
+    exported parcel only gets the time). What stays night-only: NOT counted and NO 10-min lane pause.
+    A block (403 / 429 / captcha / login) → written 'unknown' like by day. ⚠️ The LIVE lane has no "stop"
+    (it never had one) — only the warm-up stops on a block, unchanged.
+  - Log every night request: `[PC-FROZEN] night send store=… row=… result=ok|no_frozen|unknown (blocked)|no_answer → unknown (retry in 10 min) (…)`.
+  - `emap-frozen-711.js` night reading (live `night: true` AND warm-up `nightWarm: true`; day path = main byte for byte):
+    `<meta …>` tags never count as a block (`<meta name="robots">`), "robot" only as its own word in the
+    maintenance check, and a redirect's QUERY STRING never makes a block (only its path) — a maintenance page
+    stays a no-answer.
+  - Real frozen parcels keep priority over the warm-up at night too (same condition as by day: the warm-up only
+    after an empty frozen pending read). The warm-up's night rules (10-min retry, 6 → wait till 05:00,
+    maintenance = no-answer, block = STOP) are unchanged.
+  - The window is re-checked right before the request both ways (decided by day → crosses 01:00 = no send,
+    "maintenance window started — stopping"; decided at night → crosses 05:00 = "maintenance window ended — next pass").
+  - DAY = main byte for byte (requests, writes, tab messages, log lines): `parcelCheckerFrozenNight.test.ts`
+    runs main's 1.18.1 `background.js` + `frozen-check.js` + `emap-frozen-711.js` in the same harness, 7 scenarios.
+  - Manifest **1.18.2**. Harness: `frozenPending` may be a function; `night` recorded on tab messages.
+- **Web (`adapters/parcelFrozenExport.ts`):** the export hold no longer skips to "not checked" at 01:00–05:00 —
+  a fresh frozen parcel waits the normal 30 s at night too (`frozenCheckerResting` removed). "Ask at once" stays
+  only for: frozen switch off or parcel checks off (`frozenGate = checkOn && fzOn`). The app has no signal that
+  the checker laptop is running (only the admin-only worker state) — a stopped checker just means the 30 s runs out.
+- **Order:** merge (Vercel, web half) → build + install 1.18.2 on the checker machines (`npm run build:extension`,
+  zip `chrome-extension-dist/`). Either order is safe: the old extension with the new web = a 30 s wait at night
+  that ends in the question; the new extension with the old web = night answers arrive, the hold still asks at once.
