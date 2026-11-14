@@ -90,6 +90,18 @@ export function serverLayout(input, measure, qrSize) {
   return layoutReceipt(input, measure, qrSize, SERVER_FONT_STACK);
 }
 
+// Rounded rectangle path (arcTo — works on every canvas, no roundRect needed).
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
 // rows + settings → PNG Buffer. Throws canvas_unavailable / png_too_big (over the same 4 MB the
 // manual send accepts; a 20-line receipt with a QR is about 200 KB).
 export async function drawReceiptPng(rows, settings = {}) {
@@ -110,13 +122,20 @@ export async function drawReceiptPng(rows, settings = {}) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, layout.width, layout.height);
   ctx.textBaseline = "alphabetic";
+  const spacing = "letterSpacing" in ctx; // canvas letter-spacing where the platform has it
   for (const op of layout.ops) {
     if (op.kind === "text") {
       ctx.font = op.font; ctx.fillStyle = op.color; ctx.textAlign = op.align;
+      if (spacing) ctx.letterSpacing = `${op.letterSpacing || 0}px`;
       ctx.fillText(op.text, op.x, op.y - 8);
     } else if (op.kind === "rule") {
-      ctx.fillStyle = RECEIPT_RULE_COLOR; ctx.fillRect(RECEIPT_PAD, op.y, layout.width - RECEIPT_PAD * 2, 2);
-    } else if (qr) {
+      const x0 = op.x0 ?? RECEIPT_PAD, x1 = op.x1 ?? layout.width - RECEIPT_PAD;
+      ctx.fillStyle = RECEIPT_RULE_COLOR; ctx.fillRect(x0, op.y, x1 - x0, op.thick ?? 2);
+    } else if (op.kind === "box") {
+      roundRectPath(ctx, op.x, op.y, op.w, op.h, op.r);
+      if (op.fill) { ctx.fillStyle = op.fill; ctx.fill(); }
+      if (op.stroke) { ctx.strokeStyle = op.stroke; ctx.lineWidth = 2; ctx.stroke(); }
+    } else if (op.kind === "image" && qr) {
       ctx.drawImage(qr, op.x, op.y, op.w, op.h);
     }
   }

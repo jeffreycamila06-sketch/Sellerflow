@@ -97,6 +97,20 @@ Routing inputs: `Settings.printerType` / `lanFormat` / `stickerSize` (from `buil
 - **Server automatic receipt:** `server/fbAutoReceipt.js:18,79` → `drawReceiptPng` (server/receiptDraw.js:95, @napi-rs/canvas, bundled Noto Sans / TC / SC / Thai). It uses the raw `live_session_orders` rows, so **edits made in the manual sheet are not used** (receiptDraw.js:9-10).
 - **Shared pure layout:** `src/lib/receiptLayout.js` (`layoutReceipt`, caps 400 lines and 12000 px).
 - **Send endpoints:** `POST /fb/receipt/info` and `/fb/receipt/send` (server/fbReceipt.js:418-420).
+- **Card format + Shipping fee (2026-11-14, branch `claude/fb-receipt-card`):** `layoutReceipt` now wraps
+  "#N name" → lines → shipping → total in a rounded card (`box` op: r 22, fill `#fbfbfd`, 2 px stroke =
+  `RECEIPT_RULE_COLOR`, contents and rules inset 22 px — `rule` ops carry `x0`/`x1`). Optional input
+  `shippingFee` (> 0 AND `labels.shipping`) → a tinted row (`#fff7dc`, r 10) after the lines, added to the
+  sum (a "to be confirmed" total stays TBC; the row still shows). Optional labels: `howToPay` (small muted
+  uppercase label above the note), `scanToPay` (muted, centred under the QR). Missing labels → that part as
+  before. Sizes unchanged: 720 / pad 36 / all fonts (one new `label` font, 22 px) / QR 420 × 1000 /
+  400 lines / 12000 px (the new rows are counted in the height budget). Both drawers draw `box` + the new
+  `rule` (phone `receiptImage.ts`, server `server/receiptDraw.js`). **Server (automatic receipt):** passes
+  no shipping fee and no new labels → card only. **Render manual deploy needed** for the server half.
+  ReceiptSheet: Shipping fee box (empty every open) + read-only Payment QR row (160 × 160, contain);
+  Receipt format sample: card + labels, no fee. Tests: `receiptCard.test.ts`, `receiptDraw.server.test.ts`
+  (real canvas pixels), `receiptSheetShipping.test.tsx`. ⚠ The printer-guardian run and TODAY-vs-NEW
+  pictures were NOT done in this branch (Jeff: light, no screenshots).
 - **Payment QR picture upload (2026-11-12, branch `receipt-qr-picture`):** `downscaleQrFile` (receiptSettings.ts) now
   decodes through the product-picture helper `decodeUpright` (productImages.ts: EXIF turn + HEIC via lazy heic2any)
   BEFORE the unchanged ≤ 600 px / PNG-first / `QR_DATA_URL_CAP` encoding; the whole picture is drawn (never cropped);

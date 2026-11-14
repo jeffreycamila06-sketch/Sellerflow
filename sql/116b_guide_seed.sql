@@ -115,7 +115,7 @@ Messages:
 - "Your plan has ended. Renew to connect again." See "Plan expired"
 
 Tip: tap **Connect** once and wait. Tapping many times can cause the wait message.'),
-  ('connect-facebook', 'Facebook live (activation required)', '2026-10-15'::date, 'facebook, fb, facebook page, facebook live, activation, activate, hindi ma-connect fb, 脸书, 臉書, 粉丝页, 啟用', 'Facebook live **needs activation**. If it is not activated for you, the Facebook tile shows "Advanced feature — activation required" and a **Contact us** button. To ask for it, message Admin on Telegram @SellerFlowLive.
+  ('connect-facebook', 'Facebook live (activation required)', '2026-11-14'::date, 'facebook, fb, facebook page, facebook live, activation, activate, hindi ma-connect fb, 脸书, 臉書, 粉丝页, 啟用', 'Facebook live **needs activation**. If it is not activated for you, the Facebook tile shows "Advanced feature — activation required" and a **Contact us** button. To ask for it, message Admin on Telegram @SellerFlowLive.
 
 When Facebook is activated for you:
 1. Go to **Settings → General Settings → Facebook Live → Manage Facebook pages**.
@@ -126,7 +126,9 @@ Common messages:
 - "Go live on Facebook first, then tap Connect."
 - "That page isn''t live right now — start your Facebook LIVE first."
 - "Facebook needs you to connect your Page again. Go to Settings → Facebook." Authorize the Page again in Facebook pages.
-- "This Page was connected on another phone, so this one stopped receiving."'),
+- "This Page was connected on another phone, so this one stopped receiving."
+
+**Messenger receipt:** in **Orders**, tap **Receipt** on a Facebook buyer. Type a **Shipping fee** if you charge one (optional) — it is shown on the receipt and added to the total. It starts empty each time.'),
   ('post-sales', 'Sell on a Facebook post (Posts tab)', '2026-10-28'::date, 'post, posts, facebook post, sell on a post, comment code, +1, post orders, print new, my posts, magbenta sa post, 帖子, 貼文, 留言下单, 貼文賣貨', 'If your Facebook Page is connected, the **Orders** screen has a **Live | Posts** switch at the top. **Live** is your live orders, as before. **Posts** is for selling on a normal Facebook post: buyers comment a code under your post and the order is made for you. (If you don''t see Posts yet, message Admin on Telegram @SellerFlowLive.)
 
 **Start selling on a post**
