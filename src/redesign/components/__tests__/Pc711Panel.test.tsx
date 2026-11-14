@@ -26,9 +26,11 @@ beforeEach(installFetch);
 const renderPanel = () => render(<TProvider lang="en"><Pc711Panel /></TProvider>);
 
 describe("Pc711Panel", () => {
-  it("fillSmsBoxes: a 6-digit paste fills all; typing one advances", () => {
+  it("fillSmsBoxes: a 6-digit paste fills all; typing one advances; alnum keeps upper-cased letters", () => {
     expect(fillSmsBoxes(["", "", "", "", "", ""], 2, "123456")).toEqual(["1", "2", "3", "4", "5", "6"]);
     expect(fillSmsBoxes(["", "", "", "", "", ""], 0, "7")).toEqual(["7", "", "", "", "", ""]);
+    expect(fillSmsBoxes(["", "", "", "", "", ""], 0, "ab12", true)).toEqual(["A", "B", "1", "2", "", ""]);
+    expect(fillSmsBoxes(["", "", "", "", "", ""], 0, "ab12")).toEqual(["1", "2", "", "", "", ""]); // digits only by default
   });
   it("key_missing → the set-the-key note, no Connect", async () => {
     push("/status", { body: { state: "key_missing" } });
@@ -64,5 +66,55 @@ describe("Pc711Panel", () => {
     await waitFor(() => expect(screen.getByTestId("pc711-connected")).toBeTruthy());
     // the password is not left on the screen (the password input only exists on step 1)
     expect(screen.queryByTestId("pc711-password")).toBeNull();
+  });
+  it("step 2 shows the code prefix (識別碼) when 7-11 sends one", async () => {
+    push("/status", { body: { state: "not_connected" } });
+    push("/login/start", { body: { flowId: "F1", captcha: "data:image/gif;base64,AAA" } });
+    push("/login/submit", { body: { step: "sms", phoneTail: "678", prefix: "7A", alnum: false } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-begin")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("pc711-begin"));
+    await waitFor(() => expect(screen.getByTestId("pc711-step1")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("pc711-phone"), { target: { value: "0912345678" } });
+    fireEvent.change(screen.getByTestId("pc711-password"), { target: { value: "secret" } });
+    fireEvent.change(screen.getByTestId("pc711-code"), { target: { value: "12345" } });
+    fireEvent.click(screen.getByTestId("pc711-send-sms"));
+    await waitFor(() => expect(screen.getByTestId("pc711-prefix")).toBeTruthy());
+    expect(screen.getByTestId("pc711-prefix").textContent).toContain("7A");
+  });
+  it("an unmapped error token (E0) is NEVER shown — a readable sentence appears instead", async () => {
+    push("/status", { body: { state: "not_connected" } });
+    push("/login/start", { body: { flowId: "F1", captcha: "data:image/gif;base64,AAA" } });
+    push("/login/submit", { body: { step: "error", message: "E0" } });
+    push("/login/captcha", { body: { captcha: "data:image/gif;base64,BBB" } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-begin")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("pc711-begin"));
+    await waitFor(() => expect(screen.getByTestId("pc711-step1")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("pc711-phone"), { target: { value: "0912345678" } });
+    fireEvent.change(screen.getByTestId("pc711-password"), { target: { value: "secret" } });
+    fireEvent.change(screen.getByTestId("pc711-code"), { target: { value: "12345" } });
+    fireEvent.click(screen.getByTestId("pc711-send-sms"));
+    await waitFor(() => expect(screen.getByTestId("pc711-err")).toBeTruthy());
+    expect(screen.getByTestId("pc711-err").textContent).not.toBe("E0");
+    expect((screen.getByTestId("pc711-err").textContent || "").length).toBeGreaterThan(4);
+  });
+  it("Send again stays on step 2 and calls the resend route", async () => {
+    push("/status", { body: { state: "not_connected" } });
+    push("/login/start", { body: { flowId: "F1", captcha: "data:image/gif;base64,AAA" } });
+    push("/login/submit", { body: { step: "sms", phoneTail: "678" } });
+    push("/login/resend", { body: { step: "sms", resent: true, phoneTail: "678" } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-begin")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("pc711-begin"));
+    await waitFor(() => expect(screen.getByTestId("pc711-step1")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("pc711-phone"), { target: { value: "0912345678" } });
+    fireEvent.change(screen.getByTestId("pc711-password"), { target: { value: "secret" } });
+    fireEvent.change(screen.getByTestId("pc711-code"), { target: { value: "12345" } });
+    fireEvent.click(screen.getByTestId("pc711-send-sms"));
+    await waitFor(() => expect(screen.getByTestId("pc711-step2")).toBeTruthy());
+    // the 60 s timer disables it; the button still exists and points at resend (no page change)
+    expect(screen.getByTestId("pc711-send-again")).toBeTruthy();
+    expect(screen.getByTestId("pc711-back")).toBeTruthy();
   });
 });

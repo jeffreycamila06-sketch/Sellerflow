@@ -1258,6 +1258,8 @@ app.post("/admin/pc711/login/start", requireAuth, requireAdmin, pc711Json, pc711
 app.post("/admin/pc711/login/captcha", requireAuth, requireAdmin, pc711Json, pc711Routes.captcha);
 app.post("/admin/pc711/login/submit", requireAuth, requireAdmin, pc711Json, pc711Routes.submit);
 app.post("/admin/pc711/login/sms", requireAuth, requireAdmin, pc711Json, pc711Routes.sms);
+app.post("/admin/pc711/login/resend", requireAuth, requireAdmin, pc711Json, pc711Routes.resend);
+app.post("/admin/pc711/login/back", requireAuth, requireAdmin, pc711Json, pc711Routes.back);
 app.post("/admin/pc711/disconnect", requireAuth, requireAdmin, pc711Json, pc711Routes.disconnect);
 app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
 const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies } });

@@ -28,6 +28,8 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
   const [code, setCode] = useState("");
   const [boxes, setBoxes] = useState<string[]>(["", "", "", "", "", ""]);
   const [tail, setTail] = useState("");
+  const [prefix, setPrefix] = useState("");
+  const [alnum, setAlnum] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
@@ -49,8 +51,17 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
     rate_limited: t.rd_pc711_err_busy, unknown_page: t.rd_pc711_err_generic, login_form_missing: t.rd_pc711_err_generic,
     config_missing: t.rd_pc711_err_generic, logged_out: t.rd_pc711_err_login, failed: t.rd_pc711_err_generic,
     refused_host: t.rd_pc711_err_generic, key_missing: t.rd_pc711_key_missing,
+    login_page_changed: t.rd_pc711_err_page, too_many_sms: t.rd_pc711_err_too_many, needs_login: t.rd_pc711_needs,
   };
-  const say = (w: unknown) => { const s = String(w || ""); return words[s] || s || t.rd_pc711_err_generic; };
+  // A known machine key → its sentence; 7-11's own codeDescription (a real sentence: has a space, a
+  // non-ASCII char, or is long) → shown as-is; anything else (a bare token like "E0") → never echoed.
+  const say = (w: unknown) => {
+    const s = String(w || "").trim();
+    if (!s) return t.rd_pc711_err_generic;
+    if (words[s]) return words[s];
+    if (/\s/.test(s) || /[^\x00-\x7f]/.test(s) || s.length > 24) return s;
+    return t.rd_pc711_err_generic;
+  };
 
   const begin = async () => {
     setBusy(true); setErr(""); setNote(""); setPw(""); setCode(""); setBoxes(["", "", "", "", "", ""]);
@@ -74,19 +85,45 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
     setBusy(true); setErr("");
     const a = await pc711Api.submit(flowId, phone, pw, code);
     setBusy(false);
-    setPw(""); // used once: gone from this screen
-    if (a.data.step === "sms") { setTail(String(a.data.phoneTail || "")); setResendLeft(60); setView("step2"); setTimeout(() => boxRefs.current[0]?.focus(), 0); return; }
+    setPw(""); // the password is cleared from THIS screen right after; the server keeps it in memory only
+    if (a.data.step === "sms") {
+      setTail(String(a.data.phoneTail || "")); setPrefix(String(a.data.prefix || "")); setAlnum(Boolean(a.data.alnum));
+      setCode(""); setBoxes(["", "", "", "", "", ""]); setResendLeft(60); setView("step2");
+      setTimeout(() => boxRefs.current[0]?.focus(), 0); return;
+    }
     if (a.data.step === "connected") { await refresh(); setView("status"); return; }
     setErr(say(a.data.message ?? a.data.error));
-    void newPicture();
+    if (typeof a.data.captcha === "string") setPicture(a.data.captcha); else void newPicture();
   };
   const connect = async () => {
     setBusy(true); setErr("");
     const a = await pc711Api.sms(flowId, boxes.join(""));
     setBusy(false);
-    setBoxes(["", "", "", "", "", ""]);
     if (a.data.step === "connected") { setFlowId(""); setPicture(null); await refresh(); setView("status"); return; }
+    if (a.data.step === "restart") { // 735: too many wrong SMS codes → start over at step 1 with a new picture
+      setBoxes(["", "", "", "", "", ""]); setCode(""); setErr(say(a.data.message));
+      if (typeof a.data.captcha === "string") setPicture(a.data.captcha);
+      setView("step1"); return;
+    }
+    setBoxes(["", "", "", "", "", ""]);
     setErr(say(a.data.message ?? a.data.error));
+  };
+  const sendAgain = async () => {
+    if (resendLeft > 0) return;
+    setBusy(true); setErr("");
+    const a = await pc711Api.resend(flowId);
+    setBusy(false);
+    if (a.data.step === "sms") { setResendLeft(60); setBoxes(["", "", "", "", "", ""]); setTimeout(() => boxRefs.current[0]?.focus(), 0); return; }
+    setErr(say(a.data.message ?? a.data.error));
+  };
+  const goBack = async () => {
+    setErr(""); setBoxes(["", "", "", "", "", ""]); setCode("");
+    setBusy(true);
+    const a = await pc711Api.back(flowId); // the server wipes the password + picture code from memory
+    setBusy(false);
+    if (typeof a.data.captcha === "string") setPicture(a.data.captcha);
+    else if (a.data.error) setErr(say(a.data.error));
+    setView("step1");
   };
   const testNow = async () => {
     setBusy(true); setNote("");
@@ -145,24 +182,25 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
       <div data-testid="pc711-step2">
         <div style={stepTag}>{t.rd_pc711_step2}</div>
         <div style={{ marginTop: 10, fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{tpl(t.rd_pc711_sms_sent, { tail })}</div>
+        {prefix ? <div data-testid="pc711-prefix" style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: "var(--accent-fg)" }}>{tpl(t.rd_pc711_prefix, { x: prefix })}</div> : null}
         <div style={{ display: "flex", gap: 6, marginTop: 14, justifyContent: "space-between" }}>
           {boxes.map((d, i) => (
-            <input key={i} ref={(el) => { boxRefs.current[i] = el; }} data-testid={`pc711-box-${i}`} value={d} inputMode="numeric" autoComplete={i === 0 ? "one-time-code" : "off"}
+            <input key={i} ref={(el) => { boxRefs.current[i] = el; }} data-testid={`pc711-box-${i}`} value={d} inputMode={alnum ? "text" : "numeric"} autoCapitalize="characters" autoComplete={i === 0 ? "one-time-code" : "off"}
               onChange={(e) => {
-                const next = fillSmsBoxes(boxes, i, e.target.value);
+                const next = fillSmsBoxes(boxes, i, e.target.value, alnum);
                 setBoxes(next);
                 const firstEmpty = next.findIndex((x) => !x);
                 if (e.target.value && firstEmpty >= 0) boxRefs.current[firstEmpty]?.focus();
               }}
-              onPaste={(e) => { const txt = e.clipboardData.getData("text"); if (/\d{6}/.test(txt.replace(/\D/g, ""))) { e.preventDefault(); setBoxes(fillSmsBoxes(boxes, 0, txt)); } }}
+              onPaste={(e) => { const txt = e.clipboardData.getData("text"); const clean = alnum ? txt.toUpperCase().replace(/[^A-Z0-9]/g, "") : txt.replace(/\D/g, ""); if (clean.length >= 6) { e.preventDefault(); setBoxes(fillSmsBoxes(boxes, 0, clean, alnum)); } }}
               style={{ ...field, width: "100%", minWidth: 0, flex: "1 1 0", textAlign: "center", padding: "11px 0", fontSize: 20 }} />
           ))}
         </div>
         {errLine}
         <button type="button" data-testid="pc711-connect" disabled={busy || boxes.some((x) => !x)} onClick={() => void connect()} style={{ ...primary, opacity: busy || boxes.some((x) => !x) ? 0.55 : 1 }}>{t.rd_pc711_connect}</button>
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button type="button" onClick={() => { setErr(""); setView("step1"); void newPicture(); }} style={{ ...ghost, flex: 1 }}>{t.rd_pc711_back}</button>
-          <button type="button" data-testid="pc711-send-again" disabled={resendLeft > 0} onClick={() => { setErr(""); setView("step1"); void newPicture(); }} style={{ ...ghost, flex: 1, opacity: resendLeft > 0 ? 0.55 : 1 }}>{resendLeft > 0 ? tpl(t.rd_pc711_send_again_in, { s: resendLeft }) : t.rd_pc711_send_again}</button>
+          <button type="button" data-testid="pc711-back" disabled={busy} onClick={() => void goBack()} style={{ ...ghost, flex: 1 }}>{t.rd_pc711_back}</button>
+          <button type="button" data-testid="pc711-send-again" disabled={busy || resendLeft > 0} onClick={() => void sendAgain()} style={{ ...ghost, flex: 1, opacity: busy || resendLeft > 0 ? 0.55 : 1 }}>{resendLeft > 0 ? tpl(t.rd_pc711_send_again_in, { s: resendLeft }) : t.rd_pc711_send_again}</button>
         </div>
       </div>
     );

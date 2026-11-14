@@ -1,23 +1,33 @@
 // 7-11 CHECKER LOGIN — the Render server logs in to 7-11 (OPENPOINT) itself, once, with the admin
-// typing phone + password + 驗證碼 + SMS code in Admin → 7-11 Login. 7-11 is asked to remember the
-// server (trust_browser); the server keeps the session (encrypted, sql/158) and, when myship has
-// logged it out, tries ONCE the page's own one-tap 快速登入 for a remembered device.
-// The probe's STORE step (server/pcServerProbe.js) uses this session.
+// typing phone + password + 驗證碼 (picture) + SMS code in Admin → 7-11 Login. The server keeps the
+// session (encrypted, sql/158) and, when myship has logged it out, tries ONCE the page's own one-tap
+// 快速登入 for a remembered device. The probe's STORE step (server/pcServerProbe.js) uses this session.
+//
+// This talks to the REAL OPENPOINT login, which is NOT a plain HTML form — it is a set of jQuery
+// $.ajax (POST, application/x-www-form-urlencoded, X-Requested-With: XMLHttpRequest, Accept:
+// application/json) calls under https://bu-group.openpoint.com.tw/auth/service. HTTP 2xx = success
+// (JSON); non-2xx = error with JSON { codeId, codeDescription }.
 //
 // HARD RULES
-//   - The password and the SMS code are used once (one request each), never stored, never logged,
-//     never returned. No request or response body is ever logged.
-//   - Hosts: myship.7-11.com.tw, bu-group.openpoint.com.tw and the two E-Map hosts. Anything else
-//     is refused BEFORE any request. /cart/finish is never requested.
-//   - Logs: `[PC711_LOGIN] <step> http=<n> ms=<n> <one word>` only.
+//   - The password and the picture code live in the server's MEMORY ONLY, inside the one login flow
+//     (7-11 asks for them again at the SMS step). The SMS code is used once. NONE is ever stored in
+//     the database, written to a log, or returned to the client. All are wiped on: connected, any
+//     error that ends the flow, Back to step 1, a new Connect, the 10-minute expiry, disconnect, and
+//     a server restart (memory only).
+//   - No request or response BODY is ever logged.
+//   - Every password / SMS request goes ONLY to bu-group.openpoint.com.tw (the ajax() base is pinned).
+//     Allowed hosts overall: myship.7-11.com.tw, bu-group.openpoint.com.tw, the two E-Map hosts.
+//     Anything else is refused BEFORE any request. /cart/finish is never requested.
+//   - Logs: `[PC711_LOGIN] <step> http=<n> ms=<n> <words>` only (a sanitized codeId at most).
 //   - The session is saved only encrypted (AES-256-GCM, key = env PC711_SESSION_KEY). No key →
 //     state key_missing, every route refuses, nothing is stored.
 //   - Quick re-login: at most 1 try per 10 minutes and 6 per Taipei day. Anything that asks for a
-//     password / 驗證碼 / SMS code → state needs_login, stop. It never types a password.
+//     passkey / password / picture / SMS → state needs_login, stop. It never types a password.
 //
-// ⚠️ NOT PROVEN on the real site (the container that wrote this cannot reach 7-11): how the page
-// loads its 驗證碼 picture and what its 快速登入 control is. Both are FOUND on the page at run time
-// (see captchaCandidates / findQuickLogin) and the way they were found is logged as one word.
+// ⚠️ NOT PROVEN on the real site (the container that wrote this cannot reach 7-11): the exact route
+// paths, field names, the OidcRedirect form post and the 快速登入 (quick-login) JSON calls. They were
+// read from OPENPOINT's own login scripts in a browser (nothing typed or sent). Every test uses a
+// fake server built from those names.
 
 import crypto from "node:crypto";
 import { parseForms, parseProbeConfig } from "./pcServerProbe.js";
@@ -30,11 +40,33 @@ export const PC711_MAX_HOPS = 6;
 export const PC711_QUICK_GAP_MS = 10 * 60 * 1000;
 export const PC711_QUICK_PER_DAY = 6;
 export const PC711_BODY_MAX = 1024 * 1024;
-export const PC711_IMAGE_MAX = 200 * 1024;
+export const PC711_IMAGE_MAX = 300 * 1024;
 const MYSHIP = "myship.7-11.com.tw";
 const OPENPOINT = "bu-group.openpoint.com.tw"; // the password and the SMS code may only be sent here
+const AUTHORIZE_REF = `https://${OPENPOINT}/auth/service/authorize`;
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const TAG = "[PC711_LOGIN]";
+
+// OPENPOINT routes (pic.context = "/auth", requestService = "/auth/service"). ⚠️ NOT PROVEN.
+export const PC711_ROUTES = {
+  captcha: "/auth/service/getCaptcha",
+  validate: "/auth/service/ajax/login/validate",
+  doLogin: "/auth/service/ajax/login/doLoginForOidc",
+  resend: "/auth/service/ajax/login/member/resend-sms-code",
+  redirect: "/auth/service/OidcRedirect.html",
+  redirectAlt: "/auth/OidcRedirect.html",
+  quickCandidates: "/auth/service/ajax/login/oidc/quick-login/candidates",
+  quickSelect: "/auth/service/ajax/login/oidc/quick-login/select",
+  quickHandoff: "/auth/service/OidcQuickLoginHandoff.html",
+};
+// the inline-script values read from the authorize page; a client id (one of the first two) + the rest
+export const PC711_PAGE_VARS = ["oidc_client_id", "clientId", "state", "nonce", "scope", "maxAge", "codeChallenge", "loginTxId", "redirectUri", "token"];
+// these must be PRESENT AND NON-EMPTY (+ a client id, checked separately). On the real page maxAge and
+// token are present but EMPTY, and scope may vary — none of those are required to be non-empty.
+const REQUIRED_NONEMPTY = ["state", "nonce", "codeChallenge", "loginTxId", "redirectUri"];
+// 7-11 codeIds for a wrong picture code (fetch a new picture); 704 = password; 735 = too many wrong SMS
+const WRONG_CAPTCHA = ["B111002", "B111003", "B151002"];
+const QUICK_SECRET_RE = /passkey|webauthn|credential|fido|password|passwd|captcha|otp|smscode|verifycode/i;
 
 // ── hosts ────────────────────────────────────────────────────────────────────
 export function isAllowedPc711Url(url) {
@@ -115,157 +147,19 @@ export function createPc711Jar(seed = {}) {
 
 // ── page reading ─────────────────────────────────────────────────────────────
 const fieldOf = (form, name) => { const f = form.fields.find((x) => x[0] === name); return f ? f[1] : undefined; };
-const hasField = (form, re) => form.fields.some((x) => re.test(x[0]));
-const SECRET_FIELD_RE = /^(passwd|password|pwd|verifycode|captcha|smscode|smsverify)/i;
 
-export function pageInfo(html) {
-  const forms = parseForms(html, { budgetMs: 250 });
-  const loginForm = forms.find((f) => f.id === "loginForm") || forms.find((f) => hasField(f, /^passwd_d$/)) || null;
-  const smsForm = forms.find((f) => f.id === "smsCodeForm") || forms.find((f) => hasField(f, /^smsCode$/)) || null;
-  const consentForm = forms.find((f) => f.id === "oidcDialogForm") || null;
-  return { forms, loginForm, smsForm, consentForm, slow: Boolean(forms.slow) };
-}
-
-// The value of a checkbox (checked or not) inside the form with that id. Default "on".
-export function checkboxValue(html, formId, name) {
+// The JS string values set in the authorize page's inline scripts: `name = "x"` / `name: "x"` /
+// `"name":"x"`. A name that is PRESENT keeps its value (which may be the empty string ""); a name that
+// is NOT found is simply absent from the map. So the real page's `var maxAge = '';` reads back as "".
+export function readScriptVars(html, names = PC711_PAGE_VARS) {
   const src = String(html);
-  const at = src.search(new RegExp(`<form\\b[^>]{0,400}id=["']${formId}["']`, "i"));
-  if (at < 0) return "on";
-  const end = src.indexOf("</form", at);
-  const part = src.slice(at, end < 0 ? Math.min(src.length, at + 200000) : end);
-  const m = part.match(new RegExp(`<input\\b[^>]{0,400}name=["']${name}["'][^>]{0,400}>`, "i"));
-  if (!m) return "on";
-  const v = m[0].match(/\bvalue=["']([^"']{0,40})["']/i);
-  return v ? v[1] : "on";
-}
-
-const CAPTCHA_RE = /captcha|verif|valid|vcode|checkcode|imgcode|randcode|驗證/i;
-const CAPTCHA_PATH_RE = /["']((?:https?:\/\/[A-Za-z0-9.-]{1,80})?\/?[A-Za-z0-9_\-./]{0,120}(?:captcha|verifycode|validatecode|validcode|vcode|checkcode|imgcode|randcode)[A-Za-z0-9_\-./]{0,80}(?:\?[A-Za-z0-9_\-.=&%]{0,120})?)["']/gi;
-
-// Where the 驗證碼 picture may come from, in order: an <img> that looks like one; a quoted path in
-// the page's own script text. (Scripts loaded by <script src> are read by the caller.)
-export function captchaCandidates(html, pageUrl) {
-  const src = String(html);
-  const out = [];
-  const add = (raw, source) => {
-    try {
-      if (/^data:image\//i.test(raw)) { out.push({ data: raw, source }); return; }
-      const u = new URL(raw, pageUrl).toString();
-      if (!out.some((c) => c.url === u)) out.push({ url: u, source });
-    } catch { /* not a URL */ }
-  };
-  const imgRe = /<img\b([^>]{0,800})>/gi;
-  for (let m = imgRe.exec(src); m; m = imgRe.exec(src)) {
-    const attrs = m[1];
-    if (!CAPTCHA_RE.test(attrs)) continue;
-    const s = attrs.match(/\b(?:data-)?src\s*=\s*["']([^"']{1,4000})["']/i);
-    if (s && s[1] && !/^(about:|javascript:|#)/i.test(s[1])) add(s[1], /^data:/i.test(s[1]) ? "img_data" : "img");
+  const found = {};
+  for (const n of names) {
+    const re = new RegExp(`["']?\\b${n}\\b["']?\\s*[:=]\\s*(["'])([^"']*)\\1`);
+    const m = src.match(re);
+    if (m) found[n] = m[2]; // present → value (possibly ""); absent → not set
   }
-  for (let m = CAPTCHA_PATH_RE.exec(src); m; m = CAPTCHA_PATH_RE.exec(src)) {
-    if (/\.(js|css)(\?|$)/i.test(m[1]) || !m[1].includes("/")) continue; // a real path, not "#captchaImg"
-    add(m[1], "inline");
-  }
-  CAPTCHA_PATH_RE.lastIndex = 0;
-  return out.slice(0, 6);
-}
-export function captchaPathsInScript(text, pageUrl) {
-  const out = [];
-  const src = String(text);
-  for (let m = CAPTCHA_PATH_RE.exec(src); m; m = CAPTCHA_PATH_RE.exec(src)) {
-    if (/\.(js|css)(\?|$)/i.test(m[1]) || !m[1].includes("/")) continue;
-    try { out.push(new URL(m[1], pageUrl).toString()); } catch { /* skip */ }
-  }
-  CAPTCHA_PATH_RE.lastIndex = 0;
-  return [...new Set(out)].slice(0, 4);
-}
-export function firstPartyScripts(html, pageUrl) {
-  let host = "";
-  try { host = new URL(pageUrl).hostname; } catch { return []; }
-  const out = [];
-  const re = /<script\b[^>]{0,400}\bsrc\s*=\s*["']([^"']{1,400})["']/gi;
-  const src = String(html);
-  for (let m = re.exec(src); m && out.length < 8; m = re.exec(src)) {
-    try {
-      const u = new URL(m[1], pageUrl);
-      if (u.hostname === host && u.protocol === "https:") out.push(u.toString());
-    } catch { /* skip */ }
-  }
-  return out;
-}
-
-// A picture answer → a data URL (image/* bytes, a data: string, or JSON carrying one).
-export function pictureFrom(res) {
-  if (!res || res.fail || res.status !== 200) return null;
-  const ct = String(res.ct || "");
-  if (ct.startsWith("image/") && res.bytes && res.bytes.length > 50 && res.bytes.length <= PC711_IMAGE_MAX) {
-    const safe = /^image\/[a-z0-9.+-]{1,20}$/.test(ct) ? ct : "image/png";
-    return `data:${safe};base64,${Buffer.from(res.bytes).toString("base64")}`;
-  }
-  const text = res.bytes ? Buffer.from(res.bytes).toString("utf8") : "";
-  const d = text.match(/data:image\/[a-z0-9.+-]{1,20};base64,[A-Za-z0-9+/=]{100,300000}/i);
-  if (d) return d[0];
-  if (/json/.test(ct)) {
-    try {
-      const j = JSON.parse(text);
-      const walk = (v, depth) => {
-        if (depth > 3 || v == null) return null;
-        if (typeof v === "string" && /^[A-Za-z0-9+/=]{200,300000}$/.test(v)) return `data:image/png;base64,${v}`;
-        if (typeof v === "object") for (const x of Object.values(v)) { const r = walk(x, depth + 1); if (r) return r; }
-        return null;
-      };
-      return walk(j, 0);
-    } catch { return null; }
-  }
-  return null;
-}
-
-// The one-tap 快速登入 control for a remembered device: a form (no password / 驗證碼 / SMS field)
-// or a link / button URL that says 快速登入 or "quick". Never a form that asks for a secret.
-const QUICK_RE = /quick|fast|oneclick|express/i;
-export function findQuickLogin(html, forms, pageUrl) {
-  for (const f of forms) {
-    if (f.id === "loginForm" || f.id === "smsCodeForm" || f.id === "appSmsCodeForm" || f.id === "oidcDialogForm") continue;
-    if (!(QUICK_RE.test(f.id) || QUICK_RE.test(f.action))) continue;
-    if (hasField(f, SECRET_FIELD_RE)) continue;
-    return { kind: "form", form: f };
-  }
-  const src = String(html);
-  const aRe = /<a\b([^>]{0,600})>([\s\S]{0,300}?)<\/a>/gi;
-  for (let m = aRe.exec(src); m; m = aRe.exec(src)) {
-    const text = m[2].replace(/<[^>]{0,200}>/g, "");
-    if (!(text.includes("快速登入") || QUICK_RE.test(m[1]))) continue;
-    const h = m[1].match(/\bhref\s*=\s*["']([^"']{1,600})["']/i);
-    if (!h || /^(javascript:|#)/i.test(h[1])) continue;
-    try { return { kind: "link", url: new URL(h[1], pageUrl).toString() }; } catch { /* skip */ }
-  }
-  const bRe = /<(?:button|input|div|span)\b([^>]{0,600})>([\s\S]{0,200}?)(?=<)/gi;
-  for (let m = bRe.exec(src); m; m = bRe.exec(src)) {
-    const said = m[2].includes("快速登入") || /value=["'][^"']*快速登入/.test(m[1]) || QUICK_RE.test(m[1]);
-    if (!said) continue;
-    const on = m[1].match(/location(?:\.href)?\s*=\s*\\?["']([^"'\\]{1,600})\\?["']/i);
-    if (!on) continue;
-    try { return { kind: "onclick", url: new URL(on[1], pageUrl).toString() }; } catch { /* skip */ }
-  }
-  return null;
-}
-
-// The page's own error text (≤ 120 characters), never anything the admin typed.
-export function pageErrorText(html, secrets = []) {
-  const src = String(html);
-  const tries = [];
-  const al = src.match(/\balert\(\s*(["'])([^"'\n]{1,200})\1/);
-  if (al) tries.push(al[2]);
-  const elRe = /<(div|span|p|label|li|small)\b[^>]{0,300}?(?:id|class)\s*=\s*["'][^"']{0,120}(?:error|errmsg|err-|alert|msg|warn|validation)[^"']{0,120}["'][^>]{0,300}>([\s\S]{1,400}?)<\/\1>/gi;
-  for (let m = elRe.exec(src); m && tries.length < 8; m = elRe.exec(src)) tries.push(m[2]);
-  for (const raw of tries) {
-    const text = raw.replace(/<[^>]{0,300}>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
-    if (!text) continue;
-    const cut = text.slice(0, 120);
-    if (secrets.some((x) => x && String(x).length >= 3 && cut.includes(String(x)))) return null;
-    if (/\d{6,}/.test(cut)) return null; // a number this long could be a phone or a code
-    return cut;
-  }
-  return null;
+  return found;
 }
 
 export function normalizeMobile(raw) {
@@ -275,35 +169,12 @@ export function normalizeMobile(raw) {
   return /^09\d{8}$/.test(d) ? d : "";
 }
 
-// Does the answer actually SHOW the SMS step? The measured login page always carries #smsCodeForm,
-// so its presence is not enough — a wrong 驗證碼 / password returns the same page. A marker is: the
-// page says the code was sent (已發送 / 已寄送 / …sent), a JSON answer says so, or the SMS block is
-// shown while the login block is hidden. Words only; nothing the admin typed is read.
-export function smsShownMarker(html, ct = "") {
-  const src = String(html);
-  if (/已發送|已寄送|已傳送|簡訊(?:驗證碼)?(?:已|即將)?(?:發送|寄送|傳送)|(?:verification|sms|otp)[^<]{0,24}\bsent\b|\bcode\b[^<]{0,8}\bsent\b/i.test(src)) return true;
-  if (/json/i.test(ct)) {
-    try {
-      const flat = JSON.stringify(JSON.parse(src)).toLowerCase();
-      if (/"(?:smssent|sent|sendsms|issmssent|otpsent)"\s*:\s*(?:true|1|"?y)/.test(flat)) return true;
-      if (/"(?:step|next|stage)"\s*:\s*"?sms/.test(flat)) return true;
-    } catch { /* not json */ }
-  }
-  const hiddenNear = (id) => {
-    const at = src.search(new RegExp(`<form\\b[^>]{0,400}id=["']${id}["']`, "i"));
-    if (at < 0) return null; // the form is absent
-    const gt = src.indexOf(">", at); // the form's OWN opening tag only (a sibling form must not bleed in)
-    const tag = src.slice(at, gt < 0 ? at + 400 : gt + 1);
-    return /display\s*:\s*none|visibility\s*:\s*hidden|\b(?:hidden|d-none|is-hidden|hide)\b/i.test(tag);
-  };
-  return hiddenNear("smsCodeForm") === false && hiddenNear("loginForm") === true;
-}
-
-// The host a form would post / get to. The password and the SMS code go only to OPENPOINT.
-const actionHost = (form, pageUrl) => { try { return new URL(form.action || pageUrl, pageUrl).hostname; } catch { return ""; } };
-
 const taipeiDay = (ms) => new Date(ms + 8 * 3600 * 1000).toISOString().slice(0, 10);
 const word = (w) => String(w || "").replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "-";
+const sanCode = (c) => (String(c ?? "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 12) || "-");
+const b64 = (s) => Buffer.from(String(s), "utf8").toString("base64");
+const codeOf = (j) => (j && (j.codeId ?? j.code ?? j.codeID)) ?? "";
+const descOf = (j) => { const d = j && (j.codeDescription ?? j.message ?? j.msg); return typeof d === "string" && d.trim() ? d.trim().slice(0, 200) : ""; };
 
 // ── the login ────────────────────────────────────────────────────────────────
 // opts: fetchImpl, now, log, store ({ load, save, clear }), env, readSetting, newId.
@@ -313,12 +184,10 @@ export function createPc711Login(opts = {}) {
   const key = sessionKeyFrom(env);
   let row = null;          // the saved row (blob + state fields)
   let phoneTail = "";      // from the blob
-  let flow = null;         // the one login flow in progress
+  let flow = null;         // the one login flow in progress (holds the password/picture in memory only)
 
   const say = (step, http, ms, w) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${word(w)}`); } catch { /* never stops */ } };
-  // submit logs several fixed words (the form ids are sanitized; everything else is 0/1/html/json)
   const sayWords = (step, http, ms, words) => { try { log(`${TAG} ${step} http=${http ?? 0} ms=${ms ?? 0} ${words}`); } catch { /* never stops */ } };
-  const idWord = (s) => String(s || "").replace(/[^a-z0-9_-]/gi, "").slice(0, 24);
 
   // One request through the host list, the jar and a 15 s limit. binary=true keeps the bytes.
   async function request(jar, url, init = {}) {
@@ -370,25 +239,46 @@ export function createPc711Login(opts = {}) {
     let hops = 0, cur = res;
     while (!cur.fail && cur.location && hops < PC711_MAX_HOPS) {
       let next;
-      try { next = new URL(cur.location, cur.url).toString(); } catch { return { fail: "bad_redirect", ms: cur.ms }; }
+      try { next = new URL(cur.location, cur.url).toString(); } catch { return { fail: "bad_redirect", ms: cur.ms, hops }; }
       hops += 1;
       cur = await request(jar, next, { headers: { referer: referer || cur.url } });
     }
-    if (!cur.fail && cur.location) return { fail: "too_many_redirects", ms: cur.ms };
-    return cur;
+    if (!cur.fail && cur.location) return { fail: "too_many_redirects", ms: cur.ms, hops };
+    return { ...cur, hops };
   }
-  async function submitForm(jar, form, pageUrl, fields) {
-    let action;
-    try { action = new URL(form.action || pageUrl, pageUrl); } catch { return { fail: "bad_action", ms: 0 }; }
-    const body = new URLSearchParams(fields).toString();
-    const origin = (() => { try { return new URL(pageUrl).origin; } catch { return ""; } })();
-    if (String(form.method || "get").toLowerCase() === "post") {
-      return follow(jar, await request(jar, action.toString(), {
-        method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded", origin, referer: pageUrl },
-      }), pageUrl);
-    }
-    action.search = body;
-    return follow(jar, await request(jar, action.toString(), { headers: { referer: pageUrl } }), pageUrl);
+
+  // The ONE way a password / SMS request is sent — always to OPENPOINT, urlencoded, as jQuery $.ajax.
+  async function ajax(jar, path, fields, referer) {
+    const res = await request(jar, `https://${OPENPOINT}${path}`, {
+      method: "POST",
+      body: new URLSearchParams(fields).toString(),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "x-requested-with": "XMLHttpRequest", accept: "application/json",
+        origin: `https://${OPENPOINT}`, referer: referer || AUTHORIZE_REF,
+      },
+    });
+    if (res.fail) return { fail: res.fail, ms: res.ms, status: 0, json: null };
+    let json = null;
+    try { json = JSON.parse(res.text); } catch { json = null; }
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, json, ms: res.ms, ct: res.ct };
+  }
+
+  // Same, but the body is JSON (OPENPOINT's quick-login postQuickLoginJson sends application/json).
+  async function ajaxJson(jar, path, obj, referer) {
+    const res = await request(jar, `https://${OPENPOINT}${path}`, {
+      method: "POST",
+      body: JSON.stringify(obj || {}),
+      headers: {
+        "content-type": "application/json; charset=UTF-8",
+        "x-requested-with": "XMLHttpRequest", accept: "application/json",
+        origin: `https://${OPENPOINT}`, referer: referer || AUTHORIZE_REF,
+      },
+    });
+    if (res.fail) return { fail: res.fail, ms: res.ms, status: 0, json: null };
+    let json = null;
+    try { json = JSON.parse(res.text); } catch { json = null; }
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, json, ms: res.ms, ct: res.ct };
   }
 
   // Logged in on myship = the cart page carries a MemberSid (≥ 4 characters), as the probe checks.
@@ -402,6 +292,30 @@ export function createPc711Login(opts = {}) {
     const cart = forms.find((f) => f.id === "MyCart");
     const ok = Boolean(cart) && String(fieldOf(cart, "MemberSid") ?? "").length >= 4;
     return { ok, word: ok ? "logged_in" : "logged_out", res };
+  }
+
+  // The picture: POST getCaptcha (empty body) → JSON { imgInfo: <base64> } → a data: GIF URL.
+  async function fetchCaptcha(jar, referer) {
+    const res = await ajax(jar, PC711_ROUTES.captcha, {}, referer);
+    if (res.fail || !res.ok) { say("captcha", res.status || 0, res.ms || 0, res.fail || "no_img"); return null; }
+    const img = res.json && typeof res.json.imgInfo === "string" ? res.json.imgInfo : "";
+    if (!/^[A-Za-z0-9+/=]{50,400000}$/.test(img)) { say("captcha", res.status, res.ms, "no_img"); return null; }
+    say("captcha", res.status, res.ms, "ok");
+    return `data:image/gif;base64,${img}`;
+  }
+
+  // The OidcRedirect form post (lgtk + oidc ids) → follow to myship. 404 on the /auth/service path →
+  // try the /auth path once; log which.
+  async function oidcRedirect(jar, fields, referer) {
+    const body = new URLSearchParams(fields).toString();
+    const headers = { "content-type": "application/x-www-form-urlencoded", origin: `https://${OPENPOINT}`, referer: referer || `https://${OPENPOINT}/` };
+    let res = await follow(jar, await request(jar, `https://${OPENPOINT}${PC711_ROUTES.redirect}`, { method: "POST", body, headers }), referer);
+    let path = "service";
+    if (!res.fail && res.status === 404) {
+      res = await follow(jar, await request(jar, `https://${OPENPOINT}${PC711_ROUTES.redirectAlt}`, { method: "POST", body, headers }), referer);
+      path = "auth";
+    }
+    return { ...res, path };
   }
 
   // ── saved row ───────────────────────────────────────────────────────────────
@@ -442,57 +356,64 @@ export function createPc711Login(opts = {}) {
 
   // ── the admin login flow ─────────────────────────────────────────────────────
   const flowAlive = (id) => flow && flow.id === id && now() - flow.at < PC711_FLOW_MS;
+  const wipeSecrets = (f) => { if (f) { f.pw = ""; f.vc = ""; } };
+  // memory only, at most PC711_FLOW_MS: an abandoned flow is wiped + dropped by its own timer.
+  const clearFlowTimer = (f) => { if (f && f.timer) { try { clearTimeout(f.timer); } catch { /* ignore */ } f.timer = null; } };
+  const armFlowTimer = (f) => {
+    f.timer = setTimeout(() => {
+      if (flow && flow === f) { wipeSecrets(f); f.sms = null; flow = null; say("expire", 0, 0, "flow"); }
+    }, PC711_FLOW_MS);
+    if (f.timer && typeof f.timer.unref === "function") f.timer.unref();
+  };
 
-  async function fetchPicture(f) {
-    for (const c of f.candidates) {
-      if (c.data) { f.captchaUrl = null; return { data: c.data, source: c.source }; }
-      const res = await request(f.jar, c.url, { binary: true, headers: { referer: f.pageUrl, accept: "image/*,*/*;q=0.8" } });
-      say("captcha", res.status, res.ms, res.fail || c.source);
-      const data = pictureFrom(res);
-      if (data) { f.captchaUrl = c.url; f.captchaSource = c.source; return { data, source: c.source }; }
-    }
-    return null;
-  }
-
+  // STEP 1 opens: GET myship login → follow to the OPENPOINT authorize page → read its inline vars →
+  // get the picture.
   async function start() {
     if (!key) return { error: "key_missing" };
+    if (flow) clearFlowTimer(flow);
     flow = null;
-    // the saved OPENPOINT cookies go along, so a remembered server may be asked fewer questions
+    // keep the saved OPENPOINT cookies (a remembered device may be asked fewer questions); drop myship
     const saved = sessionCookies() || {};
     const jar = createPc711Jar(Object.fromEntries(Object.entries(saved).filter(([h]) => h !== MYSHIP)));
     const res = await follow(jar, await request(jar, PC711_LOGIN_URL));
     if (res.fail) { say("start", 0, res.ms, res.fail); return { error: res.fail === "refused" ? "refused_host" : "unreachable" }; }
-    const info = pageInfo(res.text);
-    say("start", res.status, res.ms, info.loginForm ? "login_form" : res.host === MYSHIP ? "myship" : "no_form");
-    if (!info.loginForm) return { error: "login_form_missing" };
-    const f = { id: newId(), at: now(), jar, pageUrl: res.url, html: res.text, loginForm: info.loginForm, candidates: captchaCandidates(res.text, res.url), captchaUrl: null, sms: null };
-    // the picture is not a plain <img> on the measured page → also look in the page's own scripts
-    if (!f.candidates.some((c) => c.source === "img" || c.source === "img_data")) {
-      for (const s of firstPartyScripts(res.text, res.url).slice(0, 4)) {
-        const sr = await request(jar, s, { headers: { referer: res.url } });
-        if (sr.fail || sr.status !== 200) continue;
-        for (const u of captchaPathsInScript(sr.text, res.url)) if (!f.candidates.some((c) => c.url === u)) f.candidates.push({ url: u, source: "script" });
-        if (f.candidates.length >= 6) break;
+    if (res.host === MYSHIP) {
+      // a remembered device landed straight back on myship — already logged in?
+      const li = await checkLoggedIn(jar);
+      if (li.ok) {
+        await saveSession(jar.dump(), { since: new Date(now()).toISOString(), last_ok_at: new Date(now()).toISOString(), auto_logins: Number(row?.auto_logins || 0) });
+        say("start", res.status, res.ms, "myship_connected");
+        return { step: "connected" };
       }
+      say("start", res.status, res.ms, "myship_not_logged");
+      return { error: "login_page_changed" };
     }
+    const found = readScriptVars(res.text, PC711_PAGE_VARS);
+    const cid = found.oidc_client_id || found.clientId || "";
+    // state/nonce/codeChallenge/loginTxId/redirectUri + a client id must be present AND non-empty;
+    // maxAge and token may be empty (the real page has them empty) and are sent as "" exactly as served
+    const missing = REQUIRED_NONEMPTY.filter((n) => !found[n]);
+    if (!cid) missing.unshift("client_id");
+    if (missing.length) { sayWords("start", res.status, res.ms, `missing=${missing.slice(0, 8).join(",")}`); return { error: "login_page_changed" }; }
+    const token = found.token || "";
+    sayWords("start", res.status, res.ms, `page bu=${token ? 1 : 0}`);
+    const f = { id: newId(), at: now(), jar, pageUrl: res.url, vars: { ...found, oidc_client_id: cid, maxAge: found.maxAge ?? "", scope: found.scope ?? "" }, token, mobile: "", pw: "", vc: "", sms: null, timer: null };
     flow = f;
-    const pic = await fetchPicture(f);
-    if (!pic) { say("captcha", 0, 0, "not_found"); return { flowId: f.id, captcha: null, error: "captcha_not_found" }; }
-    return { flowId: f.id, captcha: pic.data };
+    armFlowTimer(f);
+    const pic = await fetchCaptcha(jar, res.url);
+    if (!pic) return { flowId: f.id, captcha: null, error: "captcha_not_found" };
+    return { flowId: f.id, captcha: pic };
   }
 
+  // refresh the picture (↻) = getCaptcha again.
   async function captcha({ flowId } = {}) {
     if (!key) return { error: "key_missing" };
     if (!flowAlive(flowId)) return { error: "flow_expired" };
-    if (!flow.captchaUrl) { const pic = await fetchPicture(flow); return pic ? { captcha: pic.data } : { error: "captcha_not_found" }; }
-    const u = new URL(flow.captchaUrl);
-    u.searchParams.set("_", String(now()));
-    const res = await request(flow.jar, u.toString(), { binary: true, headers: { referer: flow.pageUrl, accept: "image/*,*/*;q=0.8" } });
-    say("captcha", res.status, res.ms, res.fail || "refresh");
-    const data = pictureFrom(res);
-    return data ? { captcha: data } : { error: "captcha_not_found" };
+    const pic = await fetchCaptcha(flow.jar, flow.pageUrl);
+    return pic ? { captcha: pic } : { error: "captcha_not_found" };
   }
 
+  // STEP 1 → 2: validate (sends the SMS). Keeps the password + picture code in memory for step 3.
   async function submit({ flowId, mobile, password, verifyCode } = {}) {
     if (!key) return { error: "key_missing" };
     if (!flowAlive(flowId)) return { step: "error", message: "flow_expired" };
@@ -503,87 +424,111 @@ export function createPc711Login(opts = {}) {
     if (!pw || pw.length > 64) return { step: "error", message: "bad_password" };
     if (!/^[A-Za-z0-9]{3,10}$/.test(vc)) return { step: "error", message: "bad_code" };
     const f = flow;
-    // the password + the 驗證碼 go ONLY to OPENPOINT: the login form's action host is pinned here
-    if (actionHost(f.loginForm, f.pageUrl) !== OPENPOINT) { say("submit", 0, 0, "refused_host"); return { step: "error", message: "refused_host" }; }
-    const patch = { mobile: m, passwd_d: pw, verifyCode: vc };
-    const fields = f.loginForm.fields.map(([k, v]) => [k, Object.prototype.hasOwnProperty.call(patch, k) ? patch[k] : v]);
-    for (const k of Object.keys(patch)) if (!fields.some((x) => x[0] === k)) fields.push([k, patch[k]]);
-    // "Remember this server": the trust_browser checkbox is sent checked, with its served value
-    if (!fields.some((x) => x[0] === "trust_browser")) fields.push(["trust_browser", checkboxValue(f.html, "loginForm", "trust_browser")]);
-    const res = await submitForm(f.jar, f.loginForm, f.pageUrl, fields);
-    if (res.fail) { say("submit", 0, res.ms, res.fail); return { step: "error", message: "unreachable" }; }
-    const info = pageInfo(res.text);
+    const cid = f.vars.oidc_client_id;
+    const fields = { mobileCountry: "886", mobile: m, passwd: b64(pw), verify: vc, verifyType: "sms", oidc_client_id: cid };
+    if (f.token) fields.token = f.token;
+    const res = await ajax(f.jar, PC711_ROUTES.validate, fields, f.pageUrl);
     phoneTail = m.slice(-3);
-    // decide by what the answer shows, NOT just that #smsCodeForm is on the page (it always is)
-    const ctKind = /json/i.test(res.ct) ? "json" : "html";
-    const errText = pageErrorText(res.text, [m, pw, vc]);
-    const smsMarker = smsShownMarker(res.text, res.ct);
-    const formIds = (info.forms.map((x) => idWord(x.id)).filter(Boolean).slice(0, 6).join(",")) || "-";
-    sayWords("submit", res.status, res.ms, `forms=${formIds} err=${errText ? 1 : 0} ct=${ctKind} sms_marker=${smsMarker ? 1 : 0}`);
-    // (a) the page shows an error → wrong 驗證碼 / password / etc.
-    if (errText) return { step: "error", message: errText };
-    // (b) reached myship = logged in
-    if (res.host === MYSHIP) {
-      const li = await finishLogin(f.jar, res);
-      if (li.ok) { flow = null; return { step: "connected" }; }
-      return { step: "error", message: li.word };
+    if (res.fail) { say("validate", 0, res.ms, res.fail); return { step: "error", message: "unreachable" }; }
+    say("validate", res.status, res.ms, `code=${sanCode(codeOf(res.json))}`);
+    if (res.ok) {
+      f.mobile = m; f.pw = pw; f.vc = vc; // memory only, wiped on connect / error / back / expiry
+      const j = res.json || {};
+      const prefix = typeof j.identifier === "string" ? j.identifier.slice(0, 16) : "";
+      const alnum = Boolean(j.isOtpAlnum);
+      if (typeof j.token === "string" && j.token) f.token = j.token;
+      f.sms = { prefix, alnum };
+      return { step: "sms", phoneTail, prefix, alnum };
     }
-    // (c) SMS step — ONLY when it is really shown (login form gone, or an explicit sent marker)
-    if (info.smsForm && (!info.loginForm || smsMarker)) {
-      f.sms = { form: info.smsForm, url: res.url };
-      return { step: "sms", phoneTail };
+    wipeSecrets(f); // a wrong input never stays in memory
+    const code = String(codeOf(res.json));
+    const msg = descOf(res.json);
+    if (WRONG_CAPTCHA.includes(code)) {
+      const pic = await fetchCaptcha(f.jar, f.pageUrl);
+      return pic ? { step: "error", message: msg || "bad_code", captcha: pic } : { step: "error", message: msg || "bad_code" };
     }
-    // (d)
-    return { step: "error", message: "login_failed" };
+    return { step: "error", message: msg || (code === "704" ? "bad_password" : "login_failed") };
   }
 
-  async function finishLogin(jar, res) {
-    let cur = res;
-    for (let i = 0; i < 3 && !cur.fail && cur.host !== MYSHIP; i++) {
-      const info = pageInfo(cur.text);
-      if (!info.consentForm) break;
-      cur = await submitForm(jar, info.consentForm, cur.url, info.consentForm.fields);
-      say("consent", cur.status, cur.ms, cur.fail || "sent");
-    }
-    if (cur.fail) return { ok: false, word: cur.fail };
-    const li = await checkLoggedIn(jar);
-    if (!li.ok) return li;
-    await saveSession(jar.dump(), { since: new Date(now()).toISOString(), last_ok_at: new Date(now()).toISOString(), auto_logins: Number(row?.auto_logins || 0) });
-    return { ok: true, word: "connected" };
-  }
-
+  // STEP 2: doLoginForOidc (the SMS code) → OidcRedirect form post → myship → save.
   async function sms({ flowId, code } = {}) {
     if (!key) return { error: "key_missing" };
-    if (!flowAlive(flowId) || !flow.sms) return { step: "error", message: "flow_expired" };
-    const c = String(code ?? "").replace(/\s/g, "");
-    if (!/^\d{4,8}$/.test(c)) return { step: "error", message: "bad_sms" };
+    if (!flowAlive(flowId) || !flow || !flow.sms) return { step: "error", message: "flow_expired" };
     const f = flow;
-    // the SMS code goes ONLY to OPENPOINT: the SMS form's action host is pinned here
-    if (actionHost(f.sms.form, f.sms.url) !== OPENPOINT) { say("sms", 0, 0, "refused_host"); return { step: "error", message: "refused_host" }; }
-    let k = 0;
-    const fields = f.sms.form.fields.map(([n, v]) => {
-      if (n === "smsCode") return [n, c];
-      if (/^smsVerify/.test(n)) { const d = c[k] ?? ""; k += 1; return [n, d]; }
-      return [n, v];
-    });
-    if (!fields.some((x) => x[0] === "smsCode")) fields.push(["smsCode", c]);
-    const res = await submitForm(f.jar, f.sms.form, f.sms.url, fields);
-    if (res.fail) { say("sms", 0, res.ms, res.fail); return { step: "error", message: "unreachable" }; }
-    const info = pageInfo(res.text);
-    if (res.host !== MYSHIP && info.smsForm && !info.consentForm) {
-      const msg = pageErrorText(res.text, [c]);
-      say("sms", res.status, res.ms, "sms_again");
-      return { step: "error", message: msg || "sms_failed" };
+    const c = String(code ?? "").replace(/\s/g, "").toUpperCase();
+    const good = f.sms.alnum ? /^[A-Z0-9]{4,8}$/.test(c) : /^\d{4,8}$/.test(c);
+    if (!good) return { step: "error", message: "bad_sms" };
+    if (!f.pw || !f.vc) return { step: "error", message: "flow_expired" }; // secrets gone → restart
+    const v = f.vars;
+    const cid = v.oidc_client_id;
+    const fields = {
+      mobileCountry: "886", mobile: f.mobile, passwd: b64(f.pw), verify: f.vc, smsCode: c,
+      oidc_client_id: cid, state: v.state, nonce: v.nonce, scope: v.scope ?? "", max_age: String(v.maxAge ?? ""),
+      code_challenge: v.codeChallenge, trust_browser: "Y", login_tx_id: v.loginTxId,
+    };
+    if (f.token) fields.token = f.token;
+    const res = await ajax(f.jar, PC711_ROUTES.doLogin, fields, f.pageUrl);
+    if (res.fail) { say("login", 0, res.ms, res.fail); return { step: "error", message: "unreachable" }; }
+    say("login", res.status, res.ms, `code=${sanCode(codeOf(res.json))}`);
+    if (!res.ok) {
+      const code = String(codeOf(res.json));
+      const msg = descOf(res.json);
+      if (code === "735") { // too many wrong SMS codes → flow ended, back to step 1 with a new picture
+        wipeSecrets(f); f.sms = null;
+        const pic = await fetchCaptcha(f.jar, f.pageUrl);
+        return { step: "restart", flowId: f.id, message: msg || "too_many_sms", ...(pic ? { captcha: pic } : {}) };
+      }
+      return { step: "error", message: msg || "login_failed" };
     }
-    const li = await finishLogin(f.jar, res);
-    say("sms", res.status, res.ms, li.ok ? "connected" : li.word);
-    if (!li.ok) return { step: "error", message: li.word };
+    // 2xx → the OidcRedirect form post (lgtk + oidc ids), then follow to myship
+    const j = res.json || {};
+    const red = (j.redirect && typeof j.redirect === "object") ? j.redirect : {};
+    const redFields = {
+      lgtk: red.lgtk || j.lgtk || "", oidc_client_id: cid, state: red.state || j.state || v.state,
+      redirectUri: red.redirect_uri || v.redirectUri, login_tx_id: v.loginTxId,
+    };
+    const rr = await oidcRedirect(f.jar, redFields, f.pageUrl);
+    wipeSecrets(f); // the password is no longer needed once the redirect is posted
+    if (rr.fail) { say("redirect", 0, rr.ms || 0, rr.fail); return { step: "error", message: rr.fail === "refused" ? "refused_host" : "unreachable" }; }
+    const onMyship = rr.host === MYSHIP;
+    sayWords("redirect", rr.status || 0, rr.ms || 0, `hops=${rr.hops ?? 0} myship=${onMyship ? 1 : 0} path=${rr.path}`);
+    const li = await checkLoggedIn(f.jar);
+    if (!li.ok) return { step: "error", message: "login_failed" };
+    await saveSession(f.jar.dump(), { since: new Date(now()).toISOString(), last_ok_at: new Date(now()).toISOString(), auto_logins: Number(row?.auto_logins || 0) });
+    clearFlowTimer(f);
     flow = null;
     return { step: "connected" };
   }
 
+  // STEP 2 "Send again": resend the SMS; stay on step 2 (no new picture, no password).
+  async function resend({ flowId } = {}) {
+    if (!key) return { error: "key_missing" };
+    if (!flowAlive(flowId) || !flow || !flow.sms) return { step: "error", message: "flow_expired" };
+    const f = flow;
+    const fields = { mobile: f.mobile, mobileCountry: "886", oidc_client_id: f.vars.oidc_client_id };
+    if (f.token) fields.token = f.token;
+    const res = await ajax(f.jar, PC711_ROUTES.resend, fields, f.pageUrl);
+    if (res.fail) { say("resend", 0, res.ms, res.fail); return { step: "error", message: "unreachable" }; }
+    say("resend", res.status, res.ms, `code=${sanCode(codeOf(res.json))}`);
+    if (!res.ok) return { step: "error", message: descOf(res.json) || "login_failed" };
+    return { step: "sms", resent: true, phoneTail, prefix: f.sms.prefix, alnum: f.sms.alnum };
+  }
+
+  // STEP 2 "Back": wipe the password + picture code from memory, return to step 1 with a new picture.
+  async function back({ flowId } = {}) {
+    if (!key) return { error: "key_missing" };
+    if (!flowAlive(flowId) || !flow) return { step: "error", message: "flow_expired" };
+    const f = flow;
+    wipeSecrets(f); f.sms = null;
+    clearFlowTimer(f); armFlowTimer(f); // back to step 1 → a fresh 10-minute window
+    const pic = await fetchCaptcha(f.jar, f.pageUrl);
+    say("back", 0, 0, pic ? "ok" : "no_img");
+    return pic ? { step: "login", captcha: pic } : { step: "login", captcha: null, error: "captcha_not_found" };
+  }
+
   async function disconnect() {
     if (!key) return { error: "key_missing" };
+    if (flow) clearFlowTimer(flow);
     flow = null; phoneTail = "";
     row = null;
     if (store) await store.clear();
@@ -603,7 +548,9 @@ export function createPc711Login(opts = {}) {
     for (const [h, v] of Object.entries(dump)) if (PC711_HOSTS.includes(h) && v) merged[h] = String(v);
     await saveSession(merged, { last_ok_at: new Date(now()).toISOString() });
   }
-  // ONE quick re-login with the saved session: limits first, then the page's own 快速登入.
+
+  // ONE quick re-login with the saved session (no password): the page's own JSON quick-login. ⚠️ NOT
+  // PROVEN. Any step that asks for a passkey / password / picture / SMS → needs_login, stop.
   async function quickRelogin() {
     if (!key || !row || !row.blob || row.state === "needs_login") return null;
     const t = now();
@@ -613,36 +560,55 @@ export function createPc711Login(opts = {}) {
     if (lastAt && t - lastAt < PC711_QUICK_GAP_MS) { say("quick", 0, 0, "too_soon"); return null; }
     if (dayCount >= PC711_QUICK_PER_DAY) { say("quick", 0, 0, "day_limit"); return null; }
     await persist({ last_quick_at: new Date(t).toISOString(), quick_day: day, quick_day_count: dayCount + 1 });
+    const needsLogin = async (w) => { say("quick", 0, 0, w); await persist({ state: "needs_login", last_problem: "needs_login" }); return null; };
     const jar = createPc711Jar(sessionCookies() || {});
-    let res = await follow(jar, await request(jar, PC711_LOGIN_URL));
-    let used = "";
-    for (let i = 0; i < 3 && !res.fail && res.host !== MYSHIP; i++) {
-      const info = pageInfo(res.text);
-      if (info.consentForm) { res = await submitForm(jar, info.consentForm, res.url, info.consentForm.fields); used = "consent"; continue; }
-      const q = findQuickLogin(res.text, info.forms, res.url);
-      if (q && q.kind === "form") { res = await submitForm(jar, q.form, res.url, q.form.fields); used = "form"; continue; }
-      if (q) { res = await follow(jar, await request(jar, q.url, { headers: { referer: res.url } }), res.url); used = q.kind; continue; }
-      const w = info.smsForm ? "asks_sms" : info.loginForm ? "asks_password" : "unknown_page";
-      say("quick", res.status, res.ms, w);
-      if (info.smsForm || info.loginForm) await persist({ state: "needs_login", last_problem: "needs_login" });
-      else await persist({ last_problem: w });
-      return null;
+    const auth = await follow(jar, await request(jar, PC711_LOGIN_URL));
+    if (auth.fail) { say("quick", 0, auth.ms, auth.fail); await persist({ last_problem: auth.fail }); return null; }
+    if (auth.host === MYSHIP) {
+      const li = await checkLoggedIn(jar);
+      if (li.ok) { await saveSession(jar.dump(), { last_ok_at: new Date(now()).toISOString(), auto_logins: Number(row.auto_logins || 0) + 1 }); say("quick", li.res?.status, li.res?.ms, "ok_cookie"); return { cookies: jar.dump() }; }
+      return needsLogin("asks_login");
     }
-    if (res.fail) { say("quick", 0, res.ms, res.fail); await persist({ last_problem: res.fail }); return null; }
-    if (res.host !== MYSHIP) { say("quick", res.status, res.ms, "no_myship"); await persist({ last_problem: "no_myship" }); return null; }
+    const vars = readScriptVars(auth.text, PC711_PAGE_VARS);
+    const cid = vars.oidc_client_id || vars.clientId || "";
+    if (!cid) return needsLogin("asks_login");
+    const tokenF = vars.token ? { token: vars.token } : {};
+    // the quick-login calls are JSON (postQuickLoginJson), not urlencoded
+    const cand = await ajaxJson(jar, PC711_ROUTES.quickCandidates, { oidc_client_id: cid, ...tokenF }, auth.url);
+    if (cand.fail) { say("quick", 0, cand.ms, cand.fail); await persist({ last_problem: cand.fail }); return null; }
+    if (!cand.ok) return needsLogin("candidates_no");
+    if (QUICK_SECRET_RE.test(JSON.stringify(cand.json || {}))) return needsLogin("asks_secret");
+    const list = Array.isArray(cand.json?.candidates) ? cand.json.candidates : Array.isArray(cand.json?.data) ? cand.json.data : [];
+    const pick = list[0];
+    const pid = pick && (pick.id ?? pick.candidateId ?? pick.key ?? "");
+    if (!pid) return needsLogin("no_candidate");
+    const sel = await ajaxJson(jar, PC711_ROUTES.quickSelect, {
+      oidc_client_id: cid, candidate_id: String(pid), state: vars.state, nonce: vars.nonce, scope: vars.scope ?? "",
+      max_age: String(vars.maxAge ?? ""), code_challenge: vars.codeChallenge, trust_browser: "Y", login_tx_id: vars.loginTxId, ...tokenF,
+    }, auth.url);
+    if (sel.fail) { say("quick", 0, sel.ms, sel.fail); await persist({ last_problem: sel.fail }); return null; }
+    if (!sel.ok) return needsLogin("select_no");
+    if (QUICK_SECRET_RE.test(JSON.stringify(sel.json || {}))) return needsLogin("asks_secret");
+    const sj = sel.json || {};
+    const red = (sj.redirect && typeof sj.redirect === "object") ? sj.redirect : {};
+    const redFields = {
+      lgtk: red.lgtk || sj.lgtk || "", oidc_client_id: cid, state: red.state || sj.state || vars.state,
+      redirect_uri: red.redirect_uri || vars.redirectUri, login_tx_id: vars.loginTxId,
+    };
+    const body = new URLSearchParams(redFields).toString();
+    const rr = await follow(jar, await request(jar, `https://${OPENPOINT}${PC711_ROUTES.quickHandoff}`, {
+      method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded", origin: `https://${OPENPOINT}`, referer: auth.url },
+    }), auth.url);
+    if (rr.fail) { say("quick", 0, rr.ms || 0, rr.fail); await persist({ last_problem: rr.fail }); return null; }
+    if (rr.host !== MYSHIP) return needsLogin("no_myship");
     const li = await checkLoggedIn(jar);
-    if (!li.ok) {
-      say("quick", li.res?.status, li.res?.ms, li.word);
-      if (li.word === "logged_out") await persist({ state: "needs_login", last_problem: "needs_login" });
-      else await persist({ last_problem: li.word });
-      return null;
-    }
+    if (!li.ok) return needsLogin("not_logged");
     await saveSession(jar.dump(), { last_ok_at: new Date(now()).toISOString(), auto_logins: Number(row.auto_logins || 0) + 1 });
-    say("quick", li.res?.status, li.res?.ms, used ? `ok_${used}` : "ok");
+    say("quick", li.res?.status, li.res?.ms, "ok");
     return { cookies: jar.dump() };
   }
 
-  return { load, status, start, captcha, submit, sms, disconnect, getSession, saveCookies, quickRelogin, hasKey: () => Boolean(key), _flow: () => flow };
+  return { load, status, start, captcha, submit, sms, resend, back, disconnect, getSession, saveCookies, quickRelogin, hasKey: () => Boolean(key), _flow: () => flow };
 }
 
 // ── routes (server.js mounts these behind requireAuth + requireAdmin + its own limiter) ──
@@ -664,6 +630,8 @@ export function createPc711Handlers(login, { allowed = () => Boolean(1), statusA
     captcha: guard((b) => login.captcha({ flowId: String(b.flowId || "") })),
     submit: guard((b) => login.submit({ flowId: String(b.flowId || ""), mobile: b.mobile, password: b.password, verifyCode: b.verifyCode })),
     sms: guard((b) => login.sms({ flowId: String(b.flowId || ""), code: b.code })),
+    resend: guard((b) => login.resend({ flowId: String(b.flowId || "") })),
+    back: guard((b) => login.back({ flowId: String(b.flowId || "") })),
     disconnect: guard(() => login.disconnect()),
     status: async (req, res) => {
       if (!statusAllowed(req.authUserId || "admin")) return res.status(429).json({ error: "rate_limited" });
