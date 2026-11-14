@@ -288,7 +288,7 @@ describe("switch ON — the frozen lane", () => {
     expect(awaits.length).toBeGreaterThan(8);
     const ownSteps = ["withTimeout", "ensureScript", "alarmSoon", "readSwitch", "readPending", "sendOne", "ping",
       "dryIdle", "readWarmSwitch", "readWarmList", "writeStop", "saveWarmState", "warmOne", "loadWarm",
-      "dryState", "readGaveUp"]; // 1.18.0 warm-up steps (each bounded inside; loadWarm = one withTimeout read, once); 1.18.1 gates (status read / one withTimeout RPC)
+      "dryState", "readGaveUp", "sendNight"]; // 1.18.0 warm-up steps (each bounded inside; loadWarm = one withTimeout read, once); 1.18.1 gates (status read / one withTimeout RPC); 1.18.2 sendNight (one withTimeout check + one withTimeout write)
     expect(awaits.filter((a) => !ownSteps.includes(a))).toEqual([]);
     expect(code).not.toMatch(/await\s+r\.(json|text)\(/);                    // body reads go through withTimeout
     for (const what of ['"warm-up switch body")', '"warm-up list body")', '"status read")', '"switch body")', '"pending body")', '"config read")', '"inject")', '"frozen pass")', '"gave-up body")', '"gave-up read")']) expect(code, what).toContain(what);
@@ -309,12 +309,15 @@ describe("switch ON — the frozen lane", () => {
     expect(normalLane(p.w)).toEqual(trace(m.w));
     expect(normalLane(v.w)).toEqual(trace(m.w));
   });
-  it("maintenance window (01:00–05:00 Taipei): no frozen request and no pending read", async () => {
+  it("maintenance window (01:00–05:00 Taipei), 1.18.2: the pending read runs and the live request goes out, flagged night: true; the verdict is written", async () => {
     const clock = { t: Date.UTC(2026, 0, 15, 18, 30, 0) }; // 02:30 Taipei
     const w = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: LEADER, maintenance: true, frozenSwitch: "true", frozenPending: FROZEN_ROWS });
     await w.booted; await tick(w, clock, 3);
-    expect(frozenMsgs(w.calls)).toEqual([]);
-    expect(pendingReads(w.calls)).toBe(0);
+    expect(pendingReads(w.calls)).toBeGreaterThan(0);
+    expect(frozenMsgs(w.calls).length).toBeGreaterThan(0);
+    expect(frozenMsgs(w.calls).every((m) => m.night === true && m.nightWarm === undefined)).toBe(true);
+    expect(verdictBodies(w.calls)[0]).toEqual({ p_id: "fz-1", p_expected_store: "968551", p_status: "ok" });
+    expect(w.calls.logs).toContain("[PC-FROZEN] night send store=968551 row=fz-1 result=ok");
   });
   it("standby (not the leader) → nothing frozen, not even the switch read", async () => {
     const standby: Opts["lease"] = () => ({ json: { leader: false, reason: "leader_alive", leader_id: "other", leader_label: "Mac", leader_age_s: 1, standby_ready: true, standby_age_s: 1, ttl_s: 120 } });
@@ -352,6 +355,15 @@ describe("guards right before the request", () => {
     await w.sb.pcTick(); await flush();                                // pass 2: the ping crosses 01:00
     expect(frozenMsgs(w.calls)).toEqual([]);
     expect(w.calls.logs).toContain("[PC-FROZEN] maintenance window started — stopping");
+  });
+  it("1.18.2: a pass decided at night that reaches 05:00 before the request sends nothing (the window is re-checked both ways)", async () => {
+    const clock = { t: Date.UTC(2026, 0, 15, 20, 59, 40) };          // 04:59:40 Taipei
+    const w = bootWorker({ now: () => clock.t, rows: [PENDING_ROW], lease: LEADER, maintenance: true, frozenSwitch: "true", frozenPending: FROZEN_ROWS, onFrozenPing: () => { clock.t = Date.UTC(2026, 0, 15, 21, 0, 1); } });
+    await w.booted;
+    await w.sb.pcTick(); await flush(); clock.t += 5 * S;              // pass 1: reads
+    await w.sb.pcTick(); await flush();                                // pass 2: the ping crosses 05:00
+    expect(frozenMsgs(w.calls)).toEqual([]);
+    expect(w.calls.logs).toContain("[PC-FROZEN] maintenance window ended — next pass");
   });
   it("another pass running (started but not kicked yet, or the loop already re-armed by another pass at kick time) → no request", async () => {
     const { w, clock } = await run({ frozenSwitch: "true", frozenPending: FROZEN_ROWS }, 1);

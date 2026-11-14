@@ -15,10 +15,10 @@
 // 1.18.0: every answer also carries `blocked` — true for HTTP 403 / 429 or a captcha / login page
 // instead of an answer. The warm-up lane stops itself on it; the live lane treats it like any other
 // 'unknown' (unchanged).
-// 1.18.0 NIGHT: only a message with `nightWarm: true` (the warm-up's 01:00–05:00 probe) treats an E-Map
-// maintenance page (redirect path or body) as a transient no-answer. Every other request — the live lane
-// and the day warm-up — keeps the 1.17.0 order and outcome: a non-answer page = 'unknown', not transient,
-// the next check uses the other section.
+// 1.18.0 NIGHT: only a message with `nightWarm: true` (the warm-up's 01:00–05:00 probe) or — 1.18.2 —
+// `night: true` (the live lane's 01:00–05:00 request) treats an E-Map maintenance page (redirect path or
+// body) as a transient no-answer. Every DAY request keeps the 1.17.0 order and outcome: a non-answer
+// page = 'unknown', not transient, the next check uses the other section.
 // Never writes anything; never executes page code (guid read from the MAIN-world helper
 // emap-guid-main.js over its DOM event, or from the page SOURCE text).
 (function sellerFlowEmapFrozen() {
@@ -143,7 +143,8 @@
     if (!message || message.type !== "PC_FROZEN_CHECK" || !message.row) return false; // not ours
     (async () => {
       const guid = await getGuid();
-      const res = await checkFrozenStore(message.row.store_id, guid, message.nightWarm === true);
+      // night = the warm-up's night probe OR (1.18.2) the live lane's night request; a day message has neither
+      const res = await checkFrozenStore(message.row.store_id, guid, message.nightWarm === true || message.night === true);
       sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: res.status, frozen_reason: res.reason, transient: Boolean(res.transient), blocked: Boolean(res.blocked), maintenance: Boolean(res.maintenance), guidFound: guid !== null, endpoint: res.endpoint });
     })().catch((e) => sendResponse({ ok: true, script: "emap-frozen", frozen_store_status: "unknown", frozen_reason: `frozen check threw: ${(e && e.message) || "error"}`, transient: true, guidFound: false, endpoint: endpointOf(section) }));
     return true;

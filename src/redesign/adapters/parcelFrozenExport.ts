@@ -33,11 +33,6 @@ const sinceMs = (r: ParcelScanRow, now: number, edits?: FrozenEdits): number => 
   const e = r.tempLayer === TEMP_FROZEN ? edits?.get(r.id) : undefined;
   return e != null && Number.isFinite(e) ? Math.min(ageMs(r, now), now - e) : ageMs(r, now);
 };
-// 01:00–05:00 Taipei: the live frozen check rests (the checker's maintenance window) → waiting is pointless.
-export function frozenCheckerResting(now: number): boolean {
-  const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", hourCycle: "h23" }).format(new Date(now)));
-  return h >= 1 && h < 5;
-}
 // Not exported, 冷凍, and no answer at all yet (never 'unknown' — that one is a finished try).
 export const frozenAnswerPending = (r: ParcelScanRow): boolean =>
   r.status !== "exported" && r.tempLayer === TEMP_FROZEN && r.frozenStoreStatus == null;
@@ -45,8 +40,11 @@ export const frozenAnswerPending = (r: ParcelScanRow): boolean =>
 export const frozenUnchecked = (r: ParcelScanRow): boolean =>
   r.status !== "exported" && r.tempLayer === TEMP_FROZEN && (r.frozenStoreStatus == null || r.frozenStoreStatus === "unknown");
 // The parcels the export waits for: fresh 冷凍 rows whose answer is still on its way.
+// Day and night alike (extension 1.18.2 answers frozen checks at night too, like the dry lane): only the
+// frozen switch off — or parcel checks off for the seller (the screen passes frozenOn = checkOn && switch) —
+// means no wait. A checker that is not running is not visible to the app; the hold then ends after 30 s.
 export function frozenHoldRows(ready: ParcelScanRow[], now: number, frozenOn = false, edits?: FrozenEdits): ParcelScanRow[] {
-  if (!frozenOn || frozenCheckerResting(now)) return [];
+  if (!frozenOn) return [];
   return ready.filter((r) => frozenAnswerPending(r) && sinceMs(r, now, edits) < FROZEN_HOLD_FRESH_MS);
 }
 // Where a running hold stands: how many held parcels still wait, how many were refused (no_frozen).

@@ -13,7 +13,7 @@ import { TProvider, buildT } from "../../i18n";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
 import { verdictPollMs, rowAwaitsVerdict, splitScansForExport, VERDICT_POLL_FAST_MS, VERDICT_POLL_SLOW_MS } from "../../adapters/parcelScan";
 import {
-  frozenHoldRows, frozenHoldState, frozenCheckerResting, frozenUnchecked, exportedFrozenRefused, exportedFrozenUnchecked, lateFrozenWatch,
+  frozenHoldRows, frozenHoldState, frozenUnchecked, exportedFrozenRefused, exportedFrozenUnchecked, lateFrozenWatch,
   _clearFrozenEdits, FROZEN_HOLD_MS, FROZEN_HOLD_FRESH_MS, FROZEN_LATE_WATCH_MS, FROZEN_NOTE_MAX_AGE_MS,
 } from "../../adapters/parcelFrozenExport";
 import { FROZEN_OFF, TEMP_FROZEN, type FrozenState } from "../../adapters/parcelFrozen";
@@ -287,11 +287,10 @@ describe("A) the hold", () => {
     expect(q(r, "ps-frozen-wait")).toBeNull();
     expect(q(r, "ps-frozen-ask")).toBeTruthy();
   });
-  it("nothing to wait for → no 30 s hold, the frozen question at once: an old parcel, an 'unknown' one, the checker's night rest", async () => {
+  it("nothing to wait for → no 30 s hold, the frozen question at once: an old parcel, an 'unknown' one", async () => {
     for (const [name, rows, now] of [
       ["older than 2 min", [frozen({ id: "p1", createdAt: at(DAY - FROZEN_HOLD_FRESH_MS - 1000) })], DAY],
       ["unknown", [frozen({ id: "p1", createdAt: at(DAY), frozenStoreStatus: "unknown" })], DAY],
-      ["02:00 Taipei", [frozen({ id: "p1", createdAt: at(Date.parse("2026-11-13T18:00:00Z")) })], Date.parse("2026-11-13T18:00:00Z")],
     ] as const) {
       vi.setSystemTime(now);
       h.rows = rows as unknown as ParcelScanRow[];
@@ -300,6 +299,44 @@ describe("A) the hold", () => {
       expect(q(r, "ps-frozen-wait"), name).toBeNull();
       expect(q(r, "ps-frozen-ask"), name).toBeTruthy();
       expect(q(r, "ps-pending-msg"), name).toBeNull();        // the frozen wording, not the general one
+      r.unmount();
+    }
+  });
+});
+
+describe("A2) at night (01:00–05:00 Taipei) — extension 1.18.2 answers at night too", () => {
+  const NIGHT = Date.parse("2026-11-13T18:00:00Z");                       // 02:00 Taipei
+  it("a fresh frozen parcel at 02:00 HOLDS the export like by day, and goes on by itself when the answer lands", async () => {
+    vi.setSystemTime(NIGHT);
+    h.rows = [frozen({ id: "n1", createdAt: at(NIGHT) })];
+    const r = await open();
+    tapExport(r);
+    expect(q(r, "ps-frozen-wait")).toBeTruthy();                           // waits (before: the question at once)
+    expect(q(r, "ps-frozen-ask")).toBeNull();
+    h.rows = [frozen({ id: "n1", createdAt: at(NIGHT), frozenStoreStatus: "ok" })];
+    await advance(4_000);
+    expect(q(r, "ps-frozen-wait")).toBeNull();
+    expect(q(r, "ps-confirm-export")).toBeTruthy();
+  });
+  it("no answer at 02:00 → the same 30 s wait, then Wait / Export anyway (never a block)", async () => {
+    vi.setSystemTime(NIGHT);
+    h.rows = [frozen({ id: "n1", createdAt: at(NIGHT) })];
+    const r = await open();
+    tapExport(r);
+    await advance(FROZEN_HOLD_MS - 1_000);
+    expect(q(r, "ps-frozen-wait")).toBeTruthy();
+    await advance(1_600);
+    expect(q(r, "ps-frozen-wait")).toBeNull();
+    expect(q(r, "ps-frozen-ask")).toBeTruthy();
+  });
+  it("at night with the frozen switch off, or parcel checks off → no wait at all (unchanged)", async () => {
+    vi.setSystemTime(NIGHT);
+    for (const [fz, chk] of [[false, true], [true, false]] as const) {
+      h.rows = [frozen({ id: "n1", createdAt: at(NIGHT) })];
+      const r = await open(fz, chk);
+      tapExport(r);
+      expect(q(r, "ps-frozen-wait")).toBeNull();
+      expect(q(r, "ps-confirm-export")).toBeTruthy();
       r.unmount();
     }
   });
@@ -394,7 +431,7 @@ describe("C) no change, no delay", () => {
 
 describe("pure rules", () => {
   const f = (over: Partial<ParcelScanRow> = {}) => frozen({ createdAt: at(DAY), ...over });
-  it("frozenHoldRows: only fresh 冷凍 rows with NO answer, switch on, outside 01:00–05:00 Taipei", () => {
+  it("frozenHoldRows: only fresh 冷凍 rows with NO answer, switch on — day and night (1.18.2)", () => {
     expect(frozenHoldRows([f({ id: "a" })], DAY, true).map((r) => r.id)).toEqual(["a"]);
     expect(frozenHoldRows([f({ id: "a" })], DAY, false)).toEqual([]);                                        // switch off
     expect(frozenHoldRows([f({ id: "a", frozenStoreStatus: "ok" }), f({ id: "b", frozenStoreStatus: "no_frozen" }), f({ id: "c", frozenStoreStatus: "unknown" })], DAY, true)).toEqual([]);
@@ -403,7 +440,8 @@ describe("pure rules", () => {
     expect(frozenHoldRows([f({ id: "a" })], DAY + FROZEN_HOLD_FRESH_MS - 1, true)).toHaveLength(1);
     expect(frozenHoldRows([f({ id: "a" })], DAY + FROZEN_HOLD_FRESH_MS, true)).toEqual([]);                  // too old to wait for
     const night = Date.parse("2026-11-13T18:30:00Z");                                                        // 02:30 Taipei
-    expect(frozenHoldRows([f({ id: "a", createdAt: at(night) })], night, true)).toEqual([]);
+    expect(frozenHoldRows([f({ id: "a", createdAt: at(night) })], night, true).map((r) => r.id)).toEqual(["a"]); // waits at night too
+    expect(frozenHoldRows([f({ id: "a", createdAt: at(night) })], night, false)).toEqual([]);
   });
   it("edit time: a reset frozen answer counts from the edit for the hold, the late watch and the read speed; never for a dry row", () => {
     const old = f({ id: "a", createdAt: at(DAY - 60 * 60_000) });
@@ -418,10 +456,6 @@ describe("pure rules", () => {
     const dry = mk({ id: "a", createdAt: at(DAY - 60 * 60_000), phoneCheckStatus: null as unknown as string });
     expect(verdictPollMs([dry], DAY, 180_000, true, edits)).toBe(verdictPollMs([dry], DAY, 180_000, true));   // a dry row ignores the edit map
     expect(frozenHoldRows([mk({ id: "a", createdAt: at(DAY) })], DAY, true, edits)).toEqual([]);
-  });
-  it("frozenCheckerResting: 01:00 ≤ Taipei time < 05:00", () => {
-    const tp = (hhmm: string) => Date.parse(`2026-11-13T${hhmm}:00+08:00`);
-    expect([tp("00:59"), tp("01:00"), tp("03:30"), tp("04:59"), tp("05:00"), tp("14:00")].map(frozenCheckerResting)).toEqual([false, true, true, true, false, false]);
   });
   it("frozenHoldState: counts who still waits and who was refused; gone / exported / dry / answered rows no longer wait", () => {
     const rows = [f({ id: "a" }), f({ id: "b", frozenStoreStatus: "no_frozen" }), f({ id: "c", frozenStoreStatus: "ok" }), f({ id: "d", frozenStoreStatus: "unknown" }), f({ id: "e", status: "exported" }), mk({ id: "g" }), f({ id: "z" })];

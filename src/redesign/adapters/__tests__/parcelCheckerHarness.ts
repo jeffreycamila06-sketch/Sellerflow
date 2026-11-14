@@ -165,7 +165,7 @@ export type BootOpts = {
   // settings rows the app_settings GET returns (default: the switch row absent = OFF).
   frozenVerdict?: (row?: { id?: string; store_id?: string }) => string | null; // "hang" never answers · "throw" · "timeout" = the content script's 2.5 s abort (transient) · null = no answer
   frozenSwitch?: "true" | "false" | "missing" | "error";
-  frozenPending?: unknown[] | "error";       // admin_parcel_frozen_pending rows (default [])
+  frozenPending?: unknown[] | "error" | (() => unknown[]); // admin_parcel_frozen_pending rows (default []); a function = read at each call
   frozenVerdictHttp?: number;               // admin_parcel_frozen_verdict status (default 200)
   extDir?: string;                          // read the worker from another folder (e.g. main's copy)
   frozenScript?: boolean;                   // the frozen content script answers PC_FROZEN_PING (default true); false = until injected
@@ -187,7 +187,7 @@ export type BootOpts = {
 export function bootWorker(opts: BootOpts = {}) {
   const extDir = opts.extDir || process.env.SFL_EXT_DIR || "chrome-extension";
   const src = readFileSync(`${extDir}/background.js`, "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean; nightWarm?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean; nightWarm?: boolean; night?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[],
     injected: [] as string[], openNormal: 0, frozenOverlap: 0,
     heldGets: [] as { key: string; release: () => void }[] };
   const storage: Record<string, unknown> = {
@@ -220,8 +220,8 @@ export function bootWorker(opts: BootOpts = {}) {
     } },
     tabs: {
       query: (q: { url: string[] | string }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
-      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean; nightWarm?: boolean }, cb0: (r: unknown) => void) => {
-        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry, nightWarm: msg.nightWarm });
+      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean; nightWarm?: boolean; night?: boolean }, cb0: (r: unknown) => void) => {
+        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry, nightWarm: msg.nightWarm, ...(msg.night !== undefined ? { night: msg.night } : {}) });
         const emap = emapTabs.find((t) => t.id === id);
         // slowChecks: a normal E-Map / myship check stays "open" for one macrotask (the frozen lane must not send meanwhile)
         const slow = Boolean(opts.slowChecks) && (msg.type === "PC_CHECK_STORE" || msg.type === "PC_CHECK_PHONE");
@@ -323,7 +323,7 @@ export function bootWorker(opts: BootOpts = {}) {
     }
     if (/admin_parcel_frozen_pending/.test(url)) {
       if (opts.frozenPending === "error") return { ok: false, status: 500, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
-      const rows = opts.frozenPending ?? [];
+      const rows = typeof opts.frozenPending === "function" ? opts.frozenPending() : (opts.frozenPending ?? []);
       return { ok: true, status: 200, json: async () => rows, text: async () => JSON.stringify(rows), headers: { get: () => "application/json" } };
     }
     if (/admin_parcel_frozen_verdict/.test(url)) {

@@ -5312,3 +5312,32 @@ and token is empty**. The getCaptcha POST already works (200 `{codeId,codeDescri
 - **Quick re-login** candidates/select now POST **JSON** (`application/json; charset=UTF-8`, `ajaxJson`) to match
   OPENPOINT's postQuickLoginJson; field names stay unproven; any non-2xx / passkey-password-picture-SMS → `needs_login`.
   The OidcQuickLoginHandoff form post stays urlencoded.
+## 2026-11-14 — FROZEN LIVE LANE WORKS AT NIGHT: extension 1.18.2 (branch `frozen-night-lane`, NOT merged; NO SQL, NO Render)
+Before: the LIVE frozen lane was fully off 01:00–05:00 Taipei (no pending read, no request) → a frozen parcel
+made at night got no answer, not even from `store_frozen_cache`, until 05:00 (last 7 days: 3 of 135 frozen
+parcels, all exported before 05:00 without an answer). The dry lane keeps working at night.
+- **Extension (`frozen-check.js` + one line in `emap-frozen-711.js`; background.js UNTOUCHED):**
+  - At night the frozen pending read RUNS (sql/157's cache step answers from `store_frozen_cache`) and the live
+    request is SENT with `night: true` (the content script then reads an E-Map maintenance page as a no-answer —
+    the same reading the warm-up's `nightWarm` flag already had).
+  - `sendNight`: a real answer (ok / no_frozen, or NO2 / close = 'unknown' E-Map really said) → written as usual.
+    A no-answer (no reply, 3 s cap, timeout, maintenance page, odd page) → NOTHING written, NOT counted (no 10-min
+    lane pause); that store is asked again ≥ 10 min later (the per-store floor). A block (403 / 429 / captcha /
+    login) is never a harmless no-answer → written 'unknown' exactly like by day. ⚠️ The LIVE lane has no "stop"
+    (it never had one) — only the warm-up stops on a block, unchanged.
+  - Log every night request: `[PC-FROZEN] night send store=… row=… result=ok|no_frozen|unknown (blocked)|no_answer (…)`.
+  - Real frozen parcels keep priority over the warm-up at night too (same condition as by day: the warm-up only
+    after an empty frozen pending read). The warm-up's night rules (10-min retry, 6 → wait till 05:00,
+    maintenance = no-answer, block = STOP) are unchanged.
+  - The window is re-checked right before the request both ways (decided by day → crosses 01:00 = no send,
+    "maintenance window started — stopping"; decided at night → crosses 05:00 = "maintenance window ended — next pass").
+  - DAY = main byte for byte (requests, writes, tab messages, log lines): `parcelCheckerFrozenNight.test.ts`
+    runs main's 1.18.1 `background.js` + `frozen-check.js` + `emap-frozen-711.js` in the same harness, 7 scenarios.
+  - Manifest **1.18.2**. Harness: `frozenPending` may be a function; `night` recorded on tab messages.
+- **Web (`adapters/parcelFrozenExport.ts`):** the export hold no longer skips to "not checked" at 01:00–05:00 —
+  a fresh frozen parcel waits the normal 30 s at night too (`frozenCheckerResting` removed). "Ask at once" stays
+  only for: frozen switch off or parcel checks off (`frozenGate = checkOn && fzOn`). The app has no signal that
+  the checker laptop is running (only the admin-only worker state) — a stopped checker just means the 30 s runs out.
+- **Order:** merge (Vercel, web half) → build + install 1.18.2 on the checker machines (`npm run build:extension`,
+  zip `chrome-extension-dist/`). Either order is safe: the old extension with the new web = a 30 s wait at night
+  that ends in the question; the new extension with the old web = night answers arrive, the hold still asks at once.

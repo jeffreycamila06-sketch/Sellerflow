@@ -936,7 +936,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   //   1. a fresh 冷凍 parcel whose answer is still on its way → the export HOLDS ("Checking if this
   //      store accepts frozen…") and goes on BY ITSELF when the answer lands (frozenHoldTick);
   //   2. a 冷凍 parcel without a real answer and nothing to wait for (the hold ran out, the checker
-  //      gave up, an old parcel, the checker's night rest) → the frozen question: Wait / Export
+  //      gave up, an old parcel) → the frozen question: Wait / Export
   //      anyway (then the parcel carries "Frozen not checked");
   //   3. the normal "still being checked" question for the phone / store halves, then the export.
   // A dry parcel and a 冷凍 parcel with an answer (cached or live) skip 1 and 2: no delay at all.

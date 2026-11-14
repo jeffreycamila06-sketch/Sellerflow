@@ -42,9 +42,16 @@
 // that never reached its kick) is resynced once, so the lane can never stay off for good.
 // REQUEST BUDGET: cate=27 only for 冷凍 rows; shared cache (sql/142): no_frozen 30 days, ok 7 days;
 // ≤ 1 live request per store per 10 min (DB + a local floor); no pending read for 60 s after
-// one that found nothing. The LIVE frozen lane keeps the normal check's maintenance window
-// (01:00–05:00 Taipei), re-checked with the leader right before the request. Leader-only.
-// Only the WARM-UP may probe inside the window (WARMUP_NIGHT_RETRY_MS below).
+// one that found nothing. Leader-only.
+// NIGHT (1.18.2): the 01:00–05:00 Taipei window (7-ELEVEN maintenance) no longer turns the LIVE
+// frozen lane off — it works like the dry lane does at night. The pending read runs (so sql/157's
+// cache step gives instant answers from store_frozen_cache) and the live request is sent; a real
+// answer is written as usual; a no-answer / timeout / maintenance page writes NOTHING and is NOT
+// counted (no lane pause), that store is asked again 10 min later (the per-store floor). A block
+// (captcha / login / 403 / 429) is never treated as a harmless no-answer: it is written 'unknown'
+// exactly like by day. Every night request logs `[PC-FROZEN] night send store=… result=…`.
+// The window state is re-checked with the leader right before the request (a pass decided by day
+// never sends at night, and the other way round). Day behaviour is unchanged.
 // SELF-HEAL: the frozen content script is pinged before a check; silent → injected, at most
 // once per tab per 10 minutes.
 //
@@ -116,8 +123,8 @@
   const WARMUP_PAUSES_STOP = 2;                // pauses in a row with no real verdict → STOP
   const WARMUP_SEND_WINDOW_MS = 2 * 1000;      // the warm-up request only within 2 s of the kick
   const WARMUP_STOP_RETRY_MS = 60 * 1000;      // a failed stop write is retried at most once per minute
-  // NIGHT (01:00–05:00 Taipei, the maintenance window): the WARM-UP alone may run (the dry lane and the
-  // live frozen lane keep the window, unchanged). A real answer → the normal 60 s pace; a no-answer /
+  // NIGHT (01:00–05:00 Taipei, the maintenance window): the warm-up probes at night too — since 1.18.2
+  // only behind the real frozen parcels, exactly like by day. A real answer → the normal 60 s pace; a no-answer /
   // timeout / maintenance page → nothing written, NOT counted (no miss / pause / stop), next probe in 10 min.
   // A block (captcha / login / 403 / 429) still STOPS, any hour.
   const WARMUP_NIGHT_RETRY_MS = 10 * 60 * 1000;
@@ -312,7 +319,7 @@
     const rpc = pcEv.rpc;                                   // the normal lane's admin RPC context (set every pass it runs)
     if (!rpc || !rpc.cfg || !rpc.rpcHeaders) return;
     const tabId = (pcEv.emap.tabId && !pcEv.emap.error) ? pcEv.emap.tabId : null;
-    const night = pcInMaintenance(nowMs);                  // 01:00–05:00 Taipei: the live frozen lane is off, the warm-up may probe
+    const night = pcInMaintenance(nowMs);                  // 01:00–05:00 Taipei: both lanes work, with the night no-answer rules
     // 5: the 01:00 and 05:00 edges start a fresh count (day misses never carry into the night, night never into the day)
     if (warm.loaded) {
       if (warm.lastNight !== null && warm.lastNight !== night) {
@@ -322,10 +329,10 @@
       warm.lastNight = night;
     }
     if (st.switchOn && tabId) {
-      if (!night) await sendOne(pass, otherAtKick, rpc, tabId, nowMs);  // real frozen parcels first — never waits on the warm-up state
-      // warm-up takes the frozen request's place ONLY when the frozen queue is empty by a fresh read (by day);
-      // at night the live frozen lane does not run, so there is no frozen request to give way to
-      if (night || (!st.queue.length && nowMs < st.emptyUntil && st.lastRaw === 0)) {
+      await sendOne(pass, otherAtKick, rpc, tabId, nowMs, night);  // real frozen parcels first, day and night — never waits on the warm-up state
+      // warm-up takes the frozen request's place ONLY when the frozen queue is empty by a fresh read — day and
+      // night (1.18.2: the live frozen lane runs at night too, so the real parcels go first at night as well)
+      if (!st.queue.length && nowMs < st.emptyUntil && st.lastRaw === 0) {
         await loadWarm();                                   // 6: the saved warm-up state, before the first warm-up decision
         await warmOne(pass, otherAtKick, rpc, tabId, nowMs, kickAt, night, prevKickAt);
       }
@@ -342,9 +349,8 @@
     }
     await saveWarmState();                                               // written only when it changed
     if (!st.switchOn || !tabId) return;                                   // no live E-Map tab → the rows stay queued in the DB
-    const nightNow = pcInMaintenance(Date.now());
-    if (!nightNow && (!st.queue.length || Date.now() - st.queueAt >= QUEUE_MAX_AGE_MS) && Date.now() >= st.emptyUntil && Date.now() >= st.pauseUntil) {
-      await readPending(rpc.cfg, rpc.rpcHeaders, Date.now());          // D: not again for 60 s after an empty read; never in the window (unchanged)
+    if ((!st.queue.length || Date.now() - st.queueAt >= QUEUE_MAX_AGE_MS) && Date.now() >= st.emptyUntil && Date.now() >= st.pauseUntil) {
+      await readPending(rpc.cfg, rpc.rpcHeaders, Date.now());          // D: not again for 60 s after an empty read; day and night (1.18.2)
     }
     // 1.18.1 (a): the given-up count — AFTER the live frozen queue refresh, and NOT awaited: a slow database
     // never delays that refresh nor holds the pass (a held pass = the next kick skips its live frozen request).
@@ -353,13 +359,13 @@
       warm.gaveUpBusy = true;
       void readGaveUp(rpc.cfg, rpc.rpcHeaders, Date.now()).finally(() => { warm.gaveUpBusy = false; });
     }
-    if (warm.loaded && warm.on && (nightNow || (!st.queue.length && Date.now() < st.emptyUntil && st.lastRaw === 0)) && Date.now() - warm.queueAt >= WARMUP_LIST_MAX_AGE_MS
+    if (warm.loaded && warm.on && !st.queue.length && Date.now() < st.emptyUntil && st.lastRaw === 0 && Date.now() - warm.queueAt >= WARMUP_LIST_MAX_AGE_MS
         && Date.now() >= warm.emptyUntil && Date.now() >= warm.pauseUntil && leaseConfirmed(Date.now()) && (await dryIdle())) {
       await readWarmList(rpc.cfg, rpc.rpcHeaders, Date.now());          // 8: the heavy query — only while idle, NEVER sooner than 5 min after the last read
       await saveWarmState();
     }
   }
-  async function sendOne(pass, otherAtKick, rpc, tabId, nowMs) {
+  async function sendOne(pass, otherAtKick, rpc, tabId, nowMs, night) {
     st.queue = st.queue.filter((q) => storeDue(st.storeAt, q.store_id, nowMs));
     if (!st.queue.length) return;
     st.passes += 1;
@@ -368,14 +374,15 @@
     const busy = laneBusy(nowMs);
     if (busy) { st.skippedBusy += 1; logSkip("busy", `normal lane busy (${busy})`); return; }
     if (!(await ensureScript(tabId, nowMs))) return;
-    // right before the request: still the leader, still outside the window, still a gap, no other
-    // pass started meanwhile, no alarm about to start one
+    // right before the request: still the leader, still on the same side of the window, still a gap, no
+    // other pass started meanwhile, no alarm about to start one
     if (!pcPassLeader(pass)) { log("lease lost — stopping"); return; }
-    if (pcInMaintenance(Date.now())) { log("maintenance window started — stopping"); return; }
+    if (pcInMaintenance(Date.now()) !== Boolean(night)) { log(night ? "maintenance window ended — next pass" : "maintenance window started — stopping"); return; }
     if (laneBusy(Date.now()) || otherPass(false)) { st.skippedBusy += 1; return; }
     if (await alarmSoon(Date.now())) { st.skippedBusy += 1; logSkip("alarm", "keepalive alarm due"); return; }
     if (otherPass(false)) { st.skippedBusy += 1; return; }                // the alarm read is async — check once more
     const row = st.queue.shift();
+    if (night) { await sendNight(rpc, tabId, row); return; }
     let status = "unknown"; let reason = ""; let slow = false;
     try {
       st.storeAt.set(row.store_id, Date.now());             // the floor starts at the request, answered or not
@@ -397,6 +404,34 @@
       st.checks += 1; if (status === "unknown") st.unknowns += 1;
       log(`row=${row.id} store=${row.store_id} → ${status}${reason ? ` (${reason})` : ""}`);
     } catch (e) { log(`row=${row.id} verdict write failed: ${(e && e.message) || "network"}`); }
+  }
+  // 1.18.2 — the live request at NIGHT (01:00–05:00 Taipei). The message carries `night: true` so the
+  // content script reads an E-Map maintenance page as a no-answer (not a verdict). A real answer (ok /
+  // no_frozen, or NO2 / close = 'unknown' that E-Map really said) is written as by day. A no-answer
+  // (no reply, the 3 s cap, timeout, maintenance page, an odd page) writes NOTHING and is NOT counted:
+  // no lane pause; the per-store floor (set at the request) asks that store again in 10 min. A block
+  // (captcha / login / 403 / 429) is never a harmless no-answer: written 'unknown' exactly like by day.
+  async function sendNight(rpc, tabId, row) {
+    let resp = null;
+    st.storeAt.set(row.store_id, Date.now());               // the floor starts at the request, answered or not
+    try { resp = await withTimeout(pcSendTab(tabId, { type: "PC_FROZEN_CHECK", row, night: true }), CHECK_TIMEOUT_MS, "frozen check"); }
+    catch (e) { log(`night send store=${row.store_id} row=${row.id} result=no_answer (${(e && e.message) || "check threw"}) — nothing written, retry in 10 min`); return; }
+    const status = verdictOf(resp);
+    const reason = resp ? String(resp.frozen_reason || "") : "emap tab not responding";
+    const blocked = isBlocked(resp, reason);
+    if (status === "unknown" && !blocked && noAnswer(resp, reason)) {
+      log(`night send store=${row.store_id} row=${row.id} result=no_answer (${reason}) — nothing written, retry in 10 min`);
+      return;
+    }
+    try {
+      const w = await withTimeout(fetch(`${rpc.cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_frozen_verdict`, {
+        method: "POST", headers: rpc.rpcHeaders,
+        body: JSON.stringify({ p_id: row.id, p_expected_store: row.store_id, p_status: status }),
+      }), DB_TIMEOUT_MS, "verdict write");
+      if (!w.ok) log(`row=${row.id} verdict rpc_${w.status}`);
+      st.checks += 1; if (status === "unknown") st.unknowns += 1;
+      log(`night send store=${row.store_id} row=${row.id} result=${status}${blocked ? " (blocked)" : ""}${reason ? ` (${reason})` : ""}`);
+    } catch (e) { log(`night send store=${row.store_id} row=${row.id} result=${status} — verdict write failed: ${(e && e.message) || "network"}`); }
   }
 
   // ── WARM-UP ───────────────────────────────────────────────────────────────────
