@@ -57,6 +57,22 @@ describe("pages of 50", () => {
     fireEvent.click(r.getByTestId("pt-page-prev"));
     expect(r.getByTestId("pt-page-of").textContent).toBe("Page 2 of 3");
   });
+  it("a page change scrolls so the list top lands just below the sticky header", async () => {
+    const r = await open(rowsOf(120));
+    const scrollTo = vi.fn();
+    const old = window.scrollTo;
+    window.scrollTo = scrollTo as unknown as typeof window.scrollTo;
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 900 });
+    const rect = (top: number, bottom: number) => (() => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} })) as () => DOMRect;
+    r.getByTestId("pt-header").getBoundingClientRect = rect(0, 112);                          // iPhone header bottom
+    (r.getByTestId("pt-page-top").previousElementSibling as HTMLElement).getBoundingClientRect = rect(-300, -300); // the list top marker
+    try {
+      fireEvent.click(r.getByTestId("pt-page-2"));
+      expect(scrollTo).toHaveBeenCalledWith({ top: 900 + -300 - 112 - 8, behavior: "smooth" });
+    } finally {
+      window.scrollTo = old;
+    }
+  });
   it("50 rows → no page bar and no top line (as today)", async () => {
     const r = await open(rowsOf(50));
     expect(r.getAllByTestId("pt-row")).toHaveLength(50);

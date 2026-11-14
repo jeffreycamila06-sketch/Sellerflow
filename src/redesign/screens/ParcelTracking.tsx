@@ -550,6 +550,7 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
   const [store, setStore] = useState<StoreFilter>("all"); // not saved: All every time the screen opens
   const [page, setPage] = useState(1);
   const listTopRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null); // the sticky header: a page change must land BELOW it
   // Typing in search, a new tab or a new store filter → page 1 (adjust during render).
   const pageKey = `${tab}|${searchQ}|${store}`;
   const [pageKeySeen, setPageKeySeen] = useState(pageKey);
@@ -557,7 +558,14 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
   if (pageKeySeen !== pageKey) { setPageKeySeen(pageKey); setPage(1); pageNow = 1; }
   const goPage = (x: number) => {
     setPage(x);
-    try { listTopRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" }); } catch { /* best-effort */ }
+    try {
+      const top = listTopRef.current, head = headerRef.current;
+      if (top && head && typeof window.scrollTo === "function") {
+        window.scrollTo({ top: window.scrollY + top.getBoundingClientRect().top - head.getBoundingClientRect().bottom - 8, behavior: "smooth" });
+      } else {
+        top?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+      }
+    } catch { /* best-effort */ }
   };
   useEffect(() => {
     const id = setTimeout(() => setSearchQ(search), SEARCH_DEBOUNCE_MS);
@@ -746,7 +754,7 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
   return (
     <div>
       {/* 375px-safe (N1): the title block may shrink + wrap, the buttons wrap under it. */}
-      <div style={{ ...headerBar, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }} data-testid="pt-header">
+      <div ref={headerRef} style={{ ...headerBar, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }} data-testid="pt-header">
         <div style={{ minWidth: 0, flex: "1 1 160px" }}>
           <HeaderWithBack onBack={onBack}>
           <div style={{ ...headerTitle, overflowWrap: "anywhere" }}>{t.rd_pt_title}</div>
