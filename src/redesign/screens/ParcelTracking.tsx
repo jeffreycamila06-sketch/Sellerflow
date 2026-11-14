@@ -443,6 +443,86 @@ function jobDoneText(job: TrackingJob | null, t: T): string {
 
 // fm = the 全家 switch (or its preview) is on for this seller: adds "Sync from FamilyMart" and
 // the 7-11 / 全家 label. Off → the screen is exactly as before.
+// ── Store filter + pages (presentation only: the same loaded rows, the same grouping) ──
+const PT_PAGE_SIZE = 50;
+type StoreFilter = "all" | "711" | "fm";
+const STORE_FILTERS: StoreFilter[] = ["all", "711", "fm"];
+const carrierKey = (r: ParcelTrackingRow): "711" | "fm" => (r.carrier === "fm" ? "fm" : "711");
+const storeLabel = (s: StoreFilter, t: T) => (s === "all" ? t.rd_pt_store_all : s === "fm" ? t.rd_pt_store_fm : t.rd_pt_store_711);
+
+function StoreFilterButton({ value, counts, onPick, t }: { value: StoreFilter; counts: Record<StoreFilter, number>; onPick: (s: StoreFilter) => void; t: T }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent | MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const on = value !== "all";
+  return (
+    <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-label={t.rd_pt_store_filter} aria-haspopup="menu" aria-expanded={open} data-testid="pt-store-btn"
+        style={{ ...btn, minHeight: 40, padding: "0 12px", whiteSpace: "nowrap", ...(on ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "var(--accent-text)" } : {}) }}>
+        {storeLabel(value, t)} ▾
+      </button>
+      {open && (
+        <div role="menu" data-testid="pt-store-menu"
+          style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 30, minWidth: 180, background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 4 }}>
+          {STORE_FILTERS.map((s) => (
+            <button key={s} type="button" role="menuitemradio" aria-checked={s === value} onClick={() => { onPick(s); setOpen(false); }} data-testid={`pt-store-opt-${s}`}
+              style={{ display: "flex", width: "100%", alignItems: "center", gap: 10, minHeight: 40, padding: "0 10px", border: "none", borderRadius: 8, background: s === value ? "var(--accent-soft)" : "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: s === value ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
+              <span style={{ flex: 1 }}>{storeLabel(s, t)}</span>
+              <span style={{ color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{counts[s]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 1 … p-1 p p+1 … last
+function pageItems(p: number, pages: number): (number | "gap")[] {
+  const want = [...new Set([1, p - 1, p, p + 1, pages])].filter((x) => x >= 1 && x <= pages).sort((a, b) => a - b);
+  const out: (number | "gap")[] = [];
+  want.forEach((x, i) => { if (i && x - want[i - 1] > 1) out.push("gap"); out.push(x); });
+  return out;
+}
+
+function rangeText(p: number, n: number, t: T) {
+  return tpl(t.rd_pt_range, { a: (p - 1) * PT_PAGE_SIZE + 1, b: Math.min(n, p * PT_PAGE_SIZE), n });
+}
+
+function PageTop({ p, pages, n, t }: { p: number; pages: number; n: number; t: T }) {
+  return (
+    <div data-testid="pt-page-top" style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, color: "var(--text-dim)", margin: "0 2px 6px" }}>
+      <span data-testid="pt-page-range-top">{rangeText(p, n, t)}</span>
+      <span data-testid="pt-page-of">{tpl(t.rd_pt_page_of, { p, pages })}</span>
+    </div>
+  );
+}
+
+function PageBar({ p, pages, n, onGo, t }: { p: number; pages: number; n: number; onGo: (x: number) => void; t: T }) {
+  const pb: CSSProperties = { minWidth: 38, minHeight: 38, padding: "0 8px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
+  return (
+    <div data-testid="pt-pager" style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", alignItems: "center" }}>
+        <button type="button" onClick={() => onGo(p - 1)} disabled={p <= 1} aria-label={t.rd_pt_prev_page} data-testid="pt-page-prev" style={{ ...pb, opacity: p <= 1 ? 0.4 : 1, cursor: p <= 1 ? "default" : "pointer" }}>‹</button>
+        {pageItems(p, pages).map((x, i) => x === "gap"
+          ? <span key={`g${i}`} aria-hidden="true" style={{ color: "var(--text-muted)", padding: "0 2px" }}>…</span>
+          : <button key={x} type="button" onClick={() => onGo(x)} aria-current={x === p ? "page" : undefined} data-testid={`pt-page-${x}`}
+              style={{ ...pb, ...(x === p ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "var(--accent-text)" } : {}) }}>{x}</button>)}
+        <button type="button" onClick={() => onGo(p + 1)} disabled={p >= pages} aria-label={t.rd_pt_next_page} data-testid="pt-page-next" style={{ ...pb, opacity: p >= pages ? 0.4 : 1, cursor: p >= pages ? "default" : "pointer" }}>›</button>
+      </div>
+      <div data-testid="pt-page-range" style={{ textAlign: "center", fontSize: 11.5, color: "var(--text-dim)", marginTop: 6 }}>{rangeText(p, n, t)}</div>
+    </div>
+  );
+}
+
 export default function ParcelTracking({ userId, fm = false, contactOn = false, onBack }: { userId?: string | null; fm?: boolean; contactOn?: boolean; onBack?: () => void } = {}) {
   const t = useT();
   const today = taipeiDayId();
@@ -467,6 +547,18 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [search, setSearch] = useState("");      // what is typed (kept while the screen is open)
   const [searchQ, setSearchQ] = useState("");    // what filters (debounced)
+  const [store, setStore] = useState<StoreFilter>("all"); // not saved: All every time the screen opens
+  const [page, setPage] = useState(1);
+  const listTopRef = useRef<HTMLDivElement>(null);
+  // Typing in search, a new tab or a new store filter → page 1 (adjust during render).
+  const pageKey = `${tab}|${searchQ}|${store}`;
+  const [pageKeySeen, setPageKeySeen] = useState(pageKey);
+  let pageNow = page; // this render's page (a reset below is not in `page` until the next render)
+  if (pageKeySeen !== pageKey) { setPageKeySeen(pageKey); setPage(1); pageNow = 1; }
+  const goPage = (x: number) => {
+    setPage(x);
+    try { listTopRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" }); } catch { /* best-effort */ }
+  };
   useEffect(() => {
     const id = setTimeout(() => setSearchQ(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
@@ -752,15 +844,29 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
                 {syncButton(false)}
               </div>
             : (() => {
-                const counts = tabCounts(groups, totals);
-                const tabList = tabRows(groups, tab, today).filter((r) => matchesSearch(r, searchQ, names.get(normHandle(r.buyerUsername))));
+                // Store filter (全家 on only): the same loaded rows of one carrier, grouped the same way;
+                // the tab counts follow it. All = exactly today (DB totals).
+                const filtering = fm && store !== "all";
+                const shown = filtering ? groupParcels(rows.filter((r) => carrierKey(r) === store), today) : groups;
+                const counts = filtering ? tabCounts(shown) : tabCounts(groups, totals);
+                const storeCounts: Record<StoreFilter, number> = { all: rows.length, "711": rows.filter((r) => carrierKey(r) === "711").length, fm: rows.filter((r) => carrierKey(r) === "fm").length };
+                const fullList = tabRows(shown, tab, today).filter((r) => matchesSearch(r, searchQ, names.get(normHandle(r.buyerUsername))));
+                // Pages of 50 over what is shown now; a page that no longer exists → the last one.
+                const nShown = fullList.length;
+                const pages = Math.max(1, Math.ceil(nShown / PT_PAGE_SIZE));
+                const cur = Math.min(pageNow, pages);
+                if (cur !== pageNow) setPage(cur);
+                const tabList = nShown > PT_PAGE_SIZE ? fullList.slice((cur - 1) * PT_PAGE_SIZE, cur * PT_PAGE_SIZE) : fullList;
+                const paged = nShown > PT_PAGE_SIZE;
+                const pageTop = paged ? <PageTop p={cur} pages={pages} n={nShown} t={t} /> : null;
+                const pageBar = paged ? <PageBar p={cur} pages={pages} n={nShown} onGo={goPage} t={t} /> : null;
                 // S7 — more unfinished parcels than the first page: offer the next page.
-                const more = liveRemaining > 0 && tab !== "picked" && tab !== "returned"
+                const more = liveRemaining > 0 && tab !== "picked" && tab !== "returned" && cur === pages
                   ? <button onClick={() => void onLoadMore()} disabled={loadingMore} style={{ ...btn, width: "100%", marginTop: 10, opacity: loadingMore ? 0.6 : 1 }} data-testid="pt-load-more">
                       {loadingMore ? t.rd_pt_loading : tpl(t.rd_pt_load_more, { n: liveRemaining })}
                     </button>
                   : null;
-                const searchBox = (
+                const searchInput = (
                   <div style={{ position: "relative", marginBottom: 12 }} data-testid="pt-search-wrap">
                     <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.rd_pt_search_ph} aria-label={t.rd_pt_search_ph}
                       data-testid="pt-search" autoComplete="off" spellCheck={false}
@@ -771,6 +877,13 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
                     )}
                   </div>
                 );
+                // 全家 on: the store filter sits on the right of the search box (same row); off: as today.
+                const searchBox = fm
+                  ? <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }} data-testid="pt-search-row">
+                      <div style={{ flex: 1, minWidth: 0 }}>{searchInput}</div>
+                      <StoreFilterButton value={store} counts={storeCounts} onPick={setStore} t={t} />
+                    </div>
+                  : searchInput;
                 const emptyTab = searchQ.trim()
                   ? <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-search-empty">{t.rd_pt_search_none}</div>
                   : <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-tab-empty">{t.rd_pt_tab_empty}</div>;
@@ -778,13 +891,19 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
                   ? <div data-testid="pt-mobile">
                       <Cards tab={tab} counts={counts} onPick={setTab} t={t} />
                       {searchBox}
+                      <div ref={listTopRef} />
+                      {pageTop}
                       {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} /> : emptyTab}
+                      {pageBar}
                       {more}
                     </div>
                   : <div data-testid="pt-web">
                       {searchBox}
+                      <div ref={listTopRef} />
+                      {pageTop}
                       <Tabs tab={tab} counts={counts} onPick={setTab} t={t} />
                       {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} extras={extras} /> : emptyTab}
+                      {pageBar}
                       {more}
                     </div>;
               })()

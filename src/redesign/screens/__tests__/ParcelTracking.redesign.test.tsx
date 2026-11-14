@@ -214,12 +214,15 @@ describe("S7 — Load more past the first 500 unfinished parcels; counts stay ex
     loadParcelTracking.mockResolvedValue({ ok: true, rows: page(0, 500), totals: TOTALS });
     loadMoreLive.mockResolvedValue({ ok: true, rows: page(500, 150) });
     const r = view();
-    await waitFor(() => expect(r.getByTestId("pt-load-more")).toBeTruthy());
+    // pages of 50: Load more sits after the LAST page's list
+    await waitFor(() => expect(r.getByTestId("pt-page-10")).toBeTruthy());
+    expect(r.queryByTestId("pt-load-more")).toBeNull();
+    fireEvent.click(r.getByTestId("pt-page-10"));
     expect(r.getByTestId("pt-tab-waiting").textContent).toContain("650");   // exact, not the 500 loaded
     expect(r.getByTestId("pt-load-more").textContent).toBe("Load more (150 more)");
-    expect(r.getAllByTestId("pt-row")).toHaveLength(500);
+    expect(r.getByTestId("pt-page-range").textContent).toBe("451–500 of 500");
     fireEvent.click(r.getByTestId("pt-load-more"));
-    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(650));
+    await waitFor(() => expect(r.getByTestId("pt-page-range").textContent).toBe("451–500 of 650"));
     expect(loadMoreLive).toHaveBeenCalledWith(500);
     expect(r.queryByTestId("pt-load-more")).toBeNull();
     expect(r.getByTestId("pt-tab-waiting").textContent).toContain("650");
@@ -236,10 +239,11 @@ describe("S7 — Load more past the first 500 unfinished parcels; counts stay ex
     loadParcelTracking.mockResolvedValue({ ok: true, rows: page(0, 500), totals: TOTALS });
     loadMoreLive.mockResolvedValue({ ok: false, rows: [], error: "boom" });
     const r = view();
-    await waitFor(() => expect(r.getByTestId("pt-load-more")).toBeTruthy());
+    await waitFor(() => expect(r.getByTestId("pt-page-10")).toBeTruthy());
+    fireEvent.click(r.getByTestId("pt-page-10"));
     fireEvent.click(r.getByTestId("pt-load-more"));
     await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toContain("Couldn't save"));
-    expect(r.getAllByTestId("pt-row")).toHaveLength(500);
+    expect(r.getByTestId("pt-page-range").textContent).toBe("451–500 of 500");
   });
 });
 
