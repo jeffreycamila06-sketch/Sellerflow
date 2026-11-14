@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { SERVER } from "./serverIdentity";
 import { supabase } from "../../supabase";
+import { withCodes, decodeServerJson } from "../../lib/errCodes.js";
 
 export type Pc711State = "not_connected" | "connected" | "needs_login" | "key_missing";
 export interface Pc711Status {
@@ -43,12 +44,12 @@ export function toPc711Status(j: unknown): Pc711Status | null {
 async function call(path: string, body?: Record<string, unknown>): Promise<Pc711Answer> {
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-    const r = await fetch(`${SERVER}${path}`, {
+    const r = await fetch(withCodes(`${SERVER}${path}`), {
       method: body ? "POST" : "GET",
       headers: { ...(body ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${session?.access_token || ""}` },
       body: body ? JSON.stringify(body) : undefined,
     });
-    const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    const data = decodeServerJson(await r.json().catch(() => ({}))) as Record<string, unknown>;
     return { ok: r.ok, status: r.status, data: data && typeof data === "object" ? data : {} };
   } catch {
     return { ok: false, status: 0, data: { error: "unreachable" } };
