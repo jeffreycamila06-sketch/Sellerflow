@@ -15,7 +15,7 @@ vi.mock("../../adapters/parcelExportRead", () => ({ syncFromExport: vi.fn() }));
 vi.mock("../../adapters/appShell", () => ({ isAppShell: () => false, isNarrowViewport: () => false }));
 vi.mock("../../adapters/platform", () => ({ isIOS: () => false, isAndroid: () => false }));
 
-import DragBar, { DRAGBAR_HTML_CLASS } from "../DragBar";
+import DragBar, { DRAGBAR_HTML_CLASS, scrollerOf } from "../DragBar";
 import ParcelTracking from "../../screens/ParcelTracking";
 import { TProvider } from "../../i18n";
 
@@ -100,6 +100,65 @@ describe("DragBar", () => {
     expect(document.documentElement.classList.contains(DRAGBAR_HTML_CLASS)).toBe(true);
     r.unmount();
     expect(document.documentElement.classList.contains(DRAGBAR_HTML_CLASS)).toBe(false);
+  });
+});
+
+// In the app the list's box scrolls (.sfl-scroll, overflow-y:auto), not the window.
+// Box: top 60, bottom 860, right 400; header bottom 172 → bar top 178, height 860−8−178 = 674,
+// span 618, left 400 − 28 = 372. Content 3800 tall, box 800 → 3000 px to scroll.
+describe("DragBar in a scroll box (the real app)", () => {
+  const box = { top: 0 };
+  const mountInBox = () => {
+    const headRef = createRef<HTMLDivElement>();
+    const fit = (el: HTMLDivElement | null) => {
+      if (!el) return;
+      el.getBoundingClientRect = () => ({ top: 60, bottom: 860, left: 0, right: 400, width: 400, height: 800, x: 0, y: 60, toJSON() {} }) as DOMRect;
+      Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => 3800 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, get: () => 800 });
+      Object.defineProperty(el, "scrollTop", { configurable: true, get: () => box.top, set: (v: number) => { box.top = v; } });
+    };
+    const fitHead = (el: HTMLDivElement | null) => {
+      (headRef as { current: HTMLDivElement | null }).current = el;
+      if (el) el.getBoundingClientRect = () => ({ top: 60, bottom: 172, left: 0, right: 400, width: 400, height: 112, x: 0, y: 60, toJSON() {} }) as DOMRect;
+    };
+    const r = render(
+      <div ref={fit} data-testid="box" style={{ overflowY: "auto" }}>
+        <div ref={fitHead}>header</div>
+        <DragBar headerRef={headRef} label="Scroll the list" />
+      </div>,
+    );
+    return r;
+  };
+  beforeEach(() => { box.top = 0; page.height = 800; }); // the window itself does not scroll
+
+  it("finds the box as the scroller and shows the bar on the box's own right edge", async () => {
+    const r = mountInBox();
+    expect(scrollerOf(r.getByText("header"))).toBe(r.getByTestId("box"));
+    await waitFor(() => expect(r.getByTestId("pt-dragbar")).toBeTruthy());
+    const bar = r.getByTestId("pt-dragbar");
+    expect(bar.style.left).toBe("372px");          // box.right − 28, never over the nav
+    expect(bar.style.top).toBe("178px");
+    expect(bar.style.height).toBe("674px");
+    expect(parseFloat(bar.style.top) + parseFloat(bar.style.height)).toBeLessThanOrEqual(860);
+  });
+  it("scrolling the box moves the thumb", async () => {
+    const r = mountInBox();
+    await waitFor(() => expect(r.getByTestId("pt-dragbar-thumb").style.top).toBe("0px"));
+    box.top = 1500;
+    act(() => { r.getByTestId("box").dispatchEvent(new Event("scroll")); });
+    expect(r.getByTestId("pt-dragbar-thumb").style.top).toBe("309px");
+    expect(r.getByTestId("pt-dragbar-thumb").getAttribute("aria-valuenow")).toBe("50");
+  });
+  it("dragging to the middle sets the box's scrollTop ≈ 50% (the window is not scrolled)", async () => {
+    const r = mountInBox();
+    await waitFor(() => expect(r.getByTestId("pt-dragbar-thumb").style.top).toBe("0px"));
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar-thumb"), { clientY: 178 + 10, pointerId: 1 });
+    fireEvent.pointerMove(r.getByTestId("pt-dragbar-thumb"), { clientY: 178 + 309 + 10, pointerId: 1 });
+    expect(box.top).toBe(1500);
+    expect(scrollTo).not.toHaveBeenCalled();
+    fireEvent.pointerUp(r.getByTestId("pt-dragbar-thumb"), { pointerId: 1 });
+    fireEvent.pointerDown(r.getByTestId("pt-dragbar"), { clientY: 178 + 28 + 618 * 0.25, pointerId: 1 }); // tap the track
+    expect(box.top).toBe(750);
   });
 });
 

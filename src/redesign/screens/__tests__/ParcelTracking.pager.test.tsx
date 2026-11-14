@@ -73,6 +73,30 @@ describe("pages of 50", () => {
       window.scrollTo = old;
     }
   });
+  it("in the app the list's box scrolls: a page change calls box.scrollTo(scrollTop + listTop − headerBottom − 8)", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: rowsOf(120) });
+    const boxScroll = vi.fn();
+    const fit = (el: HTMLDivElement | null) => {
+      if (!el) return;
+      Object.defineProperty(el, "scrollTop", { configurable: true, get: () => 900, set: () => {} });
+      (el as unknown as { scrollTo: unknown }).scrollTo = boxScroll;
+    };
+    const winScroll = vi.fn();
+    const old = window.scrollTo;
+    window.scrollTo = winScroll as unknown as typeof window.scrollTo;
+    try {
+      const r = render(<div ref={fit} style={{ overflowY: "auto" }}><TProvider lang="en"><ParcelTracking fm /></TProvider></div>);
+      await waitFor(() => expect(r.getAllByTestId("pt-row").length).toBeGreaterThan(0));
+      const rect = (top: number, bottom: number) => (() => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} })) as () => DOMRect;
+      r.getByTestId("pt-header").getBoundingClientRect = rect(0, 150);                             // Android header
+      (r.getByTestId("pt-page-top").previousElementSibling as HTMLElement).getBoundingClientRect = rect(-400, -400);
+      fireEvent.click(r.getByTestId("pt-page-next"));
+      expect(boxScroll).toHaveBeenCalledWith({ top: 900 + (-400 - 150 - 8), behavior: "smooth" });
+      expect(winScroll).not.toHaveBeenCalled();
+    } finally {
+      window.scrollTo = old;
+    }
+  });
   it("50 rows → no page bar and no top line (as today)", async () => {
     const r = await open(rowsOf(50));
     expect(r.getAllByTestId("pt-row")).toHaveLength(50);

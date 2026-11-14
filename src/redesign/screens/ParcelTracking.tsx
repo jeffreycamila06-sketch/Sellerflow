@@ -17,7 +17,7 @@
 // / not-yet-updated rows (the old "Other" bucket) so nothing disappears.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
-import DragBar from "../components/DragBar";
+import DragBar, { scrollerOf } from "../components/DragBar";
 import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
 import { useLang } from "../i18n/langContext";
@@ -561,8 +561,16 @@ export default function ParcelTracking({ userId, fm = false, contactOn = false, 
     setPage(x);
     try {
       const top = listTopRef.current, head = headerRef.current;
-      if (top && head && typeof window.scrollTo === "function") {
-        window.scrollTo({ top: window.scrollY + top.getBoundingClientRect().top - head.getBoundingClientRect().bottom - 8, behavior: "smooth" });
+      if (top && head) {
+        // The app scrolls `.sfl-scroll`, not the window: scroll the real scroller (window = fallback).
+        const d = top.getBoundingClientRect().top - head.getBoundingClientRect().bottom - 8;
+        const sc = scrollerOf(head);
+        if (sc) {
+          if (typeof sc.scrollTo === "function") sc.scrollTo({ top: sc.scrollTop + d, behavior: "smooth" });
+          else sc.scrollTop = sc.scrollTop + d;
+        } else if (typeof window.scrollTo === "function") {
+          window.scrollTo({ top: window.scrollY + d, behavior: "smooth" });
+        }
       } else {
         top?.scrollIntoView?.({ block: "start", behavior: "smooth" });
       }
