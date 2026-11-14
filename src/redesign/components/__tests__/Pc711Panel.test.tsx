@@ -118,3 +118,55 @@ describe("Pc711Panel", () => {
     expect(screen.getByTestId("pc711-back")).toBeTruthy();
   });
 });
+
+describe("Pc711Panel — Test now + Shadow", () => {
+  const CONNECTED = { state: "connected", since: "2026-11-14T00:00:00Z", lastOkAt: null, autoLogins: 0, phoneTail: "678", lastProblem: null };
+  const at = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+
+  it("while running: 'Testing…' and disabled; the result stays; within the limit: 'Try again after hh:mm' (result kept)", async () => {
+    push("/status", { body: CONNECTED });
+    push("/status", { body: CONNECTED });
+    push("/admin/pc-server-probe", { body: { success: true, result: { store: { verdict: "open", kind: "" } } } });
+    const retryAt = "2026-11-14T05:10:00.000Z";
+    push("/admin/pc-server-probe", { ok: false, status: 429, body: { success: false, error: "rate_limited", retryAt } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-connected")).toBeTruthy());
+    const btn = () => screen.getByTestId("pc711-test") as HTMLButtonElement;
+    fireEvent.click(btn());
+    expect(btn().textContent).toBe("Testing…");
+    expect(btn().disabled).toBe(true);
+    await waitFor(() => expect(screen.getByTestId("pc711-test-result").textContent).toBe("Store check: open"));
+    await waitFor(() => expect(btn().disabled).toBe(false));
+    expect(btn().textContent).toBe("Test now");
+    fireEvent.click(btn());
+    await waitFor(() => expect(screen.getByTestId("pc711-try-after").textContent).toBe(`Try again after ${at(retryAt)}`));
+    expect(screen.getByTestId("pc711-test-result").textContent).toBe("Store check: open"); // the last result stays
+    expect(screen.queryByText("Too many tries")).toBeNull();
+  });
+
+  it("Shadow block: today's counts, match % per kind, server average, last mismatches (no ids)", async () => {
+    push("/status", { body: CONNECTED });
+    push("/shadow", { body: {
+      enabled: true,
+      today: { n: 12, store: { n: 8, matchPct: 88 }, phone: { n: 4, matchPct: 100 }, avgMs: 1450 },
+      mismatches: [{ kind: "store", ext: "open", srv: "full", at: "2026-11-14T03:05:00Z" }, { kind: "phone", ext: "ok", srv: "restricted", at: "2026-11-14T03:07:00Z" }],
+    } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-shadow-n").textContent).toBe("12"));
+    expect(screen.getByTestId("pc711-shadow-store").textContent).toBe("88% match (8)");
+    expect(screen.getByTestId("pc711-shadow-phone").textContent).toBe("100% match (4)");
+    expect(screen.getByTestId("pc711-shadow-avg").textContent).toBe("1450 ms");
+    const lines = screen.getAllByTestId("pc711-shadow-mis").map((e) => e.textContent);
+    expect(lines).toEqual([`store full: ext=open srv=full at ${at("2026-11-14T03:05:00Z")}`, `phone: ext=ok srv=restricted at ${at("2026-11-14T03:07:00Z")}`]);
+    expect(screen.queryByTestId("pc711-shadow-off")).toBeNull();
+  });
+
+  it("Shadow off → says so; nothing compared → dashes", async () => {
+    push("/status", { body: CONNECTED });
+    push("/shadow", { body: { enabled: false, today: { n: 0, store: { n: 0, matchPct: null }, phone: { n: 0, matchPct: null }, avgMs: null }, mismatches: [] } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-shadow-off")).toBeTruthy());
+    expect(screen.getByTestId("pc711-shadow-store").textContent).toBe("—");
+    expect(screen.getByTestId("pc711-shadow-avg").textContent).toBe("—");
+  });
+});

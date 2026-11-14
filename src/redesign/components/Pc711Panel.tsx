@@ -3,7 +3,7 @@
 // (no polling). The password is sent once and cleared from this screen right after.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
-import { pc711Api, usePc711Status, fillSmsBoxes, type Pc711Status } from "../adapters/pc711Login";
+import { pc711Api, usePc711Status, fillSmsBoxes, hhmm, type Pc711Status, type Pc711Shadow } from "../adapters/pc711Login";
 
 type View = "status" | "step1" | "step2";
 
@@ -15,6 +15,46 @@ const card: CSSProperties = { background: "var(--surface-2)", border: "1px solid
 const stepTag: CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--accent-fg)", textTransform: "uppercase" };
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
+// The last "Store check: …" line stays on screen (also after the sheet is closed and opened again).
+let lastTestResult = "";
+
+// Shadow block: what the server answered compared with the extension (today), read once on open.
+function ShadowBlock() {
+  const t = useT();
+  const [s, setS] = useState<Pc711Shadow | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    pc711Api.shadow().then((x) => { if (alive) setS(x); }).catch(() => { if (alive) setS(null); });
+    return () => { alive = false; };
+  }, []);
+  const pct = (p: { n: number; matchPct: number | null }) => (p.n ? tpl(t.rd_pc711_sh_pct, { p: p.matchPct ?? 0, n: p.n }) : "—");
+  return (
+    <div data-testid="pc711-shadow" style={{ ...card, marginTop: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{t.rd_pc711_sh_title}</div>
+      {s === undefined ? <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{t.rd_pc711_loading}</div>
+        : s === null ? <div data-testid="pc711-shadow-failed" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{t.rd_pc711_sh_failed}</div>
+        : <>
+          {!s.enabled && <div data-testid="pc711-shadow-off" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{t.rd_pc711_sh_off}</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 12px", marginTop: 8, fontSize: 12.5 }}>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_today}</span><span data-testid="pc711-shadow-n" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.n}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_store}</span><span data-testid="pc711-shadow-store" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.store)}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_phone}</span><span data-testid="pc711-shadow-phone" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.phone)}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_avg}</span><span data-testid="pc711-shadow-avg" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.avgMs === null ? "—" : `${s.today.avgMs} ms`}</span>
+          </div>
+          {s.mismatches.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_pc711_sh_mis}</div>
+              {s.mismatches.map((m, i) => (
+                <div key={i} data-testid="pc711-shadow-mis" style={{ fontSize: 12, color: "var(--text)", marginTop: 4, fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
+                  {tpl(m.kind === "phone" ? t.rd_pc711_sh_line_phone : t.rd_pc711_sh_line_store, { e: m.ext, s: m.srv, t: hhmm(m.at) || "—" })}
+                </div>
+              ))}
+            </div>
+          )}
+        </>}
+    </div>
+  );
+}
 
 export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status | null) => void }) {
   const t = useT();
@@ -34,6 +74,9 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [resendLeft, setResendLeft] = useState(0);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(lastTestResult);
+  const [tryAfter, setTryAfter] = useState("");
   const boxRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => { if (onChanged) onChanged(status); }, [status, onChanged]);
@@ -126,14 +169,27 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
     setView("step1");
   };
   const testNow = async () => {
-    setBusy(true); setNote("");
-    const a = await pc711Api.test();
-    setBusy(false);
-    if (a.status === 404) { setNote(t.rd_pc711_test_off); return; }
-    if (a.status === 429) { setNote(t.rd_pc711_err_busy); return; }
-    const store = (a.data.result as { store?: { verdict?: string; kind?: string } } | undefined)?.store;
-    setNote(store ? tpl(t.rd_pc711_test_result, { r: `${store.verdict || "unknown"}${store.kind ? ` · ${store.kind}` : ""}` }) : t.rd_pc711_err_generic);
-    await refresh();
+    if (testing) return;
+    setTesting(true); setNote(""); setTryAfter("");
+    try {
+      const a = await pc711Api.test();
+      if (a.status === 404) { setNote(t.rd_pc711_test_off); return; }
+      if (a.status === 429) {
+        // within the 10-min limit: say when it can run again (the last result stays on screen)
+        const at = hhmm(typeof a.data.retryAt === "string" ? a.data.retryAt : null);
+        if (at) setTryAfter(tpl(t.rd_pc711_try_after, { t: at })); else setNote(t.rd_pc711_err_busy);
+        return;
+      }
+      const store = (a.data.result as { store?: { verdict?: string; kind?: string } } | undefined)?.store;
+      if (store) {
+        const line = tpl(t.rd_pc711_test_result, { r: `${store.verdict || "unknown"}${store.kind ? ` · ${store.kind}` : ""}` });
+        lastTestResult = line;
+        setTestResult(line);
+      } else setNote(t.rd_pc711_err_generic);
+      await refresh();
+    } finally {
+      setTesting(false);
+    }
   };
   const disconnect = async () => {
     if (!window.confirm(t.rd_pc711_disconnect_q)) return;
@@ -237,11 +293,14 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
           <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_auto}</span><span style={{ color: "var(--text)", fontWeight: 600 }}>{status.autoLogins}</span>
         </div>
       </div>
+      {testResult ? <div data-testid="pc711-test-result" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{testResult}</div> : null}
+      {tryAfter ? <div data-testid="pc711-try-after" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "var(--warn)" }}>{tryAfter}</div> : null}
       {note ? <div data-testid="pc711-note" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{note}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <button type="button" data-testid="pc711-test" disabled={busy} onClick={() => void testNow()} style={{ ...ghost, flex: 1 }}>{t.rd_pc711_test}</button>
-        <button type="button" data-testid="pc711-disconnect" disabled={busy} onClick={() => void disconnect()} style={{ ...ghost, flex: 1, color: "var(--danger)" }}>{t.rd_pc711_disconnect}</button>
+        <button type="button" data-testid="pc711-test" disabled={busy || testing} aria-busy={testing} onClick={() => void testNow()} style={{ ...ghost, flex: 1, opacity: busy || testing ? 0.6 : 1 }}>{testing ? t.rd_pc711_testing : t.rd_pc711_test}</button>
+        <button type="button" data-testid="pc711-disconnect" disabled={busy || testing} onClick={() => void disconnect()} style={{ ...ghost, flex: 1, color: "var(--danger)" }}>{t.rd_pc711_disconnect}</button>
       </div>
+      <ShadowBlock />
     </div>
   );
 }

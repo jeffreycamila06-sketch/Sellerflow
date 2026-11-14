@@ -655,7 +655,7 @@ describe("2 wiring", () => {
   });
   it("server.js: admin only, its own limiter, the boot run — additions only", () => {
     const src = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8");
-    expect(src).toContain('app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed }));');
+    expect(src).toContain('app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed, windowMs: PC_PROBE_LIMIT_WINDOW_MS }));');
     expect(src).toContain("const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });");
     expect(src).toContain("schedulePcProbeBoot({ run: runPcProbeBoot, enabled: pcProbeEnabled() });");
     expect(src).toContain("const runPcProbeBoot = () => runPcProbe().catch(() => {}).then(() => runPcLoginWalk());");
@@ -687,5 +687,60 @@ describe("2 wiring", () => {
     await import("../../../../server/pcServerProbe.js");
     expect(timer).not.toHaveBeenCalled();
     expect(net).not.toHaveBeenCalled();
+  });
+});
+
+// Shadow job (server/pc711Shadow.js) uses the probe in TARGET mode: ONE parcel, the extension's
+// inputs, only that part, no env switch (gate: false). Without target the probe is unchanged.
+describe("target mode (shadow)", () => {
+  const go = (f: unknown, target: Record<string, unknown>, session: Sess = SESSION) => {
+    const logs: string[] = [];
+    return runPcServerProbe({
+      fetchImpl: f as typeof fetch, now: () => NOON, log: (l: string) => logs.push(l), readSetting: settings(),
+      env: {}, session: session as never, target: target as never, gate: false,
+    }).then((result) => ({ result, logs }));
+  };
+  it("store target: no env switch needed, only the store chain runs, byIDData asks THE parcel's store", async () => {
+    const s = fullSite();
+    const { result } = await go(s.f, { kind: "store", storeId: "123456" });
+    expect(result.store).toMatchObject({ verdict: "full", kind: "" });
+    expect(s.calls.some((c) => c.path === "/CPF3101/CheckoutValidation/")).toBe(false); // phone part skipped
+    const byid = s.calls.find((c) => c.path.endsWith("/byIDData.aspx"))!;
+    expect(new URLSearchParams(byid.body).get("k")).toBe("123456");
+    expect(s.calls.some((c) => c.path.includes("/cart/finish"))).toBe(false);
+  });
+  it("phone target: the parcel's phone, name and store in the CheckoutValidation body; store chain skipped", async () => {
+    const s = fullSite();
+    const { result } = await go(s.f, { kind: "phone", phone: "0912345678", name: "陳小美", storeId: "654321" });
+    expect(result.phone).toMatchObject({ verdict: "ok" });
+    const v = s.calls.find((c) => c.path === "/CPF3101/CheckoutValidation/")!;
+    const b = Object.fromEntries(new URLSearchParams(v.body));
+    expect(b).toMatchObject({ revMobile: "0912345678", rcvName: "陳小美", RcvStoreID: "654321", ordMobile: MARK.sender, Cgdm_Id: GM });
+    expect(s.calls.some((c) => c.path === "/cart/detail" || c.path.endsWith("/byIDData.aspx"))).toBe(false);
+  });
+  it("bad target input → unknown, no 7-11 request for that part", async () => {
+    const s = fullSite();
+    const a = await go(s.f, { kind: "store", storeId: "12345" });
+    expect(a.result.store).toMatchObject({ verdict: "unknown", kind: "bad_input" });
+    const b = await go(s.f, { kind: "phone", phone: "12345", storeId: "123456" });
+    expect(b.result.phone).toMatchObject({ verdict: "unknown", kind: "bad_input" });
+    expect(s.f).not.toHaveBeenCalled();
+  });
+  it("without target the env switch still decides (the probe is unchanged)", async () => {
+    const s = fullSite();
+    const r = await runPcServerProbe({ fetchImpl: s.f as never, now: () => NOON, log: () => {}, readSetting: settings(), env: {} });
+    expect(r).toEqual({ disabled: true });
+    expect(s.f).not.toHaveBeenCalled();
+  });
+  it("Test now 429 carries retryAt = the last allowed run + 10 min", async () => {
+    let t = Date.parse("2026-11-14T05:00:00Z");
+    const h = createPcProbeHandler({ run: async () => ({ ok: 1 }), allowed: createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS }), enabled: () => true, windowMs: PC_PROBE_LIMIT_WINDOW_MS, now: () => t });
+    const res = () => ({ code: 200, body: null as unknown, status(c: number) { this.code = c; return this; }, json(b: unknown) { this.body = b; return this; } });
+    const r1 = res(); await h({} as never, r1 as never);
+    expect(r1.code).toBe(200);
+    t += 60_000;
+    const r2 = res(); await h({} as never, r2 as never);
+    expect(r2.code).toBe(429);
+    expect(r2.body).toMatchObject({ error: "rate_limited", retryAt: "2026-11-14T05:10:00.000Z" });
   });
 });

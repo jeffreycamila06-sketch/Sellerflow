@@ -311,11 +311,17 @@ export function parseProbeConfig({ gms, sender, buyer }) {
 // ── the run ──────────────────────────────────────────────────────────────────
 // opts: fetchImpl, now (() => ms), log, readSetting (async key → string|null), env, parseBudgetMs,
 // session ({ get, relogin, save } from server/pc711Login.js: the saved 7-11 login).
+// target (shadow job, server/pc711Shadow.js): check ONE parcel with the extension's inputs instead
+//   of the fixed probe ones — { kind: "store", storeId } or { kind: "phone", phone, name, storeId };
+//   only that part runs. gate: false skips the PC_SERVER_PROBE env switch (the shadow has its own).
+//   Without target the probe is exactly as before.
 // Never throws.
 export async function runPcServerProbe(opts = {}) {
-  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS, session = null } = opts;
+  const { fetchImpl = fetch, now = Date.now, log = console.log, readSetting, env = process.env, parseBudgetMs = PC_PROBE_PARSE_MS, session = null, target = null, gate = true } = opts;
   const parse = (html) => parseForms(html, { budgetMs: parseBudgetMs });
-  if (!pcProbeEnabled(env)) return { disabled: true };
+  if (gate !== false && !pcProbeEnabled(env)) return { disabled: true };
+  const want = (part) => !target || target.kind === part;
+  const targetStore = target && /^\d{6}$/.test(String(target.storeId ?? "")) ? String(target.storeId) : "";
   const startedAt = now();
   const maintWindow = isMaintWindow(startedAt);
   const maint = `maint=${maintWindow ? 1 : 0}`;
@@ -399,8 +405,15 @@ export async function runPcServerProbe(opts = {}) {
   const cartUrl = cfg.gm ? `https://${MYSHIP}/cart/easy/${cfg.gm}` : "";
 
   // ── PHONE (no cookies at all) ────────────────────────────────────────────────
+  // target phone: the parcel's own buyer phone / name / store (the extension's CheckoutValidation body).
+  const targetPhone = target && target.kind === "phone" && /^09\d{8}$/.test(String(target.phone ?? "").trim()) ? String(target.phone).trim() : "";
+  const buyer = target ? targetPhone : cfg.buyer;
   try {
-    if (!cfg.gm || !cfg.sender || !cfg.buyer) {
+    if (!want("phone")) { /* the shadow asked for the store only */ }
+    else if (target && !targetPhone) {
+      phone.kind = "bad_input";
+      record(phone, stepOf("phone.config", null, false, "bad_input"));
+    } else if (!cfg.gm || !cfg.sender || !buyer) {
       phone.kind = "config_missing";
       record(phone, stepOf("phone.config", null, false, "config_missing"));
     } else {
@@ -411,8 +424,8 @@ export async function runPcServerProbe(opts = {}) {
       if (pageKind) phone.kind = pageKind;
       else {
         const body = encode([
-          ["rcvName", PROBE_NAME], ["revPhone", ""], ["revMobile", cfg.buyer], ["ordPhone", ""], ["ordMobile", cfg.sender],
-          ["Cgdm_Id", cfg.gm], ["Carm_Cgptshiptype", "1"], ["Carm_Cgptpaymenttype", "1"], ["RcvStoreID", PC_PROBE_STORE_ID],
+          ["rcvName", target ? String(target.name ?? "") : PROBE_NAME], ["revPhone", ""], ["revMobile", buyer], ["ordPhone", ""], ["ordMobile", cfg.sender],
+          ["Cgdm_Id", cfg.gm], ["Carm_Cgptshiptype", "1"], ["Carm_Cgptpaymenttype", "1"], ["RcvStoreID", target ? String(target.storeId ?? "") : PC_PROBE_STORE_ID],
         ]);
         const res = await request(null, `https://${MYSHIP}/CPF3101/CheckoutValidation/`, {
           method: "POST", body,
@@ -444,8 +457,10 @@ export async function runPcServerProbe(opts = {}) {
   // ── STORE (only with the saved 7-11 login session) ───────────────────────────
   try {
     const call = async (fn) => { try { return typeof fn === "function" ? await fn() : null; } catch { return null; } };
-    const saved = session ? await call(session.get) : null;
-    if (!saved || !saved.cookies) { store.kind = "no_session"; record(store, stepOf("store.skip", null, false, "no_session")); }
+    const saved = want("store") && session ? await call(session.get) : null;
+    if (!want("store")) { /* the shadow asked for the phone only */ }
+    else if (target && !targetStore) { store.kind = "bad_input"; record(store, stepOf("store.config", null, false, "bad_input")); }
+    else if (!saved || !saved.cookies) { store.kind = "no_session"; record(store, stepOf("store.skip", null, false, "no_session")); }
     else if (!cfg.gm) { store.kind = "config_missing"; record(store, stepOf("store.config", null, false, "config_missing")); }
     else {
       let jar = createJar(saved.cookies);
@@ -545,7 +560,7 @@ export async function runPcServerProbe(opts = {}) {
               const p5 = await request(jar, url5, {
                 method: "POST",
                 body: encode([
-                  ["mode", ""], ["k", PC_PROBE_EMAP_STORE], ["cate", "3"], ["eshopparid", "7M0"], ["eshopid", "7M0"],
+                  ["mode", ""], ["k", targetStore || PC_PROBE_EMAP_STORE], ["cate", "3"], ["eshopparid", "7M0"], ["eshopid", "7M0"],
                   ["multiple_type", ""], ["Guid", guid], ["Nan4AjaxTrickNumber", String(now())],
                 ]),
                 headers: {
@@ -571,10 +586,17 @@ export async function runPcServerProbe(opts = {}) {
 
 // ── wiring helpers (server.js mounts these) ─────────────────────────────────
 // POST /admin/pc-server-probe (behind requireAuth + requireAdmin).
-export function createPcProbeHandler({ run, allowed, enabled = () => pcProbeEnabled() }) {
+// windowMs (optional): on 429 the answer carries retryAt = the last allowed run + windowMs (ISO), so
+// the panel can say "Try again after hh:mm".
+export function createPcProbeHandler({ run, allowed, enabled = () => pcProbeEnabled(), windowMs = 0, now = Date.now }) {
+  let lastRunAt = 0;
   return async function pcProbeHandler(_req, res) {
     if (!enabled()) return res.status(404).json({ success: false, error: "disabled" });
-    if (!allowed("server")) return res.status(429).json({ success: false, error: "rate_limited" });
+    if (!allowed("server")) {
+      const retryAt = windowMs > 0 && lastRunAt > 0 ? new Date(lastRunAt + windowMs).toISOString() : undefined;
+      return res.status(429).json({ success: false, error: "rate_limited", ...(retryAt ? { retryAt } : {}) });
+    }
+    lastRunAt = now();
     try {
       return res.json({ success: true, result: await run() });
     } catch {
