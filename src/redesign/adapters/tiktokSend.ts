@@ -53,15 +53,18 @@ export const printedLines = (lines: SendLine[]): SendLine[] => lines.filter((l) 
 /** Total of the lines printed in the message (removed and blank-text lines are not counted). */
 export const sumLines = (lines: SendLine[]): number => printedLines(lines).reduce((s, l) => s + priceOf(l.price), 0);
 
-/** Total shown in the message: the seller's override when set, else the sum. */
-export const messageTotal = (lines: SendLine[], override: string | null): number =>
-  override !== null && override.trim() !== "" ? priceOf(override) : sumLines(lines);
+/** Total shown in the message: the seller's override when set, else the sum of the items plus
+ *  the shipping fee ("" = 0). Changing the shipping fee drops a Total override (done in the sheet). */
+export const messageTotal = (lines: SendLine[], override: string | null, shippingFee = ""): number =>
+  override !== null && override.trim() !== "" ? priceOf(override) : sumLines(lines) + priceOf(shippingFee);
 
-export interface MessageLabels { hi: string; order: string; total: string }
+export interface MessageLabels { hi: string; order: string; total: string; shipping?: string }
 
-/** The message text. Blank-text added lines are left out; numbering has no gaps. */
+/** The message text. Blank-text added lines are left out; numbering has no gaps. When the
+ *  shipping fee is not empty (a typed 0 counts), one "Shipping fee: {fee}" line is added right
+ *  above the Total line — empty → no line (the message is exactly as it was before shipping). */
 export function buildSendMessage(o: {
-  name: string; date: string; lines: SendLine[]; total: number; cur: string; note: string; labels: MessageLabels;
+  name: string; date: string; lines: SendLine[]; total: number; cur: string; note: string; labels: MessageLabels; shippingFee?: string;
 }): string {
   const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
   const rows = printedLines(o.lines);
@@ -69,8 +72,10 @@ export function buildSendMessage(o: {
     fill(o.labels.hi, { name: o.name }),
     fill(o.labels.order, { date: o.date }),
     ...rows.map((l, i) => `${i + 1}. ${lineText(l)}${qtySuffix(l.qty)} — ${o.cur}${fmt(priceOf(l.price))}`),
-    fill(o.labels.total, { total: `${o.cur}${fmt(o.total)}` }),
   ];
+  const fee = (o.shippingFee ?? "").trim();
+  if (fee !== "" && o.labels.shipping) out.push(fill(o.labels.shipping, { fee: `${o.cur}${fmt(priceOf(fee))}` }));
+  out.push(fill(o.labels.total, { total: `${o.cur}${fmt(o.total)}` }));
   const note = o.note.trim();
   if (note) out.push("", note); // a blank line, then the note
   return out.join("\n");

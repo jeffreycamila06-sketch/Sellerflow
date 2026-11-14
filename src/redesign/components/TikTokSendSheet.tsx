@@ -14,7 +14,7 @@ import { chaseTarget } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { copyText } from "./inviteShare";
 import {
-  initialSendLines, sumLines, messageTotal, buildSendMessage, loadSendNote, saveSendNote, qtySuffix, priceInput, type SendLine,
+  initialSendLines, messageTotal, buildSendMessage, loadSendNote, saveSendNote, qtySuffix, priceInput, type SendLine,
 } from "../adapters/tiktokSend";
 import type { BuyerReceipt } from "../adapters/useReadData";
 
@@ -30,6 +30,7 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
 }) {
   const t = useT();
   const [lines, setLines] = useState<SendLine[]>(() => initialSendLines(receipt.lines));
+  const [shipping, setShipping] = useState(""); // EMPTY every open (per customer) — never remembered, unlike the note
   const [totalOverride, setTotalOverride] = useState<string | null>(null);
   const [note, setNote] = useState(() => loadSendNote(sellerId));
   const [draft, setDraft] = useState<string | null>(null); // null = auto mode (rebuilt from the fields); a string = the seller's own text
@@ -39,11 +40,11 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   const ios = isIOS();
   const target = chaseTarget(receipt.handle);
 
-  const sum = sumLines(lines);
-  const total = messageTotal(lines, totalOverride);
+  const sum = messageTotal(lines, null, shipping); // items + shipping fee
+  const total = messageTotal(lines, totalOverride, shipping);
   const autoMessage = buildSendMessage({
-    name: receipt.name, date, lines, total, cur, note,
-    labels: { hi: t.rd_tts_msg_hi, order: t.rd_tts_msg_order, total: t.rd_tts_msg_total },
+    name: receipt.name, date, lines, total, cur, note, shippingFee: shipping,
+    labels: { hi: t.rd_tts_msg_hi, order: t.rd_tts_msg_order, total: t.rd_tts_msg_total, shipping: t.rd_tts_msg_shipping },
   });
   const message = draft ?? autoMessage; // what the box shows = exactly what Copy copies
 
@@ -53,6 +54,8 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
   const setPrice = (key: string, price: string) => { setTotalOverride(null); setLine(key, { price }); };
   const removeLine = (key: string) => { setTotalOverride(null); setLines((ls) => ls.filter((l) => l.key !== key)); };
   const addLine = () => { setTotalOverride(null); const key = `a${nextId.current++}`; setLines((ls) => [...ls, { key, text: "", price: "", added: true, qty: 1 }]); };
+  // Changing the shipping fee drops a Total override too (same as changing a price).
+  const setShip = (v: string) => { setTotalOverride(null); setShipping(priceInput(v, cur)); };
 
   const copy = async (): Promise<boolean> => {
     saveSendNote(sellerId, note);
@@ -107,9 +110,19 @@ export default function TikTokSendSheet({ receipt, cur, date, sellerId, onClose,
             + {t.rd_tts_add}
           </button>
 
-          <span style={label}>{t.rd_ord_receipt_total}{totalOverride !== null && totalOverride.trim() !== "" && <span data-testid="tts-edited" style={{ marginLeft: 6, fontWeight: 600, letterSpacing: 0, color: "var(--warn)" }}>{t.rd_tts_edited}</span>}</span>
-          <input data-testid="tts-total" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={totalOverride ?? moneyText(sum)}
-            onChange={(e) => setTotalOverride(priceInput(e.target.value, cur))} style={{ ...input, width: 140, textAlign: "right" }} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
+            <div>
+              <span style={label}>{t.rd_tts_shipping}</span>
+              <input data-testid="tts-shipping" aria-label={t.rd_tts_shipping} inputMode={hasCents(cur) ? "decimal" : "numeric"}
+                value={shipping} placeholder={t.rd_tts_shipping_ph} onChange={(e) => setShip(e.target.value)}
+                style={{ ...input, display: "block", width: 140, textAlign: "right" }} />
+            </div>
+            <div>
+              <span style={label}>{t.rd_ord_receipt_total}{totalOverride !== null && totalOverride.trim() !== "" && <span data-testid="tts-edited" style={{ marginLeft: 6, fontWeight: 600, letterSpacing: 0, color: "var(--warn)" }}>{t.rd_tts_edited}</span>}</span>
+              <input data-testid="tts-total" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={totalOverride ?? moneyText(sum)}
+                onChange={(e) => setTotalOverride(priceInput(e.target.value, cur))} style={{ ...input, display: "block", width: 140, textAlign: "right" }} />
+            </div>
+          </div>
 
           <span style={label}>{t.rd_tts_note}</span>
           <textarea data-testid="tts-note" value={note} maxLength={500} placeholder={t.rd_tts_note_ph} onChange={(e) => setNote(e.target.value)} style={{ ...input, width: "100%", minHeight: 64, resize: "vertical" }} />
