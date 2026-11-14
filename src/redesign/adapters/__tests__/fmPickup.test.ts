@@ -199,3 +199,58 @@ describe("uploadFmExport", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 });
+
+// The 好賣+ "Good-selling version" Order export (row 1, 46 columns, measured on a real seller's
+// file). No 訂單內容 — one row per product. Fake data only below.
+const HEADERS_V2 = ("訂單編號|訂購人姓名|訂購人手機|訂購人信箱|取件人姓名|取件人手機|商品分類|商品編號|自訂商品編號|商品名稱|"
+  + "商品規格1|商品規格2|商品數量|商品金額|商品總額|運費總額|抵用折價券|訂單總額|付款方式|折價券來源|團購商品|付款狀態|"
+  + "運送方式|配送溫層|賣家對買家運費變價|平台運費|寄件編號|取件店號|取件店名|宅配取件地址|社區取件名稱|社區取件地址|"
+  + "指定退回店號|指定退回店名|訂單成立日期|付款日期|寄件日期|取貨日期|包裹未取退回日期|取消日期|匯款日期|匯款金額|"
+  + "匯款狀態|訂單狀態|賣家備註|買家備註").split("|");
+const V2: Record<string, Cell> = {
+  "訂單編號": "G26B01TEST", "訂購人姓名": "t*s*", "訂購人手機": "0900***000", "取件人姓名": "T*s*", "取件人手機": "0*0*****0*",
+  "商品名稱": "@test_buyer.1", "商品數量": 1, "商品金額": 300, "商品總額": 300, "運費總額": 39, "訂單總額": 339,
+  "付款方式": "貨到付款", "付款狀態": "未付款", "運送方式": "全家店寄店取", "配送溫層": "常溫", "取件店號": 22131, "取件店名": "測試店",
+  "訂單成立日期": "2026/11/01", "訂單狀態": "處理中",
+};
+
+describe("Good-selling version Order export (46 columns, one row per product)", () => {
+  it("has 46 columns and is accepted; 處理中 with no 寄件編號 → not shown", async () => {
+    expect(HEADERS_V2).toHaveLength(46);
+    const r = await parseFmExport(xlsx([V2], HEADERS_V2));
+    expect(r).toEqual({ ok: true, rows: [], notShipped: 1 });
+  });
+  it("+寄件日期 → in transit, fields read from the v2 names; @username from 商品名稱", async () => {
+    const r = await parseFmExport(xlsx([{ ...V2, "訂單狀態": "配送中", "寄件編號": "16351746626", "寄件日期": "2026/11/02" }], HEADERS_V2));
+    if (!r.ok) throw new Error("not ok");
+    expect(r.rows).toEqual([{
+      order_no: "G26B01TEST", status: "in_transit", status_message: "配送中", tracking_no: "16351746626",
+      pickup_deadline: null, picked_up_at: null, returned_at: null, buyer_username: "test_buyer.1",
+      recipient_name: "T*s*", recipient_phone: "0*0*****0*", store_id: "022131", rec_store: "測試店",
+      order_amount: 339, ship_type: "全家店寄店取",
+    }]);
+  });
+  it("取貨日期 → picked up; 包裹未取退回日期 → returned; 取消日期 → hide", async () => {
+    const shipped = { ...V2, "寄件編號": "16351746626", "寄件日期": "2026/11/02" };
+    const p = await parseFmExport(xlsx([{ ...shipped, "訂單狀態": "已取貨", "取貨日期": "2026/11/04 下午 03:00:00" }], HEADERS_V2));
+    const ret = await parseFmExport(xlsx([{ ...shipped, "訂單狀態": "已退回", "包裹未取退回日期": "2026/11/12" }], HEADERS_V2));
+    const c = await parseFmExport(xlsx([{ ...shipped, "訂單狀態": "已取消", "取消日期": "2026/11/03" }], HEADERS_V2));
+    if (!p.ok || !ret.ok || !c.ok) throw new Error("not ok");
+    expect(p.rows[0]).toMatchObject({ status: "picked_up", picked_up_at: "2026-11-04T15:00:00+08:00" });
+    expect(ret.rows[0]).toMatchObject({ status: "returned", returned_at: "2026-11-12T00:00:00+08:00" });
+    expect(c.rows[0].status).toBe("hide");
+  });
+  it("two rows with the same 訂單編號 → one parcel; products joined, order fields from the first row", async () => {
+    const shipped = { ...V2, "訂單狀態": "配送中", "寄件編號": "16351746626", "寄件日期": "2026/11/02" };
+    const r = await parseFmExport(xlsx([
+      { ...shipped, "商品名稱": "汽泡水", "商品規格1": "檸檬", "商品數量": 2 },
+      { ...shipped, "商品名稱": "餅乾", "商品數量": 1, "訂單總額": 999 },
+    ], HEADERS_V2));
+    if (!r.ok) throw new Error("not ok");
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toMatchObject({ order_no: "G26B01TEST", order_amount: 339, buyer_username: "汽泡水 檸檬  2 / 餅乾" });
+  });
+  it("a file with neither 訂單內容 nor 商品名稱 is not a 全家 Order export", async () => {
+    expect(await parseFmExport(xlsx([V2], HEADERS_V2.filter((h) => h !== "商品名稱")))).toEqual({ ok: false, error: "not_fm_export" });
+  });
+});
