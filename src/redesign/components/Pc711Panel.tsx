@@ -3,7 +3,7 @@
 // (no polling). The password is sent once and cleared from this screen right after.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
-import { pc711Api, usePc711Status, fillSmsBoxes, hhmm, type Pc711Status, type Pc711Shadow } from "../adapters/pc711Login";
+import { pc711Api, usePc711Status, fillSmsBoxes, hhmm, taipeiStamp, taipeiDayKey, type Pc711Status, type Pc711Shadow, type Pc711ShadowHistory, type Pc711ShadowDay, type Pc711ShadowFilter, type Pc711ShadowKindFilter, type Pc711ShadowRow } from "../adapters/pc711Login";
 
 type View = "status" | "step1" | "step2";
 
@@ -18,16 +18,50 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "�
 // The last "Store check: …" line stays on screen (also after the sheet is closed and opened again).
 let lastTestResult = "";
 
-// Shadow block: what the server answered compared with the extension (today), read once on open.
+// Shadow block: what the server answered compared with the extension. Today's totals are read once
+// on open; the history is read when a filter / page changes — never polled. No ids, phone or store.
+const DAYS: Pc711ShadowDay[] = ["today", "yesterday", "2days", "7days", "30days"];
+const FILTERS: Pc711ShadowFilter[] = ["all", "mismatch", "error"];
+const KIND_FILTERS: Pc711ShadowKindFilter[] = ["all", "store", "phone", "frozen"];
+const chip = (on: boolean): CSSProperties => ({ minHeight: 34, padding: "6px 10px", borderRadius: 999, border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, background: on ? "var(--accent)" : "var(--surface)", color: on ? "var(--accent-text)" : "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" });
+
 function ShadowBlock() {
   const t = useT();
   const [s, setS] = useState<Pc711Shadow | null | undefined>(undefined);
+  const [day, setDay] = useState<Pc711ShadowDay>("today");
+  const [filter, setFilter] = useState<Pc711ShadowFilter>("all");
+  const [kind, setKind] = useState<Pc711ShadowKindFilter>("all");
+  const [page, setPage] = useState(0);
+  const [h, setH] = useState<Pc711ShadowHistory | null | undefined>(undefined);
+  const [open, setOpen] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     pc711Api.shadow().then((x) => { if (alive) setS(x); }).catch(() => { if (alive) setS(null); });
     return () => { alive = false; };
   }, []);
+  useEffect(() => {
+    let alive = true;
+    pc711Api.shadowHistory(day, filter, page, kind).then((x) => { if (alive) { setH(x); setOpen(null); } }).catch(() => { if (alive) setH(null); });
+    return () => { alive = false; };
+  }, [day, filter, page, kind]);
+  const pick = (d: Pc711ShadowDay | null, f: Pc711ShadowFilter | null, k: Pc711ShadowKindFilter | null = null) => { if (d) setDay(d); if (f) setFilter(f); if (k) setKind(k); setPage(0); setH(undefined); };
   const pct = (p: { n: number; matchPct: number | null }) => (p.n ? tpl(t.rd_pc711_sh_pct, { p: p.matchPct ?? 0, n: p.n }) : "—");
+  const dayLabel: Record<Pc711ShadowDay, string> = { today: t.rd_pc711_sh_d_today, yesterday: t.rd_pc711_sh_d_yesterday, "2days": t.rd_pc711_sh_d_2days, "7days": t.rd_pc711_sh_d_7days, "30days": t.rd_pc711_sh_d_30days };
+  const filterLabel: Record<Pc711ShadowFilter, string> = { all: t.rd_pc711_sh_f_all, mismatch: t.rd_pc711_sh_f_mis, error: t.rd_pc711_sh_f_err };
+  const kindLabel = (k: string) => (k === "phone" ? t.rd_pc711_sh_phone : k === "frozen" ? t.rd_pc711_sh_frozen : t.rd_pc711_sh_store);
+  const kindFilterLabel: Record<Pc711ShadowKindFilter, string> = { all: t.rd_pc711_sh_k_all, store: t.rd_pc711_sh_store, phone: t.rd_pc711_sh_phone, frozen: t.rd_pc711_sh_frozen };
+  const resultText = (r: Pc711ShadowRow) => r.result === "match" ? t.rd_pc711_sh_r_match
+    : r.result === "ext_unknown" ? `${t.rd_pc711_sh_r_ext_unknown} srv=${r.srv}${r.raw ? ` raw=${r.raw}` : ""}`
+    : r.result === "mismatch" ? `${t.rd_pc711_sh_r_mismatch} ext=${r.ext} srv=${r.srv}${r.raw ? ` raw=${r.raw}` : ""}${r.gapS !== null ? ` gap=${Math.round(r.gapS / 60)}m` : ""}`
+    : `${tpl(t.rd_pc711_sh_r_error, { step: r.failStep || "?" })} http=${r.failHttp ?? 0}${r.failReason ? ` ${r.failReason}` : ""}`;
+  const byStep = s && s.today ? Object.entries(s.today.errorsByStep).sort((a, b) => b[1] - a[1]) : [];
+  // history rows grouped by Taipei day (newest first), each day headed by its totals
+  const groups: { key: string; rows: { r: Pc711ShadowRow; i: number }[] }[] = [];
+  (h?.rows || []).forEach((r, i) => {
+    const key = taipeiDayKey(r.at);
+    const g = groups[groups.length - 1];
+    if (g && g.key === key) g.rows.push({ r, i }); else groups.push({ key, rows: [{ r, i }] });
+  });
   return (
     <div data-testid="pc711-shadow" style={{ ...card, marginTop: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{t.rd_pc711_sh_title}</div>
@@ -36,23 +70,61 @@ function ShadowBlock() {
         : <>
           {!s.enabled && <div data-testid="pc711-shadow-off" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{t.rd_pc711_sh_off}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 12px", marginTop: 8, fontSize: 12.5 }}>
-            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_today}</span><span data-testid="pc711-shadow-n" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.n}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_today}</span><span data-testid="pc711-shadow-n" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.compared}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_store}</span><span data-testid="pc711-shadow-store" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.store)}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_phone}</span><span data-testid="pc711-shadow-phone" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.phone)}</span>
-            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_errors}</span><span data-testid="pc711-shadow-errors" style={{ color: "var(--text)", fontWeight: 600 }}>{`${t.rd_pc711_sh_store} ${s.today.store.errors} · ${t.rd_pc711_sh_phone} ${s.today.phone.errors}`}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_frozen}</span><span data-testid="pc711-shadow-frozen" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.frozen)}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_errors}</span><span data-testid="pc711-shadow-errors" style={{ color: "var(--text)", fontWeight: 600 }}>{`${t.rd_pc711_sh_store} ${s.today.store.errors} · ${t.rd_pc711_sh_phone} ${s.today.phone.errors} · ${t.rd_pc711_sh_frozen} ${s.today.frozen.errors}`}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_avg}</span><span data-testid="pc711-shadow-avg" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.avgMs === null ? "—" : `${s.today.avgMs} ms`}</span>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_bystep}</span><span data-testid="pc711-shadow-bystep" style={{ color: "var(--text)", fontWeight: 600, fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{byStep.length ? byStep.map(([k, n]) => `${k} ${n}`).join(" · ") : "—"}</span>
           </div>
-          {s.mismatches.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_pc711_sh_mis}</div>
-              {s.mismatches.map((m, i) => (
-                <div key={i} data-testid="pc711-shadow-mis" style={{ fontSize: 12, color: "var(--text)", marginTop: 4, fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
-                  {tpl(m.kind === "phone" ? t.rd_pc711_sh_line_phone : t.rd_pc711_sh_line_store, { e: m.ext, s: m.srv, t: hhmm(m.at) || "—" })}
-                </div>
-              ))}
-            </div>
-          )}
         </>}
+
+      <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-dim)", marginTop: 14 }}>{t.rd_pc711_sh_history}</div>
+      <div data-testid="pc711-shadow-days" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+        {DAYS.map((d) => <button key={d} type="button" data-testid={`pc711-sh-day-${d}`} aria-pressed={day === d} onClick={() => pick(d, null)} style={chip(day === d)}>{dayLabel[d]}</button>)}
+      </div>
+      <div data-testid="pc711-shadow-filters" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+        {FILTERS.map((f) => <button key={f} type="button" data-testid={`pc711-sh-filter-${f}`} aria-pressed={filter === f} onClick={() => pick(null, f)} style={chip(filter === f)}>{filterLabel[f]}</button>)}
+      </div>
+      <div data-testid="pc711-shadow-kinds" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+        {KIND_FILTERS.map((k) => <button key={k} type="button" data-testid={`pc711-sh-kind-${k}`} aria-pressed={kind === k} onClick={() => pick(null, null, k)} style={chip(kind === k)}>{kindFilterLabel[k]}</button>)}
+      </div>
+      {h === undefined ? <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_pc711_loading}</div>
+        : h === null ? <div data-testid="pc711-shadow-history-failed" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_pc711_sh_failed}</div>
+        : !h.rows.length ? <div data-testid="pc711-shadow-history-empty" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_pc711_sh_none}</div>
+        : <div data-testid="pc711-shadow-history" style={{ marginTop: 8 }}>
+          {groups.map((g) => {
+            const tot = h.days[g.key];
+            return (
+              <div key={g.key} data-testid="pc711-sh-daygroup" style={{ marginTop: 8 }}>
+                <div data-testid="pc711-sh-daytotal" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                  {`${g.key.slice(5).replace("-", "/")} — ${tot ? tpl(t.rd_pc711_sh_day_tot, { c: tot.compared, p: tot.matchPct === null ? "—" : `${tot.matchPct}%`, e: tot.errors }) : ""}`}
+                </div>
+                {g.rows.map(({ r, i }) => (
+                  <div key={i}>
+                    <button type="button" data-testid="pc711-sh-row" aria-expanded={open === i} onClick={() => setOpen(open === i ? null : i)}
+                      style={{ display: "block", width: "100%", textAlign: "left", minHeight: 40, padding: "7px 2px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", color: r.result === "match" ? "var(--text)" : r.result === "mismatch" ? "var(--danger)" : r.result === "ext_unknown" ? "var(--text-dim)" : "var(--warn)", fontFamily: "var(--font-mono)", fontSize: 11.5, cursor: "pointer", overflowWrap: "anywhere" }}>
+                      {`${taipeiStamp(r.at)} · ${kindLabel(r.kind)} · ${resultText(r)} · ${r.ms} ms`}
+                    </button>
+                    {open === i && (
+                      <div data-testid="pc711-sh-steps" style={{ padding: "6px 4px 8px 12px", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>
+                        {r.steps.length ? r.steps.map((x, k) => (
+                          <div key={k} data-testid="pc711-sh-step" style={{ color: x.ok ? "var(--text-dim)" : "var(--danger)" }}>{`${x.s} · ${x.http} · ${x.ms} ms · ${x.ok ? "ok" : `✕${x.w ? ` ${x.w}` : ""}`}`}</div>
+                        )) : "—"}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+            <button type="button" data-testid="pc711-sh-prev" disabled={page <= 0} onClick={() => { setPage((p) => Math.max(0, p - 1)); setH(undefined); }} style={{ ...ghost, flex: 1, opacity: page <= 0 ? 0.5 : 1 }}>{t.rd_pc711_sh_prev}</button>
+            <span data-testid="pc711-sh-page" style={{ fontSize: 12, color: "var(--text-dim)", minWidth: 60, textAlign: "center" }}>{tpl(t.rd_pc711_sh_page, { p: page + 1 })}</span>
+            <button type="button" data-testid="pc711-sh-next" disabled={!h.more} onClick={() => { setPage((p) => p + 1); setH(undefined); }} style={{ ...ghost, flex: 1, opacity: h.more ? 1 : 0.5 }}>{t.rd_pc711_sh_next}</button>
+          </div>
+        </div>}
     </div>
   );
 }

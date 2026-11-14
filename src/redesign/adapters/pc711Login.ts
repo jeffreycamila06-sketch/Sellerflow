@@ -56,36 +56,82 @@ async function call(path: string, body?: Record<string, unknown>): Promise<Pc711
   }
 }
 
-// Admin → 7-11 Login "Shadow" block (server/pc711Shadow.js): today's compared / match % per kind /
-// server average ms + the last 5 mismatches (no ids). Read when the panel opens — never polled.
+// Admin → 7-11 Login "Shadow" block (server/pc711Shadow.js): what the server answered compared with
+// the extension. Read when the panel opens / a filter changes — never polled. No ids, no phone, no store.
 // n = compared with a real server answer (match true + false); errors = server errors (match NULL).
 export interface Pc711ShadowPart { n: number; matchPct: number | null; errors: number }
-export interface Pc711Shadow {
-  enabled: boolean;
-  today: { n: number; store: Pc711ShadowPart; phone: Pc711ShadowPart; avgMs: number | null };
-  mismatches: { kind: "store" | "phone"; ext: string; srv: string; at: string }[];
+export interface Pc711ShadowTotals {
+  n: number; compared: number; matchPct: number | null; errors: number;
+  store: Pc711ShadowPart; phone: Pc711ShadowPart; frozen: Pc711ShadowPart; avgMs: number | null; errorsByStep: Record<string, number>;
 }
+export type Pc711ShadowKind = "store" | "phone" | "frozen";
+export interface Pc711Shadow { enabled: boolean; today: Pc711ShadowTotals }
+export interface Pc711ShadowStep { s: string; http: number; ms: number; ok: boolean; w?: string }
+export interface Pc711ShadowRow {
+  at: string; kind: Pc711ShadowKind; result: "match" | "mismatch" | "error" | "ext_unknown";
+  ext: string; srv: string; raw: string | null; gapS: number | null;
+  failStep: string | null; failHttp: number | null; failReason: string | null; ms: number; steps: Pc711ShadowStep[];
+}
+export type Pc711ShadowDay = "today" | "yesterday" | "2days" | "7days" | "30days";
+export type Pc711ShadowFilter = "all" | "mismatch" | "error";
+export type Pc711ShadowKindFilter = "all" | Pc711ShadowKind;
+export interface Pc711ShadowHistory {
+  page: number; more: boolean; rows: Pc711ShadowRow[];
+  days: Record<string, { compared: number; matchPct: number | null; errors: number }>;
+}
+const num = (v: unknown, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+const numOrNull = (v: unknown) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+const word = (v: unknown, max = 24) => String(v ?? "").replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, max);
+const obj = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
 const part = (x: unknown): Pc711ShadowPart => {
-  const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
-  const n = Number(o.n);
-  const p = o.matchPct === null || o.matchPct === undefined ? null : Number(o.matchPct);
-  const e = Number(o.errors);
-  return { n: Number.isFinite(n) ? n : 0, matchPct: p !== null && Number.isFinite(p) ? p : null, errors: Number.isFinite(e) && e > 0 ? e : 0 };
+  const o = obj(x);
+  return { n: num(o.n), matchPct: numOrNull(o.matchPct), errors: Math.max(0, num(o.errors)) };
+};
+const totals = (x: unknown): Pc711ShadowTotals => {
+  const o = obj(x);
+  const by: Record<string, number> = {};
+  for (const [k, v] of Object.entries(obj(o.errorsByStep))) if (num(v) > 0) by[word(k)] = num(v);
+  return { n: num(o.n), compared: num(o.compared), matchPct: numOrNull(o.matchPct), errors: num(o.errors), store: part(o.store), phone: part(o.phone), frozen: part(o.frozen), avgMs: numOrNull(o.avgMs), errorsByStep: by };
 };
 export function toPc711Shadow(j: unknown): Pc711Shadow | null {
-  const o = (j && typeof j === "object" ? j : null) as Record<string, unknown> | null;
+  const o = j && typeof j === "object" ? (j as Record<string, unknown>) : null;
   if (!o || !o.today || typeof o.today !== "object") return null;
-  const t = o.today as Record<string, unknown>;
-  const avg = t.avgMs === null || t.avgMs === undefined ? null : Number(t.avgMs);
-  const word = (v: unknown) => String(v ?? "").replace(/[^a-z_]/g, "").slice(0, 16) || "unknown";
+  return { enabled: o.enabled === true, today: totals(o.today) };
+}
+export function toPc711ShadowHistory(j: unknown): Pc711ShadowHistory | null {
+  const o = j && typeof j === "object" ? (j as Record<string, unknown>) : null;
+  if (!o || !Array.isArray(o.rows)) return null;
+  const days: Pc711ShadowHistory["days"] = {};
+  for (const [k, v] of Object.entries(obj(o.days))) { const d = obj(v); days[word(k, 10)] = { compared: num(d.compared), matchPct: numOrNull(d.matchPct), errors: num(d.errors) }; }
   return {
-    enabled: o.enabled === true,
-    today: { n: Number(t.n) || 0, store: part(t.store), phone: part(t.phone), avgMs: avg !== null && Number.isFinite(avg) ? avg : null },
-    mismatches: (Array.isArray(o.mismatches) ? o.mismatches : []).slice(0, 5).map((m) => {
-      const x = (m && typeof m === "object" ? m : {}) as Record<string, unknown>;
-      return { kind: x.kind === "phone" ? "phone" as const : "store" as const, ext: word(x.ext), srv: word(x.srv), at: typeof x.at === "string" ? x.at : "" };
+    page: num(o.page), more: o.more === true, days,
+    rows: o.rows.slice(0, 20).map((r) => {
+      const x = obj(r);
+      const result = x.result === "match" || x.result === "mismatch" || x.result === "ext_unknown" ? x.result : "error";
+      return {
+        at: typeof x.at === "string" ? x.at : "", kind: x.kind === "phone" || x.kind === "frozen" ? x.kind : "store", result,
+        ext: word(x.ext, 16), srv: word(x.srv, 16), raw: x.raw ? word(x.raw, 28) : null, gapS: numOrNull(x.gapS),
+        failStep: x.failStep ? word(x.failStep) : null, failHttp: numOrNull(x.failHttp), failReason: x.failReason ? word(x.failReason, 32) : null,
+        ms: num(x.ms),
+        steps: (Array.isArray(x.steps) ? x.steps : []).slice(0, 20).map((y) => {
+          const z = obj(y);
+          return { s: word(z.s), http: num(z.http), ms: num(z.ms), ok: z.ok === true, ...(z.w ? { w: word(z.w, 32) } : {}) };
+        }),
+      } as Pc711ShadowRow;
     }),
   };
+}
+
+/** Taipei (UTC+8) "MM/DD HH:mm:ss" and the Taipei day key "YYYY-MM-DD" of an ISO instant. */
+const tp = (iso: string) => { const ms = Date.parse(iso); return Number.isFinite(ms) ? new Date(ms + 8 * 3600 * 1000) : null; };
+const p2 = (n: number) => String(n).padStart(2, "0");
+export function taipeiStamp(iso: string): string {
+  const d = tp(iso);
+  return d ? `${p2(d.getUTCMonth() + 1)}/${p2(d.getUTCDate())} ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}` : "—";
+}
+export function taipeiDayKey(iso: string): string {
+  const d = tp(iso);
+  return d ? `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}` : "";
 }
 
 export const pc711Api = {
@@ -99,6 +145,10 @@ export const pc711Api = {
   disconnect: () => call("/admin/pc711/disconnect", {}),
   test: () => call("/admin/pc-server-probe", {}),
   shadow: async (): Promise<Pc711Shadow | null> => { const a = await call("/admin/pc711/shadow"); return a.ok ? toPc711Shadow(a.data) : null; },
+  shadowHistory: async (day: Pc711ShadowDay, filter: Pc711ShadowFilter, page: number, kind: Pc711ShadowKindFilter = "all"): Promise<Pc711ShadowHistory | null> => {
+    const a = await call(`/admin/pc711/shadow/history?day=${encodeURIComponent(day)}&filter=${encodeURIComponent(filter)}&kind=${encodeURIComponent(kind)}&page=${Math.max(0, Math.floor(page))}`);
+    return a.ok ? toPc711ShadowHistory(a.data) : null;
+  },
 };
 
 /** "hh:mm" (local time) of an ISO instant, or "" when it is not a date. */

@@ -718,6 +718,31 @@ describe("target mode (shadow)", () => {
     expect(b).toMatchObject({ revMobile: "0912345678", rcvName: "陳小美", RcvStoreID: "654321", ordMobile: MARK.sender, Cgdm_Id: GM });
     expect(s.calls.some((c) => c.path === "/cart/detail" || c.path.endsWith("/byIDData.aspx"))).toBe(false);
   });
+  it("frozen target: the SAME store chain, only byIDData asks cate=27; enable/disable/close/NO2 mapped like emap-frozen-711.js", async () => {
+    const cases: [string, string, string, string][] = [
+      ["OK;123456+店+addr+enable+0++門市", "ok", "", "enable"],
+      ["OK;123456+店+addr+disable+0++門市", "no_frozen", "", "disable"],
+      ["OK;123456+店+addr+close+0++門市", "unknown", "", "close"],
+      ["NO2", "unknown", "", "NO2"],
+      ["<html>maintenance</html>", "unknown", "unexpected_answer", "other"],
+    ];
+    for (const [body, verdict, kind, raw] of cases) {
+      const s = fullSite({ "POST emap.unipcsc.com.tw/ecmap/byIDData.aspx": { body } });
+      const { result } = await go(s.f, { kind: "frozen", storeId: "123456" });
+      expect(result.store).toMatchObject({ verdict, kind, raw });
+      const byid = s.calls.find((c) => c.path.endsWith("/byIDData.aspx"))!;
+      expect(Object.fromEntries(new URLSearchParams(byid.body))).toMatchObject({ k: "123456", cate: "27" });
+      const steps = result.store.steps.map((x: { step: string }) => x.step);
+      expect(steps).toEqual(["store.cart", "store.detail", "store.map", "store.emap", "frozen.byid"]);
+      expect(s.calls.some((c) => c.path === "/CPF3101/CheckoutValidation/")).toBe(false);
+    }
+  });
+  it("store target keeps cate=3 and its raw word", async () => {
+    const s = fullSite();
+    const { result } = await go(s.f, { kind: "store", storeId: "123456" });
+    expect(result.store.raw).toBe("disable");
+    expect(new URLSearchParams(s.calls.find((c) => c.path.endsWith("/byIDData.aspx"))!.body).get("cate")).toBe("3");
+  });
   it("bad target input → unknown, no 7-11 request for that part", async () => {
     const s = fullSite();
     const a = await go(s.f, { kind: "store", storeId: "12345" });
