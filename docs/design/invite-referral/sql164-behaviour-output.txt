@@ -1,0 +1,87 @@
+PASS: back-fill: an account already on a paid plan counts as 'had a paid plan'
+PASS: back-fill: the admin (master) counts as 'had a paid plan'
+PASS: own code saved UPPERCASE ('budgetukay' → BUDGETUKAY)
+PASS: code set once, then set again → blocked (already_set)
+PASS: …and the first code is unchanged
+PASS: reserved word blocked (admin, any case)
+PASS: reserved words blocked (SellerFlow; SFL / SELLERFLOWLIVE can never be saved)
+PASS: format: 3 and 13 characters blocked
+PASS: format: space / symbol blocked
+PASS: unique, case-insensitive: 'BudgetUkay' taken
+PASS: live availability check: taken / free
+PASS: a reserved word added later with ONE insert is blocked at once
+PASS: random code: 6 chars, uppercase, no 0/O/1/I (6YQEKS)
+PASS: 300 random codes all match the format
+PASS: check_invite_code works signed out (anon), case-insensitive → found
+PASS: check_invite_code: unknown / null / junk → false, never an error
+PASS: anon cannot call my_referral_summary
+PASS: anon cannot read the referral_codes table directly
+PASS: a signed-in seller cannot read the referrals table directly
+PASS: self-invite blocked
+PASS: claim when already paid (now or before) → blocked
+PASS: an old free account (signed up 2025) may still enter a code (no time limit)
+PASS: case-insensitive claim ('budgetukay' → BUDGETUKAY) works for the old free account
+PASS: link saved: inviter = owner of the code, source settings
+PASS: changing inviter blocked (already_linked)
+PASS: after a code is saved the 'Enter code' box hides (can_enter_code false)
+PASS: wrong / empty code → not_found (no error)
+PASS: unknown source rejected
+PASS: reward given: friend's first paid plan → inviter +10 days
+PASS: plan names unchanged (inviter pro, friend basic)
+PASS: the friend's plan itself went through as given
+PASS: other triggers unaffected (parcel trigger ran its own rule, TikTok-total trigger fast-path)
+PASS: two friends same month: second friend also rewarded (+10 more, no limit)
+PASS: the parcel trigger still did its job on the friend's plus plan
+PASS: second plan change / renewal / tier switch → no second reward
+PASS: a trial is not a paid plan → still linked, nothing given
+PASS: …its first REAL paid plan later → rewarded
+PASS: inviter free → 0 days, marked done (inviter_not_paid)
+PASS: …NOT saved for later: inviter pays later, friend renews → still nothing
+PASS: inviter expired (date passed) → 0 days
+PASS: inviter expired (status expired) → 0 days, inviter untouched
+PASS: month not set → 0 days (month_off)
+PASS: month set to 0 (Off) → 0 days (month_off)
+PASS: Taipei month edge: Nov 30 23:30 Taipei counts as November
+PASS: Taipei month edge: Nov 30 16:30 UTC (= Dec 1 00:30 Taipei) counts as December
+PASS: the reward uses the Taipei month of the moment the plan was given
+PASS: revoke subtracts exactly the days given (10) and marks revoked
+PASS: revoking twice does nothing the second time
+PASS: a seller cannot call admin_referral_revoke
+PASS: admin changes a seller's code (BUDGETUKAY → JEFFSHOP)
+PASS: old code stops working, new code works
+PASS: a friend typing the old code → not found; the new one links
+PASS: friends already linked stay linked
+PASS: nobody else can take the retired code (seller or admin)
+PASS: admin cannot set a reserved word either
+PASS: a seller cannot change their own code (admin function refuses)
+PASS: summary: code, this month's days, eligible, no 'enter code' for a paid seller
+PASS: summary: invites list with masked emails (use…)
+PASS: summary: statuses rewarded / linked / no_reward / revoked present
+PASS: summary never contains a full email
+PASS: summary for a free seller: not eligible, may enter a code
+PASS: admin preview: inviter email, would reward +10
+PASS: admin preview shows the inviter's plan
+PASS: admin preview for a finished link → reason already_done
+PASS: admin preview for an un-invited user → linked false
+PASS: admin preview: inviter free → reason inviter_not_paid
+PASS: admin overview: one call, preview per seller with a code or an inviter
+PASS: a seller cannot call admin_referral_overview
+PASS: admin history list: search by code
+PASS: Invite rewards: current month (Now) + next 5
+PASS: setting a month stores its first day
+PASS: negative days refused
+PASS: manual SQL plan change (guard off) also rewards
+PASS: non-admin plan change is reverted by the plan guard → no reward, still linked
+PASS: the plan guard still stops a seller editing their own plan_expiry
+PASS: an error inside the reward is caught: the friend's plan still goes through, inviter unchanged
+PASS: sign-up with a wrong code: account created, claim answers not_found, no error
+PASS: …a correct code right after links with source signup
+PASS: inviter account deleted → friend stays linked to nobody, no reward (inviter_gone)
+PASS: browser role: a seller can claim a code
+PASS: browser role: a seller reads their summary
+PASS: browser role: a seller calling an admin function is refused
+PASS: browser role: an admin giving a plan (as authenticated) fires the reward
+PASS: rollback removes every table, function and the trigger
+PASS: after rollback plans are given as before
+
+85 PASS, 0 FAIL

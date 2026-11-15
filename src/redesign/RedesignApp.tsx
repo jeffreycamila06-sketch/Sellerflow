@@ -17,6 +17,8 @@ import { anonScreen, isAppShell } from "./adapters/appShell";
 import { loadNotPrinted, addNotPrinted, removeNotPrinted, notPrintedKeyOf } from "./adapters/notPrintedStore";
 import { identifySeller, track, resetAnalytics } from "./analytics";
 import SettingsHub from "./screens/SettingsHub";
+import InviteFriends from "./screens/InviteFriends";
+import { claimSignupCode, takePendingInvite } from "./adapters/invite";
 import GeneralSettings from "./screens/GeneralSettings";
 import Customers from "./screens/Customers";
 import Subscription from "./screens/Subscription";
@@ -171,10 +173,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts" | "invite";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "invite"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
@@ -359,6 +361,13 @@ export default function RedesignApp() {
   // true). UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
   const [parcelTrackingAccess, setParcelTrackingAccess] = useState(false);
   const authUserId = auth.profile?.authUserId;
+  // Invite code typed at sign-up when the account had no session yet (sql/164): claimed ONCE, the
+  // first time this tab has a signed-in profile. sessionStorage only; nothing in a URL. Never blocks.
+  useEffect(() => {
+    if (!authUserId) return;
+    const pending = takePendingInvite();
+    if (pending) void claimSignupCode(pending);
+  }, [authUserId]);
   // Parcel Scan bridge drafts (typed, not saved; in memory only) never outlive the seller who typed
   // them: signed out → forget; a different seller signs in on this phone → forget.
   const draftOwnerRef = useRef<string | null>(null);
@@ -2825,6 +2834,7 @@ export default function RedesignApp() {
           {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub
+              onInvite={() => setScreen("invite")}
               onGeneral={() => setScreen("settings")}
               onCustomers={() => setScreen("customers")}
               onAdmin={() => setScreen("admin")}
@@ -2924,6 +2934,7 @@ export default function RedesignApp() {
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking onBack={() => goBack()} userId={authUserId} fm={featureSw.fmPickup || hasFeature("fm_pickup")} contactOn={buyerContactOn} />}
           {screen === "customerdata" && <CustomerData onBack={() => goBack()} onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal onBack={() => goBack(authed ? "menu" : anonScreen())} />}
+          {screen === "invite" && authed && <InviteFriends onBack={() => goBack()} ios={ios} />}
           {screen === "receiptformat" && fbReceiptUi && <ReceiptFormat cur={cur} polish={featureSw.fbPolishV2} onBack={() => goBack()} {...(soldoutBase ? { soldout: { onChanged: setSoldoutOn } } : {})} {...(autoReceiptUi ? { autoReceipt: { lang, currency: cur } } : {})} />}
           {screen === "delete" && <DeleteAccount onBack={() => goBack()} email={auth.profile?.email} onConfirm={onDeleteAccount} />}
           {screen === "printersettings" && (

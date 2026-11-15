@@ -76,8 +76,9 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false,
+  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false,
 }: {
+  onInvite?: () => void; // Invite friends screen (invite code + invites, sql/164). Absent → the card shares the app
   helpBot?: boolean; // help bot preview (switch on + preview list / admin): bubble instead of the "Need help?" tile
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void;
@@ -113,7 +114,7 @@ export default function SettingsHub({
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {/* Share-the-app card — first thing seen; full-width, lightly tinted */}
-          <InviteFriendsCard />
+          <InviteFriendsCard onOpen={onInvite} />
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
           {/* Parcel tiles right after General / Customers: when the 7-11 + FamilyMart pair takes a
