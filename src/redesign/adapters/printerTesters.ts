@@ -56,14 +56,15 @@ export function useApprovedPrinters(signedIn: boolean): void {
 }
 
 // ── Tester side ──────────────────────────────────────────────────────────────────────────────
-// The default approved-name prefix: the name up to its first "-" (kept) or first run of digits
-// (cut before it) — whichever comes first and leaves at least 2 characters; else the whole name.
+// The default approved-name prefix (editable before saving): with a "-" in the name, everything up to
+// and including the first "-" (CT221B-D4F8 → "CT221B-", B1 Pro-I61 → "B1 Pro-"); without one, the text
+// before the first digit, only when that leaves ≥ 4 characters (PRINTER123456 → "PRINTER"); else the whole name.
 export function defaultPrefix(name: string | undefined | null): string {
   const n = String(name || "").trim();
-  const cuts: number[] = [];
-  const dash = n.indexOf("-"); if (dash >= 0) cuts.push(dash + 1);
-  const digit = n.search(/\d/); if (digit >= 0) cuts.push(digit);
-  for (const c of cuts.sort((a, b) => a - b)) { const p = n.slice(0, c).trim(); if (p.length >= 2) return p; }
+  const dash = n.indexOf("-");
+  if (dash >= 0) { const p = n.slice(0, dash + 1).trim(); return p.length >= 2 ? p : n; }
+  const digit = n.search(/\d/);
+  if (digit >= 0) { const p = n.slice(0, digit).trim(); if (p.length >= 4) return p; }
   return n;
 }
 

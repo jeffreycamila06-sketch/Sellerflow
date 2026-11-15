@@ -386,7 +386,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | Niimbot B3S | 75 mm | 72 mm | B3S_P manual |
 
 **Selection flow (v2):** scan (`btScanOutcome`, `includeGenericPrinters`) → `isPrinterOnlyRow` → `knownPrinterInfo` whitelist filter (PrinterSettings.tsx:232) → `pickPrinter` (196-216) saves (D520: no model; Niimbot: transport niimbot; others: model generic + lang) → test print → `rememberSavedPrinter`.
-**Approved printers (sql/160):** Admin → Printer testers → Test reports → "Add to printer list" on a CLEAN report (prefix default = name up to its first "-" or digit run, editable; brand "Other"; lang = the report's). The row is matched AFTER every built-in rule; Remove = `active=false`. Equality with origin/main for every built-in name, with shadowing approved rows loaded, is pinned against the frozen copy `__tests__/fixtures/printerModels.main1115.ts`.
+**Approved printers (sql/160):** Admin → Printer testers → Test reports → "Add to printer list" on a CLEAN report (prefix default = name up to and including its first "-" (CT221B-D4F8 → "CT221B-"); no "-" → the text before the first digit when ≥ 4 chars, else the whole name; editable; brand "Other"; lang = the report's). The row is matched AFTER every built-in rule; Remove = `active=false`. Equality with origin/main for every built-in name, with shadowing approved rows loaded, is pinned against the frozen copy `__tests__/fixtures/printerModels.main1115.ts`.
 
 **Files to touch to add a NEW model** (command-language printer, BLE or classic):
 1. `src/redesign/adapters/printerModels.ts`: `WHITELIST` (+ `KnownBrand` union if it is a new brand), `BUILT_IN` (lang + density/speed/bold), `PRINTER_NAME_PREFIXES` if the name is not covered.

@@ -2,6 +2,7 @@
 //  • Testers — add / remove an email (feature key printer_tester in feature_access_emails);
 //  • Test reports — newest first; a Clean report offers "Add to printer list";
 //  • Approved — the approved_printers rows; Remove = active false (Add back = active true).
+// Every tab tap re-reads the lists (a report sent while the panel is open shows without closing it).
 // Every call is an admin-only RPC (is_admin() inside). The approved list reaches sellers' scan on
 // their next app open (one read per session).
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
@@ -56,9 +57,9 @@ export default function PrinterTestersPanel() {
   return (
     <div data-testid="pt-panel">
       <div style={{ display: "flex", gap: 6, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: 4, marginBottom: 12 }}>
-        <button data-testid="pt-tab-testers" style={tabBtn(tab === "testers")} onClick={() => setTab("testers")}>{t.rd_prt_tab_testers}</button>
-        <button data-testid="pt-tab-reports" style={tabBtn(tab === "reports")} onClick={() => setTab("reports")}>{t.rd_prt_tab_reports}</button>
-        <button data-testid="pt-tab-approved" style={tabBtn(tab === "approved")} onClick={() => setTab("approved")}>{t.rd_prt_tab_approved}</button>
+        <button data-testid="pt-tab-testers" style={tabBtn(tab === "testers")} onClick={() => { setTab("testers"); void load(); }}>{t.rd_prt_tab_testers}</button>
+        <button data-testid="pt-tab-reports" style={tabBtn(tab === "reports")} onClick={() => { setTab("reports"); void load(); }}>{t.rd_prt_tab_reports}</button>
+        <button data-testid="pt-tab-approved" style={tabBtn(tab === "approved")} onClick={() => { setTab("approved"); void load(); }}>{t.rd_prt_tab_approved}</button>
       </div>
       {err && <div data-testid="pt-error" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginBottom: 10 }}>{t.rd_prt_load_failed}</div>}
 

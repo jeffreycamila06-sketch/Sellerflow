@@ -76,6 +76,21 @@ describe("Admin → Printer testers", () => {
     fireEvent.click(screen.getByTestId("pt-approve-save"));
     await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("admin_approve_printer", { p_report: "r1", p_prefix: "LabelThing-", p_brand: "Acme", p_model: "LabelThing-9", p_lang: "cpcl" }));
   });
+  it("each tab tap reloads the lists: a report sent while the panel is open shows without closing it", async () => {
+    rpcs({ admin_printer_test_reports: [] });
+    renderPanel();
+    await screen.findByText("t@x.com");
+    const reads = () => h.rpc.mock.calls.filter((c) => c[0] === "admin_printer_test_reports").length;
+    expect(reads()).toBe(1);
+    rpcs(); // a tester sends a report meanwhile
+    fireEvent.click(screen.getByTestId("pt-tab-reports"));
+    await waitFor(() => expect(screen.getAllByTestId("pt-report")).toHaveLength(2));
+    expect(reads()).toBe(2);
+    fireEvent.click(screen.getByTestId("pt-tab-approved"));
+    fireEvent.click(screen.getByTestId("pt-tab-testers"));
+    await waitFor(() => expect(reads()).toBe(4));
+    for (const fn of ["admin_printer_testers", "admin_approved_printers"]) expect(h.rpc.mock.calls.filter((c) => c[0] === fn).length).toBe(4);
+  });
   it("approved list: Remove sets active=false", async () => {
     rpcs({ admin_approved_printers: [{ id: "a1", prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos", active: true, approved_at: "2026-11-15T00:00:00Z" }] });
     renderPanel();
