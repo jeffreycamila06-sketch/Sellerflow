@@ -23,7 +23,8 @@ import {
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
-import { knownPrinterInfo, knownPrinterLang } from "../adapters/printerModels";
+import { knownPrinterInfo, knownPrinterLang, isPrinterOnlyRow } from "../adapters/printerModels";
+import PrinterTestCard from "../components/PrinterTestCard";
 import { testPrintFor, printerLabelFor } from "../adapters/oneStickerPrint";
 import { CUSTOM_MIN_MM, CUSTOM_MAX_MM, validCustomMm, tooWideFor, qrSizeOk } from "../adapters/oneSticker";
 import { useBluetoothState, btBlocked, type BtProbeOutcome } from "../adapters/btState";
@@ -101,8 +102,10 @@ export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
   stickerQrMoved = false, testComment, flowV2 = false, isAdmin = false, compactV2 = false, customSize, onPrinterSaved,
-  oneSize, sizeOnWifiTab = false,
+  oneSize, sizeOnWifiTab = false, scanWebFilter = false, tester = false,
 }: {
+  scanWebFilter?: boolean; // app_settings printer_scan_web_filter (sql/160): the normal Scan asks the phone for every device, the WEB keeps the listed printers. false = today's call.
+  tester?: boolean; // feature key printer_tester (sql/160): "Show all", "Not a printer" rows, the Printer test card for an unlisted printer. false = today's screen.
   oneSize?: PsOneSize; // the new sticker's one size list (accounts with the new Live print pattern, new-sticker devices)
   sizeOnWifiTab?: boolean; // laptop / WiFi sticker opened from the Live print pattern: the Sticker size card on the WiFi tab too
   onPrinterSaved?: () => void; // a Bluetooth sticker printer was just saved (the new sticker's first save may run now, before the test sticker)
@@ -150,6 +153,8 @@ export default function PrinterSettings({
   const [btScanned, setBtScanned] = useState(false);
   const [btShowAll, setBtShowAll] = useState(false);
   const [pick, setPick] = useState<BluetoothPrinterDevice | null>(null);
+  const [testPick, setTestPick] = useState<BluetoothPrinterDevice | null>(null); // printer testers: the unlisted printer under test (never saved)
+  const testerMode = tester && !isAdmin; // an admin keeps today's "Show all" (an unknown device is saved as generic TSPL)
   const [stage, setStage] = useState<Stage>("idle");
   const [testPrinted, setTestPrinted] = useState(false); // the saved card is green only when the test sticker really printed
   const [failText, setFailText] = useState(""); // a printer we can't drive yet, in the seller's words
@@ -195,9 +200,10 @@ export default function PrinterSettings({
       else setBtMsg(t.rd_ps_scan_unavail);
       return;
     }
-    const r = await btScanOutcome({ includeGenericPrinters: true, showAllDevices: showAll });
+    // scanWebFilter: the phone lists every device; the list below still keeps only the whitelist (built-in + approved).
+    const r = await btScanOutcome({ includeGenericPrinters: true, showAllDevices: showAll || scanWebFilter });
     setBtScanning(false); bt.clearRecovered();
-    setBtScanned(true); setBtShowAll(showAll); setPick(null); setStage("idle");
+    setBtScanned(true); setBtShowAll(showAll); setPick(null); setStage("idle"); setTestPick(null);
     if (r.savedPrinter) setBtSaved(r.savedPrinter);
     if (r.ok) { setBtPrinters(r.printers); return; }
     setBtPrinters([]);
@@ -238,6 +244,8 @@ export default function PrinterSettings({
   async function pickPrinter(p: BluetoothPrinterDevice) {
     if (stage === "printing" || !settings) return;
     const info = knownPrinterInfo(p);
+    if (testerMode && !info) { if (isPrinterOnlyRow(p)) { setTestPick(p); setPick(null); setBtMsg(""); } return; } // a tester never saves an unlisted printer — the Printer test card instead
+    setTestPick(null);
     setPick(p); setBtMsg("");
     if (info?.brand === "Niimbot") {
       if (niimbotOsTooOld()) { setFailText(t.rd_nb_os_too_old); setStage("fail"); return; } // iOS < 17.2: no test print, say why
@@ -263,13 +271,16 @@ export default function PrinterSettings({
   }
   const printerRow = (p: BluetoothPrinterDevice) => {
     const info = knownPrinterInfo(p);
+    // printer testers' "Show all": a device with no printer service and no printer name can't be picked
+    const notPrinter = testerMode && btShowAll && !info && !isPrinterOnlyRow(p);
     return (
-      <button key={p.id || p.address} data-testid="ps-row" onClick={() => void pickPrinter(p)} disabled={stage === "printing"} style={{ ...rowBtn, minHeight: 56, opacity: stage === "printing" ? 0.6 : 1 }}>
+      <button key={p.id || p.address} data-testid="ps-row" data-not-printer={notPrinter ? "1" : undefined} onClick={() => { if (!notPrinter) void pickPrinter(p); }} disabled={stage === "printing" || notPrinter} aria-disabled={notPrinter || undefined} style={{ ...rowBtn, minHeight: 56, opacity: stage === "printing" || notPrinter ? 0.55 : 1, cursor: notPrinter ? "not-allowed" : rowBtn.cursor }}>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name || t.rd_ps_bt_device}</span>
           <span data-testid="ps-row-model" style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: info ? "var(--font-ui)" : "var(--font-mono)" }}>{info ? `${info.brand} ${info.model}`.trim() : p.address}</span>
         </span>
         {info && <span data-testid="ps-row-brand" style={brandPill}>{info.brand}</span>}
+        {notPrinter && <span data-testid="ps-row-not-printer" style={{ flexShrink: 0, whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)" }}>{t.rd_prt_not_printer}</span>}
       </button>
     );
   };
@@ -482,13 +493,16 @@ export default function PrinterSettings({
                   ? <div style={listBox}>{listedPrinters.map(printerRow)}</div>
                   : <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{t.rd_ps_v2_none}</div>}
                 {/* "Show all Bluetooth devices" lists AirPods/laptops too — admin-only (sellers got confused); a seller is pointed to Admin instead */}
-                {!btShowAll && !isAdmin && (
+                {!btShowAll && !isAdmin && !testerMode && (
                   <a data-testid="ps-v2-not-listed" href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 10, padding: "12px 6px", fontSize: 12.5, color: "var(--accent-fg)", fontWeight: 600, textAlign: "center", textDecoration: "none" }}>{t.rd_ps_v2_not_listed}</a>
                 )}
-                {!btShowAll && isAdmin && (
+                {!btShowAll && (isAdmin || testerMode) && (
                   <button data-testid="ps-v2-show-all" onClick={() => void scanBt(true)} disabled={btScanning} style={{ display: "block", width: "100%", marginTop: 10, padding: "12px 6px", border: "none", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "underline" }}>{t.rd_ps_v2_show_all}</button>
                 )}
               </div>
+            )}
+            {v2 && testerMode && testPick && (
+              <PrinterTestCard printer={testPick} settings={settings} cur={cur} storeName={storeName} stickerSize={psSize.replace(/\s*\(.*\)$/, "")} onClose={() => setTestPick(null)} />
             )}
             {v2 && pick && stage === "printing" && (
               <div data-testid="ps-printing" role="status" style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>

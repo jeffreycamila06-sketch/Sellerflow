@@ -123,6 +123,7 @@ import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer, btCall } from "./adapters/printerBridge";
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
+import { useApprovedPrinters } from "./adapters/printerTesters";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
 import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, osDraftAfterSizePick, markOneStickerQrOffAfterPick, oneStickerSeedQr, clearOneStickerQrOffMark, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
@@ -863,6 +864,7 @@ export default function RedesignApp() {
   const salesTab = useSalesTab(authed);
   // Feature switches (app_settings, seeded 'false' by sql/93): one read per sign-in, fail closed.
   const featureSw = useFeatureSwitches(authed ? (authUserId || "") : "");
+  useApprovedPrinters(authed); // Admin-approved printers join the scan whitelist (sql/160) — one read per session
   // Printer setup v2 (admin / test_printers / the printer_flow_v2 switch) — also decides whether the Classic text
   // card is on screen; the router honors the stored Classic flag only while that card is shown (printing.ts
   // classicTextCardShown). Set in THIS render (not an effect) so oneStickerDevicePath below — the Live print
@@ -2952,6 +2954,8 @@ export default function RedesignApp() {
               testComment={stickerV2On ? PREVIEW_COMMENT : undefined}
               flowV2={printerFlowV2}
               isAdmin={isAdmin}
+              scanWebFilter={featureSw.printerScanWebFilter}
+              tester={hasFeature("printer_tester")}
               onPrinterSaved={autoSaveNow}
               oneSize={osSizeMode && osSizeNow ? { current: osSizeNow, sizes: oneStickerSizesFor(osPrinterName, osDevicePath === "niimbot"), printerName: osPrinterName, limit: oneStickerLimitFor(osPrinterName, osDevicePath === "niimbot"), onPick: onPickOneSize } : undefined}
               sizeOnWifiTab={oneStickerOn && (osDevicePath === "laptop" || (osDevicePath === "wifi" && navOrigins.printersettings === "printpattern"))}

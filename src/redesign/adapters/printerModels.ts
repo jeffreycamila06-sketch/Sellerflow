@@ -58,11 +58,12 @@ let knownSource: () => KnownModel[] = () => BUILT_IN;
 export function __setKnownSource(fn: (() => KnownModel[]) | null): void { knownSource = fn ?? (() => BUILT_IN); }
 
 // The language a known model prints with, by device name; null = not in the list.
+// Built-in list FIRST; an Admin-approved printer (sql/160) only when no built-in entry matches.
 export function knownPrinterLang(name: string | undefined | null): PrinterLang | null {
   const n = String(name || "").trim().toUpperCase();
   if (!n) return null;
   for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return m.lang;
-  return null;
+  return approvedPrinterFor(name)?.lang ?? null;
 }
 
 // The per-model TSPL job (density / speed / bold) of a known model; {} = defaults.
@@ -92,7 +93,7 @@ export function isKnownPrinter(p: Pick<BluetoothPrinterDevice, "name" | "model">
 // never appears for a seller ("Printer not listed? Contact Admin."); the admin "Show all"
 // still lists every named device for Jeff's own testing.
 export type KnownBrand = "AIMO" | "Flash" | "Niimbot" | "Xprinter";
-export interface KnownPrinterInfo { brand: KnownBrand; model: string }
+export interface KnownPrinterInfo { brand: KnownBrand | (string & {}); model: string; approved?: true } // approved = an Admin-approved row (sql/160)
 export const WHITELIST: readonly { prefix: string; brand: KnownBrand; model: string }[] = [
   { prefix: "D520BT", brand: "AIMO", model: "D520BT" },   // AIMO / Phomemo D520BT — scans as "D520BT-Z"
   { prefix: "Y41BT", brand: "Flash", model: "Y41BT" },    // FLASH LABEL Y41BT — scans as "Y41BT-0FC4_LE"
@@ -108,6 +109,35 @@ export function knownPrinterInfo(p: Pick<BluetoothPrinterDevice, "name" | "model
   const n = String(p.name || "").trim().toUpperCase();
   for (const w of WHITELIST) if (n && n.startsWith(w.prefix.toUpperCase())) return { brand: w.brand, model: w.model };
   if (p.brand === "niimbot") return { brand: "Niimbot", model: "" };
+  const a = approvedPrinterFor(p.name); // an Admin-approved printer — only after every built-in rule said no
+  if (a) return { brand: a.brand, model: a.model, approved: true };
+  return null;
+}
+
+// ── ADMIN-APPROVED PRINTERS (sql/160 approved_printers, active rows) ─────────────────────────
+// Jeff approves a tester's clean report in one tap; the row joins the whitelist with no build.
+// The built-in list above ALWAYS wins: a name that any built-in rule knows (D520BT, a WHITELIST
+// prefix, a BUILT_IN model, a Niimbot name) never reads an approved row. Empty list (not loaded,
+// read failed, nothing approved) = exactly the built-in behaviour.
+export interface ApprovedPrinter { prefix: string; brand: string; model: string; lang: PrinterLang }
+let approvedList: readonly ApprovedPrinter[] = [];
+const LANGS: readonly PrinterLang[] = ["tspl", "escpos", "cpcl"];
+export function setApprovedPrinters(rows: readonly ApprovedPrinter[] | null): void {
+  approvedList = (rows || []).filter((r) => r && String(r.prefix || "").trim().length >= 2 && LANGS.includes(r.lang));
+}
+export const approvedPrinters = (): readonly ApprovedPrinter[] => approvedList;
+function builtInKnowsName(name: string | undefined | null): boolean {
+  const n = String(name || "").trim().toUpperCase();
+  if (!n) return false;
+  for (const w of WHITELIST) if (n.startsWith(w.prefix.toUpperCase())) return true;
+  for (const m of knownSource()) if (n.startsWith(m.prefix.toUpperCase())) return true;
+  return isNiimbotName(name);
+}
+export function approvedPrinterFor(name: string | undefined | null): ApprovedPrinter | null {
+  if (!approvedList.length) return null;
+  const n = String(name || "").trim().toUpperCase();
+  if (!n || builtInKnowsName(name)) return null;
+  for (const a of approvedList) if (n.startsWith(String(a.prefix).trim().toUpperCase())) return a;
   return null;
 }
 
