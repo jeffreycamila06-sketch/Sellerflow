@@ -1,24 +1,37 @@
-// 7-11 server checker SHADOW (Jeff 2026-11-14). Proves the server gives the SAME answer as the
-// Chrome extension, on REAL parcels, without changing anything a seller sees:
-//   every 20 s, up to 3 parcels the extension checked in the last 30 min (store_full_at /
-//   phone_check_at) and not compared yet for that kind → the server checks them with the SAME
-//   inputs (store id → the store chain; phone + name + store → the phone check) using the saved
-//   7-11 login, maps its answer to the extension's words and writes ONE pc711_shadow row.
-// Every error and every mismatch says EXACTLY where it happened (fail_step / fail_http /
-// fail_reason, every step with http + ms + ok, the raw answer word, the gap since the extension's
-// check) so nothing has to be guessed later. A server error is NOT a mismatch (match NULL).
-// Never writes parcel_scans (the db adapter has no way to). Never POSTs /cart/finish (the probe's
-// URL allowlist refuses it). One check at a time, ≥ 3 s between checks, ≤ 300 checks a Taipei day;
-// 01–05 Taipei keeps running (only a maint marker in the log). On needs_login it stops until the
-// next connect (no re-login loop: the probe's ONE quick re-login and pc711Login's limits apply).
+// 7-11 server checker SHADOW (Jeff 2026-11-14; like the extension 2026-11-15). Proves the server can do
+// the Chrome extension's whole-day job, on REAL parcels, without changing anything a seller sees:
+// every parcel the extension checked (store_full_at / phone_check_at / frozen_store_checked_at) is
+// checked again by the server with the SAME inputs and the saved 7-11 login, and ONE pc711_shadow row
+// compares the two answers. Same RULES and TIMING as chrome-extension/background.js (1.18.2), numbers
+// mirrored below and pinned to that file by a test:
+//   • one pass every 5 s, at most 5 parcels per pass, 2 s between parcels, one check at a time;
+//   • the last 6 h, OLDEST unchecked first (an outage / a busy hour is caught up, never skipped);
+//   • 01:00–05:00 Taipei (7-ELEVEN maintenance): a failure is not counted, retry in 10 min;
+//   • per-parcel failure ladder — store / frozen 15 s · 30 s · 60 s · 2 min, phone 5 s · 10 s · 20 s ·
+//     60 s · 2 min; one failure past the ladder → the error row (fail_step / fail_http / fail_reason /
+//     steps) and the parcel is done;
+//   • safety brake: 5 refusals in a row (HTTP 429 / 403 / 5xx / timeout) → 15 min pause + ONE row
+//     (fail_reason paused_http);
+//   • needs_login → one row and stop until the next connect (no re-login loop).
+// No daily cap. Only COMPARES: never writes parcel_scans (the db adapter has no way to); never POSTs
+// /cart/finish (the probe's URL allowlist refuses it). The queue comes from ONE small service-role
+// RPC (sql/162 pc711_shadow_pending) — an empty pass costs a few bytes.
 // Log, one line per check: [PC711_SHADOW] kind=… match=1|0|err step=… http=… ms=… gap=… — no data.
-import { isMaintWindow } from "./pcServerProbe.js";
+import { randomUUID } from "node:crypto";
 
-export const SHADOW_TICK_MS = 20_000;
-export const SHADOW_BATCH = 3;
-export const SHADOW_GAP_MS = 3_000;
-export const SHADOW_DAY_MAX = 300;
-export const SHADOW_LOOKBACK_MS = 30 * 60 * 1000;
+// ── mirrored from chrome-extension/background.js (test-pinned) ─────────────────
+export const SHADOW_POLL_MS = 5000;                      // PC_POLL_MS
+export const SHADOW_LIMIT = 5;                           // PC_LIMIT
+export const SHADOW_FETCH_LIMIT = 25;                    // PC_FETCH_LIMIT (look past parcels in backoff)
+export const SHADOW_ROW_GAP_MS = 2000;                   // PC_ROW_GAP_MS
+export const SHADOW_LOOKBACK_MS = 6 * 60 * 60 * 1000;    // PC_REQUEUE_SINCE_MS
+export const SHADOW_MAINT_RETRY_MS = 10 * 60 * 1000;     // PC_MAINT_RETRY_MS
+export const SHADOW_MAINT_START_H = 1, SHADOW_MAINT_END_H = 5; // PC_MAINT_START_H / PC_MAINT_END_H (Taipei, [1, 5))
+export const SHADOW_STORE_BACKOFF_MS = [15 * 1000, 30 * 1000, 60 * 1000, 2 * 60 * 1000];               // PC_BACKOFF_MS
+export const SHADOW_PHONE_BACKOFF_MS = [5 * 1000, 10 * 1000, 20 * 1000, 60 * 1000, 2 * 60 * 1000];     // PC_PHONE_FAST_BACKOFF_MS
+// ── the shadow's own (Jeff 2026-11-15) ─────────────────────────────────────────
+export const SHADOW_BRAKE_ERRORS = 5;                    // refusals in a row → pause
+export const SHADOW_BRAKE_PAUSE_MS = 15 * 60 * 1000;
 export const SHADOW_KEEP_DAYS = 30;
 export const SHADOW_PAGE = 20;
 export const SHADOW_SWITCH = "pc711_shadow_enabled";
@@ -96,26 +109,42 @@ export function taipeiDay(nowMs) {
   return { key, startMs, startIso: new Date(startMs).toISOString() };
 }
 
-// Parcels to compare: the extension's verdict written in the last 30 min, newest first, with no
-// pc711_shadow row for that kind. → [{ scanId, kind, ext, at, input }]. Pure (rows in, jobs out).
-export function pickJobs(scans, done, sinceMs, limit = SHADOW_BATCH) {
-  const seen = new Set((done || []).map((d) => `${d.scan_id}:${d.kind}`));
+/** 7-ELEVEN maintenance (Asia/Taipei 01:00–05:00, the extension's hours). */
+export function inShadowMaint(nowMs) {
+  const h = Math.floor((((nowMs + 8 * 3600 * 1000) % DAY_MS) + DAY_MS) % DAY_MS / (3600 * 1000));
+  return h >= SHADOW_MAINT_START_H && h < SHADOW_MAINT_END_H;
+}
+/** The failure ladder of a kind (frozen = the store chain). */
+export const ladderFor = (kind) => (kind === "phone" ? SHADOW_PHONE_BACKOFF_MS : SHADOW_STORE_BACKOFF_MS);
+/** 7-11 refused us (counts for the safety brake): HTTP 429 / 403 / 5xx, or a timeout. */
+export function isRefusal(row) {
+  const http = Number(row && row.fail_http) || 0;
+  return http === 429 || http === 403 || http >= 500 || (row && row.fail_reason) === "timeout";
+}
+
+/** The RPC's rows (oldest first) → jobs [{ scanId, kind, ext, at, input }]. Pure. */
+export function jobsFromPending(rows) {
   const jobs = [];
-  for (const r of scans || []) {
-    const storeAt = Date.parse(r.store_full_at || "");
-    const phoneAt = Date.parse(r.phone_check_at || "");
-    if (r.store_full_status && Number.isFinite(storeAt) && storeAt >= sinceMs && !seen.has(`${r.id}:store`)) {
-      jobs.push({ scanId: r.id, kind: "store", ext: toExtWord("store", r.store_full_status), at: storeAt, input: { kind: "store", storeId: String(r.store_id ?? "") } });
-    }
-    if (r.phone_check_status && Number.isFinite(phoneAt) && phoneAt >= sinceMs && !seen.has(`${r.id}:phone`)) {
-      jobs.push({ scanId: r.id, kind: "phone", ext: toExtWord("phone", r.phone_check_status), at: phoneAt, input: { kind: "phone", phone: String(r.phone ?? ""), name: String(r.customer_name ?? ""), storeId: String(r.store_id ?? "") } });
-    }
-    const frozenAt = Date.parse(r.frozen_store_checked_at || "");
-    if (r.frozen_store_status && Number.isFinite(frozenAt) && frozenAt >= sinceMs && !seen.has(`${r.id}:frozen`)) {
-      jobs.push({ scanId: r.id, kind: "frozen", ext: toExtWord("frozen", r.frozen_store_status), at: frozenAt, input: { kind: "frozen", storeId: String(r.store_id ?? "") } });
-    }
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!r || !r.scan_id || !KINDS.includes(r.kind)) continue;
+    const at = Date.parse(r.at || "");
+    const input = r.kind === "phone"
+      ? { kind: "phone", phone: String(r.phone ?? ""), name: String(r.customer_name ?? ""), storeId: String(r.store_id ?? "") }
+      : { kind: r.kind, storeId: String(r.store_id ?? "") };
+    jobs.push({ scanId: r.scan_id, kind: r.kind, ext: toExtWord(r.kind, r.ext), at: Number.isFinite(at) ? at : NaN, input });
   }
-  return jobs.sort((a, b) => b.at - a.at).slice(0, limit);
+  return jobs;
+}
+/** In the given (oldest-first) order, the jobs whose backoff wait is over, at most `limit`. Pure. */
+export function selectJobs(jobs, backoff, nowMs, limit = SHADOW_LIMIT) {
+  const out = [];
+  for (const j of jobs || []) {
+    if (out.length >= limit) break;
+    const b = backoff && backoff.get(`${j.scanId}:${j.kind}`);
+    if (b && nowMs < b.nextAt) continue;
+    out.push(j);
+  }
+  return out;
 }
 
 /** ONE check's result → the pc711_shadow row (no ids but scan_id; no phone / name / store). */
@@ -147,40 +176,39 @@ export function shadowLogLine(row, maint, stop = false) {
   return `${TAG} kind=${row.kind} match=${m} step=${row.fail_step || "-"} http=${row.match === null ? row.fail_http ?? 0 : row.srv_http} ms=${row.srv_ms} gap=${row.gap_s ?? "-"} maint=${maint ? 1 : 0}${stop ? " stop=needs_login" : ""}`;
 }
 
-// The db the job uses (server.js builds it on the service-role client). It can READ parcel_scans
-// and read/write pc711_shadow — and nothing else.
+// The db the job uses (server.js builds it on the service-role client). It READS parcel_scans only
+// through the pending RPC (sql/162) and reads/writes pc711_shadow + pc711_shadow_days — nothing else.
 const HISTORY_COLS = "at,kind,ext_verdict,srv_verdict,raw,gap_s,match,note,fail_step,fail_http,fail_reason,srv_ms,steps";
 export function createShadowDb(sb) {
   return {
-    // Newest first: one read per kind (store / phone / frozen verdicts in the window, each newest 30),
-    // merged by id — so a busy day never hides the latest parcels behind older ones.
-    async recentScans(sinceIso) {
-      const cols = "id,store_id,phone,customer_name,store_full_status,store_full_at,phone_check_status,phone_check_at,frozen_store_status,frozen_store_checked_at";
-      const reads = await Promise.all(["store_full_at", "phone_check_at", "frozen_store_checked_at"].map((col) =>
-        sb.from("parcel_scans").select(cols).gte(col, sinceIso).order(col, { ascending: false }).limit(30)));
-      for (const r of reads) if (r.error) throw r.error;
-      const byId = new Map();
-      for (const r of reads.flatMap((x) => x.data || [])) if (r && !byId.has(r.id)) byId.set(r.id, r);
-      return [...byId.values()];
-    },
-    async doneFor(ids) {
-      if (!ids.length) return [];
-      const { data, error } = await sb.from("pc711_shadow").select("scan_id,kind").in("scan_id", ids);
+    // ONE small RPC (sql/162): the oldest parcels not checked yet + how many are waiting.
+    async pending(sinceIso, limit) {
+      const { data, error } = await sb.rpc("pc711_shadow_pending", { p_since: sinceIso, p_limit: limit });
       if (error) throw error;
-      return data || [];
+      const o = data && typeof data === "object" ? data : {};
+      return { waiting: Math.max(0, Number(o.waiting) || 0), jobs: Array.isArray(o.jobs) ? o.jobs : [] };
+    },
+    async dayMax(days) {
+      if (!days.length) return {};
+      const { data, error } = await sb.from("pc711_shadow_days").select("day,max_waiting").in("day", days);
+      if (error) throw error;
+      const out = {};
+      for (const r of data || []) out[String(r.day).slice(0, 10)] = Math.max(0, Number(r.max_waiting) || 0);
+      return out;
+    },
+    async saveDayMax(day, maxWaiting) {
+      const { error } = await sb.from("pc711_shadow_days").upsert({ day, max_waiting: maxWaiting, updated_at: new Date().toISOString() }, { onConflict: "day" });
+      if (error) throw error;
     },
     async insert(row) {
       const { error } = await sb.from("pc711_shadow").upsert(row, { onConflict: "scan_id,kind", ignoreDuplicates: true });
       if (error) throw error;
     },
-    async countSince(sinceIso) {
-      const { count, error } = await sb.from("pc711_shadow").select("id", { count: "exact", head: true }).gte("at", sinceIso);
-      if (error) throw error;
-      return Number(count) || 0;
-    },
     async purgeBefore(beforeIso) {
       const { error } = await sb.from("pc711_shadow").delete().lt("at", beforeIso);
       if (error) throw error;
+      const d = await sb.from("pc711_shadow_days").delete().lt("day", beforeIso.slice(0, 10));
+      if (d.error) throw d.error;
     },
     // rows in [fromIso, toIso) for totals (small columns only)
     async rowsBetween(fromIso, toIso) {
@@ -206,11 +234,31 @@ export function createShadowDb(sb) {
 // the probe's target mode). pc711 = the login module (status()). Never throws.
 export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.now, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   let running = false;
-  let lastEnd = -Infinity;     // when the last 7-11 check finished
-  let day = "", used = 0;      // checks made this Taipei day
+  let lastEnd = -Infinity;     // when the last 7-11 check finished (2 s between parcels)
+  let day = "";                // the Taipei day the purge last ran for
   let stoppedSince = null;     // the connect (status.since) the job stopped on (needs_login)
-  let timer = null;
+  let timer = null, stopped = false;
+  const backoff = new Map();   // "scanId:kind" → { fails, nextAt, seenAt } (the extension's pcBackoff)
+  let streak = 0;              // refusals in a row (safety brake)
+  let pausedUntil = 0;
+  let waiting = null, waitingAt = 0;
+  const dayMax = new Map();    // Taipei day → highest Waiting seen (loaded from pc711_shadow_days first)
+  let lastPendingFail = 0;
   const say = (line) => { try { log(line); } catch { /* a log never stops the job */ } };
+
+  async function noteWaiting(n, t) {
+    waiting = n; waitingAt = t;
+    const key = taipeiDay(t).key;
+    if (!dayMax.has(key)) {
+      let stored = 0;
+      try { stored = (await db.dayMax([key]))[key] || 0; } catch { stored = 0; }
+      dayMax.set(key, stored);
+    }
+    if (n > dayMax.get(key)) {
+      dayMax.set(key, n);
+      try { await db.saveDayMax(key, n); } catch { /* the next higher count writes again */ }
+    }
+  }
 
   async function tick() {
     if (running) return { skipped: "running" };
@@ -224,37 +272,85 @@ export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.no
       if (stoppedSince !== null && stoppedSince === (st.since ?? null)) return { skipped: "stopped" };
       stoppedSince = null;
       const t = now();
+      if (pausedUntil > t) return { skipped: "paused" };
       const d = taipeiDay(t);
       if (d.key !== day) {
         day = d.key;
-        try { used = await db.countSince(d.startIso); } catch { used = SHADOW_DAY_MAX; } // unknown → rest today
         try { await db.purgeBefore(new Date(t - SHADOW_KEEP_DAYS * DAY_MS).toISOString()); } catch { /* next day */ }
+        for (const k of [...dayMax.keys()]) if (k < taipeiDay(t - 3 * DAY_MS).key) dayMax.delete(k);
       }
-      if (used >= SHADOW_DAY_MAX) return { skipped: "day_max" };
-      const sinceMs = t - SHADOW_LOOKBACK_MS;
-      const scans = await db.recentScans(new Date(sinceMs).toISOString());
-      const done = await db.doneFor(scans.map((s) => s.id));
-      const jobs = pickJobs(scans, done, sinceMs, SHADOW_BATCH);
+      let q;
+      try { q = await db.pending(new Date(t - SHADOW_LOOKBACK_MS).toISOString(), SHADOW_FETCH_LIMIT); }
+      catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
+      await noteWaiting(q.waiting, t);
+      for (const [k, b] of backoff) if (t - b.seenAt > SHADOW_LOOKBACK_MS) backoff.delete(k); // gone for 6 h (the extension's rule)
+      const all = jobsFromPending(q.jobs);
+      for (const j of all) { const b = backoff.get(`${j.scanId}:${j.kind}`); if (b) b.seenAt = t; }
+      const jobs = selectJobs(all, backoff, t, SHADOW_LIMIT);
       let checked = 0;
       for (const job of jobs) {
-        if (used >= SHADOW_DAY_MAX) break;
-        const wait = SHADOW_GAP_MS - (now() - lastEnd);
+        const wait = SHADOW_ROW_GAP_MS - (now() - lastEnd);
         if (wait > 0) await sleep(wait);
         const t0 = now();
         let r;
         try { r = await check(job.input); } catch { r = null; }
         if (!r || typeof r !== "object") r = { verdict: "unknown", http: 0, ms: now() - t0, kind: "threw", steps: [] };
         lastEnd = now();
-        used += 1;
         checked += 1;
         const after = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
         const loggedOut = r.kind === "login_not_accepted" || r.kind === "no_session" || Boolean(after && after.state === "needs_login");
         const row = shadowRow(job, { ...r, ms: Number(r.ms) || lastEnd - t0, loggedOut }, t0);
-        try { await db.insert(row); } catch { /* the next tick tries again */ }
-        say(shadowLogLine(row, isMaintWindow(lastEnd), loggedOut));
-        if (loggedOut) { stoppedSince = st.since ?? null; break; }
+        const key = `${job.scanId}:${job.kind}`;
+        const maint = inShadowMaint(lastEnd);
+        const isErr = row.match === null && Boolean(row.fail_reason);
+        if (loggedOut) {
+          try { await db.insert(row); } catch { /* the next pass tries again */ }
+          say(shadowLogLine(row, maint, true));
+          stoppedSince = st.since ?? null;
+          backoff.delete(key);
+          break;
+        }
+        if (!isErr) {
+          // a real answer (or the extension's own frozen unknown): the comparison row, the ladder is cleared
+          try { await db.insert(row); } catch { /* the next pass tries again */ }
+          say(shadowLogLine(row, maint));
+          backoff.delete(key);
+          streak = 0;
+          continue;
+        }
+        // a server error — the extension's ladder
+        const b = backoff.get(key) || { fails: 0, nextAt: 0, seenAt: t };
+        b.seenAt = t;
+        if (maint) {
+          b.nextAt = lastEnd + SHADOW_MAINT_RETRY_MS; // maintenance: not counted, slow retry
+          backoff.set(key, b);
+          say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=1 next=${SHADOW_MAINT_RETRY_MS / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
+          continue;
+        }
+        b.fails += 1;
+        const ladder = ladderFor(job.kind);
+        if (b.fails > ladder.length) {
+          try { await db.insert(row); } catch { /* the next pass tries again */ }
+          say(shadowLogLine(row, maint));
+          backoff.delete(key);
+        } else {
+          b.nextAt = lastEnd + ladder[b.fails - 1]; // from the END of the failed attempt
+          backoff.set(key, b);
+          say(`${TAG} kind=${job.kind} retry attempt=${b.fails} maint=0 next=${ladder[b.fails - 1] / 1000}s step=${row.fail_step || "-"} http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
+        }
+        streak = isRefusal(row) ? streak + 1 : 0;
+        if (streak >= SHADOW_BRAKE_ERRORS) {
+          pausedUntil = lastEnd + SHADOW_BRAKE_PAUSE_MS;
+          streak = 0;
+          // ONE row for the pause (its own id — never a parcel's, so no parcel is marked checked)
+          const pause = { scan_id: randomUUID(), kind: job.kind, ext_verdict: null, srv_verdict: "unknown", srv_ms: 0, srv_http: row.fail_http ?? 0,
+            match: null, note: "paused_15m", fail_step: row.fail_step, fail_http: row.fail_http ?? 0, fail_reason: "paused_http", steps: [], gap_s: null, raw: null };
+          try { await db.insert(pause); } catch { /* the pause still holds */ }
+          say(`${TAG} pause ${SHADOW_BRAKE_PAUSE_MS / 60000}m after ${SHADOW_BRAKE_ERRORS} refusals http=${row.fail_http ?? 0} reason=${row.fail_reason}`);
+          break;
+        }
       }
-      return { checked };
+      return { checked, waiting: q.waiting };
     } catch {
       return { skipped: "error" };
     } finally {
@@ -264,19 +360,26 @@ export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.no
 
   return {
     tick,
-    start(setIntervalImpl = setInterval) {
+    // a self-scheduling loop like the extension's: the next pass 5 s after this one finished
+    start(setTimeoutImpl = setTimeout) {
       if (timer) return timer;
-      timer = setIntervalImpl(() => { void tick(); }, SHADOW_TICK_MS);
-      if (timer && typeof timer.unref === "function") timer.unref();
+      stopped = false;
+      const loop = () => { timer = setTimeoutImpl(() => { void tick().finally(() => { if (!stopped) loop(); }); }, SHADOW_POLL_MS); if (timer && typeof timer.unref === "function") timer.unref(); };
+      loop();
       return timer;
     },
-    _state: () => ({ used, day, stoppedSince, lastEnd }),
+    stop() { stopped = true; if (timer) clearTimeout(timer); timer = null; },
+    /** What Admin sees (no data): the brake, the last Waiting, today's max. */
+    state: () => ({ pausedUntil: pausedUntil > now() ? pausedUntil : null, waiting, waitingAt: waitingAt || null, dayMax: Object.fromEntries(dayMax) }),
+    _state: () => ({ day, stoppedSince, lastEnd, streak, pausedUntil, backoff: new Map(backoff) }),
   };
 }
 
 // ── Admin reads (behind requireAuth + requireAdmin; service role) ─────────────
-/** A server error row (no real answer). A frozen ext_unknown row is match NULL too, but NOT an error. */
-const isErrorRow = (x) => (x.match === null || x.match === undefined) && Boolean(x.fail_reason);
+/** The safety brake's pause row (fail_reason paused_http): counted only under "paused", never as an error. */
+const isPauseRow = (x) => x.fail_reason === "paused_http";
+/** A server error row (no real answer). A frozen ext_unknown row and a pause row are match NULL too, but NOT errors. */
+const isErrorRow = (x) => (x.match === null || x.match === undefined) && Boolean(x.fail_reason) && !isPauseRow(x);
 /** Totals of a set of rows: compared (match true+false), match % over those, errors per kind,
  *  server avg ms (real answers only), errors by step. Frozen ext_unknown rows are not counted. */
 export function totalsOf(rows) {
@@ -293,7 +396,8 @@ export function totalsOf(rows) {
   for (const x of rows) if (isErrorRow(x)) { const k = x.fail_step || "-"; byStep[k] = (byStep[k] || 0) + 1; }
   return {
     n: rows.length, compared: real.length, matchPct: real.length ? Math.round((yes * 100) / real.length) : null,
-    errors: rows.filter(isErrorRow).length, store: part("store"), phone: part("phone"), frozen: part("frozen"),
+    errors: rows.filter(isErrorRow).length, paused: rows.filter(isPauseRow).length,
+    store: part("store"), phone: part("phone"), frozen: part("frozen"),
     avgMs: ms.length ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null, errorsByStep: byStep,
   };
 }
@@ -309,12 +413,29 @@ export function dayWindow(which, nowMs) {
   return { from: today, to: end };
 }
 
-export async function shadowSummary(db, readSetting, nowMs = Date.now()) {
+/** Admin's Shadow block: today's totals + Waiting (a fresh count, sql/162) + the brake + the last 3
+ *  Taipei days (checked · match % · errors · max Waiting). `state` = the running job's state(). */
+export async function shadowSummary(db, readSetting, nowMs = Date.now(), state = null) {
   let enabled = false;
   try { enabled = String((await readSetting(SHADOW_SWITCH)) ?? "") === "true"; } catch { enabled = false; }
   const d = taipeiDay(nowMs);
-  const today = totalsOf(await db.rowsBetween(d.startIso, new Date(nowMs + 1).toISOString()));
-  return { enabled, today };
+  const from3 = d.startMs - 2 * DAY_MS;
+  const rows = await db.rowsBetween(new Date(from3).toISOString(), new Date(nowMs + 1).toISOString());
+  const today = totalsOf(rows.filter((x) => Date.parse(x.at) >= d.startMs));
+  let waiting = null;
+  try { waiting = (await db.pending(new Date(nowMs - SHADOW_LOOKBACK_MS).toISOString(), 0)).waiting; } catch { waiting = state && Number.isFinite(state.waiting) ? state.waiting : null; }
+  const keys = [0, 1, 2].map((i) => taipeiDay(d.startMs - i * DAY_MS).key);
+  let stored = {};
+  try { stored = await db.dayMax(keys); } catch { stored = {}; }
+  const mem = (state && state.dayMax) || {};
+  const days = keys.map((key, i) => {
+    const start = d.startMs - i * DAY_MS;
+    const t = totalsOf(rows.filter((x) => { const a = Date.parse(x.at); return a >= start && a < start + DAY_MS; }));
+    const max = Math.max(Number(stored[key]) || 0, Number(mem[key]) || 0, i === 0 && Number.isFinite(waiting) ? waiting : 0);
+    return { day: key, checked: t.n - t.paused, matchPct: t.matchPct, errors: t.errors, maxWaiting: max };
+  });
+  const pausedUntil = state && state.pausedUntil && state.pausedUntil > nowMs ? new Date(state.pausedUntil).toISOString() : null;
+  return { enabled, today, waiting, pausedUntil, days };
 }
 
 /** One page of history (newest first) + the totals of every Taipei day on that page. */

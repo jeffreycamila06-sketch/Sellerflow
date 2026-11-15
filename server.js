@@ -1266,7 +1266,7 @@ app.get("/admin/pc711/status", requireAuth, requireAdmin, pc711Routes.status);
 const runPcProbe = () => runPcServerProbe({ readSetting, session: { get: pc711.getSession, relogin: pc711.quickRelogin, save: pc711.saveCookies } });
 const pcProbeAllowed = createWindowLimiter({ max: 1, windowMs: PC_PROBE_LIMIT_WINDOW_MS });
 app.post("/admin/pc-server-probe", requireAuth, requireAdmin, createPcProbeHandler({ run: runPcProbe, allowed: pcProbeAllowed, windowMs: PC_PROBE_LIMIT_WINDOW_MS }));
-// 7-11 server checker SHADOW (server/pc711Shadow.js, sql/159): compares the server's answer with the
+// 7-11 server checker SHADOW (server/pc711Shadow.js, sql/159 + sql/162): compares the server's answer with the
 // extension's on parcels the extension already checked. Off until app_settings pc711_shadow_enabled =
 // 'true' AND the 7-11 login is connected. Writes only pc711_shadow; never parcel_scans.
 const pc711ShadowCheck = async (input) => {
@@ -1279,10 +1279,11 @@ const pc711ShadowCheck = async (input) => {
 };
 if (serviceSb) {
   const pc711ShadowDb = createShadowDb(serviceSb);
-  createPc711Shadow({ db: pc711ShadowDb, check: pc711ShadowCheck, pc711, readSetting }).start();
+  const pc711ShadowJob = createPc711Shadow({ db: pc711ShadowDb, check: pc711ShadowCheck, pc711, readSetting });
+  pc711ShadowJob.start();
   app.get("/admin/pc711/shadow", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
-    try { return res.json(await shadowSummary(pc711ShadowDb, readSetting)); } catch { return res.status(500).json({ error: "failed" }); }
+    try { return res.json(await shadowSummary(pc711ShadowDb, readSetting, Date.now(), pc711ShadowJob.state())); } catch { return res.status(500).json({ error: "failed" }); }
   });
   app.get("/admin/pc711/shadow/history", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });

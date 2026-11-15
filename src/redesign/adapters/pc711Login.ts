@@ -65,7 +65,9 @@ export interface Pc711ShadowTotals {
   store: Pc711ShadowPart; phone: Pc711ShadowPart; frozen: Pc711ShadowPart; avgMs: number | null; errorsByStep: Record<string, number>;
 }
 export type Pc711ShadowKind = "store" | "phone" | "frozen";
-export interface Pc711Shadow { enabled: boolean; today: Pc711ShadowTotals }
+export interface Pc711ShadowDayLine { day: string; checked: number; matchPct: number | null; errors: number; maxWaiting: number }
+// waiting = parcels the extension checked in the last 6 h not checked by the shadow yet; pausedUntil = the safety brake
+export interface Pc711Shadow { enabled: boolean; today: Pc711ShadowTotals; waiting: number | null; pausedUntil: string | null; days: Pc711ShadowDayLine[] }
 export interface Pc711ShadowStep { s: string; http: number; ms: number; ok: boolean; w?: string }
 export interface Pc711ShadowRow {
   at: string; kind: Pc711ShadowKind; result: "match" | "mismatch" | "error" | "ext_unknown";
@@ -96,7 +98,12 @@ const totals = (x: unknown): Pc711ShadowTotals => {
 export function toPc711Shadow(j: unknown): Pc711Shadow | null {
   const o = j && typeof j === "object" ? (j as Record<string, unknown>) : null;
   if (!o || !o.today || typeof o.today !== "object") return null;
-  return { enabled: o.enabled === true, today: totals(o.today) };
+  const days = (Array.isArray(o.days) ? o.days : []).slice(0, 3).map((x) => {
+    const d = obj(x);
+    return { day: /^\d{4}-\d{2}-\d{2}$/.test(String(d.day)) ? String(d.day) : "", checked: Math.max(0, num(d.checked)), matchPct: numOrNull(d.matchPct), errors: Math.max(0, num(d.errors)), maxWaiting: Math.max(0, num(d.maxWaiting)) };
+  }).filter((d) => d.day);
+  const paused = typeof o.pausedUntil === "string" && Number.isFinite(Date.parse(o.pausedUntil)) ? o.pausedUntil : null;
+  return { enabled: o.enabled === true, today: totals(o.today), waiting: numOrNull(o.waiting), pausedUntil: paused, days };
 }
 export function toPc711ShadowHistory(j: unknown): Pc711ShadowHistory | null {
   const o = j && typeof j === "object" ? (j as Record<string, unknown>) : null;

@@ -200,6 +200,32 @@ describe("Pc711Panel — Test now + Shadow", () => {
     expect(screen.getByTestId("pc711-shadow").textContent).not.toMatch(/\d{6,}/);
   });
 
+  it("Shadow block: Waiting, Paused until HH:MM (the brake), and checked · match % · errors · max waiting for the last 3 days", async () => {
+    push("/status", { body: CONNECTED });
+    const until = new Date(Date.now() + 10 * 60_000);
+    push("/shadow", { body: { enabled: true, today: TODAY, waiting: 17, pausedUntil: until.toISOString(), days: [
+      { day: "2026-11-15", checked: 412, matchPct: 99, errors: 3, maxWaiting: 40 },
+      { day: "2026-11-14", checked: 980, matchPct: 100, errors: 0, maxWaiting: 12 },
+      { day: "2026-11-13", checked: 0, matchPct: null, errors: 0, maxWaiting: 0 },
+    ] } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-shadow-waiting").textContent).toBe("17"));
+    const hm = `${String(until.getHours()).padStart(2, "0")}:${String(until.getMinutes()).padStart(2, "0")}`;
+    expect(screen.getByTestId("pc711-shadow-paused").textContent).toBe(`Paused until ${hm}`);
+    expect(screen.getAllByTestId("pc711-shadow-dayline").map((n) => n.textContent)).toEqual([
+      "11/15 412 checked · 99% match · 3 errors · max waiting 40",
+      "11/14 980 checked · 100% match · 0 errors · max waiting 12",
+      "11/13 0 checked · — match · 0 errors · max waiting 0",
+    ]);
+  });
+  it("no brake → no Paused line; an old server (no waiting / days) → Waiting —, no day lines", async () => {
+    push("/status", { body: CONNECTED });
+    push("/shadow", { body: { enabled: true, today: TODAY } });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId("pc711-shadow-waiting").textContent).toBe("—"));
+    expect(screen.queryByTestId("pc711-shadow-paused")).toBeNull();
+    expect(screen.queryByTestId("pc711-shadow-lastdays")).toBeNull();
+  });
   it("Shadow off → says so; nothing compared → dashes", async () => {
     push("/status", { body: CONNECTED });
     push("/shadow", { body: { enabled: false, today: { n: 0, compared: 0, matchPct: null, errors: 0, store: { n: 0, matchPct: null, errors: 0 }, phone: { n: 0, matchPct: null, errors: 0 }, frozen: { n: 0, matchPct: null, errors: 0 }, avgMs: null, errorsByStep: {} } } });
