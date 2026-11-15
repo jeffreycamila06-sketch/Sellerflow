@@ -108,5 +108,9 @@ export function planVariants(parent: Product, groups: VariantGroup[], rows: Vari
     });
   }
   const remove = existing.filter((c) => !keep.has(comboKey(c.variant?.values || []))).map((c) => c.id);
-  return { parent: { ...parent, variant: { groups: gs } }, upsert, remove, errors }; // no groups → {groups:[]} (clears the column's meaning, never undefined)
+  // Jeff 2026-11-15: while a product has variants its OWN stock is 0 (stock lives only in the variant
+  // rows), so the plain parent code is sold out in live like any other sold-out code. Removing every
+  // variant leaves it at 0 for the seller to set. (The database enforces the same: sql/163 trigger.)
+  const parentOut = upsert.length > 0 ? { stock: 0, status: statusForStock(0) } : {};
+  return { parent: { ...parent, ...parentOut, variant: { groups: gs } }, upsert, remove, errors }; // no groups → {groups:[]} (clears the column's meaning, never undefined)
 }

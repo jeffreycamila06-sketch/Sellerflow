@@ -56,6 +56,37 @@ do $$ begin
 end $$;
 create index if not exists products_user_parent_idx on public.products (user_id, parent_local_id) where parent_local_id is not null;
 
+-- PARENT STOCK (Jeff 2026-11-15): while a product has variant rows its OWN stock is 0 and stays 0 —
+-- stock lives only in the variants. So the plain parent code is sold out in live exactly like any
+-- other sold-out code (decrement_product_stock already refuses stock = 0; no new live logic), and the
+-- website refuses a product with variants without a variant ('pick_option'). Removing every variant
+-- leaves it at 0 for the seller to set. A product WITHOUT variants: both triggers do nothing.
+create or replace function public.products_parent_stock_zero()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if new.parent_local_id is null and new.stock <> 0
+     and exists (select 1 from public.products c where c.user_id = new.user_id and c.parent_local_id = new.local_id) then
+    new.stock := 0;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_products_parent_stock_zero on public.products;
+create trigger trg_products_parent_stock_zero before insert or update of stock on public.products
+  for each row execute function public.products_parent_stock_zero();
+
+create or replace function public.products_variant_zero_parent()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  update public.products set stock = 0, updated_at = now()
+   where user_id = new.user_id and local_id = new.parent_local_id and stock <> 0;
+  return null;
+end;
+$$;
+drop trigger if exists trg_products_variant_zero_parent on public.products;
+create trigger trg_products_variant_zero_parent after insert or update of parent_local_id on public.products
+  for each row when (new.parent_local_id is not null) execute function public.products_variant_zero_parent();
+
 -- the 90-day purge of sold-out products never deletes a variant row
 do $$ begin
   if exists (select 1 from cron.job where jobname = 'purge-stale-products') then

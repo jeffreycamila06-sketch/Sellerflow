@@ -338,7 +338,10 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     setWebFor(null);
     onProductsChanged?.(next); // the new / edited variant codes go live at once
     for (const id of plan.remove) onProductsChanged?.(next, id, "delete");
-    const writes: Promise<boolean>[] = [saveProductDbResult(plan.parent, { skipStock: true }).then((r) => r.ok)];
+    const prevParent = prodsRef.current.find((p) => p.id === plan.parent.id);
+    const parentStockChanged = !!prevParent && prevParent.stock !== plan.parent.stock; // variants added → parent stock 0
+    if (parentStockChanged) onProductsChanged?.(next, plan.parent.id, "stock");
+    const writes: Promise<boolean>[] = [saveProductDbResult(plan.parent, { skipStock: !parentStockChanged }).then((r) => r.ok)];
     for (const c of plan.upsert) {
       const prev = prevKids.get(c.id);
       const stockChanged = !prev || prev.stock !== c.stock; // like the edit form (I1): unchanged stock is never written back
@@ -496,7 +499,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                 {inventoryV2 && <button onClick={() => openHistory(p)} data-testid={`history-${p.id}`} style={{ ...cardBtn, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_history}</button>}
                 {website && <button onClick={() => setWebFor(realOf(p))} data-testid={`prd-web-${p.id}`} style={{ ...cardBtn, gridColumn: "1 / -1", color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
               </div>
-              {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "" })}</div>}
+              {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "", example: childrenOf(prods, p.id)[0]?.liveCode || `${p.liveCode || ""}-…` })}</div>}
             </div>
           </div>
           );
@@ -540,7 +543,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                 </div>
               )}
               {website && <button onClick={() => setWebFor(realOf(p))} data-testid={`prd-web-${p.id}`} style={{ width: "100%", marginTop: 6, fontSize: 11, fontWeight: 700, color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
-              {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35, marginTop: 4 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "" })}</div>}
+              {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35, marginTop: 4 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "", example: childrenOf(prods, p.id)[0]?.liveCode || `${p.liveCode || ""}-…` })}</div>}
             </div>
           </div>
         ))}
@@ -605,7 +608,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
             </div>
             <div style={{ display: "flex", gap: 9 }}>
               <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_price} ({cur})</label><input type="text" inputMode={hasCents(cur) ? "decimal" : "numeric"} value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: priceInput(e.target.value, cur) }))} required data-testid="prd-price" style={input} /></div>
-              <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_stock}</label><input type="number" min="0" inputMode="numeric" value={form.stock} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} required data-testid="prd-stock" style={input} /></div>
+              <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_stock}</label><input type="number" min="0" inputMode="numeric" value={eid !== null && variantTotals.has(eid) ? "0" : form.stock} disabled={eid !== null && variantTotals.has(eid)} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} required data-testid="prd-stock" style={input} /></div>
             </div>
             <div><label style={lbl}>{t.rd_prd_platform}</label><select value={form.platform} onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value }))} style={input}><option>TikTok</option><option>Facebook</option><option>TikTok / FB</option></select></div>
             {productImages && (

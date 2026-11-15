@@ -52,7 +52,7 @@ describe("Auto Mode unchanged", () => {
       { code: "A02", productLocalId: 18, price: 280, productName: "Linen shirt" },
     ]);
   });
-  it("variant codes are codes like any other: they claim the VARIANT's own stock; the parent code keeps its own row", () => {
+  it("variant codes are codes like any other: they claim the VARIANT's own stock; the parent code is sold out", () => {
     let n = 100;
     const plan = planVariants(OLD_PRODUCT, [{ name: "Size", values: ["M", "L"] }, { name: "Color", values: ["Pink"] }],
       editorRows(OLD_PRODUCT, [{ name: "Size", values: ["M", "L"] }, { name: "Color", values: ["Pink"] }], []).map((r, i) => ({ ...r, stock: i === 0 ? 2 : 0 })), CATALOG, () => ++n);
@@ -64,7 +64,9 @@ describe("Auto Mode unchanged", () => {
     const order = planAutoOrder("a01-m-pink", codes, (id) => stock.get(id) ?? 0);
     expect(order).toMatchObject({ kind: "order", code: { productLocalId: 101, price: 350 }, nextStock: 1 });
     expect(planAutoOrder("A01-L-PINK", codes, (id) => stock.get(id) ?? 0)).toMatchObject({ kind: "soldout", code: { productLocalId: 102 } });
-    expect(planAutoOrder("A01", codes, (id) => stock.get(id) ?? 0)).toMatchObject({ kind: "order", code: { productLocalId: 17 }, nextStock: 3 }); // parent: as before
+    // Jeff 2026-11-15: a product with variants has stock 0 → the plain parent code is sold out, the
+    // same "soldout" any sold-out code gets today (no new Auto Mode logic)
+    expect(planAutoOrder("A01", codes, (id) => stock.get(id) ?? 0)).toMatchObject({ kind: "soldout", code: { productLocalId: 17 } });
     expect(matchCode("A01-M", codes)).toBeNull();
   });
 });
@@ -122,5 +124,22 @@ describe("load before sql/163 is applied", () => {
     expect(await loadProductsDb()).toEqual([OLD_PRODUCT]);
     expect(sel.mock.calls.map((c) => c[0])).toEqual(["local_id,name,sku,price,stock,platform,live_code,category,description,photo_paths,show_on_website,parent_local_id,variant", "local_id,name,sku,price,stock,platform,live_code"]);
     vi.doUnmock("../../../supabase");
+  });
+});
+
+import { planVariants as planV } from "../productVariants";
+describe("parent stock (Jeff 2026-11-15)", () => {
+  it("a product that gets variants has stock 0; removing every variant leaves it at 0; no variants → stock untouched", () => {
+    const parent = { id: 1, name: "Tee", sku: "", price: 100, stock: 7, platform: "", status: "Active", liveCode: "T01" };
+    let n = 100;
+    const withV = planV(parent, [{ name: "Size", values: ["S"] }], [{ values: ["S"], code: "T01-S", stock: 3, price: null, photo: null }], [parent], () => n++);
+    expect(withV.parent.stock).toBe(0);
+    expect(withV.parent.status).toBe("Out of stock");
+    const kid = { ...withV.upsert[0] };
+    const none = planV({ ...withV.parent }, [], [], [withV.parent, kid], () => n++);
+    expect(none.remove).toEqual([kid.id]);
+    expect(none.parent.stock).toBe(0);
+    const plain = planV(parent, [], [], [parent], () => n++);
+    expect(plain.parent.stock).toBe(7);
   });
 });

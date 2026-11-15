@@ -42,7 +42,7 @@ describe("Products — Seller Website", () => {
   it("website on: the card shows Website · 1 variants + the parent-code hint", async () => {
     await mount([P(), KID], true);
     expect(screen.getByTestId("prd-web-1").textContent).toBe("Website · 1 variants");
-    expect(screen.getByTestId("prd-parent-hint-1").textContent).toContain("A01");
+    expect(screen.getByTestId("prd-parent-hint-1").textContent).toBe("A01 alone is sold out now. In live, use the size/color codes (A01-S …).");
   });
   it("the sheet saves the parent without its stock and creates one row per combination with its stock", async () => {
     const onChanged = await mount([P({ liveCode: "A01" })], true);
@@ -57,7 +57,8 @@ describe("Products — Seller Website", () => {
     fireEvent.change(screen.getAllByTestId("pws-row-stock")[0], { target: { value: "4" } });
     await act(async () => { fireEvent.click(screen.getByTestId("pws-save")); await Promise.resolve(); });
     const calls = h.save.mock.calls.map(([p, o]) => ({ id: p.id, code: p.liveCode, stock: p.stock, parentId: p.parentId, skip: !!o?.skipStock, category: p.category }));
-    expect(calls[0]).toMatchObject({ id: 1, skip: true, category: "Dresses" });
+    // Jeff 2026-11-15: the parent (stock 10) gets variants → its own stock becomes 0 and IS written
+    expect(calls[0]).toMatchObject({ id: 1, stock: 0, skip: false, category: "Dresses" });
     expect(calls.slice(1).map((c) => [c.code, c.stock, c.parentId, c.skip])).toEqual([["A01-M", 4, 1, false], ["A01-L", 0, 1, false]]);
     expect(onChanged).toHaveBeenCalled();
     expect(screen.queryByTestId("pws")).toBeNull();
@@ -83,5 +84,23 @@ describe("Products — a product with variants shows the variants' total (displa
     fireEvent.click(screen.getAllByText("Edit")[0]);
     const stock = screen.getAllByRole("spinbutton").concat(screen.queryAllByRole("textbox")).find((el) => (el as HTMLInputElement).value === "0" || (el as HTMLInputElement).value === "3") as HTMLInputElement | undefined;
     expect(stock?.value).toBe("0");
+  });
+});
+
+describe("Products — parent stock stays 0 while it has variants (Jeff 2026-11-15)", () => {
+  it("re-saving a product that already has variants (stock 0) does not write its stock again", async () => {
+    await mount([P({ stock: 0, status: "Out of stock", variant: { groups: [{ name: "Size", values: ["S"] }] } }), KID], true);
+    fireEvent.click(screen.getByTestId("prd-web-1"));
+    await act(async () => { fireEvent.click(screen.getByTestId("pws-save")); await Promise.resolve(); });
+    const parent = h.save.mock.calls.find(([p]) => p.id === 1)!;
+    expect(parent[0].stock).toBe(0);
+    expect(parent[1]?.skipStock).toBe(true);
+  });
+  it("Edit: the stock field is locked at 0 while the product has variants", async () => {
+    await mount([P({ stock: 0, status: "Out of stock" }), KID], true);
+    fireEvent.click(screen.getAllByText("Edit")[0]);
+    const f = screen.getByTestId("prd-stock") as HTMLInputElement;
+    expect(f.value).toBe("0");
+    expect(f).toBeDisabled();
   });
 });

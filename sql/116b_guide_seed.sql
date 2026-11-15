@@ -496,7 +496,7 @@ When you message, include your account email, your TikTok username, what you wer
 - **Preview** shows your shop the way buyers see it. **Publish** puts it online. Changes stay a draft until you tap **Publish** again.
 - The Free plan can build and preview the website. Publishing needs a paid plan.
 - **Payment & shipping** — 7-11, FamilyMart and home delivery fees, free shipping over an amount, bank transfer, payment QR, pay at pickup (also turn on 取貨付款 in 賣貨便 / 好賣+), and how many hours before unpaid orders are cancelled.
-- **Products** — tap **Website** on a product to add a category, a description, up to 8 photos and options like size and color. Each option has its own code and stock.
+- **Products** — tap **Website** on a product to add a category, a description, up to 8 photos and options like size and color. Each option has its own code and stock. The product code alone is then sold out — in live, use the option codes.
 - **Orders** → **Website** — your website orders. Open an order to see the receipt (check your bank app first), then tap **Money received**, **Not received**, **Mark as shipped**, **Cancel order** or **Block buyer**. The buyer sees each step on their order link.')
 on conflict (id) do update set
   title = excluded.title, checked = excluded.checked, keywords = excluded.keywords,

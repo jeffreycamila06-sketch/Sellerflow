@@ -52,6 +52,10 @@ do $$ begin
        AND last_ordered_at < now() - interval '90 days'$c$);
   end if;
 end $$;
+drop trigger if exists trg_products_variant_zero_parent on public.products;
+drop trigger if exists trg_products_parent_stock_zero on public.products;
+drop function if exists public.products_variant_zero_parent();
+drop function if exists public.products_parent_stock_zero();
 delete from public.products where parent_local_id is not null;
 drop index if exists public.products_user_parent_idx;
 alter table public.products drop constraint if exists products_category_len;

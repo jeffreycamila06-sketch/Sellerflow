@@ -36,6 +36,9 @@ create table public.products(user_id uuid not null, local_id bigint not null, na
   price numeric not null default 0, stock integer not null default 0, platform text not null default '', last_ordered_at timestamptz,
   created_at timestamptz default now(), updated_at timestamptz default now(), live_code text, image_path text, primary key(user_id, local_id));
 create unique index products_code_uq on public.products(user_id, lower(live_code)) where live_code is not null and live_code <> '';
+alter table public.products enable row level security;
+grant select, insert, update, delete on public.products to authenticated;
+create policy products_own on public.products for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 create table public.orders(id bigserial primary key, user_id uuid, total_amount int);
 create table public.live_session_orders(id bigserial primary key, user_id uuid, buyer_number int);
 create schema cron;
@@ -58,6 +61,16 @@ insert into public.seller_profiles(auth_user_id, email, phone, plan, plan_expiry
   ('${OTHER}', 'other@example.com', '0911111111', 'basic', now() + interval '30 days', 'TW'),
   ('${MASTER}', 'master@example.com', '0922222222', 'master', now() + interval '30 days', 'TW');
 create function public.my_feature_access() returns jsonb language sql as $$ select '{}'::jsonb $$;
+-- the LIVE decrement_product_stock (definition read from production 2026-11-15)
+create function public.decrement_product_stock(p_local_id bigint) returns integer language plpgsql security definer set search_path to 'public' as $f$
+declare v_stock integer;
+begin
+  update public.products set stock = stock - 1, last_ordered_at = now(), updated_at = now()
+   where user_id = auth.uid() and local_id = p_local_id and stock > 0
+  returning stock into v_stock;
+  if not found then return -1; end if;
+  return v_stock;
+end; $f$;
 `;
 
 const db = new PGlite();
@@ -89,6 +102,28 @@ await q(`insert into public.products(user_id, local_id, name, price, stock, live
   ($1, 12, 'Dress', 200, 0, 'B01-M', 10, '{"values":["M"]}')`, [SELLER]);
 await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, show_on_website) values ($1, 20, 'Hidden', 99, 5, 'H01', false)`, [SELLER]);
 ok((await err(q(`insert into public.products(user_id, local_id, name, parent_local_id) values ($1, 30, 'x', 30)`, [SELLER]))) !== null, "a product can't be its own parent");
+// ── 1b) parent stock (Jeff 2026-11-15): 0 while it has variants, whatever writes it ───────────
+{
+  await q(`insert into public.products(user_id, local_id, name, price, stock, live_code) values ($1, 50, 'Tee', 100, 7, 'T01')`, [SELLER]);
+  await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, parent_local_id, variant) values ($1, 51, 'Tee', 100, 2, 'T01-S', 50, '{"values":["S"]}'), ($1, 52, 'Tee', 100, 1, 'T01-M', 50, '{"values":["M"]}')`, [SELLER]);
+  ok((await q(`select stock from public.products where local_id = 50`)).rows[0].stock === 0, "adding variants sets the parent's own stock to 0");
+  await as(SELLER, "authenticated", () => q(`update public.products set stock = 9 where local_id = 50`));
+  ok((await q(`select stock from public.products where local_id = 50`)).rows[0].stock === 0, "the parent's stock can't be raised while it has variants");
+  ok((await as(SELLER, "authenticated", () => q(`select public.decrement_product_stock(50) r`))).rows[0].r === -1, "live: the plain parent code is sold out (same as any sold-out code)");
+  const live = [];
+  for (let i = 0; i < 6; i++) for (const id of [51, 52]) live.push((await as(SELLER, "authenticated", () => q(`select public.decrement_product_stock($1) r`, [id]))).rows[0].r);
+  ok(live.filter((x) => x >= 0).length === 3, "live: at most the variants' total (2 + 1) can be sold");
+  ok((await q(`select stock from public.products where local_id = 50`)).rows[0].stock === 0, "parent still 0 after the variants sold out");
+  // a product without variants: untouched by the triggers
+  await q(`update public.products set stock = 5 where local_id = 1`); await q(`update public.products set stock = 3 where local_id = 1`);
+  ok((await q(`select stock from public.products where local_id = 1`)).rows[0].stock === 3, "a product without variants keeps any stock it is given");
+  // all variants removed → parent stays 0, then the seller can set it
+  await q(`delete from public.products where parent_local_id = 50`);
+  ok((await q(`select stock from public.products where local_id = 50`)).rows[0].stock === 0, "variants removed → parent left at 0");
+  await q(`update public.products set stock = 4 where local_id = 50`);
+  ok((await q(`select stock from public.products where local_id = 50`)).rows[0].stock === 4, "…and the seller can set it again");
+  await q(`delete from public.products where local_id = 50`);
+}
 
 // ── 2) shop ──────────────────────────────────────────────────────────────────
 const shop = async (sub) => (await as(null, "anon", () => q(`select public.website_shop($1) as r`, [sub]))).rows[0].r;
@@ -213,6 +248,14 @@ const base = { name: "Maria", phone: "+886 912-345-678", delivery: "s711", store
   ok((await q(`select stock from public.products where local_id = 11`)).rows[0].stock === s11 + 4, "auto-cancel returns stock");
   ok((await q(`select public.website_auto_cancel() n`)).rows[0].n === 0 && (await q(`select stock from public.products where local_id = 11`)).rows[0].stock === s11 + 4, "stock returned only once");
   ok((await q(`select jobname from cron.job where jobname in ('website-auto-cancel','purge-old-website-orders')`)).rows.length === 2, "cron jobs scheduled");
+  // parent + variants: live and website together never sell more than the variants' total
+  await q(`insert into public.products(user_id, local_id, name, price, stock, live_code) values ($1, 60, 'Cap', 90, 5, 'K01')`, [SELLER]);
+  await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, parent_local_id, variant) values ($1, 61, 'Cap', 90, 1, 'K01-RED', 60, '{"values":["Red"]}')`, [SELLER]);
+  await q(`update public.products set variant = '{"groups":[{"name":"Color","values":["Red"]}]}' where local_id = 60`);
+  ok((await as(SELLER, "authenticated", () => q(`select public.decrement_product_stock(61) r`))).rows[0].r === 0, "live takes the last red cap");
+  ok(String(await err(place({ ...base, phone: "0988000111", items: [{ pid: 60, vid: 61, qty: 1 }] }, "dev-k-1aaaaaa"))).includes("out_of_stock"), "website: that variant is now sold out");
+  ok(String(await err(place({ ...base, phone: "0988000111", items: [{ pid: 60, qty: 1 }] }, "dev-k-2aaaaaa"))).includes("pick_option"), "website: the parent alone can't be bought");
+  ok((await as(SELLER, "authenticated", () => q(`select public.decrement_product_stock(60) r`))).rows[0].r === -1, "live: the parent code alone is sold out");
   // a closed shop takes no order (plan expired / switch off for a non-tester)
   await q(`update public.seller_profiles set plan_expiry = now() - interval '1 day' where auth_user_id = $1`, [SELLER]);
   ok(String(await err(place({ ...base, phone: "0977000111", items: [{ pid: 10, vid: 11, qty: 1 }] }, "dev-c-1aaaaaa"))).includes("shop_closed"), "expired plan → no order");
