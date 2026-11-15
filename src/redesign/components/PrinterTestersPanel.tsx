@@ -66,7 +66,7 @@ export default function PrinterTestersPanel() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={small}>{t.rd_prt_testers_hint}</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <input data-testid="pt-email" type="email" inputMode="email" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seller@email.com" style={input} />
+            <input data-testid="pt-email" type="email" inputMode="email" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" style={input} />
             <button data-testid="pt-add" disabled={!validEmail || busy} onClick={() => void run(() => adminAddTester(email)).then((ok) => { if (ok) setEmail(""); })} style={{ ...primary, minHeight: 44, opacity: validEmail && !busy ? 1 : 0.5 }}>{t.rd_prt_add}</button>
           </div>
           {testers && testers.length === 0 && <div style={small}>{t.rd_prt_none}</div>}
