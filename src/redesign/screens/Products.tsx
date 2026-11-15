@@ -11,11 +11,13 @@ import { resolveInitialProducts, saveProductDbResult, deleteProductDb, adjustPro
 import { dayStamp } from "../adapters/csv";
 import type { ExportColumn } from "../adapters/brandedExport";
 import { useBrandedExport } from "../adapters/useBrandedExport";
-import { useT } from "../i18n";
+import { useT, tpl } from "../i18n";
 import { loadProductImagePaths, compressProductImage, uploadProductImage, removeProductImage, forgetProductImage, productImageUrl } from "../adapters/productImages";
 import { priceInput, hasCents } from "../../lib/money";
 import { PIC_GRID_COLUMNS, PIC_GRID_GAP, PIC_GRID_PADDING, placeholderLetter } from "../adapters/productGrid";
 import PictureViewer from "../components/PictureViewer";
+import ProductWebsiteSheet from "../components/ProductWebsiteSheet";
+import { listProducts, childrenOf, parentCodeHint, type VariantPlan } from "../adapters/productVariants";
 
 const nowMs = () => Date.now(); // module-level (keeps the impure call out of the component's render-purity analysis)
 const STOCK_ADJUST_DEBOUNCE_MS = 600; // coalesce rapid ±taps into ONE atomic write
@@ -39,8 +41,12 @@ const cardBtn: CSSProperties = { fontSize: 11.5, fontWeight: 700, padding: 5, bo
 const picBadge: CSSProperties = { position: "absolute", fontSize: 11, fontWeight: 700, lineHeight: 1, color: "#fff", background: "rgba(0,0,0,.45)", padding: "3px 5px", borderRadius: 6, pointerEvents: "none" };
 const stepBtn = (disabled: boolean): CSSProperties => ({ width: 26, height: 26, flexShrink: 0, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: disabled ? "var(--text-muted)" : "var(--text)", fontSize: 15, fontWeight: 800, lineHeight: 1, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "var(--font-ui)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 });
 
-export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold, inventoryV2 = false, productImages = false }: {
+export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold, inventoryV2 = false, productImages = false, website = false }: {
   cur: string;
+  // Seller Website (sql/163; switch seller_website_enabled / feature seller_website): a "Website" button on
+  // each card opens the website details + variants sheet. false = no button (the screen as before).
+  // Variant rows (parentId) never show as their own card — they belong to their product.
+  website?: boolean;
   // Inventory v2 (switch inventory_v2_enabled): every stock change is logged (sql/90), plus
   // Restock + History on each card. false = the screen exactly as before.
   inventoryV2?: boolean;
@@ -226,9 +232,11 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const del = (id: number) => {
     if (!window.confirm(t.rd_prd_confirm_del)) return;
     const before = prods;
-    const after = deleteProduct(prods, id);
+    const kids = childrenOf(prods, id).map((c) => c.id); // a product's variants go with it (none for a product without variants)
+    const after = kids.reduce((l, k) => deleteProduct(l, k), deleteProduct(prods, id));
     save(after);
     onProductsChanged?.(after, id, "delete"); // drop the code + its stock entry
+    for (const k of kids) { onProductsChanged?.(after, k, "delete"); void deleteProductDb(k); }
     // Delete failed → restore the product AND re-seed its stock (its entry was
     // dropped above), so the code isn't stuck reading 0 (sold-out).
     void deleteProductDb(id).then((ok) => {
@@ -310,8 +318,31 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     void loadStockMovements(p.id).then((rows) => setHistory(rows));
   };
   const reasonLabel = (r: string) => (r === "auto_order" ? t.rd_prd_rs_auto : r === "oneclick" ? t.rd_prd_rs_oneclick : r === "restock" ? t.rd_prd_rs_restock : r === "waitlist" ? t.rd_prd_rs_waitlist : t.rd_prd_rs_manual);
-  const filtered = useMemo(() => filterByStock(filterProducts(prods, q), stockFilter), [prods, q, stockFilter]);
-  const count = (s: string) => prods.filter((p) => p.status === s).length;
+  // Variant rows belong to their product (listProducts drops them; a list without variants is unchanged).
+  const shown = useMemo(() => listProducts(prods), [prods]);
+  const filtered = useMemo(() => filterByStock(filterProducts(shown, q), stockFilter), [shown, q, stockFilter]);
+  const count = (s: string) => shown.filter((p) => p.status === s).length;
+  // Seller Website: the website details + variants sheet, and saving its plan.
+  const [webFor, setWebFor] = useState<Product | null>(null);
+  const saveWebsite = (plan: VariantPlan) => {
+    const prevKids = new Map(childrenOf(prodsRef.current, plan.parent.id).map((c) => [c.id, c]));
+    const removed = new Set(plan.remove);
+    let next = prodsRef.current.filter((p) => !removed.has(p.id)).map((p) => (p.id === plan.parent.id ? plan.parent : p));
+    for (const c of plan.upsert) next = next.some((p) => p.id === c.id) ? next.map((p) => (p.id === c.id ? c : p)) : [...next, c];
+    save(next);
+    setWebFor(null);
+    onProductsChanged?.(next); // the new / edited variant codes go live at once
+    for (const id of plan.remove) onProductsChanged?.(next, id, "delete");
+    const writes: Promise<boolean>[] = [saveProductDbResult(plan.parent, { skipStock: true }).then((r) => r.ok)];
+    for (const c of plan.upsert) {
+      const prev = prevKids.get(c.id);
+      const stockChanged = !prev || prev.stock !== c.stock; // like the edit form (I1): unchanged stock is never written back
+      if (stockChanged) onProductsChanged?.(next, c.id, "stock");
+      writes.push(saveProductDbResult(c, { skipStock: !stockChanged }).then((r) => r.ok));
+    }
+    for (const id of plan.remove) writes.push(deleteProductDb(id));
+    void Promise.all(writes).then((oks) => { if (oks.some((ok) => !ok)) showNote(t.rd_web_saved_failed); });
+  };
   // Translate the derived stock status for display (adapter returns canonical English).
   const statusLabel = (s: string) => (s === "Active" ? t.rd_prd_st_active : s === "Low stock" ? t.rd_prd_st_low : s === "Out of stock" ? t.rd_prd_st_out : s);
 
@@ -394,7 +425,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
       )}
 
       <div style={{ padding: "14px 14px 4px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
-        {[[t.rd_prd_total, prods.length, "var(--text)"], [t.rd_prd_instock, count("Active"), "var(--ok)"], [t.rd_prd_low, count("Low stock"), "var(--warn)"], [t.rd_prd_out, count("Out of stock"), "var(--danger)"]].map(([l, v, c]) => (
+        {[[t.rd_prd_total, shown.length, "var(--text)"], [t.rd_prd_instock, count("Active"), "var(--ok)"], [t.rd_prd_low, count("Low stock"), "var(--warn)"], [t.rd_prd_out, count("Out of stock"), "var(--danger)"]].map(([l, v, c]) => (
           <div key={l as string} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 10px", textAlign: "center", boxShadow: "var(--shadow)" }}>
             <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: c as string }}>{v as number}</div>
             <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>{l as string}</div>
@@ -404,7 +435,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
 
       {/* Stock filter pills — drive off the SAME statuses as the stat cards (filterByStock/statusForStock). */}
       <div style={{ padding: "8px 14px 0", display: "flex", gap: 7, overflowX: "auto" }}>
-        {([["all", t.rd_prd_f_all, prods.length], ["in", t.rd_prd_instock, count("Active")], ["low", t.rd_prd_low, count("Low stock")], ["out", t.rd_prd_out, count("Out of stock")]] as [StockFilter, string, number][]).map(([f, label, n]) => {
+        {([["all", t.rd_prd_f_all, shown.length], ["in", t.rd_prd_instock, count("Active")], ["low", t.rd_prd_low, count("Low stock")], ["out", t.rd_prd_out, count("Out of stock")]] as [StockFilter, string, number][]).map(([f, label, n]) => {
           const on = stockFilter === f;
           return (
             <button key={f} onClick={() => setStockFilter(f)} data-testid={`filter-${f}`} aria-pressed={on} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "6px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--font-ui)", border: on ? "1px solid var(--accent)" : "1px solid var(--border)", background: on ? "var(--accent-soft)" : "var(--surface)", color: on ? "var(--accent-fg)" : "var(--text-dim)" }}>
@@ -458,7 +489,9 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                 <button onClick={() => del(p.id)} style={{ ...cardBtn, color: "var(--danger)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_delete_btn}</button>
                 {inventoryV2 && <button onClick={() => { setRestockFor(p); setRestockQty(""); }} data-testid={`restock-${p.id}`} style={{ ...cardBtn, color: "var(--ok)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_restock}</button>}
                 {inventoryV2 && <button onClick={() => openHistory(p)} data-testid={`history-${p.id}`} style={{ ...cardBtn, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_history}</button>}
+                {website && <button onClick={() => setWebFor(p)} data-testid={`prd-web-${p.id}`} style={{ ...cardBtn, gridColumn: "1 / -1", color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
               </div>
+              {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "" })}</div>}
             </div>
           </div>
           );
@@ -501,10 +534,16 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                   <button onClick={() => openHistory(p)} data-testid={`history-${p.id}`} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_history}</button>
                 </div>
               )}
+              {website && <button onClick={() => setWebFor(p)} data-testid={`prd-web-${p.id}`} style={{ width: "100%", marginTop: 6, fontSize: 11, fontWeight: 700, color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
+              {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35, marginTop: 4 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "" })}</div>}
             </div>
           </div>
         ))}
       </div>
+      )}
+
+      {website && webFor && (
+        <ProductWebsiteSheet product={webFor} all={prods} cur={cur} photo1Url={productImages ? imgUrl(webFor.id) || undefined : undefined} onSave={saveWebsite} onClose={() => setWebFor(null)} />
       )}
 
       {/* Batch D #11 — cloud-sync failure pill (app-toast style, auto-dismiss) */}

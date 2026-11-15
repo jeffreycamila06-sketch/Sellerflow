@@ -124,6 +124,7 @@ import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer, btCall } from "./adapters/printerBridge";
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { useApprovedPrinters } from "./adapters/printerTesters";
+import { sellerWebsiteVisible } from "./adapters/sellerWebsiteGate";
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
 import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, osDraftAfterSizePick, markOneStickerQrOffAfterPick, oneStickerSeedQr, clearOneStickerQrOffMark, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
@@ -870,6 +871,7 @@ export default function RedesignApp() {
   // classicTextCardShown). Set in THIS render (not an effect) so oneStickerDevicePath below — the Live print
   // pattern screen's "this phone prints the older sticker" note — always agrees with what the printer gets.
   const printerFlowV2 = printerFlowV2Enabled(isAdmin, hasFeature("test_printers"), featureSw.printerFlowV2);
+  const sellerWebsiteOn = sellerWebsiteVisible(featureSw.sellerWebsite, hasFeature("seller_website")); // Seller Website Phase 1 (sql/163)
   const classicShown = classicTextCardShown(classicAllowed, printerFlowV2, hasGenericPrinterBridge());
   setClassicTextAllowed(classicShown);
   // Sticker layout v2 (printing.ts): admins + feature "sticker_v2", or everyone with the sticker_layout_v2 switch.
@@ -2821,7 +2823,7 @@ export default function RedesignApp() {
             pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
             sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(postSales ? { posts: postSales } : {})} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
-          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}
+          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} website={sellerWebsiteOn} />}
           {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub

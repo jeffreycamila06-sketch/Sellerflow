@@ -7,7 +7,15 @@
 // undefined/"" = manual-only). One code per seller (DB partial-unique index
 // ux_products_user_live_code); the auto seam derives its code list from products
 // that have one. Additive to the shared "sf_prods" store → App.tsx ignores it.
-export interface Product { id: number; name: string; sku: string; price: number; stock: number; platform: string; status: string; liveCode?: string }
+export interface Product {
+  id: number; name: string; sku: string; price: number; stock: number; platform: string; status: string; liveCode?: string;
+  // Seller Website (sql/163) — OPTIONAL: present only when set, so a product without them is the same object as before.
+  category?: string; description?: string; photoPaths?: string[]; showOnWebsite?: boolean;
+  parentId?: number;            // a VARIANT row: its product's local_id (own code / stock / price)
+  variant?: ProductVariantInfo; // parent: the option groups · child: its values
+}
+export interface VariantGroup { name: string; values: string[] }
+export interface ProductVariantInfo { groups?: VariantGroup[]; values?: string[]; ownPrice?: boolean; photo?: number | null }
 export interface ProductForm { name: string; sku: string; price: string; stock: string; platform: string; liveCode: string }
 
 const KEY = "sf_prods";
