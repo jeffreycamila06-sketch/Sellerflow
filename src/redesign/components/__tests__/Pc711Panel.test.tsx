@@ -126,7 +126,7 @@ describe("Pc711Panel — Test now + Shadow", () => {
   it("while running: 'Testing…' and disabled; the result stays; within the limit: 'Try again after hh:mm' (result kept)", async () => {
     push("/status", { body: CONNECTED });
     push("/status", { body: CONNECTED });
-    push("/admin/pc-server-probe", { body: { success: true, result: { store: { verdict: "open", kind: "" } } } });
+    push("/admin/pc-server-probe", { body: { success: true, result: { store: { verdict: "open", kind: "" }, phone: { verdict: "ok", kind: "" } } } });
     const retryAt = "2026-11-14T05:10:00.000Z";
     push("/admin/pc-server-probe", { ok: false, status: 429, body: { success: false, error: "rate_limited", retryAt } });
     renderPanel();
@@ -135,12 +135,14 @@ describe("Pc711Panel — Test now + Shadow", () => {
     fireEvent.click(btn());
     expect(btn().textContent).toBe("Testing…");
     expect(btn().disabled).toBe(true);
-    await waitFor(() => expect(screen.getByTestId("pc711-test-result").textContent).toBe("Store check: open"));
+    await waitFor(() => expect(screen.getByTestId("pc711-test-result").textContent).toBe("Test store 198002 (德民): open"));
+    expect(screen.getByTestId("pc711-test-phone").textContent).toBe("Test phone check: ok");
+    expect(screen.getByTestId("pc711-test-sample").textContent).toBe("This tests one sample store, not your parcels. Real parcels are in Shadow below.");
     await waitFor(() => expect(btn().disabled).toBe(false));
     expect(btn().textContent).toBe("Test now");
     fireEvent.click(btn());
     await waitFor(() => expect(screen.getByTestId("pc711-try-after").textContent).toBe(`Try again after ${at(retryAt)}`));
-    expect(screen.getByTestId("pc711-test-result").textContent).toBe("Store check: open"); // the last result stays
+    expect(screen.getByTestId("pc711-test-result").textContent).toBe("Test store 198002 (德民): open"); // the last result stays
     expect(screen.queryByText("Too many tries")).toBeNull();
   });
 
