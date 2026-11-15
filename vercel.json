@@ -47,7 +47,7 @@
       "has": [
         {
           "type": "host",
-          "value": "(?<sub>(?!www\\.)[a-z0-9][a-z0-9-]{1,28}[a-z0-9])\\.sellerflowlive\\.com"
+          "value": "(?<sub>(?!(?:www|app|admin|api|mail|help|support|static|assets|cdn)\\.)[a-z0-9][a-z0-9-]{1,28}[a-z0-9])\\.sellerflowlive\\.com"
         }
       ],
       "destination": "/api/shop?sub=:sub"

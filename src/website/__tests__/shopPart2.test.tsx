@@ -174,3 +174,18 @@ describe("sql/163 part 2", () => {
     expect(sql).toMatch(/website_subdomain_ok[\s\S]*'www','app','admin','api','mail','help'/);
   });
 });
+
+describe("vercel.json subdomain rewrite (audit 8)", () => {
+  const cfg = JSON.parse(readFileSync("vercel.json", "utf8")) as { rewrites: { source: string; has?: { type: string; value: string }[]; destination: string }[] };
+  const rule = cfg.rewrites.find((r) => r.has?.some((h) => h.type === "host"))!;
+  const host = new RegExp(`^${rule.has!.find((h) => h.type === "host")!.value}$`);
+  it("skips exactly the reserved names the app skips; a normal shop name matches", async () => {
+    const { NOT_SHOPS } = await import("../route");
+    for (const n of NOT_SHOPS) expect(host.test(`${n}.sellerflowlive.com`), n).toBe(false);
+    expect(host.exec("budgetukay.sellerflowlive.com")?.groups?.sub).toBe("budgetukay");
+    expect(host.test("apple.sellerflowlive.com")).toBe(true); // a name that only STARTS with a reserved word is a shop
+    expect(host.test("www.sellerflowlive.com")).toBe(false);
+    const listed = /\(\?:([a-z|]+)\)/.exec(rule.has![0].value)![1].split("|").sort();
+    expect(listed).toEqual([...NOT_SHOPS].sort());
+  });
+});

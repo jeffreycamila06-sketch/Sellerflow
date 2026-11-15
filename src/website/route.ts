@@ -10,7 +10,8 @@ export interface ShopLocation { sub: string | null; base: string; route: ShopPag
 
 const APEX = ["sellerflowlive.com", "www.sellerflowlive.com"];
 const SUB_RE = /^[a-z0-9]([a-z0-9-]{1,28}[a-z0-9])$/;
-const NOT_SHOPS = new Set(["www", "app", "admin", "api", "mail", "help", "support", "static", "assets", "cdn"]);
+/** Never a shop (the same list is in vercel.json's host rewrite — a test keeps them equal). */
+export const NOT_SHOPS = new Set(["www", "app", "admin", "api", "mail", "help", "support", "static", "assets", "cdn"]);
 const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 
 /** The shop of a host name: "budgetukay.sellerflowlive.com" → "budgetukay"; anything else → null. */
