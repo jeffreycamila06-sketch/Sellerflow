@@ -57,12 +57,13 @@ export function useApprovedPrinters(signedIn: boolean): void {
 
 // ── Tester side ──────────────────────────────────────────────────────────────────────────────
 // The default approved-name prefix (editable before saving): with a "-" in the name, everything up to
-// and including the first "-" (CT221B-D4F8 → "CT221B-", B1 Pro-I61 → "B1 Pro-"); without one, the text
+// and including the first "-" (CT221B-D4F8 → "CT221B-", B1 Pro-I61 → "B1 Pro-") unless only 1–3 characters come
+// before it (XP-365B, GP-1324D → the whole name); without one, the text
 // before the first digit, only when that leaves ≥ 4 characters (PRINTER123456 → "PRINTER"); else the whole name.
 export function defaultPrefix(name: string | undefined | null): string {
   const n = String(name || "").trim();
   const dash = n.indexOf("-");
-  if (dash >= 0) { const p = n.slice(0, dash + 1).trim(); return p.length >= 2 ? p : n; }
+  if (dash >= 0) { const before = n.slice(0, dash).trim(); return before.length >= 4 ? `${before}-` : n; } // a 1–3 letter brand ("XP-", "GP-", "MPT-") is too broad → the whole name
   const digit = n.search(/\d/);
   if (digit >= 0) { const p = n.slice(0, digit).trim(); if (p.length >= 4) return p; }
   return n;

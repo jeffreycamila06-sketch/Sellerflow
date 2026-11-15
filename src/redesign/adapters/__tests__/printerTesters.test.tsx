@@ -313,11 +313,15 @@ describe("B. printer testers", () => {
 });
 
 describe("helpers", () => {
-  it("defaultPrefix: with a '-' = up to and including the first '-'; else before the first digit if ≥ 4 chars; else the whole name", () => {
+  it("defaultPrefix: with a '-' = up to and including the first '-' (≥ 4 chars before it, else the whole name); else before the first digit if ≥ 4 chars; else the whole name", () => {
     expect(defaultPrefix("CT221B-D4F8")).toBe("CT221B-");
     expect(defaultPrefix("B1 Pro-I616030055")).toBe("B1 Pro-");
     expect(defaultPrefix("LabelThing-9")).toBe("LabelThing-");
-    expect(defaultPrefix("Q2-ABC123")).toBe("Q2-");
+    expect(defaultPrefix("Y41BT-0FC4_LE")).toBe("Y41BT-");
+    expect(defaultPrefix("XP-365B")).toBe("XP-365B"); // 1–3 letters before the "-" = a brand → whole name
+    expect(defaultPrefix("GP-1324D")).toBe("GP-1324D");
+    expect(defaultPrefix("MPT-II")).toBe("MPT-II");
+    expect(defaultPrefix("Q2-ABC123")).toBe("Q2-ABC123");
     expect(defaultPrefix("PRINTER123456")).toBe("PRINTER");
     expect(defaultPrefix("ABCD1")).toBe("ABCD");
     expect(defaultPrefix("ABC123")).toBe("ABC123"); // 3 chars before the digit: too short → whole name
