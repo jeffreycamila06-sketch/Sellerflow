@@ -25,6 +25,10 @@ drop function if exists public.website_receipt_upload_ok(text);
 drop function if exists public.website_order(text);
 drop function if exists public.website_place_order(text, jsonb, text);
 drop function if exists public.website_return_stock(uuid);
+delete from public.stock_movements where reason = 'website';
+alter table public.stock_movements drop constraint if exists stock_movements_reason;
+alter table public.stock_movements add constraint stock_movements_reason
+  check (reason in ('auto_order', 'oneclick', 'restock', 'manual_edit', 'waitlist'));
 drop function if exists public.website_phone(text);
 drop table if exists public.website_blocked_buyers;
 do $$ begin

@@ -40,6 +40,10 @@ alter table public.products enable row level security;
 grant select, insert, update, delete on public.products to authenticated;
 create policy products_own on public.products for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 create table public.orders(id bigserial primary key, user_id uuid, total_amount int);
+create table public.stock_movements(id bigserial primary key, user_id uuid not null, product_local_id bigint not null, delta int not null, reason text not null, order_ref text,
+  created_at timestamptz not null default now(),
+  constraint stock_movements_reason check (reason in ('auto_order', 'oneclick', 'restock', 'manual_edit', 'waitlist')));
+insert into public.stock_movements(user_id, product_local_id, delta, reason) values ('${SELLER}', 1, -1, 'auto_order');
 create table public.live_session_orders(id bigserial primary key, user_id uuid, buyer_number int);
 create schema cron;
 create table cron.job(jobid serial primary key, jobname text unique, schedule text, command text);
@@ -264,6 +268,17 @@ const base = { name: "Maria", phone: "+886 912-345-678", delivery: "s711", store
   ok((await q(`select stock from public.products where local_id = 11`)).rows[0].stock === s11 + 4, "auto-cancel returns stock");
   ok((await q(`select public.website_auto_cancel() n`)).rows[0].n === 0 && (await q(`select stock from public.products where local_id = 11`)).rows[0].stock === s11 + 4, "stock returned only once");
   ok((await q(`select jobname from cron.job where jobname in ('website-auto-cancel','purge-old-website-orders')`)).rows.length === 2, "cron jobs scheduled");
+  // stock history: website orders + cancellations logged as 'website'; live reasons still accepted
+  {
+    const r1n = (await q(`select order_no from public.website_orders where token = $1`, [r1.token])).rows[0].order_no;
+    const mv = (await q(`select product_local_id p, delta d, order_ref r from public.stock_movements where reason = 'website' and order_ref = $1 and delta < 0 order by product_local_id`, ['W-' + String(r1n).padStart(4, '0')])).rows;
+    ok(mv.map((m) => `${m.p}:${m.d}`).join() === "1:-3,11:-1", "website order → stock log rows (product −3, variant −1) with the W number");
+    const r3n = (await q(`select order_no from public.website_orders where token = $1`, [r3.token])).rows[0].order_no;
+    const back = (await q(`select delta d from public.stock_movements where reason = 'website' and order_ref = $1 order by id`, ['W-' + String(r3n).padStart(4, '0')])).rows;
+    ok(back.map((m) => m.d).join() === "-4,4", "auto-cancel → the −4 sale and ONE +4 row (stock returned once, logged once)");
+    for (const reason of ['auto_order', 'oneclick', 'restock', 'manual_edit', 'waitlist']) ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, 1, $2)`, [SELLER, reason]))) === null, `live reason '${reason}' still accepted`);
+    ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, 1, 'other')`, [SELLER]))) !== null, "an unknown reason is still refused");
+  }
   // receipt pictures to delete: order gone, or ended > 90 days ago — never a live / recent order's
   {
     const T = (c) => c.repeat(64);
@@ -339,6 +354,8 @@ await db.exec(src("163_seller_website_rollback.sql"));
   ok(after.name === "Old shirt" && after.live_code === "A01", "rollback: old product kept");
   ok((await q(`select to_regclass('public.seller_websites') a, to_regclass('public.website_orders') b`)).rows[0].a === null, "rollback: tables gone");
   ok((await q(`select count(*)::int n from pg_publication_tables where pubname = 'supabase_realtime'`)).rows[0].n === 0, "rollback: realtime publication back to how it was");
+  ok((await q(`select count(*)::int n from public.stock_movements where reason = 'website'`)).rows[0].n === 0 && (await q(`select count(*)::int n from public.stock_movements where reason = 'auto_order'`)).rows[0].n >= 1, "rollback: 'website' log rows removed, live rows kept");
+  ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, 1, 'website')`, [SELLER]))) !== null, "rollback: reason list back to the live one");
   ok((await q(`select count(*)::int n from pg_proc where proname like 'website_%'`)).rows[0].n === 0, "rollback: functions gone");
   ok((await q(`select count(*)::int n from cron.job where jobname like '%website%'`)).rows[0].n === 0, "rollback: cron jobs gone");
   ok(!(await q(`select command from cron.job where jobname = 'purge-stale-products'`)).rows[0].command.includes("parent_local_id"), "rollback: purge restored");

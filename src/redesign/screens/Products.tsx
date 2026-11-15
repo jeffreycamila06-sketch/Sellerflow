@@ -317,7 +317,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     setHistoryFor(p); setHistory("loading");
     void loadStockMovements(p.id).then((rows) => setHistory(rows));
   };
-  const reasonLabel = (r: string) => (r === "auto_order" ? t.rd_prd_rs_auto : r === "oneclick" ? t.rd_prd_rs_oneclick : r === "restock" ? t.rd_prd_rs_restock : r === "waitlist" ? t.rd_prd_rs_waitlist : t.rd_prd_rs_manual);
+  const reasonLabel = (r: string) => (r === "auto_order" ? t.rd_prd_rs_auto : r === "oneclick" ? t.rd_prd_rs_oneclick : r === "restock" ? t.rd_prd_rs_restock : r === "waitlist" ? t.rd_prd_rs_waitlist : r === "website" ? t.rd_prd_rs_website : t.rd_prd_rs_manual);
   // Variant rows belong to their product (listProducts drops them; a list without variants is unchanged).
   // A product with variants: its own row keeps stock 0 — show the variants' total instead (display only;
   // its stock is changed per variant in the Website sheet, so its +/− buttons are off). Others: same object.
@@ -584,7 +584,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
               : history.map((m, i) => (
                 <div key={i} data-testid={`history-row-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i ? "1px solid var(--border)" : "none" }}>
                   <span style={{ fontFamily: mono, fontWeight: 800, fontSize: 13.5, minWidth: 44, color: m.delta > 0 ? "var(--ok)" : "var(--danger)" }}>{m.delta > 0 ? `+${m.delta}` : m.delta}</span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{reasonLabel(m.reason)}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{reasonLabel(m.reason)}{m.reason === "website" && m.orderRef ? ` · ${m.orderRef}` : ""}</span>
                   <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{m.createdAt ? new Date(m.createdAt).toLocaleString("en-GB", { timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
                 </div>
               ))}

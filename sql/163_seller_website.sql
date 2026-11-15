@@ -401,6 +401,13 @@ grant select on table public.website_blocked_buyers to authenticated;
 drop policy if exists wbb_select_own on public.website_blocked_buyers;
 create policy wbb_select_own on public.website_blocked_buyers for select to authenticated using (user_id = (select auth.uid()));
 
+-- Stock history (audit 6): website orders and their cancellations are logged in stock_movements
+-- with the reason 'website' (order_ref = the W number; − = sold, + = stock back on a cancel). The live reasons are unchanged — this is the
+-- LIVE list (read 2026-11-15) plus 'website'.
+alter table public.stock_movements drop constraint if exists stock_movements_reason;
+alter table public.stock_movements add constraint stock_movements_reason
+  check (reason in ('auto_order', 'oneclick', 'restock', 'manual_edit', 'waitlist', 'website'));
+
 -- phone → digits; +886 / 886 9xxxxxxxx → 09xxxxxxxx
 create or replace function public.website_phone(p text)
 returns text language sql immutable set search_path = public, pg_temp as $$
@@ -418,6 +425,11 @@ begin
   for it in select * from jsonb_array_elements(o.items) loop
     update public.products set stock = stock + (it->>'qty')::int, updated_at = now()
      where user_id = o.user_id and local_id = coalesce(nullif(it->>'vid', '')::bigint, (it->>'pid')::bigint);
+    if found then
+      insert into public.stock_movements (user_id, product_local_id, delta, reason, order_ref)
+      values (o.user_id, coalesce(nullif(it->>'vid', '')::bigint, (it->>'pid')::bigint), (it->>'qty')::int, 'website',
+              'W-' || lpad(o.order_no::text, 4, '0'));
+    end if;
   end loop;
   update public.website_orders set stock_returned = true, updated_at = now() where id = p_id;
 end;
@@ -533,6 +545,9 @@ begin
   values (w.user_id, v_seq, v_token, v_status, v_name, v_phone, v_contact, v_delivery,
       v_store_id, v_store_name, v_address, v_pay, v_items, v_sub, v_fee, v_total, v_note, v_dev,
       case when v_pay = 'cod' then null else now() + make_interval(hours => v_hours) end);
+  insert into public.stock_movements (user_id, product_local_id, delta, reason, order_ref)
+  select w.user_id, coalesce(nullif(x->>'vid', '')::bigint, (x->>'pid')::bigint), -((x->>'qty')::int), 'website', 'W-' || lpad(v_seq::text, 4, '0')
+    from jsonb_array_elements(v_items) x;
   return jsonb_build_object('ok', true, 'orderNo', 'W-' || lpad(v_seq::text, 4, '0'), 'token', v_token, 'total', v_total);
 end;
 $$;

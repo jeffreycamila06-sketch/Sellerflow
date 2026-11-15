@@ -251,7 +251,7 @@ export async function resolveInitialProducts(local: Product[]): Promise<ResolveR
 // Every stock change writes one stock_movements row. The logged RPCs do the SAME atomic
 // arithmetic as adjust_product_stock (own row, clamp at 0) and log what was really applied.
 // Return: the NEW stock, -1 when not the caller's product, null when the call couldn't run.
-export type StockReason = "auto_order" | "oneclick" | "restock" | "manual_edit" | "waitlist";
+export type StockReason = "auto_order" | "oneclick" | "restock" | "manual_edit" | "waitlist" | "website"; // "website" is written only by the database (sql/163)
 export interface StockMovement { delta: number; reason: StockReason; orderRef: string | null; createdAt: string }
 
 export async function adjustStockLogged(localId: number, delta: number, reason: StockReason, orderRef?: string | null): Promise<number | null> {
