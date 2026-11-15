@@ -12,9 +12,12 @@ export type { PrinterLang };
 // prefix match. The Java (BleStickerLogic.PRINTER_NAME_PREFIXES) and Swift
 // (BleStickerLogic.printerNamePrefixes) copies are pinned equal to this list by
 // printerNames.contract.test.ts — change all three together.
+// EXCEPTION: "B1 Pro-" is web-only for now (WEB_ONLY_PREFIXES in that test) — the phone only tags
+// rows, the web decides; the phone app adds it in its next normal release.
 export const PRINTER_NAME_PREFIXES: readonly string[] = [
   // Niimbot B-series 50 mm models (vendor SDK driver — see isNiimbotName). The narrow-head
   // D11/D110/D101/H1S/B18 are NOT listed for now: they take the normal "not found / show all" path.
+  "B1 Pro-", // Niimbot B1 Pro — scans as "B1 Pro-I616030055"; printed exactly like the B1
   "B1-", "B21-", "B203-", "B3S-",
   // Xprinter / generic receipt + label printers ("HM-" and "RP" were dropped: they match non-printers)
   "XP-", "Xprinter", "Printer", "PRT", "PT-", "MPT", "GP-",
@@ -23,7 +26,7 @@ export const PRINTER_NAME_PREFIXES: readonly string[] = [
   // HPRT, Munbyn, Rongta (RP), Gprinter, Zjiang
   "HPRT", "Munbyn", "Gprinter", "Zjiang",
 ];
-export const NIIMBOT_NAME_PREFIXES: readonly string[] = ["B1-", "B21-", "B203-", "B3S-"];
+export const NIIMBOT_NAME_PREFIXES: readonly string[] = ["B1 Pro-", "B1-", "B21-", "B203-", "B3S-"];
 
 const startsWithAny = (name: string | undefined | null, prefixes: readonly string[]): boolean => {
   const n = String(name || "").trim().toUpperCase();
@@ -93,6 +96,7 @@ export interface KnownPrinterInfo { brand: KnownBrand; model: string }
 export const WHITELIST: readonly { prefix: string; brand: KnownBrand; model: string }[] = [
   { prefix: "D520BT", brand: "AIMO", model: "D520BT" },   // AIMO / Phomemo D520BT — scans as "D520BT-Z"
   { prefix: "Y41BT", brand: "Flash", model: "Y41BT" },    // FLASH LABEL Y41BT — scans as "Y41BT-0FC4_LE"
+  { prefix: "B1 Pro-", brand: "Niimbot", model: "B1 Pro" }, // Niimbot B1 Pro — scans as "B1 Pro-I616030055"; same driver / 50 mm / sizes as the B1 (first match wins → before "B1-")
   { prefix: "B1-", brand: "Niimbot", model: "B1" },       // Niimbot B1 — scans as "B1-I603042141"
   { prefix: "B21-", brand: "Niimbot", model: "B21" },
   { prefix: "B203-", brand: "Niimbot", model: "B203" },
