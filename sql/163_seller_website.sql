@@ -609,7 +609,11 @@ returns boolean language sql stable security definer set search_path = public, p
                   where o.token = t.tok
                     and o.status in ('awaiting_payment','payment_sent') and o.receipt_count < 5)
      and (select count(*) from storage.objects so, t
-           where so.bucket_id = 'website-receipts' and left(so.name, length(t.tok) + 1) = t.tok || '/') < 5;
+           where so.bucket_id = 'website-receipts'
+             -- the folder "<token>/": an index range (COLLATE "C", '/' + 1 = '0') + the same prefix as LIKE
+             and so.name collate "C" >= t.tok || '/' and so.name collate "C" < t.tok || '0'
+             and so.name like replace(replace(t.tok, '\', '\\'), '_', '\_') || '/%'
+             and so.archived_at is null and not coalesce(so.is_delete_marker, false)) < 5;
 $$;
 revoke all on function public.website_receipt_upload_ok(text) from public;
 grant execute on function public.website_receipt_upload_ok(text) to anon, authenticated;
@@ -636,6 +640,7 @@ create or replace function public.website_receipts_to_purge(p_limit integer)
 returns setof text language sql stable security definer set search_path = public, pg_temp as $$
   select so.name from storage.objects so
    where so.bucket_id = 'website-receipts'
+     and so.archived_at is null and not coalesce(so.is_delete_marker, false)
      and not exists (select 1 from public.website_orders w
                       where w.token = split_part(so.name, '/', 1)
                         and not ((w.status = 'shipped' and w.shipped_at < now() - interval '90 days')
@@ -803,7 +808,10 @@ create or replace function public.product_photo_count(p_user uuid)
 returns integer language sql stable security definer set search_path = public, pg_temp as $$
   select count(*)::int from storage.objects so
    where so.bucket_id = 'product-images'
-     and left(so.name, length(p_user::text) + 1) = p_user::text || '/'
+     -- the seller's folder "<uid>/": an index range (COLLATE "C", '/' + 1 = '0') + the same prefix as LIKE
+     and so.name collate "C" >= p_user::text || '/' and so.name collate "C" < p_user::text || '0'
+     and so.name like p_user::text || '/%'
+     and so.archived_at is null and not coalesce(so.is_delete_marker, false)  -- current files only
      and so.name !~ '-s\.jpg$';
 $$;
 revoke all on function public.product_photo_count(uuid) from public, anon, authenticated;
@@ -811,9 +819,11 @@ revoke all on function public.product_photo_count(uuid) from public, anon, authe
 create or replace function public.product_photo_upload_ok(p_name text)
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select auth.uid() is not null and (
-       exists (select 1 from storage.objects so where so.bucket_id = 'product-images' and so.name = p_name)
+       exists (select 1 from storage.objects so where so.bucket_id = 'product-images' and so.name = p_name
+                 and so.archived_at is null and not coalesce(so.is_delete_marker, false))
     or (coalesce(p_name, '') ~ '-p[0-9]+-s\.jpg$'
-        and exists (select 1 from storage.objects so where so.bucket_id = 'product-images' and so.name = regexp_replace(p_name, '-s\.jpg$', '.jpg')))
+        and exists (select 1 from storage.objects so where so.bucket_id = 'product-images' and so.name = regexp_replace(p_name, '-s\.jpg$', '.jpg')
+                      and so.archived_at is null and not coalesce(so.is_delete_marker, false)))
     or (coalesce(p_name, '') !~ '-s\.jpg$'
         and public.product_photo_count(auth.uid()) < public.product_photo_limit(auth.uid())));
 $$;

@@ -53,11 +53,12 @@ create function cron.alter_job(job_id int, command text) returns void language s
 insert into cron.job(jobname, schedule, command) values ('purge-stale-products', '0 17 * * *', 'DELETE FROM public.products WHERE stock = 0');
 create schema storage; grant usage on schema storage to anon, authenticated;
 create table storage.buckets(id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-create table storage.objects(id bigserial primary key, bucket_id text, name text, created_at timestamptz not null default now());
+create table storage.objects(id bigserial primary key, bucket_id text, name text, created_at timestamptz not null default now(), archived_at timestamptz, is_delete_marker boolean not null default false);
 alter table storage.objects enable row level security;
 grant select, insert on storage.objects to anon, authenticated;
 grant usage on sequence storage.objects_id_seq to anon, authenticated;
-create unique index storage_objects_bucket_name on storage.objects(bucket_id, name);
+create unique index storage_objects_bucket_name on storage.objects(bucket_id, name) where archived_at is null;
+create index idx_objects_bucket_id_name on storage.objects(bucket_id, name collate "C"); -- as live
 insert into storage.buckets(id, name, public, file_size_limit, allowed_mime_types) values ('product-images', 'product-images', true, 409600, array['image/jpeg','image/png','image/webp']);
 grant update, delete on storage.objects to authenticated;
 -- the live product-images policies (sql/95): own folder only
@@ -264,6 +265,16 @@ const base = { name: "Maria", phone: "+886 912-345-678", delivery: "s711", store
   ok((await err(as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${r1.token}/r1700000000009.jpg`])))) !== null, "6th file under the same order is refused even though nothing was attached");
   ok((await err(as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${"x" + r1.token.slice(1)}/r1700000000009.jpg`])))) !== null, "(a made-up token folder is refused too)");
   await q(`delete from storage.objects where name like $1`, [`${r1.token}/r170000000000_.jpg`]);
+  {
+    // a token with '_' : its folder count is exact (LIKE '_' is escaped); archived files don't count
+    const tk = "ab_" + "c".repeat(61), look = "abX" + "c".repeat(61);
+    await q(`insert into public.website_orders (user_id, order_no, token, status, buyer_name, buyer_phone, delivery, store_id, payment, items, subtotal, ship_fee, total) values ($1, 9100, $2, 'awaiting_payment', 'T', '0911000000', 's711', '123456', 'bank', '[]', 0, 0, 0)`, [SELLER, tk]);
+    for (let i = 1; i <= 5; i++) await q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${look}/r170000000000${i}.jpg`]);
+    for (let i = 1; i <= 3; i++) await q(`insert into storage.objects(bucket_id, name, archived_at) values ('website-receipts', $1, now())`, [`${tk}/r170000000001${i}.jpg`]);
+    ok((await err(as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${tk}/r1700000000020.jpg`])))) === null, "receipt count: another folder that matches '_' and archived files are not counted");
+    await q(`delete from storage.objects where name like 'abX%' or name like 'ab\\_%'`);
+    await q(`delete from public.website_orders where order_no = 9100`);
+  }
   await as(null, "anon", () => q(`select public.website_order_receipt($1, $2)`, [r1.token, good]));
   ok((await q(`select status from public.website_orders where token = $1`, [r1.token])).rows[0].status === "payment_sent", "receipt → payment_sent");
   ok(String(await err(as(null, "anon", () => q(`select public.website_order_receipt($1, $2)`, [r1.token, `${r2.token}/r1700000000000.jpg`])))).includes("bad_receipt"), "a receipt can't point at another order");
@@ -371,13 +382,28 @@ if (hasActions) {
   ok(JSON.stringify(await quota()) === JSON.stringify({ used: 49, limit: 50 }), "Photos: 49 / 50 (small copies not counted)");
   ok((await err(up(FREE, `${FREE}/900.jpg`))) === null, "50th photo accepted");
   ok((await err(up(FREE, `${FREE}/901.jpg`))) !== null, "51st photo refused at the limit");
-  ok((await err(as(FREE, "authenticated", () => q(`insert into storage.objects(bucket_id, name) values ('product-images', $1) on conflict (bucket_id, name) do update set created_at = now()`, [`${FREE}/900.jpg`])))) === null, "replacing an existing photo is still allowed at the limit");
+  ok((await err(as(FREE, "authenticated", () => q(`insert into storage.objects(bucket_id, name) values ('product-images', $1) on conflict (bucket_id, name) where archived_at is null do update set created_at = now()`, [`${FREE}/900.jpg`])))) === null, "replacing an existing photo is still allowed at the limit");
   ok((await err(up(FREE, `${FREE}/4-p2-s.jpg`))) === null, "a small copy of an existing photo is accepted (not counted)");
   ok((await err(up(FREE, `${FREE}/77-p3-s.jpg`))) !== null, "a 'small copy' with no full photo is refused");
   ok((await quota()).used === 50, "still 50 / 50 — nothing was deleted, small copies not counted");
   ok((await err(up(SELLER, `${SELLER}/1.jpg`))) === null, "another seller is not affected (own count)");
   ok((await err(up(FREE, `${SELLER}/x.jpg`))) !== null, "(own folder only, as before)");
   ok((await err(as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('product-images', $1)`, [`${FREE}/y.jpg`])))) !== null, "(anon can't upload product photos, as before)");
+  // only CURRENT files count, and only this seller's folder (prefix, not a look-alike)
+  await q(`insert into storage.objects(bucket_id, name, archived_at) values ('product-images', $1, now())`, [`${FREE}/old-a.jpg`]);
+  await q(`insert into storage.objects(bucket_id, name, is_delete_marker) values ('product-images', $1, true)`, [`${FREE}/old-b.jpg`]);
+  await q(`insert into storage.objects(bucket_id, name) values ('product-images', $1), ('product-images', $2)`, [`${FREE}0/look-alike.jpg`, `${FREE}x.jpg`]);
+  ok((await quota()).used === 50, "archived / delete-marker files and a look-alike folder ('<uid>0/', '<uid>x') don't count");
+  await q(`delete from storage.objects where bucket_id = 'product-images' and name like $1`, [`${FREE}/%-p2.jpg`]);
+  await q(`update storage.objects set archived_at = now() where bucket_id = 'product-images' and name = $1`, [`${FREE}/900.jpg`]);
+  ok((await quota()).used === 0, "an archived photo frees its place");
+  // the count uses the (bucket_id, name COLLATE "C") index — not a scan of the whole bucket
+  await db.exec(`set enable_seqscan = off`);
+  const plan = (await q(`explain select count(*) from storage.objects so where so.bucket_id = 'product-images' and so.name collate "C" >= $1 || '/' and so.name collate "C" < $1 || '0' and so.name like $1 || '/%' and so.archived_at is null and not coalesce(so.is_delete_marker, false)`, [FREE])).rows.map((r) => r["QUERY PLAN"]).join(" ");
+  await db.exec(`set enable_seqscan = on`);
+  ok(/Index (Only )?Scan/.test(plan) && /Index Cond: \(\(bucket_id = 'product-images'::text\) AND \(name >= '[^']+\/'::text\) AND \(name < '[^']+0'::text\)\)/.test(plan), "photo count: an index range (bucket + folder prefix), not a scan of the whole bucket");
+  const src = (await q(`select prosrc from pg_proc where proname in ('product_photo_count', 'website_receipt_upload_ok') order by proname`)).rows.map((r) => r.prosrc);
+  ok(src.every((x) => !/left\(so\.name/.test(x) && /collate "C" >=/.test(x) && / like /.test(x) && /archived_at is null/.test(x)), "both counts: prefix range + LIKE, current files only, no left(name, …)");
   await q(`delete from storage.objects where bucket_id = 'product-images'`);
 }
 
