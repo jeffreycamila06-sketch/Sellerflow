@@ -94,6 +94,14 @@ await db.exec(src("163_seller_website.sql"));
   for (const k of Object.keys(before)) ok(String(before[k]) === String(after[k]), `old product column ${k} unchanged`);
   ok(after.show_on_website === true && after.category === null && after.variant === null && after.parent_local_id === null, "old product: new columns default / null");
   ok((await q(`select command from cron.job where jobname = 'purge-stale-products'`)).rows[0].command.includes("parent_local_id IS NULL"), "purge skips variant rows");
+  // run the purge job's own command on old sold-out rows
+  await q(`insert into public.products(user_id, local_id, name, stock, live_code, last_ordered_at) values ($1, 900, 'Old plain', 0, 'Z90', now() - interval '120 days'), ($1, 901, 'Old parent', 0, 'Z91', now() - interval '120 days')`, [SELLER]);
+  await q(`insert into public.products(user_id, local_id, name, stock, live_code, parent_local_id, last_ordered_at) values ($1, 902, 'Old parent · S', 0, 'Z91-S', 901, now() - interval '120 days')`, [SELLER]);
+  await q(`insert into public.products(user_id, local_id, name, stock, live_code, last_ordered_at) values ($1, 901, 'Other seller same id', 0, 'Q91', now() - interval '120 days')`, [OTHER]);
+  await db.exec((await q(`select command from cron.job where jobname = 'purge-stale-products'`)).rows[0].command);
+  const left = (await q(`select user_id, local_id from public.products where local_id in (900, 901, 902)`)).rows.map((r) => `${r.user_id === SELLER ? "s" : "o"}${r.local_id}`).sort();
+  ok(left.join() === "s901,s902", "purge: old sold-out plain product deleted; old sold-out parent WITH variants + its variant survive; another seller's same id is not protected by them");
+  await q(`delete from public.products where local_id in (901, 902)`);
 }
 // a product with variants: parent 10 (code B01) + children 11 (B01-S, stock 2, price 200), 12 (B01-M, stock 0)
 await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, variant) values ($1, 10, 'Dress', 200, 0, 'B01', '{"groups":[{"name":"Size","values":["S","M"]}]}')`, [SELLER]);

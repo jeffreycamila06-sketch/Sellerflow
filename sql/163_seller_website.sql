@@ -87,16 +87,18 @@ drop trigger if exists trg_products_variant_zero_parent on public.products;
 create trigger trg_products_variant_zero_parent after insert or update of parent_local_id on public.products
   for each row when (new.parent_local_id is not null) execute function public.products_variant_zero_parent();
 
--- the 90-day purge of sold-out products never deletes a variant row
+-- the 90-day purge of sold-out products never deletes a variant row, nor a product that has variants
+-- (its own stock is always 0 — see above)
 do $$ begin
   if exists (select 1 from cron.job where jobname = 'purge-stale-products') then
     perform cron.alter_job(
       (select jobid from cron.job where jobname = 'purge-stale-products'),
-      command := $c$DELETE FROM public.products
-     WHERE stock = 0
-       AND last_ordered_at IS NOT NULL
-       AND last_ordered_at < now() - interval '90 days'
-       AND parent_local_id IS NULL$c$);
+      command := $c$DELETE FROM public.products p
+     WHERE p.stock = 0
+       AND p.last_ordered_at IS NOT NULL
+       AND p.last_ordered_at < now() - interval '90 days'
+       AND p.parent_local_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM public.products c WHERE c.user_id = p.user_id AND c.parent_local_id = p.local_id)$c$);
   end if;
 end $$;
 
