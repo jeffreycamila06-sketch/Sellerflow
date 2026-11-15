@@ -14,6 +14,7 @@ import { money, photoUrl } from "./shopApi";
 import { freeShipping, subtotalOf, type LineInfo } from "./cart";
 import { mutedText } from "./shopStyle";
 import { chatHref, CHAT_PREFILL } from "./shopLinks";
+import { BrandIcon, type BrandKey } from "./brandIcons";
 import {
   realOrderApi, readBuyer, saveBuyer, forgetBuyer, deviceId, draftErrors,
   type OrderApi, type OrderDraft, type Delivery, type Payment, type FieldError, type OrderView, type PlaceResult,
@@ -313,7 +314,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
               return (
                 <a key={k} data-testid={`od-chat-${k}`} href={href} target="_blank" rel="noreferrer noopener" className="sfl-btn sfl-btn-line"
                   onClick={() => { void copyText(text); say(tpl(t.rd_shop_od_copied_paste, { app: CHAT_APP_NAME[k] })); }}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none", lineHeight: "44px" }}>{CHAT_APP_NAME[k]}</a>
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", lineHeight: "44px" }}><BrandIcon brand={k as BrandKey} size={18} />{CHAT_APP_NAME[k]}</a>
               );
             })}
           </div>

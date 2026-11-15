@@ -35,8 +35,8 @@ export async function removeExtraPhoto(path: string): Promise<boolean> {
   try { return !(await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([path])).error; } catch { return false; }
 }
 
-/** The shop logo / cover (website editor). Returns the path or null. */
-export async function uploadSitePicture(kind: "logo" | "cover", file: Blob): Promise<string | null> {
+/** The shop logo / cover / payment QR (website editor; public bucket — all three are meant for buyers). Returns the path or null. */
+export async function uploadSitePicture(kind: "logo" | "cover" | "qr", file: Blob): Promise<string | null> {
   const c = await compressProductImage(file);
   if (c.ok === false || !isSupabaseConfigured || !supabase) return null;
   const me = await uid();

@@ -11,7 +11,7 @@ do $$ begin
   if exists (select 1 from cron.job where jobname = 'website-auto-cancel') then perform cron.unschedule('website-auto-cancel'); end if;
   if exists (select 1 from cron.job where jobname = 'purge-old-website-orders') then perform cron.unschedule('purge-old-website-orders'); end if;
 end $$;
-drop function if exists public.website_sales(timestamptz, timestamptz);
+drop function if exists public.website_sales(date, date);
 drop function if exists public.website_new_orders_count();
 drop policy if exists website_receipts_insert on storage.objects;
 drop policy if exists website_receipts_read_seller on storage.objects;

@@ -241,10 +241,15 @@ if (hasActions) {
   ok((await q(`select stock from public.products where local_id = 11`)).rows[0].stock === before11 + 2, "seller cancel returns stock");
   const hasSales = (await q(`select count(*)::int n from pg_proc where proname = 'website_sales'`)).rows[0].n === 1;
   if (hasSales) {
-    const sales = (await as(SELLER, "authenticated", () => q(`select public.website_sales(now() - interval '1 day', now() + interval '1 day') r`))).rows[0].r;
+    const sales = (await as(SELLER, "authenticated", () => q(`select public.website_sales(current_date - 1, current_date + 1) r`))).rows[0].r;
     ok(sales.orders >= 1 && sales.revenue > 0 && Array.isArray(sales.days), "website sales (cancelled not counted)");
-    const other = (await as(OTHER, "authenticated", () => q(`select public.website_sales(now() - interval '1 day', now() + interval '1 day') r`))).rows[0].r;
+    const other = (await as(OTHER, "authenticated", () => q(`select public.website_sales(current_date - 1, current_date + 1) r`))).rows[0].r;
     ok(other.orders === 0, "website sales: own only");
+    const cancelled = (await q(`select count(*)::int n from public.website_orders where user_id = $1 and status <> 'cancelled' and created_at > now() - interval '2 days'`, [SELLER])).rows[0].n;
+    ok(sales.orders === cancelled, "website sales: cancelled not counted");
+    const badge = (await as(SELLER, "authenticated", () => q(`select public.website_new_orders_count() n`))).rows[0].n;
+    await as(SELLER, "authenticated", () => q(`select public.website_order_action($1, 'seen')`, [o.id]));
+    ok(badge >= 1 && (await as(SELLER, "authenticated", () => q(`select public.website_new_orders_count() n`))).rows[0].n <= badge, "new-order badge counts unseen orders");
   }
 }
 

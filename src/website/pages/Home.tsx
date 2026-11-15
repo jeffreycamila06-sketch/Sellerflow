@@ -21,7 +21,7 @@ export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop
   const cover = d.cover ? `url("${photoUrl(d.cover)}") center/cover` : "linear-gradient(135deg, var(--sc), #C026D3)";
 
   return (
-    <div className="sfl-wrap" style={{ paddingBottom: 90 }}>
+    <div className="sfl-wrap" style={{ paddingBottom: 8 }}>
       <div style={{ height: 150, background: cover, borderRadius: "0 0 0 0" }} />
       <div style={{ padding: "0 12px" }}>
         <div className="sfl-card" data-testid="shop-card" style={{ marginTop: -60, padding: 16, position: "relative", boxShadow: "0 8px 24px rgba(17,24,39,.08)" }}>

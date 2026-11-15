@@ -729,3 +729,17 @@ In the app: **Settings → Need help? Contact us**, or **Settings → General Se
 Paid plans (Basic, Plus, Pro, Master) also have a **help chat**: a round chat bubble on the **Settings** screen. Tap it (or the "Do you have a question?" hint next to it) and type your question. You can drag the bubble to the left or right edge.
 
 When you message, include your account email, your TikTok username, what you were doing, and the exact message you saw. A screenshot helps.
+
+## website — Your shop website (preview)
+Last checked: 2026-11-15
+Keywords: website, shop page, online shop, publish, website orders, checkout, store link, 網站, 商店網頁, 网站
+
+Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
+
+- **Website address** — type your address, then **Save**. Tap **Copy** to share it.
+- Add your logo, cover photo, shop color, name, tagline, about us, announcement bar, live schedule, return policy, Follow us links and chat buttons (Messenger, LINE, WhatsApp, Instagram). Turn sections on or off.
+- **Preview** shows your shop the way buyers see it. **Publish** puts it online. Changes stay a draft until you tap **Publish** again.
+- The Free plan can build and preview the website. Publishing needs a paid plan.
+- **Payment & shipping** — 7-11, FamilyMart and home delivery fees, free shipping over an amount, bank transfer, payment QR, pay at pickup (also turn on 取貨付款 in 賣貨便 / 好賣+), and how many hours before unpaid orders are cancelled.
+- **Products** — tap **Website** on a product to add a category, a description, up to 8 photos and options like size and color. Each option has its own code and stock.
+- **Orders** → **Website** — your website orders. Open an order to see the receipt (check your bank app first), then tap **Money received**, **Not received**, **Mark as shipped**, **Cancel order** or **Block buyer**. The buyer sees each step on their order link.

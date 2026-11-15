@@ -663,4 +663,36 @@ do $$ begin
     $c$DELETE FROM public.website_orders WHERE (status = 'shipped' AND shipped_at < now() - interval '90 days') OR (status = 'cancelled' AND cancelled_at < now() - interval '90 days')$c$);
 end $$;
 
+
+-- ── PART 4 — seller side ────────────────────────────────────────────────────
+-- Website sales for the Sales tab (own orders only, Asia/Taipei days, cancelled not counted).
+-- Read once per Sales range the seller opens — no polling.
+create or replace function public.website_sales(p_from date, p_to date)
+returns jsonb language sql stable security invoker set search_path = public, pg_temp as $$
+  with own as (
+    select o.total, o.buyer_phone, (o.created_at at time zone 'Asia/Taipei')::date as d
+      from public.website_orders o
+     where o.user_id = (select auth.uid()) and o.status <> 'cancelled'
+       and (o.created_at at time zone 'Asia/Taipei')::date between p_from and p_to
+  )
+  select jsonb_build_object(
+    'orders', (select count(*) from own),
+    'revenue', (select coalesce(sum(total), 0) from own),
+    'buyers', (select count(distinct buyer_phone) from own),
+    'days', coalesce((select jsonb_agg(jsonb_build_object('d', d, 'orders', n, 'rev', rev) order by d)
+                        from (select d, count(*) n, sum(total) rev from own group by d) x), '[]'::jsonb));
+$$;
+revoke all on function public.website_sales(date, date) from public, anon;
+grant execute on function public.website_sales(date, date) to authenticated;
+
+-- The new-order badge: own orders the seller hasn't opened yet (not cancelled). Read on app open
+-- and when the Orders tab opens — no polling.
+create or replace function public.website_new_orders_count()
+returns integer language sql stable security invoker set search_path = public, pg_temp as $$
+  select count(*)::int from public.website_orders o
+   where o.user_id = (select auth.uid()) and o.seen_at is null and o.status <> 'cancelled';
+$$;
+revoke all on function public.website_new_orders_count() from public, anon;
+grant execute on function public.website_new_orders_count() to authenticated;
+
 commit;

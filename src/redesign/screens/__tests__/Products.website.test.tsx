@@ -68,3 +68,20 @@ describe("Products — Seller Website", () => {
     expect(h.del.mock.calls.map((c) => c[0]).sort()).toEqual([1, 9]);
   });
 });
+
+describe("Products — a product with variants shows the variants' total (display only)", () => {
+  it("stock = sum of its variants, +/− off; a product without variants is unchanged", async () => {
+    await mount([P({ stock: 0, status: "Out of stock" }), KID, P({ id: 5, name: "Shirt", liveCode: "A02", stock: 4 })], true);
+    expect(screen.getByTestId("stock-val-1").textContent).toBe("3");
+    expect(screen.getByTestId("stock-inc-1")).toBeDisabled();
+    expect(screen.getByTestId("stock-dec-1")).toBeDisabled();
+    expect(screen.getByTestId("stock-val-5").textContent).toBe("4");
+    expect(screen.getByTestId("stock-inc-5")).not.toBeDisabled();
+  });
+  it("Edit opens the REAL product (its own stock 0), never the total", async () => {
+    await mount([P({ stock: 0, status: "Out of stock" }), KID], true);
+    fireEvent.click(screen.getAllByText("Edit")[0]);
+    const stock = screen.getAllByRole("spinbutton").concat(screen.queryAllByRole("textbox")).find((el) => (el as HTMLInputElement).value === "0" || (el as HTMLInputElement).value === "3") as HTMLInputElement | undefined;
+    expect(stock?.value).toBe("0");
+  });
+});

@@ -319,7 +319,12 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   };
   const reasonLabel = (r: string) => (r === "auto_order" ? t.rd_prd_rs_auto : r === "oneclick" ? t.rd_prd_rs_oneclick : r === "restock" ? t.rd_prd_rs_restock : r === "waitlist" ? t.rd_prd_rs_waitlist : t.rd_prd_rs_manual);
   // Variant rows belong to their product (listProducts drops them; a list without variants is unchanged).
-  const shown = useMemo(() => listProducts(prods), [prods]);
+  // A product with variants: its own row keeps stock 0 — show the variants' total instead (display only;
+  // its stock is changed per variant in the Website sheet, so its +/− buttons are off). Others: same object.
+  const variantTotals = useMemo(() => { const m = new Map<number, number>(); for (const x of prods) if (x.parentId !== undefined) m.set(x.parentId, (m.get(x.parentId) || 0) + x.stock); return m; }, [prods]);
+  // Edit / Website always open the REAL row (never the display copy with the variants' total).
+  const realOf = (p: Product): Product => prods.find((x) => x.id === p.id) || p;
+  const shown = useMemo(() => listProducts(prods).map((p) => (variantTotals.has(p.id) ? { ...p, stock: variantTotals.get(p.id)!, status: statusForStock(variantTotals.get(p.id)!) } : p)), [prods, variantTotals]);
   const filtered = useMemo(() => filterByStock(filterProducts(shown, q), stockFilter), [shown, q, stockFilter]);
   const count = (s: string) => shown.filter((p) => p.status === s).length;
   // Seller Website: the website details + variants sheet, and saving its plan.
@@ -479,17 +484,17 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                 <span data-testid={`prd-price-${p.id}`} style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--danger)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur}{fmt(p.price)}</span>
                 {/* Quick stock edit — atomic, debounced, race-safe (see bumpStock). */}
                 <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }} title={t.rd_prd_quick_stock}>
-                  <button onClick={() => bumpStock(p.id, -1)} disabled={p.stock === 0} data-testid={`stock-dec-${p.id}`} aria-label={t.rd_prd_stock_minus} style={stepBtnSm(p.stock === 0)}>−</button>
+                  <button onClick={() => bumpStock(p.id, -1)} disabled={p.stock === 0 || variantTotals.has(p.id)} data-testid={`stock-dec-${p.id}`} aria-label={t.rd_prd_stock_minus} style={stepBtnSm(p.stock === 0 || variantTotals.has(p.id))}>−</button>
                   <span data-testid={`stock-val-${p.id}`} style={{ minWidth: 22, textAlign: "center", fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: stockColor(p.stock) }}>{p.stock}</span>
-                  <button onClick={() => bumpStock(p.id, 1)} data-testid={`stock-inc-${p.id}`} aria-label={t.rd_prd_stock_plus} style={stepBtnSm(false)}>+</button>
+                  <button onClick={() => bumpStock(p.id, 1)} disabled={variantTotals.has(p.id)} data-testid={`stock-inc-${p.id}`} aria-label={t.rd_prd_stock_plus} style={stepBtnSm(variantTotals.has(p.id))}>+</button>
                 </div>
               </div>
               <div data-testid={`prd-btns-${p.id}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                <button onClick={() => openEdit(p)} style={{ ...cardBtn, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none" }}>{t.rd_prd_edit_btn}</button>
+                <button onClick={() => openEdit(realOf(p))} style={{ ...cardBtn, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none" }}>{t.rd_prd_edit_btn}</button>
                 <button onClick={() => del(p.id)} style={{ ...cardBtn, color: "var(--danger)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_delete_btn}</button>
                 {inventoryV2 && <button onClick={() => { setRestockFor(p); setRestockQty(""); }} data-testid={`restock-${p.id}`} style={{ ...cardBtn, color: "var(--ok)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_restock}</button>}
                 {inventoryV2 && <button onClick={() => openHistory(p)} data-testid={`history-${p.id}`} style={{ ...cardBtn, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_prd_history}</button>}
-                {website && <button onClick={() => setWebFor(p)} data-testid={`prd-web-${p.id}`} style={{ ...cardBtn, gridColumn: "1 / -1", color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
+                {website && <button onClick={() => setWebFor(realOf(p))} data-testid={`prd-web-${p.id}`} style={{ ...cardBtn, gridColumn: "1 / -1", color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
               </div>
               {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "" })}</div>}
             </div>
@@ -519,13 +524,13 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                 <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(p.price)}</span>
                 {/* Quick stock edit — atomic, debounced, race-safe (see bumpStock). */}
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }} title={t.rd_prd_quick_stock}>
-                  <button onClick={() => bumpStock(p.id, -1)} disabled={p.stock === 0} data-testid={`stock-dec-${p.id}`} aria-label={t.rd_prd_stock_minus} style={stepBtn(p.stock === 0)}>−</button>
+                  <button onClick={() => bumpStock(p.id, -1)} disabled={p.stock === 0 || variantTotals.has(p.id)} data-testid={`stock-dec-${p.id}`} aria-label={t.rd_prd_stock_minus} style={stepBtn(p.stock === 0 || variantTotals.has(p.id))}>−</button>
                   <span data-testid={`stock-val-${p.id}`} style={{ minWidth: 30, textAlign: "center", fontFamily: mono, fontSize: 13, fontWeight: 800, color: stockColor(p.stock) }}>{p.stock}</span>
-                  <button onClick={() => bumpStock(p.id, 1)} data-testid={`stock-inc-${p.id}`} aria-label={t.rd_prd_stock_plus} style={stepBtn(false)}>+</button>
+                  <button onClick={() => bumpStock(p.id, 1)} disabled={variantTotals.has(p.id)} data-testid={`stock-inc-${p.id}`} aria-label={t.rd_prd_stock_plus} style={stepBtn(variantTotals.has(p.id))}>+</button>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                <button onClick={() => openEdit(p)} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_edit_btn}</button>
+                <button onClick={() => openEdit(realOf(p))} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_edit_btn}</button>
                 <button onClick={() => del(p.id)} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_delete_btn}</button>
               </div>
               {inventoryV2 && (
@@ -534,7 +539,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
                   <button onClick={() => openHistory(p)} data-testid={`history-${p.id}`} style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_history}</button>
                 </div>
               )}
-              {website && <button onClick={() => setWebFor(p)} data-testid={`prd-web-${p.id}`} style={{ width: "100%", marginTop: 6, fontSize: 11, fontWeight: 700, color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
+              {website && <button onClick={() => setWebFor(realOf(p))} data-testid={`prd-web-${p.id}`} style={{ width: "100%", marginTop: 6, fontSize: 11, fontWeight: 700, color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 0", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_web_prd_btn}{childrenOf(prods, p.id).length ? ` · ${tpl(t.rd_web_variant_count, { n: String(childrenOf(prods, p.id).length) })}` : ""}</button>}
               {website && parentCodeHint(prods, p) && <div data-testid={`prd-parent-hint-${p.id}`} style={{ fontSize: 10.5, color: "var(--warn)", lineHeight: 1.35, marginTop: 4 }}>{tpl(t.rd_web_parent_hint, { code: p.liveCode || "" })}</div>}
             </div>
           </div>

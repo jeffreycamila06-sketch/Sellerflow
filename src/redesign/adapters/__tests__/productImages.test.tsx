@@ -427,7 +427,7 @@ describe("adapter + wiring", () => {
   });
   it("RedesignApp hands Products the switch, appended last", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(src).toContain(" inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}");
+    expect(src).toContain(" inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} website={sellerWebsiteOn} />}");
   });
 });
 

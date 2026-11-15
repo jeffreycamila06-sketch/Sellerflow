@@ -29,6 +29,7 @@ import { platformRange, platformRangeFor, platformRpcFor, type SalesPlatform, ty
 import { looksLikeFbId } from "../adapters/fbName";
 import { fmt } from "../data";
 import { moneyText } from "../../lib/money";
+import type { WebsiteSales } from "../adapters/websiteSeller";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
@@ -46,7 +47,7 @@ const tickLabel = (d: string, hour: boolean): string => {
 // Caption label when a bar is selected: hour keeps "14:00", day → "9/2".
 const capLabel = (d: string, hour: boolean): string => (hour ? d : tickLabel(d, false));
 
-export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer, platformOptions = [], platformSales }: {
+export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer, platformOptions = [], platformSales, website }: {
   cur?: string; sessionStart?: string; today?: string;
   sales: UseSalesTab;
   seller?: { name?: string; email?: string };
@@ -55,6 +56,9 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   // selector and the screen is exactly as before.
   platformOptions?: SalesPlatform[];
   platformSales?: UsePlatformSales;
+  // Seller Website (sql/163, switch / tester): the website orders of the same days, read once per
+  // range (website_sales). Absent → the screen is exactly as before.
+  website?: (from: string, to: string) => Promise<WebsiteSales | null>;
 }) {
   const t = useT();
   const [range, setRange] = useState<SalesTabRange>("today");
@@ -97,6 +101,18 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   useEffect(() => { const el = trackRef.current; if (el) el.scrollLeft = el.scrollWidth; }, [sales.data, range]);
 
   const d = sales.data;
+  const webKey = website && d && d.start && d.end ? `${d.start}|${d.end}` : "";
+  const [web, setWeb] = useState<{ key: string; data: WebsiteSales | null } | null>(null);
+  const webRef = useRef(website);
+  useEffect(() => { webRef.current = website; });
+  useEffect(() => {
+    if (!webKey) return;
+    let live = true;
+    const [from, to] = webKey.split("|");
+    void webRef.current?.(from, to).then((data) => { if (live) setWeb({ key: webKey, data }); });
+    return () => { live = false; };
+  }, [webKey]);
+  const webNow = web && web.key === webKey ? web.data : null;
   const aov = d && d.orders ? Math.round(d.revenue / d.orders) : 0;
   const hourly = d?.trendUnit === "hour";
   const maxRev = Math.max(1, ...(d?.days.map((x) => x.rev) ?? [1]));
@@ -200,6 +216,15 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
               ))}
             </div>
 
+            {website && webNow && (
+              <div data-testid="sales-website" style={{ ...card, display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 12.5, fontWeight: 800 }}>🛍 {t.rd_wsa_title}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.rd_wsa_note}</span>
+                </span>
+                <span style={{ fontFamily: mono, fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{t.rd_wsa_line.replace("{n}", String(webNow.orders)).replace("{amount}", `${cur}${fmt(webNow.revenue)}`)}</span>
+              </div>
+            )}
             {d.orders === 0 ? (
               <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-empty">{t.rd_sal_empty}</div>
             ) : (
