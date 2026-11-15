@@ -343,6 +343,17 @@ describe("safety brake", () => {
     expect((await s.job.tick()).checked).toBe(5);
     expect(s.job.state().pausedUntil).toBeNull();
   });
+  it("a pause row is NOT an error: only under paused — not in errors, errors per kind or errors by step", () => {
+    const t = totalsOf([
+      { kind: "store", match: null, fail_step: "store.byid", fail_reason: "paused_http" },
+      { kind: "store", match: null, fail_step: "store.byid", fail_reason: "timeout" },
+      { kind: "store", match: true, srv_ms: 900 },
+    ]);
+    expect(t.paused).toBe(1);
+    expect(t.errors).toBe(1);
+    expect(t.store.errors).toBe(1);
+    expect(t.errorsByStep).toEqual({ "store.byid": 1 });
+  });
   it("an answer or a non-refusal error (e.g. no_form, http 200) breaks the row", async () => {
     const plan = [FAIL(503, "http"), FAIL(503, "http"), FAIL(200, "cart_form_missing", "store.cart"), FAIL(503, "http"), FAIL(503, "http"), FAIL(503, "http"), FAIL(503, "http")];
     let n = 0;
@@ -530,7 +541,14 @@ describe("wiring + sql/159 + sql/162", () => {
     for (const r of ["public", "anon", "authenticated"]) expect(sql).toContain(`revoke all on table public.pc711_shadow_days from ${r};`);
     expect(sql).not.toMatch(/security definer/i);
     expect(sql).not.toMatch(/parcel_scans\s+set|insert into public\.parcel_scans|update public\.parcel_scans/i);
+    for (const ix of [
+      "create index if not exists parcel_scans_store_full_at_idx on public.parcel_scans (store_full_at) where store_full_status is not null;",
+      "create index if not exists parcel_scans_phone_check_at_idx on public.parcel_scans (phone_check_at) where phone_check_status is not null;",
+      "create index if not exists parcel_scans_frozen_checked_at_idx on public.parcel_scans (frozen_store_checked_at) where frozen_store_status is not null;",
+    ]) expect(sql).toContain(ix);
+    expect(sql.indexOf("parcel_scans_frozen_checked_at_idx")).toBeLessThan(sql.indexOf("create or replace function public.pc711_shadow_pending"));
     const rb = readFileSync(new URL("../../../../sql/162_pc711_shadow_queue_rollback.sql", import.meta.url), "utf8");
+    for (const ix of ["parcel_scans_store_full_at_idx", "parcel_scans_phone_check_at_idx", "parcel_scans_frozen_checked_at_idx"]) expect(rb).toContain(`drop index if exists public.${ix};`);
     expect(rb).toContain("drop function if exists public.pc711_shadow_pending(timestamptz, integer);");
     expect(rb).toContain("drop table if exists public.pc711_shadow_days;");
   });

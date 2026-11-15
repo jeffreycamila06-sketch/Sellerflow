@@ -9,6 +9,9 @@
 --      customer_name}]} — phone / name only on phone jobs (the phone check needs them); they never go
 --      into pc711_shadow or a log. p_limit 0 = the count only (Admin "Waiting"); at most 50.
 --   2. pc711_shadow_days — one row per Taipei day: the highest Waiting seen (Admin per-day line).
+--   3. Three partial indexes on parcel_scans (store_full_at / phone_check_at / frozen_store_checked_at,
+--      only rows with that verdict) so the 5-second pending read touches only the last 6 h, not the
+--      whole table (measured live without them: 39 ms / ~2,000 buffers a call on 23k rows, +~1,100 a day).
 -- Both: service_role only (RLS on, no policies, revoked from public / anon / authenticated).
 -- ⚠️ Apply BEFORE the Render deploy of the new server/pc711Shadow.js: without this file the shadow
 --   only logs "pending read failed" and checks nothing (it writes nothing, nothing else changes).
@@ -16,6 +19,10 @@
 -- ============================================================================
 begin;
 set local lock_timeout = '2s';
+
+create index if not exists parcel_scans_store_full_at_idx on public.parcel_scans (store_full_at) where store_full_status is not null;
+create index if not exists parcel_scans_phone_check_at_idx on public.parcel_scans (phone_check_at) where phone_check_status is not null;
+create index if not exists parcel_scans_frozen_checked_at_idx on public.parcel_scans (frozen_store_checked_at) where frozen_store_status is not null;
 
 create or replace function public.pc711_shadow_pending(p_since timestamptz, p_limit integer)
 returns jsonb language sql stable set search_path = public, pg_temp as $$

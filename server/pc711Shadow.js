@@ -376,8 +376,10 @@ export function createPc711Shadow({ db, check, pc711, readSetting, now = Date.no
 }
 
 // ── Admin reads (behind requireAuth + requireAdmin; service role) ─────────────
-/** A server error row (no real answer). A frozen ext_unknown row is match NULL too, but NOT an error. */
-const isErrorRow = (x) => (x.match === null || x.match === undefined) && Boolean(x.fail_reason);
+/** The safety brake's pause row (fail_reason paused_http): counted only under "paused", never as an error. */
+const isPauseRow = (x) => x.fail_reason === "paused_http";
+/** A server error row (no real answer). A frozen ext_unknown row and a pause row are match NULL too, but NOT errors. */
+const isErrorRow = (x) => (x.match === null || x.match === undefined) && Boolean(x.fail_reason) && !isPauseRow(x);
 /** Totals of a set of rows: compared (match true+false), match % over those, errors per kind,
  *  server avg ms (real answers only), errors by step. Frozen ext_unknown rows are not counted. */
 export function totalsOf(rows) {
@@ -394,7 +396,7 @@ export function totalsOf(rows) {
   for (const x of rows) if (isErrorRow(x)) { const k = x.fail_step || "-"; byStep[k] = (byStep[k] || 0) + 1; }
   return {
     n: rows.length, compared: real.length, matchPct: real.length ? Math.round((yes * 100) / real.length) : null,
-    errors: rows.filter(isErrorRow).length, paused: rows.filter((x) => x.fail_reason === "paused_http").length,
+    errors: rows.filter(isErrorRow).length, paused: rows.filter(isPauseRow).length,
     store: part("store"), phone: part("phone"), frozen: part("frozen"),
     avgMs: ms.length ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null, errorsByStep: byStep,
   };
@@ -430,7 +432,7 @@ export async function shadowSummary(db, readSetting, nowMs = Date.now(), state =
     const start = d.startMs - i * DAY_MS;
     const t = totalsOf(rows.filter((x) => { const a = Date.parse(x.at); return a >= start && a < start + DAY_MS; }));
     const max = Math.max(Number(stored[key]) || 0, Number(mem[key]) || 0, i === 0 && Number.isFinite(waiting) ? waiting : 0);
-    return { day: key, checked: t.n - t.paused, matchPct: t.matchPct, errors: t.errors - t.paused, maxWaiting: max };
+    return { day: key, checked: t.n - t.paused, matchPct: t.matchPct, errors: t.errors, maxWaiting: max };
   });
   const pausedUntil = state && state.pausedUntil && state.pausedUntil > nowMs ? new Date(state.pausedUntil).toISOString() : null;
   return { enabled, today, waiting, pausedUntil, days };
