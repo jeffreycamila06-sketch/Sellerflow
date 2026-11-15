@@ -17,6 +17,7 @@ drop policy if exists website_receipts_insert on storage.objects;
 drop policy if exists website_receipts_read_seller on storage.objects;
 delete from storage.buckets where id = 'website-receipts';
 drop function if exists public.website_auto_cancel();
+drop function if exists public.website_receipts_to_purge(integer);
 drop function if exists public.website_order_action(uuid, text);
 drop function if exists public.website_order_receipt(text, text);
 drop function if exists public.website_receipt_seller_ok(text);

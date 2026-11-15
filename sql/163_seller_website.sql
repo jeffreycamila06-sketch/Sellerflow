@@ -603,6 +603,23 @@ drop policy if exists website_receipts_read_seller on storage.objects;
 create policy website_receipts_read_seller on storage.objects for select to authenticated
   using (bucket_id = 'website-receipts' and public.website_receipt_seller_ok(name));
 
+-- Receipt pictures to delete (the Render job server/websiteReceiptPurge.js, daily, through the Storage
+-- API — Supabase blocks deleting storage rows by SQL): pictures whose order no longer exists, or whose
+-- order ended (shipped / cancelled) more than 90 days ago. Service role only. Oldest first.
+create or replace function public.website_receipts_to_purge(p_limit integer)
+returns setof text language sql stable security definer set search_path = public, pg_temp as $$
+  select so.name from storage.objects so
+   where so.bucket_id = 'website-receipts'
+     and not exists (select 1 from public.website_orders w
+                      where w.token = split_part(so.name, '/', 1)
+                        and not ((w.status = 'shipped' and w.shipped_at < now() - interval '90 days')
+                              or (w.status = 'cancelled' and w.cancelled_at < now() - interval '90 days')))
+   order by so.created_at
+   limit least(greatest(coalesce(p_limit, 100), 1), 1000);
+$$;
+revoke all on function public.website_receipts_to_purge(integer) from public, anon, authenticated;
+grant execute on function public.website_receipts_to_purge(integer) to service_role;
+
 -- PUBLIC: after the upload, the buyer attaches it → payment_sent (seller gets the new-order badge again).
 create or replace function public.website_order_receipt(p_token text, p_path text)
 returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$

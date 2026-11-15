@@ -24,7 +24,7 @@ const OTHER = "33333333-3333-3333-3333-333333333333";
 const MASTER = "44444444-4444-4444-4444-444444444444";
 
 const STUB = `
-create role anon; create role authenticated;
+create role anon; create role authenticated; create role service_role;
 create schema auth; grant usage on schema auth to anon, authenticated;
 create table auth.users(id uuid primary key, email text);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
@@ -49,7 +49,7 @@ create function cron.alter_job(job_id int, command text) returns void language s
 insert into cron.job(jobname, schedule, command) values ('purge-stale-products', '0 17 * * *', 'DELETE FROM public.products WHERE stock = 0');
 create schema storage; grant usage on schema storage to anon, authenticated;
 create table storage.buckets(id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-create table storage.objects(id bigserial primary key, bucket_id text, name text);
+create table storage.objects(id bigserial primary key, bucket_id text, name text, created_at timestamptz not null default now());
 alter table storage.objects enable row level security;
 grant select, insert on storage.objects to anon, authenticated;
 grant usage on sequence storage.objects_id_seq to anon, authenticated;
@@ -262,6 +262,23 @@ const base = { name: "Maria", phone: "+886 912-345-678", delivery: "s711", store
   ok((await q(`select stock from public.products where local_id = 11`)).rows[0].stock === s11 + 4, "auto-cancel returns stock");
   ok((await q(`select public.website_auto_cancel() n`)).rows[0].n === 0 && (await q(`select stock from public.products where local_id = 11`)).rows[0].stock === s11 + 4, "stock returned only once");
   ok((await q(`select jobname from cron.job where jobname in ('website-auto-cancel','purge-old-website-orders')`)).rows.length === 2, "cron jobs scheduled");
+  // receipt pictures to delete: order gone, or ended > 90 days ago — never a live / recent order's
+  {
+    const T = (c) => c.repeat(64);
+    await q(`insert into public.website_orders (user_id, order_no, token, status, buyer_name, buyer_phone, delivery, store_id, payment, items, subtotal, ship_fee, total, shipped_at, cancelled_at)
+             values ($1, 9001, $2, 'shipped', 'A', '0911000000', 's711', '123456', 'bank', '[]', 0, 0, 0, now() - interval '100 days', null),
+                    ($1, 9002, $3, 'shipped', 'B', '0911000000', 's711', '123456', 'bank', '[]', 0, 0, 0, now() - interval '10 days', null),
+                    ($1, 9003, $4, 'cancelled', 'C', '0911000000', 's711', '123456', 'bank', '[]', 0, 0, 0, null, now() - interval '95 days'),
+                    ($1, 9004, $5, 'awaiting_payment', 'D', '0911000000', 's711', '123456', 'bank', '[]', 0, 0, 0, null, null)`, [SELLER, T("a"), T("b"), T("c"), T("d")]);
+    for (const c of ["a", "b", "c", "d", "e"]) await q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${T(c)}/r1700000000001.jpg`]);
+    await q(`insert into storage.objects(bucket_id, name) values ('product-images', $1)`, [`${T("e")}/r1700000000001.jpg`]);
+    const gone = (await q(`select public.website_receipts_to_purge(100) n`)).rows.map((r) => r.n[0]).sort().join("");
+    ok(gone === "ace", "receipt purge list: ended > 90 days (a, c) + order no longer exists (e); recent / waiting kept; other buckets never");
+    ok(String(await err(as(SELLER, "authenticated", () => q(`select public.website_receipts_to_purge(10)`))) ).length > 4, "a seller can't call the purge list");
+    ok((await as(null, "service_role", () => q(`select count(*)::int n from public.website_receipts_to_purge(10)`))).rows[0].n === 3, "the server (service role) can");
+    await q(`delete from storage.objects where name like 'aaaa%' or name like 'bbbb%' or name like 'cccc%' or name like 'dddd%' or name like 'eeee%'`);
+    await q(`delete from public.website_orders where order_no between 9001 and 9004`);
+  }
   // parent + variants: live and website together never sell more than the variants' total
   await q(`insert into public.products(user_id, local_id, name, price, stock, live_code) values ($1, 60, 'Cap', 90, 5, 'K01')`, [SELLER]);
   await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, parent_local_id, variant) values ($1, 61, 'Cap', 90, 1, 'K01-RED', 60, '{"values":["Red"]}')`, [SELLER]);

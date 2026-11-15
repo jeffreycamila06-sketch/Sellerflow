@@ -36,6 +36,7 @@ import { createIgRuntime, replayIgStatus, igConfig } from "./server/igLive.js";
 import { IG_PLATFORM } from "./server/igComment.js";
 import { createIgLock, createIgAccessHandler } from "./server/igAccess.js";
 import { createFbReceipt, startReceiptImageCleanup } from "./server/fbReceipt.js";
+import { startWebsiteReceiptPurge, makeWebsiteReceiptStore } from "./server/websiteReceiptPurge.js";
 import { opaqueErrors } from "./server/errorCodes.js";
 import { finalErrorHandler } from "./server/finalErrorHandler.js";
 import { registerHealthRoutes } from "./server/healthRoutes.js";
@@ -2967,6 +2968,13 @@ if (serviceSb) {
     healthUserId: PARCEL_HEALTH_USER_ID,
     emit: (userId, payload) => io.to(sellerRoom(userId)).emit("parcel-tracking:job-done", payload),
   }).start();
+}
+
+// Seller Website (sql/163) — receipt pictures of ended / deleted orders: a daily cleanup, its own
+// file and timer (server/websiteReceiptPurge.js). Before sql/163 is applied it only logs an error.
+if (serviceSb) {
+  try { startWebsiteReceiptPurge({ store: makeWebsiteReceiptStore(serviceSb), log: (line) => console.log(line) }); }
+  catch { console.log("[WEBSITE] receipt purge not started"); }
 }
 
 // ── Memory observability (5-min heartbeat + threshold warning) ────────────────
