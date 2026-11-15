@@ -41,6 +41,7 @@ import { confirmEmailMatches } from "../adapters/adminDelete";
 import { loadConnectedAccounts, loadSellerAccounts, accountsTotal, extraAccounts, isLowerPlan, removalSummary, fmtAcctDate, PLATFORM_LABEL, type ConnectedAccount, type SellerAccount } from "../adapters/adminAccounts";
 import DowngradeDialog from "../components/DowngradeDialog";
 import Pc711Panel from "../components/Pc711Panel";
+import PrinterTestersPanel from "../components/PrinterTestersPanel";
 import { usePc711Status, pc711NeedsAttention } from "../adapters/pc711Login";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
@@ -50,7 +51,7 @@ const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 
 
 export type AdminPanelKind =
   | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee" | "parcelsw"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711" | "printertesters";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -71,6 +72,7 @@ const cic = {
   pulse: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2.5-6 4 13 2.5-7H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   shipfee: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /><circle cx="17.5" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /></svg>,
   parcelsw: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="6" stroke="currentColor" strokeWidth="1.6" /><circle cx="15" cy="12" r="3" fill="currentColor" /></svg>,
+  printertesters: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M7 9V4h10v5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><rect x="4" y="9" width="16" height="7" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 14h8v6H8z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>,
   pc711: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.6" /><path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="15" r="1.6" fill="currentColor" /></svg>,
 };
 
@@ -173,6 +175,7 @@ export default function Admin({ onBack, onOpenPanel, counts, live = false, userB
           <Ctrl icon={cic.shipfee} label={t.rd_adm_ctrl_shipfee} onClick={() => onOpenPanel("shipfee")} />
           <Ctrl icon={cic.parcelsw} label={t.rd_adm_ctrl_parcelsw} onClick={() => onOpenPanel("parcelsw")} />
           <Ctrl icon={cic.pc711} label={t.rd_pc711_tile} onClick={() => onOpenPanel("pc711")} badge={pc711NeedsAttention(pc711.status)} testId="admin-ctrl-pc711" />
+          <Ctrl icon={cic.printertesters} label={t.rd_prt_tile} onClick={() => onOpenPanel("printertesters")} testId="admin-ctrl-printertesters" />
           <Ctrl icon={cic.audit} label={t.rd_adm_ctrl_audit} onClick={() => onOpenPanel("audit")} />
           <Ctrl icon={cic.helpchat} label={t.rd_adm_ctrl_helpchat} onClick={() => onOpenPanel("helpchat")} />
         </div>
@@ -187,7 +190,7 @@ const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   parcelmon: t.rd_adm_pt_parcel, shipfee: t.rd_adm_pt_shipfee, parcelsw: t.rd_adm_pt_parcelsw, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
-  pulse: t.rd_pulse_title, helpchat: t.rd_adm_ctrl_helpchat, pc711: t.rd_pc711_title,
+  pulse: t.rd_pulse_title, helpchat: t.rd_adm_ctrl_helpchat, pc711: t.rd_pc711_title, printertesters: t.rd_prt_tile,
 } as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const miniStat: CSSProperties = { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
@@ -1470,6 +1473,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           )}
           {panel === "parcelsw" && <ParcelSwitchPanel />}
           {panel === "pc711" && <Pc711Panel />}
+          {panel === "printertesters" && <PrinterTestersPanel />}
           {panel === "helpchat" && <AdminHelpChat />}
 
           {panel === "broadcast" && (
