@@ -27,6 +27,11 @@ drop function if exists public.website_place_order(text, jsonb, text);
 drop function if exists public.website_return_stock(uuid);
 drop function if exists public.website_phone(text);
 drop table if exists public.website_blocked_buyers;
+do $$ begin
+  if exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'website_orders') then
+    alter publication supabase_realtime drop table public.website_orders;
+  end if;
+end $$;
 drop table if exists public.website_orders;
 drop function if exists public.website_og(text);
 drop function if exists public.website_shop(text);

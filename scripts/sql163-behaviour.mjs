@@ -60,6 +60,7 @@ insert into public.seller_profiles(auth_user_id, email, phone, plan, plan_expiry
   ('${FREE}', 'free@example.com', '0900000000', 'free', null, 'PH'),
   ('${OTHER}', 'other@example.com', '0911111111', 'basic', now() + interval '30 days', 'TW'),
   ('${MASTER}', 'master@example.com', '0922222222', 'master', now() + interval '30 days', 'TW');
+create publication supabase_realtime;
 create function public.my_feature_access() returns jsonb language sql as $$ select '{}'::jsonb $$;
 -- the LIVE decrement_product_stock (definition read from production 2026-11-15)
 create function public.decrement_product_stock(p_local_id bigint) returns integer language plpgsql security definer set search_path to 'public' as $f$
@@ -234,6 +235,7 @@ const base = { name: "Maria", phone: "+886 912-345-678", delivery: "s711", store
   ok(!JSON.stringify(view).includes("0912345678"), "order link: no full phone");
   ok((await as(null, "anon", () => q(`select public.website_order('W-0001') r`))).rows[0].r.found === false, "W number alone opens nothing");
   ok((await err(as(null, "anon", () => q(`select * from public.website_orders`)))) !== null, "anon can't read the orders table");
+  ok((await q(`select count(*)::int n from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'website_orders'`)).rows[0].n === 1, "website_orders is in the realtime publication (own rows through RLS)");
   ok((await as(OTHER, "authenticated", () => q(`select count(*)::int n from public.website_orders`))).rows[0].n === 0, "RLS: another seller sees no orders");
   // receipts
   const good = `${r1.token}/r1700000000000.jpg`;
@@ -336,6 +338,7 @@ await db.exec(src("163_seller_website_rollback.sql"));
   const after = (await q(`select * from public.products where local_id = 1`)).rows[0];
   ok(after.name === "Old shirt" && after.live_code === "A01", "rollback: old product kept");
   ok((await q(`select to_regclass('public.seller_websites') a, to_regclass('public.website_orders') b`)).rows[0].a === null, "rollback: tables gone");
+  ok((await q(`select count(*)::int n from pg_publication_tables where pubname = 'supabase_realtime'`)).rows[0].n === 0, "rollback: realtime publication back to how it was");
   ok((await q(`select count(*)::int n from pg_proc where proname like 'website_%'`)).rows[0].n === 0, "rollback: functions gone");
   ok((await q(`select count(*)::int n from cron.job where jobname like '%website%'`)).rows[0].n === 0, "rollback: cron jobs gone");
   ok(!(await q(`select command from cron.job where jobname = 'purge-stale-products'`)).rows[0].command.includes("parent_local_id"), "rollback: purge restored");

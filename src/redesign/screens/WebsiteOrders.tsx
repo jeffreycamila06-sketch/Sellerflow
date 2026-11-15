@@ -3,7 +3,7 @@
 // picture (signed link, "Check your bank app first"), and one action at a time:
 // Money received / Not received / Mark as shipped / Cancel (stock goes back) / Block buyer.
 // Every step shows on the buyer's order link. Opening an order clears its "New" badge.
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
 import { productImageUrl } from "../adapters/productImages";
@@ -13,8 +13,9 @@ import { shopUrl } from "../../website/route";
 
 const FILTERS: OrderFilter[] = ["new", "check", "unpaid", "ship", "done", "cancelled", "all"];
 
-export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToast, api = realOrdersApi }: {
+export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToast, api = realOrdersApi, liveTick = 0 }: {
   cur?: string; topTabs?: ReactNode; onNewCount?: (n: number) => void; onToast: (m: string) => void; api?: OrdersApi;
+  liveTick?: number; // bumped by Realtime when an own website order is added / changed → re-read the list
 }) {
   const t = useT() as unknown as Record<string, string>;
   const [orders, setOrders] = useState<WebsiteOrder[] | null | "loading">("loading");
@@ -33,6 +34,19 @@ export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToas
     void fetchAll().then((r) => { if (live) apply(r); });
     return () => { live = false; };
   }, [fetchAll, apply]);
+  // A live change: re-read quietly — the chosen filter and an open order stay as they are.
+  const seenTick = useRef(liveTick);
+  useEffect(() => {
+    if (liveTick === seenTick.current) return;
+    seenTick.current = liveTick;
+    let live = true;
+    void fetchAll().then(([o, b, s]) => {
+      if (!live || !o) return;
+      setOrders(o); setBlocked(b); setSub(s);
+      onNewCount?.(o.filter((x) => matchesFilter(x, "new")).length);
+    });
+    return () => { live = false; };
+  }, [liveTick, fetchAll, onNewCount]);
   const list = useMemo(() => (Array.isArray(orders) ? orders : []), [orders]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f, list.filter((o) => matchesFilter(o, f)).length])) as Record<OrderFilter, number>, [list]);
   const shown = list.filter((o) => matchesFilter(o, filter));

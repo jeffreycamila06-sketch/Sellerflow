@@ -379,6 +379,16 @@ grant select on table public.website_orders to authenticated;         -- the sel
 drop policy if exists wo_select_own on public.website_orders;
 create policy wo_select_own on public.website_orders for select to authenticated using (user_id = (select auth.uid()));
 
+-- Live new orders (audit 5): the seller app listens to its own rows through Supabase Realtime.
+-- Realtime applies the table's RLS (own rows only, policy wo_select_own); buyers (anon) can't read the
+-- table at all, so they get nothing.
+do $$ begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'website_orders') then
+    alter publication supabase_realtime add table public.website_orders;
+  end if;
+end $$;
+
 create table if not exists public.website_blocked_buyers (
   user_id    uuid not null references auth.users(id) on delete cascade,
   phone      text not null check (phone ~ '^[0-9]{8,15}$'),

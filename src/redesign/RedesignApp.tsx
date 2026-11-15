@@ -126,6 +126,7 @@ import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { useApprovedPrinters } from "./adapters/printerTesters";
 import { sellerWebsiteVisible } from "./adapters/sellerWebsiteGate";
 import { websiteNewOrdersCount, loadWebsiteSales } from "./adapters/websiteSeller";
+import { useWebsiteOrdersLive } from "./adapters/websiteOrdersLive";
 // Seller Website screens load only when opened (the switch is off for almost every seller).
 const WebsiteEditor = lazy(() => import("./screens/WebsiteEditor"));
 const WebsitePayShip = lazy(() => import("./screens/WebsitePayShip"));
@@ -1101,6 +1102,13 @@ export default function RedesignApp() {
     });
     return () => { live = false; };
   }, [authed, sellerWebsiteOn]);
+  // …and while the app is open, a new / updated website order refreshes the badge and the Website tab
+  // by itself (Realtime, own rows; unsubscribed on sign-out or when the feature is off).
+  const [webLiveTick, setWebLiveTick] = useState(0);
+  useWebsiteOrdersLive(authed && sellerWebsiteOn, authUserId, () => {
+    setWebLiveTick((n) => n + 1);
+    void websiteNewOrdersCount().then(setWebNew);
+  });
   useEffect(() => {
     setNativePrintFailureHandler(({ code, message, via }) => {
       // Phone Bluetooth OFF (order sticker / reprint / Test Print) → ONE simple
@@ -2845,7 +2853,7 @@ export default function RedesignApp() {
             sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(postSales ? { posts: postSales } : {})} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} />} />}
           {screen === "orders" && ordersTab === "website" && sellerWebsiteOn && (
-            <Suspense fallback={null}><WebsiteOrders cur={cur} onNewCount={setWebNew} onToast={(msg) => setToast({ msg, kind: "ok" })} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={{ label: tApp.rd_wor_tab, count: webNew }} />} /></Suspense>
+            <Suspense fallback={null}><WebsiteOrders cur={cur} liveTick={webLiveTick} onNewCount={setWebNew} onToast={(msg) => setToast({ msg, kind: "ok" })} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={{ label: tApp.rd_wor_tab, count: webNew }} />} /></Suspense>
           )}
           {screen === "website" && sellerWebsiteOn && (
             <Suspense fallback={null}><WebsiteEditor onBack={() => goBack()} onPayShip={() => setScreen("websitepay")} onUpgrade={ios ? undefined : () => setScreen("subscription")} ios={ios}
