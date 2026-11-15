@@ -367,6 +367,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | Y41BT (FLASH LABEL; "Y41BT-0FC4_LE") | Flash | WHITELIST prefix (printerModels.ts:79-87) | generic, `tspl`, DENSITY 15 / SPEED 4 / bold (printerModels.ts:58) | P3 |
 | XP-420B | Xprinter | WHITELIST exact prefix | generic, `tspl`, 15/4/bold (printerModels.ts:59) | P3 |
 | Niimbot B1- / B21- / B203- / B3S- | Niimbot | name prefixes (printerModels.ts:31, 33; Java:145; Swift:1660) → `brand:"niimbot"` | transport `niimbot`, model generic | P6 (iOS 17.2+) |
+| Niimbot B1 Pro- ("B1 Pro-I616030055", added 2026-11-15) | Niimbot | WEB-ONLY name prefix `B1 Pro-` (printerModels.ts, before `B1-`; NOT in Java/Swift yet — the phone only tags rows, the web lists it and saves transport `niimbot`; `printerNames.contract.test.ts` `WEB_ONLY_PREFIXES`) | transport `niimbot`, model generic | P6 — exactly like the B1: same driver, 50 mm limit (`printerLimitFor` "B1" row already matches "B1 PRO-…"), same sizes, byte-equal image (`niimbotB1Pro.test.tsx`) |
 | XP-N160II (receipt) | Xprinter | IP entry (no scan) | LAN host/port | P8 (and P7 on iOS if the format is sticker) |
 | "Show all" unknown device (admin only) | — | any named device | generic `tspl` (PrinterSettings.tsx:207) | P3 |
 | Name-list only (not whitelisted, so hidden for sellers): XP-, Xprinter, Printer, PRT, PT-, MPT, GP-, Phomemo M02/M110/M120/M200/M220/M221/Q30/T02, HPRT, Munbyn, Gprinter, Zjiang | — | `PRINTER_NAME_PREFIXES` (printerModels.ts:24-35) + `LIKELY_PRINTER_SERVICES` (Java:118; Swift:1634) | — | — |
@@ -377,7 +378,7 @@ Columns: **1S** = the one-sticker engine (Branch 1: P1 / P3-5 / P6 / P9 / previe
 | AIMO/Phomemo D520BT | 110 mm (4×6 in roll) | 108 mm (SDK: 864-dot head) | maker/retail sheets, SDK DefaultPrinters.json |
 | Xprinter XP-420B | 116 mm | 108 mm | retail spec sheets |
 | Flash Y41BT | 110 mm | 108 mm | ⚠ no maker sheet found — treated as a 4-inch head (UNVERIFIED) |
-| Niimbot B1 / B21 | 50 mm | 48 mm | retail spec sheets |
+| Niimbot B1 / B1 Pro / B21 | 50 mm | 48 mm | retail spec sheets (B1 Pro = the B1 row by name prefix; printed like the B1) |
 | Niimbot B203 | 50 mm | 48 mm | ⚠ not found — same family as B21 (UNVERIFIED) |
 | Niimbot B3S | 75 mm | 72 mm | B3S_P manual |
 
