@@ -37,7 +37,7 @@ async function fetchAll(): Promise<Loaded> {
 
 // "Flip 180°" + "Shift left (mm)" for an approved printer (sql/161): upside-down print / right edge cut.
 // Shift 0–8, step 0.5; both saved with one Save.
-export const validShiftText = (v: string): number | null => {
+const validShiftText = (v: string): number | null => {
   const s = v.trim().replace(",", ".");
   if (!/^\d+(\.\d)?$/.test(s)) return null;
   const n = Number(s);
