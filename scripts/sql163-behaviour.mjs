@@ -244,6 +244,12 @@ const base = { name: "Maria", phone: "+886 912-345-678", delivery: "s711", store
   ok((await as(null, "anon", () => q(`select count(*)::int n from storage.objects`))).rows[0].n === 0, "anon can't list receipts");
   ok((await as(SELLER, "authenticated", () => q(`select count(*)::int n from storage.objects where bucket_id = 'website-receipts'`))).rows[0].n === 1, "the seller can read it");
   ok((await as(OTHER, "authenticated", () => q(`select count(*)::int n from storage.objects where bucket_id = 'website-receipts'`))).rows[0].n === 0, "another seller can't");
+  // at most 5 files per order folder, counted in storage (not only the attach counter)
+  for (let i = 1; i <= 4; i++) await as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${r1.token}/r170000000000${i}.jpg`]));
+  ok((await q(`select receipt_count from public.website_orders where token = $1`, [r1.token])).rows[0].receipt_count === 0, "(nothing attached yet — the counter is still 0)");
+  ok((await err(as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${r1.token}/r1700000000009.jpg`])))) !== null, "6th file under the same order is refused even though nothing was attached");
+  ok((await err(as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('website-receipts', $1)`, [`${"x" + r1.token.slice(1)}/r1700000000009.jpg`])))) !== null, "(a made-up token folder is refused too)");
+  await q(`delete from storage.objects where name like $1`, [`${r1.token}/r170000000000_.jpg`]);
   await as(null, "anon", () => q(`select public.website_order_receipt($1, $2)`, [r1.token, good]));
   ok((await q(`select status from public.website_orders where token = $1`, [r1.token])).rows[0].status === "payment_sent", "receipt → payment_sent");
   ok(String(await err(as(null, "anon", () => q(`select public.website_order_receipt($1, $2)`, [r1.token, `${r2.token}/r1700000000000.jpg`])))).includes("bad_receipt"), "a receipt can't point at another order");

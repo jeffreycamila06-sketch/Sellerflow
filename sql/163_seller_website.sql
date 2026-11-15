@@ -566,12 +566,24 @@ values ('website-receipts', 'website-receipts', false, 3145728, array['image/jpe
 on conflict (id) do update
   set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
+-- At most 5 pictures per order: the files ALREADY stored under "<token>/" are counted (a buyer who
+-- uploads without attaching can't go past 5), plus the attach counter. The count reads
+-- storage.objects as the function owner, which must bypass RLS (checked below — on Supabase the
+-- postgres role does; otherwise this file stops here and nothing is applied).
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = current_user and (rolbypassrls or rolsuper)) then
+    raise exception 'sql/163: the role applying this file must bypass RLS (the receipt count reads storage.objects)';
+  end if;
+end $$;
 create or replace function public.website_receipt_upload_ok(p_name text)
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  with t as (select split_part(coalesce(p_name, ''), '/', 1) as tok)
   select coalesce(p_name, '') ~ '^[A-Za-z0-9_-]{32,128}/r[0-9]{10,16}\.(jpg|jpeg|png|webp)$'
-     and exists (select 1 from public.website_orders o
-                  where o.token = split_part(p_name, '/', 1)
-                    and o.status in ('awaiting_payment','payment_sent') and o.receipt_count < 5);
+     and exists (select 1 from public.website_orders o, t
+                  where o.token = t.tok
+                    and o.status in ('awaiting_payment','payment_sent') and o.receipt_count < 5)
+     and (select count(*) from storage.objects so, t
+           where so.bucket_id = 'website-receipts' and left(so.name, length(t.tok) + 1) = t.tok || '/') < 5;
 $$;
 revoke all on function public.website_receipt_upload_ok(text) from public;
 grant execute on function public.website_receipt_upload_ok(text) to anon, authenticated;
