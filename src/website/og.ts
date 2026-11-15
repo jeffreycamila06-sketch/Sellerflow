@@ -18,8 +18,13 @@ export function ogTags(og: ShopOg | null, pageUrl: string, imageBase: string): s
   return tags.filter(Boolean).join("");
 }
 /** shop.html + tags (+ the shop name as the page title). */
+// Function replacements: a "$&", "$'", "$`" or "$1" in a shop name / description is inserted as
+// plain text — a replacement STRING would treat it as a pattern and could rewrite the page.
 export function injectOg(html: string, og: ShopOg | null, pageUrl: string, imageBase: string): string {
-  const withTags = html.replace("<!--sfl-og-->", ogTags(og, pageUrl, imageBase));
-  return og && og.online && og.title ? withTags.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(og.title)}</title>`) : withTags;
+  const tags = ogTags(og, pageUrl, imageBase);
+  const withTags = html.replace("<!--sfl-og-->", () => tags);
+  if (!(og && og.online && og.title)) return withTags;
+  const title = `<title>${escapeHtml(og.title)}</title>`;
+  return withTags.replace(/<title>[^<]*<\/title>/, () => title);
 }
 export const validSub = (s: unknown) => typeof s === "string" && /^[a-z0-9]([a-z0-9-]{1,28}[a-z0-9])$/.test(s.toLowerCase());

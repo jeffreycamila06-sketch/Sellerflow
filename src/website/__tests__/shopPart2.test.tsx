@@ -189,3 +189,23 @@ describe("vercel.json subdomain rewrite (audit 8)", () => {
     expect(listed).toEqual([...NOT_SHOPS].sort());
   });
 });
+
+describe("link preview — '$' in a shop name (audit 9)", () => {
+  it("is inserted as plain text; the page is not rewritten", () => {
+    const page = "<html><head><!--sfl-og--><title>Shop</title></head><body>APP</body></html>";
+    for (const name of ["A$&B", "Price $' cut", "$`$`", "Shop $1 $$"]) {
+      const html = injectOg(page, { online: true, title: name, description: `desc ${name}` }, "https://x/s/a", "https://img");
+      expect(html).toContain(`<title>${escapeHtml(name)}</title>`);
+      expect(html).toContain(`content="${escapeHtml(name)}"`);
+      expect(html).toContain(`content="desc ${escapeHtml(name)}"`);
+      expect(html.match(/<body>APP<\/body>/g)).toHaveLength(1);
+      expect(html.match(/<title>/g)).toHaveLength(1);
+      expect(html).not.toContain("<!--sfl-og-->");
+    }
+  });
+  it("api/shop.ts only injects through injectOg (no own string replace of shop data)", () => {
+    const api = readFileSync("api/shop.ts", "utf8");
+    expect(api).toContain("injectOg(");
+    expect(api.match(/\.replace\(/g) || []).toHaveLength(0);
+  });
+});
