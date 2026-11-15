@@ -64,3 +64,29 @@ describe("sql/160", () => {
     expect(f).not.toContain("('printer_tester')");
   });
 });
+
+describe("sql/161 — Shift left + Flip 180°", () => {
+  const s161 = readFileSync(resolve(__dirname, "../../../../sql/161_approved_printer_shift.sql"), "utf8");
+  const r161 = readFileSync(resolve(__dirname, "../../../../sql/161_approved_printer_shift_rollback.sql"), "utf8");
+  it("columns: shift_mm numeric(3,1) default 0 (CHECK 0–8), flip boolean default false", () => {
+    expect(s161).toContain("add column if not exists shift_mm numeric(3,1) not null default 0");
+    expect(s161).toContain("add column if not exists flip boolean not null default false");
+    expect(s161).toContain("check (shift_mm between 0 and 8)");
+  });
+  it("layout RPC: admin only, range checked, search_path set, anon revoked, authenticated granted", () => {
+    const f = s161.slice(s161.indexOf("create or replace function public.admin_set_approved_printer_layout(p_id uuid, p_shift numeric, p_flip boolean)"));
+    expect(f).toMatch(/security definer set search_path = public, pg_temp/);
+    expect(f.split("begin")[1].trim().startsWith("if not public.is_admin() then raise exception 'forbidden'")).toBe(true);
+    expect(f).toContain("if p_shift is null or p_shift < 0 or p_shift > 8 then raise exception 'shift_out_of_range'");
+    expect(s161).toContain("revoke all on function public.admin_set_approved_printer_layout(uuid, numeric, boolean) from public, anon;");
+    expect(s161).toContain("grant execute on function public.admin_set_approved_printer_layout(uuid, numeric, boolean) to authenticated;");
+    expect(s161).not.toMatch(/grant (insert|update|delete)[^;]*approved_printers/);
+  });
+  it("admin list returns shift_mm + flip; rollback drops them and restores sql/160's list", () => {
+    expect(s161).toContain("'shift_mm', a.shift_mm, 'flip', a.flip");
+    expect(r161).toContain("drop column if exists shift_mm");
+    expect(r161).toContain("drop column if exists flip");
+    expect(r161).toContain("drop function if exists public.admin_set_approved_printer_layout(uuid, numeric, boolean)");
+    expect(r161).not.toContain("'shift_mm'");
+  });
+});

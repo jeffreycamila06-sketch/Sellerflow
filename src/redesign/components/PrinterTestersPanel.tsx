@@ -2,12 +2,13 @@
 //  • Testers — add / remove an email (feature key printer_tester in feature_access_emails);
 //  • Test reports — newest first; a Clean report offers "Add to printer list";
 //  • Approved — the approved_printers rows; Remove = active false (Add back = active true).
+// Every tab tap re-reads the lists (a report sent while the panel is open shows without closing it).
 // Every call is an admin-only RPC (is_admin() inside). The approved list reaches sellers' scan on
 // their next app open (one read per session).
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   adminAddTester, adminApprovePrinter, adminListApproved, adminListReports, adminListTesters, adminPhotoUrl,
-  adminRemoveTester, adminSetApprovedActive, defaultPrefix, LANG_LABEL,
+  adminRemoveTester, adminSetApprovedActive, adminSetApprovedLayout, defaultPrefix, parseShiftMm, LANG_LABEL,
   type ApprovedRow, type ReportRow, type TesterRow,
 } from "../adapters/printerTesters";
 import { useT, tpl } from "../i18n";
@@ -34,6 +35,32 @@ async function fetchAll(): Promise<Loaded> {
   return { ok: a.ok && b.ok && c.ok, testers: a.data || [], reports: b.data || [], approved: c.data || [] };
 }
 
+// "Flip 180°" + "Shift left (mm)" for an approved printer (sql/161): upside-down print / right edge cut.
+// Shift 0–8, step 0.5; both saved with one Save.
+const validShiftText = (v: string): number | null => {
+  const s = v.trim().replace(",", ".");
+  if (!/^\d+(\.\d)?$/.test(s)) return null;
+  const n = Number(s);
+  return n >= 0 && n <= 8 ? n : null;
+};
+function LayoutBox({ saved, savedFlip, busy, onSave }: { saved: number; savedFlip: boolean; busy: boolean; onSave: (mm: number, flip: boolean) => Promise<boolean> }) {
+  const t = useT();
+  const [v, setV] = useState(String(saved));
+  const [flip, setFlip] = useState(savedFlip);
+  const n = validShiftText(v);
+  const changed = n !== null && (n !== saved || flip !== savedFlip);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+      <label style={{ ...small, flex: "1 1 120px", display: "flex", flexDirection: "column", gap: 3 }}>{t.rd_prt_shift}
+        <input data-testid="pt-shift" type="number" inputMode="decimal" min={0} max={8} step={0.5} value={v} onChange={(e) => setV(e.target.value)} style={input} />
+        {n === null && <span data-testid="pt-shift-bad" style={{ color: "var(--danger)", fontWeight: 700 }}>{t.rd_prt_shift_bad}</span>}
+      </label>
+      <button data-testid="pt-flip" type="button" aria-pressed={flip} onClick={() => setFlip((f) => !f)} style={{ ...btn, minHeight: 44, border: flip ? "2px solid var(--accent)" : btn.border, background: flip ? "var(--accent-softer)" : btn.background }}>{t.rd_prt_flip}: {flip ? t.rd_prt_on : t.rd_prt_off}</button>
+      <button data-testid="pt-shift-save" disabled={busy || !changed} onClick={() => { if (n !== null) void onSave(n, flip); }} style={{ ...primary, minHeight: 44, opacity: busy || !changed ? 0.5 : 1 }}>{t.rd_prt_save}</button>
+    </div>
+  );
+}
+
 export default function PrinterTestersPanel() {
   const t = useT();
   const [tab, setTab] = useState<Tab>("testers");
@@ -56,9 +83,9 @@ export default function PrinterTestersPanel() {
   return (
     <div data-testid="pt-panel">
       <div style={{ display: "flex", gap: 6, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: 4, marginBottom: 12 }}>
-        <button data-testid="pt-tab-testers" style={tabBtn(tab === "testers")} onClick={() => setTab("testers")}>{t.rd_prt_tab_testers}</button>
-        <button data-testid="pt-tab-reports" style={tabBtn(tab === "reports")} onClick={() => setTab("reports")}>{t.rd_prt_tab_reports}</button>
-        <button data-testid="pt-tab-approved" style={tabBtn(tab === "approved")} onClick={() => setTab("approved")}>{t.rd_prt_tab_approved}</button>
+        <button data-testid="pt-tab-testers" style={tabBtn(tab === "testers")} onClick={() => { setTab("testers"); void load(); }}>{t.rd_prt_tab_testers}</button>
+        <button data-testid="pt-tab-reports" style={tabBtn(tab === "reports")} onClick={() => { setTab("reports"); void load(); }}>{t.rd_prt_tab_reports}</button>
+        <button data-testid="pt-tab-approved" style={tabBtn(tab === "approved")} onClick={() => { setTab("approved"); void load(); }}>{t.rd_prt_tab_approved}</button>
       </div>
       {err && <div data-testid="pt-error" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", marginBottom: 10 }}>{t.rd_prt_load_failed}</div>}
 
@@ -116,12 +143,15 @@ export default function PrinterTestersPanel() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {approved && approved.length === 0 && <div style={small}>{t.rd_prt_none}</div>}
           {(approved || []).map((a) => (
-            <div key={a.id} data-testid="pt-approved" style={{ ...row, opacity: a.active ? 1 : 0.55 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{a.brand} {a.model} · {LANG_LABEL[a.lang] || a.lang}</div>
-                <div style={small}>{a.prefix}… · {day(a.approved_at)}{a.active ? "" : ` · ${t.rd_prt_removed}`}</div>
+            <div key={a.id} data-testid="pt-approved" style={{ ...row, opacity: a.active ? 1 : 0.55, flexDirection: "column", alignItems: "stretch" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{a.brand} {a.model} · {LANG_LABEL[a.lang] || a.lang}</div>
+                  <div style={small}>{a.prefix}… · {day(a.approved_at)}{a.active ? "" : ` · ${t.rd_prt_removed}`}</div>
+                </div>
+                <button data-testid="pt-approved-toggle" disabled={busy} onClick={() => void run(() => adminSetApprovedActive(a.id, !a.active))} style={btn}>{a.active ? t.rd_prt_remove : t.rd_prt_add_back}</button>
               </div>
-              <button data-testid="pt-approved-toggle" disabled={busy} onClick={() => void run(() => adminSetApprovedActive(a.id, !a.active))} style={btn}>{a.active ? t.rd_prt_remove : t.rd_prt_add_back}</button>
+              <LayoutBox key={`${a.id}:${String(a.shift_mm ?? 0)}:${a.flip === true}`} saved={parseShiftMm(a.shift_mm)} savedFlip={a.flip === true} busy={busy} onSave={(mm, flip) => run(() => adminSetApprovedLayout(a.id, mm, flip))} />
             </div>
           ))}
         </div>

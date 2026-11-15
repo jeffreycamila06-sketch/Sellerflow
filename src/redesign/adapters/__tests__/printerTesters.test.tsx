@@ -169,7 +169,7 @@ describe("C. approved printers", () => {
   const ROW: now.ApprovedPrinter = { prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos" };
   it("parse: inactive / bad rows dropped, brand defaults to Other", () => {
     expect(parseApprovedRows([{ prefix: "LabelThing-", brand: "", model: "LabelThing", lang: "escpos", active: true }, { prefix: "Gone-", brand: "X", model: "Gone", lang: "tspl", active: false }, { prefix: "Z", lang: "tspl" }, { prefix: "Bad-", lang: "zpl" }]))
-      .toEqual([{ prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos" }]);
+      .toEqual([{ prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos", shiftMm: 0, flip: false }]);
     expect(parseApprovedRows(null)).toEqual([]);
   });
   it("an approved row appears for a seller (brand pill) and is saved with its approved language", async () => {
@@ -313,12 +313,21 @@ describe("B. printer testers", () => {
 });
 
 describe("helpers", () => {
-  it("defaultPrefix: up to the first '-', else before the first digit run", () => {
+  it("defaultPrefix: with a '-' = up to and including the first '-' (≥ 4 chars before it, else the whole name); else before the first digit if ≥ 4 chars; else the whole name", () => {
+    expect(defaultPrefix("CT221B-D4F8")).toBe("CT221B-");
+    expect(defaultPrefix("B1 Pro-I616030055")).toBe("B1 Pro-");
     expect(defaultPrefix("LabelThing-9")).toBe("LabelThing-");
-    expect(defaultPrefix("Q2-ABC123")).toBe("Q2-");
+    expect(defaultPrefix("Y41BT-0FC4_LE")).toBe("Y41BT-");
+    expect(defaultPrefix("XP-365B")).toBe("XP-365B"); // 1–3 letters before the "-" = a brand → whole name
+    expect(defaultPrefix("GP-1324D")).toBe("GP-1324D");
+    expect(defaultPrefix("MPT-II")).toBe("MPT-II");
+    expect(defaultPrefix("Q2-ABC123")).toBe("Q2-ABC123");
     expect(defaultPrefix("PRINTER123456")).toBe("PRINTER");
-    expect(defaultPrefix("Zebra")).toBe("Zebra");
+    expect(defaultPrefix("ABCD1")).toBe("ABCD");
+    expect(defaultPrefix("ABC123")).toBe("ABC123"); // 3 chars before the digit: too short → whole name
+    expect(defaultPrefix("Y41BT")).toBe("Y41BT");
     expect(defaultPrefix("7ABC")).toBe("7ABC");
+    expect(defaultPrefix("Zebra")).toBe("Zebra");
   });
   it("bleFactsOf: only printer facts (no buyer data)", () => {
     expect(bleFactsOf(dev("LabelThing-9", { likely: true, signal: -60 }))).toEqual({ transport: "ble", likely: true, model: "generic", brand: null, paired: null, signal: -60, services: null, write_char: null, notify_char: null });

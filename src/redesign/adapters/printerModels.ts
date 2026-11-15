@@ -119,7 +119,15 @@ export function knownPrinterInfo(p: Pick<BluetoothPrinterDevice, "name" | "model
 // The built-in list above ALWAYS wins: a name that any built-in rule knows (D520BT, a WHITELIST
 // prefix, a BUILT_IN model, a Niimbot name) never reads an approved row. Empty list (not loaded,
 // read failed, nothing approved) = exactly the built-in behaviour.
-export interface ApprovedPrinter { prefix: string; brand: string; model: string; lang: PrinterLang }
+// shiftMm / flip (sql/161): move the sticker left on a printer that cuts its right edge / turn it 180°
+export interface ApprovedPrinter { prefix: string; brand: string; model: string; lang: PrinterLang; shiftMm?: number; flip?: boolean }
+// The layout fix for a SAVED printer of this name: an ACTIVE approved row's flip + shift (dots, 8 per mm);
+// no row → no flip, no shift. Built-in names never read an approved row → always none for them.
+export function approvedLayoutFor(name: string | undefined | null): { flip: boolean; shiftDots: number } {
+  const a = approvedPrinterFor(name);
+  const mm = a?.shiftMm ?? 0;
+  return { flip: a?.flip === true, shiftDots: Number.isFinite(mm) && mm > 0 && mm <= 8 ? Math.round(mm * 8) : 0 };
+}
 let approvedList: readonly ApprovedPrinter[] = [];
 const LANGS: readonly PrinterLang[] = ["tspl", "escpos", "cpcl"];
 export function setApprovedPrinters(rows: readonly ApprovedPrinter[] | null): void {
