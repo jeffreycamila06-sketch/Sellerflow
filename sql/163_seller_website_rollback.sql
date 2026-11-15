@@ -6,6 +6,41 @@
 begin;
 set local lock_timeout = '2s';
 
+-- ── PART 4 / 3 / 2 (reverse order) ──────────────────────────────────────────
+do $$ begin
+  if exists (select 1 from cron.job where jobname = 'website-auto-cancel') then perform cron.unschedule('website-auto-cancel'); end if;
+  if exists (select 1 from cron.job where jobname = 'purge-old-website-orders') then perform cron.unschedule('purge-old-website-orders'); end if;
+end $$;
+drop function if exists public.website_sales(timestamptz, timestamptz);
+drop function if exists public.website_new_orders_count();
+drop policy if exists website_receipts_insert on storage.objects;
+drop policy if exists website_receipts_read_seller on storage.objects;
+delete from storage.buckets where id = 'website-receipts';
+drop function if exists public.website_auto_cancel();
+drop function if exists public.website_order_action(uuid, text);
+drop function if exists public.website_order_receipt(text, text);
+drop function if exists public.website_receipt_seller_ok(text);
+drop function if exists public.website_receipt_upload_ok(text);
+drop function if exists public.website_order(text);
+drop function if exists public.website_place_order(text, jsonb, text);
+drop function if exists public.website_return_stock(uuid);
+drop function if exists public.website_phone(text);
+drop table if exists public.website_blocked_buyers;
+drop table if exists public.website_orders;
+drop function if exists public.website_og(text);
+drop function if exists public.website_shop(text);
+drop function if exists public.website_checkout_public(jsonb);
+drop function if exists public.website_bool(text, boolean);
+drop function if exists public.website_num(text, numeric);
+drop function if exists public.website_products_of(uuid);
+drop function if exists public.website_public_fields(jsonb);
+drop function if exists public.website_subdomain_free(text);
+drop function if exists public.website_publish();
+drop function if exists public.website_switch_for(uuid);
+drop function if exists public.website_plan(uuid);
+drop table if exists public.seller_websites;
+drop function if exists public.website_subdomain_ok(text);
+
 -- ── PART 1 ───────────────────────────────────────────────────────────────────
 do $$ begin
   if exists (select 1 from cron.job where jobname = 'purge-stale-products') then

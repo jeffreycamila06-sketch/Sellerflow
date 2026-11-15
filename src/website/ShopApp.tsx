@@ -14,12 +14,13 @@ import Home from "./pages/Home";
 import Product from "./pages/Product";
 import Cart from "./pages/Cart";
 import { CheckoutFlow } from "./checkoutPages";
+import type { OrderApi } from "./orderApi";
 
-export interface ShopAppProps { host?: string; path?: string; preview?: Shop; nowMs?: number }
+export interface ShopAppProps { host?: string; path?: string; preview?: Shop; nowMs?: number; orderApi?: OrderApi; startRoute?: ShopPage }
 
-export default function ShopApp({ host, path, preview, nowMs }: ShopAppProps) {
+export default function ShopApp({ host, path, preview, nowMs, orderApi, startRoute }: ShopAppProps) {
   const start = useMemo(() => parseShopLocation(host ?? (typeof location !== "undefined" ? location.host : ""), path ?? (typeof location !== "undefined" ? location.pathname : "/")), [host, path]);
-  const [route, setRoute] = useState<ShopPage>(preview ? { page: "home" } : start.route);
+  const [route, setRoute] = useState<ShopPage>(startRoute ?? (preview ? { page: "home" } : start.route));
   const [result, setResult] = useState<ShopResult | null | "loading">(preview ?? (start.sub ? "loading" : { online: false }));
   const [picked, setPicked] = useState<string | null>(() => (preview ? null : readPickedLang()));
   useEffect(() => {
@@ -45,12 +46,13 @@ export default function ShopApp({ host, path, preview, nowMs }: ShopAppProps) {
   if (result === "loading") return <div style={{ minHeight: "100vh", background: "#F5F5F7" }} />;
   return (
     <TProvider lang={lang}>
-      {shop ? <ShopBody shop={shop} route={route} go={go} lang={lang} onLang={(l) => { setPicked(l); if (!preview) savePickedLang(l); }} preview={!!preview} nowMs={nowMs} /> : <ClosedPage />}
+      {shop ? <ShopBody shop={shop} route={route} go={go} lang={lang} onLang={(l) => { setPicked(l); if (!preview) savePickedLang(l); }} preview={!!preview} nowMs={nowMs} orderApi={orderApi}
+        linkFor={(r) => (preview || typeof location === "undefined" ? "" : `${location.origin}${pagePath(start.base, r)}`)} /> : <ClosedPage />}
     </TProvider>
   );
 }
 
-function ShopBody({ shop, route, go, lang, onLang, preview, nowMs }: { shop: Shop; route: ShopPage; go: (r: ShopPage) => void; lang: string; onLang: (l: string) => void; preview: boolean; nowMs?: number }) {
+function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, linkFor }: { shop: Shop; route: ShopPage; go: (r: ShopPage) => void; lang: string; onLang: (l: string) => void; preview: boolean; nowMs?: number; orderApi?: OrderApi; linkFor: (r: ShopPage) => string }) {
   const t = useT();
   const cur = currencyFor(shop);
   const [lines, setLines] = useState<CartLine[]>(() => (preview ? [] : loadCart(shop.sub)));
@@ -78,7 +80,7 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs }: { shop: Sho
     onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); say(t.rd_shop_added); }}
     onBuy={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); go({ page: "cart" }); }} />;
   else if (route.page === "cart") body = <Cart shop={shop} cur={cur} infos={infos} lines={lines} onQty={(i, q, s) => update(setQty(lines, i, q, s))} onRemove={(i) => update(removeLine(lines, i))} onCheckout={() => go({ page: "checkout" })} onShop={home} />;
-  else if (route.page === "checkout" || route.page === "store" || route.page === "sent" || route.page === "order") body = <CheckoutFlow shop={shop} cur={cur} route={route} go={go} infos={infos} preview={preview} onPlaced={() => update([])} />;
+  else if (route.page === "checkout" || route.page === "store" || route.page === "sent" || route.page === "order") body = <CheckoutFlow shop={shop} cur={cur} route={route} go={go} infos={infos} preview={preview} onPlaced={() => update([])} api={orderApi} linkFor={linkFor} />;
   else body = <div className="sfl-wrap" style={{ padding: 30, textAlign: "center" }}><p>{t.rd_shop_not_found}</p><button type="button" className="sfl-btn sfl-btn-main" style={{ padding: "0 18px" }} onClick={home}>{t.rd_shop_keep_shopping}</button></div>;
 
   const showNav = route.page === "home" || route.page === "cart";

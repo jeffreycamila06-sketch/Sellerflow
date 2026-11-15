@@ -17,6 +17,13 @@
 --   variant on a child:    {"values":["M","Pink"],"ownPrice":true|false,"photo":0..7|null}
 --   The purge-stale-products cron (sql/13) now skips variant rows (a sold-out size must not vanish
 --   from its product); the rollback restores the original command.
+-- PART 2 — the shop: seller_websites (draft / published), the plan rule, public website_shop / website_og.
+-- PART 3 — checkout and orders: website_orders (own table — never public.orders / live_session_orders),
+--   website_place_order (one call: server prices, stock under a row lock, W number, token, rate limits,
+--   blocked buyers), website_order (by token), private bucket website-receipts + website_order_receipt,
+--   website_order_action (seller), auto-cancel (pg_cron, every 10 min) + 90-day purge of ended orders.
+-- PART 4 — seller side: website_sales, website_new_orders_count.
+-- Proof: scripts/sql163-behaviour.mjs (PGlite).
 -- ============================================================================
 begin;
 set local lock_timeout = '2s';
@@ -208,21 +215,31 @@ returns jsonb language sql stable security definer set search_path = public, pg_
 $$;
 revoke all on function public.website_products_of(uuid) from public, anon, authenticated;
 
+-- junk-safe readers for seller settings (a typo in settings must never break the shop)
+create or replace function public.website_num(p text, p_default numeric)
+returns numeric language sql immutable set search_path = public, pg_temp as $$
+  select case when btrim(coalesce(p, '')) ~ '^[0-9]{1,9}(\.[0-9]{1,2})?$' then btrim(p)::numeric else p_default end;
+$$;
+create or replace function public.website_bool(p text, p_default boolean)
+returns boolean language sql immutable set search_path = public, pg_temp as $$
+  select case lower(btrim(coalesce(p, ''))) when 'true' then true when 'false' then false else p_default end;
+$$;
+
 -- The checkout options a buyer may see (from settings): delivery fees + free-over, payment methods
 -- (bank details / QR picture are meant for buyers), COD only when on. Nothing else from settings.
 create or replace function public.website_checkout_public(st jsonb)
 returns jsonb language sql immutable set search_path = public, pg_temp as $$
   select jsonb_strip_nulls(jsonb_build_object(
     'ship', jsonb_build_object(
-      's711', case when coalesce((st#>>'{ship,s711,enabled}')::boolean, true) then jsonb_build_object('fee', greatest(0, coalesce((st#>>'{ship,s711,fee}')::numeric, 60))) end,
-      'fm',   case when coalesce((st#>>'{ship,fm,enabled}')::boolean, true)   then jsonb_build_object('fee', greatest(0, coalesce((st#>>'{ship,fm,fee}')::numeric, 60))) end,
-      'home', case when coalesce((st#>>'{ship,home,enabled}')::boolean, false) then jsonb_build_object('fee', greatest(0, coalesce((st#>>'{ship,home,fee}')::numeric, 120))) end),
-    'freeOver', case when (st->>'freeOver') ~ '^[0-9]+(\.[0-9]+)?$' and (st->>'freeOver')::numeric > 0 then (st->>'freeOver')::numeric end,
-    'bank', case when coalesce((st#>>'{bank,enabled}')::boolean, false) then jsonb_build_object(
+      's711', case when public.website_bool(st#>>'{ship,s711,enabled}', true)  then jsonb_build_object('fee', public.website_num(st#>>'{ship,s711,fee}', 60)) end,
+      'fm',   case when public.website_bool(st#>>'{ship,fm,enabled}', true)    then jsonb_build_object('fee', public.website_num(st#>>'{ship,fm,fee}', 60)) end,
+      'home', case when public.website_bool(st#>>'{ship,home,enabled}', false) then jsonb_build_object('fee', public.website_num(st#>>'{ship,home,fee}', 120)) end),
+    'freeOver', nullif(public.website_num(st->>'freeOver', 0), 0),
+    'bank', case when public.website_bool(st#>>'{bank,enabled}', false) then jsonb_build_object(
               'bankName', left(st#>>'{bank,bankName}', 60), 'accountName', left(st#>>'{bank,accountName}', 60), 'accountNumber', left(st#>>'{bank,accountNumber}', 40)) end,
-    'qr', case when coalesce((st#>>'{qr,enabled}')::boolean, false) and (st#>>'{qr,path}') is not null then jsonb_build_object('path', st#>>'{qr,path}', 'label', left(st#>>'{qr,label}', 60)) end,
-    'cod', coalesce((st#>>'{cod,enabled}')::boolean, false),
-    'autoCancelHours', least(168, greatest(1, coalesce((st->>'autoCancelHours')::int, 24)))));
+    'qr', case when public.website_bool(st#>>'{qr,enabled}', false) and coalesce(st#>>'{qr,path}', '') <> '' then jsonb_build_object('path', st#>>'{qr,path}', 'label', left(st#>>'{qr,label}', 60)) end,
+    'cod', public.website_bool(st#>>'{cod,enabled}', false),
+    'autoCancelHours', least(168, greatest(1, public.website_num(st->>'autoCancelHours', 24)::int))));
 $$;
 
 -- PUBLIC: the shop by subdomain. Offline (no website / not published / plan / switch) → {online:false}
@@ -268,5 +285,382 @@ end;
 $$;
 revoke all on function public.website_og(text) from public;
 grant execute on function public.website_og(text) to anon, authenticated;
+
+
+-- ── PART 3 — checkout and orders ────────────────────────────────────────────
+-- Website orders live in their OWN table. They are NEVER written to public.orders (the billing
+-- ledger + free-tier cap trigger) nor to live_session_orders (buyer numbering). Stock is the SAME
+-- products.stock that live / Auto Mode use, taken under a row lock (same arithmetic as
+-- decrement_product_stock: stock - qty, last_ordered_at, updated_at) → a website order and a live
+-- order can never both take the last piece.
+-- Status: awaiting_payment (bank / QR, no receipt yet) → payment_sent (receipt uploaded) → paid
+--         (seller: money received) → shipped.   COD: confirmed → shipped.   Any not shipped → cancelled
+--         (seller, or auto after N hours unpaid; stock is returned once — stock_returned).
+--         "Not received" puts payment_sent back to awaiting_payment with payment_issue = true.
+-- The buyer reads an order ONLY through website_order(token) — token = 64 random hex characters
+-- (never the W number). Buyer data (name / phone / store / address) is visible to the seller of
+-- that order and to whoever holds the token. Nothing here logs it.
+create table if not exists public.website_orders (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references auth.users(id) on delete cascade,
+  order_no        integer not null,
+  token           text not null unique check (token ~ '^[A-Za-z0-9_-]{32,128}$'),
+  status          text not null check (status in ('awaiting_payment','payment_sent','paid','confirmed','shipped','cancelled')),
+  payment_issue   boolean not null default false,
+  buyer_name      text not null check (char_length(buyer_name) between 1 and 40),
+  buyer_phone     text not null check (buyer_phone ~ '^[0-9]{8,15}$'),
+  buyer_contact   text null check (buyer_contact is null or char_length(buyer_contact) <= 60),
+  delivery        text not null check (delivery in ('s711','fm','home')),
+  store_id        text null check (store_id is null or store_id ~ '^[0-9]{6}$'),
+  store_name      text null check (store_name is null or char_length(store_name) <= 40),
+  address         text null check (address is null or char_length(address) <= 200),
+  payment         text not null check (payment in ('bank','qr','cod')),
+  items           jsonb not null check (jsonb_typeof(items) = 'array' and pg_column_size(items) <= 30000),
+  subtotal        numeric not null,
+  ship_fee        numeric not null,
+  total           numeric not null,
+  note            text null check (note is null or char_length(note) <= 200),
+  device_hash     text null,
+  receipt_path    text null,
+  receipt_count   integer not null default 0,
+  receipt_at      timestamptz null,
+  auto_cancel_at  timestamptz null,
+  paid_at         timestamptz null,
+  shipped_at      timestamptz null,
+  cancelled_at    timestamptz null,
+  cancel_reason   text null check (cancel_reason is null or cancel_reason in ('seller','auto')),
+  stock_returned  boolean not null default false,
+  seen_at         timestamptz null,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  unique (user_id, order_no)
+);
+create index if not exists website_orders_user_created_idx on public.website_orders (user_id, created_at desc);
+create index if not exists website_orders_phone_idx on public.website_orders (user_id, buyer_phone, created_at desc);
+create index if not exists website_orders_device_idx on public.website_orders (device_hash, created_at desc) where device_hash is not null;
+create index if not exists website_orders_autocancel_idx on public.website_orders (auto_cancel_at) where status = 'awaiting_payment';
+
+alter table public.website_orders enable row level security;
+revoke all on table public.website_orders from public, anon, authenticated;
+grant select on table public.website_orders to authenticated;         -- the seller's own rows (RLS); writes only through the RPCs
+drop policy if exists wo_select_own on public.website_orders;
+create policy wo_select_own on public.website_orders for select to authenticated using (user_id = (select auth.uid()));
+
+create table if not exists public.website_blocked_buyers (
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  phone      text not null check (phone ~ '^[0-9]{8,15}$'),
+  created_at timestamptz not null default now(),
+  primary key (user_id, phone)
+);
+alter table public.website_blocked_buyers enable row level security;
+revoke all on table public.website_blocked_buyers from public, anon, authenticated;
+grant select on table public.website_blocked_buyers to authenticated;
+drop policy if exists wbb_select_own on public.website_blocked_buyers;
+create policy wbb_select_own on public.website_blocked_buyers for select to authenticated using (user_id = (select auth.uid()));
+
+-- phone → digits; +886 / 886 9xxxxxxxx → 09xxxxxxxx
+create or replace function public.website_phone(p text)
+returns text language sql immutable set search_path = public, pg_temp as $$
+  select case when d ~ '^8869[0-9]{8}$' then '0' || substr(d, 4) else d end
+    from (select regexp_replace(coalesce(p, ''), '[^0-9]', '', 'g') as d) x;
+$$;
+
+-- give back the stock of a cancelled order (once). Variant rows / products deleted since → skipped.
+create or replace function public.website_return_stock(p_id uuid)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare o public.website_orders; it jsonb;
+begin
+  select * into o from public.website_orders where id = p_id for update;
+  if not found or o.stock_returned then return; end if;
+  for it in select * from jsonb_array_elements(o.items) loop
+    update public.products set stock = stock + (it->>'qty')::int, updated_at = now()
+     where user_id = o.user_id and local_id = coalesce(nullif(it->>'vid', '')::bigint, (it->>'pid')::bigint);
+  end loop;
+  update public.website_orders set stock_returned = true, updated_at = now() where id = p_id;
+end;
+$$;
+revoke all on function public.website_return_stock(uuid) from public, anon, authenticated;
+
+-- PUBLIC: place an order. ONE call does everything server-side: shop online, buyer fields, delivery
+-- + payment allowed, blocked buyer, rate limits, prices from the database (never from the browser),
+-- stock taken atomically, W number, token. Any failure → an exception, nothing is written.
+-- p_order = {name, phone, contact?, delivery, storeId?, storeName?, address?, payment, note?,
+--            items:[{pid, vid|null, qty}]}
+create or replace function public.website_place_order(p_sub text, p_order jsonb, p_device text default null)
+returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  w public.seller_websites; plan text; ck jsonb;
+  v_name text; v_phone text; v_contact text; v_delivery text; v_store_id text; v_store_name text;
+  v_address text; v_pay text; v_note text; v_dev text;
+  ln record; par public.products; prod public.products; has_children boolean; label text;
+  v_items jsonb := '[]'::jsonb; v_sub numeric := 0; v_fee numeric; v_total numeric; v_hours int;
+  v_seq int; v_token text; v_status text;
+begin
+  if p_order is null or jsonb_typeof(p_order) <> 'object' then raise exception 'bad_order' using errcode = '22023'; end if;
+  select * into w from public.seller_websites where lower(subdomain) = lower(btrim(coalesce(p_sub, ''))) for update;
+  if not found or w.published is null then raise exception 'shop_closed' using errcode = '22023'; end if;
+  plan := coalesce(public.website_plan(w.user_id), 'free');
+  if plan = 'free' or not public.website_switch_for(w.user_id) then raise exception 'shop_closed' using errcode = '22023'; end if;
+  ck := public.website_checkout_public(w.settings);
+
+  v_name := btrim(coalesce(p_order->>'name', ''));
+  if char_length(v_name) not between 1 and 40 then raise exception 'bad_name' using errcode = '22023'; end if;
+  v_phone := public.website_phone(p_order->>'phone');
+  if v_phone !~ '^[0-9]{8,15}$' then raise exception 'bad_phone' using errcode = '22023'; end if;
+  v_contact := nullif(left(btrim(coalesce(p_order->>'contact', '')), 60), '');
+  v_delivery := p_order->>'delivery';
+  if v_delivery not in ('s711','fm','home') or (ck->'ship'->v_delivery) is null then raise exception 'bad_delivery' using errcode = '22023'; end if;
+  if v_delivery in ('s711','fm') then
+    v_store_id := btrim(coalesce(p_order->>'storeId', ''));
+    if v_store_id !~ '^[0-9]{6}$' then raise exception 'bad_store' using errcode = '22023'; end if;
+    v_store_name := nullif(left(btrim(coalesce(p_order->>'storeName', '')), 40), '');
+  else
+    v_address := btrim(coalesce(p_order->>'address', ''));
+    if char_length(v_address) not between 5 and 200 then raise exception 'bad_address' using errcode = '22023'; end if;
+  end if;
+  v_pay := p_order->>'payment';
+  if not ((v_pay = 'bank' and ck ? 'bank') or (v_pay = 'qr' and ck ? 'qr')
+          or (v_pay = 'cod' and coalesce((ck->>'cod')::boolean, false) and v_delivery <> 'home')) then
+    raise exception 'bad_payment' using errcode = '22023';
+  end if;
+  v_note := nullif(left(btrim(coalesce(p_order->>'note', '')), 200), '');
+  v_dev := case when coalesce(p_device, '') ~ '^[A-Za-z0-9-]{8,64}$' then md5('sflw:' || p_device) end;
+
+  if exists (select 1 from public.website_blocked_buyers b where b.user_id = w.user_id and b.phone = v_phone) then
+    raise exception 'blocked' using errcode = '42501';
+  end if;
+  -- rate limits (placed orders): 5 / hour per phone in this shop, 10 / hour per device (all shops),
+  -- 300 / hour per shop
+  if (select count(*) from public.website_orders o where o.user_id = w.user_id and o.buyer_phone = v_phone and o.created_at > now() - interval '1 hour') >= 5
+     or (v_dev is not null and (select count(*) from public.website_orders o where o.device_hash = v_dev and o.created_at > now() - interval '1 hour') >= 10)
+     or (select count(*) from public.website_orders o where o.user_id = w.user_id and o.created_at > now() - interval '1 hour') >= 300 then
+    raise exception 'too_many' using errcode = '54000';
+  end if;
+
+  if jsonb_typeof(p_order->'items') <> 'array' or jsonb_array_length(p_order->'items') not between 1 and 30
+     or exists (select 1 from jsonb_array_elements(p_order->'items') x
+                 where coalesce(x->>'pid', '') !~ '^[0-9]{1,18}$'
+                    or (x ? 'vid' and x->'vid' <> 'null'::jsonb and coalesce(x->>'vid', '') !~ '^[0-9]{1,18}$')
+                    or coalesce(x->>'qty', '') !~ '^[0-9]{1,2}$') then
+    raise exception 'bad_items' using errcode = '22023';
+  end if;
+
+  -- lines merged, locked in a fixed order (no deadlock with another order of the same products)
+  for ln in
+    select (x->>'pid')::bigint as pid, nullif(x->>'vid', '')::bigint as vid, sum((x->>'qty')::int)::int as qty
+      from jsonb_array_elements(p_order->'items') x
+     group by 1, 2
+     order by coalesce(nullif(x->>'vid', '')::bigint, (x->>'pid')::bigint)
+  loop
+    if ln.qty < 1 or ln.qty > 99 then raise exception 'bad_items' using errcode = '22023'; end if;
+    select * into par from public.products
+     where user_id = w.user_id and local_id = ln.pid and parent_local_id is null and coalesce(show_on_website, true);
+    if not found then raise exception 'item_gone' using errcode = '22023', hint = jsonb_build_object('pid', ln.pid, 'vid', ln.vid)::text; end if;
+    has_children := exists (select 1 from public.products c where c.user_id = w.user_id and c.parent_local_id = ln.pid);
+    if ln.vid is null then
+      if has_children then raise exception 'pick_option' using errcode = '22023', hint = jsonb_build_object('pid', ln.pid)::text; end if;
+      select * into prod from public.products where user_id = w.user_id and local_id = ln.pid for update;
+      label := null;
+    else
+      select * into prod from public.products where user_id = w.user_id and local_id = ln.vid and parent_local_id = ln.pid for update;
+      if not found then raise exception 'item_gone' using errcode = '22023', hint = jsonb_build_object('pid', ln.pid, 'vid', ln.vid)::text; end if;
+      select string_agg(v, ' · ') into label from jsonb_array_elements_text(coalesce(prod.variant->'values', '[]'::jsonb)) v;
+    end if;
+    if prod.stock < ln.qty then
+      raise exception 'out_of_stock' using errcode = '22023', hint = jsonb_build_object('pid', ln.pid, 'vid', ln.vid, 'left', greatest(prod.stock, 0))::text;
+    end if;
+    update public.products set stock = stock - ln.qty, last_ordered_at = now(), updated_at = now()
+     where user_id = w.user_id and local_id = prod.local_id;
+    v_items := v_items || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+      'pid', ln.pid, 'vid', ln.vid, 'name', par.name, 'label', label, 'code', nullif(btrim(prod.live_code), ''),
+      'price', prod.price, 'qty', ln.qty, 'photo', par.image_path)));
+    v_sub := v_sub + prod.price * ln.qty;
+  end loop;
+
+  v_fee := coalesce((ck->'ship'->v_delivery->>'fee')::numeric, 0);
+  if (ck->>'freeOver') is not null and v_sub >= (ck->>'freeOver')::numeric then v_fee := 0; end if;
+  v_total := v_sub + v_fee;
+  v_hours := coalesce((ck->>'autoCancelHours')::int, 24);
+  v_status := case when v_pay = 'cod' then 'confirmed' else 'awaiting_payment' end;
+
+  update public.seller_websites set order_seq = order_seq + 1 where user_id = w.user_id returning order_seq into v_seq;
+  v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+  insert into public.website_orders (user_id, order_no, token, status, buyer_name, buyer_phone, buyer_contact, delivery,
+      store_id, store_name, address, payment, items, subtotal, ship_fee, total, note, device_hash, auto_cancel_at)
+  values (w.user_id, v_seq, v_token, v_status, v_name, v_phone, v_contact, v_delivery,
+      v_store_id, v_store_name, v_address, v_pay, v_items, v_sub, v_fee, v_total, v_note, v_dev,
+      case when v_pay = 'cod' then null else now() + make_interval(hours => v_hours) end);
+  return jsonb_build_object('ok', true, 'orderNo', 'W-' || lpad(v_seq::text, 4, '0'), 'token', v_token, 'total', v_total);
+end;
+$$;
+revoke all on function public.website_place_order(text, jsonb, text) from public;
+grant execute on function public.website_place_order(text, jsonb, text) to anon, authenticated;
+
+-- PUBLIC: one order by its token (the buyer's order link). Unknown / malformed token → {found:false}.
+-- Works even when the shop has gone offline (the buyer still needs the status of an order placed).
+create or replace function public.website_order(p_token text)
+returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare o public.website_orders; w public.seller_websites; ck jsonb; d jsonb;
+begin
+  if coalesce(p_token, '') !~ '^[A-Za-z0-9_-]{32,128}$' then return jsonb_build_object('found', false); end if;
+  select * into o from public.website_orders where token = p_token;
+  if not found then return jsonb_build_object('found', false); end if;
+  select * into w from public.seller_websites where user_id = o.user_id;
+  ck := public.website_checkout_public(coalesce(w.settings, '{}'::jsonb));
+  d := public.website_public_fields(coalesce(w.published, w.draft, '{}'::jsonb));
+  return jsonb_strip_nulls(jsonb_build_object(
+    'found', true, 'orderNo', 'W-' || lpad(o.order_no::text, 4, '0'), 'status', o.status, 'paymentIssue', o.payment_issue,
+    'items', o.items, 'subtotal', o.subtotal, 'shipFee', o.ship_fee, 'total', o.total,
+    'delivery', o.delivery, 'storeId', o.store_id, 'storeName', o.store_name, 'address', o.address,
+    'payment', o.payment, 'buyerName', o.buyer_name, 'phoneTail', right(o.buyer_phone, 3), 'note', o.note,
+    'receipt', o.receipt_at is not null, 'receiptAt', o.receipt_at, 'createdAt', o.created_at,
+    'autoCancelAt', case when o.status = 'awaiting_payment' then o.auto_cancel_at end,
+    'paidAt', o.paid_at, 'shippedAt', o.shipped_at, 'cancelledAt', o.cancelled_at, 'cancelReason', o.cancel_reason,
+    'shop', jsonb_build_object('sub', lower(w.subdomain), 'name', d->>'name', 'logo', d->>'logo', 'color', d->>'color', 'chats', d->'chats', 'currency', d->>'currency'),
+    'country', (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id),
+    'pay', case when o.status in ('awaiting_payment','payment_sent') then
+             case o.payment when 'bank' then jsonb_build_object('bank', ck->'bank') when 'qr' then jsonb_build_object('qr', ck->'qr') end end));
+end;
+$$;
+revoke all on function public.website_order(text) from public;
+grant execute on function public.website_order(text) to anon, authenticated;
+
+-- Receipt pictures: PRIVATE bucket, images only, 3 MB. A buyer (anon) may INSERT only
+-- "<token>/r<digits>.<jpg|jpeg|png|webp>" for an order that is waiting for payment (max 5 files).
+-- Nobody can list the bucket. The seller of the order may read it (signed URLs from the app).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('website-receipts', 'website-receipts', false, 3145728, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+create or replace function public.website_receipt_upload_ok(p_name text)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(p_name, '') ~ '^[A-Za-z0-9_-]{32,128}/r[0-9]{10,16}\.(jpg|jpeg|png|webp)$'
+     and exists (select 1 from public.website_orders o
+                  where o.token = split_part(p_name, '/', 1)
+                    and o.status in ('awaiting_payment','payment_sent') and o.receipt_count < 5);
+$$;
+revoke all on function public.website_receipt_upload_ok(text) from public;
+grant execute on function public.website_receipt_upload_ok(text) to anon, authenticated;
+
+create or replace function public.website_receipt_seller_ok(p_name text)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from public.website_orders o
+                  where o.token = split_part(coalesce(p_name, ''), '/', 1) and o.user_id = auth.uid());
+$$;
+revoke all on function public.website_receipt_seller_ok(text) from public, anon;
+grant execute on function public.website_receipt_seller_ok(text) to authenticated;
+
+drop policy if exists website_receipts_insert on storage.objects;
+create policy website_receipts_insert on storage.objects for insert to anon, authenticated
+  with check (bucket_id = 'website-receipts' and public.website_receipt_upload_ok(name));
+drop policy if exists website_receipts_read_seller on storage.objects;
+create policy website_receipts_read_seller on storage.objects for select to authenticated
+  using (bucket_id = 'website-receipts' and public.website_receipt_seller_ok(name));
+
+-- PUBLIC: after the upload, the buyer attaches it → payment_sent (seller gets the new-order badge again).
+create or replace function public.website_order_receipt(p_token text, p_path text)
+returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare o public.website_orders;
+begin
+  if coalesce(p_token, '') !~ '^[A-Za-z0-9_-]{32,128}$'
+     or coalesce(p_path, '') !~ '^[A-Za-z0-9_-]{32,128}/r[0-9]{10,16}\.(jpg|jpeg|png|webp)$'
+     or split_part(p_path, '/', 1) <> p_token then
+    raise exception 'bad_receipt' using errcode = '22023';
+  end if;
+  select * into o from public.website_orders where token = p_token for update;
+  if not found or o.status not in ('awaiting_payment','payment_sent') or o.receipt_count >= 5 then
+    raise exception 'not_waiting' using errcode = '22023';
+  end if;
+  update public.website_orders
+     set receipt_path = p_path, receipt_at = now(), receipt_count = receipt_count + 1,
+         status = 'payment_sent', payment_issue = false, seen_at = null, updated_at = now()
+   where id = o.id;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+revoke all on function public.website_order_receipt(text, text) from public;
+grant execute on function public.website_order_receipt(text, text) to anon, authenticated;
+
+-- SELLER: one action on one own order. Returns the new status. Every step shows on the buyer's link.
+--   paid          (Money received)  awaiting_payment | payment_sent → paid
+--   not_received  (Not received)    payment_sent | awaiting_payment → awaiting_payment + payment_issue,
+--                                   the auto-cancel clock starts again
+--   shipped       (Mark as shipped) paid | confirmed → shipped
+--   cancel        any not shipped / not cancelled → cancelled, stock returned (once)
+--   seen          clears the new-order badge
+--   block/unblock the buyer's phone for this shop (does not change the order)
+create or replace function public.website_order_action(p_id uuid, p_action text)
+returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare me uuid := auth.uid(); o public.website_orders; v_hours int;
+begin
+  if me is null then raise exception 'not_signed_in' using errcode = '42501'; end if;
+  select * into o from public.website_orders where id = p_id and user_id = me for update;
+  if not found then raise exception 'not_found' using errcode = '22023'; end if;
+  if p_action = 'paid' then
+    if o.status not in ('awaiting_payment','payment_sent') then raise exception 'wrong_status' using errcode = '22023'; end if;
+    update public.website_orders set status = 'paid', paid_at = now(), payment_issue = false, seen_at = coalesce(seen_at, now()), updated_at = now() where id = o.id;
+  elsif p_action = 'not_received' then
+    if o.status not in ('awaiting_payment','payment_sent') then raise exception 'wrong_status' using errcode = '22023'; end if;
+    select coalesce((public.website_checkout_public(w.settings)->>'autoCancelHours')::int, 24) into v_hours from public.seller_websites w where w.user_id = me;
+    update public.website_orders set status = 'awaiting_payment', payment_issue = true, auto_cancel_at = now() + make_interval(hours => coalesce(v_hours, 24)),
+           seen_at = coalesce(seen_at, now()), updated_at = now() where id = o.id;
+  elsif p_action = 'shipped' then
+    if o.status not in ('paid','confirmed') then raise exception 'wrong_status' using errcode = '22023'; end if;
+    update public.website_orders set status = 'shipped', shipped_at = now(), seen_at = coalesce(seen_at, now()), updated_at = now() where id = o.id;
+  elsif p_action = 'cancel' then
+    if o.status in ('shipped','cancelled') then raise exception 'wrong_status' using errcode = '22023'; end if;
+    perform public.website_return_stock(o.id);
+    update public.website_orders set status = 'cancelled', cancel_reason = 'seller', cancelled_at = now(), seen_at = coalesce(seen_at, now()), updated_at = now() where id = o.id;
+  elsif p_action = 'seen' then
+    update public.website_orders set seen_at = now() where id = o.id;
+  elsif p_action = 'block' then
+    insert into public.website_blocked_buyers (user_id, phone) values (me, o.buyer_phone) on conflict do nothing;
+  elsif p_action = 'unblock' then
+    delete from public.website_blocked_buyers where user_id = me and phone = o.buyer_phone;
+  else
+    raise exception 'bad_action' using errcode = '22023';
+  end if;
+  return jsonb_build_object('ok', true, 'status', (select status from public.website_orders where id = o.id),
+                            'blocked', exists (select 1 from public.website_blocked_buyers b where b.user_id = me and b.phone = o.buyer_phone));
+end;
+$$;
+revoke all on function public.website_order_action(uuid, text) from public, anon;
+grant execute on function public.website_order_action(uuid, text) to authenticated;
+
+-- auto-cancel unpaid pay-first orders (no receipt) after the seller's hours; stock goes back.
+create or replace function public.website_auto_cancel()
+returns integer language plpgsql security definer set search_path = public, pg_temp as $$
+declare r record; n int := 0;
+begin
+  for r in select id from public.website_orders
+            where status = 'awaiting_payment' and auto_cancel_at is not null and auto_cancel_at < now()
+            order by auto_cancel_at limit 500 for update skip locked loop
+    perform public.website_return_stock(r.id);
+    update public.website_orders set status = 'cancelled', cancel_reason = 'auto', cancelled_at = now(), updated_at = now() where id = r.id;
+    n := n + 1;
+  end loop;
+  return n;
+end;
+$$;
+revoke all on function public.website_auto_cancel() from public, anon, authenticated;
+
+do $$ begin
+  if exists (select 1 from cron.job where jobname = 'website-auto-cancel') then
+    perform cron.unschedule('website-auto-cancel');
+  end if;
+  perform cron.schedule('website-auto-cancel', '*/10 * * * *', 'select public.website_auto_cancel()');
+end $$;
+
+-- Retention (same 3 months as the privacy policy's orders): shipped / cancelled website orders
+-- 90 days after they ended. ⚠️ The receipt picture objects are NOT removed by this (Supabase blocks
+-- deleting storage rows by SQL) — see the report.
+do $$ begin
+  if exists (select 1 from cron.job where jobname = 'purge-old-website-orders') then
+    perform cron.unschedule('purge-old-website-orders');
+  end if;
+  perform cron.schedule('purge-old-website-orders', '30 17 * * *',
+    $c$DELETE FROM public.website_orders WHERE (status = 'shipped' AND shipped_at < now() - interval '90 days') OR (status = 'cancelled' AND cancelled_at < now() - interval '90 days')$c$);
+end $$;
 
 commit;
