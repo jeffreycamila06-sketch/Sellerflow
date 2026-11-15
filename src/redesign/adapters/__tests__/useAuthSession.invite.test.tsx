@@ -85,9 +85,25 @@ describe("register() with an invite code", () => {
     let r: { ok: boolean; needsConfirm?: boolean } = { ok: false };
     await act(async () => { r = await result.current.register(fields({ inviteCode: "budgetukay" })); });
     expect(r).toMatchObject({ ok: true, needsConfirm: true });
-    expect(sessionStorage.getItem(PENDING_INVITE_KEY)).toBe("BUDGETUKAY");
+    expect(JSON.parse(sessionStorage.getItem(PENDING_INVITE_KEY)!)).toEqual({ code: "BUDGETUKAY", email: "new@shop.com" });
     expect(rpc).not.toHaveBeenCalled();
     expect(window.location.href).not.toMatch(/ref=|BUDGETUKAY/);
+  });
+
+  it("a claim that never answers → register still returns within ~4 s, code kept for this email", async () => {
+    vi.useFakeTimers();
+    try {
+      withSession();
+      rpc.mockImplementationOnce(() => new Promise(() => { /* never */ }));
+      const { result } = renderHook(() => useAuthSession());
+      let r: { ok: boolean } | null = null;
+      let pr: Promise<unknown> = Promise.resolve();
+      act(() => { pr = result.current.register(fields({ inviteCode: "budgetukay" })).then((x) => { r = x; }); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
+      await act(async () => { await pr; });
+      expect(r).toEqual({ ok: true });
+      expect(JSON.parse(sessionStorage.getItem(PENDING_INVITE_KEY)!)).toEqual({ code: "BUDGETUKAY", email: "new@shop.com" });
+    } finally { vi.useRealTimers(); }
   });
 
   it("an invalid form is still refused before any call (the code never matters)", async () => {

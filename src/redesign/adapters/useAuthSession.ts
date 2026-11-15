@@ -187,7 +187,7 @@ export function useAuthSession(): UseAuthSession {
     if (!data.user) return { ok: false, error: "Could not create your account. Please try again.", errorKey: "rd_su_err" };
     // Email confirmation enabled → no session yet → cannot create the profile row
     // (RLS needs auth.uid()). Same branch as App.tsx (748-752).
-    if (!data.session) { if (f.inviteCode) savePendingInvite(f.inviteCode); return { ok: true, needsConfirm: true }; }
+    if (!data.session) { if (f.inviteCode) savePendingInvite(f.inviteCode, cleanEmail); return { ok: true, needsConfirm: true }; }
     try {
       await createMyProfile(data.user.id, cleanEmail, {
         // Store the NORMALIZED phone (clean 09xxxxxxxx) — register only reaches
@@ -199,12 +199,13 @@ export function useAuthSession(): UseAuthSession {
       });
     } catch {
       // Never show the raw database text — the account exists, only the profile step failed.
-      if (f.inviteCode) savePendingInvite(f.inviteCode); // claimed after the next sign-in of this tab
+      if (f.inviteCode) savePendingInvite(f.inviteCode, cleanEmail); // claimed after the next sign-in of this tab
       return { ok: false, error: "Your account was created, but setup didn't finish. Please log in and try again.", errorKey: "rd_su_err_setup" };
     }
     // Invite code (optional): link to the inviter now. A wrong / unknown code, a network error or a
-    // database without sql/164 never blocks the sign-up — claimSignupCode never throws.
-    if (f.inviteCode) { try { await claimSignupCode(f.inviteCode); } catch { /* never blocks */ } }
+    // database without sql/164 never blocks the sign-up — claimSignupCode never throws and gives up
+    // after SIGNUP_CLAIM_TIMEOUT_MS (the code is then kept for this tab's next sign-in).
+    if (f.inviteCode) { try { await claimSignupCode(f.inviteCode, cleanEmail); } catch { /* never blocks */ } }
     // The auth listener already flipped status→authed (signUp persisted a session);
     // load the profile now so the dashboard renders the real account, not a fallback.
     await loadProfile(data.user.id);

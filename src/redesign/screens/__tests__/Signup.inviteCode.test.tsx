@@ -48,6 +48,16 @@ describe("Signup invite code", () => {
     expect((onRegister.mock.calls[0] as unknown[])[0]).toMatchObject({ inviteCode: "BUDGETUKAY" });
   });
 
+  it("full-width code typed on a Chinese keyboard → plain letters, sent normalised", async () => {
+    rpc.mockResolvedValue({ data: true, error: null });
+    const onRegister = setup();
+    fireEvent.change(screen.getByTestId("su-invite"), { target: { value: "ｂｕｄｇｅｔｕｋａｙ" } });
+    expect((screen.getByTestId("su-invite") as HTMLInputElement).value).toBe("BUDGETUKAY");
+    fireEvent.click(createBtn());
+    await waitFor(() => expect(onRegister).toHaveBeenCalledTimes(1));
+    expect((onRegister.mock.calls[0] as unknown[])[0]).toMatchObject({ inviteCode: "BUDGETUKAY" });
+  });
+
   it("WRONG code → 'Code not found' but Create account still works", async () => {
     rpc.mockResolvedValue({ data: false, error: null });
     const onRegister = setup();

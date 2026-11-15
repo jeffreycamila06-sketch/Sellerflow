@@ -12,11 +12,14 @@ export const INVITE_CODE_MAX = 12;
 // The random-code alphabet: uppercase letters + digits without 0 / O / 1 / I (same as the database).
 export const RANDOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-// What the seller typed → the stored form (UPPERCASE, no spaces at the ends).
-export const normInviteCode = (raw: string): string => String(raw ?? "").trim().toUpperCase();
+// What the seller typed → the stored form. NFKC first (full-width letters / digits from a Chinese
+// keyboard → plain ASCII, same as the database's referral_norm_code), then UPPERCASE, no spaces at
+// the ends.
+const nfkc = (raw: string): string => { const v = String(raw ?? ""); try { return v.normalize("NFKC"); } catch { return v; } };
+export const normInviteCode = (raw: string): string => nfkc(raw).trim().toUpperCase();
 export const inviteCodeFormatOk = (raw: string): boolean => INVITE_CODE_RE.test(normInviteCode(raw));
 // Typing filter for the code boxes: letters and numbers only, uppercase, max 12.
-export const typedInviteCode = (raw: string): string => String(raw ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, INVITE_CODE_MAX);
+export const typedInviteCode = (raw: string): string => nfkc(raw).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, INVITE_CODE_MAX);
 
 // 6 characters, client-side (the database checks it again on save).
 export function randomInviteCode(rand: () => number = Math.random): string {
@@ -25,7 +28,10 @@ export function randomInviteCode(rand: () => number = Math.random): string {
   return s;
 }
 
-export const shareTextFor = (code: string): string => `Use my SellerFlowLive invite code: ${code}`;
+// The share message. `template` = the translated rd_ref_share_text ("… {code}"); English by default.
+export const SHARE_TEXT_EN = "Use my SellerFlowLive invite code: {code}";
+export const shareTextFor = (code: string, template: string = SHARE_TEXT_EN): string =>
+  (template && template.includes("{code}") ? template : SHARE_TEXT_EN).split("{code}").join(code);
 
 const client = () => (isSupabaseConfigured && supabase ? supabase : null);
 
@@ -83,31 +89,46 @@ export async function claimReferral(code: string, source: ClaimSource): Promise<
 }
 
 // ── sign-up code kept for the rest of THIS sign-up only (sessionStorage) ─────────────────────
-// Used when the account is created without a session yet (email confirmation): the code is
-// claimed the first time this tab is signed in. Nothing goes in a URL.
+// Used when the claim could not run at sign-up (no session yet, no profile yet, network, too slow):
+// saved as {code, email} and claimed the first time THIS tab is signed in with THAT email. Another
+// account signing in on the tab drops it. Nothing goes in a URL.
 export const PENDING_INVITE_KEY = "sfl_rd_pending_invite";
-export function savePendingInvite(code: string): void {
+const normEmail = (e: string | null | undefined): string => String(e ?? "").trim().toLowerCase();
+export function savePendingInvite(code: string, email: string): void {
   const c = normInviteCode(code);
-  if (!INVITE_CODE_RE.test(c)) return;
-  try { sessionStorage.setItem(PENDING_INVITE_KEY, c); } catch { /* private mode: nothing kept */ }
+  const e = normEmail(email);
+  if (!INVITE_CODE_RE.test(c) || !e) return;
+  try { sessionStorage.setItem(PENDING_INVITE_KEY, JSON.stringify({ code: c, email: e })); } catch { /* private mode: nothing kept */ }
 }
-export function takePendingInvite(): string {
+// The code, only when it was saved for `email`; read once (always removed).
+export function takePendingInvite(email: string | null | undefined): string {
   try {
-    const c = sessionStorage.getItem(PENDING_INVITE_KEY) || "";
+    const raw = sessionStorage.getItem(PENDING_INVITE_KEY);
     sessionStorage.removeItem(PENDING_INVITE_KEY);
-    return INVITE_CODE_RE.test(c) ? c : "";
+    if (!raw) return "";
+    const x = JSON.parse(raw) as { code?: unknown; email?: unknown };
+    const c = typeof x.code === "string" ? x.code : "";
+    const e = typeof x.email === "string" ? x.email : "";
+    return INVITE_CODE_RE.test(c) && e && e === normEmail(email) ? c : "";
   } catch { return ""; }
 }
 
-// The sign-up claim: never throws, never blocks. Returns what happened (for tests / logs only).
-export async function claimSignupCode(code: string | undefined): Promise<"none" | "claimed" | "kept" | "refused"> {
+// The sign-up claim never waits longer than this ("Creating account…" can never hang on it).
+export const SIGNUP_CLAIM_TIMEOUT_MS = 4000;
+
+// The sign-up claim: never throws, never blocks longer than SIGNUP_CLAIM_TIMEOUT_MS. Returns what
+// happened (for tests / logs only).
+export async function claimSignupCode(code: string | undefined, email: string, timeoutMs = SIGNUP_CLAIM_TIMEOUT_MS): Promise<"none" | "claimed" | "kept" | "refused"> {
   const c = normInviteCode(code || "");
   if (!INVITE_CODE_RE.test(c)) return "none";
-  const r = await claimReferral(c, "signup");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"timeout">((res) => { timer = setTimeout(() => res("timeout"), timeoutMs); });
+  const r = await Promise.race([claimReferral(c, "signup"), late]).finally(() => { if (timer) clearTimeout(timer); });
+  if (r === "timeout") { savePendingInvite(c, email); return "kept"; }
   if (r.ok) return "claimed";
   // No session / no profile yet / network → keep it for the first sign-in of this tab.
   if (r.reason === "not_signed_in" || r.reason === "no_profile" || r.reason === "offline" || r.reason === "error") {
-    savePendingInvite(c);
+    savePendingInvite(c, email);
     return "kept";
   }
   return "refused";
@@ -193,7 +214,8 @@ export async function loadReferralOverview(): Promise<Record<string, ReferralPre
 }
 
 export interface HistoryRow {
-  inviteeUserId: string; inviteeEmail: string; inviterUserId: string | null; inviterEmail: string; inviterCode: string;
+  id: string; inviterExpiry: string | null;
+  inviteeUserId: string | null; inviteeEmail: string; inviterUserId: string | null; inviterEmail: string; inviterCode: string;
   source: string; status: InviteStatus; rewardDays: number; rewardMonth: string | null; rewardedAt: string | null;
   skipReason: string | null; createdAt: string; revokedAt: string | null;
 }
@@ -204,7 +226,8 @@ export async function loadReferralHistory(search = "", limit = 50, offset = 0): 
     if (error || !data || typeof data !== "object") return null;
     const x = data as Record<string, unknown>;
     const rows = Array.isArray(x.rows) ? (x.rows as Record<string, unknown>[]).map((r) => ({
-      inviteeUserId: String(r.invitee_user_id ?? ""), inviteeEmail: String(r.invitee_email ?? ""),
+      id: String(r.id ?? ""), inviterExpiry: typeof r.inviter_expiry === "string" ? r.inviter_expiry : null,
+      inviteeUserId: typeof r.invitee_user_id === "string" ? r.invitee_user_id : null, inviteeEmail: String(r.invitee_email ?? ""),
       inviterUserId: typeof r.inviter_user_id === "string" ? r.inviter_user_id : null, inviterEmail: String(r.inviter_email ?? ""),
       inviterCode: String(r.inviter_code ?? ""), source: String(r.source ?? ""),
       status: (STATUSES.includes(r.status as InviteStatus) ? r.status : "linked") as InviteStatus,
@@ -216,10 +239,11 @@ export async function loadReferralHistory(search = "", limit = 50, offset = 0): 
   } catch { return null; }
 }
 
-export async function adminRevokeReferral(inviteeUserId: string): Promise<RpcAnswer & { daysRemoved?: number }> {
+// By the referral row's id (works when the friend's account was deleted).
+export async function adminRevokeReferral(referralId: string): Promise<RpcAnswer & { daysRemoved?: number }> {
   const sb = client(); if (!sb) return { ok: false, reason: "offline" };
   try {
-    const { data, error } = await sb.rpc("admin_referral_revoke", { p_invitee: inviteeUserId });
+    const { data, error } = await sb.rpc("admin_referral_revoke", { p_referral: referralId });
     if (error) return { ok: false, reason: "error" };
     const a = asAnswer(data);
     return { ...a, daysRemoved: Number((data as Record<string, unknown>)?.days_removed) || 0 };
@@ -275,3 +299,15 @@ export function referralLine(t: Record<string, string>, p: ReferralPreview | und
   return { text: fill(t.rd_adm_ref_line_no, { email, plan, why }), tone: "muted" };
 }
 
+
+// Revoke is offered only on a row that really gave days.
+export const canRevoke = (r: Pick<HistoryRow, "status" | "rewardDays">): boolean => r.status === "rewarded" && r.rewardDays > 0;
+// The inviter's expiry after taking back `days` (null when there is no current expiry).
+export function expiryAfterRevoke(currentIso: string | null, days: number): string | null {
+  if (!currentIso) return null;
+  const t = new Date(currentIso).getTime();
+  return isNaN(t) ? null : new Date(t - days * 86_400_000).toISOString();
+}
+// Invite rewards days box: whole number 0–365 ("" = Off).
+export const REWARD_DAYS_MAX = 365;
+export const rewardDaysValid = (typed: string): boolean => typed === "" || (/^\d+$/.test(typed) && Number(typed) <= REWARD_DAYS_MAX);

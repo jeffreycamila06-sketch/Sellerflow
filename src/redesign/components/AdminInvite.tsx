@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import { mono } from "../ui";
 import {
-  adminRevokeReferral, adminSetInviteCode, referralLine, inviteCodeFormatOk, loadReferralHistory, loadRewardMonths, normInviteCode,
+  adminRevokeReferral, adminSetInviteCode, referralLine, canRevoke, expiryAfterRevoke, rewardDaysValid, REWARD_DAYS_MAX, inviteCodeFormatOk, loadReferralHistory, loadRewardMonths, normInviteCode,
   saveRewardMonth, typedInviteCode, type HistoryRow, type ReferralPreview, type RewardMonth,
 } from "../adapters/invite";
 
@@ -102,6 +102,7 @@ export function InviteRewardsPanel() {
   }, [apply]);
   const save = async (month: string) => {
     setBusy(month); setNote(null);
+    if (!rewardDaysValid(vals[month] ?? "")) return;
     const n = vals[month] ? parseInt(vals[month], 10) : 0;
     const r = await saveRewardMonth(month, Number.isFinite(n) ? n : 0);
     setBusy("");
@@ -117,15 +118,20 @@ export function InviteRewardsPanel() {
         {rows.map((m) => {
           const saved = m.days ?? 0;
           const typed = vals[m.month] ?? "";
+          const valid = rewardDaysValid(typed);
           const changed = (typed ? parseInt(typed, 10) : 0) !== saved;
+          const canSave = changed && valid && busy !== m.month;
           return (
-            <div key={m.month} data-testid="ir-row" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: `1px solid ${m.isNow ? "var(--accent)" : "var(--border)"}`, borderRadius: 11, background: "var(--surface-2)" }}>
+            <div key={m.month} data-testid="ir-row" style={{ padding: "10px 12px", border: `1px solid ${!valid ? "var(--danger)" : m.isNow ? "var(--accent)" : "var(--border)"}`, borderRadius: 11, background: "var(--surface-2)" }}>
+             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{monthLabel(m.month)}{m.isNow && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_adm_ir_now}</span>}</div>
                 <div style={{ ...small, marginTop: 2 }}>{saved > 0 ? `+${saved} ${t.rd_adm_ir_days}` : t.rd_adm_ir_off}{note?.month === m.month ? (note.ok ? ` · ${t.rd_adm_ir_saved}` : ` · ${t.rd_adm_ref_err}`) : ""}</div>
               </div>
               <input value={typed} onChange={(e) => setVals((v) => ({ ...v, [m.month]: e.target.value.replace(/[^0-9]/g, "").slice(0, 3) }))} inputMode="numeric" placeholder="0" aria-label={`${monthLabel(m.month)} ${t.rd_adm_ir_days}`} data-testid="ir-days" style={{ ...box, width: 64, textAlign: "center" }} />
-              <button type="button" data-testid="ir-save" disabled={!changed || busy === m.month} onClick={() => void save(m.month)} style={{ ...btnSolid, minHeight: 36, opacity: changed ? 1 : 0.45 }}>{t.rd_adm_ir_save}</button>
+              <button type="button" data-testid="ir-save" disabled={!canSave} onClick={() => void save(m.month)} style={{ ...btnSolid, minHeight: 36, opacity: canSave ? 1 : 0.45 }}>{t.rd_adm_ir_save}</button>
+             </div>
+             {!valid && <div data-testid="ir-max" style={{ ...small, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{tpl(t.rd_adm_ir_max, { n: REWARD_DAYS_MAX })}</div>}
             </div>
           );
         })}
@@ -151,7 +157,7 @@ export function InviteHistoryPanel({ onToast }: { onToast?: (m: string, k: "ok" 
   }, [q, load]);
   const revoke = async (row: HistoryRow) => {
     setBusy(true);
-    const r = await adminRevokeReferral(row.inviteeUserId);
+    const r = await adminRevokeReferral(row.id);
     setBusy(false); setAsk("");
     if (r.ok) { onToast?.(tpl(t.rd_adm_ih_revoked, { n: r.daysRemoved ?? 0 }), "ok"); void load(q); }
     else onToast?.(t.rd_adm_ref_err, "err");
@@ -171,7 +177,7 @@ export function InviteHistoryPanel({ onToast }: { onToast?: (m: string, k: "ok" 
           {data.rows.length === 0 && <div style={small}>{t.rd_adm_ih_empty}</div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {data.rows.map((r) => (
-              <div key={r.inviteeUserId} data-testid="ih-row" style={{ border: "1px solid var(--border)", borderRadius: 11, background: "var(--surface-2)", padding: 10 }}>
+              <div key={r.id} data-testid="ih-row" style={{ border: "1px solid var(--border)", borderRadius: 11, background: "var(--surface-2)", padding: 10 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere", lineHeight: 1.35 }}>
                   {r.inviterEmail || "—"}{r.inviterCode ? <span style={{ fontFamily: mono, color: "var(--text-muted)" }}> ({r.inviterCode})</span> : null}
                   <span style={{ color: "var(--text-muted)" }}> → </span>{r.inviteeEmail || "—"}
@@ -180,11 +186,12 @@ export function InviteHistoryPanel({ onToast }: { onToast?: (m: string, k: "ok" 
                   <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 999, background: r.status === "rewarded" ? "rgba(16,185,129,.14)" : r.status === "revoked" ? "var(--danger-soft, rgba(225,29,72,.1))" : "var(--surface)", color: r.status === "rewarded" ? "var(--ok)" : r.status === "revoked" ? "var(--danger)" : "var(--text-dim)", border: "1px solid var(--border)" }}>{statusText(r)}</span>
                   <span style={small}>{fmtDay(r.rewardedAt || r.createdAt)}</span>
                   {r.status === "no_reward" && skipText(r.skipReason) && <span style={small}>· {skipText(r.skipReason)}</span>}
-                  {r.status !== "revoked" && ask !== r.inviteeUserId && <button type="button" data-testid="ih-revoke" onClick={() => setAsk(r.inviteeUserId)} style={{ ...btn, marginLeft: "auto", color: "var(--danger)", borderColor: "var(--danger)" }}>{t.rd_adm_ih_revoke}</button>}
+                  {canRevoke(r) && ask !== r.id && <button type="button" data-testid="ih-revoke" onClick={() => setAsk(r.id)} style={{ ...btn, marginLeft: "auto", color: "var(--danger)", borderColor: "var(--danger)" }}>{t.rd_adm_ih_revoke}</button>}
                 </div>
-                {ask === r.inviteeUserId && (
+                {ask === r.id && canRevoke(r) && (
                   <div data-testid="ih-confirm" style={{ marginTop: 8, border: "1px solid var(--danger)", borderRadius: 8, padding: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{r.status === "rewarded" && r.rewardDays > 0 ? tpl(t.rd_adm_ih_revoke_q, { n: r.rewardDays, email: r.inviterEmail || "—" }) : t.rd_adm_ih_revoke_q0}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{tpl(t.rd_adm_ih_revoke_q, { n: r.rewardDays, email: r.inviterEmail || "—" })}</div>
+                    <div data-testid="ih-expiry" style={{ ...small, marginTop: 4 }}>{r.inviterExpiry ? tpl(t.rd_adm_ih_expiry, { from: fmtDay(r.inviterExpiry), to: fmtDay(expiryAfterRevoke(r.inviterExpiry, r.rewardDays)) }) : t.rd_adm_ih_no_expiry}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
                       <button type="button" disabled={busy} onClick={() => setAsk("")} style={btn}>{t.rd_ref_cancel}</button>
                       <button type="button" data-testid="ih-confirm-yes" disabled={busy} onClick={() => void revoke(r)} style={{ ...btnSolid, background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}>{t.rd_adm_ih_revoke_yes}</button>

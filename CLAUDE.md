@@ -5382,3 +5382,13 @@ CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
   three rows only (the whole 116b would publish other not-yet-live text).
 - **Order:** apply sql/164 → merge (Vercel) → set this month's days in Admin → Invite rewards → apply sql/165.
   Without sql/164 the web is safe: the sign-up box shows only its hint, the Invite screen says "Couldn't load".
+- **Fix round 1 (same branch):** back-fill = current paid plan OR audit_logs 'changed plan' to a paid plan name OR
+  'made admin' (NOT "has a plan_expiry"; live check: 166 paid + 2 free). `referral_paid_seen` keeps user_id + lower(email)
+  (email survives account delete); written in its OWN block before the reward (an error can't erase it); a reward error →
+  'no_reward'/'error'. `referrals` has its own `id` pk + `invitee_email`/`inviter_email` snapshots, invitee/inviter
+  `on delete set null`; claim blocks a re-signed-up email (paid_seen email → already_paid; earlier invite → already_linked).
+  Trigger listens to plan, plan_status, plan_expiry (the inviter update fires it but the inviter is already active → no-op).
+  Deleted inviter's code → retired (BEFORE DELETE trigger on referral_codes). Reserved: 'contains' ADMIN / SELLERFLOW /
+  SUPPORT / OFFICIAL, 'exact' SFL / HELP / TEST / SELLERFLOWLIVE. NFKC in `referral_norm_code` + the app.
+  Revoke = `admin_referral_revoke(p_referral)` by row id, UI only on rewarded rows with days, shows current → new expiry.
+  Sign-up pending code = {code, email}, claimed only for that email; the sign-up claim gives up after 4 s.

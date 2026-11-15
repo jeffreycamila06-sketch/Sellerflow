@@ -49,6 +49,15 @@ describe("no code yet → choose once", () => {
     expect((screen.getByTestId("inv-save") as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("full-width typing (Chinese keyboard) becomes plain letters in the box", async () => {
+    answers = { my_referral_summary: summary(), invite_code_available: "" };
+    route();
+    renderIt();
+    const input = await screen.findByTestId("inv-code-input");
+    fireEvent.change(input, { target: { value: "ｂｕｄｇｅｔ１" } });
+    expect((input as HTMLInputElement).value).toBe("BUDGET1");
+  });
+
   it("random code fills 6 characters", async () => {
     answers = { my_referral_summary: summary(), invite_code_available: "" };
     route();
@@ -88,6 +97,16 @@ describe("has a code", () => {
     expect(screen.getByText("Paid · no reward")).toBeTruthy();
     fireEvent.click(screen.getByTestId("inv-share"));
     await waitFor(() => expect(share).toHaveBeenCalledWith({ text: "Use my SellerFlowLive invite code: BUDGETUKAY" }));
+  });
+
+  it("share text follows the app language", async () => {
+    answers = { my_referral_summary: summary({ code: "ABCD12" }) };
+    route();
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", { value: share, configurable: true, writable: true });
+    renderIt(false, "zh-TW");
+    fireEvent.click(await screen.findByTestId("inv-share"));
+    await waitFor(() => expect(share).toHaveBeenCalledWith({ text: "使用我的 SellerFlowLive 邀請碼：ABCD12" }));
   });
 
   it("copy → Copied", async () => {

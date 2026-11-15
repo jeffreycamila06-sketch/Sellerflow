@@ -82,16 +82,18 @@ begin
   return new;
 end $$;
 create trigger trg_seller_profiles_zzz_parcel_auto_access after insert or update of plan, plan_status, country on public.seller_profiles for each row execute function public.parcel_auto_access_trg();
+-- live shape of audit_logs (2026-11-15)
+create table public.audit_logs(id uuid primary key default gen_random_uuid(), actor_email text, action text, target_email text, details text, created_at timestamptz default now());
 `;
 
 const db = new PGlite();
 await db.exec(STUB);
 const q = (s, p) => db.query(s, p);
 let n = 0;
-const newUser = async (createdAt = null) => {
+const newUser = async (createdAt = null, email = null) => {
   const id = `00000000-0000-0000-0000-${String(++n).padStart(12, "0")}`;
   await q("insert into auth.users values ($1)", [id]);
-  await q("insert into seller_profiles(auth_user_id, email, store_name, created_at) values ($1,$2,'shop',$3)", [id, `user${n}@x.test`, createdAt]);
+  await q("insert into seller_profiles(auth_user_id, email, store_name, created_at) values ($1,$2,'shop',$3)", [id, email ?? `user${n}@x.test`, createdAt]);
   return id;
 };
 const as = async (uid, fn) => {
@@ -109,6 +111,9 @@ const toFree = (u) => as(ADMIN, () => q(`update seller_profiles set plan='free',
 const prof = async (u) => (await q("select * from seller_profiles where auth_user_id=$1", [u])).rows[0];
 const expMs = async (u) => new Date((await prof(u)).plan_expiry).getTime();
 const ref = async (u) => (await q("select * from referrals where invitee_user_id=$1", [u])).rows[0];
+const refById = async (id) => (await q("select * from referrals where id=$1", [id])).rows[0];
+const log = (email, action, details) => q("insert into audit_logs(actor_email, action, target_email, details) values ('boss@x.test',$1,$2,$3)", [action, email, details]);
+const seen = async (u) => (await q("select count(*)::int c from referral_paid_seen where user_id=$1", [u])).rows[0].c === 1;
 const rpc = (u, sql, p) => as(u, async () => (await q(sql, p)).rows[0]);
 const setCode = (u, c) => rpc(u, "select set_my_invite_code($1) j", [c]).then((r) => r.j);
 const claim = (u, c, s = "settings") => rpc(u, "select claim_referral($1,$2) j", [c, s]).then((r) => r.j);
@@ -117,9 +122,39 @@ const setMonth = (days, month = null) => as(ADMIN, () => q("select admin_invite_
 const DAY = 86400000;
 const near = (a, b) => Math.abs(a - b) < 5000;
 
+// Back-fill cases (accounts that exist before sql/164 is applied)
+const LOG_PAID_FREE = await newUser(null, "Mixed.Case@X.test");                // was basic (log), free now
+await log("mixed.case@x.test", "changed plan", "→ basic (1mo, activated)");
+await log("MIXED.CASE@X.TEST", "changed plan", "→ free (1mo, activated)");
+const PAID_TO_TRIAL = await newUser();                                           // basic → trial
+await give(PAID_TO_TRIAL, "trial", 7);
+await log((await prof(PAID_TO_TRIAL)).email, "changed plan", "→ basic (1mo, activated)");
+await log((await prof(PAID_TO_TRIAL)).email, "changed plan", "→ trial (1mo, activated)");
+const MADE_ADMIN = await newUser();                                              // made admin once, free now
+await log((await prof(MADE_ADMIN)).email, "made admin", "");
+const EXPIRED_ONLY = await newUser();                                            // free + expiry, only 'expired seller'
+await as(ADMIN, () => q("update seller_profiles set plan_status='expired', plan_expiry=now()-interval '3 days' where auth_user_id=$1", [EXPIRED_ONLY]));
+await log((await prof(EXPIRED_ONLY)).email, "expired seller", "");
+const FREE_EXPIRY_NEVER = await newUser();                                       // free + expiry, no log at all
+await as(ADMIN, () => q("update seller_profiles set plan_expiry=now()+interval '10 days' where auth_user_id=$1", [FREE_EXPIRY_NEVER]));
+const TRIAL_ONLY = await newUser();
+await give(TRIAL_ONLY, "trial", 7);
+await log((await prof(TRIAL_ONLY)).email, "changed plan", "→ trial (1mo, activated)");
+const WORD_ONLY = await newUser();                                               // 'basically' must not count
+await log((await prof(WORD_ONLY)).email, "changed plan", "→ basically nothing");
+
 await db.exec(src("164_invite_referral.sql"));
-ok((await q("select count(*)::int c from referral_paid_seen where user_id=$1", [OLD_PAID])).rows[0].c === 1, "back-fill: an account already on a paid plan counts as 'had a paid plan'");
-ok((await q("select count(*)::int c from referral_paid_seen where user_id=$1", [ADMIN])).rows[0].c === 1, "back-fill: the admin (master) counts as 'had a paid plan'");
+ok(await seen(OLD_PAID), "back-fill: on a paid plan now → marked 'had a paid plan'");
+ok(await seen(ADMIN), "back-fill: the admin (master) → marked");
+ok(await seen(LOG_PAID_FREE), "back-fill: free now, log 'changed plan → basic' (any letter case) → marked");
+ok((await q("select email from referral_paid_seen where user_id=$1", [LOG_PAID_FREE])).rows[0].email === "mixed.case@x.test", "back-fill stores the email in lower case");
+ok(await seen(PAID_TO_TRIAL), "back-fill: was basic, trial now → marked");
+ok(await seen(MADE_ADMIN), "back-fill: log 'made admin' → marked");
+ok(!(await seen(EXPIRED_ONLY)), "back-fill: free with an expiry whose only log is 'expired seller' → NOT marked");
+ok(!(await seen(FREE_EXPIRY_NEVER)), "back-fill: free with an expiry date, never paid → NOT marked");
+ok(!(await seen(TRIAL_ONLY)), "back-fill: only ever a trial → NOT marked");
+ok(!(await seen(WORD_ONLY)), "back-fill: 'basically' is not the plan name basic → NOT marked");
+ok((await q("select count(*)::int c from referral_paid_seen")).rows[0].c === 5, "back-fill marks exactly the 5 expected accounts");
 
 // ── codes ────────────────────────────────────────────────────────────────────────────────
 const A = await newUser(); await give(A, "pro", 40);
@@ -130,13 +165,19 @@ ok(r.ok === false && r.reason === "already_set", "code set once, then set again 
 ok((await q("select code from referral_codes where user_id=$1", [A])).rows[0].code === "BUDGETUKAY", "…and the first code is unchanged");
 const B = await newUser();
 ok((await setCode(B, "admin")).reason === "reserved", "reserved word blocked (admin, any case)");
-ok((await setCode(B, "SellerFlow")).reason === "reserved" && (await setCode(B, "sfl")).ok === false && (await setCode(B, "SellerFlowLive")).ok === false, "reserved words blocked (SellerFlow; SFL / SELLERFLOWLIVE can never be saved)");
+ok((await setCode(B, "MYADMIN1")).reason === "reserved" && (await setCode(B, "sellerflowtw")).reason === "reserved" && (await setCode(B, "SUPPORTME")).reason === "reserved" && (await setCode(B, "theofficial")).reason === "reserved", "contains-reserved: MYADMIN1 / SELLERFLOWTW / SUPPORTME / THEOFFICIAL blocked");
+ok((await setCode(B, "help")).reason === "reserved" && (await setCode(B, "sfl")).ok === false && (await setCode(B, "TEST")).reason === "reserved", "exact-reserved: HELP / SFL / TEST blocked");
+ok((await rpc(B, "select invite_code_available($1) v", ["contest"])).v === "" && (await rpc(B, "select invite_code_available($1) v", ["helper"])).v === "" && (await rpc(B, "select invite_code_available($1) v", ["sflshop"])).v === "" && (await rpc(B, "select invite_code_available($1) v", ["testing1"])).v === "", "exact-only words are fine inside a code: CONTEST / HELPER / SFLSHOP / TESTING1 allowed");
 ok((await setCode(B, "abc")).reason === "format" && (await setCode(B, "abcdefghijklm")).reason === "format", "format: 3 and 13 characters blocked");
 ok((await setCode(B, "ab cd")).reason === "format" && (await setCode(B, "ab-cd")).reason === "format", "format: space / symbol blocked");
 ok((await setCode(B, "BudgetUkay")).reason === "taken", "unique, case-insensitive: 'BudgetUkay' taken");
 ok((await rpc(B, "select invite_code_available($1) v", ["budgetukay"])).v === "taken" && (await rpc(B, "select invite_code_available($1) v", ["fresh1"])).v === "", "live availability check: taken / free");
-await q("insert into referral_reserved_codes values ('PROMO')");
+await q("insert into referral_reserved_codes(code) values ('PROMO')");
 ok((await setCode(B, "promo")).reason === "reserved", "a reserved word added later with ONE insert is blocked at once");
+const FW = await newUser();
+r = await setCode(FW, "ｆｕｌｌｗｉｄｅ１");
+ok(r.ok && r.code === "FULLWIDE1", "full-width input (ｆｕｌｌｗｉｄｅ１, Chinese keyboard) → saved as FULLWIDE1");
+ok((await q("select check_invite_code('ＦＵＬＬＷＩＤＥ１') f")).rows[0].f === true && (await q("select referral_norm_code('　ｂｕｄｇｅｔ　') c")).rows[0].c === "BUDGET", "full-width code is found; full-width spaces are trimmed");
 r = await setCode(B, null);
 ok(r.ok && /^[A-HJ-NP-Z2-9]{6}$/.test(r.code), `random code: 6 chars, uppercase, no 0/O/1/I (${r.code})`);
 let allRandom = true;
@@ -170,6 +211,11 @@ ok((await claim(OLDFREE, "CCCODE")).reason === "already_linked", "changing invit
 ok((await summary(OLDFREE)).can_enter_code === false, "after a code is saved the 'Enter code' box hides (can_enter_code false)");
 ok((await claim(C, "NOTACODE", "signup")).reason === "not_found" && (await claim(C, "", "signup")).reason === "not_found", "wrong / empty code → not_found (no error)");
 ok((await claim(C, "BUDGETUKAY", "elsewhere")).reason === "bad_source", "unknown source rejected");
+const FWC = await newUser();
+ok((await claim(FWC, "ｆｕｌｌｗｉｄｅ１")).ok === true && (await ref(FWC)).inviter_user_id === FW, "a friend typing the code in full-width → links");
+ok((await ref(FWC)).invitee_email === (await prof(FWC)).email && (await ref(FWC)).inviter_email === (await prof(FW)).email, "the link keeps both emails (lower case snapshot)");
+ok((await claim(EXPIRED_ONLY, "FULLWIDE1")).ok === true, "the free-with-expiry 'expired seller' account (not marked) may enter a code");
+ok((await claim(LOG_PAID_FREE, "FULLWIDE1")).reason === "already_paid", "the free account with a 'changed plan → basic' log may NOT");
 
 // ── the reward ───────────────────────────────────────────────────────────────────────────
 await setMonth(10);
@@ -237,11 +283,12 @@ ok((await q("select reward_month::text m from referrals where invitee_user_id=$1
 
 // revoke
 before = await expMs(A);
-r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [F1])).j;
+const F1ref = (await ref(F1)).id;
+r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [F1ref])).j;
 ok(r.ok && r.days_removed === 10 && near(await expMs(A), before - 10 * DAY) && (await ref(F1)).status === "revoked", "revoke subtracts exactly the days given (10) and marks revoked");
-r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [F1])).j;
+r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [F1ref])).j;
 ok(r.ok === false && r.reason === "already_revoked" && near(await expMs(A), before - 10 * DAY), "revoking twice does nothing the second time");
-let nonAdmin = "ok"; try { await rpc(A, "select admin_referral_revoke($1) j", [F2]); } catch (e) { nonAdmin = e.message; }
+let nonAdmin = "ok"; try { await rpc(A, "select admin_referral_revoke($1) j", [(await ref(F2)).id]); } catch (e) { nonAdmin = e.message; }
 ok(nonAdmin.includes("forbidden"), "a seller cannot call admin_referral_revoke");
 
 // admin code change
@@ -307,14 +354,36 @@ const sp = (await prof(A)).plan_expiry;
 await as(A, () => q("update seller_profiles set plan_expiry = now() + interval '999 days' where auth_user_id=$1", [A]));
 ok(new Date((await prof(A)).plan_expiry).getTime() === new Date(sp).getTime(), "the plan guard still stops a seller editing their own plan_expiry");
 
-// a failure inside the reward never blocks the plan change
-await db.exec(`create function boom() returns trigger language plpgsql as $$ begin raise exception 'boom'; end $$;
+// a failure inside the reward never blocks the plan change, and never erases "had a paid plan"
+await db.exec(`create function boom() returns trigger language plpgsql as $$ begin if new.status = 'rewarded' then raise exception 'boom'; end if; return new; end $$;
   create trigger boom before update on referrals for each row execute function boom();`);
 const F11 = await newUser(); await claim(F11, "JEFFSHOP");
 before = await expMs(A);
 let giveErr = "ok"; try { await give(F11, "basic"); } catch (e) { giveErr = e.message; }
 ok(giveErr === "ok" && (await prof(F11)).plan === "basic" && near(await expMs(A), before), "an error inside the reward is caught: the friend's plan still goes through, inviter unchanged");
+ok(await seen(F11) && (await ref(F11)).status === "no_reward" && (await ref(F11)).skip_reason === "error", "…the friend is marked 'had a paid plan' and the invite is done (no_reward / error)");
 await db.exec("drop trigger boom on referrals; drop function boom();");
+before = await expMs(A);
+await expire(F11); await give(F11, "basic");
+ok(near(await expMs(A), before) && (await ref(F11)).status === "no_reward", "…later expire + renew → still no reward");
+// every write to referrals fails (even marking the error) → still marked paid, a later renewal gives nothing
+await db.exec(`create function boom2() returns trigger language plpgsql as $$ begin raise exception 'boom2'; end $$;
+  create trigger boom2 before update on referrals for each row execute function boom2();`);
+const F11b = await newUser(); await claim(F11b, "JEFFSHOP");
+before = await expMs(A);
+giveErr = "ok"; try { await give(F11b, "basic"); } catch (e) { giveErr = e.message; }
+ok(giveErr === "ok" && await seen(F11b) && (await ref(F11b)).status === "linked" && near(await expMs(A), before), "referrals fully broken: plan given, 'had a paid plan' kept, inviter unchanged");
+await db.exec("drop trigger boom2 on referrals; drop function boom2();");
+await expire(F11b); await give(F11b, "plus");
+ok(near(await expMs(A), before) && (await ref(F11b)).skip_reason === "not_first_plan", "…the renewal after the fix is not a first plan → no reward");
+// the "had a paid plan" write itself fails → no reward for this change (error), plan still given
+await db.exec(`create function boom3() returns trigger language plpgsql as $$ begin raise exception 'boom3'; end $$;
+  create trigger boom3 before insert on referral_paid_seen for each row execute function boom3();`);
+const F11c = await newUser(); await claim(F11c, "JEFFSHOP");
+before = await expMs(A);
+giveErr = "ok"; try { await give(F11c, "basic"); } catch (e) { giveErr = e.message; }
+ok(giveErr === "ok" && (await prof(F11c)).plan === "basic" && near(await expMs(A), before) && (await ref(F11c)).skip_reason === "error", "'had a paid plan' write fails → plan given, no days, invite marked error");
+await db.exec("drop trigger boom3 on referral_paid_seen; drop function boom3();");
 
 // sign-up with a wrong code still succeeds (the account exists, the claim answers, never raises)
 const S1 = await newUser();
@@ -329,6 +398,52 @@ const F12 = await newUser(); await claim(F12, "GONE11");
 await q("delete from auth.users where id=$1", [IDel]);
 await give(F12, "basic");
 ok((await ref(F12)).inviter_user_id === null && (await ref(F12)).skip_reason === "inviter_gone", "inviter account deleted → friend stays linked to nobody, no reward (inviter_gone)");
+ok((await q("select user_id from referral_code_retired where code='GONE11'")).rows.length === 1 && (await q("select check_invite_code('gone11') f")).rows[0].f === false, "deleted inviter's code → retired, no longer found");
+const TAKER = await newUser();
+ok((await setCode(TAKER, "gone11")).reason === "taken" && (await rpc(ADMIN, "select admin_set_invite_code($1,$2) j", [TAKER, "GONE11"])).j.reason === "taken", "nobody can take a deleted inviter's code (seller or admin)");
+ok((await ref(F12)).inviter_email === "user" + (Number(IDel.slice(-12))) + "@x.test", "the friend's row still names the deleted inviter (email snapshot)");
+
+// the invited FRIEND's account is deleted: history stays, Revoke still works, same email cannot farm
+const FD = await newUser(null, "farm@x.test"); await claim(FD, "JEFFSHOP");
+before = await expMs(A);
+await give(FD, "basic");
+const FDref = (await ref(FD)).id;
+ok((await refById(FDref)).status === "rewarded" && near(await expMs(A), before + 10 * DAY), "friend rewarded (+10) before the account is deleted");
+await q("delete from auth.users where id=$1", [FD]);
+ok((await refById(FDref)).invitee_user_id === null && (await refById(FDref)).invitee_email === "farm@x.test", "friend deleted → the invite row stays, with the email");
+ok((await q("select user_id, email from referral_paid_seen where email='farm@x.test'")).rows[0].user_id === null, "friend deleted → 'had a paid plan' stays (by email)");
+const histAll = (await rpc(ADMIN, "select admin_referrals_list(200,0,'farm@') j")).j;
+ok(histAll.total === 1 && histAll.rows[0].invitee_email === "farm@x.test" && histAll.rows[0].id === FDref, "admin history shows the deleted friend by the saved email");
+const FD2 = await newUser(null, "FARM@x.test");                                  // signs up again, same email
+ok((await claim(FD2, "JEFFSHOP")).reason === "already_linked", "same email signs up again → cannot enter a code (already_linked)");
+ok((await summary(FD2)).can_enter_code === false, "…and the Enter code box stays hidden");
+const PD = await newUser(null, "paidgone@x.test"); await give(PD, "basic");
+await q("delete from auth.users where id=$1", [PD]);
+const PD2 = await newUser(null, "paidgone@x.test");
+ok((await claim(PD2, "JEFFSHOP")).reason === "already_paid", "paid, deleted, signed up again with the same email → already_paid");
+before = await expMs(A);
+r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [FDref])).j;
+ok(r.ok && r.days_removed === 10 && near(await expMs(A), before - 10 * DAY), "Revoke works on a row whose friend was deleted (−10 exactly)");
+
+// an expiry-only change counts (manual SQL: plan name first without a date, then the date)
+const FX = await newUser(); await claim(FX, "JEFFSHOP");
+await as(ADMIN, () => q("update seller_profiles set plan='basic', plan_status='active', plan_expiry=null where auth_user_id=$1", [FX]));
+ok((await ref(FX)).status === "linked" && !(await seen(FX)), "plan name set without an expiry → not active paid yet, nothing happens");
+before = await expMs(A);
+await as(ADMIN, () => q("update seller_profiles set plan_expiry=now()+interval '31 days' where auth_user_id=$1", [FX]));
+ok((await ref(FX)).status === "rewarded" && near(await expMs(A), before + 10 * DAY), "expiry-only change → first active paid plan → rewarded");
+
+// no loop / no chain: A was invited by Z; A gets days → Z untouched, A's own invite untouched
+const Z = await newUser(); await give(Z, "pro"); await setCode(Z, "ZETA22");
+await q("insert into referrals (invitee_user_id, invitee_email, inviter_user_id, inviter_email, source) values ($1,'a@x.test',$2,'z@x.test','settings')", [A, Z]);
+const zExp = await expMs(Z);
+const FC = await newUser(); await claim(FC, "JEFFSHOP");
+before = await expMs(A);
+await give(FC, "basic");
+ok(near(await expMs(A), before + 10 * DAY) && near(await expMs(Z), zExp) && (await ref(A)).status === "linked", "inviter's expiry update fires the trigger on the inviter row but changes nothing else (Z untouched, A's own invite still linked)");
+before = await expMs(A);
+await as(ADMIN, () => q("update seller_profiles set plan_expiry=plan_expiry + interval '1 day' where auth_user_id=$1", [A]));
+ok(near(await expMs(A), before + DAY) && near(await expMs(Z), zExp) && (await ref(A)).status === "linked", "an expiry change on an already-active account rewards nobody");
 
 // as the real browser role (authenticated), not the test superuser: seller calls + an admin giving a plan
 await q("grant select, update on public.seller_profiles to authenticated");
@@ -350,7 +465,7 @@ await db.exec(src("164_invite_referral_rollback.sql"));
 const left = (await q("select count(*)::int c from pg_proc where proname like 'referral%' or proname like '%invite%' or proname like '%referral%'")).rows[0].c;
 const tleft = (await q("select count(*)::int c from information_schema.tables where table_name like 'referral%' or table_name like 'invite_%'")).rows[0].c;
 const trg = (await q("select count(*)::int c from pg_trigger where tgname like '%referral%'")).rows[0].c;
-ok(left === 0 && tleft === 0 && trg === 0, "rollback removes every table, function and the trigger");
+ok(left === 0 && tleft === 0 && trg === 0, "rollback removes every table, function and both triggers");
 await give(F12, "pro");
 ok((await prof(F12)).plan === "pro", "after rollback plans are given as before");
 

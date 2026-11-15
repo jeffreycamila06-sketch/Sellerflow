@@ -39,12 +39,14 @@ function StatusPill({ row, ios }: { row: InviteRow; ios: boolean }) {
 export default function InviteFriends({ onBack, ios = false }: { onBack?: () => void; ios?: boolean }) {
   const t = useT();
   const [sum, setSum] = useState<ReferralSummary | null | "loading" | "error">("loading");
-  const fetchSum = useCallback(async () => {
-    const s = await loadReferralSummary();
-    setSum(s ?? "error");
+  // One read per open (zero poll). The effect only sets state in the .then (never synchronously).
+  const fetchSum = useCallback(() => { void loadReferralSummary().then((s) => setSum(s ?? "error")); }, []);
+  const reload = useCallback(() => { setSum("loading"); fetchSum(); }, [fetchSum]);
+  useEffect(() => {
+    let alive = true;
+    void loadReferralSummary().then((s) => { if (alive) setSum(s ?? "error"); });
+    return () => { alive = false; };
   }, []);
-  const reload = useCallback(() => { setSum("loading"); void fetchSum(); }, [fetchSum]);
-  useEffect(() => { void fetchSum(); }, [fetchSum]);
 
   return (
     <div>
@@ -65,8 +67,8 @@ export default function InviteFriends({ onBack, ios = false }: { onBack?: () => 
         {sum && typeof sum === "object" && (
           <>
             {sum.code ? <MyCode code={sum.code} monthDays={sum.monthDays} eligible={sum.eligible} ios={ios} />
-              : <ChooseCode onSaved={() => void fetchSum()} />}
-            {sum.canEnterCode && <EnterInviterCode onSaved={() => void fetchSum()} />}
+              : <ChooseCode onSaved={fetchSum} />}
+            {sum.canEnterCode && <EnterInviterCode onSaved={fetchSum} />}
             {sum.code && <InviteList rows={sum.invites} ios={ios} />}
           </>
         )}
@@ -141,7 +143,7 @@ function MyCode({ code, monthDays, eligible, ios }: { code: string; monthDays: n
   const flash = (n: "copied" | "failed") => { setNote(n); window.setTimeout(() => setNote(""), 2000); };
   const onCopy = async () => flash((await copyText(code)) ? "copied" : "failed");
   const onShare = async () => {
-    const text = shareTextFor(code);
+    const text = shareTextFor(code, t.rd_ref_share_text);
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try { await navigator.share({ text }); return; } catch (e) { if ((e as { name?: string } | null)?.name === "AbortError") return; }
     }

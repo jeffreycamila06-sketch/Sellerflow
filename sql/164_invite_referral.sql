@@ -2,15 +2,20 @@
 -- NOT APPLIED. Rollback: sql/164_invite_referral_rollback.sql. Behaviour check:
 -- scripts/sql164-behaviour.mjs (PGlite). (163 is taken by the unmerged claude/seller-website.)
 --
--- ADD-ONLY: new tables, new functions, ONE new AFTER trigger on seller_profiles. No existing
--- table, column, trigger or function is changed. NO Render deploy (web + database only).
+-- ADD-ONLY: new tables, new functions, ONE new AFTER trigger on seller_profiles (+ one trigger on
+-- the new referral_codes table). No existing table, column, trigger or function is changed.
+-- NO Render deploy (web + database only).
 --
 -- THE RULES (Jeff, 2026-11-15):
 --   * Each seller chooses their invite code ONCE (own word or a random one). 4–12 letters/numbers,
---     stored UPPERCASE, unique, case-insensitive. Reserved words = table referral_reserved_codes
---     (add one = one INSERT, no deploy). After saving the code never changes — only an admin
+--     stored UPPERCASE (after NFKC, so full-width letters from a Chinese keyboard work), unique,
+--     case-insensitive. Reserved words = table referral_reserved_codes: 'contains' rows block any
+--     code that has the word inside it (ADMIN, SELLERFLOW, SUPPORT, OFFICIAL), 'exact' rows block
+--     only that exact code (SFL, HELP, TEST, SELLERFLOWLIVE — so CONTEST / HELPER still work).
+--     Add one = one INSERT, no deploy. After saving the code never changes — only an admin
 --     (admin_set_invite_code). The old code then stops working (kept in referral_code_retired so
---     nobody else can take it); friends already linked stay linked.
+--     nobody else can take it — also when the owner's account is deleted); friends already linked
+--     stay linked.
 --   * A friend types the code at sign-up (optional) or later in Settings (no time limit, only while
 --     they have no inviter AND have never had a paid plan). One inviter per account, permanent.
 --     No self-invite.
@@ -22,19 +27,26 @@
 --   * Admin can revoke: subtract exactly the days given.
 --
 -- HOW THE REWARD FIRES: trigger trg_seller_profiles_zzzz_referral_reward, AFTER UPDATE OF plan,
--- plan_status (named so it runs after the existing AFTER trigger ..._zzz_parcel_auto_access).
--- Any path that really changes a plan (admin UI, an admin RPC, manual SQL with the plan guard
--- off) ends in that UPDATE, so all of them are covered. It bumps ONLY the inviter's plan_expiry,
--- which is not one of its own columns → it never fires itself (no loop), and the parcel trigger
--- (OF plan, plan_status, country) and the TikTok-total trigger (fast path on tiktok) are not
--- touched by that update. The inviter's plan_expiry passes seller_profiles_on_update only when
--- the caller is an admin — the same caller that gave the friend's plan; if the guard reverted
--- it the referral is marked 'no_reward' / 'not_applied' (never a fake 'rewarded'). Any error
--- inside the trigger is caught: the plan change itself ALWAYS goes through.
+-- plan_status, plan_expiry (named so it runs after the existing AFTER trigger
+-- ..._zzz_parcel_auto_access). Any path that really changes a plan (admin UI, an admin RPC, manual
+-- SQL with the plan guard off, an expiry-only change) ends in that UPDATE, so all of them are
+-- covered. It acts only on a "not active paid → active paid" change of the row itself.
+-- It bumps ONLY the inviter's plan_expiry. That update fires this same trigger on the INVITER row,
+-- but an inviter only ever gets days while already active paid (old row active paid → the trigger
+-- returns at once), so it never chains (no loop); the parcel trigger (OF plan, plan_status,
+-- country) and the TikTok-total trigger (fast path on tiktok) ignore that update. The inviter's
+-- plan_expiry passes seller_profiles_on_update only when the caller is an admin — the same caller
+-- that gave the friend's plan; if the guard reverted it the referral is marked 'no_reward' /
+-- 'not_applied' (never a fake 'rewarded'). The "had a paid plan" mark is written first, in its own
+-- block, so a failure in the reward can never erase it; a failure in the reward marks the referral
+-- 'no_reward' / 'error'. The plan change itself ALWAYS goes through.
 --
--- "Ever had a paid plan" = referral_paid_seen (filled by the trigger, back-filled below from
--- every row that is on a paid plan now or has a plan_expiry — a free account with an expiry was
--- downgraded from a plan) OR the current plan is a paid plan name.
+-- "Ever had a paid plan" = referral_paid_seen, keyed by user AND lower(email) (the email stays when
+-- the account is deleted, so delete + sign up again with the same email cannot earn a reward)
+-- OR the current plan is a paid plan name. Back-filled below: current plan in
+-- (basic, plus, pro, master), OR an audit_logs row for that seller with action 'changed plan' to a
+-- paid plan name, OR action 'made admin'. (A free account that only has an expiry date is NOT
+-- marked — e.g. a seller whose only log is 'expired seller'.)
 set lock_timeout = '2s';
 begin;
 
@@ -47,6 +59,7 @@ create table if not exists public.referral_codes (
   previous_code       text
 );
 
+-- user_id null = retired when the owner's account was deleted (nobody may take it).
 create table if not exists public.referral_code_retired (
   code       text primary key,
   user_id    uuid references auth.users(id) on delete set null,
@@ -54,15 +67,22 @@ create table if not exists public.referral_code_retired (
 );
 
 create table if not exists public.referral_reserved_codes (
-  code text primary key check (code = upper(code))
+  code  text primary key check (code = upper(code)),
+  match text not null default 'exact' check (match in ('exact', 'contains'))
 );
-insert into public.referral_reserved_codes(code) values
-  ('ADMIN'), ('SELLERFLOW'), ('SELLERFLOWLIVE'), ('SFL'), ('SUPPORT'), ('HELP'), ('OFFICIAL'), ('TEST')
+insert into public.referral_reserved_codes(code, match) values
+  ('ADMIN', 'contains'), ('SELLERFLOW', 'contains'), ('SUPPORT', 'contains'), ('OFFICIAL', 'contains'),
+  ('SFL', 'exact'), ('HELP', 'exact'), ('TEST', 'exact'), ('SELLERFLOWLIVE', 'exact')
 on conflict do nothing;
 
+-- One row per invited account. invitee_user_id is set null when the friend's account is deleted;
+-- invitee_email / inviter_email are lower-case snapshots so the history (and Revoke) survive.
 create table if not exists public.referrals (
-  invitee_user_id uuid primary key references auth.users(id) on delete cascade,
+  id              uuid primary key default gen_random_uuid(),
+  invitee_user_id uuid references auth.users(id) on delete set null,
+  invitee_email   text not null default '',
   inviter_user_id uuid references auth.users(id) on delete set null,
+  inviter_email   text not null default '',
   created_at      timestamptz not null default now(),
   source          text not null check (source in ('signup', 'settings')),
   status          text not null default 'linked' check (status in ('linked', 'rewarded', 'no_reward', 'revoked')),
@@ -74,7 +94,9 @@ create table if not exists public.referrals (
   revoked_by      uuid,
   check (inviter_user_id is distinct from invitee_user_id)
 );
+create unique index if not exists referrals_invitee_uidx on public.referrals (invitee_user_id);
 create index if not exists referrals_inviter_idx on public.referrals (inviter_user_id, created_at desc);
+create index if not exists referrals_invitee_email_idx on public.referrals (invitee_email);
 
 create table if not exists public.invite_reward_months (
   month      date primary key check (extract(day from month) = 1),
@@ -83,10 +105,15 @@ create table if not exists public.invite_reward_months (
   updated_by uuid
 );
 
+-- user_id set null when the account is deleted; the email stays.
 create table if not exists public.referral_paid_seen (
-  user_id       uuid primary key references auth.users(id) on delete cascade,
+  id            bigserial primary key,
+  user_id       uuid references auth.users(id) on delete set null,
+  email         text,
   first_paid_at timestamptz not null default now()
 );
+create unique index if not exists referral_paid_seen_user_uidx on public.referral_paid_seen (user_id);
+create unique index if not exists referral_paid_seen_email_uidx on public.referral_paid_seen (email);
 
 alter table public.referral_codes          enable row level security;
 alter table public.referral_code_retired   enable row level security;
@@ -97,20 +124,25 @@ alter table public.referral_paid_seen      enable row level security;
 revoke all on public.referral_codes, public.referral_code_retired, public.referral_reserved_codes,
               public.referrals, public.invite_reward_months, public.referral_paid_seen
   from public, anon, authenticated;
+revoke all on sequence public.referral_paid_seen_id_seq from public, anon, authenticated;
 
 -- Back-fill "ever had a paid plan" (see the header).
-insert into public.referral_paid_seen (user_id, first_paid_at)
-select sp.auth_user_id, coalesce(sp.created_at, now())
+insert into public.referral_paid_seen (user_id, email, first_paid_at)
+select sp.auth_user_id, nullif(lower(btrim(coalesce(sp.email, ''))), ''), coalesce(sp.created_at, now())
   from public.seller_profiles sp
  where sp.auth_user_id is not null
    and (lower(btrim(coalesce(sp.plan, ''))) in ('basic', 'plus', 'pro', 'master')
-        or (sp.plan_expiry is not null and lower(btrim(coalesce(sp.plan, ''))) <> 'trial'))
+        or exists (select 1 from public.audit_logs a
+                    where lower(a.target_email) = lower(sp.email)
+                      and ((a.action = 'changed plan' and a.details ~* '\m(basic|plus|pro|master)\M')
+                           or a.action = 'made admin')))
 on conflict do nothing;
 
 -- ── small helpers ─────────────────────────────────────────────────────────────────────────
+-- NFKC first: full-width letters / digits (ＢＵＤＧＥＴ１) become plain ASCII.
 create or replace function public.referral_norm_code(p text)
 returns text language sql immutable set search_path = public, pg_temp as $$
-  select upper(btrim(coalesce(p, '')))
+  select upper(btrim(normalize(coalesce(p, ''), NFKC)))
 $$;
 
 create or replace function public.referral_is_paid_active(p_plan text, p_status text, p_expiry timestamptz)
@@ -122,15 +154,29 @@ $$;
 
 -- First day of the Asia/Taipei month that `p_at` falls in (Nov 30 23:30 Taipei → Nov 1).
 create or replace function public.referral_taipei_month(p_at timestamptz)
-returns date language sql immutable set search_path = public, pg_temp as $$
+returns date language sql stable set search_path = public, pg_temp as $$
   select date_trunc('month', p_at at time zone 'Asia/Taipei')::date
 $$;
 
+create or replace function public.referral_email_of(p_user uuid)
+returns text language sql stable security definer set search_path = public, pg_temp as $$
+  select nullif(lower(btrim(coalesce(sp.email, ''))), '') from public.seller_profiles sp where sp.auth_user_id = p_user
+$$;
+
+-- Paid before: this account, this email (also from a deleted account), or on a paid plan name now.
 create or replace function public.referral_ever_paid(p_user uuid)
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select exists (select 1 from public.referral_paid_seen s where s.user_id = p_user)
+      or exists (select 1 from public.referral_paid_seen s where s.email = public.referral_email_of(p_user))
       or exists (select 1 from public.seller_profiles sp where sp.auth_user_id = p_user
                    and lower(btrim(coalesce(sp.plan, ''))) in ('basic', 'plus', 'pro', 'master'))
+$$;
+
+create or replace function public.referral_is_reserved(p_code text)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from public.referral_reserved_codes r
+                  where (r.match = 'exact' and r.code = public.referral_norm_code(p_code))
+                     or (r.match = 'contains' and position(r.code in public.referral_norm_code(p_code)) > 0))
 $$;
 
 -- '' = the code may be chosen; else 'format' | 'reserved' | 'taken'. `p_owner` = the user the
@@ -139,7 +185,7 @@ create or replace function public.referral_code_problem(p_code text, p_owner uui
 returns text language sql stable security definer set search_path = public, pg_temp as $$
   select case
     when public.referral_norm_code(p_code) !~ '^[A-Z0-9]{4,12}$' then 'format'
-    when exists (select 1 from public.referral_reserved_codes r where r.code = public.referral_norm_code(p_code)) then 'reserved'
+    when public.referral_is_reserved(p_code) then 'reserved'
     when exists (select 1 from public.referral_codes c where c.code = public.referral_norm_code(p_code)
                    and c.user_id is distinct from p_owner) then 'taken'
     when exists (select 1 from public.referral_code_retired x where x.code = public.referral_norm_code(p_code)
@@ -169,6 +215,20 @@ create or replace function public.referral_mask_email(p text)
 returns text language sql immutable set search_path = public, pg_temp as $$
   select case when coalesce(p, '') = '' then '' else left(p, 3) || '…' end
 $$;
+
+-- A code whose owner's account is deleted is retired (nobody else can take it). user_id null:
+-- the owner is being deleted in this same statement.
+create or replace function public.referral_code_retire_trg()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  insert into public.referral_code_retired (code, user_id) values (old.code, null)
+    on conflict (code) do update set user_id = null, retired_at = now();
+  return old;
+end $$;
+drop trigger if exists trg_referral_codes_retire on public.referral_codes;
+create trigger trg_referral_codes_retire
+  before delete on public.referral_codes
+  for each row execute function public.referral_code_retire_trg();
 
 -- ── seller / sign-up functions ────────────────────────────────────────────────────────────
 -- Sign-up "Code found / Not found". Only true/false, never who owns it; never raises.
@@ -231,6 +291,7 @@ create or replace function public.claim_referral(p_code text, p_source text)
 returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   v_me      uuid := auth.uid();
+  v_email   text;
   v_inviter uuid;
   v_n       int;
 begin
@@ -242,15 +303,18 @@ begin
   -- waits for it and then sees the plan) — a link can never slip in after a first plan.
   perform 1 from public.seller_profiles where auth_user_id = v_me for update;
   if not found then return jsonb_build_object('ok', false, 'reason', 'no_profile'); end if;
-  if exists (select 1 from public.referrals where invitee_user_id = v_me) then
+  v_email := public.referral_email_of(v_me);
+  if exists (select 1 from public.referrals where invitee_user_id = v_me)
+     or (v_email is not null and exists (select 1 from public.referrals r where r.invitee_email = v_email)) then
     return jsonb_build_object('ok', false, 'reason', 'already_linked');
   end if;
   select c.user_id into v_inviter from public.referral_codes c where c.code = public.referral_norm_code(p_code);
   if v_inviter is null then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
   if v_inviter = v_me then return jsonb_build_object('ok', false, 'reason', 'self'); end if;
   if public.referral_ever_paid(v_me) then return jsonb_build_object('ok', false, 'reason', 'already_paid'); end if;
-  insert into public.referrals (invitee_user_id, inviter_user_id, source)
-    values (v_me, v_inviter, p_source) on conflict (invitee_user_id) do nothing;
+  insert into public.referrals (invitee_user_id, invitee_email, inviter_user_id, inviter_email, source)
+    values (v_me, coalesce(v_email, ''), v_inviter, coalesce(public.referral_email_of(v_inviter), ''), p_source)
+    on conflict (invitee_user_id) do nothing;
   get diagnostics v_n = row_count;
   if v_n = 0 then return jsonb_build_object('ok', false, 'reason', 'already_linked'); end if;
   return jsonb_build_object('ok', true);
@@ -260,35 +324,38 @@ end $$;
 create or replace function public.my_referral_summary()
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
-  v_me   uuid := auth.uid();
-  v_p    public.seller_profiles%rowtype;
-  v_days int;
+  v_me    uuid := auth.uid();
+  v_email text;
+  v_p     public.seller_profiles%rowtype;
+  v_days  int;
+  v_linked boolean;
 begin
   if v_me is null then return null; end if;
   select * into v_p from public.seller_profiles where auth_user_id = v_me;
+  v_email := public.referral_email_of(v_me);
+  v_linked := exists (select 1 from public.referrals r where r.invitee_user_id = v_me)
+              or (v_email is not null and exists (select 1 from public.referrals r where r.invitee_email = v_email));
   select m.days into v_days from public.invite_reward_months m where m.month = public.referral_taipei_month(now());
   return jsonb_build_object(
     'code', (select c.code from public.referral_codes c where c.user_id = v_me),
     'month_days', coalesce(v_days, 0),
     'eligible', public.referral_is_paid_active(v_p.plan, v_p.plan_status, v_p.plan_expiry),
-    'has_inviter', exists (select 1 from public.referrals r where r.invitee_user_id = v_me),
-    'can_enter_code', not exists (select 1 from public.referrals r where r.invitee_user_id = v_me)
-                      and not public.referral_ever_paid(v_me),
+    'has_inviter', v_linked,
+    'can_enter_code', not v_linked and not public.referral_ever_paid(v_me),
     'invites', coalesce((
       select jsonb_agg(jsonb_build_object(
-               'email', public.referral_mask_email(sp.email),
+               'email', public.referral_mask_email(r.invitee_email),
                'status', r.status,
                'days', r.reward_days,
                'date', coalesce(r.rewarded_at, r.created_at)) order by r.created_at desc)
-        from (select * from public.referrals r0 where r0.inviter_user_id = v_me order by r0.created_at desc limit 200) r
-        left join public.seller_profiles sp on sp.auth_user_id = r.invitee_user_id), '[]'::jsonb));
+        from (select * from public.referrals r0 where r0.inviter_user_id = v_me order by r0.created_at desc limit 200) r), '[]'::jsonb));
 end $$;
 
 -- ── the reward trigger ────────────────────────────────────────────────────────────────────
 create or replace function public.referral_reward_trg()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-  v_first int;
+  v_first int := -1;
   v_ref   public.referrals%rowtype;
   v_month date;
   v_days  int;
@@ -301,37 +368,47 @@ begin
      or public.referral_is_paid_active(old.plan, old.plan_status, old.plan_expiry) then
     return null;                                     -- not a "not paid → active paid" change
   end if;
+  -- 1) The "had a paid plan" mark, in its own block: nothing later can undo it.
   begin
-    insert into public.referral_paid_seen (user_id) values (new.auth_user_id) on conflict do nothing;
-    get diagnostics v_first = row_count;              -- 0 = had a paid plan before (a renewal)
+    insert into public.referral_paid_seen (user_id, email)
+      values (new.auth_user_id, nullif(lower(btrim(coalesce(new.email, ''))), ''))
+      on conflict do nothing;
+    get diagnostics v_first = row_count;              -- 0 = this account / email had a paid plan before
+  exception when others then
+    v_first := -1;
+    raise warning 'referral_reward_trg paid_seen: % (%)', sqlerrm, sqlstate;
+  end;
+  -- 2) The reward.
+  begin
     select * into v_ref from public.referrals where invitee_user_id = new.auth_user_id for update;
     if not found or v_ref.status <> 'linked' then return null; end if;
+    if v_first < 0 then raise exception 'paid_seen_failed'; end if;
     v_month := public.referral_taipei_month(now());
     if v_first = 0 then
       update public.referrals set status = 'no_reward', skip_reason = 'not_first_plan', reward_month = v_month, rewarded_at = now()
-       where invitee_user_id = new.auth_user_id;
+       where id = v_ref.id;
       return null;
     end if;
     if v_ref.inviter_user_id is null then
       update public.referrals set status = 'no_reward', skip_reason = 'inviter_gone', reward_month = v_month, rewarded_at = now()
-       where invitee_user_id = new.auth_user_id;
+       where id = v_ref.id;
       return null;
     end if;
     select m.days into v_days from public.invite_reward_months m where m.month = v_month;
     if coalesce(v_days, 0) <= 0 then
       update public.referrals set status = 'no_reward', skip_reason = 'month_off', reward_month = v_month, rewarded_at = now()
-       where invitee_user_id = new.auth_user_id;
+       where id = v_ref.id;
       return null;
     end if;
     select * into v_inv from public.seller_profiles where auth_user_id = v_ref.inviter_user_id for update;
     if not found then
       update public.referrals set status = 'no_reward', skip_reason = 'inviter_gone', reward_month = v_month, rewarded_at = now()
-       where invitee_user_id = new.auth_user_id;
+       where id = v_ref.id;
       return null;
     end if;
     if not public.referral_is_paid_active(v_inv.plan, v_inv.plan_status, v_inv.plan_expiry) then
       update public.referrals set status = 'no_reward', skip_reason = 'inviter_not_paid', reward_month = v_month, rewarded_at = now()
-       where invitee_user_id = new.auth_user_id;
+       where id = v_ref.id;
       return null;
     end if;
     v_want := greatest(v_inv.plan_expiry, now()) + make_interval(days => v_days);
@@ -340,21 +417,29 @@ begin
      returning plan_expiry into v_after;
     if v_after is distinct from v_want then         -- the plan guard reverted it (not an admin)
       update public.referrals set status = 'no_reward', skip_reason = 'not_applied', reward_month = v_month, rewarded_at = now()
-       where invitee_user_id = new.auth_user_id;
+       where id = v_ref.id;
       return null;
     end if;
     update public.referrals set status = 'rewarded', reward_days = v_days, reward_month = v_month,
            rewarded_at = now(), skip_reason = null
-     where invitee_user_id = new.auth_user_id;
+     where id = v_ref.id;
   exception when others then
     raise warning 'referral_reward_trg: % (%)', sqlerrm, sqlstate;   -- the plan change still goes through
+    -- Done for good: this was the friend's first paid plan, so no later change may reward it.
+    begin
+      update public.referrals set status = 'no_reward', skip_reason = 'error',
+             reward_month = public.referral_taipei_month(now()), rewarded_at = now()
+       where invitee_user_id = new.auth_user_id and status = 'linked';
+    exception when others then
+      raise warning 'referral_reward_trg mark error: % (%)', sqlerrm, sqlstate;
+    end;
   end;
   return null;
 end $$;
 
 drop trigger if exists trg_seller_profiles_zzzz_referral_reward on public.seller_profiles;
 create trigger trg_seller_profiles_zzzz_referral_reward
-  after update of plan, plan_status on public.seller_profiles
+  after update of plan, plan_status, plan_expiry on public.seller_profiles
   for each row execute function public.referral_reward_trg();
 
 -- ── admin functions (is_admin() inside — do NOT revoke EXECUTE from authenticated) ────────
@@ -378,14 +463,15 @@ begin
   select m.days into v_days from public.invite_reward_months m where m.month = public.referral_taipei_month(now());
   v_reason := case
     when v_ref.status <> 'linked' then 'already_done'
-    when exists (select 1 from public.referral_paid_seen s where s.user_id = p_user) then 'not_first_plan'
+    when exists (select 1 from public.referral_paid_seen s where s.user_id = p_user)
+      or exists (select 1 from public.referral_paid_seen s where s.email = public.referral_email_of(p_user)) then 'not_first_plan'
     when v_ref.inviter_user_id is null or v_inv.auth_user_id is null then 'inviter_gone'
     when coalesce(v_days, 0) <= 0 then 'month_off'
     when not public.referral_is_paid_active(v_inv.plan, v_inv.plan_status, v_inv.plan_expiry) then 'inviter_not_paid'
     else '' end;
   return jsonb_build_object(
     'code', v_code, 'linked', true, 'status', v_ref.status,
-    'inviter_email', v_inv.email, 'inviter_plan', v_inv.plan,
+    'inviter_email', coalesce(v_inv.email, nullif(v_ref.inviter_email, '')), 'inviter_plan', v_inv.plan,
     'reward_days', v_ref.reward_days,
     'would_reward', v_reason = '', 'days', case when v_reason = '' then v_days else 0 end,
     'reason', v_reason);
@@ -407,9 +493,12 @@ begin
   return coalesce((
     select jsonb_object_agg(u.id, public.referral_preview_for(u.id))
       from (select user_id as id from public.referral_codes
-            union select invitee_user_id from public.referrals) u), '{}'::jsonb);
+            union select invitee_user_id from public.referrals where invitee_user_id is not null) u), '{}'::jsonb);
 end $$;
 
+-- Invite history. Emails = the live account's, else the snapshot taken at the link (a deleted
+-- friend / inviter still shows). inviter_expiry = the inviter's CURRENT plan_expiry (Revoke shows
+-- current → new).
 create or replace function public.admin_referrals_list(p_limit int default 50, p_offset int default 0, p_search text default null)
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
@@ -420,28 +509,38 @@ begin
   if not public.is_admin() then raise exception 'forbidden' using errcode = '42501'; end if;
   return (
     with base as (
-      select r.*, ie.email as invitee_email, ir.email as inviter_email, rc.code as inviter_code
+      select r.id, r.invitee_user_id, r.inviter_user_id, r.source, r.status, r.reward_days, r.reward_month,
+             r.rewarded_at, r.skip_reason, r.created_at, r.revoked_at,
+             coalesce(nullif(lower(ie.email), ''), r.invitee_email) as invitee_email,
+             coalesce(nullif(lower(ir.email), ''), r.inviter_email) as inviter_email,
+             ir.plan_expiry as inviter_expiry,
+             rc.code as inviter_code
         from public.referrals r
         left join public.seller_profiles ie on ie.auth_user_id = r.invitee_user_id
         left join public.seller_profiles ir on ir.auth_user_id = r.inviter_user_id
-        left join public.referral_codes rc on rc.user_id = r.inviter_user_id
+        left join public.referral_codes rc on rc.user_id = r.inviter_user_id)
+    , hit as (
+      select * from base
        where v_s is null
-          or lower(coalesce(ie.email, '')) like '%' || v_s || '%'
-          or lower(coalesce(ir.email, '')) like '%' || v_s || '%'
-          or lower(coalesce(rc.code, '')) like '%' || v_s || '%')
+          or invitee_email like '%' || v_s || '%'
+          or inviter_email like '%' || v_s || '%'
+          or lower(coalesce(inviter_code, '')) like '%' || v_s || '%')
     select jsonb_build_object(
-      'total', (select count(*) from base),
+      'total', (select count(*) from hit),
       'rows', coalesce((select jsonb_agg(jsonb_build_object(
+                'id', b.id,
                 'invitee_user_id', b.invitee_user_id, 'invitee_email', b.invitee_email,
                 'inviter_user_id', b.inviter_user_id, 'inviter_email', b.inviter_email, 'inviter_code', b.inviter_code,
+                'inviter_expiry', b.inviter_expiry,
                 'source', b.source, 'status', b.status, 'reward_days', b.reward_days, 'reward_month', b.reward_month,
                 'rewarded_at', b.rewarded_at, 'skip_reason', b.skip_reason, 'created_at', b.created_at,
                 'revoked_at', b.revoked_at) order by b.created_at desc)
-              from (select * from base order by created_at desc limit v_l offset v_o) b), '[]'::jsonb)));
+              from (select * from hit order by created_at desc limit v_l offset v_o) b), '[]'::jsonb)));
 end $$;
 
--- Take back a reward: subtract EXACTLY the days given from the inviter's plan_expiry.
-create or replace function public.admin_referral_revoke(p_invitee uuid)
+-- Take back a reward: subtract EXACTLY the days given from the inviter's plan_expiry. By referral
+-- id, so it also works when the friend's account was deleted.
+create or replace function public.admin_referral_revoke(p_referral uuid)
 returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   v_ref     public.referrals%rowtype;
@@ -450,7 +549,7 @@ declare
   v_after   timestamptz;
 begin
   if not public.is_admin() then raise exception 'forbidden' using errcode = '42501'; end if;
-  select * into v_ref from public.referrals where invitee_user_id = p_invitee for update;
+  select * into v_ref from public.referrals where id = p_referral for update;
   if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
   if v_ref.status = 'revoked' then return jsonb_build_object('ok', false, 'reason', 'already_revoked'); end if;
   if v_ref.status = 'rewarded' and v_ref.reward_days > 0 and v_ref.inviter_user_id is not null then
@@ -465,8 +564,8 @@ begin
     end if;
   end if;
   update public.referrals set status = 'revoked', revoked_at = now(), revoked_by = auth.uid()
-   where invitee_user_id = p_invitee;
-  return jsonb_build_object('ok', true, 'days_removed', v_removed);
+   where id = p_referral;
+  return jsonb_build_object('ok', true, 'days_removed', v_removed, 'inviter_expiry', v_after);
 end $$;
 
 -- Admin-only code change (or first code). Old code → referral_code_retired: it stops working and
@@ -530,9 +629,9 @@ end $$;
 -- ── execute rights ────────────────────────────────────────────────────────────────────────
 revoke execute on function
   public.referral_norm_code(text), public.referral_is_paid_active(text, text, timestamptz),
-  public.referral_taipei_month(timestamptz), public.referral_ever_paid(uuid),
-  public.referral_code_problem(text, uuid), public.referral_random_code(), public.referral_mask_email(text),
-  public.referral_reward_trg(),
+  public.referral_taipei_month(timestamptz), public.referral_email_of(uuid), public.referral_ever_paid(uuid),
+  public.referral_is_reserved(text), public.referral_code_problem(text, uuid), public.referral_random_code(),
+  public.referral_mask_email(text), public.referral_code_retire_trg(), public.referral_reward_trg(),
   public.check_invite_code(text), public.invite_code_available(text), public.set_my_invite_code(text),
   public.claim_referral(text, text), public.my_referral_summary(),
   public.referral_preview_for(uuid), public.admin_referral_preview(uuid), public.admin_referral_overview(),
@@ -544,7 +643,8 @@ grant execute on function public.check_invite_code(text) to anon, authenticated;
 grant execute on function
   public.invite_code_available(text), public.set_my_invite_code(text), public.claim_referral(text, text),
   public.my_referral_summary(),
-  public.admin_referral_preview(uuid), public.admin_referral_overview(), public.admin_referrals_list(int, int, text), public.admin_referral_revoke(uuid),
+  public.admin_referral_preview(uuid), public.admin_referral_overview(), public.admin_referrals_list(int, int, text),
+  public.admin_referral_revoke(uuid),
   public.admin_set_invite_code(uuid, text), public.admin_invite_reward_months_get(),
   public.admin_invite_reward_months_set(date, int)
   to authenticated;

@@ -665,7 +665,7 @@ Tap **Settings** → **Invite friends**.
 **Free days**
 - When a friend you invited gets their first paid plan, free days are added to your plan. The line "This month: +N free days …" shows how many. No line = no free days this month.
 - Free days only go to sellers who are on an active paid plan at that moment.
-- **Your invites** shows each friend: **Signed up**, **+N days**, or **Paid · no reward**.
+- **Your invites** shows each friend: **Signed up**, **+N days**, **Paid · no reward** (on iPhone: **No reward**) or **Removed** (the free days were taken back).
 
 **Got a code from a friend?**
 - Type it in **Invite code (optional)** when you create your account, or later in **Invited by a friend? Enter code** on this screen and tap **Add code**.

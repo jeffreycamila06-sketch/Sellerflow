@@ -361,13 +361,15 @@ export default function RedesignApp() {
   // true). UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
   const [parcelTrackingAccess, setParcelTrackingAccess] = useState(false);
   const authUserId = auth.profile?.authUserId;
-  // Invite code typed at sign-up when the account had no session yet (sql/164): claimed ONCE, the
-  // first time this tab has a signed-in profile. sessionStorage only; nothing in a URL. Never blocks.
+  // Invite code typed at sign-up that could not be claimed then (sql/164): claimed ONCE, the first time
+  // this tab has a signed-in profile WITH THE SAME EMAIL (another account → dropped). sessionStorage
+  // only; nothing in a URL. Never blocks.
+  const authEmail = auth.profile?.email || "";
   useEffect(() => {
-    if (!authUserId) return;
-    const pending = takePendingInvite();
-    if (pending) void claimSignupCode(pending);
-  }, [authUserId]);
+    if (!authUserId || !authEmail) return;
+    const pending = takePendingInvite(authEmail);
+    if (pending) void claimSignupCode(pending, authEmail);
+  }, [authUserId, authEmail]);
   // Parcel Scan bridge drafts (typed, not saved; in memory only) never outlive the seller who typed
   // them: signed out → forget; a different seller signs in on this phone → forget.
   const draftOwnerRef = useRef<string | null>(null);

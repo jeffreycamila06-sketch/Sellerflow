@@ -1,16 +1,29 @@
-PASS: back-fill: an account already on a paid plan counts as 'had a paid plan'
-PASS: back-fill: the admin (master) counts as 'had a paid plan'
+PASS: back-fill: on a paid plan now → marked 'had a paid plan'
+PASS: back-fill: the admin (master) → marked
+PASS: back-fill: free now, log 'changed plan → basic' (any letter case) → marked
+PASS: back-fill stores the email in lower case
+PASS: back-fill: was basic, trial now → marked
+PASS: back-fill: log 'made admin' → marked
+PASS: back-fill: free with an expiry whose only log is 'expired seller' → NOT marked
+PASS: back-fill: free with an expiry date, never paid → NOT marked
+PASS: back-fill: only ever a trial → NOT marked
+PASS: back-fill: 'basically' is not the plan name basic → NOT marked
+PASS: back-fill marks exactly the 5 expected accounts
 PASS: own code saved UPPERCASE ('budgetukay' → BUDGETUKAY)
 PASS: code set once, then set again → blocked (already_set)
 PASS: …and the first code is unchanged
 PASS: reserved word blocked (admin, any case)
-PASS: reserved words blocked (SellerFlow; SFL / SELLERFLOWLIVE can never be saved)
+PASS: contains-reserved: MYADMIN1 / SELLERFLOWTW / SUPPORTME / THEOFFICIAL blocked
+PASS: exact-reserved: HELP / SFL / TEST blocked
+PASS: exact-only words are fine inside a code: CONTEST / HELPER / SFLSHOP / TESTING1 allowed
 PASS: format: 3 and 13 characters blocked
 PASS: format: space / symbol blocked
 PASS: unique, case-insensitive: 'BudgetUkay' taken
 PASS: live availability check: taken / free
 PASS: a reserved word added later with ONE insert is blocked at once
-PASS: random code: 6 chars, uppercase, no 0/O/1/I (6YQEKS)
+PASS: full-width input (ｆｕｌｌｗｉｄｅ１, Chinese keyboard) → saved as FULLWIDE1
+PASS: full-width code is found; full-width spaces are trimmed
+PASS: random code: 6 chars, uppercase, no 0/O/1/I (C76W6X)
 PASS: 300 random codes all match the format
 PASS: check_invite_code works signed out (anon), case-insensitive → found
 PASS: check_invite_code: unknown / null / junk → false, never an error
@@ -26,6 +39,10 @@ PASS: changing inviter blocked (already_linked)
 PASS: after a code is saved the 'Enter code' box hides (can_enter_code false)
 PASS: wrong / empty code → not_found (no error)
 PASS: unknown source rejected
+PASS: a friend typing the code in full-width → links
+PASS: the link keeps both emails (lower case snapshot)
+PASS: the free-with-expiry 'expired seller' account (not marked) may enter a code
+PASS: the free account with a 'changed plan → basic' log may NOT
 PASS: reward given: friend's first paid plan → inviter +10 days
 PASS: plan names unchanged (inviter pro, friend basic)
 PASS: the friend's plan itself went through as given
@@ -74,14 +91,34 @@ PASS: manual SQL plan change (guard off) also rewards
 PASS: non-admin plan change is reverted by the plan guard → no reward, still linked
 PASS: the plan guard still stops a seller editing their own plan_expiry
 PASS: an error inside the reward is caught: the friend's plan still goes through, inviter unchanged
+PASS: …the friend is marked 'had a paid plan' and the invite is done (no_reward / error)
+PASS: …later expire + renew → still no reward
+PASS: referrals fully broken: plan given, 'had a paid plan' kept, inviter unchanged
+PASS: …the renewal after the fix is not a first plan → no reward
+PASS: 'had a paid plan' write fails → plan given, no days, invite marked error
 PASS: sign-up with a wrong code: account created, claim answers not_found, no error
 PASS: …a correct code right after links with source signup
 PASS: inviter account deleted → friend stays linked to nobody, no reward (inviter_gone)
+PASS: deleted inviter's code → retired, no longer found
+PASS: nobody can take a deleted inviter's code (seller or admin)
+PASS: the friend's row still names the deleted inviter (email snapshot)
+PASS: friend rewarded (+10) before the account is deleted
+PASS: friend deleted → the invite row stays, with the email
+PASS: friend deleted → 'had a paid plan' stays (by email)
+PASS: admin history shows the deleted friend by the saved email
+PASS: same email signs up again → cannot enter a code (already_linked)
+PASS: …and the Enter code box stays hidden
+PASS: paid, deleted, signed up again with the same email → already_paid
+PASS: Revoke works on a row whose friend was deleted (−10 exactly)
+PASS: plan name set without an expiry → not active paid yet, nothing happens
+PASS: expiry-only change → first active paid plan → rewarded
+PASS: inviter's expiry update fires the trigger on the inviter row but changes nothing else (Z untouched, A's own invite still linked)
+PASS: an expiry change on an already-active account rewards nobody
 PASS: browser role: a seller can claim a code
 PASS: browser role: a seller reads their summary
 PASS: browser role: a seller calling an admin function is refused
 PASS: browser role: an admin giving a plan (as authenticated) fires the reward
-PASS: rollback removes every table, function and the trigger
+PASS: rollback removes every table, function and both triggers
 PASS: after rollback plans are given as before
 
-85 PASS, 0 FAIL
+122 PASS, 0 FAIL
