@@ -10,14 +10,20 @@ const strings = (block: string): string[] => Array.from(block.matchAll(/"([^"]+)
 const javaList = (name: string) => strings(java.slice(java.indexOf(`${name} = {`), java.indexOf("};", java.indexOf(`${name} = {`))));
 const swiftList = (name: string) => { const open = swift.indexOf(`${name}: [String] = [`) + `${name}: [String] = [`.length; return strings(swift.slice(open, swift.indexOf("]", open))); };
 
+// WEB-ONLY for now: "B1 Pro-" (Niimbot B1 Pro, 2026-11-15). The phone only TAGS scan rows (likely / brand);
+// the web decides what is listed and saves transport "niimbot", so the phone follows it. The phone app adds
+// the prefix in its next normal release — then remove it from this list.
+const WEB_ONLY_PREFIXES = ["B1 Pro-"];
+const native = (list: readonly string[]) => list.filter((p) => !WEB_ONLY_PREFIXES.includes(p));
+
 describe("printer-name list parity", () => {
   it("Android == web", () => {
-    expect(javaList("PRINTER_NAME_PREFIXES")).toEqual([...PRINTER_NAME_PREFIXES]);
-    expect(javaList("NIIMBOT_NAME_PREFIXES")).toEqual([...NIIMBOT_NAME_PREFIXES]);
+    expect(javaList("PRINTER_NAME_PREFIXES")).toEqual(native(PRINTER_NAME_PREFIXES));
+    expect(javaList("NIIMBOT_NAME_PREFIXES")).toEqual(native(NIIMBOT_NAME_PREFIXES));
   });
   it("iOS == web", () => {
-    expect(swiftList("printerNamePrefixes")).toEqual([...PRINTER_NAME_PREFIXES]);
-    expect(swiftList("niimbotNamePrefixes")).toEqual([...NIIMBOT_NAME_PREFIXES]);
+    expect(swiftList("printerNamePrefixes")).toEqual(native(PRINTER_NAME_PREFIXES));
+    expect(swiftList("niimbotNamePrefixes")).toEqual(native(NIIMBOT_NAME_PREFIXES));
   });
   it("the Niimbot prefixes are a subset of the printer list", () => {
     for (const p of NIIMBOT_NAME_PREFIXES) expect(PRINTER_NAME_PREFIXES).toContain(p);

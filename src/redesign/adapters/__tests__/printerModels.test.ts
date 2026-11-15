@@ -61,7 +61,7 @@ describe("whitelist (the scan list shows ONLY these)", () => {
     expect(knownPrinterInfo({ name: "XP-420B", model: "generic" })).toEqual({ brand: "Xprinter", model: "XP-420B" });
   });
   it("the list itself: exactly the tested models, each with a brand pill word", () => {
-    expect(WHITELIST.map((w) => `${w.brand} ${w.model}`)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1", "Niimbot B21", "Niimbot B203", "Niimbot B3S", "Xprinter XP-420B"]);
+    expect(WHITELIST.map((w) => `${w.brand} ${w.model}`)).toEqual(["AIMO D520BT", "Flash Y41BT", "Niimbot B1 Pro", "Niimbot B1", "Niimbot B21", "Niimbot B203", "Niimbot B3S", "Xprinter XP-420B"]);
   });
 });
 
