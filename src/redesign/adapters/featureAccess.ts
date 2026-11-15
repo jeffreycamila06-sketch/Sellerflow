@@ -23,6 +23,7 @@ export const FEATURE_KEYS = [
   "scan_qr_lookup", // Parcel Scan: Scan QR looks the username up in Customers, for this account before the switch (sql/149)
   "fm_store_check", // Parcel Scan FamilyMart: store # check for this account before the switch (sql/155)
   "printer_tester", // Printer settings: test a printer that is not on the list + report it to Admin (sql/160)
+  "seller_website", // Seller Website (Phase 1) for this account before seller_website_enabled (sql/163)
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export type FeatureAccess = Record<FeatureKey, boolean>;

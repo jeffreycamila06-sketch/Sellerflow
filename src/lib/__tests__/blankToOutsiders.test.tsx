@@ -50,7 +50,7 @@ describe("no raw console in the app", () => {
         if (/\bconsole\.[a-z]+\s*\(/.test(line)) hits.push(`${f.slice(ROOT.length + 1)}:${i + 1}: ${line.trim()}`);
       });
     }
-    expect(hits).toEqual(["src/redesign/main.tsx:14: console.log(CONSOLE_BANNER);"]);
+    expect(hits).toEqual(["src/redesign/main.tsx:15: console.log(CONSOLE_BANNER);"]);
   });
   it("the banner is the two agreed lines", () => {
     expect(CONSOLE_BANNER).toBe("Walang makukuha dito. Mag-live ka na lang, kaibigan. 😘\nNothing for you here. Go sell something, friend.");

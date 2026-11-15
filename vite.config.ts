@@ -22,6 +22,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         redesign: 'redesign.html',
+        shop: 'shop.html', // Seller Website buyer side (/s/<sub>, via api/shop)
       },
     },
   },

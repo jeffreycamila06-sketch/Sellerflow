@@ -278,6 +278,7 @@ html.sfl-ios-shell [data-redesign] textarea { font-size: 16px !important; }
   backdrop-filter: saturate(1.4) blur(14px);
 }
 [data-redesign] .sfl-navbtn {
+  position: relative;         /* holds the website new-order badge (layout unchanged) */
   flex: 1;
   display: flex;
   flex-direction: column;

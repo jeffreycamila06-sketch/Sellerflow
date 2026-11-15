@@ -308,7 +308,7 @@ Keywords: pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtoma
 Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.
 
 ## products-stock — Products, codes and stock
-Last checked: 2026-11-12
+Last checked: 2026-11-15
 Keywords: products, product, item, stock, inventory, price, code, restock, add product, picture, photo, larawan, produkto, stocks, 商品, 库存, 庫存, 補貨, 商品圖片
 
 Open **Products** in the bottom bar.
@@ -323,6 +323,8 @@ Open **Products** in the bottom bar.
 Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live setup settings. Admin turns these on per account. If you don't see one, it isn't turned on for your account yet — ask Admin.
 
 **Product picture**: in **Edit**, tap **Add picture** and take a photo or pick one from your gallery (iPhone photos work too). The app turns it the right way up and makes it smaller for you — no need to crop or resize. The product list shows each picture as a square; tap a picture (⤢) to see the whole picture, then tap ✕ or outside it to close.
+
+**Photos: X / limit** (above the list) shows how many product photos you have and how many your plan allows. At the limit you will see "Picture limit reached" — delete photos you no longer need (like sold-out items) to upload new ones. Deleting a product also deletes its photos.
 
 ## reprint — Reprint a sticker
 Last checked: 2026-10-28
@@ -729,3 +731,17 @@ In the app: **Settings → Need help? Contact us**, or **Settings → General Se
 Paid plans (Basic, Plus, Pro, Master) also have a **help chat**: a round chat bubble on the **Settings** screen. Tap it (or the "Do you have a question?" hint next to it) and type your question. You can drag the bubble to the left or right edge.
 
 When you message, include your account email, your TikTok username, what you were doing, and the exact message you saw. A screenshot helps.
+
+## website — Your shop website (preview)
+Last checked: 2026-11-15
+Keywords: website, shop page, online shop, publish, website orders, checkout, store link, 網站, 商店網頁, 网站
+
+Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
+
+- **Website address** — type your address, then **Save**. Tap **Copy** to share it.
+- Add your logo, cover photo, shop color, name, tagline, about us, announcement bar, live schedule, return policy, Follow us links and chat buttons (Messenger, LINE, WhatsApp, Instagram). Turn sections on or off.
+- **Preview** shows your shop the way buyers see it. **Publish** puts it online. Changes stay a draft until you tap **Publish** again.
+- The Free plan can build and preview the website. Publishing needs a paid plan.
+- **Payment & shipping** — 7-11, FamilyMart and home delivery fees, free shipping over an amount, bank transfer, payment QR, pay at pickup (also turn on 取貨付款 in 賣貨便 / 好賣+), and how many hours before unpaid orders are cancelled.
+- **Products** — tap **Website** on a product to add a category, a description, up to 8 photos and options like size and color. Each option has its own code and stock. The product code alone is then sold out — in live, use the option codes.
+- **Orders** → **Website** — your website orders. Open an order to see the receipt (check your bank app first), then tap **Money received**, **Not received**, **Mark as shipped**, **Cancel order** or **Block buyer**. The buyer sees each step on their order link.
