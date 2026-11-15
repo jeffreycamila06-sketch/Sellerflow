@@ -6,7 +6,7 @@ import type { Shop } from "../shopApi";
 import { photoUrl, money } from "../shopApi";
 import { fromPrice, productStock } from "../cart";
 import { sortProducts, filterShop, compact, NEW_DAYS, type Sort } from "../shopLogic";
-import { ShopLogo, SocialIcons, Icon } from "../ui";
+import { ShopLogo, SocialIcons, Icon, SmallPhoto } from "../ui";
 import { IC, mutedText } from "../shopStyle";
 import { firstChatHref } from "../shopLinks";
 
@@ -83,7 +83,7 @@ export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop
                 return (
                   <button key={p.id} type="button" data-testid="shop-item" onClick={() => onOpen(p.id)} className="sfl-card" style={{ padding: 0, overflow: "hidden", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column" }}>
                     <span style={{ position: "relative", display: "block", width: "100%", paddingBottom: "100%", background: "#F3F4F6" }}>
-                      {p.photos[0] ? <img src={photoUrl(p.photos[0])} alt={p.name} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 800, color: "#D1D5DB" }}>{p.name.slice(0, 1)}</span>}
+                      {p.photos[0] ? <SmallPhoto path={p.photos[0]} alt={p.name} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 800, color: "#D1D5DB" }}>{p.name.slice(0, 1)}</span>}
                       {stock === 0 ? <Badge bg="#6B7280">{t.rd_shop_sold_out}</Badge> : isNew ? <Badge bg="#111827">{t.rd_shop_new}</Badge> : stock <= 3 ? <Badge bg="var(--sc)">{tpl(t.rd_shop_only_left, { n: String(stock) })}</Badge> : null}
                     </span>
                     <span style={{ padding: "8px 10px 10px", display: "flex", flexDirection: "column", gap: 4 }}>

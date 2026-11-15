@@ -9,7 +9,7 @@ const px = (n: number) => `${n}px`;
 import { useT } from "../redesign/i18n";
 import { BrandIcon, type BrandKey } from "./brandIcons";
 import type { Shop } from "./shopApi";
-import { photoUrl } from "./shopApi";
+import { photoUrl, smallOf } from "./shopApi";
 
 export function Icon({ d, size = 20, stroke = "currentColor" }: { d: string; size?: number; stroke?: string }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
@@ -104,3 +104,9 @@ export function LangPicker({ lang, onPick }: { lang: string; onPick: (l: string)
   );
 }
 
+
+/** A list picture (grid, cart, order lists): the SMALL copy; if it can't load, the full photo. */
+export function SmallPhoto({ path, alt = "", style, loading }: { path: string; alt?: string; style?: CSSProperties; loading?: "lazy" | "eager" }) {
+  const full = photoUrl(path);
+  return <img src={photoUrl(smallOf(path))} alt={alt} loading={loading} style={style} data-full={full} onError={(e) => { const el = e.currentTarget; if (full && el.src !== full) el.src = full; }} />;
+}

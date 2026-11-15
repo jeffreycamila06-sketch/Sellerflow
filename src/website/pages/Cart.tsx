@@ -2,7 +2,8 @@
 // subtotal and Checkout. Lines whose product / variant is gone or sold out drop out.
 import { useT, tpl } from "../../redesign/i18n";
 import type { Shop } from "../shopApi";
-import { photoUrl, money } from "../shopApi";
+import { money } from "../shopApi";
+import { SmallPhoto } from "../ui";
 import { type CartLine, type LineInfo, freeShipping, subtotalOf, MAX_QTY } from "../cart";
 import { mutedText } from "../shopStyle";
 
@@ -36,7 +37,7 @@ export default function Cart({ shop, cur, infos, lines, onQty, onRemove, onCheck
                 const i = idx(x);
                 return (
                   <div key={`${x.line.pid}:${x.line.vid}`} data-testid="cart-line" style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: "1px solid #F1F1F4" }}>
-                    <div style={{ width: 72, height: 72, borderRadius: 12, overflow: "hidden", background: "#F3F4F6", flexShrink: 0 }}>{x.photo && <img src={photoUrl(x.photo)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}</div>
+                    <div style={{ width: 72, height: 72, borderRadius: 12, overflow: "hidden", background: "#F3F4F6", flexShrink: 0 }}>{x.photo && <SmallPhoto path={x.photo} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{x.product.name}</div>
                       <div style={mutedText}>{[x.product.code && (x.variant?.code || x.product.code), x.label].filter(Boolean).join(" · ")}</div>

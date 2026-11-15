@@ -8,6 +8,7 @@ set local lock_timeout = '2s';
 
 -- ── PART 5 / 4 / 3 / 2 (reverse order) ──────────────────────────────────────
 drop policy if exists product_images_photo_limit on storage.objects;
+update storage.buckets set file_size_limit = 409600 where id = 'product-images';
 drop function if exists public.my_product_photo_quota();
 drop function if exists public.product_photo_upload_ok(text);
 drop function if exists public.product_photo_count(uuid);

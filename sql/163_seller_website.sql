@@ -824,6 +824,12 @@ drop policy if exists product_images_photo_limit on storage.objects;
 create policy product_images_photo_limit on storage.objects as restrictive for insert to authenticated
   with check (bucket_id <> 'product-images' or public.product_photo_upload_ok(name));
 
+-- Website photos (audit B) are saved at shop quality — up to 2048 px, at most 1 MB — so the bucket's
+-- per-file limit goes from 400 KB to 1 MB. The live product picture (photo 1, normal Edit form) is still
+-- made ≤ 400 KB by the app, unchanged. Types stay JPEG / PNG / WEBP. Rollback: back to 400 KB (files
+-- already stored are not touched by a limit change).
+update storage.buckets set file_size_limit = 1048576 where id = 'product-images';
+
 -- "Photos: X / limit" in Products (read on open and after an upload / delete).
 create or replace function public.my_product_photo_quota()
 returns jsonb language sql stable security definer set search_path = public, pg_temp as $$

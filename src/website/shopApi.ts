@@ -63,6 +63,9 @@ export async function loadShop(sub: string): Promise<ShopResult | null> {
   } catch { return null; }
 }
 
+/** The small copy of a website photo ("…-p3.jpg" → "…-p3-s.jpg", ~600 px) for the grid, cart and
+ *  order lists; photo 1 (the live product picture) has none → itself. Pure. */
+export const smallOf = (path: string): string => (/-p\d+\.jpg$/.test(path) ? path.replace(/\.jpg$/, "-s.jpg") : path);
 /** A photo path in the public product-images bucket → its URL. */
 export function photoUrl(path: string | undefined | null): string {
   if (!path || !supabase) return "";

@@ -15,6 +15,7 @@ import { freeShipping, subtotalOf, type LineInfo } from "./cart";
 import { mutedText } from "./shopStyle";
 import { chatHref, CHAT_PREFILL } from "./shopLinks";
 import { BrandIcon, type BrandKey } from "./brandIcons";
+import { SmallPhoto } from "./ui";
 import {
   realOrderApi, readBuyer, saveBuyer, forgetBuyer, deviceId, draftErrors,
   type OrderApi, type OrderDraft, type Delivery, type Payment, type FieldError, type OrderView, type PlaceResult,
@@ -164,7 +165,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
             <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>{t.rd_shop_co_summary}</div>
             {infos.map((x) => (
               <div key={`${x.line.pid}:${x.line.vid}`} style={{ display: "flex", gap: 10, padding: "6px 0", alignItems: "center" }}>
-                <div style={{ width: 44, height: 44, borderRadius: 9, overflow: "hidden", background: "#F3F4F6", flexShrink: 0 }}>{x.photo && <img src={photoUrl(x.photo)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}</div>
+                <div style={{ width: 44, height: 44, borderRadius: 9, overflow: "hidden", background: "#F3F4F6", flexShrink: 0 }}>{x.photo && <SmallPhoto path={x.photo} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}</div>
                 <div style={{ flex: 1, minWidth: 0, fontSize: 13.5 }}><div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.product.name}</div><div style={mutedText}>{[x.label, `×${x.line.qty}`].filter(Boolean).join(" · ")}</div></div>
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>{money(cur, x.price * x.line.qty)}</div>
               </div>
@@ -324,7 +325,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
       <div className="sfl-card" style={{ padding: 14, marginTop: 12 }}>
         {view.items.map((i, n) => (
           <div key={n} style={{ display: "flex", gap: 10, padding: "6px 0", alignItems: "center" }}>
-            <div style={{ width: 44, height: 44, borderRadius: 9, overflow: "hidden", background: "#F3F4F6", flexShrink: 0 }}>{i.photo && <img src={photoUrl(i.photo)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}</div>
+            <div style={{ width: 44, height: 44, borderRadius: 9, overflow: "hidden", background: "#F3F4F6", flexShrink: 0 }}>{i.photo && <SmallPhoto path={i.photo} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}</div>
             <div style={{ flex: 1, minWidth: 0, fontSize: 13.5 }}><div style={{ fontWeight: 700 }}>{i.name}</div><div style={mutedText}>{[i.label, i.code, `×${i.qty}`].filter(Boolean).join(" · ")}</div></div>
             <div style={{ fontWeight: 700, fontSize: 13.5 }}>{money(cur, i.price * i.qty)}</div>
           </div>

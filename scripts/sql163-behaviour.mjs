@@ -58,6 +58,7 @@ alter table storage.objects enable row level security;
 grant select, insert on storage.objects to anon, authenticated;
 grant usage on sequence storage.objects_id_seq to anon, authenticated;
 create unique index storage_objects_bucket_name on storage.objects(bucket_id, name);
+insert into storage.buckets(id, name, public, file_size_limit, allowed_mime_types) values ('product-images', 'product-images', true, 409600, array['image/jpeg','image/png','image/webp']);
 grant update, delete on storage.objects to authenticated;
 -- the live product-images policies (sql/95): own folder only
 create policy product_images_read on storage.objects for select to authenticated using (bucket_id = 'product-images' and split_part(name, '/', 1) = auth.uid()::text);
@@ -356,6 +357,8 @@ if (hasActions) {
   const up = (uid, name) => as(uid, "authenticated", () => q(`insert into storage.objects(bucket_id, name) values ('product-images', $1)`, [name]));
   const lim = async (uid) => (await q(`select public.product_photo_limit($1) n`, [uid])).rows[0].n;
   ok((await lim(FREE)) === 50 && (await lim(OTHER)) === 500 && (await lim(SELLER)) === 1500 && (await lim(MASTER)) === 2500, "limits: Free 50 · Basic 500 · Pro 1,500 · Master 2,500");
+  const bk = (await q(`select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'product-images'`)).rows[0];
+  ok(bk.file_size_limit === 1048576 && bk.public === true && bk.allowed_mime_types.join() === "image/jpeg,image/png,image/webp", "product-images: 1 MB per file for website photos; public + types unchanged");
   await q(`update public.seller_profiles set plan = 'plus' where auth_user_id = $1`, [OTHER]);
   ok((await lim(OTHER)) === 1500, "Plus 1,500");
   await q(`update public.seller_profiles set plan_expiry = now() - interval '1 day' where auth_user_id = $1`, [OTHER]);
@@ -388,6 +391,7 @@ await db.exec(src("163_seller_website_rollback.sql"));
   ok(after.name === "Old shirt" && after.live_code === "A01", "rollback: old product kept");
   ok((await q(`select to_regclass('public.seller_websites') a, to_regclass('public.website_orders') b`)).rows[0].a === null, "rollback: tables gone");
   ok((await q(`select count(*)::int n from pg_publication_tables where pubname = 'supabase_realtime'`)).rows[0].n === 0, "rollback: realtime publication back to how it was");
+  ok((await q(`select file_size_limit n from storage.buckets where id = 'product-images'`)).rows[0].n === 409600, "rollback: product-images back to 400 KB");
   ok((await q(`select count(*)::int n from pg_policies where policyname = 'product_images_photo_limit'`)).rows[0].n === 0 && (await q(`select count(*)::int n from pg_policies where policyname like 'product_images_%'`)).rows[0].n === 4, "rollback: the photo-limit rule is gone, the 4 sql/95 rules stay");
   ok((await q(`select count(*)::int n from public.stock_movements where reason = 'website'`)).rows[0].n === 0 && (await q(`select count(*)::int n from public.stock_movements where reason = 'auto_order'`)).rows[0].n >= 1, "rollback: 'website' log rows removed, live rows kept");
   ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, 1, 'website')`, [SELLER]))) !== null, "rollback: reason list back to the live one");

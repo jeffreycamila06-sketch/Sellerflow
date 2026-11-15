@@ -1,9 +1,11 @@
 // Seller Website — extra product photos (2..8) and the shop's logo / cover, in the SAME public
 // product-images bucket (sql/95: public read, a seller writes only into their own folder).
 // Photo 1 stays products.image_path (productImages.ts, unchanged). Paths:
-//   <uid>/<localId>-p<n>.jpg (n = 2..8) · <uid>/site-logo-<t>.jpg · <uid>/site-cover-<t>.jpg
+//   <uid>/<localId>-p<n>.jpg (n = 2..8, full ≤ 2048 px) + <uid>/<localId>-p<n>-s.jpg (small copy)
+//   · <uid>/site-logo-<t>.jpg · <uid>/site-cover-<t>.jpg
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { PRODUCT_IMAGE_BUCKET, PRODUCT_IMAGE_CACHE_SECONDS, compressProductImage } from "./productImages";
+import { compressWebsitePhoto, type WebsitePhotoResult } from "./websitePhotoQuality";
 
 async function uid(): Promise<string | null> {
   if (!supabase) return null;
@@ -17,17 +19,26 @@ export function freePhotoNumber(paths: string[]): number | null {
   return null;
 }
 
-/** Compress + upload one extra photo. Returns its path, or a reason. */
-export async function uploadExtraPhoto(localId: number, n: number, file: Blob): Promise<{ ok: true; path: string } | { ok: false; reason: "too_big" | "unreadable" | "failed" }> {
-  const c = await compressProductImage(file);
+/** Compress + upload one website photo: the FULL photo (≤ 2048 px, JPEG ≥ 0.8, ≤ 1 MB) then its small copy
+ *  ("…-p<n>-s.jpg", ~600 px, used in the shop grid / cart / order lists). Small copy failed → the full
+ *  one is removed again and the upload counts as failed (never a photo without its small copy).
+ *  The full photo goes first: the server accepts a small copy only when its full photo exists. */
+export async function uploadExtraPhoto(localId: number, n: number, file: Blob, compress: (f: Blob) => Promise<WebsitePhotoResult> = compressWebsitePhoto): Promise<{ ok: true; path: string } | { ok: false; reason: "too_big" | "unreadable" | "failed" }> {
+  const c = await compress(file);
   if (c.ok === false) return { ok: false, reason: c.reason };
   if (!isSupabaseConfigured || !supabase) return { ok: false, reason: "failed" };
   const me = await uid();
   if (!me) return { ok: false, reason: "failed" };
   const path = extraPhotoPath(me, localId, n);
+  const bucket = supabase.storage.from(PRODUCT_IMAGE_BUCKET);
+  const opts = { upsert: true, contentType: "image/jpeg", cacheControl: PRODUCT_IMAGE_CACHE_SECONDS };
   try {
-    const up = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, c.blob, { upsert: true, contentType: "image/jpeg", cacheControl: PRODUCT_IMAGE_CACHE_SECONDS });
-    return up.error ? { ok: false, reason: "failed" } : { ok: true, path };
+    if ((await bucket.upload(path, c.full, opts)).error) return { ok: false, reason: "failed" };
+    if ((await bucket.upload(smallPhotoPath(path), c.small, opts)).error) {
+      try { await bucket.remove([path]); } catch { /* best effort */ }
+      return { ok: false, reason: "failed" };
+    }
+    return { ok: true, path };
   } catch { return { ok: false, reason: "failed" }; }
 }
 export async function removeExtraPhoto(path: string): Promise<boolean> {
