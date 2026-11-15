@@ -15,8 +15,8 @@ const card: CSSProperties = { background: "var(--surface-2)", border: "1px solid
 const stepTag: CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--accent-fg)", textTransform: "uppercase" };
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
-// The last "Store check: …" line stays on screen (also after the sheet is closed and opened again).
-let lastTestResult = "";
+// The last "Test store 198002 (德民): …" line stays on screen (also after the sheet is closed and opened again).
+let lastTestResult: { store: string; phone: string } | null = null;
 
 // Shadow block: what the server answered compared with the extension. Today's totals are read once
 // on open; the history is read when a filter / page changes — never polled. No ids, phone or store.
@@ -253,9 +253,10 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
         if (at) setTryAfter(tpl(t.rd_pc711_try_after, { t: at })); else setNote(t.rd_pc711_err_busy);
         return;
       }
-      const store = (a.data.result as { store?: { verdict?: string; kind?: string } } | undefined)?.store;
-      if (store) {
-        const line = tpl(t.rd_pc711_test_result, { r: `${store.verdict || "unknown"}${store.kind ? ` · ${store.kind}` : ""}` });
+      const res = a.data.result as { store?: { verdict?: string; kind?: string }; phone?: { verdict?: string; kind?: string } } | undefined;
+      const word = (p: { verdict?: string; kind?: string }) => `${p.verdict || "unknown"}${p.kind ? ` · ${p.kind}` : ""}`;
+      if (res?.store) {
+        const line = { store: tpl(t.rd_pc711_test_result, { r: word(res.store) }), phone: res.phone ? tpl(t.rd_pc711_test_phone, { r: word(res.phone) }) : "" };
         lastTestResult = line;
         setTestResult(line);
       } else setNote(t.rd_pc711_err_generic);
@@ -366,7 +367,13 @@ export default function Pc711Panel({ onChanged }: { onChanged?: (s: Pc711Status 
           <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_auto}</span><span style={{ color: "var(--text)", fontWeight: 600 }}>{status.autoLogins}</span>
         </div>
       </div>
-      {testResult ? <div data-testid="pc711-test-result" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{testResult}</div> : null}
+      {testResult ? (
+        <div style={{ marginTop: 12 }}>
+          <div data-testid="pc711-test-result" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{testResult.store}</div>
+          {testResult.phone ? <div data-testid="pc711-test-phone" style={{ marginTop: 4, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{testResult.phone}</div> : null}
+          <div data-testid="pc711-test-sample" style={{ marginTop: 4, fontSize: 11.5, color: "var(--text-dim)", lineHeight: 1.4 }}>{t.rd_pc711_test_sample}</div>
+        </div>
+      ) : null}
       {tryAfter ? <div data-testid="pc711-try-after" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "var(--warn)" }}>{tryAfter}</div> : null}
       {note ? <div data-testid="pc711-note" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{note}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
