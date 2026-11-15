@@ -1,33 +1,38 @@
 // @vitest-environment node
-// 7-11 server checker SHADOW (server/pc711Shadow.js): compares the server's answer with the Chrome
-// extension's on parcels the extension already checked (store / phone / frozen). Every error and
-// every mismatch says EXACTLY where it happened. Pins: words per kind; nothing when off / not
-// connected; parcel_scans is only READ; one at a time, ≥ 3 s apart, ≤ 300 a day (all kinds);
-// needs_login stops until the next connect; each failing step → its fail_step / http / reason with
-// match NULL; a real difference → match false with raw + gap; steps JSON holds no data; frozen
-// ext unknown → NULL (not counted); newest first; history filter + paging; errors by step; day
-// totals; one log line per check with no data; the sql/159 mirror.
+// 7-11 server checker SHADOW (server/pc711Shadow.js): the extension's whole-day job, same rules and
+// timing. Pins: every mirrored number = chrome-extension/background.js's constant; the queue (sql/162
+// RPC) oldest first, ≤ 5 a pass, 25 fetched to look past backoff, 2 s apart, one at a time, no daily
+// cap; the failure ladders (store/frozen 15·30·60·120 s, phone 5·10·20·60·120 s, then the error row);
+// 01–05 Taipei not counted + 10 min retry + catch-up after 05:00; the safety brake (5 refusals → 15 min,
+// ONE paused_http row); Waiting + per-day max; needs_login stop; nothing written to parcel_scans; no
+// data in rows / logs; history + totals; the sql/159 + sql/162 mirrors.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, totalsOf, dayWindow, toExtWord, noteWord, pickJobs, taipeiDay,
-  shadowRow, shadowLogLine, safeSteps, failReasonOf,
-  STORE_WORDS, PHONE_WORDS, FROZEN_WORDS, SHADOW_GAP_MS, SHADOW_DAY_MAX, SHADOW_LOOKBACK_MS, SHADOW_SWITCH, SHADOW_PAGE,
+  createPc711Shadow, createShadowDb, shadowSummary, shadowHistory, totalsOf, dayWindow, toExtWord, noteWord, taipeiDay,
+  shadowRow, shadowLogLine, safeSteps, failReasonOf, jobsFromPending, selectJobs, inShadowMaint, isRefusal, ladderFor,
+  STORE_WORDS, PHONE_WORDS, FROZEN_WORDS, SHADOW_SWITCH, SHADOW_PAGE,
+  SHADOW_POLL_MS, SHADOW_LIMIT, SHADOW_FETCH_LIMIT, SHADOW_ROW_GAP_MS, SHADOW_LOOKBACK_MS, SHADOW_MAINT_RETRY_MS,
+  SHADOW_MAINT_START_H, SHADOW_MAINT_END_H, SHADOW_STORE_BACKOFF_MS, SHADOW_PHONE_BACKOFF_MS, SHADOW_BRAKE_ERRORS, SHADOW_BRAKE_PAUSE_MS,
 } from "../../../../server/pc711Shadow.js";
+import * as shadowMod from "../../../../server/pc711Shadow.js";
 
 const NOW = Date.parse("2026-11-14T04:00:00Z"); // 12:00 Taipei
 const PHONE = "0912345678", NAME = "陳小美", STORE = "123456", GUID = "MARKGUID-1234-5678";
 const ago = (min: number, from = NOW) => new Date(from - min * 60_000).toISOString();
-const scan = (id: string, o: Record<string, unknown> = {}) => ({
-  id, store_id: STORE, phone: PHONE, customer_name: NAME,
-  store_full_status: "open", store_full_at: ago(2), phone_check_status: "ok", phone_check_at: ago(3),
-  frozen_store_status: null, frozen_store_checked_at: null, ...o,
+let seq = 0;
+const pend = (kind: string, minAgo: number, o: Record<string, unknown> = {}) => ({
+  scan_id: `00000000-0000-0000-0000-${String(++seq).padStart(12, "0")}`, kind, ext: kind === "phone" ? "ok" : kind === "frozen" ? "no_frozen" : "open",
+  at: ago(minAgo), store_id: STORE, phone: kind === "phone" ? PHONE : null, customer_name: kind === "phone" ? NAME : null, ...o,
 });
 
-// A fake Supabase that records every query (table + ops) and answers through `answer(table, ops)`.
+// A fake Supabase that records every query (table / rpc + ops). The pending RPC is answered from
+// `queue` minus the parcels that got a pc711_shadow row (= sql/162's anti-join), oldest first.
 type Op = [string, ...unknown[]];
-function fakeSb(answer: (table: string, ops: Op[]) => unknown) {
+function fakeSb(o: { queue?: Record<string, unknown>[]; answer?: (table: string, ops: Op[]) => unknown; pendingError?: boolean; stored?: Record<string, number> } = {}) {
   const queries: { table: string; ops: Op[] }[] = [];
+  const rows: Record<string, unknown>[] = [];
+  const days: Record<string, number> = { ...(o.stored || {}) };
   const from = (table: string) => {
     const ops: Op[] = [];
     queries.push({ table, ops });
@@ -35,35 +40,83 @@ function fakeSb(answer: (table: string, ops: Op[]) => unknown) {
     for (const m of ["select", "or", "in", "gte", "lt", "eq", "is", "not", "order", "limit", "range", "update", "delete", "insert"]) {
       chain[m] = (...a: unknown[]) => { ops.push([m, ...a]); return chain; };
     }
-    chain.upsert = (row: unknown, o?: unknown) => { ops.push(["upsert", row, o]); return Promise.resolve({ error: null }); };
-    chain.then = (ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve(answer(table, ops)).then(ok, bad);
+    chain.upsert = (row: Record<string, unknown>, opt?: unknown) => {
+      ops.push(["upsert", row, opt]);
+      if (table === "pc711_shadow") rows.push(row);
+      if (table === "pc711_shadow_days") days[String(row.day)] = Number(row.max_waiting);
+      return Promise.resolve({ error: null });
+    };
+    chain.then = (ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) => {
+      const v = o.answer ? o.answer(table, ops) : table === "pc711_shadow_days" && ops[0]?.[0] === "select"
+        ? { data: Object.entries(days).map(([day, max_waiting]) => ({ day, max_waiting })), error: null }
+        : { data: [], error: null };
+      return Promise.resolve(v).then(ok, bad);
+    };
     return chain;
   };
-  return { sb: { from }, queries };
+  const rpc = (fn: string, args: { p_since: string; p_limit: number }) => {
+    queries.push({ table: `rpc:${fn}`, ops: [["rpc", args]] });
+    if (o.pendingError) return Promise.resolve({ data: null, error: { message: "no function" } });
+    const done = new Set(rows.map((r) => `${r.scan_id}:${r.kind}`));
+    const w = (o.queue || []).filter((j) => !done.has(`${j.scan_id}:${j.kind}`) && Date.parse(String(j.at)) >= Date.parse(args.p_since))
+      .sort((a, b) => Date.parse(String(a.at)) - Date.parse(String(b.at)));
+    return Promise.resolve({ data: { waiting: w.length, jobs: w.slice(0, Math.min(args.p_limit, 50)) }, error: null });
+  };
+  return { sb: { from, rpc }, queries, rows, days };
 }
+
 const has = (ops: Op[], m: string, ...a: unknown[]) => ops.some((o) => o[0] === m && a.every((x, i) => JSON.stringify(o[i + 1]) === JSON.stringify(x)));
 
-// The job wired to the REAL createShadowDb on that fake.
-const setup = (o: { scans?: unknown[]; done?: unknown[]; count?: number; on?: string; pc711?: unknown; check?: (i: { kind: string }) => Promise<unknown>; start?: number } = {}) => {
-  const f = fakeSb((table, ops) => {
-    if (table === "parcel_scans") return { data: o.scans ?? [scan("s1")], error: null };
-    if (has(ops, "select", "id", { count: "exact", head: true })) return { count: o.count ?? 0, error: null };
-    if (ops.some((x) => x[0] === "delete")) return { error: null };
-    return { data: o.done ?? [], error: null };
-  });
+// The job wired to the REAL createShadowDb on that fake; a virtual clock.
+type Check = (i: { kind: string; storeId?: string }) => Promise<unknown>;
+const OK = (i: { kind: string }) => ({ verdict: i.kind === "phone" ? "ok" : i.kind === "frozen" ? "no_frozen" : "open", http: 200, ms: 900, kind: "", raw: i.kind === "phone" ? "Status:true" : "enable", steps: [] });
+const FAIL = (http = 0, kind = "timeout", step = "store.byid") => ({ verdict: "unknown", http, ms: 300, kind, steps: [{ step, http, ms: 300, ok: false, note: `kind=${kind}` }] });
+const setup = (o: { queue?: Record<string, unknown>[]; on?: string; pc711?: unknown; check?: Check; start?: number; pendingError?: boolean; stored?: Record<string, number> } = {}) => {
+  const f = fakeSb({ queue: o.queue ?? [pend("store", 10)], pendingError: o.pendingError, stored: o.stored });
   const logs: string[] = [];
   const sleeps: number[] = [];
   let t = o.start ?? NOW;
-  const ok = (i: { kind: string }) => ({ verdict: i.kind === "phone" ? "ok" : "open", http: 200, ms: 900, kind: "", raw: i.kind === "phone" ? "Status:true" : "enable", steps: [] });
-  const check = vi.fn(o.check ?? (async (i: { kind: string }) => { t += 900; return ok(i); }));
+  const check = vi.fn(o.check ?? (async (i: { kind: string }) => { t += 900; return OK(i); }));
   const job = createPc711Shadow({
     db: createShadowDb(f.sb as never), check: check as never, pc711: (o.pc711 ?? { status: () => ({ state: "connected", since: "2026-11-14T00:00:00Z" }) }) as never,
     readSetting: async (k: string) => (k === SHADOW_SWITCH ? (o.on ?? "true") : null),
     now: () => t, log: (l: string) => logs.push(l), sleep: async (ms: number) => { sleeps.push(ms); t += ms; },
   });
-  const inserted = () => f.queries.filter((q) => q.table === "pc711_shadow").flatMap((q) => q.ops.filter((x) => x[0] === "upsert").map((x) => x[1] as Record<string, unknown>));
-  return { job, check, logs, sleeps, queries: f.queries, inserted, advance: (ms: number) => { t += ms; } };
+  return { job, check, logs, sleeps, f, queries: f.queries, inserted: () => f.rows, advance: (ms: number) => { t += ms; }, now: () => t };
 };
+
+// ── the extension's numbers, read from the extension itself ──────────────────
+const EXT = readFileSync(new URL("../../../../chrome-extension/background.js", import.meta.url), "utf8");
+const extConst = (name: string): unknown => {
+  const m = new RegExp(`(?:const|,)\\s*${name}\\s*=\\s*([^;,\\n]+(?:\\[[^\\]]*\\])?)`).exec(EXT);
+  if (!m) throw new Error(`extension constant ${name} not found`);
+  const expr = m[1].startsWith("[") ? m[1] : m[1].trim();
+  return new Function(`return (${expr.startsWith("[") ? EXT.slice(m.index).match(/\[[^\]]*\]/)![0] : expr});`)();
+};
+
+describe("mirrored from the extension (chrome-extension/background.js)", () => {
+  it.each([
+    ["SHADOW_POLL_MS", SHADOW_POLL_MS, "PC_POLL_MS"], ["SHADOW_LIMIT", SHADOW_LIMIT, "PC_LIMIT"], ["SHADOW_FETCH_LIMIT", SHADOW_FETCH_LIMIT, "PC_FETCH_LIMIT"],
+    ["SHADOW_ROW_GAP_MS", SHADOW_ROW_GAP_MS, "PC_ROW_GAP_MS"], ["SHADOW_LOOKBACK_MS", SHADOW_LOOKBACK_MS, "PC_REQUEUE_SINCE_MS"],
+    ["SHADOW_MAINT_RETRY_MS", SHADOW_MAINT_RETRY_MS, "PC_MAINT_RETRY_MS"], ["SHADOW_MAINT_START_H", SHADOW_MAINT_START_H, "PC_MAINT_START_H"],
+    ["SHADOW_MAINT_END_H", SHADOW_MAINT_END_H, "PC_MAINT_END_H"],
+  ])("%s = %s = the extension's %s", (_n, mine, ext) => { expect(mine).toBe(extConst(ext)); });
+  it("store ladder = PC_BACKOFF_MS; phone ladder = PC_PHONE_FAST_BACKOFF_MS; the store gives up where the extension does (PC_STORE_GIVE_UP)", () => {
+    expect(SHADOW_STORE_BACKOFF_MS).toEqual(extConst("PC_BACKOFF_MS"));
+    expect(SHADOW_PHONE_BACKOFF_MS).toEqual(extConst("PC_PHONE_FAST_BACKOFF_MS"));
+    expect(SHADOW_STORE_BACKOFF_MS.length + 1).toBe(extConst("PC_STORE_GIVE_UP"));
+    expect(ladderFor("frozen")).toBe(SHADOW_STORE_BACKOFF_MS);
+    expect(ladderFor("phone")).toBe(SHADOW_PHONE_BACKOFF_MS);
+  });
+  it("maintenance hours = the extension's pcInMaintenanceAt, every hour of a day", () => {
+    const fn = new Function(`${EXT.match(/const PC_MAINT_START_H[^\n]*\n/)![0]}${EXT.match(/function pcTaipeiHour[\s\S]*?\n}\n/)![0]}${EXT.match(/function pcInMaintenanceAt[\s\S]*?\n}\n/)![0]} return pcInMaintenanceAt;`)() as (ms: number) => boolean;
+    for (let h = 0; h < 48; h++) { const ms = Date.UTC(2026, 10, 14) + h * 1800_000; expect(inShadowMaint(ms)).toBe(fn(ms)); }
+  });
+  it("no daily cap any more; the brake numbers are the shadow's own (5 refusals → 15 min)", () => {
+    expect("SHADOW_DAY_MAX" in shadowMod).toBe(false);
+    expect([SHADOW_BRAKE_ERRORS, SHADOW_BRAKE_PAUSE_MS]).toEqual([5, 15 * 60_000]);
+  });
+});
 
 describe("server answer → the extension's words", () => {
   it("store / phone / frozen words kept, anything else → unknown", () => {
@@ -77,31 +130,74 @@ describe("server answer → the extension's words", () => {
   });
 });
 
-describe("which parcels (newest first)", () => {
-  it("100 recent scans, the newest 3 not compared yet → exactly those 3", () => {
-    const rows = Array.from({ length: 100 }, (_, i) => scan(`s${i}`, { store_full_at: new Date(NOW - (i + 1) * 15_000).toISOString(), phone_check_status: null }));
-    const done = rows.slice(3).map((r) => ({ scan_id: r.id, kind: "store" }));
-    expect(pickJobs(rows, done, NOW - SHADOW_LOOKBACK_MS, 3).map((j) => j.scanId)).toEqual(["s0", "s1", "s2"]);
+describe("the queue (sql/162 RPC): oldest first, the last 6 h, ≤ 5 a pass", () => {
+  it("one RPC a pass: since = now − 6 h, 25 fetched; parcel_scans is never read directly", async () => {
+    const s = setup();
+    await s.job.tick();
+    const rpc = s.queries.filter((q) => q.table === "rpc:pc711_shadow_pending");
+    expect(rpc).toHaveLength(1);
+    expect(rpc[0].ops[0][1]).toEqual({ p_since: new Date(NOW - SHADOW_LOOKBACK_MS).toISOString(), p_limit: SHADOW_FETCH_LIMIT });
+    expect(s.queries.some((q) => q.table === "parcel_scans")).toBe(false);
   });
-  it("store, phone and frozen jobs carry the extension's inputs; older than 30 min → skipped", () => {
-    const jobs = pickJobs([scan("a", { frozen_store_status: "no_frozen", frozen_store_checked_at: ago(1), phone_check_at: ago(40) })], [], NOW - SHADOW_LOOKBACK_MS, 3);
-    expect(jobs.map((j) => j.kind)).toEqual(["frozen", "store"]);
-    expect(jobs[0]).toMatchObject({ ext: "no_frozen", input: { kind: "frozen", storeId: STORE } });
+  it("12 waiting → the OLDEST 5 this pass (2 s apart), the next 5 the next pass, … nothing skipped", async () => {
+    const queue = Array.from({ length: 12 }, (_, i) => pend("store", 300 - i * 20)); // 5 h ago … 1 h20 ago
+    const s = setup({ queue });
+    expect(await s.job.tick()).toEqual({ checked: 5, waiting: 12 });
+    expect(s.inserted().map((r) => r.scan_id)).toEqual(queue.slice(0, 5).map((q) => q.scan_id));
+    expect(s.sleeps.every((ms) => ms > 0 && ms <= SHADOW_ROW_GAP_MS)).toBe(true);
+    expect(s.sleeps).toHaveLength(4); // between parcels (the first one comes ≥ 2 s after the previous pass)
+    s.advance(SHADOW_POLL_MS);
+    expect(await s.job.tick()).toEqual({ checked: 5, waiting: 7 });
+    s.advance(SHADOW_POLL_MS);
+    expect(await s.job.tick()).toEqual({ checked: 2, waiting: 2 });
+    expect(s.inserted().map((r) => r.scan_id)).toEqual(queue.map((q) => q.scan_id));
+    expect(s.check).toHaveBeenCalledTimes(12);
   });
-  it("recentScans = one read per kind (≥ since, newest first, 30 each), merged by id", async () => {
-    const f = fakeSb((_t, ops) => {
-      const col = (ops.find((o) => o[0] === "gte") || [])[1];
-      return { data: col === "store_full_at" ? [scan("a"), scan("b")] : col === "phone_check_at" ? [scan("b"), scan("c")] : [scan("d")], error: null };
-    });
-    const got = await createShadowDb(f.sb as never).recentScans(ago(30));
-    expect(f.queries.map((q) => q.table)).toEqual(["parcel_scans", "parcel_scans", "parcel_scans"]);
-    for (const [i, col] of ["store_full_at", "phone_check_at", "frozen_store_checked_at"].entries()) {
-      const ops = f.queries[i].ops;
-      expect(ops.some((o) => o[0] === "gte" && o[1] === col)).toBe(true);
-      expect(ops.find((o) => o[0] === "order")).toEqual(["order", col, { ascending: false }]);
-      expect(has(ops, "limit", 30)).toBe(true);
-    }
-    expect(got.map((r: { id: string }) => r.id)).toEqual(["a", "b", "c", "d"]);
+  it("after an outage the 6 h backlog is caught up (no daily cap): 400 parcels → all checked", async () => {
+    const queue = Array.from({ length: 400 }, (_, i) => pend(i % 2 ? "phone" : "store", 350 - i * 0.8));
+    const s = setup({ queue });
+    for (let i = 0; i < 80; i++) { await s.job.tick(); s.advance(SHADOW_POLL_MS); }
+    expect(s.inserted()).toHaveLength(400);
+  });
+  it("a parcel in backoff is passed over so the ones behind it get their turn (the extension's PC_FETCH_LIMIT)", () => {
+    const jobs = jobsFromPending([pend("store", 30), pend("store", 20), pend("phone", 10)]);
+    const backoff = new Map([[`${jobs[0].scanId}:store`, { fails: 1, nextAt: NOW + 10_000, seenAt: NOW }]]);
+    expect(selectJobs(jobs, backoff, NOW, 5).map((j) => j.scanId)).toEqual([jobs[1].scanId, jobs[2].scanId]);
+    expect(selectJobs(jobs, backoff, NOW + 10_000, 2).map((j) => j.scanId)).toEqual([jobs[0].scanId, jobs[1].scanId]);
+  });
+  it("jobs carry the extension's inputs: phone = phone + name + store; store / frozen = the store only", () => {
+    const [ph, st, fz] = jobsFromPending([pend("phone", 3), pend("store", 2), pend("frozen", 1)]);
+    expect(ph.input).toEqual({ kind: "phone", phone: PHONE, name: NAME, storeId: STORE });
+    expect(st.input).toEqual({ kind: "store", storeId: STORE });
+    expect(fz).toMatchObject({ ext: "no_frozen", input: { kind: "frozen", storeId: STORE } });
+  });
+  it("one check at a time (a second pass while one runs = skipped)", async () => {
+    let release!: () => void;
+    const s = setup({ queue: [pend("store", 5), pend("store", 4)], check: () => new Promise((r) => { release = () => r(OK({ kind: "store" })); }) });
+    const first = s.job.tick();
+    await vi.waitFor(() => expect(s.check).toHaveBeenCalledTimes(1));
+    expect(await s.job.tick()).toEqual({ skipped: "running" });
+    release();
+    await vi.waitFor(() => expect(s.check).toHaveBeenCalledTimes(2));
+    release();
+    await first;
+  });
+  it("the loop re-arms 5 s after a pass finishes (like the extension's pcScheduleLoop)", async () => {
+    const s = setup({ on: "false" });
+    const delays: number[] = [];
+    let fire!: () => void;
+    s.job.start(((fn: () => void, ms: number) => { delays.push(ms); fire = fn; return { unref() {} }; }) as never);
+    expect(delays).toEqual([SHADOW_POLL_MS]);
+    fire();
+    await vi.waitFor(() => expect(delays).toEqual([SHADOW_POLL_MS, SHADOW_POLL_MS]));
+    s.job.stop();
+  });
+  it("no sql/162 yet → one log line a minute, nothing checked, nothing written", async () => {
+    const s = setup({ pendingError: true });
+    expect(await s.job.tick()).toEqual({ skipped: "error" });
+    await s.job.tick();
+    expect(s.logs).toEqual(["[PC711_SHADOW] pending read failed"]);
+    expect(s.check).not.toHaveBeenCalled();
   });
 });
 
@@ -117,56 +213,183 @@ describe("the job", () => {
       expect(s.inserted()).toEqual([]);
     }
   });
-  it("parcel_scans is only ever READ; rows carry no phone / name / store id", async () => {
-    const s = setup({ scans: [scan("s1", { frozen_store_status: "ok", frozen_store_checked_at: ago(1) })] });
+  it("only pc711_shadow / pc711_shadow_days / the RPC are touched; rows + logs carry no phone / name / store id", async () => {
+    const s = setup({ queue: [pend("store", 3), pend("phone", 2), pend("frozen", 1)] });
     await s.job.tick();
     expect(s.inserted()).toHaveLength(3);
-    const onScans = s.queries.filter((q) => q.table === "parcel_scans");
-    expect(onScans.length).toBe(3);
-    for (const q of onScans) expect(q.ops.every((o) => ["select", "gte", "order", "limit"].includes(o[0]))).toBe(true);
-    expect(s.queries.every((q) => q.table === "parcel_scans" || q.table === "pc711_shadow")).toBe(true);
-    expect(JSON.stringify(s.inserted())).not.toMatch(new RegExp(`${PHONE}|${NAME}|${STORE}`));
-  });
-  it("one at a time; ≥ 3 s between checks", async () => {
-    let released = false;
-    let release!: () => void;
-    const answer = { verdict: "open", http: 200, ms: 0, kind: "", steps: [] };
-    const s = setup({ scans: [scan("s1", { phone_check_at: ago(90) }), scan("s2", { phone_check_at: ago(90) })],
-      check: () => (released ? Promise.resolve(answer) : new Promise((r) => { release = () => { released = true; r(answer); }; })) });
-    const first = s.job.tick();
-    await vi.waitFor(() => expect(s.check).toHaveBeenCalledTimes(1));
-    expect(await s.job.tick()).toEqual({ skipped: "running" });
-    release();
-    await first;
-    expect(s.check).toHaveBeenCalledTimes(2);
-    expect(s.sleeps).toEqual([SHADOW_GAP_MS]);
-  });
-  it(`${SHADOW_DAY_MAX} a Taipei day covers all three kinds (frozen included)`, async () => {
-    const s = setup({ count: SHADOW_DAY_MAX - 1, scans: [scan("s1", { frozen_store_status: "ok", frozen_store_checked_at: ago(1) })] });
-    expect(await s.job.tick()).toEqual({ checked: 1 });
-    expect(s.check).toHaveBeenCalledWith({ kind: "frozen", storeId: STORE }); // the newest job used the last slot
-    expect(await s.job.tick()).toEqual({ skipped: "day_max" });
-    expect(s.check).toHaveBeenCalledTimes(1);
+    expect(s.queries.every((q) => ["pc711_shadow", "pc711_shadow_days", "rpc:pc711_shadow_pending"].includes(q.table))).toBe(true);
+    expect(JSON.stringify(s.inserted()) + s.logs.join("\n")).not.toMatch(new RegExp(`${PHONE}|${NAME}|${STORE}`));
   });
   it("needs_login → one NULL row (login), stops until the next connect, then resumes", async () => {
     const pc = { since: "2026-11-14T00:00:00Z", status: () => ({ state: "connected", since: pc.since }) };
     let answer: Record<string, unknown> = { verdict: "unknown", http: 200, ms: 5, kind: "login_not_accepted", steps: [{ step: "store.cart", http: 200, ms: 5, ok: false, note: "kind=login_not_accepted" }] };
-    const s = setup({ pc711: pc, check: async () => answer });
+    const s = setup({ pc711: pc, queue: [pend("store", 3), pend("store", 2)], check: async () => answer });
     await s.job.tick();
     expect(s.inserted()).toEqual([expect.objectContaining({ match: null, fail_step: "login", fail_reason: "needs_login" })]);
-    expect(s.logs[0]).toMatch(/stop=needs_login$/);
+    expect(s.logs.at(-1)).toMatch(/stop=needs_login$/);
     expect(await s.job.tick()).toEqual({ skipped: "stopped" });
     pc.since = "2026-11-14T03:00:00Z";
     answer = { verdict: "open", http: 200, ms: 5, kind: "", raw: "enable", steps: [] };
-    s.advance(SHADOW_GAP_MS);
-    expect((await s.job.tick()).checked).toBeGreaterThan(0);
+    s.advance(SHADOW_ROW_GAP_MS);
+    expect((await s.job.tick()).checked).toBe(1);
   });
-  it("01–05 Taipei keeps running, maint=1 in the log", async () => {
-    const twoAm = Date.parse("2026-11-14T18:00:00Z");
-    const s = setup({ start: twoAm, scans: [scan("s1", { store_full_at: ago(2, twoAm), phone_check_at: ago(3, twoAm) })] });
+});
+
+describe("failure ladder (the extension's per-parcel backoff)", () => {
+  async function ladder(kind: "store" | "phone" | "frozen") {
+    // a NON-refusal error (http 200, an answer we can't read) — 7-11 answered, so the brake never pulls
+    const s = setup({ queue: [pend(kind, 30)], check: async () => FAIL(200, "unexpected_answer", kind === "phone" ? "phone.token" : kind === "frozen" ? "frozen.byid" : "store.byid") });
+    const waits: number[] = [];
+    for (let i = 0; i < 20 && !s.inserted().length; i++) {
+      const before = s.check.mock.calls.length;
+      await s.job.tick();
+      if (s.check.mock.calls.length > before && !s.inserted().length) {
+        const b = [...s.job._state().backoff.values()][0];
+        waits.push(b.nextAt - s.now());
+        s.advance(b.nextAt - s.now() - 1);
+        expect(await s.job.tick()).toEqual({ checked: 0, waiting: 1 }); // 1 ms early: not yet
+        s.advance(1);
+      }
+    }
+    return { s, waits };
+  }
+  it("store + frozen: 15 s · 30 s · 60 s · 2 min, then the 5th failure writes the error row", async () => {
+    for (const k of ["store", "frozen"] as const) {
+      const { s, waits } = await ladder(k);
+      expect(waits).toEqual(SHADOW_STORE_BACKOFF_MS);
+      expect(s.check).toHaveBeenCalledTimes(SHADOW_STORE_BACKOFF_MS.length + 1);
+      expect(s.inserted()).toEqual([expect.objectContaining({ kind: k, match: null, fail_reason: "unexpected_answer", fail_http: 200 })]);
+      expect(s.inserted()[0].steps).toEqual([expect.objectContaining({ ok: false, w: "unexpected_answer" })]);
+    }
+  });
+  it("phone: 5 s · 10 s · 20 s · 60 s · 2 min, then the 6th failure writes the error row", async () => {
+    const { s, waits } = await ladder("phone");
+    expect(waits).toEqual(SHADOW_PHONE_BACKOFF_MS);
+    expect(s.check).toHaveBeenCalledTimes(SHADOW_PHONE_BACKOFF_MS.length + 1);
+    expect(s.inserted()).toEqual([expect.objectContaining({ kind: "phone", fail_step: "phone.token", fail_reason: "unexpected_answer" })]);
+  });
+  it("an answer after failures = the normal comparison row (no error row); the ladder is cleared", async () => {
+    let n = 0;
+    const s = setup({ check: async (i) => (++n <= 2 ? FAIL() : OK(i)) });
+    await s.job.tick(); s.advance(SHADOW_STORE_BACKOFF_MS[0]);
+    await s.job.tick(); s.advance(SHADOW_STORE_BACKOFF_MS[1]);
     await s.job.tick();
-    expect(s.check).toHaveBeenCalled();
-    expect(s.logs.every((l) => /maint=1/.test(l))).toBe(true);
+    expect(s.inserted()).toEqual([expect.objectContaining({ match: true, fail_reason: null })]);
+    expect(s.job._state().backoff.size).toBe(0);
+  });
+  it("the SAME parcel timing out 5 times in a row also pulls the brake (5 refusals in a row)", async () => {
+    const s = setup({ check: async () => FAIL(0, "timeout") });
+    for (const w of SHADOW_STORE_BACKOFF_MS) { await s.job.tick(); s.advance(w); }
+    await s.job.tick();
+    expect(s.inserted().map((r) => r.fail_reason)).toEqual(["timeout", "paused_http"]); // the 5th failure = past the ladder AND the 5th refusal
+  });
+  it("a thrown check is a failure on the ladder; past the ladder → fail_reason threw", async () => {
+    const s = setup({ check: async () => { throw new Error("boom"); } });
+    for (const w of [...SHADOW_STORE_BACKOFF_MS, 0]) { await s.job.tick(); s.advance(w); }
+    expect(s.inserted()).toEqual([expect.objectContaining({ kind: "store", match: null, fail_reason: "threw" })]);
+    expect(s.logs.at(-1)).toMatch(/match=err/);
+  });
+});
+
+describe("7-ELEVEN maintenance 01:00–05:00 Taipei", () => {
+  const TWO_AM = Date.parse("2026-11-14T18:00:00Z"); // 02:00 Taipei
+  it("a failure there is not counted and retries every 10 min; nothing is written", async () => {
+    const s = setup({ start: TWO_AM, queue: [{ ...pend("store", 0), at: new Date(TWO_AM - 60_000).toISOString() }], check: async () => FAIL(503, "http") });
+    for (let i = 0; i < 6; i++) {
+      await s.job.tick();
+      const b = [...s.job._state().backoff.values()][0];
+      expect(b.fails).toBe(0);
+      expect(b.nextAt - s.now()).toBe(SHADOW_MAINT_RETRY_MS);
+      s.advance(SHADOW_MAINT_RETRY_MS);
+    }
+    expect(s.inserted()).toEqual([]);
+    expect(s.job._state().pausedUntil).toBe(0); // refusals in maintenance never pull the brake
+    expect(s.logs.every((l) => / maint=1 /.test(l))).toBe(true);
+  });
+  it("an answer there is written as usual; the first pass after 05:00 catches up from the oldest", async () => {
+    const FOUR_59 = Date.parse("2026-11-14T20:59:00Z");
+    const queue = Array.from({ length: 3 }, (_, i) => ({ ...pend("store", 0), at: new Date(FOUR_59 - (200 - i) * 60_000).toISOString() }));
+    let up = false;
+    const s = setup({ start: FOUR_59, queue, check: async (i) => (up ? OK(i) : FAIL(0, "timeout")) });
+    await s.job.tick();
+    expect(s.inserted()).toEqual([]);
+    up = true;
+    s.advance(SHADOW_MAINT_RETRY_MS); // 05:09 Taipei
+    expect(inShadowMaint(s.now())).toBe(false);
+    expect(await s.job.tick()).toEqual({ checked: 3, waiting: 3 });
+    expect(s.inserted().map((r) => r.scan_id)).toEqual(queue.map((q) => q.scan_id));
+  });
+});
+
+describe("safety brake", () => {
+  it("5 refusals in a row (403 / 429 / 5xx / timeout) → 15 min pause, ONE paused_http row (not a parcel's), then resumes", async () => {
+    const queue = Array.from({ length: 8 }, (_, i) => pend("store", 60 - i));
+    const codes = [403, 429, 500, 503, 0];
+    let n = 0, up = false;
+    const s = setup({ queue, check: async (i) => (up ? OK(i) : FAIL(codes[n % 5], codes[n++ % 5] ? "http" : "timeout")) });
+    await s.job.tick();
+    expect(s.check).toHaveBeenCalledTimes(5);
+    const rows = s.inserted();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ fail_reason: "paused_http", note: "paused_15m", match: null, ext_verdict: null });
+    expect(queue.map((q) => q.scan_id)).not.toContain(rows[0].scan_id);
+    expect(s.logs.at(-1)).toMatch(/^\[PC711_SHADOW\] pause 15m after 5 refusals/);
+    const until = s.job.state().pausedUntil!;
+    expect(until - s.now()).toBe(SHADOW_BRAKE_PAUSE_MS);
+    s.advance(SHADOW_BRAKE_PAUSE_MS - 1);
+    expect(await s.job.tick()).toEqual({ skipped: "paused" });
+    up = true;
+    s.advance(1);
+    expect((await s.job.tick()).checked).toBe(5);
+    expect(s.job.state().pausedUntil).toBeNull();
+  });
+  it("an answer or a non-refusal error (e.g. no_form, http 200) breaks the row", async () => {
+    const plan = [FAIL(503, "http"), FAIL(503, "http"), FAIL(200, "cart_form_missing", "store.cart"), FAIL(503, "http"), FAIL(503, "http"), FAIL(503, "http"), FAIL(503, "http")];
+    let n = 0;
+    const s = setup({ queue: Array.from({ length: 7 }, (_, i) => pend("store", 60 - i)), check: async () => plan[n++] });
+    await s.job.tick(); s.advance(SHADOW_POLL_MS);
+    await s.job.tick();
+    expect(s.check).toHaveBeenCalledTimes(7);
+    expect(s.job.state().pausedUntil).toBeNull();
+    expect(isRefusal({ fail_http: 429 })).toBe(true);
+    expect(isRefusal({ fail_http: 404 })).toBe(false);
+    expect(isRefusal({ fail_http: 0, fail_reason: "timeout" })).toBe(true);
+    expect(isRefusal({ fail_http: 0, fail_reason: "network" })).toBe(false);
+  });
+});
+
+describe("Waiting", () => {
+  it("each pass records Waiting and the day's highest; a restart never lowers the stored highest", async () => {
+    const s = setup({ queue: Array.from({ length: 9 }, (_, i) => pend("store", 50 - i)), stored: { "2026-11-14": 20 } });
+    await s.job.tick();
+    expect(s.job.state()).toMatchObject({ waiting: 9, dayMax: { "2026-11-14": 20 } });
+    expect(s.f.queries.some((q) => q.table === "pc711_shadow_days" && q.ops.some((o) => o[0] === "upsert"))).toBe(false);
+    const t = setup({ queue: Array.from({ length: 30 }, (_, i) => pend("store", 50 - i)), stored: { "2026-11-14": 20 } });
+    await t.job.tick();
+    expect(t.f.days["2026-11-14"]).toBe(30);
+  });
+  it("summary: Waiting = a fresh count (limit 0), the brake time, and checked · match % · errors · max Waiting for the last 3 Taipei days", async () => {
+    const f = fakeSb({ queue: [pend("store", 30), pend("phone", 20)], stored: { "2026-11-12": 41, "2026-11-13": 7 } });
+    const day = (d: string, h: number) => new Date(Date.parse(`${d}T00:00:00Z`) + h * 3600_000).toISOString();
+    const rows = [
+      { at: day("2026-11-14", 1), kind: "store", match: true, srv_ms: 900 }, { at: day("2026-11-14", 2), kind: "phone", match: false, srv_ms: 900 },
+      { at: day("2026-11-13", 3), kind: "store", match: null, fail_step: "store.byid", fail_reason: "timeout" },
+      { at: day("2026-11-13", 4), kind: "store", match: null, fail_step: "store.byid", fail_reason: "paused_http" },
+      { at: day("2026-11-12", 2), kind: "store", match: true, srv_ms: 900 },
+    ];
+    const db = { ...createShadowDb(f.sb as never), rowsBetween: vi.fn(async () => rows) };
+    const out = await shadowSummary(db as never, async () => "true", NOW, { pausedUntil: NOW + 600_000, waiting: 3, dayMax: { "2026-11-14": 12 } });
+    expect(out.waiting).toBe(2);
+    expect(f.queries.find((q) => q.table === "rpc:pc711_shadow_pending")!.ops[0][1]).toEqual({ p_since: new Date(NOW - SHADOW_LOOKBACK_MS).toISOString(), p_limit: 0 });
+    expect(out.pausedUntil).toBe(new Date(NOW + 600_000).toISOString());
+    expect(out.days).toEqual([
+      { day: "2026-11-14", checked: 2, matchPct: 50, errors: 0, maxWaiting: 12 },
+      { day: "2026-11-13", checked: 1, matchPct: null, errors: 1, maxWaiting: 7 },
+      { day: "2026-11-12", checked: 1, matchPct: 100, errors: 0, maxWaiting: 41 },
+    ]);
+    expect(out.today.compared).toBe(2);
+    const past = await shadowSummary(db as never, async () => "true", NOW, { pausedUntil: NOW - 1, waiting: 0, dayMax: {} });
+    expect(past.pausedUntil).toBeNull();
   });
 });
 
@@ -192,12 +415,6 @@ describe("every error says where it happened (match NULL)", () => {
     const row = shadowRow(job, { verdict: "unknown", http, ms: 2000, kind, steps: [...before, { step, http, ms: 400, ok: false, note: `bytes=0 kind=${kind}` }] }, NOW);
     expect(row).toMatchObject({ match: null, fail_step: failStep, fail_http: http, fail_reason: reason, srv_verdict: "unknown", note: reason });
     expect((row.steps as unknown[]).length).toBe(before.length + 1);
-  });
-  it("a thrown check → fail_reason threw, match NULL", async () => {
-    const s = setup({ scans: [scan("s1", { phone_check_at: ago(90) })], check: async () => { throw new Error("boom"); } });
-    await s.job.tick();
-    expect(s.inserted()).toEqual([expect.objectContaining({ kind: "store", match: null, fail_reason: "threw" })]);
-    expect(s.logs[0]).toMatch(/match=err/);
   });
   it("a REAL different answer (server full, extension open) → match false, with raw + gap", () => {
     const row = shadowRow(job, { verdict: "full", http: 200, ms: 1800, kind: "", raw: "disable", steps: [okStep("store.byid")] }, NOW + 180_000);
@@ -254,15 +471,8 @@ describe("admin reads", () => {
     expect(t.errorsByStep).toEqual({ "store.emap": 2, "phone.token": 1 });
     expect(t.errors).toBe(3);
   });
-  it("summary reads today's rows (Taipei day)", async () => {
-    const f = fakeSb(() => ({ data: [{ at: ago(1), kind: "store", match: true, srv_ms: 1000 }], error: null }));
-    const out = await shadowSummary(createShadowDb(f.sb as never), async () => "true", NOW);
-    expect(out.enabled).toBe(true);
-    expect(out.today.compared).toBe(1);
-    expect(has(f.queries[0].ops, "gte", "at", taipeiDay(NOW).startIso)).toBe(true);
-  });
   it("history query: filter, kind, newest first, a page of 20 (+1 to know there is more)", async () => {
-    const f = fakeSb(() => ({ data: [], error: null }));
+    const f = fakeSb({ answer: () => ({ data: [], error: null }) });
     const db = createShadowDb(f.sb as never);
     await db.history("A", "B", "mismatch", 2, "frozen");
     await db.history("A", "B", "error", 0, "all");
@@ -307,11 +517,28 @@ describe("admin reads", () => {
   });
 });
 
-describe("wiring + sql/159", () => {
+describe("wiring + sql/159 + sql/162", () => {
+  it("sql/162: the pending RPC (anti-join on pc711_shadow, oldest first, limit ≤ 50) + pc711_shadow_days — service_role only", () => {
+    const sql = readFileSync(new URL("../../../../sql/162_pc711_shadow_queue.sql", import.meta.url), "utf8");
+    expect(sql).toContain("create or replace function public.pc711_shadow_pending(p_since timestamptz, p_limit integer)");
+    expect(sql).toContain("not exists (select 1 from public.pc711_shadow x where x.scan_id = j.scan_id and x.kind = j.kind)");
+    expect(sql).toContain("order by at, scan_id, kind");
+    expect(sql).toContain("least(coalesce(p_limit, 0), 50)");
+    for (const c of ["store_full_at >= p_since", "phone_check_at >= p_since", "frozen_store_checked_at >= p_since"]) expect(sql).toContain(c);
+    expect(sql).toContain("revoke all on function public.pc711_shadow_pending(timestamptz, integer) from public, anon, authenticated;");
+    expect(sql).toContain("grant execute on function public.pc711_shadow_pending(timestamptz, integer) to service_role;");
+    for (const r of ["public", "anon", "authenticated"]) expect(sql).toContain(`revoke all on table public.pc711_shadow_days from ${r};`);
+    expect(sql).not.toMatch(/security definer/i);
+    expect(sql).not.toMatch(/parcel_scans\s+set|insert into public\.parcel_scans|update public\.parcel_scans/i);
+    const rb = readFileSync(new URL("../../../../sql/162_pc711_shadow_queue_rollback.sql", import.meta.url), "utf8");
+    expect(rb).toContain("drop function if exists public.pc711_shadow_pending(timestamptz, integer);");
+    expect(rb).toContain("drop table if exists public.pc711_shadow_days;");
+  });
   it("server.js: probe in target mode (silent), admin-only summary + history routes", () => {
     const src = readFileSync(new URL("../../../../server.js", import.meta.url), "utf8");
     expect(src).toMatch(/target: input, gate: false, log: \(\) => \{\}/);
     expect(src).toContain('app.get("/admin/pc711/shadow", requireAuth, requireAdmin,');
+    expect(src).toContain("shadowSummary(pc711ShadowDb, readSetting, Date.now(), pc711ShadowJob.state())");
     expect(src).toContain('app.get("/admin/pc711/shadow/history", requireAuth, requireAdmin,');
   });
   it("the shadow module never writes parcel_scans and never touches /cart/finish", () => {

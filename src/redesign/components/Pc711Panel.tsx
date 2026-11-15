@@ -69,7 +69,9 @@ function ShadowBlock() {
         : s === null ? <div data-testid="pc711-shadow-failed" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{t.rd_pc711_sh_failed}</div>
         : <>
           {!s.enabled && <div data-testid="pc711-shadow-off" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{t.rd_pc711_sh_off}</div>}
+          {s.pausedUntil && <div data-testid="pc711-shadow-paused" role="status" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--warn)", marginTop: 6 }}>{tpl(t.rd_pc711_sh_paused, { time: hhmm(s.pausedUntil) })}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 12px", marginTop: 8, fontSize: 12.5 }}>
+            <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_waiting}</span><span data-testid="pc711-shadow-waiting" style={{ color: "var(--text)", fontWeight: 600 }}>{s.waiting === null ? "—" : s.waiting}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_today}</span><span data-testid="pc711-shadow-n" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.compared}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_store}</span><span data-testid="pc711-shadow-store" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.store)}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_phone}</span><span data-testid="pc711-shadow-phone" style={{ color: "var(--text)", fontWeight: 600 }}>{pct(s.today.phone)}</span>
@@ -78,6 +80,17 @@ function ShadowBlock() {
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_avg}</span><span data-testid="pc711-shadow-avg" style={{ color: "var(--text)", fontWeight: 600 }}>{s.today.avgMs === null ? "—" : `${s.today.avgMs} ms`}</span>
             <span style={{ color: "var(--text-dim)" }}>{t.rd_pc711_sh_bystep}</span><span data-testid="pc711-shadow-bystep" style={{ color: "var(--text)", fontWeight: 600, fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{byStep.length ? byStep.map(([k, n]) => `${k} ${n}`).join(" · ") : "—"}</span>
           </div>
+          {s.days.length > 0 && (
+            <div data-testid="pc711-shadow-lastdays" style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-dim)" }}>{t.rd_pc711_sh_lastdays}</div>
+              {s.days.map((d) => (
+                <div key={d.day} data-testid="pc711-shadow-dayline" style={{ fontSize: 12, color: "var(--text)", marginTop: 4, lineHeight: 1.45, overflowWrap: "anywhere" }}>
+                  <span style={{ fontWeight: 700, fontFamily: "var(--font-mono)" }}>{d.day.slice(5).replace("-", "/")}</span>{" "}
+                  {tpl(t.rd_pc711_sh_dayline, { checked: String(d.checked), pct: d.matchPct === null ? "—" : `${d.matchPct}%`, errors: String(d.errors), max: String(d.maxWaiting) })}
+                </div>
+              ))}
+            </div>
+          )}
         </>}
 
       <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-dim)", marginTop: 14 }}>{t.rd_pc711_sh_history}</div>
