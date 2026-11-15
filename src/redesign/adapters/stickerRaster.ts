@@ -1128,7 +1128,7 @@ function stampHandleQr(bmp: Bitmap, qr: QrPlacement | null): void {
 
 // PRODUCTION path: payload → 1-bit raster → vertical ink-band crop → full-width
 // x=0 BITMAP blocks → TSPL. See BandOptions for why full-width is the default.
-export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
+export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}, post?: (r: FullRaster) => FullRaster): BitmapTsplResult { // post: approved printers' shift (sql/161); undefined = as before
   const cfg = stickerConfig(wMm, hMm);
   const bmp = withScriptsBottomSafety((): Bitmap => {
     if (atlases.proportional && isPropCompactSize(wMm, hMm)) return renderPropCompact(payload, wMm, hMm, atlases, undefined, !!opts.bold); // font C, image paths only (== renderStickerBitmap)
@@ -1140,7 +1140,8 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
     stampHandleQr(b, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
     return b;
   }, () => 0); // all-scripts letters only (see renderStickerBitmap)
-  return bitmapTsplFromRaster({ buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes }, wMm, hMm, opts);
+  const full: FullRaster = { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
+  return bitmapTsplFromRaster(post ? post(full) : full, wMm, hMm, opts);
 }
 
 // The TSPL job (SIZE … DENSITY … CLS, full-width BITMAP bands, PRINT 1) for a finished raster — the

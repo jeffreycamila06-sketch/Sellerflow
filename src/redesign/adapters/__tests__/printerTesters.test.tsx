@@ -169,7 +169,7 @@ describe("C. approved printers", () => {
   const ROW: now.ApprovedPrinter = { prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos" };
   it("parse: inactive / bad rows dropped, brand defaults to Other", () => {
     expect(parseApprovedRows([{ prefix: "LabelThing-", brand: "", model: "LabelThing", lang: "escpos", active: true }, { prefix: "Gone-", brand: "X", model: "Gone", lang: "tspl", active: false }, { prefix: "Z", lang: "tspl" }, { prefix: "Bad-", lang: "zpl" }]))
-      .toEqual([{ prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos" }]);
+      .toEqual([{ prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos", shiftMm: 0, flip: false }]);
     expect(parseApprovedRows(null)).toEqual([]);
   });
   it("an approved row appears for a seller (brand pill) and is saved with its approved language", async () => {

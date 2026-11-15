@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   adminAddTester, adminApprovePrinter, adminListApproved, adminListReports, adminListTesters, adminPhotoUrl,
-  adminRemoveTester, adminSetApprovedActive, defaultPrefix, LANG_LABEL,
+  adminRemoveTester, adminSetApprovedActive, adminSetApprovedLayout, defaultPrefix, parseShiftMm, LANG_LABEL,
   type ApprovedRow, type ReportRow, type TesterRow,
 } from "../adapters/printerTesters";
 import { useT, tpl } from "../i18n";
@@ -33,6 +33,32 @@ type Loaded = { ok: boolean; testers: TesterRow[]; reports: ReportRow[]; approve
 async function fetchAll(): Promise<Loaded> {
   const [a, b, c] = await Promise.all([adminListTesters(), adminListReports(), adminListApproved()]);
   return { ok: a.ok && b.ok && c.ok, testers: a.data || [], reports: b.data || [], approved: c.data || [] };
+}
+
+// "Flip 180°" + "Shift left (mm)" for an approved printer (sql/161): upside-down print / right edge cut.
+// Shift 0–8, step 0.5; both saved with one Save.
+export const validShiftText = (v: string): number | null => {
+  const s = v.trim().replace(",", ".");
+  if (!/^\d+(\.\d)?$/.test(s)) return null;
+  const n = Number(s);
+  return n >= 0 && n <= 8 ? n : null;
+};
+function LayoutBox({ saved, savedFlip, busy, onSave }: { saved: number; savedFlip: boolean; busy: boolean; onSave: (mm: number, flip: boolean) => Promise<boolean> }) {
+  const t = useT();
+  const [v, setV] = useState(String(saved));
+  const [flip, setFlip] = useState(savedFlip);
+  const n = validShiftText(v);
+  const changed = n !== null && (n !== saved || flip !== savedFlip);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+      <label style={{ ...small, flex: "1 1 120px", display: "flex", flexDirection: "column", gap: 3 }}>{t.rd_prt_shift}
+        <input data-testid="pt-shift" type="number" inputMode="decimal" min={0} max={8} step={0.5} value={v} onChange={(e) => setV(e.target.value)} style={input} />
+        {n === null && <span data-testid="pt-shift-bad" style={{ color: "var(--danger)", fontWeight: 700 }}>{t.rd_prt_shift_bad}</span>}
+      </label>
+      <button data-testid="pt-flip" type="button" aria-pressed={flip} onClick={() => setFlip((f) => !f)} style={{ ...btn, minHeight: 44, border: flip ? "2px solid var(--accent)" : btn.border, background: flip ? "var(--accent-softer)" : btn.background }}>{t.rd_prt_flip}: {flip ? t.rd_prt_on : t.rd_prt_off}</button>
+      <button data-testid="pt-shift-save" disabled={busy || !changed} onClick={() => { if (n !== null) void onSave(n, flip); }} style={{ ...primary, minHeight: 44, opacity: busy || !changed ? 0.5 : 1 }}>{t.rd_prt_save}</button>
+    </div>
+  );
 }
 
 export default function PrinterTestersPanel() {
@@ -117,12 +143,15 @@ export default function PrinterTestersPanel() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {approved && approved.length === 0 && <div style={small}>{t.rd_prt_none}</div>}
           {(approved || []).map((a) => (
-            <div key={a.id} data-testid="pt-approved" style={{ ...row, opacity: a.active ? 1 : 0.55 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{a.brand} {a.model} · {LANG_LABEL[a.lang] || a.lang}</div>
-                <div style={small}>{a.prefix}… · {day(a.approved_at)}{a.active ? "" : ` · ${t.rd_prt_removed}`}</div>
+            <div key={a.id} data-testid="pt-approved" style={{ ...row, opacity: a.active ? 1 : 0.55, flexDirection: "column", alignItems: "stretch" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflowWrap: "anywhere" }}>{a.brand} {a.model} · {LANG_LABEL[a.lang] || a.lang}</div>
+                  <div style={small}>{a.prefix}… · {day(a.approved_at)}{a.active ? "" : ` · ${t.rd_prt_removed}`}</div>
+                </div>
+                <button data-testid="pt-approved-toggle" disabled={busy} onClick={() => void run(() => adminSetApprovedActive(a.id, !a.active))} style={btn}>{a.active ? t.rd_prt_remove : t.rd_prt_add_back}</button>
               </div>
-              <button data-testid="pt-approved-toggle" disabled={busy} onClick={() => void run(() => adminSetApprovedActive(a.id, !a.active))} style={btn}>{a.active ? t.rd_prt_remove : t.rd_prt_add_back}</button>
+              <LayoutBox key={`${a.id}:${String(a.shift_mm ?? 0)}:${a.flip === true}`} saved={parseShiftMm(a.shift_mm)} savedFlip={a.flip === true} busy={busy} onSave={(mm, flip) => run(() => adminSetApprovedLayout(a.id, mm, flip))} />
             </div>
           ))}
         </div>

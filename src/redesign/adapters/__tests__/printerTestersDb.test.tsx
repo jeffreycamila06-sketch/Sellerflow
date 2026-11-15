@@ -9,7 +9,7 @@ const h = vi.hoisted(() => ({
 vi.mock("../../../supabase", () => ({
   isSupabaseConfigured: true,
   supabase: {
-    from: () => ({ select: () => ({ eq: (...a: unknown[]) => h.select(...a) }) }),
+    from: () => ({ select: (cols: string) => ({ eq: (...a: unknown[]) => h.select(cols, ...a) }) }),
     rpc: (...a: unknown[]) => h.rpc(...a),
     storage: { from: () => ({ createSignedUrl: h.signed }) },
   },
@@ -24,10 +24,17 @@ describe("approved printers read", () => {
   it("reads ACTIVE rows once per session (cached)", async () => {
     h.select.mockResolvedValue({ data: [{ prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos", active: true }], error: null });
     const a = await loadApprovedPrinters(); const b = await loadApprovedPrinters();
-    expect(a).toEqual([{ prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos" }]);
+    expect(a).toEqual([{ prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos", shiftMm: 0, flip: false }]);
     expect(b).toBe(a);
     expect(h.select).toHaveBeenCalledTimes(1);
-    expect(h.select).toHaveBeenCalledWith("active", true);
+    expect(h.select).toHaveBeenCalledWith("prefix,brand,model,lang,active,shift_mm,flip", "active", true);
+  });
+  it("sql/161 not applied (no shift_mm / flip column) → the rows again without them (no shift, no flip)", async () => {
+    h.select.mockImplementation(async (cols: string) => cols.includes("shift_mm")
+      ? { data: null, error: { message: "column approved_printers.shift_mm does not exist" } }
+      : { data: [{ prefix: "CT221B-", brand: "Clabel", model: "CT221B", lang: "tspl", active: true }], error: null });
+    expect(await loadApprovedPrinters()).toEqual([{ prefix: "CT221B-", brand: "Clabel", model: "CT221B", lang: "tspl", shiftMm: 0, flip: false }]);
+    expect(h.select.mock.calls.map((c) => c[0])).toEqual(["prefix,brand,model,lang,active,shift_mm,flip", "prefix,brand,model,lang,active"]);
   });
   it("a failed read (error or throw) = built-in only", async () => {
     h.select.mockResolvedValue({ data: null, error: { message: "boom" } });
@@ -90,6 +97,23 @@ describe("Admin → Printer testers", () => {
     fireEvent.click(screen.getByTestId("pt-tab-testers"));
     await waitFor(() => expect(reads()).toBe(4));
     for (const fn of ["admin_printer_testers", "admin_approved_printers"]) expect(h.rpc.mock.calls.filter((c) => c[0] === fn).length).toBe(4);
+  });
+  it("Printer list: Shift left (mm) + Flip 180° saved with one Save; out of range refused", async () => {
+    rpcs({ admin_approved_printers: [{ id: "a1", prefix: "CT221B-", brand: "Clabel", model: "CT221B", lang: "tspl", active: true, approved_at: "2026-11-15T00:00:00Z", shift_mm: 0, flip: false }], admin_set_approved_printer_layout: true });
+    renderPanel();
+    fireEvent.click(screen.getByTestId("pt-tab-approved"));
+    const box = await screen.findByTestId("pt-shift") as HTMLInputElement;
+    const save = () => screen.getByTestId("pt-shift-save") as HTMLButtonElement;
+    expect(box.value).toBe("0");
+    expect(save().disabled).toBe(true); // nothing changed yet
+    fireEvent.change(box, { target: { value: "9" } });
+    expect(screen.getByTestId("pt-shift-bad")).toBeTruthy();
+    expect(save().disabled).toBe(true);
+    fireEvent.change(box, { target: { value: "3" } });
+    fireEvent.click(screen.getByTestId("pt-flip"));
+    expect(screen.getByTestId("pt-flip").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(save());
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("admin_set_approved_printer_layout", { p_id: "a1", p_shift: 3, p_flip: true }));
   });
   it("approved list: Remove sets active=false", async () => {
     rpcs({ admin_approved_printers: [{ id: "a1", prefix: "LabelThing-", brand: "Other", model: "LabelThing", lang: "escpos", active: true, approved_at: "2026-11-15T00:00:00Z" }] });

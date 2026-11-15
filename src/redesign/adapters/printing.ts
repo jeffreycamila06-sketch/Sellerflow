@@ -14,11 +14,12 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, rasterizeToBitmapTspl, renderStickerBitmap, fitRaster, bytesToBase64, payloadNeedsCjk, isPropCompactSize, propPlanCjkSizes, QR_QUIET_MODULES, type GlyphAtlas, type RasterAtlases, type RasterSettings, type RasterPayload, type FullRaster } from "./stickerRaster";
 import { escposRasterBytes } from "./escposRaster";
 import { cpclRasterBytes } from "./cpclRaster";
 import { savedBtPrinter, savedGenericLang, savedIsNiimbot, type PrinterLang } from "./savedPrinter";
-import { knownTsplJob, knownGapAfterMs, type TsplJobSettings } from "./printerModels";
+import { knownTsplJob, knownGapAfterMs, approvedLayoutFor, type TsplJobSettings } from "./printerModels";
+import { applyApprovedLayout, layoutChanges, NO_LAYOUT, type ApprovedLayout } from "./rasterShift";
 import type { NiimbotImage } from "./printerBridge";
 import { qrMatrix } from "../../lib/qr";
 import { tiktokProfileUrl } from "../../lib/tiktokHandle";
@@ -607,13 +608,16 @@ export async function imagePathAtlases(payload: NativeStickerPayload, img: Raste
   return atlases;
 }
 // `job` = the saved model's TSPL header (density / speed); {} = today's header for every other printer.
-export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false, job: TsplJobSettings = {}): Promise<Uint8Array> {
+// `layout` = an approved printer's "Flip 180°" + "Shift left" (sql/161), applied to the finished bitmap; none = as before.
+export async function buildGenericStickerBytes(lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false, job: TsplJobSettings = {}, layout: ApprovedLayout = NO_LAYOUT): Promise<Uint8Array> {
   const img = imageStickerPayload(payload, platform, fbName);
   if (stickerAllScriptsOn()) await ensureAllScriptsFonts(img);
   const prep = prepareAllScripts(img, true); // null = as before (switch off / nothing to add)
   const atlases = await imagePathAtlases(payload, img);
-  if (lang === "tspl") return renderWithScripts(prep, atlases, (p, a) => rasterizeToBitmapTspl(p, payload.labelWidthMm, payload.labelHeightMm, a, job), img).bytes;
-  const full = renderWithScripts(prep, atlases, (p, a) => renderStickerBitmap(p, payload.labelWidthMm, payload.labelHeightMm, a), img);
+  const post = layoutChanges(layout) ? (r: FullRaster) => applyApprovedLayout(r, layout) : undefined;
+  if (lang === "tspl") return renderWithScripts(prep, atlases, (p, a) => rasterizeToBitmapTspl(p, payload.labelWidthMm, payload.labelHeightMm, a, job, post), img).bytes;
+  const drawn = renderWithScripts(prep, atlases, (p, a) => renderStickerBitmap(p, payload.labelWidthMm, payload.labelHeightMm, a), img);
+  const full = post ? post(drawn) : drawn;
   return lang === "cpcl" ? cpclRasterBytes(full) : escposRasterBytes(full);
 }
 async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlowPrinter"]>, lang: PrinterLang, payload: NativeStickerPayload, platform?: string, fbName = false): Promise<BtRouteResult> {
@@ -621,7 +625,7 @@ async function printStickerViaGenericImage(bridge: NonNullable<Window["SellerFlo
   if (typeof raw !== "function") return { ok: false, code: "", message: "" };
   const reason: StickerFallbackReason = lang === "tspl" ? "generic-tspl" : lang === "cpcl" ? "generic-cpcl" : "generic-escpos";
   const t0 = nowMs();
-  const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, knownTsplJob(savedBtPrinter()?.name));
+  const bytes = await buildGenericStickerBytes(lang, payload, platform, fbName, knownTsplJob(savedBtPrinter()?.name), approvedLayoutFor(savedBtPrinter()?.name));
   noteBadJob(checkStickerJob(lang as JobKind, bytes, payload.labelWidthMm, payload.labelHeightMm), lang);
   const t1 = nowMs();
   log.log(`[GENERIC-STICKER] lang=${lang} bytes=${bytes.length} (~${(bytes.length / 10000).toFixed(1)}s over BLE at ~10 KB/s)`);
@@ -788,7 +792,8 @@ async function printOneStickerViaBluetooth(bridge: NonNullable<Window["SellerFlo
     const raw = (bridge as unknown as { printRawTspl?: BitmapBridgeFn }).printRawTspl;
     if (typeof raw !== "function") return { ok: false, code: "", message: "" };
     const job = knownTsplJob(savedBtPrinter()?.name);
-    const bytes = await picture(async () => genericBytes(lang, await renderOneStickerFor(lang, os, inp, job), os, job));
+    const layout = approvedLayoutFor(savedBtPrinter()?.name); // an approved printer's flip / shift (sql/161); none = as before
+    const bytes = await picture(async () => { const r = await renderOneStickerFor(lang, os, inp, job); return genericBytes(lang, layoutChanges(layout) ? applyApprovedLayout(r, layout) : r, os, job); });
     if (!bytes) return "today";
     if (refuseBadJob(checkStickerJob(lang as JobKind, bytes, os.size.w, os.size.h), lang)) return "today";
     holdLaneAfterGenericSend();

@@ -21,6 +21,11 @@ export const LANG_LABEL: Record<PrinterLang, string> = { tspl: "TSPL", escpos: "
 
 // ── Approved printers: ONE read per session ─────────────────────────────────────────────────
 const isLang = (v: unknown): v is PrinterLang => v === "tspl" || v === "escpos" || v === "cpcl";
+// "Shift left (mm)" (sql/161): 0–8 mm; missing / not a number / out of range = 0 (no shift).
+export function parseShiftMm(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 && n <= 8 ? n : 0;
+}
 export function parseApprovedRows(data: unknown): ApprovedPrinter[] {
   if (!Array.isArray(data)) return [];
   const out: ApprovedPrinter[] = [];
@@ -28,7 +33,7 @@ export function parseApprovedRows(data: unknown): ApprovedPrinter[] {
     if (!r || typeof r !== "object" || r.active === false) continue;
     const prefix = typeof r.prefix === "string" ? r.prefix.trim() : "";
     if (prefix.length < 2 || !isLang(r.lang)) continue;
-    out.push({ prefix, brand: typeof r.brand === "string" && r.brand.trim() ? r.brand.trim() : "Other", model: typeof r.model === "string" ? r.model : prefix, lang: r.lang });
+    out.push({ prefix, brand: typeof r.brand === "string" && r.brand.trim() ? r.brand.trim() : "Other", model: typeof r.model === "string" ? r.model : prefix, lang: r.lang, shiftMm: parseShiftMm(r.shift_mm), flip: r.flip === true });
   }
   return out;
 }
@@ -38,6 +43,9 @@ export function loadApprovedPrinters(): Promise<ApprovedPrinter[]> {
   approvedRead = (async () => {
     if (!isSupabaseConfigured || !supabase) return [];
     try {
+      const first = await supabase.from("approved_printers").select("prefix,brand,model,lang,active,shift_mm,flip").eq("active", true);
+      if (!first.error) return parseApprovedRows(first.data);
+      // sql/161 not applied yet (no shift_mm / flip columns) → the same rows without a shift / flip
       const { data, error } = await supabase.from("approved_printers").select("prefix,brand,model,lang,active").eq("active", true);
       return error ? [] : parseApprovedRows(data);
     } catch { return []; }
@@ -159,7 +167,7 @@ export async function submitPrinterTestReport(r: PrinterTestReportInput): Promis
 // ── Admin side (every RPC checks is_admin() inside — sql/160) ────────────────────────────────
 export interface TesterRow { email: string; created_at: string }
 export interface ReportRow { id: string; email: string; printer_name: string; lang: PrinterLang; sticker_size: string; send_ok: boolean; send_code: string | null; clean: boolean; photo_path: string | null; created_at: string; ble_facts: unknown }
-export interface ApprovedRow extends ApprovedPrinter { id: string; active: boolean; approved_at: string }
+export interface ApprovedRow extends ApprovedPrinter { id: string; active: boolean; approved_at: string; shift_mm?: number | string | null; flip?: boolean | null }
 const rpc = async <T>(fn: string, args?: Record<string, unknown>): Promise<{ ok: boolean; data: T | null }> => {
   if (!isSupabaseConfigured || !supabase) return { ok: false, data: null };
   try { const { data, error } = await supabase.rpc(fn, args); return error ? { ok: false, data: null } : { ok: true, data: data as T }; } catch { return { ok: false, data: null }; }
@@ -172,6 +180,7 @@ export const adminListApproved = () => rpc<ApprovedRow[]>("admin_approved_printe
 export const adminApprovePrinter = (a: { reportId: string; prefix: string; brand: string; model: string; lang: PrinterLang }) =>
   rpc<string>("admin_approve_printer", { p_report: a.reportId, p_prefix: a.prefix.trim(), p_brand: a.brand.trim() || "Other", p_model: a.model.trim(), p_lang: a.lang });
 export const adminSetApprovedActive = (id: string, active: boolean) => rpc<boolean>("admin_set_approved_printer_active", { p_id: id, p_active: active });
+export const adminSetApprovedLayout = (id: string, shiftMm: number, flip: boolean) => rpc<boolean>("admin_set_approved_printer_layout", { p_id: id, p_shift: shiftMm, p_flip: flip });
 export async function adminPhotoUrl(path: string): Promise<string | null> {
   if (!path || !isSupabaseConfigured || !supabase) return null;
   try { const { data, error } = await supabase.storage.from(PRINTER_TEST_BUCKET).createSignedUrl(path, 600); return error ? null : data?.signedUrl ?? null; } catch { return null; }
