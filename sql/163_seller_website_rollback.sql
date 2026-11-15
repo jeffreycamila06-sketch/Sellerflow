@@ -6,7 +6,12 @@
 begin;
 set local lock_timeout = '2s';
 
--- ── PART 4 / 3 / 2 (reverse order) ──────────────────────────────────────────
+-- ── PART 5 / 4 / 3 / 2 (reverse order) ──────────────────────────────────────
+drop policy if exists product_images_photo_limit on storage.objects;
+drop function if exists public.my_product_photo_quota();
+drop function if exists public.product_photo_upload_ok(text);
+drop function if exists public.product_photo_count(uuid);
+drop function if exists public.product_photo_limit(uuid);
 do $$ begin
   if exists (select 1 from cron.job where jobname = 'website-auto-cancel') then perform cron.unschedule('website-auto-cancel'); end if;
   if exists (select 1 from cron.job where jobname = 'purge-old-website-orders') then perform cron.unschedule('purge-old-website-orders'); end if;

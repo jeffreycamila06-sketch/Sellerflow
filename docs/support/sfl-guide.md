@@ -308,7 +308,7 @@ Keywords: pin, pinned comment, auto-print, auto print, tiktok pin, i-pin, awtoma
 Pin a comment on your TikTok LIVE to order and print it. Turn it on only on the phone that has the printer.
 
 ## products-stock — Products, codes and stock
-Last checked: 2026-11-12
+Last checked: 2026-11-15
 Keywords: products, product, item, stock, inventory, price, code, restock, add product, picture, photo, larawan, produkto, stocks, 商品, 库存, 庫存, 補貨, 商品圖片
 
 Open **Products** in the bottom bar.
@@ -323,6 +323,8 @@ Open **Products** in the bottom bar.
 Some accounts also have **Restock** ("How many pieces arrived?"), **History** of stock changes, a product **Picture**, and **Deduct stock on 1-Click** in Live setup settings. Admin turns these on per account. If you don't see one, it isn't turned on for your account yet — ask Admin.
 
 **Product picture**: in **Edit**, tap **Add picture** and take a photo or pick one from your gallery (iPhone photos work too). The app turns it the right way up and makes it smaller for you — no need to crop or resize. The product list shows each picture as a square; tap a picture (⤢) to see the whole picture, then tap ✕ or outside it to close.
+
+**Photos: X / limit** (above the list) shows how many product photos you have and how many your plan allows. At the limit you will see "Picture limit reached" — delete photos you no longer need (like sold-out items) to upload new ones. Deleting a product also deletes its photos.
 
 ## reprint — Reprint a sticker
 Last checked: 2026-10-28

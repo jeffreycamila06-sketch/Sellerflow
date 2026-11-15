@@ -6,6 +6,7 @@ import { useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Product, VariantGroup } from "../adapters/products";
 import { cleanGroups, combos, comboKey, editorRows, planVariants, childrenOf, MAX_GROUPS, type VariantPlan, type VariantRow } from "../adapters/productVariants";
 import { freePhotoNumber, uploadExtraPhoto, removeExtraPhoto } from "../adapters/websitePhotos";
+import { uploadFailText, loadPhotoQuota } from "../adapters/photoQuota";
 import { productImageUrl } from "../adapters/productImages";
 import { useT, tpl } from "../i18n";
 
@@ -69,7 +70,9 @@ export default function ProductWebsiteSheet({ product, all, photo1Url, cur, onSa
     const r = await uploadExtraPhoto(product.id, n, file);
     setBusy(false);
     if (r.ok === true) { const path = r.path; setPhotos((p) => [...p, path]); }
-    else setPhotoErr(r.reason === "too_big" ? t.rd_prd_pic_too_big : r.reason === "unreadable" ? t.rd_prd_pic_unreadable : t.rd_prd_pic_failed);
+    else if (r.reason === "too_big") setPhotoErr(t.rd_prd_pic_too_big);
+    else if (r.reason === "unreadable") setPhotoErr(t.rd_prd_pic_unreadable);
+    else setPhotoErr((await uploadFailText(t.rd_prd_pic_limit, t.rd_prd_pic_failed, loadPhotoQuota)).text); // the limit message when the server is full
   };
   const dropPhoto = (path: string) => { setPhotos((p) => p.filter((x) => x !== path)); void removeExtraPhoto(path); };
 

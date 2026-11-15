@@ -23,6 +23,7 @@
 --   blocked buyers), website_order (by token), private bucket website-receipts + website_order_receipt,
 --   website_order_action (seller), auto-cancel (pg_cron, every 10 min) + 90-day purge of ended orders.
 -- PART 4 — seller side: website_sales, website_new_orders_count.
+-- PART 5 — product photo limit per plan (restrictive storage policy + my_product_photo_quota).
 -- Proof: scripts/sql163-behaviour.mjs (PGlite).
 -- ============================================================================
 begin;
@@ -781,5 +782,55 @@ returns integer language sql stable security invoker set search_path = public, p
 $$;
 revoke all on function public.website_new_orders_count() from public, anon;
 grant execute on function public.website_new_orders_count() to authenticated;
+
+
+-- ── PART 5 — product photo limit per plan (audit A) ──────────────────────────
+-- Counted on the server: the seller's files in the product-images bucket (their own folder),
+-- small copies ("…-s.jpg") not counted. Free 50 · Basic 500 · Plus 1,500 · Pro 1,500 · Master 2,500
+-- (website_plan: an expired or pending plan counts as Free). At the limit a NEW upload is refused by
+-- a RESTRICTIVE storage policy (other buckets are untouched); replacing a file that already exists
+-- is still allowed, and existing photos are never deleted. A small copy is accepted only when its
+-- full photo exists (so it can't be used to store more pictures). The reads of storage.objects run
+-- as the function owner, which bypasses RLS (checked in part 3).
+create or replace function public.product_photo_limit(p_user uuid)
+returns integer language sql stable security definer set search_path = public, pg_temp as $$
+  select case coalesce(public.website_plan(p_user), 'free')
+           when 'basic' then 500 when 'plus' then 1500 when 'pro' then 1500 when 'master' then 2500 else 50 end;
+$$;
+revoke all on function public.product_photo_limit(uuid) from public, anon, authenticated;
+
+create or replace function public.product_photo_count(p_user uuid)
+returns integer language sql stable security definer set search_path = public, pg_temp as $$
+  select count(*)::int from storage.objects so
+   where so.bucket_id = 'product-images'
+     and left(so.name, length(p_user::text) + 1) = p_user::text || '/'
+     and so.name !~ '-s\.jpg$';
+$$;
+revoke all on function public.product_photo_count(uuid) from public, anon, authenticated;
+
+create or replace function public.product_photo_upload_ok(p_name text)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select auth.uid() is not null and (
+       exists (select 1 from storage.objects so where so.bucket_id = 'product-images' and so.name = p_name)
+    or (coalesce(p_name, '') ~ '-p[0-9]+-s\.jpg$'
+        and exists (select 1 from storage.objects so where so.bucket_id = 'product-images' and so.name = regexp_replace(p_name, '-s\.jpg$', '.jpg')))
+    or (coalesce(p_name, '') !~ '-s\.jpg$'
+        and public.product_photo_count(auth.uid()) < public.product_photo_limit(auth.uid())));
+$$;
+revoke all on function public.product_photo_upload_ok(text) from public, anon;
+grant execute on function public.product_photo_upload_ok(text) to authenticated;
+
+drop policy if exists product_images_photo_limit on storage.objects;
+create policy product_images_photo_limit on storage.objects as restrictive for insert to authenticated
+  with check (bucket_id <> 'product-images' or public.product_photo_upload_ok(name));
+
+-- "Photos: X / limit" in Products (read on open and after an upload / delete).
+create or replace function public.my_product_photo_quota()
+returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
+  select case when auth.uid() is null then null
+              else jsonb_build_object('used', public.product_photo_count(auth.uid()), 'limit', public.product_photo_limit(auth.uid())) end;
+$$;
+revoke all on function public.my_product_photo_quota() from public, anon;
+grant execute on function public.my_product_photo_quota() to authenticated;
 
 commit;

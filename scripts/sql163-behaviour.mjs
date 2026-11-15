@@ -57,6 +57,13 @@ create table storage.objects(id bigserial primary key, bucket_id text, name text
 alter table storage.objects enable row level security;
 grant select, insert on storage.objects to anon, authenticated;
 grant usage on sequence storage.objects_id_seq to anon, authenticated;
+create unique index storage_objects_bucket_name on storage.objects(bucket_id, name);
+grant update, delete on storage.objects to authenticated;
+-- the live product-images policies (sql/95): own folder only
+create policy product_images_read on storage.objects for select to authenticated using (bucket_id = 'product-images' and split_part(name, '/', 1) = auth.uid()::text);
+create policy product_images_insert_own on storage.objects for insert to authenticated with check (bucket_id = 'product-images' and split_part(name, '/', 1) = auth.uid()::text);
+create policy product_images_update_own on storage.objects for update to authenticated using (bucket_id = 'product-images' and split_part(name, '/', 1) = auth.uid()::text) with check (bucket_id = 'product-images' and split_part(name, '/', 1) = auth.uid()::text);
+create policy product_images_delete_own on storage.objects for delete to authenticated using (bucket_id = 'product-images' and split_part(name, '/', 1) = auth.uid()::text);
 grant usage on schema public to anon, authenticated;
 insert into auth.users values ('${SELLER}', 'seller@example.com'), ('${FREE}', 'free@example.com'), ('${OTHER}', 'other@example.com'), ('${MASTER}', 'master@example.com');
 insert into public.seller_profiles(auth_user_id, email, phone, plan, plan_expiry, country) values
@@ -344,6 +351,33 @@ if (hasActions) {
   }
 }
 
+// ── 4b) product photo limit per plan (audit A) ──────────────────────────────────
+{
+  const up = (uid, name) => as(uid, "authenticated", () => q(`insert into storage.objects(bucket_id, name) values ('product-images', $1)`, [name]));
+  const lim = async (uid) => (await q(`select public.product_photo_limit($1) n`, [uid])).rows[0].n;
+  ok((await lim(FREE)) === 50 && (await lim(OTHER)) === 500 && (await lim(SELLER)) === 1500 && (await lim(MASTER)) === 2500, "limits: Free 50 · Basic 500 · Pro 1,500 · Master 2,500");
+  await q(`update public.seller_profiles set plan = 'plus' where auth_user_id = $1`, [OTHER]);
+  ok((await lim(OTHER)) === 1500, "Plus 1,500");
+  await q(`update public.seller_profiles set plan_expiry = now() - interval '1 day' where auth_user_id = $1`, [OTHER]);
+  ok((await lim(OTHER)) === 50, "an expired plan counts as Free (50)");
+  await q(`update public.seller_profiles set plan = 'basic', plan_expiry = now() + interval '30 days' where auth_user_id = $1`, [OTHER]);
+  // a Free seller with 49 photos + 3 small copies
+  await q(`insert into storage.objects(bucket_id, name) select 'product-images', $1 || '/' || g || '-p2.jpg' from generate_series(1, 49) g`, [FREE]);
+  await q(`insert into storage.objects(bucket_id, name) select 'product-images', $1 || '/' || g || '-p2-s.jpg' from generate_series(1, 3) g`, [FREE]);
+  const quota = async () => (await as(FREE, "authenticated", () => q(`select public.my_product_photo_quota() r`))).rows[0].r;
+  ok(JSON.stringify(await quota()) === JSON.stringify({ used: 49, limit: 50 }), "Photos: 49 / 50 (small copies not counted)");
+  ok((await err(up(FREE, `${FREE}/900.jpg`))) === null, "50th photo accepted");
+  ok((await err(up(FREE, `${FREE}/901.jpg`))) !== null, "51st photo refused at the limit");
+  ok((await err(as(FREE, "authenticated", () => q(`insert into storage.objects(bucket_id, name) values ('product-images', $1) on conflict (bucket_id, name) do update set created_at = now()`, [`${FREE}/900.jpg`])))) === null, "replacing an existing photo is still allowed at the limit");
+  ok((await err(up(FREE, `${FREE}/4-p2-s.jpg`))) === null, "a small copy of an existing photo is accepted (not counted)");
+  ok((await err(up(FREE, `${FREE}/77-p3-s.jpg`))) !== null, "a 'small copy' with no full photo is refused");
+  ok((await quota()).used === 50, "still 50 / 50 — nothing was deleted, small copies not counted");
+  ok((await err(up(SELLER, `${SELLER}/1.jpg`))) === null, "another seller is not affected (own count)");
+  ok((await err(up(FREE, `${SELLER}/x.jpg`))) !== null, "(own folder only, as before)");
+  ok((await err(as(null, "anon", () => q(`insert into storage.objects(bucket_id, name) values ('product-images', $1)`, [`${FREE}/y.jpg`])))) !== null, "(anon can't upload product photos, as before)");
+  await q(`delete from storage.objects where bucket_id = 'product-images'`);
+}
+
 // ── 5) rollback ──────────────────────────────────────────────────────────────
 await db.exec(src("163_seller_website_rollback.sql"));
 {
@@ -354,6 +388,7 @@ await db.exec(src("163_seller_website_rollback.sql"));
   ok(after.name === "Old shirt" && after.live_code === "A01", "rollback: old product kept");
   ok((await q(`select to_regclass('public.seller_websites') a, to_regclass('public.website_orders') b`)).rows[0].a === null, "rollback: tables gone");
   ok((await q(`select count(*)::int n from pg_publication_tables where pubname = 'supabase_realtime'`)).rows[0].n === 0, "rollback: realtime publication back to how it was");
+  ok((await q(`select count(*)::int n from pg_policies where policyname = 'product_images_photo_limit'`)).rows[0].n === 0 && (await q(`select count(*)::int n from pg_policies where policyname like 'product_images_%'`)).rows[0].n === 4, "rollback: the photo-limit rule is gone, the 4 sql/95 rules stay");
   ok((await q(`select count(*)::int n from public.stock_movements where reason = 'website'`)).rows[0].n === 0 && (await q(`select count(*)::int n from public.stock_movements where reason = 'auto_order'`)).rows[0].n >= 1, "rollback: 'website' log rows removed, live rows kept");
   ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, 1, 'website')`, [SELLER]))) !== null, "rollback: reason list back to the live one");
   ok((await q(`select count(*)::int n from pg_proc where proname like 'website_%'`)).rows[0].n === 0, "rollback: functions gone");

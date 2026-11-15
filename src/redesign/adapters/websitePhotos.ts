@@ -31,8 +31,16 @@ export async function uploadExtraPhoto(localId: number, n: number, file: Blob): 
   } catch { return { ok: false, reason: "failed" }; }
 }
 export async function removeExtraPhoto(path: string): Promise<boolean> {
-  if (!isSupabaseConfigured || !supabase || !path) return false;
-  try { return !(await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([path])).error; } catch { return false; }
+  return removeWebsitePhotos([path]);
+}
+/** The small copy of a website photo ("…-p3.jpg" → "…-p3-s.jpg"); any other path → itself. Pure. */
+export const smallPhotoPath = (path: string): string => (/-p\d+\.jpg$/.test(path) ? path.replace(/\.jpg$/, "-s.jpg") : path);
+/** Delete website photos together with their small copies (a product deleted, a photo removed). */
+export async function removeWebsitePhotos(paths: string[]): Promise<boolean> {
+  const all = [...new Set(paths.filter(Boolean).flatMap((p) => (smallPhotoPath(p) !== p ? [p, smallPhotoPath(p)] : [p])))];
+  if (!all.length) return true;
+  if (!isSupabaseConfigured || !supabase) return false;
+  try { return !(await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(all)).error; } catch { return false; }
 }
 
 /** The shop logo / cover / payment QR (website editor; public bucket — all three are meant for buyers). Returns the path or null. */

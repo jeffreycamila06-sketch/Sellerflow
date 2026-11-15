@@ -18,6 +18,8 @@ import { PIC_GRID_COLUMNS, PIC_GRID_GAP, PIC_GRID_PADDING, placeholderLetter } f
 import PictureViewer from "../components/PictureViewer";
 import ProductWebsiteSheet from "../components/ProductWebsiteSheet";
 import { listProducts, childrenOf, parentCodeHint, type VariantPlan } from "../adapters/productVariants";
+import { loadPhotoQuota, uploadFailText, type PhotoQuota } from "../adapters/photoQuota";
+import { removeWebsitePhotos } from "../adapters/websitePhotos";
 
 const nowMs = () => Date.now(); // module-level (keeps the impure call out of the component's render-purity analysis)
 const STOCK_ADJUST_DEBOUNCE_MS = 600; // coalesce rapid ±taps into ONE atomic write
@@ -98,6 +100,11 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const [newPic, setNewPic] = useState<{ blob: Blob; url: string } | null>(null);
   const clearNewPic = () => setNewPic((p) => { if (p?.url) { try { URL.revokeObjectURL(p.url); } catch { /* ignore */ } } return null; });
   const [picErr, setPicErr] = useState("");
+  // Photo limit per plan (sql/163 part 5): "Photos: X / limit", read on open and after a photo change.
+  const photosOn = productImages || website;
+  const [quota, setQuota] = useState<PhotoQuota | null>(null);
+  const [quotaTick, setQuotaTick] = useState(0);
+  const bumpQuota = () => setQuotaTick((n) => n + 1);
   const picInput = useRef<HTMLInputElement | null>(null);
   // Full-screen viewer (tap a picture): what to show + the element to give focus back to.
   const [viewer, setViewer] = useState<{ src: string; caption: string; opener: HTMLElement | null } | null>(null);
@@ -130,7 +137,8 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     }
     const path = await uploadProductImage(id, c.blob);
     setPicBusy("");
-    if (!path) { setPicErr(t.rd_prd_pic_failed); return; }
+    if (!path) { const f = await uploadFailText(t.rd_prd_pic_limit, t.rd_prd_pic_failed, loadPhotoQuota); setQuota(f.quota); setPicErr(f.text); return; }
+    bumpQuota();
     setImgPaths((m) => new Map(m).set(id, path));
     setImgVer((m) => new Map(m).set(id, nowMs()));
   };
@@ -140,7 +148,7 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     setPicErr(""); setPicBusy("rm");
     const ok = await removeProductImage(id);
     setPicBusy("");
-    if (ok) dropPath(id); else setPicErr(t.rd_prd_pic_remove_failed);
+    if (ok) { dropPath(id); bumpQuota(); } else setPicErr(t.rd_prd_pic_remove_failed);
   };
   const save = (p: Product[]) => { setProds(p); saveProducts(p); };
   // Latest list for the async stock-flush closures (avoids stale-closure bugs).
@@ -242,6 +250,9 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     void deleteProductDb(id).then((ok) => {
       if (ok === false) { save(before); onProductsChanged?.(before, id, "stock"); showNote(t.rd_prd_delete_failed); return; }
       if (productImages) { forgetProductImage(id); dropPath(id); } // its picture goes too (never blocks the delete)
+      // …and its website photos (+ their small copies). Existing photos are never deleted otherwise.
+      const extra = before.filter((p) => p.id === id || kids.includes(p.id)).flatMap((p) => p.photoPaths || []);
+      if (extra.length) void removeWebsitePhotos(extra).then(bumpQuota); else if (productImages) setTimeout(bumpQuota, 1500);
     });
   };
   const submit = (e: React.FormEvent) => {
@@ -277,8 +288,9 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
     if (changed) void saveProductDbResult(changed, { skipStock: !stockChanged || v2Edit }).then((r) => {
       if (r.ok && picForNew) {
         const id = changed.id;
-        void uploadProductImage(id, picForNew).then((path) => {
-          if (!path) { showNote(t.rd_prd_pic_failed); return; }
+        void uploadProductImage(id, picForNew).then(async (path) => {
+          if (!path) { const f = await uploadFailText(t.rd_prd_pic_limit, t.rd_prd_pic_failed, loadPhotoQuota); setQuota(f.quota); showNote(f.text); return; }
+          bumpQuota();
           setImgPaths((m) => new Map(m).set(id, path));
           setImgVer((m) => new Map(m).set(id, nowMs()));
         });
@@ -329,6 +341,13 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
   const count = (s: string) => shown.filter((p) => p.status === s).length;
   // Seller Website: the website details + variants sheet, and saving its plan.
   const [webFor, setWebFor] = useState<Product | null>(null);
+  // Read the photo count on open, after a photo change, and when the Website sheet closes.
+  useEffect(() => {
+    if (!photosOn || webFor) return;
+    let live = true;
+    void loadPhotoQuota().then((q) => { if (live && q) setQuota(q); });
+    return () => { live = false; };
+  }, [photosOn, webFor, quotaTick]);
   const saveWebsite = (plan: VariantPlan) => {
     const prevKids = new Map(childrenOf(prodsRef.current, plan.parent.id).map((c) => [c.id, c]));
     const removed = new Set(plan.remove);
@@ -440,6 +459,12 @@ export default function Products({ cur, onProductsChanged, seller, lowStockThres
           </div>
         ))}
       </div>
+
+      {photosOn && quota && (
+        <div data-testid="prd-photo-quota" style={{ padding: "6px 16px 0", fontSize: 11.5, fontWeight: 700, color: quota.used >= quota.limit ? "var(--danger)" : "var(--text-muted)" }}>
+          {tpl(t.rd_prd_photos_count, { used: quota.used.toLocaleString("en-US"), limit: quota.limit.toLocaleString("en-US") })}
+        </div>
+      )}
 
       {/* Stock filter pills — drive off the SAME statuses as the stat cards (filterByStock/statusForStock). */}
       <div style={{ padding: "8px 14px 0", display: "flex", gap: 7, overflowX: "auto" }}>
