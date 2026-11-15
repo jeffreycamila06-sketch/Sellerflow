@@ -231,11 +231,17 @@ describe("Settings tile + Sales line + gating", () => {
     const sales = { data: { revenue: 100, orders: 1, buyers: 1, aov: 100, trendUnit: "day", dRevenue: null, dOrders: null, dBuyers: null, dAov: null, repeatPct: null, days: [{ d: "2026-11-15", rev: 100, orders: 1 }], bestDay: null, topProducts: [], topBuyers: [], start: "2026-11-15", end: "2026-11-15" }, state: "live", range: "today", load: vi.fn(), reload: vi.fn() } as unknown as UseSalesTab;
     const { unmount } = render(<TProvider lang="en"><SalesTab sales={sales} /></TProvider>);
     expect(screen.queryByTestId("sales-website")).toBeNull();
+    expect(screen.getByTestId("sales-summary").textContent).toContain("NT$100"); // without the website: live only, as before
     unmount();
     const web = vi.fn(async () => ({ orders: 3, revenue: 2280, buyers: 2, days: [] }));
     render(<TProvider lang="en"><SalesTab sales={sales} website={web} /></TProvider>);
     expect(await screen.findByTestId("sales-website")).toHaveTextContent("3 orders · NT$2,280");
+    expect(screen.getByTestId("sales-website")).toHaveTextContent("Included in the totals above.");
     expect(web).toHaveBeenCalledWith("2026-11-15", "2026-11-15");
+    // Jeff 2026-11-15: the overall tiles include the website (live 100 / 1 order / 1 buyer + website 2,280 / 3 / 2)
+    const tiles = screen.getByTestId("sales-summary").textContent || "";
+    expect(tiles).toContain("NT$2,380"); expect(tiles).toContain("4"); expect(tiles).toContain("3"); expect(tiles).toContain("NT$595");
+    expect((sales.data as { revenue: number }).revenue).toBe(100); // the live numbers themselves are untouched
   });
   it("RedesignApp: every website screen / tab / badge / read sits behind sellerWebsiteOn", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");

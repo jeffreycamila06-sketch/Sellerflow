@@ -113,7 +113,10 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
     return () => { live = false; };
   }, [webKey]);
   const webNow = web && web.key === webKey ? web.data : null;
-  const aov = d && d.orders ? Math.round(d.revenue / d.orders) : 0;
+  // Jeff 2026-11-15: website sales are part of the overall total (tiles + export). The live numbers
+  // themselves (d) are never changed; without the website (or before it loads) tot === d's numbers.
+  const tot = d ? { revenue: d.revenue + (webNow?.revenue ?? 0), orders: d.orders + (webNow?.orders ?? 0), buyers: d.buyers + (webNow?.buyers ?? 0) } : null;
+  const aov = tot && tot.orders ? Math.round(tot.revenue / tot.orders) : 0;
   const hourly = d?.trendUnit === "hour";
   const maxRev = Math.max(1, ...(d?.days.map((x) => x.rev) ?? [1]));
   const shown = useMemo(() => {
@@ -140,9 +143,9 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
       ],
       rows: d.topBuyers.map((b, i) => [i + 1, b.handle && !looksLikeFbId(b.handle) ? `${b.name || "—"} (${atHandle(b.handle)})` : (b.name || "—"), b.orders, `${cur}${fmt(b.spent)}`]),
       summary: [
-        { label: t.rd_ord_sum_total, value: `${cur}${fmt(d.revenue)}` },
-        { label: t.rd_ord_sum_orders, value: d.orders },
-        { label: t.rd_ord_sum_buyers, value: d.buyers },
+        { label: t.rd_ord_sum_total, value: `${cur}${fmt(tot!.revenue)}` },
+        { label: t.rd_ord_sum_orders, value: tot!.orders },
+        { label: t.rd_ord_sum_buyers, value: tot!.buyers },
         { label: t.rd_ord_sum_aov, value: `${cur}${fmt(aov)}` },
       ],
       filename: `sales_${range}_${dayStamp()}`,
@@ -208,7 +211,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
           <>
             {/* Four summary tiles: Sales total · Orders · Buyers · AOV */}
             <div data-testid="sales-summary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
-              {[[t.rd_ord_sum_total, `${cur}${fmt(d.revenue)}`], [t.rd_ord_sum_orders, `${d.orders}`], [t.rd_ord_sum_buyers, `${d.buyers}`], [t.rd_ord_sum_aov, `${cur}${fmt(aov)}`]].map(([l, v], i) => (
+              {[[t.rd_ord_sum_total, `${cur}${fmt(tot!.revenue)}`], [t.rd_ord_sum_orders, `${tot!.orders}`], [t.rd_ord_sum_buyers, `${tot!.buyers}`], [t.rd_ord_sum_aov, `${cur}${fmt(aov)}`]].map(([l, v], i) => (
                 <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "10px 9px", textAlign: "center", boxShadow: "var(--shadow)" }}>
                   <div style={{ fontFamily: mono, fontWeight: 800, fontSize: 15, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</div>
                   <div style={{ fontSize: 9.5, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{l}</div>
@@ -225,7 +228,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
                 <span style={{ fontFamily: mono, fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{t.rd_wsa_line.replace("{n}", String(webNow.orders)).replace("{amount}", `${cur}${fmt(webNow.revenue)}`)}</span>
               </div>
             )}
-            {d.orders === 0 ? (
+            {tot!.orders === 0 ? (
               <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-empty">{t.rd_sal_empty}</div>
             ) : (
               <>
