@@ -70,7 +70,7 @@ describe("server.js wiring", () => {
   const src = readFileSync("server.js", "utf8");
   it("its own job, started only with the service role; the existing cleanups are unchanged", () => {
     expect(src).toContain('import { startWebsiteReceiptPurge, makeWebsiteReceiptStore } from "./server/websiteReceiptPurge.js";');
-    expect(src).toMatch(/if \(serviceSb\) \{\n  try \{ startWebsiteReceiptPurge\(\{ store: makeWebsiteReceiptStore\(serviceSb\), log: \(line\) => console\.log\(line\) \}\); \}/);
+    expect(src).toMatch(/if \(serviceSb\) \{\n {2}try \{ startWebsiteReceiptPurge\(\{ store: makeWebsiteReceiptStore\(serviceSb\), log: \(line\) => console\.log\(line\) \}\); \}/);
     expect(src).toContain("stopReceiptCleanup = startReceiptImageCleanup({ store, log: (line) => console.log(line) });");
     expect(src.match(/startWebsiteReceiptPurge\(/g)).toHaveLength(1);
   });
