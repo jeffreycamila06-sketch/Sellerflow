@@ -1,7 +1,7 @@
 // Printer testers + web-side scan filter + Admin-approved printers (sql/160) — ADD-ONLY.
 //  A. printer_scan_web_filter OFF = origin/main's scan call + list; ON = the phone lists every device,
 //     the web keeps only the whitelist (B1 Pro found by the normal Scan).
-//  B. testers: "Show all", "Not a printer" rows can't be picked, the Printer test card (language →
+//  B. testers: "Show all", ANY named device opens the Printer test card (language →
 //     the existing generic path, nothing saved), Yes needs a photo, no Save; a non-tester sees none of it.
 //  C. approved printers: listed, saved + printed with their language; built-in prefix wins; inactive /
 //     failed read = built-in only. Every built-in printer gives origin/main's answers (frozen copy).
@@ -40,7 +40,8 @@ const LISTED = [D520, D520_OTHER, dev("Y41BT-0FC4_LE", { likely: true }), dev("X
 const MACBOOK = dev("Jeff MacBook Pro", { paired: true });
 const AIRPODS = dev("AirPods Pro");
 const UNKNOWN = dev("LabelThing-9", { likely: true }); // a label printer nobody tested
-const ALL = [...LISTED, MACBOOK, AIRPODS, UNKNOWN];
+const CT221B = dev("CT221B-D4F8"); // CLABEL CT221B: a real label printer with no known name and no printer service (Jeff 2026-11-15)
+const ALL = [...LISTED, MACBOOK, AIRPODS, UNKNOWN, CT221B];
 
 function bridge(printers = ALL) {
   const b: Record<string, ReturnType<typeof vi.fn>> = {
@@ -94,7 +95,7 @@ describe("A. scan filter", () => {
     await scan();
     expect(lastScanArg(b)).toEqual({ includeGenericPrinters: true, showAllDevices: true });
     expect(listedNames()).toEqual(LISTED.map((p) => p.name));
-    for (const n of ["Jeff MacBook Pro", "AirPods Pro", "LabelThing-9"]) expect(screen.queryByText(n)).toBeNull();
+    for (const n of ["Jeff MacBook Pro", "AirPods Pro", "LabelThing-9", "CT221B-D4F8"]) expect(screen.queryByText(n)).toBeNull();
     // a seller still gets the Contact Admin link, never "Show all"
     expect(screen.getByTestId("ps-v2-not-listed")).toBeTruthy();
     expect(screen.queryByTestId("ps-v2-show-all")).toBeNull();
@@ -106,7 +107,16 @@ describe("A. scan filter", () => {
     fireEvent.click(screen.getByTestId("ps-v2-show-all"));
     await waitFor(() => expect(listedNames()).toContain("AirPods Pro"));
     expect(lastScanArg(b)).toEqual({ includeGenericPrinters: true, showAllDevices: true });
-    expect(screen.queryAllByTestId("ps-row-not-printer")).toHaveLength(0); // admins: no "Not a printer" rows
+    expect(screen.queryAllByTestId("ps-row-not-printer")).toHaveLength(0);
+  });
+  it("admin Show all is unchanged: tapping an unknown device saves it as generic TSPL (no test card)", async () => {
+    const b = bridge();
+    renderPS({ isAdmin: true, tester: true });
+    await scan();
+    fireEvent.click(screen.getByTestId("ps-v2-show-all"));
+    fireEvent.click(await screen.findByText("AirPods Pro"));
+    await waitFor(() => expect(b.setBluetoothLabelPrinter).toHaveBeenCalledWith({ address: "AirPods Pro-addr", name: "AirPods Pro", transport: "ble", model: "generic", lang: "tspl" }));
+    expect(screen.queryByTestId("ps-tester-card")).toBeNull();
   });
 });
 
@@ -199,30 +209,34 @@ describe("C. approved printers", () => {
 
 describe("B. printer testers", () => {
   beforeEach(() => { submitSpy.mockClear(); });
-  it("a non-tester never sees Show all, Not a printer or the test card", async () => {
+  it("a non-tester never sees Show all or the test card (whitelist only)", async () => {
     bridge();
     renderPS({ scanWebFilter: true });
     await scan();
     expect(screen.queryByTestId("ps-v2-show-all")).toBeNull();
-    expect(screen.queryByTestId("ps-row-not-printer")).toBeNull();
     expect(screen.queryByTestId("ps-tester-card")).toBeNull();
+    expect(listedNames()).toEqual(LISTED.map((p) => p.name));
   });
-  it("a tester sees Show all; a non-printer shows 'Not a printer' and can't be picked", async () => {
-    const b = bridge();
-    renderPS({ tester: true });
-    await scan();
-    expect(screen.queryByTestId("ps-v2-not-listed")).toBeNull();
-    fireEvent.click(screen.getByTestId("ps-v2-show-all"));
-    await screen.findByText("AirPods Pro");
-    const pods = screen.getByText("AirPods Pro").closest("button")!;
-    expect(pods.disabled).toBe(true);
-    expect(pods.querySelector("[data-testid=ps-row-not-printer]")?.textContent).toBe(t.rd_prt_not_printer);
-    fireEvent.click(pods);
-    expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("ps-tester-card")).toBeNull();
-    // a printer-named / printer-service device is pickable (no "Not a printer")
-    expect(screen.getByText("LabelThing-9").closest("button")!.disabled).toBe(false);
-  });
+  for (const name of ["AirPods Pro", "Jeff MacBook Pro", "CT221B-D4F8"]) {
+    it(`a tester can tap ${name} in Show all → the Printer test card (never saved, no "Not a printer")`, async () => {
+      const b = bridge();
+      renderPS({ tester: true });
+      await scan();
+      expect(screen.queryByTestId("ps-v2-not-listed")).toBeNull();
+      fireEvent.click(screen.getByTestId("ps-v2-show-all"));
+      const row = (await screen.findByText(name)).closest("button")!;
+      expect(row.disabled).toBe(false);
+      expect(screen.queryAllByTestId("ps-row-not-printer")).toHaveLength(0);
+      fireEvent.click(row);
+      await screen.findByTestId("ps-tester-card");
+      expect(screen.getByTestId("ps-tester-card").textContent).toContain(name);
+      fireEvent.click(screen.getByTestId("ps-tester-lang-tspl"));
+      fireEvent.click(screen.getByTestId("ps-tester-print"));
+      await waitFor(() => expect(b.testGenericPrinter).toHaveBeenCalledTimes(1));
+      expect((b.testGenericPrinter.mock.calls[0][0] as { address: string }).address).toBe(`${name}-addr`);
+      expect(b.setBluetoothLabelPrinter).not.toHaveBeenCalled();
+    });
+  }
   async function openCard() {
     const b = bridge();
     renderPS({ tester: true });
