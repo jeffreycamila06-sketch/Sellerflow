@@ -115,7 +115,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
     const meth = ck.methods.find((m) => m.id === draft.payment)!;
     const r: PlaceResult = await api.place(shop.sub, {
       name: draft.name.trim(), phone: draft.phone.trim(), contact: draft.contact.trim(),
-      // the option + method ids (sql/165) AND the kinds (what sql/163 reads, so an older database still works)
+      // the option + method ids (sql/167) AND the kinds (what sql/163 reads, so an older database still works)
       ship: opt!.id, pay: meth.id, delivery: deliveryOfNeeds(opt!.needs), payment: meth.kind === "delivery" ? "cod" : meth.qr ? "qr" : "bank",
       storeId: draft.storeId.trim(), storeName: draft.storeName.trim(),
       address: opt!.needs === "address" ? composeAddress(form, draft.addr ?? EMPTY_ADDR, draft.address) : draft.address.trim(), note: draft.note.trim(),

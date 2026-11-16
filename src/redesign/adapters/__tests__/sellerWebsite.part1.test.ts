@@ -128,7 +128,7 @@ describe("load before sql/163 is applied", () => {
       "local_id,name,sku,price,stock,platform,live_code"]);
     vi.doUnmock("../../../supabase");
   });
-  it("sql/163 applied, sql/165 not yet → the sql/163 read (website fields kept, no v2 fields)", async () => {
+  it("sql/163 applied, sql/167 not yet → the sql/163 read (website fields kept, no v2 fields)", async () => {
     const row = { ...OLD_ROW, category: "Tops", description: "Soft" };
     vi.doMock("../../../supabase", () => ({
       isSupabaseConfigured: true,

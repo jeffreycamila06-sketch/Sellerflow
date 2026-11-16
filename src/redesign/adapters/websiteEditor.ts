@@ -33,7 +33,7 @@ export function shopProductsFrom(products: Product[], imagePaths: Map<number, st
       return {
         id: p.id, name: p.name, price: p.price, stock: p.stock, code: p.liveCode || undefined, category: p.category, description: p.description,
         createdAt: createdAt?.get(p.id), photos, groups: ch.length && p.variant?.groups?.length ? p.variant.groups : undefined,
-        // v2 (sql/165): the same rule as website_products_of — a flash price only while its end time is ahead
+        // v2 (sql/167): the same rule as website_products_of — a flash price only while its end time is ahead
         ...(p.oldPrice && p.oldPrice > 0 ? { oldPrice: p.oldPrice } : {}),
         ...(p.flashPrice !== undefined && p.flashPrice !== null && p.flashEnd && Date.parse(p.flashEnd) > nowMs ? { flashPrice: p.flashPrice, flashEnd: p.flashEnd } : {}),
         ...(p.condition?.trim() ? { condition: p.condition.trim() } : {}), ...(p.sizeGuide?.trim() ? { sizeGuide: p.sizeGuide.trim() } : {}),

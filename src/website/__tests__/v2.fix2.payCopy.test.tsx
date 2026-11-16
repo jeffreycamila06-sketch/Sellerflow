@@ -1,8 +1,8 @@
 // Seller Website v2 — audit fix 2: how to pay stays on the order link. The database keeps a copy of the
-// picked method on the order (sql/165 website_orders.pay_copy) and website_order returns it as `pay`; the
+// picked method on the order (sql/167 website_orders.pay_copy) and website_order returns it as `pay`; the
 // order page shows ONLY what the order says — never the shop's current payment list — so a method the
 // seller later edits, turns off or deletes still shows where to pay.
-// (Database side: scripts/sql165-behaviour.mjs "AUDIT FIX 2".)
+// (Database side: scripts/sql167-behaviour.mjs "AUDIT FIX 2".)
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useState } from "react";

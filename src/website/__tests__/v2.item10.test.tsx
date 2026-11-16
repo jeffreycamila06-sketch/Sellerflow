@@ -71,14 +71,14 @@ describe("the editor's list", () => {
   });
 });
 
-describe("what the buyer sees = the database (shared cases with sql/165's proof script)", () => {
+describe("what the buyer sees = the database (shared cases with sql/167's proof script)", () => {
   for (const c of CASES) {
     it(c.name, () => {
       expect(publicCheckoutV2(c.settings, c.country)).toEqual(c.expected);
       expect(toCheckoutV2(c.expected)).toEqual(c.expected); // the shop reads the database's answer unchanged
     });
   }
-  it("before sql/165 (no checkout2): derived from the old answer the same way", () => {
+  it("before sql/167 (no checkout2): derived from the old answer the same way", () => {
     for (const c of CASES.filter((x) => !("shipOptions" in x.settings) && !("payMethods" in x.settings) && !("taxIncluded" in x.settings))) {
       expect(v2FromLegacy(checkoutFrom(c.settings), c.country)).toEqual(c.expected);
     }
@@ -192,13 +192,13 @@ describe("the seller's Payment & shipping screen", () => {
   });
 });
 
-describe("sql/165 part 10 (contract)", () => {
-  const sql = readFileSync("sql/165_seller_website_v2.sql", "utf8");
+describe("sql/167 part 10 (contract)", () => {
+  const sql = readFileSync("sql/167_seller_website_v2.sql", "utf8");
   it("7-11 / FamilyMart only in Taiwan; old pages still use the sql/163 path; the delivery check widened", () => {
     expect(sql).toMatch(/and \(c = 'TW' or x\.e->>'needs' not in \('store711', 'storefm'\)\)/);
     expect(sql).toMatch(/if v_ship_id is null then\n {4}v_delivery := p_order->>'delivery';/);
     expect(sql).toMatch(/check \(delivery in \('s711','fm','home','store','pickup'\)\)/);
-    const rb = readFileSync("sql/165_seller_website_v2_rollback.sql", "utf8");
+    const rb = readFileSync("sql/167_seller_website_v2_rollback.sql", "utf8");
     expect(rb).toMatch(/if exists \(select 1 from public\.website_orders where delivery in \('store', 'pickup'\)\) then/);
   });
 });

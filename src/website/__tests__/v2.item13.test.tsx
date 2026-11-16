@@ -1,5 +1,5 @@
 // Seller Website v2 — item 13: courier + tracking number when marking an order shipped; the buyer sees
-// them on the order page. Both are optional; before sql/165 is applied Mark as shipped works as today.
+// them on the order page. Both are optional; before sql/167 is applied Mark as shipped works as today.
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -117,8 +117,8 @@ describe("buyer: order page", () => {
   });
 });
 
-describe("sql/165 part 13 (contract)", () => {
-  const sql = readFileSync("sql/165_seller_website_v2.sql", "utf8");
+describe("sql/167 part 13 (contract)", () => {
+  const sql = readFileSync("sql/167_seller_website_v2.sql", "utf8");
   it("own orders only; paid/confirmed → shipped, shipped → edit; the buyer sees them only once shipped", () => {
     expect(sql).toMatch(/website_order_ship[\s\S]*?where id = p_id and user_id = me for update/);
     expect(sql).toMatch(/if o\.status in \('paid', 'confirmed'\) then/);

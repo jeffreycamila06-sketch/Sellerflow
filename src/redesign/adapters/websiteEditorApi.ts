@@ -36,7 +36,7 @@ export interface OrdersApi {
   act: (id: string, a: OrderAction) => Promise<{ ok: true; status: WebsiteOrderStatus; blocked: boolean } | { ok: false }>;
   receipt: (path: string) => Promise<string | null>;
   shopSub: () => Promise<string | null>;
-  /** v2 (sql/165): ship with an optional courier + tracking (or change them). Absent → the plain 'shipped' action. */
+  /** v2 (sql/167): ship with an optional courier + tracking (or change them). Absent → the plain 'shipped' action. */
   ship?: (id: string, courier: string, tracking: string) => Promise<{ ok: true; courier: string | null; tracking: string | null } | { ok: false }>;
 }
 export const realOrdersApi: OrdersApi = {

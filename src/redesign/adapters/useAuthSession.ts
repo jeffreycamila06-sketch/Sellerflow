@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { getMyProfile, createMyProfile, type AccountUser } from "../../accountDb";
+import { claimSignupCode, savePendingInvite } from "./invite";
 import { selfDeleteAccount } from "./adminDelete";
 import { validatePhone, DEFAULT_COUNTRY } from "./phone";
 import { initials as deriveInitials } from "../data";
@@ -25,7 +26,8 @@ import { resetInFlight, endResetSession } from "./resetCode";
 
 export type AuthStatus = "loading" | "authed" | "anon";
 
-export interface RegisterFields { email: string; password: string; confirm: string; fullName: string; storeName: string; phone: string; phoneCountry?: string }
+// inviteCode: the OPTIONAL invite code from the sign-up box (sql/165). Never blocks a sign-up.
+export interface RegisterFields { email: string; password: string; confirm: string; fullName: string; storeName: string; phone: string; phoneCountry?: string; inviteCode?: string }
 export interface RegisterResult { ok: boolean; error?: string; errorKey?: string; needsConfirm?: boolean }
 
 export interface UseAuthSession {
@@ -185,7 +187,7 @@ export function useAuthSession(): UseAuthSession {
     if (!data.user) return { ok: false, error: "Could not create your account. Please try again.", errorKey: "rd_su_err" };
     // Email confirmation enabled → no session yet → cannot create the profile row
     // (RLS needs auth.uid()). Same branch as App.tsx (748-752).
-    if (!data.session) return { ok: true, needsConfirm: true };
+    if (!data.session) { if (f.inviteCode) savePendingInvite(f.inviteCode, cleanEmail); return { ok: true, needsConfirm: true }; }
     try {
       await createMyProfile(data.user.id, cleanEmail, {
         // Store the NORMALIZED phone (clean 09xxxxxxxx) — register only reaches
@@ -197,8 +199,13 @@ export function useAuthSession(): UseAuthSession {
       });
     } catch {
       // Never show the raw database text — the account exists, only the profile step failed.
+      if (f.inviteCode) savePendingInvite(f.inviteCode, cleanEmail); // claimed after the next sign-in of this tab
       return { ok: false, error: "Your account was created, but setup didn't finish. Please log in and try again.", errorKey: "rd_su_err_setup" };
     }
+    // Invite code (optional): link to the inviter now. A wrong / unknown code, a network error or a
+    // database without sql/165 never blocks the sign-up — claimSignupCode never throws and gives up
+    // after SIGNUP_CLAIM_TIMEOUT_MS (the code is then kept for this tab's next sign-in).
+    if (f.inviteCode) { try { await claimSignupCode(f.inviteCode, cleanEmail); } catch { /* never blocks */ } }
     // The auth listener already flipped status→authed (signUp persisted a session);
     // load the profile now so the dashboard renders the real account, not a fallback.
     await loadProfile(data.user.id);

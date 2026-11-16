@@ -1,7 +1,11 @@
 -- ============================================================================
--- sql/165 — Seller Website v2, Build 1 (Jeff 2026-11-16).
+-- sql/167 — Seller Website v2, Build 1 (Jeff 2026-11-16).
 -- ============================================================================
--- NOT APPLIED. Needs sql/163 (and sql/164). Rollback: sql/165_seller_website_v2_rollback.sql.
+-- NOT APPLIED. Needs sql/163 (Seller Website) and sql/164 (website_subdomain_ready) applied first.
+-- Does NOT depend on sql/165 / sql/166 (Invite friends): it touches none of their tables, functions or
+-- triggers, and they touch none of this file's — the two can be applied in either order.
+-- (Numbered 167: 165 + 166 are Invite friends on main. Was sql/165 on this branch before the merge.)
+-- Rollback: sql/167_seller_website_v2_rollback.sql. Proof: scripts/sql167-behaviour.mjs (PGlite).
 -- The website stays behind the same switch (seller_website_enabled + the seller_website key).
 -- Live, Auto Mode, stickers, Parcel Scan, Pickup Status: no live function is changed. A product
 -- that doesn't use the new fields answers exactly as before (every new column is NULL).
@@ -48,7 +52,7 @@
 -- PART 13 — courier + tracking number: website_orders.courier / tracking_no (optional). website_order_ship
 --   (seller, own rows): paid / confirmed → shipped with them, or edits them on a shipped order. The buyer's
 --   order link (website_order) shows them once shipped.
--- Proof: scripts/sql165-behaviour.mjs (PGlite).
+-- Proof: scripts/sql167-behaviour.mjs (PGlite).
 -- ============================================================================
 begin;
 set local lock_timeout = '2s';

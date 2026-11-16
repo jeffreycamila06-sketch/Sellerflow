@@ -126,12 +126,12 @@ describe("the seller's Payment & shipping screen", () => {
   });
 });
 
-describe("sql/165 part 11 (contract)", () => {
-  const sql = readFileSync("sql/165_seller_website_v2.sql", "utf8");
+describe("sql/167 part 11 (contract)", () => {
+  const sql = readFileSync("sql/167_seller_website_v2.sql", "utf8");
   it("pay first = today's flow; pay on delivery only where the option allows it; only uploaded QR pictures", () => {
     expect(sql).toMatch(/v_pay := case when v_meth->>'kind' = 'delivery' then 'cod' when v_meth \? 'qr' then 'qr' else 'bank' end;/);
     expect(sql).toMatch(/if v_meth is null or \(v_meth->>'kind' = 'delivery' and not coalesce\(\(v_opt->>'cod'\)::boolean, false\)\) then/);
     expect(sql).toMatch(/\/site-qr-\[0-9\]\{1,20\}\\\.jpg\$/);
-    expect(readFileSync("sql/165_seller_website_v2_rollback.sql", "utf8")).toMatch(/drop column if exists pay_id, drop column if exists pay_name;/);
+    expect(readFileSync("sql/167_seller_website_v2_rollback.sql", "utf8")).toMatch(/drop column if exists pay_id, drop column if exists pay_name;/);
   });
 });

@@ -52,7 +52,7 @@ export function websiteFieldsFromRow(row: Record<string, unknown>): Partial<Prod
   if (row.show_on_website === false) out.showOnWebsite = false;
   if (row.parent_local_id != null && Number.isFinite(Number(row.parent_local_id))) out.parentId = Number(row.parent_local_id);
   if (row.variant && typeof row.variant === "object" && !Array.isArray(row.variant)) out.variant = row.variant as Product["variant"];
-  // sql/165 (website v2) — only when set
+  // sql/167 (website v2) — only when set
   const n = (v: unknown) => (v === null || v === undefined || v === "" ? NaN : Number(v));
   if (Number.isFinite(n(row.old_price))) out.oldPrice = n(row.old_price);
   if (Number.isFinite(n(row.flash_price))) out.flashPrice = n(row.flash_price);
@@ -90,7 +90,7 @@ export function productToRow(p: Product, userId: string, now: number = Date.now(
   if (p.showOnWebsite !== undefined) row.show_on_website = p.showOnWebsite;
   if (p.parentId !== undefined) row.parent_local_id = p.parentId;
   if (p.variant !== undefined) row.variant = p.variant;
-  // sql/165 — written ONLY when the product carries them (otherwise the payload is the same as before)
+  // sql/167 — written ONLY when the product carries them (otherwise the payload is the same as before)
   const price = (v: number | null | undefined) => (v === null || !Number.isFinite(Number(v)) || Number(v) <= 0 ? null : Math.round(Number(v) * 100) / 100);
   if (p.oldPrice !== undefined) row.old_price = price(p.oldPrice);
   if (p.flashPrice !== undefined) row.flash_price = price(p.flashPrice);
@@ -133,12 +133,12 @@ async function uid(): Promise<string | null> {
 // empty table (which is what drives the migration decision).
 const PRODUCT_COLS = "local_id,name,sku,price,stock,platform,live_code";
 export const WEBSITE_COLS = "category,description,photo_paths,show_on_website,parent_local_id,variant";
-export const WEBSITE_V2_COLS = "old_price,flash_price,flash_end,item_condition,size_guide"; // sql/165
+export const WEBSITE_V2_COLS = "old_price,flash_price,flash_end,item_condition,size_guide"; // sql/167
 export async function loadProductsDb(): Promise<Product[] | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   const id = await uid();
   if (!id) return null;
-  // sql/165 + sql/163 columns first; before sql/165 is applied that read fails → the sql/163 read; before
+  // sql/167 + sql/163 columns first; before sql/167 is applied that read fails → the sql/163 read; before
   // sql/163 → the original read (same result as before at each step)
   const v2 = await supabase
     .from("products")

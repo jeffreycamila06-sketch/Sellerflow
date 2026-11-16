@@ -40,6 +40,8 @@ import { isAdminRole } from "../../lib/roles";
 import { confirmEmailMatches } from "../adapters/adminDelete";
 import { loadConnectedAccounts, loadSellerAccounts, accountsTotal, extraAccounts, isLowerPlan, removalSummary, fmtAcctDate, PLATFORM_LABEL, type ConnectedAccount, type SellerAccount } from "../adapters/adminAccounts";
 import DowngradeDialog from "../components/DowngradeDialog";
+import { SellerInviteRow, InviteRewardsPanel, InviteHistoryPanel } from "../components/AdminInvite";
+import { loadReferralOverview, type ReferralPreview } from "../adapters/invite";
 import Pc711Panel from "../components/Pc711Panel";
 import PrinterTestersPanel from "../components/PrinterTestersPanel";
 import { usePc711Status, pc711NeedsAttention } from "../adapters/pc711Login";
@@ -51,7 +53,7 @@ const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 
 
 export type AdminPanelKind =
   | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee" | "parcelsw"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711" | "printertesters";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse" | "helpchat" | "pc711" | "printertesters" | "invrewards" | "invhistory";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -73,6 +75,8 @@ const cic = {
   shipfee: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /><circle cx="17.5" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /></svg>,
   parcelsw: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="6" stroke="currentColor" strokeWidth="1.6" /><circle cx="15" cy="12" r="3" fill="currentColor" /></svg>,
   printertesters: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M7 9V4h10v5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><rect x="4" y="9" width="16" height="7" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 14h8v6H8z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>,
+  gift: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="9" width="16" height="11" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M3 9h18M12 9v11" stroke="currentColor" strokeWidth="1.6" /><path d="M12 9c-1.5-3.5-5-4-5-1.5S10 9 12 9Zm0 0c1.5-3.5 5-4 5-1.5S14 9 12 9Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>,
+  invhist: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.6" /><path d="M3 18a5 5 0 0 1 10 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M15 8h6M15 12h6M17 16h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
   pc711: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.6" /><path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="15" r="1.6" fill="currentColor" /></svg>,
 };
 
@@ -169,6 +173,8 @@ export default function Admin({ onBack, onOpenPanel, counts, live = false, userB
               subscriptions are Wise+Telegram outside the app). The User Base +
               System tiles were removed too (User Base is still reachable from the
               top stat card; System was a fabricated assign-amount tool). */}
+          <Ctrl icon={cic.gift} label={t.rd_adm_ctrl_invrewards} onClick={() => onOpenPanel("invrewards")} testId="admin-ctrl-invrewards" />
+          <Ctrl icon={cic.invhist} label={t.rd_adm_ctrl_invhistory} onClick={() => onOpenPanel("invhistory")} testId="admin-ctrl-invhistory" />
           <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.parcelmon} label={t.rd_adm_ctrl_parcel} onClick={() => onOpenPanel("parcelmon")} />
@@ -191,6 +197,7 @@ const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
   pulse: t.rd_pulse_title, helpchat: t.rd_adm_ctrl_helpchat, pc711: t.rd_pc711_title, printertesters: t.rd_prt_tile,
+  invrewards: t.rd_adm_ctrl_invrewards, invhistory: t.rd_adm_ctrl_invhistory,
 } as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const miniStat: CSSProperties = { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
@@ -1066,6 +1073,17 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     void loadConnectedAccounts().then((m) => { if (alive) setConnected(m); });
     return () => { alive = false; };
   }, [panel, canReadConnected, connectedTick]);
+  // Invite codes + "what a paid plan gives the inviter" (sql/165): ONE admin read when the sellers
+  // panel opens, re-read when the users list reloads (after a plan change). null = not read
+  // (sql/165 not applied / error) → the cards show no invite line, plans work exactly as before.
+  const [refOv, setRefOv] = useState<Record<string, ReferralPreview> | null>(null);
+  const [refTick, setRefTick] = useState(0);
+  useEffect(() => {
+    if (panel !== "sellers" || !canReadConnected) return;
+    let alive = true;
+    void loadReferralOverview().then((m) => { if (alive) setRefOv(m); });
+    return () => { alive = false; };
+  }, [panel, canReadConnected, users, refTick]);
   const connectedOf = (email: string): ConnectedAccount[] => {
     const uid = rawByEmail[email]?.authUserId || "";
     return (uid && connected && connected[uid]) || [];
@@ -1382,6 +1400,9 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                           ))}
                         </div>
                       )}
+                      {actions && refOv && rawByEmail[u.email]?.authUserId && (
+                        <SellerInviteRow userId={rawByEmail[u.email].authUserId} preview={refOv[rawByEmail[u.email].authUserId]} onChanged={() => setRefTick((n) => n + 1)} onToast={notify} />
+                      )}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
                         <button onClick={() => actions ? void doPlan(u, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
                         <button onClick={() => actions ? void doPlan(u, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
@@ -1475,6 +1496,8 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           {panel === "pc711" && <Pc711Panel />}
           {panel === "printertesters" && <PrinterTestersPanel />}
           {panel === "helpchat" && <AdminHelpChat />}
+          {panel === "invrewards" && <InviteRewardsPanel />}
+          {panel === "invhistory" && <InviteHistoryPanel onToast={notify} />}
 
           {panel === "broadcast" && (
             <div>

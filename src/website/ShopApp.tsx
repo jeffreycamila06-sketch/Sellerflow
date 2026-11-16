@@ -1,4 +1,4 @@
-// Seller Website — the buyer side. Reads the shop through website_shop (sql/163 + sql/165), keeps the cart
+// Seller Website — the buyer side. Reads the shop through website_shop (sql/163 + sql/167), keeps the cart
 // on this device, routes with the History API under /s/<sub> (or the subdomain root).
 // `preview` = the seller editor's live preview: the given shop, in-memory routing, no network, no
 // device storage touched.

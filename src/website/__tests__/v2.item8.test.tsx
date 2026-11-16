@@ -1,6 +1,6 @@
 // Seller Website v2 — item 8: optional product fields (old price, flash price + end, condition, size
 // guide, colour group + swatches). Website only; a product that doesn't use them saves and shows exactly
-// as before. The database decides the order price (sql/165 website_place_order).
+// as before. The database decides the order price (sql/167 website_place_order).
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -117,8 +117,8 @@ describe("the Website sheet", () => {
   });
 });
 
-describe("sql/165 part 8 (contract)", () => {
-  const sql = readFileSync("sql/165_seller_website_v2.sql", "utf8");
+describe("sql/167 part 8 (contract)", () => {
+  const sql = readFileSync("sql/167_seller_website_v2.sql", "utf8");
   it("add-only nullable columns; the flash price is decided at order time in the database", () => {
     expect(sql).toMatch(/add column if not exists old_price\s+numeric null/);
     expect(sql).toMatch(/add column if not exists flash_end\s+timestamptz null/);
@@ -126,8 +126,8 @@ describe("sql/165 part 8 (contract)", () => {
     expect(sql).toMatch(/'price', v_price/);
     expect(sql).not.toMatch(/decrement_product_stock/); // live is not touched
   });
-  it("the rollback drops only what 165 added", () => {
-    const rb = readFileSync("sql/165_seller_website_v2_rollback.sql", "utf8");
+  it("the rollback drops only what 167 added", () => {
+    const rb = readFileSync("sql/167_seller_website_v2_rollback.sql", "utf8");
     expect(rb).toMatch(/drop column if exists old_price/);
     expect(rb).not.toMatch(/drop column if exists (category|description|variant)\b/);
   });

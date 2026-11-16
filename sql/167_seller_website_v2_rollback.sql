@@ -1,5 +1,5 @@
 -- ============================================================================
--- Rollback of sql/165 — Seller Website v2. Puts back exactly what sql/163 defined.
+-- Rollback of sql/167 — Seller Website v2. Puts back exactly what sql/163 defined.
 -- ============================================================================
 begin;
 set local lock_timeout = '2s';

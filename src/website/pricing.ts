@@ -1,5 +1,5 @@
 // Seller Website v2 — what price a buyer sees (PURE, unit-tested). The database decides the price of
-// an order (website_place_order, sql/165); this only shows the same rule:
+// an order (website_place_order, sql/167); this only shows the same rule:
 //   a running flash sale (flashPrice + flashEnd in the future) sets the price of the product and of
 //   every option; the struck-through price is the old price when it is higher, else (during a flash
 //   sale) the normal price; "-N%" compares the two.

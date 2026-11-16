@@ -13,7 +13,7 @@ export interface Product {
   category?: string; description?: string; photoPaths?: string[]; showOnWebsite?: boolean;
   parentId?: number;            // a VARIANT row: its product's local_id (own code / stock / price)
   variant?: ProductVariantInfo; // parent: the option groups · child: its values
-  // Seller Website v2 (sql/165) — OPTIONAL, website only (live / Auto Mode / stickers never read them):
+  // Seller Website v2 (sql/167) — OPTIONAL, website only (live / Auto Mode / stickers never read them):
   // old price (struck through), flash price until flashEnd (ISO), condition, size guide / measurements.
   oldPrice?: number | null; flashPrice?: number | null; flashEnd?: string | null; condition?: string; sizeGuide?: string;
 }

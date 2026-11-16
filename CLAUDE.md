@@ -5348,3 +5348,57 @@ parcels, all exported before 05:00 without an answer). The dry lane keeps workin
 - **Order:** merge (Vercel, web half) → build + install 1.18.2 on the checker machines (`npm run build:extension`,
   zip `chrome-extension-dist/`). Either order is safe: the old extension with the new web = a 30 s wait at night
   that ends in the question; the new extension with the old web = night answers arrive, the hold still asks at once.
+
+## 2026-11-15 — INVITE FRIENDS: INVITE CODE + REFERRAL REWARD (branch `claude/invite-referral`, NOT merged; sql/165 + sql/166 NOT applied; NO Render)
+CODE ONLY — no links, no `?ref=`. Web + database only (server.js untouched).
+- **Rules (Jeff):** each seller chooses a code ONCE (own word or "Give me a random code" — 6 chars, no 0/O/1/I),
+  4–12 letters/numbers, stored UPPERCASE, unique, case-insensitive; in-page warning before saving; permanent
+  (only admin changes it → old code stops working, kept in `referral_code_retired` so nobody reuses it; links stay).
+  Reserved words = table `referral_reserved_codes` (add one = one INSERT). A friend types a code at sign-up
+  (optional, never blocks) or later in Settings → Invite friends (no time limit; only while no inviter AND never
+  had a paid plan). One inviter per account, permanent, no self-invite.
+- **Reward = INVITER only**, when the friend's FIRST paid plan starts (basic/plus/pro/master, active, expiry > now).
+  Inviter must be active paid at that moment, else 0 days, NOT saved for later. Days = `invite_reward_months`
+  (Asia/Taipei month; not set / 0 → 'month_off'). inviter `plan_expiry = greatest(plan_expiry, now()) + N days`.
+  Admin Revoke subtracts exactly the days given.
+- **sql/165:** tables `referral_codes`, `referral_code_retired`, `referral_reserved_codes`, `referrals`,
+  `invite_reward_months`, `referral_paid_seen` (RLS on, no policies, browser roles via functions only). Trigger
+  `trg_seller_profiles_zzzz_referral_reward` AFTER UPDATE OF plan, plan_status (after the parcel trigger). It
+  updates ONLY the inviter's plan_expiry (not one of its own columns → no loop; the parcel/TikTok triggers ignore
+  it). The inviter update passes `seller_profiles_on_update` only for an admin caller — same caller that gave the
+  plan; if reverted → 'no_reward'/'not_applied'. Any error inside is caught → the plan change ALWAYS goes through.
+  "Ever paid" = `referral_paid_seen` (filled by the trigger + back-filled from rows on a paid plan or with a
+  plan_expiry) or a current paid plan name. Seller RPCs: check_invite_code (anon ok, true/false only),
+  invite_code_available, set_my_invite_code, claim_referral, my_referral_summary. Admin RPCs (is_admin() inside):
+  admin_referral_preview, admin_referral_overview, admin_referrals_list, admin_referral_revoke,
+  admin_set_invite_code, admin_invite_reward_months_get/_set. Proof: `scripts/sql165-behaviour.mjs` (PGlite, 85 PASS).
+- **App:** `adapters/invite.ts` (every call answers, never throws), `screens/InviteFriends.tsx` (Settings card
+  opens it), Signup "Invite code (optional)" box, `register()` claims after the profile is made (no session →
+  sessionStorage `sfl_rd_pending_invite`, claimed at the first sign-in of that tab). Admin: Controls tiles
+  **Invite rewards** + **Invite history** (Revoke confirm inside the page), Manage sellers card = the seller's
+  code + **Change code** + the line "Invited by X (plan). X gets +N days when you save." (display only — plan
+  giving unchanged). iPhone app: neutral words (no subscribe / paid plan / price / buy link).
+- **Guide:** sfl-guide.md (settings-tiles, signup, NEW invite-friends) + 116b regenerated; `sql/166` = those
+  three rows only (the whole 116b would publish other not-yet-live text).
+- **Order:** apply sql/165 → merge (Vercel) → set this month's days in Admin → Invite rewards → apply sql/166.
+  Without sql/165 the web is safe: the sign-up box shows only its hint, the Invite screen says "Couldn't load".
+- **Fix round 1 (same branch):** back-fill = current paid plan OR audit_logs 'changed plan' to a paid plan name OR
+  'made admin' (NOT "has a plan_expiry"; live check: 166 paid + 2 free). `referral_paid_seen` keeps user_id + lower(email)
+  (email survives account delete); written in its OWN block before the reward (an error can't erase it); a reward error →
+  'no_reward'/'error'. `referrals` has its own `id` pk + `invitee_email`/`inviter_email` snapshots, invitee/inviter
+  `on delete set null`; claim blocks a re-signed-up email (paid_seen email → already_paid; earlier invite → already_linked).
+  Trigger listens to plan, plan_status, plan_expiry (the inviter update fires it but the inviter is already active → no-op).
+  Deleted inviter's code → retired (BEFORE DELETE trigger on referral_codes). Reserved: 'contains' ADMIN / SELLERFLOW /
+  SUPPORT / OFFICIAL, 'exact' SFL / HELP / TEST / SELLERFLOWLIVE. NFKC in `referral_norm_code` + the app.
+  Revoke = `admin_referral_revoke(p_referral)` by row id, UI only on rewarded rows with days, shows current → new expiry.
+  Sign-up pending code = {code, email}, claimed only for that email; the sign-up claim gives up after 4 s.
+- **Fix round 2 (same branch):** referrals check is `inviter_user_id <> invitee_user_id` (null/null after both accounts
+  are deleted passes; self-invite still refused). Back-fill also adds email-only `referral_paid_seen` rows (user_id null)
+  for audit-log paid-plan / 'made admin' emails with no seller_profiles row (live 2026-11-16: 21; existing marked 168);
+  emails matched as lower(btrim()), `details::text`. Trigger: `new.role = 'admin'` → still marked "had a paid plan",
+  invite set no_reward / skip_reason 'admin', inviter gets nothing. Behaviour script 134 PASS.
+- **Renumbered 2026-11-16 (main 792b5445 merged in — Seller Website took sql/163 + sql/164):** invite =
+  **sql/165_invite_referral.sql**, guide = **sql/166_guide_invite_friends.sql** (+ rollbacks), behaviour script =
+  `scripts/sql165-behaviour.mjs`. 116b regenerated from the merged guide: 51 ids, every invite + Website id kept.
+  sql/166 rollback text = the live settings-tiles / signup rows (md5 checked 2026-11-16); it does not touch the
+  Website row. Settings shows the Invite friends card AND the Website row (`SettingsHub.inviteWebsite.test.tsx`).

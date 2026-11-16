@@ -10,7 +10,7 @@ export interface ShopGroup { name: string; values: string[]; color?: boolean; sw
 export interface ShopProduct {
   id: number; name: string; price: number; stock: number; code?: string; category?: string; description?: string;
   createdAt?: string; photos: string[]; groups?: ShopGroup[]; variants?: ShopVariant[];
-  // v2 (sql/165): optional — old price (struck through), a running flash sale (price + end), condition, size guide
+  // v2 (sql/167): optional — old price (struck through), a running flash sale (price + end), condition, size guide
   oldPrice?: number; flashPrice?: number; flashEnd?: string; condition?: string; sizeGuide?: string;
   sold?: number; // v2 (item 9): units sold, the product + its options (absent = none)
 }
@@ -21,7 +21,7 @@ export interface ShopDesign {
   live?: string; policy?: string; replyTime?: string; currency?: string; lang?: string;
   socials?: Partial<Record<SocialKey, string>>; chats?: Partial<Record<ChatKey, string>>;
   sections?: Partial<Record<SectionKey, boolean>>;
-  // v2 (sql/165 PART 1): the home page
+  // v2 (sql/167 PART 1): the home page
   theme?: "pop" | "boutique" | "bold";
   slides?: ShopSlide[]; trust?: ShopTrust[]; promo?: ShopPromo; steps?: ShopStep[]; faq?: ShopFaq[]; catPics?: Record<string, string>;
 }
@@ -41,7 +41,7 @@ export interface ShopCheckout {
 export interface Shop {
   online: true; sub: string; shop: ShopDesign; country: string; powered: boolean; verified: boolean;
   stats: { orders: number; products: number }; products: ShopProduct[]; checkout: ShopCheckout;
-  /** v2 (sql/165): the seller's shipping options + payment methods. Absent before sql/165 → see shipPay.checkoutOf. */
+  /** v2 (sql/167): the seller's shipping options + payment methods. Absent before sql/167 → see shipPay.checkoutOf. */
   checkout2?: CheckoutV2;
 }
 export type ShopResult = Shop | { online: false };

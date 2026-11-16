@@ -1,6 +1,7 @@
-// Runs sql/163 + sql/165 (+ the 165 rollback) on a real Postgres (PGlite, WASM) against the same stub
-// of the live schema as scripts/sql163-behaviour.mjs (read from that file, so the two never drift).
-// Checks the Seller Website v2 rules, part by part (see the sql/165 header).
+// Runs sql/165 (+ its rollback) on a real Postgres (PGlite, WASM) against a stub of the live
+// seller_profiles (the LIVE copies of seller_profiles_on_insert, seller_profiles_on_update and
+// parcel_auto_access_trg, plus a stand-in for the TikTok-total trigger) and prints PASS/FAIL for
+// every invite-code / referral-reward rule.
 // Not part of CI (PGlite is not a dependency). Run from a scratch folder:
 //   mkdir /tmp/pg165 && cd /tmp/pg165 && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/scripts/sql165-behaviour.mjs . && node sql165-behaviour.mjs <repo>/sql
@@ -9,413 +10,514 @@ import { readFileSync } from "node:fs";
 const dir = process.argv[2];
 const src = (f) => readFileSync(`${dir}/${f}`, "utf8");
 let pass = 0, fail = 0;
-const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
+const ok = (c, m) => { if (c) { pass++; console.log("PASS:", m); } else { fail++; console.log("FAIL:", m); } };
 
-const SELLER = "11111111-1111-1111-1111-111111111111";
-const FREE = "22222222-2222-2222-2222-222222222222";
-const OTHER = "33333333-3333-3333-3333-333333333333";
-const MASTER = "44444444-4444-4444-4444-444444444444";
-// the stub of the live schema, exactly as sql163-behaviour.mjs builds it
-const s163 = readFileSync(`${dir}/../scripts/sql163-behaviour.mjs`, "utf8");
-const stubText = s163.slice(s163.indexOf("const STUB = `") + "const STUB = `".length, s163.indexOf("`;\n\nconst db = new PGlite();"));
-const STUB = new Function("SELLER", "FREE", "OTHER", "MASTER", `return \`${stubText}\`;`)(SELLER, FREE, OTHER, MASTER);
+const STUB = `
+create role anon; create role authenticated;
+alter default privileges in schema public grant execute on functions to anon, authenticated;
+create schema auth;
+grant usage on schema auth to anon, authenticated;
+grant usage on schema public to anon, authenticated;
+create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
+create table public.seller_profiles(auth_user_id uuid primary key references auth.users(id) on delete cascade, email text, full_name text,
+  store_name text, phone text, tiktok text, facebook text, plan text, plan_status text, plan_expiry timestamptz, trial_started_at timestamptz,
+  role text, connected_accounts text[], created_at timestamptz, updated_at timestamptz, free_orders_count int, free_cycle_started_at timestamptz,
+  free_warned_at timestamptz, admin_contact_note text, country text);
+create function public.is_admin() returns boolean language sql stable security definer set search_path=public as $$
+  select exists(select 1 from public.seller_profiles where auth_user_id = auth.uid() and role='admin') $$;
+-- LIVE copy (2026-11-15)
+create function public.seller_profiles_on_insert() returns trigger language plpgsql security definer set search_path=public as $$
+declare existing_count bigint;
+begin
+  select count(*) into existing_count from public.seller_profiles;
+  if existing_count = 0 then
+    new.role := 'admin'; new.plan := 'master'; new.plan_status := 'active'; new.plan_expiry := now() + interval '120 months'; new.trial_started_at := now();
+  else
+    new.role := 'seller'; new.plan := 'free'; new.plan_status := 'active'; new.plan_expiry := null;
+    new.free_cycle_started_at := now(); new.free_orders_count := 0; new.free_warned_at := null;
+  end if;
+  new.created_at := coalesce(new.created_at, now()); new.updated_at := now();
+  return new;
+end $$;
+create trigger trg_seller_profiles_insert before insert on public.seller_profiles for each row execute function public.seller_profiles_on_insert();
+-- LIVE copy (2026-11-15)
+create function public.seller_profiles_on_update() returns trigger language plpgsql security definer set search_path=public as $$
+begin
+  if not public.is_admin() then
+    new.role := old.role; new.plan := old.plan; new.plan_status := old.plan_status; new.plan_expiry := old.plan_expiry;
+    new.auth_user_id := old.auth_user_id; new.email := old.email;
+    new.admin_contact_note := old.admin_contact_note; new.trial_started_at := old.trial_started_at;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+create trigger trg_seller_profiles_update before update on public.seller_profiles for each row execute function public.seller_profiles_on_update();
+-- stand-in for account_total_tiktok_trg (same name/slot; fast path when tiktok is unchanged)
+create table public.tiktok_trg_calls(n int);
+create function public.account_total_tiktok_trg() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'UPDATE' and new.tiktok is not distinct from old.tiktok then return new; end if;
+  insert into public.tiktok_trg_calls values (1); return new;
+end $$;
+create trigger trg_seller_profiles_zz_account_total before insert or update on public.seller_profiles for each row execute function public.account_total_tiktok_trg();
+-- LIVE copy of parcel_auto_access_trg (2026-11-15)
+create table public.parcel_check_access(user_id uuid primary key, enabled boolean, note text);
+create table public.parcel_tracking_access(user_id uuid primary key, enabled boolean, note text);
+create function public.parcel_auto_access_trg() returns trigger language plpgsql security definer set search_path=public as $$
+declare v_paid boolean; v_tw boolean;
+begin
+  begin
+    if coalesce(new.role, '') = 'admin' or new.auth_user_id is null then return new; end if;
+    if tg_op = 'UPDATE' and new.plan is not distinct from old.plan and new.plan_status is not distinct from old.plan_status
+       and new.country is not distinct from old.country then return new; end if;
+    v_paid := lower(trim(coalesce(new.plan, ''))) in ('plus', 'pro', 'master') and coalesce(new.plan_status, '') <> 'expired';
+    v_tw := new.country is null or upper(new.country) = 'TW';
+    if v_paid and v_tw then
+      insert into public.parcel_check_access (user_id, enabled, note) values (new.auth_user_id, true, 'auto: paid plan') on conflict (user_id) do nothing;
+      insert into public.parcel_tracking_access (user_id, enabled, note) values (new.auth_user_id, true, 'auto: paid plan') on conflict (user_id) do nothing;
+    end if;
+  exception when others then raise warning 'parcel_auto_access_trg: % (%)', sqlerrm, sqlstate;
+  end;
+  return new;
+end $$;
+create trigger trg_seller_profiles_zzz_parcel_auto_access after insert or update of plan, plan_status, country on public.seller_profiles for each row execute function public.parcel_auto_access_trg();
+-- live shape of audit_logs (2026-11-15)
+create table public.audit_logs(id uuid primary key default gen_random_uuid(), actor_email text, action text, target_email text, details text, created_at timestamptz default now());
+`;
 
 const db = new PGlite();
 await db.exec(STUB);
 const q = (s, p) => db.query(s, p);
-const as = async (uid, role, fn) => {
-  await db.exec(`set role ${role}; select set_config('request.jwt.claim.sub', '${uid || ""}', false);`);
-  try { return await fn(); } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false);`); }
+let n = 0;
+const newUser = async (createdAt = null, email = null) => {
+  const id = `00000000-0000-0000-0000-${String(++n).padStart(12, "0")}`;
+  await q("insert into auth.users values ($1)", [id]);
+  await q("insert into seller_profiles(auth_user_id, email, store_name, created_at) values ($1,$2,'shop',$3)", [id, email ?? `user${n}@x.test`, createdAt]);
+  return id;
 };
-const err = async (p) => { try { await p; return null; } catch (e) { return e.message; } };
-const shop = async (sub) => (await as(null, "anon", () => q(`select public.website_shop($1) as r`, [sub]))).rows[0].r;
-let devN = 0; // a fresh device per order: the 10-per-hour device limit is sql/163's, checked there
-const place = async (order, dev = `device-${String(++devN).padStart(4, "0")}`) => (await as(null, "anon", () => q(`select public.website_place_order('budgetukay', $1, $2) as r`, [JSON.stringify(order), dev]))).rows[0].r;
-const buyer = (i) => ({ name: `Buyer ${i}`, phone: `09123400${String(i).padStart(2, "0")}`, delivery: "s711", storeId: "123456", payment: "bank" });
+const as = async (uid, fn) => {
+  await db.exec(`set request.jwt.claim.sub = '${uid}'`);
+  try { return await fn(); } finally { await db.exec("reset request.jwt.claim.sub"); }
+};
+const ADMIN = await newUser(); // first profile = admin (live insert trigger)
+// A user that existed BEFORE sql/165 was paid → back-filled into referral_paid_seen.
+const OLD_PAID = await newUser();
+// Admin gives a plan the way the app does (adminUpdatePlan: plan + plan_status + plan_expiry).
+const give = (u, plan, days = 31) => as(ADMIN, () => q(`update seller_profiles set plan=$2, plan_status='active', plan_expiry=now()+make_interval(days=>$3) where auth_user_id=$1`, [u, plan, days]));
+await give(OLD_PAID, "basic");
+const expire = (u) => as(ADMIN, () => q(`update seller_profiles set plan_status='expired', plan_expiry=now()-interval '1 day' where auth_user_id=$1`, [u]));
+const toFree = (u) => as(ADMIN, () => q(`update seller_profiles set plan='free', plan_status='active', plan_expiry=null where auth_user_id=$1`, [u]));
+const prof = async (u) => (await q("select * from seller_profiles where auth_user_id=$1", [u])).rows[0];
+const expMs = async (u) => new Date((await prof(u)).plan_expiry).getTime();
+const ref = async (u) => (await q("select * from referrals where invitee_user_id=$1", [u])).rows[0];
+const refById = async (id) => (await q("select * from referrals where id=$1", [id])).rows[0];
+const log = (email, action, details) => q("insert into audit_logs(actor_email, action, target_email, details) values ('boss@x.test',$1,$2,$3)", [action, email, details]);
+const seen = async (u) => (await q("select count(*)::int c from referral_paid_seen where user_id=$1", [u])).rows[0].c === 1;
+const rpc = (u, sql, p) => as(u, async () => (await q(sql, p)).rows[0]);
+const setCode = (u, c) => rpc(u, "select set_my_invite_code($1) j", [c]).then((r) => r.j);
+const claim = (u, c, s = "settings") => rpc(u, "select claim_referral($1,$2) j", [c, s]).then((r) => r.j);
+const summary = (u) => rpc(u, "select my_referral_summary() j").then((r) => r.j);
+const setMonth = (days, month = null) => as(ADMIN, () => q("select admin_invite_reward_months_set(coalesce($1::date, referral_taipei_month(now())), $2)", [month, days]));
+const DAY = 86400000;
+const near = (a, b) => Math.abs(a - b) < 5000;
 
-// ── before sql/165: a published TW shop on sql/163 ───────────────────────────
-await db.exec(src("163_seller_website.sql"));
-await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, image_path) values ($1, 1, 'Old shirt', 150, 30, 'A01', 'p/1.jpg')`, [SELLER]);
-await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, variant) values ($1, 10, 'Dress', 200, 0, 'B01', '{"groups":[{"name":"Size","values":["S","M"]}]}')`, [SELLER]);
-await q(`insert into public.products(user_id, local_id, name, price, stock, live_code, parent_local_id, variant) values
-  ($1, 11, 'Dress', 220, 20, 'B01-S', 10, '{"values":["S"],"ownPrice":true}'), ($1, 12, 'Dress', 200, 20, 'B01-M', 10, '{"values":["M"]}')`, [SELLER]);
-await q(`insert into public.feature_access_emails(feature, email) values ('seller_website', 'seller@example.com')`);
-await as(SELLER, "authenticated", () => q(`insert into public.seller_websites(user_id, subdomain, draft, settings) values ($1, 'budgetukay', $2, $3)`,
-  [SELLER, JSON.stringify({ name: "BudgetUkay" }), JSON.stringify({ ship: { s711: { fee: 60 }, home: { enabled: true, fee: 120 } }, freeOver: 999, bank: { enabled: true, bankName: "CTBC", accountName: "J", accountNumber: "123" }, cod: { enabled: true }, autoCancelHours: 24 })]));
-await as(SELLER, "authenticated", () => q(`select public.website_publish()`));
-const shopBefore = await shop("budgetukay");
-const productCols = async () => (await q(`select column_name from information_schema.columns where table_name = 'products' order by 1`)).rows.map((r) => r.column_name).join();
-const colsBefore = await productCols();
-const oldRowBefore = (await q(`select * from public.products where local_id = 1`)).rows[0];
+// Back-fill cases (accounts that exist before sql/165 is applied)
+const LOG_PAID_FREE = await newUser(null, "Mixed.Case@X.test");                // was basic (log), free now
+await log("mixed.case@x.test", "changed plan", "→ basic (1mo, activated)");
+await log("MIXED.CASE@X.TEST", "changed plan", "→ free (1mo, activated)");
+const PAID_TO_TRIAL = await newUser();                                           // basic → trial
+await give(PAID_TO_TRIAL, "trial", 7);
+await log((await prof(PAID_TO_TRIAL)).email, "changed plan", "→ basic (1mo, activated)");
+await log((await prof(PAID_TO_TRIAL)).email, "changed plan", "→ trial (1mo, activated)");
+const MADE_ADMIN = await newUser();                                              // made admin once, free now
+await log((await prof(MADE_ADMIN)).email, "made admin", "");
+const EXPIRED_ONLY = await newUser();                                            // free + expiry, only 'expired seller'
+await as(ADMIN, () => q("update seller_profiles set plan_status='expired', plan_expiry=now()-interval '3 days' where auth_user_id=$1", [EXPIRED_ONLY]));
+await log((await prof(EXPIRED_ONLY)).email, "expired seller", "");
+const FREE_EXPIRY_NEVER = await newUser();                                       // free + expiry, no log at all
+await as(ADMIN, () => q("update seller_profiles set plan_expiry=now()+interval '10 days' where auth_user_id=$1", [FREE_EXPIRY_NEVER]));
+const TRIAL_ONLY = await newUser();
+await give(TRIAL_ONLY, "trial", 7);
+await log((await prof(TRIAL_ONLY)).email, "changed plan", "→ trial (1mo, activated)");
+const WORD_ONLY = await newUser();                                               // 'basically' must not count
+await log((await prof(WORD_ONLY)).email, "changed plan", "→ basically nothing");
+const SPACED = await newUser(null, "  Spaced@X.test ");                          // email with spaces both sides
+await log(" spaced@x.test", "changed plan", "→ pro (1mo, activated)");
+// Deleted accounts: logs for emails that have NO seller_profiles row any more.
+await log("  Gone.Paid@X.test ", "changed plan", "→ basic (1mo, activated)");
+await log("gone.paid@x.test", "changed plan", "→ free (1mo, activated)");
+await log("gone.admin@x.test", "made admin", "");
+await log("gone.free@x.test", "changed plan", "→ free (1mo, activated)");
+await log("gone.trial@x.test", "changed plan", "→ trial (1mo, activated)");
+await log("gone.expired@x.test", "expired seller", "");
 
-await db.exec(src("165_seller_website_v2.sql"));
+await db.exec(src("165_invite_referral.sql"));
+ok(await seen(OLD_PAID), "back-fill: on a paid plan now → marked 'had a paid plan'");
+ok(await seen(ADMIN), "back-fill: the admin (master) → marked");
+ok(await seen(LOG_PAID_FREE), "back-fill: free now, log 'changed plan → basic' (any letter case) → marked");
+ok((await q("select email from referral_paid_seen where user_id=$1", [LOG_PAID_FREE])).rows[0].email === "mixed.case@x.test", "back-fill stores the email in lower case");
+ok(await seen(PAID_TO_TRIAL), "back-fill: was basic, trial now → marked");
+ok(await seen(MADE_ADMIN), "back-fill: log 'made admin' → marked");
+ok(!(await seen(EXPIRED_ONLY)), "back-fill: free with an expiry whose only log is 'expired seller' → NOT marked");
+ok(!(await seen(FREE_EXPIRY_NEVER)), "back-fill: free with an expiry date, never paid → NOT marked");
+ok(!(await seen(TRIAL_ONLY)), "back-fill: only ever a trial → NOT marked");
+ok(!(await seen(WORD_ONLY)), "back-fill: 'basically' is not the plan name basic → NOT marked");
+ok(await seen(SPACED), "back-fill: emails matched as lower(btrim()) ('  Spaced@X.test ' ↔ ' spaced@x.test')");
+ok((await q("select count(*)::int c from referral_paid_seen where user_id is not null")).rows[0].c === 6, "back-fill marks exactly the 6 expected existing accounts");
+const emailOnly = (await q("select email from referral_paid_seen where user_id is null order by email")).rows.map((x) => x.email);
+ok(JSON.stringify(emailOnly) === JSON.stringify(["gone.admin@x.test", "gone.paid@x.test"]), "back-fill: deleted accounts with a paid-plan / 'made admin' log → email-only rows (gone.admin, gone.paid; trimmed, lower case)");
+ok(!emailOnly.includes("gone.free@x.test") && !emailOnly.includes("gone.trial@x.test") && !emailOnly.includes("gone.expired@x.test"), "back-fill: deleted accounts with only free / trial / 'expired seller' logs → NOT marked");
+ok((await q("select count(*)::int c from referral_paid_seen where email='gone.paid@x.test'")).rows[0].c === 1, "back-fill: one row per email even with several logs");
 
-// ── PART 1 — the storefront's public design fields ───────────────────────────
-{
-  const sh = await shop("budgetukay");
-  ok(JSON.stringify(sh.shop) === JSON.stringify(shopBefore.shop), "a design without the v2 fields answers exactly as before");
-  const pic = (k, n) => `${SELLER}/site-${k}-${n}.jpg`;
-  const draft = { name: "BudgetUkay", theme: "bold",
-    slides: [...Array.from({ length: 7 }, (_, i) => ({ title: `Slide ${i} ` + "x".repeat(80), text: "t", button: "Shop", cat: "Tops", pic: i === 0 ? pic("slide", 1) : i === 1 ? "../etc/passwd" : pic("slide", i) })), {}],
-    trust: Array.from({ length: 6 }, (_, i) => ({ title: `T${i}`, sub: "s".repeat(90) })),
-    promo: { text: "no title" },
-    steps: Array.from({ length: 5 }, (_, i) => ({ title: `S${i}`, text: "x" })),
-    faq: [{ q: "Q1", a: "A1" }, { q: "", a: "no question" }, { q: "no answer" }, ...Array.from({ length: 10 }, (_, i) => ({ q: `Q${i + 2}`, a: "a" }))],
-    catPics: { Tops: pic("cat", 1), Bad: "http://evil/x.jpg", Num: 5, ...Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`C${String(i).padStart(2, "0")}`, pic("cat", i + 2)])) } };
-  await as(SELLER, "authenticated", () => q(`update public.seller_websites set draft = $2 where user_id = $1`, [SELLER, JSON.stringify(draft)]));
-  await as(SELLER, "authenticated", () => q(`select public.website_publish()`));
-  const d = (await shop("budgetukay")).shop;
-  ok(d.theme === "bold", "theme passes (pop / boutique / bold)");
-  ok(d.slides.length === 5 && d.slides[0].title.length === 60 && d.slides[0].pic === pic("slide", 1) && d.slides[1].pic === undefined && d.slides[2].pic === pic("slide", 2), "slides: at most 5, text cut, only the seller's own site pictures");
-  ok(d.trust.length === 4 && d.trust[0].sub.length === 60, "trust badges: at most 4, text cut");
-  ok(d.promo === undefined, "a promo without a title is not shown");
-  ok(d.steps.length === 3, "how to order: at most 3 steps");
-  ok(d.faq.length === 8 && d.faq.every((f) => f.q && f.a), "FAQ: needs a question AND an answer, at most 8");
-  ok(Object.keys(d.catPics).length === 30 && d.catPics.C00 === pic("cat", 2) && !("Bad" in d.catPics) && !("Num" in d.catPics), "category pictures: at most 30, only the seller's own site pictures");
-  await as(SELLER, "authenticated", () => q(`update public.seller_websites set draft = $2 where user_id = $1`, [SELLER, JSON.stringify({ name: "BudgetUkay", theme: "neon", promo: { title: "Bundle 3", pic: pic("promo", 9) } })]));
-  await as(SELLER, "authenticated", () => q(`select public.website_publish()`));
-  const d2 = (await shop("budgetukay")).shop;
-  ok(d2.theme === undefined && d2.promo.title === "Bundle 3" && d2.promo.pic === pic("promo", 9) && d2.slides === undefined, "an unknown theme is dropped; a promo with a title passes");
-  await as(SELLER, "authenticated", () => q(`update public.seller_websites set draft = $2 where user_id = $1`, [SELLER, JSON.stringify({ name: "BudgetUkay" })]));
-  await as(SELLER, "authenticated", () => q(`select public.website_publish()`));
-}
+// ── codes ────────────────────────────────────────────────────────────────────────────────
+const A = await newUser(); await give(A, "pro", 40);
+let r = await setCode(A, "budgetukay");
+ok(r.ok === true && r.code === "BUDGETUKAY", "own code saved UPPERCASE ('budgetukay' → BUDGETUKAY)");
+r = await setCode(A, "OTHER1");
+ok(r.ok === false && r.reason === "already_set", "code set once, then set again → blocked (already_set)");
+ok((await q("select code from referral_codes where user_id=$1", [A])).rows[0].code === "BUDGETUKAY", "…and the first code is unchanged");
+const B = await newUser();
+ok((await setCode(B, "admin")).reason === "reserved", "reserved word blocked (admin, any case)");
+ok((await setCode(B, "MYADMIN1")).reason === "reserved" && (await setCode(B, "sellerflowtw")).reason === "reserved" && (await setCode(B, "SUPPORTME")).reason === "reserved" && (await setCode(B, "theofficial")).reason === "reserved", "contains-reserved: MYADMIN1 / SELLERFLOWTW / SUPPORTME / THEOFFICIAL blocked");
+ok((await setCode(B, "help")).reason === "reserved" && (await setCode(B, "sfl")).ok === false && (await setCode(B, "TEST")).reason === "reserved", "exact-reserved: HELP / SFL / TEST blocked");
+ok((await rpc(B, "select invite_code_available($1) v", ["contest"])).v === "" && (await rpc(B, "select invite_code_available($1) v", ["helper"])).v === "" && (await rpc(B, "select invite_code_available($1) v", ["sflshop"])).v === "" && (await rpc(B, "select invite_code_available($1) v", ["testing1"])).v === "", "exact-only words are fine inside a code: CONTEST / HELPER / SFLSHOP / TESTING1 allowed");
+ok((await setCode(B, "abc")).reason === "format" && (await setCode(B, "abcdefghijklm")).reason === "format", "format: 3 and 13 characters blocked");
+ok((await setCode(B, "ab cd")).reason === "format" && (await setCode(B, "ab-cd")).reason === "format", "format: space / symbol blocked");
+ok((await setCode(B, "BudgetUkay")).reason === "taken", "unique, case-insensitive: 'BudgetUkay' taken");
+ok((await rpc(B, "select invite_code_available($1) v", ["budgetukay"])).v === "taken" && (await rpc(B, "select invite_code_available($1) v", ["fresh1"])).v === "", "live availability check: taken / free");
+await q("insert into referral_reserved_codes(code) values ('PROMO')");
+ok((await setCode(B, "promo")).reason === "reserved", "a reserved word added later with ONE insert is blocked at once");
+const FW = await newUser();
+r = await setCode(FW, "ｆｕｌｌｗｉｄｅ１");
+ok(r.ok && r.code === "FULLWIDE1", "full-width input (ｆｕｌｌｗｉｄｅ１, Chinese keyboard) → saved as FULLWIDE1");
+ok((await q("select check_invite_code('ＦＵＬＬＷＩＤＥ１') f")).rows[0].f === true && (await q("select referral_norm_code('　ｂｕｄｇｅｔ　') c")).rows[0].c === "BUDGET", "full-width code is found; full-width spaces are trimmed");
+r = await setCode(B, null);
+ok(r.ok && /^[A-HJ-NP-Z2-9]{6}$/.test(r.code), `random code: 6 chars, uppercase, no 0/O/1/I (${r.code})`);
+let allRandom = true;
+for (let i = 0; i < 300; i++) { const c = (await q("select referral_random_code() c")).rows[0].c; if (!/^[A-HJ-NP-Z2-9]{6}$/.test(c)) allRandom = false; }
+ok(allRandom, "300 random codes all match the format");
 
-// ── PART 8 — product fields ──────────────────────────────────────────────────
-{
-  const after = (await q(`select * from public.products where local_id = 1`)).rows[0];
-  for (const k of Object.keys(oldRowBefore)) ok(String(oldRowBefore[k]) === String(after[k]), `old product column ${k} unchanged`);
-  ok(after.old_price === null && after.flash_price === null && after.flash_end === null && after.item_condition === null && after.size_guide === null, "new columns NULL on existing rows");
-  const noSold = (ps) => JSON.stringify(ps, (k, v) => (k === "sold" ? undefined : v)); // PART 9 adds "N sold"
-  ok(noSold((await shop("budgetukay")).products) === JSON.stringify(shopBefore.products), "products without the new fields: the shop answer is identical to sql/163's (+ sold)");
-  ok((await err(q(`update public.products set item_condition = repeat('x', 61) where local_id = 1`))) !== null, "condition ≤ 60");
-  ok((await err(q(`update public.products set size_guide = repeat('x', 2001) where local_id = 1`))) !== null, "size guide ≤ 2000");
-  ok((await err(q(`update public.products set old_price = -1 where local_id = 1`))) !== null && (await err(q(`update public.products set flash_price = -1 where local_id = 1`))) !== null, "no negative prices");
-  // flash sale running on the plain product and on the product with options
-  await q(`update public.products set old_price = 300, flash_price = 99, flash_end = now() + interval '1 hour', item_condition = '9/10', size_guide = 'Chest 56 cm' where local_id = 1`);
-  await q(`update public.products set flash_price = 120, flash_end = now() + interval '1 hour' where local_id = 10`);
-  const s = await shop("budgetukay");
-  const shirt = s.products.find((p) => p.id === 1), dress = s.products.find((p) => p.id === 10);
-  ok(shirt.oldPrice === 300 && shirt.flashPrice === 99 && !!shirt.flashEnd && shirt.condition === "9/10" && shirt.sizeGuide === "Chest 56 cm", "the shop shows old price, flash price + end, condition, size guide");
-  ok(shirt.price === 150 && dress.variants[0].price === 220, "the normal prices are still sent (the flash price is a separate field)");
-  const r = await place({ ...buyer(1), items: [{ pid: 1, vid: null, qty: 2 }, { pid: 10, vid: 11, qty: 1 }, { pid: 10, vid: 12, qty: 1 }] });
-  const o = (await q(`select items, subtotal from public.website_orders where token = $1`, [r.token])).rows[0];
-  ok(o.items.every((i) => (i.pid === 1 ? i.price === 99 : i.price === 120)) && Number(o.subtotal) === 99 * 2 + 120 + 120, "at order time the flash price is used — for the product and for every option");
-  // the browser can't choose the price
-  const r2 = await place({ ...buyer(2), items: [{ pid: 1, vid: null, qty: 1, price: 1 }] });
-  ok(Number((await q(`select subtotal from public.website_orders where token = $1`, [r2.token])).rows[0].subtotal) === 99, "a price sent by the browser is ignored");
-  // the flash sale ends by itself
-  await q(`update public.products set flash_end = now() - interval '1 second' where local_id in (1, 10)`);
-  const s2 = await shop("budgetukay");
-  ok(s2.products.find((p) => p.id === 1).flashPrice === undefined && s2.products.find((p) => p.id === 1).flashEnd === undefined, "after the end time the shop shows no flash price");
-  const r3 = await place({ ...buyer(3), items: [{ pid: 1, vid: null, qty: 1 }, { pid: 10, vid: 11, qty: 1 }] });
-  const o3 = (await q(`select items from public.website_orders where token = $1`, [r3.token])).rows[0];
-  ok(o3.items.find((i) => i.pid === 1).price === 150 && o3.items.find((i) => i.vid === 11).price === 220, "…and orders get the normal prices again");
-  // flash price on a product but no end time → never applied
-  await q(`update public.products set flash_price = 1, flash_end = null where local_id = 1`);
-  ok((await shop("budgetukay")).products.find((p) => p.id === 1).flashPrice === undefined, "a flash price without an end time is not shown / used");
-  // live is untouched: decrement_product_stock still takes 1 at the normal stock, no price involved
-  const stock0 = (await q(`select stock from public.products where local_id = 1`)).rows[0].stock;
-  ok((await as(SELLER, "authenticated", () => q(`select public.decrement_product_stock(1) r`))).rows[0].r === stock0 - 1, "live decrement unchanged");
-  await q(`update public.products set old_price = null, flash_price = null, flash_end = null, item_condition = null, size_guide = null where local_id in (1, 10)`);
-}
+// ── check_invite_code (sign-up box) ───────────────────────────────────────────────────────
+await db.exec("set role anon");
+ok((await q("select check_invite_code('budgetukay') f")).rows[0].f === true, "check_invite_code works signed out (anon), case-insensitive → found");
+ok((await q("select check_invite_code('NOPE99') f")).rows[0].f === false && (await q("select check_invite_code(null) f")).rows[0].f === false && (await q("select check_invite_code('!!') f")).rows[0].f === false, "check_invite_code: unknown / null / junk → false, never an error");
+let anonBlocked = "ok"; try { await q("select my_referral_summary()"); } catch (e) { anonBlocked = e.message; }
+ok(anonBlocked !== "ok", "anon cannot call my_referral_summary");
+let tblBlocked = "ok"; try { await q("select * from referral_codes"); } catch (e) { tblBlocked = e.message; }
+ok(tblBlocked !== "ok", "anon cannot read the referral_codes table directly");
+await db.exec("reset role");
+await db.exec("set role authenticated");
+let authTbl = "ok"; try { await q("select * from referrals"); } catch (e) { authTbl = e.message; }
+ok(authTbl !== "ok", "a signed-in seller cannot read the referrals table directly");
+await db.exec("reset role");
 
-// ── AUDIT FIX 1 — the price changed between view and order ──────────────────
-{
-  const stock = async (id) => (await q(`select stock from public.products where local_id = $1`, [id])).rows[0].stock;
-  const orders = async () => (await q(`select count(*)::int n from public.website_orders`)).rows[0].n;
-  const seq = async () => (await q(`select order_seq from public.seller_websites where subdomain = 'budgetukay'`)).rows[0].order_seq;
-  const hintOf = async (p) => { try { await p; return null; } catch (e) { return { msg: e.message, hint: e.hint ? JSON.parse(e.hint) : null }; } };
-  // the buyer opens the page during a flash sale: 2 × 99 + one Dress S at 120 + 7-11 NT$60 → shows 378
-  await q(`update public.products set flash_price = 99, flash_end = now() + interval '1 hour' where local_id = 1`);
-  await q(`update public.products set flash_price = 120, flash_end = now() + interval '1 hour' where local_id = 10`);
-  const items = [{ pid: 1, vid: null, qty: 2 }, { pid: 10, vid: 11, qty: 1 }];
-  const shown = 99 * 2 + 120 + 60;
-  ok((await shop("budgetukay")).products.find((p) => p.id === 1).flashPrice === 99, "fix 1: the page shows the flash price");
-  // …the sale ends before they tap Place order
-  await q(`update public.products set flash_end = now() - interval '1 second' where local_id in (1, 10)`);
-  const s1 = await stock(1), s11 = await stock(11), n0 = await orders(), q0 = await seq();
-  const e = await hintOf(place({ ...buyer(70), items, shownTotal: shown }));
-  const now = 150 * 2 + 220 + 60;
-  ok(e && e.msg === "price_changed", "fix 1: flash sale ended between view and order → 'price_changed'");
-  ok(e && e.hint && Number(e.hint.total) === now && Number(e.hint.subtotal) === now - 60 && Number(e.hint.shipFee) === 60, "fix 1: the answer carries the new total (items + shipping)");
-  ok(e && e.hint && e.hint.items.find((i) => i.pid === 1).price === 150 && e.hint.items.find((i) => i.vid === 11).price === 220, "fix 1: …and each line's new price");
-  ok((await orders()) === n0 && (await seq()) === q0, "fix 1: NO order placed (no row, no order number used)");
-  ok((await stock(1)) === s1 && (await stock(11)) === s11, "fix 1: NO stock taken");
-  // the buyer saw the new total and confirms it → placed at the new price
-  const ok2 = await place({ ...buyer(70), items, shownTotal: now });
-  const o2 = (await q(`select total, items from public.website_orders where token = $1`, [ok2.token])).rows[0];
-  ok(ok2.ok === true && Number(o2.total) === now && Number(ok2.total) === now, "fix 1: confirmed with the new total → placed");
-  ok((await stock(1)) === s1 - 2 && (await stock(11)) === s11 - 1, "fix 1: …and only then the stock is taken");
-  // the same check covers the shipping: free-over crossed the other way (subtotal under 999 → fee 60)
-  const e2 = await hintOf(place({ ...buyer(71), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 150 }));
-  ok(e2 && e2.msg === "price_changed" && Number(e2.hint.total) === 210, "fix 1: a total without the shipping fee is a changed price too");
-  ok((await place({ ...buyer(72), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 210.0 })).ok === true, "fix 1: the same total (210 = 210.0) → placed");
-  // an old page sends no total → placed exactly as before (no check)
-  ok((await place({ ...buyer(73), items: [{ pid: 1, vid: null, qty: 1 }] })).ok === true && (await place({ ...buyer(74), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: null })).ok === true, "fix 1: no total (old page) → placed as today");
-  ok(String(await err(place({ ...buyer(75), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: "210" }))).includes("bad_order"), "fix 1: a total that isn't a number is refused");
-  // the rate limit counts placed orders only — a price_changed answer never uses one up
-  for (let i = 0; i < 6; i++) await hintOf(place({ ...buyer(76), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 1 }));
-  ok((await err(place({ ...buyer(76), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 210 }))) === null, "fix 1: refused tries don't count towards the 5-per-hour limit");
-  await q(`update public.products set flash_price = null, flash_end = null where local_id in (1, 10)`);
-}
+// ── claims ───────────────────────────────────────────────────────────────────────────────
+ok((await claim(A, "BUDGETUKAY")).reason === "self", "self-invite blocked");
+ok((await claim(OLD_PAID, "BUDGETUKAY")).reason === "already_paid", "claim when already paid (now or before) → blocked");
+const OLDFREE = await newUser("2025-01-01T00:00:00Z");
+ok((await summary(OLDFREE)).can_enter_code === true, "an old free account (signed up 2025) may still enter a code (no time limit)");
+r = await claim(OLDFREE, "budgetukay");
+ok(r.ok === true, "case-insensitive claim ('budgetukay' → BUDGETUKAY) works for the old free account");
+ok((await ref(OLDFREE)).inviter_user_id === A && (await ref(OLDFREE)).source === "settings", "link saved: inviter = owner of the code, source settings");
+const C = await newUser(); await setCode(C, "CCCODE");
+ok((await claim(OLDFREE, "CCCODE")).reason === "already_linked", "changing inviter blocked (already_linked)");
+ok((await summary(OLDFREE)).can_enter_code === false, "after a code is saved the 'Enter code' box hides (can_enter_code false)");
+ok((await claim(C, "NOTACODE", "signup")).reason === "not_found" && (await claim(C, "", "signup")).reason === "not_found", "wrong / empty code → not_found (no error)");
+ok((await claim(C, "BUDGETUKAY", "elsewhere")).reason === "bad_source", "unknown source rejected");
+const FWC = await newUser();
+ok((await claim(FWC, "ｆｕｌｌｗｉｄｅ１")).ok === true && (await ref(FWC)).inviter_user_id === FW, "a friend typing the code in full-width → links");
+ok((await ref(FWC)).invitee_email === (await prof(FWC)).email && (await ref(FWC)).inviter_email === (await prof(FW)).email, "the link keeps both emails (lower case snapshot)");
+ok((await claim(EXPIRED_ONLY, "FULLWIDE1")).ok === true, "the free-with-expiry 'expired seller' account (not marked) may enter a code");
+ok((await claim(LOG_PAID_FREE, "FULLWIDE1")).reason === "already_paid", "the free account with a 'changed plan → basic' log may NOT");
 
-// ── PART 9 — units sold, kept forever ────────────────────────────────────────
-{
-  const sold = async (id) => (await shop("budgetukay")).products.find((p) => p.id === id).sold;
-  const total = async (id) => Number((await q(`select coalesce(sum(units), 0) n from public.product_sold_totals where user_id = $1 and product_local_id = $2`, [SELLER, id])).rows[0].n);
-  // the stub's stock history had 1 auto_order unit for product 1 before sql/165; part 8 above placed website orders
-  const fromHistory = Number((await q(`select coalesce(sum(-delta), 0) n from public.stock_movements where product_local_id = 1 and reason in ('auto_order','oneclick','website','waitlist')`)).rows[0].n);
-  ok((await total(1)) === fromHistory && fromHistory >= 1, "the totals match the stock history (backfill + every order since)");
-  const t0 = await total(1);
-  // live: the app logs an Auto Mode sale next to its decrement → counted
-  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason, order_ref) values ($1, 1, -2, 'auto_order', 'x')`, [SELLER]);
-  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'oneclick')`, [SELLER]);
-  ok((await total(1)) === t0 + 3, "Auto Mode + 1-Click sales count");
-  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -5, 'manual_edit'), ($1, 1, 10, 'restock')`, [SELLER]);
-  ok((await total(1)) === t0 + 3, "manual edits and restocks never count");
-  // a website order on an option counts on the option row; the product shows product + options
-  const o11 = await total(11), o12 = await total(12);
-  const r = await place({ ...buyer(20), items: [{ pid: 10, vid: 11, qty: 2 }, { pid: 10, vid: 12, qty: 1 }] });
-  ok((await total(11)) === o11 + 2 && (await total(12)) === o12 + 1, "option sales count on the option rows");
-  ok((await sold(10)) === (await total(10)) + (await total(11)) + (await total(12)), "the shop's 'sold' = the product + its options");
-  // a cancelled website order gives its units back
-  const id = (await q(`select id from public.website_orders where token = $1`, [r.token])).rows[0].id;
-  await as(SELLER, "authenticated", () => q(`select public.website_order_action($1, 'cancel')`, [id]));
-  ok((await total(11)) === o11 && (await total(12)) === o12, "cancelled website order → its units are taken off again");
-  // the 90-day purge of stock history doesn't touch the totals
-  const before = await total(1);
-  await q(`delete from public.stock_movements where product_local_id = 1`);
-  ok((await total(1)) === before, "deleting old stock history keeps the totals (kept forever)");
-  // never below 0
-  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 77, 3, 'website')`, [SELLER]);
-  ok((await total(77)) === 0, "a stock-back with no sale before never makes a negative total");
-  // the trigger can never block a stock write
-  await q(`alter table public.product_sold_totals rename to pst_hidden`);
-  const e = await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]));
-  await q(`alter table public.pst_hidden rename to product_sold_totals`);
-  ok(e === null, "a broken total never stops a live stock change from being logged");
-  // a seller reads only their own totals; buyers (anon) can't read the table
-  await q(`insert into public.product_sold_totals(user_id, product_local_id, units) values ($1, 1, 5)`, [OTHER]);
-  ok((await as(SELLER, "authenticated", () => q(`select count(*)::int n from public.product_sold_totals where user_id <> $1`, [SELLER]))).rows[0].n === 0, "RLS: own totals only");
-  ok((await err(as(null, "anon", () => q(`select * from public.product_sold_totals`)))) !== null, "anon can't read the totals table");
-  ok((await err(as(SELLER, "authenticated", () => q(`update public.product_sold_totals set units = 999 where user_id = $1`, [SELLER])))) !== null, "a seller can't write the totals");
-  // a product nobody bought: no "sold" key
-  await q(`insert into public.products(user_id, local_id, name, price, stock, live_code) values ($1, 60, 'New', 10, 1, 'N60')`, [SELLER]);
-  ok((await sold(60)) === undefined, "no sales → no 'sold' in the shop answer");
-  await q(`delete from public.products where local_id = 60`);
-}
+// ── the reward ───────────────────────────────────────────────────────────────────────────
+await setMonth(10);
+const F1 = await newUser(); await claim(F1, "BUDGETUKAY", "signup");
+const ttBefore = (await q("select count(*)::int c from tiktok_trg_calls")).rows[0].c;
+let before = await expMs(A);
+await give(F1, "basic");
+let rf = await ref(F1);
+ok(rf.status === "rewarded" && rf.reward_days === 10 && near(await expMs(A), before + 10 * DAY), "reward given: friend's first paid plan → inviter +10 days");
+ok((await prof(A)).plan === "pro" && (await prof(F1)).plan === "basic", "plan names unchanged (inviter pro, friend basic)");
+ok(new Date((await prof(F1)).plan_expiry).getTime() > Date.now() + 30 * DAY, "the friend's plan itself went through as given");
+ok((await q("select count(*)::int c from parcel_check_access where user_id=$1", [F1])).rows[0].c === 0 && (await q("select count(*)::int c from tiktok_trg_calls")).rows[0].c === ttBefore, "other triggers unaffected (parcel trigger ran its own rule, TikTok-total trigger fast-path)");
+const F2 = await newUser(); await claim(F2, "BUDGETUKAY");
+before = await expMs(A);
+await give(F2, "plus");
+ok((await ref(F2)).status === "rewarded" && near(await expMs(A), before + 10 * DAY), "two friends same month: second friend also rewarded (+10 more, no limit)");
+ok((await q("select count(*)::int c from parcel_check_access where user_id=$1", [F2])).rows[0].c === 1, "the parcel trigger still did its job on the friend's plus plan");
+before = await expMs(A);
+await expire(F2); await give(F2, "plus");
+await give(F2, "pro");
+ok(near(await expMs(A), before) && (await ref(F2)).reward_days === 10, "second plan change / renewal / tier switch → no second reward");
+const F2b = await newUser(); await claim(F2b, "BUDGETUKAY");
+await give(F2b, "trial", 7);
+ok((await ref(F2b)).status === "linked", "a trial is not a paid plan → still linked, nothing given");
+await toFree(F2b); before = await expMs(A); await give(F2b, "basic");
+ok((await ref(F2b)).status === "rewarded" && near(await expMs(A), before + 10 * DAY), "…its first REAL paid plan later → rewarded");
 
-// ── PART 10 — shipping options list ──────────────────────────────────────────
-const orderView = async (token) => (await as(null, "anon", () => q(`select public.website_order($1) r`, [token]))).rows[0].r;
-await q(`update public.products set stock = 500 where user_id = $1 and local_id = 1`, [SELLER]); // parts 10 + 11 place many orders
-const setSettings = (st) => q(`update public.seller_websites set settings = $2 where user_id = $1`, [SELLER, JSON.stringify(st)]);
-const baseSettings = (await q(`select settings from public.seller_websites where user_id = $1`, [SELLER])).rows[0].settings;
-const orderRow = async (token) => (await q(`select status, delivery, store_id, store_name, address, payment, subtotal::float8 sub, ship_fee::float8 fee, total::float8 total, ship_id, ship_name, auto_cancel_at is null no_cancel from public.website_orders where token = $1`, [token])).rows[0];
-const same = (a, b) => JSON.stringify({ ...a, ship_id: null, ship_name: null }) === JSON.stringify({ ...b, ship_id: null, ship_name: null });
-{
-  const s = await shop("budgetukay");
-  const c2 = s.checkout2;
-  ok(JSON.stringify(s.checkout) === JSON.stringify(shopBefore.checkout), "no list saved: the old checkout answer is unchanged");
-  ok(c2.options.map((o) => `${o.id}:${o.fee}:${o.needs}:${o.cod}:${o.freeOver}`).join() === "s711:60:store711:true:999,fm:60:storefm:true:999,home:120:address:false:999",
-    "no list saved, Taiwan: 7-11 / FamilyMart / home exactly as today");
-  ok(c2.methods.map((m) => `${m.id}:${m.kind}`).join() === "bank:first,cod:delivery" && c2.methods[0].bank.accountNumber === "123", "payment methods derived from today's settings");
-  // the same order through the old page and the new page → the same row
-  for (const [i, extra] of [[40, { delivery: "s711", payment: "bank" }], [42, { delivery: "s711", payment: "cod" }], [44, { delivery: "home", address: "No. 1, Xinyi Rd, Taipei", payment: "bank" }]]) {
-    const items = [{ pid: 1, vid: null, qty: 1 }];
-    const a = await place({ ...buyer(i), ...extra, items });
-    const b = await place({ ...buyer(i + 1), ...extra, ship: extra.delivery, pay: extra.payment, items });
-    const ra = await orderRow(a.token), rb = await orderRow(b.token);
-    ok(a.ok && b.ok && same(ra, rb) && ra.ship_id === null && rb.ship_id === extra.delivery, `old page vs new page, ${extra.delivery}/${extra.payment}: same order (+ ship_id on the new one)`);
-  }
-  ok(String(await err(place({ ...buyer(46), delivery: "home", address: "No. 1, Xinyi Rd", payment: "cod", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_payment")
-     && String(await err(place({ ...buyer(47), ship: "home", pay: "cod", address: "No. 1, Xinyi Rd", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_payment"), "home + pay on delivery refused on both pages");
-  const big = await place({ ...buyer(48), ship: "s711", pay: "bank", items: [{ pid: 1, vid: null, qty: 7 }] });
-  ok((await orderRow(big.token)).fee === 0, "free over 999 still applies on the new page");
+// inviter free → 0, not saved for later
+const IF = await newUser(); await setCode(IF, "FREEINV");
+const F3 = await newUser(); await claim(F3, "FREEINV");
+await give(F3, "basic");
+rf = await ref(F3);
+ok(rf.status === "no_reward" && rf.skip_reason === "inviter_not_paid" && rf.reward_days === 0, "inviter free → 0 days, marked done (inviter_not_paid)");
+await give(IF, "basic");
+const ifExp = await expMs(IF);
+await expire(F3); await give(F3, "basic");
+ok(near(await expMs(IF), ifExp) && (await ref(F3)).status === "no_reward", "…NOT saved for later: inviter pays later, friend renews → still nothing");
 
-  // the seller saves a list
-  await setSettings({ ...baseSettings, shipOptions: [
-    { id: "s711", needs: "store711", fee: 45, cod: true, on: true },
-    { id: "home", needs: "address", fee: 120, cod: false, on: false },
-    { id: "pickup", needs: "none", name: "Shop pickup", note: "Sat 2–5pm", fee: 0, cod: true, on: true },
-    { id: "c1", needs: "store", name: "Post office", fee: 30, freeOver: 500, cod: false, on: true },
-  ] });
-  const o2 = (await shop("budgetukay")).checkout2.options;
-  ok(o2.map((o) => o.id).join() === "s711,pickup,c1" && o2[1].name === "Shop pickup" && o2[1].note === "Sat 2–5pm" && o2[2].freeOver === 500 && o2[0].freeOver === undefined, "a saved list: only the ones that are on, in order, with name / note / own free-over");
-  const pk = await place({ ...buyer(50), ship: "pickup", pay: "cod", items: [{ pid: 1, vid: null, qty: 1 }] });
-  const rp = await orderRow(pk.token);
-  ok(rp.delivery === "pickup" && rp.status === "confirmed" && rp.fee === 0 && rp.ship_name === "Shop pickup" && rp.no_cancel, "Local pickup + pay on delivery → confirmed, free, its name kept");
-  ok(String(await err(place({ ...buyer(51), ship: "c1", pay: "bank", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_store"), "a typed-store option needs the store name");
-  const st = await place({ ...buyer(52), ship: "c1", pay: "bank", storeName: "  Taipei Main PO  ", storeId: "999999", items: [{ pid: 1, vid: null, qty: 1 }] });
-  const rs = await orderRow(st.token);
-  ok(rs.delivery === "store" && rs.store_name === "Taipei Main PO" && rs.store_id === null && rs.fee === 30, "typed store: delivery 'store', the name kept, no store number, its own fee");
-  const st2 = await place({ ...buyer(53), ship: "c1", pay: "bank", storeName: "PO", items: [{ pid: 1, vid: null, qty: 4 }] });
-  ok((await orderRow(st2.token)).fee === 0, "its own free-over (500)");
-  ok(String(await err(place({ ...buyer(54), ship: "c1", pay: "cod", storeName: "PO", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_payment"), "pay on delivery refused where the option doesn't allow it");
-  ok(String(await err(place({ ...buyer(55), ship: "fm", pay: "bank", storeId: "123456", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery")
-     && String(await err(place({ ...buyer(56), ship: "home", pay: "bank", address: "No. 1, Xinyi Rd", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery"), "an option that isn't listed / is off is refused");
-  // an old page (no 'ship') on a shop with a saved list: its delivery key is read as the option id
-  const old = await place({ ...buyer(57), delivery: "s711", storeId: "123456", payment: "bank", items: [{ pid: 1, vid: null, qty: 1 }] });
-  ok((await orderRow(old.token)).fee === 45, "old page + saved list → the list's fee");
-  ok(String(await err(place({ ...buyer(58), delivery: "home", address: "No. 1, Xinyi Rd", payment: "bank", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery"), "old page can't use an option the seller turned off");
-  // junk lists never break the shop
-  await setSettings({ ...baseSettings, shipOptions: [1, "x", null, { id: "BAD ID", needs: "none", on: true }, { id: "a", needs: "teleport", on: true }, { id: "dup", needs: "none", name: "first", on: true }, { id: "dup", needs: "none", name: "second", on: true },
-    ...Array.from({ length: 12 }, (_, i) => ({ id: `n${i}`, needs: "address", fee: "x", on: "true" }))] });
-  const j = (await shop("budgetukay")).checkout2.options;
-  ok(j.length === 10 && j[0].id === "dup" && j[0].name === "first" && j[1].fee === 0, "junk list: bad entries dropped, a repeated id kept once, at most 10, bad fee → 0");
-  // other countries: no 7-11 / FamilyMart pickers
-  await setSettings({ ...baseSettings, shipOptions: [{ id: "s711", needs: "store711", fee: 60, on: true }, { id: "std", needs: "address", fee: 15, on: true }] });
-  await q(`update public.seller_profiles set country = 'CA' where auth_user_id = $1`, [SELLER]);
-  ok((await shop("budgetukay")).checkout2.options.map((o) => o.id).join() === "std", "Canada: a 7-11 picker in the list is dropped");
-  ok(String(await err(place({ ...buyer(59), ship: "s711", pay: "bank", storeId: "123456", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery"), "Canada: the 7-11 option is refused");
-  await setSettings(baseSettings);
-  const d = (await shop("budgetukay")).checkout2.options;
-  ok(d.map((o) => `${o.id}:${o.needs}:${o.fee}`).join() === "home:address:120,pickup:none:0", "Canada, no list saved: home (was on) + Local pickup, free");
-  await q(`update public.seller_profiles set country = 'TW' where auth_user_id = $1`, [SELLER]);
-  // the widened check
-  ok((await err(q(`update public.website_orders set delivery = 'teleport' where token = $1`, [pk.token]))) !== null, "delivery still checked (s711 / fm / home / store / pickup)");
-  const v = await as(null, "anon", () => q(`select public.website_order($1) r`, [pk.token]));
-  ok(v.rows[0].r.shipId === "pickup" && v.rows[0].r.shipName === "Shop pickup" && v.rows[0].r.delivery === "pickup", "the order link shows the picked option");
-  // the shared cases (the app's mirror, publicCheckoutV2, is tested against the same file)
-  const sortKeys = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
-  for (const c of JSON.parse(readFileSync(`${dir}/../scripts/fixtures/checkout-v2-cases.json`, "utf8"))) {
-    const got = (await q(`select public.website_checkout_v2($1::jsonb, $2) r`, [JSON.stringify(c.settings), c.country])).rows[0].r;
-    ok(sortKeys(got) === sortKeys(c.expected), `checkout2 case: ${c.name}`);
-  }
-}
+// inviter expired → 0 (status active but date passed, and status expired)
+const IE = await newUser(); await give(IE, "basic"); await setCode(IE, "EXPINV");
+await as(ADMIN, () => q("update seller_profiles set plan_expiry=now()-interval '1 hour' where auth_user_id=$1", [IE]));
+const F4 = await newUser(); await claim(F4, "EXPINV");
+await give(F4, "basic");
+ok((await ref(F4)).status === "no_reward" && (await ref(F4)).skip_reason === "inviter_not_paid", "inviter expired (date passed) → 0 days");
+await expire(IE);
+const F4b = await newUser(); await claim(F4b, "EXPINV"); await give(F4b, "pro");
+ok((await ref(F4b)).skip_reason === "inviter_not_paid" && (await prof(IE)).plan_status === "expired", "inviter expired (status expired) → 0 days, inviter untouched");
 
-// ── PART 11 — payment methods list ───────────────────────────────────────────
-{
-  await setSettings({ ...baseSettings,
-    shipOptions: [{ id: "s711", needs: "store711", fee: 60, cod: true, on: true }, { id: "pickup", needs: "none", fee: 0, cod: true, on: true }, { id: "home", needs: "address", fee: 100, cod: false, on: true }],
-    payMethods: [{ id: "bank", kind: "first", info: "Write your W number", bank: { bankName: "CTBC", accountName: "J", accountNumber: "123" }, on: true },
-      { id: "qr", kind: "first", name: "LINE Pay", qr: "u1/site-qr-9.jpg", on: true },
-      { id: "c3xyzw", kind: "first", name: "Jko Pay", info: "Jko: 0912 000 111", on: true },
-      { id: "c4xyzw", kind: "first", name: "Empty", on: true },
-      { id: "cod", kind: "delivery", on: true },
-      { id: "off9", kind: "first", info: "x", on: false }] });
-  const m = (await shop("budgetukay")).checkout2.methods;
-  ok(m.map((x) => x.id).join() === "bank,qr,c3xyzw,cod", "a saved payment list: only the ones that are on, a pay-first method without anything to pay with is dropped");
-  const items = [{ pid: 1, vid: null, qty: 1 }];
-  const a = await place({ ...buyer(60), ship: "s711", pay: "c3xyzw", items });
-  const ra = (await q(`select status, payment, pay_id, pay_name, auto_cancel_at is not null cancels from public.website_orders where token = $1`, [a.token])).rows[0];
-  ok(ra.status === "awaiting_payment" && ra.payment === "bank" && ra.pay_id === "c3xyzw" && ra.pay_name === "Jko Pay" && ra.cancels, "pay first: today's flow (awaiting payment, auto-cancel), the method kept");
-  const va = await orderView(a.token);
-  ok(va.payId === "c3xyzw" && va.payName === "Jko Pay" && va.pay.method.info === "Jko: 0912 000 111" && va.pay.bank === undefined, "the order link shows that method's instructions");
-  const b = await place({ ...buyer(61), ship: "s711", pay: "qr", items });
-  ok((await q(`select payment from public.website_orders where token = $1`, [b.token])).rows[0].payment === "qr" && (await orderView(b.token)).pay.method.qr === "u1/site-qr-9.jpg", "a QR method → payment 'qr', the picture on the order link");
-  const c = await place({ ...buyer(62), ship: "pickup", pay: "cod", items });
-  const vc = await orderView(c.token);
-  ok(vc.status === "confirmed" && vc.payment === "cod" && vc.pay === undefined, "pay on delivery → confirmed, nothing to pay now");
-  ok(String(await err(place({ ...buyer(63), ship: "home", pay: "cod", address: "No. 1, Xinyi Rd", items }))).includes("bad_payment"), "pay on delivery refused where the option doesn't allow it");
-  ok(String(await err(place({ ...buyer(64), ship: "s711", pay: "off9", items }))).includes("bad_payment") && String(await err(place({ ...buyer(65), ship: "s711", pay: "c4xyzw", items }))).includes("bad_payment"), "an off / unusable method is refused");
-  // paid → the instructions are no longer shown
-  await as(SELLER, "authenticated", () => q(`select public.website_order_action((select id from public.website_orders where token = $1), 'paid')`, [a.token]));
-  ok((await orderView(a.token)).pay === undefined, "paid: the order link no longer shows how to pay");
-  // an old page (no ship / pay) with a saved payment list: its keys are read as the ids
-  const d2 = await place({ ...buyer(66), delivery: "s711", storeId: "123456", payment: "bank", items });
-  ok((await q(`select pay_id from public.website_orders where token = $1`, [d2.token])).rows[0].pay_id === "bank", "old page + saved payment list → read as the method id");
-  await setSettings(baseSettings);
-}
+// month not set → 0
+await as(ADMIN, () => q("delete from invite_reward_months"));
+const F5 = await newUser(); await claim(F5, "BUDGETUKAY");
+before = await expMs(A);
+await give(F5, "basic");
+ok((await ref(F5)).status === "no_reward" && (await ref(F5)).skip_reason === "month_off" && near(await expMs(A), before), "month not set → 0 days (month_off)");
+await setMonth(0);
+const F5b = await newUser(); await claim(F5b, "BUDGETUKAY"); await give(F5b, "basic");
+ok((await ref(F5b)).skip_reason === "month_off", "month set to 0 (Off) → 0 days (month_off)");
+await setMonth(10);
 
-// ── AUDIT FIX 2 — how to pay stays on the order link ─────────────────────────
-{
-  const jko = { id: "c3xyzw", kind: "first", name: "Jko Pay", info: "Jko: 0912 000 111", on: true };
-  const qrM = { id: "qr", kind: "first", name: "LINE Pay", qr: "u1/site-qr-9.jpg", on: true };
-  const bankM = { id: "bank", kind: "first", info: "Write your W number", bank: { bankName: "CTBC", accountName: "J", accountNumber: "123" }, on: true };
-  const ships = [{ id: "s711", needs: "store711", fee: 60, cod: true, on: true }, { id: "pickup", needs: "none", fee: 0, cod: true, on: true }];
-  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [bankM, qrM, jko, { id: "cod", kind: "delivery", on: true }] });
-  const items = [{ pid: 1, vid: null, qty: 1 }];
-  const a = await place({ ...buyer(80), ship: "s711", pay: "c3xyzw", items });
-  const b = await place({ ...buyer(81), ship: "s711", pay: "qr", items });
-  const c = await place({ ...buyer(82), ship: "s711", pay: "bank", items });
-  const d = await place({ ...buyer(83), ship: "pickup", pay: "cod", items });
-  const placed = { a: (await orderView(a.token)).pay, b: (await orderView(b.token)).pay, c: (await orderView(c.token)).pay };
-  const copyOf = async (t) => (await q(`select pay_copy from public.website_orders where token = $1`, [t])).rows[0].pay_copy;
-  const ca = (await copyOf(a.token)).method;
-  ok(Object.keys(ca).sort().join() === "id,info,kind,name" && ca.id === "c3xyzw" && ca.kind === "first" && ca.name === "Jko Pay" && ca.info === "Jko: 0912 000 111", "fix 2: the order keeps a copy of the picked method (name + instructions)");
-  ok((await copyOf(b.token)).method.qr === "u1/site-qr-9.jpg" && (await copyOf(c.token)).method.bank.accountNumber === "123", "fix 2: …its QR path and its bank details");
-  ok((await copyOf(d.token)) === null, "fix 2: pay on delivery keeps no copy (nothing to pay now)");
-  // the seller edits Jko Pay, turns LINE Pay off and deletes the bank method
-  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [{ ...jko, info: "Jko: 0999 999 999" }, { ...qrM, on: false }, { id: "cod", kind: "delivery", on: true }] });
-  ok(JSON.stringify((await orderView(a.token)).pay) === JSON.stringify(placed.a) && placed.a.method.info === "Jko: 0912 000 111", "fix 2: method edited after the order → the buyer still sees the instructions they ordered with");
-  ok(JSON.stringify((await orderView(b.token)).pay) === JSON.stringify(placed.b) && placed.b.method.qr === "u1/site-qr-9.jpg", "fix 2: method turned off → the QR still shows");
-  const vc = await orderView(c.token);
-  ok(vc.pay?.method?.bank?.accountNumber === "123" && vc.pay?.method?.bank?.bankName === "CTBC" && vc.payName === undefined, "fix 2: method DELETED after the order → the buyer still sees where to pay (bank, account)");
-  // every method gone
-  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [] });
-  ok((await orderView(a.token)).pay?.method?.info === "Jko: 0912 000 111" && (await orderView(c.token)).pay?.method?.bank?.accountNumber === "123", "fix 2: the whole list deleted → still shown");
-  // the old (sql/163) path keeps its copy too: bank details changed after the order
-  await setSettings(baseSettings);
-  const e = await place({ ...buyer(84), delivery: "s711", storeId: "123456", payment: "bank", items });
-  await setSettings({ ...baseSettings, bank: { enabled: false } });
-  ok((await orderView(e.token)).pay?.bank?.accountNumber === "123", "fix 2: old page + no lists → the bank details it was placed with, after the seller turns bank transfer off");
-  // an order placed before the fix (no copy) reads today's settings, as before
-  await q(`update public.website_orders set pay_copy = null where token = $1`, [a.token]);
-  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [{ ...jko, info: "Jko: 0999 999 999" }] });
-  ok((await orderView(a.token)).pay?.method?.info === "Jko: 0999 999 999", "fix 2: an order with no copy → as before (today's settings)");
-  // shown only while payment is due
-  await as(SELLER, "authenticated", () => q(`select public.website_order_action((select id from public.website_orders where token = $1), 'paid')`, [c.token]));
-  ok((await orderView(c.token)).pay === undefined, "fix 2: paid → how to pay is no longer shown");
-  // the column only takes a small object
-  ok((await err(q(`update public.website_orders set pay_copy = '[1]' where token = $1`, [b.token]))) !== null
-     && (await err(q(`update public.website_orders set pay_copy = $2 where token = $1`, [b.token, JSON.stringify({ x: "y".repeat(9000) })]))) !== null, "fix 2: the copy must be an object of at most 4 KB");
-  ok((await err(as(null, "anon", () => q(`select pay_copy from public.website_orders`)))) !== null, "fix 2: buyers can't read the table directly (only through the order link)");
-  await setSettings(baseSettings);
-}
+// Taipei month
+const tm = async (ts) => (await q("select referral_taipei_month($1::timestamptz)::text m", [ts])).rows[0].m;
+ok(await tm("2026-11-30T23:30:00+08:00") === "2026-11-01", "Taipei month edge: Nov 30 23:30 Taipei counts as November");
+ok(await tm("2026-11-30T16:30:00Z") === "2026-12-01", "Taipei month edge: Nov 30 16:30 UTC (= Dec 1 00:30 Taipei) counts as December");
+ok((await q("select reward_month::text m from referrals where invitee_user_id=$1", [F1])).rows[0].m === (await q("select referral_taipei_month(now())::text m")).rows[0].m, "the reward uses the Taipei month of the moment the plan was given");
 
-// ── PART 13 — courier + tracking ─────────────────────────────────────────────
-const ship = (id, c, t, uid = SELLER) => as(uid, "authenticated", () => q(`select public.website_order_ship($1, $2, $3) r`, [id, c, t]));
-{
-  const r = await place({ ...buyer(30), items: [{ pid: 1, vid: null, qty: 1 }] });
-  const id = (await q(`select id from public.website_orders where token = $1`, [r.token])).rows[0].id;
-  ok(String(await err(ship(id, "J&T", "JT123"))).includes("wrong_status"), "can't ship an unpaid order");
-  await as(SELLER, "authenticated", () => q(`select public.website_order_action($1, 'paid')`, [id]));
-  ok(String(await err(ship(id, "J&T", "JT123", OTHER))).includes("not_found"), "another seller can't ship it");
-  ok((await err(as(null, "anon", () => q(`select public.website_order_ship($1, 'a', 'b')`, [id])))) !== null, "a buyer (anon) can't call it");
-  await ship(id, "  J&T Express  ", "JT123456");
-  const o = (await q(`select status, courier, tracking_no, shipped_at from public.website_orders where id = $1`, [id])).rows[0];
-  ok(o.status === "shipped" && o.courier === "J&T Express" && o.tracking_no === "JT123456" && o.shipped_at !== null, "paid → shipped with courier + tracking");
-  const v = await orderView(r.token);
-  ok(v.status === "shipped" && v.courier === "J&T Express" && v.tracking === "JT123456", "the buyer's order link shows them");
-  await ship(id, "LBC", "");
-  const v2 = await orderView(r.token);
-  ok(v2.courier === "LBC" && v2.tracking === undefined, "edit after shipping; an empty tracking is cleared");
-  ok((await err(ship(id, "x".repeat(41), "y".repeat(61)))) === null && (await q(`select char_length(courier) c, char_length(tracking_no) t from public.website_orders where id = $1`, [id])).rows[0].c === 40, "long text is cut to 40 / 60");
-  // shipping without tracking still works (as before)
-  const r2 = await place({ ...buyer(31), delivery: "s711", payment: "cod", items: [{ pid: 1, vid: null, qty: 1 }] });
-  const id2 = (await q(`select id from public.website_orders where token = $1`, [r2.token])).rows[0].id;
-  await as(SELLER, "authenticated", () => q(`select public.website_order_action($1, 'shipped')`, [id2]));
-  const v3 = await orderView(r2.token);
-  ok(v3.status === "shipped" && v3.courier === undefined && v3.tracking === undefined, "the old 'shipped' action still works, no courier shown");
-}
+// revoke
+before = await expMs(A);
+const F1ref = (await ref(F1)).id;
+r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [F1ref])).j;
+ok(r.ok && r.days_removed === 10 && near(await expMs(A), before - 10 * DAY) && (await ref(F1)).status === "revoked", "revoke subtracts exactly the days given (10) and marks revoked");
+r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [F1ref])).j;
+ok(r.ok === false && r.reason === "already_revoked" && near(await expMs(A), before - 10 * DAY), "revoking twice does nothing the second time");
+let nonAdmin = "ok"; try { await rpc(A, "select admin_referral_revoke($1) j", [(await ref(F2)).id]); } catch (e) { nonAdmin = e.message; }
+ok(nonAdmin.includes("forbidden"), "a seller cannot call admin_referral_revoke");
 
-// ── rollback ─────────────────────────────────────────────────────────────────
-await db.exec(src("165_seller_website_v2_rollback.sql"));
-{
-  ok((await productCols()) === colsBefore, "rollback: product columns back to sql/163's");
-  const s = await shop("budgetukay");
-  const noStock = (ps) => JSON.stringify(ps, (k, v) => (k === "stock" ? 0 : v)); // orders above changed the stock
-  ok(noStock(s.products) === noStock(shopBefore.products), "rollback: the shop answer is sql/163's again");
-  const r = await place({ ...buyer(9), items: [{ pid: 1, vid: null, qty: 1 }] });
-  ok(r.ok === true, "rollback: orders still work");
-  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('courier', 'tracking_no')`)).rows[0].n === 0 && (await q(`select count(*)::int n from pg_proc where proname = 'website_order_ship'`)).rows[0].n === 0, "rollback: courier / tracking gone");
-  ok((await q(`select to_regclass('public.product_sold_totals') t`)).rows[0].t === null && (await q(`select count(*)::int n from pg_trigger where tgname = 'trg_stock_movements_sold'`)).rows[0].n === 0, "rollback: totals table + trigger gone");
-  ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]))) === null, "rollback: stock history still written as before");
-  ok(s.checkout2 === undefined && (await q(`select count(*)::int n from pg_proc where proname = 'website_checkout_v2'`)).rows[0].n === 0, "rollback: checkout2 gone");
-  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('ship_id', 'ship_name', 'pay_id', 'pay_name', 'pay_copy')`)).rows[0].n === 0, "rollback: ship_id / ship_name / pay_id / pay_name / pay_copy gone");
-  ok((await q(`select pg_get_constraintdef(oid) d from pg_constraint where conname = 'website_orders_delivery_check'`)).rows[0].d.includes("pickup"), "rollback: orders use 'pickup' → the delivery check stays wide");
-  ok((await q(`select count(*)::int n from pg_proc where proname in ('website_site_pic', 'website_txt')`)).rows[0].n === 0 && !(await q(`select prosrc from pg_proc where proname = 'website_public_fields'`)).rows[0].prosrc.includes("slides"), "rollback: the storefront whitelist is sql/163's again");
-  const fn = (await q(`select prosrc from pg_proc where proname = 'website_place_order'`)).rows[0].prosrc;
-  ok(!fn.includes("flash_price"), "rollback: place-order is sql/163's again");
-}
+// admin code change
+r = (await rpc(ADMIN, "select admin_set_invite_code($1,$2) j", [A, "jeffshop"])).j;
+ok(r.ok && r.code === "JEFFSHOP" && r.previous_code === "BUDGETUKAY", "admin changes a seller's code (BUDGETUKAY → JEFFSHOP)");
+ok((await q("select check_invite_code('BUDGETUKAY') f")).rows[0].f === false && (await q("select check_invite_code('jeffshop') f")).rows[0].f === true, "old code stops working, new code works");
+const F6 = await newUser();
+ok((await claim(F6, "BUDGETUKAY")).reason === "not_found" && (await claim(F6, "JEFFSHOP")).ok === true, "a friend typing the old code → not found; the new one links");
+ok((await ref(OLDFREE)).inviter_user_id === A && (await ref(F2)).inviter_user_id === A, "friends already linked stay linked");
+ok((await setCode(F6, "BUDGETUKAY")).reason === "taken" && (await rpc(ADMIN, "select admin_set_invite_code($1,$2) j", [C, "budgetukay"])).j.reason === "taken", "nobody else can take the retired code (seller or admin)");
+ok((await rpc(ADMIN, "select admin_set_invite_code($1,$2) j", [C, "SUPPORT"])).j.reason === "reserved", "admin cannot set a reserved word either");
+let nonAdmin2 = "ok"; try { await rpc(A, "select admin_set_invite_code($1,$2) j", [A, "MINE22"]); } catch (e) { nonAdmin2 = e.message; }
+ok(nonAdmin2.includes("forbidden"), "a seller cannot change their own code (admin function refuses)");
 
-// ── rollback with no 'store' / 'pickup' order → the delivery check narrows back ──
-{
-  const db2 = new PGlite();
-  await db2.exec(STUB); await db2.exec(src("163_seller_website.sql")); await db2.exec(src("165_seller_website_v2.sql")); await db2.exec(src("165_seller_website_v2_rollback.sql"));
-  const d = (await db2.query(`select pg_get_constraintdef(oid) d from pg_constraint where conname = 'website_orders_delivery_check'`)).rows[0].d;
-  ok(!d.includes("pickup") && d.includes("home"), "rollback, no such orders: the delivery check is sql/163's again");
-}
+// summary
+const s = await summary(A);
+ok(s.code === "JEFFSHOP" && s.month_days === 10 && s.eligible === true && s.can_enter_code === false, "summary: code, this month's days, eligible, no 'enter code' for a paid seller");
+const emails = s.invites.map((x) => x.email);
+ok(emails.length >= 6 && emails.every((e) => /^.{3}…$/.test(e)), `summary: invites list with masked emails (${emails[0]})`);
+ok(s.invites.some((x) => x.status === "rewarded" && x.days === 10) && s.invites.some((x) => x.status === "linked") && s.invites.some((x) => x.status === "no_reward") && s.invites.some((x) => x.status === "revoked"), "summary: statuses rewarded / linked / no_reward / revoked present");
+ok(JSON.stringify(s).indexOf("@x.test") === -1, "summary never contains a full email");
+const sFree = await summary(B);
+ok(sFree.eligible === false && sFree.can_enter_code === true, "summary for a free seller: not eligible, may enter a code");
 
-console.log(`sql165: ${pass} passed, ${fail} failed`);
+// admin preview
+const F7 = await newUser(); await claim(F7, "JEFFSHOP");
+let p = (await rpc(ADMIN, "select admin_referral_preview($1) j", [F7])).j;
+ok(p.linked && p.would_reward && p.days === 10 && p.inviter_email === (await prof(A)).email, "admin preview: inviter email, would reward +10");
+ok(p.inviter_plan === "pro", "admin preview shows the inviter's plan");
+p = (await rpc(ADMIN, "select admin_referral_preview($1) j", [F3])).j;
+ok(p.would_reward === false && p.reason === "already_done", "admin preview for a finished link → reason already_done");
+p = (await rpc(ADMIN, "select admin_referral_preview($1) j", [B])).j;
+ok(p.linked === false, "admin preview for an un-invited user → linked false");
+const F8 = await newUser(); await claim(F8, "FREEINV"); await toFree(IF);
+p = (await rpc(ADMIN, "select admin_referral_preview($1) j", [F8])).j;
+ok(p.would_reward === false && p.reason === "inviter_not_paid", "admin preview: inviter free → reason inviter_not_paid");
+const ov = (await rpc(ADMIN, "select admin_referral_overview() j")).j;
+ok(ov[F7]?.would_reward === true && ov[A]?.code === "JEFFSHOP" && ov[F3]?.reason === "already_done" && !(OLD_PAID in ov), "admin overview: one call, preview per seller with a code or an inviter");
+let ovErr = "ok"; try { await rpc(A, "select admin_referral_overview() j"); } catch (e) { ovErr = e.message; }
+ok(ovErr.includes("forbidden"), "a seller cannot call admin_referral_overview");
+const list = (await rpc(ADMIN, "select admin_referrals_list(50,0,$1) j", ["jeffshop"])).j;
+ok(list.total >= 6 && list.rows.every((x) => x.inviter_code === "JEFFSHOP"), "admin history list: search by code");
+
+// months admin
+const months = (await rpc(ADMIN, "select admin_invite_reward_months_get() j")).j;
+ok(months.length === 6 && months[0].is_now === true && months[0].days === 10 && months.filter((m) => m.is_now).length === 1, "Invite rewards: current month (Now) + next 5");
+ok((await rpc(ADMIN, "select admin_invite_reward_months_set('2026-12-15', 7) j")).j.month === "2026-12-01", "setting a month stores its first day");
+ok((await rpc(ADMIN, "select admin_invite_reward_months_set('2026-12-01', -1) j")).j.ok === false, "negative days refused");
+
+// every path that gives a plan: manual SQL with the plan guard switched off
+const F9 = await newUser(); await claim(F9, "JEFFSHOP");
+before = await expMs(A);
+await db.exec("alter table seller_profiles disable trigger trg_seller_profiles_update");
+await q("update seller_profiles set plan='basic', plan_status='active', plan_expiry=now()+interval '31 days' where auth_user_id=$1", [F9]);
+await db.exec("alter table seller_profiles enable trigger trg_seller_profiles_update");
+ok((await ref(F9)).status === "rewarded" && near(await expMs(A), before + 10 * DAY), "manual SQL plan change (guard off) also rewards");
+// manual SQL with the guard ON (not admin): the guard reverts the friend's own plan → nothing happens
+const F10 = await newUser(); await claim(F10, "JEFFSHOP");
+await q("update seller_profiles set plan='basic', plan_status='active', plan_expiry=now()+interval '31 days' where auth_user_id=$1", [F10]);
+ok((await prof(F10)).plan === "free" && (await ref(F10)).status === "linked", "non-admin plan change is reverted by the plan guard → no reward, still linked");
+// a seller cannot raise their own plan_expiry through the reward path (they are not admin)
+const sp = (await prof(A)).plan_expiry;
+await as(A, () => q("update seller_profiles set plan_expiry = now() + interval '999 days' where auth_user_id=$1", [A]));
+ok(new Date((await prof(A)).plan_expiry).getTime() === new Date(sp).getTime(), "the plan guard still stops a seller editing their own plan_expiry");
+
+// a failure inside the reward never blocks the plan change, and never erases "had a paid plan"
+await db.exec(`create function boom() returns trigger language plpgsql as $$ begin if new.status = 'rewarded' then raise exception 'boom'; end if; return new; end $$;
+  create trigger boom before update on referrals for each row execute function boom();`);
+const F11 = await newUser(); await claim(F11, "JEFFSHOP");
+before = await expMs(A);
+let giveErr = "ok"; try { await give(F11, "basic"); } catch (e) { giveErr = e.message; }
+ok(giveErr === "ok" && (await prof(F11)).plan === "basic" && near(await expMs(A), before), "an error inside the reward is caught: the friend's plan still goes through, inviter unchanged");
+ok(await seen(F11) && (await ref(F11)).status === "no_reward" && (await ref(F11)).skip_reason === "error", "…the friend is marked 'had a paid plan' and the invite is done (no_reward / error)");
+await db.exec("drop trigger boom on referrals; drop function boom();");
+before = await expMs(A);
+await expire(F11); await give(F11, "basic");
+ok(near(await expMs(A), before) && (await ref(F11)).status === "no_reward", "…later expire + renew → still no reward");
+// every write to referrals fails (even marking the error) → still marked paid, a later renewal gives nothing
+await db.exec(`create function boom2() returns trigger language plpgsql as $$ begin raise exception 'boom2'; end $$;
+  create trigger boom2 before update on referrals for each row execute function boom2();`);
+const F11b = await newUser(); await claim(F11b, "JEFFSHOP");
+before = await expMs(A);
+giveErr = "ok"; try { await give(F11b, "basic"); } catch (e) { giveErr = e.message; }
+ok(giveErr === "ok" && await seen(F11b) && (await ref(F11b)).status === "linked" && near(await expMs(A), before), "referrals fully broken: plan given, 'had a paid plan' kept, inviter unchanged");
+await db.exec("drop trigger boom2 on referrals; drop function boom2();");
+await expire(F11b); await give(F11b, "plus");
+ok(near(await expMs(A), before) && (await ref(F11b)).skip_reason === "not_first_plan", "…the renewal after the fix is not a first plan → no reward");
+// the "had a paid plan" write itself fails → no reward for this change (error), plan still given
+await db.exec(`create function boom3() returns trigger language plpgsql as $$ begin raise exception 'boom3'; end $$;
+  create trigger boom3 before insert on referral_paid_seen for each row execute function boom3();`);
+const F11c = await newUser(); await claim(F11c, "JEFFSHOP");
+before = await expMs(A);
+giveErr = "ok"; try { await give(F11c, "basic"); } catch (e) { giveErr = e.message; }
+ok(giveErr === "ok" && (await prof(F11c)).plan === "basic" && near(await expMs(A), before) && (await ref(F11c)).skip_reason === "error", "'had a paid plan' write fails → plan given, no days, invite marked error");
+await db.exec("drop trigger boom3 on referral_paid_seen; drop function boom3();");
+
+// sign-up with a wrong code still succeeds (the account exists, the claim answers, never raises)
+const S1 = await newUser();
+r = await claim(S1, "WRONGCODE", "signup");
+ok(r.ok === false && r.reason === "not_found" && (await prof(S1)).plan === "free", "sign-up with a wrong code: account created, claim answers not_found, no error");
+r = await claim(S1, "JEFFSHOP", "signup");
+ok(r.ok === true && (await ref(S1)).source === "signup", "…a correct code right after links with source signup");
+
+// deleting the inviter keeps the friend's link row (inviter null) and later pays nothing
+const IDel = await newUser(); await give(IDel, "basic"); await setCode(IDel, "GONE11");
+const F12 = await newUser(); await claim(F12, "GONE11");
+await q("delete from auth.users where id=$1", [IDel]);
+await give(F12, "basic");
+ok((await ref(F12)).inviter_user_id === null && (await ref(F12)).skip_reason === "inviter_gone", "inviter account deleted → friend stays linked to nobody, no reward (inviter_gone)");
+ok((await q("select user_id from referral_code_retired where code='GONE11'")).rows.length === 1 && (await q("select check_invite_code('gone11') f")).rows[0].f === false, "deleted inviter's code → retired, no longer found");
+const TAKER = await newUser();
+ok((await setCode(TAKER, "gone11")).reason === "taken" && (await rpc(ADMIN, "select admin_set_invite_code($1,$2) j", [TAKER, "GONE11"])).j.reason === "taken", "nobody can take a deleted inviter's code (seller or admin)");
+ok((await ref(F12)).inviter_email === "user" + (Number(IDel.slice(-12))) + "@x.test", "the friend's row still names the deleted inviter (email snapshot)");
+
+// the invited FRIEND's account is deleted: history stays, Revoke still works, same email cannot farm
+const FD = await newUser(null, "farm@x.test"); await claim(FD, "JEFFSHOP");
+before = await expMs(A);
+await give(FD, "basic");
+const FDref = (await ref(FD)).id;
+ok((await refById(FDref)).status === "rewarded" && near(await expMs(A), before + 10 * DAY), "friend rewarded (+10) before the account is deleted");
+await q("delete from auth.users where id=$1", [FD]);
+ok((await refById(FDref)).invitee_user_id === null && (await refById(FDref)).invitee_email === "farm@x.test", "friend deleted → the invite row stays, with the email");
+ok((await q("select user_id, email from referral_paid_seen where email='farm@x.test'")).rows[0].user_id === null, "friend deleted → 'had a paid plan' stays (by email)");
+const histAll = (await rpc(ADMIN, "select admin_referrals_list(200,0,'farm@') j")).j;
+ok(histAll.total === 1 && histAll.rows[0].invitee_email === "farm@x.test" && histAll.rows[0].id === FDref, "admin history shows the deleted friend by the saved email");
+const FD2 = await newUser(null, "FARM@x.test");                                  // signs up again, same email
+ok((await claim(FD2, "JEFFSHOP")).reason === "already_linked", "same email signs up again → cannot enter a code (already_linked)");
+ok((await summary(FD2)).can_enter_code === false, "…and the Enter code box stays hidden");
+const PD = await newUser(null, "paidgone@x.test"); await give(PD, "basic");
+await q("delete from auth.users where id=$1", [PD]);
+const PD2 = await newUser(null, "paidgone@x.test");
+ok((await claim(PD2, "JEFFSHOP")).reason === "already_paid", "paid, deleted, signed up again with the same email → already_paid");
+before = await expMs(A);
+r = (await rpc(ADMIN, "select admin_referral_revoke($1) j", [FDref])).j;
+ok(r.ok && r.days_removed === 10 && near(await expMs(A), before - 10 * DAY), "Revoke works on a row whose friend was deleted (−10 exactly)");
+
+// an expiry-only change counts (manual SQL: plan name first without a date, then the date)
+const FX = await newUser(); await claim(FX, "JEFFSHOP");
+await as(ADMIN, () => q("update seller_profiles set plan='basic', plan_status='active', plan_expiry=null where auth_user_id=$1", [FX]));
+ok((await ref(FX)).status === "linked" && !(await seen(FX)), "plan name set without an expiry → not active paid yet, nothing happens");
+before = await expMs(A);
+await as(ADMIN, () => q("update seller_profiles set plan_expiry=now()+interval '31 days' where auth_user_id=$1", [FX]));
+ok((await ref(FX)).status === "rewarded" && near(await expMs(A), before + 10 * DAY), "expiry-only change → first active paid plan → rewarded");
+
+// no loop / no chain: A was invited by Z; A gets days → Z untouched, A's own invite untouched
+const Z = await newUser(); await give(Z, "pro"); await setCode(Z, "ZETA22");
+await q("insert into referrals (invitee_user_id, invitee_email, inviter_user_id, inviter_email, source) values ($1,'a@x.test',$2,'z@x.test','settings')", [A, Z]);
+const zExp = await expMs(Z);
+const FC = await newUser(); await claim(FC, "JEFFSHOP");
+before = await expMs(A);
+await give(FC, "basic");
+ok(near(await expMs(A), before + 10 * DAY) && near(await expMs(Z), zExp) && (await ref(A)).status === "linked", "inviter's expiry update fires the trigger on the inviter row but changes nothing else (Z untouched, A's own invite still linked)");
+before = await expMs(A);
+await as(ADMIN, () => q("update seller_profiles set plan_expiry=plan_expiry + interval '1 day' where auth_user_id=$1", [A]));
+ok(near(await expMs(A), before + DAY) && near(await expMs(Z), zExp) && (await ref(A)).status === "linked", "an expiry change on an already-active account rewards nobody");
+
+// a deleted paid account (back-filled by email only) signs up again with the same email
+const GP = await newUser(null, "Gone.Paid@x.test");
+ok((await claim(GP, "JEFFSHOP")).reason === "already_paid" && (await summary(GP)).can_enter_code === false, "deleted paid account (back-filled email-only) signs up again → already_paid, no Enter code box");
+
+// both sides deleted: the check `inviter <> invitee` lets null/null through (was `is distinct from`)
+const DI1 = await newUser(); await give(DI1, "basic"); await setCode(DI1, "BOTHGO1");
+const DF1 = await newUser(null, "bothgo1@x.test"); await claim(DF1, "BOTHGO1");
+const D1ref = (await ref(DF1)).id;
+let delErr = "";
+try { await q("delete from auth.users where id=$1", [DF1]); await q("delete from auth.users where id=$1", [DI1]); } catch (e) { delErr = e.message; }
+let row = await refById(D1ref);
+ok(delErr === "" && row && row.invitee_user_id === null && row.inviter_user_id === null && row.invitee_email === "bothgo1@x.test", "delete friend, then inviter → both deletes succeed, history row kept");
+const DI2 = await newUser(); await give(DI2, "basic"); await setCode(DI2, "BOTHGO2");
+const DF2 = await newUser(null, "bothgo2@x.test"); await claim(DF2, "BOTHGO2");
+const D2ref = (await ref(DF2)).id;
+delErr = "";
+try { await q("delete from auth.users where id=$1", [DI2]); await q("delete from auth.users where id=$1", [DF2]); } catch (e) { delErr = e.message; }
+row = await refById(D2ref);
+ok(delErr === "" && row && row.invitee_user_id === null && row.inviter_user_id === null && row.invitee_email === "bothgo2@x.test", "delete inviter, then friend → both deletes succeed, history row kept");
+const SELFU = await newUser();
+let selfErr = "";
+try { await q("insert into referrals (invitee_user_id, inviter_user_id, source) values ($1,$1,'settings')", [SELFU]); } catch (e) { selfErr = e.message; }
+ok(selfErr.includes("check"), "table check still refuses a row where inviter = invitee");
+
+// making someone admin is not a payment: marked 'had a paid plan', no reward
+await setMonth(10);
+const FA = await newUser(); await claim(FA, "JEFFSHOP");
+before = await expMs(A);
+await as(ADMIN, () => q("update seller_profiles set role='admin', plan='master', plan_status='active', plan_expiry=now()+interval '120 months' where auth_user_id=$1", [FA]));
+ok((await prof(FA)).role === "admin" && (await ref(FA)).status === "no_reward" && (await ref(FA)).skip_reason === "admin", "friend made admin (master, active) → invite done, no reward (skip_reason admin)");
+ok(near(await expMs(A), before), "…the inviter's plan end is unchanged");
+ok(await seen(FA), "…and the friend is still marked 'had a paid plan'");
+await as(ADMIN, () => q("update seller_profiles set role='seller', plan='free', plan_status='active', plan_expiry=null where auth_user_id=$1", [FA]));
+await give(FA, "basic");
+ok((await ref(FA)).status === "no_reward" && near(await expMs(A), before), "…removed as admin, then a real paid plan → still no reward");
+
+// as the real browser role (authenticated), not the test superuser: seller calls + an admin giving a plan
+await q("grant select, update on public.seller_profiles to authenticated");
+const R1 = await newUser(); await setCode(R1, "ROLEOK1");
+const R2 = await newUser();
+await setMonth(5);
+const asRole = async (uid, sql, p) => { await db.exec("set role authenticated"); try { return await as(uid, () => q(sql, p)); } finally { await db.exec("reset role"); } };
+await give(R1, "basic");
+ok((await asRole(R2, "select claim_referral('roleok1','settings') j")).rows[0].j.ok === true, "browser role: a seller can claim a code");
+ok((await asRole(R2, "select my_referral_summary() j")).rows[0].j.can_enter_code === false, "browser role: a seller reads their summary");
+let roleAdmin = "ok"; try { await asRole(R2, "select admin_referrals_list(5,0,null) j"); } catch (e) { roleAdmin = e.message; }
+ok(roleAdmin.includes("forbidden"), "browser role: a seller calling an admin function is refused");
+before = await expMs(R1);
+await asRole(ADMIN, `update seller_profiles set plan='plus', plan_status='active', plan_expiry=now()+interval '31 days' where auth_user_id=$1`, [R2]);
+ok((await ref(R2)).status === "rewarded" && near(await expMs(R1), before + 5 * DAY), "browser role: an admin giving a plan (as authenticated) fires the reward");
+
+// rollback
+await db.exec(src("165_invite_referral_rollback.sql"));
+const left = (await q("select count(*)::int c from pg_proc where proname like 'referral%' or proname like '%invite%' or proname like '%referral%'")).rows[0].c;
+const tleft = (await q("select count(*)::int c from information_schema.tables where table_name like 'referral%' or table_name like 'invite_%'")).rows[0].c;
+const trg = (await q("select count(*)::int c from pg_trigger where tgname like '%referral%'")).rows[0].c;
+ok(left === 0 && tleft === 0 && trg === 0, "rollback removes every table, function and both triggers");
+await give(F12, "pro");
+ok((await prof(F12)).plan === "pro", "after rollback plans are given as before");
+
+console.log(`\n${pass} PASS, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

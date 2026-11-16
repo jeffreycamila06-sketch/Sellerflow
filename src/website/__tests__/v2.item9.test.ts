@@ -1,6 +1,6 @@
 // Seller Website v2 — item 9: "N sold" and Best sellers come from real sold units: the stock history's
 // ORDER movements (Auto Mode, 1-Click, website, waitlist; a cancelled website order gives back), kept
-// forever in product_sold_totals (sql/165 PART 9). Manual edits / restocks never count.
+// forever in product_sold_totals (sql/167 PART 9). Manual edits / restocks never count.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { toShop } from "../shopApi";
@@ -37,8 +37,8 @@ describe("sold units in the shop", () => {
   });
 });
 
-describe("sql/165 part 9 (contract)", () => {
-  const sql = readFileSync("sql/165_seller_website_v2.sql", "utf8");
+describe("sql/167 part 9 (contract)", () => {
+  const sql = readFileSync("sql/167_seller_website_v2.sql", "utf8");
   it("counts only order movements; never fails a stock write; kept forever (no purge)", () => {
     expect(sql).toMatch(/new\.reason in \('auto_order', 'oneclick', 'website', 'waitlist'\)/);
     expect(sql).toMatch(/exception when others then\s+null;/);

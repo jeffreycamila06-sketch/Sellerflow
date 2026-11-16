@@ -1,7 +1,7 @@
 // Seller Website v2 — audit fix 1: the price changed between view and order. The page sends the total it
 // showed (shownTotal); the database places NO order when its own total differs and answers 'price_changed'
 // with the new total; the page then shows the new prices and the buyer confirms again.
-// (Database side: scripts/sql165-behaviour.mjs "AUDIT FIX 1" — flash sale ending between view and order.)
+// (Database side: scripts/sql167-behaviour.mjs "AUDIT FIX 1" — flash sale ending between view and order.)
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";

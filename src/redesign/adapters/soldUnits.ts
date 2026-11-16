@@ -1,5 +1,5 @@
-// Seller Website v2 (item 9) — the seller's OWN units-sold totals (sql/165 product_sold_totals, RLS own rows),
-// for the editor's preview. Read on Preview only. Before sql/165 / any error → an empty map (no "sold").
+// Seller Website v2 (item 9) — the seller's OWN units-sold totals (sql/167 product_sold_totals, RLS own rows),
+// for the editor's preview. Read on Preview only. Before sql/167 / any error → an empty map (no "sold").
 import { isSupabaseConfigured, supabase } from "../../supabase";
 
 export async function loadSoldUnits(): Promise<Map<number, number>> {

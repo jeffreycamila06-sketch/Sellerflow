@@ -143,9 +143,9 @@ describe("Taiwan unchanged", () => {
   });
 });
 
-describe("sql/165 part 12 (contract)", () => {
+describe("sql/167 part 12 (contract)", () => {
   it("taxIncluded only when on; nothing calculated", () => {
-    const sql = readFileSync("sql/165_seller_website_v2.sql", "utf8");
+    const sql = readFileSync("sql/167_seller_website_v2.sql", "utf8");
     expect(sql).toMatch(/when public\.website_bool\(s->>'taxIncluded', false\) then '\{"taxIncluded": true\}'::jsonb/);
     expect(sql).not.toMatch(/tax_rate|tax_amount/);
   });

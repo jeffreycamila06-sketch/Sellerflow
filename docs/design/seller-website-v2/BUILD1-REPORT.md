@@ -43,12 +43,12 @@ New words exist in all 8 languages. The iPhone app shows no plan / price / upgra
 How to remake them: `VITE_SUPABASE_URL=https://demo.supabase.co VITE_SUPABASE_ANON_KEY=demo npx vite --port 5199 --strictPort`, then run `node docs/design/seller-website-v2/harness/compare.cjs` and `node docs/design/seller-website-v2/harness/shoot.cjs walk-` (or `seller-`).
 
 ## Results
-- **SQL proof:** `scripts/sql165-behaviour.mjs` → **142 passed, 0 failed** (PGlite; includes the rollback narrowing the delivery check, the shared checkout cases the app's mirror is also tested against, and the two audit fixes — 8 / 5 checks go red with each fix removed).
+- **SQL proof:** `scripts/sql167-behaviour.mjs` → **148 passed, 0 failed** (PGlite; includes the rollback narrowing the delivery check, the shared checkout cases the app's mirror is also tested against, the two audit fixes — 8 / 5 checks go red with each fix removed — and 6 checks that sql/167 and sql/165 Invite friends apply in either order).
 - **Full test suite:** 685 files passed (1 skipped), **8,926 tests passed** (9 skipped), 0 failed.
 - **Typecheck:** clean. **Build:** green. **Lint:** 56 errors / 6 warnings, the same as main (all were there before; none added).
 - **CI:** green on `47af9dbe`. For `f53deb25` (CSS only), see the final message.
 
-## SQL — `sql/165_seller_website_v2.sql` (+ `sql/165_seller_website_v2_rollback.sql`), NOT applied
+## SQL — `sql/167_seller_website_v2.sql` (+ `sql/167_seller_website_v2_rollback.sql`), NOT applied
 Add-only. It needs sql/163 and sql/164. The rollback puts back the sql/163 functions word for word; it narrows the delivery check only when no order uses 'store' or 'pickup'.
 
 | Part | What it adds |
@@ -65,7 +65,7 @@ Add-only. It needs sql/163 and sql/164. The rollback puts back the sql/163 funct
 
 Apply order when ready: the website v2 SQL first → then the web merge. sql/116b (guide) after the merge.
 
-⚠️ **Numbering:** main already has `sql/165_invite_referral.sql` and `sql/166_guide_invite_friends.sql` (and its own
-`scripts/sql165-behaviour.mjs`). Free on main today: **167 and up** (gaps 55, 81, 94, 138, 139, 150 are intentional —
-don't reuse). This branch's `sql/165_seller_website_v2*.sql` + `scripts/sql165-behaviour.mjs` must be renumbered (167)
-before merging; not done yet, as asked.
+**Numbering (done):** main has Invite friends as `sql/165_invite_referral.sql` + `sql/166_guide_invite_friends.sql`
+(+ its own `scripts/sql165-behaviour.mjs`). After merging main, this branch's files are `sql/167_seller_website_v2.sql`
+(+ rollback) and `scripts/sql167-behaviour.mjs`. sql/167 needs sql/163 + sql/164 and does not depend on 165 / 166
+(the proof applies them in both orders).

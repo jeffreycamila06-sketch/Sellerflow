@@ -1,5 +1,5 @@
 // Seller Website v2 — shipping options + payment methods as the BUYER sees them (pure, unit-tested).
-// The database answers them as website_shop().checkout2 (sql/165 website_checkout_v2). Before sql/165 is
+// The database answers them as website_shop().checkout2 (sql/167 website_checkout_v2). Before sql/167 is
 // applied the shop only has the old 'checkout' answer → checkoutOf() derives the same list from it, with
 // the same rules as the database's "nothing saved yet" branch.
 import type { Shop, ShopCheckout } from "./shopApi";

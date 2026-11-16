@@ -40,7 +40,7 @@ export default function ProductWebsiteSheet({ product, all, photo1Url, cur, onSa
   const children = useMemo(() => childrenOf(all, product.id), [all, product.id]);
   const [rows, setRows] = useState<VariantRow[]>(() => editorRows(product, product.variant?.groups || [], children));
   const [errors, setErrors] = useState<VariantPlan["errors"]>([]);
-  // v2 (sql/165): website-only prices + details — all optional
+  // v2 (sql/167): website-only prices + details — all optional
   const [oldPrice, setOldPrice] = useState(product.oldPrice ? String(product.oldPrice) : "");
   const [flashPrice, setFlashPrice] = useState(product.flashPrice !== undefined && product.flashPrice !== null ? String(product.flashPrice) : "");
   const [flashEnd, setFlashEnd] = useState(toLocalInput(product.flashEnd));

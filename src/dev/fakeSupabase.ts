@@ -18,7 +18,7 @@ const tables: Record<string, Row[]> = {
   seller_profiles: [{
     auth_user_id: UID, email: EMAIL, full_name: "Preview Seller", store_name: "Budget Ukay Preview", phone: "0912345678",
     tiktok: "previewshop", facebook: "", admin_contact_note: "", country: "TW", plan: "pro", plan_status: "active",
-    plan_expiry: "2027-12-31", trial_started_at: null, connected_accounts: [], role: "seller", created_at: iso(200),
+    plan_expiry: "2027-12-31", trial_started_at: null, connected_accounts: [], role: typeof location !== "undefined" && /[?&]admin=1\b/.test(location.search) ? "admin" : "seller", created_at: iso(200),
   }],
   app_settings: [
     { key: "parcel_manual_enabled", value: "true" }, { key: "buyer_contact_enabled", value: "true" }, { key: "frozen_store_check_enabled", value: "true" },
@@ -91,7 +91,30 @@ const tables: Record<string, Row[]> = {
     { id: "t8", user_id: UID, tracking_no: "E8234567890", cm_order_no: null, buyer_username: "+886911222333", recipient_name: "黃*明", store_id: "022131", rec_store: "全家忠孝店", status: "at_store", status_message: "已到店", pickup_deadline: day(5), arrived_at: iso(1), ship_type: "C2C", special_type: null, order_amount: 450, terminal: false, last_polled_at: iso(0.1), carrier: "fm" },
   ],
 };
+// Invite friends previews (sql/165, docs/design/invite-referral): ?inv=choose (no code yet) /
+// ?inv=free (has a code, free plan) / default (has a code + invites). ?admin=1 = admin role.
+const Q = typeof location !== "undefined" ? location.search : "";
+const INV = (/[?&]inv=(\w+)/.exec(Q) || [])[1] || "";
+const monthStart = (add: number) => { const d = new Date(now + 8 * 3_600_000); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + add, 1)).toISOString().slice(0, 10); };
 const RPC: Record<string, unknown> = {
+  my_referral_summary: INV === "choose"
+    ? { code: null, month_days: 10, eligible: true, has_inviter: false, can_enter_code: true, invites: [] }
+    : { code: "BUDGETUKAY", month_days: 10, eligible: INV !== "free", has_inviter: false, can_enter_code: INV === "free",
+        invites: [
+          { email: "ann…", status: "rewarded", days: 10, date: iso(2) },
+          { email: "mei…", status: "linked", days: 0, date: iso(4) },
+          { email: "joy…", status: "no_reward", days: 0, date: iso(12) },
+          { email: "lin…", status: "rewarded", days: 7, date: iso(40) },
+        ] },
+  invite_code_available: "",
+  check_invite_code: true,
+  admin_referral_overview: { [UID]: { code: "PREVIEW1", linked: true, status: "linked", inviter_email: "budgetukay@gmail.com", inviter_plan: "pro", reward_days: 0, would_reward: true, days: 10, reason: "" } },
+  admin_invite_reward_months_get: [0, 1, 2, 3, 4, 5].map((i) => ({ month: monthStart(i), days: i === 0 ? 10 : i === 1 ? 7 : null, is_now: i === 0 })),
+  admin_referrals_list: { total: 3, rows: [
+    { id: "r1", inviter_expiry: "2027-01-20T04:00:00Z", invitee_user_id: "f1", invitee_email: "annie.shop@gmail.com", inviter_user_id: UID, inviter_email: "budgetukay@gmail.com", inviter_code: "BUDGETUKAY", source: "signup", status: "rewarded", reward_days: 10, reward_month: monthStart(0), rewarded_at: iso(2), skip_reason: null, created_at: iso(5), revoked_at: null },
+    { id: "r2", inviter_expiry: "2027-01-20T04:00:00Z", invitee_user_id: "f2", invitee_email: "meiling.live@gmail.com", inviter_user_id: UID, inviter_email: "budgetukay@gmail.com", inviter_code: "BUDGETUKAY", source: "settings", status: "linked", reward_days: 0, reward_month: null, rewarded_at: null, skip_reason: null, created_at: iso(4), revoked_at: null },
+    { id: "r3", inviter_expiry: null, invitee_user_id: "f3", invitee_email: "joy.reyes@gmail.com", inviter_user_id: "x", inviter_email: "lheyukay@gmail.com", inviter_code: "LHEY", source: "signup", status: "no_reward", reward_days: 0, reward_month: monthStart(0), rewarded_at: iso(12), skip_reason: "inviter_not_paid", created_at: iso(14), revoked_at: null },
+  ] },
   my_feature_access: { buyer_contact: true, parcel_check: true, fm_pickup: true },
   my_parcel_tracking_access: true,
   parcel_check_can_use: true,
@@ -156,15 +179,16 @@ class Query implements PromiseLike<Res> {
   }
 }
 
+const ANON = typeof location !== "undefined" && /[?&]anon=1\b/.test(location.search); // ?anon=1 = signed out (Sign-up previews)
 const session = { user: { id: UID, email: EMAIL }, access_token: "preview", expires_at: Math.floor(now / 1000) + 86_400 };
 type AuthCb = (event: string, s: typeof session | null) => void;
 const fakeClient = {
   from: (table: string) => new Query(table),
   rpc: (name: string) => ({ then: (res?: (v: Res) => unknown) => Promise.resolve({ data: RPC[name] ?? null, error: null, count: null } as Res).then(res) }),
   auth: {
-    getSession: async () => ({ data: { session }, error: null }),
+    getSession: async () => ({ data: { session: ANON ? null : session }, error: null }),
     getUser: async () => ({ data: { user: session.user }, error: null }),
-    onAuthStateChange: (cb: AuthCb) => { setTimeout(() => cb("SIGNED_IN", session), 0); return { data: { subscription: { unsubscribe: () => undefined } } }; },
+    onAuthStateChange: (cb: AuthCb) => { if (!ANON) setTimeout(() => cb("SIGNED_IN", session), 0); return { data: { subscription: { unsubscribe: () => undefined } } }; },
     signInWithPassword: async () => ({ data: { session }, error: null }),
     signUp: async () => ({ data: { session }, error: null }),
     signOut: async () => ({ error: null }),

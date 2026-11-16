@@ -18,14 +18,14 @@ export interface OrderDraft {
   /** v2 (item 12): Canada / Australia address parts (else the one address box above is used). */
   addr?: AddrParts;
 }
-/** ship / pay = the option + method ids (sql/165); delivery / payment = the kinds (what sql/163 reads). */
+/** ship / pay = the option + method ids (sql/167); delivery / payment = the kinds (what sql/163 reads). */
 export interface PlaceInput extends Omit<OrderDraft, "delivery" | "payment" | "addr"> {
   ship: string; pay: string; delivery: Delivery; payment: Payment; items: { pid: number; vid: number | null; qty: number }[];
-  /** The total the page showed the buyer (items + shipping). sql/165 places NO order when its own total differs
+  /** The total the page showed the buyer (items + shipping). sql/167 places NO order when its own total differs
    *  ("price_changed"); an older database ignores it. */
   shownTotal?: number;
 }
-/** What the database worked out when the price changed between view and order (sql/165 audit fix 1). */
+/** What the database worked out when the price changed between view and order (sql/167 audit fix 1). */
 export interface PriceNow { total: number; subtotal: number; shipFee: number; items: { pid: number; vid: number | null; price: number }[] }
 export type PlaceError =
   | "shop_closed" | "bad_name" | "bad_phone" | "bad_delivery" | "bad_store" | "bad_address" | "bad_payment"
@@ -37,10 +37,10 @@ export type OrderStatus = "awaiting_payment" | "payment_sent" | "paid" | "confir
 export interface OrderView {
   orderNo: string; status: OrderStatus; paymentIssue: boolean; items: OrderItem[]; subtotal: number; shipFee: number; total: number;
   delivery: Delivery; storeId?: string; storeName?: string; address?: string; payment: Payment; buyerName: string; phoneTail: string; note?: string;
-  shipId?: string; shipName?: string; // v2 (sql/165): the picked option
-  payId?: string; payName?: string;   // v2 (sql/165): the picked payment method
+  shipId?: string; shipName?: string; // v2 (sql/167): the picked option
+  payId?: string; payName?: string;   // v2 (sql/167): the picked payment method
   receipt: boolean; receiptAt?: string; createdAt: string; autoCancelAt?: string; paidAt?: string; shippedAt?: string; cancelledAt?: string; cancelReason?: "seller" | "auto";
-  courier?: string; tracking?: string; // v2 (sql/165): only once shipped
+  courier?: string; tracking?: string; // v2 (sql/167): only once shipped
   shop: { sub: string; name?: string; logo?: string; color?: string; chats?: Record<string, string>; currency?: string }; country: string;
   pay?: { bank?: { bankName?: string; accountName?: string; accountNumber?: string }; qr?: { path: string; label?: string }; method?: PayOpt };
 }
