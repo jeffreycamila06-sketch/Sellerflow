@@ -53,6 +53,9 @@ describe("Brand store pages = Build 1's structure", () => {
     for (const l of looks) expect(fill(l.shop), l.name).toEqual(want);
   });
   it("order page: same page as Build 1", async () => {
+    // the order page counts down from the real clock: freeze it so every render is at the same moment
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-16T06:00:00Z"));
     const tok = "f".repeat(64);
     const a = render(<ShopApp preview={B1} nowMs={NOW} orderApi={api()} startRoute={{ page: "order", token: tok }} />);
     await screen.findByText("W-0012", { exact: false });
@@ -63,6 +66,7 @@ describe("Brand store pages = Build 1's structure", () => {
       expect(page(b.container), l.name).toBe(want);
       b.unmount();
     }
+    vi.useRealTimers();
   });
 });
 
