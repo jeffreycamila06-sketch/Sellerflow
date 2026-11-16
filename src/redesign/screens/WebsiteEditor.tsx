@@ -3,7 +3,8 @@
 // "Upgrade to publish your website"; on iOS the Publish button is locked with no price or plan name,
 // and the own-domain (Master) row is hidden (App Store rule). Preview = the real shop pages with the
 // draft, in memory (no network, no order can be placed).
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
 import { HeaderWithBack } from "../components/BackButton";
@@ -89,6 +90,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     if (path) set({ [kind]: path } as Partial<ShopDesign>); else onToast(t.rd_wed_pic_failed);
   };
   const openPreview = async () => { setPreview(await api.loadProducts()); };
+  const closePreview = useCallback(() => setPreview(null), []);
   const address = sub && !subProblem ? shopUrl(sub, true).replace(/^https:\/\//, "") : "";
   const fallback = sub && !subProblem ? shopUrl(sub) : "";
 
@@ -199,13 +201,38 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           <button type="button" data-testid="wed-save" style={{ ...btn, flex: 1 }} disabled={!!busy} onClick={() => void save()}>{busy === "save" ? t.rd_wed_saving : t.rd_wed_save}</button>
         </div>
       </div>
-      {preview && (
-        <div data-testid="wed-preview-sheet" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#F5F5F7", overflowY: "auto" }}>
-          <button type="button" data-testid="wed-preview-close" onClick={() => setPreview(null)} style={{ position: "fixed", top: "calc(10px + env(safe-area-inset-top))", right: 12, zIndex: 1001, minHeight: 40, padding: "0 14px", borderRadius: 999, border: "none", background: "#111827", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ {t.rd_wed_preview_close}</button>
-          <Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, preview, country, plan || "")} /></Suspense>
-        </div>
-      )}
+      {preview && <PreviewSheet title={t.rd_wed_preview} closeLabel={t.rd_wed_preview_close} onClose={closePreview}>
+        <Suspense fallback={null}><ShopApp preview={previewShop(sub, draft, settings, preview, country, plan || "")} /></Suspense>
+      </PreviewSheet>}
     </Frame>
+  );
+}
+
+/** The preview, drawn ON TOP OF THE WHOLE APP: a portal to document.body, so it is outside the
+ *  app's animated screen container (.sfl-anim-screen fades + slides its children — a fixed sheet
+ *  inside it was see-through and moved with the screen) and above the bottom bar. Fully opaque;
+ *  the shop draws its own colours (SHOP_CSS is scoped to .sfl-shop, like on the real page). */
+const PREVIEW_Z = 5000;
+function PreviewSheet({ title, closeLabel, onClose, children }: { title: string; closeLabel: string; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", key);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", key); document.body.style.overflow = prev; };
+  }, [onClose]);
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div data-testid="wed-preview-sheet" role="dialog" aria-modal="true" aria-label={title}
+      style={{ position: "fixed", inset: 0, zIndex: PREVIEW_Z, background: "#F5F5F7", opacity: 1, isolation: "isolate", display: "flex", flexDirection: "column", fontFamily: "system-ui, -apple-system, \"Segoe UI\", sans-serif" }}>
+      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "calc(6px + env(safe-area-inset-top)) 12px 6px 16px", background: "#111827", color: "#fff" }}>
+        <span style={{ fontSize: 14, fontWeight: 800 }}>{title}</span>
+        <button type="button" data-testid="wed-preview-close" onClick={onClose}
+          style={{ minHeight: 44, padding: "0 16px", borderRadius: 999, border: "1px solid rgba(255,255,255,.35)", background: "#fff", color: "#111827", fontWeight: 800, fontSize: 14, fontFamily: "inherit", cursor: "pointer" }}>✕ {closeLabel}</button>
+      </div>
+      <div data-testid="wed-preview-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", position: "relative" }}>{children}</div>
+    </div>,
+    document.body,
   );
 }
 
