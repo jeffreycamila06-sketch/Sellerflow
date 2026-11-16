@@ -10,7 +10,7 @@ import ShopApp from "../ShopApp";
 import type { Shop } from "../shopApi";
 import { DEMO_SHOP } from "./fixtures";
 
-const shopOf = (theme: string, extra: Partial<Shop["shop"]> = {}): Shop => ({ ...DEMO_SHOP, shop: { ...DEMO_SHOP.shop, lang: "en", logo: undefined, color: undefined, theme, ...extra } });
+const shopOf = (theme: "pop" | "boutique" | "bold", extra: Partial<Shop["shop"]> = {}): Shop => ({ ...DEMO_SHOP, shop: { ...DEMO_SHOP.shop, lang: "en", logo: undefined, color: undefined, theme, ...extra } });
 const css = readFileSync("src/website/v2/styles.ts", "utf8");
 const themeAcc = (cls: string) => (css.match(new RegExp(`\\.sfl-v2\\.${cls}\\{[^}]*--s-acc:(#[0-9a-f]{6})`, "i")) || [])[1];
 
