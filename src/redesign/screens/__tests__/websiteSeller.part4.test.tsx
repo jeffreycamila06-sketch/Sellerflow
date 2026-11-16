@@ -106,7 +106,7 @@ describe("Website editor", () => {
     fireEvent.click(await screen.findByTestId("wed-publish"));
     await waitFor(() => expect(api.publish).toHaveBeenCalledTimes(1));
     expect(api.save).toHaveBeenCalledTimes(1);
-    expect(await screen.findByTestId("wed-msg")).toHaveTextContent("Your website is live");
+    expect(await screen.findByTestId("wed-publish")).toHaveTextContent("✓ Published"); // hotfix 3: button + toast (websitePublishFeedback.test)
   });
   it("Free: Publish locked + 'Upgrade to publish your website' (Android / web)", async () => {
     const onUpgrade = vi.fn();

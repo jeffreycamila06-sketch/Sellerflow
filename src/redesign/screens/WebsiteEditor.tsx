@@ -37,6 +37,14 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
   const [busy, setBusy] = useState<"" | "save" | "publish" | "logo" | "cover">("");
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "bad" } | null>(null);
   const [preview, setPreview] = useState<ShopProduct[] | null>(null);
+  // Publish feedback: "running" = Publishing… (save + publish), "done" = ✓ Published for PUBLISHED_FLASH_MS
+  const [pub, setPub] = useState<"" | "running" | "done">("");
+  const [pubUpgrade, setPubUpgrade] = useState(false);
+  useEffect(() => {
+    if (pub !== "done") return;
+    const id = setTimeout(() => setPub(""), PUBLISHED_FLASH_MS);
+    return () => clearTimeout(id);
+  }, [pub]);
   useEffect(() => {
     let live = true;
     void api.load().then((w) => {
@@ -53,8 +61,9 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
   const set = (p: Partial<ShopDesign>) => setDraft((d) => ({ ...d, ...p }));
   const settings: WebsiteSettings = exists ? (site as MyWebsite).settings : DEFAULT_SETTINGS;
   const changes = hasUnpublished(draft, published);
+  const upToDate = !!published && !changes && exists && sub === (site as MyWebsite).subdomain;
 
-  const save = async (): Promise<boolean> => {
+  const save = async (o: { quiet?: boolean } = {}): Promise<boolean> => {
     setMsg(null);
     if (!(draft.name || "").trim()) { setMsg({ text: t.rd_wed_need_name, tone: "bad" }); return false; }
     if (subProblem) { setMsg({ text: subText(t, subProblem), tone: "bad" }); return false; }
@@ -63,18 +72,29 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     setBusy("");
     if (r.ok === false) { setMsg({ text: r.reason === "taken" ? t.rd_wed_addr_taken : r.reason === "bad_address" ? t.rd_wed_addr_chars : t.rd_wed_save_failed, tone: "bad" }); if (r.reason === "taken") setSubState("taken"); return false; }
     setSite((s) => (s && s !== "loading" && s !== "error" ? { ...s, subdomain: sub, draft } : { subdomain: sub, draft, published: null, publishedAt: null, settings: DEFAULT_SETTINGS, customDomain: null }));
-    setMsg({ text: t.rd_wed_saved, tone: "ok" });
+    if (!o.quiet) setMsg({ text: t.rd_wed_saved, tone: "ok" });
     return true;
   };
   const publish = async () => {
-    if (!canPublish) return;
-    if (!(await save())) return;
+    if (!canPublish || pub === "running") return;
+    setPubUpgrade(false);
+    setPub("running");
+    if (!(await save({ quiet: true }))) { setPub(""); return; }
     setBusy("publish");
     const r = await api.publish();
     setBusy("");
-    if (r.ok === false) { setMsg({ text: r.reason === "upgrade_required" ? (ios ? t.rd_wed_locked : t.rd_wed_upgrade) : r.reason === "not_available" ? t.rd_wed_not_available : t.rd_wed_save_failed, tone: "bad" }); return; }
+    if (r.ok === false) {
+      setPub("");
+      const text = r.reason === "upgrade_required" ? (ios ? t.rd_wed_locked : t.rd_wed_upgrade) : r.reason === "not_available" ? t.rd_wed_not_available : t.rd_wed_save_failed;
+      setMsg({ text, tone: "bad" });
+      setPubUpgrade(r.reason === "upgrade_required" && !ios && !!onUpgrade);
+      onToast(text);
+      return;
+    }
     setSite((s) => (s && s !== "loading" && s !== "error" ? { ...s, published: draft, publishedAt: r.at } : s));
-    setMsg({ text: t.rd_wed_published_ok, tone: "ok" });
+    setMsg(null);
+    setPub("done");
+    onToast(t.rd_wed_published_ok);
   };
   const checkSub = async () => {
     if (!sub || subProblem) { setSubState(""); return; }
@@ -129,13 +149,20 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button type="button" data-testid="wed-preview" style={{ ...btn, flex: 1, background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }} onClick={() => void openPreview()}>{t.rd_wed_preview}</button>
             {canPublish
-              ? <button type="button" data-testid="wed-publish" style={{ ...btn, flex: 1 }} disabled={!!busy} onClick={() => void publish()}>{busy === "publish" ? t.rd_wed_publishing : t.rd_wed_publish}</button>
+              ? pub === "running"
+                ? <button type="button" data-testid="wed-publish" data-state="running" style={{ ...btn, flex: 1, opacity: 0.85, cursor: "progress" }} disabled aria-busy="true"><Spinner />{t.rd_wed_publishing}</button>
+                : pub === "done"
+                  ? <button type="button" data-testid="wed-publish" data-state="done" style={{ ...btn, flex: 1, background: "var(--ok)", color: "#fff", cursor: "default" }} disabled>{t.rd_wed_published_now}</button>
+                  : upToDate
+                    ? <button type="button" data-testid="wed-publish" data-state="uptodate" style={{ ...btn, flex: 1, background: "var(--surface)", color: "var(--ok)", border: "1px solid var(--ok)", cursor: "default" }} disabled>{t.rd_wed_up_to_date}</button>
+                    : <button type="button" data-testid="wed-publish" data-state="ready" style={{ ...btn, flex: 1 }} disabled={!!busy} onClick={() => void publish()}>{t.rd_wed_publish}</button>
               : <button type="button" data-testid="wed-publish-locked" style={{ ...btn, flex: 1, opacity: 0.55, cursor: "not-allowed" }} disabled aria-disabled="true">🔒 {t.rd_wed_publish}</button>}
           </div>
           {!canPublish && (ios
             ? <div data-testid="wed-locked-note" style={noteStyle}>{t.rd_wed_locked}</div>
             : <button type="button" data-testid="wed-upgrade" onClick={onUpgrade} disabled={!onUpgrade} style={{ ...noteStyle, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: onUpgrade ? "pointer" : "default", color: "var(--accent-fg)", fontWeight: 800 }}>{t.rd_wed_upgrade} {onUpgrade ? "›" : ""}</button>)}
           {msg && <div role="status" data-testid="wed-msg" style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: msg.tone === "ok" ? "var(--ok)" : "var(--danger)" }}>{msg.text}</div>}
+          {pubUpgrade && <button type="button" data-testid="wed-pub-upgrade" onClick={onUpgrade} style={{ ...noteStyle, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: "var(--accent-fg)", fontWeight: 800 }}>{t.rd_wed_upgrade_short} ›</button>}
         </section>
 
         {/* own domain — Master only; hidden on iOS (no plan upsell there) */}
@@ -234,6 +261,11 @@ function PreviewSheet({ title, closeLabel, onClose, children }: { title: string;
     </div>,
     document.body,
   );
+}
+
+const PUBLISHED_FLASH_MS = 3000;
+function Spinner() {
+  return <span aria-hidden="true" className="sfl-wed-spin" style={{ display: "inline-block", width: 14, height: 14, marginRight: 8, verticalAlign: "-2px", borderRadius: 7, border: "2px solid currentColor", borderRightColor: "transparent", animation: "sflWedSpin .8s linear infinite" }}><style>{"@keyframes sflWedSpin{to{transform:rotate(360deg)}}"}</style></span>;
 }
 
 function subText(t: Record<string, string>, p: "short" | "chars" | "reserved"): string {

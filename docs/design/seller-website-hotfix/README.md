@@ -20,3 +20,13 @@ then `node docs/design/seller-website-hotfix/app-shell/shoot.cjs [preview|publis
 Measured in the page (all three widths, after):
 `parentIsBody:true, opacity:1, z:5000, navCoveredBySheet:true, closeVisible:true`.
 Before: `parentIsBody:false, z:1000, navCoveredBySheet:false`, ancestor `.sfl-anim-screen` (animation `sflScreenIn`).
+
+## 3. Publish feedback
+
+| file | what it shows |
+|---|---|
+| `publish-0-has-changes-*` | "You have changes that are not published yet." + **Publish** |
+| `publish-1-publishing-*` | tapped: **Publishing…** with a spinner (also while the draft is being saved first), disabled |
+| `publish-2-published-toast-*` | green **✓ Published** on the button + toast **Your website is live** |
+| `publish-3-up-to-date-*` | ~3 s later: **Published ✓** (outlined, disabled) — nothing new to publish |
+| `publish-4-error-*` | the database answers "upgrade needed": red reason under the buttons + **Upgrade ›** + toast; button back to **Publish** |

@@ -166,7 +166,7 @@ async function openEditor(browser, size, st) {
       await shot("3-up-to-date");
       await ctx.close();
       // error: upgrade needed (the database says so)
-      const st2 = { row: { ...st.row }, publishDelay: 400, publishError: "upgrade_required" };
+      const st2 = { row: { subdomain: "budgetukay", draft: { ...DESIGN, tagline: "New tagline" }, published: DESIGN, published_at: "2026-11-14T02:00:00Z", settings: SETTINGS, custom_domain: null }, publishDelay: 400, publishError: "upgrade_required" };
       const o2 = await openEditor(browser, size, st2);
       await o2.page.getByTestId("wed-publish").click();
       await o2.page.waitForTimeout(1200);
