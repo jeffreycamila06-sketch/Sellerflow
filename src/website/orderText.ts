@@ -36,3 +36,23 @@ export function orderMessage(t: T, o: OrderView, cur: string, link: string): str
   return lines.join("\n");
 }
 export const CHAT_APP_NAME: Record<string, string> = { messenger: "Messenger", line: "LINE", whatsapp: "WhatsApp", instagram: "Instagram" };
+/** The order's status, as a timeline (as the preview). Pure. */
+export function orderTimeline(t: T, v: OrderView): { label: string; st: "dn" | "nw" | "" }[] {
+  const s = v.status;
+  const shipped = s === "shipped";
+  const shipLine = shipped ? [t.rd_tl_shipped, v.courier, v.tracking].filter(Boolean).join(" · ") : t.rd_tl_shipped;
+  if (v.payment === "cod") {
+    return [
+      { label: t.rd_tl_placed, st: "dn" },
+      { label: t.rd_tl_packing, st: shipped ? "dn" : "nw" },
+      { label: shipLine, st: shipped ? "nw" : "" },
+    ];
+  }
+  const paid = s === "paid" || shipped;
+  return [
+    { label: t.rd_tl_placed, st: "dn" },
+    { label: paid ? t.rd_tl_paid : s === "payment_sent" ? t.rd_tl_receipt : t.rd_tl_waiting, st: paid ? "dn" : "nw" },
+    { label: t.rd_tl_packing, st: shipped ? "dn" : paid ? "nw" : "" },
+    { label: shipLine, st: shipped ? "nw" : "" },
+  ];
+}

@@ -125,7 +125,8 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
     onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); say(t.rd_shop_added); }}
     onBuy={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); go({ page: "checkout" }); }}
     saved={saved} onSave={toggleSave} onOpen={(id) => go({ page: "product", id })} onQuick={quick} onChat={() => setChat(true)} onShop={(cat) => toShop(cat ? { cat } : {})} onHome={home} />;
-  else if (route.page === "cart") body = <Cart shop={shop} cur={cur} infos={infos} lines={lines} onQty={(i, q, s) => update(setQty(lines, i, q, s))} onRemove={(i) => update(removeLine(lines, i))} onCheckout={() => go({ page: "checkout" })} onShop={home} />;
+  else if (route.page === "cart") body = <Cart shop={shop} cur={cur} nowMs={clock} infos={infos} lines={lines} onQty={(i, q, s) => update(setQty(lines, i, q, s))} onRemove={(i) => update(removeLine(lines, i))} onCheckout={() => go({ page: "checkout" })} onShop={() => toShop()}
+    saved={saved} onSave={toggleSave} onOpen={(id) => go({ page: "product", id })} onQuick={quick} />;
   else if (route.page === "checkout" || route.page === "store" || route.page === "sent" || route.page === "order") body = <CheckoutFlow shop={shop} cur={cur} route={route} go={go} infos={infos} preview={preview} onPlaced={placed} api={orderApi} linkFor={linkFor} />;
   else if (route.page === "shop") body = <ShopList shop={shop} cur={cur} nowMs={clock} f={filter} setF={setFilter} saved={saved} onSave={toggleSave} onOpen={(id) => go({ page: "product", id })} onQuick={quick} onHome={home} />;
   else if (route.page === "saved") body = <SavedPage shop={shop} cur={cur} nowMs={clock} saved={saved} onSave={toggleSave} onOpen={(id) => go({ page: "product", id })} onQuick={quick} onShop={home} />;
