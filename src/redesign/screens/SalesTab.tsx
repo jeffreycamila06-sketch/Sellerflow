@@ -29,6 +29,8 @@ import { platformRange, platformRangeFor, platformRpcFor, type SalesPlatform, ty
 import { looksLikeFbId } from "../adapters/fbName";
 import { fmt } from "../data";
 import { moneyText } from "../../lib/money";
+import SoonBadge from "../components/SoonBadge";
+import { TELEGRAM_URL } from "../../lib/telegram";
 import type { WebsiteSales } from "../adapters/websiteSeller";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
@@ -47,7 +49,7 @@ const tickLabel = (d: string, hour: boolean): string => {
 // Caption label when a bar is selected: hour keeps "14:00", day → "9/2".
 const capLabel = (d: string, hour: boolean): string => (hour ? d : tickLabel(d, false));
 
-export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer, platformOptions = [], platformSales, website }: {
+export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer, platformOptions = [], platformSales, website, websiteTeaser = false }: {
   cur?: string; sessionStart?: string; today?: string;
   sales: UseSalesTab;
   seller?: { name?: string; email?: string };
@@ -59,6 +61,9 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   // Seller Website (sql/163, switch / tester): the website orders of the same days, read once per
   // range (website_sales). Absent → the screen is exactly as before.
   website?: (from: string, to: string) => Promise<WebsiteSales | null>;
+  // Seller Website teaser (sql/169): a seller WITHOUT the website sees the "Website orders" row with "Soon"
+  // in place of the numbers (no note); a tap opens the support Telegram chat. Totals are not touched.
+  websiteTeaser?: boolean;
 }) {
   const t = useT();
   const [range, setRange] = useState<SalesTabRange>("today");
@@ -227,6 +232,12 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
                 </span>
                 <span style={{ fontFamily: mono, fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{t.rd_wsa_line.replace("{n}", String(webNow.orders)).replace("{amount}", `${cur}${fmt(webNow.revenue)}`)}</span>
               </div>
+            )}
+            {!website && websiteTeaser && (
+              <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" data-testid="sales-website-soon" style={{ ...card, display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", textDecoration: "none", color: "inherit" }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 800 }}>🛍 {t.rd_wsa_title}</span>
+                <SoonBadge plain style={{ flexShrink: 0 }} />
+              </a>
             )}
             {tot!.orders === 0 ? (
               <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-empty">{t.rd_sal_empty}</div>

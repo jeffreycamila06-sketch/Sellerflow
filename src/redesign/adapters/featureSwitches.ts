@@ -34,10 +34,12 @@ export const FEATURE_SWITCH_KEYS = {
   printerScanWebFilter: "printer_scan_web_filter", // Printer settings: the normal Scan asks for every device and the WEB keeps the listed printers (sql/160, seeded 'false')
   sellerWebsite: "seller_website_enabled", // Seller Website Phase 1 for every seller (sql/163, seeded 'false'); testers via feature seller_website
   websiteSubdomainReady: "website_subdomain_ready", // Seller Website: share <sub>.sellerflowlive.com instead of www…/s/<sub> (sql/164, seeded 'false')
+  websiteTeaser: "website_teaser_enabled", // Seller Website teaser: the Settings card with "Soon" for sellers without the website (sql/169, seeded 'false')
+  websiteTeaserSales: "website_teaser_sales_enabled", // Seller Website teaser: the Sales "Website orders" row with "Soon" (sql/169, seeded 'false')
 } as const;
 export type FeatureSwitch = keyof typeof FEATURE_SWITCH_KEYS;
 export type FeatureSwitches = Record<FeatureSwitch, boolean>;
-export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false, scanQrLookup: false, fmStoreCheck: false, printerScanWebFilter: false, sellerWebsite: false, websiteSubdomainReady: false };
+export const SWITCHES_OFF: FeatureSwitches = { salesPlatform: false, fbSoldout: false, fbWaitlist: false, inventoryV2: false, productImages: false, fbAutoReceipt: false, ordersPaidFlag: false, fbConnectV2: false, fbStopReasons: false, stockRefreshV2: false, fbIdentityV2: false, fbPolishV2: false, build11: false, fmPickup: false, fmScan: false, tiktokSend: false, printerFlowV2: false, pastSessionsPublic: false, fbPostSales: false, stickerLayoutV2: false, buyerContact: false, frozenStoreCheck: false, oneSticker: false, stickerAllScripts: false, scanQrLookup: false, fmStoreCheck: false, printerScanWebFilter: false, sellerWebsite: false, websiteSubdomainReady: false, websiteTeaser: false, websiteTeaserSales: false };
 
 // rows from app_settings → switches. Pure.
 export function parseSwitches(rows: unknown): FeatureSwitches {

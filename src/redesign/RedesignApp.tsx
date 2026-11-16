@@ -126,7 +126,7 @@ import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer, btCall } from "./adapters/printerBridge";
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { useApprovedPrinters } from "./adapters/printerTesters";
-import { sellerWebsiteVisible } from "./adapters/sellerWebsiteGate";
+import { sellerWebsiteVisible, websiteTeaserVisible } from "./adapters/sellerWebsiteGate";
 import { websiteNewOrdersCount, loadWebsiteSales } from "./adapters/websiteSeller";
 import { useWebsiteOrdersLive } from "./adapters/websiteOrdersLive";
 // Seller Website screens load only when opened (the switch is off for almost every seller).
@@ -892,6 +892,9 @@ export default function RedesignApp() {
   // pattern screen's "this phone prints the older sticker" note — always agrees with what the printer gets.
   const printerFlowV2 = printerFlowV2Enabled(isAdmin, hasFeature("test_printers"), featureSw.printerFlowV2);
   const sellerWebsiteOn = sellerWebsiteVisible(featureSw.sellerWebsite, hasFeature("seller_website")); // Seller Website Phase 1 (sql/163)
+  // Seller Website teaser (sql/169): "Soon" card / Sales row for sellers without the website (never admins)
+  const websiteTeaserOn = websiteTeaserVisible({ switchOn: featureSw.websiteTeaser, hasWebsite: sellerWebsiteOn, isAdmin });
+  const websiteTeaserSalesOn = websiteTeaserVisible({ switchOn: featureSw.websiteTeaserSales, hasWebsite: sellerWebsiteOn, isAdmin });
   // New website orders: ONE read when the app opens (and the Website tab updates it) — no polling.
   const [webNew, setWebNew] = useState(0);
   const classicShown = classicTextCardShown(classicAllowed, printerFlowV2, hasGenericPrinterBridge());
@@ -2874,7 +2877,7 @@ export default function RedesignApp() {
             <Suspense fallback={null}><WebsitePayShip onBack={() => goBack()} cur={cur} country={profileCountry || "TW"} onToast={(msg) => setToast({ msg, kind: "ok" })} /></Suspense>
           )}
           {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} website={sellerWebsiteOn} />}
-          {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} website={sellerWebsiteOn ? loadWebsiteSales : undefined} />}
+          {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} website={sellerWebsiteOn ? loadWebsiteSales : undefined} websiteTeaser={websiteTeaserSalesOn} />}
           {screen === "menu" && (
             <SettingsHub
               onInvite={() => setScreen("invite")}
@@ -2898,6 +2901,7 @@ export default function RedesignApp() {
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
               onWebsite={sellerWebsiteOn ? () => setScreen("website") : undefined}
+              websiteTeaser={websiteTeaserOn}
               helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview") || helpBotPaid(auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry), isAdmin, ios, helpBotIosOn)}
             />
           )}
