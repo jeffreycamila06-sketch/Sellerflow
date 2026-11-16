@@ -6,6 +6,7 @@
 import type { PaySetting, ShipSetting } from "./websiteShipPay";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import type { ShopDesign } from "../../website/shopApi";
+import { cleanParcel, type ParcelView } from "../../website/parcelView";
 
 export interface WebsiteSettings {
   ship?: { s711?: { enabled?: boolean; fee?: number }; fm?: { enabled?: boolean; fee?: number }; home?: { enabled?: boolean; fee?: number } };
@@ -146,6 +147,22 @@ export async function websiteOrderShip(id: string, courier: string, tracking: st
     const d = data as Record<string, unknown>;
     return { ok: true, courier: (d.courier as string) || null, tracking: (d.tracking as string) || null };
   } catch { return { ok: false }; }
+}
+/** sql/171: the parcel state of the signed-in seller's own shipped 7-ELEVEN / FamilyMart orders, by order id.
+ *  ONE call per Website orders load (no poll). Before sql/171 is applied / any error → an empty map
+ *  (the screen is exactly as before). */
+export async function loadWebsiteParcels(): Promise<Map<string, ParcelView>> {
+  const out = new Map<string, ParcelView>();
+  if (!isSupabaseConfigured || !supabase) return out;
+  try {
+    const { data, error } = await supabase.rpc("website_my_parcels");
+    if (error || !Array.isArray(data)) return out;
+    for (const x of data as { id?: unknown; parcel?: unknown }[]) {
+      const p = cleanParcel(x?.parcel);
+      if (typeof x?.id === "string" && p) out.set(x.id, p);
+    }
+  } catch { /* no parcels */ }
+  return out;
 }
 export async function loadWebsiteOrders(): Promise<WebsiteOrder[] | null> {
   if (!isSupabaseConfigured || !supabase) return null;

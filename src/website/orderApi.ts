@@ -2,6 +2,7 @@
 // (website_order by token), upload a receipt (private bucket website-receipts + website_order_receipt).
 // Everything the buyer types stays in these calls; nothing is logged or sent to analytics.
 // The buyer's name / phone / last stores are remembered on THIS device only ("Not you?" clears it).
+import { cleanParcel, type ParcelView } from "./parcelView";
 import { isSupabaseConfigured, supabase } from "../supabase";
 import { compressProductImage } from "../redesign/adapters/productImages";
 import type { PayOpt, ShipNeeds, ShipOpt } from "./shipPay";
@@ -41,6 +42,7 @@ export interface OrderView {
   payId?: string; payName?: string;   // v2 (sql/167): the picked payment method
   receipt: boolean; receiptAt?: string; createdAt: string; autoCancelAt?: string; paidAt?: string; shippedAt?: string; cancelledAt?: string; cancelReason?: "seller" | "auto";
   courier?: string; tracking?: string; // v2 (sql/167): only once shipped
+  parcel?: ParcelView; // sql/171: the parcel's state from Pickup Status (7-ELEVEN / FamilyMart, shipped, one match)
   shop: { sub: string; name?: string; logo?: string; color?: string; chats?: Record<string, string>; currency?: string }; country: string;
   pay?: { bank?: { bankName?: string; accountName?: string; accountNumber?: string }; qr?: { path: string; label?: string }; method?: PayOpt };
 }
@@ -89,7 +91,8 @@ export function toOrderView(j: unknown): OrderView | null {
     return { pid: num(i.pid), vid: i.vid === undefined || i.vid === null ? null : num(i.vid), name: String(i.name ?? ""), label: typeof i.label === "string" ? i.label : undefined, code: typeof i.code === "string" ? i.code : undefined, price: num(i.price), qty: num(i.qty, 1), photo: typeof i.photo === "string" ? i.photo : undefined };
   });
   return { ...(o as unknown as OrderView), items, subtotal: num(o.subtotal), shipFee: num(o.shipFee), total: num(o.total), paymentIssue: o.paymentIssue === true, receipt: o.receipt === true, shop: (o.shop || { sub: "" }) as OrderView["shop"], country: String(o.country || "TW"),
-    courier: typeof o.courier === "string" && o.courier ? o.courier : undefined, tracking: typeof o.tracking === "string" && o.tracking ? o.tracking : undefined };
+    courier: typeof o.courier === "string" && o.courier ? o.courier : undefined, tracking: typeof o.tracking === "string" && o.tracking ? o.tracking : undefined,
+    parcel: cleanParcel(o.parcel) };
 }
 
 export const RECEIPT_MAX_BYTES = 10 * 1024 * 1024; // what the buyer may pick (it is shrunk to ≤ 400 KB before upload)
