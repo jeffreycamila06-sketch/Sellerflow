@@ -97,11 +97,11 @@ const hook = (): UseSalesTab => ({ data: DATA, state: "live", range: "session", 
 const sales = (extra: Record<string, unknown>, lang = "en") => render(<TProvider lang={lang}><SalesTab cur="NT$" sessionStart="2026-09-01" today="2026-09-28" sales={hook()} {...extra} /></TProvider>);
 
 describe("Sales: the Website orders row with Soon", () => {
-  it("non-tester + switch on: the row with 'Soon' in place of the numbers, no 'Included in the totals above', a link to Telegram", () => {
+  it("non-tester + switch on: the row with 'Soon' in place of the numbers, no 'Included in the totals above', not a link", () => {
     const { getByTestId, queryByTestId, container } = sales({ websiteTeaser: true });
     const a = getByTestId("sales-website-soon");
-    expect(a.tagName).toBe("A");
-    expect(a.getAttribute("href")).toBe(TELEGRAM_URL);
+    expect(a.tagName).toBe("DIV");
+    expect(a.hasAttribute("href")).toBe(false);
     expect(a.textContent).toBe("🛍 Website ordersSoon");
     expect(container.textContent).not.toContain("Included in the totals above");
     expect(queryByTestId("sales-website")).toBeNull();
