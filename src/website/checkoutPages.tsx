@@ -8,6 +8,8 @@
 // typed in; Messenger / Instagram: the buyer pastes.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useT, tpl } from "../redesign/i18n";
+import { useLang } from "../redesign/i18n/langContext";
+import { orderParcel, parcelWhen, PARCEL_CSS } from "./parcelView";
 import type { ShopPage } from "./route";
 import type { Shop } from "./shopApi";
 import { money, photoUrl } from "./shopApi";
@@ -282,6 +284,7 @@ function StorePick({ draft, setDraft, done }: { draft: OrderDraft; setDraft: (f:
 // ── order sent + order link ─────────────────────────────────────────────────────
 function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { token: string; fresh: boolean; cur: string; api: OrderApi; link: string; say: (m: string) => void; onShop: () => void }) {
   const t = useT() as unknown as Record<string, string>;
+  const lang = useLang();
   const [view, setView] = useState<OrderView | null | "loading">("loading");
   const [up, setUp] = useState<"" | "busy" | "ok" | "fail" | "big" | "bad">("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -300,9 +303,12 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
     else setUp(r.reason === "too_big" ? "big" : r.reason === "unreadable" ? "bad" : "fail");
   };
   const chats = Object.entries(view.shop.chats || {}).filter(([k, v]) => k in CHAT_APP_NAME && !!chatHref(k as keyof typeof CHAT_PREFILL, String(v || "")));
-  const timeline = orderTimeline(t, view);
+  // order tracking (sql/171): the parcel from Pickup Status — only a shipped 7-ELEVEN / FamilyMart order, one match
+  const parcel = orderParcel(view);
+  const timeline = orderTimeline(t, view, parcel ? { parcel, when: (iso) => parcelWhen(iso, lang), store: deliveryWhere(view) ? `${deliveryLabel(t, view.delivery, view.shipId, view.shipName)} ${deliveryWhere(view)}` : "" } : undefined);
   return (
     <div className="v-wrap" style={{ paddingBottom: 40 }} data-testid="od-page">
+      {parcel && <style>{PARCEL_CSS}</style>}
       <Steps at={3} t={t} />
       <div className="v-two"><div style={{ display: "grid", gap: 12, alignContent: "start" }}>
       {fresh && (
@@ -318,7 +324,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
         </div>
         {view.status !== "cancelled" && (
           <div className="v-tl" data-testid="od-steps" style={{ marginTop: 14 }}>
-            {timeline.map((x, i) => <div key={i} className={x.st ? `v-${x.st}` : ""} data-state={x.st || "next"}>{x.label}</div>)}
+            {timeline.map((x, i) => <div key={i} className={x.st ? `v-${x.st}` : ""} data-state={x.st || "next"}>{x.sub ? <span className="v-sub2">{x.label}<small>{x.sub}</small></span> : x.label}</div>)}
           </div>
         )}
         {view.paymentIssue && view.status === "awaiting_payment" && <Note tone="red" testid="od-issue">{t.rd_shop_od_issue}</Note>}

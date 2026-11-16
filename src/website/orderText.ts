@@ -3,6 +3,7 @@
 // link — never the phone number (the seller already has it in the app).
 import { tpl } from "../redesign/i18n";
 import type { OrderView } from "./orderApi";
+import type { ParcelState, ParcelView } from "./parcelView";
 import { money } from "./shopApi";
 import { shipLabel, payLabel } from "./shipPay";
 
@@ -36,8 +37,25 @@ export function orderMessage(t: T, o: OrderView, cur: string, link: string): str
   return lines.join("\n");
 }
 export const CHAT_APP_NAME: Record<string, string> = { messenger: "Messenger", line: "LINE", whatsapp: "WhatsApp", instagram: "Instagram" };
-/** The order's status, as a timeline (as the preview). Pure. */
-export function orderTimeline(t: T, v: OrderView): { label: string; st: "dn" | "nw" | "" }[] {
+export type TimelineStep = { label: string; st: "dn" | "nw" | "" | "bad"; sub?: string };
+/** Order tracking item 3: with a parcel (Pickup Status), the steps after Shipped. */
+export interface TimelineParcel { parcel: ParcelView; when: (iso: string) => string; store: string }
+/** The order's status, as a timeline (as the preview). Pure. Without a parcel: exactly as before. */
+export function orderTimeline(t: T, v: OrderView, p?: TimelineParcel): TimelineStep[] {
+  const base = baseTimeline(t, v);
+  if (!p || v.status !== "shipped") return base;
+  const st = p.parcel.state;
+  const out: TimelineStep[] = base.map((x, i) => (i === base.length - 1 ? { ...x, st: "dn" } : x));
+  const passed = (k: ParcelState) => ORDER_OF[st] > ORDER_OF[k] || st === "picked_up";
+  out.push({ label: t.rd_tl_transit, st: passed("in_transit") ? "dn" : "nw", sub: t.rd_tl_transit_sub });
+  const arrivedSub = [p.parcel.arrivedAt ? p.when(p.parcel.arrivedAt) : "", p.store].filter(Boolean).join(" · ");
+  out.push(st === "in_transit" ? { label: t.rd_tl_arrived, st: "" } : { label: t.rd_tl_arrived, st: st === "at_store" ? "nw" : "dn", ...(arrivedSub ? { sub: arrivedSub } : {}) });
+  if (st === "returned") out.push({ label: t.rd_tl_returned, st: "bad", ...(p.parcel.returnedAt ? { sub: p.when(p.parcel.returnedAt) } : {}) });
+  else out.push(st === "picked_up" ? { label: t.rd_tl_picked, st: "dn", ...(p.parcel.pickedUpAt ? { sub: p.when(p.parcel.pickedUpAt) } : {}) } : { label: t.rd_tl_picked, st: "" });
+  return out;
+}
+const ORDER_OF: Record<ParcelState, number> = { in_transit: 1, at_store: 2, picked_up: 3, returned: 3 };
+function baseTimeline(t: T, v: OrderView): TimelineStep[] {
   const s = v.status;
   const shipped = s === "shipped";
   const shipLine = shipped ? [t.rd_tl_shipped, v.courier, v.tracking].filter(Boolean).join(" · ") : t.rd_tl_shipped;

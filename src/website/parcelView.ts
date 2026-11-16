@@ -25,3 +25,24 @@ export function cleanParcel(raw: unknown): ParcelView | undefined {
 export function orderParcel(v: { status: string; delivery: string; tracking?: string; parcel?: ParcelView }): ParcelView | undefined {
   return v.status === "shipped" && (v.delivery === "s711" || v.delivery === "fm") && !!v.tracking ? v.parcel : undefined;
 }
+
+/** A time for the order page, in the shop's language on the buyer's device (e.g. "Nov 19, 9:30 AM"). */
+export function parcelWhen(iso: string, lang: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  try { return d.toLocaleString(lang, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch { return d.toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+}
+/** The pickup deadline (a date, no time zone shift), e.g. "Nov 26". */
+export function parcelDay(day: string, lang: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  try { return d.toLocaleDateString(lang, { month: "short", day: "numeric" }); } catch { return d.toLocaleDateString("en", { month: "short", day: "numeric" }); }
+}
+/** The styles the parcel parts need — rendered ONLY with a parcel, so an order without one is untouched. */
+export const PARCEL_CSS = `
+.sfl-v2 .v-tl .v-sub2{display:flex;flex-direction:column;min-width:0}
+.sfl-v2 .v-tl .v-sub2 small{display:block;font-weight:500;color:var(--s-mut);font-size:12.5px}
+.sfl-v2 .v-tl .v-bad{color:var(--s-fg);font-weight:700}
+.sfl-v2 .v-tl .v-bad::before{background:color-mix(in srgb,#dc2626 78%,var(--s-fg));box-shadow:0 0 0 4px color-mix(in srgb,#dc2626 18%,transparent)}
+`;
