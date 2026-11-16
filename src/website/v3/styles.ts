@@ -1,18 +1,30 @@
 // Seller Website v3 — the styles a seller's look adds on top of v2's (docs/design/seller-website-v3/site-v3.html,
 // its v3 block). Everything is scoped under .sfl-v2 and only matches a shop whose root carries a look class
 // (l-brand / l-market / v-sharp / v-caps), so a shop without a look (Build 1) is not touched.
+// item 7, the contrast guard: wherever Build 1 writes text in the button colour, a look uses the readable
+// version of it (--s-acct); fixed colours that assume a light page follow the look's body.
+const L = (sel: string) => sel.split(",").flatMap((x) => [`.sfl-v2.l-brand ${x.trim()}`, `.sfl-v2.l-market ${x.trim()}`]).join(",");
+const GUARD = `
+${L(".v-nav button:hover,.v-trust svg,.v-sech button,.v-pr b,.v-vc b,.v-bnav .v-on,.v-lbl button,.v-rows svg,.v-stp span.v-on,.v-fside button.v-on")}{color:var(--s-acct)}
+${L('[style^="color: var(--s-acc)"],[style*="; color: var(--s-acc)"]')}{color:var(--s-acct)!important}
+${L('.v-slide[style*="var(--s-hero)"]')}{color:var(--on-top)}
+${L("[data-testid=co-toast]")}{color:var(--s-bg)!important}
+${L("[data-testid=od-link]")}{color:var(--s-fg)!important}
+${L("[data-testid=od-receipt-ok]")}{color:var(--s-okt)!important}
+`;
 const BASE = `
+${GUARD}
 .sfl-v2.v-sharp .v-btn,.sfl-v2.v-sharp .v-qa,.sfl-v2.v-sharp .v-opt,.sfl-v2.v-sharp .v-cat .v-art{border-radius:var(--s-r)}
 .sfl-v2.v-caps .v-sech h3,.sfl-v2.v-caps .v-band h2{text-transform:uppercase}
-.sfl-v2.l-brand .v-ann{background:var(--top1);color:var(--on-top)}
+.sfl-v2.l-brand .v-ann{background:var(--top1);color:var(--on-top1)}
 .sfl-v2.l-brand .v-hdr{transition:background .2s,border-color .2s}
 .sfl-v2.l-brand .v-hdr.v-top{background:transparent;border-color:transparent;color:var(--on-top)}
 .sfl-v2.l-brand .v-hdr.v-top .v-srch{background:rgba(255,255,255,.2);border-color:transparent;color:inherit}
 .sfl-v2.l-brand .v-hdr.v-top .v-srch input{color:inherit}
 .sfl-v2.l-brand .v-hdr.v-top .v-srch input::placeholder{color:inherit;opacity:.85}
 .sfl-v2.l-brand .v-hdr.v-top .v-nav button{color:inherit;opacity:.92}
-.sfl-v2.l-brand .v-hdr.v-top .v-logo i{background:var(--on-top);color:var(--top1)}
-.sfl-v2.l-brand .v-hdr.v-top .v-ib b{background:var(--on-top);color:var(--top1)}
+.sfl-v2.l-brand .v-hdr.v-top .v-logo i{background:var(--on-top);color:var(--top-ink)}
+.sfl-v2.l-brand .v-hdr.v-top .v-ib b{background:var(--on-top);color:var(--top-ink)}
 .sfl-v2 .v-band{background:var(--s-hero);color:var(--on-top);margin-top:calc(-1 * var(--hh, 56px) - 1px);padding:calc(var(--hh, 56px) + 28px) 0 14px;text-align:center}
 .sfl-v2 .v-band h2{font-size:31px;line-height:1.02}
 .sfl-v2 .v-band p{margin:8px auto 18px;max-width:30em;font-size:13.5px;opacity:.95}

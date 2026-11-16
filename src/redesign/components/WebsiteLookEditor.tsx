@@ -5,7 +5,7 @@
 // every change.
 import type { CSSProperties, ReactNode } from "react";
 import type { ShopDesign } from "../../website/shopApi";
-import { LOOK_PRESETS, type ShopLook } from "../../website/v3/look";
+import { LOOK_PRESETS, guardLook, type ShopLook } from "../../website/v3/look";
 import { editorLook, lookPatch, presetPatch, presetOf, tileChoices, tileTogglePatch } from "../adapters/websiteLook";
 
 type T = Record<string, string>;
@@ -28,18 +28,19 @@ function Colour({ label, value, onPick, testid }: { label: string; value: string
   return <input type="color" aria-label={label} data-testid={testid} value={value} onChange={(e) => onPick(e.target.value.toLowerCase())} style={colorInput} />;
 }
 
-export default function WebsiteLookEditor({ draft, set, t, cats, preview, note }: {
+export default function WebsiteLookEditor({ draft, set, t, cats, preview }: {
   draft: ShopDesign; set: (p: Partial<ShopDesign>) => void; t: T; cats: string[];
   /** the live preview (the shop with this draft) */
   preview: ReactNode;
-  /** item 7: the one line that says a colour was swapped so buyers can read it */
-  note?: ReactNode;
 }) {
   const l = editorLook(draft);
   const put = (p: Partial<ShopLook>) => set(lookPatch(draft, p));
   const pre = presetOf(l);
   const brand = l.layout === "brand";
   const tiles = tileChoices(draft, cats);
+  // item 7: the contrast guard — buyers always get readable colours; one line says what was swapped
+  const g = guardLook(l);
+  const notes = g.swapped.map((k) => (k === "btn" ? (l.dark ? t.rd_wed_guard_btn_white : t.rd_wed_guard_btn_black) : k === "sale" ? t.rd_wed_guard_sale : t.rd_wed_guard_top));
   return (
     <div data-testid="wed-look">
       <div data-testid="wed-live-preview" aria-label={t.rd_wed_live_preview}
@@ -47,7 +48,7 @@ export default function WebsiteLookEditor({ draft, set, t, cats, preview, note }
         <div style={{ position: "absolute", top: 6, left: 8, zIndex: 70, fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em", background: "rgba(17,24,39,.75)", color: "#fff", padding: "2px 7px", borderRadius: 999, pointerEvents: "none" }}>{t.rd_wed_live_preview}</div>
         <div style={{ height: "100%", overflowY: "auto", overscrollBehavior: "contain" }}>{preview}</div>
       </div>
-      {note}
+      {notes.length > 0 && <div role="status" data-testid="wed-guard" style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.4, color: "var(--text)", background: "var(--accent-soft)", borderRadius: 10, padding: "8px 10px" }}>🛡 {t.rd_wed_guard} {notes.join(" ")}</div>}
 
       <Seg label={t.rd_wed_layout} value={l.layout} testid="wed-layout" onPick={(v) => put({ layout: v })}
         options={[["brand", t.rd_wed_layout_brand], ["market", t.rd_wed_layout_market]]} />

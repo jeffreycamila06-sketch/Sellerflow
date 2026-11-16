@@ -63,24 +63,67 @@ export const LOOK_FONTS: Record<LookFont, { head: string; body: string; caps: bo
   classic: { head: "Fraunces,Georgia,serif", body: "Inter,system-ui,sans-serif", caps: false },
 };
 
-export interface LookStyle { className: string; vars: Record<string, string> }
-/** The shop root's class + CSS variables for a look (the preview's applyCfg). Pure. */
-export function lookStyle(look: ShopLook): LookStyle {
+/** What the contrast guard does to a look (the preview's applyCfg, plus the band and text checks). Pure. */
+export interface LookGuard {
+  bg: string; fg: string;
+  /** the colours buyers see */
+  btn: string; sale: string;
+  /** text on the top band (white or dark), and a soft shade behind it when no text colour reads on both top colours */
+  onTop: string; scrim: boolean;
+  /** the button colour where it is used as text (prices, links): darker / lighter until it reads on the page */
+  acct: string;
+  /** which of the seller's colours were swapped (the editor says so in one line) */
+  swapped: ("btn" | "sale" | "top")[];
+}
+const READ = 3; // band text (large) and the sale price struck through
+const READ_TEXT = 4.5; // normal text
+const BAND_END = 2.2; // the preview's bar for the band text at the far colour
+export function guardLook(look: ShopLook): LookGuard {
   const brand = look.layout === "brand", d = look.dark;
   const bg = d ? "#0e0f12" : brand ? "#ffffff" : "#f5f5f7";
   const fg = d ? "#f3f4f6" : "#17181c";
-  const btn = look.btn, sale = look.sale;
-  // text on the band: white when both top colours carry white, else whichever reads on the first colour
-  const onTop = contrast(look.top1, "#ffffff") >= contrast(look.top1, "#111111") && contrast(look.top2, "#ffffff") >= 2.2 ? "#ffffff" : textOn(look.top1);
+  const swapped: LookGuard["swapped"] = [];
+  let btn = look.btn, sale = look.sale;
+  // a button colour almost the same as the page → white (dark body) or black (light body)
+  if (contrast(btn, bg) < 1.6) { btn = d ? "#ffffff" : "#111111"; swapped.push("btn"); }
+  // a sale colour that can't be read on the page → a clear red (only shown in the Brand store, so only said there)
+  if (contrast(sale, bg) < READ) { sale = d ? "#fb7185" : "#dc2626"; if (brand) swapped.push("sale"); }
+  // the band: the preview's pick first; if it can't be read on both top colours (and their middle), the other
+  // one; if neither, a soft shade behind white text
+  // "reads" on the band = the preview's own bar at both ends (2.2, large bold text) and 3 in the middle, where the text sits
+  const mid = mixHex(look.top1, look.top2, 0.5);
+  const reads = (c: string) => contrast(look.top1, c) >= BAND_END && contrast(look.top2, c) >= BAND_END && contrast(mid, c) >= READ;
+  const pick = contrast(look.top1, "#ffffff") >= contrast(look.top1, "#111111") && contrast(look.top2, "#ffffff") >= BAND_END ? "#ffffff" : textOn(look.top1);
+  const other = pick === "#ffffff" ? "#111111" : "#ffffff";
+  let onTop = pick, scrim = false;
+  if (!reads(pick)) {
+    if (reads(other)) onTop = other;
+    else { onTop = "#ffffff"; scrim = true; swapped.push("top"); }
+  }
+  // the button colour as text: step it towards the text colour until it reads
+  let acct = btn;
+  for (let k = 1; contrast(acct, bg) < READ_TEXT && k <= 10; k++) acct = mixHex(btn, fg, k / 10);
+  return { bg, fg, btn, sale, onTop, scrim, acct, swapped };
+}
+/** The soft shade behind the band's text (only when the guard needs it). */
+export const SCRIM = "linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45))";
+
+export interface LookStyle { className: string; vars: Record<string, string> }
+/** The shop root's class + CSS variables for a look (the preview's applyCfg). Pure. */
+export function lookStyle(look: ShopLook): LookStyle {
+  const g = guardLook(look);
+  const d = look.dark;
   const f = LOOK_FONTS[look.font];
+  const hero = `linear-gradient(120deg, ${look.top1}, ${look.top2})`;
   return {
     className: `l-${look.layout}${look.corners === "sharp" ? " v-sharp" : ""}${f.caps ? " v-caps" : ""}`,
     vars: {
-      "--s-bg": bg, "--s-fg": fg, "--s-card": d ? "#191b21" : "#ffffff", "--s-mut": d ? "#9a9eaa" : "#6c7080", "--s-line": d ? "#2a2d36" : "#e6e7ec",
-      "--s-acc": btn, "--s-on": textOn(btn), "--s-acc2": mixHex(btn, bg, 0.9), "--s-ok": d ? "#5fe08a" : "#16a34a",
-      "--s-sale": sale, "--top1": look.top1, "--top2": look.top2, "--on-top": onTop,
-      "--s-hero": `linear-gradient(120deg, ${look.top1}, ${look.top2})`,
-      "--s-head": f.head, "--s-font": f.body, "--s-r": look.corners === "sharp" ? "0px" : "14px", "--sc": btn,
+      "--s-bg": g.bg, "--s-fg": g.fg, "--s-card": d ? "#191b21" : "#ffffff", "--s-mut": d ? "#9a9eaa" : "#6c7080", "--s-line": d ? "#2a2d36" : "#e6e7ec",
+      "--s-acc": g.btn, "--s-on": textOn(g.btn), "--s-acc2": mixHex(g.btn, g.bg, 0.9), "--s-ok": d ? "#5fe08a" : "#16a34a",
+      "--s-acct": g.acct, "--s-okt": d ? "#5fe08a" : "#047857",
+      "--s-sale": g.sale, "--top1": look.top1, "--top2": look.top2, "--on-top": g.onTop, "--top-ink": textOn(g.onTop), "--on-top1": textOn(look.top1),
+      "--s-hero": g.scrim ? `${SCRIM}, ${hero}` : hero,
+      "--s-head": f.head, "--s-font": f.body, "--s-r": look.corners === "sharp" ? "0px" : "14px", "--sc": g.btn,
     },
   };
 }
