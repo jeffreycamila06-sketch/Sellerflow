@@ -84,7 +84,8 @@ describe("the shop uses small copies only in lists", () => {
   });
   it("photo 1 upload code (productImages.ts) is unchanged on this branch; cart / checkout / order lists use the small copy", () => {
     expect(execSync("git diff --stat origin/main -- src/redesign/adapters/productImages.ts").toString().trim()).toBe("");
-    for (const f of ["src/website/pages/Cart.tsx", "src/website/checkoutPages.tsx", "src/website/pages/Home.tsx"]) expect(readFileSync(f, "utf8")).toContain("<SmallPhoto path=");
+    // v2: the grid cards live in v2/Card.tsx
+    for (const f of ["src/website/pages/Cart.tsx", "src/website/checkoutPages.tsx", "src/website/v2/Card.tsx"]) expect(readFileSync(f, "utf8")).toContain("<SmallPhoto");
     expect(readFileSync("src/website/pages/Product.tsx", "utf8")).not.toContain("SmallPhoto");
   });
 });

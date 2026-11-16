@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { TProvider, useT } from "../redesign/i18n";
 import { parseShopLocation, pagePath, type ShopPage } from "./route";
 import { loadShop, shopLang, readPickedLang, savePickedLang, currencyFor, type Shop, type ShopResult } from "./shopApi";
+import { loadSaved, storeSaved, toggleSaved } from "./saved";
 import { addLine, loadCart, saveCart, setQty, removeLine, validLines, countOf, type CartLine } from "./cart";
 import { ClosedPage } from "./ui";
 import { SHOP_CSS } from "./shopStyle";
@@ -76,6 +77,8 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   const t = useT() as unknown as Record<string, string>;
   const cur = currencyFor(shop);
   const [lines, setLines] = useState<CartLine[]>(() => (preview ? [] : loadCart(shop.sub)));
+  const [saved, setSaved] = useState<number[]>(() => (preview ? [] : loadSaved(shop.sub)));
+  const toggleSave = (id: number) => { const next = toggleSaved(saved, id); setSaved(next); if (!preview) storeSaved(shop.sub, next); say(next.includes(id) ? t.rd_shop_saved_toast : t.rd_shop_removed_toast); };
   const [query, setQuery] = useState("");
   const [toast, say] = useToast();
   const [chat, setChat] = useState(false);
@@ -96,9 +99,18 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
     return vid === null ? p.stock : p.variants?.find((v) => v.id === vid)?.stock ?? 0;
   };
   const home = () => go({ page: "home" });
+  // quick add: straight into the cart when there's nothing to choose, else open the product to choose
+  const quick = (id: number) => {
+    const p = shop.products.find((x) => x.id === id);
+    if (!p) return;
+    const vs = p.variants || [];
+    if (vs.length > 1) { go({ page: "product", id }); say(t.rd_shop_pick_first); return; }
+    const vid = vs.length === 1 ? vs[0].id : null;
+    add(id, vid, 1, stockOf(id, vid)); say(t.rd_shop_added);
+  };
   const toGrid = () => { if (route.page !== "home") home(); setTimeout(() => catRef.current?.scrollIntoView({ behavior: "smooth" }), 50); };
   let body: ReactNode;
-  if (route.page === "home") body = <Home shop={shop} cur={cur} query={query} onOpen={(id) => go({ page: "product", id })} catRef={catRef} nowMs={clock} />;
+  if (route.page === "home") body = <Home shop={shop} cur={cur} query={query} onOpen={(id) => go({ page: "product", id })} catRef={catRef} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} />;
   else if (route.page === "product" && product) body = <Product key={product.id} shop={shop} product={product} cur={cur}
     onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); say(t.rd_shop_added); }}
     onBuy={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); go({ page: "cart" }); }} />;

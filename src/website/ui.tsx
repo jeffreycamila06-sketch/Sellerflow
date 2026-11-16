@@ -106,7 +106,7 @@ export function LangPicker({ lang, onPick }: { lang: string; onPick: (l: string)
 
 
 /** A list picture (grid, cart, order lists): the SMALL copy; if it can't load, the full photo. */
-export function SmallPhoto({ path, alt = "", style, loading }: { path: string; alt?: string; style?: CSSProperties; loading?: "lazy" | "eager" }) {
+export function SmallPhoto({ path, alt = "", style, loading, className }: { path: string; alt?: string; style?: CSSProperties; loading?: "lazy" | "eager"; className?: string }) {
   const full = photoUrl(path);
-  return <img src={photoUrl(smallOf(path))} alt={alt} loading={loading} style={style} data-full={full} onError={(e) => { const el = e.currentTarget; if (full && el.src !== full) el.src = full; }} />;
+  return <img src={photoUrl(smallOf(path))} alt={alt} loading={loading} style={style} className={className} data-full={full} onError={(e) => { const el = e.currentTarget; if (full && el.src !== full) el.src = full; }} />;
 }

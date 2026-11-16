@@ -1,16 +1,16 @@
 // Seller Website — shop home: cover, logo, name, tagline, verified badge, stats, Chat with us,
 // Follow us, live schedule, categories, search, sort, grid, about & return policy, footer.
 import { useMemo, useState } from "react";
-import { useT, tpl } from "../../redesign/i18n";
+import { useT } from "../../redesign/i18n";
 import type { Shop } from "../shopApi";
-import { photoUrl, money } from "../shopApi";
-import { fromPrice, productStock } from "../cart";
-import { sortProducts, filterShop, compact, NEW_DAYS, type Sort } from "../shopLogic";
-import { ShopLogo, Icon, SmallPhoto } from "../ui";
+import { photoUrl } from "../shopApi";
+import { sortProducts, filterShop, compact, type Sort } from "../shopLogic";
+import { ShopLogo, Icon } from "../ui";
+import { Card } from "../v2/Card";
 import { IC, mutedText } from "../shopStyle";
 import { firstChatHref } from "../shopLinks";
 
-export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop: Shop; cur: string; query: string; onOpen: (id: number) => void; catRef?: React.RefObject<HTMLDivElement | null>; nowMs: number }) {
+export default function Home({ shop, cur, query, onOpen, catRef, nowMs, saved, onSave, onQuick }: { shop: Shop; cur: string; query: string; onOpen: (id: number) => void; catRef?: React.RefObject<HTMLDivElement | null>; nowMs: number; saved: number[]; onSave: (id: number) => void; onQuick: (id: number) => void }) {
   const t = useT();
   const d = shop.shop;
   const [cat, setCat] = useState("");
@@ -70,23 +70,8 @@ export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop
         {list.length === 0
           ? <div data-testid="shop-empty" style={{ ...mutedText, textAlign: "center", padding: "30px 0" }}>{query ? t.rd_shop_no_match : t.rd_shop_no_products}</div>
           : (
-            <div className="sfl-grid" data-testid="shop-grid">
-              {list.map((p) => {
-                const stock = productStock(p);
-                const isNew = p.createdAt && nowMs - Date.parse(p.createdAt) < NEW_DAYS * 86400000;
-                return (
-                  <button key={p.id} type="button" data-testid="shop-item" onClick={() => onOpen(p.id)} className="sfl-card" style={{ padding: 0, overflow: "hidden", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column" }}>
-                    <span style={{ position: "relative", display: "block", width: "100%", paddingBottom: "100%", background: "#F3F4F6" }}>
-                      {p.photos[0] ? <SmallPhoto path={p.photos[0]} alt={p.name} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 800, color: "#D1D5DB" }}>{p.name.slice(0, 1)}</span>}
-                      {stock === 0 ? <Badge bg="#6B7280">{t.rd_shop_sold_out}</Badge> : isNew ? <Badge bg="#111827">{t.rd_shop_new}</Badge> : stock <= 3 ? <Badge bg="var(--sc)">{tpl(t.rd_shop_only_left, { n: String(stock) })}</Badge> : null}
-                    </span>
-                    <span style={{ padding: "8px 10px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "#111827", lineHeight: 1.3, minHeight: "2.6em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</span>
-                      <span style={{ fontSize: 15, fontWeight: 800, color: "var(--sc)" }}>{p.variants?.length ? `${t.rd_shop_from} ` : ""}{money(cur, fromPrice(p))}</span>
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="v-grid" data-testid="shop-grid">
+              {list.map((p) => <Card key={p.id} p={p} cur={cur} nowMs={nowMs} saved={saved.includes(p.id)} onSave={() => onSave(p.id)} onOpen={() => onOpen(p.id)} onQuick={() => onQuick(p.id)} />)}
             </div>
           )}
 
@@ -114,7 +99,4 @@ function Stat({ n, label }: { n: string; label: string }) {
       <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600 }}>{label}</div>
     </div>
   );
-}
-function Badge({ bg, children }: { bg: string; children: React.ReactNode }) {
-  return <span style={{ position: "absolute", left: 8, top: 8, fontSize: 10.5, fontWeight: 800, color: "#fff", background: bg, padding: "3px 7px", borderRadius: 6 }}>{children}</span>;
 }
