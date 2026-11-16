@@ -101,7 +101,7 @@ const SAVED = JSON.stringify([5, 11]);
 const PAGES = [
   ["1-home", "", {}],
   ["2-shop", "/shop", {}],
-  ["3-product", "/p/1", { click: ['[data-testid="pd-opt"] >> text=Purple', '[data-testid="pd-opt"] >> text=L'] }],
+  ["3-product", "/p/1", { click: ['[data-testid="pd-opt"]:has-text("Purple")', '[data-testid="pd-opt"] >> text=/^L$/'] }],
   ["4-cart", "/cart", { cart: true }],
   ["5-checkout", "/checkout", { cart: true, buyer: true }],
   ["6-order", `/o/${T}`, {}],
