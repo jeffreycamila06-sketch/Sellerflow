@@ -1293,7 +1293,7 @@ if (serviceSb) {
   // shown to the admin here; it is never logged)
   app.get("/admin/pc711/evidence/totals", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });
-    try { return res.json(await evidenceTotals(pc711EvidenceDb, readSetting, { day: String(req.query.day || "") }, Date.now(), taipeiDay(Date.now()).startMs)); } catch { return res.status(500).json({ error: "failed" }); }
+    try { return res.json(await evidenceTotals(pc711EvidenceDb, readSetting, { day: String(req.query.day || "") }, Date.now(), taipeiDay(Date.now()).startMs, pc711ShadowJob.state())); } catch { return res.status(500).json({ error: "failed" }); }
   });
   app.get("/admin/pc711/evidence", requireAuth, requireAdmin, async (req, res) => {
     if (!pc711StatusAllowed(req.authUserId)) return res.status(429).json({ error: "rate_limited" });

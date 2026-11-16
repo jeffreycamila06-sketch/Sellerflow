@@ -119,6 +119,12 @@ export default function Pc711EvidenceBlock() {
         : s === null || !tot ? <div data-testid="pc711-ev-failed" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_pc711_sh_failed}</div>
         : <div data-testid="pc711-ev-totals">
           <div data-testid="pc711-ev-mirror-state" style={{ ...line, fontWeight: 700 }}>{s.mirrorEnabled ? t.rd_pc711_ev_mirror_on : t.rd_pc711_ev_mirror_off}</div>
+          <div data-testid="pc711-ev-selfstop" style={{ ...line, color: s.selfStop.lastStop ? "var(--warn)" : "var(--text-dim)", fontWeight: s.selfStop.lastStop ? 700 : 400 }}>
+            {s.selfStop.lastStop
+              ? tpl(t.rd_pc711_ev_stop, { time: taipeiStamp(s.selfStop.lastStop.at), rule: s.selfStop.lastStop.rule === "phone_time" ? t.rd_pc711_ev_rule_phone : s.selfStop.lastStop.rule === "waited" ? t.rd_pc711_ev_rule_waited : t.rd_pc711_ev_rule_unknown, value: s.selfStop.lastStop.value === null ? "—" : String(s.selfStop.lastStop.value) })
+              : t.rd_pc711_ev_stop_none}
+          </div>
+          {s.selfStop.silentSince && <div data-testid="pc711-ev-silent" role="status" style={{ ...line, color: "var(--warn)", fontWeight: 700 }}>{tpl(t.rd_pc711_ev_silent, { time: taipeiStamp(s.selfStop.silentSince) })}</div>}
           <div style={head}>{t.rd_pc711_ev_after}</div>
           <div data-testid="pc711-ev-after-phone" style={line}>{srcLine("after", "phone")}</div>
           <div data-testid="pc711-ev-after-store" style={line}>{srcLine("after", "store")}</div>

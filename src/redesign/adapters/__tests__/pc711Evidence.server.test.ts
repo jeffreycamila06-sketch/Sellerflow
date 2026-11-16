@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createPc711Shadow, SHADOW_BRAKE_PAUSE_MS, SHADOW_ROW_GAP_MS } from "../../../../server/pc711Shadow.js";
 import {
+  selfStopDecision, SELF_STOP_EVERY_MS, SELF_STOP_WINDOW_MS, SELF_STOP_MIN_PARCELS, SELF_STOP_PHONE_MEDIAN_S, SELF_STOP_WAITED, SELF_STOP_STORE_UNKNOWN, SELF_STOP_SILENT_MS,
   badInputRule, changeFlagOf, sameInstant, evidenceJobs, evidenceRow, pairPatch, oldRowFromPair, reaskWord, nextReaskAt,
   MIRROR_SWITCH, EXT_LIMIT_MS, REASK_AFTER_MS, EVIDENCE_KEEP_DAYS,
 } from "../../../../server/pc711Evidence.js";
@@ -33,7 +34,7 @@ const OK = (i: { kind: string }) => ({ verdict: i.kind === "phone" ? "ok" : "ope
 const RESTRICTED = () => ({ verdict: "restricted", http: 200, ms: 900, kind: "", raw: "Status:false-restricted", steps: [] });
 const REFUSE = () => ({ verdict: "unknown", http: 429, ms: 300, kind: "http", steps: [{ step: "phone.token", http: 429, ms: 300, ok: false, note: "kind=http" }] });
 
-function harness(o: { saveFails?: () => boolean; updateFails?: () => boolean; queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (i: Record<string, string>) => unknown; awaitingRows?: () => Row[]; parcels?: Record<string, Row | null>; start?: number } = {}) {
+function harness(o: { health?: (fromIso: string) => Row | null; saveFails?: () => boolean; updateFails?: () => boolean; queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (i: Record<string, string>) => unknown; awaitingRows?: () => Row[]; parcels?: Record<string, Row | null>; start?: number } = {}) {
   let t = o.start ?? NOW;
   const logs: string[] = [], oldRows: Row[] = [], evRows: Row[] = [], updates: [unknown, Row][] = [];
   const settings: Record<string, string> = { pc711_shadow_enabled: "true", [MIRROR_SWITCH]: o.mirror ? "true" : "false" };
@@ -41,6 +42,7 @@ function harness(o: { saveFails?: () => boolean; updateFails?: () => boolean; qu
   const queue = o.queue ?? [], mqueue = o.mqueue ?? [];
   // every database request the job makes (the parts INSIDE pc711_shadow_pass are not requests)
   const requests: string[] = [];
+  const stops: Row[] = [], healthAsked: string[] = [];
   const req = <A extends unknown[], R>(name: string, f: (...a: A) => R) => vi.fn((...a: A) => { requests.push(name); return f(...a); });
   const db = {
     pending: req("db.pending", async () => ({ waiting: 0, jobs: [] })), dayMax: req("db.dayMax", async () => ({})), saveDayMax: req("db.saveDayMax", async () => {}),
@@ -56,12 +58,19 @@ function harness(o: { saveFails?: () => boolean; updateFails?: () => boolean; qu
   };
   const ev = {
     ...part,
-    pass: req("ev.pass", async (_since: string, _limit: number, reaskLimit: number, mirrorAllowed: boolean) => {
+    stopMirror: req("ev.stopMirror", async (rule: string, value: number, from: string, parcels: number) => {
+      stops.push({ rule, value, from, parcels });
+      if (settings[MIRROR_SWITCH] !== "true") return false;
+      settings[MIRROR_SWITCH] = "false"; // the only write it can make
+      return true;
+    }),
+    pass: req("ev.pass", async (_since: string, _limit: number, reaskLimit: number, mirrorAllowed: boolean, healthFrom: string | null = null) => {
       if (settings.pc711_shadow_enabled !== "true") return { shadow: false, waiting: 0, jobs: [], mirror: false, reasks: [], awaiting: [], mirrorQueue: null };
       const q = await part.pending();
       const mirror = settings[MIRROR_SWITCH] === "true";
       return { shadow: true, ...q, mirror, reasks: (await part.reasksDue(new Date(t).toISOString())).slice(0, reaskLimit), awaiting: await part.awaiting(),
-        mirrorQueue: mirror && mirrorAllowed ? await part.mirrorPending() : null };
+        mirrorQueue: mirror && mirrorAllowed ? await part.mirrorPending() : null,
+        health: mirror && mirrorAllowed && healthFrom ? (healthAsked.push(healthFrom), o.health ? o.health(healthFrom) : null) : null };
     }),
     insert: req("ev.insert", async (r: Row) => { if (o.saveFails?.()) throw new Error("db down"); evRows.push({ ...r, id: evRows.length + 1, reask_n: 0 }); }),
     update: req("ev.update", async (rid: unknown, p: Row) => { if (o.updateFails?.()) throw new Error("db down"); updates.push([rid, p]); const x = evRows.find((r) => r.id === rid); if (x) Object.assign(x, p); }),
@@ -72,7 +81,7 @@ function harness(o: { saveFails?: () => boolean; updateFails?: () => boolean; qu
     db, evidence: ev, check, pc711: { status: () => ({ state: "connected", since: "c1" }) },
     readSetting: req("readSetting", async (k: string) => settings[k] ?? null), now: () => t, log: (l: string) => logs.push(l), sleep: async (ms: number) => { t += ms; },
   });
-  return { job, db, ev, check, logs, oldRows, evRows, updates, settings, requests, at: () => t, advance: (ms: number) => { t += ms; } };
+  return { job, db, ev, check, logs, oldRows, evRows, updates, settings, requests, stops, healthAsked, at: () => t, advance: (ms: number) => { t += ms; } };
 }
 const noPhoneIn = (lines: string[]) => lines.every((l) => !/09\d{8}/.test(l) && !l.includes(NAME));
 
@@ -405,6 +414,78 @@ describe("a failed evidence save never causes repeat checks", () => {
     await drive(h, 9);
     expect(h.check).toHaveBeenCalledTimes(2);
     expect(h.logs.some((l) => l === "[PC711_SHADOW] evidence save failed kind=phone mode=reask try=1/3 next=600s")).toBe(true);
+  });
+});
+
+describe("mirror self-stop", () => {
+  const H = (o: Row = {}): Row => ({ checked: 40, medianS: 3.6, waited: 1, storeUnknown: 0, lastAnswerAt: new Date(NOW - 30_000).toISOString(), ...o });
+  it("the numbers: every 10 min, last 60 min, >= 20 parcels; 7 s; 10 waited; 3 store unknown; silent after 10 min", () => {
+    expect([SELF_STOP_EVERY_MS, SELF_STOP_WINDOW_MS, SELF_STOP_MIN_PARCELS, SELF_STOP_PHONE_MEDIAN_S, SELF_STOP_WAITED, SELF_STOP_STORE_UNKNOWN, SELF_STOP_SILENT_MS])
+      .toEqual([600_000, 3_600_000, 20, 7, 10, 3, 600_000]);
+  });
+  it("the rules at their edges", () => {
+    expect(selfStopDecision(H(), NOW)).toMatchObject({ stop: false, why: "healthy", silentSince: null });
+    expect(selfStopDecision(H({ checked: 19, medianS: 30, waited: 50, storeUnknown: 9 }), NOW)).toMatchObject({ stop: false, why: "too_few" });
+    expect(selfStopDecision(H({ medianS: 7 }), NOW).stop).toBe(false);
+    expect(selfStopDecision(H({ medianS: 7.1 }), NOW)).toMatchObject({ stop: true, rule: "phone_time", value: 7.1 });
+    expect(selfStopDecision(H({ waited: 9 }), NOW).stop).toBe(false);
+    expect(selfStopDecision(H({ waited: 10 }), NOW)).toMatchObject({ stop: true, rule: "waited", value: 10 });
+    expect(selfStopDecision(H({ storeUnknown: 2 }), NOW).stop).toBe(false);
+    expect(selfStopDecision(H({ storeUnknown: 3 }), NOW)).toMatchObject({ stop: true, rule: "store_unknown", value: 3 });
+  });
+  it("rule b is skipped when the regular checker wrote no answer for 10 min (an outage), with 'silent since'", () => {
+    const last = new Date(NOW - 11 * 60_000).toISOString();
+    const d = selfStopDecision(H({ waited: 25, lastAnswerAt: last }), NOW);
+    expect(d).toMatchObject({ stop: false, silentSince: last });
+    expect(selfStopDecision(H({ waited: 25, lastAnswerAt: new Date(NOW - 9 * 60_000).toISOString() }), NOW)).toMatchObject({ stop: true, rule: "waited" });
+    // a and c still apply while silent
+    expect(selfStopDecision(H({ storeUnknown: 3, lastAnswerAt: last }), NOW)).toMatchObject({ stop: true, rule: "store_unknown" });
+  });
+  it("the loop: numbers asked INSIDE the pass call every 10 min of mirror-on time (window = last 60 min of it), no extra request", async () => {
+    const h = harness({ mirror: true, health: () => H() });
+    for (let i = 0; i < 12 * 35; i++) { await h.job.tick(); h.advance(5000); } // 35 minutes
+    expect(h.healthAsked).toHaveLength(3); // at 10, 20, 30 min
+    expect(h.healthAsked[0]).toBe(new Date(NOW).toISOString()); // mirror on for < 60 min → from when it was switched on
+    expect(h.requests.filter((r) => r !== "ev.pass" && !r.startsWith("db."))).toEqual([]); // nothing but the pass call
+    for (let i = 0; i < 12 * 40; i++) { await h.job.tick(); h.advance(5000); }
+    expect(Date.parse(h.healthAsked.at(-1)!)).toBeGreaterThan(NOW); // after an hour the window no longer starts at switch-on
+    const last = h.healthAsked.at(-1)!, prev = h.healthAsked.at(-2)!;
+    expect(Date.parse(last) - Date.parse(prev)).toBe(SELF_STOP_EVERY_MS); // the 60-min window slides with each check
+  });
+  it("mirror off: the numbers are never asked", async () => {
+    const h = harness({ mirror: false, health: () => H({ medianS: 30 }) });
+    for (let i = 0; i < 12 * 25; i++) { await h.job.tick(); h.advance(5000); }
+    expect(h.healthAsked).toEqual([]);
+    expect(h.stops).toEqual([]);
+  });
+  it("a rule fires → it writes ONLY pc711_mirror_enabled = 'false' (one call), mirror stops on that pass, never turns itself on", async () => {
+    let bad = false;
+    const h = harness({ mirror: true, mqueue: [mpend("phone"), mpend("phone", { phone: "0933333333", input: "0933333333" })], health: () => H(bad ? { medianS: 9.2 } : {}) });
+    for (let i = 0; i < 12 * 9; i++) { await h.job.tick(); h.advance(5000); }
+    bad = true;
+    for (let i = 0; i < 12 * 2; i++) { await h.job.tick(); h.advance(5000); }
+    expect(h.stops).toEqual([{ rule: "phone_time", value: 9.2, from: new Date(NOW).toISOString(), parcels: 40 }]);
+    expect(h.settings[MIRROR_SWITCH]).toBe("false");
+    expect(h.logs.filter((l) => l.includes("self-stop"))).toEqual(["[PC711_SHADOW] mirror self-stop rule=phone_time value=9.2 parcels=40 switched_off"]);
+    const mp = h.ev.mirrorPending.mock.calls.length;
+    for (let i = 0; i < 12 * 30; i++) { await h.job.tick(); h.advance(5000); }
+    expect(h.ev.mirrorPending.mock.calls.length).toBe(mp); // stays off
+    expect(h.settings[MIRROR_SWITCH]).toBe("false"); // never turned on again
+    expect(h.stops).toHaveLength(1);
+  });
+  it("Admin state: 'silent since' and the last check time", async () => {
+    const last = new Date(NOW - 20 * 60_000).toISOString();
+    const h = harness({ mirror: true, health: () => H({ waited: 40, lastAnswerAt: last }) });
+    for (let i = 0; i < 12 * 11; i++) { await h.job.tick(); h.advance(5000); }
+    expect(h.job.state().selfStop).toMatchObject({ silentSince: last });
+    expect(h.stops).toEqual([]); // an outage, not a slowdown
+  });
+  it("the code: the only writes to the mirror switch are 'false' (server + sql/172)", () => {
+    const src = ["server/pc711Shadow.js", "server/pc711Evidence.js", "server.js"].map((f) => readFileSync(f, "utf8")).join("\n");
+    expect(src).not.toMatch(/pc711_mirror_enabled[^\n]*(update|upsert|insert)/i);
+    const sql = readFileSync("sql/172_pc711_shadow_evidence.sql", "utf8");
+    const writes = sql.match(/update public\.app_settings set value = '[a-z]+' where key = 'pc711_mirror_enabled'[^;]*/g) || [];
+    expect(writes).toEqual(["update public.app_settings set value = 'false' where key = 'pc711_mirror_enabled' and value = 'true'"]);
   });
 });
 

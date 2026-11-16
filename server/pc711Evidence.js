@@ -13,6 +13,34 @@ export const EXT_LIMIT_MS = 15 * 60 * 1000;            // mirror: the extension'
 export const REASK_AFTER_MS = [30 * 1000, 5 * 60 * 1000]; // a real phone mismatch: ask again ~30 s and ~5 min after the check
 export const EVIDENCE_SAVE_RETRY_MS = 10 * 60 * 1000;   // a failed evidence save: that value is not asked again for 10 min
 export const EVIDENCE_SAVE_TRIES = 3;                    // … at most 3 tries, then left
+// mirror self-stop (Jeff 2026-11-17): every 10 min, over the last 60 min of mirror-on time, ≥ 20 parcels checked
+export const SELF_STOP_EVERY_MS = 10 * 60 * 1000;
+export const SELF_STOP_WINDOW_MS = 60 * 60 * 1000;
+export const SELF_STOP_MIN_PARCELS = 20;
+export const SELF_STOP_PHONE_MEDIAN_S = 7;      // a. the typical phone time is over 7 s
+export const SELF_STOP_WAITED = 10;             // b. 10 or more parcels waited over 5 min (sql/172 pc711_mirror_health) …
+export const SELF_STOP_SILENT_MS = 10 * 60 * 1000; //    … skipped when the regular checker wrote no answer at all for 10 min
+export const SELF_STOP_STORE_UNKNOWN = 3;       // c. 3 or more store "unknown" answers
+export const SELF_STOP_RULES = ["phone_time", "waited", "store_unknown"];
+
+/** The self-stop decision from pc711_mirror_health's numbers. Pure. silentSince = the regular checker's
+ *  last answer when it has written nothing for 10 min (then rule b is skipped). */
+export function selfStopDecision(h, nowMs) {
+  if (!h || typeof h !== "object") return { stop: false, why: "no_numbers", silentSince: null };
+  const last = Date.parse(h.lastAnswerAt || "");
+  const silent = !Number.isFinite(last) || nowMs - last > SELF_STOP_SILENT_MS;
+  const silentSince = silent ? (Number.isFinite(last) ? new Date(last).toISOString() : null) : null;
+  const checked = Number(h.checked) || 0;
+  if (checked < SELF_STOP_MIN_PARCELS) return { stop: false, why: "too_few", silentSince, silent, checked };
+  const median = Number(h.medianS);
+  if (Number.isFinite(median) && median > SELF_STOP_PHONE_MEDIAN_S) return { stop: true, rule: "phone_time", value: median, silentSince, silent, checked };
+  const waited = Number(h.waited) || 0;
+  if (!silent && waited >= SELF_STOP_WAITED) return { stop: true, rule: "waited", value: waited, silentSince, silent, checked };
+  const unknown = Number(h.storeUnknown) || 0;
+  if (unknown >= SELF_STOP_STORE_UNKNOWN) return { stop: true, rule: "store_unknown", value: unknown, silentSince, silent, checked };
+  return { stop: false, why: "healthy", silentSince, silent, checked };
+}
+
 export const EVIDENCE_FILTERS = ["all", "mismatch", "recheck", "mirror", "error"];
 const KINDS = ["store", "phone", "frozen"];
 const SOURCES = ["fresh", "remembered", "unknown"];
@@ -175,14 +203,20 @@ export function createEvidenceDb(sb) {
   };
   return {
     // ONE call per pass (sql/172 pc711_shadow_pass): shadow switch + queue + re-asks due + mirror switch + mirror queue + waiting pairs
-    async pass(sinceIso, limit, reaskLimit, mirrorAllowed) {
-      const o = await rpc("pc711_shadow_pass", { p_since: sinceIso, p_limit: limit, p_reask_limit: reaskLimit, p_mirror_allowed: Boolean(mirrorAllowed) });
+    async pass(sinceIso, limit, reaskLimit, mirrorAllowed, healthFromIso = null) {
+      const o = await rpc("pc711_shadow_pass", { p_since: sinceIso, p_limit: limit, p_reask_limit: reaskLimit, p_mirror_allowed: Boolean(mirrorAllowed), p_health_from: healthFromIso });
       const x = o && typeof o === "object" ? o : {};
       return {
         shadow: x.shadow === true, ...queue(x), mirror: x.mirror === true,
         reasks: Array.isArray(x.reasks) ? x.reasks : [], awaiting: Array.isArray(x.awaiting) ? x.awaiting : [],
         mirrorQueue: x.mirror_queue ? queue(x.mirror_queue) : null,
+        health: x.health && typeof x.health === "object" ? x.health : null,
       };
+    },
+    // the self-stop: the ONLY setting it writes is pc711_mirror_enabled = 'false' (+ the stop record)
+    async stopMirror(rule, value, fromIso, parcels) {
+      const d = await rpc("pc711_mirror_stop", { p_rule: rule, p_value: value, p_from: fromIso, p_parcels: parcels });
+      return d === true;
     },
     async insert(row) {
       const { error } = await sb.from("pc711_shadow_evidence").upsert(row, { onConflict: "scan_id,kind,input", ignoreDuplicates: true });
@@ -229,11 +263,12 @@ export async function evidenceList(edb, { day = "today", filter = "all", page = 
 }
 
 /** Admin: totals for today | 7days (one RPC). */
-export async function evidenceTotals(edb, readSetting, { day = "today" } = {}, nowMs = Date.now(), dayStartMs = null) {
+export async function evidenceTotals(edb, readSetting, { day = "today" } = {}, nowMs = Date.now(), dayStartMs = null, state = null) {
   let mirror = false;
   try { mirror = String((await readSetting(MIRROR_SWITCH)) ?? "") === "true"; } catch { mirror = false; }
   const which = day === "7days" ? "7days" : "today";
   const from = which === "7days" ? nowMs - EVIDENCE_KEEP_DAYS * DAY_MS : (dayStartMs ?? nowMs - DAY_MS);
   const totals = await edb.totals(new Date(from).toISOString(), new Date(nowMs + 1).toISOString());
-  return { day: which, mirrorEnabled: mirror, totals };
+  const ss = (state && state.selfStop) || {};
+  return { day: which, mirrorEnabled: mirror, totals, selfStop: { silentSince: ss.silentSince ?? null, lastCheckAt: ss.lastCheckAt ?? null, lastStop: totals && totals.lastStop ? totals.lastStop : null } };
 }

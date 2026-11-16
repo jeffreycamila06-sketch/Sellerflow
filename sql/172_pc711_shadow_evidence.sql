@@ -106,6 +106,24 @@ grant all on table public.pc711_shadow_evidence to service_role;
 revoke all on sequence public.pc711_shadow_evidence_id_seq from public, anon, authenticated;
 grant usage, select on sequence public.pc711_shadow_evidence_id_seq to service_role;
 
+-- mirror self-stop records (see pc711_mirror_stop below): when + which rule + the number. Admin only.
+create table if not exists public.pc711_mirror_stops (
+  id          bigserial primary key,
+  at          timestamptz not null default now(),
+  rule        text not null check (rule in ('phone_time', 'waited', 'store_unknown')),
+  value       numeric,
+  window_from timestamptz,
+  parcels     integer
+);
+create index if not exists pc711_mirror_stops_at_idx on public.pc711_mirror_stops (at desc);
+alter table public.pc711_mirror_stops enable row level security;
+revoke all on table public.pc711_mirror_stops from public;
+revoke all on table public.pc711_mirror_stops from anon;
+revoke all on table public.pc711_mirror_stops from authenticated;
+grant all on table public.pc711_mirror_stops to service_role;
+revoke all on sequence public.pc711_mirror_stops_id_seq from public, anon, authenticated;
+grant usage, select on sequence public.pc711_mirror_stops_id_seq to service_role;
+
 -- ── after-mode queue: the parcels the extension checked since p_since whose CURRENT value has no
 -- evidence row yet (a changed phone / store = a new job). A parcel already compared in pc711_shadow
 -- BEFORE this file (pc711_shadow row, no evidence row) is not checked again — its old value is not
@@ -277,6 +295,8 @@ returns jsonb language sql stable set search_path = public, pg_temp as $$
        'avgS', (select round(avg(ext_age_s)) from e where kind = 'store' and ext_age_s is not null),
        'maxS', (select max(ext_age_s) from e where kind = 'store' and ext_age_s is not null)),
     'reasked', (select count(*) from e where reask_n > 0),
+    'lastStop', (select to_jsonb(x) from (select at, rule, value, window_from, parcels from public.pc711_mirror_stops
+                                           order by at desc limit 1) x),
     'restricted', jsonb_build_object('agree', (select count(*) from r where srv_verdict = 'restricted'),
                                      'disagree', (select count(*) from r where srv_verdict is distinct from 'restricted')));
 $$;
@@ -296,11 +316,56 @@ $$;
 revoke all on function public.pc711_evidence_purge() from public, anon, authenticated;
 grant execute on function public.pc711_evidence_purge() to service_role;
 
+-- ── MIRROR SELF-STOP (Jeff 2026-11-17). The regular checker's own numbers since p_from (the last 60 min
+-- of mirror-on time), all from indexes: phone verdicts written in the window for parcels created in it
+-- (parcel_scans_phone_check_at_idx), parcels still waiting > 5 min (parcel_scans_unchecked_idx), store
+-- 'unknown' answers (parcel_scans_store_full_at_idx), the last answer of any kind (max on both indexes).
+-- The server decides (server/pc711Evidence.js selfStopDecision): stop when ≥ 20 parcels were checked and
+-- the typical phone time > 7 s, or ≥ 10 parcels waited > 5 min (skipped when the regular checker wrote
+-- no answer at all in the last 10 min — an outage, not a slowdown), or ≥ 3 store 'unknown' answers.
+
+create or replace function public.pc711_mirror_health(p_from timestamptz)
+returns jsonb language sql stable set search_path = public, pg_temp as $$
+  with ph as (
+    select s.phone_check_at, s.created_at from public.parcel_scans s
+     where s.phone_check_status is not null and s.phone_check_at >= p_from and s.created_at >= p_from
+  )
+  select jsonb_build_object(
+    'from', p_from,
+    'checked', (select count(*) from ph),
+    'medianS', (select round((percentile_cont(0.5) within group (order by extract(epoch from ph.phone_check_at - ph.created_at)))::numeric, 1) from ph),
+    'waited', (select count(*) from ph where ph.phone_check_at - ph.created_at > interval '5 minutes')
+            + (select count(*) from public.parcel_scans s
+                 join public.parcel_check_access acc on acc.user_id = s.user_id and acc.enabled
+                where s.status <> 'exported' and (s.store_full_status is null or s.phone_check_status is null)
+                  and s.phone_check_status is null and s.created_at >= p_from and s.created_at < now() - interval '5 minutes'),
+    'storeUnknown', (select count(*) from public.parcel_scans s
+                      where s.store_full_status is not null and s.store_full_at >= p_from and s.store_full_status = 'unknown'),
+    'lastAnswerAt', greatest((select max(s.phone_check_at) from public.parcel_scans s where s.phone_check_status is not null),
+                             (select max(s.store_full_at) from public.parcel_scans s where s.store_full_status is not null)));
+$$;
+revoke all on function public.pc711_mirror_health(timestamptz) from public, anon, authenticated;
+grant execute on function public.pc711_mirror_health(timestamptz) to service_role;
+
+-- The ONLY write the self-stop makes to a setting: pc711_mirror_enabled = 'false' (never 'true'), plus
+-- the record Admin shows (when + which rule + the number). Only when mirror is on (no record otherwise).
+create or replace function public.pc711_mirror_stop(p_rule text, p_value numeric, p_from timestamptz, p_parcels integer)
+returns boolean language plpgsql volatile set search_path = public, pg_temp as $$
+begin
+  update public.app_settings set value = 'false' where key = 'pc711_mirror_enabled' and value = 'true';
+  if not found then return false; end if;
+  insert into public.pc711_mirror_stops (rule, value, window_from, parcels) values (p_rule, p_value, p_from, p_parcels);
+  return true;
+end;
+$$;
+revoke all on function public.pc711_mirror_stop(text, numeric, timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.pc711_mirror_stop(text, numeric, timestamptz, integer) to service_role;
+
 -- ── ONE call per pass (the server's ONLY database request on an idle pass): the shadow switch (off →
 -- {shadow:false} and nothing else is read), the after-mode queue + the re-asks that are due + the mirror switch + (mirror on, outside 01:00–05:00
 -- Taipei = p_mirror_allowed) the mirror queue + the mirror rows still waiting for the extension (also
 -- after mirror was switched off, so no pair is dropped). Every part reads its own index.
-create or replace function public.pc711_shadow_pass(p_since timestamptz, p_limit integer, p_reask_limit integer, p_mirror_allowed boolean)
+create or replace function public.pc711_shadow_pass(p_since timestamptz, p_limit integer, p_reask_limit integer, p_mirror_allowed boolean, p_health_from timestamptz default null)
 returns jsonb language plpgsql volatile set search_path = public, pg_temp as $$
 declare v_shadow boolean; v_mirror boolean; v_out jsonb;
 begin
@@ -321,12 +386,16 @@ begin
          'awaiting', public.pc711_mirror_awaiting(50));
   if v_mirror and coalesce(p_mirror_allowed, false) then
     v_out := v_out || jsonb_build_object('mirror_queue', public.pc711_mirror_pending(p_since, p_limit));
+    -- the self-stop's health numbers: only when the server asks (every 10 min of mirror-on time)
+    if p_health_from is not null then
+      v_out := v_out || jsonb_build_object('health', public.pc711_mirror_health(p_health_from));
+    end if;
   end if;
   return v_out;
 end;
 $$;
-revoke all on function public.pc711_shadow_pass(timestamptz, integer, integer, boolean) from public, anon, authenticated;
-grant execute on function public.pc711_shadow_pass(timestamptz, integer, integer, boolean) to service_role;
+revoke all on function public.pc711_shadow_pass(timestamptz, integer, integer, boolean, timestamptz) from public, anon, authenticated;
+grant execute on function public.pc711_shadow_pass(timestamptz, integer, integer, boolean, timestamptz) to service_role;
 
 -- the mirror switch (off)
 insert into public.app_settings (key, value) values ('pc711_mirror_enabled', 'false')

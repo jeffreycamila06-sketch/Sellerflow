@@ -18,7 +18,7 @@
 // RPC (sql/162 pc711_shadow_pending) — an empty pass costs a few bytes.
 // Log, one line per check: [PC711_SHADOW] kind=… match=1|0|err step=… http=… ms=… gap=… — no data.
 import { randomUUID } from "node:crypto";
-import { MIRROR_SWITCH, EVIDENCE_SAVE_TRIES, EVIDENCE_SAVE_RETRY_MS, evidenceJobs, evidenceRow, pairPatch, oldRowFromPair, reaskWord, nextReaskAt } from "./pc711Evidence.js";
+import { SELF_STOP_EVERY_MS, SELF_STOP_WINDOW_MS, selfStopDecision, MIRROR_SWITCH, EVIDENCE_SAVE_TRIES, EVIDENCE_SAVE_RETRY_MS, evidenceJobs, evidenceRow, pairPatch, oldRowFromPair, reaskWord, nextReaskAt } from "./pc711Evidence.js";
 
 // ── mirrored from chrome-extension/background.js (test-pinned) ─────────────────
 export const SHADOW_POLL_MS = 5000;                      // PC_POLL_MS
@@ -246,6 +246,9 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
   const dayMax = new Map();    // Taipei day → highest Waiting seen (loaded from pc711_shadow_days first)
   let lastPendingFail = 0;
   let mirrorOnLast = false;
+  let mirrorOnSince = null;    // when this server last saw mirror switch on (the self-stop's window starts here at most)
+  let lastHealthAt = 0;        // the last self-stop check
+  let silentSince = null;      // the regular checker wrote no answer since … (rule b skipped) — shown on Admin
   const say = (line) => { try { log(line); } catch { /* a log never stops the job */ } };
 
   async function noteWaiting(n, t) {
@@ -413,8 +416,11 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     const since = new Date(t - SHADOW_LOOKBACK_MS).toISOString();
     const mirrorAllowed = !inShadowMaint(t);
     // the ONE request of an idle pass: the shadow switch comes back in it (off → nothing else is read or done)
+    // the self-stop's numbers ride on the same call, every 10 min of mirror-on time (window: last 60 min of it)
+    const healthDue = mirrorOnLast && mirrorOnSince !== null && t - mirrorOnSince >= SELF_STOP_EVERY_MS && t - lastHealthAt >= SELF_STOP_EVERY_MS;
+    const healthFrom = healthDue ? new Date(Math.max(t - SELF_STOP_WINDOW_MS, mirrorOnSince)).toISOString() : null;
     let p;
-    try { p = await evidence.pass(since, SHADOW_FETCH_LIMIT, SHADOW_LIMIT, mirrorAllowed); }
+    try { p = await evidence.pass(since, SHADOW_FETCH_LIMIT, SHADOW_LIMIT, mirrorAllowed, healthFrom); }
     catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
     if (!p.shadow) return { skipped: "off" };
     const d = taipeiDay(t);
@@ -423,8 +429,22 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
       try { await db.purgeBefore(new Date(t - SHADOW_KEEP_DAYS * DAY_MS).toISOString()); } catch { /* next day */ }
       for (const k of [...dayMax.keys()]) if (k < taipeiDay(t - 3 * DAY_MS).key) dayMax.delete(k);
     }
-    const mirrorOn = p.mirror && mirrorAllowed;
-    if (mirrorOn !== mirrorOnLast) { mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`); }
+    let mirrorOn = p.mirror && mirrorAllowed;
+    if (mirrorOn !== mirrorOnLast) {
+      mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`);
+      mirrorOnSince = mirrorOn ? t : null; lastHealthAt = 0; if (!mirrorOn) silentSince = null;
+    }
+    if (mirrorOn && p.health) {
+      lastHealthAt = t;
+      const dec = selfStopDecision(p.health, t);
+      silentSince = dec.silentSince;
+      if (dec.stop) {
+        let stopped = false;
+        try { stopped = await evidence.stopMirror(dec.rule, dec.value, healthFrom, dec.checked); } catch { stopped = false; }
+        say(`${TAG} mirror self-stop rule=${dec.rule} value=${dec.value} parcels=${dec.checked} ${stopped ? "switched_off" : "write_failed"}`);
+        if (stopped) { mirrorOn = false; mirrorOnLast = false; mirrorOnSince = null; }
+      }
+    }
     await noteWaiting(p.waiting, t);
     for (const [k, b] of backoff) if (t - b.seenAt > SHADOW_LOOKBACK_MS) backoff.delete(k); // gone for 6 h (the extension's rule)
     for (const [k, f] of saveFails) if (t - f.seenAt > SHADOW_LOOKBACK_MS) saveFails.delete(k);
@@ -515,7 +535,8 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
     },
     stop() { stopped = true; if (timer) clearTimeout(timer); timer = null; },
     /** What Admin sees (no data): the brake, the last Waiting, today's max. */
-    state: () => ({ pausedUntil: pausedUntil > now() ? pausedUntil : null, waiting, waitingAt: waitingAt || null, dayMax: Object.fromEntries(dayMax) }),
+    state: () => ({ pausedUntil: pausedUntil > now() ? pausedUntil : null, waiting, waitingAt: waitingAt || null, dayMax: Object.fromEntries(dayMax),
+      selfStop: { silentSince, lastCheckAt: lastHealthAt ? new Date(lastHealthAt).toISOString() : null } }),
     _state: () => ({ day, stoppedSince, lastEnd, streak, pausedUntil, backoff: new Map(backoff) }),
   };
 }

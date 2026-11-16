@@ -203,12 +203,57 @@ await svc(() => q(`update public.pc711_shadow_evidence set reask_next_at = null 
 const pending0 = (await svc(() => q(`select public.pc711_evidence_pending(now() - interval '6 hours', 25) r`))).rows[0].r;
 ok(JSON.stringify(ps.jobs) === JSON.stringify(pending0.jobs) && ps.waiting === pending0.waiting, "pass: the after-mode queue = pc711_evidence_pending's");
 
+// ── mirror self-stop ──
+const health = async (fromSql) => (await svc(() => q(`select public.pc711_mirror_health(${fromSql}) r`))).rows[0].r;
+const H0 = await health("now() - interval '60 minutes'");
+// 3 parcels of seller A created in the window: answered after 3 s, 6 min, and one still waiting 7 min
+const t60 = await at(40);
+await parcel(400, { phone: "0900000400", createdMin: 40, phone_status: "ok", phone_at: (await q(`select ($1::timestamptz + interval '3 seconds') t`, [t60])).rows[0].t });
+await parcel(401, { phone: "0900000401", createdMin: 40, phone_status: "ok", phone_at: (await q(`select ($1::timestamptz + interval '6 minutes') t`, [t60])).rows[0].t });
+await parcel(402, { phone: "0900000402", createdMin: 7 });
+await parcel(403, { phone: "0900000403", createdMin: 7, user: B }); // a seller without parcel-check access: not counted
+await q(`update public.parcel_scans set store_full_status = 'unknown', store_full_at = now() - interval '5 minutes' where id in ($1, $2)`, [P(400), P(401)]);
+const H1 = await health("now() - interval '60 minutes'");
+ok(H1.checked === H0.checked + 2, `health: phone answers written in the window for parcels created in it (${H1.checked - H0.checked})`);
+ok(H1.waited === H0.waited + 2, `health: waited over 5 min = answered after > 5 min + still waiting > 5 min, access sellers only (${H1.waited - H0.waited})`);
+ok(H1.storeUnknown === H0.storeUnknown + 2, "health: store 'unknown' answers in the window");
+ok(H1.lastAnswerAt && Date.parse(H1.lastAnswerAt) > Date.now() - 6 * 60_000, "health: the last answer of any kind");
+const H2 = await svc(() => q(`select public.pc711_mirror_health(now() - interval '60 minutes') r`)).then((r) => r.rows[0].r);
+ok(typeof H2.medianS === "number", `health: the typical phone time in seconds (${H2.medianS})`);
+// the stop: true → false + one record; already off → nothing; never writes 'true'
+await q(`update public.app_settings set value = 'true' where key = 'pc711_mirror_enabled'`);
+const st1 = (await svc(() => q(`select public.pc711_mirror_stop('phone_time', 9.2, now() - interval '1 hour', 40) r`))).rows[0].r;
+ok(st1 === true && (await q(`select value from public.app_settings where key = 'pc711_mirror_enabled'`)).rows[0].value === "false", "stop: switches mirror off");
+const st2 = (await svc(() => q(`select public.pc711_mirror_stop('waited', 12, now() - interval '1 hour', 40) r`))).rows[0].r;
+ok(st2 === false && (await svc(() => q(`select count(*)::int n from public.pc711_mirror_stops`))).rows[0].n === 1, "stop while already off: nothing written, no second record");
+const stopSrc = (await q(`select prosrc from pg_proc where proname = 'pc711_mirror_stop'`)).rows[0].prosrc;
+ok(!/'true'\s*where/i.test(stopSrc) && /set value = 'false'/.test(stopSrc), "the stop function can only write 'false'");
+let badRule = null;
+await q(`update public.app_settings set value = 'true' where key = 'pc711_mirror_enabled'`);
+try { await svc(() => q(`select public.pc711_mirror_stop('anything', 1, now(), 1)`)); } catch (x) { badRule = x.message; }
+ok(badRule && /check/i.test(badRule), "an unknown rule name is refused");
+ok((await q(`select value from public.app_settings where key = 'pc711_mirror_enabled'`)).rows[0].value === "true", "…and nothing is half-done: the switch stays as it was (one transaction)");
+await q(`update public.app_settings set value = 'false' where key = 'pc711_mirror_enabled'`);
+const tot2 = (await svc(() => q(`select public.pc711_evidence_totals(now() - interval '1 day', now() + interval '1 minute') r`))).rows[0].r;
+ok(tot2.lastStop?.rule === "phone_time" && Number(tot2.lastStop?.value) === 9.2 && tot2.lastStop?.parcels === 40, `totals: the last stop (${JSON.stringify(tot2.lastStop)})`);
+// health rides on the pass: only when asked AND mirror on AND allowed
+await q(`update public.app_settings set value = 'true' where key = 'pc711_mirror_enabled'`);
+const pass5 = async (allowed, from) => (await svc(() => q(`select public.pc711_shadow_pass(now() - interval '6 hours', 25, 5, $1, ${from}) r`, [allowed]))).rows[0].r;
+ok((await pass5(true, "now() - interval '1 hour'")).health?.checked >= 2, "pass: + the health numbers when asked (mirror on)");
+ok(!("health" in (await pass5(true, "null"))), "pass: no health numbers when not asked");
+ok(!("health" in (await pass5(false, "now() - interval '1 hour'"))), "pass: no health numbers at 01:00–05:00");
+await q(`update public.app_settings set value = 'false' where key = 'pc711_mirror_enabled'`);
+ok(!("health" in (await pass5(true, "now() - interval '1 hour'"))), "pass: no health numbers with mirror off");
+
 // ── who can read ──
 for (const [role, uid, who] of [["anon", null, "anon"], ["authenticated", A, "a seller"]]) {
   let e = null;
   try { await as(role, uid, () => q(`select * from public.pc711_shadow_evidence`)); } catch (x) { e = x.message; }
   ok(e && /permission denied/i.test(e), `${who} cannot read the evidence table (${e})`);
-  for (const fn of ["pc711_shadow_pass(now(), 5, 5, true)", "pc711_evidence_pending(now(), 5)", "pc711_mirror_pending(now(), 5)", "pc711_mirror_awaiting(5)", "pc711_evidence_totals(now(), now())", "pc711_evidence_purge()"]) {
+  e = null;
+  try { await as(role, uid, () => q(`select * from public.pc711_mirror_stops`)); } catch (x) { e = x.message; }
+  ok(e && /permission denied/i.test(e), `${who} cannot read the self-stop records`);
+  for (const fn of ["pc711_mirror_health(now())", "pc711_mirror_stop('waited', 1, now(), 1)", "pc711_shadow_pass(now(), 5, 5, true)", "pc711_evidence_pending(now(), 5)", "pc711_mirror_pending(now(), 5)", "pc711_mirror_awaiting(5)", "pc711_evidence_totals(now(), now())", "pc711_evidence_purge()"]) {
     e = null;
     try { await as(role, uid, () => q(`select public.${fn}`)); } catch (x) { e = x.message; }
     ok(e && /permission denied/i.test(e), `${who} cannot call ${fn.split("(")[0]}`);
@@ -240,7 +285,7 @@ ok((await q(`select count(*)::int n from public.pc711_shadow where scan_id = $1`
 
 // ── rollback ──
 await db.exec(src("172_pc711_shadow_evidence_rollback.sql"));
-ok((await q(`select to_regclass('public.pc711_shadow_evidence') r`)).rows[0].r === null, "rollback: the evidence table is gone");
+ok((await q(`select to_regclass('public.pc711_shadow_evidence') r`)).rows[0].r === null && (await q(`select to_regclass('public.pc711_mirror_stops') r`)).rows[0].r === null, "rollback: the evidence table + the self-stop records are gone");
 ok((await q(`select count(*)::int n from pg_proc where proname like 'pc711_evidence%' or proname like 'pc711_mirror%'`)).rows[0].n === 0, "rollback: its functions are gone");
 ok((await q(`select count(*)::int n from cron.job where jobname = 'purge-pc711-shadow-evidence'`)).rows[0].n === 0, "rollback: the purge job is gone");
 ok((await q(`select count(*)::int n from public.app_settings where key = 'pc711_mirror_enabled'`)).rows[0].n === 0, "rollback: the mirror switch is gone");

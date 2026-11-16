@@ -41,8 +41,8 @@ const DETAIL = { ...MIS, scan_id: "00000000-0000-0000-0000-000000000597", seller
   srv_started_at: "2026-11-16T15:51:46Z", srv_finished_at: "2026-11-16T15:51:47Z", srv_raw: "Status:true", queue_waiting: 3,
   reask1_at: "2026-11-16T15:52:17Z", reask2_at: "2026-11-16T15:56:47Z" };
 
-function setup(rows: Record<string, unknown>[] = [MIS, ERR, RECHECK, MIRROR]) {
-  answers = (path, q) => path === "/evidence/totals" ? { day: q.get("day"), mirrorEnabled: false, totals: TOTALS }
+function setup(rows: Record<string, unknown>[] = [MIS, ERR, RECHECK, MIRROR], selfStop: Record<string, unknown> = {}) {
+  answers = (path, q) => path === "/evidence/totals" ? { day: q.get("day"), mirrorEnabled: false, totals: TOTALS, selfStop }
     : path === "/evidence" ? { page: 0, more: false, rows: q.get("filter") === "all" ? rows : rows.slice(0, 1) }
     : path === "/evidence/7" ? { row: DETAIL } : {};
   return render(<TProvider lang="en"><Pc711EvidenceBlock /></TProvider>);
@@ -63,6 +63,22 @@ describe("totals", () => {
   });
   it("pairsBySource adds up a mode + kind by source", () => {
     expect(pairsBySource(TOTALS.pairs as never, "after", "store").remembered).toEqual({ agree: 0, compared: 7 });
+  });
+});
+
+describe("mirror self-stop on Admin", () => {
+  it("not stopped: says so; no 'silent' line", async () => {
+    setup();
+    expect((await screen.findByTestId("pc711-ev-selfstop")).textContent).toBe("Mirror self-stop: has not stopped");
+    expect(screen.queryByTestId("pc711-ev-silent")).toBeNull();
+  });
+  it("stopped: when and which rule fired (with the number)", async () => {
+    setup(undefined, { lastStop: { at: "2026-11-17T03:20:00Z", rule: "phone_time", value: 9.2, parcels: 40 } });
+    expect((await screen.findByTestId("pc711-ev-selfstop")).textContent).toBe("Mirror stopped itself at 11/17 11:20:00: typical phone time over 7 s (9.2)");
+  });
+  it("the extension silent: 'extension silent since <time>'", async () => {
+    setup(undefined, { silentSince: "2026-11-17T03:05:00Z" });
+    expect((await screen.findByTestId("pc711-ev-silent")).textContent).toBe("Extension silent since 11/17 11:05:00 (the \"waited\" rule is skipped)");
   });
 });
 
