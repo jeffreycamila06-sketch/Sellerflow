@@ -13,6 +13,7 @@ import type { Shop } from "./shopApi";
 import { money, photoUrl } from "./shopApi";
 import { freeShipping, subtotalOf, type LineInfo } from "./cart";
 import { mutedText } from "./shopStyle";
+import { countdown } from "./pricing";
 import { chatHref, CHAT_PREFILL } from "./shopLinks";
 import { BrandIcon, type BrandKey } from "./brandIcons";
 import { SmallPhoto } from "./ui";
@@ -341,6 +342,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
               <img data-testid="od-qr" src={photoUrl(view.pay.qr.path)} alt={t.rd_shop_od_scan} style={{ width: "min(240px, 70vw)", aspectRatio: "1 / 1", objectFit: "contain", borderRadius: 12, border: "1px solid var(--s-line)", background: "#fff" }} />
             </div>
           )}
+          {view.status === "awaiting_payment" && view.autoCancelAt && <div style={{ marginTop: 12, ...mutedText, fontSize: 12.5 }}><AutoCancelIn end={view.autoCancelAt} label={t.rd_od_autocancel_in} /></div>}
           <input ref={fileRef} type="file" accept="image/*" data-testid="od-file" style={{ display: "none" }} onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }} />
           <button type="button" data-testid="od-upload" className="v-btn" style={{ width: "100%", marginTop: 14 }} disabled={up === "busy"} onClick={() => fileRef.current?.click()}>
             {up === "busy" ? t.rd_shop_od_uploading : view.receipt ? t.rd_shop_od_upload_again : t.rd_shop_od_upload}
@@ -438,6 +440,13 @@ function KV({ k, v, copy, copyLabel }: { k: string; v: ReactNode; copy?: () => v
   return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><span style={{ color: "var(--s-mut)", flexShrink: 0 }}>{k}</span><span style={{ fontWeight: 700, textAlign: "right", overflowWrap: "anywhere", display: "flex", alignItems: "center", gap: 8 }}>{v}{copy && <button type="button" onClick={copy} style={{ ...linkBtn, fontSize: 12.5 }}>{copyLabel}</button>}</span></div>;
 }
 /** A v2 payment method on the order link: its name, bank details, instructions (copy) and QR. */
+/** "Auto-cancels in HH:MM:SS" — runs down to the order's real auto-cancel time (the device clock), stops at 00:00:00. */
+function AutoCancelIn({ end, label }: { end: string; label: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  return <span className="v-cd" data-testid="od-countdown">{label} {countdown(end, now).split(":").map((x, k) => <span key={k}>{k ? ":" : ""}<i>{x}</i></span>)}</span>;
+}
+
 function PayMethodBox({ m, t, say }: { m: PayOpt; t: Record<string, string>; say: (s: string) => void }) {
   return (
     <div data-testid="od-method" style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
