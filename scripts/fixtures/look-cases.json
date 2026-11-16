@@ -1,0 +1,19 @@
+[
+  { "name": "ocean (brand)", "in": { "layout": "brand", "top1": "#1F4FA8", "top2": "#8b5cf6", "btn": "#111111", "sale": "#DC2626", "dark": false, "font": "modern", "corners": "sharp" },
+    "out": { "layout": "brand", "top1": "#1f4fa8", "top2": "#8b5cf6", "btn": "#111111", "sale": "#dc2626", "dark": false, "font": "modern", "corners": "sharp" } },
+  { "name": "marketplace dark + tiles", "in": { "layout": "market", "top1": "#0b0b0f", "top2": "#4c1d95", "btn": "#d7ff3e", "sale": "#fb7185", "dark": true, "font": "classic", "corners": "round", "tiles": ["  Tops ", "Jackets", "Shoes"] },
+    "out": { "layout": "market", "top1": "#0b0b0f", "top2": "#4c1d95", "btn": "#d7ff3e", "sale": "#fb7185", "dark": true, "font": "classic", "corners": "round", "tiles": ["Tops", "Jackets"] } },
+  { "name": "tiles: non-strings and blanks dropped, long cut to 40", "in": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "friendly", "corners": "round", "tiles": [3, " ", "AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEE"] },
+    "out": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "friendly", "corners": "round", "tiles": ["AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDD"] } },
+  { "name": "tiles not a list → no tiles; unknown keys dropped", "in": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "friendly", "corners": "round", "tiles": "Tops", "extra": "<script>" },
+    "out": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "friendly", "corners": "round" } },
+  { "name": "bad layout", "in": { "layout": "fancy", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "modern", "corners": "sharp" }, "out": null },
+  { "name": "bad font", "in": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "comic", "corners": "sharp" }, "out": null },
+  { "name": "bad corners", "in": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "modern", "corners": "soft" }, "out": null },
+  { "name": "dark not a boolean", "in": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": "true", "font": "modern", "corners": "sharp" }, "out": null },
+  { "name": "short hex", "in": { "layout": "brand", "top1": "#000", "top2": "#ffffff", "btn": "#123456", "sale": "#abcdef", "dark": false, "font": "modern", "corners": "sharp" }, "out": null },
+  { "name": "css injection in a colour", "in": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "red;background:url(x)", "sale": "#abcdef", "dark": false, "font": "modern", "corners": "sharp" }, "out": null },
+  { "name": "missing sale", "in": { "layout": "brand", "top1": "#000000", "top2": "#ffffff", "btn": "#123456", "dark": false, "font": "modern", "corners": "sharp" }, "out": null },
+  { "name": "not an object", "in": ["brand"], "out": null },
+  { "name": "a string", "in": "brand", "out": null }
+]

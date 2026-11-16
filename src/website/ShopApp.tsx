@@ -17,6 +17,9 @@ import { ClosedPage } from "./ui";
 import { SHOP_CSS } from "./shopStyle";
 import { V2_CSS } from "./v2/styles";
 import { themeOf, themeClass, accentVars } from "./v2/theme";
+import { V3_CSS } from "./v3/styles";
+import { lookStyle } from "./v3/look";
+import BrandHome from "./v3/BrandHome";
 import { Header, Footer, BottomNav, ChatSheet, Sheet, Fab } from "./v2/Shell";
 import { useToast } from "./v2/useToast";
 import { checkoutOf, shipLabel, payLabel } from "./shipPay";
@@ -120,7 +123,11 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   };
   const toShop = (p: Partial<ShopFilter> = {}) => { setFilter({ ...NO_FILTER, sort: filter.sort, ...p }); go({ page: "shop" }); };
   let body: ReactNode;
-  if (route.page === "home") body = <Home shop={shop} cur={cur} onOpen={(id) => go({ page: "product", id })} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} onShop={(f) => toShop(f)} />;
+  const look = shop.shop.look;
+  const brand = look?.layout === "brand";
+  if (route.page === "home") body = look && brand
+    ? <BrandHome shop={shop} look={look} cur={cur} onOpen={(id) => go({ page: "product", id })} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} onShop={(f) => toShop(f)} />
+    : <Home shop={shop} cur={cur} onOpen={(id) => go({ page: "product", id })} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} onShop={(f) => toShop(f)} />;
   else if (route.page === "product" && product) body = <Product key={product.id} shop={shop} product={product} cur={cur} nowMs={clock}
     onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); say(t.rd_shop_added); }}
     onBuy={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); go({ page: "checkout" }); }}
@@ -139,10 +146,13 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   const withFooter = route.page === "home" || route.page === "shop" || route.page === "product";
   const k = themeOf(shop.shop);
   const ck = checkoutOf(shop);
+  // v3: a shop with a look takes the look's colours / font / corners; without one = Build 1, exactly as before
+  const ls = look ? lookStyle(look) : null;
   return (
-    <div className={`sfl-v2 ${themeClass(k)} sfl-shop`} data-testid="shop-root" data-theme-key={k} style={accentVars(shop.shop, k) as CSSProperties}>
-      <style>{V2_CSS + SHOP_CSS}</style>
-      <Header shop={shop} active={navActive} onBack={onBack} onHome={home} cartCount={count} onCart={() => go({ page: "cart" })}
+    <div className={ls ? `sfl-v2 ${ls.className} sfl-shop` : `sfl-v2 ${themeClass(k)} sfl-shop`} data-testid="shop-root" data-theme-key={ls ? `look-${look!.layout}` : k}
+      style={(ls ? ls.vars : accentVars(shop.shop, k)) as CSSProperties}>
+      <style>{ls ? V2_CSS + SHOP_CSS + V3_CSS : V2_CSS + SHOP_CSS}</style>
+      <Header shop={shop} active={navActive} overBand={brand && route.page === "home"} onBack={onBack} onHome={home} cartCount={count} onCart={() => go({ page: "cart" })}
         query={query} onQuery={(q) => setFilter({ ...filter, q })} onSearch={(q) => toShop({ q })} cats={cats} onCat={(c) => toShop({ cat: c })}
         savedCount={saved.length} onSaved={() => go({ page: "saved" })} onTrack={() => go({ page: "orders" })} />
       <main className="v-main">{body}</main>

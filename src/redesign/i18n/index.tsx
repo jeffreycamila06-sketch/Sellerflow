@@ -1499,6 +1499,7 @@ const RAW: Record<string, Row> = {
   rd_home_flash: { en: "Flash sale", fil: "Flash sale", zh: "限时特卖", "zh-TW": "限時特賣", vi: "Giảm giá chớp nhoáng", th: "แฟลชเซล", id: "Flash sale", bg: "Светкавична разпродажба" },
   rd_home_ends_in: { en: "Ends in", fil: "Matatapos sa", zh: "剩余", "zh-TW": "剩餘", vi: "Kết thúc sau", th: "สิ้นสุดใน", id: "Berakhir dalam", bg: "Край след" },
   rd_home_see_all: { en: "See all", fil: "Tingnan lahat", zh: "查看全部", "zh-TW": "查看全部", vi: "Xem tất cả", th: "ดูทั้งหมด", id: "Lihat semua", bg: "Виж всички" },
+  rd_brand_next: { en: "Next", fil: "Susunod", zh: "下一组", "zh-TW": "下一組", vi: "Tiếp", th: "ถัดไป", id: "Berikutnya", bg: "Напред" },
   rd_home_shop_now: { en: "Shop now", fil: "Mamili na", zh: "立即选购", "zh-TW": "立即選購", vi: "Mua ngay", th: "ช้อปเลย", id: "Belanja sekarang", bg: "Пазарувай" },
   rd_home_about: { en: "About {shop}", fil: "Tungkol sa {shop}", zh: "关于 {shop}", "zh-TW": "關於 {shop}", vi: "Về {shop}", th: "เกี่ยวกับ {shop}", id: "Tentang {shop}", bg: "За {shop}" },
   rd_home_items_sold: { en: "Items sold", fil: "Nabentang item", zh: "已售件数", "zh-TW": "已售件數", vi: "Sản phẩm đã bán", th: "ชิ้นที่ขายแล้ว", id: "Barang terjual", bg: "Продадени" },
