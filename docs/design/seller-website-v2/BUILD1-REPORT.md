@@ -25,6 +25,8 @@ Everything that protects orders is still there: prices and stock checked by the 
 | `576265dc` | help guide | Website section of `docs/support/sfl-guide.md` updated; `sql/116b` regenerated (not applied). |
 | `47af9dbe` | proof tools | `harness/compare.cjs`, `harness/shoot.cjs` |
 | `f53deb25` | fix | Fix found in the compare shots: a long line in the phone cart could make the page wider than the screen. |
+| `c6251b35` | audit fix 1 | **Price changed between view and order.** The page sends the total it showed (items + shipping). Different from the database's total → NO order, NO stock, answer `price_changed` with the new total; the page shows the new prices and the buyer confirms again. An old page that sends no total behaves as today. |
+| `680cb84d` | audit fix 2 | **How to pay stays on the order link.** A copy of the picked method (name, instructions, QR path, bank details) is kept on the order and shown while payment is due — also after the seller edits, turns off or deletes the method. |
 
 Left out on purpose (Build 2): vouchers, "What buyers say". Ratings are hidden everywhere.
 New words exist in all 8 languages. The iPhone app shows no plan / price / upgrade words.
@@ -41,9 +43,9 @@ New words exist in all 8 languages. The iPhone app shows no plan / price / upgra
 How to remake them: `VITE_SUPABASE_URL=https://demo.supabase.co VITE_SUPABASE_ANON_KEY=demo npx vite --port 5199 --strictPort`, then run `node docs/design/seller-website-v2/harness/compare.cjs` and `node docs/design/seller-website-v2/harness/shoot.cjs walk-` (or `seller-`).
 
 ## Results
-- **SQL proof:** `scripts/sql165-behaviour.mjs` → **117 passed, 0 failed** (PGlite; includes the rollback narrowing the delivery check, and the shared checkout cases the app's mirror is also tested against).
-- **Full test suite:** 683 files passed (1 skipped), **8,920 tests passed** (9 skipped), 0 failed.
-- **Typecheck:** clean. **Build:** green. **Lint:** 0 errors.
+- **SQL proof:** `scripts/sql165-behaviour.mjs` → **142 passed, 0 failed** (PGlite; includes the rollback narrowing the delivery check, the shared checkout cases the app's mirror is also tested against, and the two audit fixes — 8 / 5 checks go red with each fix removed).
+- **Full test suite:** 685 files passed (1 skipped), **8,926 tests passed** (9 skipped), 0 failed.
+- **Typecheck:** clean. **Build:** green. **Lint:** 56 errors / 6 warnings, the same as main (all were there before; none added).
 - **CI:** green on `47af9dbe`. For `f53deb25` (CSS only), see the final message.
 
 ## SQL — `sql/165_seller_website_v2.sql` (+ `sql/165_seller_website_v2_rollback.sql`), NOT applied
@@ -58,5 +60,12 @@ Add-only. It needs sql/163 and sql/164. The rollback puts back the sql/163 funct
 | PART 11 | `settings.payMethods` (≤ 8, checked), new columns `website_orders.pay_id / pay_name`; `website_order` returns the picked method while payment is due. |
 | PART 12 | `taxIncluded` in `checkout2`. |
 | PART 13 | `website_orders.courier / tracking_no`, `website_order_ship()`; the buyer sees them once shipped. |
+| AUDIT FIX 1 | `website_place_order` compares `p_order.shownTotal` with its own total → `price_changed` (no order, no stock). |
+| AUDIT FIX 2 | `website_orders.pay_copy` (jsonb, ≤ 4 KB), filled at order time; `website_order` shows it while payment is due. |
 
-Apply order when ready: sql/165 first → then the web merge. sql/116b (guide) after the merge.
+Apply order when ready: the website v2 SQL first → then the web merge. sql/116b (guide) after the merge.
+
+⚠️ **Numbering:** main already has `sql/165_invite_referral.sql` and `sql/166_guide_invite_friends.sql` (and its own
+`scripts/sql165-behaviour.mjs`). Free on main today: **167 and up** (gaps 55, 81, 94, 138, 139, 150 are intentional —
+don't reuse). This branch's `sql/165_seller_website_v2*.sql` + `scripts/sql165-behaviour.mjs` must be renumbered (167)
+before merging; not done yet, as asked.
