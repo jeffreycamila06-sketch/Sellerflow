@@ -124,7 +124,7 @@ SHOTS.push(["seller-2-payment-shipping-TW", "?m=payship&country=TW", {}]);
 SHOTS.push(["seller-3-payment-shipping-CA", "?m=payship&country=CA", {}]);
 SHOTS.push(["seller-4-order-ship-form", "?m=orders", { click: ['[data-testid="wor-f-all"]', '[data-testid="wor-row"] >> nth=2', '[data-testid="wor-act-shipped"]'] }]);
 
-(async () => {
+async function main() {
   const browser = await chromium.launch();
   const made = [];
   for (const [name, qs, o] of SHOTS) {
@@ -160,4 +160,31 @@ SHOTS.push(["seller-4-order-ship-form", "?m=orders", { click: ['[data-testid="wo
   }
   await browser.close();
   console.log(`${made.length} screenshots in ${OUT}`);
-})().catch((e) => { console.error(e); process.exit(1); });
+}
+// the shop side of a shot (used by compare.cjs too): open the page, set the device's memory, click, full height
+async function shootShop(browser, dev, qs, o, vn) {
+  const ctx = await browser.newContext({ ...dev, locale: "en-US", timezoneId: "Asia/Taipei" });
+  const page = await ctx.newPage();
+  await routes(page, o.shop || shopFor("pop"), o.order || ORDER);
+  await page.addInitScript(([cart, buyer, saved, o2, now]) => {
+    const D = Date; const fixed = now;
+    globalThis.Date = class extends D { constructor(...a) { super(...(a.length ? a : [fixed])); } static now() { return fixed; } };
+    localStorage.setItem("sfl_shop_lang", "en");
+    if (o2.cart) localStorage.setItem("sfl_shop_cart_budgetukay", cart);
+    if (o2.buyer) localStorage.setItem("sfl_shop_buyer", buyer);
+    if (o2.saved) localStorage.setItem("sfl_shop_saved_budgetukay", saved);
+    if (o2.orders) localStorage.setItem("sfl_shop_orders_budgetukay", JSON.stringify([{ token: "f".repeat(64), no: "W-1042", at: new D(fixed).toISOString(), total: 1430 }, { token: "e".repeat(64), no: "W-1037", at: new D(fixed - 5 * 86400000).toISOString(), total: 640 }]));
+  }, [CART, BUYER, SAVED, { cart: !!o.cart, buyer: !!o.buyer, saved: !!o.saved, orders: !!o.orders }, NOW]);
+  await page.goto(BASE + qs, { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+  for (const c of o.click || []) { await page.locator(c).first().click(); await page.waitForTimeout(350); }
+  const h = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight));
+  const vp = page.viewportSize();
+  if (h > vp.height) { await page.setViewportSize({ width: vp.width, height: Math.min(h, 9000) }); await page.waitForTimeout(250); }
+  const buf = await page.screenshot({ type: "jpeg", quality: 80 });
+  await ctx.close();
+  void vn;
+  return buf;
+}
+module.exports = { shopFor, PAGES, VIEWS, THEMES, shootShop };
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
