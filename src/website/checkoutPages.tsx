@@ -444,7 +444,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
       {link && (
         <div className="v-box" style={{ padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 800 }}>{t.rd_shop_od_link}</div>
-          <div style={{ ...mutedText, fontSize: 12.5, margin: "2px 0 8px" }}>{t.rd_shop_od_link_hint}</div>
+          <div style={{ ...mutedText, fontSize: 12.5, margin: "2px 0 8px" }}>{view.payment === "cod" ? t.rd_ot_link_hint_cod : t.rd_shop_od_link_hint}</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input readOnly value={link} aria-label={t.rd_shop_od_link} data-testid="od-link" style={{ flex: 1, minWidth: 0, minHeight: 44, borderRadius: 10, border: "1px solid var(--s-line)", padding: "0 10px", fontSize: 13, color: "#374151", background: "var(--s-bg)" }} />
             <button type="button" className="v-btn v-o" style={{ padding: "0 14px" }} onClick={() => { void copyText(link); say(t.rd_shop_od_copied); }}>{t.rd_shop_od_copy}</button>

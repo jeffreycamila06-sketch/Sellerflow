@@ -4,6 +4,10 @@ import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { readFileSync, writeFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
 import ShopApp from "../ShopApp";
+import { useState } from "react";
+import { TProvider } from "../../redesign/i18n";
+import { CheckoutFlow } from "../checkoutPages";
+import type { ShopPage } from "../route";
 import { CASES, viewOf, orderPageHtml, NOW } from "./orderPageCases";
 import { orderParcel } from "../parcelView";
 import { DEMO_SHOP } from "./fixtures";
@@ -12,7 +16,8 @@ const BEFORE_FILE = "src/website/__tests__/fixtures/order-page-before.json";
 beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); });
 afterAll(() => vi.useRealTimers());
 
-// how the BEFORE file was made (on the commit before any order-page change): CAPTURE_ORDER_BEFORE=1
+// fixtures/order-page-before-link.json = the same 22 pages WITH the order link, captured from commit 7d6b7095 (item 2,
+// before any order-page change) through CheckoutFlow with linkFor. How the BEFORE file was made (on the commit before any order-page change): CAPTURE_ORDER_BEFORE=1
 it.runIf(!!process.env.CAPTURE_ORDER_BEFORE)("capture the BEFORE html", async () => {
   const out: Record<string, string> = {};
   for (const [name, p] of CASES) for (const page of ["sent", "order"] as const) out[`${name} | ${page}`] = await orderPageHtml(viewOf(p), page);
@@ -24,7 +29,8 @@ it.runIf(!!process.env.CAPTURE_ORDER_BEFORE)("capture the BEFORE html", async ()
 const DELIBERATE = (html: string) => {
   const d = document.createElement("div"); d.innerHTML = html;
   d.querySelector("[data-testid=od-title]")?.remove();
-  return d.innerHTML;
+  //  item 8 — the order-link note says "…and upload your receipt" only for pay-first orders (pay on delivery: shorter)
+  return d.innerHTML.replace(">Keep this link to check your order.<", ">Keep this link to check your order and upload your receipt.<");
 };
 describe("no match → the order page as today", () => {
   const before = JSON.parse(readFileSync(BEFORE_FILE, "utf8")) as Record<string, string>;
@@ -33,7 +39,20 @@ describe("no match → the order page as today", () => {
     for (const [name, p] of CASES) for (const page of ["sent", "order"] as const) {
       const now = await orderPageHtml(viewOf(p), page);
       expect(DELIBERATE(now), `${name} | ${page}`).toBe(before[`${name} | ${page}`]);
-      if (page === "sent") expect(now, `${name} | sent: no deliberate change right after checkout`).toBe(before[`${name} | ${page}`]);
+      if (page === "sent" && p.payment !== undefined && p.payment !== "cod") expect(now, `${name} | sent: no deliberate change right after checkout (pay first)`).toBe(before[`${name} | ${page}`]);
+    }
+  });
+  it("the same 22 pages with the order link (as the buyer gets them): the same except the deliberate changes", async () => {
+    const beforeLink = JSON.parse(readFileSync("src/website/__tests__/fixtures/order-page-before-link.json", "utf8")) as Record<string, string>;
+    expect(Object.keys(beforeLink)).toHaveLength(22);
+    for (const [name, p] of CASES) for (const page of ["sent", "order"] as const) {
+      const api = { place: vi.fn(), load: vi.fn(async () => viewOf(p)), uploadReceipt: vi.fn() };
+      function H() { const [r, go] = useState<ShopPage>({ page, token: "f".repeat(64) } as ShopPage); return <TProvider lang="en"><CheckoutFlow shop={{ ...DEMO_SHOP, shop: { ...DEMO_SHOP.shop, lang: "en" } }} cur="NT$" route={r} go={go} infos={[]} preview={false} onPlaced={() => {}} api={api} linkFor={() => "https://shop.example/o/1"} /></TProvider>; }
+      render(<H />);
+      const now = (await screen.findByTestId("od-page")).outerHTML;
+      cleanup();
+      expect(DELIBERATE(now), `${name} | ${page} (with link)`).toBe(beforeLink[`${name} | ${page}`]);
+      if (page === "sent" && p.payment !== undefined && p.payment !== "cod") expect(now, `${name} | sent with link: unchanged (pay first)`).toBe(beforeLink[`${name} | ${page}`]);
     }
   });
   it("a parcel on an order that doesn't qualify (home, typed store, not shipped, no tracking) is ignored", async () => {
