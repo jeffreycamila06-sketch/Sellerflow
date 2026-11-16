@@ -8,6 +8,7 @@ import { photoUrl, money } from "../shopApi";
 import { MAX_QTY, productStock } from "../cart";
 import { variantFor, valueAvailable } from "../shopLogic";
 import { mutedText } from "../shopStyle";
+import { checkoutOf } from "../shipPay";
 
 export default function Product({ shop, product, cur, onAdd, onBuy }: { shop: Shop; product: ShopProduct; cur: string; onAdd: (vid: number | null, qty: number) => void; onBuy: (vid: number | null, qty: number) => void }) {
   const t = useT();
@@ -52,6 +53,7 @@ export default function Product({ shop, product, cur, onAdd, onBuy }: { shop: Sh
         </div>
         <div style={{ padding: "12px 14px" }}>
           <div data-testid="pd-price" style={{ fontSize: 26, fontWeight: 800, color: "var(--sc)" }}>{money(cur, price)}</div>
+          {checkoutOf(shop).taxIncluded && <div data-testid="pd-tax" style={{ ...mutedText, fontSize: 12 }}>{t.rd_shop_tax_incl}</div>}
           <h1 data-testid="pd-name" style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 6px", lineHeight: 1.3 }}>{product.name}</h1>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", ...mutedText }}>
             {product.code && <span>{t.rd_shop_code} <b style={{ color: "#111827" }}>{variant?.code || product.code}</b></span>}

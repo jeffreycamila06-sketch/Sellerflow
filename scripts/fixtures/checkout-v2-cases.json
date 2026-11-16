@@ -693,5 +693,44 @@
    ],
    "autoCancelHours": 24
   }
+ },
+ {
+  "name": "tax line on",
+  "country": "CA",
+  "settings": {
+   "taxIncluded": true
+  },
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "needs": "none"
+    }
+   ],
+   "taxIncluded": true,
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "tax line junk",
+  "country": "AU",
+  "settings": {
+   "taxIncluded": "maybe"
+  },
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "needs": "none"
+    }
+   ],
+   "autoCancelHours": 24
+  }
  }
 ]

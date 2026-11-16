@@ -5,6 +5,7 @@
 import { isSupabaseConfigured, supabase } from "../supabase";
 import { compressProductImage } from "../redesign/adapters/productImages";
 import type { PayOpt, ShipNeeds, ShipOpt } from "./shipPay";
+import { addrFormOf, addressErrors, phoneOk, type AddrParts } from "./addressForm";
 
 /** The order's delivery kind (website_orders.delivery). v2 adds 'store' (a typed store) and 'pickup'. */
 export type Delivery = "s711" | "fm" | "home" | "store" | "pickup";
@@ -14,9 +15,11 @@ export type Payment = "bank" | "qr" | "cod";
 export interface OrderDraft {
   name: string; phone: string; contact: string; delivery: string | null; storeId: string; storeName: string;
   address: string; payment: string | null; note: string;
+  /** v2 (item 12): Canada / Australia address parts (else the one address box above is used). */
+  addr?: AddrParts;
 }
 /** ship / pay = the option + method ids (sql/165); delivery / payment = the kinds (what sql/163 reads). */
-export interface PlaceInput extends Omit<OrderDraft, "delivery" | "payment"> { ship: string; pay: string; delivery: Delivery; payment: Payment; items: { pid: number; vid: number | null; qty: number }[] }
+export interface PlaceInput extends Omit<OrderDraft, "delivery" | "payment" | "addr"> { ship: string; pay: string; delivery: Delivery; payment: Payment; items: { pid: number; vid: number | null; qty: number }[] }
 export type PlaceError =
   | "shop_closed" | "bad_name" | "bad_phone" | "bad_delivery" | "bad_store" | "bad_address" | "bad_payment"
   | "blocked" | "too_many" | "bad_items" | "item_gone" | "pick_option" | "out_of_stock" | "network";
@@ -96,14 +99,16 @@ export const realOrderApi: OrderApi = {
 };
 
 // ── this device only ──────────────────────────────────────────────────────────
-export interface BuyerMemory { name: string; phone: string; contact: string; address: string; stores: Partial<Record<"s711" | "fm", { id: string; name: string }[]>> }
+export interface BuyerMemory { name: string; phone: string; contact: string; address: string; addr?: AddrParts; stores: Partial<Record<"s711" | "fm", { id: string; name: string }[]>> }
 export const BUYER_KEY = "sfl_shop_buyer";
 export const DEVICE_KEY = "sfl_shop_device";
 export function readBuyer(): BuyerMemory | null {
   try {
     const j = JSON.parse(localStorage.getItem(BUYER_KEY) || "null");
     if (!j || typeof j !== "object" || typeof j.name !== "string") return null;
-    return { name: j.name, phone: String(j.phone || ""), contact: String(j.contact || ""), address: String(j.address || ""), stores: j.stores && typeof j.stores === "object" ? j.stores : {} };
+    const a = j.addr && typeof j.addr === "object" ? j.addr : null;
+    const addr = a ? { street: String(a.street || ""), city: String(a.city || ""), region: String(a.region || ""), post: String(a.post || "") } : undefined;
+    return { name: j.name, phone: String(j.phone || ""), contact: String(j.contact || ""), address: String(j.address || ""), ...(addr ? { addr } : {}), stores: j.stores && typeof j.stores === "object" ? j.stores : {} };
   } catch { return null; }
 }
 /** Remember after an order: name, phone, chat name, address, and the store (last 3 per carrier). Pure part = rememberStore. */
@@ -116,7 +121,7 @@ export function saveBuyer(d: OrderDraft): void {
     const prev = readBuyer();
     let stores = prev?.stores || {};
     if ((d.delivery === "s711" || d.delivery === "fm") && /^\d{6}$/.test(d.storeId)) stores = rememberStore(stores, d.delivery, d.storeId, d.storeName.trim());
-    localStorage.setItem(BUYER_KEY, JSON.stringify({ name: d.name.trim(), phone: d.phone.trim(), contact: d.contact.trim(), address: d.address.trim() || prev?.address || "", stores }));
+    localStorage.setItem(BUYER_KEY, JSON.stringify({ name: d.name.trim(), phone: d.phone.trim(), contact: d.contact.trim(), address: d.address.trim() || prev?.address || "", ...(d.addr?.street.trim() ? { addr: d.addr } : prev?.addr ? { addr: prev.addr } : {}), stores }));
   } catch { /* private mode */ }
 }
 export function forgetBuyer(): void { try { localStorage.removeItem(BUYER_KEY); } catch { /* */ } }
@@ -129,18 +134,25 @@ export function deviceId(): string {
 }
 
 // ── checks before the call (the server checks everything again) ────────────────
-export type FieldError = "name" | "phone" | "delivery" | "store" | "address" | "payment";
+export type FieldError = "name" | "phone" | "delivery" | "store" | "address" | "postal" | "payment";
 /** Taiwan's ready ids without a list (old tests / old shops): 7-11 + FamilyMart need a store, home an address. */
 const LEGACY_OPT: Record<string, { needs: ShipNeeds; cod: boolean }> = { s711: { needs: "store711", cod: true }, fm: { needs: "storefm", cod: true }, home: { needs: "address", cod: false } };
-export interface DraftRules { delivery: string[]; payment: string[]; options?: ShipOpt[]; methods?: PayOpt[] }
+export interface DraftRules { delivery: string[]; payment: string[]; options?: ShipOpt[]; methods?: PayOpt[]; country?: string }
 export function draftErrors(d: OrderDraft, allowed: DraftRules): FieldError[] {
   const e: FieldError[] = [];
   if (!d.name.trim() || d.name.trim().length > 40) e.push("name");
-  const digits = d.phone.replace(/\D/g, "");
-  if (digits.length < 8 || digits.length > 15) e.push("phone");
+  if (!phoneOk(allowed.country || "", d.phone)) e.push("phone");
   const opt = (d.delivery && (allowed.options?.find((o) => o.id === d.delivery) ?? LEGACY_OPT[d.delivery])) || null;
   if (!d.delivery || !allowed.delivery.includes(d.delivery) || !opt) e.push("delivery");
-  else if (opt.needs === "address") { if (d.address.trim().length < 5) e.push("address"); }
+  else if (opt.needs === "address") {
+    const form = addrFormOf(allowed.country || "");
+    if (form === "free") { if (d.address.trim().length < 5) e.push("address"); }
+    else {
+      const ae = addressErrors(form, d.addr ?? { street: "", city: "", region: "", post: "" });
+      if (ae.some((x) => x !== "post")) e.push("address");
+      if (ae.includes("post")) e.push("postal");
+    }
+  }
   else if (opt.needs === "store711" || opt.needs === "storefm") { if (!/^\d{6}$/.test(d.storeId.trim())) e.push("store"); }
   else if (opt.needs === "store") { if (!d.storeName.trim()) e.push("store"); }
   const kind = d.payment ? (allowed.methods?.find((m) => m.id === d.payment)?.kind ?? (d.payment === "cod" ? "delivery" : "first")) : null;

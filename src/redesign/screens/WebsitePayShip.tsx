@@ -175,6 +175,13 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
           <Field label={t.rd_wps_auto}><input data-testid="wps-auto" inputMode="numeric" value={String(s.autoCancelHours ?? 24)} onChange={(e) => setSt({ ...s, autoCancelHours: Math.min(168, Math.max(1, Math.round(num(e.target.value)) || 1)) })} style={{ ...input, width: 120 }} /></Field>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_wps_auto_hint}</div>
         </section>
+        <section style={card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Switch on={s.taxIncluded === true} testid="wps-tax" label={t.rd_wps_tax} onTap={() => setSt({ ...s, taxIncluded: !s.taxIncluded })} />
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{t.rd_wps_tax}</span>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_wps_tax_hint}</div>
+        </section>
         {msg && <div role="status" data-testid="wps-msg" style={{ fontSize: 13, fontWeight: 700, color: msg.tone === "ok" ? "var(--ok)" : "var(--danger)", textAlign: "center" }}>{msg.text}</div>}
       </div>
       <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, padding: "10px 14px calc(10px + env(safe-area-inset-bottom))", background: "var(--surface)", borderTop: "1px solid var(--border)" }}>

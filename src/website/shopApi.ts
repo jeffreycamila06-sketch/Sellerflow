@@ -105,12 +105,15 @@ export function photoUrl(path: string | undefined | null): string {
 }
 
 // ── money / language ──────────────────────────────────────────────────────────
-export const currencyFor = (s: Shop) => s.shop.currency || (s.country === "TW" ? "NT$" : s.country === "PH" ? "₱" : "NT$");
+/** The shop's money sign: the seller's own pick, else the seller's country (v2 item 12). */
+export const COUNTRY_CUR: Record<string, string> = { TW: "NT$", PH: "₱", CA: "CA$", AU: "A$", US: "US$", NZ: "NZ$", SG: "S$", HK: "HK$", MY: "RM", VN: "₫", TH: "฿", ID: "Rp", JP: "¥", KR: "₩", GB: "£", BG: "€" };
+export const currencyFor = (s: Shop) => s.shop.currency || COUNTRY_CUR[(s.country || "TW").toUpperCase()] || "$";
 export function money(cur: string, n: number): string {
   const v = Math.round(Number(n) * 100) / 100;
   return `${cur}${v.toLocaleString("en-US", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 })}`;
 }
-const COUNTRY_LANG: Record<string, string> = { TW: "zh-TW", CN: "zh", PH: "fil", VN: "vi", TH: "th", ID: "id", BG: "bg" };
+// the Philippines starts in English (Jeff 2026-11-16); Canada, Australia and the rest too
+const COUNTRY_LANG: Record<string, string> = { TW: "zh-TW", CN: "zh", VN: "vi", TH: "th", ID: "id", BG: "bg" };
 /** The shop's language: the buyer's own pick (this device) → the seller's choice → the seller's country (TW = 繁體中文). */
 export function shopLang(s: Shop | null, picked: string | null): string {
   if (picked) return picked;

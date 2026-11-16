@@ -21,6 +21,7 @@ import {
   type OrderApi, type OrderDraft, type FieldError, type OrderView, type PlaceResult,
 } from "./orderApi";
 import { checkoutOf, deliveryOfNeeds, freeOverOf, shipLabel, payLabel, type PayOpt, type ShipOpt } from "./shipPay";
+import { addrFormOf, composeAddress, cleanPost, phoneHintOf, CA_PROVINCES, AU_STATES, EMPTY_ADDR, type AddrParts } from "./addressForm";
 import { orderMessage, deliveryLabel, deliveryWhere, paymentLabel, CHAT_APP_NAME } from "./orderText";
 import { STORE_MAPS, deliveriesOf, paymentsOf, placeFailText, copyText } from "./checkoutLogic";
 
@@ -35,10 +36,12 @@ function initialDraft(shop: Shop): OrderDraft {
   const delivery = dels[0] ?? null;
   const last = delivery === "s711" || delivery === "fm" ? m?.stores?.[delivery]?.[0] : undefined;
   const pays = paymentsOf(shop, delivery);
+  const methods = checkoutOf(shop).methods;
   return {
     name: m?.name || "", phone: m?.phone || "", contact: m?.contact || "", delivery,
     storeId: last?.id || "", storeName: last?.name || "", address: m?.address || "",
-    payment: pays.find((p) => p !== "cod") ?? pays[0] ?? null, note: "",
+    payment: pays.find((p) => methods.find((x) => x.id === p)?.kind === "first") ?? pays[0] ?? null, note: "",
+    ...(addrFormOf(shop.country) !== "free" ? { addr: m?.addr ?? { ...EMPTY_ADDR } } : {}),
   };
 }
 export function CheckoutFlow({ shop, cur, route, go, infos, preview, onPlaced, api = realOrderApi, linkFor }: CheckoutFlowProps) {
@@ -91,11 +94,14 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
     return { ...d, delivery: k, storeId: same ? d.storeId : last?.id || "", storeName: same ? d.storeName : last?.name || "", payment: d.payment && ps.includes(d.payment) ? d.payment : firstPay ?? ps[0] ?? null };
   });
   const bad = (f: FieldError) => errs.includes(f);
+  const form = addrFormOf(shop.country);
+  const addr = draft.addr ?? EMPTY_ADDR;
+  const setAddr = (p: Partial<AddrParts>) => setDraft((d) => ({ ...d, addr: { ...(d.addr ?? EMPTY_ADDR), ...p } }));
   if (!infos.length) return <div className="sfl-wrap" style={{ padding: 16 }}><div className="sfl-card" style={{ padding: 24, textAlign: "center" }}><div style={mutedText}>{t.rd_shop_cart_empty}</div><button type="button" className="sfl-btn sfl-btn-main" style={{ marginTop: 14, padding: "0 20px" }} onClick={() => go({ page: "home" })}>{t.rd_shop_keep_shopping}</button></div></div>;
 
   const place = async () => {
     if (preview || busy) return;
-    const e = draftErrors(draft, { delivery: dels, payment: pays, options: ck.options, methods: ck.methods });
+    const e = draftErrors(draft, { delivery: dels, payment: pays, options: ck.options, methods: ck.methods, country: shop.country });
     setErrs(e); setFail("");
     if (e.length) { setFail(t.rd_shop_co_fix); return; }
     setBusy(true);
@@ -104,7 +110,8 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
       name: draft.name.trim(), phone: draft.phone.trim(), contact: draft.contact.trim(),
       // the option + method ids (sql/165) AND the kinds (what sql/163 reads, so an older database still works)
       ship: opt!.id, pay: meth.id, delivery: deliveryOfNeeds(opt!.needs), payment: meth.kind === "delivery" ? "cod" : meth.qr ? "qr" : "bank",
-      storeId: draft.storeId.trim(), storeName: draft.storeName.trim(), address: draft.address.trim(), note: draft.note.trim(),
+      storeId: draft.storeId.trim(), storeName: draft.storeName.trim(),
+      address: opt!.needs === "address" ? composeAddress(form, draft.addr ?? EMPTY_ADDR, draft.address) : draft.address.trim(), note: draft.note.trim(),
       items: infos.map((x) => ({ pid: x.line.pid, vid: x.line.vid, qty: x.line.qty })),
     }, deviceId());
     setBusy(false);
@@ -123,7 +130,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
             {remembered && <div style={{ ...mutedText, fontSize: 12, marginTop: -4, marginBottom: 8 }}>{t.rd_shop_co_saved}</div>}
             <Label text={t.rd_shop_co_name}><input data-testid="co-name" value={draft.name} maxLength={40} autoComplete="name" onChange={(e) => set({ name: e.target.value })} style={field(bad("name"))} /></Label>
             {bad("name") && <Err text={t.rd_shop_co_err_name} />}
-            <Label text={t.rd_shop_co_phone}><input data-testid="co-phone" value={draft.phone} inputMode="tel" autoComplete="tel" maxLength={20} onChange={(e) => set({ phone: e.target.value })} style={field(bad("phone"))} /></Label>
+            <Label text={t.rd_shop_co_phone}><input data-testid="co-phone" value={draft.phone} inputMode="tel" autoComplete="tel" maxLength={20} placeholder={phoneHintOf(shop.country)} onChange={(e) => set({ phone: e.target.value })} style={field(bad("phone"))} /></Label>
             {bad("phone") && <Err text={t.rd_shop_co_err_phone} />}
             <Label text={t.rd_shop_co_contact}><input data-testid="co-contact" value={draft.contact} maxLength={60} onChange={(e) => set({ contact: e.target.value })} style={field(false)} /></Label>
           </Card>
@@ -152,7 +159,24 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
                 {bad("store") && <Err text={t.rd_shop_co_err_store_typed} />}
               </div>
             )}
-            {opt?.needs === "address" && (
+            {opt?.needs === "address" && form !== "free" && (
+              <div data-testid="co-addr-form" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+                <Label text={t.rd_shop_addr_street}><input data-testid="co-addr-street" value={addr.street} maxLength={100} autoComplete="address-line1" onChange={(e) => setAddr({ street: e.target.value })} style={field(bad("address") && addr.street.trim().length < 3)} /></Label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ flex: 1.4, minWidth: 0 }}><Label text={form === "AU" ? t.rd_shop_addr_suburb : t.rd_shop_addr_city}><input data-testid="co-addr-city" value={addr.city} maxLength={50} autoComplete="address-level2" onChange={(e) => setAddr({ city: e.target.value })} style={field(bad("address") && !addr.city.trim())} /></Label></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><Label text={form === "AU" ? t.rd_shop_addr_state : t.rd_shop_addr_province}>
+                    <select data-testid="co-addr-region" value={addr.region} autoComplete="address-level1" onChange={(e) => setAddr({ region: e.target.value })} style={field(bad("address") && !addr.region)}>
+                      <option value="">—</option>
+                      {(form === "AU" ? AU_STATES : CA_PROVINCES).map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </Label></div>
+                </div>
+                <Label text={form === "AU" ? t.rd_shop_addr_postcode : t.rd_shop_addr_postal}><input data-testid="co-addr-post" value={addr.post} maxLength={8} inputMode={form === "AU" ? "numeric" : "text"} autoComplete="postal-code" placeholder={form === "AU" ? "2000" : "A1A 1A1"} onChange={(e) => setAddr({ post: e.target.value })} onBlur={() => setAddr({ post: cleanPost(form, addr.post) })} style={{ ...field(bad("postal")), maxWidth: 180, textTransform: "uppercase" }} /></Label>
+                {bad("address") && <Err text={t.rd_shop_co_err_address_parts} />}
+                {bad("postal") && <Err text={form === "AU" ? t.rd_shop_co_err_postcode : t.rd_shop_co_err_postal} />}
+              </div>
+            )}
+            {opt?.needs === "address" && form === "free" && (
               <div style={{ marginTop: 12 }}>
                 <Label text={t.rd_shop_co_address}><textarea data-testid="co-address" value={draft.address} maxLength={200} rows={2} autoComplete="street-address" onChange={(e) => set({ address: e.target.value })} style={{ ...field(bad("address")), resize: "vertical" }} /></Label>
                 {bad("address") && <Err text={t.rd_shop_co_err_address} />}
@@ -189,6 +213,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
             <Row a={t.rd_shop_subtotal} b={money(cur, sub)} />
             <Row a={t.rd_shop_shipping} b={opt ? (fee === 0 ? t.rd_shop_co_free : money(cur, fee)) : "—"} />
             {free && free.remaining > 0 && <div style={{ ...mutedText, fontSize: 12.5 }}>{tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) })}</div>}
+            {ck.taxIncluded && <div data-testid="co-tax" style={{ ...mutedText, fontSize: 12.5 }}>{t.rd_shop_tax_incl}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontWeight: 800, fontSize: 17 }}><span>{t.rd_shop_co_total}</span><span data-testid="co-total" style={{ color: "var(--sc)" }}>{money(cur, total)}</span></div>
             {fail && <div role="alert" data-testid="co-fail" style={{ marginTop: 12, color: "#B91C1C", background: "#FEF2F2", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, fontWeight: 700 }}>{fail}</div>}
             {preview && <div data-testid="co-preview" style={{ marginTop: 12, ...mutedText }}>{t.rd_shop_co_preview}</div>}

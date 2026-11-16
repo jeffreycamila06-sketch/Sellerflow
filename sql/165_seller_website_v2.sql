@@ -31,6 +31,9 @@
 --   a QR or bank details; at most 8. Nothing saved → derived from today's bank / QR / COD settings. Money
 --   goes straight to the seller (nothing passes through SellerFlowLive). website_orders.pay_id / pay_name
 --   keep what was picked; the order link shows that method's instructions while payment is due.
+-- PART 12 — country: settings.taxIncluded → checkout2.taxIncluded (the buyer sees "Prices include tax";
+--   nothing is calculated). The address form, phone shape, currency and default language follow the seller's
+--   country in the app (no database change; the order keeps one address line, 5–200 characters).
 -- PART 13 — courier + tracking number: website_orders.courier / tracking_no (optional). website_order_ship
 --   (seller, own rows): paid / confirmed → shipped with them, or edits them on a shipped order. The buyer's
 --   order link (website_order) shows them once shipped.
@@ -220,7 +223,9 @@ begin
     end if;
   end if;
   return jsonb_build_object('options', opts, 'methods', meths,
-    'autoCancelHours', least(168, greatest(1, public.website_num(s->>'autoCancelHours', 24)::int)));
+    'autoCancelHours', least(168, greatest(1, public.website_num(s->>'autoCancelHours', 24)::int)))
+    -- PART 12: the optional "Prices include tax" line (no tax is calculated anywhere)
+    || case when public.website_bool(s->>'taxIncluded', false) then '{"taxIncluded": true}'::jsonb else '{}'::jsonb end;
 end;
 $$;
 

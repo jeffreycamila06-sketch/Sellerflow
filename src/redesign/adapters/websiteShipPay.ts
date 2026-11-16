@@ -185,5 +185,5 @@ export function publicCheckoutV2(st: WebsiteSettings, country: string): Checkout
     if (st.cod?.enabled) methods.push({ id: "cod", kind: "delivery" });
   }
   const h = Math.round(Number(st.autoCancelHours));
-  return { options, methods, autoCancelHours: Math.min(168, Math.max(1, Number.isFinite(h) && h ? h : 24)) };
+  return { options, methods, autoCancelHours: Math.min(168, Math.max(1, Number.isFinite(h) && h ? h : 24)), ...(bool(st.taxIncluded, false) ? { taxIncluded: true } : {}) };
 }

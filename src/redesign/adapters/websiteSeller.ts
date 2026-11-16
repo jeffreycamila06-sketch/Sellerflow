@@ -18,6 +18,8 @@ export interface WebsiteSettings {
   shipOptions?: ShipSetting[];
   /** v2 (sql/165): the payment methods list. Absent = derived from bank / qr / cod above. */
   payMethods?: PaySetting[];
+  /** v2 (sql/165): show "Prices include tax" to buyers (nothing is calculated). */
+  taxIncluded?: boolean;
 }
 export interface MyWebsite { subdomain: string; draft: ShopDesign; published: ShopDesign | null; publishedAt: string | null; settings: WebsiteSettings; customDomain: string | null }
 
