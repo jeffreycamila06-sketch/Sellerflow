@@ -2,12 +2,12 @@
 //   <sub>.sellerflowlive.com/…        (needs the wildcard DNS + domain on Vercel)
 //   sellerflowlive.com/s/<sub>/…      (works today — the fallback)
 // Pages: "" home · p/<id> product · cart · checkout · store · sent/<token> · o/<token> order link ·
-// saved (♡ on this device) · orders (orders placed from this device).
+// saved (♡ on this device) · orders (orders placed from this device) · shop (all products + filters).
 // PURE (unit-tested).
 export type ShopPage =
   | { page: "home" } | { page: "product"; id: number } | { page: "cart" } | { page: "checkout" }
   | { page: "store" } | { page: "sent"; token: string } | { page: "order"; token: string } | { page: "missing" }
-  | { page: "saved" } | { page: "orders" };
+  | { page: "saved" } | { page: "orders" } | { page: "shop" };
 export interface ShopLocation { sub: string | null; base: string; route: ShopPage }
 
 const APEX = ["sellerflowlive.com", "www.sellerflowlive.com"];
@@ -33,6 +33,7 @@ export function parsePage(rest: string): ShopPage {
   if (a === "checkout" && parts.length === 1) return { page: "checkout" };
   if (a === "store" && parts.length === 1) return { page: "store" };
   if (a === "saved" && parts.length === 1) return { page: "saved" };
+  if (a === "shop" && parts.length === 1) return { page: "shop" };
   if (a === "orders" && parts.length === 1) return { page: "orders" };
   if (a === "sent" && b && TOKEN_RE.test(b)) return { page: "sent", token: b };
   if (a === "o" && b && TOKEN_RE.test(b)) return { page: "order", token: b };
