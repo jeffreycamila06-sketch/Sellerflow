@@ -755,12 +755,19 @@ When you message, include your account email, your TikTok username, what you wer
 
 ## website — Your shop website (preview)
 Last checked: 2026-11-16
-Keywords: website, shop page, online shop, publish, website orders, checkout, store link, theme, banner, flash sale, shipping options, payment methods, tracking number, 網站, 商店網頁, 网站
+Keywords: website, shop page, online shop, publish, website orders, checkout, store link, theme, layout, brand store, marketplace, colours, font, banner, flash sale, shipping options, payment methods, tracking number, 網站, 商店網頁, 网站
 
 Only shown to sellers who have it turned on. Tap **Settings** → **Website**.
 
 - **Website address** — type your address, then **Save**. Tap **Copy** to share it.
-- **Look** — pick a theme (**Pop**, **Boutique** or **Bold**) and your shop color, or keep **Theme colour**. Add your logo and cover photo.
+- **Look** — the live preview at the top shows your shop as you change it.
+  - **Shop layout**: **Brand store** (a colour band at the top, big category tiles, product rows that scroll sideways) or **Marketplace**.
+  - **Ready combinations** (Ocean, Midnight, Blush, Forest, Sunset) fill in the settings below; you can still change each one.
+  - Pick **Top colours** (two colours blend), **Buttons**, **Sale / old price** (Brand store only), a **Light** or **Dark** page, the **Font** (Modern, Friendly, Classic) and **Corners** (Sharp or Round).
+  - In the Brand store, tap up to 2 categories for the **Big tiles at the top**, or keep **Automatic**.
+  - If a colour would be hard to read, buyers see a clearer one and a line under the preview tells you.
+  - Add your logo and cover photo.
+  - A shop you made before keeps its look until you change one of these settings.
 - Add your name, tagline, about us, announcement bar, live schedule, return policy, Follow us links and chat buttons (Messenger, LINE, WhatsApp, Instagram).
 - **Home page** — turn each part on or off: banner slides, trust badges, categories, next live, flash sale, best sellers, promo banner, new arrivals, about us, how to order, good to know. Tap **Edit** to write banner slides (up to 5, each with a picture and a button), the trust badges, the promo banner, the how-to-order steps and your questions & answers, or to add a picture for each category. Empty parts don't show.
 - **Preview** shows your shop the way buyers see it. **Publish** puts it online — the button then shows **Published ✓**. Changes stay a draft until you tap **Publish** again.

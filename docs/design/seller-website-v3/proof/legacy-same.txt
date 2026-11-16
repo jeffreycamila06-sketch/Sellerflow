@@ -1,0 +1,71 @@
+Existing shops (no look) — HTML of main (c2a8a8ff) vs claude/website-v3, same fixture, same clock.
+Run: copy legacy-dump.test.tsx.txt to src/website/__tests__/zz_legacy_dump.test.tsx in both trees,
+DUMP_OUT=<file> npx vitest run src/website/__tests__/zz_legacy_dump.test.tsx, compare. Columns: result, sha256(main)[:12], sha256(branch)[:12], case.
+
+SAME  04d462ba9dca  04d462ba9dca  theme null | home
+SAME  334cbe37debf  334cbe37debf  theme null | shop
+SAME  6720b4e2a8f9  6720b4e2a8f9  theme null | product 1
+SAME  671d140b810f  671d140b810f  theme null | product 2
+SAME  453a0773f929  453a0773f929  theme null | cart
+SAME  00e24a6b3aad  00e24a6b3aad  theme null | checkout
+SAME  90aa1b95e7fb  90aa1b95e7fb  theme null | saved
+SAME  5c67b85c26b2  5c67b85c26b2  theme null | orders
+SAME  344817186f95  344817186f95  theme null | shop after quick add
+SAME  c304069905d8  c304069905d8  theme null | cart with a line
+SAME  b40b83ea4f18  b40b83ea4f18  theme null | checkout with a line
+SAME  04d462ba9dca  04d462ba9dca  pop | home
+SAME  334cbe37debf  334cbe37debf  pop | shop
+SAME  6720b4e2a8f9  6720b4e2a8f9  pop | product 1
+SAME  671d140b810f  671d140b810f  pop | product 2
+SAME  453a0773f929  453a0773f929  pop | cart
+SAME  00e24a6b3aad  00e24a6b3aad  pop | checkout
+SAME  90aa1b95e7fb  90aa1b95e7fb  pop | saved
+SAME  5c67b85c26b2  5c67b85c26b2  pop | orders
+SAME  344817186f95  344817186f95  pop | shop after quick add
+SAME  c304069905d8  c304069905d8  pop | cart with a line
+SAME  b40b83ea4f18  b40b83ea4f18  pop | checkout with a line
+SAME  4385c1b6d5d1  4385c1b6d5d1  boutique | home
+SAME  88059ec123ba  88059ec123ba  boutique | shop
+SAME  60517f7d3051  60517f7d3051  boutique | product 1
+SAME  253a0b0ac626  253a0b0ac626  boutique | product 2
+SAME  7a6751bdd2b9  7a6751bdd2b9  boutique | cart
+SAME  6fd72e3e2eb8  6fd72e3e2eb8  boutique | checkout
+SAME  d4c5805d8a6c  d4c5805d8a6c  boutique | saved
+SAME  73dff3fde713  73dff3fde713  boutique | orders
+SAME  96f0b9eb05e5  96f0b9eb05e5  boutique | shop after quick add
+SAME  142819401d37  142819401d37  boutique | cart with a line
+SAME  f5dc456a5620  f5dc456a5620  boutique | checkout with a line
+SAME  9ad02cf38051  9ad02cf38051  boutique + colour | home
+SAME  ad9a67e3b48f  ad9a67e3b48f  boutique + colour | shop
+SAME  b929c51568e9  b929c51568e9  boutique + colour | product 1
+SAME  1fbfde2576c5  1fbfde2576c5  boutique + colour | product 2
+SAME  0cf140415bf9  0cf140415bf9  boutique + colour | cart
+SAME  1d8dc388faf2  1d8dc388faf2  boutique + colour | checkout
+SAME  c83c0d37d95f  c83c0d37d95f  boutique + colour | saved
+SAME  df83936bdbda  df83936bdbda  boutique + colour | orders
+SAME  c0130d135da3  c0130d135da3  boutique + colour | shop after quick add
+SAME  879061569117  879061569117  boutique + colour | cart with a line
+SAME  ae678edb7577  ae678edb7577  boutique + colour | checkout with a line
+SAME  644c822078ea  644c822078ea  bold | home
+SAME  905b262596ac  905b262596ac  bold | shop
+SAME  bdbb16e74a08  bdbb16e74a08  bold | product 1
+SAME  6dac530e48a0  6dac530e48a0  bold | product 2
+SAME  7e5e563dce37  7e5e563dce37  bold | cart
+SAME  99bb79d084cc  99bb79d084cc  bold | checkout
+SAME  cac74ac5ea9d  cac74ac5ea9d  bold | saved
+SAME  757022610649  757022610649  bold | orders
+SAME  3216d98d8af1  3216d98d8af1  bold | shop after quick add
+SAME  7c4e2959945a  7c4e2959945a  bold | cart with a line
+SAME  2ab717609c0d  2ab717609c0d  bold | checkout with a line
+SAME  e2b85485d99a  e2b85485d99a  budgetukay (theme null, #111827) | home
+SAME  7bcd26e13f59  7bcd26e13f59  budgetukay (theme null, #111827) | shop
+SAME  e17db3671d32  e17db3671d32  budgetukay (theme null, #111827) | product 1
+SAME  23e972d03a33  23e972d03a33  budgetukay (theme null, #111827) | product 2
+SAME  ff92a8d9f8b9  ff92a8d9f8b9  budgetukay (theme null, #111827) | cart
+SAME  c3be0df86800  c3be0df86800  budgetukay (theme null, #111827) | checkout
+SAME  ab6240b23f52  ab6240b23f52  budgetukay (theme null, #111827) | saved
+SAME  2b346da00d10  2b346da00d10  budgetukay (theme null, #111827) | orders
+SAME  374231d8cfa4  374231d8cfa4  budgetukay (theme null, #111827) | shop after quick add
+SAME  1e40c92d5729  1e40c92d5729  budgetukay (theme null, #111827) | cart with a line
+SAME  43b64c87f49a  43b64c87f49a  budgetukay (theme null, #111827) | checkout with a line
+66 same, 0 different, keys main=66 branch=66

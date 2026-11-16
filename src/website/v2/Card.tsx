@@ -9,12 +9,16 @@ import { money } from "../shopApi";
 import { cardFacts } from "./cardFacts";
 import { SmallPhoto } from "../ui";
 import { VIcon } from "./icons";
+import { useLayout } from "../v3/layoutCtx";
+import { BrandCard } from "../v3/BrandCard";
 
 type T = Record<string, string>;
 export function Card({ p, cur, nowMs, saved, onSave, onOpen, onQuick, rank }: {
   p: ShopProduct; cur: string; nowMs: number; saved: boolean; onSave: () => void; onOpen: () => void; onQuick: () => void; rank?: number;
 }) {
   const t = useT() as unknown as T;
+  // v3: on the Brand store layout every card is the Brand store card (no ranks there)
+  if (useLayout() === "brand") return <BrandCard p={p} cur={cur} nowMs={nowMs} saved={saved} onSave={onSave} onOpen={onOpen} onQuick={onQuick} />;
   const f = cardFacts(p, nowMs);
   const photos = p.photos.slice(0, 3);
   const key = (e: KeyboardEvent) => { if (e.key === "Enter") onOpen(); };

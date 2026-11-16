@@ -3,6 +3,7 @@
 // return a whitelist (never the seller's email / phone / plan). No buyer data is logged anywhere.
 import { toCheckoutV2, type CheckoutV2 } from "./shipPay";
 import { isSupabaseConfigured, supabase } from "../supabase";
+import { cleanLook, type ShopLook } from "./v3/look";
 
 export interface ShopVariant { id: number; values: string[]; price: number; stock: number; photo: number | null; code?: string }
 /** An option group; v2: `color` = the colour group, `swatches` = #rrggbb per value (validated on read). */
@@ -24,6 +25,8 @@ export interface ShopDesign {
   // v2 (sql/167 PART 1): the home page
   theme?: "pop" | "boutique" | "bold";
   slides?: ShopSlide[]; trust?: ShopTrust[]; promo?: ShopPromo; steps?: ShopStep[]; faq?: ShopFaq[]; catPics?: Record<string, string>;
+  // v3 (sql/168): the look the seller set. Absent = Build 1 (theme + shop colour), exactly as before.
+  look?: ShopLook;
 }
 /** Home page parts the seller can turn off (all on unless set to false). */
 export type SectionKey = "announcement" | "live" | "categories" | "about" | "policy" | "socials"
@@ -72,13 +75,19 @@ export function toShop(j: unknown): ShopResult {
   const c = (o.checkout && typeof o.checkout === "object" ? o.checkout : {}) as ShopCheckout;
   const stats = (o.stats && typeof o.stats === "object" ? o.stats : {}) as Record<string, unknown>;
   return {
-    online: true, sub: o.sub, shop: (o.shop && typeof o.shop === "object" ? o.shop : {}) as ShopDesign, country: String(o.country || "TW"),
+    online: true, sub: o.sub, shop: designOf(o.shop), country: String(o.country || "TW"),
     powered: o.powered !== false, verified: o.verified === true, stats: { orders: num(stats.orders), products: num(stats.products) },
     products, checkout: { ...c, ship: c.ship || {} },
     ...(toCheckoutV2(o.checkout2) ? { checkout2: toCheckoutV2(o.checkout2)! } : {}),
   };
 }
 
+/** The design as sent; a `look` only when it is a valid one (else dropped = Build 1). Pure. */
+function designOf(raw: unknown): ShopDesign {
+  const d = (raw && typeof raw === "object" ? { ...(raw as ShopDesign) } : {}) as ShopDesign;
+  if ("look" in d) { const l = cleanLook(d.look); if (l) d.look = l; else delete d.look; }
+  return d;
+}
 const HEX = /^#[0-9a-fA-F]{6}$/;
 /** Option groups from the server, cleaned: names / values as strings, at most one colour group, swatches only #rrggbb. Pure. */
 export function cleanShopGroups(raw: unknown): ShopGroup[] {

@@ -1,8 +1,7 @@
 // Seller Website v2 — item 6: three themes (Pop / Boutique / Bold) + the shop's accent colour, one frame
 // around every page (header, footer, phone bottom bar, chat), phone and laptop from the same page.
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
-import { TProvider } from "../../redesign/i18n";
 import ShopApp from "../ShopApp";
 import { themeOf, themeClass, accentVars, onColor } from "../v2/theme";
 import { V2_CSS } from "../v2/styles";
@@ -77,18 +76,5 @@ describe("the shop frame", () => {
   });
 });
 
-describe("the editor's theme picker", async () => {
-  const { default: WebsiteEditor } = await import("../../redesign/screens/WebsiteEditor");
-  it("three theme cards + 'Theme colour'; picking one changes the preview", async () => {
-    const save = vi.fn(async () => ({ ok: true as const }));
-    const api = { load: vi.fn(async () => ({ subdomain: "budgetukay", draft: { name: "BudgetUkay" }, published: null, publishedAt: null, settings: {}, customDomain: null })), save, publish: vi.fn(), subdomainFree: vi.fn(async () => true), uploadPicture: vi.fn(async () => null), loadProducts: vi.fn(async () => []) };
-    render(<TProvider lang="en"><WebsiteEditor onPayShip={vi.fn()} onToast={vi.fn()} ios={false} plan="pro" planStatus="active" planExpiry="2099-01-01" api={api} /></TProvider>);
-    const bold = await screen.findByTestId("wed-theme-bold");
-    expect(screen.getByTestId("wed-theme-pop")).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(bold);
-    expect(bold).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByTestId("wed-color-theme")).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByTestId("wed-color-2563EB"));
-    expect(screen.getByTestId("wed-color-theme")).toHaveAttribute("aria-checked", "false");
-  });
-});
+// v3 item 6 replaced the editor's theme cards + shop colour with the look settings
+// (src/website/__tests__/v3.item6.test.tsx). The themes themselves still render shops without a look (above).

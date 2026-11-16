@@ -2,7 +2,7 @@
 // logo, search, saved, cart; laptop: a category row + "Track my order"), footer (about + socials, Shop,
 // Help, We accept / We ship with, language, "Powered by SellerFlowLive" unless Master), the phone bottom
 // bar (Home · Shop · Cart · Orders · Chat), the chat button, sheets and toasts.
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useT, tpl } from "../../redesign/i18n";
 import type { Shop } from "../shopApi";
 import { photoUrl, money } from "../shopApi";
@@ -29,16 +29,33 @@ export interface HeaderProps {
   shop: Shop; active: NavKey; onBack?: () => void; onHome: () => void; cartCount: number; onCart: () => void;
   query: string; onQuery: (q: string) => void; onSearch: (q: string) => void;
   savedCount?: number; onSaved?: () => void; cats: string[]; onCat?: (c: string) => void; onTrack?: () => void;
+  /** v3 Brand store home: the header sits on the colour band, see-through until the buyer scrolls. */
+  overBand?: boolean;
 }
 export function Header(p: HeaderProps) {
   const t = useT() as unknown as T;
   const d = p.shop.shop;
   const fo = freeOverOf(checkoutOf(p.shop));
   const ann = d.announcement && d.sections?.announcement !== false ? d.announcement : fo ? tpl(t.rd_shop_free_over, { amount: money(currencyOf(p.shop), fo) }) : "";
+  const hdr = useRef<HTMLDivElement | null>(null);
+  const [atTop, setAtTop] = useState(true);
+  const over = !!p.overBand;
+  // the band slides up under the header by the header's own height (--hh on the shop root)
+  useLayoutEffect(() => {
+    const el = hdr.current, root = el?.closest(".sfl-v2") as HTMLElement | null;
+    if (over && el && root) root.style.setProperty("--hh", `${el.offsetHeight}px`);
+  });
+  useEffect(() => {
+    if (!over) return;
+    const f = () => setAtTop((window.scrollY || 0) < 24);
+    f();
+    window.addEventListener("scroll", f, { passive: true });
+    return () => window.removeEventListener("scroll", f);
+  }, [over]);
   return (
     <>
       {ann && <div className="v-ann" data-testid="shop-announcement">{ann}</div>}
-      <div className="v-hdr">
+      <div className={`v-hdr${over && atTop ? " v-top" : ""}`} ref={hdr}>
         <div className="v-wrap">
           <div className="v-row">
             {p.onBack && <button type="button" className="v-ib" data-testid="shop-back" aria-label={t.rd_shop_back} onClick={p.onBack}><VIcon n="back" /></button>}

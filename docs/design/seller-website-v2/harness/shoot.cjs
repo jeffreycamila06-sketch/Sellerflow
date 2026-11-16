@@ -187,5 +187,5 @@ async function shootShop(browser, dev, qs, o, vn) {
   void vn;
   return buf;
 }
-module.exports = { shopFor, PAGES, VIEWS, THEMES, shootShop };
+module.exports = { shopFor, PAGES, VIEWS, THEMES, shootShop, routes, ORDER, BUYER, NOW };
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
