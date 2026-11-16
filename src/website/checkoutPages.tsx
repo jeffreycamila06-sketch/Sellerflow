@@ -322,6 +322,24 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
           <h2 data-testid="od-no" style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{tpl(t.rd_shop_od_order, { no: view.orderNo })}</h2>
           <span data-testid="od-status" style={{ fontSize: 12.5, fontWeight: 800, padding: "4px 10px", borderRadius: 999, background: view.status === "cancelled" ? "var(--s-bg)" : view.status === "shipped" || view.status === "paid" ? "#ECFDF5" : "#FFF7ED", color: view.status === "cancelled" ? "var(--s-mut)" : view.status === "shipped" || view.status === "paid" ? "#047857" : "#C2410C" }}>{t[`rd_shop_od_st_${view.status}`]}</span>
         </div>
+        {parcel?.state === "returned" && (
+          <div className="v-pnote v-bad" data-testid="od-returned">
+            <b>{t.rd_pk_ret_title}</b>
+            <span>{t.rd_pk_ret_text}</span>
+            {chats.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                {chats.map(([k, v]) => {
+                  const key = k as keyof typeof CHAT_PREFILL;
+                  return (
+                    <a key={k} data-testid={`od-ret-chat-${k}`} href={chatHref(key, String(v), CHAT_PREFILL[key] ? text : undefined)!} target="_blank" rel="noreferrer noopener" className="v-btn v-o"
+                      onClick={() => { void copyText(text); say(tpl(t.rd_shop_od_copied_paste, { app: CHAT_APP_NAME[k] })); }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", minHeight: 40, padding: "0 12px", fontSize: 13 }}><BrandIcon brand={k as BrandKey} size={16} />{CHAT_APP_NAME[k]}</a>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {parcel?.state === "at_store" && parcel.deadline && <PickupBox day={parcel.deadline} lang={lang} t={t} store={timelineStore(t, view)} pay={view.payment === "cod" ? money(cur, view.total) : ""} />}
         {view.status !== "cancelled" && (
           <div className="v-tl" data-testid="od-steps" style={{ marginTop: 14 }}>
