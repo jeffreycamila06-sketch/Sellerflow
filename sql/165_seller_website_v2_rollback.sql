@@ -68,6 +68,9 @@ alter table public.website_orders drop column if exists ship_id, drop column if 
 -- PART 11: payment methods
 alter table public.website_orders drop constraint if exists website_orders_pay_id_ok, drop constraint if exists website_orders_pay_name_len;
 alter table public.website_orders drop column if exists pay_id, drop column if exists pay_name;
+-- audit fix 2: the copy of how to pay
+alter table public.website_orders drop constraint if exists website_orders_pay_copy_ok;
+alter table public.website_orders drop column if exists pay_copy;
 do $$ begin
   if exists (select 1 from public.website_orders where delivery in ('store', 'pickup')) then
     raise notice 'website_orders: orders use store / pickup — the delivery check stays wide';

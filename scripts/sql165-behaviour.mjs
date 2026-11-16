@@ -317,6 +317,52 @@ const same = (a, b) => JSON.stringify({ ...a, ship_id: null, ship_name: null }) 
   await setSettings(baseSettings);
 }
 
+// ── AUDIT FIX 2 — how to pay stays on the order link ─────────────────────────
+{
+  const jko = { id: "c3xyzw", kind: "first", name: "Jko Pay", info: "Jko: 0912 000 111", on: true };
+  const qrM = { id: "qr", kind: "first", name: "LINE Pay", qr: "u1/site-qr-9.jpg", on: true };
+  const bankM = { id: "bank", kind: "first", info: "Write your W number", bank: { bankName: "CTBC", accountName: "J", accountNumber: "123" }, on: true };
+  const ships = [{ id: "s711", needs: "store711", fee: 60, cod: true, on: true }, { id: "pickup", needs: "none", fee: 0, cod: true, on: true }];
+  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [bankM, qrM, jko, { id: "cod", kind: "delivery", on: true }] });
+  const items = [{ pid: 1, vid: null, qty: 1 }];
+  const a = await place({ ...buyer(80), ship: "s711", pay: "c3xyzw", items });
+  const b = await place({ ...buyer(81), ship: "s711", pay: "qr", items });
+  const c = await place({ ...buyer(82), ship: "s711", pay: "bank", items });
+  const d = await place({ ...buyer(83), ship: "pickup", pay: "cod", items });
+  const placed = { a: (await orderView(a.token)).pay, b: (await orderView(b.token)).pay, c: (await orderView(c.token)).pay };
+  const copyOf = async (t) => (await q(`select pay_copy from public.website_orders where token = $1`, [t])).rows[0].pay_copy;
+  const ca = (await copyOf(a.token)).method;
+  ok(Object.keys(ca).sort().join() === "id,info,kind,name" && ca.id === "c3xyzw" && ca.kind === "first" && ca.name === "Jko Pay" && ca.info === "Jko: 0912 000 111", "fix 2: the order keeps a copy of the picked method (name + instructions)");
+  ok((await copyOf(b.token)).method.qr === "u1/site-qr-9.jpg" && (await copyOf(c.token)).method.bank.accountNumber === "123", "fix 2: …its QR path and its bank details");
+  ok((await copyOf(d.token)) === null, "fix 2: pay on delivery keeps no copy (nothing to pay now)");
+  // the seller edits Jko Pay, turns LINE Pay off and deletes the bank method
+  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [{ ...jko, info: "Jko: 0999 999 999" }, { ...qrM, on: false }, { id: "cod", kind: "delivery", on: true }] });
+  ok(JSON.stringify((await orderView(a.token)).pay) === JSON.stringify(placed.a) && placed.a.method.info === "Jko: 0912 000 111", "fix 2: method edited after the order → the buyer still sees the instructions they ordered with");
+  ok(JSON.stringify((await orderView(b.token)).pay) === JSON.stringify(placed.b) && placed.b.method.qr === "u1/site-qr-9.jpg", "fix 2: method turned off → the QR still shows");
+  const vc = await orderView(c.token);
+  ok(vc.pay?.method?.bank?.accountNumber === "123" && vc.pay?.method?.bank?.bankName === "CTBC" && vc.payName === undefined, "fix 2: method DELETED after the order → the buyer still sees where to pay (bank, account)");
+  // every method gone
+  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [] });
+  ok((await orderView(a.token)).pay?.method?.info === "Jko: 0912 000 111" && (await orderView(c.token)).pay?.method?.bank?.accountNumber === "123", "fix 2: the whole list deleted → still shown");
+  // the old (sql/163) path keeps its copy too: bank details changed after the order
+  await setSettings(baseSettings);
+  const e = await place({ ...buyer(84), delivery: "s711", storeId: "123456", payment: "bank", items });
+  await setSettings({ ...baseSettings, bank: { enabled: false } });
+  ok((await orderView(e.token)).pay?.bank?.accountNumber === "123", "fix 2: old page + no lists → the bank details it was placed with, after the seller turns bank transfer off");
+  // an order placed before the fix (no copy) reads today's settings, as before
+  await q(`update public.website_orders set pay_copy = null where token = $1`, [a.token]);
+  await setSettings({ ...baseSettings, shipOptions: ships, payMethods: [{ ...jko, info: "Jko: 0999 999 999" }] });
+  ok((await orderView(a.token)).pay?.method?.info === "Jko: 0999 999 999", "fix 2: an order with no copy → as before (today's settings)");
+  // shown only while payment is due
+  await as(SELLER, "authenticated", () => q(`select public.website_order_action((select id from public.website_orders where token = $1), 'paid')`, [c.token]));
+  ok((await orderView(c.token)).pay === undefined, "fix 2: paid → how to pay is no longer shown");
+  // the column only takes a small object
+  ok((await err(q(`update public.website_orders set pay_copy = '[1]' where token = $1`, [b.token]))) !== null
+     && (await err(q(`update public.website_orders set pay_copy = $2 where token = $1`, [b.token, JSON.stringify({ x: "y".repeat(9000) })]))) !== null, "fix 2: the copy must be an object of at most 4 KB");
+  ok((await err(as(null, "anon", () => q(`select pay_copy from public.website_orders`)))) !== null, "fix 2: buyers can't read the table directly (only through the order link)");
+  await setSettings(baseSettings);
+}
+
 // ── PART 13 — courier + tracking ─────────────────────────────────────────────
 const ship = (id, c, t, uid = SELLER) => as(uid, "authenticated", () => q(`select public.website_order_ship($1, $2, $3) r`, [id, c, t]));
 {
@@ -356,7 +402,7 @@ await db.exec(src("165_seller_website_v2_rollback.sql"));
   ok((await q(`select to_regclass('public.product_sold_totals') t`)).rows[0].t === null && (await q(`select count(*)::int n from pg_trigger where tgname = 'trg_stock_movements_sold'`)).rows[0].n === 0, "rollback: totals table + trigger gone");
   ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]))) === null, "rollback: stock history still written as before");
   ok(s.checkout2 === undefined && (await q(`select count(*)::int n from pg_proc where proname = 'website_checkout_v2'`)).rows[0].n === 0, "rollback: checkout2 gone");
-  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('ship_id', 'ship_name', 'pay_id', 'pay_name')`)).rows[0].n === 0, "rollback: ship_id / ship_name / pay_id / pay_name gone");
+  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('ship_id', 'ship_name', 'pay_id', 'pay_name', 'pay_copy')`)).rows[0].n === 0, "rollback: ship_id / ship_name / pay_id / pay_name / pay_copy gone");
   ok((await q(`select pg_get_constraintdef(oid) d from pg_constraint where conname = 'website_orders_delivery_check'`)).rows[0].d.includes("pickup"), "rollback: orders use 'pickup' → the delivery check stays wide");
   ok((await q(`select count(*)::int n from pg_proc where proname in ('website_site_pic', 'website_txt')`)).rows[0].n === 0 && !(await q(`select prosrc from pg_proc where proname = 'website_public_fields'`)).rows[0].prosrc.includes("slides"), "rollback: the storefront whitelist is sql/163's again");
   const fn = (await q(`select prosrc from pg_proc where proname = 'website_place_order'`)).rows[0].prosrc;

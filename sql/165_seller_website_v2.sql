@@ -41,6 +41,10 @@
 -- AUDIT FIX 1 — price changed between view and order: website_place_order compares p_order.shownTotal (the
 --   total the page showed: items + shipping) with its own; different → no order, no stock, error
 --   'price_changed' with the new total in the hint. No shownTotal (an old page) → as before.
+-- AUDIT FIX 2 — payment instructions on the order link: website_orders.pay_copy keeps a copy of how to pay
+--   (the picked method's name, instructions, QR path, bank details — or, on the sql/163 path, the bank / QR
+--   details) when the order is placed; website_order shows that copy while payment is due, also after the
+--   seller turns the method off, edits it or deletes it. Orders placed before have no copy → as before.
 -- PART 13 — courier + tracking number: website_orders.courier / tracking_no (optional). website_order_ship
 --   (seller, own rows): paid / confirmed → shipped with them, or edits them on a shipped order. The buyer's
 --   order link (website_order) shows them once shipped.
@@ -196,6 +200,14 @@ do $$ begin
     alter table public.website_orders add constraint website_orders_pay_name_len check (pay_name is null or char_length(pay_name) <= 40);
   end if;
 end $$;
+-- audit fix 2: the copy of how to pay, kept on the order (only what website_order shows the buyer)
+alter table public.website_orders add column if not exists pay_copy jsonb null;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'website_orders_pay_copy_ok') then
+    alter table public.website_orders add constraint website_orders_pay_copy_ok
+      check (pay_copy is null or (jsonb_typeof(pay_copy) = 'object' and pg_column_size(pay_copy) <= 4096));
+  end if;
+end $$;
 alter table public.website_orders drop constraint if exists website_orders_delivery_check;
 alter table public.website_orders add constraint website_orders_delivery_check check (delivery in ('s711','fm','home','store','pickup'));
 
@@ -349,6 +361,7 @@ declare
   v_items jsonb := '[]'::jsonb; v_sub numeric := 0; v_fee numeric; v_total numeric; v_hours int;
   v_seq int; v_token text; v_status text; v_price numeric;
   v_country text; ck2 jsonb; v_ship_id text; v_pay_id text; v_opt jsonb; v_meth jsonb; v_ship_name text; v_pay_name text;
+  v_pay_copy jsonb;
 begin
   if p_order is null or jsonb_typeof(p_order) <> 'object' then raise exception 'bad_order' using errcode = '22023'; end if;
   select * into w from public.seller_websites where lower(subdomain) = lower(btrim(coalesce(p_sub, ''))) for update;
@@ -491,16 +504,21 @@ begin
   v_hours := coalesce((ck->>'autoCancelHours')::int, 24);
   v_status := case when v_pay = 'cod' then 'confirmed' else 'awaiting_payment' end;
 
+  -- audit fix 2: a copy of how to pay, exactly what the order link shows (pay first only)
+  v_pay_copy := case when v_pay = 'cod' then null
+                     when v_ship_id is not null then jsonb_build_object('method', v_meth)
+                     when v_pay = 'bank' then jsonb_build_object('bank', ck->'bank')
+                     else jsonb_build_object('qr', ck->'qr') end;
   update public.seller_websites set order_seq = order_seq + 1 where user_id = w.user_id returning order_seq into v_seq;
   v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
   insert into public.website_orders (user_id, order_no, token, status, buyer_name, buyer_phone, buyer_contact, delivery,
       store_id, store_name, address, payment, items, subtotal, ship_fee, total, note, device_hash, auto_cancel_at,
-      ship_id, ship_name, pay_id, pay_name)
+      ship_id, ship_name, pay_id, pay_name, pay_copy)
   values (w.user_id, v_seq, v_token, v_status, v_name, v_phone, v_contact, v_delivery,
       v_store_id, v_store_name, v_address, v_pay, v_items, v_sub, v_fee, v_total, v_note, v_dev,
       case when v_pay = 'cod' then null else now() + make_interval(hours => v_hours) end,
       case when v_ship_id is not null then v_ship_id end, v_ship_name,
-      case when v_ship_id is not null then v_meth->>'id' end, v_pay_name);
+      case when v_ship_id is not null then v_meth->>'id' end, v_pay_name, v_pay_copy);
   insert into public.stock_movements (user_id, product_local_id, delta, reason, order_ref)
   select w.user_id, coalesce(nullif(x->>'vid', '')::bigint, (x->>'pid')::bigint), -((x->>'qty')::int), 'website', 'W-' || lpad(v_seq::text, 4, '0')
     from jsonb_array_elements(v_items) x;
@@ -562,8 +580,10 @@ begin
     'payId', o.pay_id, 'payName', o.pay_name,
     'shop', jsonb_build_object('sub', lower(w.subdomain), 'name', d->>'name', 'logo', d->>'logo', 'color', d->>'color', 'chats', d->'chats', 'currency', d->>'currency'),
     'country', (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id),
+    -- audit fix 2: the copy kept when the order was placed; orders from before it → read from today's settings
     'pay', case when o.status in ('awaiting_payment','payment_sent') then
-             case when o.pay_id is not null then
+             case when o.pay_copy is not null then o.pay_copy
+                  when o.pay_id is not null then
                     jsonb_build_object('method', (select e from jsonb_array_elements(public.website_checkout_v2(coalesce(w.settings, '{}'::jsonb),
                         (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id))->'methods') e
                        where e->>'id' = o.pay_id limit 1))
