@@ -35,6 +35,45 @@ grant execute on function public.website_order(text) to anon, authenticated;
 alter table public.website_orders drop constraint if exists website_orders_courier_len, drop constraint if exists website_orders_tracking_len;
 alter table public.website_orders drop column if exists courier, drop column if exists tracking_no;
 
+-- PART 10: shipping options — the sql/163 shop answer, then the columns. The delivery check goes back to
+-- s711 / fm / home only when no order uses 'store' / 'pickup' (else it stays wide and a notice says so).
+create or replace function public.website_shop(p_sub text)
+returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare w public.seller_websites; plan text; country text;
+begin
+  select * into w from public.seller_websites where lower(subdomain) = lower(btrim(coalesce(p_sub, '')));
+  if not found or w.published is null then return jsonb_build_object('online', false); end if;
+  plan := coalesce(public.website_plan(w.user_id), 'free');
+  if plan = 'free' or not public.website_switch_for(w.user_id) then return jsonb_build_object('online', false); end if;
+  select upper(coalesce(sp.country, 'TW')) into country from public.seller_profiles sp where sp.auth_user_id = w.user_id;
+  return jsonb_build_object(
+    'online', true,
+    'sub', lower(w.subdomain),
+    'shop', public.website_public_fields(w.published),
+    'country', country,
+    'powered', plan <> 'master',
+    'verified', true,
+    'stats', jsonb_build_object(
+      'orders', (select count(*) from public.orders o where o.user_id = w.user_id),
+      'products', (select count(*) from public.products p where p.user_id = w.user_id and p.parent_local_id is null and coalesce(p.show_on_website, true))),
+    'products', public.website_products_of(w.user_id),
+    'checkout', public.website_checkout_public(w.settings));
+end;
+$$;
+revoke all on function public.website_shop(text) from public;
+grant execute on function public.website_shop(text) to anon, authenticated;
+drop function if exists public.website_checkout_v2(jsonb, text);
+alter table public.website_orders drop constraint if exists website_orders_ship_id_ok, drop constraint if exists website_orders_ship_name_len;
+alter table public.website_orders drop column if exists ship_id, drop column if exists ship_name;
+do $$ begin
+  if exists (select 1 from public.website_orders where delivery in ('store', 'pickup')) then
+    raise notice 'website_orders: orders use store / pickup — the delivery check stays wide';
+  else
+    alter table public.website_orders drop constraint if exists website_orders_delivery_check;
+    alter table public.website_orders add constraint website_orders_delivery_check check (delivery in ('s711','fm','home'));
+  end if;
+end $$;
+
 -- PART 9: the sold totals (stock history itself is untouched)
 drop trigger if exists trg_stock_movements_sold on public.stock_movements;
 drop function if exists public.product_sold_count_move();

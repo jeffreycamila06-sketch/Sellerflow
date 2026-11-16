@@ -2,19 +2,22 @@
 import { tpl } from "../redesign/i18n";
 import type { Shop } from "./shopApi";
 import type { LineInfo } from "./cart";
-import type { Delivery, Payment, PlaceResult } from "./orderApi";
+import type { PlaceResult } from "./orderApi";
+import { checkoutOf, methodsFor } from "./shipPay";
 
 export const STORE_MAPS: Record<"s711" | "fm", string> = {
   s711: "https://emap.pcsc.com.tw/",
   fm: "https://www.family.com.tw/Marketing/zh/Map",
 };
 
-export function deliveriesOf(shop: Shop): Delivery[] {
-  return (["s711", "fm", "home"] as Delivery[]).filter((k) => !!shop.checkout.ship[k]);
+/** The shipping option ids a buyer may pick (v2 list, or Taiwan's s711 / fm / home derived from the old settings). */
+export function deliveriesOf(shop: Shop): string[] {
+  return checkoutOf(shop).options.map((o) => o.id);
 }
-export function paymentsOf(shop: Shop, delivery: Delivery | null): Payment[] {
-  const c = shop.checkout;
-  return ([c.bank && "bank", c.qr && "qr", c.cod && delivery !== "home" && "cod"].filter(Boolean)) as Payment[];
+/** The payment method ids allowed with that option (pay on delivery only where the option allows it). */
+export function paymentsOf(shop: Shop, delivery: string | null): string[] {
+  const c = checkoutOf(shop);
+  return methodsFor(c, c.options.find((o) => o.id === delivery)).map((m) => m.id);
 }
 
 export function placeFailText(t: Record<string, string>, r: Extract<PlaceResult, { ok: false }>, infos: LineInfo[]): string {

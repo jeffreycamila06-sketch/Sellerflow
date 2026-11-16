@@ -29,7 +29,8 @@ const as = async (uid, role, fn) => {
 };
 const err = async (p) => { try { await p; return null; } catch (e) { return e.message; } };
 const shop = async (sub) => (await as(null, "anon", () => q(`select public.website_shop($1) as r`, [sub]))).rows[0].r;
-const place = async (order, dev = "device-0001") => (await as(null, "anon", () => q(`select public.website_place_order('budgetukay', $1, $2) as r`, [JSON.stringify(order), dev]))).rows[0].r;
+let devN = 0; // a fresh device per order: the 10-per-hour device limit is sql/163's, checked there
+const place = async (order, dev = `device-${String(++devN).padStart(4, "0")}`) => (await as(null, "anon", () => q(`select public.website_place_order('budgetukay', $1, $2) as r`, [JSON.stringify(order), dev]))).rows[0].r;
 const buyer = (i) => ({ name: `Buyer ${i}`, phone: `09123400${String(i).padStart(2, "0")}`, delivery: "s711", storeId: "123456", payment: "bank" });
 
 // ── before sql/165: a published TW shop on sql/163 ───────────────────────────
@@ -134,6 +135,82 @@ await db.exec(src("165_seller_website_v2.sql"));
   await q(`delete from public.products where local_id = 60`);
 }
 
+// ── PART 10 — shipping options list ──────────────────────────────────────────
+const setSettings = (st) => q(`update public.seller_websites set settings = $2 where user_id = $1`, [SELLER, JSON.stringify(st)]);
+const baseSettings = (await q(`select settings from public.seller_websites where user_id = $1`, [SELLER])).rows[0].settings;
+const orderRow = async (token) => (await q(`select status, delivery, store_id, store_name, address, payment, subtotal::float8 sub, ship_fee::float8 fee, total::float8 total, ship_id, ship_name, auto_cancel_at is null no_cancel from public.website_orders where token = $1`, [token])).rows[0];
+const same = (a, b) => JSON.stringify({ ...a, ship_id: null, ship_name: null }) === JSON.stringify({ ...b, ship_id: null, ship_name: null });
+{
+  const s = await shop("budgetukay");
+  const c2 = s.checkout2;
+  ok(JSON.stringify(s.checkout) === JSON.stringify(shopBefore.checkout), "no list saved: the old checkout answer is unchanged");
+  ok(c2.options.map((o) => `${o.id}:${o.fee}:${o.needs}:${o.cod}:${o.freeOver}`).join() === "s711:60:store711:true:999,fm:60:storefm:true:999,home:120:address:false:999",
+    "no list saved, Taiwan: 7-11 / FamilyMart / home exactly as today");
+  ok(c2.methods.map((m) => `${m.id}:${m.kind}`).join() === "bank:first,cod:delivery" && c2.methods[0].bank.accountNumber === "123", "payment methods derived from today's settings");
+  // the same order through the old page and the new page → the same row
+  for (const [i, extra] of [[40, { delivery: "s711", payment: "bank" }], [42, { delivery: "s711", payment: "cod" }], [44, { delivery: "home", address: "No. 1, Xinyi Rd, Taipei", payment: "bank" }]]) {
+    const items = [{ pid: 1, vid: null, qty: 1 }];
+    const a = await place({ ...buyer(i), ...extra, items });
+    const b = await place({ ...buyer(i + 1), ...extra, ship: extra.delivery, pay: extra.payment, items });
+    const ra = await orderRow(a.token), rb = await orderRow(b.token);
+    ok(a.ok && b.ok && same(ra, rb) && ra.ship_id === null && rb.ship_id === extra.delivery, `old page vs new page, ${extra.delivery}/${extra.payment}: same order (+ ship_id on the new one)`);
+  }
+  ok(String(await err(place({ ...buyer(46), delivery: "home", address: "No. 1, Xinyi Rd", payment: "cod", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_payment")
+     && String(await err(place({ ...buyer(47), ship: "home", pay: "cod", address: "No. 1, Xinyi Rd", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_payment"), "home + pay on delivery refused on both pages");
+  const big = await place({ ...buyer(48), ship: "s711", pay: "bank", items: [{ pid: 1, vid: null, qty: 7 }] });
+  ok((await orderRow(big.token)).fee === 0, "free over 999 still applies on the new page");
+
+  // the seller saves a list
+  await setSettings({ ...baseSettings, shipOptions: [
+    { id: "s711", needs: "store711", fee: 45, cod: true, on: true },
+    { id: "home", needs: "address", fee: 120, cod: false, on: false },
+    { id: "pickup", needs: "none", name: "Shop pickup", note: "Sat 2–5pm", fee: 0, cod: true, on: true },
+    { id: "c1", needs: "store", name: "Post office", fee: 30, freeOver: 500, cod: false, on: true },
+  ] });
+  const o2 = (await shop("budgetukay")).checkout2.options;
+  ok(o2.map((o) => o.id).join() === "s711,pickup,c1" && o2[1].name === "Shop pickup" && o2[1].note === "Sat 2–5pm" && o2[2].freeOver === 500 && o2[0].freeOver === undefined, "a saved list: only the ones that are on, in order, with name / note / own free-over");
+  const pk = await place({ ...buyer(50), ship: "pickup", pay: "cod", items: [{ pid: 1, vid: null, qty: 1 }] });
+  const rp = await orderRow(pk.token);
+  ok(rp.delivery === "pickup" && rp.status === "confirmed" && rp.fee === 0 && rp.ship_name === "Shop pickup" && rp.no_cancel, "Local pickup + pay on delivery → confirmed, free, its name kept");
+  ok(String(await err(place({ ...buyer(51), ship: "c1", pay: "bank", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_store"), "a typed-store option needs the store name");
+  const st = await place({ ...buyer(52), ship: "c1", pay: "bank", storeName: "  Taipei Main PO  ", storeId: "999999", items: [{ pid: 1, vid: null, qty: 1 }] });
+  const rs = await orderRow(st.token);
+  ok(rs.delivery === "store" && rs.store_name === "Taipei Main PO" && rs.store_id === null && rs.fee === 30, "typed store: delivery 'store', the name kept, no store number, its own fee");
+  const st2 = await place({ ...buyer(53), ship: "c1", pay: "bank", storeName: "PO", items: [{ pid: 1, vid: null, qty: 4 }] });
+  ok((await orderRow(st2.token)).fee === 0, "its own free-over (500)");
+  ok(String(await err(place({ ...buyer(54), ship: "c1", pay: "cod", storeName: "PO", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_payment"), "pay on delivery refused where the option doesn't allow it");
+  ok(String(await err(place({ ...buyer(55), ship: "fm", pay: "bank", storeId: "123456", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery")
+     && String(await err(place({ ...buyer(56), ship: "home", pay: "bank", address: "No. 1, Xinyi Rd", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery"), "an option that isn't listed / is off is refused");
+  // an old page (no 'ship') on a shop with a saved list: its delivery key is read as the option id
+  const old = await place({ ...buyer(57), delivery: "s711", storeId: "123456", payment: "bank", items: [{ pid: 1, vid: null, qty: 1 }] });
+  ok((await orderRow(old.token)).fee === 45, "old page + saved list → the list's fee");
+  ok(String(await err(place({ ...buyer(58), delivery: "home", address: "No. 1, Xinyi Rd", payment: "bank", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery"), "old page can't use an option the seller turned off");
+  // junk lists never break the shop
+  await setSettings({ ...baseSettings, shipOptions: [1, "x", null, { id: "BAD ID", needs: "none", on: true }, { id: "a", needs: "teleport", on: true }, { id: "dup", needs: "none", name: "first", on: true }, { id: "dup", needs: "none", name: "second", on: true },
+    ...Array.from({ length: 12 }, (_, i) => ({ id: `n${i}`, needs: "address", fee: "x", on: "true" }))] });
+  const j = (await shop("budgetukay")).checkout2.options;
+  ok(j.length === 10 && j[0].id === "dup" && j[0].name === "first" && j[1].fee === 0, "junk list: bad entries dropped, a repeated id kept once, at most 10, bad fee → 0");
+  // other countries: no 7-11 / FamilyMart pickers
+  await setSettings({ ...baseSettings, shipOptions: [{ id: "s711", needs: "store711", fee: 60, on: true }, { id: "std", needs: "address", fee: 15, on: true }] });
+  await q(`update public.seller_profiles set country = 'CA' where auth_user_id = $1`, [SELLER]);
+  ok((await shop("budgetukay")).checkout2.options.map((o) => o.id).join() === "std", "Canada: a 7-11 picker in the list is dropped");
+  ok(String(await err(place({ ...buyer(59), ship: "s711", pay: "bank", storeId: "123456", items: [{ pid: 1, vid: null, qty: 1 }] }))).includes("bad_delivery"), "Canada: the 7-11 option is refused");
+  await setSettings(baseSettings);
+  const d = (await shop("budgetukay")).checkout2.options;
+  ok(d.map((o) => `${o.id}:${o.needs}:${o.fee}`).join() === "home:address:120,pickup:none:0", "Canada, no list saved: home (was on) + Local pickup, free");
+  await q(`update public.seller_profiles set country = 'TW' where auth_user_id = $1`, [SELLER]);
+  // the widened check
+  ok((await err(q(`update public.website_orders set delivery = 'teleport' where token = $1`, [pk.token]))) !== null, "delivery still checked (s711 / fm / home / store / pickup)");
+  const v = await as(null, "anon", () => q(`select public.website_order($1) r`, [pk.token]));
+  ok(v.rows[0].r.shipId === "pickup" && v.rows[0].r.shipName === "Shop pickup" && v.rows[0].r.delivery === "pickup", "the order link shows the picked option");
+  // the shared cases (the app's mirror, publicCheckoutV2, is tested against the same file)
+  const sortKeys = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
+  for (const c of JSON.parse(readFileSync(`${dir}/../scripts/fixtures/checkout-v2-cases.json`, "utf8"))) {
+    const got = (await q(`select public.website_checkout_v2($1::jsonb, $2) r`, [JSON.stringify(c.settings), c.country])).rows[0].r;
+    ok(sortKeys(got) === sortKeys(c.expected), `checkout2 case: ${c.name}`);
+  }
+}
+
 // ── PART 13 — courier + tracking ─────────────────────────────────────────────
 const orderView = async (token) => (await as(null, "anon", () => q(`select public.website_order($1) r`, [token]))).rows[0].r;
 const ship = (id, c, t, uid = SELLER) => as(uid, "authenticated", () => q(`select public.website_order_ship($1, $2, $3) r`, [id, c, t]));
@@ -173,8 +250,19 @@ await db.exec(src("165_seller_website_v2_rollback.sql"));
   ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('courier', 'tracking_no')`)).rows[0].n === 0 && (await q(`select count(*)::int n from pg_proc where proname = 'website_order_ship'`)).rows[0].n === 0, "rollback: courier / tracking gone");
   ok((await q(`select to_regclass('public.product_sold_totals') t`)).rows[0].t === null && (await q(`select count(*)::int n from pg_trigger where tgname = 'trg_stock_movements_sold'`)).rows[0].n === 0, "rollback: totals table + trigger gone");
   ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]))) === null, "rollback: stock history still written as before");
+  ok(s.checkout2 === undefined && (await q(`select count(*)::int n from pg_proc where proname = 'website_checkout_v2'`)).rows[0].n === 0, "rollback: checkout2 gone");
+  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('ship_id', 'ship_name')`)).rows[0].n === 0, "rollback: ship_id / ship_name gone");
+  ok((await q(`select pg_get_constraintdef(oid) d from pg_constraint where conname = 'website_orders_delivery_check'`)).rows[0].d.includes("pickup"), "rollback: orders use 'pickup' → the delivery check stays wide");
   const fn = (await q(`select prosrc from pg_proc where proname = 'website_place_order'`)).rows[0].prosrc;
   ok(!fn.includes("flash_price"), "rollback: place-order is sql/163's again");
+}
+
+// ── rollback with no 'store' / 'pickup' order → the delivery check narrows back ──
+{
+  const db2 = new PGlite();
+  await db2.exec(STUB); await db2.exec(src("163_seller_website.sql")); await db2.exec(src("165_seller_website_v2.sql")); await db2.exec(src("165_seller_website_v2_rollback.sql"));
+  const d = (await db2.query(`select pg_get_constraintdef(oid) d from pg_constraint where conname = 'website_orders_delivery_check'`)).rows[0].d;
+  ok(!d.includes("pickup") && d.includes("home"), "rollback, no such orders: the delivery check is sql/163's again");
 }
 
 console.log(`sql165: ${pass} passed, ${fail} failed`);

@@ -17,6 +17,14 @@
 --   today's stock history (CREATE TRIGGER locks stock_movements until commit, so nothing slips between).
 --   The trigger can never fail a stock-history write (any error inside it is swallowed). The 90-day purge
 --   of stock_movements doesn't touch the totals. The shop shows "N sold" = the product + its options.
+-- PART 10 — shipping options list: settings.shipOptions = [{id, name, note, fee, freeOver, needs, cod, on}]
+--   (needs: store711 / storefm = the 7-11 / FamilyMart store pickers, Taiwan only; store = the buyer types a
+--   store name; address; none = local pickup). website_checkout_v2(settings, country) = what a buyer may
+--   see; with NO shipOptions saved it is derived from today's settings (Taiwan: 7-11 / FamilyMart / home
+--   exactly as today; other countries: home if it was on + Local pickup, free). website_shop also answers
+--   'checkout2'. website_place_order takes p_order.ship (an option id); without it (an old page) the order
+--   is placed exactly as in sql/163. website_orders.delivery may also be 'store' / 'pickup' (check widened;
+--   the rollback narrows it back only if no order uses them); ship_id / ship_name keep what was picked.
 -- PART 13 — courier + tracking number: website_orders.courier / tracking_no (optional). website_order_ship
 --   (seller, own rows): paid / confirmed → shipped with them, or edits them on a shipped order. The buyer's
 --   order link (website_order) shows them once shipped.
@@ -102,6 +110,106 @@ do $$ begin
   end if;
 end $$;
 
+-- ── PART 10 — shipping options (order columns + the widened delivery check) ──
+alter table public.website_orders
+  add column if not exists ship_id   text null,
+  add column if not exists ship_name text null;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'website_orders_ship_id_ok') then
+    alter table public.website_orders add constraint website_orders_ship_id_ok check (ship_id is null or ship_id ~ '^[a-z0-9_-]{1,24}$');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'website_orders_ship_name_len') then
+    alter table public.website_orders add constraint website_orders_ship_name_len check (ship_name is null or char_length(ship_name) <= 40);
+  end if;
+end $$;
+alter table public.website_orders drop constraint if exists website_orders_delivery_check;
+alter table public.website_orders add constraint website_orders_delivery_check check (delivery in ('s711','fm','home','store','pickup'));
+
+-- What a buyer may see at checkout (v2). From settings.shipOptions when saved (only the ones that are
+-- on; the 7-11 / FamilyMart pickers only in Taiwan; at most 10); else derived from today's settings.
+-- Payment methods: derived from today's settings (bank / QR / pay on delivery).
+create or replace function public.website_checkout_v2(st jsonb, p_country text)
+returns jsonb language plpgsql immutable set search_path = public, pg_temp as $$
+declare
+  c text := upper(coalesce(nullif(btrim(p_country), ''), 'TW'));
+  s jsonb := coalesce(st, '{}'::jsonb);
+  fo numeric := nullif(public.website_num(s->>'freeOver', 0), 0);
+  opts jsonb; meths jsonb := '[]'::jsonb;
+begin
+  if jsonb_typeof(s->'shipOptions') = 'array' then
+    select coalesce(jsonb_agg(z.o order by z.ord), '[]'::jsonb) into opts from (
+      select y.ord, jsonb_strip_nulls(jsonb_build_object(
+               'id', y.e->>'id', 'name', nullif(left(btrim(coalesce(y.e->>'name', '')), 40), ''),
+               'note', nullif(left(btrim(coalesce(y.e->>'note', '')), 80), ''),
+               'fee', public.website_num(y.e->>'fee', 0), 'freeOver', nullif(public.website_num(y.e->>'freeOver', 0), 0),
+               'needs', y.e->>'needs', 'cod', public.website_bool(y.e->>'cod', false))) as o
+        from (select distinct on (x.e->>'id') x.e, x.ord
+                from jsonb_array_elements(s->'shipOptions') with ordinality as x(e, ord)
+               where jsonb_typeof(x.e) = 'object'
+                 and coalesce(x.e->>'id', '') ~ '^[a-z0-9_-]{1,24}$'
+                 and public.website_bool(x.e->>'on', false)
+                 and coalesce(x.e->>'needs', '') in ('store711', 'storefm', 'store', 'address', 'none')
+                 and (c = 'TW' or x.e->>'needs' not in ('store711', 'storefm'))
+               order by x.e->>'id', x.ord) y
+       order by y.ord limit 10) z;
+  else
+    opts := '[]'::jsonb;
+    if c = 'TW' and public.website_bool(s#>>'{ship,s711,enabled}', true) then
+      opts := opts || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 's711', 'fee', public.website_num(s#>>'{ship,s711,fee}', 60), 'freeOver', fo, 'needs', 'store711', 'cod', true)));
+    end if;
+    if c = 'TW' and public.website_bool(s#>>'{ship,fm,enabled}', true) then
+      opts := opts || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'fm', 'fee', public.website_num(s#>>'{ship,fm,fee}', 60), 'freeOver', fo, 'needs', 'storefm', 'cod', true)));
+    end if;
+    if public.website_bool(s#>>'{ship,home,enabled}', false) then
+      opts := opts || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'home', 'fee', public.website_num(s#>>'{ship,home,fee}', 120), 'freeOver', fo, 'needs', 'address', 'cod', false)));
+    end if;
+    if c <> 'TW' then
+      opts := opts || jsonb_build_array(jsonb_build_object('id', 'pickup', 'fee', 0, 'needs', 'none', 'cod', true));
+    end if;
+  end if;
+  if public.website_bool(s#>>'{bank,enabled}', false) then
+    meths := meths || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'bank', 'kind', 'first',
+      'bank', jsonb_strip_nulls(jsonb_build_object('bankName', left(s#>>'{bank,bankName}', 60), 'accountName', left(s#>>'{bank,accountName}', 60), 'accountNumber', left(s#>>'{bank,accountNumber}', 40))))));
+  end if;
+  if public.website_bool(s#>>'{qr,enabled}', false) and coalesce(s#>>'{qr,path}', '') <> '' then
+    meths := meths || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'qr', 'kind', 'first', 'qr', s#>>'{qr,path}', 'name', nullif(left(s#>>'{qr,label}', 40), ''))));
+  end if;
+  if public.website_bool(s#>>'{cod,enabled}', false) then
+    meths := meths || jsonb_build_array(jsonb_build_object('id', 'cod', 'kind', 'delivery'));
+  end if;
+  return jsonb_build_object('options', opts, 'methods', meths,
+    'autoCancelHours', least(168, greatest(1, public.website_num(s->>'autoCancelHours', 24)::int)));
+end;
+$$;
+
+-- PUBLIC: the shop — as sql/163 + 'checkout2'
+create or replace function public.website_shop(p_sub text)
+returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare w public.seller_websites; plan text; country text;
+begin
+  select * into w from public.seller_websites where lower(subdomain) = lower(btrim(coalesce(p_sub, '')));
+  if not found or w.published is null then return jsonb_build_object('online', false); end if;
+  plan := coalesce(public.website_plan(w.user_id), 'free');
+  if plan = 'free' or not public.website_switch_for(w.user_id) then return jsonb_build_object('online', false); end if;
+  select upper(coalesce(sp.country, 'TW')) into country from public.seller_profiles sp where sp.auth_user_id = w.user_id;
+  return jsonb_build_object(
+    'online', true,
+    'sub', lower(w.subdomain),
+    'shop', public.website_public_fields(w.published),
+    'country', country,
+    'powered', plan <> 'master',
+    'verified', true,
+    'stats', jsonb_build_object(
+      'orders', (select count(*) from public.orders o where o.user_id = w.user_id),
+      'products', (select count(*) from public.products p where p.user_id = w.user_id and p.parent_local_id is null and coalesce(p.show_on_website, true))),
+    'products', public.website_products_of(w.user_id),
+    'checkout', public.website_checkout_public(w.settings),
+    'checkout2', public.website_checkout_v2(w.settings, coalesce(country, 'TW')));
+end;
+$$;
+revoke all on function public.website_shop(text) from public;
+grant execute on function public.website_shop(text) to anon, authenticated;
+
 -- ── the public product list + place-order (PARTS 8 + 9) ──────────────────────
 create or replace function public.website_products_of(p_user uuid)
 returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
@@ -139,6 +247,7 @@ declare
   ln record; par public.products; prod public.products; has_children boolean; label text;
   v_items jsonb := '[]'::jsonb; v_sub numeric := 0; v_fee numeric; v_total numeric; v_hours int;
   v_seq int; v_token text; v_status text; v_price numeric;
+  v_country text; ck2 jsonb; v_ship_id text; v_pay_id text; v_opt jsonb; v_meth jsonb; v_ship_name text;
 begin
   if p_order is null or jsonb_typeof(p_order) <> 'object' then raise exception 'bad_order' using errcode = '22023'; end if;
   select * into w from public.seller_websites where lower(subdomain) = lower(btrim(coalesce(p_sub, ''))) for update;
@@ -152,20 +261,53 @@ begin
   v_phone := public.website_phone(p_order->>'phone');
   if v_phone !~ '^[0-9]{8,15}$' then raise exception 'bad_phone' using errcode = '22023'; end if;
   v_contact := nullif(left(btrim(coalesce(p_order->>'contact', '')), 60), '');
-  v_delivery := p_order->>'delivery';
-  if v_delivery not in ('s711','fm','home') or (ck->'ship'->v_delivery) is null then raise exception 'bad_delivery' using errcode = '22023'; end if;
-  if v_delivery in ('s711','fm') then
-    v_store_id := btrim(coalesce(p_order->>'storeId', ''));
-    if v_store_id !~ '^[0-9]{6}$' then raise exception 'bad_store' using errcode = '22023'; end if;
-    v_store_name := nullif(left(btrim(coalesce(p_order->>'storeName', '')), 40), '');
+  select upper(coalesce(sp.country, 'TW')) into v_country from public.seller_profiles sp where sp.auth_user_id = w.user_id;
+  ck2 := public.website_checkout_v2(w.settings, coalesce(v_country, 'TW'));
+  -- v2 (item 10): p_order.ship = an option id. Without it the sql/163 path below runs unchanged — except
+  -- when the seller saved a shipping list: then the old page's delivery key is read as the option id.
+  v_ship_id := coalesce(nullif(p_order->>'ship', ''), case when jsonb_typeof(w.settings->'shipOptions') = 'array' then p_order->>'delivery' end);
+  v_pay_id := coalesce(nullif(p_order->>'pay', ''), p_order->>'payment');
+  if v_ship_id is null then
+    v_delivery := p_order->>'delivery';
+    if v_delivery not in ('s711','fm','home') or (ck->'ship'->v_delivery) is null then raise exception 'bad_delivery' using errcode = '22023'; end if;
+    if v_delivery in ('s711','fm') then
+      v_store_id := btrim(coalesce(p_order->>'storeId', ''));
+      if v_store_id !~ '^[0-9]{6}$' then raise exception 'bad_store' using errcode = '22023'; end if;
+      v_store_name := nullif(left(btrim(coalesce(p_order->>'storeName', '')), 40), '');
+    else
+      v_address := btrim(coalesce(p_order->>'address', ''));
+      if char_length(v_address) not between 5 and 200 then raise exception 'bad_address' using errcode = '22023'; end if;
+    end if;
+    v_pay := p_order->>'payment';
+    if not ((v_pay = 'bank' and ck ? 'bank') or (v_pay = 'qr' and ck ? 'qr')
+            or (v_pay = 'cod' and coalesce((ck->>'cod')::boolean, false) and v_delivery <> 'home')) then
+      raise exception 'bad_payment' using errcode = '22023';
+    end if;
   else
-    v_address := btrim(coalesce(p_order->>'address', ''));
-    if char_length(v_address) not between 5 and 200 then raise exception 'bad_address' using errcode = '22023'; end if;
-  end if;
-  v_pay := p_order->>'payment';
-  if not ((v_pay = 'bank' and ck ? 'bank') or (v_pay = 'qr' and ck ? 'qr')
-          or (v_pay = 'cod' and coalesce((ck->>'cod')::boolean, false) and v_delivery <> 'home')) then
-    raise exception 'bad_payment' using errcode = '22023';
+    select e into v_opt from jsonb_array_elements(ck2->'options') e where e->>'id' = v_ship_id limit 1;
+    if v_opt is null then raise exception 'bad_delivery' using errcode = '22023'; end if;
+    if v_opt->>'needs' in ('store711', 'storefm') then
+      v_delivery := case v_opt->>'needs' when 'store711' then 's711' else 'fm' end;
+      v_store_id := btrim(coalesce(p_order->>'storeId', ''));
+      if v_store_id !~ '^[0-9]{6}$' then raise exception 'bad_store' using errcode = '22023'; end if;
+      v_store_name := nullif(left(btrim(coalesce(p_order->>'storeName', '')), 40), '');
+    elsif v_opt->>'needs' = 'store' then
+      v_delivery := 'store';
+      v_store_name := nullif(left(btrim(coalesce(p_order->>'storeName', '')), 40), '');
+      if v_store_name is null then raise exception 'bad_store' using errcode = '22023'; end if;
+    elsif v_opt->>'needs' = 'address' then
+      v_delivery := 'home';
+      v_address := btrim(coalesce(p_order->>'address', ''));
+      if char_length(v_address) not between 5 and 200 then raise exception 'bad_address' using errcode = '22023'; end if;
+    else
+      v_delivery := 'pickup';
+    end if;
+    select e into v_meth from jsonb_array_elements(ck2->'methods') e where e->>'id' = v_pay_id limit 1;
+    if v_meth is null or (v_meth->>'kind' = 'delivery' and not coalesce((v_opt->>'cod')::boolean, false)) then
+      raise exception 'bad_payment' using errcode = '22023';
+    end if;
+    v_pay := case when v_meth->>'kind' = 'delivery' then 'cod' when v_meth ? 'qr' then 'qr' else 'bank' end;
+    v_ship_name := v_opt->>'name';
   end if;
   v_note := nullif(left(btrim(coalesce(p_order->>'note', '')), 200), '');
   v_dev := case when coalesce(p_device, '') ~ '^[A-Za-z0-9-]{8,64}$' then md5('sflw:' || p_device) end;
@@ -224,8 +366,13 @@ begin
     v_sub := v_sub + v_price * ln.qty;
   end loop;
 
-  v_fee := coalesce((ck->'ship'->v_delivery->>'fee')::numeric, 0);
-  if (ck->>'freeOver') is not null and v_sub >= (ck->>'freeOver')::numeric then v_fee := 0; end if;
+  if v_ship_id is null then
+    v_fee := coalesce((ck->'ship'->v_delivery->>'fee')::numeric, 0);
+    if (ck->>'freeOver') is not null and v_sub >= (ck->>'freeOver')::numeric then v_fee := 0; end if;
+  else
+    v_fee := coalesce((v_opt->>'fee')::numeric, 0);
+    if (v_opt->>'freeOver') is not null and v_sub >= (v_opt->>'freeOver')::numeric then v_fee := 0; end if;
+  end if;
   v_total := v_sub + v_fee;
   v_hours := coalesce((ck->>'autoCancelHours')::int, 24);
   v_status := case when v_pay = 'cod' then 'confirmed' else 'awaiting_payment' end;
@@ -233,10 +380,12 @@ begin
   update public.seller_websites set order_seq = order_seq + 1 where user_id = w.user_id returning order_seq into v_seq;
   v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
   insert into public.website_orders (user_id, order_no, token, status, buyer_name, buyer_phone, buyer_contact, delivery,
-      store_id, store_name, address, payment, items, subtotal, ship_fee, total, note, device_hash, auto_cancel_at)
+      store_id, store_name, address, payment, items, subtotal, ship_fee, total, note, device_hash, auto_cancel_at,
+      ship_id, ship_name)
   values (w.user_id, v_seq, v_token, v_status, v_name, v_phone, v_contact, v_delivery,
       v_store_id, v_store_name, v_address, v_pay, v_items, v_sub, v_fee, v_total, v_note, v_dev,
-      case when v_pay = 'cod' then null else now() + make_interval(hours => v_hours) end);
+      case when v_pay = 'cod' then null else now() + make_interval(hours => v_hours) end,
+      case when v_ship_id is not null then v_ship_id end, v_ship_name);
   insert into public.stock_movements (user_id, product_local_id, delta, reason, order_ref)
   select w.user_id, coalesce(nullif(x->>'vid', '')::bigint, (x->>'pid')::bigint), -((x->>'qty')::int), 'website', 'W-' || lpad(v_seq::text, 4, '0')
     from jsonb_array_elements(v_items) x;
@@ -292,6 +441,8 @@ begin
     'paidAt', o.paid_at, 'shippedAt', o.shipped_at, 'cancelledAt', o.cancelled_at, 'cancelReason', o.cancel_reason,
     -- v2 (item 13): what the seller typed when shipping
     'courier', case when o.status = 'shipped' then o.courier end, 'tracking', case when o.status = 'shipped' then o.tracking_no end,
+    -- v2 (item 10): the picked shipping option
+    'shipId', o.ship_id, 'shipName', o.ship_name,
     'shop', jsonb_build_object('sub', lower(w.subdomain), 'name', d->>'name', 'logo', d->>'logo', 'color', d->>'color', 'chats', d->'chats', 'currency', d->>'currency'),
     'country', (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id),
     'pay', case when o.status in ('awaiting_payment','payment_sent') then

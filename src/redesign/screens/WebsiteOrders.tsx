@@ -3,6 +3,7 @@
 // picture (signed link, "Check your bank app first"), and one action at a time:
 // Money received / Not received / Mark as shipped / Cancel (stock goes back) / Block buyer.
 // Every step shows on the buyer's order link. Opening an order clears its "New" badge.
+import { deliveryLabel, deliveryWhere } from "../../website/orderText";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
@@ -138,8 +139,8 @@ function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onTo
   const run = async (a: OrderAction) => { setBusy(a); await onAction(a); setBusy(""); if (a === "cancel") setConfirmCancel(false); };
   const showReceipt = async () => { if (!o.receiptPath) return; setReceipt("loading"); setReceipt(await api.receipt(o.receiptPath)); };
   const label: Record<string, string> = { paid: t.rd_wor_paid, not_received: t.rd_wor_not_received, shipped: t.rd_wor_shipped, cancel: t.rd_wor_cancel };
-  const where = o.delivery === "home" ? (o.address || "") : `${o.storeName || ""} #${o.storeId || ""}`;
-  const del = o.delivery === "s711" ? "7-11" : o.delivery === "fm" ? t.rd_shop_fm : t.rd_shop_home;
+  const where = deliveryWhere(o);
+  const del = deliveryLabel(t, o.delivery, o.shipId || undefined, o.shipName || undefined);
   const pay = o.payment === "bank" ? t.rd_shop_pay_bank : o.payment === "qr" ? t.rd_shop_pay_qr : t.rd_shop_pay_cod;
   return (
     <div role="dialog" aria-modal="true" data-testid="wor-detail" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
@@ -167,7 +168,7 @@ function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onTo
           <KV k={t.rd_shop_msg_name} v={o.buyerName} />
           <KV k={t.rd_wor_phone} v={<a href={`tel:${o.buyerPhone}`} style={{ color: "var(--accent-fg)", fontWeight: 800 }}>{o.buyerPhone}</a>} />
           {o.buyerContact && <KV k={t.rd_wor_contact} v={o.buyerContact} />}
-          <KV k={t.rd_shop_od_ship_to} v={`${del} · ${where}`} />
+          <KV k={t.rd_shop_od_ship_to} v={[del, where].filter(Boolean).join(" · ")} />
           <KV k={t.rd_shop_payment} v={pay} />
           {o.note && <KV k={t.rd_wor_note} v={o.note} />}
         </div>

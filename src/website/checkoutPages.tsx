@@ -18,9 +18,10 @@ import { BrandIcon, type BrandKey } from "./brandIcons";
 import { SmallPhoto } from "./ui";
 import {
   realOrderApi, readBuyer, saveBuyer, forgetBuyer, deviceId, draftErrors,
-  type OrderApi, type OrderDraft, type Delivery, type Payment, type FieldError, type OrderView, type PlaceResult,
+  type OrderApi, type OrderDraft, type FieldError, type OrderView, type PlaceResult,
 } from "./orderApi";
-import { orderMessage, deliveryLabel, paymentLabel, CHAT_APP_NAME } from "./orderText";
+import { checkoutOf, deliveryOfNeeds, freeOverOf, shipLabel, payLabel, type ShipOpt } from "./shipPay";
+import { orderMessage, deliveryLabel, deliveryWhere, paymentLabel, CHAT_APP_NAME } from "./orderText";
 import { STORE_MAPS, deliveriesOf, paymentsOf, placeFailText, copyText } from "./checkoutLogic";
 
 export interface CheckoutFlowProps {
@@ -57,8 +58,10 @@ export function CheckoutFlow({ shop, cur, route, go, infos, preview, onPlaced, a
   );
 }
 function emptyDraft(shop: Shop): OrderDraft {
-  const d = deliveriesOf(shop)[0] ?? null; const p = paymentsOf(shop, d);
-  return { name: "", phone: "", contact: "", delivery: d, storeId: "", storeName: "", address: "", payment: p.find((x) => x !== "cod") ?? p[0] ?? null, note: "" };
+  const c = checkoutOf(shop);
+  const d = c.options[0]?.id ?? null; const p = paymentsOf(shop, d);
+  const first = p.find((x) => c.methods.find((m) => m.id === x)?.kind === "first");
+  return { name: "", phone: "", contact: "", delivery: d, storeId: "", storeName: "", address: "", payment: first ?? p[0] ?? null, note: "" };
 }
 
 // ── checkout ──────────────────────────────────────────────────────────────────
@@ -70,31 +73,37 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   const [remembered, setRemembered] = useState(() => !preview && !!readBuyer());
+  const ck = checkoutOf(shop);
   const dels = deliveriesOf(shop);
   const pays = paymentsOf(shop, draft.delivery);
+  const opt: ShipOpt | null = ck.options.find((o) => o.id === draft.delivery) ?? null;
   const sub = subtotalOf(infos);
-  const free = freeShipping(sub, shop.checkout.freeOver);
-  const isFree = !!free && free.remaining <= 0;
-  const feeOf = (k: Delivery) => (isFree ? 0 : shop.checkout.ship[k]?.fee ?? 0);
-  const fee = draft.delivery ? feeOf(draft.delivery) : 0;
+  const feeOf = (o: ShipOpt) => (o.freeOver && sub >= o.freeOver ? 0 : o.fee);
+  const free = freeShipping(sub, opt ? opt.freeOver : freeOverOf(ck) ?? undefined);
+  const fee = opt ? feeOf(opt) : 0;
   const total = sub + fee;
   const set = (patch: Partial<OrderDraft>) => setDraft((d) => ({ ...d, ...patch }));
-  const pickDelivery = (k: Delivery) => setDraft((d) => {
+  const pickDelivery = (k: string) => setDraft((d) => {
     const m = readBuyer(); const last = k === "s711" || k === "fm" ? m?.stores?.[k]?.[0] : undefined;
     const ps = paymentsOf(shop, k);
-    return { ...d, delivery: k, storeId: k === d.delivery ? d.storeId : last?.id || "", storeName: k === d.delivery ? d.storeName : last?.name || "", payment: d.payment && ps.includes(d.payment) ? d.payment : ps.find((p) => p !== "cod") ?? ps[0] ?? null };
+    const firstPay = ps.find((p) => ck.methods.find((x) => x.id === p)?.kind === "first");
+    const same = k === d.delivery;
+    return { ...d, delivery: k, storeId: same ? d.storeId : last?.id || "", storeName: same ? d.storeName : last?.name || "", payment: d.payment && ps.includes(d.payment) ? d.payment : firstPay ?? ps[0] ?? null };
   });
   const bad = (f: FieldError) => errs.includes(f);
   if (!infos.length) return <div className="sfl-wrap" style={{ padding: 16 }}><div className="sfl-card" style={{ padding: 24, textAlign: "center" }}><div style={mutedText}>{t.rd_shop_cart_empty}</div><button type="button" className="sfl-btn sfl-btn-main" style={{ marginTop: 14, padding: "0 20px" }} onClick={() => go({ page: "home" })}>{t.rd_shop_keep_shopping}</button></div></div>;
 
   const place = async () => {
     if (preview || busy) return;
-    const e = draftErrors(draft, { delivery: dels, payment: pays });
+    const e = draftErrors(draft, { delivery: dels, payment: pays, options: ck.options, methods: ck.methods });
     setErrs(e); setFail("");
     if (e.length) { setFail(t.rd_shop_co_fix); return; }
     setBusy(true);
+    const meth = ck.methods.find((m) => m.id === draft.payment)!;
     const r: PlaceResult = await api.place(shop.sub, {
-      name: draft.name.trim(), phone: draft.phone.trim(), contact: draft.contact.trim(), delivery: draft.delivery!, payment: draft.payment!,
+      name: draft.name.trim(), phone: draft.phone.trim(), contact: draft.contact.trim(),
+      // the option + method ids (sql/165) AND the kinds (what sql/163 reads, so an older database still works)
+      ship: opt!.id, pay: meth.id, delivery: deliveryOfNeeds(opt!.needs), payment: meth.kind === "delivery" ? "cod" : meth.qr ? "qr" : "bank",
       storeId: draft.storeId.trim(), storeName: draft.storeName.trim(), address: draft.address.trim(), note: draft.note.trim(),
       items: infos.map((x) => ({ pid: x.line.pid, vid: x.line.vid, qty: x.line.qty })),
     }, deviceId());
@@ -121,35 +130,42 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
 
           <Card title={t.rd_shop_delivery}>
             <div role="radiogroup" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {dels.map((k) => (
-                <Choice key={k} testid={`co-del-${k}`} on={draft.delivery === k} onPick={() => pickDelivery(k)} title={deliveryLabel(t, k)} right={feeOf(k) === 0 ? t.rd_shop_co_free : money(cur, feeOf(k))} bad={bad("delivery")} />
+              {ck.options.map((o) => (
+                <Choice key={o.id} testid={`co-del-${o.id}`} on={draft.delivery === o.id} onPick={() => pickDelivery(o.id)} title={shipLabel(t, o)} sub={o.note} right={feeOf(o) === 0 ? t.rd_shop_co_free : money(cur, feeOf(o))} bad={bad("delivery")} />
               ))}
             </div>
-            {draft.delivery && draft.delivery !== "home" && (
+            {opt && (opt.needs === "store711" || opt.needs === "storefm") && (
               <div style={{ marginTop: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>{t.rd_shop_co_store}</div>
                 {/^\d{6}$/.test(draft.storeId)
                   ? <div data-testid="co-store" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, border: "1px solid #E5E7EB", borderRadius: 11, padding: "10px 12px" }}>
-                      <span style={{ minWidth: 0 }}><b>{draft.storeName || deliveryLabel(t, draft.delivery)}</b><span style={{ ...mutedText, display: "block" }}>#{draft.storeId}</span></span>
+                      <span style={{ minWidth: 0 }}><b>{draft.storeName || shipLabel(t, opt)}</b><span style={{ ...mutedText, display: "block" }}>#{draft.storeId}</span></span>
                       <button type="button" style={linkBtn} onClick={() => go({ page: "store" })}>{t.rd_shop_co_change}</button>
                     </div>
                   : <button type="button" data-testid="co-choose-store" className="sfl-btn sfl-btn-line" style={{ width: "100%", borderColor: bad("store") ? "#DC2626" : undefined }} onClick={() => go({ page: "store" })}>{t.rd_shop_co_choose_store}</button>}
                 {bad("store") && <Err text={t.rd_shop_co_err_store} />}
               </div>
             )}
-            {draft.delivery === "home" && (
+            {opt?.needs === "store" && (
+              <div style={{ marginTop: 12 }}>
+                <Label text={t.rd_shop_co_store_typed}><input data-testid="co-store-name" value={draft.storeName} maxLength={40} onChange={(e) => set({ storeName: e.target.value })} style={field(bad("store"))} /></Label>
+                {bad("store") && <Err text={t.rd_shop_co_err_store_typed} />}
+              </div>
+            )}
+            {opt?.needs === "address" && (
               <div style={{ marginTop: 12 }}>
                 <Label text={t.rd_shop_co_address}><textarea data-testid="co-address" value={draft.address} maxLength={200} rows={2} autoComplete="street-address" onChange={(e) => set({ address: e.target.value })} style={{ ...field(bad("address")), resize: "vertical" }} /></Label>
                 {bad("address") && <Err text={t.rd_shop_co_err_address} />}
               </div>
             )}
+            {opt?.needs === "none" && <div data-testid="co-pickup-note" style={{ ...mutedText, fontSize: 12.5, marginTop: 10 }}>{t.rd_shop_co_pickup_note}</div>}
           </Card>
 
           <Card title={t.rd_shop_payment}>
             <div role="radiogroup" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(["bank", "qr", "cod"] as Payment[]).filter((p) => (p === "cod" ? !!shop.checkout.cod : pays.includes(p))).map((p) => {
-                const off = p === "cod" && draft.delivery === "home";
-                return <Choice key={p} testid={`co-pay-${p}`} on={draft.payment === p && !off} disabled={off} onPick={() => set({ payment: p })} title={paymentLabel(t, p)} sub={off ? t.rd_shop_co_cod_home : p === "cod" ? t.rd_shop_od_cod : t.rd_shop_co_pay_first} bad={bad("payment")} />;
+              {ck.methods.map((m) => {
+                const off = m.kind === "delivery" && !opt?.cod;
+                return <Choice key={m.id} testid={`co-pay-${m.id}`} on={draft.payment === m.id && !off} disabled={off} onPick={() => set({ payment: m.id })} title={payLabel(t, m)} sub={off ? (opt?.needs === "address" ? t.rd_shop_co_cod_home : t.rd_shop_co_cod_not_here) : m.kind === "delivery" ? t.rd_shop_od_cod : t.rd_shop_co_pay_first} bad={bad("payment")} />;
               })}
             </div>
             {bad("payment") && <Err text={t.rd_shop_co_err_payment} />}
@@ -171,7 +187,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
               </div>
             ))}
             <Row a={t.rd_shop_subtotal} b={money(cur, sub)} />
-            <Row a={t.rd_shop_shipping} b={draft.delivery ? (fee === 0 ? t.rd_shop_co_free : money(cur, fee)) : "—"} />
+            <Row a={t.rd_shop_shipping} b={opt ? (fee === 0 ? t.rd_shop_co_free : money(cur, fee)) : "—"} />
             {free && free.remaining > 0 && <div style={{ ...mutedText, fontSize: 12.5 }}>{tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) })}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontWeight: 800, fontSize: 17 }}><span>{t.rd_shop_co_total}</span><span data-testid="co-total" style={{ color: "var(--sc)" }}>{money(cur, total)}</span></div>
             {fail && <div role="alert" data-testid="co-fail" style={{ marginTop: 12, color: "#B91C1C", background: "#FEF2F2", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, fontWeight: 700 }}>{fail}</div>}
@@ -334,7 +350,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
         <Row a={t.rd_shop_shipping} b={view.shipFee ? money(cur, view.shipFee) : t.rd_shop_co_free} />
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontWeight: 800, fontSize: 16 }}><span>{t.rd_shop_co_total}</span><span data-testid="od-total" style={{ color: "var(--sc)" }}>{money(cur, view.total)}</span></div>
         <div style={{ borderTop: "1px solid #F1F1F4", marginTop: 12, paddingTop: 10, display: "flex", flexDirection: "column", gap: 4, fontSize: 13.5 }}>
-          <KV k={t.rd_shop_od_ship_to} v={`${deliveryLabel(t, view.delivery)} · ${view.delivery === "home" ? view.address || "" : `${view.storeName || ""} #${view.storeId || ""}`}`} />
+          <KV k={t.rd_shop_od_ship_to} v={[deliveryLabel(t, view.delivery, view.shipId, view.shipName), deliveryWhere(view)].filter(Boolean).join(" · ")} />
           {view.status === "shipped" && view.courier && <KV k={t.rd_wor_courier} v={<span data-testid="od-courier">{view.courier}</span>} />}
           {view.status === "shipped" && view.tracking && <KV k={t.rd_wor_tracking} v={<span data-testid="od-tracking">{view.tracking}</span>} copy={() => { void copyText(view.tracking!); say(t.rd_shop_od_copied); }} copyLabel={t.rd_shop_od_copy} />}
           <KV k={t.rd_shop_payment} v={paymentLabel(t, view.payment)} />

@@ -1,0 +1,418 @@
+[
+ {
+  "name": "TW, nothing saved (defaults)",
+  "country": "TW",
+  "settings": {},
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "s711",
+     "cod": true,
+     "fee": 60,
+     "needs": "store711"
+    },
+    {
+     "id": "fm",
+     "cod": true,
+     "fee": 60,
+     "needs": "storefm"
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "TW, today's settings",
+  "country": "TW",
+  "settings": {
+   "ship": {
+    "s711": {
+     "fee": 45
+    },
+    "fm": {
+     "enabled": false
+    },
+    "home": {
+     "enabled": true,
+     "fee": 150
+    }
+   },
+   "freeOver": 999,
+   "bank": {
+    "enabled": true,
+    "bankName": "CTBC",
+    "accountName": "J",
+    "accountNumber": "123"
+   },
+   "qr": {
+    "enabled": true,
+    "path": "u/site-qr-1.jpg",
+    "label": "LINE Pay"
+   },
+   "cod": {
+    "enabled": true
+   },
+   "autoCancelHours": 12
+  },
+  "expected": {
+   "methods": [
+    {
+     "id": "bank",
+     "bank": {
+      "bankName": "CTBC",
+      "accountName": "J",
+      "accountNumber": "123"
+     },
+     "kind": "first"
+    },
+    {
+     "id": "qr",
+     "qr": "u/site-qr-1.jpg",
+     "kind": "first",
+     "name": "LINE Pay"
+    },
+    {
+     "id": "cod",
+     "kind": "delivery"
+    }
+   ],
+   "options": [
+    {
+     "id": "s711",
+     "cod": true,
+     "fee": 45,
+     "needs": "store711",
+     "freeOver": 999
+    },
+    {
+     "id": "home",
+     "cod": false,
+     "fee": 150,
+     "needs": "address",
+     "freeOver": 999
+    }
+   ],
+   "autoCancelHours": 12
+  }
+ },
+ {
+  "name": "CA, nothing saved",
+  "country": "CA",
+  "settings": {},
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "needs": "none"
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "CA, home was on",
+  "country": "CA",
+  "settings": {
+   "ship": {
+    "home": {
+     "enabled": true,
+     "fee": 15
+    }
+   },
+   "freeOver": 100
+  },
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "home",
+     "cod": false,
+     "fee": 15,
+     "needs": "address",
+     "freeOver": 100
+    },
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "needs": "none"
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "TW, a saved list",
+  "country": "TW",
+  "settings": {
+   "shipOptions": [
+    {
+     "id": "s711",
+     "needs": "store711",
+     "fee": 45,
+     "cod": true,
+     "on": true
+    },
+    {
+     "id": "home",
+     "needs": "address",
+     "fee": 120,
+     "on": false
+    },
+    {
+     "id": "pickup",
+     "needs": "none",
+     "name": " Shop pickup ",
+     "note": "Sat 2–5pm",
+     "fee": 0,
+     "cod": true,
+     "on": true
+    },
+    {
+     "id": "c1abcd",
+     "needs": "store",
+     "name": "Post office",
+     "fee": 30,
+     "freeOver": 500,
+     "on": true
+    }
+   ]
+  },
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "s711",
+     "cod": true,
+     "fee": 45,
+     "needs": "store711"
+    },
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "name": "Shop pickup",
+     "note": "Sat 2–5pm",
+     "needs": "none"
+    },
+    {
+     "id": "c1abcd",
+     "cod": false,
+     "fee": 30,
+     "name": "Post office",
+     "needs": "store",
+     "freeOver": 500
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "AU, a saved list with a 7-11 picker",
+  "country": "AU",
+  "settings": {
+   "shipOptions": [
+    {
+     "id": "s711",
+     "needs": "store711",
+     "fee": 60,
+     "on": true
+    },
+    {
+     "id": "std",
+     "needs": "address",
+     "fee": 9.5,
+     "freeOver": 80,
+     "on": true
+    },
+    {
+     "id": "exp",
+     "needs": "address",
+     "fee": 15,
+     "on": false
+    },
+    {
+     "id": "pickup",
+     "needs": "none",
+     "fee": 0,
+     "cod": true,
+     "on": true
+    }
+   ]
+  },
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "std",
+     "cod": false,
+     "fee": 9.5,
+     "needs": "address",
+     "freeOver": 80
+    },
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "needs": "none"
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "junk list",
+  "country": "PH",
+  "settings": {
+   "shipOptions": [
+    1,
+    "x",
+    null,
+    {
+     "id": "BAD ID",
+     "needs": "none",
+     "on": true
+    },
+    {
+     "id": "a",
+     "needs": "teleport",
+     "on": true
+    },
+    {
+     "id": "dup",
+     "needs": "none",
+     "name": "first",
+     "on": true
+    },
+    {
+     "id": "dup",
+     "needs": "none",
+     "name": "second",
+     "on": true
+    },
+    {
+     "id": "n0",
+     "needs": "address",
+     "fee": -5,
+     "on": true
+    },
+    {
+     "id": "n1",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n2",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n3",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n4",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n5",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n6",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n7",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n8",
+     "needs": "address",
+     "on": true
+    },
+    {
+     "id": "n9",
+     "needs": "address",
+     "on": true
+    }
+   ]
+  },
+  "expected": {
+   "methods": [],
+   "options": [
+    {
+     "id": "dup",
+     "cod": false,
+     "fee": 0,
+     "name": "first",
+     "needs": "none"
+    },
+    {
+     "id": "n0",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n1",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n2",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n3",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n4",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n5",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n6",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n7",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    },
+    {
+     "id": "n8",
+     "cod": false,
+     "fee": 0,
+     "needs": "address"
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ }
+]

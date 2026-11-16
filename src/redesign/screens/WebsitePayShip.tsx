@@ -8,12 +8,14 @@ import { productImageUrl } from "../adapters/productImages";
 import { DEFAULT_SETTINGS, settingsProblems } from "../adapters/websiteEditor";
 import type { WebsiteSettings } from "../adapters/websiteSeller";
 import { realPayShipApi, type PayShipApi } from "../adapters/websiteEditorApi";
+import { editorShipOptions, withShipOptions, newShipOption, shipProblems, MAX_SHIP_OPTIONS, type ShipSetting } from "../adapters/websiteShipPay";
+import { shipLabel, type ShipNeeds } from "../../website/shipPay";
 
-type ShipKey = "s711" | "fm" | "home";
-
-export default function WebsitePayShip({ onBack, onToast, cur = "NT$", api = realPayShipApi }: { onBack?: () => void; onToast: (m: string) => void; cur?: string; api?: PayShipApi }) {
+export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country = "TW", api = realPayShipApi }: { onBack?: () => void; onToast: (m: string) => void; cur?: string; country?: string; api?: PayShipApi }) {
   const t = useT() as unknown as Record<string, string>;
   const [st, setSt] = useState<WebsiteSettings | null | "error">(null);
+  const [ships, setShips] = useState<ShipSetting[]>([]);
+  const [openShip, setOpenShip] = useState<string | null>(null);
   const [exists, setExists] = useState(false);
   const [busy, setBusy] = useState<"" | "save" | "qr">("");
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "bad" } | null>(null);
@@ -23,21 +25,25 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", api = rea
       if (!live) return;
       if (w === "error") { setSt("error"); return; }
       setExists(!!w);
-      setSt({ ...DEFAULT_SETTINGS, ...(w?.settings || {}), ship: { ...DEFAULT_SETTINGS.ship, ...(w?.settings?.ship || {}) } });
+      const merged = { ...DEFAULT_SETTINGS, ...(w?.settings || {}), ship: { ...DEFAULT_SETTINGS.ship, ...(w?.settings?.ship || {}) } };
+      setSt(merged);
+      setShips(editorShipOptions(merged, country));
     });
     return () => { live = false; };
-  }, [api]);
+  }, [api, country]);
   if (st === null) return <Frame t={t} onBack={onBack}><div style={{ padding: 30, textAlign: "center", color: "var(--text-muted)" }}>…</div></Frame>;
   if (st === "error") return <Frame t={t} onBack={onBack}><div style={{ ...card, margin: 14, color: "var(--danger)" }}>{t.rd_wor_load_failed}</div></Frame>;
   const s = st;
-  const setShip = (k: ShipKey, p: { enabled?: boolean; fee?: number }) => setSt({ ...s, ship: { ...s.ship, [k]: { ...s.ship?.[k], ...p } } });
-  const problems = settingsProblems(s);
+  const setShip = (id: string, p: Partial<ShipSetting>) => setShips((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const full = withShipOptions(s, ships);
+  const problems = settingsProblems(full, country);
   const save = async () => {
     setMsg(null);
     if (!exists) { setMsg({ text: t.rd_wed_need_name, tone: "bad" }); return; }
+    if (shipProblems(ships).includes("name")) { setMsg({ text: t.rd_wps_ship_need_name, tone: "bad" }); return; }
     if (problems.length) { setMsg({ text: problems.includes("ship") ? t.rd_wps_need_ship : t.rd_wps_need_pay, tone: "bad" }); return; }
     setBusy("save");
-    const ok = await api.save(s);
+    const ok = await api.save(full);
     setBusy("");
     setMsg(ok ? { text: t.rd_wed_saved, tone: "ok" } : { text: t.rd_wed_save_failed, tone: "bad" });
   };
@@ -50,24 +56,53 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", api = rea
   };
   const num = (v: string) => { const n = Number(v.replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
   const input: CSSProperties = { width: "100%", minHeight: 44, borderRadius: 11, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "9px 11px", fontSize: 16, boxSizing: "border-box", fontFamily: "var(--font-ui)" };
-  const ships: [ShipKey, string][] = [["s711", t.rd_wps_s711], ["fm", t.rd_wps_fm], ["home", t.rd_shop_home]];
+  const custom = (x: ShipSetting) => /^c[0-9a-z]{5}$/.test(x.id);
+  const needsChoices: [ShipNeeds, string][] = [["address", t.rd_wps_needs_address], ["store", t.rd_wps_needs_store], ["none", t.rd_wps_needs_none]];
+  const needsText = (n: ShipNeeds) => (n === "store711" || n === "storefm" ? t.rd_wps_needs_store_tw : needsChoices.find(([k]) => k === n)?.[1] || "");
   return (
     <Frame t={t} onBack={onBack}>
       <div style={{ padding: "14px 14px 110px", display: "flex", flexDirection: "column", gap: 12, maxWidth: 720, margin: "0 auto" }}>
         <section style={card} data-testid="wps-ship">
           <Title>{t.rd_shop_delivery}</Title>
-          {ships.map(([k, label]) => {
-            const on = k === "home" ? s.ship?.home?.enabled === true : s.ship?.[k]?.enabled !== false;
+          {ships.map((x) => {
+            const label = x.name.trim() || (x.id === "s711" ? t.rd_wps_s711 : x.id === "fm" ? t.rd_wps_fm : shipLabel(t, x));
+            const open = openShip === x.id;
             return (
-              <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid var(--border)" }}>
-                <Switch on={on} testid={`wps-ship-${k}`} label={label} onTap={() => setShip(k, { enabled: !on })} />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{label}</span>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_wps_fee}</span>
-                <input data-testid={`wps-fee-${k}`} inputMode="decimal" disabled={!on} value={String(s.ship?.[k]?.fee ?? (k === "home" ? 120 : 60))} onChange={(e) => setShip(k, { fee: num(e.target.value) })} aria-label={`${label} ${t.rd_wps_fee}`} style={{ ...input, width: 92, minWidth: 0, textAlign: "right", opacity: on ? 1 : 0.5 }} />
+              <div key={x.id} data-testid="wps-ship-row" style={{ borderTop: "1px solid var(--border)", padding: "6px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Switch on={x.on} testid={`wps-ship-${x.id}`} label={label} onTap={() => setShip(x.id, { on: !x.on })} />
+                  <button type="button" data-testid={`wps-ship-edit-${x.id}`} aria-expanded={open} onClick={() => setOpenShip(open ? null : x.id)} style={{ flex: 1, minWidth: 0, textAlign: "left", background: "transparent", border: "none", padding: "6px 0", cursor: "pointer", color: "var(--text)", fontFamily: "var(--font-ui)" }}>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label || t.rd_wps_ship_new}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)" }}>{needsText(x.needs)}{x.cod ? ` · ${t.rd_wps_ship_cod_short}` : ""} · {open ? "▴" : "✎"}</span>
+                  </button>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_wps_fee}</span>
+                  <input data-testid={`wps-fee-${x.id}`} inputMode="decimal" disabled={!x.on} value={String(x.fee)} onChange={(e) => setShip(x.id, { fee: num(e.target.value) })} aria-label={`${label} ${t.rd_wps_fee}`} style={{ ...input, width: 88, minWidth: 0, textAlign: "right", opacity: x.on ? 1 : 0.5 }} />
+                </div>
+                {open && (
+                  <div data-testid={`wps-ship-more-${x.id}`} style={{ padding: "2px 0 8px 58px" }}>
+                    <Field label={t.rd_wps_ship_name}><input data-testid={`wps-ship-name-${x.id}`} value={x.name} maxLength={40} placeholder={custom(x) ? "" : label} onChange={(e) => setShip(x.id, { name: e.target.value })} style={input} /></Field>
+                    <Field label={t.rd_wps_ship_note}><input data-testid={`wps-ship-note-${x.id}`} value={x.note} maxLength={80} placeholder={t.rd_wps_ship_note_ph} onChange={(e) => setShip(x.id, { note: e.target.value })} style={input} /></Field>
+                    <Field label={`${t.rd_wps_free_over} (${cur})`}><input data-testid={`wps-ship-free-${x.id}`} inputMode="decimal" value={String(x.freeOver || 0)} onChange={(e) => setShip(x.id, { freeOver: num(e.target.value) })} style={{ ...input, width: 140 }} /></Field>
+                    {custom(x) && (
+                      <Field label={t.rd_wps_needs}>
+                        <select data-testid={`wps-ship-needs-${x.id}`} value={x.needs} onChange={(e) => setShip(x.id, { needs: e.target.value as ShipNeeds })} style={input}>
+                          {needsChoices.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                        </select>
+                      </Field>
+                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Switch on={x.cod} testid={`wps-ship-cod-${x.id}`} label={t.rd_wps_ship_cod} onTap={() => setShip(x.id, { cod: !x.cod })} />
+                      <span style={{ fontSize: 13.5, fontWeight: 700 }}>{t.rd_wps_ship_cod}</span>
+                    </div>
+                    {custom(x) && <button type="button" data-testid={`wps-ship-remove-${x.id}`} onClick={() => { setShips((l) => l.filter((y) => y.id !== x.id)); setOpenShip(null); }} style={{ marginTop: 6, minHeight: 40, border: "none", background: "transparent", color: "var(--danger)", fontWeight: 800, cursor: "pointer", padding: 0, fontFamily: "var(--font-ui)" }}>{t.rd_wps_ship_remove}</button>}
+                  </div>
+                )}
               </div>
             );
           })}
-          <Field label={`${t.rd_wps_free_over} (${cur})`}><input data-testid="wps-free" inputMode="decimal" value={String(s.freeOver || 0)} onChange={(e) => setSt({ ...s, freeOver: num(e.target.value) })} style={input} /></Field>
+          {ships.length < MAX_SHIP_OPTIONS + 3 && ships.filter(custom).length < MAX_SHIP_OPTIONS && (
+            <button type="button" data-testid="wps-ship-add" onClick={() => { const n = newShipOption(); setShips((l) => [...l, n]); setOpenShip(n.id); }} style={{ marginTop: 8, width: "100%", minHeight: 44, borderRadius: 11, border: "1px dashed var(--border)", background: "transparent", color: "var(--accent-fg)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "var(--font-ui)" }}>＋ {t.rd_wps_ship_add}</button>
+          )}
         </section>
 
         <section style={card} data-testid="wps-pay">

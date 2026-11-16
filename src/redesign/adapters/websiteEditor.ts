@@ -4,6 +4,7 @@
 import type { Product } from "./products";
 import type { Shop, ShopCheckout, ShopDesign, ShopProduct } from "../../website/shopApi";
 import type { WebsiteSettings } from "./websiteSeller";
+import { publicCheckoutV2 } from "./websiteShipPay";
 
 const fee = (v: unknown, d: number) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : d; };
 /** settings → what a buyer sees at checkout (mirror of sql/163 website_checkout_public). */
@@ -47,7 +48,7 @@ export function shopProductsFrom(products: Product[], imagePaths: Map<number, st
 export function previewShop(sub: string, draft: ShopDesign, settings: WebsiteSettings, products: ShopProduct[], country: string, plan: string, orders = 0): Shop {
   return {
     online: true, sub: sub || "preview", shop: draft, country: (country || "TW").toUpperCase(), powered: String(plan).toLowerCase() !== "master", verified: true,
-    stats: { orders, products: products.length }, products, checkout: checkoutFrom(settings),
+    stats: { orders, products: products.length }, products, checkout: checkoutFrom(settings), checkout2: publicCheckoutV2(settings, country || "TW"),
   };
 }
 /** Did the seller change anything since the last Publish? */
@@ -56,10 +57,10 @@ export function hasUnpublished(draft: ShopDesign, published: ShopDesign | null):
 }
 export const DEFAULT_SETTINGS: WebsiteSettings = { ship: { s711: { enabled: true, fee: 60 }, fm: { enabled: true, fee: 60 }, home: { enabled: false, fee: 120 } }, freeOver: 0, bank: { enabled: false }, qr: { enabled: false }, cod: { enabled: false }, autoCancelHours: 24 };
 /** Payment & shipping form check: at least one delivery and one payment. Pure. */
-export function settingsProblems(st: WebsiteSettings): ("ship" | "pay")[] {
-  const c = checkoutFrom(st);
+export function settingsProblems(st: WebsiteSettings, country = "TW"): ("ship" | "pay")[] {
+  const c = publicCheckoutV2(st, country);
   const out: ("ship" | "pay")[] = [];
-  if (!c.ship.s711 && !c.ship.fm && !c.ship.home) out.push("ship");
-  if (!c.bank && !c.qr && !c.cod) out.push("pay");
+  if (!c.options.length) out.push("ship");
+  if (!c.methods.length) out.push("pay");
   return out;
 }

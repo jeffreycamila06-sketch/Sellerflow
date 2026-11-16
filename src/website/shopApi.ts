@@ -1,6 +1,7 @@
 // Seller Website — the buyer side's ONLY data source: the public RPCs of sql/163 (website_shop,
 // website_place_order, website_order, website_order_receipt). No table is read directly; the RPCs
 // return a whitelist (never the seller's email / phone / plan). No buyer data is logged anywhere.
+import { toCheckoutV2, type CheckoutV2 } from "./shipPay";
 import { isSupabaseConfigured, supabase } from "../supabase";
 
 export interface ShopVariant { id: number; values: string[]; price: number; stock: number; photo: number | null; code?: string }
@@ -29,6 +30,8 @@ export interface ShopCheckout {
 export interface Shop {
   online: true; sub: string; shop: ShopDesign; country: string; powered: boolean; verified: boolean;
   stats: { orders: number; products: number }; products: ShopProduct[]; checkout: ShopCheckout;
+  /** v2 (sql/165): the seller's shipping options + payment methods. Absent before sql/165 → see shipPay.checkoutOf. */
+  checkout2?: CheckoutV2;
 }
 export type ShopResult = Shop | { online: false };
 
@@ -61,6 +64,7 @@ export function toShop(j: unknown): ShopResult {
     online: true, sub: o.sub, shop: (o.shop && typeof o.shop === "object" ? o.shop : {}) as ShopDesign, country: String(o.country || "TW"),
     powered: o.powered !== false, verified: o.verified === true, stats: { orders: num(stats.orders), products: num(stats.products) },
     products, checkout: { ...c, ship: c.ship || {} },
+    ...(toCheckoutV2(o.checkout2) ? { checkout2: toCheckoutV2(o.checkout2)! } : {}),
   };
 }
 

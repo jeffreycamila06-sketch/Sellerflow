@@ -4,14 +4,19 @@
 // The buyer's name / phone / last stores are remembered on THIS device only ("Not you?" clears it).
 import { isSupabaseConfigured, supabase } from "../supabase";
 import { compressProductImage } from "../redesign/adapters/productImages";
+import type { PayOpt, ShipNeeds, ShipOpt } from "./shipPay";
 
-export type Delivery = "s711" | "fm" | "home";
+/** The order's delivery kind (website_orders.delivery). v2 adds 'store' (a typed store) and 'pickup'. */
+export type Delivery = "s711" | "fm" | "home" | "store" | "pickup";
+/** The order's payment kind (website_orders.payment): bank = pay first, qr = pay first with a QR, cod = on delivery. */
 export type Payment = "bank" | "qr" | "cod";
+/** delivery / payment = the picked shipping option id / payment method id (Taiwan's are s711 / fm / home, bank / qr / cod). */
 export interface OrderDraft {
-  name: string; phone: string; contact: string; delivery: Delivery | null; storeId: string; storeName: string;
-  address: string; payment: Payment | null; note: string;
+  name: string; phone: string; contact: string; delivery: string | null; storeId: string; storeName: string;
+  address: string; payment: string | null; note: string;
 }
-export interface PlaceInput extends Omit<OrderDraft, "delivery" | "payment"> { delivery: Delivery; payment: Payment; items: { pid: number; vid: number | null; qty: number }[] }
+/** ship / pay = the option + method ids (sql/165); delivery / payment = the kinds (what sql/163 reads). */
+export interface PlaceInput extends Omit<OrderDraft, "delivery" | "payment"> { ship: string; pay: string; delivery: Delivery; payment: Payment; items: { pid: number; vid: number | null; qty: number }[] }
 export type PlaceError =
   | "shop_closed" | "bad_name" | "bad_phone" | "bad_delivery" | "bad_store" | "bad_address" | "bad_payment"
   | "blocked" | "too_many" | "bad_items" | "item_gone" | "pick_option" | "out_of_stock" | "network";
@@ -22,6 +27,7 @@ export type OrderStatus = "awaiting_payment" | "payment_sent" | "paid" | "confir
 export interface OrderView {
   orderNo: string; status: OrderStatus; paymentIssue: boolean; items: OrderItem[]; subtotal: number; shipFee: number; total: number;
   delivery: Delivery; storeId?: string; storeName?: string; address?: string; payment: Payment; buyerName: string; phoneTail: string; note?: string;
+  shipId?: string; shipName?: string; // v2 (sql/165): the picked option
   receipt: boolean; receiptAt?: string; createdAt: string; autoCancelAt?: string; paidAt?: string; shippedAt?: string; cancelledAt?: string; cancelReason?: "seller" | "auto";
   courier?: string; tracking?: string; // v2 (sql/165): only once shipped
   shop: { sub: string; name?: string; logo?: string; color?: string; chats?: Record<string, string>; currency?: string }; country: string;
@@ -109,7 +115,7 @@ export function saveBuyer(d: OrderDraft): void {
     const prev = readBuyer();
     let stores = prev?.stores || {};
     if ((d.delivery === "s711" || d.delivery === "fm") && /^\d{6}$/.test(d.storeId)) stores = rememberStore(stores, d.delivery, d.storeId, d.storeName.trim());
-    localStorage.setItem(BUYER_KEY, JSON.stringify({ name: d.name.trim(), phone: d.phone.trim(), contact: d.contact.trim(), address: d.delivery === "home" ? d.address.trim() : prev?.address || "", stores }));
+    localStorage.setItem(BUYER_KEY, JSON.stringify({ name: d.name.trim(), phone: d.phone.trim(), contact: d.contact.trim(), address: d.address.trim() || prev?.address || "", stores }));
   } catch { /* private mode */ }
 }
 export function forgetBuyer(): void { try { localStorage.removeItem(BUYER_KEY); } catch { /* */ } }
@@ -123,14 +129,20 @@ export function deviceId(): string {
 
 // ── checks before the call (the server checks everything again) ────────────────
 export type FieldError = "name" | "phone" | "delivery" | "store" | "address" | "payment";
-export function draftErrors(d: OrderDraft, allowed: { delivery: Delivery[]; payment: Payment[] }): FieldError[] {
+/** Taiwan's ready ids without a list (old tests / old shops): 7-11 + FamilyMart need a store, home an address. */
+const LEGACY_OPT: Record<string, { needs: ShipNeeds; cod: boolean }> = { s711: { needs: "store711", cod: true }, fm: { needs: "storefm", cod: true }, home: { needs: "address", cod: false } };
+export interface DraftRules { delivery: string[]; payment: string[]; options?: ShipOpt[]; methods?: PayOpt[] }
+export function draftErrors(d: OrderDraft, allowed: DraftRules): FieldError[] {
   const e: FieldError[] = [];
   if (!d.name.trim() || d.name.trim().length > 40) e.push("name");
   const digits = d.phone.replace(/\D/g, "");
   if (digits.length < 8 || digits.length > 15) e.push("phone");
-  if (!d.delivery || !allowed.delivery.includes(d.delivery)) e.push("delivery");
-  else if (d.delivery === "home") { if (d.address.trim().length < 5) e.push("address"); }
-  else if (!/^\d{6}$/.test(d.storeId.trim())) e.push("store");
-  if (!d.payment || !allowed.payment.includes(d.payment) || (d.payment === "cod" && d.delivery === "home")) e.push("payment");
+  const opt = (d.delivery && (allowed.options?.find((o) => o.id === d.delivery) ?? LEGACY_OPT[d.delivery])) || null;
+  if (!d.delivery || !allowed.delivery.includes(d.delivery) || !opt) e.push("delivery");
+  else if (opt.needs === "address") { if (d.address.trim().length < 5) e.push("address"); }
+  else if (opt.needs === "store711" || opt.needs === "storefm") { if (!/^\d{6}$/.test(d.storeId.trim())) e.push("store"); }
+  else if (opt.needs === "store") { if (!d.storeName.trim()) e.push("store"); }
+  const kind = d.payment ? (allowed.methods?.find((m) => m.id === d.payment)?.kind ?? (d.payment === "cod" ? "delivery" : "first")) : null;
+  if (!d.payment || !allowed.payment.includes(d.payment) || (kind === "delivery" && !opt?.cod)) e.push("payment");
   return e;
 }
