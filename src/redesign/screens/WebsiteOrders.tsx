@@ -9,13 +9,14 @@ import { useT, tpl } from "../i18n";
 import { productImageUrl } from "../adapters/productImages";
 import { actionsFor, matchesFilter, wNo, type OrderAction, type OrderFilter, type WebsiteOrder } from "../adapters/websiteSeller";
 import { realOrdersApi, type OrdersApi } from "../adapters/websiteEditorApi";
-import { shopUrl } from "../../website/route";
+import { shareUrl } from "../../website/route";
 
 const FILTERS: OrderFilter[] = ["new", "check", "unpaid", "ship", "done", "cancelled", "all"];
 
-export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToast, api = realOrdersApi, liveTick = 0 }: {
+export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToast, api = realOrdersApi, liveTick = 0, subdomainReady = false }: {
   cur?: string; topTabs?: ReactNode; onNewCount?: (n: number) => void; onToast: (m: string) => void; api?: OrdersApi;
   liveTick?: number; // bumped by Realtime when an own website order is added / changed → re-read the list
+  subdomainReady?: boolean; // app_settings website_subdomain_ready (sql/164): order links on <sub>.sellerflowlive.com only when true
 }) {
   const t = useT() as unknown as Record<string, string>;
   const [orders, setOrders] = useState<WebsiteOrder[] | null | "loading">("loading");
@@ -102,7 +103,7 @@ export default function WebsiteOrders({ cur = "NT$", topTabs, onNewCount, onToas
           ))}
         </div>
       </div>
-      {open && <Detail o={open} t={t} cur={cur} blocked={blocked.has(open.buyerPhone)} link={sub ? `${shopUrl(sub)}/o/${open.token}` : ""} api={api} onClose={() => setOpenId(null)} onAction={(a) => doAction(open, a)} onToast={onToast} />}
+      {open && <Detail o={open} t={t} cur={cur} blocked={blocked.has(open.buyerPhone)} link={sub ? `${shareUrl(sub, subdomainReady)}/o/${open.token}` : ""} api={api} onClose={() => setOpenId(null)} onAction={(a) => doAction(open, a)} onToast={onToast} />}
     </div>
   );
 }

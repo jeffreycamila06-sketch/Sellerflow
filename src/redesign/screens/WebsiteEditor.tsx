@@ -11,7 +11,7 @@ import { HeaderWithBack } from "../components/BackButton";
 import type { ShopDesign, ShopProduct, SocialKey, ChatKey } from "../../website/shopApi";
 import { SHOP_COLORS } from "../../website/shopStyle";
 import { BrandIcon, type BrandKey } from "../../website/brandIcons";
-import { shopUrl } from "../../website/route";
+import { shopUrl, shareUrl } from "../../website/route";
 import { productImageUrl } from "../adapters/productImages";
 import { subdomainProblem, suggestSubdomain, planCanPublish, isMasterPlan, type MyWebsite, type WebsiteSettings } from "../adapters/websiteSeller";
 import { previewShop, hasUnpublished, DEFAULT_SETTINGS } from "../adapters/websiteEditor";
@@ -25,9 +25,11 @@ const CHATS: ChatKey[] = ["messenger", "line", "whatsapp", "instagram"];
 const CHAT_NAME: Record<ChatKey, string> = { messenger: "Messenger", line: "LINE", whatsapp: "WhatsApp", instagram: "Instagram DM" };
 const SECTIONS = ["announcement", "live", "categories", "about", "policy", "socials"] as const;
 
-export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan, planStatus, planExpiry, country = "TW", onToast, api = realEditorApi, nowMs }: {
+export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan, planStatus, planExpiry, country = "TW", onToast, api = realEditorApi, nowMs, subdomainReady = false }: {
   onBack?: () => void; onPayShip: () => void; onUpgrade?: () => void; ios: boolean;
   plan?: string; planStatus?: string; planExpiry?: string | null; country?: string; onToast: (m: string) => void; api?: EditorApi; nowMs?: number;
+  /** app_settings website_subdomain_ready (sql/164): show / copy <sub>.sellerflowlive.com only when true */
+  subdomainReady?: boolean;
 }) {
   const t = useT() as unknown as Record<string, string>;
   const [site, setSite] = useState<MyWebsite | null | "loading" | "error">("loading");
@@ -111,8 +113,11 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
   };
   const openPreview = async () => { setPreview(await api.loadProducts()); };
   const closePreview = useCallback(() => setPreview(null), []);
-  const address = sub && !subProblem ? shopUrl(sub, true).replace(/^https:\/\//, "") : "";
-  const fallback = sub && !subProblem ? shopUrl(sub) : "";
+  // The link the seller sees + copies: the subdomain only once it really opens (sql/164 switch);
+  // until then the path address. The second, smaller line (the path) shows only next to a subdomain.
+  const link = sub && !subProblem ? shareUrl(sub, subdomainReady) : "";
+  const address = link.replace(/^https:\/\//, "");
+  const fallback = sub && !subProblem && subdomainReady ? shopUrl(sub) : "";
 
   if (site === "loading") return <Frame t={t} onBack={onBack}><div style={{ padding: 30, textAlign: "center", color: "var(--text-muted)" }}>…</div></Frame>;
   if (site === "error") return <Frame t={t} onBack={onBack}><div style={{ ...card, margin: 14, color: "var(--danger)" }}>{t.rd_wor_load_failed}</div></Frame>;
@@ -136,7 +141,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           {address && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
               <div data-testid="wed-url" style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "var(--accent-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{address}</div>
-              <button type="button" data-testid="wed-copy" style={smallBtn} onClick={() => { void navigator.clipboard?.writeText(`https://${address}`).catch(() => {}); onToast(t.rd_shop_od_copied); }}>{t.rd_shop_od_copy}</button>
+              <button type="button" data-testid="wed-copy" style={smallBtn} onClick={() => { void navigator.clipboard?.writeText(link).catch(() => {}); onToast(t.rd_shop_od_copied); }}>{t.rd_shop_od_copy}</button>
             </div>
           )}
           {fallback && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2, overflowWrap: "anywhere" }}>{fallback.replace(/^https:\/\//, "")}</div>}

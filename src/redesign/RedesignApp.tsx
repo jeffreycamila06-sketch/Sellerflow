@@ -2853,11 +2853,11 @@ export default function RedesignApp() {
             sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(postSales ? { posts: postSales } : {})} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} />} />}
           {screen === "orders" && ordersTab === "website" && sellerWebsiteOn && (
-            <Suspense fallback={null}><WebsiteOrders cur={cur} liveTick={webLiveTick} onNewCount={setWebNew} onToast={(msg) => setToast({ msg, kind: "ok" })} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={{ label: tApp.rd_wor_tab, count: webNew }} />} /></Suspense>
+            <Suspense fallback={null}><WebsiteOrders cur={cur} liveTick={webLiveTick} subdomainReady={featureSw.websiteSubdomainReady} onNewCount={setWebNew} onToast={(msg) => setToast({ msg, kind: "ok" })} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={{ label: tApp.rd_wor_tab, count: webNew }} />} /></Suspense>
           )}
           {screen === "website" && sellerWebsiteOn && (
             <Suspense fallback={null}><WebsiteEditor onBack={() => goBack()} onPayShip={() => setScreen("websitepay")} onUpgrade={ios ? undefined : () => setScreen("subscription")} ios={ios}
-              plan={auth.profile?.plan} planStatus={auth.profile?.planStatus} planExpiry={auth.profile?.planExpiry} country={profileCountry || "TW"} onToast={(msg) => setToast({ msg, kind: "ok" })} /></Suspense>
+              plan={auth.profile?.plan} planStatus={auth.profile?.planStatus} planExpiry={auth.profile?.planExpiry} country={profileCountry || "TW"} onToast={(msg) => setToast({ msg, kind: "ok" })} subdomainReady={featureSw.websiteSubdomainReady} /></Suspense>
           )}
           {screen === "websitepay" && sellerWebsiteOn && (
             <Suspense fallback={null}><WebsitePayShip onBack={() => goBack()} cur={cur} onToast={(msg) => setToast({ msg, kind: "ok" })} /></Suspense>

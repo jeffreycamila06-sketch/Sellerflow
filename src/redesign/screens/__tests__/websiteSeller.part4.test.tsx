@@ -79,7 +79,7 @@ describe("pure rules", () => {
 describe("Website editor", () => {
   it("loads the website: address, live date, copy; edits stay a draft until Publish", async () => {
     ed();
-    expect(await screen.findByTestId("wed-url")).toHaveTextContent("budgetukay.sellerflowlive.com");
+    expect(await screen.findByTestId("wed-url")).toHaveTextContent("www.sellerflowlive.com/s/budgetukay"); // sql/164 off (default) → the path address
     expect(screen.getByTestId("wed-state")).toHaveTextContent("Published 2026-11-14");
     expect(screen.getByTestId("wed-state")).toHaveTextContent("You have changes that are not published yet.");
   });

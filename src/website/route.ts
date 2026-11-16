@@ -51,3 +51,6 @@ export function pagePath(base: string, r: ShopPage): string {
 }
 /** The public address of a shop (path fallback until the wildcard domain is live). */
 export const shopUrl = (sub: string, useSubdomain = false) => (useSubdomain ? `https://${sub}.sellerflowlive.com` : `https://www.sellerflowlive.com/s/${sub}`);
+/** The address the seller app SHOWS, COPIES and SHARES: the subdomain only once app_settings
+ *  website_subdomain_ready = 'true' (sql/164); until then the path address that works today. */
+export const shareUrl = (sub: string, subdomainReady: boolean) => shopUrl(sub, subdomainReady === true);
