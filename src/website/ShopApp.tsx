@@ -21,6 +21,8 @@ import { V3_CSS } from "./v3/styles";
 import { lookStyle } from "./v3/look";
 import BrandHome from "./v3/BrandHome";
 import { LayoutCtx } from "./v3/layoutCtx";
+import { BrandActionsCtx } from "./v3/quickAdd";
+import { SizeSheet, CartPanel } from "./v3/QuickSheets";
 import { Header, Footer, BottomNav, ChatSheet, Sheet, Fab } from "./v2/Shell";
 import { useToast } from "./v2/useToast";
 import { checkoutOf, shipLabel, payLabel } from "./shipPay";
@@ -80,6 +82,11 @@ function ensureThemeFonts() {
 }
 
 type Info = "how" | "ship" | "returns" | null;
+function stockOfIn(shop: Shop, pid: number, vid: number | null) {
+  const p = shop.products.find((x) => x.id === pid);
+  if (!p) return 0;
+  return vid === null ? p.stock : p.variants?.find((v) => v.id === vid)?.stock ?? 0;
+}
 function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, linkFor }: { shop: Shop; route: ShopPage; go: (r: ShopPage) => void; lang: string; onLang: (l: string) => void; preview: boolean; nowMs?: number; orderApi?: OrderApi; linkFor: (r: ShopPage) => string }) {
   const t = useT() as unknown as Record<string, string>;
   const cur = currencyFor(shop);
@@ -98,6 +105,9 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   const [toast, say] = useToast();
   const [chat, setChat] = useState(false);
   const [info, setInfo] = useState<Info>(null);
+  // v3 item 4 (Brand store): the size sheet of a card's "+" and the cart panel that opens after adding
+  const [sizeFor, setSizeFor] = useState<number | null>(null);
+  const [panel, setPanel] = useState(false);
   const [clock] = useState(() => nowMs ?? Date.now());
   const update = (next: CartLine[]) => { setLines(next); if (!preview) saveCart(shop.sub, next); };
   const infos = useMemo(() => validLines(shop, lines), [shop, lines]);
@@ -107,12 +117,12 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
 
   const product = route.page === "product" ? shop.products.find((p) => p.id === route.id) : null;
   const add = (pid: number, vid: number | null, qty: number, stock: number) => { update(addLine(lines, pid, vid, qty, stock)); };
-  const stockOf = (pid: number, vid: number | null) => {
-    const p = shop.products.find((x) => x.id === pid);
-    if (!p) return 0;
-    return vid === null ? p.stock : p.variants?.find((v) => v.id === vid)?.stock ?? 0;
-  };
+  const stockOf = (pid: number, vid: number | null) => stockOfIn(shop, pid, vid);
   const home = () => go({ page: "home" });
+  const look = shop.shop.look;
+  const brand = look?.layout === "brand";
+  // Brand store: after adding, the cart opens as a panel; everywhere else Build 1's "Added" note
+  const added = () => { if (brand) setPanel(true); else say(t.rd_shop_added); };
   // quick add: straight into the cart when there's nothing to choose, else open the product to choose
   const quick = (id: number) => {
     const p = shop.products.find((x) => x.id === id);
@@ -120,17 +130,19 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
     const vs = p.variants || [];
     if (vs.length > 1) { go({ page: "product", id }); say(t.rd_shop_pick_first); return; }
     const vid = vs.length === 1 ? vs[0].id : null;
-    add(id, vid, 1, stockOf(id, vid)); say(t.rd_shop_added);
+    add(id, vid, 1, stockOf(id, vid)); added();
+  };
+  const brandActions = {
+    openSizes: (pid: number) => setSizeFor(pid),
+    addSize: (pid: number, vid: number) => { setSizeFor(null); add(pid, vid, 1, stockOf(pid, vid)); setPanel(true); },
   };
   const toShop = (p: Partial<ShopFilter> = {}) => { setFilter({ ...NO_FILTER, sort: filter.sort, ...p }); go({ page: "shop" }); };
   let body: ReactNode;
-  const look = shop.shop.look;
-  const brand = look?.layout === "brand";
   if (route.page === "home") body = look && brand
     ? <BrandHome shop={shop} look={look} cur={cur} onOpen={(id) => go({ page: "product", id })} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} onShop={(f) => toShop(f)} />
     : <Home shop={shop} cur={cur} onOpen={(id) => go({ page: "product", id })} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} onShop={(f) => toShop(f)} />;
   else if (route.page === "product" && product) body = <Product key={product.id} shop={shop} product={product} cur={cur} nowMs={clock}
-    onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); say(t.rd_shop_added); }}
+    onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); added(); }}
     onBuy={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); go({ page: "checkout" }); }}
     saved={saved} onSave={toggleSave} onOpen={(id) => go({ page: "product", id })} onQuick={quick} onChat={() => setChat(true)} onShop={(cat) => toShop(cat ? { cat } : {})} onHome={home} />;
   else if (route.page === "cart") body = <Cart shop={shop} cur={cur} nowMs={clock} infos={infos} lines={lines} onQty={(i, q, s) => update(setQty(lines, i, q, s))} onRemove={(i) => update(removeLine(lines, i))} onCheckout={() => go({ page: "checkout" })} onShop={() => toShop()}
@@ -156,7 +168,7 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
       <Header shop={shop} active={navActive} overBand={brand && route.page === "home"} onBack={onBack} onHome={home} cartCount={count} onCart={() => go({ page: "cart" })}
         query={query} onQuery={(q) => setFilter({ ...filter, q })} onSearch={(q) => toShop({ q })} cats={cats} onCat={(c) => toShop({ cat: c })}
         savedCount={saved.length} onSaved={() => go({ page: "saved" })} onTrack={() => go({ page: "orders" })} />
-      <main className="v-main"><LayoutCtx.Provider value={look?.layout ?? null}>{body}</LayoutCtx.Provider></main>
+      <main className="v-main"><LayoutCtx.Provider value={look?.layout ?? null}><BrandActionsCtx.Provider value={brand ? brandActions : null}>{body}</BrandActionsCtx.Provider></LayoutCtx.Provider></main>
       {withFooter && <Footer shop={shop} cur={cur} lang={lang} onLang={onLang} links={[
         [{ label: t.rd_shop_all_products, go: () => toShop() }, { label: t.rd_shop_new_arrivals, go: () => toShop({ sort: "new" }) }, { label: t.rd_shop_best_sellers, go: () => toShop({ sort: "best" }) }, { label: t.rd_shop_on_sale, go: () => toShop({ sale: true }) }],
         [{ label: t.rd_shop_f_how, go: () => setInfo("how") }, { label: t.rd_shop_track, go: () => go({ page: "orders" }) }, { label: t.rd_shop_f_shipping, go: () => setInfo("ship") }, ...(shop.shop.policy ? [{ label: t.rd_shop_returns, go: () => setInfo("returns") }] : [])],
@@ -172,6 +184,9 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
           {info === "ship" && ck.methods.length > 0 && <p style={{ fontSize: 12.5, color: "var(--s-mut)" }}>{ck.methods.map((m) => payLabel(t, m)).join(" · ")}</p>}
         </Sheet>
       )}
+      {brand && sizeFor !== null && <SizeSheet shop={shop} pid={sizeFor} cur={cur} nowMs={clock} onPick={(vid) => brandActions.addSize(sizeFor, vid)} onClose={() => setSizeFor(null)} />}
+      {brand && panel && <CartPanel shop={shop} cur={cur} infos={infos} lines={lines} onQty={(i, q, st) => update(setQty(lines, i, q, st))} onRemove={(i) => update(removeLine(lines, i))}
+        onCheckout={() => { setPanel(false); go({ page: "checkout" }); }} onClose={() => setPanel(false)} />}
       {toast && <div role="status" className="v-toast" data-testid="shop-toast">{toast}</div>}
     </div>
   );

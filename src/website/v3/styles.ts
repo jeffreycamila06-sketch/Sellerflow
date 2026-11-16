@@ -52,6 +52,15 @@ const BASE = `
 .sfl-v2 .v-sw2 i{width:14px;height:14px;border:1px solid rgba(128,128,128,.5)}
 .sfl-v2.l-brand .v-fside{border:0;padding:0;background:transparent}
 .sfl-v2.l-brand .v-foot{background:transparent}
+.sfl-v2 .v-qs{display:none}
+.sfl-v2 .v-qplus{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;border:0;background:#fff;color:#111;font:500 21px/1 Inter,sans-serif;z-index:3;box-shadow:0 2px 8px rgba(0,0,0,.18);display:grid;place-items:center;cursor:pointer}
+.sfl-v2 .v-drawer{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:flex;justify-content:flex-end;align-items:flex-end}
+.sfl-v2 .v-drawer>div{background:var(--s-card);color:var(--s-fg);width:100%;max-height:88%;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:10px}
+.sfl-v2 .v-drawer h3{font-size:19px;display:flex;justify-content:space-between;align-items:center}
+.sfl-v2 .v-drawer h3 button{border:0;background:none;color:inherit;font-size:24px;line-height:1;min-width:44px;min-height:44px}
+.sfl-v2 .v-qsz{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.sfl-v2 .v-qsz button{border:1.5px solid var(--s-line);background:var(--s-card);color:var(--s-fg);padding:14px 4px;font:600 14px var(--s-font);border-radius:var(--s-r);min-height:44px}
+.sfl-v2 .v-qsz button:disabled,.sfl-v2 .v-qs button:disabled{opacity:.4;text-decoration:line-through;cursor:default}
 `;
 const WIDE = `
 .sfl-v2 .v-band{padding-bottom:26px}
@@ -63,8 +72,18 @@ const WIDE = `
 .sfl-v2.l-brand .v-hs .v-card{flex-basis:calc(20% - 5px)}
 .sfl-v2 .v-arrows{display:inline-flex}
 .sfl-v2 .v-ptiles{grid-template-columns:repeat(4,1fr)}
+.sfl-v2 .v-drawer{align-items:stretch}
+.sfl-v2 .v-drawer>div{width:420px;max-height:none}
+`;
+// laptop with a mouse: the sizes show over the photo on hover (the "+" stays for products that follow Build 1's rule)
+const WIDE_HOVER = `
+.sfl-v2 .v-qplus:not(.v-qany){display:none}
+.sfl-v2.l-brand .v-card:hover .v-qs{display:grid}
+.sfl-v2 .v-qs{position:absolute;left:0;right:0;bottom:0;background:var(--s-card);padding:12px;grid-template-columns:repeat(4,1fr);z-index:3}
+.sfl-v2 .v-qs button{border:1px solid var(--s-line);background:var(--s-card);color:var(--s-fg);padding:12px 2px;font:600 12.5px var(--s-font);margin:-.5px;cursor:pointer}
+.sfl-v2 .v-qs button:not(:disabled):hover{background:var(--s-fg);color:var(--s-bg)}
 `;
 export const V3_CSS = `${BASE}
-@container vp (min-width:860px){${WIDE}}
-@supports not (container-type:inline-size){@media (min-width:860px){${WIDE}}}
+@container vp (min-width:860px){${WIDE}@media (hover:hover){${WIDE_HOVER}}}
+@supports not (container-type:inline-size){@media (min-width:860px){${WIDE}}@media (min-width:860px) and (hover:hover){${WIDE_HOVER}}}
 `;

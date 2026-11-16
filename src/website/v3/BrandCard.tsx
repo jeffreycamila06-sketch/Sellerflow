@@ -2,7 +2,7 @@
 // in the brand layout). No box; the photos swipe as in Build 1; ONE badge at the bottom left of the photo
 // (Sold out › "N% Off" › "N left" when 2 or fewer › New); colour swatches; the name with "N sold"; the
 // colour · condition line; the price with the old price struck through in the sale colour.
-import type { KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { useT, tpl } from "../../redesign/i18n";
 import type { ShopProduct } from "../shopApi";
 import { money } from "../shopApi";
@@ -10,12 +10,13 @@ import { cardFacts } from "../v2/cardFacts";
 import { SmallPhoto } from "../ui";
 import { VIcon } from "../v2/icons";
 import { brandBadge } from "./brandBadge";
+import { quickPlan, useBrandActions } from "./quickAdd";
 
 type T = Record<string, string>;
-export function BrandCard({ p, cur, nowMs, saved, onSave, onOpen, quick }: {
+export function BrandCard({ p, cur, nowMs, saved, onSave, onOpen, onQuick }: {
   p: ShopProduct; cur: string; nowMs: number; saved: boolean; onSave: () => void; onOpen: () => void;
-  /** item 4: the quick-add controls drawn over the photo */
-  quick?: ReactNode;
+  /** Build 1's quick add (used when the product isn't a sizes-only product) */
+  onQuick: () => void;
 }) {
   const t = useT() as unknown as T;
   const f = cardFacts(p, nowMs);
@@ -23,6 +24,21 @@ export function BrandCard({ p, cur, nowMs, saved, onSave, onOpen, quick }: {
   const badge = brandBadge(t, f);
   const key = (e: KeyboardEvent) => { if (e.key === "Enter") onOpen(); };
   const line = [f.colour?.values[0], p.condition].filter(Boolean).join(" · ");
+  const act = useBrandActions();
+  const plan = quickPlan(p);
+  const stop = (e: MouseEvent, fn: () => void) => { e.stopPropagation(); fn(); };
+  // item 4: sizes over the photo (laptop hover) + a "+" (phones: opens the size sheet); Build 1's rule otherwise
+  let quick: ReactNode = null;
+  if (f.stock > 0 && act) {
+    quick = plan.kind === "sizes"
+      ? <>
+          <div className="v-qs" data-testid="card-qs" onClick={(e) => e.stopPropagation()}>
+            {plan.sizes.map((s) => <button key={s.vid} type="button" disabled={s.stock <= 0} data-testid="card-qs-size" onClick={(e) => stop(e, () => act.addSize(p.id, s.vid))}>{s.label}</button>)}
+          </div>
+          <button type="button" className="v-qplus" data-testid="card-quick" aria-label={t.rd_shop_add_cart} onClick={(e) => stop(e, () => act.openSizes(p.id))}>+</button>
+        </>
+      : <button type="button" className="v-qplus v-qany" data-testid="card-quick" aria-label={t.rd_shop_add_cart} onClick={(e) => stop(e, onQuick)}>+</button>;
+  }
   return (
     <div className={`v-card${f.stock ? "" : " v-sold"}`} data-testid="shop-item" data-card="brand" role="link" tabIndex={0} aria-label={p.name} onClick={onOpen} onKeyDown={key}>
       <div className="v-ph">

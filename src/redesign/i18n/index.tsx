@@ -1502,6 +1502,8 @@ const RAW: Record<string, Row> = {
   rd_brand_next: { en: "Next", fil: "Susunod", zh: "下一组", "zh-TW": "下一組", vi: "Tiếp", th: "ถัดไป", id: "Berikutnya", bg: "Напред" },
   rd_brand_off: { en: "{n}% Off", fil: "{n}% Off", zh: "{n}% 折扣", "zh-TW": "{n}% 折扣", vi: "Giảm {n}%", th: "ลด {n}%", id: "Diskon {n}%", bg: "-{n}%" },
   rd_brand_new: { en: "New", fil: "Bago", zh: "新品", "zh-TW": "新品", vi: "Mới", th: "ใหม่", id: "Baru", bg: "Ново" },
+  rd_brand_bag: { en: "Your bag ({n})", fil: "Ang bag mo ({n})", zh: "购物袋 ({n})", "zh-TW": "購物袋 ({n})", vi: "Túi của bạn ({n})", th: "ถุงของคุณ ({n})", id: "Tas kamu ({n})", bg: "Твоята чанта ({n})" },
+  rd_brand_pick_size: { en: "Pick your size", fil: "Piliin ang size mo", zh: "选择尺码", "zh-TW": "選擇尺寸", vi: "Chọn size", th: "เลือกไซซ์", id: "Pilih ukuran", bg: "Избери размер" },
   rd_home_shop_now: { en: "Shop now", fil: "Mamili na", zh: "立即选购", "zh-TW": "立即選購", vi: "Mua ngay", th: "ช้อปเลย", id: "Belanja sekarang", bg: "Пазарувай" },
   rd_home_about: { en: "About {shop}", fil: "Tungkol sa {shop}", zh: "关于 {shop}", "zh-TW": "關於 {shop}", vi: "Về {shop}", th: "เกี่ยวกับ {shop}", id: "Tentang {shop}", bg: "За {shop}" },
   rd_home_items_sold: { en: "Items sold", fil: "Nabentang item", zh: "已售件数", "zh-TW": "已售件數", vi: "Sản phẩm đã bán", th: "ชิ้นที่ขายแล้ว", id: "Barang terjual", bg: "Продадени" },
