@@ -38,7 +38,21 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     platform: String(row.platform ?? ""),
     status: statusForStock(stock),
     liveCode: row.live_code == null ? "" : String(row.live_code), // Auto Mode code (sql/39)
+    ...websiteFieldsFromRow(row), // sql/163 — nothing added when the columns are empty / absent
   };
+}
+
+// Seller Website (sql/163) columns → the OPTIONAL Product fields. Only set fields appear (a row
+// with all-NULL / default columns — or a read made before sql/163 — adds nothing).
+export function websiteFieldsFromRow(row: Record<string, unknown>): Partial<Product> {
+  const out: Partial<Product> = {};
+  if (typeof row.category === "string" && row.category.trim()) out.category = row.category;
+  if (typeof row.description === "string" && row.description.trim()) out.description = row.description;
+  if (Array.isArray(row.photo_paths) && row.photo_paths.length) out.photoPaths = row.photo_paths.filter((x): x is string => typeof x === "string" && !!x).slice(0, 7);
+  if (row.show_on_website === false) out.showOnWebsite = false;
+  if (row.parent_local_id != null && Number.isFinite(Number(row.parent_local_id))) out.parentId = Number(row.parent_local_id);
+  if (row.variant && typeof row.variant === "object" && !Array.isArray(row.variant)) out.variant = row.variant as Product["variant"];
+  return out;
 }
 
 // Product → upsert payload. Omits `status` (derived) and `last_ordered_at`
@@ -62,6 +76,13 @@ export function productToRow(p: Product, userId: string, now: number = Date.now(
   // re-inflate on the next reload. Stock is written only when it actually changed
   // (or on a new product).
   if (!opts?.skipStock) row.stock = p.stock;
+  // sql/163 — written ONLY when the product carries them (a product without them = the same payload as before)
+  if (p.category !== undefined) row.category = p.category.trim() ? p.category.trim().slice(0, 40) : null;
+  if (p.description !== undefined) row.description = p.description.trim() ? p.description.slice(0, 2000) : null;
+  if (p.photoPaths !== undefined) row.photo_paths = p.photoPaths.length ? p.photoPaths.slice(0, 7) : null;
+  if (p.showOnWebsite !== undefined) row.show_on_website = p.showOnWebsite;
+  if (p.parentId !== undefined) row.parent_local_id = p.parentId;
+  if (p.variant !== undefined) row.variant = p.variant;
   return row;
 }
 
@@ -96,13 +117,22 @@ async function uid(): Promise<string | null> {
 // Read this user's products. Returns null when we COULDN'T read (unconfigured / no
 // session / error) so the caller keeps the local cache; returns [] for a real-but-
 // empty table (which is what drives the migration decision).
+const PRODUCT_COLS = "local_id,name,sku,price,stock,platform,live_code";
+export const WEBSITE_COLS = "category,description,photo_paths,show_on_website,parent_local_id,variant";
 export async function loadProductsDb(): Promise<Product[] | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   const id = await uid();
   if (!id) return null;
+  // sql/163 columns first; before sql/163 is applied that read fails → the original read (same result as before)
+  const first = await supabase
+    .from("products")
+    .select(`${PRODUCT_COLS},${WEBSITE_COLS}`)
+    .eq("user_id", id)
+    .order("created_at", { ascending: true });
+  if (!first.error) return (first.data || []).map((r) => rowToProduct(r as Record<string, unknown>));
   const { data, error } = await supabase
     .from("products")
-    .select("local_id,name,sku,price,stock,platform,live_code")
+    .select(PRODUCT_COLS)
     .eq("user_id", id)
     .order("created_at", { ascending: true });
   if (error) { log.error("Load products error:", error.message); return null; }
@@ -221,7 +251,7 @@ export async function resolveInitialProducts(local: Product[]): Promise<ResolveR
 // Every stock change writes one stock_movements row. The logged RPCs do the SAME atomic
 // arithmetic as adjust_product_stock (own row, clamp at 0) and log what was really applied.
 // Return: the NEW stock, -1 when not the caller's product, null when the call couldn't run.
-export type StockReason = "auto_order" | "oneclick" | "restock" | "manual_edit" | "waitlist";
+export type StockReason = "auto_order" | "oneclick" | "restock" | "manual_edit" | "waitlist" | "website"; // "website" is written only by the database (sql/163)
 export interface StockMovement { delta: number; reason: StockReason; orderRef: string | null; createdAt: string }
 
 export async function adjustStockLogged(localId: number, delta: number, reason: StockReason, orderRef?: string | null): Promise<number | null> {

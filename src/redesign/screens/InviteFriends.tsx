@@ -1,4 +1,4 @@
-// Settings → Invite friends (sql/164). One read per open (my_referral_summary), zero poll.
+// Settings → Invite friends (sql/165). One read per open (my_referral_summary), zero poll.
 //   • no code yet  → choose-code card (own word with a live check, or "Give me a random code"),
 //                    in-page warning before saving ("can't be changed"), then Save.
 //   • has a code   → the code BIG + Copy + Share, this month's days line, the invites list.

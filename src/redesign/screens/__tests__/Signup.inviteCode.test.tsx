@@ -1,4 +1,4 @@
-// Sign-up "Invite code (optional)" (sql/164): live Code found / Not found, and it NEVER blocks the
+// Sign-up "Invite code (optional)" (sql/165): live Code found / Not found, and it NEVER blocks the
 // sign-up — empty or wrong, the Create account button and the submit behave exactly the same.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -68,7 +68,7 @@ describe("Signup invite code", () => {
     await waitFor(() => expect(onRegister).toHaveBeenCalledTimes(1));
   });
 
-  it("the check failing (database without sql/164) → just the hint, sign-up unaffected", async () => {
+  it("the check failing (database without sql/165) → just the hint, sign-up unaffected", async () => {
     rpc.mockRejectedValue(new Error("offline"));
     setup();
     fireEvent.change(screen.getByTestId("su-invite"), { target: { value: "ABCD12" } });

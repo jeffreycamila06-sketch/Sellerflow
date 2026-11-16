@@ -1,15 +1,56 @@
 {
-  "git": { "deploymentEnabled": { "**": false, "main": true, "preview/**": true } },
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true,
+      "preview/**": true
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Content-Security-Policy", "value": "frame-ancestors 'self'" },
-        { "key": "Permissions-Policy", "value": "camera=(self), microphone=(), geolocation=(), payment=()" },
-        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'self'"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self), microphone=(), geolocation=(), payment=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/s/:sub",
+      "destination": "/api/shop?sub=:sub"
+    },
+    {
+      "source": "/s/:sub/:rest*",
+      "destination": "/api/shop?sub=:sub"
+    },
+    {
+      "source": "/((?!assets/|api/|shop\\.html|favicon|apple-touch|site\\.webmanifest|icon-).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "(?<sub>(?!(?:www|app|admin|api|mail|help|support|static|assets|cdn)\\.)[a-z0-9][a-z0-9-]{1,28}[a-z0-9])\\.sellerflowlive\\.com"
+        }
+      ],
+      "destination": "/api/shop?sub=:sub"
     }
   ]
 }

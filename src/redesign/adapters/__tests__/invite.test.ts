@@ -1,4 +1,4 @@
-// Invite codes (sql/164) — the client half. Pure helpers + every call answers instead of throwing,
+// Invite codes (sql/165) — the client half. Pure helpers + every call answers instead of throwing,
 // so a sign-up or a screen never breaks because of an invite call.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 

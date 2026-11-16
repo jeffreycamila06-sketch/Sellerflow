@@ -1,5 +1,5 @@
-// register() + the OPTIONAL invite code (sql/164): a wrong code, an error, or a database without
-// sql/164 NEVER blocks the sign-up. Email/password is the only sign-up method the app has.
+// register() + the OPTIONAL invite code (sql/165): a wrong code, an error, or a database without
+// sql/165 NEVER blocks the sign-up. Email/password is the only sign-up method the app has.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
@@ -70,7 +70,7 @@ describe("register() with an invite code", () => {
     expect(createMyProfile).toHaveBeenCalledTimes(1);
   });
 
-  it("the claim call throws (database without sql/164 / offline) → the sign-up still succeeds", async () => {
+  it("the claim call throws (database without sql/165 / offline) → the sign-up still succeeds", async () => {
     withSession();
     rpc.mockRejectedValueOnce(new Error("function claim_referral does not exist"));
     const { result } = renderHook(() => useAuthSession());

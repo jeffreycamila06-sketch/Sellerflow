@@ -1073,9 +1073,9 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
     void loadConnectedAccounts().then((m) => { if (alive) setConnected(m); });
     return () => { alive = false; };
   }, [panel, canReadConnected, connectedTick]);
-  // Invite codes + "what a paid plan gives the inviter" (sql/164): ONE admin read when the sellers
+  // Invite codes + "what a paid plan gives the inviter" (sql/165): ONE admin read when the sellers
   // panel opens, re-read when the users list reloads (after a plan change). null = not read
-  // (sql/164 not applied / error) → the cards show no invite line, plans work exactly as before.
+  // (sql/165 not applied / error) → the cards show no invite line, plans work exactly as before.
   const [refOv, setRefOv] = useState<Record<string, ReferralPreview> | null>(null);
   const [refTick, setRefTick] = useState(0);
   useEffect(() => {

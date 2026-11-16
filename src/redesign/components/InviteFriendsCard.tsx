@@ -2,7 +2,7 @@
 // hub grid (full-width, lightly tinted so it's noticed first). Native share sheet
 // (navigator.share, works in iOS/Android WebView + mobile browsers) with a
 // copy-to-clipboard + inline "copied" fallback for desktop. Copy is deliberately
-// payment-free (iOS 3.1.1-safe). With `onOpen` (the Settings hub, sql/164) a tap opens the
+// payment-free (iOS 3.1.1-safe). With `onOpen` (the Settings hub, sql/165) a tap opens the
 // Invite friends screen (invite code + invites) instead; without it the card shares the app.
 import { useState, type CSSProperties } from "react";
 import { useT } from "../i18n";

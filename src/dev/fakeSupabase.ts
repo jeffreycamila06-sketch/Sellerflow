@@ -91,7 +91,7 @@ const tables: Record<string, Row[]> = {
     { id: "t8", user_id: UID, tracking_no: "E8234567890", cm_order_no: null, buyer_username: "+886911222333", recipient_name: "黃*明", store_id: "022131", rec_store: "全家忠孝店", status: "at_store", status_message: "已到店", pickup_deadline: day(5), arrived_at: iso(1), ship_type: "C2C", special_type: null, order_amount: 450, terminal: false, last_polled_at: iso(0.1), carrier: "fm" },
   ],
 };
-// Invite friends previews (sql/164, docs/design/invite-referral): ?inv=choose (no code yet) /
+// Invite friends previews (sql/165, docs/design/invite-referral): ?inv=choose (no code yet) /
 // ?inv=free (has a code, free plan) / default (has a code + invites). ?admin=1 = admin role.
 const Q = typeof location !== "undefined" ? location.search : "";
 const INV = (/[?&]inv=(\w+)/.exec(Q) || [])[1] || "";

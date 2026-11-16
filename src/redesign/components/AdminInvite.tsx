@@ -1,4 +1,4 @@
-// Admin parts of Invite friends (sql/164). Every confirm is a step INSIDE the page (no confirm()).
+// Admin parts of Invite friends (sql/165). Every confirm is a step INSIDE the page (no confirm()).
 //   • SellerInviteRow      Manage sellers card: the seller's code + "Change code", and the line that
 //                          says what a paid plan would give their inviter. DISPLAY ONLY for the
 //                          plan — giving a plan works exactly as before (the reward is the database

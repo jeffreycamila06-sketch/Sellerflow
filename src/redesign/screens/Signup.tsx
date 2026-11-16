@@ -32,7 +32,7 @@ export default function Signup({ onBack, onLegal, onRegister }: {
   const t = useT();
   const lang = useLang();
   const [form, setForm] = useState({ storeName: "", fullName: "", phone: "", email: "", password: "", confirm: "" });
-  // Invite code (optional, sql/164). Live "Code found / Not found" — NEVER blocks the sign-up:
+  // Invite code (optional, sql/165). Live "Code found / Not found" — NEVER blocks the sign-up:
   // it is not part of `complete`, and a wrong code is simply not linked.
   const [invite, setInvite] = useState("");
   const inviteCheck = useInviteCodeCheck(invite, checkInviteCode);

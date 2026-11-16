@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import "../styles/design-tokens.css";
 import "./redesign.css";
 import RedesignApp from "./RedesignApp";
+import { subFromHost } from "../website/route";
 import { initAnalytics } from "./analytics";
 import { applyIOSShellClass, applyIOSStatusBarStyle, applyIOSViewportZoomLock } from "./adapters/platform";
 
@@ -27,4 +28,8 @@ applyIOSStatusBarStyle();
 // No-op when VITE_PUBLIC_POSTHOG_KEY is absent. Single init for the redesign entry.
 initAnalytics();
 
-createRoot(document.getElementById("redesign-root")!).render(<RedesignApp />);
+// Seller Website: a shop subdomain (<sub>.sellerflowlive.com) never boots the seller app — if the
+// host rewrite (vercel.json) did not catch it, go to the same shop's path address instead.
+const shopSub = typeof location !== "undefined" ? subFromHost(location.host) : null;
+if (shopSub) location.replace(`https://www.sellerflowlive.com/s/${shopSub}`);
+else createRoot(document.getElementById("redesign-root")!).render(<RedesignApp />);

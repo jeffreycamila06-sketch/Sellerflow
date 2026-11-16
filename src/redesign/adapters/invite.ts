@@ -1,4 +1,4 @@
-// Invite friends — invite CODES + the referral reward (sql/164). Every call the app makes for it
+// Invite friends — invite CODES + the referral reward (sql/165). Every call the app makes for it
 // lives here. CODE ONLY: no link catching, no ?ref= in any URL.
 //   • check / choose / claim a code (seller)
 //   • my_referral_summary (the Invite friends screen, one call per open — zero poll)

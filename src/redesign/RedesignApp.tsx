@@ -2,7 +2,7 @@
 // [data-theme]/[data-accent] on the [data-redesign] root (tokens resolve from
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type Order as RDOrder } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
@@ -126,6 +126,13 @@ import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { hasBtBridge, hasNativePrinter, hasGenericPrinterBridge, buildTestBuyer, savedTestBuyer, btCall } from "./adapters/printerBridge";
 import { printerFlowV2Enabled, knownTsplJob } from "./adapters/printerModels";
 import { useApprovedPrinters } from "./adapters/printerTesters";
+import { sellerWebsiteVisible } from "./adapters/sellerWebsiteGate";
+import { websiteNewOrdersCount, loadWebsiteSales } from "./adapters/websiteSeller";
+import { useWebsiteOrdersLive } from "./adapters/websiteOrdersLive";
+// Seller Website screens load only when opened (the switch is off for almost every seller).
+const WebsiteEditor = lazy(() => import("./screens/WebsiteEditor"));
+const WebsitePayShip = lazy(() => import("./screens/WebsitePayShip"));
+const WebsiteOrders = lazy(() => import("./screens/WebsiteOrders"));
 import { PREVIEW_COMMENT } from "./adapters/stickerPreview";
 import OneStickerPattern from "./components/OneStickerPattern";
 import { setOneStickerVisible, stickerAllScriptsFor, saveOneStickerSizeFromPrinterCustom, seedOneSticker, oneStickerSizeNow, oneStickerSizesFor, oneStickerLimitFor, pickOneStickerSize, osDraftAfterSizePick, markOneStickerQrOffAfterPick, oneStickerSeedQr, clearOneStickerQrOffMark, clearOneStickerSizeChoice, autoSaveOneSticker, shouldAskSavedPrinter, readSavedOneSticker, saveOneSticker, isOneStickerSeen, markOneStickerSeen, oneStickerVisibleFor, BRAND_FALLBACK, prefetchOneStickerFonts, syncOneStickerSizeFromPrinter, reconcileOneStickerSize, psLabelFor, sampleBuyer, ONE_STICKER_SAMPLE, stickerShopName, testPrintFor } from "./adapters/oneStickerPrint";
@@ -173,19 +180,22 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts" | "invite";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "fmparcelscan" | "shopeechannels" | "fbpages" | "receiptformat" | "igaccounts"
+  | "website" | "websitepay" | "invite";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "invite"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "fmparcelscan", "shopeechannels", "fbpages", "receiptformat", "igaccounts", "website", "websitepay", "invite"];
 
 // The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
 // in here). Rendered inside each screen's sticky header via the `topTabs` slot.
-function OrdersMinersTabs({ tab, onTab, ordersLabel }: { tab: "orders" | "miners"; onTab: (t: "orders" | "miners") => void; ordersLabel: string }) {
+type OrdersTab = "orders" | "miners" | "website";
+function OrdersMinersTabs({ tab, onTab, ordersLabel, website }: { tab: OrdersTab; onTab: (t: OrdersTab) => void; ordersLabel: string; website?: { label: string; count: number } }) {
   const seg = (on: boolean) => ({ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", fontWeight: 800 as const, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--font-ui)", background: on ? "#fff" : "transparent", color: on ? "var(--accent-fg)" : "var(--on-header)" });
   return (
     <div style={{ display: "flex", gap: 4, marginTop: 11, background: "rgba(255,255,255,.16)", borderRadius: 10, padding: 3 }}>
       <button data-testid="orders-tab-orders" onClick={() => onTab("orders")} style={seg(tab === "orders")}>{ordersLabel}</button>
       <button data-testid="orders-tab-miners" onClick={() => onTab("miners")} style={seg(tab === "miners")}>Miners</button>
+      {website && <button data-testid="orders-tab-website" onClick={() => onTab("website")} style={seg(tab === "website")}>{website.label}{website.count > 0 && <span style={{ marginLeft: 5, fontSize: 10.5, fontWeight: 800, background: "var(--danger)", color: "#fff", borderRadius: 999, padding: "1px 6px" }}>{website.count}</span>}</button>}
     </div>
   );
 }
@@ -361,7 +371,7 @@ export default function RedesignApp() {
   // true). UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
   const [parcelTrackingAccess, setParcelTrackingAccess] = useState(false);
   const authUserId = auth.profile?.authUserId;
-  // Invite code typed at sign-up that could not be claimed then (sql/164): claimed ONCE, the first time
+  // Invite code typed at sign-up that could not be claimed then (sql/165): claimed ONCE, the first time
   // this tab has a signed-in profile WITH THE SAME EMAIL (another account → dropped). sessionStorage
   // only; nothing in a URL. Never blocks.
   const authEmail = auth.profile?.email || "";
@@ -881,6 +891,9 @@ export default function RedesignApp() {
   // classicTextCardShown). Set in THIS render (not an effect) so oneStickerDevicePath below — the Live print
   // pattern screen's "this phone prints the older sticker" note — always agrees with what the printer gets.
   const printerFlowV2 = printerFlowV2Enabled(isAdmin, hasFeature("test_printers"), featureSw.printerFlowV2);
+  const sellerWebsiteOn = sellerWebsiteVisible(featureSw.sellerWebsite, hasFeature("seller_website")); // Seller Website Phase 1 (sql/163)
+  // New website orders: ONE read when the app opens (and the Website tab updates it) — no polling.
+  const [webNew, setWebNew] = useState(0);
   const classicShown = classicTextCardShown(classicAllowed, printerFlowV2, hasGenericPrinterBridge());
   setClassicTextAllowed(classicShown);
   // Sticker layout v2 (printing.ts): admins + feature "sticker_v2", or everyone with the sticker_layout_v2 switch.
@@ -914,7 +927,7 @@ export default function RedesignApp() {
   const helpBotIosOn = useHelpBotSwitch(authed && isIOS() ? (authUserId || "") : "", "support_ai_ios");
   const platformSales = usePlatformSales();
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
-  const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
+  const [ordersTab, setOrdersTab] = useState<OrdersTab>("orders"); // Miners now lives inside the Orders tab
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, fbHandleIsId(c.platform, c.name, c.handle) ? c.name : c.handle, c.platform, c.orders, `${cur}${moneyText(Number(c.spent) || 0)}`]));
 
   // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
@@ -1089,6 +1102,24 @@ export default function RedesignApp() {
   const reportBtOff = btOff.report; // stable (refs only) — safe in the once-registered handler
   const tAppRef = useRef(tApp);
   useEffect(() => { tAppRef.current = tApp; }, [tApp]); // ref write in an effect (react-hooks/refs)
+  // Seller Website: the new-order count, read ONCE per signed-in open (+ a toast when > 0).
+  useEffect(() => {
+    if (!authed || !sellerWebsiteOn) return;
+    let live = true;
+    void websiteNewOrdersCount().then((n) => {
+      if (!live) return;
+      setWebNew(n);
+      if (n > 0) setToast({ msg: tpl(tAppRef.current.rd_wor_new_toast, { n: String(n) }), kind: "ok" });
+    });
+    return () => { live = false; };
+  }, [authed, sellerWebsiteOn]);
+  // …and while the app is open, a new / updated website order refreshes the badge and the Website tab
+  // by itself (Realtime, own rows; unsubscribed on sign-out or when the feature is off).
+  const [webLiveTick, setWebLiveTick] = useState(0);
+  useWebsiteOrdersLive(authed && sellerWebsiteOn, authUserId, () => {
+    setWebLiveTick((n) => n + 1);
+    void websiteNewOrdersCount().then(setWebNew);
+  });
   useEffect(() => {
     setNativePrintFailureHandler(({ code, message, via }) => {
       // Phone Bluetooth OFF (order sticker / reprint / Test Print) → ONE simple
@@ -2826,14 +2857,24 @@ export default function RedesignApp() {
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
           {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} hideFbPill={hideFbPill} {...(waitlistBase ? { waitlist: { state: wlRows === "loading" ? "loading" as const : wlRows === null ? "error" as const : "ready" as const, groups: Array.isArray(wlRows) ? groupWaitlist(wlRows) : [], stockFor: (code: string, source?: "live" | "post") => { if (source === "post") return postItemStock(postSales?.sales ?? [], code); const ac = autoCodesRef.current.find((x) => x.code.trim().toLowerCase() === code.trim().toLowerCase()); return ac ? autoStockRef.current.get(ac.productLocalId) ?? 0 : 0; }, onGive: onWaitlistGive, onSkip: onWaitlistSkip, busyId: wlBusy, note: wlNote } } : {})} orders={ordersList} state={ordersState} onGoShipping={shippingGate === "open" ? () => setScreen("shipping") : undefined} shippingSoon={shippingGate === "soon"}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
+            initialQuery={ordersInitialQuery} fbReceipt={fbReceiptUi} sessionId={sessionInstance.currentSessionId} paidFlag={featureSw.ordersPaidFlag} buyerTags={buyerTags} fbPolish={featureSw.fbPolishV2} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined}
             tiktokSend={tiktokSendAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.tiktokSend)} sellerId={auth.profile?.authUserId || ""}
             pastSessions={pastSessionsAllowed(isAdmin, hasFeature("tiktok_send"), featureSw.pastSessionsPublic)}
             sessionStartedAt={sessionInstance.sessionStartedAt} sessionWindowDays={sessionInstance.sessionWindowDays} onReprintRow={onReprintRow} {...(postSales ? { posts: postSales } : {})} />}
-          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
-          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} />}
-          {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
+          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} hidePlatformSplit={hideMinersSplit} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={sellerWebsiteOn ? { label: tApp.rd_wor_tab, count: webNew } : undefined} />} />}
+          {screen === "orders" && ordersTab === "website" && sellerWebsiteOn && (
+            <Suspense fallback={null}><WebsiteOrders cur={cur} liveTick={webLiveTick} subdomainReady={featureSw.websiteSubdomainReady} onNewCount={setWebNew} onToast={(msg) => setToast({ msg, kind: "ok" })} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} website={{ label: tApp.rd_wor_tab, count: webNew }} />} /></Suspense>
+          )}
+          {screen === "website" && sellerWebsiteOn && (
+            <Suspense fallback={null}><WebsiteEditor onBack={() => goBack()} onPayShip={() => setScreen("websitepay")} onUpgrade={ios ? undefined : () => setScreen("subscription")} ios={ios}
+              plan={auth.profile?.plan} planStatus={auth.profile?.planStatus} planExpiry={auth.profile?.planExpiry} country={profileCountry || "TW"} onToast={(msg) => setToast({ msg, kind: "ok" })} subdomainReady={featureSw.websiteSubdomainReady} /></Suspense>
+          )}
+          {screen === "websitepay" && sellerWebsiteOn && (
+            <Suspense fallback={null}><WebsitePayShip onBack={() => goBack()} cur={cur} onToast={(msg) => setToast({ msg, kind: "ok" })} /></Suspense>
+          )}
+          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} inventoryV2={featureSw.inventoryV2} productImages={featureSw.productImages} website={sellerWebsiteOn} />}
+          {screen === "salestab" && <SalesTab cur={cur} platformOptions={salesPlatformOptions} platformSales={platformSales} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} website={sellerWebsiteOn ? loadWebsiteSales : undefined} />}
           {screen === "menu" && (
             <SettingsHub
               onInvite={() => setScreen("invite")}
@@ -2856,6 +2897,7 @@ export default function RedesignApp() {
               onReceiptFormat={fbReceiptUi ? () => setScreen("receiptformat") : undefined}
               onFmScan={fmScanAllowed ? () => setScreen("fmparcelscan") : undefined}
               onParcelSoon={hideParcelScan ? undefined : (store) => setToast({ msg: store === "fm" ? tApp.rd_sh_fm_soon_toast : tApp.rd_sh_ps_soon_toast, kind: "ok" })}
+              onWebsite={sellerWebsiteOn ? () => setScreen("website") : undefined}
               helpBot={helpBotVisible(helpBotOn, hasFeature("support_ai_preview") || helpBotPaid(auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry), isAdmin, ios, helpBotIosOn)}
             />
           )}
@@ -3068,6 +3110,7 @@ export default function RedesignApp() {
             <button onClick={() => { setOrdersInitialQuery(""); openTab("orders"); }} className={navCls(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_orders}</span>
+              {sellerWebsiteOn && webNew > 0 && <span data-testid="nav-web-new" aria-label={tpl(tApp.rd_wor_new_toast, { n: String(webNew) })} style={{ position: "absolute", top: 4, right: "calc(50% - 20px)", minWidth: 16, height: 16, borderRadius: 8, background: "var(--danger)", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{webNew}</span>}
             </button>
             <button onClick={() => openTab("products")} className={navCls(screen === "products")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="m4 8.5 8 4.5 8-4.5M12 13v7" stroke="currentColor" strokeWidth="1.7" /></svg>

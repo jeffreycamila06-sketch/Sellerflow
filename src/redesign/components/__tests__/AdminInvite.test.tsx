@@ -1,4 +1,4 @@
-// Admin parts of Invite friends (sql/164): Invite rewards months, Invite history + Revoke, and the
+// Admin parts of Invite friends (sql/165): Invite rewards months, Invite history + Revoke, and the
 // seller-card code change. Every confirm is a step INSIDE the page — never window.confirm.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";

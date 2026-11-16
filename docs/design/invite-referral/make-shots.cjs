@@ -1,4 +1,4 @@
-// REAL screens of Invite friends (sql/164), from the real app on the preview database
+// REAL screens of Invite friends (sql/165), from the real app on the preview database
 // (src/dev/fakeSupabase.ts — ?inv=choose / ?inv=free / default, ?admin=1, ?anon=1).
 //   1) npx vite --config vite.preview.config.ts --port 5199
 //   2) node docs/design/invite-referral/make-shots.cjs

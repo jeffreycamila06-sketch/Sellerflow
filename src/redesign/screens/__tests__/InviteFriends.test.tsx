@@ -1,4 +1,4 @@
-// Settings → Invite friends (sql/164): choose a code once (own word or random, in-page warning),
+// Settings → Invite friends (sql/165): choose a code once (own word or random, in-page warning),
 // then the code BIG + Copy + Share + this month's line + the invites list; "Enter code" box only
 // while allowed. iPhone app: no prices, no buy links, no "subscribe" / "paid plan" wording.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
