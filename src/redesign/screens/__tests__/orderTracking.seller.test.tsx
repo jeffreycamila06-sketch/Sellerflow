@@ -65,7 +65,7 @@ describe("the seller's parcel line", () => {
   });
   it("the app passes Open in Pickup Status only for sellers who have Pickup Status", () => {
     const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(src).toContain('<WebsiteOrders cur={cur} liveTick={webLiveTick} onOpenPickup={parcelTrackingAllowed ? () => setScreen("parceltracking") : undefined}');
+    expect(src).toContain('subdomainReady={featureSw.websiteSubdomainReady} onOpenPickup={parcelTrackingAllowed ? () => setScreen("parceltracking") : undefined}');
   });
   it("without api.parcels (older code path) the screen is as before", async () => {
     const a = api([ORDER()], []); delete a.parcels;
