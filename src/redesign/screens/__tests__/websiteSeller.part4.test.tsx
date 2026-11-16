@@ -4,6 +4,7 @@
 // bank-app warning, Money received / Not received / Shipped / Cancel / Block), Sales line, Settings tile.
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { NEW_SHOP_LOOK } from "../../../website/v3/look";
 import { readFileSync } from "node:fs";
 import { TProvider } from "../../i18n";
 import WebsiteEditor from "../WebsiteEditor";
@@ -90,7 +91,8 @@ describe("Website editor", () => {
     fireEvent.change(screen.getByTestId("wed-sub"), { target: { value: "Maria_Shop" } });
     expect((screen.getByTestId("wed-sub") as HTMLInputElement).value).toBe("mariashop");
     fireEvent.click(screen.getByTestId("wed-save"));
-    await waitFor(() => expect(api.save).toHaveBeenCalledWith({ subdomain: "mariashop", draft: { name: "Maria Shop" } }, false));
+    // v3 item 8: a new website starts on Brand store + Ocean (saved with the first Save)
+    await waitFor(() => expect(api.save).toHaveBeenCalledWith({ subdomain: "mariashop", draft: { look: NEW_SHOP_LOOK, name: "Maria Shop" } }, false));
     expect(await screen.findByTestId("wed-msg")).toHaveTextContent("Saved");
   });
   it("taken address → says so, nothing published", async () => {
@@ -122,7 +124,18 @@ describe("Website editor", () => {
     expect(screen.getByTestId("wed-locked-note")).toBeInTheDocument();
     expect(screen.queryByTestId("wed-upgrade")).toBeNull();
     expect(screen.queryByTestId("wed-domain")).toBeNull();
-    expect(container.textContent).not.toMatch(/Upgrade|Master|Basic|Plus|Pro\b|plan|NT\$|\$\d/i);
+    // v3: the editor now has a live preview of the shop. Wait for it, then: the editor itself has no plan /
+    // price / upgrade words; the preview shows the seller's own shop (its product prices, as the Preview
+    // button always did) but no plan or upgrade words.
+    const live = screen.getByTestId("wed-live-preview");
+    await within(live).findByTestId("shop-root");
+    const editor = container.cloneNode(true) as HTMLElement;
+    editor.querySelector("[data-testid=wed-live-preview]")!.remove();
+    editor.querySelectorAll("style").forEach((x) => x.remove());
+    expect(editor.textContent).not.toMatch(/Upgrade|Master|Basic|Plus|Pro\b|plan|NT\$|\$\d/i);
+    const shown = live.cloneNode(true) as HTMLElement;
+    shown.querySelectorAll("style").forEach((x) => x.remove()); // the shop's CSS is not text a buyer sees
+    expect(shown.textContent).not.toMatch(/Upgrade|Master|Basic|Plus|Pro\b|\bplan\b|subscri/i);
   });
   it("own domain: Master can tap Connect (placeholder); others see it greyed", async () => {
     const onToast = vi.fn();
