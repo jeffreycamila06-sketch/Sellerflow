@@ -8,14 +8,16 @@ import { productImageUrl } from "../adapters/productImages";
 import { DEFAULT_SETTINGS, settingsProblems } from "../adapters/websiteEditor";
 import type { WebsiteSettings } from "../adapters/websiteSeller";
 import { realPayShipApi, type PayShipApi } from "../adapters/websiteEditorApi";
-import { editorShipOptions, withShipOptions, newShipOption, shipProblems, MAX_SHIP_OPTIONS, type ShipSetting } from "../adapters/websiteShipPay";
-import { shipLabel, type ShipNeeds } from "../../website/shipPay";
+import { editorShipOptions, withShipOptions, newShipOption, shipProblems, MAX_SHIP_OPTIONS, editorPayMethods, withPayMethods, newPayMethod, payProblems, MAX_PAY_METHODS, type ShipSetting, type PaySetting } from "../adapters/websiteShipPay";
+import { shipLabel, payLabel, type PayKind, type ShipNeeds } from "../../website/shipPay";
 
 export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country = "TW", api = realPayShipApi }: { onBack?: () => void; onToast: (m: string) => void; cur?: string; country?: string; api?: PayShipApi }) {
   const t = useT() as unknown as Record<string, string>;
   const [st, setSt] = useState<WebsiteSettings | null | "error">(null);
   const [ships, setShips] = useState<ShipSetting[]>([]);
   const [openShip, setOpenShip] = useState<string | null>(null);
+  const [pays, setPays] = useState<PaySetting[]>([]);
+  const [qrFor, setQrFor] = useState("");
   const [exists, setExists] = useState(false);
   const [busy, setBusy] = useState<"" | "save" | "qr">("");
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "bad" } | null>(null);
@@ -28,6 +30,7 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
       const merged = { ...DEFAULT_SETTINGS, ...(w?.settings || {}), ship: { ...DEFAULT_SETTINGS.ship, ...(w?.settings?.ship || {}) } };
       setSt(merged);
       setShips(editorShipOptions(merged, country));
+      setPays(editorPayMethods(merged, country));
     });
     return () => { live = false; };
   }, [api, country]);
@@ -35,24 +38,28 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
   if (st === "error") return <Frame t={t} onBack={onBack}><div style={{ ...card, margin: 14, color: "var(--danger)" }}>{t.rd_wor_load_failed}</div></Frame>;
   const s = st;
   const setShip = (id: string, p: Partial<ShipSetting>) => setShips((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
-  const full = withShipOptions(s, ships);
+  const setPay = (id: string, p: Partial<PaySetting>) => setPays((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const full = withPayMethods(withShipOptions(s, ships), pays);
   const problems = settingsProblems(full, country);
   const save = async () => {
     setMsg(null);
     if (!exists) { setMsg({ text: t.rd_wed_need_name, tone: "bad" }); return; }
     if (shipProblems(ships).includes("name")) { setMsg({ text: t.rd_wps_ship_need_name, tone: "bad" }); return; }
+    const pp = payProblems(pays);
+    if (pp.includes("name")) { setMsg({ text: t.rd_wps_pay_need_name, tone: "bad" }); return; }
+    if (pp.includes("empty")) { setMsg({ text: t.rd_wps_pay_need_info, tone: "bad" }); return; }
     if (problems.length) { setMsg({ text: problems.includes("ship") ? t.rd_wps_need_ship : t.rd_wps_need_pay, tone: "bad" }); return; }
     setBusy("save");
     const ok = await api.save(full);
     setBusy("");
     setMsg(ok ? { text: t.rd_wed_saved, tone: "ok" } : { text: t.rd_wed_save_failed, tone: "bad" });
   };
-  const qr = async (f: File | undefined) => {
+  const qr = async (id: string, f: File | undefined) => {
     if (!f) return;
-    setBusy("qr");
+    setBusy("qr"); setQrFor(id);
     const path = await api.uploadQr(f);
-    setBusy("");
-    if (path) setSt({ ...s, qr: { ...s.qr, enabled: true, path } }); else onToast(t.rd_wed_pic_failed);
+    setBusy(""); setQrFor("");
+    if (path) setPay(id, { qr: path }); else onToast(t.rd_wed_pic_failed);
   };
   const num = (v: string) => { const n = Number(v.replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
   const input: CSSProperties = { width: "100%", minHeight: 44, borderRadius: 11, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", padding: "9px 11px", fontSize: 16, boxSizing: "border-box", fontFamily: "var(--font-ui)" };
@@ -107,26 +114,61 @@ export default function WebsitePayShip({ onBack, onToast, cur = "NT$", country =
 
         <section style={card} data-testid="wps-pay">
           <Title>{t.rd_shop_payment}</Title>
-          <Row label={t.rd_shop_pay_bank} on={!!s.bank?.enabled} testid="wps-bank" onTap={() => setSt({ ...s, bank: { ...s.bank, enabled: !s.bank?.enabled } })} />
-          {s.bank?.enabled && (
-            <div style={{ paddingLeft: 2 }}>
-              <Field label={t.rd_wps_bank_name}><input data-testid="wps-bank-name" value={s.bank.bankName || ""} maxLength={60} onChange={(e) => setSt({ ...s, bank: { ...s.bank, bankName: e.target.value } })} style={input} /></Field>
-              <Field label={t.rd_shop_od_acct_name}><input data-testid="wps-acct-name" value={s.bank.accountName || ""} maxLength={60} onChange={(e) => setSt({ ...s, bank: { ...s.bank, accountName: e.target.value } })} style={input} /></Field>
-              <Field label={t.rd_shop_od_acct_no}><input data-testid="wps-acct-no" value={s.bank.accountNumber || ""} maxLength={40} inputMode="numeric" onChange={(e) => setSt({ ...s, bank: { ...s.bank, accountNumber: e.target.value } })} style={input} /></Field>
-            </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", margin: "-4px 0 6px" }}>{t.rd_wps_pay_direct}</div>
+          {pays.map((m) => {
+            const label = m.name.trim() || payLabel(t, m);
+            const sw = m.id === "bank" ? "wps-bank" : m.id === "qr" ? "wps-qr" : m.id === "cod" ? "wps-cod" : `wps-pay-${m.id}`;
+            const isNew = /^c[0-9a-z]{5}$/.test(m.id);
+            return (
+              <div key={m.id} data-testid="wps-pay-row" style={{ borderTop: "1px solid var(--border)", padding: "4px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Switch on={m.on} onTap={() => setPay(m.id, { on: !m.on })} testid={sw} label={label} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 700 }}>{label || t.rd_wps_pay_new}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)" }}>{m.kind === "delivery" ? t.rd_wps_kind_delivery : t.rd_wps_kind_first}</span>
+                  </span>
+                </div>
+                {m.kind === "delivery" && country.toUpperCase() === "TW" && <div data-testid="wps-cod-note" style={{ fontSize: 12, color: "var(--text-muted)", margin: "-2px 0 4px 58px" }}>{t.rd_wps_cod_note}</div>}
+                {m.on && (
+                  <div data-testid={`wps-pay-more-${m.id}`} style={{ padding: "0 0 8px 58px" }}>
+                    <Field label={t.rd_wps_ship_name}><input data-testid={m.id === "qr" ? "wps-qr-label" : `wps-pay-name-${m.id}`} value={m.name} maxLength={40} placeholder={isNew ? "" : payLabel(t, { id: m.id, kind: m.kind })} onChange={(e) => setPay(m.id, { name: e.target.value })} style={input} /></Field>
+                    {isNew && (
+                      <Field label={t.rd_wps_kind}>
+                        <select data-testid={`wps-pay-kind-${m.id}`} value={m.kind} onChange={(e) => setPay(m.id, { kind: e.target.value as PayKind })} style={input}>
+                          <option value="first">{t.rd_wps_kind_first}</option><option value="delivery">{t.rd_wps_kind_delivery}</option>
+                        </select>
+                      </Field>
+                    )}
+                    {m.bank && (
+                      <>
+                        <Field label={t.rd_wps_bank_name}><input data-testid="wps-bank-name" value={m.bank.bankName} maxLength={60} onChange={(e) => setPay(m.id, { bank: { ...m.bank!, bankName: e.target.value } })} style={input} /></Field>
+                        <Field label={t.rd_shop_od_acct_name}><input data-testid="wps-acct-name" value={m.bank.accountName} maxLength={60} onChange={(e) => setPay(m.id, { bank: { ...m.bank!, accountName: e.target.value } })} style={input} /></Field>
+                        <Field label={t.rd_shop_od_acct_no}><input data-testid="wps-acct-no" value={m.bank.accountNumber} maxLength={40} inputMode="numeric" onChange={(e) => setPay(m.id, { bank: { ...m.bank!, accountNumber: e.target.value } })} style={input} /></Field>
+                      </>
+                    )}
+                    {m.kind === "first" && (
+                      <>
+                        <Field label={t.rd_wps_pay_info}><textarea data-testid={`wps-pay-info-${m.id}`} value={m.info} maxLength={300} rows={2} placeholder={t.rd_wps_pay_info_ph} onChange={(e) => setPay(m.id, { info: e.target.value })} style={{ ...input, resize: "vertical" }} /></Field>
+                        <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "4px 0" }}>
+                          <label data-testid={m.id === "qr" ? "wps-qr-pic" : `wps-pay-qr-${m.id}`} style={{ width: 84, height: 84, borderRadius: 12, border: "1px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", cursor: "pointer", flexShrink: 0, background: "var(--chip-bg)" }}>
+                            {m.qr ? <img src={productImageUrl(m.qr)} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }} /> : <span style={{ fontSize: 11, textAlign: "center", padding: 6, color: "var(--text-muted)" }}>{busy === "qr" && qrFor === m.id ? "…" : t.rd_wps_qr_upload}</span>}
+                            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { void qr(m.id, e.target.files?.[0]); e.target.value = ""; }} />
+                          </label>
+                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_wps_pay_qr_hint}</span>
+                          {m.qr && <button type="button" data-testid={`wps-pay-qr-clear-${m.id}`} onClick={() => setPay(m.id, { qr: "" })} style={{ border: "none", background: "transparent", color: "var(--danger)", fontWeight: 800, cursor: "pointer", minHeight: 40, fontFamily: "var(--font-ui)" }}>✕</button>}
+                        </div>
+                      </>
+                    )}
+                    {m.kind === "delivery" && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{t.rd_wps_pay_delivery_hint}</div>}
+                    {isNew && <button type="button" data-testid={`wps-pay-remove-${m.id}`} onClick={() => setPays((l) => l.filter((y) => y.id !== m.id))} style={{ marginTop: 6, minHeight: 40, border: "none", background: "transparent", color: "var(--danger)", fontWeight: 800, cursor: "pointer", padding: 0, fontFamily: "var(--font-ui)" }}>{t.rd_wps_ship_remove}</button>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {pays.filter((m) => /^c[0-9a-z]{5}$/.test(m.id)).length < MAX_PAY_METHODS && (
+            <button type="button" data-testid="wps-pay-add" onClick={() => setPays((l) => [...l, newPayMethod()])} style={{ marginTop: 8, width: "100%", minHeight: 44, borderRadius: 11, border: "1px dashed var(--border)", background: "transparent", color: "var(--accent-fg)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "var(--font-ui)" }}>＋ {t.rd_wps_pay_add}</button>
           )}
-          <Row label={t.rd_shop_pay_qr} on={!!s.qr?.enabled} testid="wps-qr" onTap={() => setSt({ ...s, qr: { ...s.qr, enabled: !s.qr?.enabled } })} />
-          {s.qr?.enabled && (
-            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-              <label data-testid="wps-qr-pic" style={{ width: 96, height: 96, borderRadius: 12, border: "1px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", cursor: "pointer", flexShrink: 0, background: "var(--chip-bg)" }}>
-                {s.qr.path ? <img src={productImageUrl(s.qr.path)} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }} /> : <span style={{ fontSize: 11.5, textAlign: "center", padding: 6, color: "var(--text-muted)" }}>{busy === "qr" ? "…" : t.rd_wps_qr_upload}</span>}
-                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { void qr(e.target.files?.[0]); e.target.value = ""; }} />
-              </label>
-              <Field label={t.rd_wps_qr_label}><input data-testid="wps-qr-label" value={s.qr.label || ""} maxLength={60} onChange={(e) => setSt({ ...s, qr: { ...s.qr, label: e.target.value } })} style={input} /></Field>
-            </div>
-          )}
-          <Row label={t.rd_shop_pay_cod} on={!!s.cod?.enabled} testid="wps-cod" onTap={() => setSt({ ...s, cod: { enabled: !s.cod?.enabled } })} />
-          <div data-testid="wps-cod-note" style={{ fontSize: 12, color: "var(--text-muted)", margin: "-2px 0 4px" }}>{t.rd_wps_cod_note}</div>
         </section>
 
         <section style={card}>
@@ -155,7 +197,4 @@ function Switch({ on, onTap, testid, label }: { on: boolean; onTap: () => void; 
       <span aria-hidden="true" style={{ width: 44, height: 26, borderRadius: 13, background: on ? "var(--accent)" : "var(--chip-bg)", position: "relative" }}><span style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 10, background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.25)" }} /></span>
     </button>
   );
-}
-function Row({ label, on, onTap, testid }: { label: string; on: boolean; onTap: () => void; testid: string }) {
-  return <div style={{ display: "flex", alignItems: "center", gap: 10, borderTop: "1px solid var(--border)", padding: "4px 0" }}><Switch on={on} onTap={onTap} testid={testid} label={label} /><span style={{ fontSize: 14, fontWeight: 700 }}>{label}</span></div>;
 }

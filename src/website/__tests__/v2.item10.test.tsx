@@ -79,7 +79,7 @@ describe("what the buyer sees = the database (shared cases with sql/165's proof 
     });
   }
   it("before sql/165 (no checkout2): derived from the old answer the same way", () => {
-    for (const c of CASES.filter((x) => !("shipOptions" in x.settings))) {
+    for (const c of CASES.filter((x) => !("shipOptions" in x.settings) && !("payMethods" in x.settings))) {
       expect(v2FromLegacy(checkoutFrom(c.settings), c.country)).toEqual(c.expected);
     }
   });

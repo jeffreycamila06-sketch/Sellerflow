@@ -136,6 +136,8 @@ await db.exec(src("165_seller_website_v2.sql"));
 }
 
 // ── PART 10 — shipping options list ──────────────────────────────────────────
+const orderView = async (token) => (await as(null, "anon", () => q(`select public.website_order($1) r`, [token]))).rows[0].r;
+await q(`update public.products set stock = 500 where user_id = $1 and local_id = 1`, [SELLER]); // parts 10 + 11 place many orders
 const setSettings = (st) => q(`update public.seller_websites set settings = $2 where user_id = $1`, [SELLER, JSON.stringify(st)]);
 const baseSettings = (await q(`select settings from public.seller_websites where user_id = $1`, [SELLER])).rows[0].settings;
 const orderRow = async (token) => (await q(`select status, delivery, store_id, store_name, address, payment, subtotal::float8 sub, ship_fee::float8 fee, total::float8 total, ship_id, ship_name, auto_cancel_at is null no_cancel from public.website_orders where token = $1`, [token])).rows[0];
@@ -211,8 +213,41 @@ const same = (a, b) => JSON.stringify({ ...a, ship_id: null, ship_name: null }) 
   }
 }
 
+// ── PART 11 — payment methods list ───────────────────────────────────────────
+{
+  await setSettings({ ...baseSettings,
+    shipOptions: [{ id: "s711", needs: "store711", fee: 60, cod: true, on: true }, { id: "pickup", needs: "none", fee: 0, cod: true, on: true }, { id: "home", needs: "address", fee: 100, cod: false, on: true }],
+    payMethods: [{ id: "bank", kind: "first", info: "Write your W number", bank: { bankName: "CTBC", accountName: "J", accountNumber: "123" }, on: true },
+      { id: "qr", kind: "first", name: "LINE Pay", qr: "u1/site-qr-9.jpg", on: true },
+      { id: "c3xyzw", kind: "first", name: "Jko Pay", info: "Jko: 0912 000 111", on: true },
+      { id: "c4xyzw", kind: "first", name: "Empty", on: true },
+      { id: "cod", kind: "delivery", on: true },
+      { id: "off9", kind: "first", info: "x", on: false }] });
+  const m = (await shop("budgetukay")).checkout2.methods;
+  ok(m.map((x) => x.id).join() === "bank,qr,c3xyzw,cod", "a saved payment list: only the ones that are on, a pay-first method without anything to pay with is dropped");
+  const items = [{ pid: 1, vid: null, qty: 1 }];
+  const a = await place({ ...buyer(60), ship: "s711", pay: "c3xyzw", items });
+  const ra = (await q(`select status, payment, pay_id, pay_name, auto_cancel_at is not null cancels from public.website_orders where token = $1`, [a.token])).rows[0];
+  ok(ra.status === "awaiting_payment" && ra.payment === "bank" && ra.pay_id === "c3xyzw" && ra.pay_name === "Jko Pay" && ra.cancels, "pay first: today's flow (awaiting payment, auto-cancel), the method kept");
+  const va = await orderView(a.token);
+  ok(va.payId === "c3xyzw" && va.payName === "Jko Pay" && va.pay.method.info === "Jko: 0912 000 111" && va.pay.bank === undefined, "the order link shows that method's instructions");
+  const b = await place({ ...buyer(61), ship: "s711", pay: "qr", items });
+  ok((await q(`select payment from public.website_orders where token = $1`, [b.token])).rows[0].payment === "qr" && (await orderView(b.token)).pay.method.qr === "u1/site-qr-9.jpg", "a QR method → payment 'qr', the picture on the order link");
+  const c = await place({ ...buyer(62), ship: "pickup", pay: "cod", items });
+  const vc = await orderView(c.token);
+  ok(vc.status === "confirmed" && vc.payment === "cod" && vc.pay === undefined, "pay on delivery → confirmed, nothing to pay now");
+  ok(String(await err(place({ ...buyer(63), ship: "home", pay: "cod", address: "No. 1, Xinyi Rd", items }))).includes("bad_payment"), "pay on delivery refused where the option doesn't allow it");
+  ok(String(await err(place({ ...buyer(64), ship: "s711", pay: "off9", items }))).includes("bad_payment") && String(await err(place({ ...buyer(65), ship: "s711", pay: "c4xyzw", items }))).includes("bad_payment"), "an off / unusable method is refused");
+  // paid → the instructions are no longer shown
+  await as(SELLER, "authenticated", () => q(`select public.website_order_action((select id from public.website_orders where token = $1), 'paid')`, [a.token]));
+  ok((await orderView(a.token)).pay === undefined, "paid: the order link no longer shows how to pay");
+  // an old page (no ship / pay) with a saved payment list: its keys are read as the ids
+  const d2 = await place({ ...buyer(66), delivery: "s711", storeId: "123456", payment: "bank", items });
+  ok((await q(`select pay_id from public.website_orders where token = $1`, [d2.token])).rows[0].pay_id === "bank", "old page + saved payment list → read as the method id");
+  await setSettings(baseSettings);
+}
+
 // ── PART 13 — courier + tracking ─────────────────────────────────────────────
-const orderView = async (token) => (await as(null, "anon", () => q(`select public.website_order($1) r`, [token]))).rows[0].r;
 const ship = (id, c, t, uid = SELLER) => as(uid, "authenticated", () => q(`select public.website_order_ship($1, $2, $3) r`, [id, c, t]));
 {
   const r = await place({ ...buyer(30), items: [{ pid: 1, vid: null, qty: 1 }] });
@@ -251,7 +286,7 @@ await db.exec(src("165_seller_website_v2_rollback.sql"));
   ok((await q(`select to_regclass('public.product_sold_totals') t`)).rows[0].t === null && (await q(`select count(*)::int n from pg_trigger where tgname = 'trg_stock_movements_sold'`)).rows[0].n === 0, "rollback: totals table + trigger gone");
   ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]))) === null, "rollback: stock history still written as before");
   ok(s.checkout2 === undefined && (await q(`select count(*)::int n from pg_proc where proname = 'website_checkout_v2'`)).rows[0].n === 0, "rollback: checkout2 gone");
-  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('ship_id', 'ship_name')`)).rows[0].n === 0, "rollback: ship_id / ship_name gone");
+  ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('ship_id', 'ship_name', 'pay_id', 'pay_name')`)).rows[0].n === 0, "rollback: ship_id / ship_name / pay_id / pay_name gone");
   ok((await q(`select pg_get_constraintdef(oid) d from pg_constraint where conname = 'website_orders_delivery_check'`)).rows[0].d.includes("pickup"), "rollback: orders use 'pickup' → the delivery check stays wide");
   const fn = (await q(`select prosrc from pg_proc where proname = 'website_place_order'`)).rows[0].prosrc;
   ok(!fn.includes("flash_price"), "rollback: place-order is sql/163's again");

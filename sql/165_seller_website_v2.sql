@@ -25,6 +25,12 @@
 --   'checkout2'. website_place_order takes p_order.ship (an option id); without it (an old page) the order
 --   is placed exactly as in sql/163. website_orders.delivery may also be 'store' / 'pickup' (check widened;
 --   the rollback narrows it back only if no order uses them); ship_id / ship_name keep what was picked.
+-- PART 11 — payment methods list: settings.payMethods = [{id, name, info, qr, bank, kind, on}] (kind: first =
+--   the buyer pays first and sends a receipt — today's flow, 24h auto-cancel; delivery = pay on delivery,
+--   only with an option that allows it). Only the ones that are on; a pay-first method needs instructions,
+--   a QR or bank details; at most 8. Nothing saved → derived from today's bank / QR / COD settings. Money
+--   goes straight to the seller (nothing passes through SellerFlowLive). website_orders.pay_id / pay_name
+--   keep what was picked; the order link shows that method's instructions while payment is due.
 -- PART 13 — courier + tracking number: website_orders.courier / tracking_no (optional). website_order_ship
 --   (seller, own rows): paid / confirmed → shipped with them, or edits them on a shipped order. The buyer's
 --   order link (website_order) shows them once shipped.
@@ -122,12 +128,23 @@ do $$ begin
     alter table public.website_orders add constraint website_orders_ship_name_len check (ship_name is null or char_length(ship_name) <= 40);
   end if;
 end $$;
+alter table public.website_orders
+  add column if not exists pay_id   text null,
+  add column if not exists pay_name text null;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'website_orders_pay_id_ok') then
+    alter table public.website_orders add constraint website_orders_pay_id_ok check (pay_id is null or pay_id ~ '^[a-z0-9_-]{1,24}$');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'website_orders_pay_name_len') then
+    alter table public.website_orders add constraint website_orders_pay_name_len check (pay_name is null or char_length(pay_name) <= 40);
+  end if;
+end $$;
 alter table public.website_orders drop constraint if exists website_orders_delivery_check;
 alter table public.website_orders add constraint website_orders_delivery_check check (delivery in ('s711','fm','home','store','pickup'));
 
 -- What a buyer may see at checkout (v2). From settings.shipOptions when saved (only the ones that are
 -- on; the 7-11 / FamilyMart pickers only in Taiwan; at most 10); else derived from today's settings.
--- Payment methods: derived from today's settings (bank / QR / pay on delivery).
+-- Payment methods: from settings.payMethods when saved (PART 11), else derived from today's settings.
 create or replace function public.website_checkout_v2(st jsonb, p_country text)
 returns jsonb language plpgsql immutable set search_path = public, pg_temp as $$
 declare
@@ -167,15 +184,40 @@ begin
       opts := opts || jsonb_build_array(jsonb_build_object('id', 'pickup', 'fee', 0, 'needs', 'none', 'cod', true));
     end if;
   end if;
-  if public.website_bool(s#>>'{bank,enabled}', false) then
-    meths := meths || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'bank', 'kind', 'first',
-      'bank', jsonb_strip_nulls(jsonb_build_object('bankName', left(s#>>'{bank,bankName}', 60), 'accountName', left(s#>>'{bank,accountName}', 60), 'accountNumber', left(s#>>'{bank,accountNumber}', 40))))));
-  end if;
-  if public.website_bool(s#>>'{qr,enabled}', false) and coalesce(s#>>'{qr,path}', '') <> '' then
-    meths := meths || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'qr', 'kind', 'first', 'qr', s#>>'{qr,path}', 'name', nullif(left(s#>>'{qr,label}', 40), ''))));
-  end if;
-  if public.website_bool(s#>>'{cod,enabled}', false) then
-    meths := meths || jsonb_build_array(jsonb_build_object('id', 'cod', 'kind', 'delivery'));
+  if jsonb_typeof(s->'payMethods') = 'array' then
+    select coalesce(jsonb_agg(z.m order by z.ord), '[]'::jsonb) into meths from (
+      select y.ord, jsonb_strip_nulls(jsonb_build_object(
+               'id', y.e->>'id', 'kind', y.e->>'kind',
+               'name', nullif(left(btrim(coalesce(y.e->>'name', '')), 40), ''),
+               'info', nullif(left(btrim(coalesce(y.e->>'info', '')), 300), ''),
+               -- only a picture the seller uploaded here (<user>/site-qr-<time>.jpg)
+               'qr', case when coalesce(y.e->>'qr', '') ~ '^[A-Za-z0-9_-]{1,64}/site-qr-[0-9]{1,20}\.jpg$' then y.e->>'qr' end,
+               'bank', nullif(jsonb_strip_nulls(jsonb_build_object(
+                         'bankName', nullif(left(btrim(coalesce(y.e#>>'{bank,bankName}', '')), 60), ''),
+                         'accountName', nullif(left(btrim(coalesce(y.e#>>'{bank,accountName}', '')), 60), ''),
+                         'accountNumber', nullif(left(btrim(coalesce(y.e#>>'{bank,accountNumber}', '')), 40), ''))), '{}'::jsonb))) as m
+        from (select distinct on (x.e->>'id') x.e, x.ord
+                from jsonb_array_elements(s->'payMethods') with ordinality as x(e, ord)
+               where jsonb_typeof(x.e) = 'object'
+                 and coalesce(x.e->>'id', '') ~ '^[a-z0-9_-]{1,24}$'
+                 and public.website_bool(x.e->>'on', false)
+                 and coalesce(x.e->>'kind', '') in ('first', 'delivery')
+               order by x.e->>'id', x.ord) y
+       order by y.ord) z
+     -- a pay-first method needs something to pay with (instructions, a QR, or bank details)
+     where z.m->>'kind' = 'delivery' or z.m ? 'info' or z.m ? 'qr' or z.m ? 'bank';
+    meths := coalesce((select jsonb_agg(e order by ord) from jsonb_array_elements(meths) with ordinality as a(e, ord) where ord <= 8), '[]'::jsonb);
+  else
+    if public.website_bool(s#>>'{bank,enabled}', false) then
+      meths := meths || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'bank', 'kind', 'first',
+        'bank', jsonb_strip_nulls(jsonb_build_object('bankName', left(s#>>'{bank,bankName}', 60), 'accountName', left(s#>>'{bank,accountName}', 60), 'accountNumber', left(s#>>'{bank,accountNumber}', 40))))));
+    end if;
+    if public.website_bool(s#>>'{qr,enabled}', false) and coalesce(s#>>'{qr,path}', '') <> '' then
+      meths := meths || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id', 'qr', 'kind', 'first', 'qr', s#>>'{qr,path}', 'name', nullif(left(s#>>'{qr,label}', 40), ''))));
+    end if;
+    if public.website_bool(s#>>'{cod,enabled}', false) then
+      meths := meths || jsonb_build_array(jsonb_build_object('id', 'cod', 'kind', 'delivery'));
+    end if;
   end if;
   return jsonb_build_object('options', opts, 'methods', meths,
     'autoCancelHours', least(168, greatest(1, public.website_num(s->>'autoCancelHours', 24)::int)));
@@ -247,7 +289,7 @@ declare
   ln record; par public.products; prod public.products; has_children boolean; label text;
   v_items jsonb := '[]'::jsonb; v_sub numeric := 0; v_fee numeric; v_total numeric; v_hours int;
   v_seq int; v_token text; v_status text; v_price numeric;
-  v_country text; ck2 jsonb; v_ship_id text; v_pay_id text; v_opt jsonb; v_meth jsonb; v_ship_name text;
+  v_country text; ck2 jsonb; v_ship_id text; v_pay_id text; v_opt jsonb; v_meth jsonb; v_ship_name text; v_pay_name text;
 begin
   if p_order is null or jsonb_typeof(p_order) <> 'object' then raise exception 'bad_order' using errcode = '22023'; end if;
   select * into w from public.seller_websites where lower(subdomain) = lower(btrim(coalesce(p_sub, ''))) for update;
@@ -264,8 +306,8 @@ begin
   select upper(coalesce(sp.country, 'TW')) into v_country from public.seller_profiles sp where sp.auth_user_id = w.user_id;
   ck2 := public.website_checkout_v2(w.settings, coalesce(v_country, 'TW'));
   -- v2 (item 10): p_order.ship = an option id. Without it the sql/163 path below runs unchanged — except
-  -- when the seller saved a shipping list: then the old page's delivery key is read as the option id.
-  v_ship_id := coalesce(nullif(p_order->>'ship', ''), case when jsonb_typeof(w.settings->'shipOptions') = 'array' then p_order->>'delivery' end);
+  -- when the seller saved a shipping or payment list: then the old page's keys are read as the ids.
+  v_ship_id := coalesce(nullif(p_order->>'ship', ''), case when jsonb_typeof(w.settings->'shipOptions') = 'array' or jsonb_typeof(w.settings->'payMethods') = 'array' then p_order->>'delivery' end);
   v_pay_id := coalesce(nullif(p_order->>'pay', ''), p_order->>'payment');
   if v_ship_id is null then
     v_delivery := p_order->>'delivery';
@@ -308,6 +350,7 @@ begin
     end if;
     v_pay := case when v_meth->>'kind' = 'delivery' then 'cod' when v_meth ? 'qr' then 'qr' else 'bank' end;
     v_ship_name := v_opt->>'name';
+    v_pay_name := v_meth->>'name';
   end if;
   v_note := nullif(left(btrim(coalesce(p_order->>'note', '')), 200), '');
   v_dev := case when coalesce(p_device, '') ~ '^[A-Za-z0-9-]{8,64}$' then md5('sflw:' || p_device) end;
@@ -381,11 +424,12 @@ begin
   v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
   insert into public.website_orders (user_id, order_no, token, status, buyer_name, buyer_phone, buyer_contact, delivery,
       store_id, store_name, address, payment, items, subtotal, ship_fee, total, note, device_hash, auto_cancel_at,
-      ship_id, ship_name)
+      ship_id, ship_name, pay_id, pay_name)
   values (w.user_id, v_seq, v_token, v_status, v_name, v_phone, v_contact, v_delivery,
       v_store_id, v_store_name, v_address, v_pay, v_items, v_sub, v_fee, v_total, v_note, v_dev,
       case when v_pay = 'cod' then null else now() + make_interval(hours => v_hours) end,
-      case when v_ship_id is not null then v_ship_id end, v_ship_name);
+      case when v_ship_id is not null then v_ship_id end, v_ship_name,
+      case when v_ship_id is not null then v_meth->>'id' end, v_pay_name);
   insert into public.stock_movements (user_id, product_local_id, delta, reason, order_ref)
   select w.user_id, coalesce(nullif(x->>'vid', '')::bigint, (x->>'pid')::bigint), -((x->>'qty')::int), 'website', 'W-' || lpad(v_seq::text, 4, '0')
     from jsonb_array_elements(v_items) x;
@@ -443,10 +487,16 @@ begin
     'courier', case when o.status = 'shipped' then o.courier end, 'tracking', case when o.status = 'shipped' then o.tracking_no end,
     -- v2 (item 10): the picked shipping option
     'shipId', o.ship_id, 'shipName', o.ship_name,
+    -- v2 (item 11): the picked payment method; while payment is due, its instructions / QR / bank details
+    'payId', o.pay_id, 'payName', o.pay_name,
     'shop', jsonb_build_object('sub', lower(w.subdomain), 'name', d->>'name', 'logo', d->>'logo', 'color', d->>'color', 'chats', d->'chats', 'currency', d->>'currency'),
     'country', (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id),
     'pay', case when o.status in ('awaiting_payment','payment_sent') then
-             case o.payment when 'bank' then jsonb_build_object('bank', ck->'bank') when 'qr' then jsonb_build_object('qr', ck->'qr') end end));
+             case when o.pay_id is not null then
+                    jsonb_build_object('method', (select e from jsonb_array_elements(public.website_checkout_v2(coalesce(w.settings, '{}'::jsonb),
+                        (select upper(coalesce(sp.country, 'TW')) from public.seller_profiles sp where sp.auth_user_id = o.user_id))->'methods') e
+                       where e->>'id' = o.pay_id limit 1))
+                  else case o.payment when 'bank' then jsonb_build_object('bank', ck->'bank') when 'qr' then jsonb_build_object('qr', ck->'qr') end end end));
 end;
 $$;
 revoke all on function public.website_order(text) from public;

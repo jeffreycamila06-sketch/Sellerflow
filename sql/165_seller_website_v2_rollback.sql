@@ -35,7 +35,7 @@ grant execute on function public.website_order(text) to anon, authenticated;
 alter table public.website_orders drop constraint if exists website_orders_courier_len, drop constraint if exists website_orders_tracking_len;
 alter table public.website_orders drop column if exists courier, drop column if exists tracking_no;
 
--- PART 10: shipping options — the sql/163 shop answer, then the columns. The delivery check goes back to
+-- PARTS 10 + 11: shipping options + payment methods — the sql/163 shop answer, then the columns. The delivery check goes back to
 -- s711 / fm / home only when no order uses 'store' / 'pickup' (else it stays wide and a notice says so).
 create or replace function public.website_shop(p_sub text)
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -65,6 +65,9 @@ grant execute on function public.website_shop(text) to anon, authenticated;
 drop function if exists public.website_checkout_v2(jsonb, text);
 alter table public.website_orders drop constraint if exists website_orders_ship_id_ok, drop constraint if exists website_orders_ship_name_len;
 alter table public.website_orders drop column if exists ship_id, drop column if exists ship_name;
+-- PART 11: payment methods
+alter table public.website_orders drop constraint if exists website_orders_pay_id_ok, drop constraint if exists website_orders_pay_name_len;
+alter table public.website_orders drop column if exists pay_id, drop column if exists pay_name;
 do $$ begin
   if exists (select 1 from public.website_orders where delivery in ('store', 'pickup')) then
     raise notice 'website_orders: orders use store / pickup — the delivery check stays wide';

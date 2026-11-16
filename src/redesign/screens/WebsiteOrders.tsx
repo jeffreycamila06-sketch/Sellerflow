@@ -3,7 +3,7 @@
 // picture (signed link, "Check your bank app first"), and one action at a time:
 // Money received / Not received / Mark as shipped / Cancel (stock goes back) / Block buyer.
 // Every step shows on the buyer's order link. Opening an order clears its "New" badge.
-import { deliveryLabel, deliveryWhere } from "../../website/orderText";
+import { deliveryLabel, deliveryWhere, paymentLabel } from "../../website/orderText";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle, card } from "../ui";
 import { useT, tpl } from "../i18n";
@@ -141,7 +141,7 @@ function Detail({ o, t, cur, blocked, link, api, onClose, onAction, onShip, onTo
   const label: Record<string, string> = { paid: t.rd_wor_paid, not_received: t.rd_wor_not_received, shipped: t.rd_wor_shipped, cancel: t.rd_wor_cancel };
   const where = deliveryWhere(o);
   const del = deliveryLabel(t, o.delivery, o.shipId || undefined, o.shipName || undefined);
-  const pay = o.payment === "bank" ? t.rd_shop_pay_bank : o.payment === "qr" ? t.rd_shop_pay_qr : t.rd_shop_pay_cod;
+  const pay = paymentLabel(t, o.payment, o.payId || undefined, o.payName || undefined);
   return (
     <div role="dialog" aria-modal="true" data-testid="wor-detail" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", background: "var(--bg, var(--surface))", borderRadius: "20px 20px 0 0", padding: "16px 14px calc(18px + env(safe-area-inset-bottom))", boxSizing: "border-box" }}>

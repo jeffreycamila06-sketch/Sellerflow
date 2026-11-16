@@ -4,7 +4,7 @@
 import { tpl } from "../redesign/i18n";
 import type { OrderView } from "./orderApi";
 import { money } from "./shopApi";
-import { shipLabel } from "./shipPay";
+import { shipLabel, payLabel } from "./shipPay";
 
 type T = Record<string, string>;
 const NEEDS_OF = { s711: "store711", fm: "storefm", home: "address", store: "store", pickup: "none" } as const;
@@ -19,7 +19,9 @@ export function deliveryWhere(o: { delivery: OrderView["delivery"]; address?: st
   if (o.delivery === "pickup") return "";
   return [o.storeName, o.storeId ? `#${o.storeId}` : ""].filter(Boolean).join(" ");
 }
-export function paymentLabel(t: T, p: OrderView["payment"]): string {
+/** The payment's name: the picked method (v2) or, for older orders, the kind. Pure. */
+export function paymentLabel(t: T, p: OrderView["payment"], payId?: string, payName?: string): string {
+  if (payId || payName) return payLabel(t, { id: payId || "", name: payName, kind: p === "cod" ? "delivery" : "first" });
   return p === "bank" ? t.rd_shop_pay_bank : p === "qr" ? t.rd_shop_pay_qr : t.rd_shop_pay_cod;
 }
 export function orderMessage(t: T, o: OrderView, cur: string, link: string): string {
@@ -28,7 +30,7 @@ export function orderMessage(t: T, o: OrderView, cur: string, link: string): str
   const where = deliveryWhere(o);
   lines.push(`${t.rd_shop_shipping} (${deliveryLabel(t, o.delivery, o.shipId, o.shipName)}${where ? ` ${where}` : ""}): ${o.shipFee ? money(cur, o.shipFee) : t.rd_shop_co_free}`);
   lines.push(`${t.rd_shop_co_total}: ${money(cur, o.total)}`);
-  lines.push(`${t.rd_shop_payment}: ${paymentLabel(t, o.payment)}`);
+  lines.push(`${t.rd_shop_payment}: ${paymentLabel(t, o.payment, o.payId, o.payName)}`);
   lines.push(`${t.rd_shop_msg_name}: ${o.buyerName}`);
   if (link) lines.push(`${t.rd_shop_msg_link}: ${link}`);
   return lines.join("\n");

@@ -28,10 +28,11 @@ export interface OrderView {
   orderNo: string; status: OrderStatus; paymentIssue: boolean; items: OrderItem[]; subtotal: number; shipFee: number; total: number;
   delivery: Delivery; storeId?: string; storeName?: string; address?: string; payment: Payment; buyerName: string; phoneTail: string; note?: string;
   shipId?: string; shipName?: string; // v2 (sql/165): the picked option
+  payId?: string; payName?: string;   // v2 (sql/165): the picked payment method
   receipt: boolean; receiptAt?: string; createdAt: string; autoCancelAt?: string; paidAt?: string; shippedAt?: string; cancelledAt?: string; cancelReason?: "seller" | "auto";
   courier?: string; tracking?: string; // v2 (sql/165): only once shipped
   shop: { sub: string; name?: string; logo?: string; color?: string; chats?: Record<string, string>; currency?: string }; country: string;
-  pay?: { bank?: { bankName?: string; accountName?: string; accountNumber?: string }; qr?: { path: string; label?: string } };
+  pay?: { bank?: { bankName?: string; accountName?: string; accountNumber?: string }; qr?: { path: string; label?: string }; method?: PayOpt };
 }
 export interface OrderApi {
   place(sub: string, input: PlaceInput, device: string): Promise<PlaceResult>;

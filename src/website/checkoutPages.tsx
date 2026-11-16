@@ -20,7 +20,7 @@ import {
   realOrderApi, readBuyer, saveBuyer, forgetBuyer, deviceId, draftErrors,
   type OrderApi, type OrderDraft, type FieldError, type OrderView, type PlaceResult,
 } from "./orderApi";
-import { checkoutOf, deliveryOfNeeds, freeOverOf, shipLabel, payLabel, type ShipOpt } from "./shipPay";
+import { checkoutOf, deliveryOfNeeds, freeOverOf, shipLabel, payLabel, type PayOpt, type ShipOpt } from "./shipPay";
 import { orderMessage, deliveryLabel, deliveryWhere, paymentLabel, CHAT_APP_NAME } from "./orderText";
 import { STORE_MAPS, deliveriesOf, paymentsOf, placeFailText, copyText } from "./checkoutLogic";
 
@@ -293,6 +293,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
       {waiting && view.payment !== "cod" && (
         <div className="sfl-card" data-testid="od-pay" style={{ padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{tpl(t.rd_shop_od_pay_now, { amount: money(cur, view.total) })}</div>
+          {view.pay?.method && <PayMethodBox m={view.pay.method} t={t} say={say} />}
           {view.pay?.bank && (
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
               {view.pay.bank.bankName && <KV k={t.rd_shop_od_bank} v={view.pay.bank.bankName} />}
@@ -353,7 +354,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
           <KV k={t.rd_shop_od_ship_to} v={[deliveryLabel(t, view.delivery, view.shipId, view.shipName), deliveryWhere(view)].filter(Boolean).join(" · ")} />
           {view.status === "shipped" && view.courier && <KV k={t.rd_wor_courier} v={<span data-testid="od-courier">{view.courier}</span>} />}
           {view.status === "shipped" && view.tracking && <KV k={t.rd_wor_tracking} v={<span data-testid="od-tracking">{view.tracking}</span>} copy={() => { void copyText(view.tracking!); say(t.rd_shop_od_copied); }} copyLabel={t.rd_shop_od_copy} />}
-          <KV k={t.rd_shop_payment} v={paymentLabel(t, view.payment)} />
+          <KV k={t.rd_shop_payment} v={paymentLabel(t, view.payment, view.payId, view.payName)} />
           <KV k={t.rd_shop_msg_name} v={`${view.buyerName} · ***${view.phoneTail}`} />
         </div>
       </div>
@@ -400,6 +401,29 @@ function Choice({ on, onPick, title, sub, right, testid, bad, disabled }: { on: 
 function Row({ a, b }: { a: string; b: string }) { return <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13.5, color: "#4B5563", padding: "3px 0" }}><span>{a}</span><span>{b}</span></div>; }
 function KV({ k, v, copy, copyLabel }: { k: string; v: ReactNode; copy?: () => void; copyLabel?: string }) {
   return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><span style={{ color: "#6B7280", flexShrink: 0 }}>{k}</span><span style={{ fontWeight: 700, textAlign: "right", overflowWrap: "anywhere", display: "flex", alignItems: "center", gap: 8 }}>{v}{copy && <button type="button" onClick={copy} style={{ ...linkBtn, fontSize: 12.5 }}>{copyLabel}</button>}</span></div>;
+}
+/** A v2 payment method on the order link: its name, bank details, instructions (copy) and QR. */
+function PayMethodBox({ m, t, say }: { m: PayOpt; t: Record<string, string>; say: (s: string) => void }) {
+  return (
+    <div data-testid="od-method" style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontWeight: 800, fontSize: 14 }}>{payLabel(t, m)}</div>
+      {m.bank?.bankName && <KV k={t.rd_shop_od_bank} v={m.bank.bankName} />}
+      {m.bank?.accountName && <KV k={t.rd_shop_od_acct_name} v={m.bank.accountName} />}
+      {m.bank?.accountNumber && <KV k={t.rd_shop_od_acct_no} v={m.bank.accountNumber} copy={() => { void copyText(m.bank!.accountNumber!); say(t.rd_shop_od_copied); }} copyLabel={t.rd_shop_od_copy} />}
+      {m.info && (
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#F9FAFB", borderRadius: 10, padding: "10px 12px" }}>
+          <span data-testid="od-method-info" style={{ flex: 1, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 13.5 }}>{m.info}</span>
+          <button type="button" onClick={() => { void copyText(m.info!); say(t.rd_shop_od_copied); }} style={{ ...linkBtn, fontSize: 12.5 }}>{t.rd_shop_od_copy}</button>
+        </div>
+      )}
+      {m.qr && (
+        <div style={{ textAlign: "center", marginTop: 4 }}>
+          <div style={{ ...mutedText, marginBottom: 6 }}>{t.rd_shop_od_scan}</div>
+          <img data-testid="od-method-qr" src={photoUrl(m.qr)} alt={t.rd_shop_od_scan} style={{ width: "min(240px, 70vw)", aspectRatio: "1 / 1", objectFit: "contain", borderRadius: 12, border: "1px solid #E5E7EB", background: "#fff" }} />
+        </div>
+      )}
+    </div>
+  );
 }
 function Note({ tone, children, testid }: { tone: "red" | "grey" | "green"; children: ReactNode; testid: string }) {
   const c = tone === "red" ? ["#FEF2F2", "#B91C1C"] : tone === "green" ? ["#ECFDF5", "#047857"] : ["#F3F4F6", "#4B5563"];

@@ -3,7 +3,7 @@
 // the website orders (own rows, RLS), one action per order (website_order_action), the receipt
 // picture (signed URL, 5 min), the new-order badge and website sales.
 // Read on open / on tap only — nothing polls (CLAUDE.md egress rule).
-import type { ShipSetting } from "./websiteShipPay";
+import type { PaySetting, ShipSetting } from "./websiteShipPay";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import type { ShopDesign } from "../../website/shopApi";
 
@@ -16,6 +16,8 @@ export interface WebsiteSettings {
   autoCancelHours?: number;
   /** v2 (sql/165): the shipping options list. Absent = derived from the fields above (see websiteShipPay). */
   shipOptions?: ShipSetting[];
+  /** v2 (sql/165): the payment methods list. Absent = derived from bank / qr / cod above. */
+  payMethods?: PaySetting[];
 }
 export interface MyWebsite { subdomain: string; draft: ShopDesign; published: ShopDesign | null; publishedAt: string | null; settings: WebsiteSettings; customDomain: string | null }
 
@@ -108,6 +110,7 @@ export interface WebsiteOrder {
   autoCancelAt: string | null; paidAt: string | null; shippedAt: string | null; cancelledAt: string | null; cancelReason: string | null; seenAt: string | null; createdAt: string;
   courier?: string | null; tracking?: string | null; // v2 (sql/165): typed by the seller when shipping
   shipId?: string | null; shipName?: string | null;  // v2 (sql/165): the picked shipping option
+  payId?: string | null; payName?: string | null;    // v2 (sql/165): the picked payment method
 }
 export const wNo = (n: number) => `W-${String(n).padStart(4, "0")}`;
 const n0 = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
@@ -122,10 +125,11 @@ export function rowToWebsiteOrder(r: Record<string, unknown>): WebsiteOrder {
     cancelReason: (r.cancel_reason as string) || null, seenAt: (r.seen_at as string) || null, createdAt: String(r.created_at || ""),
     ...(r.courier !== undefined ? { courier: (r.courier as string) || null } : {}), ...(r.tracking_no !== undefined ? { tracking: (r.tracking_no as string) || null } : {}),
     ...(r.ship_id !== undefined ? { shipId: (r.ship_id as string) || null } : {}), ...(r.ship_name !== undefined ? { shipName: (r.ship_name as string) || null } : {}),
+    ...(r.pay_id !== undefined ? { payId: (r.pay_id as string) || null } : {}), ...(r.pay_name !== undefined ? { payName: (r.pay_name as string) || null } : {}),
   };
 }
 export const WEBSITE_ORDERS_PAGE = 200;
-export const WEBSITE_ORDERS_V2_COLS = "courier,tracking_no,ship_id,ship_name";
+export const WEBSITE_ORDERS_V2_COLS = "courier,tracking_no,ship_id,ship_name,pay_id,pay_name";
 /** Mark shipped with an optional courier + tracking number, or change them on a shipped order (sql/165). */
 export async function websiteOrderShip(id: string, courier: string, tracking: string): Promise<{ ok: true; courier: string | null; tracking: string | null } | { ok: false }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false };

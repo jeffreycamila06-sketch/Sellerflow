@@ -414,5 +414,284 @@
    ],
    "autoCancelHours": 24
   }
+ },
+ {
+  "name": "TW, a saved payment list",
+  "country": "TW",
+  "settings": {
+   "payMethods": [
+    {
+     "id": "bank",
+     "kind": "first",
+     "name": "",
+     "info": " Use your name as the note ",
+     "bank": {
+      "bankName": "CTBC (822)",
+      "accountName": "BudgetUkay",
+      "accountNumber": "0123-4567"
+     },
+     "on": true
+    },
+    {
+     "id": "qr",
+     "kind": "first",
+     "name": "LINE Pay",
+     "qr": "u1/site-qr-1.jpg",
+     "on": true
+    },
+    {
+     "id": "c2abcd",
+     "kind": "first",
+     "name": "Jko Pay",
+     "qr": "../etc/passwd",
+     "on": true
+    },
+    {
+     "id": "cod",
+     "kind": "delivery",
+     "on": true
+    },
+    {
+     "id": "off1",
+     "kind": "first",
+     "info": "x",
+     "on": false
+    }
+   ]
+  },
+  "expected": {
+   "methods": [
+    {
+     "id": "bank",
+     "bank": {
+      "bankName": "CTBC (822)",
+      "accountName": "BudgetUkay",
+      "accountNumber": "0123-4567"
+     },
+     "info": "Use your name as the note",
+     "kind": "first"
+    },
+    {
+     "id": "qr",
+     "qr": "u1/site-qr-1.jpg",
+     "kind": "first",
+     "name": "LINE Pay"
+    },
+    {
+     "id": "cod",
+     "kind": "delivery"
+    }
+   ],
+   "options": [
+    {
+     "id": "s711",
+     "cod": true,
+     "fee": 60,
+     "needs": "store711"
+    },
+    {
+     "id": "fm",
+     "cod": true,
+     "fee": 60,
+     "needs": "storefm"
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "PH, GCash + COD",
+  "country": "PH",
+  "settings": {
+   "payMethods": [
+    {
+     "id": "gcash",
+     "kind": "first",
+     "info": "0917 123 4567 (Ana R.)",
+     "qr": "u1/site-qr-2.jpg",
+     "on": true
+    },
+    {
+     "id": "maya",
+     "kind": "first",
+     "on": true
+    },
+    {
+     "id": "codph",
+     "kind": "delivery",
+     "on": true
+    }
+   ]
+  },
+  "expected": {
+   "methods": [
+    {
+     "id": "gcash",
+     "qr": "u1/site-qr-2.jpg",
+     "info": "0917 123 4567 (Ana R.)",
+     "kind": "first"
+    },
+    {
+     "id": "codph",
+     "kind": "delivery"
+    }
+   ],
+   "options": [
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "needs": "none"
+    }
+   ],
+   "autoCancelHours": 24
+  }
+ },
+ {
+  "name": "junk payment list",
+  "country": "CA",
+  "settings": {
+   "payMethods": [
+    1,
+    null,
+    {
+     "id": "Bad Id",
+     "kind": "first",
+     "info": "x",
+     "on": true
+    },
+    {
+     "id": "a",
+     "kind": "cash",
+     "info": "x",
+     "on": true
+    },
+    {
+     "id": "dup",
+     "kind": "first",
+     "info": "first",
+     "on": true
+    },
+    {
+     "id": "dup",
+     "kind": "first",
+     "info": "second",
+     "on": true
+    },
+    {
+     "id": "m0",
+     "kind": "first",
+     "info": "pay 0",
+     "on": true
+    },
+    {
+     "id": "m1",
+     "kind": "first",
+     "info": "pay 1",
+     "on": true
+    },
+    {
+     "id": "m2",
+     "kind": "first",
+     "info": "pay 2",
+     "on": true
+    },
+    {
+     "id": "m3",
+     "kind": "first",
+     "info": "pay 3",
+     "on": true
+    },
+    {
+     "id": "m4",
+     "kind": "first",
+     "info": "pay 4",
+     "on": true
+    },
+    {
+     "id": "m5",
+     "kind": "first",
+     "info": "pay 5",
+     "on": true
+    },
+    {
+     "id": "m6",
+     "kind": "first",
+     "info": "pay 6",
+     "on": true
+    },
+    {
+     "id": "m7",
+     "kind": "first",
+     "info": "pay 7",
+     "on": true
+    },
+    {
+     "id": "m8",
+     "kind": "first",
+     "info": "pay 8",
+     "on": true
+    },
+    {
+     "id": "m9",
+     "kind": "first",
+     "info": "pay 9",
+     "on": true
+    }
+   ]
+  },
+  "expected": {
+   "methods": [
+    {
+     "id": "dup",
+     "info": "first",
+     "kind": "first"
+    },
+    {
+     "id": "m0",
+     "info": "pay 0",
+     "kind": "first"
+    },
+    {
+     "id": "m1",
+     "info": "pay 1",
+     "kind": "first"
+    },
+    {
+     "id": "m2",
+     "info": "pay 2",
+     "kind": "first"
+    },
+    {
+     "id": "m3",
+     "info": "pay 3",
+     "kind": "first"
+    },
+    {
+     "id": "m4",
+     "info": "pay 4",
+     "kind": "first"
+    },
+    {
+     "id": "m5",
+     "info": "pay 5",
+     "kind": "first"
+    },
+    {
+     "id": "m6",
+     "info": "pay 6",
+     "kind": "first"
+    }
+   ],
+   "options": [
+    {
+     "id": "pickup",
+     "cod": true,
+     "fee": 0,
+     "needs": "none"
+    }
+   ],
+   "autoCancelHours": 24
+  }
  }
 ]
