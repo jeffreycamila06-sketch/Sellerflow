@@ -119,6 +119,46 @@ await db.exec(src("165_seller_website_v2.sql"));
   await q(`update public.products set old_price = null, flash_price = null, flash_end = null, item_condition = null, size_guide = null where local_id in (1, 10)`);
 }
 
+// ── AUDIT FIX 1 — the price changed between view and order ──────────────────
+{
+  const stock = async (id) => (await q(`select stock from public.products where local_id = $1`, [id])).rows[0].stock;
+  const orders = async () => (await q(`select count(*)::int n from public.website_orders`)).rows[0].n;
+  const seq = async () => (await q(`select order_seq from public.seller_websites where subdomain = 'budgetukay'`)).rows[0].order_seq;
+  const hintOf = async (p) => { try { await p; return null; } catch (e) { return { msg: e.message, hint: e.hint ? JSON.parse(e.hint) : null }; } };
+  // the buyer opens the page during a flash sale: 2 × 99 + one Dress S at 120 + 7-11 NT$60 → shows 378
+  await q(`update public.products set flash_price = 99, flash_end = now() + interval '1 hour' where local_id = 1`);
+  await q(`update public.products set flash_price = 120, flash_end = now() + interval '1 hour' where local_id = 10`);
+  const items = [{ pid: 1, vid: null, qty: 2 }, { pid: 10, vid: 11, qty: 1 }];
+  const shown = 99 * 2 + 120 + 60;
+  ok((await shop("budgetukay")).products.find((p) => p.id === 1).flashPrice === 99, "fix 1: the page shows the flash price");
+  // …the sale ends before they tap Place order
+  await q(`update public.products set flash_end = now() - interval '1 second' where local_id in (1, 10)`);
+  const s1 = await stock(1), s11 = await stock(11), n0 = await orders(), q0 = await seq();
+  const e = await hintOf(place({ ...buyer(70), items, shownTotal: shown }));
+  const now = 150 * 2 + 220 + 60;
+  ok(e && e.msg === "price_changed", "fix 1: flash sale ended between view and order → 'price_changed'");
+  ok(e && e.hint && Number(e.hint.total) === now && Number(e.hint.subtotal) === now - 60 && Number(e.hint.shipFee) === 60, "fix 1: the answer carries the new total (items + shipping)");
+  ok(e && e.hint && e.hint.items.find((i) => i.pid === 1).price === 150 && e.hint.items.find((i) => i.vid === 11).price === 220, "fix 1: …and each line's new price");
+  ok((await orders()) === n0 && (await seq()) === q0, "fix 1: NO order placed (no row, no order number used)");
+  ok((await stock(1)) === s1 && (await stock(11)) === s11, "fix 1: NO stock taken");
+  // the buyer saw the new total and confirms it → placed at the new price
+  const ok2 = await place({ ...buyer(70), items, shownTotal: now });
+  const o2 = (await q(`select total, items from public.website_orders where token = $1`, [ok2.token])).rows[0];
+  ok(ok2.ok === true && Number(o2.total) === now && Number(ok2.total) === now, "fix 1: confirmed with the new total → placed");
+  ok((await stock(1)) === s1 - 2 && (await stock(11)) === s11 - 1, "fix 1: …and only then the stock is taken");
+  // the same check covers the shipping: free-over crossed the other way (subtotal under 999 → fee 60)
+  const e2 = await hintOf(place({ ...buyer(71), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 150 }));
+  ok(e2 && e2.msg === "price_changed" && Number(e2.hint.total) === 210, "fix 1: a total without the shipping fee is a changed price too");
+  ok((await place({ ...buyer(72), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 210.0 })).ok === true, "fix 1: the same total (210 = 210.0) → placed");
+  // an old page sends no total → placed exactly as before (no check)
+  ok((await place({ ...buyer(73), items: [{ pid: 1, vid: null, qty: 1 }] })).ok === true && (await place({ ...buyer(74), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: null })).ok === true, "fix 1: no total (old page) → placed as today");
+  ok(String(await err(place({ ...buyer(75), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: "210" }))).includes("bad_order"), "fix 1: a total that isn't a number is refused");
+  // the rate limit counts placed orders only — a price_changed answer never uses one up
+  for (let i = 0; i < 6; i++) await hintOf(place({ ...buyer(76), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 1 }));
+  ok((await err(place({ ...buyer(76), items: [{ pid: 1, vid: null, qty: 1 }], shownTotal: 210 }))) === null, "fix 1: refused tries don't count towards the 5-per-hour limit");
+  await q(`update public.products set flash_price = null, flash_end = null where local_id in (1, 10)`);
+}
+
 // ── PART 9 — units sold, kept forever ────────────────────────────────────────
 {
   const sold = async (id) => (await shop("budgetukay")).products.find((p) => p.id === id).sold;

@@ -38,6 +38,9 @@
 -- PART 12 — country: settings.taxIncluded → checkout2.taxIncluded (the buyer sees "Prices include tax";
 --   nothing is calculated). The address form, phone shape, currency and default language follow the seller's
 --   country in the app (no database change; the order keeps one address line, 5–200 characters).
+-- AUDIT FIX 1 — price changed between view and order: website_place_order compares p_order.shownTotal (the
+--   total the page showed: items + shipping) with its own; different → no order, no stock, error
+--   'price_changed' with the new total in the hint. No shownTotal (an old page) → as before.
 -- PART 13 — courier + tracking number: website_orders.courier / tracking_no (optional). website_order_ship
 --   (seller, own rows): paid / confirmed → shipped with them, or edits them on a shipped order. The buyer's
 --   order link (website_order) shows them once shipped.
@@ -473,6 +476,18 @@ begin
     if (v_opt->>'freeOver') is not null and v_sub >= (v_opt->>'freeOver')::numeric then v_fee := 0; end if;
   end if;
   v_total := v_sub + v_fee;
+  -- audit fix 1: the page sends the total it showed the buyer (p_order.shownTotal = items + shipping).
+  -- Different from the total worked out here (a flash sale ended, a price or fee changed) → NO order: the
+  -- raise undoes the stock taken above, and the hint carries the new total for the page to show before the
+  -- buyer confirms again. An old page sends no shownTotal → placed as before.
+  if p_order ? 'shownTotal' and jsonb_typeof(p_order->'shownTotal') <> 'null' then
+    if jsonb_typeof(p_order->'shownTotal') <> 'number' then raise exception 'bad_order' using errcode = '22023'; end if;
+    if round((p_order->>'shownTotal')::numeric, 2) <> round(v_total, 2) then
+      raise exception 'price_changed' using errcode = '22023', hint = jsonb_build_object(
+        'total', v_total, 'subtotal', v_sub, 'shipFee', v_fee,
+        'items', (select jsonb_agg(jsonb_build_object('pid', x->'pid', 'vid', coalesce(x->'vid', 'null'::jsonb), 'price', x->'price')) from jsonb_array_elements(v_items) x))::text;
+    end if;
+  end if;
   v_hours := coalesce((ck->>'autoCancelHours')::int, 24);
   v_status := case when v_pay = 'cod' then 'confirmed' else 'awaiting_payment' end;
 

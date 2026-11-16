@@ -18,7 +18,7 @@ import { BrandIcon, type BrandKey } from "./brandIcons";
 import { SmallPhoto } from "./ui";
 import {
   realOrderApi, readBuyer, saveBuyer, forgetBuyer, deviceId, draftErrors,
-  type OrderApi, type OrderDraft, type FieldError, type OrderView, type PlaceResult,
+  type OrderApi, type OrderDraft, type FieldError, type OrderView, type PlaceResult, type PriceNow,
 } from "./orderApi";
 import { checkoutOf, deliveryOfNeeds, freeOverOf, shipLabel, payLabel, type PayOpt, type ShipOpt } from "./shipPay";
 import { addrFormOf, composeAddress, cleanPost, phoneHintOf, CA_PROVINCES, AU_STATES, EMPTY_ADDR, type AddrParts } from "./addressForm";
@@ -80,11 +80,18 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
   const dels = deliveriesOf(shop);
   const pays = paymentsOf(shop, draft.delivery);
   const opt: ShipOpt | null = ck.options.find((o) => o.id === draft.delivery) ?? null;
-  const sub = subtotalOf(infos);
-  const feeOf = (o: ShipOpt) => (o.freeOver && sub >= o.freeOver ? 0 : o.fee);
-  const free = freeShipping(sub, opt ? opt.freeOver : freeOverOf(ck) ?? undefined);
-  const fee = opt ? feeOf(opt) : 0;
-  const total = sub + fee;
+  const localSub = subtotalOf(infos);
+  const feeOf = (o: ShipOpt) => (o.freeOver && localSub >= o.freeOver ? 0 : o.fee);
+  const free = freeShipping(localSub, opt ? opt.freeOver : freeOverOf(ck) ?? undefined);
+  // audit fix 1: when the database answered 'price_changed', the page shows ITS prices + total until the
+  // buyer changes the cart or the delivery (then the page's own numbers apply again)
+  const [priceNow, setPriceNow] = useState<{ key: string; now: PriceNow } | null>(null);
+  const priceKey = JSON.stringify([draft.delivery, infos.map((x) => [x.line.pid, x.line.vid, x.line.qty])]);
+  const pn = priceNow && priceNow.key === priceKey ? priceNow.now : null;
+  const lineAmount = (x: LineInfo) => (pn?.items.find((i) => i.pid === x.line.pid && (i.vid ?? null) === (x.line.vid ?? null))?.price ?? x.price) * x.line.qty;
+  const sub = pn ? pn.subtotal : localSub;
+  const fee = pn ? pn.shipFee : opt ? feeOf(opt) : 0;
+  const total = pn ? pn.total : localSub + fee;
   const set = (patch: Partial<OrderDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const pickDelivery = (k: string) => setDraft((d) => {
     const m = readBuyer(); const last = k === "s711" || k === "fm" ? m?.stores?.[k]?.[0] : undefined;
@@ -113,8 +120,10 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
       storeId: draft.storeId.trim(), storeName: draft.storeName.trim(),
       address: opt!.needs === "address" ? composeAddress(form, draft.addr ?? EMPTY_ADDR, draft.address) : draft.address.trim(), note: draft.note.trim(),
       items: infos.map((x) => ({ pid: x.line.pid, vid: x.line.vid, qty: x.line.qty })),
+      shownTotal: total, // the total on the screen — a different total in the database places nothing
     }, deviceId());
     setBusy(false);
+    if (r.ok === false && r.error === "price_changed" && r.priceNow) { setPriceNow({ key: priceKey, now: r.priceNow }); return; }
     if (r.ok === true) { saveBuyer(draft); onPlaced({ token: r.token, orderNo: r.orderNo, total: r.total }); go({ page: "sent", token: r.token }); return; }
     setFail(placeFailText(t, r, infos));
     if (r.error === "bad_name") setErrs(["name"]); else if (r.error === "bad_phone") setErrs(["phone"]); else if (r.error === "bad_store") setErrs(["store"]); else if (r.error === "bad_address") setErrs(["address"]); else if (r.error === "bad_payment") setErrs(["payment"]); else if (r.error === "bad_delivery") setErrs(["delivery"]);
@@ -210,7 +219,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
               <div key={`${x.line.pid}:${x.line.vid}`} style={{ display: "flex", gap: 10, padding: "6px 0", alignItems: "center" }}>
                 <div style={{ width: 44, height: 44, borderRadius: 9, overflow: "hidden", background: "var(--s-bg)", flexShrink: 0 }}>{x.photo && <SmallPhoto path={x.photo} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}</div>
                 <div style={{ flex: 1, minWidth: 0, fontSize: 13.5 }}><div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.product.name}</div><div style={mutedText}>{[x.label, `×${x.line.qty}`].filter(Boolean).join(" · ")}</div></div>
-                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{money(cur, x.price * x.line.qty)}</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{money(cur, lineAmount(x))}</div>
               </div>
             ))}
             <div className="v-sum" style={{ marginTop: 6 }}>
@@ -220,6 +229,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
             </div>
             {free && free.remaining > 0 && <div style={{ ...mutedText, fontSize: 12.5, marginTop: 6 }}>{tpl(t.rd_shop_free_more, { amount: money(cur, free.remaining) })}</div>}
             {ck.taxIncluded && <div data-testid="co-tax" style={{ ...mutedText, fontSize: 12.5, marginTop: 4 }}>{t.rd_shop_tax_incl}</div>}
+            {pn && <div role="alert" data-testid="co-price-changed" className="v-note" style={{ marginTop: 12, fontSize: 13.5, fontWeight: 700 }}>{tpl(t.rd_co_price_changed, { amount: money(cur, pn.total) })}</div>}
             {fail && <div role="alert" data-testid="co-fail" style={{ marginTop: 12, color: "#B91C1C", background: "#FEF2F2", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, fontWeight: 700 }}>{fail}</div>}
             {preview && <div data-testid="co-preview" style={{ marginTop: 12, ...mutedText }}>{t.rd_shop_co_preview}</div>}
             <div className="v-dbuy" style={{ marginTop: 12 }}><button type="button" data-testid="co-place" className="v-btn" disabled={busy || preview} onClick={() => void place()}>{busy ? t.rd_shop_co_placing : `${t.rd_shop_co_place} · ${money(cur, total)}`}</button></div>

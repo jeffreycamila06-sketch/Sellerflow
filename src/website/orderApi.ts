@@ -19,11 +19,18 @@ export interface OrderDraft {
   addr?: AddrParts;
 }
 /** ship / pay = the option + method ids (sql/165); delivery / payment = the kinds (what sql/163 reads). */
-export interface PlaceInput extends Omit<OrderDraft, "delivery" | "payment" | "addr"> { ship: string; pay: string; delivery: Delivery; payment: Payment; items: { pid: number; vid: number | null; qty: number }[] }
+export interface PlaceInput extends Omit<OrderDraft, "delivery" | "payment" | "addr"> {
+  ship: string; pay: string; delivery: Delivery; payment: Payment; items: { pid: number; vid: number | null; qty: number }[];
+  /** The total the page showed the buyer (items + shipping). sql/165 places NO order when its own total differs
+   *  ("price_changed"); an older database ignores it. */
+  shownTotal?: number;
+}
+/** What the database worked out when the price changed between view and order (sql/165 audit fix 1). */
+export interface PriceNow { total: number; subtotal: number; shipFee: number; items: { pid: number; vid: number | null; price: number }[] }
 export type PlaceError =
   | "shop_closed" | "bad_name" | "bad_phone" | "bad_delivery" | "bad_store" | "bad_address" | "bad_payment"
-  | "blocked" | "too_many" | "bad_items" | "item_gone" | "pick_option" | "out_of_stock" | "network";
-export type PlaceResult = { ok: true; orderNo: string; token: string; total: number } | { ok: false; error: PlaceError; pid?: number; vid?: number | null; left?: number };
+  | "blocked" | "too_many" | "bad_items" | "item_gone" | "pick_option" | "out_of_stock" | "price_changed" | "network";
+export type PlaceResult = { ok: true; orderNo: string; token: string; total: number } | { ok: false; error: PlaceError; pid?: number; vid?: number | null; left?: number; priceNow?: PriceNow };
 
 export interface OrderItem { pid: number; vid?: number | null; name: string; label?: string; code?: string; price: number; qty: number; photo?: string }
 export type OrderStatus = "awaiting_payment" | "payment_sent" | "paid" | "confirmed" | "shipped" | "cancelled";
@@ -43,16 +50,36 @@ export interface OrderApi {
   uploadReceipt(token: string, file: Blob): Promise<{ ok: true } | { ok: false; reason: "too_big" | "unreadable" | "failed" }>;
 }
 
-const ERRORS: PlaceError[] = ["shop_closed", "bad_name", "bad_phone", "bad_delivery", "bad_store", "bad_address", "bad_payment", "blocked", "too_many", "bad_items", "item_gone", "pick_option", "out_of_stock"];
+const ERRORS: PlaceError[] = ["shop_closed", "bad_name", "bad_phone", "bad_delivery", "bad_store", "bad_address", "bad_payment", "blocked", "too_many", "bad_items", "item_gone", "pick_option", "out_of_stock", "price_changed"];
 /** A database error → the reason the buyer is told. Pure. */
 export function placeError(e: { message?: string; hint?: string } | null | undefined): PlaceResult {
   const msg = String(e?.message || "");
   const error = ERRORS.find((x) => msg === x || msg.startsWith(`${x}`)) || "network";
   let extra: { pid?: number; vid?: number | null; left?: number } = {};
-  try { const h = JSON.parse(String(e?.hint || "")); if (h && typeof h === "object") extra = { pid: Number(h.pid) || undefined, vid: h.vid === null || h.vid === undefined ? null : Number(h.vid), left: h.left === undefined ? undefined : Number(h.left) }; } catch { /* no hint */ }
-  return { ok: false, error, ...extra };
+  let priceNow: PriceNow | undefined;
+  try {
+    const h = JSON.parse(String(e?.hint || ""));
+    if (h && typeof h === "object") {
+      if (error === "price_changed") priceNow = toPriceNow(h);
+      else extra = { pid: Number(h.pid) || undefined, vid: h.vid === null || h.vid === undefined ? null : Number(h.vid), left: h.left === undefined ? undefined : Number(h.left) };
+    }
+  } catch { /* no hint */ }
+  // a price change the page can't show the new total for is treated as a network error (nothing was placed)
+  if (error === "price_changed" && !priceNow) return { ok: false, error: "network" };
+  return { ok: false, error, ...extra, ...(priceNow ? { priceNow } : {}) };
 }
 const num = (v: unknown, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+/** The 'price_changed' hint → PriceNow (null when it isn't one). Pure. */
+export function toPriceNow(h: unknown): PriceNow | null {
+  const o = h && typeof h === "object" ? (h as Record<string, unknown>) : null;
+  const total = Number(o?.total), subtotal = Number(o?.subtotal), shipFee = Number(o?.shipFee);
+  if (!o || ![total, subtotal, shipFee].every(Number.isFinite)) return null;
+  const items = (Array.isArray(o.items) ? o.items : []).flatMap((x) => {
+    const i = x as Record<string, unknown>; const pid = Number(i?.pid), price = Number(i?.price);
+    return Number.isFinite(pid) && Number.isFinite(price) ? [{ pid, vid: i.vid === null || i.vid === undefined ? null : Number(i.vid), price }] : [];
+  });
+  return { total, subtotal, shipFee, items };
+}
 /** RPC answer → OrderView (defensive). Pure. */
 export function toOrderView(j: unknown): OrderView | null {
   const o = j && typeof j === "object" ? (j as Record<string, unknown>) : null;
