@@ -27,12 +27,16 @@ Everything that protects orders is still there: prices and stock checked by the 
 | `f53deb25` | fix | Fix found in the compare shots: a long line in the phone cart could make the page wider than the screen. |
 | `c6251b35` | audit fix 1 | **Price changed between view and order.** The page sends the total it showed (items + shipping). Different from the database's total → NO order, NO stock, answer `price_changed` with the new total; the page shows the new prices and the buyer confirms again. An old page that sends no total behaves as today. |
 | `680cb84d` | audit fix 2 | **How to pay stays on the order link.** A copy of the picked method (name, instructions, QR path, bank details) is kept on the order and shown while payment is due — also after the seller edits, turns off or deletes the method. |
+| `14f7c8f6` | merge main | Invite friends merged in. Only conflict: `scripts/sql165-behaviour.mjs` (main's kept; this branch's → `scripts/sql167-behaviour.mjs`). Website SQL renamed to `sql/167_seller_website_v2.sql` (+ rollback). Help guide auto-merged, sql/116b regenerated (identical), 51 ids, none lost. |
+| `ae63e044` + `f48a1291` | 2a logo letter | The header letter already used the theme colour (the seller's own only when picked); the orange "B" in the old pictures was the harness's uploaded logo PICTURE. Harness fixed (no logo picture, like the preview) and the rule pinned by a test. |
+| `9c583bfc` | 2b countdown | Order page while payment is due: "Auto-cancels in HH:MM:SS" counting down to the order's real auto-cancel time, the sentence kept under it. |
 
 Left out on purpose (Build 2): vouchers, "What buyers say". Ratings are hidden everywhere.
 New words exist in all 8 languages. The iPhone app shows no plan / price / upgrade words.
 
 ## Screenshots
-- `compare/` — **72 pictures**: the preview (`site-v2.html`, left) next to the real build (right), for each theme (pop / boutique / bold) × page (home, shop, product, cart, checkout, order, saved, orders) × iPhone / Android / laptop. Named `<theme>-<n>-<page>_<device>.jpg`.
+- `fix-2ab/before` + `fix-2ab/after` — 2a header (Boutique, Bold; + a seller-picked colour) and 2b order page, iPhone + laptop, preview next to the build.
+- `compare/` — **72 pictures** (remade after 2a/2b): the preview (`site-v2.html`, left) next to the real build (right), for each theme (pop / boutique / bold) × page (home, shop, product, cart, checkout, order, saved, orders) × iPhone / Android / laptop. Named `<theme>-<n>-<page>_<device>.jpg`.
 - `shots/walk-CA-*` and `shots/walk-AU-*` — **Canada and Australia checkout walk-through**, iPhone + laptop:
   1. cart
   2. empty checkout (errors shown)
@@ -44,7 +48,7 @@ How to remake them: `VITE_SUPABASE_URL=https://demo.supabase.co VITE_SUPABASE_AN
 
 ## Results
 - **SQL proof:** `scripts/sql167-behaviour.mjs` → **148 passed, 0 failed** (PGlite; includes the rollback narrowing the delivery check, the shared checkout cases the app's mirror is also tested against, the two audit fixes — 8 / 5 checks go red with each fix removed — and 6 checks that sql/167 and sql/165 Invite friends apply in either order).
-- **Full test suite:** 685 files passed (1 skipped), **8,926 tests passed** (9 skipped), 0 failed.
+- **Full test suite:** 693 files passed (1 skipped), **8,992 tests passed** (9 skipped), 0 failed (after the main merge + 2a/2b).
 - **Typecheck:** clean. **Build:** green. **Lint:** 56 errors / 6 warnings, the same as main (all were there before; none added).
 - **CI:** green on `47af9dbe`. For `f53deb25` (CSS only), see the final message.
 
