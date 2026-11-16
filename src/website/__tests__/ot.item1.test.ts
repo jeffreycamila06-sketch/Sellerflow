@@ -40,17 +40,20 @@ describe("sql/171 (the database side; full proof: scripts/sql171-behaviour.mjs)"
   const up = readFileSync("sql/171_website_parcel_tracking.sql", "utf8");
   it("the matching rule as approved", () => {
     expect(up).toContain("select upper(regexp_replace(coalesce(p, ''), '[[:space:]-]', '', 'g'));");
-    expect(up).toContain("where pt.user_id = p_user and pt.carrier = c and public.website_parcel_norm(pt.tracking_no) = t;");
+    expect(up).toContain("where pt.user_id = p_user and pt.carrier = c and public.website_parcel_norm(pt.tracking_no) = t\n           limit 2) m;");
+    // ONE read of the seller's parcels (bounded: the seller's rows only, stopped after 2)
+    expect(up.match(/from public\.parcel_tracking pt/g)).toHaveLength(1);
     expect(up).toContain("c := case p_delivery when 's711' then '711' else 'fm' end;");
-    expect(up).toContain("if n <> 1 then return null; end if;");
-    expect(up).toContain("not in ('in_transit', 'at_store', 'picked_up', 'returned') then return null;");
-    expect(up).toContain("'state', r.status, 'arrivedAt', r.arrived_at, 'deadline', r.pickup_deadline,\n    'pickedUpAt', r.picked_up_at, 'returnedAt', r.returned_at, 'checkedAt', r.last_polled_at));");
+    expect(up).toContain("if n <> 1 or j->>'status' is null or j->>'status' not in ('in_transit', 'at_store', 'picked_up', 'returned') then return null; end if;");
+    expect(up).toContain("'status', pt.status, 'arrivedAt', pt.arrived_at, 'deadline', pt.pickup_deadline,\n                   'pickedUpAt', pt.picked_up_at, 'returnedAt', pt.returned_at, 'checkedAt', pt.last_polled_at) j");
+    expect(up).toContain("'state', j->'status', 'arrivedAt', j->'arrivedAt', 'deadline', j->'deadline',\n    'pickedUpAt', j->'pickedUpAt', 'returnedAt', j->'returnedAt', 'checkedAt', j->'checkedAt'));");
   });
   it("who may call what", () => {
     expect(up).toContain("revoke all on function public.website_parcel_for(uuid, text, text, text) from public, anon, authenticated;");
     expect(up).toContain("revoke all on function public.website_my_parcels() from public, anon;");
     expect(up).toContain("if me is null then raise exception 'not_signed_in'");
-    expect(up).toContain("where o.user_id = me and o.status = 'shipped' and o.delivery in ('s711', 'fm')) x");
+    expect(up).toContain("where o.user_id = me and o.status = 'shipped' and o.delivery in ('s711', 'fm')\n");
+    expect(up).toContain("and o.shipped_at >= now() - interval '45 days') x");
     expect(up).not.toMatch(/\b(insert|update|delete)\b[^;]*parcel_tracking/i);
   });
   it("website_order = sql/167's text + the one parcel line; the rollback = sql/167's text", () => {

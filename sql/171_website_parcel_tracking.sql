@@ -19,7 +19,8 @@
 -- No match → the key is absent and website_order answers byte for byte as before (jsonb_strip_nulls).
 --   website_parcel_for(...)   internal (no browser role can call it)
 --   website_order(token)      the buyer's order page: + 'parcel' (token stays the only key)
---   website_my_parcels()      the signed-in seller's OWN shipped 7-ELEVEN / FamilyMart orders only;
+--   website_my_parcels()      the signed-in seller's OWN 7-ELEVEN / FamilyMart orders shipped in the
+--                             last 45 days only;
 --                             anon refused (no grant + raises without a signed-in user)
 -- Rollback: sql/171_website_parcel_tracking_rollback.sql
 -- Proof:    scripts/sql171-behaviour.mjs (PGlite)
@@ -37,20 +38,23 @@ revoke all on function public.website_parcel_norm(text) from public, anon, authe
 -- the parcel for one order, or null (no match / more than one / a state the page doesn't show)
 create or replace function public.website_parcel_for(p_user uuid, p_delivery text, p_status text, p_tracking text)
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
-declare t text := public.website_parcel_norm(p_tracking); c text; n int; r record;
+declare t text := public.website_parcel_norm(p_tracking); c text; n int; j jsonb;
 begin
   if p_user is null or p_status is distinct from 'shipped' or p_delivery not in ('s711', 'fm') or t = '' then return null; end if;
   c := case p_delivery when 's711' then '711' else 'fm' end;
-  select count(*) into n from public.parcel_tracking pt
-   where pt.user_id = p_user and pt.carrier = c and public.website_parcel_norm(pt.tracking_no) = t;
-  if n <> 1 then return null; end if;
-  select pt.status, pt.arrived_at, pt.pickup_deadline, pt.picked_up_at, pt.returned_at, pt.last_polled_at into r
-    from public.parcel_tracking pt
-   where pt.user_id = p_user and pt.carrier = c and public.website_parcel_norm(pt.tracking_no) = t;
-  if r.status is null or r.status not in ('in_transit', 'at_store', 'picked_up', 'returned') then return null; end if;
+  -- ONE read of the seller's own parcels (user_id = the order's seller; the unique (user_id, tracking_no)
+  -- index starts with user_id), stopped after 2 rows: 1 row = the match, 0 or 2 = no state.
+  select count(*), (array_agg(m.j))[1] into n, j
+    from (select jsonb_build_object(
+                   'status', pt.status, 'arrivedAt', pt.arrived_at, 'deadline', pt.pickup_deadline,
+                   'pickedUpAt', pt.picked_up_at, 'returnedAt', pt.returned_at, 'checkedAt', pt.last_polled_at) j
+            from public.parcel_tracking pt
+           where pt.user_id = p_user and pt.carrier = c and public.website_parcel_norm(pt.tracking_no) = t
+           limit 2) m;
+  if n <> 1 or j->>'status' is null or j->>'status' not in ('in_transit', 'at_store', 'picked_up', 'returned') then return null; end if;
   return jsonb_strip_nulls(jsonb_build_object(
-    'state', r.status, 'arrivedAt', r.arrived_at, 'deadline', r.pickup_deadline,
-    'pickedUpAt', r.picked_up_at, 'returnedAt', r.returned_at, 'checkedAt', r.last_polled_at));
+    'state', j->'status', 'arrivedAt', j->'arrivedAt', 'deadline', j->'deadline',
+    'pickedUpAt', j->'pickedUpAt', 'returnedAt', j->'returnedAt', 'checkedAt', j->'checkedAt'));
 end;
 $$;
 revoke all on function public.website_parcel_for(uuid, text, text, text) from public, anon, authenticated;
@@ -96,8 +100,8 @@ $$;
 revoke all on function public.website_order(text) from public;
 grant execute on function public.website_order(text) to anon, authenticated;
 
--- the seller's Website orders: the parcel of each of the SIGNED-IN seller's own shipped 7-ELEVEN /
--- FamilyMart orders (only the ones that match). Anon: no grant, and no signed-in user → refused.
+-- the seller's Website orders: the parcel of each of the SIGNED-IN seller's own 7-ELEVEN / FamilyMart
+-- orders shipped in the last 45 days (only the ones that match). Anon: no grant, and no signed-in user → refused.
 create or replace function public.website_my_parcels()
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare me uuid := auth.uid();
@@ -107,7 +111,9 @@ begin
     select jsonb_agg(jsonb_build_object('id', x.id, 'parcel', x.p) order by x.id)
       from (select o.id, public.website_parcel_for(o.user_id, o.delivery, o.status, o.tracking_no) p
               from public.website_orders o
-             where o.user_id = me and o.status = 'shipped' and o.delivery in ('s711', 'fm')) x
+             where o.user_id = me and o.status = 'shipped' and o.delivery in ('s711', 'fm')
+               -- bounded: only orders shipped in the last 45 days (the buyer's own page has no day limit)
+               and o.shipped_at >= now() - interval '45 days') x
      where x.p is not null), '[]'::jsonb);
 end;
 $$;

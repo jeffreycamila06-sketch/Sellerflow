@@ -64,7 +64,11 @@ await order(SELLER, tok("i"), { status: "paid", tracking: "F12345678901" });    
 await order(SELLER, tok("j"), { tracking: "F33333333333" });                       // only seller B has this number
 await order(SELLER, tok("k"), { tracking: "F44444444444" });                       // returned
 await order(OTHER, tok("z"), { tracking: "F12345678901" });                        // seller B, same number as A's parcel
-const TOKENS = "abcdefghijkz".split("").map(tok);
+await order(SELLER, tok("o"), { tracking: "F55555555555" });                       // shipped 46 days ago (outside the seller's 45 days)
+await order(SELLER, tok("p"), { tracking: "F66666666666" });                       // shipped 44 days ago (inside)
+await q(`update public.website_orders set shipped_at = now() - interval '46 days' where token = $1`, [tok("o")]);
+await q(`update public.website_orders set shipped_at = now() - interval '44 days' where token = $1`, [tok("p")]);
+const TOKENS = "abcdefghijkzop".split("").map(tok);
 const before = {};
 for (const t of TOKENS) before[t] = JSON.stringify(await view(t));
 const fnBefore = (await q(`select prosrc from pg_proc where proname = 'website_order'`)).rows[0].prosrc;
@@ -77,6 +81,8 @@ await parcel(SELLER, "F22222222222", "in_transit");
 await parcel(SELLER, "f22222222222", "at_store");
 await parcel(SELLER, "12345678901", "picked_up", "fm", { arrived: "2026-11-19T01:30:00Z", deadline: "2026-11-26", picked: "2026-11-21T10:42:00Z" });
 await parcel(OTHER, "F33333333333", "at_store", "711", { deadline: "2026-11-30" });
+await parcel(SELLER, "F55555555555", "at_store", "711", { deadline: "2026-11-26" });
+await parcel(SELLER, "F66666666666", "in_transit");
 await parcel(SELLER, "F44444444444", "returned", "711", { arrived: "2026-11-19T01:30:00Z", deadline: "2026-11-26", returned: "2026-11-27T00:00:00Z" });
 
 await db.exec(src("171_website_parcel_tracking.sql"));
@@ -121,7 +127,14 @@ ok(e && /not_signed_in/.test(e), "website_my_parcels without a signed-in user ra
 const mine = (await as(SELLER, "authenticated", () => q(`select public.website_my_parcels() r`))).rows[0].r;
 const ids = async (u) => (await q(`select id from public.website_orders where user_id = $1`, [u])).rows.map((r) => r.id);
 const aIds = new Set(await ids(SELLER)), bIds = new Set(await ids(OTHER));
-ok(mine.length === 4 && mine.every((x) => aIds.has(x.id)), `seller A: only A's own matched orders (${mine.length})`);
+ok(mine.length === 5 && mine.every((x) => aIds.has(x.id)), `seller A: only A's own matched orders (${mine.length})`);
+const idOf = async (t) => (await q(`select id from public.website_orders where token = $1`, [tok(t)])).rows[0].id;
+const oldId = await idOf("o"), recentId = await idOf("p");
+ok(!mine.some((x) => x.id === oldId), "website_my_parcels: an order shipped 46 days ago is not in the answer (it has a matching parcel)");
+ok(mine.some((x) => x.id === recentId && x.parcel.state === "in_transit"), "website_my_parcels: an order shipped 44 days ago is");
+const oldView = await view(tok("o"));
+ok(oldView.parcel?.state === "at_store" && oldView.parcel.deadline === "2026-11-26", "the buyer's page for the order shipped 46 days ago still shows its parcel (no day limit there)");
+ok(strip(oldView) === before[tok("o")], "…and the rest of that buyer answer is sql/167's");
 ok(mine.every((x) => !bIds.has(x.id)), "seller A gets nothing for seller B's order");
 ok(!JSON.stringify(mine).includes("2026-11-30"), "seller A gets no field of seller B's parcel (B's deadline never appears)");
 ok(!leaked(mine) && mine.every((x) => Object.keys(x.parcel).every((k) => allowed.has(k))), "seller side: only the six fields");
@@ -132,6 +145,35 @@ ok(JSON.stringify(nobody) === "[]", "a seller with no orders gets an empty list"
 const meta = (await q(`select proname, prosecdef s, proconfig c, provolatile v from pg_proc where proname in ('website_parcel_for','website_my_parcels','website_parcel_norm') order by 1`)).rows;
 ok(meta.every((m) => String(m.c).includes("search_path=public, pg_temp")), "fixed search_path on every new function");
 ok((await q(`select count(*)::int n from information_schema.columns where table_name in ('website_orders','parcel_tracking') and column_name ilike '%parcel%'`)).rows[0].n === 0, "no column added");
+
+// ── the one-read website_parcel_for = the earlier two-read version, for every order and a few direct calls ──
+await db.exec(`create function public.website_parcel_for_tworeads(p_user uuid, p_delivery text, p_status text, p_tracking text)
+returns jsonb language plpgsql stable as $f$
+declare t text := public.website_parcel_norm(p_tracking); c text; n int; r record;
+begin
+  if p_user is null or p_status is distinct from 'shipped' or p_delivery not in ('s711', 'fm') or t = '' then return null; end if;
+  c := case p_delivery when 's711' then '711' else 'fm' end;
+  select count(*) into n from public.parcel_tracking pt
+   where pt.user_id = p_user and pt.carrier = c and public.website_parcel_norm(pt.tracking_no) = t;
+  if n <> 1 then return null; end if;
+  select pt.status, pt.arrived_at, pt.pickup_deadline, pt.picked_up_at, pt.returned_at, pt.last_polled_at into r
+    from public.parcel_tracking pt
+   where pt.user_id = p_user and pt.carrier = c and public.website_parcel_norm(pt.tracking_no) = t;
+  if r.status is null or r.status not in ('in_transit', 'at_store', 'picked_up', 'returned') then return null; end if;
+  return jsonb_strip_nulls(jsonb_build_object(
+    'state', r.status, 'arrivedAt', r.arrived_at, 'deadline', r.pickup_deadline,
+    'pickedUpAt', r.picked_up_at, 'returnedAt', r.returned_at, 'checkedAt', r.last_polled_at));
+end; $f$`);
+const cmp = (await q(`select o.token, public.website_parcel_for(o.user_id, o.delivery, o.status, o.tracking_no)::text a,
+                             public.website_parcel_for_tworeads(o.user_id, o.delivery, o.status, o.tracking_no)::text b
+                        from public.website_orders o`)).rows;
+ok(cmp.length === TOKENS.length && cmp.every((r) => r.a === r.b), `one read = the earlier two reads for all ${cmp.length} orders (${cmp.filter((r) => r.a !== r.b).map((r) => r.token[0])})`);
+for (const [u, d, no] of [[SELLER, "s711", "F22222222222"], [SELLER, "s711", "f-2222 2222 2222"], [SELLER, "s711", "F12345678901"], [OTHER, "s711", "F33333333333"], [SELLER, "fm", "12345678901"], [SELLER, "s711", "F11111111111"], [SELLER, "s711", ""]]) {
+  const r = (await q(`select public.website_parcel_for($1, $2, 'shipped', $3)::text a, public.website_parcel_for_tworeads($1, $2, 'shipped', $3)::text b`, [u, d, no])).rows[0];
+  ok(r.a === r.b, `direct call ${d} "${no}": same answer as the two-read version (${r.a})`);
+}
+ok((await q(`select public.website_parcel_for($1, 's711', 'shipped', 'F22222222222') r`, [SELLER])).rows[0].r === null, "2+ matching parcels → still null");
+await db.exec(`drop function public.website_parcel_for_tworeads(uuid, text, text, text)`);
 
 // ── rollback ──
 await db.exec(src("171_website_parcel_tracking_rollback.sql"));
