@@ -55,7 +55,7 @@ export async function removeWebsitePhotos(paths: string[]): Promise<boolean> {
 }
 
 /** The shop logo / cover / payment QR (website editor; public bucket — all three are meant for buyers). Returns the path or null. */
-export async function uploadSitePicture(kind: "logo" | "cover" | "qr", file: Blob): Promise<string | null> {
+export async function uploadSitePicture(kind: "logo" | "cover" | "qr" | "slide" | "promo" | "cat", file: Blob): Promise<string | null> {
   const c = await compressProductImage(file);
   if (c.ok === false || !isSupabaseConfigured || !supabase) return null;
   const me = await uid();

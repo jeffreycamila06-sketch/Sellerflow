@@ -4,7 +4,7 @@
 // device storage touched.
 // v2: the look of docs/design/seller-website-v2/site-v2.html — three themes (Pop / Boutique / Bold) + the
 // shop's accent colour, one frame (v2/Shell) around every page, phone + laptop from the same page.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { TProvider, useT } from "../redesign/i18n";
 import { parseShopLocation, pagePath, type ShopPage } from "./route";
 import { loadShop, shopLang, readPickedLang, savePickedLang, currencyFor, type Shop, type ShopResult } from "./shopApi";
@@ -94,7 +94,6 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   const [toast, say] = useToast();
   const [chat, setChat] = useState(false);
   const [info, setInfo] = useState<Info>(null);
-  const catRef = useRef<HTMLDivElement | null>(null);
   const [clock] = useState(() => nowMs ?? Date.now());
   const update = (next: CartLine[]) => { setLines(next); if (!preview) saveCart(shop.sub, next); };
   const infos = useMemo(() => validLines(shop, lines), [shop, lines]);
@@ -121,7 +120,7 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   };
   const toShop = (p: Partial<ShopFilter> = {}) => { setFilter({ ...NO_FILTER, sort: filter.sort, ...p }); go({ page: "shop" }); };
   let body: ReactNode;
-  if (route.page === "home") body = <Home shop={shop} cur={cur} query={query} onOpen={(id) => go({ page: "product", id })} catRef={catRef} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} />;
+  if (route.page === "home") body = <Home shop={shop} cur={cur} onOpen={(id) => go({ page: "product", id })} nowMs={clock} saved={saved} onSave={toggleSave} onQuick={quick} onShop={(f) => toShop(f)} />;
   else if (route.page === "product" && product) body = <Product key={product.id} shop={shop} product={product} cur={cur}
     onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); say(t.rd_shop_added); }}
     onBuy={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); go({ page: "cart" }); }} />;

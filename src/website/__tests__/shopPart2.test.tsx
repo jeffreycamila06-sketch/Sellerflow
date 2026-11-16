@@ -110,7 +110,7 @@ describe("pages", () => {
     expect(screen.getByTestId("shop-name").textContent).toBe("BudgetUkay");
     for (const id of ["shop-verified", "shop-stats", "shop-announcement", "shop-live", "shop-socials", "shop-cats", "shop-grid", "shop-about", "shop-policy", "shop-powered"]) expect(screen.getByTestId(id)).toBeTruthy();
     expect(screen.getAllByTestId("shop-item")).toHaveLength(4);
-    expect(screen.getByText("認證賣家", { exact: false })).toBeTruthy(); // Taiwan seller → 繁體中文
+    expect(screen.getAllByText("認證賣家", { exact: false }).length).toBeGreaterThan(0); // Taiwan seller → 繁體中文 (v2: about + trust badge)
   });
   it("Master → no Powered by", () => {
     render(<ShopApp preview={{ ...DEMO_SHOP, powered: false }} />);

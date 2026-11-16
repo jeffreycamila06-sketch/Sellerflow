@@ -64,7 +64,7 @@ function Seller({ children }: { children: React.ReactNode }) {
   return <div data-redesign="" data-theme="light" data-accent="indigo" className="sfl-stage" style={{ minHeight: "100vh", background: "var(--bg)" }}><TProvider lang={lang}>{children}</TProvider></div>;
 }
 let el: React.ReactNode;
-if (m === "shop") el = <ShopApp host="www.sellerflowlive.com" path={q.get("path") || "/s/budgetukay"} nowMs={Date.parse("2026-11-15T08:00:00Z")} />;
+if (m === "shop") el = <ShopApp host="www.sellerflowlive.com" path={q.get("path") || "/s/budgetukay"} nowMs={Date.parse("2026-11-16T08:00:00Z")} />;
 else if (m === "editor") el = <Seller><WebsiteEditor onBack={noop} onPayShip={noop} onUpgrade={ios ? undefined : noop} ios={ios} plan={plan} planStatus="active" planExpiry="2027-01-01" country={country} onToast={noop} api={editorApi} /></Seller>;
 else if (m === "payship") el = <Seller><WebsitePayShip onBack={noop} onToast={noop} api={payApi} country={country} cur={country === "CA" ? "CA$" : country === "AU" ? "A$" : country === "PH" ? "₱" : "NT$"} /></Seller>;
 else if (m === "orders") el = <Seller><WebsiteOrders onToast={noop} api={ordersApi} topTabs={<OrdersTabs />} /></Seller>;

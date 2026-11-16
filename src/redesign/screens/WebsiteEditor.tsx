@@ -3,6 +3,7 @@
 // "Upgrade to publish your website"; on iOS the Publish button is locked with no price or plan name,
 // and the own-domain (Master) row is hidden (App Store rule). Preview = the real shop pages with the
 // draft, in memory (no network, no order can be placed).
+import WebsiteHomeEditor from "../components/WebsiteHomeEditor";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card } from "../ui";
@@ -24,7 +25,6 @@ const SOCIALS: SocialKey[] = ["facebook", "instagram", "tiktok", "youtube", "x",
 const SOCIAL_NAME: Record<SocialKey, string> = { facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", x: "X", threads: "Threads", shopee: "Shopee" };
 const CHATS: ChatKey[] = ["messenger", "line", "whatsapp", "instagram"];
 const CHAT_NAME: Record<ChatKey, string> = { messenger: "Messenger", line: "LINE", whatsapp: "WhatsApp", instagram: "Instagram DM" };
-const SECTIONS = ["announcement", "live", "categories", "about", "policy", "socials"] as const;
 
 export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan, planStatus, planExpiry, country = "TW", onToast, api = realEditorApi, nowMs, subdomainReady = false }: {
   onBack?: () => void; onPayShip: () => void; onUpgrade?: () => void; ios: boolean;
@@ -112,6 +112,9 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     setBusy("");
     if (path) set({ [kind]: path } as Partial<ShopDesign>); else onToast(t.rd_wed_pic_failed);
   };
+  // the seller's categories (for the category pictures + the slide / promo links), read once
+  const [cats, setCats] = useState<string[]>([]);
+  useEffect(() => { let live = true; void api.loadProducts().then((ps) => { if (live) setCats([...new Set(ps.map((p) => p.category).filter((c): c is string => !!c))]); }).catch(() => {}); return () => { live = false; }; }, [api]);
   const openPreview = async () => { setPreview(await api.loadProducts()); };
   const closePreview = useCallback(() => setPreview(null), []);
   // The link the seller sees + copies: the subdomain only once it really opens (sql/164 switch);
@@ -233,17 +236,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
           {CHATS.map((k) => <IconRow key={k} brand={k} label={CHAT_NAME[k]}><input data-testid={`wed-chat-${k}`} value={draft.chats?.[k] || ""} maxLength={120} autoCapitalize="none" inputMode={k === "whatsapp" ? "tel" : "text"} onChange={(e) => set({ chats: { ...draft.chats, [k]: e.target.value } })} style={input} /></IconRow>)}
         </Section>
 
-        <Section title={t.rd_wed_sections}>
-          {SECTIONS.map((k) => {
-            const on = draft.sections?.[k] !== false;
-            return (
-              <button key={k} type="button" role="switch" aria-checked={on} data-testid={`wed-sec-${k}`} onClick={() => set({ sections: { ...draft.sections, [k]: !on } })}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", minHeight: 46, border: "none", borderTop: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: 14, fontFamily: "var(--font-ui)", cursor: "pointer", padding: "0 2px" }}>
-                <span>{t[`rd_wed_sec_${k}`]}</span><Toggle on={on} />
-              </button>
-            );
-          })}
-        </Section>
+        <WebsiteHomeEditor draft={draft} set={set} t={t} cats={cats} input={input} upload={(kind, f) => api.uploadPicture(kind, f).then((p) => { if (!p) onToast(t.rd_wed_pic_failed); return p; })} />
       </div>
       <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, padding: "10px 14px calc(10px + env(safe-area-inset-bottom))", background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", gap: 8 }}>
@@ -328,9 +321,6 @@ function IconRow({ brand, label, children }: { brand: BrandKey; label: string; c
       <div style={{ flex: 1, minWidth: 0 }} title={label}>{children}</div>
     </div>
   );
-}
-function Toggle({ on }: { on: boolean }) {
-  return <span aria-hidden="true" style={{ width: 44, height: 26, borderRadius: 13, background: on ? "var(--accent)" : "var(--chip-bg)", position: "relative", flexShrink: 0, transition: "background .15s" }}><span style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 10, background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.25)", transition: "left .15s" }} /></span>;
 }
 function PicField({ label, path, round, busy, onFile, t, testid }: { label: string; path?: string; round?: boolean; busy: boolean; onFile: (f: File | undefined) => void; t: Record<string, string>; testid: string }) {
   const src = useMemo(() => (path ? productImageUrl(path) : ""), [path]);

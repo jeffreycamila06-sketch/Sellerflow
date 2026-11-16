@@ -17,7 +17,7 @@ export interface EditorApi {
   save: (w: { subdomain: string; draft: ShopDesign }, exists: boolean) => Promise<SaveResult>;
   publish: () => Promise<PublishResult>;
   subdomainFree: (s: string) => Promise<boolean | null>;
-  uploadPicture: (kind: "logo" | "cover", f: Blob) => Promise<string | null>;
+  uploadPicture: (kind: "logo" | "cover" | "slide" | "promo" | "cat", f: Blob) => Promise<string | null>;
   loadProducts: () => Promise<ShopProduct[]>;
 }
 export const realEditorApi: EditorApi = {
