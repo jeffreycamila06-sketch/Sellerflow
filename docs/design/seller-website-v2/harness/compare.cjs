@@ -45,13 +45,15 @@ async function shootPreview(browser, dev, devKey, theme, view) {
   return buf;
 }
 
-async function compose(browser, left, right, label, wide) {
+// crop = show only the top N px of each picture (the header); rightLabel = the caption of the right picture
+async function compose(browser, left, right, label, wide, crop = 0, rightLabel = "Real build") {
   const page = await browser.newPage({ viewport: { width: wide ? 1700 : 900, height: 400 }, deviceScaleFactor: 1 });
   const b64 = (b) => `data:image/jpeg;base64,${b.toString("base64")}`;
+  const box = crop ? `height:${crop}px;overflow:hidden;` : "";
   await page.setContent(`<html><body style="margin:0;background:#e5e7eb;font:600 14px system-ui">
     <div style="display:flex;gap:16px;padding:12px;align-items:flex-start">
-      <figure style="margin:0;flex:1"><figcaption style="padding:4px 0 8px">Preview (site-v2.html) — ${label}</figcaption><img src="${b64(left)}" style="width:100%;display:block;border:1px solid #9ca3af"></figure>
-      <figure style="margin:0;flex:1"><figcaption style="padding:4px 0 8px">Real build — ${label}</figcaption><img src="${b64(right)}" style="width:100%;display:block;border:1px solid #9ca3af"></figure>
+      <figure style="margin:0;flex:1"><figcaption style="padding:4px 0 8px">Preview (site-v2.html) — ${label}</figcaption><div style="${box}border:1px solid #9ca3af"><img src="${b64(left)}" style="width:100%;display:block"></div></figure>
+      <figure style="margin:0;flex:1"><figcaption style="padding:4px 0 8px">${rightLabel} — ${label}</figcaption><div style="${box}border:1px solid #9ca3af"><img src="${b64(right)}" style="width:100%;display:block"></div></figure>
     </div></body></html>`);
   await page.waitForTimeout(200);
   const buf = await page.screenshot({ type: "jpeg", quality: 72, fullPage: true });
@@ -59,7 +61,8 @@ async function compose(browser, left, right, label, wide) {
   return buf;
 }
 
-(async () => {
+module.exports = { shootPreview, compose, DEV, PREVIEW_VIEW };
+if (require.main === module) (async () => {
   const browser = await chromium.launch();
   let n = 0;
   for (const theme of THEMES) {

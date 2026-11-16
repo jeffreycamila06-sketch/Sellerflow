@@ -19,7 +19,8 @@ const DESIGN = {
   about: "We started live-selling ukay in Taiwan 8 years ago. Every Friday we open new bales live — the best pieces land here. Washed, measured, honestly graded.",
   announcement: "🚚 Free shipping over NT$1,500 · New drop every Friday 8PM", live: "Friday 8:00 PM on TikTok & Facebook",
   policy: "Within 7 days of pickup, if the item is not as described. Send a photo in chat. We refund or exchange.",
-  replyTime: "a few minutes", logo: "demo/logo.jpg", cover: "demo/cover.jpg",
+  // no uploaded logo picture (like the preview): the header shows the letter in the theme colour
+  replyTime: "a few minutes", cover: "demo/cover.jpg",
   socials: { facebook: "budgetukay", instagram: "budgetukay.tw", tiktok: "budgetukay", youtube: "BudgetUkayTV" },
   chats: { line: "@budgetukay", messenger: "budgetukay", whatsapp: "886912000111", instagram: "budgetukay.tw" },
   slides: [
