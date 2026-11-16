@@ -5,7 +5,7 @@ import { useT } from "../i18n";
 import InviteFriendsCard from "../components/InviteFriendsCard";
 import SupportContactModal from "../components/SupportContactModal";
 import SoonBadge from "../components/SoonBadge";
-import { TELEGRAM_URL } from "../../lib/telegram";
+import { telegramDraftUrl } from "../../lib/telegram";
 import ParcelStoreIcon from "../components/ParcelStoreIcon";
 import HelpBot from "../components/HelpBot";
 
@@ -83,7 +83,7 @@ export default function SettingsHub({
   onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
   onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
   // Seller Website teaser (sql/169): the same card with "Soon" for a seller WITHOUT the website; a tap opens
-  // the support Telegram chat (a real link). Ignored when onWebsite is given.
+  // the support Telegram chat (a real link) with a ready message in the app language. Ignored when onWebsite is given.
   websiteTeaser?: boolean;
   helpBot?: boolean; // help bot preview (switch on + preview list / admin): bubble instead of the "Need help?" tile
   onGeneral: () => void; onCustomers: () => void;
@@ -133,7 +133,7 @@ export default function SettingsHub({
             </button>
           )}
           {!onWebsite && websiteTeaser && (
-            <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ ...tile, gridColumn: "1 / -1", textDecoration: "none", color: "inherit" }} data-testid="tile-website-soon">
+            <a href={telegramDraftUrl(t.rd_web_teaser_msg)} target="_blank" rel="noreferrer" style={{ ...tile, gridColumn: "1 / -1", textDecoration: "none", color: "inherit" }} data-testid="tile-website-soon">
               <span style={chip("accent")}>{ic.globe}</span>
               <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                 <span style={tileLabel}>{t.rd_wed_title}</span>

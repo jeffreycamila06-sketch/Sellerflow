@@ -1,0 +1,687 @@
+{
+ "longest": {
+  "lang": "th",
+  "len": 34
+ },
+ "report": [
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 113,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 113,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 118,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSoon"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "android",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 124,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 124,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 118,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSoon"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "laptop",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 558,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 558,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 118,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSoon"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-off",
+   "view": "iphone",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 174,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 174,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-off",
+   "view": "android",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 185,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 185,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-off",
+   "view": "laptop",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 619,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 619,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    }
+   }
+  },
+  {
+   "case": "tester",
+   "view": "iphone",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 115,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 115,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website": {
+     "w": 115,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Website2"
+    }
+   }
+  },
+  {
+   "case": "tester",
+   "view": "android",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 122,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 122,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website": {
+     "w": 122,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Website2"
+    }
+   }
+  },
+  {
+   "case": "tester",
+   "view": "laptop",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 411,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 411,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website": {
+     "w": 411,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Website2"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 113,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 113,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 118,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSoon"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "en",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 98,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 98,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 118,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSoon"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "fil",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 101,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 101,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 143,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteMalapit na"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "fil",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 86,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Orders"
+    },
+    "orders-tab-miners": {
+     "w": 86,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 143,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteMalapit na"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "zh",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 117,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "订单"
+    },
+    "orders-tab-miners": {
+     "w": 117,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 110,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "网站即将推出"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "zh",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 102,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "订单"
+    },
+    "orders-tab-miners": {
+     "w": 102,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 110,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "网站即将推出"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "zh-TW",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 117,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "訂單"
+    },
+    "orders-tab-miners": {
+     "w": 117,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 110,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "網站即將推出"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "zh-TW",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 102,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "訂單"
+    },
+    "orders-tab-miners": {
+     "w": 102,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 110,
+     "h": 31,
+     "oneLine": true,
+     "clipped": false,
+     "text": "網站即將推出"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "vi",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 109,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Đơn hàng"
+    },
+    "orders-tab-miners": {
+     "w": 109,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 126,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSắp có"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "vi",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 94,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Đơn hàng"
+    },
+    "orders-tab-miners": {
+     "w": 94,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 126,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSắp có"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "th",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 112,
+     "h": 34,
+     "oneLine": true,
+     "clipped": false,
+     "text": "คำสั่งซื้อ"
+    },
+    "orders-tab-miners": {
+     "w": 112,
+     "h": 34,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 120,
+     "h": 34,
+     "oneLine": true,
+     "clipped": false,
+     "text": "เว็บไซต์เร็ว ๆ นี้"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "th",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 97,
+     "h": 34,
+     "oneLine": true,
+     "clipped": false,
+     "text": "คำสั่งซื้อ"
+    },
+    "orders-tab-miners": {
+     "w": 97,
+     "h": 34,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 120,
+     "h": 34,
+     "oneLine": true,
+     "clipped": false,
+     "text": "เว็บไซต์เร็ว ๆ นี้"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "id",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 109,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Pesanan"
+    },
+    "orders-tab-miners": {
+     "w": 109,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 127,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSegera"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "id",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 94,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Pesanan"
+    },
+    "orders-tab-miners": {
+     "w": 94,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 127,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "WebsiteSegera"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "iphone",
+   "lang": "bg",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 119,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Поръчки"
+    },
+    "orders-tab-miners": {
+     "w": 119,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 106,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "СайтСкоро"
+    }
+   }
+  },
+  {
+   "case": "nontester-switches-on",
+   "view": "360px",
+   "lang": "bg",
+   "tabs": {
+    "orders-tab-orders": {
+     "w": 104,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Поръчки"
+    },
+    "orders-tab-miners": {
+     "w": 104,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "Miners"
+    },
+    "orders-tab-website-soon": {
+     "w": 106,
+     "h": 28,
+     "oneLine": true,
+     "clipped": false,
+     "text": "СайтСкоро"
+    }
+   }
+  }
+ ]
+}

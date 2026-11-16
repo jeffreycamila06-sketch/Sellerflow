@@ -9,7 +9,7 @@ import SettingsHub from "../SettingsHub";
 import SalesTab from "../SalesTab";
 import { websiteTeaserVisible, sellerWebsiteVisible } from "../../adapters/sellerWebsiteGate";
 import { parseSwitches, SWITCHES_OFF, FEATURE_SWITCH_KEYS } from "../../adapters/featureSwitches";
-import { TELEGRAM_URL } from "../../../lib/telegram";
+import { telegramDraftUrl } from "../../../lib/telegram";
 import type { SalesHistData } from "../../adapters/salesReport";
 import type { UseSalesTab } from "../../adapters/salesTab";
 
@@ -48,11 +48,11 @@ describe("the switches and the gate", () => {
 const hub = (extra: Record<string, unknown>, lang = "en") => render(<TProvider lang={lang}><SettingsHub onGeneral={noop} onCustomers={noop} onAdmin={noop} onCustomerData={noop} onLegal={noop} onDelete={noop} onLogout={noop} {...extra} /></TProvider>);
 
 describe("Settings: the Website card with Soon", () => {
-  it("non-tester + switch on: the same card, 'Soon', a real link to the support Telegram chat, nothing else", () => {
+  it("non-tester + switch on: the same card, 'Soon', a real link to the support Telegram chat (with the ready message), nothing else", () => {
     const { getByTestId, queryByTestId } = hub({ websiteTeaser: true });
     const a = getByTestId("tile-website-soon");
     expect(a.tagName).toBe("A");
-    expect(a.getAttribute("href")).toBe(TELEGRAM_URL);
+    expect(a.getAttribute("href")).toBe(telegramDraftUrl("Hi! I'm interested in the SellerFlowLive Website."));
     expect(a.getAttribute("target")).toBe("_blank");
     expect(a.textContent).toBe("WebsiteYour own shop pageSoon");
     expect(within(a).getByTestId("soon-badge").getAttribute("title")).toBeNull(); // no explanation
@@ -97,11 +97,11 @@ const hook = (): UseSalesTab => ({ data: DATA, state: "live", range: "session", 
 const sales = (extra: Record<string, unknown>, lang = "en") => render(<TProvider lang={lang}><SalesTab cur="NT$" sessionStart="2026-09-01" today="2026-09-28" sales={hook()} {...extra} /></TProvider>);
 
 describe("Sales: the Website orders row with Soon", () => {
-  it("non-tester + switch on: the row with 'Soon' in place of the numbers, no 'Included in the totals above', a link to Telegram", () => {
+  it("non-tester + switch on: the row with 'Soon' in place of the numbers, no 'Included in the totals above', not a link", () => {
     const { getByTestId, queryByTestId, container } = sales({ websiteTeaser: true });
     const a = getByTestId("sales-website-soon");
-    expect(a.tagName).toBe("A");
-    expect(a.getAttribute("href")).toBe(TELEGRAM_URL);
+    expect(a.tagName).toBe("DIV");
+    expect(a.hasAttribute("href")).toBe(false);
     expect(a.textContent).toBe("🛍 Website ordersSoon");
     expect(container.textContent).not.toContain("Included in the totals above");
     expect(queryByTestId("sales-website")).toBeNull();
