@@ -252,6 +252,8 @@ const BASE = `
 .sfl-v2 .v-radio:disabled{opacity:.5;cursor:not-allowed}
 .sfl-v2 .v-radio.v-bad{border-color:#dc2626}
 .sfl-v2 .v-hide{display:none!important}
+.sfl-v2 .v-two>*,.sfl-v2 .v-pdp>*,.sfl-v2 .v-list>*,.sfl-v2 .v-pi>*{min-width:0}
+.sfl-v2 .v-main{min-width:0;max-width:100%;overflow-x:clip}
 @media (prefers-reduced-motion:reduce){.sfl-v2 *{scroll-behavior:auto!important}}
 `;
 const WIDE = `
