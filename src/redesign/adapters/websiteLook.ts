@@ -1,12 +1,31 @@
 // Seller Website v3 — the editor's side of a shop's look (item 6). Pure, unit-tested.
-// The editor always shows a full look; the shop keeps none until the seller changes a look setting
-// (then the whole look is saved and the shop switches to it).
+// The editor always shows a full look; an existing shop keeps none until the seller changes a look setting
+// (then the whole look is saved and the shop switches to it). Text or product edits never add a look.
 import type { ShopDesign } from "../../website/shopApi";
 import { NEW_SHOP_LOOK, LOOK_PRESETS, type ShopLook } from "../../website/v3/look";
+import { themeOf, type ThemeKey } from "../../website/v2/theme";
 
-/** The look the editor shows for this draft. */
+/** Item 8 (approved mapping): a shop without a look shows in the editor as Marketplace with its Build 1 theme's
+ *  values; the shop colour, when picked, is the button colour. The sale colour (shown only in the Brand store) is the
+ *  guard's safe red for the body. Nothing is saved until the seller changes a look setting. */
+export const LEGACY_LOOK: Record<ThemeKey, ShopLook> = {
+  pop: { layout: "market", top1: "#ff7a45", top2: "#c81e4a", btn: "#ee4d2d", sale: "#dc2626", dark: false, font: "friendly", corners: "round" },
+  boutique: { layout: "market", top1: "#d9c7ae", top2: "#a98567", btn: "#2f4a3a", sale: "#dc2626", dark: false, font: "classic", corners: "sharp" },
+  bold: { layout: "market", top1: "#22252e", top2: "#6b2a5a", btn: "#d7ff3e", sale: "#fb7185", dark: true, font: "modern", corners: "sharp" },
+};
+const HEX = /^#[0-9a-fA-F]{6}$/;
+export function legacyLook(draft: ShopDesign): ShopLook {
+  const base = LEGACY_LOOK[themeOf(draft)];
+  const c = String(draft.color || "");
+  return HEX.test(c) ? { ...base, btn: c.toLowerCase() } : { ...base };
+}
+/** The look the editor shows for this draft: its own, else the approved mapping of its Build 1 theme. */
 export function editorLook(draft: ShopDesign): ShopLook {
-  return draft.look ?? NEW_SHOP_LOOK;
+  return draft.look ?? legacyLook(draft);
+}
+/** A seller who has no website yet starts on Brand store + Ocean (saved with the first Save). */
+export function newWebsiteDraft(): ShopDesign {
+  return { look: { ...NEW_SHOP_LOOK } };
 }
 /** The draft change for one look setting: the whole look is saved (so the shop shows exactly what the editor shows). */
 export function lookPatch(draft: ShopDesign, p: Partial<ShopLook>): Partial<ShopDesign> {

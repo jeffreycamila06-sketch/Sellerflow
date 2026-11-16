@@ -5,6 +5,7 @@
 // draft, in memory (no network, no order can be placed).
 import WebsiteHomeEditor from "../components/WebsiteHomeEditor";
 import WebsiteLookEditor from "../components/WebsiteLookEditor";
+import { newWebsiteDraft } from "../adapters/websiteLook";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card } from "../ui";
@@ -52,7 +53,7 @@ export default function WebsiteEditor({ onBack, onPayShip, onUpgrade, ios, plan,
     void api.load().then((w) => {
       if (!live) return;
       setSite(w === "error" ? "error" : w);
-      if (w && w !== "error") { setDraft(w.draft); setSub(w.subdomain); }
+      if (w && w !== "error") { setDraft(w.draft); setSub(w.subdomain); } else if (w === null) setDraft(newWebsiteDraft()); // no website yet → Brand store + Ocean
     });
     return () => { live = false; };
   }, [api]);

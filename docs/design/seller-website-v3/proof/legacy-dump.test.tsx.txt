@@ -1,0 +1,35 @@
+// Proof helper (not committed): renders shops WITHOUT a look on every page and writes the HTML.
+import { it } from "vitest";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { writeFileSync } from "node:fs";
+import ShopApp from "../ShopApp";
+import type { Shop } from "../shopApi";
+import { DEMO_SHOP } from "./fixtures";
+
+const NOW = Date.parse("2026-11-16T00:00:00Z");
+const DESIGNS: Record<string, object> = {
+  "theme null": {}, pop: { theme: "pop" }, boutique: { theme: "boutique" }, "boutique + colour": { theme: "boutique", color: "#2f4a3a" }, bold: { theme: "bold" },
+  "budgetukay (theme null, #111827)": { name: "Budgetukay", color: "#111827", slides: [{ title: "Friday drop", text: "60 new pieces" }], catPics: { Tops: "u1/a.jpg" } },
+};
+const PAGES = [{ page: "home" }, { page: "shop" }, { page: "product", id: 1 }, { page: "product", id: 2 }, { page: "cart" }, { page: "checkout" }, { page: "saved" }, { page: "orders" }] as const;
+it("dump", () => {
+  const out: Record<string, string> = {};
+  for (const [name, d] of Object.entries(DESIGNS)) {
+    const shop = { ...DEMO_SHOP, shop: { ...DEMO_SHOP.shop, lang: "en", ...d } } as Shop;
+    for (const r of PAGES) {
+      const { container } = render(<ShopApp preview={shop} nowMs={NOW} startRoute={r as never} />);
+      out[`${name} | ${r.page}${"id" in r ? " " + r.id : ""}`] = container.innerHTML;
+      cleanup();
+    }
+    // quick add + cart with a line + checkout with a line
+    render(<ShopApp preview={shop} nowMs={NOW} startRoute={{ page: "shop" }} />);
+    fireEvent.click(screen.getAllByTestId("card-quick")[1]);
+    out[`${name} | shop after quick add`] = document.body.innerHTML;
+    fireEvent.click(screen.getAllByTestId("shop-cart-btn")[0]);
+    out[`${name} | cart with a line`] = document.body.innerHTML;
+    fireEvent.click(screen.getByTestId("cart-checkout"));
+    out[`${name} | checkout with a line`] = document.body.innerHTML;
+    cleanup();
+  }
+  writeFileSync(process.env.DUMP_OUT!, JSON.stringify(out));
+});
