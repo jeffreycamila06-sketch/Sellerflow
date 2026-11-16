@@ -8,7 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { TProvider, useT } from "../redesign/i18n";
 import { parseShopLocation, pagePath, type ShopPage } from "./route";
 import { loadShop, shopLang, readPickedLang, savePickedLang, currencyFor, type Shop, type ShopResult } from "./shopApi";
-import { loadSaved, storeSaved, toggleSaved } from "./saved";
+import { loadSaved, storeSaved, toggleSaved, loadDeviceOrders, storeDeviceOrders, addDeviceOrder, type DeviceOrder } from "./saved";
+import { SavedPage, OrdersPage } from "./pages/DevicePages";
 import { addLine, loadCart, saveCart, setQty, removeLine, validLines, countOf, type CartLine } from "./cart";
 import { ClosedPage } from "./ui";
 import { SHOP_CSS } from "./shopStyle";
@@ -78,6 +79,13 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
   const cur = currencyFor(shop);
   const [lines, setLines] = useState<CartLine[]>(() => (preview ? [] : loadCart(shop.sub)));
   const [saved, setSaved] = useState<number[]>(() => (preview ? [] : loadSaved(shop.sub)));
+  const [devOrders, setDevOrders] = useState<DeviceOrder[]>(() => (preview ? [] : loadDeviceOrders(shop.sub)));
+  const placed = (o?: { token: string; orderNo: string; total: number }) => {
+    update([]);
+    if (!o) return;
+    const next = addDeviceOrder(devOrders, { token: o.token, no: o.orderNo, at: new Date().toISOString(), total: o.total });
+    setDevOrders(next); if (!preview) storeDeviceOrders(shop.sub, next);
+  };
   const toggleSave = (id: number) => { const next = toggleSaved(saved, id); setSaved(next); if (!preview) storeSaved(shop.sub, next); say(next.includes(id) ? t.rd_shop_saved_toast : t.rd_shop_removed_toast); };
   const [query, setQuery] = useState("");
   const [toast, say] = useToast();
@@ -115,12 +123,14 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
     onAdd={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); say(t.rd_shop_added); }}
     onBuy={(vid, q) => { add(product.id, vid, q, stockOf(product.id, vid)); go({ page: "cart" }); }} />;
   else if (route.page === "cart") body = <Cart shop={shop} cur={cur} infos={infos} lines={lines} onQty={(i, q, s) => update(setQty(lines, i, q, s))} onRemove={(i) => update(removeLine(lines, i))} onCheckout={() => go({ page: "checkout" })} onShop={home} />;
-  else if (route.page === "checkout" || route.page === "store" || route.page === "sent" || route.page === "order") body = <CheckoutFlow shop={shop} cur={cur} route={route} go={go} infos={infos} preview={preview} onPlaced={() => update([])} api={orderApi} linkFor={linkFor} />;
+  else if (route.page === "checkout" || route.page === "store" || route.page === "sent" || route.page === "order") body = <CheckoutFlow shop={shop} cur={cur} route={route} go={go} infos={infos} preview={preview} onPlaced={placed} api={orderApi} linkFor={linkFor} />;
+  else if (route.page === "saved") body = <SavedPage shop={shop} cur={cur} nowMs={clock} saved={saved} onSave={toggleSave} onOpen={(id) => go({ page: "product", id })} onQuick={quick} onShop={home} />;
+  else if (route.page === "orders") body = <OrdersPage orders={devOrders} cur={cur} onOpen={(token) => go({ page: "order", token })} onShop={home} />;
   else body = <div className="v-wrap"><div className="v-empty"><p>{t.rd_shop_not_found}</p><button type="button" className="v-btn" onClick={home}>{t.rd_shop_keep_shopping}</button></div></div>;
 
   const onBack = route.page === "home" ? undefined : () => (route.page === "store" ? go({ page: "checkout" }) : route.page === "checkout" ? go({ page: "cart" }) : home());
-  const navActive = route.page === "home" ? "home" : route.page === "cart" ? "cart" : "other";
-  const showNav = route.page === "home" || (route.page === "cart" && infos.length === 0);
+  const navActive = route.page === "home" ? "home" : route.page === "cart" ? "cart" : route.page === "orders" ? "orders" : route.page === "saved" ? "saved" : "other";
+  const showNav = route.page === "home" || route.page === "saved" || route.page === "orders" || (route.page === "cart" && infos.length === 0);
   const withFooter = route.page === "home" || route.page === "product";
   const k = themeOf(shop.shop);
   const ck = checkoutOf(shop);
@@ -128,14 +138,15 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
     <div className={`sfl-v2 ${themeClass(k)} sfl-shop`} data-testid="shop-root" data-theme-key={k} style={accentVars(shop.shop, k) as CSSProperties}>
       <style>{V2_CSS + SHOP_CSS}</style>
       <Header shop={shop} active={navActive} onBack={onBack} onHome={home} cartCount={count} onCart={() => go({ page: "cart" })}
-        query={query} onQuery={(q) => { setQuery(q); if (route.page !== "home") home(); }} onSearch={() => toGrid()} cats={cats} onCat={() => toGrid()} />
+        query={query} onQuery={(q) => { setQuery(q); if (route.page !== "home") home(); }} onSearch={() => toGrid()} cats={cats} onCat={() => toGrid()}
+        savedCount={saved.length} onSaved={() => go({ page: "saved" })} onTrack={() => go({ page: "orders" })} />
       <main className="v-main">{body}</main>
       {withFooter && <Footer shop={shop} cur={cur} lang={lang} onLang={onLang} links={[
         [{ label: t.rd_shop_all_products, go: toGrid }],
-        [{ label: t.rd_shop_f_how, go: () => setInfo("how") }, { label: t.rd_shop_f_shipping, go: () => setInfo("ship") }, ...(shop.shop.policy ? [{ label: t.rd_shop_returns, go: () => setInfo("returns") }] : [])],
+        [{ label: t.rd_shop_f_how, go: () => setInfo("how") }, { label: t.rd_shop_track, go: () => go({ page: "orders" }) }, { label: t.rd_shop_f_shipping, go: () => setInfo("ship") }, ...(shop.shop.policy ? [{ label: t.rd_shop_returns, go: () => setInfo("returns") }] : [])],
       ]} />}
-      {showNav && <BottomNav active={navActive} cartCount={count} onHome={home} onShop={toGrid} onCart={() => go({ page: "cart" })} onChat={() => setChat(true)} />}
-      {route.page === "home" && <Fab onClick={() => setChat(true)} />}
+      {showNav && <BottomNav active={navActive} cartCount={count} onHome={home} onShop={toGrid} onCart={() => go({ page: "cart" })} onOrders={() => go({ page: "orders" })} onChat={() => setChat(true)} />}
+      {(route.page === "home" || route.page === "saved" || route.page === "orders") && <Fab onClick={() => setChat(true)} />}
       {chat && <ChatSheet shop={shop} onClose={() => setChat(false)} />}
       {info && (
         <Sheet title={info === "how" ? t.rd_shop_f_how : info === "ship" ? t.rd_shop_f_shipping : t.rd_shop_returns} onClose={() => setInfo(null)}>

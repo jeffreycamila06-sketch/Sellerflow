@@ -26,7 +26,7 @@ import { orderMessage, deliveryLabel, deliveryWhere, paymentLabel, CHAT_APP_NAME
 import { STORE_MAPS, deliveriesOf, paymentsOf, placeFailText, copyText } from "./checkoutLogic";
 
 export interface CheckoutFlowProps {
-  shop: Shop; cur: string; route: ShopPage; go: (r: ShopPage) => void; infos: LineInfo[]; preview: boolean; onPlaced: () => void;
+  shop: Shop; cur: string; route: ShopPage; go: (r: ShopPage) => void; infos: LineInfo[]; preview: boolean; onPlaced: (o?: { token: string; orderNo: string; total: number }) => void;
   api?: OrderApi; linkFor?: (r: ShopPage) => string;
 }
 
@@ -69,7 +69,7 @@ function emptyDraft(shop: Shop): OrderDraft {
 
 // ── checkout ──────────────────────────────────────────────────────────────────
 function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlaced }: {
-  shop: Shop; cur: string; infos: LineInfo[]; draft: OrderDraft; setDraft: (f: (d: OrderDraft) => OrderDraft) => void; preview: boolean; api: OrderApi; go: (r: ShopPage) => void; onPlaced: () => void;
+  shop: Shop; cur: string; infos: LineInfo[]; draft: OrderDraft; setDraft: (f: (d: OrderDraft) => OrderDraft) => void; preview: boolean; api: OrderApi; go: (r: ShopPage) => void; onPlaced: (o?: { token: string; orderNo: string; total: number }) => void;
 }) {
   const t = useT() as unknown as Record<string, string>;
   const [errs, setErrs] = useState<FieldError[]>([]);
@@ -115,7 +115,7 @@ function Checkout({ shop, cur, infos, draft, setDraft, preview, api, go, onPlace
       items: infos.map((x) => ({ pid: x.line.pid, vid: x.line.vid, qty: x.line.qty })),
     }, deviceId());
     setBusy(false);
-    if (r.ok === true) { saveBuyer(draft); onPlaced(); go({ page: "sent", token: r.token }); return; }
+    if (r.ok === true) { saveBuyer(draft); onPlaced({ token: r.token, orderNo: r.orderNo, total: r.total }); go({ page: "sent", token: r.token }); return; }
     setFail(placeFailText(t, r, infos));
     if (r.error === "bad_name") setErrs(["name"]); else if (r.error === "bad_phone") setErrs(["phone"]); else if (r.error === "bad_store") setErrs(["store"]); else if (r.error === "bad_address") setErrs(["address"]); else if (r.error === "bad_payment") setErrs(["payment"]); else if (r.error === "bad_delivery") setErrs(["delivery"]);
   };
