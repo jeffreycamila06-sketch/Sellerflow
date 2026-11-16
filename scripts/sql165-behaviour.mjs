@@ -50,6 +50,36 @@ const oldRowBefore = (await q(`select * from public.products where local_id = 1`
 
 await db.exec(src("165_seller_website_v2.sql"));
 
+// ── PART 1 — the storefront's public design fields ───────────────────────────
+{
+  const sh = await shop("budgetukay");
+  ok(JSON.stringify(sh.shop) === JSON.stringify(shopBefore.shop), "a design without the v2 fields answers exactly as before");
+  const pic = (k, n) => `${SELLER}/site-${k}-${n}.jpg`;
+  const draft = { name: "BudgetUkay", theme: "bold",
+    slides: [...Array.from({ length: 7 }, (_, i) => ({ title: `Slide ${i} ` + "x".repeat(80), text: "t", button: "Shop", cat: "Tops", pic: i === 0 ? pic("slide", 1) : i === 1 ? "../etc/passwd" : pic("slide", i) })), {}],
+    trust: Array.from({ length: 6 }, (_, i) => ({ title: `T${i}`, sub: "s".repeat(90) })),
+    promo: { text: "no title" },
+    steps: Array.from({ length: 5 }, (_, i) => ({ title: `S${i}`, text: "x" })),
+    faq: [{ q: "Q1", a: "A1" }, { q: "", a: "no question" }, { q: "no answer" }, ...Array.from({ length: 10 }, (_, i) => ({ q: `Q${i + 2}`, a: "a" }))],
+    catPics: { Tops: pic("cat", 1), Bad: "http://evil/x.jpg", Num: 5, ...Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`C${String(i).padStart(2, "0")}`, pic("cat", i + 2)])) } };
+  await as(SELLER, "authenticated", () => q(`update public.seller_websites set draft = $2 where user_id = $1`, [SELLER, JSON.stringify(draft)]));
+  await as(SELLER, "authenticated", () => q(`select public.website_publish()`));
+  const d = (await shop("budgetukay")).shop;
+  ok(d.theme === "bold", "theme passes (pop / boutique / bold)");
+  ok(d.slides.length === 5 && d.slides[0].title.length === 60 && d.slides[0].pic === pic("slide", 1) && d.slides[1].pic === undefined && d.slides[2].pic === pic("slide", 2), "slides: at most 5, text cut, only the seller's own site pictures");
+  ok(d.trust.length === 4 && d.trust[0].sub.length === 60, "trust badges: at most 4, text cut");
+  ok(d.promo === undefined, "a promo without a title is not shown");
+  ok(d.steps.length === 3, "how to order: at most 3 steps");
+  ok(d.faq.length === 8 && d.faq.every((f) => f.q && f.a), "FAQ: needs a question AND an answer, at most 8");
+  ok(Object.keys(d.catPics).length === 30 && d.catPics.C00 === pic("cat", 2) && !("Bad" in d.catPics) && !("Num" in d.catPics), "category pictures: at most 30, only the seller's own site pictures");
+  await as(SELLER, "authenticated", () => q(`update public.seller_websites set draft = $2 where user_id = $1`, [SELLER, JSON.stringify({ name: "BudgetUkay", theme: "neon", promo: { title: "Bundle 3", pic: pic("promo", 9) } })]));
+  await as(SELLER, "authenticated", () => q(`select public.website_publish()`));
+  const d2 = (await shop("budgetukay")).shop;
+  ok(d2.theme === undefined && d2.promo.title === "Bundle 3" && d2.promo.pic === pic("promo", 9) && d2.slides === undefined, "an unknown theme is dropped; a promo with a title passes");
+  await as(SELLER, "authenticated", () => q(`update public.seller_websites set draft = $2 where user_id = $1`, [SELLER, JSON.stringify({ name: "BudgetUkay" })]));
+  await as(SELLER, "authenticated", () => q(`select public.website_publish()`));
+}
+
 // ── PART 8 — product fields ──────────────────────────────────────────────────
 {
   const after = (await q(`select * from public.products where local_id = 1`)).rows[0];
@@ -288,6 +318,7 @@ await db.exec(src("165_seller_website_v2_rollback.sql"));
   ok(s.checkout2 === undefined && (await q(`select count(*)::int n from pg_proc where proname = 'website_checkout_v2'`)).rows[0].n === 0, "rollback: checkout2 gone");
   ok((await q(`select count(*)::int n from information_schema.columns where table_name = 'website_orders' and column_name in ('ship_id', 'ship_name', 'pay_id', 'pay_name')`)).rows[0].n === 0, "rollback: ship_id / ship_name / pay_id / pay_name gone");
   ok((await q(`select pg_get_constraintdef(oid) d from pg_constraint where conname = 'website_orders_delivery_check'`)).rows[0].d.includes("pickup"), "rollback: orders use 'pickup' → the delivery check stays wide");
+  ok((await q(`select count(*)::int n from pg_proc where proname in ('website_site_pic', 'website_txt')`)).rows[0].n === 0 && !(await q(`select prosrc from pg_proc where proname = 'website_public_fields'`)).rows[0].prosrc.includes("slides"), "rollback: the storefront whitelist is sql/163's again");
   const fn = (await q(`select prosrc from pg_proc where proname = 'website_place_order'`)).rows[0].prosrc;
   ok(!fn.includes("flash_price"), "rollback: place-order is sql/163's again");
 }

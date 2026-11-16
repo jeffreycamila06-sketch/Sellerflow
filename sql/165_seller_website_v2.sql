@@ -6,6 +6,10 @@
 -- Live, Auto Mode, stickers, Parcel Scan, Pickup Status: no live function is changed. A product
 -- that doesn't use the new fields answers exactly as before (every new column is NULL).
 --
+-- PART 1 — storefront: website_public_fields also lets through the v2 home page — theme (pop / boutique /
+--   bold), banner slides (1–5), 4 trust badges, a promo banner, 3 "how to order" steps, FAQ (≤ 8) and category
+--   pictures (≤ 30). Every text is cut to its length, lists to their count, and a picture must be one the
+--   seller uploaded for the site (<user>/site-<kind>-<time>.jpg). A design without them answers as before.
 -- PART 8 — product fields (all optional, NULL by default): old_price (shown struck through),
 --   flash_price + flash_end (website only: the price of the product AND every option until flash_end;
 --   checked by website_place_order at order time), item_condition, size_guide. The colour group +
@@ -41,6 +45,53 @@
 -- ============================================================================
 begin;
 set local lock_timeout = '2s';
+
+-- ── PART 1 — the storefront's public design fields ─────────────────────────
+create or replace function public.website_site_pic(p text)
+returns text language sql immutable set search_path = public, pg_temp as $$
+  select case when coalesce(p, '') ~ '^[A-Za-z0-9_-]{1,64}/site-(slide|promo|cat|cover|logo)-[0-9]{1,20}\.jpg$' then p end;
+$$;
+create or replace function public.website_txt(p jsonb, k text, n int)
+returns text language sql immutable set search_path = public, pg_temp as $$
+  select nullif(left(btrim(case when jsonb_typeof(p->k) = 'string' then p->>k else '' end), n), '');
+$$;
+create or replace function public.website_public_fields(p jsonb)
+returns jsonb language sql immutable set search_path = public, pg_temp as $$
+  select jsonb_strip_nulls(jsonb_build_object(
+    'name', left(p->>'name', 60), 'tagline', left(p->>'tagline', 120), 'about', left(p->>'about', 2000),
+    'logo', p->>'logo', 'cover', p->>'cover', 'color', p->>'color', 'announcement', left(p->>'announcement', 160),
+    'live', left(p->>'live', 120), 'policy', left(p->>'policy', 2000), 'replyTime', left(p->>'replyTime', 20),
+    'socials', p->'socials', 'chats', p->'chats', 'sections', p->'sections', 'currency', left(p->>'currency', 6),
+    'lang', left(p->>'lang', 6),
+    -- v2 (PART 1)
+    'theme', case when p->>'theme' in ('pop', 'boutique', 'bold') then p->>'theme' end,
+    'slides', (select jsonb_agg(z.o order by z.i) from (
+                 select x.i, jsonb_strip_nulls(jsonb_build_object('title', public.website_txt(x.e, 'title', 60), 'text', public.website_txt(x.e, 'text', 140),
+                          'button', public.website_txt(x.e, 'button', 24), 'cat', public.website_txt(x.e, 'cat', 40), 'pic', public.website_site_pic(x.e->>'pic'))) o
+                   from jsonb_array_elements(case when jsonb_typeof(p->'slides') = 'array' then p->'slides' else '[]' end) with ordinality x(e, i)
+                  where jsonb_typeof(x.e) = 'object' order by x.i limit 5) z where z.o <> '{}'::jsonb),
+    'trust', (select jsonb_agg(z.o order by z.i) from (
+                 select x.i, jsonb_strip_nulls(jsonb_build_object('title', public.website_txt(x.e, 'title', 40), 'sub', public.website_txt(x.e, 'sub', 60))) o
+                   from jsonb_array_elements(case when jsonb_typeof(p->'trust') = 'array' then p->'trust' else '[]' end) with ordinality x(e, i)
+                  where jsonb_typeof(x.e) = 'object' order by x.i limit 4) z),
+    'promo', case when jsonb_typeof(p->'promo') = 'object' and public.website_txt(p->'promo', 'title', 60) is not null then
+               jsonb_strip_nulls(jsonb_build_object('title', public.website_txt(p->'promo', 'title', 60), 'text', public.website_txt(p->'promo', 'text', 140),
+                 'button', public.website_txt(p->'promo', 'button', 24), 'cat', public.website_txt(p->'promo', 'cat', 40), 'pic', public.website_site_pic(p#>>'{promo,pic}'))) end,
+    'steps', (select jsonb_agg(z.o order by z.i) from (
+                 select x.i, jsonb_strip_nulls(jsonb_build_object('title', public.website_txt(x.e, 'title', 40), 'text', public.website_txt(x.e, 'text', 140))) o
+                   from jsonb_array_elements(case when jsonb_typeof(p->'steps') = 'array' then p->'steps' else '[]' end) with ordinality x(e, i)
+                  where jsonb_typeof(x.e) = 'object' order by x.i limit 3) z),
+    'faq', (select jsonb_agg(z.o order by z.i) from (
+                 select x.i, jsonb_build_object('q', public.website_txt(x.e, 'q', 80), 'a', public.website_txt(x.e, 'a', 400)) o
+                   from jsonb_array_elements(case when jsonb_typeof(p->'faq') = 'array' then p->'faq' else '[]' end) with ordinality x(e, i)
+                  where jsonb_typeof(x.e) = 'object' and public.website_txt(x.e, 'q', 80) is not null and public.website_txt(x.e, 'a', 400) is not null
+                  order by x.i limit 8) z),
+    'catPics', (select jsonb_object_agg(z.k, z.v) from (
+                 select left(btrim(c.key), 40) k, public.website_site_pic(c.value #>> '{}') v
+                   from jsonb_each(case when jsonb_typeof(p->'catPics') = 'object' then p->'catPics' else '{}' end) c
+                  where jsonb_typeof(c.value) = 'string' and btrim(c.key) <> '' and public.website_site_pic(c.value #>> '{}') is not null
+                  order by c.key limit 30) z)));
+$$;
 
 -- ── PART 8 — product fields ──────────────────────────────────────────────────
 alter table public.products

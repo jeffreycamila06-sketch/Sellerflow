@@ -6,7 +6,7 @@ import type { Shop } from "../shopApi";
 import { photoUrl, money } from "../shopApi";
 import { fromPrice, productStock } from "../cart";
 import { sortProducts, filterShop, compact, NEW_DAYS, type Sort } from "../shopLogic";
-import { ShopLogo, SocialIcons, Icon, SmallPhoto } from "../ui";
+import { ShopLogo, Icon, SmallPhoto } from "../ui";
 import { IC, mutedText } from "../shopStyle";
 import { firstChatHref } from "../shopLinks";
 
@@ -29,7 +29,7 @@ export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop
             <ShopLogo shop={shop} size={60} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <h1 data-testid="shop-name" style={{ fontSize: 20, fontWeight: 800, margin: 0, color: "#111827", overflowWrap: "anywhere" }}>{d.name}</h1>
+                <h1 data-testid="shop-title" style={{ fontSize: 20, fontWeight: 800, margin: 0, color: "#111827", overflowWrap: "anywhere" }}>{d.name}</h1>
                 {shop.verified && <span data-testid="shop-verified" style={{ fontSize: 11, fontWeight: 800, color: "#059669", background: "#ECFDF5", padding: "2px 7px", borderRadius: 999 }}>✓ {t.rd_shop_verified}</span>}
               </div>
               {d.tagline && <div style={{ ...mutedText, fontSize: 13 }}>{d.tagline}</div>}
@@ -41,12 +41,6 @@ export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop
             {d.replyTime && <Stat n={d.replyTime} label={t.rd_shop_chat_reply} />}
           </div>
           {chat && <a data-testid="shop-chat" href={chat} target="_blank" rel="noreferrer noopener" className="sfl-btn sfl-btn-main" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 14, padding: "0 16px", textDecoration: "none", lineHeight: "46px" }}><Icon d={IC.chat} size={18} />{t.rd_shop_chat_us}</a>}
-          {(d.socials && Object.values(d.socials).some(Boolean)) && d.sections?.socials !== false && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, paddingTop: 12, borderTop: "1px solid #F1F1F4" }}>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "#6B7280" }}>{t.rd_shop_follow}</span>
-              <SocialIcons shop={shop} />
-            </div>
-          )}
         </div>
 
         {d.live && d.sections?.live !== false && (
@@ -108,10 +102,6 @@ export default function Home({ shop, cur, query, onOpen, catRef, nowMs }: { shop
             <p style={{ ...mutedText, fontSize: 13.5, margin: 0, whiteSpace: "pre-wrap" }}>{d.policy}</p>
           </section>
         )}
-        <footer data-testid="shop-footer" style={{ textAlign: "center", padding: "22px 0 8px", ...mutedText }}>
-          <div>© {d.name}</div>
-          {shop.powered && <div data-testid="shop-powered" style={{ marginTop: 4 }}>{t.rd_shop_powered} <a href="https://www.sellerflowlive.com" target="_blank" rel="noreferrer noopener" style={{ color: "#6B7280", fontWeight: 700 }}>SellerFlowLive</a></div>}
-        </footer>
       </div>
     </div>
   );

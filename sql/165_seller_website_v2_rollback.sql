@@ -82,6 +82,20 @@ drop trigger if exists trg_stock_movements_sold on public.stock_movements;
 drop function if exists public.product_sold_count_move();
 drop table if exists public.product_sold_totals;
 
+-- PART 1: the storefront fields — the sql/163 whitelist again (website_public_fields is called by
+-- website_shop / website_order, so it is restored, not dropped), then the two helpers.
+create or replace function public.website_public_fields(p jsonb)
+returns jsonb language sql immutable set search_path = public, pg_temp as $$
+  select jsonb_strip_nulls(jsonb_build_object(
+    'name', left(p->>'name', 60), 'tagline', left(p->>'tagline', 120), 'about', left(p->>'about', 2000),
+    'logo', p->>'logo', 'cover', p->>'cover', 'color', p->>'color', 'announcement', left(p->>'announcement', 160),
+    'live', left(p->>'live', 120), 'policy', left(p->>'policy', 2000), 'replyTime', left(p->>'replyTime', 20),
+    'socials', p->'socials', 'chats', p->'chats', 'sections', p->'sections', 'currency', left(p->>'currency', 6),
+    'lang', left(p->>'lang', 6)));
+$$;
+drop function if exists public.website_txt(jsonb, text, int);
+drop function if exists public.website_site_pic(text);
+
 -- PART 8: the sql/163 product list + place-order (no flash price), then the columns
 create or replace function public.website_products_of(p_user uuid)
 returns jsonb language sql stable security definer set search_path = public, pg_temp as $$

@@ -20,8 +20,19 @@ export interface ShopDesign {
   name?: string; tagline?: string; about?: string; logo?: string; cover?: string; color?: string; announcement?: string;
   live?: string; policy?: string; replyTime?: string; currency?: string; lang?: string;
   socials?: Partial<Record<SocialKey, string>>; chats?: Partial<Record<ChatKey, string>>;
-  sections?: Partial<Record<"announcement" | "live" | "categories" | "about" | "policy" | "socials", boolean>>;
+  sections?: Partial<Record<SectionKey, boolean>>;
+  // v2 (sql/165 PART 1): the home page
+  theme?: "pop" | "boutique" | "bold";
+  slides?: ShopSlide[]; trust?: ShopTrust[]; promo?: ShopPromo; steps?: ShopStep[]; faq?: ShopFaq[]; catPics?: Record<string, string>;
 }
+/** Home page parts the seller can turn off (all on unless set to false). */
+export type SectionKey = "announcement" | "live" | "categories" | "about" | "policy" | "socials"
+  | "slides" | "trust" | "flash" | "best" | "promo" | "newest" | "steps" | "faq";
+export interface ShopSlide { title?: string; text?: string; button?: string; cat?: string; pic?: string }
+export interface ShopPromo { title?: string; text?: string; button?: string; cat?: string; pic?: string }
+export interface ShopTrust { title?: string; sub?: string }
+export interface ShopStep { title?: string; text?: string }
+export interface ShopFaq { q: string; a: string }
 export interface ShopCheckout {
   ship: { s711?: { fee: number }; fm?: { fee: number }; home?: { fee: number } };
   freeOver?: number; bank?: { bankName?: string; accountName?: string; accountNumber?: string };
