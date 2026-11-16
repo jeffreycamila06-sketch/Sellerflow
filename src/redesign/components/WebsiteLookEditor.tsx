@@ -9,6 +9,9 @@ import { LOOK_PRESETS, guardLook, type ShopLook } from "../../website/v3/look";
 import { editorLook, lookPatch, presetPatch, presetOf, tileChoices, tileTogglePatch } from "../adapters/websiteLook";
 
 type T = Record<string, string>;
+// the live preview: under the screen header, at most 42% of the screen height so the settings stay in reach
+const PREVIEW_TOP = 74;
+const PREVIEW_H = "min(340px, 42vh)";
 const lbl: CSSProperties = { fontSize: 12.5, fontWeight: 700, color: "var(--text-dim)", margin: "12px 0 6px" };
 const segWrap: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 4, background: "var(--surface-2, var(--surface))", border: "1px solid var(--border)", borderRadius: 999, padding: 3, width: "fit-content", maxWidth: "100%" };
 const segBtn = (on: boolean): CSSProperties => ({ minHeight: 38, border: 0, borderRadius: 999, padding: "0 14px", cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-text)" : "var(--text-muted)" });
@@ -43,8 +46,10 @@ export default function WebsiteLookEditor({ draft, set, t, cats, preview }: {
   const notes = g.swapped.map((k) => (k === "btn" ? (l.dark ? t.rd_wed_guard_btn_white : t.rd_wed_guard_btn_black) : k === "sale" ? t.rd_wed_guard_sale : t.rd_wed_guard_top));
   return (
     <div data-testid="wed-look">
+      {/* a setting scrolled into view (focus, tap) lands below the sticky preview and above the Save bar */}
+      <style>{`[data-testid=wed-look] button,[data-testid=wed-look] input{scroll-margin-top:calc(${PREVIEW_TOP}px + ${PREVIEW_H} + 12px);scroll-margin-bottom:96px}`}</style>
       <div data-testid="wed-live-preview" aria-label={t.rd_wed_live_preview}
-        style={{ position: "sticky", top: 74, zIndex: 3, height: 340, borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", transform: "translateZ(0)", background: "var(--surface)" }}>
+        style={{ position: "sticky", top: PREVIEW_TOP, zIndex: 3, height: PREVIEW_H, borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", transform: "translateZ(0)", background: "var(--surface)" }}>
         <div style={{ position: "absolute", top: 6, left: 8, zIndex: 70, fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em", background: "rgba(17,24,39,.75)", color: "#fff", padding: "2px 7px", borderRadius: 999, pointerEvents: "none" }}>{t.rd_wed_live_preview}</div>
         <div style={{ height: "100%", overflowY: "auto", overscrollBehavior: "contain" }}>{preview}</div>
       </div>
