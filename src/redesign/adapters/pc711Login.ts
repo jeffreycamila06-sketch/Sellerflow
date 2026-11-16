@@ -41,6 +41,9 @@ export function toPc711Status(j: unknown): Pc711Status | null {
   };
 }
 
+export async function pc711Call(path: string, body?: Record<string, unknown>): Promise<Pc711Answer> {
+  return call(path, body);
+}
 async function call(path: string, body?: Record<string, unknown>): Promise<Pc711Answer> {
   try {
     const session = supabase ? (await supabase.auth.getSession()).data.session : null;
