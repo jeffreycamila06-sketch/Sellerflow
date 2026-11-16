@@ -3,7 +3,7 @@
 // shared link shows the shop on Facebook / LINE. Reads ONLY website_og (sql/163: title, tagline,
 // cover/logo path of an ONLINE shop). The app itself (shop.html) then loads the shop in the browser.
 // `api/` is outside tsconfig (typed loosely, no @vercel/node dependency).
-import { injectOg, validSub, type ShopOg } from "../src/website/og";
+import { injectOg, validSub, type ShopOg } from "../src/website/og.js";
 
 interface Req { query: Record<string, string | string[] | undefined>; headers: Record<string, string | string[] | undefined> }
 interface Res { setHeader: (k: string, v: string) => void; status: (n: number) => { send: (b: string) => void } }

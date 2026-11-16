@@ -17,6 +17,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/printing-gate.mjs   # printing files changed → PRINTING_MAP.md must be updated
+      - run: node scripts/check-api-node.mjs   # api/ functions load in plain Node (Vercel), not only in Vite
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
