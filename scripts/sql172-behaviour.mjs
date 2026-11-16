@@ -180,8 +180,11 @@ ok(tot.mirror.n === 5 && tot.mirror.serverFirst === 1 && tot.mirror.timeout >= 1
 
 // ── ONE call per pass ──
 const onePass = async (allowed) => (await svc(() => q(`select public.pc711_shadow_pass(now() - interval '6 hours', 25, 5, $1) r`, [allowed]))).rows[0].r;
+ok(JSON.stringify(await onePass(true)) === JSON.stringify({ shadow: false }), "pass, shadow switch off (as sql/159 adds it): {shadow:false} and nothing else is read");
+await q(`update public.app_settings set value = 'true' where key = 'pc711_shadow_enabled'`);
 await q(`update public.app_settings set value = 'false' where key = 'pc711_mirror_enabled'`);
 let ps = await onePass(true);
+ok(ps.shadow === true, "pass, shadow on: shadow true");
 ok(ps.mirror === false && !("mirror_queue" in ps) && Array.isArray(ps.jobs) && Number.isInteger(ps.waiting) && Array.isArray(ps.reasks) && Array.isArray(ps.awaiting),
   `pass, mirror off: queue + waiting + re-asks + waiting pairs + the switch, NO mirror queue (${Object.keys(ps).sort()})`);
 await q(`update public.app_settings set value = 'true' where key = 'pc711_mirror_enabled'`);

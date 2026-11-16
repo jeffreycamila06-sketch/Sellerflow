@@ -386,26 +386,26 @@ export function createPc711Shadow({ db, evidence = null, check, pc711, readSetti
 
   // sql/172: the evidence pass — ONE queue call (pc711_shadow_pass) brings everything a pass needs.
   async function tickEvidence() {
-    let on = "";
-    try { on = String((await readSetting(SHADOW_SWITCH)) ?? ""); } catch { on = ""; }
-    if (on !== "true") return { skipped: "off" };
+    // no database request while not connected / stopped / paused (memory only)
     const st = pc711 && typeof pc711.status === "function" ? pc711.status() : null;
     if (!st || st.state !== "connected") return { skipped: "not_connected" };
     if (stoppedSince !== null && stoppedSince === (st.since ?? null)) return { skipped: "stopped" };
     stoppedSince = null;
     const t = now();
     if (pausedUntil > t) return { skipped: "paused" };
+    const since = new Date(t - SHADOW_LOOKBACK_MS).toISOString();
+    const mirrorAllowed = !inShadowMaint(t);
+    // the ONE request of an idle pass: the shadow switch comes back in it (off → nothing else is read or done)
+    let p;
+    try { p = await evidence.pass(since, SHADOW_FETCH_LIMIT, SHADOW_LIMIT, mirrorAllowed); }
+    catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
+    if (!p.shadow) return { skipped: "off" };
     const d = taipeiDay(t);
     if (d.key !== day) {
       day = d.key;
       try { await db.purgeBefore(new Date(t - SHADOW_KEEP_DAYS * DAY_MS).toISOString()); } catch { /* next day */ }
       for (const k of [...dayMax.keys()]) if (k < taipeiDay(t - 3 * DAY_MS).key) dayMax.delete(k);
     }
-    const since = new Date(t - SHADOW_LOOKBACK_MS).toISOString();
-    const mirrorAllowed = !inShadowMaint(t);
-    let p;
-    try { p = await evidence.pass(since, SHADOW_FETCH_LIMIT, SHADOW_LIMIT, mirrorAllowed); }
-    catch { if (t - lastPendingFail > 60_000) { lastPendingFail = t; say(`${TAG} pending read failed`); } return { skipped: "error" }; }
     const mirrorOn = p.mirror && mirrorAllowed;
     if (mirrorOn !== mirrorOnLast) { mirrorOnLast = mirrorOn; say(`${TAG} mirror=${mirrorOn ? 1 : 0}`); }
     await noteWaiting(p.waiting, t);

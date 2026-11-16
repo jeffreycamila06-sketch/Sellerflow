@@ -57,9 +57,10 @@ function harness(o: { queue?: Row[]; mqueue?: Row[]; mirror?: boolean; check?: (
   const ev = {
     ...part,
     pass: req("ev.pass", async (_since: string, _limit: number, reaskLimit: number, mirrorAllowed: boolean) => {
+      if (settings.pc711_shadow_enabled !== "true") return { shadow: false, waiting: 0, jobs: [], mirror: false, reasks: [], awaiting: [], mirrorQueue: null };
       const q = await part.pending();
       const mirror = settings[MIRROR_SWITCH] === "true";
-      return { ...q, mirror, reasks: (await part.reasksDue(new Date(t).toISOString())).slice(0, reaskLimit), awaiting: await part.awaiting(),
+      return { shadow: true, ...q, mirror, reasks: (await part.reasksDue(new Date(t).toISOString())).slice(0, reaskLimit), awaiting: await part.awaiting(),
         mirrorQueue: mirror && mirrorAllowed ? await part.mirrorPending() : null };
     }),
     insert: req("ev.insert", async (r: Row) => { evRows.push({ ...r, id: evRows.length + 1, reask_n: 0 }); }),
@@ -306,15 +307,45 @@ describe("Part 2 — mirror mode", () => {
 
 describe("database requests per idle pass", () => {
   for (const mirror of [false, true]) {
-    it(`mirror ${mirror ? "on" : "off"}: an idle pass = the shadow switch + ONE pass call (queue, re-asks, mirror switch, mirror queue, waiting pairs)`, async () => {
+    it(`mirror ${mirror ? "on" : "off"}: an idle pass = ONE request (shadow switch, queue, re-asks, mirror switch, mirror queue, waiting pairs)`, async () => {
       const h = harness({ mirror });
       await h.job.tick(); // the first pass of a Taipei day also purges + loads the day's highest Waiting (once a day)
       h.requests.length = 0;
       for (let i = 0; i < 3; i++) { h.advance(5000); await h.job.tick(); }
-      expect(h.requests).toEqual(["readSetting", "ev.pass", "readSetting", "ev.pass", "readSetting", "ev.pass"]);
+      expect(h.requests).toEqual(["ev.pass", "ev.pass", "ev.pass"]);
       expect(h.ev.mirrorPending).toHaveBeenCalledTimes(mirror ? 4 : 0); // inside the pass call only
     });
   }
+});
+
+describe("the shadow switch comes back in the same call", () => {
+  it("off stops everything on the next pass: no check, no re-ask, no mirror, no write — and on again resumes", async () => {
+    const mis = pend("phone", { ext: "restricted" });
+    const h = harness({ queue: [mis, pend("store")], mirror: true, mqueue: [mpend("phone")] });
+    await h.job.tick();
+    const checks = h.check.mock.calls.length;
+    expect(checks).toBeGreaterThan(0);
+    h.settings.pc711_shadow_enabled = "false";
+    h.requests.length = 0;
+    h.advance(31_000); // a re-ask is due
+    expect(await h.job.tick()).toEqual({ skipped: "off" });
+    expect(h.check.mock.calls.length).toBe(checks);
+    expect(h.requests).toEqual(["ev.pass"]); // one request, nothing written
+    h.settings.pc711_shadow_enabled = "true";
+    h.advance(5000); await h.job.tick();
+    expect(h.check.mock.calls.length).toBeGreaterThan(checks);
+  });
+  it("no database request at all while 7-11 is not connected or the brake is on", async () => {
+    const h = harness();
+    await h.job.tick();
+    h.requests.length = 0;
+    // the brake: force a pause through 5 refusals is covered elsewhere; here: not connected
+    const st = { state: "needs_login", since: "c1" };
+    const j2 = createPc711Shadow({ db: { pending: vi.fn(), dayMax: vi.fn(), saveDayMax: vi.fn(), insert: vi.fn(), purgeBefore: vi.fn() }, evidence: h.ev, check: h.check,
+      pc711: { status: () => st }, readSetting: vi.fn(), now: () => NOW, log: () => {}, sleep: async () => {} });
+    expect(await j2.tick()).toEqual({ skipped: "not_connected" });
+    expect(h.requests).toEqual([]);
+  });
 });
 
 describe("logs and privacy", () => {

@@ -172,12 +172,12 @@ export function createEvidenceDb(sb) {
     return { waiting: Math.max(0, Number(x.waiting) || 0), jobs: Array.isArray(x.jobs) ? x.jobs : [] };
   };
   return {
-    // ONE call per pass (sql/172 pc711_shadow_pass): queue + re-asks due + mirror switch + mirror queue + waiting pairs
+    // ONE call per pass (sql/172 pc711_shadow_pass): shadow switch + queue + re-asks due + mirror switch + mirror queue + waiting pairs
     async pass(sinceIso, limit, reaskLimit, mirrorAllowed) {
       const o = await rpc("pc711_shadow_pass", { p_since: sinceIso, p_limit: limit, p_reask_limit: reaskLimit, p_mirror_allowed: Boolean(mirrorAllowed) });
       const x = o && typeof o === "object" ? o : {};
       return {
-        ...queue(x), mirror: x.mirror === true,
+        shadow: x.shadow === true, ...queue(x), mirror: x.mirror === true,
         reasks: Array.isArray(x.reasks) ? x.reasks : [], awaiting: Array.isArray(x.awaiting) ? x.awaiting : [],
         mirrorQueue: x.mirror_queue ? queue(x.mirror_queue) : null,
       };

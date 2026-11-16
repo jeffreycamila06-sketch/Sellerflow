@@ -296,19 +296,22 @@ $$;
 revoke all on function public.pc711_evidence_purge() from public, anon, authenticated;
 grant execute on function public.pc711_evidence_purge() to service_role;
 
--- ── ONE call per pass (the server's only database request on an idle pass besides the shadow switch):
--- the after-mode queue + the re-asks that are due + the mirror switch + (mirror on, outside 01:00–05:00
+-- ── ONE call per pass (the server's ONLY database request on an idle pass): the shadow switch (off →
+-- {shadow:false} and nothing else is read), the after-mode queue + the re-asks that are due + the mirror switch + (mirror on, outside 01:00–05:00
 -- Taipei = p_mirror_allowed) the mirror queue + the mirror rows still waiting for the extension (also
 -- after mirror was switched off, so no pair is dropped). Every part reads its own index.
 create or replace function public.pc711_shadow_pass(p_since timestamptz, p_limit integer, p_reask_limit integer, p_mirror_allowed boolean)
 returns jsonb language plpgsql volatile set search_path = public, pg_temp as $$
-declare v_mirror boolean; v_out jsonb;
+declare v_shadow boolean; v_mirror boolean; v_out jsonb;
 begin
+  -- the shadow switch first: off → nothing else is read (the server stops everything on this pass)
+  select s.value = 'true' into v_shadow from public.app_settings s where s.key = 'pc711_shadow_enabled';
+  if not coalesce(v_shadow, false) then return jsonb_build_object('shadow', false); end if;
   select s.value = 'true' into v_mirror from public.app_settings s where s.key = 'pc711_mirror_enabled';
   v_mirror := coalesce(v_mirror, false);
   v_out := public.pc711_evidence_pending(p_since, p_limit)
     || jsonb_build_object(
-         'mirror', v_mirror,
+         'shadow', true, 'mirror', v_mirror,
          'reasks', coalesce((select jsonb_agg(to_jsonb(r) order by r.reask_next_at)
                                from (select e.id, e.scan_id, e.kind, e.phone, e.store_id, e.reask_n, e.srv_finished_at, e.reask_next_at
                                        from public.pc711_shadow_evidence e
