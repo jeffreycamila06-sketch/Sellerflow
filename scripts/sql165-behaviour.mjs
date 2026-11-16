@@ -54,7 +54,8 @@ await db.exec(src("165_seller_website_v2.sql"));
   const after = (await q(`select * from public.products where local_id = 1`)).rows[0];
   for (const k of Object.keys(oldRowBefore)) ok(String(oldRowBefore[k]) === String(after[k]), `old product column ${k} unchanged`);
   ok(after.old_price === null && after.flash_price === null && after.flash_end === null && after.item_condition === null && after.size_guide === null, "new columns NULL on existing rows");
-  ok(JSON.stringify((await shop("budgetukay")).products) === JSON.stringify(shopBefore.products), "products without the new fields: the shop answer is identical to sql/163's");
+  const noSold = (ps) => JSON.stringify(ps, (k, v) => (k === "sold" ? undefined : v)); // PART 9 adds "N sold"
+  ok(noSold((await shop("budgetukay")).products) === JSON.stringify(shopBefore.products), "products without the new fields: the shop answer is identical to sql/163's (+ sold)");
   ok((await err(q(`update public.products set item_condition = repeat('x', 61) where local_id = 1`))) !== null, "condition ≤ 60");
   ok((await err(q(`update public.products set size_guide = repeat('x', 2001) where local_id = 1`))) !== null, "size guide ≤ 2000");
   ok((await err(q(`update public.products set old_price = -1 where local_id = 1`))) !== null && (await err(q(`update public.products set flash_price = -1 where local_id = 1`))) !== null, "no negative prices");
@@ -87,6 +88,52 @@ await db.exec(src("165_seller_website_v2.sql"));
   await q(`update public.products set old_price = null, flash_price = null, flash_end = null, item_condition = null, size_guide = null where local_id in (1, 10)`);
 }
 
+// ── PART 9 — units sold, kept forever ────────────────────────────────────────
+{
+  const sold = async (id) => (await shop("budgetukay")).products.find((p) => p.id === id).sold;
+  const total = async (id) => Number((await q(`select coalesce(sum(units), 0) n from public.product_sold_totals where user_id = $1 and product_local_id = $2`, [SELLER, id])).rows[0].n);
+  // the stub's stock history had 1 auto_order unit for product 1 before sql/165; part 8 above placed website orders
+  const fromHistory = Number((await q(`select coalesce(sum(-delta), 0) n from public.stock_movements where product_local_id = 1 and reason in ('auto_order','oneclick','website','waitlist')`)).rows[0].n);
+  ok((await total(1)) === fromHistory && fromHistory >= 1, "the totals match the stock history (backfill + every order since)");
+  const t0 = await total(1);
+  // live: the app logs an Auto Mode sale next to its decrement → counted
+  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason, order_ref) values ($1, 1, -2, 'auto_order', 'x')`, [SELLER]);
+  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'oneclick')`, [SELLER]);
+  ok((await total(1)) === t0 + 3, "Auto Mode + 1-Click sales count");
+  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -5, 'manual_edit'), ($1, 1, 10, 'restock')`, [SELLER]);
+  ok((await total(1)) === t0 + 3, "manual edits and restocks never count");
+  // a website order on an option counts on the option row; the product shows product + options
+  const o11 = await total(11), o12 = await total(12);
+  const r = await place({ ...buyer(20), items: [{ pid: 10, vid: 11, qty: 2 }, { pid: 10, vid: 12, qty: 1 }] });
+  ok((await total(11)) === o11 + 2 && (await total(12)) === o12 + 1, "option sales count on the option rows");
+  ok((await sold(10)) === (await total(10)) + (await total(11)) + (await total(12)), "the shop's 'sold' = the product + its options");
+  // a cancelled website order gives its units back
+  const id = (await q(`select id from public.website_orders where token = $1`, [r.token])).rows[0].id;
+  await as(SELLER, "authenticated", () => q(`select public.website_order_action($1, 'cancel')`, [id]));
+  ok((await total(11)) === o11 && (await total(12)) === o12, "cancelled website order → its units are taken off again");
+  // the 90-day purge of stock history doesn't touch the totals
+  const before = await total(1);
+  await q(`delete from public.stock_movements where product_local_id = 1`);
+  ok((await total(1)) === before, "deleting old stock history keeps the totals (kept forever)");
+  // never below 0
+  await q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 77, 3, 'website')`, [SELLER]);
+  ok((await total(77)) === 0, "a stock-back with no sale before never makes a negative total");
+  // the trigger can never block a stock write
+  await q(`alter table public.product_sold_totals rename to pst_hidden`);
+  const e = await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]));
+  await q(`alter table public.pst_hidden rename to product_sold_totals`);
+  ok(e === null, "a broken total never stops a live stock change from being logged");
+  // a seller reads only their own totals; buyers (anon) can't read the table
+  await q(`insert into public.product_sold_totals(user_id, product_local_id, units) values ($1, 1, 5)`, [OTHER]);
+  ok((await as(SELLER, "authenticated", () => q(`select count(*)::int n from public.product_sold_totals where user_id <> $1`, [SELLER]))).rows[0].n === 0, "RLS: own totals only");
+  ok((await err(as(null, "anon", () => q(`select * from public.product_sold_totals`)))) !== null, "anon can't read the totals table");
+  ok((await err(as(SELLER, "authenticated", () => q(`update public.product_sold_totals set units = 999 where user_id = $1`, [SELLER])))) !== null, "a seller can't write the totals");
+  // a product nobody bought: no "sold" key
+  await q(`insert into public.products(user_id, local_id, name, price, stock, live_code) values ($1, 60, 'New', 10, 1, 'N60')`, [SELLER]);
+  ok((await sold(60)) === undefined, "no sales → no 'sold' in the shop answer");
+  await q(`delete from public.products where local_id = 60`);
+}
+
 // ── rollback ─────────────────────────────────────────────────────────────────
 await db.exec(src("165_seller_website_v2_rollback.sql"));
 {
@@ -96,6 +143,8 @@ await db.exec(src("165_seller_website_v2_rollback.sql"));
   ok(noStock(s.products) === noStock(shopBefore.products), "rollback: the shop answer is sql/163's again");
   const r = await place({ ...buyer(9), items: [{ pid: 1, vid: null, qty: 1 }] });
   ok(r.ok === true, "rollback: orders still work");
+  ok((await q(`select to_regclass('public.product_sold_totals') t`)).rows[0].t === null && (await q(`select count(*)::int n from pg_trigger where tgname = 'trg_stock_movements_sold'`)).rows[0].n === 0, "rollback: totals table + trigger gone");
+  ok((await err(q(`insert into public.stock_movements(user_id, product_local_id, delta, reason) values ($1, 1, -1, 'auto_order')`, [SELLER]))) === null, "rollback: stock history still written as before");
   const fn = (await q(`select prosrc from pg_proc where proname = 'website_place_order'`)).rows[0].prosrc;
   ok(!fn.includes("flash_price"), "rollback: place-order is sql/163's again");
 }

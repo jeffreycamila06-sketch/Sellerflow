@@ -11,6 +11,7 @@ export interface ShopProduct {
   createdAt?: string; photos: string[]; groups?: ShopGroup[]; variants?: ShopVariant[];
   // v2 (sql/165): optional — old price (struck through), a running flash sale (price + end), condition, size guide
   oldPrice?: number; flashPrice?: number; flashEnd?: string; condition?: string; sizeGuide?: string;
+  sold?: number; // v2 (item 9): units sold, the product + its options (absent = none)
 }
 export type SocialKey = "facebook" | "instagram" | "tiktok" | "youtube" | "x" | "threads" | "shopee";
 export type ChatKey = "messenger" | "line" | "whatsapp" | "instagram";
@@ -51,6 +52,7 @@ export function toShop(j: unknown): ShopResult {
       ...(num(p.oldPrice, 0) > 0 ? { oldPrice: num(p.oldPrice) } : {}),
       ...(Number.isFinite(Number(p.flashPrice)) && p.flashPrice !== null && str(p.flashEnd) ? { flashPrice: num(p.flashPrice), flashEnd: str(p.flashEnd) } : {}),
       ...(str(p.condition) ? { condition: str(p.condition) } : {}), ...(str(p.sizeGuide) ? { sizeGuide: str(p.sizeGuide) } : {}),
+      ...(num(p.sold, 0) > 0 ? { sold: Math.floor(num(p.sold)) } : {}),
     };
   }).filter((p): p is ShopProduct => p !== null);
   const c = (o.checkout && typeof o.checkout === "object" ? o.checkout : {}) as ShopCheckout;

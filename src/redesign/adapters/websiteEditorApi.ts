@@ -10,6 +10,7 @@ import { uploadSitePicture } from "./websitePhotos";
 import { shopProductsFrom } from "./websiteEditor";
 import { loadProductsDb } from "./productsDb";
 import { loadProductImagePaths } from "./productImages";
+import { loadSoldUnits } from "./soldUnits";
 
 export interface EditorApi {
   load: () => Promise<MyWebsite | null | "error">;
@@ -22,8 +23,8 @@ export interface EditorApi {
 export const realEditorApi: EditorApi = {
   load: loadMyWebsite, save: (w, e) => saveMyWebsite(w, e), publish: publishWebsite, subdomainFree, uploadPicture: uploadSitePicture,
   loadProducts: async () => {
-    const [p, img] = await Promise.all([loadProductsDb(), loadProductImagePaths()]);
-    return shopProductsFrom(p || [], img || new Map());
+    const [p, img, sold] = await Promise.all([loadProductsDb(), loadProductImagePaths(), loadSoldUnits()]);
+    return shopProductsFrom(p || [], img || new Map(), undefined, Date.now(), sold);
   },
 };
 export interface PayShipApi { load: () => Promise<MyWebsite | null | "error">; save: (s: WebsiteSettings) => Promise<boolean>; uploadQr: (f: Blob) => Promise<string | null> }

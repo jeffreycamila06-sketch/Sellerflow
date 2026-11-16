@@ -11,6 +11,12 @@
 --   checked by website_place_order at order time), item_condition, size_guide. The colour group +
 --   swatches live in the existing variant json ({"groups":[{"name":"Color","values":[…],"color":true,
 --   "swatches":{"Pink":"#F9A8D4"}}]}) — no column.
+-- PART 9 — units sold, kept forever: product_sold_totals (one row per product / option row). A trigger on
+--   stock_movements adds the units of every ORDER movement (auto_order, oneclick, website, waitlist; a
+--   cancelled website order's stock-back subtracts) — manual edits and restocks never count. Filled once from
+--   today's stock history (CREATE TRIGGER locks stock_movements until commit, so nothing slips between).
+--   The trigger can never fail a stock-history write (any error inside it is swallowed). The 90-day purge
+--   of stock_movements doesn't touch the totals. The shop shows "N sold" = the product + its options.
 -- Proof: scripts/sql165-behaviour.mjs (PGlite).
 -- ============================================================================
 begin;
@@ -38,6 +44,49 @@ do $$ begin
   end if;
 end $$;
 
+-- ── PART 9 — units sold, kept forever ───────────────────────────────────────
+create table if not exists public.product_sold_totals (
+  user_id          uuid not null references auth.users(id) on delete cascade,
+  product_local_id bigint not null,
+  units            bigint not null default 0 check (units >= 0),
+  updated_at       timestamptz not null default now(),
+  primary key (user_id, product_local_id)
+);
+alter table public.product_sold_totals enable row level security;
+revoke all on table public.product_sold_totals from public, anon, authenticated;
+grant select on table public.product_sold_totals to authenticated;
+drop policy if exists pst_select_own on public.product_sold_totals;
+create policy pst_select_own on public.product_sold_totals for select to authenticated using (user_id = (select auth.uid()));
+
+create or replace function public.product_sold_count_move()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if new.reason in ('auto_order', 'oneclick', 'website', 'waitlist') and new.delta <> 0 then
+    begin
+      insert into public.product_sold_totals as t (user_id, product_local_id, units)
+      values (new.user_id, new.product_local_id, greatest(0, -new.delta))
+      on conflict (user_id, product_local_id) do update set units = greatest(0, t.units - new.delta), updated_at = now();
+    exception when others then
+      null; -- a sold count must never stop a stock change from being logged
+    end;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.product_sold_count_move() from public, anon, authenticated;
+drop trigger if exists trg_stock_movements_sold on public.stock_movements;
+create trigger trg_stock_movements_sold after insert on public.stock_movements
+  for each row execute function public.product_sold_count_move();
+-- today's history, once (the trigger above holds its lock on stock_movements until commit)
+insert into public.product_sold_totals (user_id, product_local_id, units)
+select user_id, product_local_id, greatest(0, sum(-delta))
+  from public.stock_movements
+ where reason in ('auto_order', 'oneclick', 'website', 'waitlist')
+ group by user_id, product_local_id
+on conflict (user_id, product_local_id) do nothing;
+
+
+-- ── the public product list + place-order (PARTS 8 + 9) ──────────────────────
 create or replace function public.website_products_of(p_user uuid)
 returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
@@ -51,6 +100,11 @@ returns jsonb language sql stable security definer set search_path = public, pg_
       'flashEnd', case when p.flash_price is not null and p.flash_end > now() then p.flash_end end,
       'condition', nullif(btrim(coalesce(p.item_condition, '')), ''),
       'sizeGuide', nullif(btrim(coalesce(p.size_guide, '')), ''),
+      -- v2 (item 9): units sold, the product + its options (NULL when none)
+      'sold', nullif((select coalesce(sum(t.units), 0) from public.product_sold_totals t
+                       where t.user_id = p.user_id
+                         and (t.product_local_id = p.local_id
+                              or t.product_local_id in (select c.local_id from public.products c where c.user_id = p.user_id and c.parent_local_id = p.local_id))), 0),
       'variants', (select jsonb_agg(jsonb_build_object('id', c.local_id, 'values', c.variant->'values', 'price', c.price, 'stock', c.stock,
                                                      'photo', c.variant->'photo', 'code', nullif(btrim(c.live_code), '')) order by c.local_id)
                      from public.products c where c.user_id = p.user_id and c.parent_local_id = p.local_id)

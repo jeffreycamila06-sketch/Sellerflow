@@ -4,6 +4,11 @@
 begin;
 set local lock_timeout = '2s';
 
+-- PART 9: the sold totals (stock history itself is untouched)
+drop trigger if exists trg_stock_movements_sold on public.stock_movements;
+drop function if exists public.product_sold_count_move();
+drop table if exists public.product_sold_totals;
+
 -- PART 8: the sql/163 product list + place-order (no flash price), then the columns
 create or replace function public.website_products_of(p_user uuid)
 returns jsonb language sql stable security definer set search_path = public, pg_temp as $$

@@ -19,8 +19,9 @@ export function checkoutFrom(st: WebsiteSettings): ShopCheckout {
     cod: st.cod?.enabled === true, autoCancelHours: hours,
   };
 }
+const soldOf = (id: number, kids: Product[], units?: Map<number, number>) => (units ? (units.get(id) || 0) + kids.reduce((a, c) => a + (units.get(c.id) || 0), 0) : 0);
 /** The seller's products → the shop list: shown, top-level, newest first, variants under their product. */
-export function shopProductsFrom(products: Product[], imagePaths: Map<number, string>, createdAt?: Map<number, string>, nowMs: number = Date.now()): ShopProduct[] {
+export function shopProductsFrom(products: Product[], imagePaths: Map<number, string>, createdAt?: Map<number, string>, nowMs: number = Date.now(), soldUnits?: Map<number, number>): ShopProduct[] {
   const kids = new Map<number, Product[]>();
   for (const p of products) if (p.parentId !== undefined) kids.set(p.parentId, [...(kids.get(p.parentId) || []), p]);
   return products
@@ -35,6 +36,8 @@ export function shopProductsFrom(products: Product[], imagePaths: Map<number, st
         ...(p.oldPrice && p.oldPrice > 0 ? { oldPrice: p.oldPrice } : {}),
         ...(p.flashPrice !== undefined && p.flashPrice !== null && p.flashEnd && Date.parse(p.flashEnd) > nowMs ? { flashPrice: p.flashPrice, flashEnd: p.flashEnd } : {}),
         ...(p.condition?.trim() ? { condition: p.condition.trim() } : {}), ...(p.sizeGuide?.trim() ? { sizeGuide: p.sizeGuide.trim() } : {}),
+        // v2 (item 9): the product + its options, as website_products_of
+        ...(soldOf(p.id, kids.get(p.id) || [], soldUnits) > 0 ? { sold: soldOf(p.id, kids.get(p.id) || [], soldUnits) } : {}),
         variants: ch.length ? ch.map((c) => ({ id: c.id, values: c.variant?.values || [], price: c.price, stock: c.stock, photo: c.variant?.photo ?? null, code: c.liveCode || undefined })) : undefined,
       };
     })
