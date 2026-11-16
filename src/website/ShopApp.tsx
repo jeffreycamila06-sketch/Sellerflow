@@ -20,6 +20,7 @@ import { themeOf, themeClass, accentVars } from "./v2/theme";
 import { V3_CSS } from "./v3/styles";
 import { lookStyle } from "./v3/look";
 import BrandHome from "./v3/BrandHome";
+import { LayoutCtx } from "./v3/layoutCtx";
 import { Header, Footer, BottomNav, ChatSheet, Sheet, Fab } from "./v2/Shell";
 import { useToast } from "./v2/useToast";
 import { checkoutOf, shipLabel, payLabel } from "./shipPay";
@@ -155,7 +156,7 @@ function ShopBody({ shop, route, go, lang, onLang, preview, nowMs, orderApi, lin
       <Header shop={shop} active={navActive} overBand={brand && route.page === "home"} onBack={onBack} onHome={home} cartCount={count} onCart={() => go({ page: "cart" })}
         query={query} onQuery={(q) => setFilter({ ...filter, q })} onSearch={(q) => toShop({ q })} cats={cats} onCat={(c) => toShop({ cat: c })}
         savedCount={saved.length} onSaved={() => go({ page: "saved" })} onTrack={() => go({ page: "orders" })} />
-      <main className="v-main">{body}</main>
+      <main className="v-main"><LayoutCtx.Provider value={look?.layout ?? null}>{body}</LayoutCtx.Provider></main>
       {withFooter && <Footer shop={shop} cur={cur} lang={lang} onLang={onLang} links={[
         [{ label: t.rd_shop_all_products, go: () => toShop() }, { label: t.rd_shop_new_arrivals, go: () => toShop({ sort: "new" }) }, { label: t.rd_shop_best_sellers, go: () => toShop({ sort: "best" }) }, { label: t.rd_shop_on_sale, go: () => toShop({ sale: true }) }],
         [{ label: t.rd_shop_f_how, go: () => setInfo("how") }, { label: t.rd_shop_track, go: () => go({ page: "orders" }) }, { label: t.rd_shop_f_shipping, go: () => setInfo("ship") }, ...(shop.shop.policy ? [{ label: t.rd_shop_returns, go: () => setInfo("returns") }] : [])],
