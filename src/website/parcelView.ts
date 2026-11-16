@@ -44,5 +44,19 @@ export const PARCEL_CSS = `
 .sfl-v2 .v-tl .v-sub2{display:flex;flex-direction:column;min-width:0}
 .sfl-v2 .v-tl .v-sub2 small{display:block;font-weight:500;color:var(--s-mut);font-size:12.5px}
 .sfl-v2 .v-tl .v-bad{color:var(--s-fg);font-weight:700}
+.sfl-v2 .v-pnote{padding:12px 14px;margin-top:12px;font-size:13.5px;display:flex;flex-direction:column;gap:2px;border:1px solid;border-radius:var(--s-r,10px)}
+.sfl-v2 .v-pnote b{font-size:15px}
+.sfl-v2 .v-pnote span{color:var(--s-fg)}
+.sfl-v2 .v-pnote.v-warn{background:color-mix(in srgb,#f59e0b 12%,var(--s-card));color:color-mix(in srgb,#b45309 72%,var(--s-fg));border-color:color-mix(in srgb,#f59e0b 38%,transparent)}
+.sfl-v2 .v-pnote.v-bad{background:color-mix(in srgb,#dc2626 9%,var(--s-card));color:color-mix(in srgb,#dc2626 78%,var(--s-fg));border-color:color-mix(in srgb,#dc2626 32%,transparent)}
 .sfl-v2 .v-tl .v-bad::before{background:color-mix(in srgb,#dc2626 78%,var(--s-fg));box-shadow:0 0 0 4px color-mix(in srgb,#dc2626 18%,transparent)}
 `;
+
+/** Days left to the pickup deadline, counted on the buyer's device (its own calendar day). Negative = passed. */
+export function daysLeft(day: string, now: number = Date.now()): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  const end = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+  const d = new Date(now); const today = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.round((end - today) / 86400000);
+}

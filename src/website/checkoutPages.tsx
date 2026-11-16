@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useT, tpl } from "../redesign/i18n";
 import { useLang } from "../redesign/i18n/langContext";
-import { orderParcel, parcelWhen, PARCEL_CSS } from "./parcelView";
+import { orderParcel, parcelWhen, parcelDay, daysLeft, PARCEL_CSS } from "./parcelView";
 import type { ShopPage } from "./route";
 import type { Shop } from "./shopApi";
 import { money, photoUrl } from "./shopApi";
@@ -305,7 +305,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
   const chats = Object.entries(view.shop.chats || {}).filter(([k, v]) => k in CHAT_APP_NAME && !!chatHref(k as keyof typeof CHAT_PREFILL, String(v || "")));
   // order tracking (sql/171): the parcel from Pickup Status — only a shipped 7-ELEVEN / FamilyMart order, one match
   const parcel = orderParcel(view);
-  const timeline = orderTimeline(t, view, parcel ? { parcel, when: (iso) => parcelWhen(iso, lang), store: deliveryWhere(view) ? `${deliveryLabel(t, view.delivery, view.shipId, view.shipName)} ${deliveryWhere(view)}` : "" } : undefined);
+  const timeline = orderTimeline(t, view, parcel ? { parcel, when: (iso) => parcelWhen(iso, lang), store: timelineStore(t, view) } : undefined);
   return (
     <div className="v-wrap" style={{ paddingBottom: 40 }} data-testid="od-page">
       {parcel && <style>{PARCEL_CSS}</style>}
@@ -322,6 +322,7 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
           <h2 data-testid="od-no" style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{tpl(t.rd_shop_od_order, { no: view.orderNo })}</h2>
           <span data-testid="od-status" style={{ fontSize: 12.5, fontWeight: 800, padding: "4px 10px", borderRadius: 999, background: view.status === "cancelled" ? "var(--s-bg)" : view.status === "shipped" || view.status === "paid" ? "#ECFDF5" : "#FFF7ED", color: view.status === "cancelled" ? "var(--s-mut)" : view.status === "shipped" || view.status === "paid" ? "#047857" : "#C2410C" }}>{t[`rd_shop_od_st_${view.status}`]}</span>
         </div>
+        {parcel?.state === "at_store" && parcel.deadline && <PickupBox day={parcel.deadline} lang={lang} t={t} store={timelineStore(t, view)} pay={view.payment === "cod" ? money(cur, view.total) : ""} />}
         {view.status !== "cancelled" && (
           <div className="v-tl" data-testid="od-steps" style={{ marginTop: 14 }}>
             {timeline.map((x, i) => <div key={i} className={x.st ? `v-${x.st}` : ""} data-state={x.st || "next"}>{x.sub ? <span className="v-sub2">{x.label}<small>{x.sub}</small></span> : x.label}</div>)}
@@ -417,6 +418,24 @@ function OrderPage({ token, fresh, cur: shopCur, api, link, say, onShop }: { tok
       )}
       <div style={{ textAlign: "center" }}><button type="button" className="v-btn v-o" style={{ padding: "11px 20px" }} onClick={onShop}>{t.rd_shop_od_back_shop}</button></div>
       </div></div>
+    </div>
+  );
+}
+// order tracking: the order's own store ("FamilyMart Xinyi #151003")
+function timelineStore(t: Record<string, string>, v: OrderView): string {
+  const w = deliveryWhere(v);
+  return w ? `${deliveryLabel(t, v.delivery, v.shipId, v.shipName)} ${w}` : "";
+}
+// order tracking item 4: the parcel is at the store — the deadline, days left (on this device), the store, and the
+// amount to pay at pickup (pay-on-delivery only). Past the deadline (not yet returned): the date only.
+function PickupBox({ day, lang, t, store, pay }: { day: string; lang: string; t: Record<string, string>; store: string; pay: string }) {
+  const n = daysLeft(day);
+  const left = n === null || n < 0 ? "" : n === 0 ? t.rd_pk_today : n === 1 ? t.rd_pk_day1 : tpl(t.rd_pk_days, { n: String(n) });
+  const line = [left, store, pay ? tpl(t.rd_pk_pay, { amount: pay }) : ""].filter(Boolean).join(" · ");
+  return (
+    <div className="v-pnote v-warn" data-testid="od-pickup">
+      <b>{tpl(t.rd_pk_by, { date: parcelDay(day, lang) })}</b>
+      {line && <span>{line}</span>}
     </div>
   );
 }
