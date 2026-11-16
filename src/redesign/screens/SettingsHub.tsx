@@ -5,6 +5,7 @@ import { useT } from "../i18n";
 import InviteFriendsCard from "../components/InviteFriendsCard";
 import SupportContactModal from "../components/SupportContactModal";
 import SoonBadge from "../components/SoonBadge";
+import { TELEGRAM_URL } from "../../lib/telegram";
 import ParcelStoreIcon from "../components/ParcelStoreIcon";
 import HelpBot from "../components/HelpBot";
 
@@ -77,10 +78,13 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onShipping, shippingSoon = false, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false, onWebsite,
+  isAdmin = false, onInvite, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, pickupLocked = false, onParcelUpsell, onReceiptFormat, onParcelSoon, onFmScan, helpBot = false, onWebsite, websiteTeaser = false,
 }: {
   onInvite?: () => void; // Invite friends screen (invite code + invites, sql/165). Absent → the card shares the app
   onWebsite?: () => void; // Seller Website (sql/163) — passed ONLY when the switch is on or the seller is a tester
+  // Seller Website teaser (sql/169): the same card with "Soon" for a seller WITHOUT the website; a tap opens
+  // the support Telegram chat (a real link). Ignored when onWebsite is given.
+  websiteTeaser?: boolean;
   helpBot?: boolean; // help bot preview (switch on + preview list / admin): bubble instead of the "Need help?" tile
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void;
@@ -127,6 +131,16 @@ export default function SettingsHub({
               </span>
               <span aria-hidden style={{ marginLeft: "auto", color: "var(--text-dim)" }}>›</span>
             </button>
+          )}
+          {!onWebsite && websiteTeaser && (
+            <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ ...tile, gridColumn: "1 / -1", textDecoration: "none", color: "inherit" }} data-testid="tile-website-soon">
+              <span style={chip("accent")}>{ic.globe}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span style={tileLabel}>{t.rd_wed_title}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_wed_sub}</span>
+              </span>
+              <SoonBadge plain style={{ marginLeft: "auto", flexShrink: 0 }} />
+            </a>
           )}
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />

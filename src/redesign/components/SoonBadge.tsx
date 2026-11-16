@@ -12,10 +12,11 @@ const base: CSSProperties = {
   fontFamily: "var(--font-ui)", whiteSpace: "nowrap",
 };
 
-export default function SoonBadge({ label, style }: { label?: string; style?: CSSProperties }) {
+// `plain` = the word only, no hover note (the Seller Website teaser: no explanation).
+export default function SoonBadge({ label, style, plain = false }: { label?: string; style?: CSSProperties; plain?: boolean }) {
   const t = useT();
   return (
-    <span style={{ ...base, ...style }} title={t.rd_soon_title}>
+    <span style={{ ...base, ...style }} title={plain ? undefined : t.rd_soon_title} data-testid={plain ? "soon-badge" : undefined}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warn)" }} />
       {label ?? t.rd_soon}
     </span>
