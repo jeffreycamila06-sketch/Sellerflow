@@ -14,7 +14,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   const host = one(req.headers["x-forwarded-host"]) || one(req.headers.host) || "www.sellerflowlive.com";
   const proto = one(req.headers["x-forwarded-proto"]) || "https";
   let html: string;
-  try { html = await (await fetch(`${proto}://${host}/shop.html`)).text(); } catch { html = ""; }
+  // Same-host fetch of the built shop page. The visitor's cookie goes along ONLY to our own hosts:
+  // a protected Preview deployment answers the login page otherwise (production has no protection).
+  const ownHost = /(^|\.)sellerflowlive\.com$|\.vercel\.app$/.test(host.split(":")[0]);
+  const cookie = ownHost ? one(req.headers.cookie) : "";
+  try { html = await (await fetch(`${proto}://${host}/shop.html`, cookie ? { headers: { cookie } } : undefined)).text(); } catch { html = ""; }
   if (!html.includes('id="shop-root"')) { res.status(502).send("Shop unavailable"); return; }
   let og: ShopOg | null = null;
   const url = process.env.VITE_SUPABASE_URL || "";

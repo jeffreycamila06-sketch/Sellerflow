@@ -8,6 +8,8 @@
 //   3. node imports each api/*.js and checks its default export is a function;
 //   4. api/shop.js is run once with a fake request (fetch stubbed) and must answer 200 with the
 //      shop's tags in the page.
+//   5. middleware.ts (Vercel Routing Middleware, same rules) is loaded and run with a shop host and
+//      with www / the apex: shop "/" → rewrite to /api/shop?sub=…; anything else → continue.
 // Run: node scripts/check-api-node.mjs   (CI runs it; a vitest test runs it too)
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,6 +49,8 @@ function sourceOf(fromFile, spec) {
 export function checkApi({ root = ROOT, log = console.log } = {}) {
   const apiDir = join(root, "api");
   const entries = readdirSync(apiDir).filter((f) => /\.(ts|m?js)$/.test(f) && !f.endsWith(".d.ts")).map((f) => join(apiDir, f));
+  // the Routing Middleware (root middleware.ts) runs in the same Node runtime → same rule
+  for (const m of ["middleware.ts", "middleware.js"]) if (existsSync(join(root, m))) entries.push(join(root, m));
   const problems = [];
   const seen = new Set();
   const queue = [...entries];
@@ -83,6 +87,19 @@ async function loadInNode(root, files, entries, log) {
       if (typeof mod.default !== "function") throw new Error(`${rel}: default export is not a function`);
       loaded[rel] = mod.default;
       log(`  loaded in Node: ${rel}`);
+    }
+    // The middleware, the way Vercel calls it.
+    const mw = loaded["middleware.js"];
+    if (mw) {
+      const call = (host, path = "/") => mw(new Request(`https://${host}${path}`, { headers: { host } }));
+      const shop = call("budgetukay.sellerflowlive.com");
+      const want = "https://budgetukay.sellerflowlive.com/api/shop?sub=budgetukay";
+      if (shop.headers.get("x-middleware-rewrite") !== want) throw new Error(`middleware.js: shop "/" → ${shop.headers.get("x-middleware-rewrite")} (want ${want})`);
+      for (const h of ["www.sellerflowlive.com", "sellerflowlive.com", "app.sellerflowlive.com", "sellerflow-git-x.vercel.app"]) {
+        const r = call(h);
+        if (r.headers.get("x-middleware-next") !== "1" || r.headers.get("x-middleware-rewrite")) throw new Error(`middleware.js: ${h} "/" must continue unchanged`);
+      }
+      log("  ran in Node: middleware.js → shop host \"/\" rewritten to /api/shop, www / apex / app. / previews continue");
     }
     // Run the shop page once, the way Vercel calls it.
     const shop = loaded["api/shop.js"];
