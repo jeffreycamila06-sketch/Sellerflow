@@ -4,9 +4,13 @@
 import { isSupabaseConfigured, supabase } from "../supabase";
 
 export interface ShopVariant { id: number; values: string[]; price: number; stock: number; photo: number | null; code?: string }
+/** An option group; v2: `color` = the colour group, `swatches` = #rrggbb per value (validated on read). */
+export interface ShopGroup { name: string; values: string[]; color?: boolean; swatches?: Record<string, string> }
 export interface ShopProduct {
   id: number; name: string; price: number; stock: number; code?: string; category?: string; description?: string;
-  createdAt?: string; photos: string[]; groups?: { name: string; values: string[] }[]; variants?: ShopVariant[];
+  createdAt?: string; photos: string[]; groups?: ShopGroup[]; variants?: ShopVariant[];
+  // v2 (sql/165): optional — old price (struck through), a running flash sale (price + end), condition, size guide
+  oldPrice?: number; flashPrice?: number; flashEnd?: string; condition?: string; sizeGuide?: string;
 }
 export type SocialKey = "facebook" | "instagram" | "tiktok" | "youtube" | "x" | "threads" | "shopee";
 export type ChatKey = "messenger" | "line" | "whatsapp" | "instagram";
@@ -43,7 +47,10 @@ export function toShop(j: unknown): ShopResult {
     return {
       id: num(p.id), name: String(p.name ?? ""), price: num(p.price), stock: Math.max(0, num(p.stock)), code: str(p.code), category: str(p.category),
       description: str(p.description), createdAt: str(p.createdAt), photos: Array.isArray(p.photos) ? (p.photos as unknown[]).filter((x): x is string => typeof x === "string") : [],
-      groups: Array.isArray(p.groups) ? (p.groups as { name: string; values: string[] }[]) : undefined, variants: variants && variants.length ? variants : undefined,
+      groups: Array.isArray(p.groups) ? cleanShopGroups(p.groups) : undefined, variants: variants && variants.length ? variants : undefined,
+      ...(num(p.oldPrice, 0) > 0 ? { oldPrice: num(p.oldPrice) } : {}),
+      ...(Number.isFinite(Number(p.flashPrice)) && p.flashPrice !== null && str(p.flashEnd) ? { flashPrice: num(p.flashPrice), flashEnd: str(p.flashEnd) } : {}),
+      ...(str(p.condition) ? { condition: str(p.condition) } : {}), ...(str(p.sizeGuide) ? { sizeGuide: str(p.sizeGuide) } : {}),
     };
   }).filter((p): p is ShopProduct => p !== null);
   const c = (o.checkout && typeof o.checkout === "object" ? o.checkout : {}) as ShopCheckout;
@@ -53,6 +60,25 @@ export function toShop(j: unknown): ShopResult {
     powered: o.powered !== false, verified: o.verified === true, stats: { orders: num(stats.orders), products: num(stats.products) },
     products, checkout: { ...c, ship: c.ship || {} },
   };
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+/** Option groups from the server, cleaned: names / values as strings, at most one colour group, swatches only #rrggbb. Pure. */
+export function cleanShopGroups(raw: unknown): ShopGroup[] {
+  let colour = false;
+  return (Array.isArray(raw) ? raw : []).map((g): ShopGroup | null => {
+    const o = g && typeof g === "object" ? (g as Record<string, unknown>) : null;
+    if (!o || !Array.isArray(o.values)) return null;
+    const out: ShopGroup = { name: String(o.name ?? ""), values: (o.values as unknown[]).map(String) };
+    if (o.color === true && !colour) {
+      colour = true; out.color = true;
+      const sw = o.swatches && typeof o.swatches === "object" ? (o.swatches as Record<string, unknown>) : {};
+      const ok: Record<string, string> = {};
+      for (const v of out.values) if (typeof sw[v] === "string" && HEX.test(sw[v] as string)) ok[v] = sw[v] as string;
+      if (Object.keys(ok).length) out.swatches = ok;
+    }
+    return out;
+  }).filter((g): g is ShopGroup => g !== null);
 }
 
 export async function loadShop(sub: string): Promise<ShopResult | null> {

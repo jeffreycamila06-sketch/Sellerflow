@@ -20,7 +20,7 @@ export function checkoutFrom(st: WebsiteSettings): ShopCheckout {
   };
 }
 /** The seller's products → the shop list: shown, top-level, newest first, variants under their product. */
-export function shopProductsFrom(products: Product[], imagePaths: Map<number, string>, createdAt?: Map<number, string>): ShopProduct[] {
+export function shopProductsFrom(products: Product[], imagePaths: Map<number, string>, createdAt?: Map<number, string>, nowMs: number = Date.now()): ShopProduct[] {
   const kids = new Map<number, Product[]>();
   for (const p of products) if (p.parentId !== undefined) kids.set(p.parentId, [...(kids.get(p.parentId) || []), p]);
   return products
@@ -31,6 +31,10 @@ export function shopProductsFrom(products: Product[], imagePaths: Map<number, st
       return {
         id: p.id, name: p.name, price: p.price, stock: p.stock, code: p.liveCode || undefined, category: p.category, description: p.description,
         createdAt: createdAt?.get(p.id), photos, groups: ch.length && p.variant?.groups?.length ? p.variant.groups : undefined,
+        // v2 (sql/165): the same rule as website_products_of — a flash price only while its end time is ahead
+        ...(p.oldPrice && p.oldPrice > 0 ? { oldPrice: p.oldPrice } : {}),
+        ...(p.flashPrice !== undefined && p.flashPrice !== null && p.flashEnd && Date.parse(p.flashEnd) > nowMs ? { flashPrice: p.flashPrice, flashEnd: p.flashEnd } : {}),
+        ...(p.condition?.trim() ? { condition: p.condition.trim() } : {}), ...(p.sizeGuide?.trim() ? { sizeGuide: p.sizeGuide.trim() } : {}),
         variants: ch.length ? ch.map((c) => ({ id: c.id, values: c.variant?.values || [], price: c.price, stock: c.stock, photo: c.variant?.photo ?? null, code: c.liveCode || undefined })) : undefined,
       };
     })

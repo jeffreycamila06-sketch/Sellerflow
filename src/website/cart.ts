@@ -1,22 +1,23 @@
 // Seller Website — the buyer's cart (this device only, per shop). PURE helpers + localStorage.
 // Prices and stock always come from the loaded shop; the server checks them again at order time.
 import type { Shop, ShopProduct, ShopVariant } from "./shopApi";
+import { priceNow } from "./pricing";
 
 export interface CartLine { pid: number; vid: number | null; qty: number }
 export interface LineInfo { line: CartLine; product: ShopProduct; variant: ShopVariant | null; price: number; stock: number; label: string; photo: string | undefined }
 
 export const MAX_QTY = 99;
-export function lineInfo(shop: Shop, line: CartLine): LineInfo | null {
+export function lineInfo(shop: Shop, line: CartLine, nowMs: number = Date.now()): LineInfo | null {
   const product = shop.products.find((p) => p.id === line.pid);
   if (!product) return null;
   if (product.variants?.length) {
     const variant = product.variants.find((v) => v.id === line.vid) || null;
     if (!variant) return null;
     const photo = variant.photo !== null && product.photos[variant.photo] ? product.photos[variant.photo] : product.photos[0];
-    return { line, product, variant, price: variant.price, stock: variant.stock, label: variant.values.join(" · "), photo };
+    return { line, product, variant, price: priceNow(product, nowMs, variant), stock: variant.stock, label: variant.values.join(" · "), photo };
   }
   if (line.vid !== null) return null;
-  return { line, product, variant: null, price: product.price, stock: product.stock, label: "", photo: product.photos[0] };
+  return { line, product, variant: null, price: priceNow(product, nowMs), stock: product.stock, label: "", photo: product.photos[0] };
 }
 /** Total stock a product can sell (the sum of its variants when it has them). */
 export const productStock = (p: ShopProduct) => (p.variants?.length ? p.variants.reduce((a, v) => a + v.stock, 0) : p.stock);
@@ -37,8 +38,8 @@ export function setQty(lines: CartLine[], i: number, qty: number, stock: number)
 }
 export const removeLine = (lines: CartLine[], i: number) => lines.filter((_, k) => k !== i);
 /** Lines that still exist, each clamped to its stock (sold-out lines dropped). */
-export function validLines(shop: Shop, lines: CartLine[]): LineInfo[] {
-  return lines.map((l) => lineInfo(shop, l)).filter((x): x is LineInfo => !!x && x.stock > 0).map((x) => ({ ...x, line: { ...x.line, qty: Math.min(x.line.qty, x.stock) } }));
+export function validLines(shop: Shop, lines: CartLine[], nowMs: number = Date.now()): LineInfo[] {
+  return lines.map((l) => lineInfo(shop, l, nowMs)).filter((x): x is LineInfo => !!x && x.stock > 0).map((x) => ({ ...x, line: { ...x.line, qty: Math.min(x.line.qty, x.stock) } }));
 }
 export const subtotalOf = (infos: LineInfo[]) => infos.reduce((a, x) => a + x.price * x.line.qty, 0);
 export const countOf = (lines: CartLine[]) => lines.reduce((a, l) => a + l.qty, 0);

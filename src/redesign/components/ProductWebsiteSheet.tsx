@@ -9,6 +9,7 @@ import { freePhotoNumber, uploadExtraPhoto, removeExtraPhoto } from "../adapters
 import { uploadFailText, loadPhotoQuota } from "../adapters/photoQuota";
 import { productImageUrl } from "../adapters/productImages";
 import { useT, tpl } from "../i18n";
+import { toLocalInput, fromLocalInput } from "../adapters/dateInput";
 
 const lbl: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", boxSizing: "border-box", minHeight: 42, padding: "9px 11px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 16, outline: "none" };
@@ -39,6 +40,13 @@ export default function ProductWebsiteSheet({ product, all, photo1Url, cur, onSa
   const children = useMemo(() => childrenOf(all, product.id), [all, product.id]);
   const [rows, setRows] = useState<VariantRow[]>(() => editorRows(product, product.variant?.groups || [], children));
   const [errors, setErrors] = useState<VariantPlan["errors"]>([]);
+  // v2 (sql/165): website-only prices + details — all optional
+  const [oldPrice, setOldPrice] = useState(product.oldPrice ? String(product.oldPrice) : "");
+  const [flashPrice, setFlashPrice] = useState(product.flashPrice !== undefined && product.flashPrice !== null ? String(product.flashPrice) : "");
+  const [flashEnd, setFlashEnd] = useState(toLocalInput(product.flashEnd));
+  const [condition, setCondition] = useState(product.condition || "");
+  const [sizeGuide, setSizeGuide] = useState(product.sizeGuide || "");
+  const [flashErr, setFlashErr] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const idSeq = useRef(0);
   const categories = useMemo(() => [...new Set(all.map((p) => (p.category || "").trim()).filter(Boolean))].sort(), [all]);
@@ -77,7 +85,19 @@ export default function ProductWebsiteSheet({ product, all, photo1Url, cur, onSa
   const dropPhoto = (path: string) => { setPhotos((p) => p.filter((x) => x !== path)); void removeExtraPhoto(path); };
 
   const save = () => {
-    const base: Product = { ...product, showOnWebsite: show, category: category.trim(), description: description.trim(), photoPaths: photos };
+    const fp = flashPrice.trim() === "" ? null : Number(flashPrice);
+    const endIso = flashEnd ? fromLocalInput(flashEnd) : null;
+    const flashBad = fp !== null && (!Number.isFinite(fp) || fp <= 0 || !endIso || Date.parse(endIso) <= Date.now());
+    setFlashErr(flashBad);
+    if (flashBad) return;
+    const op = oldPrice.trim() === "" ? null : Number(oldPrice);
+    const v2: Partial<Product> = {};
+    // only the fields the seller touched or that were already set — an untouched product saves exactly as before
+    if (op !== null || product.oldPrice !== undefined) v2.oldPrice = op !== null && Number.isFinite(op) && op > 0 ? op : null;
+    if (fp !== null || product.flashPrice !== undefined) { v2.flashPrice = fp; v2.flashEnd = fp !== null ? endIso : null; }
+    if (condition.trim() || product.condition !== undefined) v2.condition = condition.trim();
+    if (sizeGuide.trim() || product.sizeGuide !== undefined) v2.sizeGuide = sizeGuide.trim();
+    const base: Product = { ...product, ...v2, showOnWebsite: show, category: category.trim(), description: description.trim(), photoPaths: photos };
     const plan = planVariants(base, groups, rows, all, nextId || (() => Date.now() + ++idSeq.current));
     setErrors(plan.errors);
     if (plan.errors.length) return;
@@ -112,6 +132,29 @@ export default function ProductWebsiteSheet({ product, all, photo1Url, cur, onSa
           <textarea id="pws-desc" data-testid="pws-description" value={description} maxLength={2000} onChange={(e) => setDescription(e.target.value)} rows={4} style={{ ...input, resize: "vertical" }} />
         </div>
 
+        <div data-testid="pws-v2" style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text)" }}>{t.rd_web_v2_prices}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
+            <label style={{ ...small, display: "flex", flexDirection: "column", gap: 3 }}>{tpl(t.rd_web_old_price, { cur })}
+              <input data-testid="pws-old-price" inputMode="decimal" value={oldPrice} onChange={(e) => setOldPrice(e.target.value.replace(/[^0-9.]/g, ""))} style={input} />
+            </label>
+            <label style={{ ...small, display: "flex", flexDirection: "column", gap: 3 }}>{tpl(t.rd_web_flash_price, { cur })}
+              <input data-testid="pws-flash-price" inputMode="decimal" value={flashPrice} onChange={(e) => setFlashPrice(e.target.value.replace(/[^0-9.]/g, ""))} style={input} />
+            </label>
+          </div>
+          <label style={{ ...small, display: "flex", flexDirection: "column", gap: 3 }}>{t.rd_web_flash_end}
+            <input data-testid="pws-flash-end" type="datetime-local" value={flashEnd} onChange={(e) => setFlashEnd(e.target.value)} style={input} />
+          </label>
+          <div style={small}>{t.rd_web_flash_hint}</div>
+          {flashErr && <div data-testid="pws-flash-err" style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>{t.rd_web_flash_err}</div>}
+          <label style={{ ...small, display: "flex", flexDirection: "column", gap: 3 }}>{t.rd_web_condition}
+            <input data-testid="pws-condition" value={condition} maxLength={60} placeholder={t.rd_web_condition_ph} onChange={(e) => setCondition(e.target.value)} style={input} />
+          </label>
+          <label style={{ ...small, display: "flex", flexDirection: "column", gap: 3 }}>{t.rd_web_size_guide}
+            <textarea data-testid="pws-size-guide" value={sizeGuide} maxLength={2000} rows={3} placeholder={t.rd_web_size_guide_ph} onChange={(e) => setSizeGuide(e.target.value)} style={{ ...input, resize: "vertical" }} />
+          </label>
+        </div>
+
         <div>
           <div style={lbl}>{tpl(t.rd_web_photos, { n: String((photo1Url ? 1 : 0) + photos.length) })}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8 }}>
@@ -143,6 +186,21 @@ export default function ProductWebsiteSheet({ product, all, photo1Url, cur, onSa
               </div>
               <input data-testid="pws-group-values" aria-label={t.rd_web_group_values} value={valueText[i] ?? ""} placeholder={i === 0 ? "S, M, L" : "Pink, Blue"}
                 onChange={(e) => setGroup(i, { values: e.target.value.split(/[,，、]/).map((x) => x.trim()).filter(Boolean) }, e.target.value)} style={input} />
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
+                <input data-testid="pws-group-colour" type="checkbox" checked={g.color === true} onChange={(e) => applyGroups(groups.map((x, k) => (k === i ? { ...x, color: e.target.checked || undefined } : e.target.checked ? { ...x, color: undefined } : x)))} style={{ width: 20, height: 20 }} />
+                {t.rd_web_group_colour}
+              </label>
+              {g.color && g.values.length > 0 && (
+                <div data-testid="pws-swatches" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {g.values.map((v) => (
+                    <label key={v} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text)", border: "1px solid var(--border)", borderRadius: 999, padding: "4px 10px 4px 4px" }}>
+                      <input type="color" data-testid="pws-swatch" aria-label={tpl(t.rd_web_swatch, { v })} value={g.swatches?.[v] || "#CCCCCC"}
+                        onChange={(e) => setGroup(i, { swatches: { ...(g.swatches || {}), [v]: e.target.value.toUpperCase() } })} style={{ width: 30, height: 30, border: "none", padding: 0, background: "transparent" }} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           {groups.length < MAX_GROUPS && <button type="button" data-testid="pws-add-group" onClick={addGroup} style={{ ...btn, marginTop: 10, width: "100%" }}>+ {t.rd_web_group_add}</button>}

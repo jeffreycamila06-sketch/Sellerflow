@@ -52,6 +52,13 @@ export function websiteFieldsFromRow(row: Record<string, unknown>): Partial<Prod
   if (row.show_on_website === false) out.showOnWebsite = false;
   if (row.parent_local_id != null && Number.isFinite(Number(row.parent_local_id))) out.parentId = Number(row.parent_local_id);
   if (row.variant && typeof row.variant === "object" && !Array.isArray(row.variant)) out.variant = row.variant as Product["variant"];
+  // sql/165 (website v2) — only when set
+  const n = (v: unknown) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+  if (Number.isFinite(n(row.old_price))) out.oldPrice = n(row.old_price);
+  if (Number.isFinite(n(row.flash_price))) out.flashPrice = n(row.flash_price);
+  if (typeof row.flash_end === "string" && row.flash_end) out.flashEnd = row.flash_end;
+  if (typeof row.item_condition === "string" && row.item_condition.trim()) out.condition = row.item_condition;
+  if (typeof row.size_guide === "string" && row.size_guide.trim()) out.sizeGuide = row.size_guide;
   return out;
 }
 
@@ -83,6 +90,13 @@ export function productToRow(p: Product, userId: string, now: number = Date.now(
   if (p.showOnWebsite !== undefined) row.show_on_website = p.showOnWebsite;
   if (p.parentId !== undefined) row.parent_local_id = p.parentId;
   if (p.variant !== undefined) row.variant = p.variant;
+  // sql/165 — written ONLY when the product carries them (otherwise the payload is the same as before)
+  const price = (v: number | null | undefined) => (v === null || !Number.isFinite(Number(v)) || Number(v) <= 0 ? null : Math.round(Number(v) * 100) / 100);
+  if (p.oldPrice !== undefined) row.old_price = price(p.oldPrice);
+  if (p.flashPrice !== undefined) row.flash_price = price(p.flashPrice);
+  if (p.flashEnd !== undefined) row.flash_end = p.flashEnd && Number.isFinite(Date.parse(p.flashEnd)) ? new Date(p.flashEnd).toISOString() : null;
+  if (p.condition !== undefined) row.item_condition = p.condition.trim() ? p.condition.trim().slice(0, 60) : null;
+  if (p.sizeGuide !== undefined) row.size_guide = p.sizeGuide.trim() ? p.sizeGuide.slice(0, 2000) : null;
   return row;
 }
 
@@ -119,11 +133,19 @@ async function uid(): Promise<string | null> {
 // empty table (which is what drives the migration decision).
 const PRODUCT_COLS = "local_id,name,sku,price,stock,platform,live_code";
 export const WEBSITE_COLS = "category,description,photo_paths,show_on_website,parent_local_id,variant";
+export const WEBSITE_V2_COLS = "old_price,flash_price,flash_end,item_condition,size_guide"; // sql/165
 export async function loadProductsDb(): Promise<Product[] | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   const id = await uid();
   if (!id) return null;
-  // sql/163 columns first; before sql/163 is applied that read fails → the original read (same result as before)
+  // sql/165 + sql/163 columns first; before sql/165 is applied that read fails → the sql/163 read; before
+  // sql/163 → the original read (same result as before at each step)
+  const v2 = await supabase
+    .from("products")
+    .select(`${PRODUCT_COLS},${WEBSITE_COLS},${WEBSITE_V2_COLS}`)
+    .eq("user_id", id)
+    .order("created_at", { ascending: true });
+  if (!v2.error) return (v2.data || []).map((r) => rowToProduct(r as Record<string, unknown>));
   const first = await supabase
     .from("products")
     .select(`${PRODUCT_COLS},${WEBSITE_COLS}`)
